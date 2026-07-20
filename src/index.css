@@ -1,0 +1,271 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===================== 全局变量 ===================== */
+/* 浅色主题（默认） */
+:root {
+  --font-size-base: 16px;
+  /* 背景层级 */
+  --tavern-bg: #f8f7fa;
+  --tavern-bg-soft: #f0eef5;
+  --tavern-bg-card: #ffffff;
+  --tavern-bg-hover: #e8e5f0;
+  /* 边框 */
+  --tavern-border: #d4d0e0;
+  --tavern-border-soft: #e5e2ee;
+  /* 文字 */
+  --tavern-text: #1a1625;
+  --tavern-text-soft: #4a4060;
+  --tavern-text-muted: #7a7090;
+  /* 功能色 */
+  --tavern-user: #d4a574;
+  --tavern-assistant: #7b5ea7;
+  --tavern-danger: #c75450;
+  --tavern-success: #4a9e4a;
+  --tavern-warning: #c89820;
+  /* 强调色（默认琥珀金） */
+  --color-accent: #d4a574;
+  --color-accent-hover: #c49060;
+  --color-accent-soft: rgba(212, 165, 116, 0.12);
+}
+
+/* 深色主题 */
+:root.dark {
+  --tavern-bg: #1a1625;
+  --tavern-bg-soft: #221d33;
+  --tavern-bg-card: #2a2440;
+  --tavern-bg-hover: #332b4d;
+  --tavern-border: #3d3458;
+  --tavern-border-soft: #2f2848;
+  --tavern-text: #e8e0f0;
+  --tavern-text-soft: #a89db8;
+  --tavern-text-muted: #6b6280;
+  --tavern-user: #d4a574;
+  --tavern-assistant: #9b7ede;
+  --tavern-danger: #c75450;
+  --tavern-success: #7ec97e;
+  --tavern-warning: #e0c068;
+  --color-accent: #d4a574;
+  --color-accent-hover: #e0b585;
+  --color-accent-soft: rgba(212, 165, 116, 0.15);
+}
+
+/* 主题色变量 - 通过 JS 动态设置 */
+.theme-amber {
+  --color-accent: #d4a574;
+  --color-accent-hover: #e0b585;
+  --color-accent-soft: rgba(212, 165, 116, 0.12);
+}
+.theme-emerald {
+  --color-accent: #6ec97e;
+  --color-accent-hover: #82d892;
+  --color-accent-soft: rgba(110, 201, 126, 0.12);
+}
+.theme-ocean {
+  --color-accent: #5b9bd5;
+  --color-accent-hover: #73b0e0;
+  --color-accent-soft: rgba(91, 155, 213, 0.12);
+}
+.theme-rose {
+  --color-accent: #d57a9b;
+  --color-accent-hover: #e08ead;
+  --color-accent-soft: rgba(213, 122, 155, 0.12);
+}
+.theme-purple {
+  --color-accent: #a78bfa;
+  --color-accent-hover: #c4b5fd;
+  --color-accent-soft: rgba(167, 139, 250, 0.12);
+}
+.theme-cyan {
+  --color-accent: #22d3ee;
+  --color-accent-hover: #67e8f9;
+  --color-accent-soft: rgba(34, 211, 238, 0.12);
+}
+
+/* 深色主题 - 加大 accent-soft 透明度 */
+:root.dark .theme-amber { --color-accent-soft: rgba(212, 165, 116, 0.15); }
+:root.dark .theme-emerald { --color-accent-soft: rgba(110, 201, 126, 0.15); }
+:root.dark .theme-ocean { --color-accent-soft: rgba(91, 155, 213, 0.15); }
+:root.dark .theme-rose { --color-accent-soft: rgba(213, 122, 155, 0.15); }
+:root.dark .theme-purple { --color-accent-soft: rgba(167, 139, 250, 0.15); }
+:root.dark .theme-cyan { --color-accent-soft: rgba(34, 211, 238, 0.15); }
+
+/* ===================== 基础样式 ===================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  background-color: var(--tavern-bg);
+  color: var(--tavern-text);
+  font-size: var(--font-size-base);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* 字体大小档位 */
+.font-compact { --font-size-base: 14px; }
+.font-comfortable { --font-size-base: 16px; }
+.font-loose { --font-size-base: 18px; }
+
+/* 气泡圆角样式 */
+.bubble-round .msg-bubble { border-radius: 16px; }
+.bubble-standard .msg-bubble { border-radius: 8px; }
+.bubble-sharp .msg-bubble { border-radius: 2px; }
+
+/* 消息间距 */
+.spacing-compact .msg-row { margin-bottom: 2px; }
+.spacing-normal .msg-row { margin-bottom: 12px; }
+.spacing-loose .msg-row { margin-bottom: 24px; }
+
+/* ===================== 滚动条 ===================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--tavern-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--tavern-text-muted);
+}
+
+/* ===================== 通用组件 ===================== */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer select-none;
+  }
+  .btn-primary {
+    @apply btn text-tavern-bg;
+    background-color: var(--color-accent);
+  }
+  .btn-primary:hover {
+    background-color: var(--color-accent-hover);
+    transform: translateY(-1px);
+  }
+  .btn-secondary {
+    @apply btn bg-tavern-bg-card text-tavern-text border border-tavern-border;
+  }
+  .btn-secondary:hover {
+    @apply bg-tavern-bg-hover border-tavern-border;
+  }
+  .btn-ghost {
+    @apply btn text-tavern-text-soft hover:text-tavern-text hover:bg-tavern-bg-hover;
+  }
+  .btn-danger {
+    @apply btn bg-tavern-danger text-white;
+  }
+  .btn-danger:hover {
+    @apply opacity-90;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 rounded-lg bg-tavern-bg-soft border border-tavern-border text-tavern-text text-sm transition-colors;
+    @apply focus:outline-none focus:border-tavern-accent focus:bg-tavern-accent-soft;
+  }
+  .textarea {
+    @apply input resize-none;
+  }
+  .select {
+    @apply input cursor-pointer;
+  }
+
+  .card {
+    @apply bg-tavern-bg-card border border-tavern-border-soft rounded-xl;
+  }
+
+  .label {
+    @apply block text-sm text-tavern-text-soft mb-1.5 font-medium;
+  }
+}
+
+/* ===================== Markdown 样式 ===================== */
+.markdown-body {
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.markdown-body p {
+  margin-bottom: 0.75rem;
+}
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  @apply font-bold mt-4 mb-2;
+}
+.markdown-body h1 { @apply text-lg; }
+.markdown-body h2 { @apply text-base; }
+.markdown-body h3 { @apply text-sm; }
+.markdown-body ul, .markdown-body ol {
+  @apply ml-4 mb-3;
+}
+.markdown-body ul { @apply list-disc; }
+.markdown-body ol { @apply list-decimal; }
+.markdown-body li {
+  margin-bottom: 0.25rem;
+}
+.markdown-body code {
+  @apply px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-accent text-xs font-mono;
+}
+.markdown-body pre {
+  @apply p-3 rounded-lg bg-tavern-bg overflow-x-auto my-3;
+}
+.markdown-body pre code {
+  @apply bg-transparent p-0 text-tavern-text text-xs;
+}
+.markdown-body blockquote {
+  @apply border-l-[3px] border-tavern-accent pl-3 italic text-tavern-text-soft my-3 py-1;
+}
+.markdown-body a {
+  @apply text-tavern-accent underline;
+}
+.markdown-body hr {
+  @apply border-tavern-border-soft my-4;
+}
+.markdown-body table {
+  @apply w-full border-collapse my-3;
+}
+.markdown-body th, .markdown-body td {
+  @apply border border-tavern-border px-2 py-1 text-xs;
+}
+.markdown-body img {
+  @apply max-w-full rounded-lg my-3;
+}
+.markdown-body strong {
+  @apply text-tavern-text font-semibold;
+}
+.markdown-body em {
+  @apply text-tavern-text-soft;
+}
+
+/* ===================== 动画 ===================== */
+.animate-fade-in-up {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+/* 打字光标 */
+.typing-cursor::after {
+  content: '▊';
+  @apply text-tavern-accent animate-pulse-soft;
+  margin-left: 2px;
+}
+
+/* 消息气泡渐入 */
+.message-enter {
+  animation: fadeInUp 0.3s ease-out;
+}
