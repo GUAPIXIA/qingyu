@@ -10,6 +10,9 @@ import type {
   FileAPI,
   RegexAPI,
   PersonaAPI,
+  LogAPI,
+  UsageAPI,
+  McpAPI,
 } from '../shared/ipc-api'
 
 // ---- AI 调用 ----
@@ -17,6 +20,8 @@ const aiApi: AIAPI = {
   chat: (params) => ipcRenderer.invoke('ai:chat', params),
   cancelChat: (requestId) => ipcRenderer.invoke('ai:cancel', requestId),
   testConnection: (config) => ipcRenderer.invoke('ai:testConnection', config),
+  countTokens: (text, model) => ipcRenderer.invoke('ai:countTokens', text, model),
+  countMessagesTokens: (messages, model) => ipcRenderer.invoke('ai:countMessagesTokens', messages, model),
   onChunk: (callback) => {
     const handler = (_e: unknown, data: { requestId: string; text: string }) => callback(data)
     ipcRenderer.on('ai:chunk', handler)
@@ -32,6 +37,11 @@ const aiApi: AIAPI = {
     ipcRenderer.on('ai:error', handler)
     return () => ipcRenderer.removeListener('ai:error', handler)
   },
+  onUsage: (callback) => {
+    const handler = (_e: unknown, data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => callback(data)
+    ipcRenderer.on('ai:usage', handler)
+    return () => ipcRenderer.removeListener('ai:usage', handler)
+  },
 }
 
 // ---- 角色卡 ----
@@ -45,6 +55,12 @@ const characterApi: CharacterAPI = {
   importBatch: () => ipcRenderer.invoke('character:importBatch'),
   exportPng: (id) => ipcRenderer.invoke('character:exportPng', id),
   exportJson: (id) => ipcRenderer.invoke('character:exportJson', id),
+  reloadAvatar: (characterId, url) => ipcRenderer.invoke('character:reloadAvatar', characterId, url),
+  onImportProgress: (callback) => {
+    const handler = (_e: unknown, data: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' }) => callback(data)
+    ipcRenderer.on('character:importProgress', handler)
+    return () => ipcRenderer.removeListener('character:importProgress', handler)
+  },
 }
 
 // ---- 对话 ----
@@ -122,6 +138,35 @@ const personaApi: PersonaAPI = {
   createDefault: (name) => ipcRenderer.invoke('persona:createDefault', name),
 }
 
+// ---- 日志 ----
+const logApi: LogAPI = {
+  write: (level, mod, message, meta) => ipcRenderer.invoke('log:write', level, mod, message, meta),
+  getRecent: (limit) => ipcRenderer.invoke('log:getRecent', limit || 200),
+}
+
+// ---- 用量统计 ----
+const usageApi: UsageAPI = {
+  record: (record) => ipcRenderer.invoke('usage:record', record),
+  query: (filter) => ipcRenderer.invoke('usage:query', filter),
+  aggregate: (filter, groupBy) => ipcRenderer.invoke('usage:aggregate', filter, groupBy),
+  summary: (filter) => ipcRenderer.invoke('usage:summary', filter),
+  clear: () => ipcRenderer.invoke('usage:clear'),
+  calculateCost: (model, promptTokens, completionTokens) => ipcRenderer.invoke('usage:calculateCost', model, promptTokens, completionTokens),
+}
+
+// ---- MCP 工具 ----
+const mcpApi: McpAPI = {
+  listServers: () => ipcRenderer.invoke('mcp:listServers'),
+  listServerStatuses: () => ipcRenderer.invoke('mcp:listServerStatuses'),
+  addServer: (config) => ipcRenderer.invoke('mcp:addServer', config),
+  updateServer: (id, patch) => ipcRenderer.invoke('mcp:updateServer', id, patch),
+  removeServer: (id) => ipcRenderer.invoke('mcp:removeServer', id),
+  startServer: (id) => ipcRenderer.invoke('mcp:startServer', id),
+  stopServer: (id) => ipcRenderer.invoke('mcp:stopServer', id),
+  listTools: () => ipcRenderer.invoke('mcp:listTools'),
+  callTool: (serverId, toolName, args) => ipcRenderer.invoke('mcp:callTool', serverId, toolName, args),
+}
+
 contextBridge.exposeInMainWorld('api', {
   ai: aiApi,
   character: characterApi,
@@ -133,4 +178,7 @@ contextBridge.exposeInMainWorld('api', {
   regex: regexApi,
   persona: personaApi,
   file: fileApi,
+  log: logApi,
+  usage: usageApi,
+  mcp: mcpApi,
 })

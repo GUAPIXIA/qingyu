@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { nanoid } from 'nanoid'
 import { useCharacterStore } from '../store/useCharacterStore'
@@ -40,14 +40,16 @@ function saveGroupChats(list: GroupChat[]) {
 }
 
 function Avatar({ name, avatar, size = 32 }: { name: string; avatar?: string; size?: number }) {
+  const [imgError, setImgError] = useState(false)
   const initial = name.charAt(0).toUpperCase() || '?'
-  if (avatar) {
+  if (avatar && !imgError) {
     return (
       <img
         src={avatar}
         alt={name}
         className="rounded-full object-cover shrink-0"
         style={{ width: size, height: size }}
+        onError={() => setImgError(true)}
       />
     )
   }

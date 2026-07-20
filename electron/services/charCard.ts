@@ -2,7 +2,10 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlink
 import { join } from 'node:path'
 import { DIRS, writeJson, readJson } from './storage'
 import type { Character, Lorebook, LoreEntry } from '../../shared/types'
+import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
+
+const log = createLogger('charCard')
 
 /** PNG 签名 */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -127,9 +130,10 @@ function crc32(buf: Buffer): number {
 export async function importCharacterFromPng(filePath: string): Promise<Character> {
   const buffer = readFileSync(filePath)
   const chunks = readPngTextChunks(buffer)
-  const charaBase64 = chunks['chara']
+  // 优先读取 v2 的 chara 字段，fallback 到 v3 的 ccv3 字段
+  const charaBase64 = chunks['chara'] || chunks['ccv3']
   if (!charaBase64) {
-    throw new Error('该 PNG 文件不包含角色卡数据（未找到 chara 字段）')
+    throw new Error('该 PNG 文件不包含角色卡数据（未找到 chara 或 ccv3 字段）')
   }
 
   let charaJson: string
@@ -142,56 +146,140 @@ export async function importCharacterFromPng(filePath: string): Promise<Characte
   const parsed = JSON.parse(charaJson)
   // 头像直接用 PNG 文件的 base64
   const avatarBase64 = `data:image/png;base64,${buffer.toString('base64')}`
-  return await normalizeCharacter(parsed, avatarBase64)
+  const character = await normalizeCharacter(parsed, avatarBase64)
+  log.info('PNG 角色卡导入成功', { name: character.name, path: filePath.substring(0, 80) })
+  return character
 }
 
 /** 从 JSON 文件导入角色卡 */
 export async function importCharacterFromJson(filePath: string): Promise<Character> {
   const raw = readFileSync(filePath, 'utf-8')
   const parsed = JSON.parse(raw)
-  return await normalizeCharacter(parsed)
+  const character = await normalizeCharacter(parsed)
+  log.info('JSON 角色卡导入成功', { name: character.name, path: filePath.substring(0, 80), hasAvatar: !!character.avatar })
+  return character
 }
 
+/** 图片下载错误码 */
+export type ImageDownloadCode = 'TIMEOUT' | 'HTTP_ERROR' | 'NETWORK_ERROR' | 'INVALID_URL' | 'INVALID_FORMAT' | 'UNKNOWN'
+
+/** 图片下载结果 */
+export interface DownloadResult {
+  success: boolean
+  data?: string
+  error?: string
+  code?: ImageDownloadCode
+  statusCode?: number
+}
+
+/** 下载超时时间（毫秒）- 大图片（如 2MB+）需要足够时间 */
+const DOWNLOAD_TIMEOUT_MS = 30000
+
 /** 下载图片并转为 base64 data URL */
-async function downloadImageAsBase64(url: string): Promise<string> {
+async function downloadImageAsBase64(url: string, maxRedirects: number = 5): Promise<DownloadResult> {
+  // 前置 URL 校验
+  if (!url || typeof url !== 'string') {
+    log.warn('封面 URL 无效', { url: String(url) })
+    return { success: false, error: '无效的图片 URL', code: 'INVALID_URL' }
+  }
+  const trimmed = url.trim()
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    log.warn('封面 URL 协议不支持', { url: trimmed.substring(0, 100) })
+    return { success: false, error: 'URL 必须以 http:// 或 https:// 开头', code: 'INVALID_URL' }
+  }
+
+  // 防止无限重定向
+  if (maxRedirects <= 0) {
+    log.warn('封面下载重定向次数超出限制', { url: trimmed.substring(0, 100) })
+    return { success: false, error: '重定向次数过多，下载失败', code: 'NETWORK_ERROR' }
+  }
+
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(''), 10000)
+    // settled 标志：确保 Promise 只 resolve 一次，避免超时后后台请求仍触发 resolve/log
+    let settled = false
+    // 保存请求引用，超时时可主动取消
+    let req: any = null
+
+    const safeResolve = (result: DownloadResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolve(result)
+    }
+
+    const timeout = setTimeout(() => {
+      log.warn('封面下载超时', { url: trimmed.substring(0, 100), timeoutMs: DOWNLOAD_TIMEOUT_MS })
+      // 主动取消正在进行的请求，避免超时后后台请求仍完成并记录误导性日志
+      if (req) {
+        try { req.destroy() } catch { /* ignore */ }
+      }
+      safeResolve({ success: false, error: '下载超时，请检查网络连接', code: 'TIMEOUT' })
+    }, DOWNLOAD_TIMEOUT_MS)
+
     try {
-      const getter = url.startsWith('https') ? require('node:https') : require('node:http')
-      getter.get(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        timeout: 10000,
+      const getter = trimmed.startsWith('https') ? require('node:https') : require('node:http')
+      req = getter.get(trimmed, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+        },
+        timeout: DOWNLOAD_TIMEOUT_MS,
       }, (res: any) => {
         // 处理重定向
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          clearTimeout(timeout)
-          resolve(downloadImageAsBase64(res.headers.location))
+          log.debug('封面下载重定向', { from: trimmed.substring(0, 80), statusCode: res.statusCode })
+          // 递归跟随重定向
+          downloadImageAsBase64(res.headers.location, maxRedirects - 1).then(safeResolve)
           return
         }
         if (res.statusCode !== 200) {
-          clearTimeout(timeout)
-          resolve('')
+          // 读取响应体开头以便诊断（如 CDN 返回 HTML 错误页）
+          const errorChunks: Buffer[] = []
+          res.on('data', (chunk: Buffer) => { if (errorChunks.length < 1) errorChunks.push(chunk) })
+          res.on('end', () => {
+            const preview = errorChunks.length > 0
+              ? errorChunks[0].subarray(0, 500).toString('utf-8').replace(/\s+/g, ' ').trim()
+              : '(空响应)'
+            log.warn('封面下载 HTTP 错误', { url: trimmed.substring(0, 100), statusCode: res.statusCode, bodyPreview: preview })
+            safeResolve({
+              success: false,
+              error: `服务器返回 HTTP ${res.statusCode}`,
+              code: 'HTTP_ERROR',
+              statusCode: res.statusCode,
+            })
+          })
           return
         }
         const chunks: Buffer[] = []
         res.on('data', (chunk: Buffer) => chunks.push(chunk))
         res.on('end', () => {
-          clearTimeout(timeout)
           const buffer = Buffer.concat(chunks)
+          if (buffer.length === 0) {
+            log.warn('封面下载返回空数据', { url: trimmed.substring(0, 100) })
+            safeResolve({ success: false, error: '下载的图片数据为空', code: 'NETWORK_ERROR' })
+            return
+          }
           const mime = detectMimeType(buffer)
-          resolve(`data:${mime};base64,${buffer.toString('base64')}`)
+          const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`
+          log.info('封面下载成功', { url: trimmed.substring(0, 100), size: buffer.length, mime })
+          safeResolve({ success: true, data: dataUrl })
         })
-        res.on('error', () => {
-          clearTimeout(timeout)
-          resolve('')
+        res.on('error', (err: Error) => {
+          // 超时取消请求会触发此处，settled 已为 true 时忽略
+          if (settled) return
+          log.warn('封面下载流错误', { url: trimmed.substring(0, 100), error: err.message })
+          safeResolve({ success: false, error: `网络传输中断: ${err.message}`, code: 'NETWORK_ERROR' })
         })
-      }).on('error', () => {
-        clearTimeout(timeout)
-        resolve('')
+      }).on('error', (err: Error) => {
+        // 超时取消请求可能触发此处，settled 已为 true 时忽略
+        if (settled) return
+        log.warn('封面下载连接失败', { url: trimmed.substring(0, 100), error: err.message })
+        safeResolve({ success: false, error: `连接失败: ${err.message}`, code: 'NETWORK_ERROR' })
       })
-    } catch {
-      clearTimeout(timeout)
-      resolve('')
+    } catch (err: any) {
+      log.error('封面下载异常', { url: trimmed.substring(0, 100), error: err?.message ?? String(err) })
+      safeResolve({ success: false, error: `下载异常: ${err?.message ?? '未知错误'}`, code: 'UNKNOWN' })
     }
   })
 }
@@ -206,9 +294,9 @@ async function normalizeCharacter(parsed: any, avatarBase64?: string): Promise<C
   if (!finalAvatar) {
     // 检查 JSON 中的图片字段
     const imageUrl =
-      data.avatar ?? data.image ?? data.image_url ??
+      data.cover ?? data.avatar ?? data.image ?? data.image_url ??
       data.thumbnail ?? data.portrait ??
-      parsed.avatar ?? parsed.image ?? parsed.image_url ??
+      parsed.cover ?? parsed.avatar ?? parsed.image ?? parsed.image_url ??
       null
 
     if (imageUrl) {
@@ -218,25 +306,66 @@ async function normalizeCharacter(parsed: any, avatarBase64?: string): Promise<C
           finalAvatar = imageUrl
         } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
           // URL -> 下载
-          finalAvatar = await downloadImageAsBase64(imageUrl)
+          const result = await downloadImageAsBase64(imageUrl)
+          if (result.success && result.data) {
+            finalAvatar = result.data
+            log.info('角色卡封面下载成功', { name: data.name, url: imageUrl.substring(0, 100) })
+          } else {
+            log.warn('角色卡封面下载失败', {
+              name: data.name,
+              url: imageUrl.substring(0, 100),
+              code: result.code ?? 'UNKNOWN',
+              error: result.error ?? '',
+              statusCode: result.statusCode ?? null,
+            })
+          }
+        } else if (/^[A-Za-z0-9+/=]{100,}$/.test(imageUrl.trim())) {
+          // 纯 base64（无 data:image 前缀），自动检测类型并补全
+          try {
+            const buffer = Buffer.from(imageUrl.trim(), 'base64')
+            const mime = detectMimeType(buffer)
+            finalAvatar = `data:${mime};base64,${imageUrl.trim()}`
+          } catch {
+            log.warn('角色卡封面 base64 解析失败', { name: data.name })
+          }
         }
       }
     }
   }
 
-  // V2/V3 兼容：无 first_mes 时使用第一个备用问候语
+  // V2/V3 兼容：完整提取所有字段
   let firstMes = data.first_mes ?? data.firstMessage ?? ''
-  if (!firstMes) {
-    const altGreetings = data.alternate_greetings
-    if (Array.isArray(altGreetings) && altGreetings.length > 0) {
-      firstMes = typeof altGreetings[0] === 'string' ? altGreetings[0] : ''
+  const altGreetings: string[] = []
+  if (Array.isArray(data.alternate_greetings)) {
+    for (const g of data.alternate_greetings) {
+      if (typeof g === 'string' && g.trim()) altGreetings.push(g)
     }
   }
+  if (!firstMes && altGreetings.length > 0) {
+    firstMes = altGreetings[0]
+  }
+
+  // 群聊专用开场白
+  const groupGreetings: string[] = []
+  if (Array.isArray(data.group_only_greetings)) {
+    for (const g of data.group_only_greetings) {
+      if (typeof g === 'string' && g.trim()) groupGreetings.push(g)
+    }
+  }
+
+  // 记录原始图片 URL（用于重新加载封面）
+  const rawImageUrl = (!finalAvatar)
+    ? (data.avatar ?? data.image ?? data.image_url ?? '')
+    : ''
+  const importImageUrl = (typeof rawImageUrl === 'string' && !rawImageUrl.startsWith('data:')
+    && (rawImageUrl.startsWith('http://') || rawImageUrl.startsWith('https://')))
+    ? rawImageUrl : undefined
 
   const character: Character = {
     id: nanoid(),
     name: data.name ?? parsed.name ?? '未命名角色',
     avatar: finalAvatar,
+    cover: finalAvatar, // 封面与头像初始同源，后续可单独更换
     description: data.description ?? '',
     personality: data.personality ?? '',
     scenario: data.scenario ?? '',
@@ -247,6 +376,14 @@ async function normalizeCharacter(parsed: any, avatarBase64?: string): Promise<C
     creator: data.creator ?? '',
     createdAt: now,
     updatedAt: now,
+    alternateGreetings: altGreetings,
+    systemPrompt: data.system_prompt ?? '',
+    postHistoryInstructions: data.post_history_instructions ?? '',
+    creatorNotes: data.creator_notes ?? '',
+    characterVersion: data.character_version ?? '',
+    groupOnlyGreetings: groupGreetings,
+    extensions: data.extensions ?? undefined,
+    _importImageUrl: importImageUrl,
   }
 
   // 自动提取内嵌世界书
@@ -312,9 +449,16 @@ export function exportCharacterToPng(character: Character, savePath: string): vo
       personality: character.personality,
       scenario: character.scenario,
       first_mes: character.firstMessage,
+      alternate_greetings: character.alternateGreetings,
       mes_example: character.exampleDialog,
+      system_prompt: character.systemPrompt || '',
+      post_history_instructions: character.postHistoryInstructions || '',
+      creator_notes: character.creatorNotes || '',
+      character_version: character.characterVersion || '',
+      group_only_greetings: character.groupOnlyGreetings || [],
       tags: character.tags,
       creator: character.creator,
+      extensions: character.extensions || {},
     },
   })
   const charaBase64 = Buffer.from(charaJson).toString('base64')
@@ -334,9 +478,16 @@ export function exportCharacterToJson(character: Character, savePath: string): v
       personality: character.personality,
       scenario: character.scenario,
       first_mes: character.firstMessage,
+      alternate_greetings: character.alternateGreetings,
       mes_example: character.exampleDialog,
+      system_prompt: character.systemPrompt || '',
+      post_history_instructions: character.postHistoryInstructions || '',
+      creator_notes: character.creatorNotes || '',
+      character_version: character.characterVersion || '',
+      group_only_greetings: character.groupOnlyGreetings || [],
       tags: character.tags,
       creator: character.creator,
+      extensions: character.extensions || {},
     },
   }
   writeFileSync(savePath, JSON.stringify(data, null, 2), 'utf-8')
@@ -379,19 +530,58 @@ export function readAvatar(characterId: string): string | null {
   return null
 }
 
+/** 保存封面 */
+export function saveCover(characterId: string, base64Data: string): string {
+  if (!base64Data) return ''
+  const avatarDir = DIRS.characters()
+  mkdirSync(avatarDir, { recursive: true })
+
+  const base64 = base64Data.replace(/^data:image\/\w+;base64,/, '')
+  const buffer = Buffer.from(base64, 'base64')
+  const mime = detectMimeType(buffer)
+  const ext = mime.split('/')[1]
+  const fileName = ext === 'jpeg' ? 'jpg' : ext
+
+  const coverPath = join(avatarDir, `${characterId}_cover.${fileName}`)
+  writeFileSync(coverPath, buffer)
+  return coverPath
+}
+
+/** 读取封面 base64 */
+export function readCover(characterId: string): string | null {
+  const avatarDir = DIRS.characters()
+  const extensions = ['png', 'jpg', 'jpeg', 'gif', 'webp']
+  for (const ext of extensions) {
+    const coverPath = join(avatarDir, `${characterId}_cover.${ext}`)
+    if (existsSync(coverPath)) {
+      try {
+        const buffer = readFileSync(coverPath)
+        const mime = detectMimeType(buffer)
+        return `data:${mime};base64,${buffer.toString('base64')}`
+      } catch {
+        continue
+      }
+    }
+  }
+  return null
+}
+
 /** 保存角色 */
 export function saveCharacter(character: Character): void {
   const filePath = join(DIRS.characters(), `${character.id}.json`)
   mkdirSync(DIRS.characters(), { recursive: true })
 
+  // 保存头像和封面到文件
   if (character.avatar.startsWith('data:')) {
     saveAvatar(character.id, character.avatar)
-    // JSON 中不存 avatar base64，只存空字符串（头像从文件读取）
-    const { avatar, ...rest } = character
-    writeJson(filePath, { ...rest, avatar: '' })
-  } else {
-    writeJson(filePath, character)
   }
+  if (character.cover && character.cover.startsWith('data:')) {
+    saveCover(character.id, character.cover)
+  }
+
+  // JSON 中不存 base64，只存空字符串（图片从文件读取）
+  const { avatar, cover, ...rest } = character
+  writeJson(filePath, { ...rest, avatar: '', cover: '' })
 }
 
 /** 读取角色列表 */
@@ -405,10 +595,14 @@ export function listCharacters(): Character[] {
   for (const file of files) {
     const char = readJson<Character>(join(charDir, file))
     if (char) {
-      // 从文件读取头像
+      // 从文件读取头像和封面
       const avatar = readAvatar(char.id)
       if (avatar) {
         char.avatar = avatar
+      }
+      const cover = readCover(char.id)
+      if (cover) {
+        char.cover = cover
       }
       chars.push(char)
     }
@@ -425,6 +619,8 @@ export function getCharacter(id: string): Character | null {
   if (char) {
     const avatar = readAvatar(id)
     if (avatar) char.avatar = avatar
+    const cover = readCover(id)
+    if (cover) char.cover = cover
   }
   return char
 }
@@ -441,5 +637,24 @@ export function deleteCharacter(id: string): void {
     if (existsSync(avatarPath)) {
       try { unlinkSync(avatarPath) } catch { /* 忽略 */ }
     }
+    // 也删除封面文件
+    const coverPath = join(charDir, `${id}_cover.${ext}`)
+    if (existsSync(coverPath)) {
+      try { unlinkSync(coverPath) } catch { /* 忽略 */ }
+    }
   }
+}
+
+/** 重新从 URL 加载角色封面头像 */
+export async function reloadAvatarFromUrl(characterId: string, url: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }> {
+  log.info('重新加载封面', { characterId, url: url.substring(0, 100) })
+  const result = await downloadImageAsBase64(url)
+  if (!result.success || !result.data) {
+    log.warn('重新加载封面失败', { characterId, code: result.code ?? 'UNKNOWN', error: result.error ?? '' })
+    return { success: false, avatar: '', error: result.error, code: result.code }
+  }
+  saveAvatar(characterId, result.data)
+  saveCover(characterId, result.data) // 封面同步更新
+  log.info('重新加载封面成功', { characterId })
+  return { success: true, avatar: result.data }
 }

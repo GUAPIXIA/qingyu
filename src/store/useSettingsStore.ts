@@ -10,6 +10,7 @@ export interface ActiveProfile {
   baseUrl: string
   model: string
   maxContext: number
+  useInstructTemplate?: boolean
 }
 
 export interface ActiveTTSProfile {
@@ -244,6 +245,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       baseUrl: profile.baseUrl,
       model: profile.model,
       maxContext: profile.maxContext || 8192,
+      useInstructTemplate: profile.useInstructTemplate,
     }
   },
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { Character, ProviderType } from '../../../shared/types'
 import { Modal } from '../common/Modal'
-import { ImagePlus, X, Languages, Loader2 } from 'lucide-react'
+import { ImagePlus, X, Languages, Loader2, RefreshCw } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useSettingsStore } from '../../store/useSettingsStore'
 
@@ -28,6 +28,9 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   const [translating, setTranslating] = useState(false)
   const [translatedFields, setTranslatedFields] = useState<Set<string>>(new Set())
   const [translateError, setTranslateError] = useState<string | null>(null)
+  const [coverReloading, setCoverReloading] = useState(false)
+  const [coverError, setCoverError] = useState<string | null>(null)
+  const [avatarError, setAvatarError] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings } = useSettingsStore()
 
@@ -43,8 +46,46 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     const path = await window.api.file.selectImage()
     if (path) {
       const base64 = await window.api.file.readImageAsBase64(path)
-      update({ avatar: base64 })
+      update({ avatar: base64, _importImageUrl: undefined })
     }
+  }
+
+  const handleBackgroundSelect = async () => {
+    const path = await window.api.file.selectImage()
+    if (path) {
+      const base64 = await window.api.file.readImageAsBase64(path)
+      update({ chatBackground: base64 })
+    }
+  }
+
+  const handleReloadCover = async () => {
+    if (!form._importImageUrl) return
+    setCoverReloading(true)
+    setCoverError(null)
+    try {
+      const result = await window.api.character.reloadAvatar(form.id, form._importImageUrl)
+      if (result.success && result.avatar) {
+        // 同时更新 avatar 和 cover，确保保存时 cover 字段不为空
+        update({ avatar: result.avatar, cover: result.avatar, _importImageUrl: undefined })
+        setAvatarError(false)
+        setCoverError(null)
+      } else {
+        // 根据错误码显示用户友好提示
+        const code = result.code ?? 'UNKNOWN'
+        const errorMap: Record<string, string> = {
+          TIMEOUT: '封面加载超时，请检查网络连接后重试',
+          HTTP_ERROR: `封面图片加载失败 (${result.error || '未知HTTP错误'})`,
+          NETWORK_ERROR: '网络连接失败，请检查 URL 是否可访问',
+          INVALID_URL: '无效的封面图片 URL',
+          INVALID_FORMAT: '不支持的图片格式',
+          UNKNOWN: '封面加载失败，请稍后重试',
+        }
+        setCoverError(errorMap[code] || result.error || '封面加载失败')
+      }
+    } catch {
+      setCoverError('封面加载失败，请稍后重试')
+    }
+    setCoverReloading(false)
   }
 
   const handleAddTag = () => {
@@ -143,8 +184,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
               className="w-24 h-24 rounded-2xl overflow-hidden bg-tavern-bg-hover border border-tavern-border cursor-pointer relative group"
               onClick={handleImageSelect}
             >
-              {form.avatar ? (
-                <img src={form.avatar} alt="" className="w-full h-full object-cover" />
+              {form.avatar && !avatarError ? (
+                <img src={form.avatar} alt="" className="w-full h-full object-cover" onError={() => setAvatarError(true)} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-tavern-text-muted">
                   <ImagePlus className="w-8 h-8" />
@@ -154,6 +195,23 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 <span className="text-xs text-white">更换头像</span>
               </div>
             </div>
+            {form._importImageUrl && !form.avatar && (
+              <button
+                className="btn-mini mt-2 w-full flex items-center justify-center gap-1"
+                onClick={handleReloadCover}
+                disabled={coverReloading}
+              >
+                {coverReloading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                重新加载封面
+              </button>
+            )}
+            {coverError && (
+              <p className="text-xs text-tavern-danger mt-1">{coverError}</p>
+            )}
           </div>
           <div className="flex-1 space-y-3">
             <div>
@@ -253,7 +311,19 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 value={form.scenario}
                 onChange={(e) => update({ scenario: e.target.value })}
                 placeholder="对话发生的场景和背景"
+            />
+          </div>
+
+            {/* 角色系统提示词（覆盖预设） */}
+            <div>
+              <label className="label">角色系统提示词（覆盖预设）</label>
+              <textarea
+                className="textarea min-h-[80px] resize-y"
+                value={form.systemPrompt || ''}
+                onChange={(e) => update({ systemPrompt: e.target.value })}
+                placeholder="为这个角色设定专属的系统提示词，留空则使用预设中的系统提示词"
               />
+              <p className="text-xs text-tavern-text-muted mt-1">留空则使用预设中的系统提示词</p>
             </div>
 
             {/* 首条消息 */}
@@ -269,7 +339,86 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 value={form.firstMessage}
                 onChange={(e) => update({ firstMessage: e.target.value })}
                 placeholder="角色发送的第一条消息，用于开启对话"
+            />
+          </div>
+
+            {/* 备选开场白 */}
+            <div>
+              <label className="label">备选开场白</label>
+              <div className="space-y-2">
+                {(form.alternateGreetings || []).map((g, i) => (
+                  <div key={i} className="flex gap-2">
+                    <textarea
+                      className="textarea min-h-[60px] resize-y flex-1 text-sm"
+                      value={g}
+                      onChange={(e) => {
+                        const updated = [...(form.alternateGreetings || [])]
+                        updated[i] = e.target.value
+                        update({ alternateGreetings: updated })
+                      }}
+                      placeholder="备选的开场问候语"
+                    />
+                    <button
+                      className="btn-ghost p-1.5 text-tavern-danger self-start shrink-0"
+                      onClick={() => update({ alternateGreetings: (form.alternateGreetings || []).filter((_, j) => j !== i) })}
+                      title="删除"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  className="btn-ghost text-sm text-tavern-accent"
+                  onClick={() => update({ alternateGreetings: [...(form.alternateGreetings || []), ''] })}
+                >
+                  + 添加备选开场白
+                </button>
+              </div>
+            </div>
+
+            {/* 对话后指令 */}
+            <div>
+              <label className="label">对话后指令</label>
+              <textarea
+                className="textarea min-h-[60px] resize-y"
+                value={form.postHistoryInstructions || ''}
+                onChange={(e) => update({ postHistoryInstructions: e.target.value })}
+                placeholder="如：始终使用中文回复、禁止使用emoji、每次回复不超过200字..."
               />
+            </div>
+
+            {/* 群聊开场白 */}
+            <div>
+              <label className="label">群聊开场白</label>
+              <div className="space-y-2">
+                {(form.groupOnlyGreetings || []).map((g, i) => (
+                  <div key={i} className="flex gap-2">
+                    <textarea
+                      className="textarea min-h-[60px] resize-y flex-1 text-sm"
+                      value={g}
+                      onChange={(e) => {
+                        const updated = [...(form.groupOnlyGreetings || [])]
+                        updated[i] = e.target.value
+                        update({ groupOnlyGreetings: updated })
+                      }}
+                      placeholder="群聊中使用的开场问候语"
+                    />
+                    <button
+                      className="btn-ghost p-1.5 text-tavern-danger self-start shrink-0"
+                      onClick={() => update({ groupOnlyGreetings: (form.groupOnlyGreetings || []).filter((_, j) => j !== i) })}
+                      title="删除"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  className="btn-ghost text-sm text-tavern-accent"
+                  onClick={() => update({ groupOnlyGreetings: [...(form.groupOnlyGreetings || []), ''] })}
+                >
+                  + 添加群聊开场白
+                </button>
+              </div>
             </div>
 
             {/* 对话示例 */}
@@ -300,6 +449,37 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 onChange={(e) => update({ creator: e.target.value })}
                 placeholder="角色卡作者"
               />
+            </div>
+
+            {/* 聊天背景 */}
+            <div>
+              <label className="label">聊天背景</label>
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-32 h-20 rounded-lg bg-tavern-bg-hover border border-tavern-border cursor-pointer overflow-hidden relative group shrink-0"
+                  onClick={handleBackgroundSelect}
+                >
+                  {form.chatBackground ? (
+                    <img src={form.chatBackground} className="w-full h-full object-cover" alt="" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-tavern-text-muted">
+                      <ImagePlus className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-xs text-white">{form.chatBackground ? '更换背景' : '选择背景'}</span>
+                  </div>
+                </div>
+                {form.chatBackground && (
+                  <button
+                    className="btn-ghost text-xs text-tavern-danger shrink-0"
+                    onClick={() => update({ chatBackground: undefined })}
+                  >
+                    移除背景
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-tavern-text-muted mt-1">为该角色设置专属的聊天页背景图</p>
             </div>
           </div>
         )}

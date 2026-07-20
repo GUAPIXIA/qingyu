@@ -1,8 +1,11 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
 import { DIRS, writeJson, readJson, listJsonFiles, removeFile } from '../services/storage'
+import { createLogger } from '../services/logger'
 import type { Preset } from '../../shared/types'
 import { nanoid } from 'nanoid'
+
+const log = createLogger('preset')
 
 /** 内置预设 */
 export function getBuiltinPresets(): Preset[] {
@@ -69,12 +72,14 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
       preset.isBuiltin = false
     }
     writeJson(join(DIRS.presets(), `${preset.id}.json`), preset)
+    log.info('预设已保存', { id: preset.id, name: preset.name })
     return preset
   })
 
   // 删除
   ipcMain.handle('preset:delete', async (_e, id: string) => {
     removeFile(join(DIRS.presets(), `${id}.json`))
+    log.info('预设已删除', { id })
   })
 
   // 导入
@@ -103,6 +108,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
       isBuiltin: false,
     }
     writeJson(join(DIRS.presets(), `${preset.id}.json`), preset)
+    log.info('预设已导入', { name: preset.name })
     return preset
   })
 }

@@ -6,12 +6,12 @@ import { CharacterEditor } from '../components/character/CharacterEditor'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
-import { Users, Plus, Upload, FileUp, Search, MessageSquare, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List } from 'lucide-react'
+import { Users, Plus, Upload, FileUp, Search, MessageSquare, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning } from 'lucide-react'
 import type { Character } from '../../shared/types'
 
 export function CharactersPage() {
   const navigate = useNavigate()
-  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, createCharacter, importError, pendingAvatarId } = useCharacterStore()
+  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, createCharacter, importError, pendingAvatarId, importProgress } = useCharacterStore()
   const [editing, setEditing] = useState(false)
   const [editCharacter, setEditCharacter] = useState<Character | null>(null)
   const [search, setSearch] = useState('')
@@ -124,6 +124,48 @@ export function CharactersPage() {
           <button onClick={() => setBatchResult(null)} className="p-0.5 hover:opacity-70">
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* 导入进度条 */}
+      {importProgress && (
+        <div className="px-4 py-3 border-b border-tavern-border-soft bg-tavern-bg-soft animate-fade-in">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 text-sm">
+              {importProgress.status === 'processing' ? (
+                <Loader2 className="w-4 h-4 animate-spin text-tavern-accent" />
+              ) : importProgress.status === 'error' ? (
+                <FileWarning className="w-4 h-4 text-tavern-danger" />
+              ) : (
+                <CheckCircle className="w-4 h-4 text-emerald-500" />
+              )}
+              <span className="text-tavern-text-soft">
+                导入中 <strong>{importProgress.current}</strong> / {importProgress.total}
+              </span>
+            </div>
+            <span className={cn(
+              'text-xs truncate ml-4 max-w-[50%]',
+              importProgress.status === 'error' ? 'text-tavern-danger' : 'text-tavern-text-muted'
+            )}>
+              {importProgress.fileName}
+            </span>
+          </div>
+          {/* 进度条本体 */}
+          <div className="w-full h-2 rounded-full bg-tavern-bg-hover overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-300 ease-out"
+              style={{
+                width: `${Math.round((importProgress.current / importProgress.total) * 100)}%`,
+                background: importProgress.status === 'error'
+                  ? 'linear-gradient(90deg, #ef4444, #f87171)'
+                  : 'linear-gradient(90deg, #d4a574, #e8b88a)',
+              }}
+            />
+          </div>
+          {/* 百分比数字 */}
+          <div className="text-xs text-tavern-text-muted text-right mt-0.5">
+            {Math.round((importProgress.current / importProgress.total) * 100)}%
+          </div>
         </div>
       )}
 

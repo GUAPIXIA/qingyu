@@ -18,9 +18,10 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
   const [showMenu, setShowMenu] = useState(false)
   const [imgError, setImgError] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const coverSrc = character.cover || character.avatar
 
   const handlePreviewClick = () => {
-    if (character.avatar && !imgError) setShowPreview(true)
+    if (coverSrc && !imgError) setShowPreview(true)
   }
 
   const renderAvatar = (className: string) => (
@@ -28,9 +29,9 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
       className={cn('bg-tavern-bg-hover overflow-hidden cursor-pointer', className)}
       onClick={handlePreviewClick}
     >
-      {character.avatar && !imgError ? (
+      {coverSrc && !imgError ? (
         <img
-          src={character.avatar}
+          src={coverSrc}
           alt={character.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           onError={() => setImgError(true)}
@@ -137,28 +138,28 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
         </div>
 
         {/* 大图预览 */}
-        {showPreview && character.avatar && (
-          <div
-            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 animate-fade-in"
+      {showPreview && coverSrc && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 animate-fade-in"
+          onClick={() => setShowPreview(false)}
+        >
+          <button
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors text-lg"
             onClick={() => setShowPreview(false)}
           >
-            <button
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors text-lg"
-              onClick={() => setShowPreview(false)}
-            >
-              ✕
-            </button>
-            <img
-              src={character.avatar}
-              alt={character.name}
-              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        )}
-      </>
-    )
-  }
+            ✕
+          </button>
+          <img
+            src={coverSrc}
+            alt={character.name}
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
+  )
+}
 
   // 网格模式：现有卡片样式
   return (
@@ -201,7 +202,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
       </div>
 
       {/* 大图预览 */}
-      {showPreview && character.avatar && (
+      {showPreview && coverSrc && (
         <div
           className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 animate-fade-in"
           onClick={() => setShowPreview(false)}
@@ -213,7 +214,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
             ✕
           </button>
           <img
-            src={character.avatar}
+            src={coverSrc}
             alt={character.name}
             className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
             onClick={(e) => e.stopPropagation()}

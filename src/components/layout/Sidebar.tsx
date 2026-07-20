@@ -16,6 +16,8 @@ import {
   Beer,
   Regex as RegexIcon,
   UserCircle,
+  BarChart3,
+  Wrench,
 } from 'lucide-react'
 import { PROVIDER_INFO } from '../../utils/defaults'
 
@@ -28,6 +30,8 @@ const navItems = [
   { to: '/presets', label: '预设', icon: Sliders },
   { to: '/regex', label: '正则', icon: RegexIcon },
   { to: '/api', label: 'API', icon: Plug },
+  { to: '/usage', label: '用量', icon: BarChart3 },
+  { to: '/mcp', label: 'MCP', icon: Wrench },
   { to: '/settings', label: '设置', icon: Settings },
   { to: '/help', label: '帮助', icon: HelpCircle },
 ]

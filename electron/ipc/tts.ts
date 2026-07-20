@@ -1,5 +1,8 @@
 import type { IpcMain } from 'electron'
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
+import { createLogger } from '../services/logger'
+
+const log = createLogger('tts')
 
 let psProcess: ChildProcessWithoutNullStreams | null = null
 let speechState: 'idle' | 'speaking' | 'paused' = 'idle'
@@ -201,8 +204,10 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
       if (voice) await sendCommand({ action: 'setVoice', voice })
       if (rate !== undefined) await sendCommand({ action: 'setRate', rate })
       await sendCommand({ action: 'speak', text })
+      log.info('TTS 朗读', { textLen: text.length, voice })
       return { success: true }
     } catch (e) {
+      log.error('TTS 朗读失败', { error: (e as Error).message })
       return { success: false, error: (e as Error).message }
     }
   })
@@ -235,6 +240,8 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
 
   // 获取语音列表
   ipcMain.handle('tts:getVoices', async () => {
-    return await getVoices()
+    const voices = await getVoices()
+    log.info('已获取语音列表', { count: voices.length })
+    return voices
   })
 }

@@ -2,8 +2,11 @@ import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { DIRS } from '../services/storage'
+import { createLogger } from '../services/logger'
 import type { RegexRule } from '../../shared/types'
 import { nanoid } from 'nanoid'
+
+const log = createLogger('regex')
 
 function getRegexDir(): string {
   const dir = join(DIRS.config(), 'regex')
@@ -45,6 +48,7 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
       rules.push(rule)
     }
     writeRules(rules)
+    log.info('规则已保存', { id: rule.id, name: rule.name })
     return rule
   })
 
@@ -52,6 +56,7 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
   ipcMain.handle('regex:delete', async (_e, id: string) => {
     const rules = readRules().filter((r) => r.id !== id)
     writeRules(rules)
+    log.info('规则已删除', { id })
   })
 
   // 创建新规则
@@ -67,6 +72,7 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
     const rules = readRules()
     rules.push(rule)
     writeRules(rules)
+    log.info('规则已创建', { id: rule.id, name: rule.name })
     return rule
   })
 }

@@ -28,6 +28,17 @@
   --color-accent: #d4a574;
   --color-accent-hover: #c49060;
   --color-accent-soft: rgba(212, 165, 116, 0.12);
+
+  /* 对话片段样式 */
+  --dialogue-bg: rgba(212, 165, 116, 0.06);
+  --dialogue-border: rgba(212, 165, 116, 0.2);
+  --dialogue-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --dialogue-text: #c2410c;
+  --dialogue-label: #5a2d8a;
+
+  --action-bg: rgba(155, 126, 222, 0.04);
+  --action-text: #3d2e56;
+  --action-border: rgba(155, 126, 222, 0.15);
 }
 
 /* 深色主题 */
@@ -49,6 +60,16 @@
   --color-accent: #d4a574;
   --color-accent-hover: #e0b585;
   --color-accent-soft: rgba(212, 165, 116, 0.15);
+
+  --dialogue-bg: rgba(212, 165, 116, 0.08);
+  --dialogue-border: rgba(212, 165, 116, 0.2);
+  --dialogue-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --dialogue-text: #fb923c;
+  --dialogue-label: #d8c0ff;
+
+  --action-bg: rgba(155, 126, 222, 0.06);
+  --action-text: #ddd2f0;
+  --action-border: rgba(155, 126, 222, 0.15);
 }
 
 /* 主题色变量 - 通过 JS 动态设置 */
@@ -123,9 +144,9 @@ body {
 .bubble-sharp .msg-bubble { border-radius: 2px; }
 
 /* 消息间距 */
-.spacing-compact .msg-row { margin-bottom: 2px; }
-.spacing-normal .msg-row { margin-bottom: 12px; }
-.spacing-loose .msg-row { margin-bottom: 24px; }
+.spacing-compact .msg-row { margin-bottom: 8px; }
+.spacing-normal .msg-row { margin-bottom: 20px; }
+.spacing-loose .msg-row { margin-bottom: 32px; }
 
 /* ===================== 滚动条 ===================== */
 ::-webkit-scrollbar {
@@ -195,12 +216,12 @@ body {
 /* ===================== Markdown 样式 ===================== */
 .markdown-body {
   font-size: 0.9375rem;
-  line-height: 1.8;
+  line-height: 1.9;
   user-select: text;
   -webkit-user-select: text;
 }
 .markdown-body p {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.875rem;
 }
 .markdown-body p:last-child {
   margin-bottom: 0;
@@ -268,4 +289,60 @@ body {
 /* 消息气泡渐入 */
 .message-enter {
   animation: fadeInUp 0.3s ease-out;
+}
+
+/* ===================== 对话片段样式 ===================== */
+
+/* 对话容器 */
+.dialogue-block {
+  display: flex;
+  flex-direction: column;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: var(--dialogue-bg);
+  border-left: 3px solid var(--dialogue-border);
+  box-shadow: var(--dialogue-shadow);
+}
+
+/* 说话人标签 */
+.dialogue-speaker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--dialogue-label);
+  margin-bottom: 0.125rem;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+/* 对话文本 */
+.dialogue-text {
+  font-size: 0.9375rem;
+  line-height: 1.85;
+  color: var(--dialogue-text);
+  font-weight: 500;
+}
+
+.dialogue-text::before { content: '\201C'; }
+.dialogue-text::after  { content: '\201D'; }
+
+/* 动作描述块 */
+.action-block {
+  margin: 0.375rem 0;
+  padding: 0.25rem 0.75rem;
+  border-left: 2px solid var(--action-border);
+  background: var(--action-bg);
+  border-radius: 0 4px 4px 0;
+  font-style: italic;
+  color: var(--action-text);
+  font-size: 0.875rem;
+  line-height: 1.85;
+}
+
+/* 旁白/叙述块 */
+.narration-block {
+  margin: 0.25rem 0;
+  font-size: 0.9375rem;
+  line-height: 1.9;
+  color: var(--tavern-text-soft);
 }

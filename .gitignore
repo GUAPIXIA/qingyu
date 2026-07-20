@@ -31,3 +31,9 @@ release-v2
 
 # SillyTavern tools
 SillyTavern-Launcher/
+
+# Build artifacts / temp
+.workbuddy/
+*_spec_*.json
+spec_*.json
+.trae/documents/

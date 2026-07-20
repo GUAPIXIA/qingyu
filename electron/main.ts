@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron'
 import { join } from 'node:path'
 import { registerCharacterIPC } from './ipc/character'
 import { registerChatIPC } from './ipc/chat'
@@ -10,7 +10,11 @@ import { registerTTSIPC } from './ipc/tts'
 import { registerFileIPC } from './ipc/file'
 import { registerRegexIPC } from './ipc/regex'
 import { registerPersonaIPC } from './ipc/persona'
+import { registerUsageIPC } from './ipc/usage'
+import { registerMcpIPC } from './ipc/mcp'
+import { mcpManager } from './mcp/manager'
 import { ensureDataDir } from './services/storage'
+import { initLogger, createLogger, getRecentLogs } from './services/logger'
 
 const isDev = !app.isPackaged
 
@@ -52,7 +56,16 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // 移除默认菜单栏（帮助、窗口等）
+  Menu.setApplicationMenu(null)
+  // 显式设置应用名称（控制左上角标题栏显示）
+  app.setName('轻语')
+
   await ensureDataDir()
+  initLogger(app.getPath('userData'))
+
+  const appLogger = createLogger('main')
+  appLogger.info('轻语启动', { version: app.getVersion(), isDev })
 
   // 注册所有 IPC 处理器
   registerCharacterIPC(ipcMain, dialog)
@@ -65,6 +78,23 @@ app.whenReady().then(async () => {
   registerFileIPC(ipcMain, dialog)
   registerRegexIPC(ipcMain)
   registerPersonaIPC(ipcMain)
+  registerUsageIPC(ipcMain)
+  registerMcpIPC(ipcMain)
+
+  // 自动启动配置为 autoStart 的 MCP server
+  const logger = createLogger('main')
+  mcpManager.autoStartAll().catch((err) => {
+    logger.error('MCP 自动启动失败', { error: err.message })
+  })
+
+  // 日志 IPC
+  ipcMain.handle('log:write', (_event, level: 'debug' | 'info' | 'warn' | 'error', mod: string, message: string, meta?: Record<string, any>) => {
+    const logger = createLogger(mod)
+    logger[level](message, meta)
+  })
+  ipcMain.handle('log:getRecent', (_event, limit?: number) => {
+    return getRecentLogs(limit || 200)
+  })
 
   createWindow()
 
@@ -75,4 +105,13 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+// 应用退出前关闭所有 MCP server
+app.on('before-quit', async (event) => {
+  event.preventDefault()
+  try {
+    await mcpManager.shutdownAll()
+  } catch { /* ignore */ }
+  app.exit(0)
 })

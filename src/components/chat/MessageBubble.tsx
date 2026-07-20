@@ -1,15 +1,16 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeRaw from 'rehype-raw'
-import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause, User, Bot, Languages, GitBranch } from 'lucide-react'
+import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause, User, Bot, Languages, GitBranch, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import { formatTime } from '../../utils/format'
 import { estimateTokens } from '../../utils/tokenCounter'
+import { parseDialogue } from '../../utils/dialogue-parser'
 
 interface MessageBubbleProps {
   message: Message
@@ -21,21 +22,43 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
   const [ttsState, setTtsState] = useState<'idle' | 'speaking' | 'paused'>('idle')
-  const [translation, setTranslation] = useState<string | null>(message.translation ?? null)
-  const [translating, setTranslating] = useState(false)
   const [thoughtExpanded, setThoughtExpanded] = useState(false)
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
-  const { editMessage, deleteMessage, regenerateMessage, isStreaming, currentRequestId } = useChatStore()
+  const [avatarError, setAvatarError] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { editMessage, deleteMessage, regenerateMessage, swipeMessage, isStreaming, currentRequestId, translatingMessages, showTranslationIds, translateMessage } = useChatStore()
   const { settings, getActiveTTS } = useSettingsStore()
   const ttsConfig = getActiveTTS()
 
-  // 解析心理描写 <thought>...</thought>
-  const thoughtMatch = message.content?.match(/<thought>([\s\S]*?)<\/thought>/i)
-  const thought = thoughtMatch?.[1]?.trim() ?? null
-  const displayContent = thought ? message.content.replace(/<thought>[\s\S]*?<\/thought>/i, '').trim() : message.content
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // 全局翻译状态
+  const transState = translatingMessages[message.id]
+  const showTranslation = showTranslationIds.has(message.id)
+  const isTranslating = transState?.status === 'translating'
+
+  // 解析心理描写 <thought>...</thought>（全局匹配，支持多个 thought 块）
+  const thoughtRegex = /<thought>([\s\S]*?)<\/thought>/gi
+  const thoughts: string[] = []
+  let thoughtExec: RegExpExecArray | null
+  while ((thoughtExec = thoughtRegex.exec(message.content || '')) !== null) {
+    thoughts.push(thoughtExec[1].trim())
+  }
+  const thought = thoughts.length > 0 ? thoughts.join('\n\n') : null
+  const originalDisplay = message.content?.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() ?? ''
   const isUser = message.role === 'user'
   const isStreamingThis = isStreaming && isLast && !isUser
+
+  // 决定显示的文本：翻译结果也做 thought 剥离
+  const rawDisplay = showTranslation && transState?.content ? transState.content : originalDisplay
+  const displayContent = rawDisplay?.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() ?? ''
+
+  // 对话片段解析：将 *动作* / "对话" / Name: "对话" 拆分为结构化片段
+  const dialogueSegments = useMemo(() => {
+    if (isStreamingThis) return null
+    const segments = parseDialogue(displayContent)
+    // 如果没有识别出任何 dialogue/action 片段，返回 null（回退到普通 Markdown）
+    const hasDialogueOrAction = segments.some(s => s.type === 'dialogue' || s.type === 'action')
+    return hasDialogueOrAction ? segments : null
+  }, [displayContent, isUser, isStreamingThis])
 
   useEffect(() => {
     if (editing && textareaRef.current) {
@@ -80,63 +103,23 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
     setTtsState('idle')
   }
 
-  const handleTranslate = async () => {
-    if (!message.content || translating) return
-    if (translation) {
-      setTranslation(null)
+  const handleTranslate = () => {
+    if (!message.content || isTranslating) return
+    // 如果已有翻译结果，切换显示
+    if (transState?.status === 'done') {
+      // 如果还没显示翻译，先切换为显示
+      if (!showTranslation) {
+        useChatStore.getState().toggleTranslation(message.id)
+      } else {
+        // 已显示翻译，切换回原文
+        useChatStore.getState().toggleTranslation(message.id)
+      }
       return
     }
-    setTranslating(true)
-    setTranslation('')
-
-    const requestId = `translate-${message.id}-${Date.now()}`
-    let result = ''
-
-    const unbindChunk = window.api.ai.onChunk((data) => {
-      if (data.requestId !== requestId) return
-      result += data.text
-      setTranslation(result)
-    })
-    const unbindDone = window.api.ai.onDone((doneId) => {
-      if (doneId !== requestId) return
-      unbindChunk(); unbindDone(); unbindError()
-      setTranslating(false)
-      // 持久化翻译结果到消息
-      if (character && result) {
-        const updatedMsg = { ...message, translation: result }
-        window.api.chat.saveMessage(updatedMsg)
-        useChatStore.setState((s) => ({
-          messages: s.messages.map((m) => (m.id === message.id ? updatedMsg : m)),
-        }))
-      }
-    })
-    const unbindError = window.api.ai.onError((data) => {
-      if (data.requestId !== requestId) return
-      unbindChunk(); unbindDone(); unbindError()
-      setTranslating(false)
-      setTranslation('翻译失败: ' + data.error)
-    })
-
-    const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile) { setTranslating(false); return }
-    const settings = useSettingsStore.getState().settings
-    await window.api.ai.chat({
-      requestId,
-      messages: [
-        { role: 'system', content: '你是一个翻译助手。请将以下文本翻译成中文。只输出翻译结果，不要添加任何解释或额外内容。' },
-        { role: 'user', content: message.content },
-      ],
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model: settings.activeModel || profile.model,
-      temperature: 0.3,
-      topP: 0.9,
-      maxTokens: 2048,
-      frequencyPenalty: 0,
-      presencePenalty: 0,
-      stream: true,
-    })
+    // 发起翻译
+    translateMessage(message.id, message.content)
+    // 翻译开始后自动显示
+    useChatStore.getState().toggleTranslation(message.id)
   }
 
   const handleBranch = async () => {
@@ -189,20 +172,20 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
 
   return (
     <div className="px-4 group animate-fade-in-up msg-row">
-      <div className={cn('max-w-3xl mx-auto flex gap-3', isUser && 'flex-row-reverse')}>
+      <div className={cn('w-[65%] mx-auto flex gap-4', isUser && 'flex-row-reverse')} style={{ minWidth: '500px', maxWidth: '880px' }}>
         {/* 头像 */}
         <div
           className={cn(
-            'w-9 h-9 rounded-full flex items-center justify-center shrink-0',
+            'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
             isUser
-              ? 'bg-tavern-user/20 text-tavern-user'
-              : 'bg-tavern-assistant/20 text-tavern-assistant'
+              ? 'bg-gradient-to-br from-tavern-user/30 to-tavern-user/10 text-tavern-user ring-2 ring-tavern-user/20'
+              : 'bg-gradient-to-br from-tavern-assistant/30 to-tavern-assistant/10 text-tavern-assistant ring-2 ring-tavern-assistant/20'
           )}
         >
           {isUser ? (
             <User className="w-5 h-5" />
-          ) : character?.avatar ? (
-            <img src={character.avatar} alt="" className="w-full h-full rounded-full object-cover" />
+          ) : character?.avatar && !avatarError ? (
+            <img src={character.avatar} alt="" className="w-full h-full rounded-full object-cover" onError={() => setAvatarError(true)} />
           ) : (
             <Bot className="w-5 h-5" />
           )}
@@ -217,22 +200,52 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
             </span>
             <span>{formatTime(message.timestamp)}</span>
             {settings.showTokenCount && message.content && (
-              <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-muted/70 text-[10px]">
-                {estimateTokens(message.content)} tok
+              <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-muted/70 text-[10px]" title={message.tokenUsage ? `输入: ${message.tokenUsage.promptTokens} · 输出: ${message.tokenUsage.completionTokens} · 费用: $${message.tokenUsage.cost.toFixed(4)}` : ''}>
+                {message.tokenUsage ? `${message.tokenUsage.totalTokens} tok` : `${estimateTokens(message.content)} tok`}
               </span>
+            )}
+            {/* Swipe 多候选切换指示器 */}
+            {!isUser && message.swipes && message.swipes.length > 1 && (
+              <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-tavern-bg-hover">
+                <button
+                  className="p-0.5 rounded hover:text-tavern-text hover:bg-tavern-bg disabled:opacity-30"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (character) swipeMessage(message.id, -1, character)
+                  }}
+                  disabled={isStreaming}
+                  title="上一个候选"
+                >
+                  <ChevronLeft className="w-3 h-3" />
+                </button>
+                <span className="tabular-nums text-[10px] min-w-[28px] text-center">
+                  {(message.swipeIndex ?? 0) + 1}/{message.swipes.length}
+                </span>
+                <button
+                  className="p-0.5 rounded hover:text-tavern-text hover:bg-tavern-bg disabled:opacity-30"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (character) swipeMessage(message.id, 1, character)
+                  }}
+                  disabled={isStreaming}
+                  title="下一个候选"
+                >
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
             )}
           </div>
 
           {/* 气泡 */}
           <div
             className={cn(
-              'msg-bubble px-4 py-3 max-w-full shadow-sm',
+              'msg-bubble px-5 py-3.5 max-w-full',
               settings.bubbleStyle === 'round' && 'rounded-2xl',
               settings.bubbleStyle === 'standard' && 'rounded-lg',
               settings.bubbleStyle === 'sharp' && 'rounded-sm',
               isUser
-                ? 'bg-tavern-user/20 border border-tavern-user/30 rounded-tr-sm'
-                : 'bg-tavern-bg-soft border border-tavern-border rounded-tl-sm'
+                ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/20 dark:to-orange-900/10 dark:border-amber-700/30 text-amber-950 dark:text-amber-50'
+                : 'bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100'
             )}
           >
             {message.images?.length > 0 && (
@@ -272,26 +285,58 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
               </div>
             )}
             <div className={cn('markdown-body', isStreamingThis && 'typing-cursor')}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[
-                  ...(settings.htmlRendering ? [rehypeRaw] : []),
-                  rehypeHighlight,
-                ]}
-              >
-                {displayContent || (isStreamingThis ? '' : '（空消息）')}
-              </ReactMarkdown>
+              {dialogueSegments ? (
+                /* 分段渲染：对话/动作/旁白 */
+                dialogueSegments.map((seg, i) => {
+                  if (seg.type === 'dialogue') {
+                    return (
+                      <div key={i} className="dialogue-block">
+                        {seg.speaker && <span className="dialogue-speaker">{seg.speaker}</span>}
+                        <span className="dialogue-text">{seg.content}</span>
+                      </div>
+                    )
+                  }
+                  if (seg.type === 'action') {
+                    return (
+                      <div key={i} className="action-block">
+                        {seg.content}
+                      </div>
+                    )
+                  }
+                  return (
+                    <p key={i} className="narration-block">
+                      {seg.content}
+                    </p>
+                  )
+                })
+              ) : (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[
+                    ...(settings.htmlRendering ? [rehypeRaw] : []),
+                    rehypeHighlight,
+                  ]}
+                >
+                  {displayContent || (isStreamingThis ? '' : '（空消息）')}
+                </ReactMarkdown>
+              )}
             </div>
-            {/* 翻译结果 */}
-            {translation !== null && (
-              <div className="mt-2 pt-2 border-t border-tavern-border-soft">
-                <div className="text-xs text-tavern-text-muted mb-1 flex items-center gap-1">
-                  <Languages className="w-3 h-3" />
-                  {translating ? '翻译中...' : '中文翻译'}
-                </div>
-                <div className="text-sm text-tavern-text-soft whitespace-pre-wrap select-text" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
-                  {translation || '...'}
-                </div>
+            {/* 翻译状态指示 */}
+            {isTranslating && !transState?.content && (
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-tavern-accent">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                翻译中...
+              </div>
+            )}
+            {showTranslation && transState?.status === 'error' && (
+              <div className="mt-2 text-xs text-tavern-danger">
+                翻译失败: {transState.errorMsg || '未知错误'}
+              </div>
+            )}
+            {showTranslation && transState?.content && (
+              <div className="mt-1 pt-1 border-t border-tavern-border-soft/50 flex items-center gap-1 text-xs text-tavern-accent">
+                <Languages className="w-3 h-3" />
+                已翻译 (点击翻译按钮可切回原文)
               </div>
             )}
           </div>
@@ -316,7 +361,23 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
               {!isUser && character && (
                 <button
                   className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
-                  onClick={() => regenerateMessage(message.id, character, null, null)}
+                  onClick={async () => {
+                    const chatStore = useChatStore.getState()
+                    let preset: any = null
+                    if (chatStore.activePresetId) {
+                      const presets = await window.api.preset.list()
+                      preset = presets.find((p: any) => p.id === chatStore.activePresetId) ?? null
+                    }
+                    const activeLorebooks: any[] = []
+                    if (chatStore.activeLorebookIds.length > 0) {
+                      const lorebooks = await window.api.lorebook.list()
+                      for (const id of chatStore.activeLorebookIds) {
+                        const lb = lorebooks.find((lb: any) => lb.id === id)
+                        if (lb && lb.enabled) activeLorebooks.push(lb)
+                      }
+                    }
+                    await regenerateMessage(message.id, character, preset, activeLorebooks)
+                  }}
                   title="重新生成"
                   disabled={isStreaming}
                 >
@@ -349,11 +410,11 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
                   <button
                     className={cn(
                       'p-1.5 rounded transition-colors',
-                      translation ? 'text-tavern-accent bg-tavern-accent-soft' : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
+                      showTranslation ? 'text-tavern-accent bg-tavern-accent-soft' : (isTranslating ? 'text-tavern-accent animate-pulse' : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover')
                     )}
                     onClick={handleTranslate}
-                    title="翻译"
-                    disabled={translating}
+                    title={showTranslation ? '切回原文' : isTranslating ? '翻译中...' : '翻译'}
+                    disabled={isTranslating}
                   >
                     <Languages className="w-3.5 h-3.5" />
                   </button>

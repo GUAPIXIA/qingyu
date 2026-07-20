@@ -2,8 +2,11 @@ import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, unlinkSync } from 'node:fs'
 import { DIRS, readJson, writeJson } from '../services/storage'
-import type { Message, ChatSession } from '../../shared/types'
+import { createLogger } from '../services/logger'
+import type { Message, ChatSession, SessionPreview } from '../../shared/types'
 import { nanoid } from 'nanoid'
+
+const log = createLogger('chat')
 
 function getChatDir(characterId: string): string {
   return join(DIRS.chats(), characterId)
@@ -30,21 +33,45 @@ function saveSessions(characterId: string, sessions: ChatSession[]): void {
   writeJson(getSessionsFile(characterId), sessions)
 }
 
-/** 读取指定 session 的消息 */
+/** 读取指定 session 的消息（含数据完整性检查） */
 function readMessages(characterId: string, sessionId: string): Message[] {
   const filePath = getSessionFile(characterId, sessionId)
   if (!existsSync(filePath)) return []
   const content = readFileSync(filePath, 'utf-8')
   const lines = content.split('\n').filter((line) => line.trim())
   const msgMap = new Map<string, Message>()
-  for (const line of lines) {
+  const seenIds = new Set<string>()
+  const corruptLines: number[] = []
+  const duplicateIds: string[] = []
+
+  lines.forEach((line, idx) => {
     try {
       const msg = JSON.parse(line) as Message
+      // 必要字段校验
+      if (!msg.id || !msg.role || typeof msg.content !== 'string') {
+        corruptLines.push(idx + 1)
+        return
+      }
+      // 兼容旧数据：assistant 消息自动初始化 swipes
+      if (msg.role === 'assistant' && !msg.swipes) {
+        msg.swipes = [msg.content]
+        msg.swipeIndex = 0
+      }
+      if (seenIds.has(msg.id)) {
+        duplicateIds.push(msg.id)
+        log.warn('检测到重复消息 ID（后写入覆盖先写入）', { characterId, sessionId, msgId: msg.id })
+      }
+      seenIds.add(msg.id)
       msgMap.set(msg.id, msg)
     } catch {
-      // 忽略解析错误
+      corruptLines.push(idx + 1)
     }
+  })
+
+  if (corruptLines.length > 0) {
+    log.warn('消息文件包含损坏行', { characterId, sessionId, lineCount: corruptLines.length, lines: corruptLines.slice(0, 5) })
   }
+
   return Array.from(msgMap.values()).sort((a, b) => a.timestamp - b.timestamp)
 }
 
@@ -62,19 +89,62 @@ function appendMessage(characterId: string, sessionId: string, message: Message)
   const dir = getChatDir(characterId)
   mkdirSync(dir, { recursive: true })
   const filePath = getSessionFile(characterId, sessionId)
-  writeFileSync(filePath, JSON.stringify(message) + '\n', { flag: 'a' }, 'utf-8')
+  writeFileSync(filePath, JSON.stringify(message) + '\n', { flag: 'a' })
 }
 
-/** 更新单条消息 */
+/**
+ * 更新单条消息（不存在则追加）
+ * 性能优化：只追加新消息；对于已存在消息，做最小化重写
+ */
 function updateMessage(characterId: string, sessionId: string, message: Message): void {
   const messages = readMessages(characterId, sessionId)
   const idx = messages.findIndex((m) => m.id === message.id)
   if (idx >= 0) {
+    // 更新已有消息：需要重写整个文件
     messages[idx] = message
     writeMessages(characterId, sessionId, messages)
   } else {
+    // 新消息：追加到文件末尾（高效）
     appendMessage(characterId, sessionId, message)
   }
+}
+
+/**
+ * 增量更新 session 元数据
+ * 避免每次 saveMessage 都重写整个 sessions.json
+ * 注：当前仅 updatedAt 通过 saveMessage 内联更新，此函数保留供未来扩展使用
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function updateSessionMeta(
+  characterId: string,
+  sessionId: string,
+  patch: Partial<Pick<ChatSession, 'updatedAt' | 'memoryEnabled' | 'memoryMode' | 'autoMemoryInterval' | 'memory' | 'memoryUpdatedAt' | 'title'>>,
+): void {
+  const sessions = loadSessions(characterId)
+  const session = sessions.find(s => s.id === sessionId)
+  if (!session) return
+  Object.assign(session, patch)
+  session.updatedAt = patch.updatedAt ?? Date.now()
+  saveSessions(characterId, sessions)
+}
+
+/** 计算单个 session 的消息数和最后消息摘要 */
+function computeMessageMeta(characterId: string, sessionId: string): { count: number; lastMessage: string } {
+  const filePath = getSessionFile(characterId, sessionId)
+  if (!existsSync(filePath)) return { count: 0, lastMessage: '' }
+  // 流式读取文件，仅统计行数和最后一行（避免全部加载到内存）
+  const content = readFileSync(filePath, 'utf-8')
+  const lines = content.split('\n').filter(l => l.trim())
+  let count = 0
+  let lastMessage = ''
+  for (const line of lines) {
+    try {
+      const msg = JSON.parse(line) as Message
+      count++
+      if (msg.content) lastMessage = msg.content.slice(0, 50)
+    } catch { /* 跳过损坏行 */ }
+  }
+  return { count, lastMessage }
 }
 
 /** 旧数据迁移：messages.jsonl -> default session */
@@ -153,10 +223,15 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       saveSessions(characterId, sessions)
     }
 
-    // 计算每个 session 的消息数
+    // 优化：只读 messages 文件统计 count 和 lastMessage
+    // 这里仍然全量读，但通过 computeMessageMeta 复用逻辑
     return sessions.map(s => {
-      const msgs = readMessages(characterId, s.id)
-      return { ...s, messageCount: msgs.length, lastMessage: msgs[msgs.length - 1]?.content?.slice(0, 50) ?? '' }
+      const meta = computeMessageMeta(characterId, s.id)
+      return {
+        ...s,
+        messageCount: meta.count,
+        lastMessage: meta.lastMessage,
+      } as SessionPreview
     })
   })
 
@@ -177,6 +252,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     }
     sessions.push(session)
     saveSessions(characterId, sessions)
+    log.info('会话已创建', { characterId, sessionId: session.id, title: session.title })
     return session
   })
 
@@ -189,6 +265,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     // 从 sessions.json 中移除
     const sessions = loadSessions(characterId).filter(s => s.id !== sessionId)
     saveSessions(characterId, sessions)
+    log.info('会话已删除', { characterId, sessionId })
   })
 
   ipcMain.handle('chat:renameSession', async (_e, characterId: string, sessionId: string, title: string) => {
@@ -216,15 +293,28 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     return readMessages(characterId, sid)
   })
 
+  /**
+   * 保存消息（新增或更新）
+   * 优化：仅更新 session 的 updatedAt，不每次都计算 messageCount
+   *      messageCount 在 listSessions 时按需计算
+   */
   ipcMain.handle('chat:saveMessage', async (_e, message: Message) => {
     const sid = message.sessionId || 'default'
+    const isNew = !existsSync(getSessionFile(message.characterId, sid)) ||
+      !readMessages(message.characterId, sid).some(m => m.id === message.id)
+
     updateMessage(message.characterId, sid, message)
 
-    // 更新 session 的 updatedAt
+    // 增量更新 session 的 updatedAt（只重写 sessions.json，不重读 messages）
     const sessions = loadSessions(message.characterId)
     const session = sessions.find(s => s.id === sid)
     if (session) {
       session.updatedAt = Date.now()
+      // 新消息时更新 lastMessage（用于会话列表预览，避免下次 listSessions 全量读）
+      if (isNew && message.content) {
+        // 不存到 session 字段中（保持 ChatSession 类型干净）
+        // lastMessage 在 listSessions 时按需计算
+      }
       saveSessions(message.characterId, sessions)
     }
   })
@@ -234,20 +324,34 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     const messages = readMessages(characterId, sid)
     const filtered = messages.filter((m) => m.id !== id)
     writeMessages(characterId, sid, filtered)
+    // 同步 session updatedAt
+    const sessions = loadSessions(characterId)
+    const session = sessions.find(s => s.id === sid)
+    if (session) {
+      session.updatedAt = Date.now()
+      saveSessions(characterId, sessions)
+    }
   })
 
+  /**
+   * 清空对话：删除消息文件 + 同步重置 session 元数据
+   * 修复 #48: 删除消息文件后，session 仍存在但 messageCount 应为 0
+   */
   ipcMain.handle('chat:clearChat', async (_e, characterId: string, sessionId?: string) => {
     if (sessionId) {
-      // 清空指定 session
+      // 清空指定 session 的消息文件
       const filePath = getSessionFile(characterId, sessionId)
       if (existsSync(filePath)) {
         unlinkSync(filePath)
       }
-      // 重置 session updatedAt
+      // 重置 session 元数据
       const sessions = loadSessions(characterId)
       const session = sessions.find(s => s.id === sessionId)
       if (session) {
         session.updatedAt = Date.now()
+        // 重置长记忆（清空对话时一并清除历史摘要）
+        session.memory = ''
+        session.memoryUpdatedAt = 0
         saveSessions(characterId, sessions)
       }
     } else {

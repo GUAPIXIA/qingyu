@@ -13,6 +13,8 @@ import { ApiPage } from './pages/ApiPage'
 import { HelpPage } from './pages/HelpPage'
 import { RegexPage } from './pages/RegexPage'
 import { PersonasPage } from './pages/PersonasPage'
+import { UsagePage } from './pages/UsagePage'
+import { McpPage } from './pages/McpPage'
 
 export default function App() {
   const { settings, loadSettings } = useSettingsStore()
@@ -61,6 +63,8 @@ export default function App() {
         <Route path="group" element={<GroupChatPage />} />
         <Route path="regex" element={<RegexPage />} />
         <Route path="personas" element={<PersonasPage />} />
+        <Route path="usage" element={<UsagePage />} />
+        <Route path="mcp" element={<McpPage />} />
         <Route path="help" element={<HelpPage />} />
       </Route>
     </Routes>

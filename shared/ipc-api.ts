@@ -23,6 +23,10 @@ export interface AIAPI {
   onChunk(callback: (data: { requestId: string; text: string }) => void): () => void
   onDone(callback: (requestId: string) => void): () => void
   onError(callback: (data: { requestId: string; error: string }) => void): () => void
+  /** Token 用量回调（每次 AI 调用完成时触发） */
+  onUsage(callback: (data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => void): () => void
+  countTokens(text: string, model: string): Promise<number>
+  countMessagesTokens(messages: { content: string; role: string }[], model: string): Promise<number[]>
 }
 
 // ===================== 角色接口 =====================
@@ -44,6 +48,8 @@ export interface CharacterAPI {
   }>
   exportPng(id: string): Promise<void>
   exportJson(id: string): Promise<void>
+  reloadAvatar(characterId: string, url: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }>
+  onImportProgress(callback: (data: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' }) => void): () => void
 }
 
 // ===================== 对话接口 =====================
@@ -130,6 +136,35 @@ export interface FileAPI {
   readImageAsBase64(path: string): Promise<string>
 }
 
+// ===================== 日志接口 =====================
+export interface LogAPI {
+  write(level: 'debug' | 'info' | 'warn' | 'error', module: string, message: string, meta?: Record<string, any>): Promise<void>
+  getRecent(limit?: number): Promise<string>
+}
+
+// ===================== 用量统计接口 =====================
+export interface UsageAPI {
+  record(record: { timestamp: number; characterId: string; sessionId: string; model: string; promptTokens: number; completionTokens: number; totalTokens: number; cost: number }): Promise<any>
+  query(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }): Promise<any[]>
+  aggregate(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }, groupBy: 'character' | 'session' | 'day' | 'model'): Promise<Array<{ key: string; promptTokens: number; completionTokens: number; totalTokens: number; cost: number; count: number }>>
+  summary(filter?: { startTs?: number; endTs?: number }): Promise<{ totalPrompt: number; totalCompletion: number; totalTokens: number; totalCost: number; count: number }>
+  clear(): Promise<void>
+  calculateCost(model: string, promptTokens: number, completionTokens: number): Promise<number>
+}
+
+// ===================== MCP 接口 =====================
+export interface McpAPI {
+  listServers(): Promise<any[]>
+  listServerStatuses(): Promise<Array<{ id: string; connected: boolean; toolCount: number; lastError?: string }>>
+  addServer(config: any): Promise<any>
+  updateServer(id: string, patch: any): Promise<void>
+  removeServer(id: string): Promise<void>
+  startServer(id: string): Promise<void>
+  stopServer(id: string): Promise<void>
+  listTools(): Promise<any[]>
+  callTool(serverId: string, toolName: string, args: Record<string, any>): Promise<any>
+}
+
 // ===================== 完整 API 契约 =====================
 export interface ExposedAPI {
   ai: AIAPI
@@ -142,6 +177,9 @@ export interface ExposedAPI {
   regex: RegexAPI
   persona: PersonaAPI
   file: FileAPI
+  log: LogAPI
+  usage: UsageAPI
+  mcp: McpAPI
 }
 
 declare global {

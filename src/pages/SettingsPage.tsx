@@ -232,18 +232,6 @@ export function SettingsPage() {
         {/* D. 显示与行为 */}
         <SectionCard title="显示与行为" icon={<Sliders className="w-4 h-4" />}>
           <div className="mt-3 space-y-4">
-            <div>
-              <label className="label">当前模型</label>
-              <input
-                type="text"
-                className="input"
-                value={settings.activeModel}
-                onChange={(e) => updateSettings({ activeModel: e.target.value })}
-                placeholder="当前使用的对话模型"
-              />
-              <p className="text-xs text-tavern-text-muted mt-1">切换 provider 时自动更新为对应默认模型</p>
-            </div>
-
             <div className="flex items-center justify-between py-1">
               <div>
                 <p className="text-sm">流式输出</p>

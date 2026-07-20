@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Modal } from '../common/Modal'
 import { Eye, User, Bot, Settings } from 'lucide-react'
-import type { Character, Preset, Lorebook } from '../../../shared/types'
+import type { Character, Preset } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { estimateTokens } from '../../utils/tokenCounter'
 import { cn } from '../../lib/utils'
@@ -11,16 +11,15 @@ interface ContextViewerProps {
   onClose: () => void
   character: Character
   preset: Preset | null
-  lorebook: Lorebook | null
 }
 
-export function ContextViewer({ open, onClose, character, preset, lorebook }: ContextViewerProps) {
+export function ContextViewer({ open, onClose, character, preset }: ContextViewerProps) {
   const { buildContext } = useChatStore()
 
   const context = useMemo(() => {
     if (!open) return []
-    return buildContext(character, preset, lorebook)
-  }, [open, character, preset, lorebook, buildContext])
+    return buildContext(character, preset)
+  }, [open, character, preset, buildContext])
 
   const totalTokens = useMemo(() => {
     return context.reduce((sum, msg) => sum + estimateTokens(msg.content), 0)

@@ -1,21 +1,80 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import type { IpcMain, WebContents } from 'electron'
 import type { ChatParams, ProviderType } from '../../shared/types'
+import { countTokens, countMessagesTokens } from './tokenizer'
+import { createLogger } from './logger'
+
+const log = createLogger('ai')
+
+/** 默认请求超时时间（毫秒）- 5 分钟 */
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
+
+/** 默认重试次数 */
+const DEFAULT_RETRY_COUNT = 1
+
+/** 可重试的 HTTP 状态码 */
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
 
 interface AIAdapter {
   chat(
     params: ChatParams,
     onChunk: (text: string) => void,
-    signal: AbortSignal
+    signal: AbortSignal,
+    onUsage?: (usage: { promptTokens: number; completionTokens: number; totalTokens: number }) => void,
   ): Promise<string>
   listModels(baseUrl: string, apiKey: string): Promise<string[]>
   testConnection(baseUrl: string, apiKey: string): Promise<boolean>
 }
 
+/** Token 用量信息 */
+export interface TokenUsageInfo {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
+
+// ===================== 工具函数 =====================
+
+/** 合并用户 signal 与超时 signal */
+function withTimeout(signal: AbortSignal, timeoutMs: number): AbortSignal {
+  // 如果用户 signal 已经 abort，直接返回
+  if (signal.aborted) return signal
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs)
+  // 用户取消时同步取消
+  signal.addEventListener('abort', () => {
+    clearTimeout(timer)
+    controller.abort(signal.reason)
+  }, { once: true })
+  // 超时后取消
+  controller.signal.addEventListener('abort', () => {
+    clearTimeout(timer)
+  }, { once: true })
+  return controller.signal
+}
+
+/** 判断错误是否可重试 */
+function isRetryableError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase()
+    // 网络错误、超时、5xx、429 都可重试
+    if (msg.includes('timeout') || msg.includes('aborted')) return true
+    if (msg.includes('network') || msg.includes('fetch failed')) return true
+    if (msg.includes('econnrefused') || msg.includes('econnreset')) return true
+    for (const code of RETRYABLE_STATUS) {
+      if (msg.includes(`${code}`)) return true
+    }
+  }
+  return false
+}
+
 // ===================== OpenAI 兼容适配器 =====================
 const openaiAdapter: AIAdapter = {
-  async chat(params, onChunk, signal) {
-    const { baseUrl, apiKey, model, messages, temperature, topP, maxTokens, frequencyPenalty, presencePenalty, stream } = params
+  async chat(params, onChunk, signal, onUsage) {
+    const { baseUrl, apiKey, model, messages, temperature, topP, maxTokens,
+            frequencyPenalty, presencePenalty, stream } = params
     const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
+
     const body: Record<string, unknown> = {
       model,
       messages,
@@ -25,6 +84,22 @@ const openaiAdapter: AIAdapter = {
       frequency_penalty: frequencyPenalty,
       presence_penalty: presencePenalty,
       stream,
+    }
+
+    // 推理模型支持：识别 o1/o3/deepseek-r1 等模型，添加 reasoning_effort
+    const lowerModel = model.toLowerCase()
+    if (lowerModel.includes('o1') || lowerModel.includes('o3') || lowerModel.includes('o4-mini')) {
+      // OpenAI o 系列不支持 temperature/top_p 等参数
+      delete body.temperature
+      delete body.top_p
+      delete body.frequency_penalty
+      delete body.presence_penalty
+      body.reasoning_effort = 'medium'
+    }
+
+    // 流式请求时请求 usage 信息
+    if (stream) {
+      body.stream_options = { include_usage: true }
     }
 
     const response = await fetch(url, {
@@ -43,43 +118,92 @@ const openaiAdapter: AIAdapter = {
     }
 
     if (!stream) {
-      const data = await response.json()
+      const data: any = await response.json()
       const content = data.choices?.[0]?.message?.content ?? ''
-      onChunk(content)
-      return content
+      // 处理推理模型的 reasoning_content（DeepSeek-R1 等）
+      const reasoning = data.choices?.[0]?.message?.reasoning_content
+      const fullContent = reasoning ? `<thought>${reasoning}</thought>\n\n${content}` : content
+      onChunk(fullContent)
+      // 解析 usage
+      if (onUsage && data.usage) {
+        onUsage({
+          promptTokens: data.usage.prompt_tokens ?? 0,
+          completionTokens: data.usage.completion_tokens ?? 0,
+          totalTokens: data.usage.total_tokens ?? 0,
+        })
+      }
+      return fullContent
     }
 
-    // 流式解析
+    // 流式解析（修复 SSE 分隔符：使用更稳健的行解析）
     const reader = response.body?.getReader()
     if (!reader) throw new Error('无法读取响应流')
     const decoder = new TextDecoder()
     let fullText = ''
     let buffer = ''
+    let pendingReasoning = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
+      // SSE 事件以 \n\n 分隔，但兼容只用 \n 的服务器
+      // 按行解析，处理跨 chunk 的 data: 行
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
 
       for (const line of lines) {
         const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data:')) continue
+        if (!trimmed) continue
+        if (!trimmed.startsWith('data:')) continue
         const data = trimmed.slice(5).trim()
         if (data === '[DONE]') continue
         try {
           const parsed = JSON.parse(data)
-          const delta = parsed.choices?.[0]?.delta?.content ?? ''
-          if (delta) {
-            fullText += delta
-            onChunk(delta)
+          // 解析 usage（最后 chunk）
+          if (parsed.usage && onUsage) {
+            onUsage({
+              promptTokens: parsed.usage.prompt_tokens ?? 0,
+              completionTokens: parsed.usage.completion_tokens ?? 0,
+              totalTokens: parsed.usage.total_tokens ?? 0,
+            })
+          }
+          const delta = parsed.choices?.[0]?.delta
+          if (!delta) continue
+
+          // 处理推理内容（DeepSeek-R1, Qwen-QwQ 等）
+          if (delta.reasoning_content) {
+            if (!pendingReasoning) {
+              pendingReasoning = '<thought>'
+            }
+            pendingReasoning += delta.reasoning_content
+          }
+
+          // 正常内容
+          if (delta.content) {
+            // 如果之前有推理内容未闭合，先闭合
+            if (pendingReasoning) {
+              pendingReasoning += '</thought>\n\n'
+              fullText += pendingReasoning
+              onChunk(pendingReasoning)
+              pendingReasoning = ''
+            }
+            fullText += delta.content
+            onChunk(delta.content)
           }
         } catch {
-          // 忽略解析错误
+          // 忽略解析错误（可能是注释行或心跳）
         }
       }
     }
+
+    // 处理流结束时仍 pending 的推理内容
+    if (pendingReasoning) {
+      pendingReasoning += '</thought>\n\n'
+      fullText += pendingReasoning
+      onChunk(pendingReasoning)
+    }
+
     return fullText
   },
 
@@ -89,7 +213,7 @@ const openaiAdapter: AIAdapter = {
       headers: { Authorization: `Bearer ${apiKey}` },
     })
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
-    const data = await response.json()
+    const data: any = await response.json()
     return (data.data ?? []).map((m: { id: string }) => m.id)
   },
 
@@ -105,7 +229,7 @@ const openaiAdapter: AIAdapter = {
 
 // ===================== Claude 适配器 =====================
 const claudeAdapter: AIAdapter = {
-  async chat(params, onChunk, signal) {
+  async chat(params, onChunk, signal, onUsage) {
     const { baseUrl, apiKey, model, messages, temperature, topP, maxTokens, stream } = params
     const url = `${baseUrl.replace(/\/$/, '')}/v1/messages`
 
@@ -123,11 +247,23 @@ const claudeAdapter: AIAdapter = {
     }
     if (systemMsg) body.system = systemMsg.content
 
+    // Claude 3.7 / Claude 4 扩展思考支持
+    const lowerModel = model.toLowerCase()
+    if ((lowerModel.includes('claude-3-7') || lowerModel.includes('claude-4') ||
+         lowerModel.includes('claude-3.7')) && !lowerModel.includes('haiku')) {
+      // 思考预算为 max_tokens 的 1/3，最低 1024
+      const thinkingBudget = Math.max(1024, Math.floor((maxTokens || 4096) / 3))
+      body.thinking = { type: 'enabled', budget_tokens: thinkingBudget }
+      // 启用思考时 temperature 必须为 1
+      body.temperature = 1
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
+        // API 版本（可定期更新）
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
@@ -141,9 +277,24 @@ const claudeAdapter: AIAdapter = {
     }
 
     if (!stream) {
-      const data = await response.json()
-      const content = data.content?.[0]?.text ?? ''
+      const data: any = await response.json()
+      // Claude 返回 content 数组，可能有 thinking 和 text 两种类型
+      const parts = data.content ?? []
+      let thinking = ''
+      let text = ''
+      for (const part of parts) {
+        if (part.type === 'thinking') thinking += part.thinking
+        else if (part.type === 'text') text += part.text
+      }
+      const content = thinking ? `<thought>${thinking}</thought>\n\n${text}` : text
       onChunk(content)
+      if (onUsage && data.usage) {
+        onUsage({
+          promptTokens: data.usage.input_tokens ?? 0,
+          completionTokens: data.usage.output_tokens ?? 0,
+          totalTokens: (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
+        })
+      }
       return content
     }
 
@@ -152,6 +303,9 @@ const claudeAdapter: AIAdapter = {
     const decoder = new TextDecoder()
     let fullText = ''
     let buffer = ''
+    let pendingThought = ''
+    let claudeInputTokens = 0
+    let claudeOutputTokens = 0
 
     while (true) {
       const { done, value } = await reader.read()
@@ -164,16 +318,59 @@ const claudeAdapter: AIAdapter = {
         const trimmed = line.trim()
         if (!trimmed.startsWith('data:')) continue
         const data = trimmed.slice(5).trim()
+        if (!data) continue
         try {
           const parsed = JSON.parse(data)
-          if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-            fullText += parsed.delta.text
-            onChunk(parsed.delta.text)
+          // message_start 事件含 input_tokens
+          if (parsed.type === 'message_start' && parsed.message?.usage) {
+            claudeInputTokens = parsed.message.usage.input_tokens ?? 0
+          }
+          // thinking 块开始
+          else if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'thinking') {
+            pendingThought = '<thought>'
+          } else if (parsed.type === 'content_block_delta') {
+            // thinking delta
+            if (parsed.delta?.type === 'thinking_delta' && parsed.delta.thinking) {
+              pendingThought += parsed.delta.thinking
+            }
+            // 文本 delta
+            else if (parsed.delta?.type === 'text_delta' && parsed.delta.text) {
+              if (pendingThought) {
+                pendingThought += '</thought>\n\n'
+                fullText += pendingThought
+                onChunk(pendingThought)
+                pendingThought = ''
+              }
+              fullText += parsed.delta.text
+              onChunk(parsed.delta.text)
+            }
+          } else if (parsed.type === 'content_block_stop' && pendingThought) {
+            pendingThought += '</thought>\n\n'
+            fullText += pendingThought
+            onChunk(pendingThought)
+            pendingThought = ''
+          }
+          // message_delta 事件含 output_tokens，是最后一个事件
+          else if (parsed.type === 'message_delta' && parsed.usage) {
+            claudeOutputTokens = parsed.usage.output_tokens ?? 0
+            if (onUsage) {
+              onUsage({
+                promptTokens: claudeInputTokens,
+                completionTokens: claudeOutputTokens,
+                totalTokens: claudeInputTokens + claudeOutputTokens,
+              })
+            }
           }
         } catch {
           // 忽略
         }
       }
+    }
+    // 处理剩余 pending
+    if (pendingThought) {
+      pendingThought += '</thought>\n\n'
+      fullText += pendingThought
+      onChunk(pendingThought)
     }
     return fullText
   },
@@ -187,7 +384,7 @@ const claudeAdapter: AIAdapter = {
       },
     })
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
-    const data = await response.json()
+    const data: any = await response.json()
     return (data.data ?? []).map((m: { id: string }) => m.id)
   },
 
@@ -203,10 +400,11 @@ const claudeAdapter: AIAdapter = {
 
 // ===================== Gemini 适配器 =====================
 const geminiAdapter: AIAdapter = {
-  async chat(params, onChunk, signal) {
-    const { baseUrl, apiKey, model, messages, temperature, topP, maxTokens, stream } = params
+  async chat(params, onChunk, signal, onUsage) {
+    const { baseUrl, apiKey, model, messages, temperature, topP,
+            maxTokens, frequencyPenalty, presencePenalty, stream } = params
     const action = stream ? 'streamGenerateContent' : 'generateContent'
-    const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models/${model}:${action}?key=${apiKey}`
+    const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models/${model}:${action}?key=${apiKey}${stream ? '&alt=sse' : ''}`
 
     // 转换为 Gemini 格式
     const systemMsg = messages.find((m) => m.role === 'system')
@@ -217,13 +415,22 @@ const geminiAdapter: AIAdapter = {
         parts: [{ text: m.content }],
       }))
 
+    const generationConfig: Record<string, unknown> = {
+      temperature,
+      topP,
+      maxOutputTokens: maxTokens,
+    }
+    // 修复 #7: Gemini 支持 frequencyPenalty 和 presencePenalty
+    if (frequencyPenalty !== undefined && frequencyPenalty !== 0) {
+      generationConfig.frequencyPenalty = frequencyPenalty
+    }
+    if (presencePenalty !== undefined && presencePenalty !== 0) {
+      generationConfig.presencePenalty = presencePenalty
+    }
+
     const body: Record<string, unknown> = {
       contents,
-      generationConfig: {
-        temperature,
-        topP,
-        maxOutputTokens: maxTokens,
-      },
+      generationConfig,
     }
     if (systemMsg) {
       body.systemInstruction = { parts: [{ text: systemMsg.content }] }
@@ -242,50 +449,102 @@ const geminiAdapter: AIAdapter = {
     }
 
     if (!stream) {
-      const data = await response.json()
+      const data: any = await response.json()
       const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
       onChunk(content)
+      if (onUsage && data.usageMetadata) {
+        onUsage({
+          promptTokens: data.usageMetadata.promptTokenCount ?? 0,
+          completionTokens: data.usageMetadata.candidatesTokenCount ?? 0,
+          totalTokens: data.usageMetadata.totalTokenCount ?? 0,
+        })
+      }
       return content
     }
 
+    // 修复 #38: 改进的 Gemini 流式解析
+    // Gemini 使用 SSE 时格式与 OpenAI 类似（data: {...}）
     const reader = response.body?.getReader()
     if (!reader) throw new Error('无法读取响应流')
     const decoder = new TextDecoder()
     let fullText = ''
     let buffer = ''
 
+    // 优先按 SSE 格式解析（alt=sse 时）
+    const isSSE = response.headers.get('content-type')?.includes('text/event-stream')
+
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      // Gemini 流式返回 JSON 数组片段
-      try {
-        const parsed = JSON.parse(`[${buffer}]`)
-        for (const item of parsed) {
-          const text = item.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+      if (isSSE) {
+        // SSE 格式：按 \n\n 分隔事件，每事件有 data: 行
+        const events = buffer.split('\n\n')
+        buffer = events.pop() ?? ''
+        for (const event of events) {
+          const dataLines = event.split('\n').filter(l => l.startsWith('data:'))
+          for (const line of dataLines) {
+            const data = line.slice(5).trim()
+            if (!data) continue
+            try {
+              const parsed = JSON.parse(data)
+              const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+              if (text) {
+                fullText += text
+                onChunk(text)
+              }
+              // 解析 usage（每个 chunk 都可能含 usageMetadata，取最后一次）
+              if (parsed.usageMetadata && onUsage) {
+                onUsage({
+                  promptTokens: parsed.usageMetadata.promptTokenCount ?? 0,
+                  completionTokens: parsed.usageMetadata.candidatesTokenCount ?? 0,
+                  totalTokens: parsed.usageMetadata.totalTokenCount ?? 0,
+                })
+              }
+            } catch { /* 忽略 */ }
+          }
+        }
+      } else {
+        // 非 SSE：Gemini 返回 JSON 数组片段，需要更稳健的解析
+        // 尝试逐个解析 JSON 对象
+        const parseResult = extractGeminiJsonObjects(buffer)
+        buffer = parseResult.remaining
+        for (const obj of parseResult.objects) {
+          const text = obj.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
           if (text) {
             fullText += text
             onChunk(text)
           }
+          // 解析 usage（取最后一次）
+          if (obj.usageMetadata && onUsage) {
+            onUsage({
+              promptTokens: obj.usageMetadata.promptTokenCount ?? 0,
+              completionTokens: obj.usageMetadata.candidatesTokenCount ?? 0,
+              totalTokens: obj.usageMetadata.totalTokenCount ?? 0,
+            })
+          }
         }
-        buffer = ''
-      } catch {
-        // 不完整的 JSON，继续读取
       }
     }
+
     // 处理剩余 buffer
     if (buffer.trim()) {
-      try {
-        const parsed = JSON.parse(`[${buffer}]`)
-        for (const item of parsed) {
-          const text = item.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-          if (text) {
-            fullText += text
-            onChunk(text)
-          }
+      const parseResult = extractGeminiJsonObjects(buffer)
+      for (const obj of parseResult.objects) {
+        const text = obj.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+        if (text) {
+          fullText += text
+          onChunk(text)
         }
-      } catch {
-        // 忽略
+        // 解析 usage（取最后一次）
+        if (obj.usageMetadata && onUsage) {
+          onUsage({
+            promptTokens: obj.usageMetadata.promptTokenCount ?? 0,
+            completionTokens: obj.usageMetadata.candidatesTokenCount ?? 0,
+            totalTokens: obj.usageMetadata.totalTokenCount ?? 0,
+          })
+        }
       }
     }
     return fullText
@@ -295,7 +554,7 @@ const geminiAdapter: AIAdapter = {
     const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models`
     const response = await fetch(url)
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
-    const data = await response.json()
+    const data: any = await response.json()
     return (data.models ?? [])
       .filter((m: { supportedGenerationMethods?: string[] }) =>
         m.supportedGenerationMethods?.includes('generateContent')
@@ -313,16 +572,72 @@ const geminiAdapter: AIAdapter = {
   },
 }
 
+/** 从 Gemini 非 SSE 流中提取完整 JSON 对象（修复 JSON 数组片段解析） */
+function extractGeminiJsonObjects(buffer: string): { objects: any[]; remaining: string } {
+  const objects: any[] = []
+  let remaining = buffer
+  // Gemini 流式返回是 JSON 对象数组，形如 [{...},{...},...
+  // 我们逐字符扫描，匹配 { 和 } 来提取完整对象
+  let depth = 0
+  let start = -1
+  let inString = false
+  let escape = false
+
+  for (let i = 0; i < remaining.length; i++) {
+    const ch = remaining[i]
+    if (escape) {
+      escape = false
+      continue
+    }
+    if (ch === '\\' && inString) {
+      escape = true
+      continue
+    }
+    if (ch === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+    if (ch === '{') {
+      if (depth === 0) start = i
+      depth++
+    } else if (ch === '}') {
+      depth--
+      if (depth === 0 && start >= 0) {
+        const objStr = remaining.slice(start, i + 1)
+        try {
+          objects.push(JSON.parse(objStr))
+        } catch { /* 忽略解析失败的对象 */ }
+        remaining = remaining.slice(i + 1)
+        // 重置扫描位置
+        i = -1
+        start = -1
+      }
+    }
+  }
+  return { objects, remaining }
+}
+
 // ===================== Ollama 适配器 =====================
 const ollamaAdapter: AIAdapter = {
-  async chat(params, onChunk, signal) {
-    const { baseUrl, model, messages, temperature, topP, stream } = params
+  async chat(params, onChunk, signal, onUsage) {
+    const { baseUrl, model, messages, temperature, topP, maxTokens,
+            frequencyPenalty, presencePenalty, stream } = params
     const url = `${baseUrl.replace(/\/$/, '')}/api/chat`
+
+    // 修复 #6: 补全采样参数
+    const options: Record<string, unknown> = {
+      temperature,
+      top_p: topP,
+    }
+    if (maxTokens && maxTokens > 0) options.num_predict = maxTokens
+    if (frequencyPenalty !== undefined) options.frequency_penalty = frequencyPenalty
+    if (presencePenalty !== undefined) options.presence_penalty = presencePenalty
 
     const body: Record<string, unknown> = {
       model,
       messages,
-      options: { temperature, top_p: topP },
+      options,
       stream,
     }
 
@@ -339,9 +654,16 @@ const ollamaAdapter: AIAdapter = {
     }
 
     if (!stream) {
-      const data = await response.json()
+      const data: any = await response.json()
       const content = data.message?.content ?? ''
       onChunk(content)
+      if (onUsage) {
+        onUsage({
+          promptTokens: data.prompt_eval_count ?? 0,
+          completionTokens: data.eval_count ?? 0,
+          totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
+        })
+      }
       return content
     }
 
@@ -367,6 +689,14 @@ const ollamaAdapter: AIAdapter = {
             fullText += delta
             onChunk(delta)
           }
+          // 最后一条消息（done: true）含统计信息
+          if (parsed.done && parsed.eval_count !== undefined && onUsage) {
+            onUsage({
+              promptTokens: parsed.prompt_eval_count ?? 0,
+              completionTokens: parsed.eval_count ?? 0,
+              totalTokens: (parsed.prompt_eval_count ?? 0) + (parsed.eval_count ?? 0),
+            })
+          }
         } catch {
           // 忽略
         }
@@ -379,7 +709,7 @@ const ollamaAdapter: AIAdapter = {
     const url = `${baseUrl.replace(/\/$/, '')}/api/tags`
     const response = await fetch(url)
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
-    const data = await response.json()
+    const data: any = await response.json()
     return (data.models ?? []).map((m: { name: string }) => m.name)
   },
 
@@ -407,6 +737,45 @@ export function getAdapter(provider: ProviderType): AIAdapter {
 
 // ===================== IPC 注册 =====================
 const activeRequests = new Map<string, AbortController>()
+
+/** 带重试的 chat 调用 */
+async function chatWithRetry(
+  adapter: AIAdapter,
+  params: ChatParams,
+  onChunk: (text: string) => void,
+  signal: AbortSignal,
+  retryCount = DEFAULT_RETRY_COUNT,
+  onUsage?: (usage: TokenUsageInfo) => void,
+): Promise<string> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= retryCount; attempt++) {
+    if (signal.aborted) throw new Error('Aborted')
+    try {
+      // 加入超时（与用户 signal 合并）
+      const timeoutSignal = withTimeout(signal, DEFAULT_TIMEOUT_MS)
+      return await adapter.chat(params, onChunk, timeoutSignal, onUsage)
+    } catch (err) {
+      lastError = err
+      // 用户主动取消不重试
+      if (signal.aborted) throw err
+      const errName = (err as Error)?.name
+      if (errName === 'AbortError' && !signal.aborted) {
+        // 是超时 abort，可重试
+      }
+      // 不可重试的错误直接抛出
+      if (!isRetryableError(err)) throw err
+      // 最后一次尝试不再等待
+      if (attempt === retryCount) throw err
+      // 指数退避：500ms, 1000ms, 2000ms...
+      const delay = 500 * Math.pow(2, attempt)
+      log.warn(`请求失败，${delay}ms 后重试 (${attempt + 1}/${retryCount + 1})`, {
+        error: (err as Error).message,
+      })
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+  throw lastError
+}
 
 export function registerAIIPC(ipcMain: IpcMain): void {
   // 获取模型列表
@@ -438,21 +807,40 @@ export function registerAIIPC(ipcMain: IpcMain): void {
     const controller = new AbortController()
     activeRequests.set(params.requestId, controller)
 
+    log.info('AI 请求开始', {
+      requestId: params.requestId,
+      provider: params.provider,
+      model: params.model,
+      messageCount: params.messages.length,
+    })
+
     try {
       const adapter = getAdapter(params.provider)
-      await adapter.chat(
+      await chatWithRetry(
+        adapter,
         params,
         (text) => {
+          // 检查请求是否还存在（可能已被取消）
+          if (!activeRequests.has(params.requestId)) return
           webContents.send('ai:chunk', { requestId: params.requestId, text })
         },
-        controller.signal
+        controller.signal,
+        DEFAULT_RETRY_COUNT,
+        (usage) => {
+          // 发送 usage 事件
+          webContents.send('ai:usage', { requestId: params.requestId, ...usage })
+        },
       )
+      log.info('AI 请求完成', { requestId: params.requestId, provider: params.provider, model: params.model })
       webContents.send('ai:done', params.requestId)
     } catch (e) {
       const err = e as Error
-      if (err.name === 'AbortError') {
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        log.info('AI 请求被取消', { requestId: params.requestId })
+        // 被取消视为 done（前端会重置状态）
         webContents.send('ai:done', params.requestId)
       } else {
+        log.error('AI 请求失败', { requestId: params.requestId, provider: params.provider, model: params.model, error: err.message })
         webContents.send('ai:error', { requestId: params.requestId, error: err.message })
       }
     } finally {
@@ -467,5 +855,14 @@ export function registerAIIPC(ipcMain: IpcMain): void {
       controller.abort()
       activeRequests.delete(requestId)
     }
+  })
+
+  // Token 计数
+  ipcMain.handle('ai:countTokens', async (_event, text: string, model: string) => {
+    return countTokens(text, model)
+  })
+
+  ipcMain.handle('ai:countMessagesTokens', async (_event, messages: { content: string; role: string }[], model: string) => {
+    return countMessagesTokens(messages, model)
   })
 }

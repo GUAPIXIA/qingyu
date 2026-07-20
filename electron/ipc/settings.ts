@@ -2,7 +2,10 @@ import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
 import { DIRS, writeJson, readJson, getDefaultSettings } from '../services/storage'
 import { saveCredential, getCredential } from '../services/safeStorage'
+import { createLogger } from '../services/logger'
 import type { Settings } from '../../shared/types'
+
+const log = createLogger('settings')
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 
@@ -15,11 +18,13 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 保存设置
   ipcMain.handle('settings:save', async (_e, settings: Settings) => {
     writeJson(SETTINGS_FILE(), settings)
+    log.info('设置已保存', { activeProfileId: settings.activeProfileId || '(none)', theme: settings.theme })
   })
 
   // 保存凭据（加密）
   ipcMain.handle('settings:saveCredential', async (_e, provider: string, key: string) => {
     saveCredential(provider, key)
+    log.info('凭据已保存', { provider })
   })
 
   // 读取凭据
@@ -68,6 +73,7 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
     const { writeFileSync } = require('node:fs')
     writeFileSync(result.filePath, JSON.stringify(backup, null, 2), 'utf-8')
+    log.info('备份已导出', { path: result.filePath, chars: (backup.characters as any[])?.length ?? 0, lorebooks: (backup.lorebooks as any[])?.length ?? 0 })
   })
 
   // 导入备份
@@ -103,5 +109,6 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
         writeJson(join(DIRS.presets(), `${preset.id}.json`), preset)
       }
     }
+    log.info('备份已导入', { chars: backup.characters?.length ?? 0, lorebooks: backup.lorebooks?.length ?? 0, presets: backup.presets?.length ?? 0 })
   })
 }

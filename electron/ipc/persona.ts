@@ -2,8 +2,11 @@ import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { DIRS } from '../services/storage'
+import { createLogger } from '../services/logger'
 import type { Persona } from '../../shared/types'
 import { nanoid } from 'nanoid'
+
+const log = createLogger('persona')
 
 function getPersonasPath(): string {
   const dir = DIRS.config()
@@ -42,6 +45,7 @@ export function registerPersonaIPC(ipcMain: IpcMain): void {
       personas.push(persona)
     }
     writePersonas(personas)
+    log.info('身份已保存', { id: persona.id, name: persona.name })
     return persona
   })
 
@@ -49,6 +53,7 @@ export function registerPersonaIPC(ipcMain: IpcMain): void {
   ipcMain.handle('persona:delete', async (_e, id: string) => {
     const personas = readPersonas().filter((p) => p.id !== id)
     writePersonas(personas)
+    log.info('身份已删除', { id })
   })
 
   // 创建默认身份（首次使用）
@@ -65,6 +70,7 @@ export function registerPersonaIPC(ipcMain: IpcMain): void {
     const personas = readPersonas()
     personas.push(persona)
     writePersonas(personas)
+    log.info('默认身份已创建', { id: persona.id, name: persona.name })
     return persona
   })
 }

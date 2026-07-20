@@ -16,6 +16,7 @@ function createSampleCharacter(): Character {
     exampleDialog: '{{user}}: 你好，你是谁？\n{{char}}: *微微行礼* 我是艾莉娅，一位星界旅行法师。正在研究各个世界的魔法文化呢！你呢？',
     tags: ['奇幻', '法师', '女性', '冒险'],
     lorebookId: null,
+    alternateGreetings: [],
     creator: '轻Tavern',
     createdAt: now,
     updatedAt: now,
@@ -28,6 +29,8 @@ interface CharacterState {
   loaded: boolean
   importError: string | null
   pendingAvatarId: string | null
+  /** 批量导入进度 */
+  importProgress: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' } | null
   loadCharacters: () => Promise<void>
   selectCharacter: (id: string | null) => void
   createCharacter: () => Character
@@ -52,6 +55,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   loaded: false,
   importError: null,
   pendingAvatarId: null,
+  importProgress: null,
 
   loadCharacters: async () => {
     let characters = await window.api.character.list()
@@ -99,6 +103,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       exampleDialog: '',
       tags: [],
       lorebookId: null,
+      alternateGreetings: [],
       creator: '',
       createdAt: now,
       updatedAt: now,
@@ -130,57 +135,85 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   },
 
   importPng: async () => {
-    const result = await window.api.character.importPng()
-    if (result.success && result.character) {
-      await get().loadCharacters() // 刷新列表，头像从文件读取
-      return result.character
-    }
-    if (result.error) {
-      set({ importError: result.error })
-      setTimeout(() => set({ importError: null }), 5000)
-    }
-    return null
-  },
-
-  importJson: async () => {
-    const result = await window.api.character.importJson()
-    if (result.success && result.character) {
-      await get().loadCharacters()
-      // 如果无头像，标记需要编辑头像
-      if (result.needAvatar) {
-        set({ pendingAvatarId: result.character.id })
+    const unbind = window.api.character.onImportProgress((data) => {
+      set({ importProgress: data })
+    })
+    try {
+      const result = await window.api.character.importPng()
+      if (result.canceled) { set({ importProgress: null }); return null }
+      if (result.success && result.character) {
+        await get().loadCharacters()
+        setTimeout(() => set({ importProgress: null }), 1500)
+        return result.character
       }
-      return result.character
-    }
-    if (result.error) {
-      set({ importError: result.error })
-      setTimeout(() => set({ importError: null }), 5000)
-    }
-    return null
-  },
-
-  importBatch: async () => {
-    const result = await window.api.character.importBatch()
-    if (result.canceled) return null
-    if (!result.success) {
       if (result.error) {
-        set({ importError: result.error })
+        set({ importProgress: null, importError: result.error })
         setTimeout(() => set({ importError: null }), 5000)
       }
       return null
+    } finally {
+      setTimeout(() => { unbind(); set({ importProgress: null }) }, 2000)
     }
-    await get().loadCharacters()
-    // 如果有需要头像的角色，标记第一个
-    const needAvatarItem = result.results?.find(r => r.success && r.needAvatar)
-    if (needAvatarItem) {
-      // 我们需要找到这个角色的 id — 从列表中按名字匹配（不够精确但够用）
-      const chars = get().characters
-      const matched = chars.find(c => c.name === needAvatarItem.name)
-      if (matched) {
-        set({ pendingAvatarId: matched.id })
+  },
+
+  importJson: async () => {
+    const unbind = window.api.character.onImportProgress((data) => {
+      set({ importProgress: data })
+    })
+    try {
+      const result = await window.api.character.importJson()
+      if (result.canceled) { set({ importProgress: null }); return null }
+      if (result.success && result.character) {
+        await get().loadCharacters()
+        if (result.needAvatar) {
+          set({ pendingAvatarId: result.character.id })
+        }
+        setTimeout(() => set({ importProgress: null }), 1500)
+        return result.character
       }
+      if (result.error) {
+        set({ importProgress: null, importError: result.error })
+        setTimeout(() => set({ importError: null }), 5000)
+      }
+      return null
+    } finally {
+      setTimeout(() => { unbind(); set({ importProgress: null }) }, 2000)
     }
-    return result
+  },
+
+  importBatch: async () => {
+    // 注册进度监听
+    const unbind = window.api.character.onImportProgress((data) => {
+      set({ importProgress: data })
+    })
+    try {
+      const result = await window.api.character.importBatch()
+      if (result.canceled) { set({ importProgress: null }); return null }
+      if (!result.success) {
+        if (result.error) {
+          set({ importError: result.error, importProgress: null })
+          setTimeout(() => set({ importError: null }), 5000)
+        } else {
+          set({ importProgress: null })
+        }
+        return null
+      }
+      await get().loadCharacters()
+      // 完成后清除进度（延迟一点以便用户看到 100%）
+      setTimeout(() => set({ importProgress: null }), 1500)
+      // 如果有需要头像的角色，标记第一个
+      const needAvatarItem = result.results?.find(r => r.success && r.needAvatar)
+      if (needAvatarItem) {
+        const chars = get().characters
+        const matched = chars.find(c => c.name === needAvatarItem.name)
+        if (matched) {
+          set({ pendingAvatarId: matched.id })
+        }
+      }
+      return result
+    } finally {
+      unbind()
+    }
   },
 
   exportPng: async (id) => {

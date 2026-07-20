@@ -10,7 +10,15 @@ import {
   Upload,
   Trash2,
   Pencil,
+  Languages,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Copy,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
+import { useSettingsStore } from '../store/useSettingsStore'
 import type { Lorebook, LoreEntry } from '../../shared/types'
 
 const POSITION_LABELS: Record<LoreEntry['position'], string> = {
@@ -68,6 +76,12 @@ export function LorebookPage() {
   const [editingEntry, setEditingEntry] = useState<LoreEntry | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null)
+  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set())
+  /** AI 翻译状态：key 为字段标识 */
+  const [translatingField, setTranslatingField] = useState<{ key: string; text: string } | null>(null)
+  const [translateResult, setTranslateResult] = useState<string | null>(null)
+
+  const { getActiveProfile, settings } = useSettingsStore()
 
   const selected = lorebooks.find((l) => l.id === selectedId) ?? null
 
@@ -135,6 +149,71 @@ export function LorebookPage() {
     updateLorebook(selected.id, { entries })
     if (editingEntry?.id === deleteEntryId) setEditingEntry(null)
     setDeleteEntryId(null)
+  }
+
+  /** AI 翻译文本并在目标字段中应用 */
+  const handleAiTranslate = async (text: string, fieldKey: string, onApply: (translated: string) => void) => {
+    if (!text.trim() || translatingField) return
+    const profile = getActiveProfile()
+    if (!profile) return
+
+    setTranslatingField({ key: fieldKey, text })
+    setTranslateResult(null)
+
+    const requestId = `lorebook-translate-${Date.now()}`
+    let result = ''
+
+    const unbindChunk = window.api.ai.onChunk((data) => {
+      if (data.requestId !== requestId) return
+      result += data.text
+      setTranslateResult(result)
+    })
+    const unbindDone = window.api.ai.onDone((doneId) => {
+      if (doneId !== requestId) return
+      unbindChunk(); unbindDone(); unbindError()
+      setTranslatingField(null)
+      setTranslateResult(null)
+      if (result.trim()) {
+        onApply(result.trim())
+      }
+    })
+    const unbindError = window.api.ai.onError((data) => {
+      if (data.requestId !== requestId) return
+      unbindChunk(); unbindDone(); unbindError()
+      setTranslatingField(null)
+      setTranslateResult(null)
+    })
+
+    window.api.ai.chat({
+      requestId,
+      messages: [
+        { role: 'system', content: '你是一个翻译助手。请将以下文本翻译成中文。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的标点符号风格。' },
+        { role: 'user', content: text },
+      ],
+      provider: profile.provider,
+      apiKey: profile.apiKey,
+      baseUrl: profile.baseUrl,
+      model: settings.activeModel || profile.model,
+      temperature: 0.3,
+      topP: 0.9,
+      maxTokens: 2048,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      stream: true,
+    }).catch(() => {
+      unbindChunk(); unbindDone(); unbindError()
+      setTranslatingField(null)
+      setTranslateResult(null)
+    })
+  }
+
+  const toggleEntryExpand = (entryId: string) => {
+    setExpandedEntries((prev) => {
+      const next = new Set(prev)
+      if (next.has(entryId)) next.delete(entryId)
+      else next.add(entryId)
+      return next
+    })
   }
 
   return (
@@ -234,11 +313,27 @@ export function LorebookPage() {
                     <div className="flex-1 grid grid-cols-2 gap-3">
                       <div>
                         <label className="label">名称</label>
-                        <input
-                          className="input"
-                          value={selected.name}
-                          onChange={(e) => updateLorebook(selected.id, { name: e.target.value })}
-                        />
+                        <div className="flex gap-1.5">
+                          <input
+                            className="input flex-1"
+                            value={selected.name}
+                            onChange={(e) => updateLorebook(selected.id, { name: e.target.value })}
+                          />
+                          <button
+                            className="btn-ghost p-1.5 shrink-0"
+                            title="AI 翻译名称"
+                            disabled={!!translatingField}
+                            onClick={() => handleAiTranslate(selected.name, `name-${selected.id}`, (translated) => {
+                              updateLorebook(selected.id, { name: translated })
+                            })}
+                          >
+                            {translatingField?.key === `name-${selected.id}` ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Languages className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                       <div>
                         <label className="label">扫描深度（最近 N 条消息）</label>
@@ -272,13 +367,29 @@ export function LorebookPage() {
                   </div>
                   <div>
                     <label className="label">描述</label>
-                    <input
-                      className="input"
-                      value={selected.description}
-                      onChange={(e) =>
-                        updateLorebook(selected.id, { description: e.target.value })
-                      }
-                    />
+                    <div className="flex gap-1.5">
+                      <input
+                        className="input flex-1"
+                        value={selected.description}
+                        onChange={(e) =>
+                          updateLorebook(selected.id, { description: e.target.value })
+                        }
+                      />
+                      <button
+                        className="btn-ghost p-1.5 shrink-0"
+                        title="AI 翻译描述"
+                        disabled={!!translatingField || !selected.description}
+                        onClick={() => handleAiTranslate(selected.description, `desc-${selected.id}`, (translated) => {
+                          updateLorebook(selected.id, { description: translated })
+                        })}
+                      >
+                        {translatingField?.key === `desc-${selected.id}` ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Languages className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -317,9 +428,21 @@ export function LorebookPage() {
                                   ))
                                 )}
                               </div>
-                              <p className="text-xs text-tavern-text-soft line-clamp-2">
-                                {entry.content || '无内容'}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => toggleEntryExpand(entry.id)}
+                                  className="text-xs text-tavern-text-muted hover:text-tavern-text flex items-center gap-0.5"
+                                  title={expandedEntries.has(entry.id) ? '收起内容' : '展开内容'}
+                                >
+                                  {expandedEntries.has(entry.id) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                </button>
+                                <p className={cn(
+                                  'text-xs text-tavern-text-soft',
+                                  expandedEntries.has(entry.id) ? '' : 'line-clamp-2'
+                                )}>
+                                  {entry.content || '无内容'}
+                                </p>
+                              </div>
                               <div className="flex items-center gap-3 mt-1.5 text-xs text-tavern-text-muted">
                                 <span>{POSITION_LABELS[entry.position]}</span>
                                 <span>顺序 {entry.order}</span>
@@ -344,6 +467,23 @@ export function LorebookPage() {
                                 title="编辑"
                               >
                                 <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                className="btn-ghost p-1.5"
+                                title="AI 翻译此条目"
+                                disabled={!!translatingField || !entry.content}
+                                onClick={() => handleAiTranslate(entry.content, `entry-${entry.id}`, (translated) => {
+                                  const entries = selected.entries.map((e) =>
+                                    e.id === entry.id ? { ...e, content: translated } : e
+                                  )
+                                  updateLorebook(selected.id, { entries })
+                                })}
+                              >
+                                {translatingField?.key === `entry-${entry.id}` ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Languages className="w-3.5 h-3.5" />
+                                )}
                               </button>
                               <button
                                 className="btn-ghost p-1.5 text-tavern-danger"
@@ -398,14 +538,36 @@ export function LorebookPage() {
                       </div>
                       <div className="col-span-2">
                         <label className="label">内容</label>
-                        <textarea
-                          className="textarea h-24"
-                          placeholder="当关键词被触发时插入的内容..."
-                          value={editingEntry.content}
-                          onChange={(e) =>
-                            setEditingEntry({ ...editingEntry, content: e.target.value })
-                          }
-                        />
+                        <div className="flex gap-1.5 items-start">
+                          <textarea
+                            className="textarea h-24 flex-1"
+                            placeholder="当关键词被触发时插入的内容..."
+                            value={editingEntry.content}
+                            onChange={(e) =>
+                              setEditingEntry({ ...editingEntry, content: e.target.value })
+                            }
+                          />
+                          <button
+                            className="btn-ghost p-1.5 shrink-0"
+                            title="AI 翻译内容"
+                            disabled={!!translatingField || !editingEntry.content}
+                            onClick={() => handleAiTranslate(editingEntry.content, `edit-${editingEntry.id}`, (translated) => {
+                              setEditingEntry({ ...editingEntry, content: translated })
+                            })}
+                          >
+                            {translatingField?.key === `edit-${editingEntry.id}` ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Languages className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                        {/* 翻译流式预览 */}
+                        {translatingField?.key === `edit-${editingEntry.id}` && translateResult !== null && (
+                          <div className="mt-1.5 p-2 rounded bg-tavern-bg-hover border border-tavern-border-soft text-xs text-tavern-text-soft max-h-24 overflow-y-auto">
+                            {translateResult || '...'}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className="label">插入位置</label>
