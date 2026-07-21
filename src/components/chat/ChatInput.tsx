@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
-import { Send, Square, ImagePlus, X, Sparkles, Loader2, Undo2 } from 'lucide-react'
+import { Send, Square, ImagePlus, X, Sparkles, Loader2, Undo2, Wand2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useChatStore, lorebookCache } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -46,6 +46,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
   // 命令补全建议
   const [commandSuggestions, setCommandSuggestions] = useState<Array<{ name: string; description: string; usage: string }>>([])
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(0)
+  const [imageMenuOpen, setImageMenuOpen] = useState(false)
   // 短暂通知（命令执行反馈）
   const [notification, setNotification] = useState<string | null>(null)
   const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -72,6 +73,9 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       sendMessage: async (content, imgs) => {
         const [preset, lorebooks] = await loadActivePresetLorebook()
         await chatStore.sendMessage(content, imgs, character, preset, lorebooks)
+      },
+      addImageMessage: async (imgs, content) => {
+        await chatStore.addStandaloneMessage(content ?? '', imgs, character, 'system')
       },
       clearChat: async () => {
         await chatStore.clearChat(character.id)
@@ -178,6 +182,25 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         const max = activeProfile?.maxContext ?? 8192
         return { total: Math.ceil(total / 4), max }  // 粗略估算 4 字符 = 1 token
       },
+      callAiHelper: async (systemPrompt, userContent, options) => {
+        return callAiHelper({
+          systemPrompt,
+          userContent,
+          temperature: options?.temperature,
+          maxTokens: options?.maxTokens,
+        })
+      },
+      getRecentMessages: (count) => {
+        return chatStore.messages
+          .filter(m => m.content && m.content.trim())
+          .slice(-count)
+          .map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            name: m.role === 'user' ? (settings.userName || '用户') : character.name,
+          }))
+      },
+      userName: settings.userName || '用户',
     }
   }
 
@@ -538,6 +561,44 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         >
           <ImagePlus className="w-5 h-5" />
         </button>
+
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setImageMenuOpen(v => !v)}
+            className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover transition-colors"
+            title="AI 生图"
+          >
+            <Wand2 className="w-5 h-5" />
+          </button>
+
+          {imageMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setImageMenuOpen(false)} />
+              <div className="absolute bottom-full left-0 mb-2 w-48 rounded-lg border border-tavern-border bg-tavern-bg-soft shadow-lg z-50 overflow-hidden">
+                {[
+                  { label: '当前场景', desc: '自动分析对话上下文', cmd: '/imagine' },
+                  { label: '角色肖像', desc: '角色全身外观', cmd: '/imagine --mode character' },
+                  { label: '面部特写', desc: '角色面部细节', cmd: '/imagine --mode face' },
+                  { label: '场景背景', desc: '当前场景环境', cmd: '/imagine --mode background' },
+                  { label: '自定义描述...', desc: '手动输入提示词', cmd: '/imagine ' },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    className="w-full px-3 py-2 text-left hover:bg-tavern-bg-hover transition-colors border-b border-tavern-border-soft last:border-0"
+                    onClick={() => {
+                      setText(item.cmd)
+                      setImageMenuOpen(false)
+                      setTimeout(() => textareaRef.current?.focus(), 0)
+                    }}
+                  >
+                    <div className="text-sm text-tavern-text">{item.label}</div>
+                    <div className="text-[11px] text-tavern-text-muted">{item.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
         <div className="flex-1 relative">
           {/* 命令补全下拉 */}

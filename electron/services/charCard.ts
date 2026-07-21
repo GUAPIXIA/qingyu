@@ -383,6 +383,7 @@ async function normalizeCharacter(parsed: any, avatarBase64?: string): Promise<C
     characterVersion: data.character_version ?? '',
     groupOnlyGreetings: groupGreetings,
     extensions: data.extensions ?? undefined,
+    translatedContent: data.extensions?.translatedContent ?? undefined,
     _importImageUrl: importImageUrl,
   }
 
@@ -416,6 +417,57 @@ async function normalizeCharacter(parsed: any, avatarBase64?: string): Promise<C
       character.lorebookId = lorebookId
     } catch {
       // 提取失败不阻断角色导入
+    }
+  }
+
+  // 自动匹配世界书：若角色卡不含内嵌世界书，扫描已有世界书库匹配
+  if (!character.lorebookId) {
+    try {
+      const lorebookDir = DIRS.lorebooks()
+      if (existsSync(lorebookDir)) {
+        const files = readdirSync(lorebookDir).filter(f => f.endsWith('.json'))
+        if (files.length > 0) {
+          const charText = [
+            character.name,
+            character.description,
+            character.personality,
+            character.scenario,
+            ...(character.tags || []),
+          ].filter(Boolean).join(' ').toLowerCase()
+
+          let bestScore = 0
+          let bestLorebookId: string | null = null
+
+          for (const file of files) {
+            const lb: Lorebook = JSON.parse(readFileSync(join(lorebookDir, file), 'utf-8'))
+            if (!lb.enabled) continue
+
+            const lbText = [
+              lb.name,
+              lb.description,
+              ...lb.entries.flatMap(e => e.keywords),
+            ].filter(Boolean).join(' ').toLowerCase()
+
+            const lbWords = new Set(lbText.split(/\s+/).filter(w => w.length > 1))
+            const charWords = new Set(charText.split(/\s+/).filter(w => w.length > 1))
+            let score = 0
+            for (const w of charWords) {
+              if (lbWords.has(w)) score++
+            }
+
+            if (score > bestScore) {
+              bestScore = score
+              bestLorebookId = lb.id
+            }
+          }
+
+          if (bestScore >= 2 && bestLorebookId) {
+            character.lorebookId = bestLorebookId
+          }
+        }
+      }
+    } catch {
+      // 匹配失败不阻断导入
     }
   }
 
@@ -458,7 +510,10 @@ export function exportCharacterToPng(character: Character, savePath: string): vo
       group_only_greetings: character.groupOnlyGreetings || [],
       tags: character.tags,
       creator: character.creator,
-      extensions: character.extensions || {},
+      extensions: {
+        ...(character.extensions || {}),
+        ...(character.translatedContent ? { translatedContent: character.translatedContent } : {}),
+      },
     },
   })
   const charaBase64 = Buffer.from(charaJson).toString('base64')
@@ -487,7 +542,10 @@ export function exportCharacterToJson(character: Character, savePath: string): v
       group_only_greetings: character.groupOnlyGreetings || [],
       tags: character.tags,
       creator: character.creator,
-      extensions: character.extensions || {},
+      extensions: {
+        ...(character.extensions || {}),
+        ...(character.translatedContent ? { translatedContent: character.translatedContent } : {}),
+      },
     },
   }
   writeFileSync(savePath, JSON.stringify(data, null, 2), 'utf-8')

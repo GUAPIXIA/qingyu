@@ -13,7 +13,6 @@ import {
   HelpCircle,
   PanelLeftClose,
   PanelLeft,
-  Beer,
   Regex as RegexIcon,
   UserCircle,
   BarChart3,
@@ -23,7 +22,7 @@ import { PROVIDER_INFO } from '../../utils/defaults'
 
 const navItems = [
   { to: '/chat', label: '对话', icon: MessageSquare },
-  { to: '/characters', label: '角色', icon: Users },
+  { to: '/characters', label: '角色卡', icon: Users },
   { to: '/personas', label: '身份', icon: UserCircle },
   { to: '/group', label: '群聊', icon: UsersRound },
   { to: '/lorebook', label: '世界书', icon: BookOpen },
@@ -50,18 +49,8 @@ export function Sidebar() {
         sidebarCollapsed ? 'w-16' : 'w-56'
       )}
     >
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 h-14 border-b border-tavern-border-soft">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-tavern-accent-soft shrink-0">
-          <Beer className="w-5 h-5 text-tavern-accent" />
-        </div>
-        {!sidebarCollapsed && (
-          <div className="flex flex-col">
-            <span className="font-display text-sm font-bold text-tavern-text">轻 Tavern</span>
-            <span className="text-xs text-tavern-text-muted">AI 角色扮演</span>
-          </div>
-        )}
-      </div>
+      {/* 顶部占位（保留高度，菜单不上移） */}
+      <div className="h-14 border-b border-tavern-border-soft" />
 
       {/* 导航 */}
       <nav className="flex-1 py-3 px-2 space-y-1">

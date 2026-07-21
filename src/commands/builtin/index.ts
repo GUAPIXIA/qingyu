@@ -12,6 +12,7 @@ import { lorebookCommand } from './lorebook'
 import { swipeCommand } from './swipe'
 import { tokenCommand } from './token'
 import { planCommand } from './plan'
+import { imagineCommand } from './imagine'
 
 /** 注册所有内置斜杠命令 */
 export function registerBuiltinCommands(): void {
@@ -28,4 +29,5 @@ export function registerBuiltinCommands(): void {
   registerCommand(swipeCommand)
   registerCommand(tokenCommand)
   registerCommand(planCommand)
+  registerCommand(imagineCommand)
 }

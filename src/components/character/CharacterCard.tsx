@@ -39,7 +39,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
       ) : (
         <div className="w-full h-full flex items-center justify-center">
           <span className={cn('font-display text-tavern-text-muted', viewMode === 'list' ? 'text-xl' : 'text-4xl')}>
-            {character.name[0]}
+            {character.translatedContent?.name?.[0] ?? character.name[0]}
           </span>
         </div>
       )}
@@ -113,9 +113,9 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
           {/* 右侧信息 */}
           <div className="flex-1 min-w-0 flex flex-col justify-between">
             <div>
-              <h3 className="font-medium text-tavern-text">{character.name}</h3>
+              <h3 className="font-medium text-tavern-text">{character.translatedContent?.name ?? character.name}</h3>
               {character.description && (
-                <p className="text-sm text-tavern-text-muted mt-1 line-clamp-3">{character.description}</p>
+                <p className="text-sm text-tavern-text-muted mt-1 line-clamp-3">{character.translatedContent?.description ?? character.description}</p>
               )}
               <div className="flex gap-1 flex-wrap mt-2">
                 {character.tags.map((tag) => (
@@ -178,10 +178,10 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
 
       {/* 信息区 */}
       <div className="p-3">
-        <h3 className="font-medium text-tavern-text truncate">{character.name}</h3>
+        <h3 className="font-medium text-tavern-text truncate">{character.translatedContent?.name ?? character.name}</h3>
         {character.description && (
           <p className="text-xs text-tavern-text-muted mt-0.5 line-clamp-2 h-8">
-            {character.description}
+            {character.translatedContent?.description ?? character.description}
           </p>
         )}
         <div className="flex items-center justify-between mt-2">

@@ -10,6 +10,7 @@ import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { TokenUsage } from '../components/chat/TokenUsage'
 import { QuickSettingsPanel } from '../components/chat/QuickSettingsPanel'
+import { BackgroundPanel, PRESET_GRADIENTS } from '../components/chat/BackgroundPanel'
 import { ContextViewer } from '../components/chat/ContextViewer'
 import { StatusBar } from '../components/chat/StatusBar'
 import { cn } from '../lib/utils'
@@ -26,6 +27,7 @@ import {
   ChevronDown,
   ArrowDownToLine,
   Eye,
+  Image,
   Sliders,
   Plus,
   Layers,
@@ -47,6 +49,7 @@ export function ChatPage() {
   const [memoryStats, setMemoryStats] = useState<{ totalMessages: number; totalChars: number; durationStr: string } | null>(null)
   const [memoryInterval, setMemoryInterval] = useState(10)
   const [showQuickSettings, setShowQuickSettings] = useState(false)
+  const [showBgPanel, setShowBgPanel] = useState(false)
   const [showContextViewer, setShowContextViewer] = useState(false)
   const [greetingPickerOpen, setGreetingPickerOpen] = useState(false)
   const [selectedGreeting, setSelectedGreeting] = useState('')
@@ -56,6 +59,10 @@ export function ChatPage() {
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   // 用户手动滚动状态：避免流式时强制把视图拉到底
   const userScrolledUpRef = useRef(false)
+  // 背景图片拖拽状态
+  const [isDraggingBg, setIsDraggingBg] = useState(false)
+  const bgImgRef = useRef<HTMLImageElement>(null)
+  const bgDragRef = useRef({ startX: 0, startY: 0, startPosX: 0, startPosY: 0 })
 
   const activeProfile = getActiveProfile()
   const isConnected = activeProfile !== null && (activeProfile.provider === 'ollama' || !!activeProfile.apiKey)
@@ -78,7 +85,7 @@ export function ChatPage() {
           const currentSession = state.sessions.find(s => s.id === state.currentSessionId)
           const hasExistingMessages = currentSession && currentSession.messageCount > 0
           if (hasAltGreetings && state.messages.length === 0 && !hasExistingMessages) {
-            setSelectedGreeting(currentCharacter.firstMessage)
+            setSelectedGreeting(currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage)
             setGreetingPickerOpen(true)
           }
         })
@@ -149,6 +156,62 @@ export function ChatPage() {
     useChatStore.setState(s => ({ messages: [...s.messages, firstMsg], sessions: updatedSessions, currentSessionId: sid }))
   }
 
+  // 背景图片拖拽
+  const handleBgMouseDown = (e: React.MouseEvent) => {
+    const params = currentCharacter?.chatBackgroundParams
+    if (!params) return
+    bgDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startPosX: params.posX ?? 50,
+      startPosY: params.posY ?? 50,
+    }
+    setIsDraggingBg(true)
+    e.preventDefault()
+  }
+
+  useEffect(() => {
+    if (!isDraggingBg) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const { startX, startY, startPosX, startPosY } = bgDragRef.current
+      const scale = 0.4 // 1px 鼠标移动 ≈ 0.4% 位置变化
+      const newPosX = Math.max(0, Math.min(100, startPosX + (e.clientX - startX) * scale))
+      const newPosY = Math.max(0, Math.min(100, startPosY + (e.clientY - startY) * scale))
+      if (bgImgRef.current) {
+        bgImgRef.current.style.objectPosition = `${newPosX}% ${newPosY}%`
+      }
+    }
+
+    const handleMouseUp = async (e: MouseEvent) => {
+      const { startX, startY, startPosX, startPosY } = bgDragRef.current
+      const scale = 0.4
+      const newPosX = Math.max(0, Math.min(100, startPosX + (e.clientX - startX) * scale))
+      const newPosY = Math.max(0, Math.min(100, startPosY + (e.clientY - startY) * scale))
+      setIsDraggingBg(false)
+
+      const store = useCharacterStore.getState()
+      if (store.currentCharacter) {
+        const updated = {
+          ...store.currentCharacter,
+          chatBackgroundParams: {
+            ...store.currentCharacter.chatBackgroundParams!,
+            posX: Math.round(newPosX),
+            posY: Math.round(newPosY),
+          },
+        }
+        await store.saveCharacter(updated)
+      }
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDraggingBg])
+
   // 首次使用引导
   if (loaded && !isConnected) {
     return (
@@ -157,7 +220,7 @@ export function ChatPage() {
           <div className="w-20 h-20 mx-auto rounded-2xl bg-tavern-accent-soft flex items-center justify-center mb-6">
             <MessageSquare className="w-10 h-10 text-tavern-accent" />
           </div>
-          <h2 className="text-xl font-display font-bold mb-2">欢迎使用轻 Tavern</h2>
+          <h2 className="text-xl font-display font-bold mb-2">欢迎使用轻语</h2>
           <p className="text-tavern-text-soft mb-6">
             开始你的 AI 角色扮演之旅。只需 3 步即可开启对话：
           </p>
@@ -193,6 +256,35 @@ export function ChatPage() {
     )
   }
 
+  // 封面作为背景：当开关开启且角色有封面时使用封面，否则使用手动设置的背景
+  const effectiveBg = useMemo(() => {
+    const useCover = settings.useCoverAsBackground && currentCharacter?.cover
+    if (useCover) {
+      return {
+        src: currentCharacter.cover!,
+        type: 'image' as const,
+        opacity: 40,
+        blur: 4,
+        posX: 50,
+        posY: 50,
+        scale: 100,
+      }
+    }
+    if (currentCharacter?.chatBackground) {
+      return {
+        src: currentCharacter.chatBackground,
+        type: currentCharacter.chatBackgroundParams?.type ?? 'image',
+        opacity: currentCharacter.chatBackgroundParams?.opacity ?? 12,
+        blur: currentCharacter.chatBackgroundParams?.blur ?? 2,
+        posX: currentCharacter.chatBackgroundParams?.posX ?? 50,
+        posY: currentCharacter.chatBackgroundParams?.posY ?? 50,
+        scale: currentCharacter.chatBackgroundParams?.scale ?? 100,
+        gradient: currentCharacter.chatBackgroundParams?.gradient,
+      }
+    }
+    return null
+  }, [settings.useCoverAsBackground, currentCharacter?.cover, currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams])
+
   if (!currentCharacter) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -214,18 +306,44 @@ export function ChatPage() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
       {/* 背景图层 */}
-      {currentCharacter.chatBackground && (
-        <div className="absolute inset-0 z-0 pointer-events-none select-none overflow-hidden">
-          <img
-            src={currentCharacter.chatBackground}
-            className="w-full h-full object-cover opacity-[0.12] blur-[2px] scale-105 dark:opacity-[0.08]"
-            alt=""
-          />
+      {effectiveBg && (
+        <div
+          className={cn(
+            'absolute inset-0 z-0 select-none overflow-hidden',
+            effectiveBg.type === 'image' ? 'pointer-events-auto' : 'pointer-events-none'
+          )}
+        >
+          {effectiveBg.type === 'gradient' && effectiveBg.gradient ? (
+            <div
+              className="w-full h-full scale-105"
+              style={{
+                background: PRESET_GRADIENTS.find(g => g.key === effectiveBg.gradient)?.css,
+                opacity: effectiveBg.opacity / 100,
+                filter: `blur(${effectiveBg.blur}px)`,
+              }}
+            />
+          ) : (
+            <img
+              ref={bgImgRef}
+              src={effectiveBg.src}
+              className="w-full h-full object-cover"
+              style={{
+                opacity: effectiveBg.opacity / 100,
+                filter: `blur(${effectiveBg.blur}px)`,
+                objectPosition: `${effectiveBg.posX}% ${effectiveBg.posY}%`,
+                transform: `scale(${effectiveBg.scale / 100})`,
+                cursor: isDraggingBg ? 'grabbing' : 'grab',
+              }}
+              onMouseDown={handleBgMouseDown}
+              alt=""
+              draggable={false}
+            />
+          )}
         </div>
       )}
 
       {/* 顶栏 */}
-      <header className="relative z-10 flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
+      <header className="relative z-30 flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
         <div className="flex items-center gap-3">
           {/* 角色选择下拉 */}
           <div className="relative">
@@ -237,11 +355,11 @@ export function ChatPage() {
                 <img src={currentCharacter.avatar} alt="" className="w-8 h-8 rounded-full object-cover" onError={() => setCharImgErrors(prev => new Set(prev).add(currentCharacter.id))} />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-tavern-assistant/20 flex items-center justify-center text-tavern-assistant text-sm font-bold">
-                  {currentCharacter.name[0]}
+                  {currentCharacter.translatedContent?.name?.[0] ?? currentCharacter.name[0]}
                 </div>
               )}
               <div className="text-left">
-                <div className="text-sm font-medium text-tavern-text">{currentCharacter.name}</div>
+                <div className="text-sm font-medium text-tavern-text">{currentCharacter.translatedContent?.name ?? currentCharacter.name}</div>
                 <div className="text-xs text-tavern-text-muted">
                   {isStreaming ? '生成中...' : '在线'}
                 </div>
@@ -251,8 +369,8 @@ export function ChatPage() {
 
             {showCharMenu && (
               <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowCharMenu(false)} />
-                <div className="absolute top-full left-0 mt-1 w-64 max-h-80 overflow-y-auto bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl z-20 py-1">
+                <div className="fixed inset-0 z-20" onClick={() => setShowCharMenu(false)} />
+                <div className="absolute top-full left-0 mt-1 w-64 max-h-80 overflow-y-auto bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl z-40 py-1">
                   {characters.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-tavern-text-muted text-center">
                       暂无角色，请先创建
@@ -274,11 +392,11 @@ export function ChatPage() {
                           <img src={char.avatar} alt="" className="w-8 h-8 rounded-full object-cover" onError={() => setCharImgErrors(prev => new Set(prev).add(char.id))} />
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-tavern-bg-hover flex items-center justify-center text-xs font-bold">
-                            {char.name[0]}
+                            {char.translatedContent?.name?.[0] ?? char.name[0]}
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm text-tavern-text truncate">{char.name}</div>
+                          <div className="text-sm text-tavern-text truncate">{char.translatedContent?.name ?? char.name}</div>
                           {char.tags[0] && (
                             <div className="text-xs text-tavern-text-muted truncate">{char.tags[0]}</div>
                           )}
@@ -322,8 +440,8 @@ export function ChatPage() {
 
                 {showSessionMenu && (
                   <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowSessionMenu(false)} />
-                    <div className="absolute top-full left-0 mt-1 w-56 bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl z-20 py-1 max-h-72 overflow-y-auto">
+                    <div className="fixed inset-0 z-20" onClick={() => setShowSessionMenu(false)} />
+                    <div className="absolute top-full left-0 mt-1 w-56 bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl z-40 py-1 max-h-72 overflow-y-auto">
                       {sessions.map((s) => (
                         <div
                           key={s.id}
@@ -405,7 +523,7 @@ export function ChatPage() {
                   useChatStore.setState({ sessions, currentSessionId: session.id, messages: [] })
                   // 如有备选开场白，弹出选择器；否则直接用默认开场白
                   if (currentCharacter.alternateGreetings && currentCharacter.alternateGreetings.length > 0) {
-                    setSelectedGreeting(currentCharacter.firstMessage)
+                    setSelectedGreeting(currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage)
                     setGreetingPickerOpen(true)
                   } else {
                     const settings = useSettingsStore.getState().settings
@@ -595,6 +713,18 @@ export function ChatPage() {
             <Sliders className="w-5 h-5" />
           </button>
           <button
+            onClick={() => setShowBgPanel(!showBgPanel)}
+            className={cn(
+              'p-2 rounded-lg transition-colors',
+              showBgPanel
+                ? 'text-tavern-accent bg-tavern-accent-soft'
+                : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
+            )}
+            title="聊天背景"
+          >
+            <Image className="w-5 h-5" />
+          </button>
+          <button
             onClick={handleExport}
             className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
             title="导出对话"
@@ -619,9 +749,8 @@ export function ChatPage() {
       {/* 消息列表 - 使用 Virtuoso 虚拟滚动 */}
       <div
         className={cn(
-          'flex-1 overflow-hidden relative z-10',
-          `bubble-${settings.bubbleStyle}`,
-          `spacing-${settings.messageSpacing}`
+          'flex-1 overflow-hidden relative z-0',
+          `bubble-${settings.bubbleStyle}`
         )}
       >
         {messages.length === 0 ? (
@@ -629,7 +758,7 @@ export function ChatPage() {
             className="h-full"
             icon={<MessageSquare className="w-8 h-8" />}
             title="开始新的对话"
-            description={`与 ${currentCharacter.name} 开始你的故事`}
+            description={`与 ${currentCharacter.translatedContent?.name ?? currentCharacter.name} 开始你的故事`}
           />
         ) : (
           <Virtuoso
@@ -670,13 +799,14 @@ export function ChatPage() {
         onClose={() => setShowClearConfirm(false)}
         onConfirm={() => clearChat(currentCharacter.id)}
         title="清空对话"
-        message={`确定要清空与 ${currentCharacter.name} 的所有对话记录吗？此操作不可撤销。`}
+        message={`确定要清空与 ${currentCharacter.translatedContent?.name ?? currentCharacter.name} 的所有对话记录吗？此操作不可撤销。`}
         confirmText="清空"
         danger
       />
 
       {/* 快捷设置面板 */}
       <QuickSettingsPanel open={showQuickSettings} onClose={() => setShowQuickSettings(false)} />
+      <BackgroundPanel open={showBgPanel} onClose={() => setShowBgPanel(false)} />
 
       {/* 开场白选择面板 */}
       {greetingPickerOpen && currentCharacter && (
@@ -694,19 +824,19 @@ export function ChatPage() {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-tavern-text-muted text-lg font-display">
-                    {currentCharacter.name[0]}
+                    {currentCharacter.translatedContent?.name?.[0] ?? currentCharacter.name[0]}
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-display font-bold text-lg truncate">{currentCharacter.name}</h3>
+                <h3 className="font-display font-bold text-lg truncate">{currentCharacter.translatedContent?.name ?? currentCharacter.name}</h3>
                 <p className="text-xs text-tavern-text-muted">选择一个开场白开始对话</p>
               </div>
             </div>
 
             {/* 中间：可滚动的开场白列表 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {[currentCharacter.firstMessage, ...(currentCharacter.alternateGreetings || [])]
+              {[currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage, ...(currentCharacter.alternateGreetings || [])]
                 .filter(Boolean)
                 .map((greeting, i) => (
                   <div
@@ -729,7 +859,7 @@ export function ChatPage() {
                         {i + 1}
                       </span>
                       <div className="flex-1 line-clamp-4 whitespace-pre-wrap text-tavern-text-soft">
-                        {replaceVariables(greeting, settings.userName, currentCharacter.name)}
+                        {replaceVariables(greeting, settings.userName, currentCharacter.translatedContent?.name ?? currentCharacter.name)}
                       </div>
                     </div>
                   </div>

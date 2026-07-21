@@ -11,9 +11,9 @@ interface CharacterEditorProps {
   onClose: () => void
 }
 
-type TranslatableField = keyof Pick<Character, 'description' | 'personality' | 'scenario' | 'firstMessage' | 'exampleDialog'>
-
+type TranslatableField = keyof Pick<Character, 'name' | 'description' | 'personality' | 'scenario' | 'firstMessage' | 'exampleDialog'>
 const TRANSLATABLE_FIELDS: { key: TranslatableField; label: string }[] = [
+  { key: 'name', label: '角色名' },
   { key: 'description', label: '角色描述' },
   { key: 'personality', label: '性格特征' },
   { key: 'scenario', label: '场景设定' },
@@ -26,6 +26,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   const [tagInput, setTagInput] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [translating, setTranslating] = useState(false)
+  const [translatingField, setTranslatingField] = useState<string | null>(null)
   const [translatedFields, setTranslatedFields] = useState<Set<string>>(new Set())
   const [translateError, setTranslateError] = useState<string | null>(null)
   const [coverReloading, setCoverReloading] = useState(false)
@@ -119,23 +120,99 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       return
     }
 
+    // 先翻译角色名，后续字段可引用中文名作为上下文
+    let translatedName = form.name
+    if (form.name && form.name.trim()) {
+      try {
+        const result = await translateText(form.name, '角色名', settings, profile, form.name)
+        if (result) {
+          translatedName = result
+          const tc = { ...(form.translatedContent || {}) }
+          tc.name = result
+          update({ translatedContent: tc } as Partial<Character>)
+          setTranslatedFields((prev) => new Set(prev).add('name'))
+        }
+      } catch {
+        setTranslateError('翻译"角色名"时出现错误，已跳过')
+      }
+    }
+
+    // 翻译其余字段，使用翻译后的名称作为上下文
     for (const { key, label } of TRANSLATABLE_FIELDS) {
+      if (key === 'name') continue // 已翻译
       const text = form[key]
       if (!text || !text.trim()) continue
 
       try {
-        const result = await translateText(text, label, settings, profile)
+        const result = await translateText(text, label, settings, profile, translatedName)
         if (result) {
-          update({ [key]: result } as Partial<Character>)
+          const tc = { ...(form.translatedContent || {}) }
+          tc[key] = result
+          update({ translatedContent: tc } as Partial<Character>)
           setTranslatedFields((prev) => new Set(prev).add(key))
         }
       } catch {
-        // 单个字段失败不阻断其他字段
         setTranslateError(`翻译"${label}"时出现错误，已跳过`)
       }
     }
 
     setTranslating(false)
+  }
+
+  // 单字段独立翻译
+  const handleTranslateField = async (fieldKey: TranslatableField) => {
+    const text = form[fieldKey]
+    if (!text || !text.trim()) return
+
+    const profile = useSettingsStore.getState().getActiveProfile()
+    if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) {
+      setTranslateError('请先配置 API 连接')
+      return
+    }
+
+    const nameForContext = form.translatedContent?.name ?? undefined
+    const fieldLabel = TRANSLATABLE_FIELDS.find(f => f.key === fieldKey)?.label ?? fieldKey
+
+    setTranslatingField(fieldKey)
+    try {
+      const result = await translateText(text, fieldLabel, settings, profile, nameForContext)
+      if (result) {
+        const tc = { ...(form.translatedContent || {}) }
+        tc[fieldKey] = result
+        update({ translatedContent: tc } as Partial<Character>)
+        setTranslatedFields(prev => new Set(prev).add(fieldKey))
+      }
+    } catch {
+      setTranslateError(`翻译"${fieldLabel}"失败`)
+    }
+    setTranslatingField(null)
+  }
+
+  // 翻译单条备选开场白
+  const handleTranslateGreeting = async (index: number) => {
+    const greetings = form.alternateGreetings || []
+    const text = greetings[index]
+    if (!text || !text.trim()) return
+
+    const profile = useSettingsStore.getState().getActiveProfile()
+    if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) {
+      setTranslateError('请先配置 API 连接')
+      return
+    }
+
+    const nameForContext = form.translatedContent?.name ?? undefined
+    setTranslatingField(`greeting-${index}`)
+    try {
+      const result = await translateText(text, '首条消息', settings, profile, nameForContext)
+      if (result) {
+        const updated = [...greetings]
+        updated[index] = result
+        update({ alternateGreetings: updated })
+      }
+    } catch {
+      setTranslateError('翻译备选开场白失败')
+    }
+    setTranslatingField(null)
   }
 
   return (
@@ -150,7 +227,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
           <button
             className="btn-secondary"
             onClick={handleAiTranslate}
-            disabled={translating || !form.description}
+            disabled={translating || translatingField !== null || !form.description}
             title={!form.description ? '请先填写角色描述' : '使用 AI 将角色卡翻译为中文'}
           >
             {translating ? (
@@ -215,7 +292,24 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
           </div>
           <div className="flex-1 space-y-3">
             <div>
-              <label className="label">角色名 *</label>
+              <label className="label">
+                角色名 *
+                {(translatedFields.has('name') || form.translatedContent?.name) && (
+                  <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
+                )}
+                <button
+                  className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
+                  onClick={() => handleTranslateField('name')}
+                  disabled={translatingField === 'name' || !form.name}
+                  title="AI 翻译此字段"
+                >
+                  {translatingField === 'name' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Languages className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </label>
               <input
                 className="input"
                 value={form.name}
@@ -258,9 +352,21 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         <div>
           <label className="label">
             角色描述
-            {translatedFields.has('description') && (
+            {(translatedFields.has('description') || form.translatedContent?.description) && (
               <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
             )}
+            <button
+              className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
+              onClick={() => handleTranslateField('description')}
+              disabled={translatingField === 'description' || !form.description}
+              title="AI 翻译此字段"
+            >
+              {translatingField === 'description' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Languages className="w-3.5 h-3.5" />
+              )}
+            </button>
           </label>
           <textarea
             className="textarea min-h-[120px] resize-y"
@@ -274,9 +380,21 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         <div>
           <label className="label">
             性格特征
-            {translatedFields.has('personality') && (
+            {(translatedFields.has('personality') || form.translatedContent?.personality) && (
               <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
             )}
+            <button
+              className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
+              onClick={() => handleTranslateField('personality')}
+              disabled={translatingField === 'personality' || !form.personality}
+              title="AI 翻译此字段"
+            >
+              {translatingField === 'personality' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Languages className="w-3.5 h-3.5" />
+              )}
+            </button>
           </label>
           <textarea
             className="textarea min-h-[80px] resize-y"
@@ -302,9 +420,21 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             <div>
               <label className="label">
                 场景设定
-                {translatedFields.has('scenario') && (
+                {(translatedFields.has('scenario') || form.translatedContent?.scenario) && (
                   <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
                 )}
+                <button
+                  className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
+                  onClick={() => handleTranslateField('scenario')}
+                  disabled={translatingField === 'scenario' || !form.scenario}
+                  title="AI 翻译此字段"
+                >
+                  {translatingField === 'scenario' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Languages className="w-3.5 h-3.5" />
+                  )}
+                </button>
               </label>
               <textarea
                 className="textarea min-h-[80px] resize-y"
@@ -330,9 +460,21 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             <div>
               <label className="label">
                 首条消息
-                {translatedFields.has('firstMessage') && (
+                {(translatedFields.has('firstMessage') || form.translatedContent?.firstMessage) && (
                   <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
                 )}
+                <button
+                  className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
+                  onClick={() => handleTranslateField('firstMessage')}
+                  disabled={translatingField === 'firstMessage' || !form.firstMessage}
+                  title="AI 翻译此字段"
+                >
+                  {translatingField === 'firstMessage' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Languages className="w-3.5 h-3.5" />
+                  )}
+                </button>
               </label>
               <textarea
                 className="textarea min-h-[120px] resize-y"
@@ -358,13 +500,27 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                       }}
                       placeholder="备选的开场问候语"
                     />
-                    <button
-                      className="btn-ghost p-1.5 text-tavern-danger self-start shrink-0"
-                      onClick={() => update({ alternateGreetings: (form.alternateGreetings || []).filter((_, j) => j !== i) })}
-                      title="删除"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                    <div className="flex flex-col gap-1 self-start shrink-0">
+                      <button
+                        className="btn-ghost p-1.5 text-tavern-text-muted hover:text-tavern-accent"
+                        onClick={() => handleTranslateGreeting(i)}
+                        disabled={translatingField === `greeting-${i}` || !g.trim()}
+                        title="AI 翻译"
+                      >
+                        {translatingField === `greeting-${i}` ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Languages className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <button
+                        className="btn-ghost p-1.5 text-tavern-danger"
+                        onClick={() => update({ alternateGreetings: (form.alternateGreetings || []).filter((_, j) => j !== i) })}
+                        title="删除"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 <button
@@ -425,9 +581,21 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             <div>
               <label className="label">
                 对话示例
-                {translatedFields.has('exampleDialog') && (
+                {(translatedFields.has('exampleDialog') || form.translatedContent?.exampleDialog) && (
                   <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
                 )}
+                <button
+                  className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
+                  onClick={() => handleTranslateField('exampleDialog')}
+                  disabled={translatingField === 'exampleDialog' || !form.exampleDialog}
+                  title="AI 翻译此字段"
+                >
+                  {translatingField === 'exampleDialog' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Languages className="w-3.5 h-3.5" />
+                  )}
+                </button>
               </label>
               <textarea
                 className="textarea min-h-[100px] resize-y font-mono text-xs"
@@ -494,6 +662,7 @@ async function translateText(
   fieldLabel: string,
   settings: ReturnType<typeof useSettingsStore.getState>['settings'],
   profile: { provider: ProviderType; apiKey: string; baseUrl: string; model: string },
+  characterName?: string,
 ): Promise<string> {
   const requestId = `translate-card-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
@@ -507,7 +676,8 @@ async function translateText(
     const unbindDone = window.api.ai.onDone((doneId) => {
       if (doneId !== requestId) return
       unbindChunk(); unbindDone(); unbindError()
-      resolve(result.trim() || text)
+      const cleaned = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      resolve(cleaned || text)
     })
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
@@ -515,12 +685,39 @@ async function translateText(
       resolve('')
     })
 
+    // 根据字段类型定制翻译提示
+    const nameHint = characterName ? `\n- 角色名为「${characterName}」，其他字段中出现该名字时请一并翻译为中文` : ''
+    const fieldHints: Record<string, string> = {
+      '角色名': '- 这是角色名，请音译或意译为地道的中文名字',
+      '角色描述': '- 这是角色外观/背景描写，使用自然流畅的中文叙述',
+      '性格特征': '- 这是性格标签或描述，使用中文角色扮演圈常用表达（如"傲娇""腹黑"等），保留 {{char}} 等变量',
+      '场景设定': '- 这是故事背景设定，使用中文同人/创作圈常见的叙述风格',
+      '首条消息': '- 这是角色初次见面对话/开场独白，保持人物语气和口吻风格，对话中的人名一并翻译',
+      '对话示例': '- 这是示例对话，角色名和对话中的人名一并翻译，保持口语化风格，*动作描写*保留原格式',
+    }
+    const fieldHint = fieldHints[fieldLabel] || ''
+
     window.api.ai.chat({
       requestId,
       messages: [
         {
           role: 'system',
-          content: `你是一个角色扮演角色卡翻译助手。请将以下${fieldLabel}翻译成中文。保持角色扮演的风格和语气，保留原文中的 Markdown 格式、HTML 标签和特殊标记（如 {{user}}、{{char}}、*动作描写*等）。只输出翻译结果，不要添加任何解释。`,
+          content: [
+            '你是一位资深的 AI 角色扮演本地化翻译专家，专门将英文角色卡精准翻译为中文。',
+            '',
+            '## 核心翻译原则',
+            '- 角色名：音译或意译为自然的中文名字，不使用直译',
+            '- 描述/设定：使用地道的中文表达，保持原文叙述风格',
+            '- 对话：保持角色的语气、口吻、情感色彩，中文表达要口语化自然',
+            '- 性格特征：使用中文角色扮演圈常用标签（如"傲娇""天然呆""腹黑""元气"等）',
+            '- 保留所有 Markdown 格式、HTML 标签、特殊标记（{{user}}、{{char}}、*动作描写* 等）不变',
+            '- 只输出翻译结果，禁止添加解释、备注或额外内容',
+            '- 禁止输出 <thought> 标签或任何格式标记，只输出纯翻译文本',
+            nameHint,
+            '',
+            `## 当前字段: ${fieldLabel}`,
+            fieldHint,
+          ].filter(Boolean).join('\n'),
         },
         { role: 'user', content: text },
       ],

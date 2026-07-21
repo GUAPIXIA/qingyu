@@ -104,11 +104,15 @@ interface ChatState {
   } | null>
   loadMessages: (character: Character) => Promise<void>
   sendMessage: (content: string, images: string[], character: Character, preset: Preset | null, lorebooks: Lorebook[]) => Promise<void>
+  /** 添加独立消息（不触发 AI 回复，用于生图等） */
+  addStandaloneMessage: (content: string, images: string[], character: Character, role?: 'user' | 'assistant' | 'system') => Promise<void>
   stopStreaming: () => void
   regenerateMessage: (messageId: string, character: Character, preset: Preset | null, lorebooks: Lorebook[]) => Promise<void>
   /** 切换消息的 Swipe 候选 */
   swipeMessage: (messageId: string, direction: number, character: Character) => Promise<void>
   editMessage: (messageId: string, newContent: string, character: Character) => Promise<void>
+  /** 更新消息的图片（用于重新生图） */
+  updateMessageImages: (messageId: string, images: string[]) => Promise<void>
   deleteMessage: (messageId: string, character: Character) => Promise<void>
   clearChat: (characterId: string) => Promise<void>
   clearMessages: () => void
@@ -502,7 +506,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const userName = settings.userName || '用户'
 
     // 取最近消息进行总结（基于 token 预算，限制最大 20 条）
-    const recentMessages = messages.slice(-MEMORY_SUMMARY_RECENT)
+    const recentMessages = messages.filter(m => m.role !== 'system').slice(-MEMORY_SUMMARY_RECENT)
     if (recentMessages.length < MEMORY_SUMMARY_MIN) return null
 
     const messagesText = recentMessages
@@ -637,6 +641,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ messages: [] })
   },
 
+  addStandaloneMessage: async (content, images, character, role = 'assistant') => {
+    const currentSid = get().currentSessionId
+    if (!currentSid) return
+
+    const msg: Message = {
+      id: nanoid(),
+      sessionId: currentSid,
+      characterId: character.id,
+      role,
+      content,
+      images,
+      isEditing: false,
+      timestamp: Date.now(),
+    }
+    set((state) => ({ messages: [...state.messages, msg] }))
+    await window.api.chat.saveMessage(msg)
+  },
+
   sendMessage: async (content, images, character, preset, _lorebooks) => {
     // 流式中拒绝：现在给一个错误提示而不是静默忽略
     if (get().isStreaming) {
@@ -737,6 +759,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
           const msgCount = get().messages.filter(m => m.content).length
           if (msgCount > 0 && msgCount % (curSession.autoMemoryInterval || 10) === 0) {
             get().triggerMemorySummary(character)
+          }
+        }
+
+        // AI 自动生图：解析 [image: prompt] 标记
+        const autoImgEnabled = useSettingsStore.getState().settings.imageGenAutoEnabled
+        if (autoImgEnabled) {
+          const imageRegex = /\[image:\s*([^\]]+)\]/gi
+          const imagePrompts: string[] = []
+          let imgMatch
+          while ((imgMatch = imageRegex.exec(finalContent)) !== null) {
+            imagePrompts.push(imgMatch[1].trim())
+          }
+          if (imagePrompts.length > 0) {
+            const generatedImages: string[] = []
+            for (const p of imagePrompts) {
+              try {
+                const result = await window.api.imageGen.generate(p)
+                if (result.success && result.images) {
+                  generatedImages.push(...result.images)
+                }
+              } catch { /* 忽略单张失败 */ }
+            }
+            if (generatedImages.length > 0) {
+              set((s) => ({
+                messages: s.messages.map((m) =>
+                  m.id === aiMessageId
+                    ? { ...m, images: [...m.images, ...generatedImages] }
+                    : m
+                ),
+              }))
+              const updatedMsg = get().messages.find((m) => m.id === aiMessageId)
+              if (updatedMsg) await window.api.chat.saveMessage(updatedMsg)
+            }
           }
         }
       },
@@ -869,6 +924,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content: msg.swipes[newIdx],
     }
     set((s) => ({ messages: s.messages.map(m => m.id === messageId ? updatedMsg : m) }))
+    await window.api.chat.saveMessage(updatedMsg)
+  },
+
+  updateMessageImages: async (messageId, images) => {
+    const state = get()
+    const msg = state.messages.find((m) => m.id === messageId)
+    if (!msg) return
+    const updatedMsg = { ...msg, images }
+    set((s) => ({
+      messages: s.messages.map((m) => (m.id === messageId ? updatedMsg : m)),
+    }))
     await window.api.chat.saveMessage(updatedMsg)
   },
 
@@ -1041,7 +1107,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const settings = useSettingsStore.getState().settings
     const userName = settings.userName || '用户'
     // 修复 #8: 保留图片消息（content 为空但有 images 时不丢弃）
-    const messages = get().messages.filter((m) => m.content || (m.images && m.images.length > 0))
+    const messages = get().messages.filter((m) => (m.content || (m.images && m.images.length > 0)) && m.role !== 'system')
     const context: { role: 'system' | 'user' | 'assistant'; content: string }[] = []
 
     // ===== System Prompt 构建 =====

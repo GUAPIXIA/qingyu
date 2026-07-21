@@ -8,6 +8,8 @@ export interface CommandContext {
   character: Character
   /** 发送普通消息 */
   sendMessage: (content: string, images: string[]) => Promise<void>
+  /** 添加图片消息（不触发 AI 回复） */
+  addImageMessage: (images: string[], content?: string) => Promise<void>
   /** 清空当前对话 */
   clearChat: () => Promise<void>
   /** 重新生成最后一条 AI 消息 */
@@ -30,6 +32,12 @@ export interface CommandContext {
   toggleLorebook: (nameOrId: string) => Promise<boolean>
   /** 获取当前 Token 用量 */
   getTokenUsage: () => { total: number; max: number }
+  /** 静默调用 AI（不显示在对话中），返回完整响应 */
+  callAiHelper: (systemPrompt: string, userContent: string, options?: { temperature?: number; maxTokens?: number }) => Promise<string>
+  /** 获取最近 N 条对话消息（含角色名） */
+  getRecentMessages: (count: number) => { role: 'user' | 'assistant'; content: string; name: string }[]
+  /** 当前用户名 */
+  userName: string
 }
 
 export interface CommandArgDef {

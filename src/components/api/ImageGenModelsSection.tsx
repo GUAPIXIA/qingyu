@@ -4,12 +4,32 @@ import { cn } from '../../lib/utils'
 import type { ImageGenModelConfig } from '../../../shared/types'
 import {
   Image, Plus, Trash2, Check, Eye, EyeOff,
-  Circle, ChevronUp, ChevronDown,
+  Circle, ChevronUp, ChevronDown, Loader2,
 } from 'lucide-react'
 
-const IMAGE_SIZES = [
+/** 提供商选项 */
+const PROVIDERS = [
+  { value: 'openai', label: 'OpenAI DALL-E' },
+  { value: 'sd-webui', label: 'SD WebUI (A1111)' },
+]
+
+/** OpenAI DALL-E 尺寸选项 */
+const OPENAI_SIZES = [
   '1024x1024', '1792x1024', '1024x1792',
   '512x512', '256x256',
+]
+
+/** SD WebUI 尺寸选项 */
+const SD_SIZES = [
+  '512x512', '768x768', '1024x1024',
+  '512x768', '768x512',
+]
+
+/** SD WebUI 采样器选项 */
+const SD_SAMPLERS = [
+  'Euler a', 'Euler', 'LMS', 'Heun', 'DPM2', 'DPM2 a',
+  'DPM++ 2S a', 'DPM++ 2M', 'DPM++ SDE', 'DPM fast',
+  'DDIM', 'PLMS', 'UniPC',
 ]
 
 const IMAGE_QUALITIES = [
@@ -17,7 +37,20 @@ const IMAGE_QUALITIES = [
   { value: 'hd', label: 'HD 高清' },
 ]
 
-function emptyForm(): ImageGenModelConfig {
+/** 根据 provider 返回空表单默认值 */
+function emptyForm(provider: string = 'openai'): ImageGenModelConfig {
+  if (provider === 'sd-webui') {
+    return {
+      id: '', name: '', provider: 'sd-webui',
+      model: '', apiKey: '', baseUrl: 'http://127.0.0.1:7860',
+      size: '512x512', quality: 'standard',
+      enabled: true, order: 0,
+      negativePrompt: '',
+      steps: 20,
+      cfgScale: 7,
+      sampler: 'Euler a',
+    }
+  }
   return {
     id: '', name: '', provider: 'openai',
     model: '', apiKey: '', baseUrl: 'https://api.openai.com/v1',
@@ -36,8 +69,13 @@ export function ImageGenModelsSection() {
   const [showAdd, setShowAdd] = useState(false)
   const [showKey, setShowKey] = useState(false)
   const [form, setForm] = useState<ImageGenModelConfig>(emptyForm())
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const models = [...settings.imageGenModels].sort((a, b) => a.order - b.order)
+
+  const isSdWebui = form.provider === 'sd-webui'
+  const sizeOptions = isSdWebui ? SD_SIZES : OPENAI_SIZES
 
   const resetForm = () => {
     setForm(emptyForm())
@@ -49,12 +87,50 @@ export function ImageGenModelsSection() {
     setEditingId(m.id)
     setShowAdd(false)
     setShowKey(false)
+    setTestResult(null)
   }
 
   const openAdd = () => {
     resetForm()
     setEditingId(null)
     setShowAdd(true)
+    setTestResult(null)
+  }
+
+  /** 切换 provider 时重置相关默认值 */
+  const handleProviderChange = (provider: string) => {
+    setForm((f) => {
+      const defaults = emptyForm(provider)
+      return {
+        ...f,
+        provider,
+        baseUrl: f.baseUrl || defaults.baseUrl,
+        size: defaults.size,
+      }
+    })
+    setTestResult(null)
+  }
+
+  /** 测试连接 */
+  const handleTestConnection = async () => {
+    if (!form.baseUrl.trim()) return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await window.api.imageGen.testConnection({
+        provider: form.provider,
+        baseUrl: form.baseUrl,
+        apiKey: form.apiKey,
+      })
+      setTestResult({
+        success: result.success,
+        message: result.success ? (result.message ?? '连接成功') : (result.error ?? '连接失败'),
+      })
+    } catch (e) {
+      setTestResult({ success: false, message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setTesting(false)
+    }
   }
 
   const handleSave = () => {
@@ -96,34 +172,45 @@ export function ImageGenModelsSection() {
         className="input text-sm"
         value={form.name}
         onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-        placeholder="配置名称（如：DALL-E 3 高画质）"
+        placeholder="配置名称（如：本地 SD / DALL-E 3）"
         autoFocus
       />
 
-      {/* 提供商 */}
+      {/* 提供商（下拉选择） */}
       <div>
         <label className="label">提供商</label>
+        <div className="flex flex-wrap gap-1.5">
+          {PROVIDERS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => handleProviderChange(p.value)}
+              className={cn(
+                'px-2.5 py-1 rounded text-xs border transition-colors',
+                form.provider === p.value
+                  ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                  : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-soft hover:border-tavern-border'
+              )}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Base URL */}
+      <div>
+        <label className="label">Base URL</label>
         <input
           type="text"
-          className="input text-sm"
-          value={form.provider}
-          onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
-          placeholder="例如 openai、stability"
+          className="input text-xs font-mono"
+          value={form.baseUrl}
+          onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
+          placeholder={isSdWebui ? 'http://127.0.0.1:7860' : 'https://api.openai.com/v1'}
         />
       </div>
 
-      {/* Base URL + Key */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="label">Base URL</label>
-          <input
-            type="text"
-            className="input text-xs font-mono"
-            value={form.baseUrl}
-            onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
-            placeholder="https://api.openai.com/v1"
-          />
-        </div>
+      {/* API Key（仅 OpenAI 显示） */}
+      {!isSdWebui && (
         <div>
           <label className="label">API Key</label>
           <div className="relative">
@@ -144,9 +231,9 @@ export function ImageGenModelsSection() {
             </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* 模型 */}
+      {/* 模型名称 */}
       <div>
         <label className="label">模型名称</label>
         <input
@@ -154,24 +241,26 @@ export function ImageGenModelsSection() {
           className="input text-sm"
           value={form.model}
           onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-          placeholder="例如 dall-e-3"
+          placeholder={isSdWebui ? '（可选，如 v1-5-pruned）' : '例如 dall-e-3'}
         />
       </div>
 
-      {/* 尺寸 + 质量 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="label">图片尺寸</label>
-          <select
-            className="input text-sm"
-            value={form.size}
-            onChange={(e) => setForm((f) => ({ ...f, size: e.target.value }))}
-          >
-            {IMAGE_SIZES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
+      {/* 尺寸 */}
+      <div>
+        <label className="label">图片尺寸（默认值，可在快捷面板覆盖）</label>
+        <select
+          className="input text-sm"
+          value={form.size}
+          onChange={(e) => setForm((f) => ({ ...f, size: e.target.value }))}
+        >
+          {sizeOptions.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* 质量（仅 OpenAI 显示） */}
+      {!isSdWebui && (
         <div>
           <label className="label">生成质量</label>
           <div className="flex flex-wrap gap-1.5 mt-1">
@@ -191,12 +280,78 @@ export function ImageGenModelsSection() {
             ))}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* SD WebUI 特有参数 */}
+      {isSdWebui && (
+        <>
+          {/* 负面提示词 */}
+          <div>
+            <label className="label">负面提示词</label>
+            <textarea
+              className="input text-xs resize-none"
+              rows={2}
+              value={form.negativePrompt ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, negativePrompt: e.target.value }))}
+              placeholder="如: lowres, bad anatomy, bad hands, text, error"
+            />
+          </div>
+
+          {/* 步数 + CFG */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">采样步数 (Steps)</label>
+              <input
+                type="number"
+                className="input text-sm"
+                value={form.steps ?? 20}
+                min={1}
+                max={150}
+                onChange={(e) => setForm((f) => ({ ...f, steps: parseInt(e.target.value) || 20 }))}
+              />
+            </div>
+            <div>
+              <label className="label">CFG Scale</label>
+              <input
+                type="number"
+                className="input text-sm"
+                value={form.cfgScale ?? 7}
+                min={1}
+                max={30}
+                step={0.5}
+                onChange={(e) => setForm((f) => ({ ...f, cfgScale: parseFloat(e.target.value) || 7 }))}
+              />
+            </div>
+          </div>
+
+          {/* 采样器 */}
+          <div>
+            <label className="label">采样器</label>
+            <select
+              className="input text-sm"
+              value={form.sampler ?? 'Euler a'}
+              onChange={(e) => setForm((f) => ({ ...f, sampler: e.target.value }))}
+            >
+              {SD_SAMPLERS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
 
       {/* 操作按钮 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button onClick={handleSave} disabled={!form.name.trim()} className="btn-primary text-xs">
           <Check className="w-3.5 h-3.5" />保存
+        </button>
+        <button
+          onClick={handleTestConnection}
+          disabled={!form.baseUrl.trim() || testing}
+          className="px-3 py-1.5 rounded-lg text-xs border border-tavern-border-soft text-tavern-text-soft hover:border-tavern-accent hover:text-tavern-accent transition-colors disabled:opacity-50 flex items-center gap-1.5"
+        >
+          {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Circle className="w-3 h-3" />}
+          {testing ? '测试中...' : '测试连接'}
         </button>
         <button
           onClick={() => { editingId ? setEditingId(null) : setShowAdd(false); resetForm() }}
@@ -205,6 +360,18 @@ export function ImageGenModelsSection() {
           取消
         </button>
       </div>
+
+      {/* 测试结果 */}
+      {testResult && (
+        <div className={cn(
+          'text-xs px-3 py-2 rounded-lg border',
+          testResult.success
+            ? 'border-tavern-success/30 bg-tavern-success/10 text-tavern-success'
+            : 'border-tavern-danger/30 bg-tavern-danger/10 text-tavern-danger'
+        )}>
+          {testResult.success ? '✓ ' : '✗ '}{testResult.message}
+        </div>
+      )}
     </div>
   )
 
@@ -269,7 +436,8 @@ export function ImageGenModelsSection() {
                     {m.provider}
                     {m.model ? ` · ${m.model}` : ''}
                     {m.size ? ` · ${m.size}` : ''}
-                    {m.quality ? ` · ${m.quality}` : ''}
+                    {m.provider === 'openai' && m.quality ? ` · ${m.quality}` : ''}
+                    {m.provider === 'sd-webui' && m.steps ? ` · ${m.steps}步` : ''}
                   </div>
                 </div>
 

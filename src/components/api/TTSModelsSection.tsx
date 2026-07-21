@@ -4,7 +4,7 @@ import { cn } from '../../lib/utils'
 import type { TTSModelConfig } from '../../../shared/types'
 import {
   Volume2, Plus, Edit3, Trash2, Check, X, Eye, EyeOff,
-  Circle, ChevronUp, ChevronDown, GripVertical,
+  Circle, ChevronUp, ChevronDown, GripVertical, Loader2,
 } from 'lucide-react'
 
 const TTS_PROVIDERS = [
@@ -30,6 +30,8 @@ export function TTSModelsSection() {
   const [showAdd, setShowAdd] = useState(false)
   const [showKey, setShowKey] = useState(false)
   const [form, setForm] = useState<TTSModelConfig>(emptyForm())
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const models = [...settings.ttsModels].sort((a, b) => a.order - b.order)
 
@@ -43,12 +45,48 @@ export function TTSModelsSection() {
     setEditingId(m.id)
     setShowAdd(false)
     setShowKey(false)
+    setTestResult(null)
   }
 
   const openAdd = () => {
     resetForm()
     setEditingId(null)
     setShowAdd(true)
+    setTestResult(null)
+  }
+
+  /** 测试连接 */
+  const handleTestConnection = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      if (form.provider === 'edge') {
+        // Edge TTS: 检查本地语音引擎
+        const voices = await window.api.tts.listVoices('edge')
+        if (voices.length > 0) {
+          setTestResult({ success: true, message: `连接成功，${voices.length} 个可用语音` })
+        } else {
+          setTestResult({ success: false, message: '未找到已安装的语音，请检查 Windows 语音设置' })
+        }
+      } else {
+        // OpenAI TTS: 复用对话 API 测试连接
+        const result = await window.api.ai.testConnection({
+          type: 'openai',
+          baseUrl: form.baseUrl || 'https://api.openai.com/v1',
+          apiKey: form.apiKey,
+          model: form.model || 'tts-1',
+        })
+        if (result.success) {
+          setTestResult({ success: true, message: result.models ? `连接成功，${result.models.length} 个模型可用` : '连接成功' })
+        } else {
+          setTestResult({ success: false, message: result.error ?? '连接失败' })
+        }
+      }
+    } catch (e) {
+      setTestResult({ success: false, message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setTesting(false)
+    }
   }
 
   const handleSave = () => {
@@ -182,9 +220,17 @@ export function TTSModelsSection() {
       </div>
 
       {/* 操作按钮 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button onClick={handleSave} disabled={!form.name.trim()} className="btn-primary text-xs">
           <Check className="w-3.5 h-3.5" />保存
+        </button>
+        <button
+          onClick={handleTestConnection}
+          disabled={testing}
+          className="px-3 py-1.5 rounded-lg text-xs border border-tavern-border-soft text-tavern-text-soft hover:border-tavern-accent hover:text-tavern-accent transition-colors disabled:opacity-50 flex items-center gap-1.5"
+        >
+          {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Circle className="w-3 h-3" />}
+          {testing ? '测试中...' : '测试连接'}
         </button>
         <button
           onClick={() => { editingId ? setEditingId(null) : setShowAdd(false); resetForm() }}
@@ -193,6 +239,18 @@ export function TTSModelsSection() {
           取消
         </button>
       </div>
+
+      {/* 测试结果 */}
+      {testResult && (
+        <div className={cn(
+          'text-xs px-3 py-2 rounded-lg border',
+          testResult.success
+            ? 'border-tavern-success/30 bg-tavern-success/10 text-tavern-success'
+            : 'border-tavern-danger/30 bg-tavern-danger/10 text-tavern-danger'
+        )}>
+          {testResult.success ? '✓ ' : '✗ '}{testResult.message}
+        </div>
+      )}
     </div>
   )
 

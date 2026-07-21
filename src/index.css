@@ -143,10 +143,8 @@ body {
 .bubble-standard .msg-bubble { border-radius: 8px; }
 .bubble-sharp .msg-bubble { border-radius: 2px; }
 
-/* 消息间距 */
-.spacing-compact .msg-row { margin-bottom: 8px; }
-.spacing-normal .msg-row { margin-bottom: 20px; }
-.spacing-loose .msg-row { margin-bottom: 32px; }
+/* 消息间距 — CSS 变量驱动 */
+  .msg-row { margin-bottom: var(--message-spacing, 20px); }
 
 /* ===================== 滚动条 ===================== */
 ::-webkit-scrollbar {
@@ -199,6 +197,68 @@ body {
   }
   .textarea {
     @apply input resize-none;
+  }
+
+  /* 统一 textarea resize 手柄 — 双斜线样式 */
+  textarea::-webkit-resizer {
+    border-width: 0 0 6px 6px;
+    border-style: solid;
+    border-color: transparent;
+    border-bottom-color: var(--tavern-border, #d1d5db);
+    background: transparent;
+    width: 0;
+    height: 0;
+  }
+  textarea::-webkit-resizer::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    background:
+      linear-gradient(135deg, transparent 33%, var(--tavern-border, #d1d5db) 33%, var(--tavern-border, #d1d5db) 40%, transparent 40%),
+      linear-gradient(135deg, transparent 66%, var(--tavern-border, #d1d5db) 66%, var(--tavern-border, #d1d5db) 73%, transparent 73%);
+  }
+  .dark textarea::-webkit-resizer {
+    border-bottom-color: var(--tavern-border-soft, #374151);
+  }
+  .dark textarea::-webkit-resizer::after {
+    background:
+      linear-gradient(135deg, transparent 33%, var(--tavern-border-soft, #374151) 33%, var(--tavern-border-soft, #374151) 40%, transparent 40%),
+      linear-gradient(135deg, transparent 66%, var(--tavern-border-soft, #374151) 66%, var(--tavern-border-soft, #374151) 73%, transparent 73%);
+  }
+
+  /* textarea 滚动条：溢出时 hover/focus 渐显 */
+  textarea {
+    overflow-y: auto;
+    scrollbar-width: thin;                    /* Firefox：细滚动条 */
+    scrollbar-color: transparent transparent; /* Firefox：默认透明 */
+    transition: scrollbar-color 0.3s ease;
+  }
+  textarea:hover,
+  textarea:focus {
+    scrollbar-color: var(--tavern-border, #d1d5db) transparent; /* Firefox：hover/focus 显示 */
+  }
+
+  /* Chrome/Safari/Edge：滚动条默认透明，hover 时渐显 */
+  textarea::-webkit-scrollbar {
+    width: 6px;
+  }
+  textarea::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 3px;
+    transition: background-color 0.3s ease;
+  }
+  textarea::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  textarea:hover::-webkit-scrollbar-thumb,
+  textarea:focus::-webkit-scrollbar-thumb {
+    background-color: var(--tavern-border-soft, rgba(156, 163, 175, 0.4));
+  }
+  textarea:hover::-webkit-scrollbar-thumb:hover {
+    background-color: var(--tavern-border, rgba(107, 114, 128, 0.6));
   }
   .select {
     @apply input cursor-pointer;

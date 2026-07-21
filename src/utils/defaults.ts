@@ -19,7 +19,7 @@ export function getDefaultSettings(): Settings {
     fontSize: 'comfortable',
     fontSizeCustom: 0,
     bubbleStyle: 'round',
-    messageSpacing: 'normal',
+    messageSpacing: 20,
     streamOutput: true,
     autoScroll: true,
     ttsEnabled: false,
@@ -37,6 +37,7 @@ export function getDefaultSettings(): Settings {
     showTokenCount: true,
     enableThoughtFormat: true,
     enableUsageTracking: true,
+    useCoverAsBackground: false,
     pricingRules: [
       { id: 'builtin-gpt4o', modelPattern: 'gpt-4o*', inputPricePer1M: 2.5, outputPricePer1M: 10, isBuiltin: true },
       { id: 'builtin-gpt4o-mini', modelPattern: 'gpt-4o-mini*', inputPricePer1M: 0.15, outputPricePer1M: 0.6, isBuiltin: true },

@@ -191,16 +191,33 @@ export function SettingsPage() {
                   <span className="inline-flex items-center gap-1.5">
                     <AlignJustify className="w-3.5 h-3.5" />消息间距
                   </span>
+                  <span className="text-xs text-tavern-text-muted ml-2">{settings.messageSpacing}px</span>
                 </label>
-                <OptionGroup<Settings['messageSpacing']>
+                <input
+                  type="range"
+                  min="4"
+                  max="60"
+                  step="2"
                   value={settings.messageSpacing}
-                  onChange={(v) => updateSettings({ messageSpacing: v })}
-                  options={[
-                    { value: 'compact', label: '紧凑' },
-                    { value: 'normal', label: '标准' },
-                    { value: 'loose', label: '宽松' },
-                  ]}
+                  onChange={(e) => updateSettings({ messageSpacing: Number(e.target.value) })}
+                  className="w-full accent-tavern-accent mt-1"
                 />
+                <div className="flex gap-2 mt-1.5">
+                  {[8, 20, 36].map(v => (
+                    <button
+                      key={v}
+                      className={cn(
+                        'px-2.5 py-0.5 text-xs rounded border transition-colors',
+                        settings.messageSpacing === v
+                          ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                          : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
+                      )}
+                      onClick={() => updateSettings({ messageSpacing: v })}
+                    >
+                      {v === 8 ? '紧凑' : v === 20 ? '标准' : '宽松'} {v}px
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* 预览示意图 */}
@@ -251,6 +268,17 @@ export function SettingsPage() {
               <Toggle
                 checked={settings.autoScroll}
                 onChange={(v) => updateSettings({ autoScroll: v })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-sm">使用角色封面作为聊天背景</p>
+                <p className="text-xs text-tavern-text-muted">开启后，将自动使用角色的封面图片作为聊天背景（未设置封面的角色仍使用手动背景）</p>
+              </div>
+              <Toggle
+                checked={settings.useCoverAsBackground ?? false}
+                onChange={(v) => updateSettings({ useCoverAsBackground: v })}
               />
             </div>
           </div>

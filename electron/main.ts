@@ -7,11 +7,13 @@ import { registerLorebookIPC } from './ipc/lorebook'
 import { registerPresetIPC } from './ipc/preset'
 import { registerAIIPC } from './services/ai'
 import { registerTTSIPC } from './ipc/tts'
+import { registerImageGenIPC } from './ipc/imageGen'
 import { registerFileIPC } from './ipc/file'
 import { registerRegexIPC } from './ipc/regex'
 import { registerPersonaIPC } from './ipc/persona'
 import { registerUsageIPC } from './ipc/usage'
 import { registerMcpIPC } from './ipc/mcp'
+import { registerGroupIPC } from './ipc/group'
 import { mcpManager } from './mcp/manager'
 import { ensureDataDir } from './services/storage'
 import { initLogger, createLogger, getRecentLogs } from './services/logger'
@@ -75,11 +77,13 @@ app.whenReady().then(async () => {
   registerPresetIPC(ipcMain, dialog)
   registerAIIPC(ipcMain)
   registerTTSIPC(ipcMain)
+  registerImageGenIPC(ipcMain)
   registerFileIPC(ipcMain, dialog)
   registerRegexIPC(ipcMain)
   registerPersonaIPC(ipcMain)
   registerUsageIPC(ipcMain)
   registerMcpIPC(ipcMain)
+  registerGroupIPC(ipcMain)
 
   // 自动启动配置为 autoStart 的 MCP server
   const logger = createLogger('main')

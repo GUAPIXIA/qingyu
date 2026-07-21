@@ -7,6 +7,7 @@ import type {
   PresetAPI,
   AIAPI,
   TTSAPI,
+  ImageGenAPI,
   FileAPI,
   RegexAPI,
   PersonaAPI,
@@ -116,6 +117,12 @@ const ttsApi: TTSAPI = {
   listVoices: (provider) => ipcRenderer.invoke('tts:getVoices', provider),
 }
 
+// ---- 文生图 ----
+const imageGenApi: ImageGenAPI = {
+  generate: (prompt, options) => ipcRenderer.invoke('imageGen:generate', prompt, options),
+  testConnection: (config) => ipcRenderer.invoke('imageGen:testConnection', config),
+}
+
 // ---- 文件 ----
 const fileApi: FileAPI = {
   selectImage: () => ipcRenderer.invoke('file:selectImage'),
@@ -175,10 +182,26 @@ contextBridge.exposeInMainWorld('api', {
   lorebook: lorebookApi,
   preset: presetApi,
   tts: ttsApi,
+  imageGen: imageGenApi,
   regex: regexApi,
   persona: personaApi,
   file: fileApi,
   log: logApi,
   usage: usageApi,
   mcp: mcpApi,
+  group: {
+    list: () => ipcRenderer.invoke('group:list'),
+    save: (group) => ipcRenderer.invoke('group:save', group),
+    delete: (id) => ipcRenderer.invoke('group:delete', id),
+    listSessions: (groupId) => ipcRenderer.invoke('group:listSessions', groupId),
+    createSession: (groupId) => ipcRenderer.invoke('group:createSession', groupId),
+    deleteSession: (groupId, sessionId) => ipcRenderer.invoke('group:deleteSession', groupId, sessionId),
+    renameSession: (groupId, sessionId, title) => ipcRenderer.invoke('group:renameSession', groupId, sessionId, title),
+    listMessages: (groupId, sessionId) => ipcRenderer.invoke('group:listMessages', groupId, sessionId),
+    saveMessage: (groupId, sessionId, msg) => ipcRenderer.invoke('group:saveMessage', groupId, sessionId, msg),
+    editMessage: (groupId, sessionId, messageId, content) => ipcRenderer.invoke('group:editMessage', groupId, sessionId, messageId, content),
+    deleteMessage: (groupId, sessionId, messageId) => ipcRenderer.invoke('group:deleteMessage', groupId, sessionId, messageId),
+    clearChat: (groupId, sessionId) => ipcRenderer.invoke('group:clearChat', groupId, sessionId),
+    exportChat: (groupId, sessionId, format) => ipcRenderer.invoke('group:exportChat', groupId, sessionId, format),
+  },
 })

@@ -6,6 +6,8 @@ import type {
   Lorebook,
   Preset,
   GroupChat,
+  GroupMessage,
+  GroupSession,
   Settings,
   ChatParams,
   TTSOptions,
@@ -104,6 +106,23 @@ export interface PresetAPI {
   importJson(): Promise<Preset | null>
 }
 
+// ===================== 群聊接口 =====================
+export interface GroupChatAPI {
+  list(): Promise<GroupChat[]>
+  save(group: GroupChat): Promise<void>
+  delete(id: string): Promise<void>
+  listSessions(groupId: string): Promise<GroupSession[]>
+  createSession(groupId: string): Promise<GroupSession>
+  deleteSession(groupId: string, sessionId: string): Promise<void>
+  renameSession(groupId: string, sessionId: string, title: string): Promise<void>
+  listMessages(groupId: string, sessionId: string): Promise<GroupMessage[]>
+  saveMessage(groupId: string, sessionId: string, msg: GroupMessage): Promise<void>
+  editMessage(groupId: string, sessionId: string, messageId: string, content: string): Promise<void>
+  deleteMessage(groupId: string, sessionId: string, messageId: string): Promise<void>
+  clearChat(groupId: string, sessionId?: string): Promise<void>
+  exportChat(groupId: string, sessionId: string, format: 'json' | 'md'): Promise<string>
+}
+
 // ===================== TTS 接口 =====================
 export interface TTSAPI {
   speak(text: string, options: TTSOptions): Promise<void>
@@ -112,6 +131,32 @@ export interface TTSAPI {
   resume(): Promise<void>
   getState(): Promise<{ state: 'idle' | 'speaking' | 'paused' }>
   listVoices(provider: string): Promise<Voice[]>
+}
+
+// ===================== 文生图接口 =====================
+export interface ImageGenResult {
+  success: boolean
+  images?: string[]    // base64 data URL 数组
+  error?: string
+}
+
+export interface ImageGenTestResult {
+  success: boolean
+  message?: string
+  error?: string
+}
+
+export interface ImageGenAPI {
+  generate(prompt: string, options?: {
+    negativePrompt?: string
+    size?: string
+    quality?: string
+  }): Promise<ImageGenResult>
+  testConnection(config: {
+    provider: string
+    baseUrl: string
+    apiKey: string
+  }): Promise<ImageGenTestResult>
 }
 
 // ===================== 正则表达式接口 =====================
@@ -174,12 +219,14 @@ export interface ExposedAPI {
   lorebook: LorebookAPI
   preset: PresetAPI
   tts: TTSAPI
+  imageGen: ImageGenAPI
   regex: RegexAPI
   persona: PersonaAPI
   file: FileAPI
   log: LogAPI
   usage: UsageAPI
   mcp: McpAPI
+  group: GroupChatAPI
 }
 
 declare global {

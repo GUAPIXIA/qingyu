@@ -1,7 +1,7 @@
 {
   "name": "qingyu",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.8.1",
   "type": "module",
   "description": "轻语 - 轻量级 AI 角色扮演客户端",
   "author": "QingYu",

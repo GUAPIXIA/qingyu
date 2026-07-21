@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown } from 'lucide-react'
+import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2 } from 'lucide-react'
 import type { Preset, Lorebook } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -9,6 +9,11 @@ interface QuickSettingsPanelProps {
   open: boolean
   onClose: () => void
 }
+
+const IMAGE_GEN_SIZES = [
+  '512x512', '768x768', '1024x1024',
+  '512x768', '768x512',
+]
 
 export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
   const { activePresetId, activeLorebookIds, setActivePreset, setActiveLorebooks } = useChatStore()
@@ -105,8 +110,16 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                   {[512, 1024, 2048, 4096].map((n) => (
                     <button
                       key={n}
+                      disabled={!activePreset}
+                      onClick={async () => {
+                        if (!activePreset) return
+                        const updated = { ...activePreset, maxTokens: n }
+                        await window.api.preset.save(updated)
+                        setPresets(prev => prev.map(p => p.id === updated.id ? updated : p))
+                      }}
                       className={cn(
                         'px-2 py-0.5 rounded text-[11px] border transition-colors',
+                        !activePreset && 'opacity-50 cursor-not-allowed',
                         (activePreset?.maxTokens ?? 1024) === n
                           ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
                           : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
@@ -218,6 +231,52 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                 )}
               </>
             )}
+          </Section>
+
+          {/* ===== AI 生图 ===== */}
+          <Section icon={Wand2} title="AI 生图">
+            <div className="space-y-3">
+              <ToggleRow
+                checked={settings.imageGenAutoEnabled ?? false}
+                onChange={(v) => updateSettings({ imageGenAutoEnabled: v })}
+              >
+                自动生图（回复中 [image: ...] 标记）
+              </ToggleRow>
+
+              {(() => {
+                const imgProfile = useSettingsStore.getState().getActiveImageGen()
+                return imgProfile ? (
+                  <p className="text-[11px] text-tavern-text-muted truncate">
+                    模型: {imgProfile.name} ({imgProfile.provider})
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-tavern-text-muted">
+                    未配置生图模型，前往 设置 → API → 生图
+                  </p>
+                )
+              })()}
+
+              {/* 尺寸选择按钮组 */}
+              <div>
+                <label className="text-xs text-tavern-text-muted shrink-0 block mb-1.5">尺寸</label>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {IMAGE_GEN_SIZES.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => updateSettings({ imageGenSize: s })}
+                      className={cn(
+                        'px-2 py-0.5 rounded text-[11px] border transition-colors',
+                        (settings.imageGenSize ?? '512x512') === s
+                          ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
+                          : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
+                      )}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </Section>
 
           {/* ===== 显示选项 ===== */}

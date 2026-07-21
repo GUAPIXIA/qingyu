@@ -34,6 +34,25 @@ export interface Character {
   _importImageUrl?: string
   /** 聊天页背景图（base64 data URL） */
   chatBackground?: string
+  /** 聊天页背景参数 */
+  chatBackgroundParams?: {
+    opacity: number
+    blur: number
+    type: 'image' | 'gradient'
+    gradient?: string
+    posX: number
+    posY: number
+    scale: number
+  }
+  /** 翻译内容：UI 显示优先使用，AI 上下文继续使用原始字段 */
+  translatedContent?: {
+    name?: string
+    description?: string
+    personality?: string
+    scenario?: string
+    firstMessage?: string
+    exampleDialog?: string
+  }
 }
 
 /** 聊天消息 */
@@ -168,7 +187,50 @@ export interface GroupChat {
   memberIds: string[]
   currentSpeakerIndex: number
   autoMode: boolean
+  chatMode: 'mention' | 'polling' | 'free'
+  maxRounds: number
+  speakerInterval: number
+  lorebookIds: string[]
+  presetId: string | null
+  systemPrompt: string
   createdAt: number
+  updatedAt: number
+  /** 聊天背景图（base64） */
+  chatBackground?: string
+  /** 背景参数 */
+  chatBackgroundParams?: {
+    opacity: number
+    blur: number
+    type: 'image' | 'gradient'
+    gradient?: string
+  }
+  /** 自定义主题色（十六进制） */
+  themeColor?: string
+}
+
+/** 群聊消息 */
+export interface GroupMessage {
+  id: string
+  groupId: string
+  characterId: string
+  content: string
+  images: string[]
+  timestamp: number
+  round: number
+  /** 翻译结果 */
+  translation?: string | null
+  /** Token 用量 */
+  tokenUsage?: MessageTokenUsage
+}
+
+/** 群聊会话 */
+export interface GroupSession {
+  id: string
+  groupId: string
+  title: string
+  messageCount: number
+  createdAt: number
+  updatedAt: number
 }
 
 /** AI 后端提供商类型 */
@@ -209,7 +271,7 @@ export interface Settings {
   fontSize: 'compact' | 'comfortable' | 'loose' | 'custom'
   fontSizeCustom: number
   bubbleStyle: 'round' | 'standard' | 'sharp'
-  messageSpacing: 'compact' | 'normal' | 'loose'
+  messageSpacing: number
   streamOutput: boolean
   autoScroll: boolean
   // TTS 多模型配置
@@ -219,6 +281,10 @@ export interface Settings {
   // 生图多模型配置
   imageGenModels: ImageGenModelConfig[]
   activeImageGenModelId: string | null
+  /** 是否启用 AI 自动生图（AI 回复中包含 [image: ...] 标记时自动生成） */
+  imageGenAutoEnabled?: boolean
+  /** 当前选择的生图尺寸（运行时可切换，覆盖模型配置中的默认值） */
+  imageGenSize?: string
   // 识图多模型配置
   visionModels: VisionModelConfig[]
   activeVisionModelId: string | null
@@ -238,6 +304,8 @@ export interface Settings {
   pricingRules?: PricingRule[]
   /** 用户时区（用于按天统计） */
   timezone?: string
+  /** 是否使用角色封面作为聊天背景（未设置封面的角色回退到手动背景） */
+  useCoverAsBackground?: boolean
 }
 
 // ===================== 功能模型配置 =====================
@@ -259,14 +327,19 @@ export interface TTSModelConfig {
 export interface ImageGenModelConfig {
   id: string
   name: string
-  provider: string
+  provider: string          // 'openai' | 'sd-webui'
   model: string
   apiKey: string
   baseUrl: string
   size: string
-  quality: string
+  quality: string           // OpenAI DALL-E 用
   enabled: boolean
   order: number
+  // SD WebUI 特有参数（provider === 'sd-webui' 时使用）
+  negativePrompt?: string
+  steps?: number            // 默认 20
+  cfgScale?: number         // 默认 7
+  sampler?: string          // 如 'Euler a'
 }
 
 /** 识图模型配置 */

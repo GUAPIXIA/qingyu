@@ -17,7 +17,7 @@ function createSampleCharacter(): Character {
     tags: ['奇幻', '法师', '女性', '冒险'],
     lorebookId: null,
     alternateGreetings: [],
-    creator: '轻Tavern',
+    creator: '轻语',
     createdAt: now,
     updatedAt: now,
   }

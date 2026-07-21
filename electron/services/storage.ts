@@ -53,7 +53,7 @@ export function getDefaultSettings(): Settings {
     fontSize: 'comfortable',
     fontSizeCustom: 0,
     bubbleStyle: 'round',
-    messageSpacing: 'normal',
+    messageSpacing: 20,
     streamOutput: true,
     autoScroll: true,
     ttsEnabled: false,
