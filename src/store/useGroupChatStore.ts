@@ -23,6 +23,9 @@ interface ActiveStream {
 
 let activeStream: ActiveStream | null = null
 
+/** 轮询定时器 handle，用于切换/删除群聊时清理 */
+let pollingTimer: ReturnType<typeof setTimeout> | null = null
+
 function cleanupActiveStream() {
   if (!activeStream) return
   clearTimeout(activeStream.flushTimer!)
@@ -31,6 +34,14 @@ function cleanupActiveStream() {
   activeStream.unbindDone()
   activeStream.unbindError()
   activeStream = null
+}
+
+/** 清理轮询定时器 */
+function clearPollingTimer() {
+  if (pollingTimer !== null) {
+    clearTimeout(pollingTimer)
+    pollingTimer = null
+  }
 }
 
 interface GroupChatState {
@@ -100,12 +111,16 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   deleteGroup: async (id) => {
+    clearPollingTimer()
+    cleanupActiveStream()
     await window.api.group.delete(id)
     const groups = await window.api.group.list()
     set({ groupChats: groups, currentGroup: null, messages: [], sessions: [], currentSessionId: null })
   },
 
   selectGroup: async (groupId) => {
+    clearPollingTimer()
+    cleanupActiveStream()
     const groups = await window.api.group.list()
     const group = groups.find(g => g.id === groupId) ?? null
     if (!group) return
@@ -226,6 +241,16 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const profile = settingsStore.getActiveProfile()
     if (!profile) return
 
+    // 如果已有翻译，切换显示/隐藏
+    if (msg.translation && msg.translation !== '...') {
+      set(s => ({
+        messages: s.messages.map(m =>
+          m.id === messageId ? { ...m, _showTranslation: !m._showTranslation } : m
+        ),
+      }))
+      return
+    }
+
     // 设置加载状态
     set(s => ({
       messages: s.messages.map(m =>
@@ -233,48 +258,59 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       ),
     }))
 
-    try {
-      const response = await fetch(`${profile.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${profile.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: profile.model,
-          messages: [
-            { role: 'system', content: '你是一个翻译助手。请将以下内容翻译成中文。只输出翻译结果，不要添加任何解释。' },
-            { role: 'user', content: msg.content },
-          ],
-          temperature: 0.3,
-          max_tokens: 2048,
-        }),
-      })
+    // H-08 修复：使用 IPC 而非直接 fetch，避免 API Key 暴露和 CORS 问题
+    const requestId = `group-translate-${messageId}-${Date.now()}`
+    let result = ''
 
-      if (!response.ok) {
-        set(s => ({
-          messages: s.messages.map(m =>
-            m.id === messageId ? { ...m, translation: null } : m
-          ),
-        }))
-        return
-      }
+    const unbindChunk = window.api.ai.onChunk((data) => {
+      if (data.requestId !== requestId) return
+      result += data.text
+    })
 
-      const data = await response.json()
-      const translated = data.choices?.[0]?.message?.content?.trim() || ''
+    const unbindDone = window.api.ai.onDone((doneId) => {
+      if (doneId !== requestId) return
+      unbindChunk(); unbindDone(); unbindError()
 
-      set(s => ({
-        messages: s.messages.map(m =>
-          m.id === messageId ? { ...m, translation: translated || null } : m
+      const finalResult = result || null
+      set((s: any) => ({
+        messages: s.messages.map((m: GroupMessage) =>
+          m.id === messageId ? { ...m, translation: finalResult, _showTranslation: true } : m
         ),
       }))
-    } catch {
-      set(s => ({
-        messages: s.messages.map(m =>
+    })
+
+    const unbindError = window.api.ai.onError((data) => {
+      if (data.requestId !== requestId) return
+      unbindChunk(); unbindDone(); unbindError()
+
+      set((s: any) => ({
+        messages: s.messages.map((m: GroupMessage) =>
           m.id === messageId ? { ...m, translation: null } : m
         ),
       }))
-    }
+    })
+
+    window.api.ai.chat({
+      requestId,
+      messages: [
+        { role: 'system', content: '你是一个翻译助手。请将以下内容翻译成中文。只输出翻译结果，不要添加任何解释。' },
+        { role: 'user', content: msg.content },
+      ],
+      provider: profile.provider,
+      apiKey: profile.apiKey,
+      baseUrl: profile.baseUrl,
+      model: profile.model,
+      temperature: 0.3,
+      maxTokens: 2048,
+      stream: false,
+    }).catch(() => {
+      unbindChunk(); unbindDone(); unbindError()
+      set((s: any) => ({
+        messages: s.messages.map((m: GroupMessage) =>
+          m.id === messageId ? { ...m, translation: null } : m
+        ),
+      }))
+    })
   },
 
   ensureLorebooksLoaded: async (lorebookIds) => {
@@ -377,8 +413,12 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   stopStreaming: () => {
+    const requestId = activeStream?.requestId ?? ''
     cleanupActiveStream()
-    window.api.ai.cancelChat(activeStream?.requestId ?? '').catch(() => {})
+    clearPollingTimer()
+    if (requestId) {
+      window.api.ai.cancelChat(requestId).catch(() => {})
+    }
     set({ isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
   },
 
@@ -541,10 +581,14 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
 async function flushStream(set: any) {
   if (!activeStream) return
+  const { msgId, accumulated } = activeStream
   activeStream.flushTimer = null
-  set({
-    streamingContent: activeStream.accumulated,
-  })
+  set((s: any) => ({
+    messages: s.messages.map((m: GroupMessage) =>
+      m.id === msgId ? { ...m, content: accumulated } : m,
+    ),
+    streamingContent: accumulated,
+  }))
 }
 
 async function streamGroupAI(
@@ -658,10 +702,12 @@ async function streamGroupAI(
     if (activeStream?.flushTimer !== null) {
       clearTimeout(activeStream.flushTimer!)
     }
+    // C-02 修复：先保存 accumulated 再 cleanup，否则 activeStream 已被置 null
+    const accumulated = activeStream?.accumulated ?? ''
     cleanupActiveStream()
 
-    const errContent = activeStream?.accumulated
-      ? activeStream.accumulated + '\n\n⚠️ ' + data.error
+    const errContent = accumulated
+      ? accumulated + '\n\n⚠️ ' + data.error
       : '⚠️ ' + data.error
 
     set((s: any) => ({
@@ -806,7 +852,7 @@ async function streamGroupAIFree(
 
   const unbindError = window.api.ai.onError((data: { requestId: string; error: string }) => {
     if (data.requestId !== requestId) return
-    if (activeStream?.flushTimer !== null) clearTimeout(activeStream.flushTimer!)
+    clearPollingTimer()
     cleanupActiveStream()
     set((s: any) => ({
       messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, content: '⚠️ ' + data.error } : m),
@@ -941,11 +987,14 @@ async function checkPollingContinue(set: any, get: any, group: GroupChat) {
   const nextIdx = (currentIdx + 1) % group.memberIds.length
   const nextCharId = group.memberIds[nextIdx]
 
-  // 更新 currentSpeakerIndex
+  // 更新 currentSpeakerIndex 并持久化
   const updatedGroup = { ...group, currentSpeakerIndex: nextIdx }
+  set({ currentGroup: updatedGroup })
+  window.api.group.save(updatedGroup).catch(() => {})
 
-  // 间隔后自动下一轮
-  setTimeout(() => {
+  // H-02 修复：保存定时器 handle，以便切换/删除群聊时清理
+  clearPollingTimer()
+  pollingTimer = setTimeout(() => {
     const currentState = get()
     if (currentState.isStreaming) return
     currentState.sendPollingRound(nextCharId)

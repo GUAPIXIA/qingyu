@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 应用名称字体：站酷快乐体（ZCOOL KuaiLe）- 免费可商用 */
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap');
+
+.app-brand {
+  font-family: 'ZCOOL KuaiLe', cursive;
+  background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 50%, #6366f1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
 /* ===================== 全局变量 ===================== */
 /* 浅色主题（默认） */
 :root {

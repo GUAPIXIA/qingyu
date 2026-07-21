@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '../lib/utils'
 import {
   Settings,
@@ -125,6 +125,11 @@ const faqs: { q: string; a: string }[] = [
 export function HelpPage() {
   const [tab, setTab] = useState<TabKey>('guide')
   const [openFaq, setOpenFaq] = useState<number | null>(0)
+  const [appVersion, setAppVersion] = useState('')
+
+  useEffect(() => {
+    window.api.app.getVersion().then(v => setAppVersion(v)).catch(() => {})
+  }, [])
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -169,7 +174,7 @@ export function HelpPage() {
                   </div>
                   <div>
                     <div className="font-display text-lg font-bold">轻语</div>
-                    <div className="text-xs text-tavern-text-muted">版本 v0.8.1</div>
+                    <div className="text-xs text-tavern-text-muted">版本 v{appVersion || '...'}</div>
                   </div>
                 </div>
                 <p className="text-sm text-tavern-text-soft leading-relaxed mb-3">
