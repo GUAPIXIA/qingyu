@@ -37,3 +37,7 @@ SillyTavern-Launcher/
 *_spec_*.json
 spec_*.json
 .trae/
+
+# Environment files (contain secrets)
+.env
+server/.env
