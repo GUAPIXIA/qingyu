@@ -4,6 +4,7 @@ import { DIRS, writeJson, readJson, listJsonFiles, removeFile } from '../service
 import { createLogger } from '../services/logger'
 import type { Preset } from '../../shared/types'
 import { nanoid } from 'nanoid'
+import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('preset')
 
@@ -71,6 +72,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
       preset.name = `${preset.name} (副本)`
       preset.isBuiltin = false
     }
+    safeId(preset.id)
     writeJson(join(DIRS.presets(), `${preset.id}.json`), preset)
     log.info('预设已保存', { id: preset.id, name: preset.name })
     return preset
@@ -78,6 +80,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
   // 删除
   ipcMain.handle('preset:delete', async (_e, id: string) => {
+    safeId(id)
     removeFile(join(DIRS.presets(), `${id}.json`))
     log.info('预设已删除', { id })
   })

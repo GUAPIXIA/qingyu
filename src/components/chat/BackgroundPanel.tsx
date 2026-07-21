@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { X, Upload, Sun, Waves, Trees, Moon, Cloud, Flame } from 'lucide-react'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { cn } from '../../lib/utils'
@@ -31,6 +32,10 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
   const posY = params.posY ?? 50
   const scale = params.scale ?? 100
 
+  // P-6 修复：滑块拖动时仅更新本地状态，mouseup 时才持久化
+  const [localOpacity, setLocalOpacity] = useState(opacity)
+  const [localBlur, setLocalBlur] = useState(blur)
+
   const updateBg = async (partial: Partial<NonNullable<typeof character.chatBackgroundParams>> & { chatBackground?: string | undefined }) => {
     const updated: typeof character = {
       ...character,
@@ -46,6 +51,10 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
       },
     }
     await saveCharacter(updated)
+  }
+
+  const saveSliderValues = () => {
+    updateBg({ opacity: localOpacity, blur: localBlur })
   }
 
   const handleSelectGradient = (key: string) => {
@@ -65,11 +74,11 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
   }
 
   const handleOpacityChange = (val: number) => {
-    updateBg({ opacity: val })
+    setLocalOpacity(val)
   }
 
   const handleBlurChange = (val: number) => {
-    updateBg({ blur: val })
+    setLocalBlur(val)
   }
 
   return (
@@ -131,15 +140,17 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
           {/* 不透明度 */}
           <div>
             <label className="label">
-              不透明度 <span className="text-xs text-tavern-text-muted ml-1">{opacity}%</span>
+              不透明度 <span className="text-xs text-tavern-text-muted ml-1">{localOpacity}%</span>
             </label>
             <input
               type="range"
               min="1"
               max="100"
               step="1"
-              value={opacity}
+              value={localOpacity}
               onChange={(e) => handleOpacityChange(Number(e.target.value))}
+              onMouseUp={saveSliderValues}
+              onTouchEnd={saveSliderValues}
               className="w-full accent-tavern-accent"
             />
             <div className="flex justify-between text-[10px] text-tavern-text-muted">
@@ -151,15 +162,17 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
           {/* 模糊 */}
           <div>
             <label className="label">
-              模糊程度 <span className="text-xs text-tavern-text-muted ml-1">{blur}px</span>
+              模糊程度 <span className="text-xs text-tavern-text-muted ml-1">{localBlur}px</span>
             </label>
             <input
               type="range"
               min="0"
               max="8"
               step="1"
-              value={blur}
+              value={localBlur}
               onChange={(e) => handleBlurChange(Number(e.target.value))}
+              onMouseUp={saveSliderValues}
+              onTouchEnd={saveSliderValues}
               className="w-full accent-tavern-accent"
             />
             <div className="flex justify-between text-[10px] text-tavern-text-muted">

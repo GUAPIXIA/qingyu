@@ -36,7 +36,7 @@ function createWindow() {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   })
 
@@ -51,9 +51,11 @@ function createWindow() {
     mainWindow.loadFile(join(__dirname, '../dist/index.html'))
   }
 
-  // 外部链接用系统浏览器打开
+  // 外部链接用系统浏览器打开（仅允许 http/https）
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url)
+    }
     return { action: 'deny' }
   })
 }
@@ -87,6 +89,17 @@ app.whenReady().then(async () => {
   registerGroupIPC(ipcMain)
   registerAnnouncementIPC(ipcMain)
 
+  // 应用版本号
+  ipcMain.handle('app:getVersion', () => app.getVersion())
+
+  // 打开外部链接（仅允许 http/https）
+  ipcMain.handle('app:openExternal', (_e, url: string) => {
+    if (/^https?:\/\//.test(url)) {
+      return shell.openExternal(url)
+    }
+    throw new Error('仅支持 http/https 链接')
+  })
+
   // 自动启动配置为 autoStart 的 MCP server
   const logger = createLogger('main')
   mcpManager.autoStartAll().catch((err) => {
@@ -113,11 +126,14 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-// 应用退出前关闭所有 MCP server
+// L-04 修复：应用退出前关闭所有 MCP server，加超时防止卡死
 app.on('before-quit', async (event) => {
   event.preventDefault()
   try {
-    await mcpManager.shutdownAll()
+    await Promise.race([
+      mcpManager.shutdownAll(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('shutdown timeout')), 3000)),
+    ])
   } catch { /* ignore */ }
   app.exit(0)
 })

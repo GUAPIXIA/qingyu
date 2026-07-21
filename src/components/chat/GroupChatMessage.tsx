@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -30,35 +30,11 @@ const ROLE_COLORS = [
   'border-l-pink-500 bg-pink-500/5',
 ]
 
-/** Markdown 内嵌图片组件：加载失败时显示重试按钮 */
-function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
-  const [error, setError] = useState(false)
-  if (!src) return null
-  if (error) {
-    return (
-      <button
-        onClick={() => setError(false)}
-        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-tavern-bg-hover text-xs text-tavern-text-muted cursor-pointer hover:bg-tavern-bg-hover/80 transition-colors"
-        title="点击重新加载图片"
-      >
-        <RefreshCw className="w-3 h-3" />
-        <span>{alt || '图片加载失败'}</span>
-      </button>
-    )
-  }
-  return (
-    <img
-      src={src}
-      alt={alt}
-      onError={() => setError(true)}
-      className="max-w-full rounded"
-    />
-  )
-}
+import { MarkdownImage } from '../common/MarkdownImage'
 
 const markdownComponents = { img: MarkdownImage }
 
-export function GroupChatMessage({ message, memberIndex, onDelete, onEdit, onRegenerate, onTranslate }: GroupChatMessageProps) {
+export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, onDelete, onEdit, onRegenerate, onTranslate }: GroupChatMessageProps) {
   const { currentCharacter, characters } = useCharacterStore()
   const { settings } = useSettingsStore()
   const [showThought, setShowThought] = useState(false)
@@ -298,4 +274,4 @@ export function GroupChatMessage({ message, memberIndex, onDelete, onEdit, onReg
       </div>
     </div>
   )
-}
+})

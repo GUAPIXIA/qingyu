@@ -144,7 +144,8 @@ export function GroupChatPage() {
     await saveGroup({
       ...currentGroup,
       memberIds: currentGroup.memberIds.filter(id => id !== charId),
-      currentSpeakerIndex: Math.min(currentGroup.currentSpeakerIndex, currentGroup.memberIds.length - 2),
+      // L-02 修复：确保 currentSpeakerIndex 不为负数
+      currentSpeakerIndex: Math.max(0, Math.min(currentGroup.currentSpeakerIndex, currentGroup.memberIds.length - 2)),
     })
   }
 

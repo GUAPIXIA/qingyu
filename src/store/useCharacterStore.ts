@@ -49,6 +49,9 @@ interface CharacterState {
   exportJson: (id: string) => Promise<void>
 }
 
+/** H-03 修复：防竞态版本号 */
+let selectVersion = 0
+
 export const useCharacterStore = create<CharacterState>((set, get) => ({
   characters: [],
   currentCharacter: null,
@@ -84,10 +87,12 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
     }
     const char = get().characters.find((c) => c.id === id) ?? null
     set({ currentCharacter: char })
-    // 保存到设置
+    // H-03 修复：使用版本号防竞态 + .catch() 处理 rejection
+    const myVersion = ++selectVersion
     window.api.settings.get().then((settings) => {
+      if (myVersion !== selectVersion) return
       window.api.settings.save({ ...settings, activeCharacterId: id })
-    })
+    }).catch(() => {})
   },
 
   createCharacter: () => {

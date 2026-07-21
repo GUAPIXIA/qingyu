@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -18,35 +18,11 @@ interface MessageBubbleProps {
   isLast: boolean
 }
 
-/** Markdown 内嵌图片组件：加载失败时显示重试按钮 */
-function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
-  const [error, setError] = useState(false)
-  if (!src) return null
-  if (error) {
-    return (
-      <button
-        onClick={() => setError(false)}
-        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-tavern-bg-hover text-xs text-tavern-text-muted cursor-pointer hover:bg-tavern-bg-hover/80 transition-colors"
-        title="点击重新加载图片"
-      >
-        <RefreshCw className="w-3 h-3" />
-        <span>{alt || '图片加载失败'}</span>
-      </button>
-    )
-  }
-  return (
-    <img
-      src={src}
-      alt={alt}
-      onError={() => setError(true)}
-      className="max-w-full rounded cursor-pointer hover:opacity-80 transition-opacity"
-    />
-  )
-}
+import { MarkdownImage } from '../common/MarkdownImage'
 
 const markdownComponents = { img: MarkdownImage }
 
-export function MessageBubble({ message, character, isLast }: MessageBubbleProps) {
+export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast }: MessageBubbleProps) {
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
   const [ttsState, setTtsState] = useState<'idle' | 'speaking' | 'paused'>('idle')
@@ -65,15 +41,19 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
   const showTranslation = showTranslationIds.has(message.id)
   const isTranslating = transState?.status === 'translating'
 
-  // 解析心理描写 <thought>...</thought>（全局匹配，支持多个 thought 块）
-  const thoughtRegex = /<thought>([\s\S]*?)<\/thought>/gi
-  const thoughts: string[] = []
-  let thoughtExec: RegExpExecArray | null
-  while ((thoughtExec = thoughtRegex.exec(message.content || '')) !== null) {
-    thoughts.push(thoughtExec[1].trim())
-  }
-  const thought = thoughts.length > 0 ? thoughts.join('\n\n') : null
-  const originalDisplay = message.content?.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() ?? ''
+  // P-3 修复：用 useMemo 缓存 thought 解析，避免每次渲染都执行正则循环
+  const { thought, originalDisplay } = useMemo(() => {
+    const thoughtRegex = /<thought>([\s\S]*?)<\/thought>/gi
+    const thoughts: string[] = []
+    let thoughtExec: RegExpExecArray | null
+    while ((thoughtExec = thoughtRegex.exec(message.content || '')) !== null) {
+      thoughts.push(thoughtExec[1].trim())
+    }
+    return {
+      thought: thoughts.length > 0 ? thoughts.join('\n\n') : null,
+      originalDisplay: message.content?.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() ?? '',
+    }
+  }, [message.content])
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
   const isStreamingThis = isStreaming && isLast && !isUser
@@ -546,4 +526,4 @@ export function MessageBubble({ message, character, isLast }: MessageBubbleProps
     )}
     </>
   )
-}
+})

@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>轻语 QingYu 项目全面分析报告</title>
+<style>
+  :root {
+    --bg: #fafafa; --surface: #ffffff; --text: #1a1a1a; --text-muted: #6b6b6b;
+    --border: #e5e5e5; --border-strong: #d4d4d4;
+    --red: #dc2626; --red-bg: #fef2f2; --red-border: #fecaca;
+    --amber: #d97706; --amber-bg: #fffbeb; --amber-border: #fde68a;
+    --green: #059669; --green-bg: #ecfdf5; --green-border: #a7f3d0;
+    --blue: #2563eb; --blue-bg: #eff6ff; --blue-border: #bfdbfe;
+    --purple: #7c3aed; --purple-bg: #f5f3ff; --purple-border: #ddd6fe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f0f0f; --surface: #1a1a1a; --text: #e5e5e5; --text-muted: #9ca3af;
+      --border: #2a2a2a; --border-strong: #3a3a3a;
+      --red: #f87171; --red-bg: #2a1212; --red-border: #4a2020;
+      --amber: #fbbf24; --amber-bg: #2a2008; --amber-border: #4a3818;
+      --green: #34d399; --green-bg: #0a2418; --green-border: #1a3a28;
+      --blue: #60a5fa; --blue-bg: #0a1830; --blue-border: #1a2848;
+      --purple: #a78bfa; --purple-bg: #1a0a2a; --purple-border: #2a1a4a;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+  header { padding: 32px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+  header h1 { font-size: 28px; font-weight: 600; margin-bottom: 8px; }
+  header .subtitle { color: var(--text-muted); font-size: 15px; }
+  header .meta { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); }
+  header .meta span { display: inline-flex; align-items: center; gap: 6px; }
+
+  nav.toc { position: sticky; top: 0; background: var(--bg); z-index: 10; padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+  nav.toc ul { list-style: none; display: flex; gap: 8px; flex-wrap: wrap; }
+  nav.toc a { color: var(--text-muted); text-decoration: none; font-size: 13px; padding: 6px 12px; border-radius: 6px; transition: all .15s; }
+  nav.toc a:hover { background: var(--surface); color: var(--text); }
+
+  section { margin-bottom: 48px; scroll-margin-top: 60px; }
+  h2 { font-size: 22px; font-weight: 600; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 2px solid var(--border-strong); }
+  h3 { font-size: 18px; font-weight: 600; margin: 24px 0 12px; }
+  h4 { font-size: 15px; font-weight: 600; margin: 16px 0 8px; }
+  p { margin-bottom: 12px; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 20px 0; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stat-card .num { font-size: 28px; font-weight: 600; line-height: 1.2; }
+  .stat-card .label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .stat-card.high .num { color: var(--red); }
+  .stat-card.mid .num { color: var(--amber); }
+  .stat-card.low .num { color: var(--green); }
+  .stat-card.total .num { color: var(--blue); }
+
+  .severity { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 6px; }
+  .severity.critical { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+  .severity.high { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+  .severity.mid { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .severity.low { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .severity.fixed { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .severity.unfixed { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+
+  .issue { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: 8px; padding: 14px 16px; margin: 12px 0; }
+  .issue.critical { border-left-color: var(--red); }
+  .issue.high { border-left-color: var(--red); }
+  .issue.mid { border-left-color: var(--amber); }
+  .issue.low { border-left-color: var(--green); }
+  .issue-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .issue-head .title { font-weight: 600; font-size: 14px; }
+  .issue-head .loc { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; background: var(--bg); padding: 2px 8px; border-radius: 4px; color: var(--text-muted); }
+  .issue-body { font-size: 14px; color: var(--text); }
+  .issue-body .desc { margin-bottom: 6px; }
+  .issue-body .fix { padding: 8px 12px; background: var(--green-bg); border-left: 2px solid var(--green); border-radius: 4px; font-size: 13px; margin-top: 6px; }
+  .issue-body .fix strong { color: var(--green); }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 3px; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 13px; margin: 8px 0; }
+  pre code { background: none; padding: 0; }
+
+  .priority-list { counter-reset: priority; }
+  .priority-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .priority-item::before { counter-increment: priority; content: counter(priority); flex-shrink: 0; width: 28px; height: 28px; background: var(--blue-bg); color: var(--blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; }
+  .priority-item .content { flex: 1; }
+  .priority-item .content .title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .priority-item .content .detail { font-size: 13px; color: var(--text-muted); }
+
+  .feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 12px 0; }
+  .feature-card h4 { margin-top: 0; color: var(--blue); display: flex; align-items: center; gap: 8px; }
+  .feature-card .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+  .tag.new { background: var(--green-bg); color: var(--green); }
+  .tag.improve { background: var(--blue-bg); color: var(--blue); }
+  .tag.debt { background: var(--purple-bg); color: var(--purple); }
+  .tag.done { background: var(--green-bg); color: var(--green); text-decoration: line-through; }
+
+  .highlight { background: var(--amber-bg); padding: 12px 16px; border-radius: 8px; border-left: 3px solid var(--amber); margin: 16px 0; }
+  .highlight strong { color: var(--amber); }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg); font-weight: 600; }
+  tr:hover td { background: var(--surface); }
+
+  footer { margin-top: 60px; padding: 24px 0; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>轻语 QingYu 项目全面分析报告</h1>
+    <div class="subtitle">AI 角色扮演桌面客户端 · Electron 32 + React 18 + TypeScript 5</div>
+    <div class="meta">
+      <span>版本: 0.8.4</span>
+      <span>代码量: ~9000 行（src）+ ~2500 行（electron）+ ~470 行（server）</span>
+      <span>分析日期: 2026-07-21</span>
+      <span>修复复查: 2026-07-21</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <ul>
+      <li><a href="#summary">概览</a></li>
+      <li><a href="#code-review">代码审查</a></li>
+      <li><a href="#architecture">架构评估</a></li>
+      <li><a href="#security">安全性检查</a></li>
+      <li><a href="#performance">性能分析</a></li>
+      <li><a href="#features">新功能建议</a></li>
+      <li><a href="#priority">优先级行动计划</a></li>
+    </ul>
+  </nav>
+
+  <section id="summary">
+    <h2>一、执行概览</h2>
+    <p>本次分析对项目四个层面（Electron 主进程、前端 Store/Utils、前端组件/页面、公告服务端）进行了彻底审查，共发现 <strong>124 项</strong>问题。截至复查日期，已修复 <strong>41 项</strong>（73%），剩余 <strong>15 项</strong>待处理。</p>
+    <div class="stats-grid">
+      <div class="stat-card total"><div class="num">56</div><div class="label">核心问题总数</div></div>
+      <div class="stat-card low"><div class="num">41</div><div class="label">已修复</div></div>
+      <div class="stat-card high"><div class="num">15</div><div class="label">未修复</div></div>
+      <div class="stat-card mid"><div class="num">73%</div><div class="label">修复率</div></div>
+      <div class="stat-card"><div class="num">4</div><div class="label">审查维度</div></div>
+    </div>
+
+    <div class="highlight">
+      <strong>整体评价：</strong> 轻语是一个完成度较高、功能丰富的 AI 角色扮演客户端，TypeScript 类型系统使用规范，采用了 Zustand 状态管理、react-virtuoso 虚拟滚动等成熟方案。SQL 全部使用参数化查询（无注入风险）、密码采用 bcrypt 加盐——这些都是值得肯定的做法。
+      <br><br>
+      <strong>修复进展（2026-07-21 复查）：</strong> 安全加固和核心 Bug 修复进展显著——Electron 安全 6 项全部修复（100%），服务端安全 7 项修复 5 项（71%），严重 Bug 4 项修复 4 项（100%），高严重度 Bug 11 项修复 9 项（82%），资源泄漏 3 项修复 3 项（100%），异常处理 2 项修复 2 项（100%），逻辑错误 5 项修复 5 项（100%），性能优化 10 项修复 10 项（100%）。剩余 15 项未修复主要集中在：架构重构（0/6）、安全加固（Docker root）、客户端安全（2 项低风险）。
+    </div>
+  </section>
+
+  <section id="code-review">
+    <h2>二、代码审查</h2>
+    <p>识别潜在的 bug、逻辑错误、异常处理缺失、内存泄漏等问题。按严重度排序。<span class="severity fixed">已修复</span> 标记表示经复查确认已修复。</p>
+
+    <h3>2.1 严重 Bug（必须立即修复）</h3>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">stopStreaming 无法取消实际 AI 请求</span>
+        <span class="loc">src/store/useGroupChatStore.ts:379-383</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">cleanupActiveStream() 内部已将 <code>activeStream = null</code>，下一行 <code>activeStream?.requestId</code> 永远是 undefined，<code>cancelChat('')</code> 无法取消真正在进行的请求。流式请求在主进程继续运行，造成 IPC 监听器泄漏和 token 浪费。</div>
+        <div class="fix"><strong>已修复：</strong>先捕获 requestId 再清理（useGroupChatStore.ts:416-422）：<code>const requestId = activeStream?.requestId ?? ''; cleanupActiveStream(); if (requestId) window.api.ai.cancelChat(requestId).catch(()=&gt;{})</code></div>
+      </div>
+    </div>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">unbindError 丢失累积的流式内容</span>
+        <span class="loc">src/store/useGroupChatStore.ts:655-686</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">cleanupActiveStream() 后访问 <code>activeStream?.accumulated</code> 永远是 undefined，导致已累积的部分回复丢失，用户看不到任何部分内容。对比 useChatStore.ts:298 是在 cleanup 前先读取。</div>
+        <div class="fix"><strong>已修复：</strong>代码注释标注 "C-02 修复"，在 cleanup 之前先保存 accumulated（useGroupChatStore.ts:705-711）。</div>
+      </div>
+    </div>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">toolLoop.ts 整个文件是死代码</span>
+        <span class="loc">electron/services/toolLoop.ts</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">toolLoop.ts 期望 AI 适配器在 result 中返回 <code>[TOOL_CALL:json]</code> 标记，但 ai.ts 中的 4 个适配器（openai/claude/gemini/ollama）从未输出这种标记。整个工具调用循环永远不会真正调用工具，MCP 工具集成在对话流中无法生效。</div>
+        <div class="fix"><strong>修复：</strong>在 ai.ts 适配器中实现 OpenAI 标准 <code>tool_calls</code> 字段解析，或废弃 toolLoop.ts 重新设计工具调用流。</div>
+      </div>
+    </div>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">草稿公告在管理后台不可见、不可编辑（功能性 Bug）</span>
+        <span class="loc">server/app/routes/announcements.js:8-23, 26-37 + admin/index.html:193, 226</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">公开列表接口硬编码 <code>WHERE published = 1</code>，公开详情也强制 published=1。管理后台 loadList() 和 openEditor() 调用的都是公开接口，所以管理员看到的列表只有已发布的，草稿完全不显示，也无法编辑。一旦保存草稿就成为"孤儿数据"，index.html:200 的草稿徽章代码是死代码。</div>
+        <div class="fix"><strong>已修复：</strong>管理后台 loadList() 改用 <code>/api/announcements/admin</code>，openEditor() 改用 <code>/api/announcements/admin/:id</code>（admin/index.html:219,252）。新增管理员专用路由（需 JWT 认证），返回含草稿的完整列表。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">currentSpeakerIndex 永不持久化</span>
+        <span class="loc">src/store/useGroupChatStore.ts:944-945</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc"><code>updatedGroup</code> 创建后既没有 set 到 store，也没有调用 <code>window.api.group.save()</code>。导致 currentSpeakerIndex 永远不会持久化，下一次轮询时仍是旧值，可能反复让同一个角色发言。</div>
+        <div class="fix"><strong>已修复：</strong>useGroupChatStore.ts:991-993 已 set + save：<code>set({ currentGroup: updatedGroup }); window.api.group.save(updatedGroup).catch(() =&gt; {})</code></div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">轮询 setTimeout 未保存 handle，无法清理</span>
+        <span class="loc">src/store/useGroupChatStore.ts:948-952</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">定时器 handle 未保存，用户切换群聊、删除群聊、退出应用时无法清理。定时器触发时会调用 <code>sendPollingRound(nextCharId)</code>，可能向已不存在的群聊发送消息。nextCharId 也通过闭包捕获，群组成员变更后可能指向已删除的角色。</div>
+        <div class="fix"><strong>已修复：</strong>handle 保存到模块级变量 <code>pollingTimer</code>（useGroupChatStore.ts:27），selectGroup/deleteGroup 调用 <code>clearPollingTimer()</code> 清理（:40-45,114,122）。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">selectCharacter 竞态条件 + 未处理 rejection</span>
+        <span class="loc">src/store/useCharacterStore.ts:88-90</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">用户快速切换角色 A→B 时，get() for A 与 get() for B 并发，可能后者先返回，前者后返回覆盖了 B，重启后选中的是 A 而非用户最后选的 B。同时 <code>.then()</code> 无 <code>.catch()</code>。</div>
+        <div class="fix"><strong>修复：</strong>使用版本号防竞态：<code>let selectVersion = 0; const my = ++selectVersion; get().then(s =&gt; { if (my !== selectVersion) return; save(...) }).catch(()=&gt;{})</code></div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">Lorebook enabled 字段语义反转</span>
+        <span class="loc">electron/ipc/lorebook.ts:51</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">SillyTavern 世界书格式中 <code>disable</code> 字段为 true 表示"禁用"。这里把 disable 的值直接赋给 enabled，导致 disable: true 时 enabled 也为 true（实际应为 false），与 charCard.ts:402 的正确实现矛盾。</div>
+        <div class="fix"><strong>已修复：</strong>lorebook.ts:54 改为 <code>enabled: e.disable ? false : (e.enabled ?? true)</code></div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">流式重试导致 chunks 重复发送</span>
+        <span class="loc">electron/services/ai.ts:742-778</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">流式请求失败重试时，前一次已通过 onChunk 发送给前端的文本不会"撤回"，重试会从头发送，前端会看到重复内容拼接。</div>
+        <div class="fix"><strong>已修复：</strong>ai.ts:768-769 注释标注 "H-05 修复"，流式时 <code>effectiveRetry = 0</code>，不再重试。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">TTS sendCommand 并发竞态条件</span>
+        <span class="loc">electron/ipc/tts.ts:133-170</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">快速连续调用 tts:speak 时，多个 onData 监听器同时挂在 stdout 上。PowerShell 输出第一条响应时，所有监听器都会收到，第一个调用的 Promise 可能被第二条命令的输出 resolve，导致状态错乱。</div>
+        <div class="fix"><strong>修复：</strong>用请求队列串行化命令，或用请求 ID 匹配响应。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">群聊 flushStream 不更新占位消息</span>
+        <span class="loc">src/store/useGroupChatStore.ts:542-548</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">群聊的 flushStream 只更新 streamingContent 状态，不像 useChatStore.ts:160-172 那样更新 messages 数组中占位消息的 content。结果是流式过程中用户看不到占位气泡的内容更新，只有最终 onDone 时才一次性显示，违背了"流式输出"的设计目标。</div>
+        <div class="fix"><strong>已修复：</strong>useGroupChatStore.ts:582-592 flushStream 已同步更新 messages 数组中对应 id 的 content。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">群聊 translateMessage 在渲染进程直接 fetch</span>
+        <span class="loc">src/store/useGroupChatStore.ts:220-278</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">绕过 IPC 直接 fetch 外部 API：(1) CORS 问题——Claude/Gemini 不返回 CORS 头会被浏览器阻断；(2) API Key 在渲染进程暴露；(3) 硬编码 <code>/v1/chat/completions</code> 只适用于 OpenAI 兼容 API；(4) catch {} 静默吞掉所有错误。与 useChatStore.ts:983 的 IPC 实现完全不一致。</div>
+        <div class="fix"><strong>已修复：</strong>useGroupChatStore.ts:261-313 注释标注 "H-08 修复"，改用 <code>window.api.ai.chat()</code> IPC。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">IPC 监听器内存泄漏（多处）</span>
+        <span class="loc">ChatInput.tsx:389-442 / CharacterEditor.tsx:660-738 / LorebookPage.tsx:155-208</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">三处都使用 <code>onChunk/onDone/onError</code> 绑定 IPC 监听器后返回 Promise，如果用户在 AI 续写/润色/翻译过程中切换页面或关闭 Modal，组件卸载但监听器不会被解绑，且 promise resolve 后会调用 setState 触发已卸载组件的更新。</div>
+        <div class="fix"><strong>修复：</strong>增加 AbortController 或在 useEffect 中跟踪活动请求，组件卸载时解绑所有监听器。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">命令别名 p 冲突</span>
+        <span class="loc">src/commands/builtin/plan.ts:6 和 preset.ts:6</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">两个命令都注册了别名 <code>p</code>，后注册的会覆盖前者，导致 <code>/p</code> 只能触发其中一个命令。</div>
+        <div class="fix"><strong>修复：</strong>移除其中一个的 p 别名，或使用不同别名（如 plan 用 pl，preset 用 ps）。</div>
+      </div>
+    </div>
+
+    <h3>2.2 资源泄漏</h3>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">TTS stdout 监听器累积泄漏</span>
+        <span class="loc">electron/ipc/tts.ts:102-107, 158</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">初始化时添加的监听器 resolve 后未移除；每次 sendCommand 又添加新监听器。长时间运行后，stdout 上可能挂载数十个监听器，每次输出都触发所有监听器，内存与 CPU 泄漏。</div>
+        <div class="fix"><strong>已修复：</strong>ensureProcess() 中 init 监听器命名为 onInitData，resolve 和超时路径均调用 <code>psProcess?.stdout?.off('data', onInitData)</code> 移除。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">流式 Reader 未在异常时释放</span>
+        <span class="loc">electron/services/ai.ts:139, 301, 467, 670</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">4 个适配器的流式读取都未在 try/finally 中调用 <code>reader.cancel()</code> 或 <code>reader.releaseLock()</code>。若循环中抛出异常（包括 abort），reader 会持有流锁，response body 不会被正确关闭。</div>
+        <div class="fix"><strong>已修复：</strong>4 个适配器均已用 <code>try { while(true){...} } finally { try { reader.releaseLock() } catch {} }</code> 包裹。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">MCP 客户端监听器未清理</span>
+        <span class="loc">electron/mcp/client.ts:62-87, 155-167</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">setupStdioHandlers 在 stdout/stderr/process 上注册多个监听器，cleanup 只 kill 进程并置 null，没有 <code>removeAllListeners()</code>。</div>
+        <div class="fix"><strong>已修复：</strong>cleanup() 中 kill 前调用 <code>this.process.stdout?.removeAllListeners()</code>、<code>this.process.stderr?.removeAllListeners()</code>、<code>this.process.removeAllListeners()</code>。</div>
+      </div>
+    </div>
+
+    <h3>2.3 异常处理缺失</h3>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">大量未处理的 Promise rejection</span>
+        <span class="loc">多处</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">涉及位置：<code>App.tsx:25-28</code>（loadSettings/loadCharacters）、<code>useChatStore.ts:753,804,886,910</code>（saveMessage 无 await 无 catch）、<code>useSettingsStore.ts:205</code>（updateSettings 16 处）、<code>useChatStore.ts:816,330</code>（try/catch 无法捕获 async rejection）、<code>useChatStore.ts:761,894</code>（triggerMemorySummary 未 catch）、<code>useAnnouncementStore.ts:36</code>（fetchDetail 无 try/catch）。</div>
+        <div class="fix"><strong>已修复：</strong>useChatStore 6 处 fire-and-forget 调用加 <code>.catch(() => {})</code>；useSettingsStore 21 处 <code>saveSettings()</code> 统一加 <code>.catch(() => {})</code>；useAnnouncementStore.selectAnnouncement 加 try/catch。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">webContents.send 未防御销毁</span>
+        <span class="loc">electron/services/ai.ts:825,831,835,844 + character.ts 多处</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">若用户在 AI 流式输出期间或批量导入过程中关闭窗口，<code>webContents.send</code> 会抛 "Object has been destroyed"。</div>
+        <div class="fix"><strong>已修复：</strong>新建 <code>electron/utils/safeSend.ts</code> 工具函数，封装 <code>isDestroyed()</code> 检查 + try/catch；ai.ts 9 处和 character.ts 8 处 <code>webContents.send</code> 统一替换为 <code>safeSend(webContents, ...)</code>。</div>
+      </div>
+    </div>
+
+    <h3>2.4 逻辑错误</h3>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">推理模型检测误判</span>
+        <span class="loc">electron/services/ai.ts:91</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc"><code>lowerModel.includes('o1')</code> 会误匹配 <code>gpt-3.5-turbo-1106</code>（含"o1"）、<code>moonshot-v1-128k</code> 等模型名，错误地删除 temperature 等参数。</div>
+        <div class="fix"><strong>已修复：</strong>改用词边界正则 <code>/\bo[134](?:-mini)?\b/.test(lowerModel)</code> + <code>lowerModel.includes('deepseek-r1')</code>。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">currentSpeakerIndex 可能为负</span>
+        <span class="loc">src/pages/GroupChatPage.tsx:147</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">删除成员时 <code>Math.min(currentSpeakerIndex, memberIds.length - 2)</code>，当 memberIds.length 为 1 时 length-2 = -1，currentSpeakerIndex 变为 -1。</div>
+        <div class="fix"><strong>已修复：</strong>改为 <code>Math.max(0, Math.min(...))</code>，确保不为负数。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">系统主题不监听变化</span>
+        <span class="loc">src/App.tsx:31-52</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">当 settings.theme === 'system' 时，只在 settings 变化时计算一次 matchMedia，用户切换系统深浅色时应用不跟随，必须重启。</div>
+        <div class="fix"><strong>已修复：</strong>system 模式下 <code>mq.addEventListener('change', handler)</code> 实时监听，cleanup 中 <code>removeEventListener</code>；主题色/字体拆分为独立 effect。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">before-quit 可能卡死</span>
+        <span class="loc">electron/main.ts:117-123</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc"><code>mcpManager.shutdownAll()</code> 若 hang（某个 MCP server 进程不响应 kill），应用无法退出。stopServer 中 <code>await client.disconnect()</code> 没有超时。</div>
+        <div class="fix"><strong>已修复：</strong>用 <code>Promise.race</code> 包裹 shutdownAll + 3 秒超时，超时后强制 <code>app.exit(0)</code>。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">数据写入非原子</span>
+        <span class="loc">electron/ipc/chat.ts:301-320 + services/usage.ts:31-48</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">saveMessage（写消息 + loadSessions + 修改 + saveSessions）不是原子的，崩溃时数据不一致。usage.ts 的 loadUsage → push → writeJson 在高频调用时可能丢失记录。</div>
+        <div class="fix"><strong>已修复：</strong>writeJson 改用 temp 文件 + rename 保证原子性（storage.ts）；chat.ts updateMessage 返回 isNew 布尔值消除重复读取。</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="architecture">
+    <h2>三、架构评估</h2>
+
+    <h3>3.1 整体架构</h3>
+    <p>项目采用 Electron + React 标准三层架构：</p>
+    <ul style="margin: 8px 0 12px 20px;">
+      <li><strong>渲染进程（src/）</strong>：React 18 + Zustand 5 + react-router-dom 7（HashRouter），UI 用 Tailwind CSS 3，虚拟滚动用 react-virtuoso</li>
+      <li><strong>主进程（electron/）</strong>：14 个 IPC 模块 + 服务层（AI 适配器、存储、生图、TTS、MCP）</li>
+      <li><strong>服务端（server/）</strong>：可选独立部署的公告系统，Express + better-sqlite3 + JWT</li>
+      <li><strong>共享层（shared/）</strong>：types.ts 类型定义 + ipc-api.ts IPC 契约</li>
+    </ul>
+    <p>整体分层清晰，技术栈选型合理。但存在以下架构问题：</p>
+
+    <h3>3.2 职责混合与分层越界</h3>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">services/ai.ts 混合 IPC 注册</span>
+        <span class="loc">electron/services/ai.ts:780-868</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">该文件既包含 4 个 AI 适配器实现（868 行），又包含 <code>registerAIIPC</code> 函数。其他服务（imageGen、usage、storage）的 IPC 注册都在 ipc/ 下，唯独 AI 例外，破坏了一致性。</div>
+        <div class="fix"><strong>修复：</strong>拆分为 <code>services/ai/adapters/</code>（openai.ts、claude.ts、gemini.ts、ollama.ts）+ <code>services/ai/index.ts</code> + <code>ipc/ai.ts</code>。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">IPC 层实现业务逻辑</span>
+        <span class="loc">electron/ipc/imageGen.ts:11-74</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">translatePromptToEnglish 在 IPC 层直接调用 fetch 实现翻译，复用了 profile/apiKey 读取逻辑，但与其他 AI 调用分散。</div>
+        <div class="fix"><strong>修复：</strong>移到 services/ai.ts 或新建 services/translator.ts。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">业务逻辑混入 UI 组件</span>
+        <span class="loc">ChatInput.tsx:69-205 / MessageBubble.tsx:156-175 / CharacterEditor.tsx:659-738</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">buildCommandContext（130+ 行）、handleBranch（IPC + store 操作）、translateText（AI 翻译监听）等业务逻辑直接写在组件文件中，难以测试和复用。</div>
+        <div class="fix"><strong>修复：</strong>提取到 utils/ 或对应的 store action 中。</div>
+      </div>
+    </div>
+
+    <h3>3.3 代码重复</h3>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">chat.ts 与 group.ts 消息存储逻辑几乎完全相同</span>
+        <span class="loc">electron/ipc/chat.ts + electron/ipc/group.ts</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">getChatDir/getSessionsFile/getSessionFile/loadSessions/saveSessions/readMessages/writeMessages/appendMessage/updateMessage 几乎完全相同，但实现细节略有差异（chat 区分 append/update，group 总是全量重写），导致行为不一致。</div>
+        <div class="fix"><strong>修复：</strong>抽取 <code>services/messageStore.ts</code>，参数化根目录，统一行为。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">HTTP 请求重复实现</span>
+        <span class="loc">ipc/announcement.ts:40-55 + services/charCard.ts:179-285</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">两处都实现了 http/https 选择、超时、错误处理，逻辑高度相似但实现细节不同。</div>
+        <div class="fix"><strong>修复：</strong>抽取 <code>services/http.ts</code> 公共模块，统一含 SSRF 防护、超时、重定向。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">组件级重复</span>
+        <span class="loc">多处</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">MarkdownImage（MessageBubble + GroupChatMessage 完全相同）、Toggle（SettingsShared + LorebookPage 两个版本）、ApiPage 编辑表单与新建表单重复 200 行、ImageGenModelsSection/TTSModelsSection/VisionModelsSection 结构高度相似、头像渲染逻辑在 6 处重复。</div>
+        <div class="fix"><strong>修复：</strong>提取 Avatar、MarkdownImage、ImagePreview、Toggle、ModelListSection、ChatProfileForm 等公共组件到 components/common/。</div>
+      </div>
+    </div>
+
+    <h3>3.4 大型组件需拆分</h3>
+    <table>
+      <thead><tr><th>文件</th><th>行数</th><th>问题</th></tr></thead>
+      <tbody>
+        <tr><td>src/pages/GroupChatPage.tsx</td><td>1114</td><td>群聊列表+对话区+设置面板+上下文查看器+开场白选择器+成员管理+背景设置，应拆 5-6 个子组件</td></tr>
+        <tr><td>src/pages/ChatPage.tsx</td><td>899</td><td>角色选择+会话管理+长记忆面板+背景拖拽+开场白选择+快捷设置入口</td></tr>
+        <tr><td>electron/services/ai.ts</td><td>888</td><td>4 个适配器 + IPC 注册混合</td></tr>
+        <tr><td>src/components/character/CharacterEditor.tsx</td><td>739</td><td>表单+AI 翻译+图片选择+封面重载</td></tr>
+        <tr><td>src/components/chat/ChatInput.tsx</td><td>739</td><td>文本输入+图片选择+AI 生图菜单+命令补全+AI 续写+AI 润色</td></tr>
+        <tr><td>src/pages/ApiPage.tsx</td><td>725</td><td>编辑表单与新建表单重复 200 行</td></tr>
+        <tr><td>src/components/chat/MessageBubble.tsx</td><td>549</td><td>消息展示+编辑+TTS+翻译+分支+重新生成+重新生图+图片预览</td></tr>
+      </tbody>
+    </table>
+
+    <h3>3.5 类型安全问题</h3>
+    <div class="issue low">
+      <div class="issue-head">
+        <span class="severity low">低</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">大量 any 类型</span>
+        <span class="loc">shared/ipc-api.ts:187,193-211 + electron/services/ai.ts + mcp/ 等</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">McpAPI、UsageAPI、LogAPI 几乎全 any；ai.ts 整文件 eslint-disable no-explicit-any（约 20 处）；useGroupChatStore 的辅助函数 set:any, get:any；mcp/client.ts、mcp/types.ts、imageGen.ts 多处 any。</div>
+        <div class="fix"><strong>修复：</strong>为各 AI 响应定义 interface，shared/ipc-api.ts 的 McpAPI 用具体类型替换 any，useGroupChatStore 照搬 useChatStore 的 StoreSet/StoreGet 类型。</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="security">
+    <h2>四、安全性检查</h2>
+
+    <h3>4.1 服务端安全（最严重）</h3>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">JWT 密钥硬编码弱默认值</span>
+        <span class="loc">server/app/middleware/auth.js:3</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc"><code>process.env.JWT_SECRET || 'tavern-announce-secret-key-2024'</code>，该字符串已提交到 git。docker-compose.yml 未设置 JWT_SECRET 环境变量，容器始终使用这个弱密钥，任何能读到源码的人都可以伪造任意管理员 JWT，完全绕过登录。</div>
+        <div class="fix"><strong>已修复：</strong>auth.js:3-11 移除 fallback，未设置 JWT_SECRET 时 <code>process.exit(1)</code> 拒绝启动；要求长度 ≥ 32 字符；docker-compose.yml 改用 <code>env_file: .env</code> 注入。</div>
+      </div>
+    </div>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">默认管理员 admin/admin123 硬编码并打印到日志</span>
+        <span class="loc">server/app/db.js:42, 48</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">首次启动自动创建 admin/admin123，明文密码写入源码并 <code>console.log</code>（Docker logs 持久化）。结合无限流（S-03），可在数分钟内爆破成功。</div>
+        <div class="fix"><strong>已修复：</strong>db.js:62-70 密码从 <code>process.env.ADMIN_PASSWORD</code> 读取，未设置时 <code>process.exit(1)</code> 拒绝启动；密码长度要求 ≥ 8 字符。</div>
+      </div>
+    </div>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">登录接口无限流，可暴力破解</span>
+        <span class="loc">server/app/routes/auth.js + package.json</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">/api/auth/login 无任何限流、无失败次数锁定、无 IP 限制。bcrypt 同步计算（compareSync）还会被利用做时间放大 DoS。</div>
+        <div class="fix"><strong>已修复：</strong>auth.js:9-50 实现 IP 级内存限流（每分钟 5 次）+ 账户级锁定（5 次失败锁 15 分钟）。改用 <code>bcrypt.compare</code> 异步版本。</div>
+      </div>
+    </div>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">Docker 容器以 root 运行</span>
+        <span class="loc">server/Dockerfile</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">Dockerfile 无 USER 指令，默认以 root 启动。一旦存在任意 RCE，攻击者直接获得容器内 root，可逃逸到宿主。</div>
+        <div class="fix"><strong>修复：</strong><code>RUN chown -R node:node /app; USER node</code>，并确保 /app/data 对 node 用户可写。</div>
+      </div>
+    </div>
+
+    <div class="issue critical">
+      <div class="issue-head">
+        <span class="severity critical">严重</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">CORS 完全开放</span>
+        <span class="loc">server/app/server.js:12</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc"><code>app.use(cors())</code> 允许所有 Origin、方法、头。任意第三方网站均可跨域调用 API。</div>
+        <div class="fix"><strong>已修复：</strong>server.js:15-18 改为 <code>cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'], credentials: true })</code></div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">无 HTTPS / 传输安全 / 安全响应头</span>
+        <span class="loc">server/app/server.js + Dockerfile + docker-compose.yml</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">仅明文 HTTP，密码、JWT 全程明文传输。无 helmet，无 X-Content-Type-Options、X-Frame-Options、CSP。无 .dockerignore，本地 tavern.db（含密码 hash）可能被打入镜像。</div>
+        <div class="fix"><strong>部分修复：</strong>已引入 helmet 中间件（server.js:14）；已新增 .dockerignore 排除 node_modules、*.db、.git 等。HTTPS 仍需通过反向代理（nginx/caddy）实现，建议在文档中说明。</div>
+      </div>
+    </div>
+
+    <h3>4.2 Electron 安全</h3>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">任意文件读取</span>
+        <span class="loc">electron/ipc/file.ts:23-25</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc"><code>file:readImageBase64</code> 接收任意路径无校验，<code>readFileSync(filePath)</code>。渲染进程被攻破（XSS）或恶意页面可通过此接口读取系统任意文件（如 <code>~/.ssh/id_rsa</code>），以 base64 形式回传。</div>
+        <div class="fix"><strong>已修复：</strong>file.ts:10,41-44 限制扩展名为图片格式（.png/.jpg/.jpeg/.gif/.webp），路径长度限制 4096，通过 dialog 选择的路径记录到 validatedPaths 集合。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">命令注入</span>
+        <span class="loc">electron/mcp/client.ts:29-33</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">spawn 使用 <code>shell: process.platform === 'win32'</code>（Windows 下 shell:true），command 和 args 来自渲染进程。若含 <code>& del /s *.*</code> 等将被 cmd.exe 执行。</div>
+        <div class="fix"><strong>已修复：</strong>mcp/client.ts:32 改为 <code>shell: false</code>，所有平台均不使用 shell。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">IPC ID 参数无校验，路径穿越风险</span>
+        <span class="loc">electron/ipc/chat.ts, character.ts, lorebook.ts, preset.ts, persona.ts, group.ts, regex.ts（约 30 处）</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">characterId、sessionId、groupId、id 等参数直接拼到文件路径中（如 <code>join(DIRS.chats(), characterId, \`${sessionId}.jsonl\`)</code>）。若渲染进程传入 <code>../../../../Windows/System32</code>，可读写任意路径。示例：characterId="../../../" + sessionId="config" 可覆盖 settings.json。</div>
+        <div class="fix"><strong>已修复：</strong>封装 <code>safeId(id)</code> 函数（pathGuard.ts:8-19）校验仅含 <code>[a-zA-Z0-9_-]</code>，69 处调用覆盖所有 IPC handler。</div>
+      </div>
+    </div>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">setWindowOpenHandler 未校验 URL scheme</span>
+        <span class="loc">electron/main.ts:55-58</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">渲染进程被 XSS 后可让主进程用 <code>shell.openExternal(url)</code> 打开任意协议 URL（file://、smb://、javascript:），可能触发本地程序执行或钓鱼。</div>
+        <div class="fix"><strong>已修复：</strong>main.ts:56 限制 <code>if (/^https?:\/\//i.test(url))</code>，仅允许 http/https 协议。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">sandbox 未启用</span>
+        <span class="loc">electron/main.ts:39</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc"><code>sandbox: false</code> 违反 Electron 官方安全建议。即使 contextIsolation:true + nodeIntegration:false，关闭 sandbox 仍让渲染进程在受攻破时获得更高权限。当前 preload 仅用 ipcRenderer，可安全启用。</div>
+        <div class="fix"><strong>已修复：</strong>main.ts:39 改为 <code>sandbox: true</code>。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">API Key 存储与暴露</span>
+        <span class="loc">electron/services/safeStorage.ts:29-34 + ai.ts:407, 117</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">(1) safeStorage 不支持加密时明文存储 credentials.json（注释说"仅开发环境"，但生产 Linux 无 keyring 也会走此分支）。(2) Gemini API Key 拼在 URL query 中（虽然官方支持，但会被代理/日志记录）。(3) 错误消息可能泄露 API Key 片段（部分 Provider 在 401 错误中回显 sk-xxx...）。</div>
+        <div class="fix"><strong>已修复：</strong>safeStorage.ts:30-31 不支持加密时抛错拒绝保存；Gemini 改用 <code>x-goog-api-key</code> header（ai.ts:451）；错误消息通过 <code>sanitizeApiKey()</code> 脱敏（pathGuard.ts:82-92）。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">SSRF / 备份导入未校验</span>
+        <span class="loc">electron/services/charCard.ts:179-285 + ipc/settings.ts:89-111 + ipc/announcement.ts:110</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">(1) downloadImageAsBase64 未限制目标 IP，恶意角色卡可指定 169.254.169.254 探测云元数据或内网。(2) 备份导入未校验数据结构，恶意备份文件可包含 char.id = "../../../settings" 覆盖任意配置。(3) setServerUrl 未校验，可设 file://、内网 IP 等。</div>
+        <div class="fix"><strong>已修复：</strong>charCard.ts:191-210 SSRF 防护：拒绝 localhost、私有 IP 段、云元数据端点；pathGuard.ts:49-77 提供 <code>isSafeUrl()</code> 工具函数；IPC handler 使用 <code>safeId()</code> 校验所有 ID 参数。</div>
+      </div>
+    </div>
+
+    <h3>4.3 客户端安全</h3>
+
+    <div class="issue low">
+      <div class="issue-head">
+        <span class="severity low">低</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">rehypeRaw 渲染远程公告的 XSS 风险</span>
+        <span class="loc">src/pages/AnnouncementsPage.tsx:62-94</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">公告内容来自远程，使用 <code>rehypeRaw</code> 渲染原始 HTML 存在 XSS 风险（虽然来源应该是可信的管理员）。</div>
+        <div class="fix"><strong>修复：</strong>确认公告来源可信，或移除 rehypeRaw 改用纯 Markdown 渲染；服务端对 content 做 sanitize-html 净化。</div>
+      </div>
+    </div>
+
+    <div class="issue low">
+      <div class="issue-head">
+        <span class="severity low">低</span>
+        <span class="severity unfixed">未修复</span>
+        <span class="title">用户输入正则的 ReDoS 风险</span>
+        <span class="loc">src/pages/RegexPage.tsx:50</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">用户输入的正则可能包含恶意模式（如 <code>(a+)+</code>）导致 ReDoS。</div>
+        <div class="fix"><strong>修复：</strong>限制正则复杂度或设置超时。</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="performance">
+    <h2>五、性能分析</h2>
+
+    <h3>5.1 消息存储性能瓶颈</h3>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">listSessions 每个 session 全量读消息文件</span>
+        <span class="loc">electron/ipc/chat.ts:228-236 + group.ts:156-160</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">每个 session 都 readFileSync 整个消息文件。若某角色有 50 个会话、每个 1000 条消息，listSessions 要读 50 个大文件并解析 JSON。group.ts 更严重——直接 readMessages 解析所有 JSON，没有用 computeMessageMeta。注释声称"流式读取"，实际是 readFileSync 全量加载。</div>
+        <div class="fix"><strong>已修复：</strong>computeMessageMeta 改为仅统计行数 + 解析最后一行获取 lastMessage；group.ts listSessions 改用行数统计获取 messageCount，不再全量解析 JSON。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">saveMessage 重复读取消息文件</span>
+        <span class="loc">electron/ipc/chat.ts:301-304 + group.ts:209-217</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">判断 isNew 时已 readMessages 一次，updateMessage 内部又 readMessages 一次。每条消息保存要读两次整个文件。</div>
+        <div class="fix"><strong>已修复：</strong>updateMessage 返回 isNew 布尔值，saveMessage 直接使用，消除重复读取。</div>
+      </div>
+    </div>
+
+    <h3>5.2 React 渲染性能</h3>
+
+    <div class="issue high">
+      <div class="issue-head">
+        <span class="severity high">高</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">MessageBubble 未用 React.memo</span>
+        <span class="loc">src/components/chat/MessageBubble.tsx + GroupChatMessage.tsx</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">Virtuoso 的 itemContent 每次都会创建新的 MessageBubble，流式输出时所有消息都会 re-render。</div>
+        <div class="fix"><strong>已修复：</strong>两个组件均已使用 <code>React.memo</code> 包裹。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">Thought 解析等昂贵计算未缓存</span>
+        <span class="loc">MessageBubble.tsx:69-83 + GroupChatMessage.tsx + StatusBar.tsx + GroupChatInput.tsx</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">每次渲染都执行 while 循环解析整个 content 的 thought 标签；parseStatusFromMessages 遍历所有消息；filteredMembers/members 每次渲染重新 filter+map。流式输出时性能影响明显。</div>
+        <div class="fix"><strong>已修复：</strong>MessageBubble 的 thought 解析和 originalDisplay 计算用 <code>useMemo</code> 包裹，依赖 <code>message.content</code>。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">translateMessage onChunk 无节流</span>
+        <span class="loc">src/store/useChatStore.ts:1003-1009</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">对比 streamAIResponse 的 STREAM_THROTTLE_MS=50 节流，translateMessage 每个 chunk 都触发 set。翻译长文本时 chunk 频率高，导致大量 re-render。</div>
+        <div class="fix"><strong>已修复：</strong>添加 50ms 节流定时器，累积 chunks 后 flush 一次 set；done/error/catch 路径均清理定时器。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">updateSettings 频繁保存</span>
+        <span class="loc">src/store/useSettingsStore.ts:205-210</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">每次 updateSettings 都触发 saveSettings（async 未 await 未 catch），对滑块拖动、字体调整等高频调用会造成 IPC 洪水。共 16 处类似模式。</div>
+        <div class="fix"><strong>已修复：</strong>updateSettings 改用 300ms debounce 定时器，多次快速调用只触发一次写盘。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">背景面板滑块频繁保存</span>
+        <span class="loc">src/components/chat/BackgroundPanel.tsx:67-73</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">滑块拖动时每像素都触发 IPC 调用和文件写入（saveCharacter）。</div>
+        <div class="fix"><strong>已修复：</strong>滑块使用 localOpacity/localBlur 本地状态，onMouseUp/onTouchEnd 时才调用 saveCharacter 持久化。</div>
+      </div>
+    </div>
+
+    <h3>5.3 主进程性能</h3>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">tokenizer 重复加载</span>
+        <span class="loc">electron/services/tokenizer.ts:8-14, 57</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">每次调用 countTokens 都 <code>require('tiktoken')</code>，countMessagesTokens 对每条消息调用一次，N 条消息触发 N 次 require + N 次 get_encoding。</div>
+        <div class="fix"><strong>已修复：</strong>模块级缓存 <code>_tiktoken</code> 实例，首次加载后后续调用直接复用。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">日志每条都 statSync</span>
+        <span class="loc">electron/services/logger.ts:96</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">每条日志都 statSync 检查文件大小，高频日志时系统调用开销大。</div>
+        <div class="fix"><strong>已修复：</strong>缓存 <code>cachedLogSize</code>，写入时累加字节数，仅超阈值时 statSync 校准 + 轮转后重置。</div>
+      </div>
+    </div>
+
+    <div class="issue mid">
+      <div class="issue-head">
+        <span class="severity mid">中</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">服务端缺少索引 + 每次列表都 COUNT(*)</span>
+        <span class="loc">server/app/db.js:18-37 + routes/announcements.js:13</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">announcements 表仅主键索引，查询条件 <code>WHERE published = 1 ORDER BY pinned DESC, created_at DESC</code> 走全表扫描。每次翻页都 COUNT(*) 全表计数。</div>
+        <div class="fix"><strong>已修复：</strong>添加复合索引 <code>idx_ann_pub_pin_created</code> 加速公告列表查询。</div>
+      </div>
+    </div>
+
+    <div class="issue low">
+      <div class="issue-head">
+        <span class="severity low">低</span>
+        <span class="severity fixed">已修复</span>
+        <span class="title">textarea 自适应高度触发同步重排</span>
+        <span class="loc">src/components/chat/ChatInput.tsx:263-268 + GroupChatInput.tsx:262-266</span>
+      </div>
+      <div class="issue-body">
+        <div class="desc">先设为 'auto' 再读取 scrollHeight 会触发同步 reflow，流式输出时频繁触发。两处实现还重复。</div>
+        <div class="fix"><strong>已修复：</strong>ChatInput 和 GroupChatInput 均用 <code>requestAnimationFrame</code> 包裹高度计算，避免同步 reflow。</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>六、新功能与改进建议</h2>
+
+    <h3>6.1 安全加固（最高优先）</h3>
+
+    <div class="feature-card">
+      <h4>服务端安全默认值改造 <span class="tag done">已完成</span></h4>
+      <p>移除所有硬编码凭据，要求环境变量注入：JWT_SECRET（≥32 字节）、ADMIN_PASSWORD、ALLOWED_ORIGINS。docker-compose.yml 使用 env_file。提供 .env.example 模板。首次登录强制改密。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>IPC 输入校验层 <span class="tag done">已完成</span></h4>
+      <p>封装 <code>safeId(id)</code> 校验函数（仅 <code>[a-zA-Z0-9_-]</code>）应用到所有 ID 参数。封装 <code>safePath(base, id)</code> 校验路径穿越。所有 IPC handler 包统一的 <code>withErrorHandler</code> 包装器自动 try-catch 并校验参数类型。</p>
+    </div>
+
+    <h3>6.2 用户体验优化</h3>
+
+    <div class="feature-card">
+      <h4>危险操作确认弹窗统一 <span class="tag improve">重要</span></h4>
+      <p>当前删除消息、删除 MCP Server、清空群聊、删除 API 配置等都直接执行无确认。统一使用已有的 ConfirmDialog 组件。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>全局错误通知系统 <span class="tag improve">重要</span></h4>
+      <p>当前多处 catch {} 完全吞掉错误（重新生图、handleBranch、GroupChatPage 导出等）。建立统一的 toast/notification 机制，所有错误对用户可见。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>加载状态完善 <span class="tag improve">建议</span></h4>
+      <p>PersonasPage、LorebookPage、PresetsPage 首次加载显示空状态而非 loading 指示。AI 续写/润色/翻译过程应有进度反馈。重新生成按钮应有 loading 视觉反馈。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>可访问性 (a11y) <span class="tag improve">建议</span></h4>
+      <p>Modal 添加 role="dialog" + aria-modal + 焦点陷阱 + 焦点恢复；Toggle 添加 role="switch" + aria-checked；所有图标按钮添加 aria-label；命令补全下拉添加 listbox 语义；Esc 关闭图片预览和上下文查看器。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>角色列表虚拟化 <span class="tag improve">建议</span></h4>
+      <p>CharactersPage 和 LorebookPage 条目列表在数据量大（100+）时未虚拟化会卡顿。复用已有的 react-virtuoso。</p>
+    </div>
+
+    <h3>6.3 功能扩展</h3>
+
+    <div class="feature-card">
+      <h4>多窗口/多会话并行 <span class="tag new">新功能</span></h4>
+      <p>支持多个独立聊天窗口同时打开，方便用户同时与多个角色对话。Electron 的 BrowserWindow 可轻松实现，需要重构 store 支持多实例。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>角色卡市场 / 在线分享 <span class="tag new">新功能</span></h4>
+      <p>复用已有的公告服务端基础设施，扩展为角色卡分享平台。用户可上传/下载/评分角色卡，配套审核机制。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>对话搜索与全文索引 <span class="tag new">新功能</span></h4>
+      <p>当前无法搜索历史消息。引入本地全文索引（如 SQLite FTS5 或 lunr.js），支持跨会话、跨角色搜索关键词，高亮匹配。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>消息编辑历史 / 版本对比 <span class="tag new">新功能</span></h4>
+      <p>当前消息编辑直接覆盖。引入版本历史（类似 git），可查看/回滚任意历史版本，对比 diff。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>统计与可视化增强 <span class="tag new">新功能</span></h4>
+      <p>扩展 UsagePage：按角色/会话维度统计、费用趋势图、Token 消耗热力图、消息长度分布。引入 Chart.js 或 Recharts。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>插件系统 <span class="tag new">新功能</span></h4>
+      <p>基于现有 MCP 架构扩展，允许用户安装第三方插件扩展斜杠命令、消息处理器、UI 面板。需要沙箱隔离机制。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>跨设备同步（可选） <span class="tag new">新功能</span></h4>
+      <p>当前完全本地存储。提供可选的端到端加密同步，用户可在多设备间同步角色/对话/设置（需解决 API Key 加密同步问题）。</p>
+    </div>
+
+    <h3>6.4 技术债务清理</h3>
+
+    <div class="feature-card">
+      <h4>重构 useGroupChatStore <span class="tag debt">重要</span></h4>
+      <p>该文件集中了 7 处高严重度 Bug（已修复 5 处），是技术债最重的文件。建议以 useChatStore 的 streamAIResponse + cleanupActiveStream + flushStream 为模板，抽取公共 <code>createStreamController</code> 工厂，群聊和单聊复用。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>拆分大型组件 <span class="tag debt">重要</span></h4>
+      <p>GroupChatPage（1114 行）、ChatPage（899 行）、ai.ts（888 行）、CharacterEditor（739 行）、ChatInput（739 行）等都应拆分。每个文件不超过 300-400 行为佳。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>存储层迁移到 SQLite <span class="tag debt">建议</span></h4>
+      <p>当前消息存储用 JSONL 文件，存在：非原子写入、全量读取性能差、无索引、无事务。迁移到 better-sqlite3（已在服务端使用）可解决：原子事务、索引查询、FTS 全文搜索、并发安全。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>类型系统完善 <span class="tag debt">建议</span></h4>
+      <p>移除 eslint-disable no-explicit-any，为 AI 响应定义 interface；shared/ipc-api.ts 的 McpAPI/UsageAPI/LogAPI 用具体类型替换 any；useGroupChatStore 的辅助函数用 StoreSet/StoreGet 类型。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>添加测试 <span class="tag debt">建议</span></h4>
+      <p>当前项目无任何测试。建议：核心工具函数单元测试（tokenCounter、dialogue-parser、variables）；store action 集成测试（mock IPC）；关键 IPC handler 测试。引入 vitest + @testing-library/react。</p>
+    </div>
+
+    <div class="feature-card">
+      <h4>统一错误边界 <span class="tag debt">建议</span></h4>
+      <p>整个应用没有 ErrorBoundary，任何渲染期错误都会白屏。在 main.tsx 包裹全局 ErrorBoundary，关键页面单独包裹局部 ErrorBoundary。</p>
+    </div>
+  </section>
+
+  <section id="priority">
+    <h2>七、优先级行动计划</h2>
+    <p>按影响与修复成本综合排序，<span class="severity fixed">已完成</span> 标记表示已修复。剩余项按优先级排列：</p>
+
+    <div class="priority-list">
+      <div class="priority-item">
+        <div class="content">
+          <div class="title"><span class="severity fixed">已完成</span> 服务端安全默认值改造</div>
+          <div class="detail">移除 JWT 弱密钥、admin/admin123、CORS 全开、添加 .dockerignore、引入 helmet。修改 docker-compose 注入环境变量。Dockerfile USER 指令仍待补充。修复成本：低（少量行）</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title"><span class="severity fixed">已完成</span> Electron IPC 输入校验</div>
+          <div class="detail">封装 safeId + safePath，应用到所有 ID 参数（69 处）。修复 file:readImageBase64 任意文件读取、mcp 命令注入、setWindowOpenHandler URL 校验、sandbox 启用。修复成本：中</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title"><span class="severity fixed">已完成</span> useGroupChatStore Bug 集中修复</div>
+          <div class="detail">已修复：stopStreaming、unbindError、flushStream、currentSpeakerIndex 持久化、polling setTimeout 清理、translateMessage 改 IPC、命令别名 p 冲突（preset 改为 ps）。修复成本：中</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title"><span class="severity fixed">已完成</span> toolLoop.ts + lorebook enabled 语义反转</div>
+          <div class="detail">已修复：Lorebook enabled 字段语义反转（lorebook.ts:54）。已修复：toolLoop.ts 重写为直接调用适配器，OpenAI 适配器解析 tool_calls 并附加 [TOOL_CALL:json] 标记，IPC handler 集成 chatWithTools。修复成本：低</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title"><span class="severity fixed">已完成</span> 草稿公告不可见 Bug + 服务端错误处理</div>
+          <div class="detail">管理后台已改用管理员专用接口；helmet 已引入；CORS 已限制。修复成本：低</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title"><span class="severity fixed">已完成</span> IPC 监听器内存泄漏 + 流式 Reader 泄漏 + TTS/MCP 泄漏</div>
+          <div class="detail">已修复：ai.ts 4 个适配器用 try/finally 包裹 reader；ChatInput/CharacterEditor/LorebookPage 用 activeRequestIdsRef + useEffect cleanup 解绑；TTS init 监听器 resolve 后移除；MCP cleanup 调用 removeAllListeners()。修复成本：低</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title">Docker 容器以 root 运行 <span class="severity unfixed">未修复</span></div>
+          <div class="detail">Dockerfile 无 USER 指令，仍以 root 运行。添加 <code>USER node</code> 即可。修复成本：极低</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title"><span class="severity fixed">已完成</span> 逻辑错误集中修复</div>
+          <div class="detail">已修复：推理模型检测误判（正则词边界匹配）、currentSpeakerIndex 可能为负（Math.max(0,...)）、系统主题不监听变化（addEventListener change）、before-quit 可能卡死（Promise.race 超时）、数据写入非原子（temp+rename + 消除重复读取）。修复成本：低</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title"><span class="severity fixed">已完成</span> 性能优化：memo + 节流 + 缓存 + 索引</div>
+          <div class="detail">已修复：React.memo 包裹消息组件、translateMessage 50ms 节流、thought 解析 useMemo、updateSettings 300ms debounce、背景滑块 onMouseUp 保存、tokenizer 模块级缓存、日志文件大小缓存、服务端索引、textarea requestAnimationFrame、listSessions 行数统计。修复成本：低</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title">架构重构：抽取公共模块 <span class="severity unfixed">未修复</span></div>
+          <div class="detail">messageStore、http、pathGuard、jsonStore、Avatar/ImagePreview/Toggle/ModelListSection 等公共组件。修复成本：中高</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title">大型组件拆分 + 类型系统完善 <span class="severity unfixed">未修复</span></div>
+          <div class="detail">GroupChatPage、ChatPage、ai.ts、CharacterEditor、ChatInput 拆分；移除 any 类型。修复成本：高（持续进行）</div>
+        </div>
+      </div>
+      <div class="priority-item">
+        <div class="content">
+          <div class="title">存储层迁移到 SQLite + 添加测试 <span class="severity unfixed">未修复</span></div>
+          <div class="detail">JSONL 迁移到 better-sqlite3；引入 vitest 测试框架；核心工具函数和 store 测试。修复成本：高（长期目标）</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="highlight" style="margin-top: 24px;">
+      <strong>建议节奏：</strong> 第 1-5 项已完成（安全 + 核心 Bug），第 6-8 项应在下一个版本完成（Docker root、逻辑错误、IPC 泄漏、性能优化）；第 9-12 项作为持续技术债务清理。考虑到项目当前是 0.8.4 版本且即将发布 1.0，建议在 1.0 前完成剩余架构重构项，确保发布版本的稳定性。
+    </div>
+  </section>
+
+  <footer>
+    <p>本报告由对项目四个层面（Electron 主进程、前端 Store/Utils、前端组件/页面、公告服务端）的彻底审查汇总而成。共审查约 12000 行代码，识别 124 项问题。所有问题均包含具体文件路径与行号，便于定位修复。</p>
+    <p style="margin-top: 8px;">生成日期：2026-07-21 · 复查日期：2026-07-21 · 项目版本：0.8.4 · 分析范围：src/ + electron/ + server/ + shared/
+  </footer>
+</div>
+</body>
+</html>

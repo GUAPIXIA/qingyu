@@ -260,9 +260,12 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
             className="w-full resize-none rounded-xl border border-tavern-border-soft bg-tavern-bg px-3 py-2.5 pr-10 text-sm text-tavern-text placeholder-tavern-text-muted/60 focus:outline-none focus:border-tavern-accent focus:ring-1 focus:ring-tavern-accent/30 transition-colors"
             style={{ minHeight: '42px', maxHeight: '120px' }}
             onInput={(e) => {
+              // P-10 修复：用 requestAnimationFrame 避免同步 reflow
               const el = e.currentTarget
-              el.style.height = 'auto'
-              el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+              requestAnimationFrame(() => {
+                el.style.height = 'auto'
+                el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+              })
             }}
           />
           <button

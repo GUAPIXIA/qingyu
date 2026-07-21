@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type { Character, ProviderType } from '../../../shared/types'
 import { Modal } from '../common/Modal'
 import { ImagePlus, X, Languages, Loader2, RefreshCw } from 'lucide-react'
@@ -33,11 +33,24 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   const [coverError, setCoverError] = useState<string | null>(null)
   const [avatarError, setAvatarError] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // H-09 修复：追踪活跃的翻译请求，组件卸载时取消
+  const activeRequestIdsRef = useRef<Set<string>>(new Set())
   const { settings } = useSettingsStore()
 
   useEffect(() => {
     setForm(character)
   }, [character])
+
+  // H-09 修复：组件卸载时取消所有活跃的翻译请求
+  useEffect(() => {
+    return () => {
+      const ids = Array.from(activeRequestIdsRef.current)
+      for (const id of ids) {
+        window.api.ai.cancelChat(id).catch(() => {})
+      }
+      activeRequestIdsRef.current.clear()
+    }
+  }, [])
 
   const update = (partial: Partial<Character>) => {
     setForm((prev) => ({ ...prev, ...partial }))
@@ -213,6 +226,94 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       setTranslateError('翻译备选开场白失败')
     }
     setTranslatingField(null)
+  }
+
+  // H-09 修复：translateText 移入组件内部以追踪活跃请求
+  const translateText = async (
+    text: string,
+    fieldLabel: string,
+    settings: ReturnType<typeof useSettingsStore.getState>['settings'],
+    profile: { provider: ProviderType; apiKey: string; baseUrl: string; model: string },
+    characterName?: string,
+  ): Promise<string> => {
+    const requestId = `translate-card-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    activeRequestIdsRef.current.add(requestId)
+
+    return new Promise((resolve) => {
+      let result = ''
+
+      const cleanup = () => {
+        activeRequestIdsRef.current.delete(requestId)
+        unbindChunk(); unbindDone(); unbindError()
+      }
+
+      const unbindChunk = window.api.ai.onChunk((data) => {
+        if (data.requestId !== requestId) return
+        result += data.text
+      })
+      const unbindDone = window.api.ai.onDone((doneId) => {
+        if (doneId !== requestId) return
+        cleanup()
+        const cleaned = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+        resolve(cleaned || text)
+      })
+      const unbindError = window.api.ai.onError((data) => {
+        if (data.requestId !== requestId) return
+        cleanup()
+        resolve('')
+      })
+
+      // 根据字段类型定制翻译提示
+      const nameHint = characterName ? `\n- 角色名为「${characterName}」，其他字段中出现该名字时请一并翻译为中文` : ''
+      const fieldHints: Record<string, string> = {
+        '角色名': '- 这是角色名，请音译或意译为地道的中文名字',
+        '角色描述': '- 这是角色外观/背景描写，使用自然流畅的中文叙述',
+        '性格特征': '- 这是性格标签或描述，使用中文角色扮演圈常用表达（如"傲娇""腹黑"等），保留 {{char}} 等变量',
+        '场景设定': '- 这是故事背景设定，使用中文同人/创作圈常见的叙述风格',
+        '首条消息': '- 这是角色初次见面对话/开场独白，保持人物语气和口吻风格，对话中的人名一并翻译',
+        '对话示例': '- 这是示例对话，角色名和对话中的人名一并翻译，保持口语化风格，*动作描写*保留原格式',
+      }
+      const fieldHint = fieldHints[fieldLabel] || ''
+
+      window.api.ai.chat({
+        requestId,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              '你是一位资深的 AI 角色扮演本地化翻译专家，专门将英文角色卡精准翻译为中文。',
+              '',
+              '## 核心翻译原则',
+              '- 角色名：音译或意译为自然的中文名字，不使用直译',
+              '- 描述/设定：使用地道的中文表达，保持原文叙述风格',
+              '- 对话：保持角色的语气、口吻、情感色彩，中文表达要口语化自然',
+              '- 性格特征：使用中文角色扮演圈常用标签（如"傲娇""天然呆""腹黑""元气"等）',
+              '- 保留所有 Markdown 格式、HTML 标签、特殊标记（{{user}}、{{char}}、*动作描写* 等）不变',
+              '- 只输出翻译结果，禁止添加解释、备注或额外内容',
+              '- 禁止输出 <thought> 标签或任何格式标记，只输出纯翻译文本',
+              nameHint,
+              '',
+              `## 当前字段: ${fieldLabel}`,
+              fieldHint,
+            ].filter(Boolean).join('\n'),
+          },
+          { role: 'user', content: text },
+        ],
+        provider: profile.provider,
+        apiKey: profile.apiKey,
+        baseUrl: profile.baseUrl,
+        model: settings.activeModel || profile.model,
+        temperature: 0.3,
+        topP: 0.9,
+        maxTokens: 4096,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
+        stream: true,
+      }).catch(() => {
+        cleanup()
+        resolve('')
+      })
+    })
   }
 
   return (
@@ -654,86 +755,4 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       </div>
     </Modal>
   )
-}
-
-/** 使用 AI 翻译单段文本 */
-async function translateText(
-  text: string,
-  fieldLabel: string,
-  settings: ReturnType<typeof useSettingsStore.getState>['settings'],
-  profile: { provider: ProviderType; apiKey: string; baseUrl: string; model: string },
-  characterName?: string,
-): Promise<string> {
-  const requestId = `translate-card-${Date.now()}-${Math.random().toString(36).slice(2)}`
-
-  return new Promise((resolve) => {
-    let result = ''
-
-    const unbindChunk = window.api.ai.onChunk((data) => {
-      if (data.requestId !== requestId) return
-      result += data.text
-    })
-    const unbindDone = window.api.ai.onDone((doneId) => {
-      if (doneId !== requestId) return
-      unbindChunk(); unbindDone(); unbindError()
-      const cleaned = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
-      resolve(cleaned || text)
-    })
-    const unbindError = window.api.ai.onError((data) => {
-      if (data.requestId !== requestId) return
-      unbindChunk(); unbindDone(); unbindError()
-      resolve('')
-    })
-
-    // 根据字段类型定制翻译提示
-    const nameHint = characterName ? `\n- 角色名为「${characterName}」，其他字段中出现该名字时请一并翻译为中文` : ''
-    const fieldHints: Record<string, string> = {
-      '角色名': '- 这是角色名，请音译或意译为地道的中文名字',
-      '角色描述': '- 这是角色外观/背景描写，使用自然流畅的中文叙述',
-      '性格特征': '- 这是性格标签或描述，使用中文角色扮演圈常用表达（如"傲娇""腹黑"等），保留 {{char}} 等变量',
-      '场景设定': '- 这是故事背景设定，使用中文同人/创作圈常见的叙述风格',
-      '首条消息': '- 这是角色初次见面对话/开场独白，保持人物语气和口吻风格，对话中的人名一并翻译',
-      '对话示例': '- 这是示例对话，角色名和对话中的人名一并翻译，保持口语化风格，*动作描写*保留原格式',
-    }
-    const fieldHint = fieldHints[fieldLabel] || ''
-
-    window.api.ai.chat({
-      requestId,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            '你是一位资深的 AI 角色扮演本地化翻译专家，专门将英文角色卡精准翻译为中文。',
-            '',
-            '## 核心翻译原则',
-            '- 角色名：音译或意译为自然的中文名字，不使用直译',
-            '- 描述/设定：使用地道的中文表达，保持原文叙述风格',
-            '- 对话：保持角色的语气、口吻、情感色彩，中文表达要口语化自然',
-            '- 性格特征：使用中文角色扮演圈常用标签（如"傲娇""天然呆""腹黑""元气"等）',
-            '- 保留所有 Markdown 格式、HTML 标签、特殊标记（{{user}}、{{char}}、*动作描写* 等）不变',
-            '- 只输出翻译结果，禁止添加解释、备注或额外内容',
-            '- 禁止输出 <thought> 标签或任何格式标记，只输出纯翻译文本',
-            nameHint,
-            '',
-            `## 当前字段: ${fieldLabel}`,
-            fieldHint,
-          ].filter(Boolean).join('\n'),
-        },
-        { role: 'user', content: text },
-      ],
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model: settings.activeModel || profile.model,
-      temperature: 0.3,
-      topP: 0.9,
-      maxTokens: 4096,
-      frequencyPenalty: 0,
-      presencePenalty: 0,
-      stream: true,
-    }).catch(() => {
-      unbindChunk(); unbindDone(); unbindError()
-      resolve('')
-    })
-  })
 }

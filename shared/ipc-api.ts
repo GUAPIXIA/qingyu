@@ -219,6 +219,16 @@ export interface AnnouncementAPI {
   setServerUrl(url: string): Promise<void>
 }
 
+// ===================== 应用接口 =====================
+export interface AppAPI {
+  /** 获取当前应用版本号 */
+  getVersion(): Promise<string>
+  /** 检查服务器最新版本 */
+  checkVersion(): Promise<{ version: string; changelog: string; downloadUrl: string } | null>
+  /** 打开外部链接 */
+  openExternal(url: string): Promise<void>
+}
+
 // ===================== 完整 API 契约 =====================
 export interface ExposedAPI {
   ai: AIAPI
@@ -237,6 +247,7 @@ export interface ExposedAPI {
   mcp: McpAPI
   group: GroupChatAPI
   announcement: AnnouncementAPI
+  app: AppAPI
 }
 
 declare global {

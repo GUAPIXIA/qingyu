@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -v --max-time 10 http://cjbtj.xyz/api/announcements)",
+      "Bash(curl -v --max-time 10 https://cjbtj.xyz/api/announcements)",
+      "Bash(curl -v --max-time 10 http://47.92.7.207:3000/api/announcements)",
+      "Bash(npx tsc *)",
+      "Bash(curl -s http://cjbtj.xyz/api/announcements/admin)",
+      "Bash(curl -s http://cjbtj.xyz/api/version)",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS: %{http_code}\\\\n\" http://cjbtj.xyz/api/announcements)",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS: %{http_code}\\\\n\" http://cjbtj.xyz/admin/)",
+      "Bash(curl -s -X POST http://cjbtj.xyz/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"fgb54188\"}')",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS: %{http_code}\\\\n\" \"http://cjbtj.xyz/api/announcements/admin?pageSize=100\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsImlhdCI6MTc4NDYzNjc1MSwiZXhwIjoxNzg0NzIzMTUxfQ.651G8IhkbPlSmNr6j7tefEX9kXKpJjMGZDZ_r5_GZZM\")",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS: %{http_code}\\\\n\" \"http://cjbtj.xyz/api/announcements/admin\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsImlhdCI6MTc4NDYzNjc1MSwiZXhwIjoxNzg0NzIzMTUxfQ.651G8IhkbPlSmNr6j7tefEX9kXKpJjMGZDZ_r5_GZZM\")",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS: %{http_code}\\\\n\" \"http://47.92.7.207/api/announcements/admin\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsImlhdCI6MTc4NDYzNjc1MSwiZXhwIjoxNzg0NzIzMTUxfQ.651G8IhkbPlSmNr6j7tefEX9kXKpJjMGZDZ_r5_GZZM\")",
+      "Bash(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@47.92.7.207 \"ls /root/tavern/server/ 2>/dev/null || ls /opt/tavern/server/ 2>/dev/null || find / -name 'docker-compose.yml' -path '*/server/*' 2>/dev/null | head -5\")",
+      "Bash(sshpass -p 'fgb54188' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@47.92.7.207 \"pwd && ls /root/ 2>/dev/null\")",
+      "Bash(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o PreferredAuthentications=password root@47.92.7.207 \"pwd 2>&1\")",
+      "Bash(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o PreferredAuthentications=password root@47.92.7.207 \"pwd && ls -la\")",
+      "Bash(which plink *)",
+      "Read(//c/Program Files/PuTTY/**)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -X POST http://cjbtj.xyz/api/auth/login -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"fgb54188\"}')",
+      "Bash(curl -s http://cjbtj.xyz/api/announcements/admin -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsImlhdCI6MTc4NDYzOTA1MCwiZXhwIjoxNzg0NzI1NDUwfQ.tiIKqMkW55m5wgShC4pBRsgUGCiQr1368YZEZ0YUN_c')",
+      "Bash(curl -s http://cjbtj.xyz/admin/)",
+      "Bash(curl -s http://cjbtj.xyz/api/announcements)",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" -X POST http://cjbtj.xyz/api/auth/login -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"fgb54188\"}')",
+      "Bash(curl -sI http://cjbtj.xyz/admin/)"
+    ]
+  }
+}

@@ -4,7 +4,24 @@ const { authMiddleware } = require('../middleware/auth')
 
 const router = express.Router()
 
-// 获取公告列表（公开）
+// 获取所有公告（管理员专用，含草稿，需认证）
+router.get('/admin', authMiddleware, (req, res) => {
+  const page = parseInt(req.query.page) || 1
+  const pageSize = parseInt(req.query.pageSize) || 20
+  const offset = (page - 1) * pageSize
+
+  const countRow = db.prepare('SELECT COUNT(*) as total FROM announcements').get()
+  const items = db.prepare(`
+    SELECT id, title, summary, content, pinned, published, created_at as createdAt, updated_at as updatedAt
+    FROM announcements
+    ORDER BY pinned DESC, created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(pageSize, offset)
+
+  res.json({ items, total: countRow.total, page, pageSize })
+})
+
+// 获取公告列表（公开，仅已发布）
 router.get('/', (req, res) => {
   const page = parseInt(req.query.page) || 1
   const pageSize = parseInt(req.query.pageSize) || 20
@@ -22,7 +39,21 @@ router.get('/', (req, res) => {
   res.json({ items, total: countRow.total, page, pageSize })
 })
 
-// 获取单条公告详情（公开）
+// 获取单条公告详情（管理员专用，含草稿，需认证）
+router.get('/admin/:id', authMiddleware, (req, res) => {
+  const item = db.prepare(`
+    SELECT id, title, summary, content, pinned, published, created_at as createdAt, updated_at as updatedAt
+    FROM announcements
+    WHERE id = ?
+  `).get(req.params.id)
+
+  if (!item) {
+    return res.status(404).json({ error: '公告不存在' })
+  }
+  res.json(item)
+})
+
+// 获取单条公告详情（公开，仅已发布）
 router.get('/:id', (req, res) => {
   const item = db.prepare(`
     SELECT id, title, summary, content, pinned, published, created_at as createdAt, updated_at as updatedAt

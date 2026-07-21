@@ -3,6 +3,10 @@ import type { IpcMain, WebContents } from 'electron'
 import type { ChatParams, ProviderType } from '../../shared/types'
 import { countTokens, countMessagesTokens } from './tokenizer'
 import { createLogger } from './logger'
+import { chatWithTools } from './toolLoop'
+import { safeSend } from '../utils/safeSend'
+
+import { sanitizeApiKey } from '../utils/pathGuard'
 
 const log = createLogger('ai')
 
@@ -86,9 +90,15 @@ const openaiAdapter: AIAdapter = {
       stream,
     }
 
-    // 推理模型支持：识别 o1/o3/deepseek-r1 等模型，添加 reasoning_effort
+    // C-03 修复：传递工具定义给 API
+    if (params.tools && params.tools.length > 0) {
+      body.tools = params.tools
+      if (params.toolChoice) body.tool_choice = params.toolChoice
+    }
+
+    // L-01 修复：推理模型支持 — 用词边界正则避免误匹配（如 gpt-3.5-turbo-1106 含 "o1"）
     const lowerModel = model.toLowerCase()
-    if (lowerModel.includes('o1') || lowerModel.includes('o3') || lowerModel.includes('o4-mini')) {
+    if (/\bo[134](?:-mini)?\b/.test(lowerModel) || lowerModel.includes('deepseek-r1')) {
       // OpenAI o 系列不支持 temperature/top_p 等参数
       delete body.temperature
       delete body.top_p
@@ -114,7 +124,7 @@ const openaiAdapter: AIAdapter = {
 
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`OpenAI API 错误 ${response.status}: ${errText}`)
+      throw new Error(`OpenAI API 错误 ${response.status}: ${sanitizeApiKey(errText)}`)
     }
 
     if (!stream) {
@@ -132,6 +142,11 @@ const openaiAdapter: AIAdapter = {
           totalTokens: data.usage.total_tokens ?? 0,
         })
       }
+      // C-03 修复：检测 tool_calls 并附加标记供 toolLoop 解析
+      const toolCalls = data.choices?.[0]?.message?.tool_calls
+      if (toolCalls && toolCalls.length > 0) {
+        return fullContent + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']'
+      }
       return fullContent
     }
 
@@ -142,7 +157,10 @@ const openaiAdapter: AIAdapter = {
     let fullText = ''
     let buffer = ''
     let pendingReasoning = ''
+    // C-03 修复：收集流式 tool_calls delta
+    const streamedToolCalls = new Map<number, { id: string; type: string; function: { name: string; arguments: string } }>()
 
+    try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -191,6 +209,20 @@ const openaiAdapter: AIAdapter = {
             fullText += delta.content
             onChunk(delta.content)
           }
+
+          // C-03 修复：收集流式 tool_calls delta
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              if (!streamedToolCalls.has(idx)) {
+                streamedToolCalls.set(idx, { id: tc.id || '', type: 'function', function: { name: '', arguments: '' } })
+              }
+              const existing = streamedToolCalls.get(idx)!
+              if (tc.id) existing.id = tc.id
+              if (tc.function?.name) existing.function.name += tc.function.name
+              if (tc.function?.arguments) existing.function.arguments += tc.function.arguments
+            }
+          }
         } catch {
           // 忽略解析错误（可能是注释行或心跳）
         }
@@ -203,7 +235,15 @@ const openaiAdapter: AIAdapter = {
       fullText += pendingReasoning
       onChunk(pendingReasoning)
     }
+    } finally {
+      try { reader.releaseLock() } catch { /* ignore */ }
+    }
 
+    // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
+    if (streamedToolCalls.size > 0) {
+      const toolCallsArray = Array.from(streamedToolCalls.values())
+      return fullText + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+    }
     return fullText
   },
 
@@ -247,6 +287,23 @@ const claudeAdapter: AIAdapter = {
     }
     if (systemMsg) body.system = systemMsg.content
 
+    // C-03 修复：转换 OpenAI 格式 tools 为 Claude 格式
+    if (params.tools && params.tools.length > 0) {
+      body.tools = params.tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }))
+      // tool_choice 转换
+      if (params.toolChoice) {
+        if (typeof params.toolChoice === 'string') {
+          body.tool_choice = params.toolChoice === 'required' ? { type: 'any' } : { type: 'auto' }
+        } else {
+          body.tool_choice = { type: 'tool', name: params.toolChoice.function?.name || '' }
+        }
+      }
+    }
+
     // Claude 3.7 / Claude 4 扩展思考支持
     const lowerModel = model.toLowerCase()
     if ((lowerModel.includes('claude-3-7') || lowerModel.includes('claude-4') ||
@@ -273,18 +330,26 @@ const claudeAdapter: AIAdapter = {
 
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`Claude API 错误 ${response.status}: ${errText}`)
+      throw new Error(`Claude API 错误 ${response.status}: ${sanitizeApiKey(errText)}`)
     }
 
     if (!stream) {
       const data: any = await response.json()
-      // Claude 返回 content 数组，可能有 thinking 和 text 两种类型
+      // Claude 返回 content 数组，可能有 thinking / text / tool_use 三种类型
       const parts = data.content ?? []
       let thinking = ''
       let text = ''
+      const rawToolCalls: any[] = []
       for (const part of parts) {
         if (part.type === 'thinking') thinking += part.thinking
         else if (part.type === 'text') text += part.text
+        else if (part.type === 'tool_use') {
+          rawToolCalls.push({
+            id: part.id,
+            type: 'function',
+            function: { name: part.name, arguments: JSON.stringify(part.input) },
+          })
+        }
       }
       const content = thinking ? `<thought>${thinking}</thought>\n\n${text}` : text
       onChunk(content)
@@ -294,6 +359,10 @@ const claudeAdapter: AIAdapter = {
           completionTokens: data.usage.output_tokens ?? 0,
           totalTokens: (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
         })
+      }
+      // C-03 修复：如有 tool_use，附加标记供 toolLoop 解析
+      if (rawToolCalls.length > 0) {
+        return content + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']'
       }
       return content
     }
@@ -306,7 +375,10 @@ const claudeAdapter: AIAdapter = {
     let pendingThought = ''
     let claudeInputTokens = 0
     let claudeOutputTokens = 0
+    // C-03 修复：收集流式 tool_use delta
+    const streamedToolCalls = new Map<number, { id: string; type: string; function: { name: string; arguments: string } }>()
 
+    try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -325,9 +397,18 @@ const claudeAdapter: AIAdapter = {
           if (parsed.type === 'message_start' && parsed.message?.usage) {
             claudeInputTokens = parsed.message.usage.input_tokens ?? 0
           }
-          // thinking 块开始
-          else if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'thinking') {
-            pendingThought = '<thought>'
+          // thinking / tool_use 块开始
+          else if (parsed.type === 'content_block_start') {
+            if (parsed.content_block?.type === 'thinking') {
+              pendingThought = '<thought>'
+            } else if (parsed.content_block?.type === 'tool_use') {
+              const idx = parsed.index ?? 0
+              streamedToolCalls.set(idx, {
+                id: parsed.content_block.id || '',
+                type: 'function',
+                function: { name: parsed.content_block.name || '', arguments: '' },
+              })
+            }
           } else if (parsed.type === 'content_block_delta') {
             // thinking delta
             if (parsed.delta?.type === 'thinking_delta' && parsed.delta.thinking) {
@@ -343,6 +424,12 @@ const claudeAdapter: AIAdapter = {
               }
               fullText += parsed.delta.text
               onChunk(parsed.delta.text)
+            }
+            // C-03 修复：tool_use input_json delta
+            else if (parsed.delta?.type === 'input_json_delta' && parsed.delta.partial_json) {
+              const idx = parsed.index ?? 0
+              const existing = streamedToolCalls.get(idx)
+              if (existing) existing.function.arguments += parsed.delta.partial_json
             }
           } else if (parsed.type === 'content_block_stop' && pendingThought) {
             pendingThought += '</thought>\n\n'
@@ -371,6 +458,14 @@ const claudeAdapter: AIAdapter = {
       pendingThought += '</thought>\n\n'
       fullText += pendingThought
       onChunk(pendingThought)
+    }
+    } finally {
+      try { reader.releaseLock() } catch { /* ignore */ }
+    }
+    // C-03 修复：如有 tool_use，附加标记供 toolLoop 解析
+    if (streamedToolCalls.size > 0) {
+      const toolCallsArray = Array.from(streamedToolCalls.values())
+      return fullText + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
     }
     return fullText
   },
@@ -404,7 +499,7 @@ const geminiAdapter: AIAdapter = {
     const { baseUrl, apiKey, model, messages, temperature, topP,
             maxTokens, frequencyPenalty, presencePenalty, stream } = params
     const action = stream ? 'streamGenerateContent' : 'generateContent'
-    const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models/${model}:${action}?key=${apiKey}${stream ? '&alt=sse' : ''}`
+    const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models/${model}:${action}${stream ? '?alt=sse' : ''}`
 
     // 转换为 Gemini 格式
     const systemMsg = messages.find((m) => m.role === 'system')
@@ -436,22 +531,45 @@ const geminiAdapter: AIAdapter = {
       body.systemInstruction = { parts: [{ text: systemMsg.content }] }
     }
 
+    // C-03 修复：转换 OpenAI 格式 tools 为 Gemini functionDeclarations 格式
+    if (params.tools && params.tools.length > 0) {
+      body.tools = [{
+        functionDeclarations: params.tools.map(t => ({
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters,
+        })),
+      }]
+    }
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),
       signal,
     })
 
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`Gemini API 错误 ${response.status}: ${errText}`)
+      throw new Error(`Gemini API 错误 ${response.status}`)
     }
 
     if (!stream) {
       const data: any = await response.json()
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-      onChunk(content)
+      const parts = data.candidates?.[0]?.content?.parts ?? []
+      let text = ''
+      const rawToolCalls: any[] = []
+      for (const part of parts) {
+        if (part.text) text += part.text
+        else if (part.functionCall) {
+          rawToolCalls.push({
+            id: `gemini-${Date.now()}-${rawToolCalls.length}`,
+            type: 'function',
+            function: { name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) },
+          })
+        }
+      }
+      onChunk(text)
       if (onUsage && data.usageMetadata) {
         onUsage({
           promptTokens: data.usageMetadata.promptTokenCount ?? 0,
@@ -459,7 +577,11 @@ const geminiAdapter: AIAdapter = {
           totalTokens: data.usageMetadata.totalTokenCount ?? 0,
         })
       }
-      return content
+      // C-03 修复：如有 functionCall，附加标记供 toolLoop 解析
+      if (rawToolCalls.length > 0) {
+        return text + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']'
+      }
+      return text
     }
 
     // 修复 #38: 改进的 Gemini 流式解析
@@ -472,7 +594,10 @@ const geminiAdapter: AIAdapter = {
 
     // 优先按 SSE 格式解析（alt=sse 时）
     const isSSE = response.headers.get('content-type')?.includes('text/event-stream')
+    // C-03 修复：收集流式 functionCall
+    const geminiFnCalls = new Map<string, { id: string; type: string; function: { name: string; arguments: string } }>()
 
+    try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -489,10 +614,20 @@ const geminiAdapter: AIAdapter = {
             if (!data) continue
             try {
               const parsed = JSON.parse(data)
-              const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-              if (text) {
-                fullText += text
-                onChunk(text)
+              const parts = parsed.candidates?.[0]?.content?.parts ?? []
+              for (const part of parts) {
+                if (part.text) {
+                  fullText += part.text
+                  onChunk(part.text)
+                } else if (part.functionCall) {
+                  const fn = part.functionCall
+                  const idx = fn.name || geminiFnCalls.size.toString()
+                  geminiFnCalls.set(idx, {
+                    id: `gemini-${Date.now()}-${geminiFnCalls.size}`,
+                    type: 'function',
+                    function: { name: fn.name || '', arguments: JSON.stringify(fn.args || {}) },
+                  })
+                }
               }
               // 解析 usage（每个 chunk 都可能含 usageMetadata，取最后一次）
               if (parsed.usageMetadata && onUsage) {
@@ -511,10 +646,20 @@ const geminiAdapter: AIAdapter = {
         const parseResult = extractGeminiJsonObjects(buffer)
         buffer = parseResult.remaining
         for (const obj of parseResult.objects) {
-          const text = obj.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-          if (text) {
-            fullText += text
-            onChunk(text)
+          const parts = obj.candidates?.[0]?.content?.parts ?? []
+          for (const part of parts) {
+            if (part.text) {
+              fullText += part.text
+              onChunk(part.text)
+            } else if (part.functionCall) {
+              const fn = part.functionCall
+              const idx = fn.name || geminiFnCalls.size.toString()
+              geminiFnCalls.set(idx, {
+                id: `gemini-${Date.now()}-${geminiFnCalls.size}`,
+                type: 'function',
+                function: { name: fn.name || '', arguments: JSON.stringify(fn.args || {}) },
+              })
+            }
           }
           // 解析 usage（取最后一次）
           if (obj.usageMetadata && onUsage) {
@@ -532,10 +677,20 @@ const geminiAdapter: AIAdapter = {
     if (buffer.trim()) {
       const parseResult = extractGeminiJsonObjects(buffer)
       for (const obj of parseResult.objects) {
-        const text = obj.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-        if (text) {
-          fullText += text
-          onChunk(text)
+        const parts = obj.candidates?.[0]?.content?.parts ?? []
+        for (const part of parts) {
+          if (part.text) {
+            fullText += part.text
+            onChunk(part.text)
+          } else if (part.functionCall) {
+            const fn = part.functionCall
+            const idx = fn.name || geminiFnCalls.size.toString()
+            geminiFnCalls.set(idx, {
+              id: `gemini-${Date.now()}-${geminiFnCalls.size}`,
+              type: 'function',
+              function: { name: fn.name || '', arguments: JSON.stringify(fn.args || {}) },
+            })
+          }
         }
         // 解析 usage（取最后一次）
         if (obj.usageMetadata && onUsage) {
@@ -547,10 +702,18 @@ const geminiAdapter: AIAdapter = {
         }
       }
     }
+    } finally {
+      try { reader.releaseLock() } catch { /* ignore */ }
+    }
+    // C-03 修复：如有 functionCall，附加标记供 toolLoop 解析
+    if (geminiFnCalls.size > 0) {
+      const toolCallsArray = Array.from(geminiFnCalls.values())
+      return fullText + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+    }
     return fullText
   },
 
-  async listModels(baseUrl, _apiKey) {
+  async listModels(baseUrl, apiKey) {
     const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models`
     const response = await fetch(url)
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
@@ -641,6 +804,11 @@ const ollamaAdapter: AIAdapter = {
       stream,
     }
 
+    // C-03 修复：Ollama 原生支持 OpenAI 格式 tools
+    if (params.tools && params.tools.length > 0) {
+      body.tools = params.tools
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -664,6 +832,11 @@ const ollamaAdapter: AIAdapter = {
           totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
         })
       }
+      // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
+      const toolCalls = data.message?.tool_calls
+      if (toolCalls && toolCalls.length > 0) {
+        return content + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']'
+      }
       return content
     }
 
@@ -672,7 +845,10 @@ const ollamaAdapter: AIAdapter = {
     const decoder = new TextDecoder()
     let fullText = ''
     let buffer = ''
+    // C-03 修复：收集流式 tool_calls
+    let streamedToolCalls: any[] | null = null
 
+    try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -689,6 +865,10 @@ const ollamaAdapter: AIAdapter = {
             fullText += delta
             onChunk(delta)
           }
+          // C-03 修复：收集 tool_calls
+          if (parsed.message?.tool_calls) {
+            streamedToolCalls = parsed.message.tool_calls
+          }
           // 最后一条消息（done: true）含统计信息
           if (parsed.done && parsed.eval_count !== undefined && onUsage) {
             onUsage({
@@ -701,6 +881,13 @@ const ollamaAdapter: AIAdapter = {
           // 忽略
         }
       }
+    }
+    } finally {
+      try { reader.releaseLock() } catch { /* ignore */ }
+    }
+    // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
+    if (streamedToolCalls && streamedToolCalls.length > 0) {
+      return fullText + '[TOOL_CALL:' + JSON.stringify(streamedToolCalls) + ']'
     }
     return fullText
   },
@@ -747,8 +934,10 @@ async function chatWithRetry(
   retryCount = DEFAULT_RETRY_COUNT,
   onUsage?: (usage: TokenUsageInfo) => void,
 ): Promise<string> {
+  // H-05 修复：流式请求不重试，因为已发送的 chunks 无法撤回，重试会导致内容重复
+  const effectiveRetry = params.stream ? 0 : retryCount
   let lastError: unknown
-  for (let attempt = 0; attempt <= retryCount; attempt++) {
+  for (let attempt = 0; attempt <= effectiveRetry; attempt++) {
     if (signal.aborted) throw new Error('Aborted')
     try {
       // 加入超时（与用户 signal 合并）
@@ -765,10 +954,10 @@ async function chatWithRetry(
       // 不可重试的错误直接抛出
       if (!isRetryableError(err)) throw err
       // 最后一次尝试不再等待
-      if (attempt === retryCount) throw err
+      if (attempt === effectiveRetry) throw err
       // 指数退避：500ms, 1000ms, 2000ms...
       const delay = 500 * Math.pow(2, attempt)
-      log.warn(`请求失败，${delay}ms 后重试 (${attempt + 1}/${retryCount + 1})`, {
+      log.warn(`请求失败，${delay}ms 后重试 (${attempt + 1}/${effectiveRetry + 1})`, {
         error: (err as Error).message,
       })
       await new Promise(resolve => setTimeout(resolve, delay))
@@ -815,33 +1004,55 @@ export function registerAIIPC(ipcMain: IpcMain): void {
     })
 
     try {
-      const adapter = getAdapter(params.provider)
-      await chatWithRetry(
-        adapter,
-        params,
-        (text) => {
-          // 检查请求是否还存在（可能已被取消）
-          if (!activeRequests.has(params.requestId)) return
-          webContents.send('ai:chunk', { requestId: params.requestId, text })
-        },
-        controller.signal,
-        DEFAULT_RETRY_COUNT,
-        (usage) => {
-          // 发送 usage 事件
-          webContents.send('ai:usage', { requestId: params.requestId, ...usage })
-        },
-      )
+      // C-03 修复：有工具时使用 chatWithTools 循环，否则直接调用适配器
+      if (params.tools && params.tools.length > 0) {
+        await chatWithTools(
+          params,
+          (text) => {
+            if (!activeRequests.has(params.requestId)) return
+            safeSend(webContents, 'ai:chunk', { requestId: params.requestId, text })
+          },
+          (toolCall) => {
+            log.info('工具调用', { requestId: params.requestId, tool: toolCall.name })
+            safeSend(webContents, 'ai:toolCall', { requestId: params.requestId, ...toolCall })
+          },
+          (result) => {
+            safeSend(webContents, 'ai:toolResult', { requestId: params.requestId, ...result })
+          },
+          (usage) => {
+            safeSend(webContents, 'ai:usage', { requestId: params.requestId, ...usage })
+          },
+          controller.signal,
+        )
+      } else {
+        const adapter = getAdapter(params.provider)
+        await chatWithRetry(
+          adapter,
+          params,
+          (text) => {
+            // 检查请求是否还存在（可能已被取消）
+            if (!activeRequests.has(params.requestId)) return
+            safeSend(webContents, 'ai:chunk', { requestId: params.requestId, text })
+          },
+          controller.signal,
+          DEFAULT_RETRY_COUNT,
+          (usage) => {
+            // 发送 usage 事件
+            safeSend(webContents, 'ai:usage', { requestId: params.requestId, ...usage })
+          },
+        )
+      }
       log.info('AI 请求完成', { requestId: params.requestId, provider: params.provider, model: params.model })
-      webContents.send('ai:done', params.requestId)
+      safeSend(webContents, 'ai:done', params.requestId)
     } catch (e) {
       const err = e as Error
       if (err.name === 'AbortError' || controller.signal.aborted) {
         log.info('AI 请求被取消', { requestId: params.requestId })
         // 被取消视为 done（前端会重置状态）
-        webContents.send('ai:done', params.requestId)
+        safeSend(webContents, 'ai:done', params.requestId)
       } else {
         log.error('AI 请求失败', { requestId: params.requestId, provider: params.provider, model: params.model, error: err.message })
-        webContents.send('ai:error', { requestId: params.requestId, error: err.message })
+        safeSend(webContents, 'ai:error', { requestId: params.requestId, error: err.message })
       }
     } finally {
       activeRequests.delete(params.requestId)

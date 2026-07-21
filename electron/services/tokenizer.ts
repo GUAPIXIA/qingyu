@@ -4,11 +4,15 @@
  * IPC 基础设施已就绪，安装 tiktoken 后自动生效。
  */
 
-/** 尝试加载 tiktoken，不可用时返回 null */
+// P-7 修复：模块级缓存 tiktoken 实例，避免每次调用都 require
+let _tiktoken: typeof import('tiktoken') | null = undefined
 function tryLoadTiktoken(): typeof import('tiktoken') | null {
+  if (_tiktoken !== undefined) return _tiktoken
   try {
-    return require('tiktoken')
+    _tiktoken = require('tiktoken')
+    return _tiktoken
   } catch {
+    _tiktoken = null
     return null
   }
 }

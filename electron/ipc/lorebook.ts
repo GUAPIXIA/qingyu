@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { DIRS, writeJson, readJson, listJsonFiles, removeFile } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Lorebook } from '../../shared/types'
+import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('lorebook')
 
@@ -14,12 +15,14 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
   // 保存
   ipcMain.handle('lorebook:save', async (_e, lorebook: Lorebook) => {
+    safeId(lorebook.id)
     writeJson(join(DIRS.lorebooks(), `${lorebook.id}.json`), lorebook)
     log.info('世界书已保存', { id: lorebook.id, name: lorebook.name, entries: lorebook.entries.length })
   })
 
   // 删除
   ipcMain.handle('lorebook:delete', async (_e, id: string) => {
+    safeId(id)
     removeFile(join(DIRS.lorebooks(), `${id}.json`))
     log.info('世界书已删除', { id })
   })
@@ -48,7 +51,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
         position: e.position === 'before' ? 'before_char' : e.position === 'after' ? 'after_char' : 'at_end',
         order: e.order ?? i,
         probability: e.probability ?? 100,
-        enabled: e.disable ?? e.enabled ?? true,
+        enabled: e.disable ? false : (e.enabled ?? true),
       })),
       enabled: true,
       scanDepth: parsed.scan_depth ?? 4,

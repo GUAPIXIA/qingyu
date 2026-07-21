@@ -27,10 +27,8 @@ export function saveCredential(provider: string, key: string): void {
     data[provider] = encrypted.toString('base64')
     writeCredentialAll(data)
   } else {
-    // 不支持加密时明文存储（仅开发环境）
-    const data = readCredentialAll()
-    data[provider] = `plain:${key}`
-    writeCredentialAll(data)
+    // 不支持加密时拒绝保存（避免明文泄露）
+    throw new Error('安全存储不可用：无法加密保存凭据。请确保运行在受支持的桌面环境中。')
   }
 }
 

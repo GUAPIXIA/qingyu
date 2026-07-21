@@ -2,6 +2,7 @@ import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
 import { DIRS, writeJson, readJson, removeFile, listJsonFiles } from '../services/storage'
 import { createLogger } from '../services/logger'
+import { safeSend } from '../utils/safeSend'
 import {
   importCharacterFromPng,
   importCharacterFromJson,
@@ -14,6 +15,7 @@ import {
   reloadAvatarFromUrl,
 } from '../services/charCard'
 import type { Character } from '../../shared/types'
+import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('character')
 
@@ -25,11 +27,13 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
   // 读取
   ipcMain.handle('character:get', async (_e, id: string) => {
+    safeId(id)
     return getCharacter(id)
   })
 
   // 保存
   ipcMain.handle('character:save', async (_e, character: Character) => {
+    safeId(character.id)
     character.updatedAt = Date.now()
     saveCharacter(character)
     log.info('角色已保存', { id: character.id, name: character.name })
@@ -37,6 +41,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
   // 删除
   ipcMain.handle('character:delete', async (_e, id: string) => {
+    safeId(id)
     deleteCharacter(id)
     log.info('角色已删除', { id })
   })
@@ -55,14 +60,14 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       const filePath = result.filePaths[0]
       const fileName = filePath.split(/[\\/]/).pop() || filePath
 
-      event.sender.send('character:importProgress', {
+      safeSend(event.sender,'character:importProgress', {
         current: 1, total: 1, fileName, status: 'processing' as const,
       })
 
       const character = await importCharacterFromPng(filePath)
       saveCharacter(character)
 
-      event.sender.send('character:importProgress', {
+      safeSend(event.sender,'character:importProgress', {
         current: 1, total: 1, fileName: character.name, status: 'done' as const,
       })
 
@@ -88,7 +93,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       const filePath = result.filePaths[0]
       const fileName = filePath.split(/[\\/]/).pop() || filePath
 
-      event.sender.send('character:importProgress', {
+      safeSend(event.sender,'character:importProgress', {
         current: 1, total: 1, fileName, status: 'processing' as const,
       })
 
@@ -96,7 +101,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       saveCharacter(character)
       const needAvatar = !character.avatar
 
-      event.sender.send('character:importProgress', {
+      safeSend(event.sender,'character:importProgress', {
         current: 1, total: 1, fileName: character.name, status: 'done' as const,
       })
 
@@ -110,6 +115,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
   // 导出 PNG
   ipcMain.handle('character:exportPng', async (_e, id: string) => {
+    safeId(id)
     const character = getCharacter(id)
     if (!character) throw new Error('角色不存在')
     const result = await dialog.showSaveDialog({
@@ -124,6 +130,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
   // 导出 JSON
   ipcMain.handle('character:exportJson', async (_e, id: string) => {
+    safeId(id)
     const character = getCharacter(id)
     if (!character) throw new Error('角色不存在')
     const result = await dialog.showSaveDialog({
@@ -160,7 +167,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
         const fileName = filePath.split(/[\\/]/).pop() || filePath
 
         // 发送进度事件
-        event.sender.send('character:importProgress', {
+        safeSend(event.sender,'character:importProgress', {
           current: i + 1,
           total,
           fileName,
@@ -176,7 +183,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
           } else if (ext === 'json') {
             character = await importCharacterFromJson(filePath)
           } else {
-            event.sender.send('character:importProgress', {
+            safeSend(event.sender,'character:importProgress', {
               current: i + 1, total, fileName, status: 'error' as const,
             })
             batchResults.push({ name: fileName, success: false, error: '不支持的文件格式' })
@@ -186,13 +193,13 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
           saveCharacter(character)
           const needAvatar = !character.avatar
-          event.sender.send('character:importProgress', {
+          safeSend(event.sender,'character:importProgress', {
             current: i + 1, total, fileName: character.name, status: 'done' as const,
           })
           batchResults.push({ name: character.name, success: true, needAvatar })
           successCount++
         } catch (e) {
-          event.sender.send('character:importProgress', {
+          safeSend(event.sender,'character:importProgress', {
             current: i + 1, total, fileName, status: 'error' as const,
           })
           batchResults.push({ name: fileName, success: false, error: (e as Error).message })
@@ -216,6 +223,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
   // 重新加载封面
   ipcMain.handle('character:reloadAvatar', async (_event, characterId: string, url: string) => {
+    safeId(characterId)
     log.info('重新加载封面', { characterId, url })
     const result = await reloadAvatarFromUrl(characterId, url)
     if (!result.success) {
