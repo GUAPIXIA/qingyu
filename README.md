@@ -111,10 +111,10 @@ docker compose up -d --build
 #   location /admin/ -> http://127.0.0.1:3000
 
 # 4. 访问 http://你的域名/admin/ 进入管理后台
-#    默认账号 admin / admin123（首次登录后建议修改）
+#    默认账号见服务端启动日志
 ```
 
-桌面端公告服务器 URL 默认 `http://cjbtj.xyz`，可在代码中修改默认值。
+桌面端公告服务器 URL 可在 `electron/ipc/announcement.ts` 中修改默认值。
 
 ---
 
