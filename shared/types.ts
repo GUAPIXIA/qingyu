@@ -417,3 +417,17 @@ export interface InstructTemplateConfig {
   stopSequences: string[]
   appendAssistantPrefix: boolean
 }
+
+// ===================== 在线公告 =====================
+
+/** 在线公告（从服务器拉取） */
+export interface Announcement {
+  id: number
+  title: string
+  content: string      // Markdown 内容
+  summary: string
+  pinned: boolean
+  published: boolean
+  createdAt: string
+  updatedAt: string
+}

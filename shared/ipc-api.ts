@@ -15,6 +15,7 @@ import type {
   APIConfig,
   RegexRule,
   Persona,
+  Announcement,
 } from './types'
 
 // ===================== AI 调用接口 =====================
@@ -210,6 +211,14 @@ export interface McpAPI {
   callTool(serverId: string, toolName: string, args: Record<string, any>): Promise<any>
 }
 
+// ===================== 在线公告接口 =====================
+export interface AnnouncementAPI {
+  fetchList(page?: number, pageSize?: number): Promise<{ items: Announcement[]; total: number }>
+  fetchDetail(id: number): Promise<Announcement | null>
+  getServerUrl(): Promise<string>
+  setServerUrl(url: string): Promise<void>
+}
+
 // ===================== 完整 API 契约 =====================
 export interface ExposedAPI {
   ai: AIAPI
@@ -227,6 +236,7 @@ export interface ExposedAPI {
   usage: UsageAPI
   mcp: McpAPI
   group: GroupChatAPI
+  announcement: AnnouncementAPI
 }
 
 declare global {

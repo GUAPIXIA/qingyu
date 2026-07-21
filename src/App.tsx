@@ -15,6 +15,7 @@ import { PersonasPage } from './pages/PersonasPage'
 import { PresetsPage } from './pages/PresetsPage'
 import { UsagePage } from './pages/UsagePage'
 import { McpPage } from './pages/McpPage'
+import { AnnouncementsPage } from './pages/AnnouncementsPage'
 
 export default function App() {
   const { settings, loadSettings } = useSettingsStore()
@@ -65,6 +66,7 @@ export default function App() {
         <Route path="personas" element={<PersonasPage />} />
         <Route path="usage" element={<UsagePage />} />
         <Route path="mcp" element={<McpPage />} />
+        <Route path="announcements" element={<AnnouncementsPage />} />
         <Route path="help" element={<HelpPage />} />
       </Route>
     </Routes>

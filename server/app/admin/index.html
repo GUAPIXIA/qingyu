@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轻语公告管理</title>
+<style>
+  :root {
+    --bg: #1a1625;
+    --bg-soft: #211d30;
+    --bg-card: #28233d;
+    --border: #332e47;
+    --text: #e8e3f0;
+    --text-soft: #b8b0cc;
+    --text-muted: #7a7491;
+    --accent: #f0b867;
+    --accent-soft: rgba(240,184,103,.12);
+    --danger: #e0556a;
+    --success: #5cb87a;
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+
+  /* 登录 */
+  .login-box { max-width: 380px; margin: 80px auto 0; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; }
+  .login-box h1 { font-size: 22px; text-align: center; margin-bottom: 24px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 13px; color: var(--text-soft); margin-bottom: 6px; }
+  .form-group input { width: 100%; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; transition: border-color .2s; }
+  .form-group input:focus { border-color: var(--accent); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; transition: all .2s; }
+  .btn-primary { background: var(--accent); color: #1a1625; }
+  .btn-primary:hover { opacity: .85; }
+  .btn-ghost { background: transparent; color: var(--text-soft); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--accent-soft); color: var(--text); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover { opacity: .85; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .error-msg { background: rgba(224,85,106,.12); color: var(--danger); padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  .success-msg { background: rgba(92,184,122,.12); color: var(--success); padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+
+  /* 顶栏 */
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .header h1 { font-size: 18px; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .header-right span { font-size: 13px; color: var(--text-soft); }
+
+  /* 工具栏 */
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+
+  /* 列表 */
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .list-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); transition: border-color .2s; }
+  .list-item:hover { border-color: var(--accent); }
+  .list-item .info { flex: 1; min-width: 0; }
+  .list-item .title { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-item .meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; }
+  .badge-pinned { background: var(--accent-soft); color: var(--accent); }
+  .badge-draft { background: rgba(122,116,145,.15); color: var(--text-muted); }
+  .actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* 编辑器弹窗 */
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; }
+  .overlay.active { display: flex; align-items: center; justify-content: center; }
+  .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); width: 700px; max-width: 95vw; max-height: 90vh; overflow-y: auto; padding: 24px; }
+  .modal h2 { font-size: 16px; margin-bottom: 16px; }
+  .modal textarea { width: 100%; padding: 10px 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; resize: vertical; font-family: inherit; }
+  .modal textarea:focus { border-color: var(--accent); }
+  .modal .md-content { min-height: 120px; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .checks { display: flex; gap: 16px; margin: 12px 0; }
+  .checks label { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-soft); cursor: pointer; }
+  .checks input[type=checkbox] { accent-color: var(--accent); }
+  .empty { text-align: center; padding: 48px 16px; color: var(--text-muted); font-size: 14px; }
+  .loading { text-align: center; padding: 48px 16px; color: var(--text-muted); }
+  .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<!-- 登录页 -->
+<div id="loginPage" class="container">
+  <div class="login-box">
+    <h1>轻语 · 公告管理</h1>
+    <div id="loginError" class="error-msg" style="display:none"></div>
+    <div class="form-group">
+      <label>用户名</label>
+      <input type="text" id="loginUser" placeholder="admin">
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="loginPass" placeholder="输入密码">
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="doLogin()">登录</button>
+  </div>
+</div>
+
+<!-- 管理页 -->
+<div id="adminPage" class="container" style="display:none">
+  <div class="header">
+    <h1>公告管理</h1>
+    <div class="header-right">
+      <span id="adminName"></span>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">退出</button>
+    </div>
+  </div>
+
+  <div id="adminMsg"></div>
+
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="openEditor()">+ 新建公告</button>
+  </div>
+
+  <div id="listContainer"></div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div id="editorOverlay" class="overlay">
+  <div class="modal">
+    <h2 id="editorTitle">新建公告</h2>
+    <div class="form-group">
+      <label>标题</label>
+      <input type="text" id="editTitle" placeholder="公告标题">
+    </div>
+    <div class="form-group">
+      <label>摘要</label>
+      <input type="text" id="editSummary" placeholder="简短摘要（可选）">
+    </div>
+    <div class="form-group">
+      <label>内容（Markdown）</label>
+      <textarea id="editContent" class="md-content" placeholder="支持 Markdown 格式..."></textarea>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="editPinned"> 置顶</label>
+      <label><input type="checkbox" id="editPublished" checked> 发布</label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeEditor()">取消</button>
+      <button class="btn btn-danger btn-sm" id="btnDelete" style="display:none;margin-right:auto" onclick="doDelete()">删除</button>
+      <button class="btn btn-primary" id="btnSave" onclick="doSave()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = localStorage.getItem('tavern_admin_token')
+let editId = null
+
+if (token) { showAdmin(); loadList() }
+document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin() })
+
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim()
+  const p = document.getElementById('loginPass').value.trim()
+  if (!u || !p) return showLoginError('请输入用户名和密码')
+  try {
+    const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u, password:p}) })
+    const data = await res.json()
+    if (!res.ok) { showLoginError(data.error || '登录失败'); return }
+    token = data.token
+    localStorage.setItem('tavern_admin_token', token)
+    hideLoginError()
+    showAdmin()
+    loadList()
+  } catch { showLoginError('网络错误，请检查连接') }
+}
+
+function showLoginError(msg) { const el = document.getElementById('loginError'); el.textContent = msg; el.style.display = 'block' }
+function hideLoginError() { document.getElementById('loginError').style.display = 'none' }
+
+function showAdmin() { document.getElementById('loginPage').style.display = 'none'; document.getElementById('adminPage').style.display = 'block'; document.getElementById('adminName').textContent = '管理员' }
+function logout() { localStorage.removeItem('tavern_admin_token'); token = null; location.reload() }
+
+async function api(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = 'Bearer ' + token
+  const opts = { method, headers }
+  if (body) opts.body = JSON.stringify(body)
+  const res = await fetch(path, opts)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || '请求失败')
+  return data
+}
+
+async function loadList() {
+  const container = document.getElementById('listContainer')
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+  try {
+    const { items } = await api('GET', '/api/announcements?pageSize=100')
+    if (items.length === 0) { container.innerHTML = '<div class="empty">暂无公告，点击"新建公告"开始</div>'; return }
+    container.innerHTML = '<div class="list">' + items.map(a => `
+      <div class="list-item">
+        <div class="info">
+          <div class="title">
+            ${a.pinned ? '<span class="badge badge-pinned">置顶</span> ' : ''}
+            ${!a.published ? '<span class="badge badge-draft">草稿</span> ' : ''}
+            ${escapeHtml(a.title)}
+          </div>
+          <div class="meta">${a.updatedAt.slice(0,10)} · ${escapeHtml(a.summary || '(无摘要)')}</div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm" onclick="openEditor(${a.id})">编辑</button>
+        </div>
+      </div>
+    `).join('') + '</div>'
+  } catch(e) { container.innerHTML = '<div class="empty">加载失败: ' + escapeHtml(e.message) + '</div>' }
+}
+
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
+
+function openEditor(id) {
+  editId = id
+  document.getElementById('editorOverlay').classList.add('active')
+  document.getElementById('btnDelete').style.display = id ? 'inline-flex' : 'none'
+  document.getElementById('editorTitle').textContent = id ? '编辑公告' : '新建公告'
+  document.getElementById('editTitle').value = ''
+  document.getElementById('editSummary').value = ''
+  document.getElementById('editContent').value = ''
+  document.getElementById('editPinned').checked = false
+  document.getElementById('editPublished').checked = true
+  if (id) {
+    api('GET', '/api/announcements/' + id).then(a => {
+      document.getElementById('editTitle').value = a.title
+      document.getElementById('editSummary').value = a.summary || ''
+      document.getElementById('editContent').value = a.content
+      document.getElementById('editPinned').checked = !!a.pinned
+      document.getElementById('editPublished').checked = !!a.published
+    })
+  }
+}
+
+function closeEditor() { document.getElementById('editorOverlay').classList.remove('active'); editId = null }
+
+async function doSave() {
+  const title = document.getElementById('editTitle').value.trim()
+  const content = document.getElementById('editContent').value.trim()
+  if (!title || !content) return alert('标题和内容不能为空')
+  const body = {
+    title,
+    content,
+    summary: document.getElementById('editSummary').value.trim(),
+    pinned: document.getElementById('editPinned').checked,
+    published: document.getElementById('editPublished').checked
+  }
+  try {
+    if (editId) { await api('PUT', '/api/announcements/' + editId, body) }
+    else { await api('POST', '/api/announcements', body) }
+    closeEditor()
+    loadList()
+  } catch(e) { alert('保存失败: ' + e.message) }
+}
+
+async function doDelete() {
+  if (!confirm('确定删除此公告？')) return
+  try {
+    await api('DELETE', '/api/announcements/' + editId)
+    closeEditor()
+    loadList()
+  } catch(e) { alert('删除失败: ' + e.message) }
+}
+</script>
+</body>
+</html>

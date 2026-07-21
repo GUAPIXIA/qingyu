@@ -14,6 +14,7 @@ import { registerPersonaIPC } from './ipc/persona'
 import { registerUsageIPC } from './ipc/usage'
 import { registerMcpIPC } from './ipc/mcp'
 import { registerGroupIPC } from './ipc/group'
+import { registerAnnouncementIPC } from './ipc/announcement'
 import { mcpManager } from './mcp/manager'
 import { ensureDataDir } from './services/storage'
 import { initLogger, createLogger, getRecentLogs } from './services/logger'
@@ -84,6 +85,7 @@ app.whenReady().then(async () => {
   registerUsageIPC(ipcMain)
   registerMcpIPC(ipcMain)
   registerGroupIPC(ipcMain)
+  registerAnnouncementIPC(ipcMain)
 
   // 自动启动配置为 autoStart 的 MCP server
   const logger = createLogger('main')

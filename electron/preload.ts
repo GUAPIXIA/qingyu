@@ -14,6 +14,7 @@ import type {
   LogAPI,
   UsageAPI,
   McpAPI,
+  AnnouncementAPI,
 } from '../shared/ipc-api'
 
 // ---- AI 调用 ----
@@ -174,6 +175,14 @@ const mcpApi: McpAPI = {
   callTool: (serverId, toolName, args) => ipcRenderer.invoke('mcp:callTool', serverId, toolName, args),
 }
 
+// ---- 在线公告 ----
+const announcementApi: AnnouncementAPI = {
+  fetchList: (page, pageSize) => ipcRenderer.invoke('announcement:fetchList', page, pageSize),
+  fetchDetail: (id) => ipcRenderer.invoke('announcement:fetchDetail', id),
+  getServerUrl: () => ipcRenderer.invoke('announcement:getServerUrl'),
+  setServerUrl: (url) => ipcRenderer.invoke('announcement:setServerUrl', url),
+}
+
 contextBridge.exposeInMainWorld('api', {
   ai: aiApi,
   character: characterApi,
@@ -189,6 +198,7 @@ contextBridge.exposeInMainWorld('api', {
   log: logApi,
   usage: usageApi,
   mcp: mcpApi,
+  announcement: announcementApi,
   group: {
     list: () => ipcRenderer.invoke('group:list'),
     save: (group) => ipcRenderer.invoke('group:save', group),

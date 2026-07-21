@@ -17,6 +17,7 @@ import {
   UserCircle,
   BarChart3,
   Wrench,
+  Megaphone,
 } from 'lucide-react'
 import { PROVIDER_INFO } from '../../utils/defaults'
 
@@ -32,6 +33,7 @@ const navItems = [
   { to: '/usage', label: '用量', icon: BarChart3 },
   { to: '/mcp', label: 'MCP', icon: Wrench },
   { to: '/settings', label: '设置', icon: Settings },
+  { to: '/announcements', label: '公告', icon: Megaphone },
   { to: '/help', label: '帮助', icon: HelpCircle },
 ]
 

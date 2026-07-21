@@ -1,0 +1,9 @@
+services:
+  tavern-announce:
+    build: .
+    container_name: tavern-announce
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
