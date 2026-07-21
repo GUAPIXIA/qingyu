@@ -5,6 +5,7 @@ import { DIRS, readJson, writeJson } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Message, ChatSession, SessionPreview } from '../../shared/types'
 import { nanoid } from 'nanoid'
+import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('chat')
 
@@ -96,16 +97,19 @@ function appendMessage(characterId: string, sessionId: string, message: Message)
  * 更新单条消息（不存在则追加）
  * 性能优化：只追加新消息；对于已存在消息，做最小化重写
  */
-function updateMessage(characterId: string, sessionId: string, message: Message): void {
+// L-05 修复：返回是否为新消息，避免 saveMessage 中重复读取
+function updateMessage(characterId: string, sessionId: string, message: Message): boolean {
   const messages = readMessages(characterId, sessionId)
   const idx = messages.findIndex((m) => m.id === message.id)
   if (idx >= 0) {
     // 更新已有消息：需要重写整个文件
     messages[idx] = message
     writeMessages(characterId, sessionId, messages)
+    return false
   } else {
     // 新消息：追加到文件末尾（高效）
     appendMessage(characterId, sessionId, message)
+    return true
   }
 }
 
@@ -129,20 +133,20 @@ function updateSessionMeta(
 }
 
 /** 计算单个 session 的消息数和最后消息摘要 */
+// P-1 修复：仅统计行数 + 解析最后一行获取 lastMessage，避免全量 JSON 解析
 function computeMessageMeta(characterId: string, sessionId: string): { count: number; lastMessage: string } {
   const filePath = getSessionFile(characterId, sessionId)
   if (!existsSync(filePath)) return { count: 0, lastMessage: '' }
-  // 流式读取文件，仅统计行数和最后一行（避免全部加载到内存）
   const content = readFileSync(filePath, 'utf-8')
   const lines = content.split('\n').filter(l => l.trim())
-  let count = 0
+  const count = lines.length
   let lastMessage = ''
-  for (const line of lines) {
+  // 只解析最后一行获取预览文本
+  if (count > 0) {
     try {
-      const msg = JSON.parse(line) as Message
-      count++
+      const msg = JSON.parse(lines[count - 1]) as Message
       if (msg.content) lastMessage = msg.content.slice(0, 50)
-    } catch { /* 跳过损坏行 */ }
+    } catch { /* 忽略 */ }
   }
   return { count, lastMessage }
 }
@@ -211,6 +215,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   // ===== 会话管理 =====
 
   ipcMain.handle('chat:listSessions', async (_e, characterId: string) => {
+    safeId(characterId)
     // 迁移旧数据
     migrateOldData(characterId)
 
@@ -236,6 +241,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('chat:createSession', async (_e, characterId: string, title?: string) => {
+    safeId(characterId)
     const sessions = loadSessions(characterId)
     const now = Date.now()
     const session: ChatSession = {
@@ -257,6 +263,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('chat:deleteSession', async (_e, characterId: string, sessionId: string) => {
+    safeId(characterId)
+    safeId(sessionId)
     // 删除 session 文件
     const filePath = getSessionFile(characterId, sessionId)
     if (existsSync(filePath)) {
@@ -269,6 +277,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('chat:renameSession', async (_e, characterId: string, sessionId: string, title: string) => {
+    safeId(characterId)
+    safeId(sessionId)
     const sessions = loadSessions(characterId)
     const session = sessions.find(s => s.id === sessionId)
     if (session) {
@@ -281,6 +291,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   // ===== 消息管理 =====
 
   ipcMain.handle('chat:listMessages', async (_e, characterId: string, sessionId?: string) => {
+    safeId(characterId)
+    if (sessionId) safeId(sessionId)
     // 迁移旧数据
     migrateOldData(characterId)
 
@@ -299,11 +311,12 @@ export function registerChatIPC(ipcMain: IpcMain): void {
    *      messageCount 在 listSessions 时按需计算
    */
   ipcMain.handle('chat:saveMessage', async (_e, message: Message) => {
+    safeId(message.characterId)
     const sid = message.sessionId || 'default'
-    const isNew = !existsSync(getSessionFile(message.characterId, sid)) ||
-      !readMessages(message.characterId, sid).some(m => m.id === message.id)
+    safeId(sid)
 
-    updateMessage(message.characterId, sid, message)
+    // L-05 修复：updateMessage 返回是否为新消息，消除重复读取
+    const isNew = updateMessage(message.characterId, sid, message)
 
     // 增量更新 session 的 updatedAt（只重写 sessions.json，不重读 messages）
     const sessions = loadSessions(message.characterId)
@@ -320,7 +333,10 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('chat:deleteMessage', async (_e, { id, characterId, sessionId }: { id: string; characterId: string; sessionId?: string }) => {
+    safeId(characterId)
     const sid = sessionId || 'default'
+    safeId(sid)
+    safeId(id)
     const messages = readMessages(characterId, sid)
     const filtered = messages.filter((m) => m.id !== id)
     writeMessages(characterId, sid, filtered)
@@ -338,7 +354,9 @@ export function registerChatIPC(ipcMain: IpcMain): void {
    * 修复 #48: 删除消息文件后，session 仍存在但 messageCount 应为 0
    */
   ipcMain.handle('chat:clearChat', async (_e, characterId: string, sessionId?: string) => {
+    safeId(characterId)
     if (sessionId) {
+      safeId(sessionId)
       // 清空指定 session 的消息文件
       const filePath = getSessionFile(characterId, sessionId)
       if (existsSync(filePath)) {
@@ -365,6 +383,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
 
   // 导出对话
   ipcMain.handle('chat:exportChat', async (_e, characterId: string, sessionId: string, format: 'md' | 'json') => {
+    safeId(characterId)
+    safeId(sessionId)
     const messages = readMessages(characterId, sessionId)
     if (format === 'json') {
       return JSON.stringify(messages, null, 2)
@@ -382,6 +402,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   // ===== 长记忆 =====
 
   ipcMain.handle('chat:updateMemory', async (_e, characterId: string, sessionId: string, memory: string) => {
+    safeId(characterId)
+    safeId(sessionId)
     const sessions = loadSessions(characterId)
     const session = sessions.find(s => s.id === sessionId)
     if (session) {
@@ -393,6 +415,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('chat:toggleMemory', async (_e, characterId: string, sessionId: string, enabled: boolean) => {
+    safeId(characterId)
+    safeId(sessionId)
     const sessions = loadSessions(characterId)
     const session = sessions.find(s => s.id === sessionId)
     if (session) {
@@ -403,6 +427,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('chat:setMemoryMode', async (_e, characterId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => {
+    safeId(characterId)
+    safeId(sessionId)
     const sessions = loadSessions(characterId)
     const session = sessions.find(s => s.id === sessionId)
     if (session) {
@@ -414,6 +440,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('chat:getStats', async (_e, characterId: string, sessionId: string) => {
+    safeId(characterId)
+    safeId(sessionId)
     const messages = readMessages(characterId, sessionId)
     let totalChars = 0
     let userMsgs = 0

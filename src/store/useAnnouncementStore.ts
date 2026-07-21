@@ -41,9 +41,13 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => ({
       return
     }
     // 从服务器获取详情
-    const detail = await window.api.announcement.fetchDetail(id)
-    if (detail) {
-      set({ selectedAnnouncement: detail })
+    try {
+      const detail = await window.api.announcement.fetchDetail(id)
+      if (detail) {
+        set({ selectedAnnouncement: detail })
+      }
+    } catch {
+      // 网络错误时静默处理
     }
   },
 

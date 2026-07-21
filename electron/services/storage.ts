@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync, rmSync } from 'node:fs'
+import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync, rmSync, renameSync } from 'node:fs'
 import type { Settings } from '../../shared/types'
 
 const APP_NAME = '轻语'
@@ -84,9 +84,12 @@ export function readJson<T>(filePath: string): T | null {
 }
 
 /** 写入 JSON 文件 */
+// L-05 修复：使用 temp 文件 + rename 保证原子写入，防止崩溃时数据损坏
 export function writeJson(filePath: string, data: unknown): void {
   mkdirSync(join(filePath, '..'), { recursive: true })
-  writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+  const tmpPath = filePath + '.tmp'
+  writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+  renameSync(tmpPath, filePath)
 }
 
 /** 列出目录下所有 JSON 文件 */

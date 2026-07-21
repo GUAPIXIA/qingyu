@@ -111,6 +111,32 @@
 
   <div id="adminMsg"></div>
 
+  <!-- 版本管理 -->
+  <div class="version-panel" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleVersionPanel()">
+      <span style="font-size:14px;font-weight:500">📦 版本管理</span>
+      <span id="versionToggleIcon" style="font-size:12px;color:var(--text-muted);transition:transform .2s">▼</span>
+    </div>
+    <div id="versionBody" style="margin-top:12px">
+      <div class="form-group">
+        <label>最新版本号</label>
+        <input type="text" id="editVersion" placeholder="0.8.1">
+      </div>
+      <div class="form-group">
+        <label>下载地址</label>
+        <input type="text" id="editDownloadUrl" placeholder="https://github.com/GUAPIXIA/qingyu/releases">
+      </div>
+      <div class="form-group">
+        <label>更新日志（Markdown）</label>
+        <textarea id="editChangelog" style="min-height:80px" placeholder="支持 Markdown 格式..."></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="saveVersion()">保存版本配置</button>
+        <span id="versionSaveMsg" style="font-size:12px"></span>
+      </div>
+    </div>
+  </div>
+
   <div class="toolbar">
     <button class="btn btn-primary" onclick="openEditor()">+ 新建公告</button>
   </div>
@@ -190,7 +216,7 @@ async function loadList() {
   const container = document.getElementById('listContainer')
   container.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
   try {
-    const { items } = await api('GET', '/api/announcements?pageSize=100')
+    const { items } = await api('GET', '/api/announcements/admin?pageSize=100')
     if (items.length === 0) { container.innerHTML = '<div class="empty">暂无公告，点击"新建公告"开始</div>'; return }
     container.innerHTML = '<div class="list">' + items.map(a => `
       <div class="list-item">
@@ -223,7 +249,7 @@ function openEditor(id) {
   document.getElementById('editPinned').checked = false
   document.getElementById('editPublished').checked = true
   if (id) {
-    api('GET', '/api/announcements/' + id).then(a => {
+    api('GET', '/api/announcements/admin/' + id).then(a => {
       document.getElementById('editTitle').value = a.title
       document.getElementById('editSummary').value = a.summary || ''
       document.getElementById('editContent').value = a.content
@@ -262,6 +288,44 @@ async function doDelete() {
     loadList()
   } catch(e) { alert('删除失败: ' + e.message) }
 }
+
+// ---- 版本管理 ----
+let versionExpanded = true
+function toggleVersionPanel() {
+  versionExpanded = !versionExpanded
+  document.getElementById('versionBody').style.display = versionExpanded ? 'block' : 'none'
+  document.getElementById('versionToggleIcon').textContent = versionExpanded ? '▼' : '▶'
+}
+
+async function loadVersionConfig() {
+  try {
+    const data = await fetch('/api/version').then(r => r.json())
+    document.getElementById('editVersion').value = data.version || ''
+    document.getElementById('editChangelog').value = data.changelog || ''
+    document.getElementById('editDownloadUrl').value = data.downloadUrl || ''
+  } catch { /* 静默失败 */ }
+}
+
+async function saveVersion() {
+  const msg = document.getElementById('versionSaveMsg')
+  try {
+    const body = {
+      version: document.getElementById('editVersion').value.trim(),
+      changelog: document.getElementById('editChangelog').value.trim(),
+      downloadUrl: document.getElementById('editDownloadUrl').value.trim(),
+    }
+    await api('PUT', '/api/version', body)
+    msg.textContent = '✅ 已保存'
+    msg.style.color = 'var(--success)'
+    setTimeout(() => { msg.textContent = '' }, 2000)
+  } catch (e) {
+    msg.textContent = '❌ 保存失败: ' + e.message
+    msg.style.color = 'var(--danger)'
+  }
+}
+
+// 页面加载时读取版本配置
+if (token) { loadVersionConfig() }
 </script>
 </body>
 </html>

@@ -214,4 +214,9 @@ contextBridge.exposeInMainWorld('api', {
     clearChat: (groupId, sessionId) => ipcRenderer.invoke('group:clearChat', groupId, sessionId),
     exportChat: (groupId, sessionId, format) => ipcRenderer.invoke('group:exportChat', groupId, sessionId, format),
   },
+  app: {
+    getVersion: () => ipcRenderer.invoke('app:getVersion'),
+    checkVersion: () => ipcRenderer.invoke('app:checkVersion'),
+    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+  },
 })

@@ -111,5 +111,19 @@ export function registerAnnouncementIPC(ipcMain: IpcMain): void {
     setServerUrl(url)
   })
 
+  // 检查最新版本
+  ipcMain.handle('app:checkVersion', async () => {
+    const baseUrl = getServerUrl()
+    const url = `${baseUrl}/api/version`
+
+    try {
+      const body = await httpGet(url)
+      return JSON.parse(body) as { version: string; changelog: string; downloadUrl: string }
+    } catch (err: any) {
+      log.warn('检查版本失败', { error: err.message })
+      return null
+    }
+  })
+
   log.info('公告 IPC 已注册')
 }

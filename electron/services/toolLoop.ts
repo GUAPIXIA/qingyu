@@ -2,6 +2,7 @@
 /**
  * 工具调用循环
  * 当 AI 返回 tool_calls 时，自动调用对应工具并将结果回传给 AI
+ * C-03 修复：适配器现在通过 [TOOL_CALL:json] 标记返回 tool_calls
  */
 import type { ChatParams } from '../../shared/types'
 import { mcpManager } from '../mcp/manager'
@@ -54,17 +55,15 @@ export async function chatWithTools(
       messages,
     }
 
-    // 收集本轮的 tool_calls
-    const collectedToolCalls: Array<{ id: string; name: string; args: any }> = []
+    // 普通文本 chunk 直接透传
     const toolCallsAdapter = (text: string) => {
-      // 普通文本 chunk 直接透传
       if (text && !text.startsWith('[TOOL_CALL]')) {
         fullText += text
         onChunk(text)
       }
     }
 
-    // 调用适配器（适配器内部解析 tool_calls 并通过特殊标记传出）
+    // 调用适配器
     const result = await adapter.chat(
       roundParams,
       toolCallsAdapter,
@@ -73,64 +72,59 @@ export async function chatWithTools(
     )
 
     // 检查 result 是否含 tool_calls 标记
-    // 适配器返回的 result 可能含特殊前缀 [TOOL_CALL:json]
-    // 简化方案：检查 result 字符串
-    const toolCallMatch = result.match(/\[TOOL_CALL:(.+?)\]/)
+    const toolCallMatch = result.match(/\[TOOL_CALL:(.+?)\](?:\s*$)/)
     if (!toolCallMatch) {
       // 没有工具调用，结束循环
       return fullText || result
     }
 
     // 解析 tool_calls
+    let toolCalls: Array<{ id: string; function?: { name: string; arguments: string }; name?: string; args?: any }>
     try {
       const toolCallsData = JSON.parse(toolCallMatch[1])
-      const toolCalls = Array.isArray(toolCallsData) ? toolCallsData : [toolCallsData]
-      for (const tc of toolCalls) {
-        collectedToolCalls.push({
-          id: tc.id,
-          name: tc.function?.name ?? tc.name,
-          args: typeof tc.function?.arguments === 'string'
-            ? JSON.parse(tc.function.arguments)
-            : (tc.function?.arguments ?? tc.args ?? {}),
-        })
-      }
+      toolCalls = Array.isArray(toolCallsData) ? toolCallsData : [toolCallsData]
     } catch {
-      // 解析失败，把原始文本返回
       return fullText || result
     }
 
     // 将 assistant 的 tool_calls 加入 messages
     messages.push({
       role: 'assistant',
-      content: result.replace(/\[TOOL_CALL:.+?\]/, '').trim(),
-      tool_calls: collectedToolCalls.map(tc => ({
+      content: result.replace(/\[TOOL_CALL:.+?\]/, '').trim() || null,
+      tool_calls: toolCalls.map(tc => ({
         id: tc.id,
         type: 'function',
         function: {
-          name: tc.name,
-          arguments: JSON.stringify(tc.args),
+          name: tc.function?.name ?? tc.name ?? '',
+          arguments: tc.function?.arguments ?? JSON.stringify(tc.args ?? {}),
         },
       })),
     })
 
     // 执行每个工具调用
-    for (const tc of collectedToolCalls) {
-      onToolCall(tc)
+    for (const tc of toolCalls) {
+      const name = tc.function?.name ?? tc.name ?? ''
+      const argsStr = tc.function?.arguments ?? JSON.stringify(tc.args ?? {})
+      let args: any = {}
+      try { args = JSON.parse(argsStr) } catch { /* keep empty */ }
+
+      const toolCallInfo = { id: tc.id, name, args }
+      onToolCall(toolCallInfo)
+
       try {
-        const serverInfo = mcpManager.findToolServer(tc.name)
-        if (!serverInfo) throw new Error(`工具 ${tc.name} 未找到`)
-        const mcpResult = await mcpManager.callTool(serverInfo.serverId, tc.name, tc.args)
+        const serverInfo = mcpManager.findToolServer(name)
+        if (!serverInfo) throw new Error(`工具 ${name} 未找到`)
+        const mcpResult = await mcpManager.callTool(serverInfo.serverId, name, args)
         const resultText = mcpResult.content
-          .filter(c => c.type === 'text')
-          .map(c => c.text)
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text)
           .join('\n')
         onToolResult({ id: tc.id, content: resultText, isError: mcpResult.isError ?? false })
-        // 将结果作为 tool 角色消息
         messages.push({
           role: 'tool',
           content: resultText,
           tool_call_id: tc.id,
-          name: tc.name,
+          name,
         })
       } catch (err) {
         const errMsg = (err as Error).message
@@ -139,7 +133,7 @@ export async function chatWithTools(
           role: 'tool',
           content: `错误: ${errMsg}`,
           tool_call_id: tc.id,
-          name: tc.name,
+          name,
         })
       }
     }

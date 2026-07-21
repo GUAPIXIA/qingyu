@@ -51,6 +51,8 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
   const [notification, setNotification] = useState<string | null>(null)
   const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // H-09 修复：追踪活跃的 AI 辅助请求，组件卸载时取消
+  const activeRequestIdsRef = useRef<Set<string>>(new Set())
   const { sendMessage, isStreaming, stopStreaming, activePresetId, activeLorebookIds } = useChatStore()
   const { settings, getActiveProfile } = useSettingsStore()
   const { characters, selectCharacter } = useCharacterStore()
@@ -260,12 +262,28 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
     return () => clearTimeout(timer)
   }, [text, character.id])
 
+  // P-10 修复：用 requestAnimationFrame 避免同步 reflow
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto'
+          textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
+        }
+      })
     }
   }, [text])
+
+  // H-09 修复：组件卸载时取消所有活跃的 AI 辅助请求并清理 IPC 监听器
+  useEffect(() => {
+    return () => {
+      const ids = Array.from(activeRequestIdsRef.current)
+      for (const id of ids) {
+        window.api.ai.cancelChat(id).catch(() => {})
+      }
+      activeRequestIdsRef.current.clear()
+    }
+  }, [])
 
   /** 加载当前选中的预设和所有激活的世界书（同时更新缓存） */
   const loadActivePresetLorebook = async (): Promise<[Preset | null, Lorebook[]]> => {
@@ -398,8 +416,13 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
     const [preset] = await loadActivePresetLorebook()
     let result = ''
     const requestId = `ai-helper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    activeRequestIdsRef.current.add(requestId)
 
     return new Promise<string>((resolve, reject) => {
+      const cleanup = () => {
+        activeRequestIdsRef.current.delete(requestId)
+        unbindChunk(); unbindDone(); unbindError()
+      }
       const unbindChunk = window.api.ai.onChunk((data) => {
         if (data.requestId !== requestId) return
         result += data.text
@@ -407,12 +430,12 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       })
       const unbindDone = window.api.ai.onDone((doneId) => {
         if (doneId !== requestId) return
-        unbindChunk(); unbindDone(); unbindError()
+        cleanup()
         resolve(result)
       })
       const unbindError = window.api.ai.onError((data) => {
         if (data.requestId !== requestId) return
-        unbindChunk(); unbindDone(); unbindError()
+        cleanup()
         reject(new Error(data.error))
       })
 
@@ -435,7 +458,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       }
 
       window.api.ai.chat(params).catch((err) => {
-        unbindChunk(); unbindDone(); unbindError()
+        cleanup()
         reject(err)
       })
     })

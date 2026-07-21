@@ -27,21 +27,35 @@ export default function App() {
     loadCharacters()
   }, [loadSettings, loadCharacters])
 
-  // 应用主题
+  // L-03 修复：应用主题 + 监听系统主题变化
   useEffect(() => {
     const root = document.documentElement
-    // 深色/浅色
-    root.classList.remove('dark', 'light')
-    if (settings.theme === 'system') {
-      const dark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      root.classList.add(dark ? 'dark' : 'light')
-    } else {
-      root.classList.add(settings.theme)
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+
+    const applyTheme = () => {
+      root.classList.remove('dark', 'light')
+      if (settings.theme === 'system') {
+        root.classList.add(mq.matches ? 'dark' : 'light')
+      } else {
+        root.classList.add(settings.theme)
+      }
     }
-    // 主题色
+
+    applyTheme()
+
+    // system 模式下监听系统主题变化
+    if (settings.theme === 'system') {
+      const handler = () => applyTheme()
+      mq.addEventListener('change', handler)
+      return () => mq.removeEventListener('change', handler)
+    }
+  }, [settings.theme])
+
+  // 主题色 + 字体大小（独立 effect，避免频繁切换时重新注册 listener）
+  useEffect(() => {
+    const root = document.documentElement
     root.classList.remove('theme-amber', 'theme-emerald', 'theme-ocean', 'theme-rose', 'theme-purple', 'theme-cyan')
     root.classList.add(`theme-${settings.themeColor}`)
-    // 字体大小
     root.classList.remove('font-compact', 'font-comfortable', 'font-loose')
     if (settings.fontSize === 'custom') {
       root.style.setProperty('--font-size-base', `${settings.fontSizeCustom || 16}px`)
@@ -49,7 +63,7 @@ export default function App() {
       root.style.removeProperty('--font-size-base')
       root.classList.add(`font-${settings.fontSize}`)
     }
-  }, [settings.theme, settings.themeColor, settings.fontSize, settings.fontSizeCustom])
+  }, [settings.themeColor, settings.fontSize, settings.fontSizeCustom])
 
   return (
     <Routes>

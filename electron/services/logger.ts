@@ -41,6 +41,9 @@ const LOG_FILE_NAME = 'qingyu.log'
 /** 全局日志目录路径 */
 let logDir: string | null = null
 
+/** P-8 修复：缓存日志文件大小，避免每条日志都 statSync */
+let cachedLogSize = 0
+
 /** 全局最低日志级别 */
 let minLevel: LogLevel = LogLevel.DEBUG
 
@@ -64,14 +67,21 @@ function formatMeta(meta?: Record<string, any>): string {
   return parts.length > 0 ? ' | ' + parts.join(' | ') : ''
 }
 
-/** 日志轮转 */
+// P-8 修复：缓存文件大小，仅超阈值时 statSync 校准 + 轮转
 function rotateIfNeeded(): void {
   if (!logDir) return
   const logPath = join(logDir, LOG_FILE_NAME)
-  if (!existsSync(logPath)) return
+  if (!existsSync(logPath)) { cachedLogSize = 0; return }
 
-  const stats = statSync(logPath)
-  if (stats.size < MAX_FILE_SIZE) return
+  // 快速路径：缓存大小未超限，跳过 stat
+  if (cachedLogSize < MAX_FILE_SIZE) return
+
+  // 校准实际大小
+  try {
+    const stats = statSync(logPath)
+    cachedLogSize = stats.size
+    if (stats.size < MAX_FILE_SIZE) return
+  } catch { return }
 
   // 轮转：qingyu.4.log → qingyu.5.log (删除), ... qingyu.log → qingyu.1.log
   for (let i = MAX_LOG_FILES - 1; i >= 0; i--) {
@@ -86,6 +96,7 @@ function rotateIfNeeded(): void {
       }
     }
   }
+  cachedLogSize = 0
 }
 
 /** 写入日志文件 */
@@ -94,7 +105,9 @@ function writeToFile(line: string): void {
   try {
     const logPath = join(logDir, LOG_FILE_NAME)
     rotateIfNeeded()
-    appendFileSync(logPath, line + '\n', 'utf-8')
+    const data = line + '\n'
+    appendFileSync(logPath, data, 'utf-8')
+    cachedLogSize += Buffer.byteLength(data, 'utf-8')
   } catch {
     // 文件写入失败，至少 console 已有输出
   }

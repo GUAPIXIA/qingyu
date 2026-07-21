@@ -8,6 +8,9 @@ let psProcess: ChildProcessWithoutNullStreams | null = null
 let speechState: 'idle' | 'speaking' | 'paused' = 'idle'
 let initPromise: Promise<void> | null = null
 
+/** H-06 修复：命令队列，串行化 TTS 命令 */
+let commandQueue: Promise<void> = Promise.resolve()
+
 /** PowerShell 脚本：持久进程，从 stdin 读取 JSON 命令 */
 const PS_SCRIPT = `
 Add-Type -AssemblyName System.Speech
@@ -99,12 +102,15 @@ async function ensureProcess(): Promise<void> {
 
     let initialized = false
 
-    psProcess.stdout?.on('data', () => {
+    // R-01 修复：init 监听器 resolve 后立即移除，防止累积泄漏
+    const onInitData = () => {
       if (!initialized) {
         initialized = true
+        psProcess?.stdout?.off('data', onInitData)
         resolve()
       }
-    })
+    }
+    psProcess.stdout?.on('data', onInitData)
 
     psProcess.on('error', (err) => {
       initPromise = null
@@ -121,6 +127,7 @@ async function ensureProcess(): Promise<void> {
     setTimeout(() => {
       if (!initialized) {
         initialized = true
+        psProcess?.stdout?.off('data', onInitData)
         resolve() // 即使没收到输出也继续
       }
     }, 3000)
@@ -129,17 +136,16 @@ async function ensureProcess(): Promise<void> {
   return initPromise
 }
 
-/** 发送命令到 PowerShell 进程 */
+/** 发送命令到 PowerShell 进程（H-06 修复：通过队列串行化，避免竞态） */
 function sendCommand(cmd: object): Promise<any> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      await ensureProcess()
-      if (!psProcess || !psProcess.stdin || !psProcess.stdout) {
-        reject(new Error('PowerShell 进程未就绪'))
-        return
-      }
+  const task = commandQueue.then(async () => {
+    await ensureProcess()
+    if (!psProcess || !psProcess.stdin || !psProcess.stdout) {
+      throw new Error('PowerShell 进程未就绪')
+    }
 
-      const cmdStr = JSON.stringify(cmd)
+    const cmdStr = JSON.stringify(cmd)
+    return new Promise<any>((resolve) => {
       const onData = (data: Buffer) => {
         const text = data.toString().trim()
         if (!text) return
@@ -163,10 +169,12 @@ function sendCommand(cmd: object): Promise<any> {
         psProcess?.stdout?.off('data', onData)
         resolve({ status: 'timeout' })
       }, 10000)
-    } catch (e) {
-      reject(e)
-    }
+    })
   })
+
+  // 更新队列（捕获错误防止队列卡死）
+  commandQueue = task.then(() => {}, () => {})
+  return task
 }
 
 /** 获取系统语音列表 */

@@ -3,7 +3,7 @@ import type { CommandDef } from '../registry'
 /** 切换预设 */
 export const presetCommand: CommandDef = {
   name: 'preset',
-  aliases: ['p'],
+  aliases: ['ps'],
   description: '切换预设',
   usage: '/preset [预设名]',
   args: [

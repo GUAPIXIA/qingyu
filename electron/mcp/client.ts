@@ -29,7 +29,7 @@ export class McpClient extends EventEmitter {
       this.process = spawn(this.config.command, this.config.args ?? [], {
         env: { ...process.env, ...this.config.env },
         stdio: ['pipe', 'pipe', 'pipe'],
-        shell: process.platform === 'win32',
+        shell: false,
       })
       this.setupStdioHandlers()
     } else {
@@ -154,6 +154,10 @@ export class McpClient extends EventEmitter {
 
   private cleanup() {
     if (this.process) {
+      // R-03 修复：清理前移除所有监听器，防止内存泄漏
+      this.process.stdout?.removeAllListeners()
+      this.process.stderr?.removeAllListeners()
+      this.process.removeAllListeners()
       try { this.process.kill() } catch { /* ignore */ }
       this.process = null
     }

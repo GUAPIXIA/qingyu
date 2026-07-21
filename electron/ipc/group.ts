@@ -5,6 +5,7 @@ import { DIRS, readJson, writeJson } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { GroupChat, GroupMessage, GroupSession } from '../../shared/types'
 import { nanoid } from 'nanoid'
+import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('group')
 
@@ -112,6 +113,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('group:save', async (_e, group: GroupChat) => {
+    safeId(group.id)
     group.updatedAt = Date.now()
     const groups = loadGroups()
     const idx = groups.findIndex(g => g.id === group.id)
@@ -125,6 +127,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('group:delete', async (_e, id: string) => {
+    safeId(id)
     const groups = loadGroups().filter(g => g.id !== id)
     saveGroups(groups)
     // 删除群聊目录
@@ -138,6 +141,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   // ---- 会话管理 ----
 
   ipcMain.handle('group:listSessions', async (_e, groupId: string) => {
+    safeId(groupId)
     let sessions = loadSessions(groupId)
     if (sessions.length === 0) {
       const now = Date.now()
@@ -152,14 +156,18 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       sessions.push(defaultSession)
       saveSessions(groupId, sessions)
     }
-    // 更新 messageCount
+    // P-1 修复：仅统计行数获取 messageCount，避免全量 JSON 解析
     return sessions.map(s => {
-      const msgs = readMessages(groupId, s.id)
-      return { ...s, messageCount: msgs.length }
+      const filePath = getSessionFile(groupId, s.id)
+      const count = existsSync(filePath)
+        ? readFileSync(filePath, 'utf-8').split('\n').filter(l => l.trim()).length
+        : 0
+      return { ...s, messageCount: count }
     })
   })
 
   ipcMain.handle('group:createSession', async (_e, groupId: string) => {
+    safeId(groupId)
     const sessions = loadSessions(groupId)
     const now = Date.now()
     const session: GroupSession = {
@@ -176,6 +184,8 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('group:deleteSession', async (_e, groupId: string, sessionId: string) => {
+    safeId(groupId)
+    safeId(sessionId)
     const file = getSessionFile(groupId, sessionId)
     if (existsSync(file)) {
       unlinkSync(file)
@@ -185,6 +195,8 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('group:renameSession', async (_e, groupId: string, sessionId: string, title: string) => {
+    safeId(groupId)
+    safeId(sessionId)
     const sessions = loadSessions(groupId)
     const session = sessions.find(s => s.id === sessionId)
     if (session) {
@@ -197,7 +209,9 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   // ---- 消息管理 ----
 
   ipcMain.handle('group:listMessages', async (_e, groupId: string, sessionId?: string) => {
+    safeId(groupId)
     let sid = sessionId
+    if (sid) safeId(sid)
     if (!sid) {
       const sessions = loadSessions(groupId)
       sid = sessions[0]?.id
@@ -207,6 +221,8 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('group:saveMessage', async (_e, groupId: string, sessionId: string, msg: GroupMessage) => {
+    safeId(groupId)
+    safeId(sessionId)
     const messages = readMessages(groupId, sessionId)
 
     const existing = messages.find(m => m.id === msg.id)
@@ -226,6 +242,9 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('group:deleteMessage', async (_e, groupId: string, sessionId: string, messageId: string) => {
+    safeId(groupId)
+    safeId(sessionId)
+    safeId(messageId)
     const messages = readMessages(groupId, sessionId)
     const filtered = messages.filter(m => m.id !== messageId)
     writeMessages(groupId, sessionId, filtered)
@@ -239,6 +258,9 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('group:editMessage', async (_e, groupId: string, sessionId: string, messageId: string, content: string) => {
+    safeId(groupId)
+    safeId(sessionId)
+    safeId(messageId)
     const messages = readMessages(groupId, sessionId)
     const message = messages.find(m => m.id === messageId)
     if (message) {
@@ -248,7 +270,9 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle('group:clearChat', async (_e, groupId: string, sessionId?: string) => {
+    safeId(groupId)
     if (sessionId) {
+      safeId(sessionId)
       const file = getSessionFile(groupId, sessionId)
       if (existsSync(file)) {
         unlinkSync(file)
@@ -271,6 +295,8 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   // ---- 导出 ----
 
   ipcMain.handle('group:exportChat', async (_e, groupId: string, sessionId: string, format: 'json' | 'md') => {
+    safeId(groupId)
+    safeId(sessionId)
     const messages = readMessages(groupId, sessionId)
     if (format === 'json') {
       return JSON.stringify(messages, null, 2)

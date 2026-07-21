@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
@@ -83,6 +83,19 @@ export function LorebookPage() {
 
   const { getActiveProfile, settings } = useSettingsStore()
 
+  /** H-09 修复：追踪活跃的 AI 请求 ID，组件卸载时取消并清理监听器 */
+  const activeRequestIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    return () => {
+      const ids = Array.from(activeRequestIdsRef.current)
+      for (const id of ids) {
+        window.api.ai.cancelChat(id).catch(() => {})
+      }
+      activeRequestIdsRef.current.clear()
+    }
+  }, [])
+
   const selected = lorebooks.find((l) => l.id === selectedId) ?? null
 
   useEffect(() => {
@@ -161,7 +174,13 @@ export function LorebookPage() {
     setTranslateResult(null)
 
     const requestId = `lorebook-translate-${Date.now()}`
+    activeRequestIdsRef.current.add(requestId)
     let result = ''
+
+    const cleanup = () => {
+      activeRequestIdsRef.current.delete(requestId)
+      unbindChunk(); unbindDone(); unbindError()
+    }
 
     const unbindChunk = window.api.ai.onChunk((data) => {
       if (data.requestId !== requestId) return
@@ -170,7 +189,7 @@ export function LorebookPage() {
     })
     const unbindDone = window.api.ai.onDone((doneId) => {
       if (doneId !== requestId) return
-      unbindChunk(); unbindDone(); unbindError()
+      cleanup()
       setTranslatingField(null)
       setTranslateResult(null)
       if (result.trim()) {
@@ -179,7 +198,7 @@ export function LorebookPage() {
     })
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
-      unbindChunk(); unbindDone(); unbindError()
+      cleanup()
       setTranslatingField(null)
       setTranslateResult(null)
     })
@@ -201,7 +220,7 @@ export function LorebookPage() {
       presencePenalty: 0,
       stream: true,
     }).catch(() => {
-      unbindChunk(); unbindDone(); unbindError()
+      cleanup()
       setTranslatingField(null)
       setTranslateResult(null)
     })

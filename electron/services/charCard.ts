@@ -161,7 +161,7 @@ export async function importCharacterFromJson(filePath: string): Promise<Charact
 }
 
 /** 图片下载错误码 */
-export type ImageDownloadCode = 'TIMEOUT' | 'HTTP_ERROR' | 'NETWORK_ERROR' | 'INVALID_URL' | 'INVALID_FORMAT' | 'UNKNOWN'
+export type ImageDownloadCode = 'TIMEOUT' | 'HTTP_ERROR' | 'NETWORK_ERROR' | 'INVALID_URL' | 'INVALID_FORMAT' | 'SSRF_BLOCKED' | 'UNKNOWN'
 
 /** 图片下载结果 */
 export interface DownloadResult {
@@ -186,6 +186,27 @@ async function downloadImageAsBase64(url: string, maxRedirects: number = 5): Pro
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
     log.warn('封面 URL 协议不支持', { url: trimmed.substring(0, 100) })
     return { success: false, error: 'URL 必须以 http:// 或 https:// 开头', code: 'INVALID_URL' }
+  }
+
+  // SSRF 防护：拒绝私有 IP、localhost、元数据端点
+  try {
+    const parsed = new URL(trimmed)
+    const hostname = parsed.hostname.toLowerCase()
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+      log.warn('SSRF 防护：拒绝 localhost', { hostname })
+      return { success: false, error: '不允许访问本地地址', code: 'SSRF_BLOCKED' }
+    }
+    if (hostname.match(/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/)) {
+      log.warn('SSRF 防护：拒绝私有 IP', { hostname })
+      return { success: false, error: '不允许访问内网地址', code: 'SSRF_BLOCKED' }
+    }
+    if (hostname === '169.254.169.254') {
+      log.warn('SSRF 防护：拒绝云元数据端点', { hostname })
+      return { success: false, error: '不允许访问元数据服务', code: 'SSRF_BLOCKED' }
+    }
+  } catch {
+    log.warn('URL 解析失败', { url: trimmed.substring(0, 100) })
+    return { success: false, error: '无法解析图片 URL', code: 'INVALID_URL' }
   }
 
   // 防止无限重定向

@@ -750,7 +750,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => ({
           messages: s.messages.map((m) => (m.id === aiMessageId ? finalMsg : m)),
         }))
-        window.api.chat.saveMessage(finalMsg)
+        window.api.chat.saveMessage(finalMsg).catch(() => {})
 
         // 自动长记忆检查
         const { sessions: curSessions, currentSessionId: curSid } = get()
@@ -758,7 +758,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (curSession?.memoryEnabled && curSession.memoryMode === 'auto') {
           const msgCount = get().messages.filter(m => m.content).length
           if (msgCount > 0 && msgCount % (curSession.autoMemoryInterval || 10) === 0) {
-            get().triggerMemorySummary(character)
+            get().triggerMemorySummary(character).catch(() => {})
           }
         }
 
@@ -801,7 +801,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const aiMsg = state.messages.find((m) => m.id === aiMessageId)
         if (aiMsg && !aiMsg.content) {
           const updatedMsg: Message = { ...aiMsg, content: `⚠️ ${errMsg}` }
-          window.api.chat.saveMessage(updatedMsg)
+          window.api.chat.saveMessage(updatedMsg).catch(() => {})
           set((s) => ({
             messages: s.messages.map((m) => (m.id === aiMessageId ? updatedMsg : m)),
           }))
@@ -883,7 +883,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => ({
           messages: s.messages.map(m => m.id === messageId ? finalMsg : m),
         }))
-        window.api.chat.saveMessage(finalMsg)
+        window.api.chat.saveMessage(finalMsg).catch(() => {})
 
         // 自动长记忆检查
         const { sessions: curSessions, currentSessionId: curSid } = get()
@@ -891,7 +891,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (curSession?.memoryEnabled && curSession.memoryMode === 'auto') {
           const msgCount = get().messages.filter(m => m.content).length
           if (msgCount > 0 && msgCount % (curSession.autoMemoryInterval || 10) === 0) {
-            get().triggerMemorySummary(character)
+            get().triggerMemorySummary(character).catch(() => {})
           }
         }
       },
@@ -907,7 +907,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: newSwipes[newSwipeIndex],
         }
         set((s) => ({ messages: s.messages.map(m => m.id === messageId ? finalMsg : m) }))
-        window.api.chat.saveMessage(finalMsg)
+        window.api.chat.saveMessage(finalMsg).catch(() => {})
       },
     })
   },
@@ -999,17 +999,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const requestId = `translate-${messageId}-${Date.now()}`
     let result = ''
+    // P-4 修复：翻译 onChunk 节流，50ms flush 一次，避免高频 re-render
+    let translateFlushTimer: ReturnType<typeof setTimeout> | null = null
 
     const unbindChunk = window.api.ai.onChunk((data) => {
       if (data.requestId !== requestId) return
       result += data.text
-      set((state) => ({
-        translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'translating' as const, content: result } },
-      }))
+      if (translateFlushTimer === null) {
+        translateFlushTimer = setTimeout(() => {
+          translateFlushTimer = null
+          set((state) => ({
+            translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'translating' as const, content: result } },
+          }))
+        }, 50)
+      }
     })
 
     const unbindDone = window.api.ai.onDone((doneId) => {
       if (doneId !== requestId) return
+      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
       unbindChunk(); unbindDone(); unbindError()
 
       // 先准备好 updated 对象（不在 set 回调中执行副作用）
@@ -1028,6 +1036,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
+      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: friendlyError(data.error) } },
@@ -1036,6 +1045,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile) {
+      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '未配置 API 连接' } },
@@ -1060,6 +1070,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       presencePenalty: 0,
       stream: true,
     }).catch(() => {
+      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译请求失败' } },
