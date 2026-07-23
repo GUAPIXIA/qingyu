@@ -38,24 +38,49 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
     const { readFileSync } = require('node:fs')
     const raw = readFileSync(result.filePaths[0], 'utf-8')
-    const parsed = JSON.parse(raw)
+
+    // 格式校验
+    let parsed: any
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      throw new Error('文件格式错误：不是有效的 JSON 文件')
+    }
+
+    // 校验基本结构
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error('文件格式错误：JSON 顶层必须是对象')
+    }
+
     // 兼容 SillyTavern 世界书格式
     const lorebook: Lorebook = {
       id: parsed.id ?? require('nanoid').nanoid(),
       name: parsed.name ?? '导入的世界书',
       description: parsed.description ?? '',
-      entries: (parsed.entries ?? []).map((e: any, i: number) => ({
-        id: e.uid?.toString() ?? require('nanoid').nanoid(),
-        keywords: Array.isArray(e.key) ? e.key : (e.key ? e.key.split(',') : []),
-        content: e.content ?? '',
-        position: e.position === 'before' ? 'before_char' : e.position === 'after' ? 'after_char' : 'at_end',
-        order: e.order ?? i,
-        probability: e.probability ?? 100,
-        enabled: e.disable ? false : (e.enabled ?? true),
-      })),
+      entries: (Array.isArray(parsed.entries)
+        ? parsed.entries
+        : (typeof parsed.entries === 'object' && parsed.entries !== null ? Object.values(parsed.entries) : [])
+      ).map((e: any, i: number) => {
+        // 校验每个条目
+        if (typeof e !== 'object' || e === null) return null
+        return {
+          id: e.uid?.toString() ?? require('nanoid').nanoid(),
+          keywords: Array.isArray(e.key) ? e.key.filter((k: any) => typeof k === 'string') : (typeof e.key === 'string' ? e.key.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
+          content: typeof e.content === 'string' ? e.content : '',
+          position: e.position === 0 || e.position === 'before' ? 'before_char' : e.position === 1 || e.position === 'after' ? 'after_char' : 'at_end',
+          order: typeof e.order === 'number' ? e.order : i,
+          probability: typeof e.probability === 'number' ? Math.max(0, Math.min(100, e.probability)) : 100,
+          enabled: e.disable ? false : (typeof e.enabled === 'boolean' ? e.enabled : true),
+        }
+      }).filter(Boolean) as Lorebook['entries'],
       enabled: true,
-      scanDepth: parsed.scan_depth ?? 4,
+      scanDepth: typeof parsed.scan_depth === 'number' ? Math.max(1, parsed.scan_depth) : 4,
     }
+
+    if (lorebook.entries.length === 0) {
+      throw new Error('世界书没有有效的条目')
+    }
+
     writeJson(join(DIRS.lorebooks(), `${lorebook.id}.json`), lorebook)
     log.info('世界书已导入', { name: lorebook.name, entries: lorebook.entries.length })
     return lorebook

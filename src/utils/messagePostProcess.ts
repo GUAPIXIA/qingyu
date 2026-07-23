@@ -1,0 +1,140 @@
+/**
+ * 消息后处理工具
+ *
+ * 解决连续相同角色消息导致的 API 格式错误问题。
+ * 例如：[user: "你好"], [user: "我是小明"] → [user: "你好\n\n我是小明"]
+ */
+
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+  [key: string]: any
+}
+
+/**
+ * 合并连续相同角色的消息
+ *
+ * SillyTavern 的 MERGE 模式实现：
+ * - 连续的 system 消息合并为一条
+ * - 连续的 user 消息合并为一条
+ * - 连续的 assistant 消息合并为一条
+ * - system 消息穿插在 user/assistant 之间时，合并到前一条消息
+ *
+ * @param messages 原始消息数组
+ * @returns 合并后的消息数组
+ */
+export function mergeConsecutiveMessages(messages: ChatMessage[]): ChatMessage[] {
+  if (!messages || messages.length === 0) return []
+
+  const merged: ChatMessage[] = []
+
+  for (const msg of messages) {
+    const lastMsg = merged[merged.length - 1]
+
+    if (!lastMsg) {
+      // 第一条消息直接加入
+      merged.push({ ...msg })
+      continue
+    }
+
+    // 如果角色相同，合并内容
+    if (lastMsg.role === msg.role) {
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content}`
+    }
+    // 如果当前是 system 且上一条是 user/assistant，合并到上一条
+    // （system 穿插在对话中时，追加到前一条消息）
+    else if (msg.role === 'system' && (lastMsg.role === 'user' || lastMsg.role === 'assistant')) {
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content}`
+    }
+    // 其他情况，直接加入
+    else {
+      merged.push({ ...msg })
+    }
+  }
+
+  return merged
+}
+
+/**
+ * 严格模式：保持角色交替
+ *
+ * SillyTavern 的 STRICT 模式实现：
+ * - 强制 user/assistant 交替出现
+ * - 连续相同角色消息合并
+ * - system 消息使用占位符替换
+ *
+ * @param messages 原始消息数组
+ * @param placeholder system 消息的占位符文本
+ * @returns 处理后的消息数组
+ */
+export function strictAlternatingMessages(
+  messages: ChatMessage[],
+  placeholder = '[System message]'
+): ChatMessage[] {
+  if (!messages || messages.length === 0) return []
+
+  // 第一步：合并连续相同角色
+  let result = mergeConsecutiveMessages(messages)
+
+  // 第二步：确保 user/assistant 交替
+  const final: ChatMessage[] = []
+
+  for (const msg of result) {
+    if (msg.role === 'system') {
+      // system 消息保持原样
+      final.push({ ...msg })
+      continue
+    }
+
+    const lastMsg = final[final.length - 1]
+
+    if (!lastMsg || lastMsg.role === msg.role) {
+      // 角色相同，合并
+      final.push({ ...msg })
+    } else if (lastMsg.role === 'system') {
+      // 上一条是 system，当前是 user/assistant，直接加入
+      final.push({ ...msg })
+    } else {
+      // 正常交替，直接加入
+      final.push({ ...msg })
+    }
+  }
+
+  return final
+}
+
+/**
+ * Semi 模式：允许连续 system，但 user/assistant 必须交替
+ *
+ * @param messages 原始消息数组
+ * @returns 处理后的消息数组
+ */
+export function semiStrictMessages(messages: ChatMessage[]): ChatMessage[] {
+  if (!messages || messages.length === 0) return []
+
+  const result: ChatMessage[] = []
+
+  for (const msg of messages) {
+    const lastMsg = result[result.length - 1]
+
+    if (!lastMsg) {
+      result.push({ ...msg })
+      continue
+    }
+
+    // system 消息可以连续
+    if (msg.role === 'system' && lastMsg.role === 'system') {
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content}`
+    }
+    // user/assistant 相同角色合并
+    else if (msg.role === lastMsg.role && msg.role !== 'system') {
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content}`
+    }
+    // 其他情况直接加入
+    else {
+      result.push({ ...msg })
+    }
+  }
+
+  return result
+}

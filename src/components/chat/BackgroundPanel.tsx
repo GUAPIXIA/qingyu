@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { X, Upload, Sun, Waves, Trees, Moon, Cloud, Flame } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, Upload, Sun, Waves, Trees, Moon, Cloud, Flame, Image } from 'lucide-react'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { cn } from '../../lib/utils'
 
@@ -21,9 +21,23 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
   const { currentCharacter, saveCharacter } = useCharacterStore()
   const character = currentCharacter
 
+  // hooks 必须在提前返回之前调用（React Hooks 规则）
+  const params = character?.chatBackgroundParams ?? { opacity: 12, blur: 2, type: 'image' as const, posX: 50, posY: 50, scale: 100 }
+  const useCover = params.useCover ?? false
+  const [localOpacity, setLocalOpacity] = useState(params.opacity ?? 12)
+  const [localBlur, setLocalBlur] = useState(params.blur ?? 2)
+
+  // 面板打开时同步本地状态（切换角色 / 重新打开时重置为角色当前值）
+  useEffect(() => {
+    if (open && character) {
+      const p = character.chatBackgroundParams ?? { opacity: 12, blur: 2, type: 'image' as const, posX: 50, posY: 50, scale: 100 }
+      setLocalOpacity(p.opacity ?? 12)
+      setLocalBlur(p.blur ?? 2)
+    }
+  }, [open, character?.id])
+
   if (!open || !character) return null
 
-  const params = character.chatBackgroundParams ?? { opacity: 12, blur: 2, type: 'image' as const, posX: 50, posY: 50, scale: 100 }
   const opacity = params.opacity ?? 12
   const blur = params.blur ?? 2
   const bgType = params.type ?? 'image'
@@ -31,10 +45,6 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
   const posX = params.posX ?? 50
   const posY = params.posY ?? 50
   const scale = params.scale ?? 100
-
-  // P-6 修复：滑块拖动时仅更新本地状态，mouseup 时才持久化
-  const [localOpacity, setLocalOpacity] = useState(opacity)
-  const [localBlur, setLocalBlur] = useState(blur)
 
   const updateBg = async (partial: Partial<NonNullable<typeof character.chatBackgroundParams>> & { chatBackground?: string | undefined }) => {
     const updated: typeof character = {
@@ -48,6 +58,7 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
         posX: partial.posX ?? posX,
         posY: partial.posY ?? posY,
         scale: partial.scale ?? scale,
+        useCover: partial.useCover !== undefined ? partial.useCover : useCover,
       },
     }
     await saveCharacter(updated)
@@ -58,19 +69,27 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
   }
 
   const handleSelectGradient = (key: string) => {
-    updateBg({ type: 'gradient', gradient: key })
+    updateBg({ type: 'gradient', gradient: key, useCover: false })
+  }
+
+  const handleUseCover = () => {
+    if (useCover) {
+      handleRemove()
+    } else {
+      updateBg({ chatBackground: undefined, type: 'image', gradient: undefined, useCover: true })
+    }
   }
 
   const handleSelectImage = async () => {
     const path = await window.api.file.selectImage()
     if (path) {
       const base64 = await window.api.file.readImageAsBase64(path)
-      updateBg({ chatBackground: base64, type: 'image', gradient: undefined })
+      updateBg({ chatBackground: base64, type: 'image', gradient: undefined, useCover: false })
     }
   }
 
   const handleRemove = () => {
-    updateBg({ chatBackground: undefined, gradient: undefined, type: 'image' })
+    updateBg({ chatBackground: undefined, gradient: undefined, type: 'image', useCover: false })
   }
 
   const handleOpacityChange = (val: number) => {
@@ -116,6 +135,23 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
               ))}
             </div>
           </div>
+
+          {/* 使用角色头像/封面 */}
+          <div>
+            <label className="label">使用角色封面</label>
+              <button
+                onClick={handleUseCover}
+                className={cn(
+                  'w-full flex items-center justify-center gap-2 px-3 py-3 rounded-lg border-2 transition-colors text-sm',
+                  useCover
+                    ? 'border-tavern-accent bg-tavern-accent-soft/30 text-tavern-accent'
+                    : 'border-dashed border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:shadow-sm'
+                )}
+              >
+                <Image className="w-4 h-4" />
+                {useCover ? '已启用（点击取消）' : '设为封面背景'}
+              </button>
+            </div>
 
           {/* 自定义图片 */}
           <div>
@@ -182,7 +218,7 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
           </div>
 
           {/* 图片位置 */}
-          {character.chatBackground && bgType === 'image' && (
+          {(character.chatBackground || useCover) && bgType === 'image' && (
             <div>
               <label className="label">图片位置</label>
               <div className="grid grid-cols-2 gap-3">
@@ -215,7 +251,7 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
           )}
 
           {/* 图片缩放 (仅图片模式) */}
-          {character.chatBackground && bgType === 'image' && (
+          {(character.chatBackground || useCover) && bgType === 'image' && (
             <div>
               <label className="label">
                 缩放 <span className="text-xs text-tavern-text-muted ml-1">{scale}%</span>
@@ -237,7 +273,7 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
           )}
 
           {/* 移除背景 */}
-          {character.chatBackground && (
+          {(character.chatBackground || useCover) && (
             <div className="pt-2 border-t border-tavern-border-soft">
               <button
                 onClick={handleRemove}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { THEME_COLORS } from '../utils/defaults'
+import { THEME_COLORS, getDefaultSettings } from '../utils/defaults'
 import { cn } from '../lib/utils'
 import { SectionCard, Toggle, OptionGroup } from '../components/common/SettingsShared'
 import type { Settings } from '../../shared/types'
@@ -18,6 +18,7 @@ import {
   Download,
   Upload,
   AlignJustify,
+  Maximize2,
   Plug,
   ExternalLink,
 } from 'lucide-react'
@@ -185,6 +186,41 @@ export function SettingsPage() {
                 />
               </div>
 
+              {/* 消息宽度 */}
+              <div>
+                <label className="label">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Maximize2 className="w-3.5 h-3.5" />消息宽度
+                  </span>
+                  <span className="text-xs text-tavern-text-muted ml-2">{settings.messageWidth ?? 768}px</span>
+                </label>
+                <input
+                  type="range"
+                  min="400"
+                  max="1200"
+                  step="8"
+                  value={settings.messageWidth ?? 768}
+                  onChange={(e) => updateSettings({ messageWidth: Number(e.target.value) })}
+                  className="w-full accent-tavern-accent mt-1"
+                />
+                <div className="flex gap-2 mt-1.5">
+                  {[480, 768, 1024].map(v => (
+                    <button
+                      key={v}
+                      className={cn(
+                        'px-2.5 py-0.5 text-xs rounded border transition-colors',
+                        (settings.messageWidth ?? 768) === v
+                          ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                          : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
+                      )}
+                      onClick={() => updateSettings({ messageWidth: v })}
+                    >
+                      {v === 480 ? '紧凑' : v === 768 ? '标准' : '宽屏'} {v}px
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* 消息间距 */}
               <div>
                 <label className="label">
@@ -273,13 +309,70 @@ export function SettingsPage() {
 
             <div className="flex items-center justify-between py-1">
               <div>
-                <p className="text-sm">使用角色封面作为聊天背景</p>
-                <p className="text-xs text-tavern-text-muted">开启后，将自动使用角色的封面图片作为聊天背景（未设置封面的角色仍使用手动背景）</p>
+                <p className="text-sm">内心想法默认展开</p>
+                <p className="text-xs text-tavern-text-muted">消息中的心理描写区域是否默认展开显示</p>
               </div>
               <Toggle
-                checked={settings.useCoverAsBackground ?? false}
-                onChange={(v) => updateSettings({ useCoverAsBackground: v })}
+                checked={settings.autoExpandThought ?? false}
+                onChange={(v) => updateSettings({ autoExpandThought: v })}
               />
+            </div>
+
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-sm">翻译目标语言</p>
+                <p className="text-xs text-tavern-text-muted">消息翻译功能的目标语言</p>
+              </div>
+              <select
+                value={settings.translationTargetLang || '中文'}
+                onChange={(e) => updateSettings({ translationTargetLang: e.target.value })}
+                className="input text-sm py-1 px-2 w-28"
+              >
+                <option value="中文">中文</option>
+                <option value="English">English</option>
+                <option value="日本語">日本語</option>
+                <option value="한국어">한국어</option>
+                <option value="Français">Français</option>
+                <option value="Deutsch">Deutsch</option>
+                <option value="Español">Español</option>
+                <option value="Русский">Русский</option>
+              </select>
+            </div>
+
+            {/* B-05：封面毛玻璃模糊强度 */}
+            <div>
+              <label className="label">
+                <span className="inline-flex items-center gap-1.5">
+                  封面毛玻璃强度
+                </span>
+                <span className="text-xs text-tavern-text-muted ml-2">{settings.coverBlurStrength ?? 8}px</span>
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="30"
+                step="1"
+                value={settings.coverBlurStrength ?? 8}
+                onChange={(e) => updateSettings({ coverBlurStrength: Number(e.target.value) })}
+                className="w-full accent-tavern-accent mt-1"
+              />
+              <div className="flex gap-2 mt-1.5">
+                {[0, 8, 16, 24].map(v => (
+                  <button
+                    key={v}
+                    className={cn(
+                      'px-2.5 py-0.5 text-xs rounded border transition-colors',
+                      (settings.coverBlurStrength ?? 8) === v
+                        ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                        : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
+                    )}
+                    onClick={() => updateSettings({ coverBlurStrength: v })}
+                  >
+                    {v === 0 ? '关闭' : `${v}px`}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-tavern-text-muted mt-1">角色卡封面毛玻璃效果的模糊强度，0 = 禁用</p>
             </div>
           </div>
         </SectionCard>
@@ -302,6 +395,21 @@ export function SettingsPage() {
                 <Upload className="w-4 h-4" />
               )}
               导入备份
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('确定要重置所有设置为默认值吗？此操作不会影响角色、会话等数据。')) {
+                  const defaults = getDefaultSettings()
+                  // 保留用户的 connectionProfiles 和 API 密钥
+                  defaults.connectionProfiles = settings.connectionProfiles
+                  defaults.activeProfileId = settings.activeProfileId
+                  updateSettings(defaults)
+                }
+              }}
+              disabled={busy !== null}
+              className="btn-secondary text-tavern-danger hover:text-tavern-danger"
+            >
+              重置设置
             </button>
           </div>
           {importMsg && (

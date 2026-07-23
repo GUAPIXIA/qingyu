@@ -40,10 +40,16 @@ export function parseDialogue(text: string): DialogueSegment[] {
   }
 
   const protectedText = text
+    // B-05 修复：归一化 Unicode 引号变体为 ASCII 引号，确保正则能匹配
+    // AI 模型常输出 "" （弯引号）、「」 （直角引号）等变体，统一转为 " 处理
+    .replace(/[“”„‟＂「『‹«]/g, '"')
+    .replace(/[」』›»]/g, '"')
+    // 将反引号对话 `` `...` `` 转为双引号对话 `"..."`，使其能被后续正则识别为对话片段
+    .replace(/`([^`\n]+)`/g, '"$1"')
     .replace(/<\/?[a-zA-Z][^>]*\/?>/g, protect)   // HTML 标签 <...>
     .replace(/!\[[^\]]*\]\([^)]*\)/g, protect)     // markdown 图片 ![alt](url)
     .replace(/\[[^\]]*\]\([^)]*\)/g, protect)      // markdown 链接 [text](url)
-    .replace(/`[^`]+`/g, protect)                   // 行内代码 `code`
+    .replace(/`[^`\n]+`/g, protect)                 // 行内代码 `code`（保留兼容）
 
   /** 将占位符还原为原始内容 */
   const restore = (s: string): string =>

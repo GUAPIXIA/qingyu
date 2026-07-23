@@ -5,6 +5,7 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeRaw from 'rehype-raw'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
 import { THEME_COLORS } from '../../utils/defaults'
 import { X, Edit2, RefreshCw, Languages, Check } from 'lucide-react'
@@ -37,6 +38,8 @@ const markdownComponents = { img: MarkdownImage }
 export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, onDelete, onEdit, onRegenerate, onTranslate }: GroupChatMessageProps) {
   const { currentCharacter, characters } = useCharacterStore()
   const { settings } = useSettingsStore()
+  const { getPersona } = usePersonaStore()
+  const persona = getPersona(settings.activePersonaId)
   const [showThought, setShowThought] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editDraft, setEditDraft] = useState('')
@@ -51,10 +54,17 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
   const colorIdx = memberIndex ?? 0
   const borderColor = ROLE_COLORS[colorIdx % ROLE_COLORS.length]
 
-  // 提取 <thought>
-  const thoughtMatch = message.content.match(/<thought>([\s\S]*?)<\/thought>/i)
+  // B-05 修复：同时处理 <thought> 和 <thinking> 标签
+  const normalizedContent = (message.content || '')
+    .replace(/<thinking([\s>])/gi, '<thought$1')
+    .replace(/<\/thinking>/gi, '</thought>')
+  const thoughtMatch = normalizedContent.match(/<thought>([\s\S]*?)<\/thought>/i)
   const thoughtContent = thoughtMatch?.[1]?.trim()
-  const mainContent = message.content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+  let mainContent = normalizedContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+  // B-05 修复：剥离后为空时回退到思考内容，避免空消息
+  if (!mainContent && thoughtContent) {
+    mainContent = thoughtContent
+  }
 
   const displayContent = showTranslation && message.translation ? message.translation : mainContent
 
@@ -89,9 +99,13 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
       {/* 头像 */}
       <div className="shrink-0 mt-0.5">
         {isUser ? (
-          <div className="w-8 h-8 rounded-full bg-tavern-user/15 text-tavern-user flex items-center justify-center text-xs font-bold">
-            你
-          </div>
+          persona?.avatar ? (
+            <img src={persona.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-tavern-user/15 text-tavern-user flex items-center justify-center text-xs font-bold">
+              {settings.userName?.[0] || '你'}
+            </div>
+          )
         ) : character?.avatar ? (
           <img src={character.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
         ) : (

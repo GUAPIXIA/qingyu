@@ -22,9 +22,14 @@ export function CharactersPage() {
   const filtered = useMemo(() => {
     if (!search) return characters
     const q = search.toLowerCase()
-    return characters.filter(
-      (c) => c.name.toLowerCase().includes(q) || c.tags.some((t) => t.toLowerCase().includes(q))
-    )
+    return characters.filter((c) => {
+      const nameMatch = c.name.toLowerCase().includes(q)
+      const tagMatch = c.tags.some((t) => t.toLowerCase().includes(q))
+      const descMatch = c.description?.toLowerCase().includes(q)
+      const personalityMatch = c.personality?.toLowerCase().includes(q)
+      const scenarioMatch = c.scenario?.toLowerCase().includes(q)
+      return nameMatch || tagMatch || descMatch || personalityMatch || scenarioMatch
+    })
   }, [characters, search])
 
   const handleNew = () => {

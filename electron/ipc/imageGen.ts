@@ -70,7 +70,7 @@ async function translatePromptToEnglish(prompt: string, settings: Settings): Pro
     throw new Error('翻译 API 返回空结果')
   }
 
-  return translated
+  return translated.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
 }
 
 export function registerImageGenIPC(ipcMain: IpcMain): void {

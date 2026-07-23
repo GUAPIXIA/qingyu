@@ -1,7 +1,8 @@
 import type { Character } from '../../../shared/types'
 import { useCharacterStore } from '../../store/useCharacterStore'
+import { useSettingsStore } from '../../store/useSettingsStore'
 import { formatRelativeTime } from '../../utils/format'
-import { Edit3, Trash2, MessageSquare, Download } from 'lucide-react'
+import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
 
@@ -14,28 +15,59 @@ interface CharacterCardProps {
 }
 
 export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 'grid' }: CharacterCardProps) {
-  const { exportPng, exportJson } = useCharacterStore()
+  const { exportPng, exportJson, saveCharacter, togglePin, patchCharacter } = useCharacterStore()
+  const blurStrength = useSettingsStore(s => s.settings.coverBlurStrength ?? 8)
   const [showMenu, setShowMenu] = useState(false)
   const [imgError, setImgError] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const coverSrc = character.cover || character.avatar
+  const blurEnabled = character.coverBlurEnabled === true
 
   const handlePreviewClick = () => {
     if (coverSrc && !imgError) setShowPreview(true)
   }
 
+  const toggleBlur = () => {
+    patchCharacter(character.id, { coverBlurEnabled: !blurEnabled })
+  }
+
   const renderAvatar = (className: string) => (
     <div
-      className={cn('bg-tavern-bg-hover overflow-hidden cursor-pointer', className)}
+      className={cn('bg-tavern-bg-hover overflow-hidden cursor-pointer relative group/cover', className)}
       onClick={handlePreviewClick}
     >
       {coverSrc && !imgError ? (
-        <img
-          src={coverSrc}
-          alt={character.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          onError={() => setImgError(true)}
-        />
+        <>
+          {/* 图片容器 — 模糊只作用于此，不影响叠加按钮 */}
+          <div
+            className="absolute inset-0"
+            style={blurEnabled ? { filter: `blur(${blurStrength}px)` } : undefined}
+          >
+            <img
+              src={coverSrc}
+              alt={character.name}
+              className={cn(
+                'w-full h-full object-cover transition-all duration-300',
+                blurEnabled ? 'scale-110' : 'group-hover/cover:scale-105',
+              )}
+              onError={() => setImgError(true)}
+            />
+          </div>
+          {/* B-05：隐藏的毛玻璃切换按钮 — 在模糊层之上，不受影响 */}
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleBlur() }}
+            className={cn(
+              'absolute top-2 right-2 p-1.5 rounded-full transition-all duration-200 z-10',
+              'opacity-0 group-hover/cover:opacity-100',
+              blurEnabled
+                ? 'bg-tavern-accent/80 text-white'
+                : 'bg-black/40 text-white/60 hover:bg-black/60 hover:text-white',
+            )}
+            title={blurEnabled ? '取消毛玻璃' : '毛玻璃效果'}
+          >
+            {blurEnabled ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </>
       ) : (
         <div className="w-full h-full flex items-center justify-center">
           <span className={cn('font-display text-tavern-text-muted', viewMode === 'list' ? 'text-xl' : 'text-4xl')}>
@@ -57,14 +89,14 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
       </button>
       <button
         onClick={onEdit}
-        className="p-2 rounded-lg bg-tavern-bg-card/90 text-tavern-text hover:bg-tavern-bg-card transition-colors"
+        className="p-2 rounded-lg bg-white/90 text-gray-700 hover:bg-white hover:text-gray-900 transition-colors shadow-sm"
         title="编辑"
       >
         <Edit3 className="w-4 h-4" />
       </button>
       <button
         onClick={() => setShowMenu(!showMenu)}
-        className="p-2 rounded-lg bg-tavern-bg-card/90 text-tavern-text hover:bg-tavern-bg-card transition-colors relative"
+        className="p-2 rounded-lg bg-white/90 text-gray-700 hover:bg-white hover:text-gray-900 transition-colors relative shadow-sm"
         title="导出"
       >
         <Download className="w-4 h-4" />
@@ -104,16 +136,34 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
   if (viewMode === 'list') {
     return (
       <>
-        <div className="flex gap-4 p-3 rounded-xl border border-tavern-border-soft bg-tavern-bg-card hover:border-tavern-accent/50 transition-colors">
+        <div className="flex gap-4 p-3 rounded-xl border border-tavern-border-soft bg-tavern-bg-card hover:border-tavern-accent/50 transition-colors group">
           {/* 左侧封面 */}
-          <div className="shrink-0">
+          <div className="shrink-0 relative">
             {renderAvatar('w-24 h-32 rounded-lg overflow-hidden')}
+            {/* 置顶按钮 */}
+            <button
+              onClick={(e) => { e.stopPropagation(); togglePin(character.id) }}
+              className={cn(
+                'absolute top-1 left-1 p-1 rounded-full transition-all duration-200 z-10',
+                character.pinned
+                  ? 'bg-tavern-accent text-white'
+                  : 'bg-black/40 text-white/60 hover:bg-black/60 hover:text-white opacity-0 group-hover:opacity-100'
+              )}
+              title={character.pinned ? '取消置顶' : '置顶'}
+            >
+              <Pin className={cn('w-3 h-3', character.pinned && 'fill-current')} />
+            </button>
           </div>
 
           {/* 右侧信息 */}
           <div className="flex-1 min-w-0 flex flex-col justify-between">
             <div>
-              <h3 className="font-medium text-tavern-text">{character.translatedContent?.name ?? character.name}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-medium text-tavern-text">{character.translatedContent?.name ?? character.name}</h3>
+                {character.pinned && (
+                  <Pin className="w-3 h-3 text-tavern-accent fill-current" />
+                )}
+              </div>
               {character.description && (
                 <p className="text-sm text-tavern-text-muted mt-1 line-clamp-3">{character.translatedContent?.description ?? character.description}</p>
               )}
@@ -167,6 +217,21 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
       {/* 头像区 */}
       <div className="relative">
         {renderAvatar('aspect-[3/4]')}
+
+        {/* 置顶按钮 - 左上角 */}
+        <button
+          onClick={(e) => { e.stopPropagation(); togglePin(character.id) }}
+          className={cn(
+            'absolute top-2 left-2 p-1.5 rounded-full transition-all duration-200 z-10',
+            'opacity-0 group-hover:opacity-100',
+            character.pinned
+              ? 'bg-tavern-accent text-white opacity-100'
+              : 'bg-black/40 text-white/60 hover:bg-black/60 hover:text-white'
+          )}
+          title={character.pinned ? '取消置顶' : '置顶'}
+        >
+          <Pin className={cn('w-3.5 h-3.5', character.pinned && 'fill-current')} />
+        </button>
 
         {/* 操作按钮悬浮 */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2 gap-1 pointer-events-none">

@@ -12,7 +12,14 @@ export interface Character {
   firstMessage: string // 首条消息
   exampleDialog: string // 对话示例
   tags: string[]
+  /** @deprecated 使用 boundLorebookIds 替代，保留仅为向后兼容旧数据 */
   lorebookId: string | null
+  /** 绑定的预设 ID（切换到此角色时自动激活） */
+  boundPresetId?: string | null
+  /** 绑定的世界书 ID 列表（切换到此角色时自动激活，取代单个 lorebookId） */
+  boundLorebookIds?: string[]
+  /** 是否置顶 */
+  pinned?: boolean
   creator: string
   createdAt: number
   updatedAt: number
@@ -43,7 +50,11 @@ export interface Character {
     posX: number
     posY: number
     scale: number
+    /** 使用角色封面作为背景（与自定义图片互斥） */
+    useCover?: boolean
   }
+  /** 封面毛玻璃效果（角色卡页面独立控制） */
+  coverBlurEnabled?: boolean
   /** 翻译内容：UI 显示优先使用，AI 上下文继续使用原始字段 */
   translatedContent?: {
     name?: string
@@ -135,6 +146,10 @@ export interface ChatSession {
   autoMemoryInterval: number
   memory: string
   memoryUpdatedAt: number
+  /** 绑定的用户身份 ID（null/undefined 时使用 Settings 中的默认身份） */
+  personaId?: string | null
+  /** 当前会话选中的世界书 ID 列表。undefined 表示未设置（回退到角色的 boundLorebookIds） */
+  lorebookIds?: string[]
 }
 
 /** 会话预览（含消息数和最后消息摘要） */
@@ -152,6 +167,12 @@ export interface LoreEntry {
   order: number
   probability: number // 0-100
   enabled: boolean
+  /** 是否使用正则表达式匹配关键词 */
+  useRegex?: boolean
+  /** 正则表达式标志（如 'i' 表示不区分大小写） */
+  regexFlags?: string
+  /** AI 翻译结果（持久化，不替换原始 content） */
+  translation?: string
 }
 
 /** 世界书 */
@@ -219,6 +240,8 @@ export interface GroupMessage {
   round: number
   /** 翻译结果 */
   translation?: string | null
+  /** 是否显示翻译 */
+  _showTranslation?: boolean
   /** Token 用量 */
   tokenUsage?: MessageTokenUsage
 }
@@ -272,6 +295,8 @@ export interface Settings {
   fontSizeCustom: number
   bubbleStyle: 'round' | 'standard' | 'sharp'
   messageSpacing: number
+  /** 消息宽度（px） */
+  messageWidth: number
   streamOutput: boolean
   autoScroll: boolean
   // TTS 多模型配置
@@ -293,11 +318,19 @@ export interface Settings {
   userDescription: string
   userPersona: string
   activePersonaId: string | null
+  /** 默认身份 ID（新建会话时自动绑定，侧栏切换时同步更新） */
+  defaultPersonaId?: string | null
   // 显示选项
   htmlRendering: boolean
   showTokenCount: boolean
   /** 心理描写输出格式（<thought> 标签）是否启用，默认 true */
   enableThoughtFormat?: boolean
+  /** 心理描写是否默认展开，默认 false */
+  autoExpandThought?: boolean
+  /** 封面毛玻璃模糊强度（px，0 = 禁用，默认 8） */
+  coverBlurStrength?: number
+  /** 对话示例位置：after_system（默认）= 系统提示后，after_history = 历史消息后 */
+  exampleDialogPosition?: 'after_system' | 'after_history'
   /** 是否启用 token 用量统计 */
   enableUsageTracking?: boolean
   /** 费用规则列表 */
@@ -306,6 +339,8 @@ export interface Settings {
   timezone?: string
   /** 是否使用角色封面作为聊天背景（未设置封面的角色回退到手动背景） */
   useCoverAsBackground?: boolean
+  /** 翻译目标语言（默认中文） */
+  translationTargetLang?: string
 }
 
 // ===================== 功能模型配置 =====================

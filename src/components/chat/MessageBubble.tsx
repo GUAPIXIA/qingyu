@@ -7,6 +7,7 @@ import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
 import { formatTime } from '../../utils/format'
 import { estimateTokens } from '../../utils/tokenCounter'
@@ -22,11 +23,18 @@ import { MarkdownImage } from '../common/MarkdownImage'
 
 const markdownComponents = { img: MarkdownImage }
 
+// B-05：已播放过入场动画的消息 ID，避免虚拟滚动时反复播放
+const animatedIds = new Set<string>()
+
 export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast }: MessageBubbleProps) {
+  const shouldAnimate = !animatedIds.has(message.id)
+  // 首帧渲染后立即标记为已动画
+  if (shouldAnimate) {
+    animatedIds.add(message.id)
+  }
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
   const [ttsState, setTtsState] = useState<'idle' | 'speaking' | 'paused'>('idle')
-  const [thoughtExpanded, setThoughtExpanded] = useState(false)
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
   const [avatarError, setAvatarError] = useState(false)
   const [zoomImage, setZoomImage] = useState<string | null>(null)
@@ -34,6 +42,9 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { editMessage, deleteMessage, regenerateMessage, swipeMessage, isStreaming, currentRequestId, translatingMessages, showTranslationIds, translateMessage, updateMessageImages } = useChatStore()
   const { settings, getActiveTTS } = useSettingsStore()
+  const [thoughtExpanded, setThoughtExpanded] = useState(settings.autoExpandThought ?? false)
+  const { getPersona } = usePersonaStore()
+  const persona = getPersona(settings.activePersonaId)
   const ttsConfig = getActiveTTS()
 
   // 全局翻译状态
@@ -42,16 +53,22 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const isTranslating = transState?.status === 'translating'
 
   // P-3 修复：用 useMemo 缓存 thought 解析，避免每次渲染都执行正则循环
+  // B-05 修复：同时处理 <thought> 和 <thinking> 标签（部分模型使用 <thinking>）
   const { thought, originalDisplay } = useMemo(() => {
+    // 先归一化：将 <thinking> 标签转为 <thought>，避免后续重复处理
+    const normalized = (message.content || '').replace(/<thinking([\s>])/gi, '<thought$1').replace(/<\/thinking>/gi, '</thought>')
     const thoughtRegex = /<thought>([\s\S]*?)<\/thought>/gi
     const thoughts: string[] = []
     let thoughtExec: RegExpExecArray | null
-    while ((thoughtExec = thoughtRegex.exec(message.content || '')) !== null) {
+    while ((thoughtExec = thoughtRegex.exec(normalized)) !== null) {
       thoughts.push(thoughtExec[1].trim())
     }
+    const stripped = normalized.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+    // 如果剥离后为空但存在思考内容，则将思考内容作为显示兜底（避免显示"空消息"）
+    const display = stripped || (thoughts.length > 0 ? thoughts.join('\n\n') : '')
     return {
       thought: thoughts.length > 0 ? thoughts.join('\n\n') : null,
-      originalDisplay: message.content?.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() ?? '',
+      originalDisplay: display,
     }
   }, [message.content])
   const isUser = message.role === 'user'
@@ -60,7 +77,16 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
 
   // 决定显示的文本：翻译结果也做 thought 剥离
   const rawDisplay = showTranslation && transState?.content ? transState.content : originalDisplay
-  const displayContent = rawDisplay?.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() ?? ''
+  const displayRaw = (rawDisplay || '')
+    .replace(/<thinking([\s>])/gi, '<thought$1')
+    .replace(/<\/thinking>/gi, '</thought>')
+    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+    .trim()
+  // B-05 修复：剥离后为空时回退到原始内容或思考内容，避免显示"空消息"
+  const displayContent = displayRaw || originalDisplay || ''
+
+  // B-05：纯图片消息，气泡不应撑满整行
+  const hasOnlyImages = message.images?.length > 0 && !displayContent && !(thought && !isSystem)
 
   // 对话片段解析：将 *动作* / "对话" / Name: "对话" 拆分为结构化片段
   const dialogueSegments = useMemo(() => {
@@ -165,7 +191,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   if (editing) {
     return (
       <div className="px-4 py-2 animate-fade-in">
-        <div className="max-w-3xl mx-auto">
+        <div className="mx-auto" style={{ maxWidth: `${settings.messageWidth ?? 768}px` }}>
           <textarea
             ref={textareaRef}
             value={editContent}
@@ -189,10 +215,64 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
     )
   }
 
+  // B-05：纯图片系统消息（生图结果）用独立居中布局，不需要头像和气泡
+  if (isSystem && hasOnlyImages) {
+    return (
+      <>
+        <div className={cn('px-4', shouldAnimate && 'animate-fade-in-up')} style={{ marginBottom: `${settings.messageSpacing}px` }}>
+          <div className="flex justify-center">
+            <div className="flex flex-wrap gap-2 justify-center">
+              {message.images.map((img, i) => (
+                imgErrors.has(i) ? (
+                  <button
+                    key={i}
+                    onClick={() => setImgErrors(prev => { const next = new Set(prev); next.delete(i); return next })}
+                    className="w-24 h-24 rounded-lg bg-tavern-bg-hover flex flex-col items-center justify-center text-tavern-text-muted text-xs gap-1 cursor-pointer hover:bg-tavern-bg-hover/80 transition-colors"
+                    title="点击重新加载"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>加载失败</span>
+                  </button>
+                ) : (
+                  <img
+                    key={i}
+                    src={img}
+                    alt=""
+                    className="max-w-48 max-h-48 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setZoomImage(img)}
+                    onError={() => setImgErrors((prev) => new Set(prev).add(i))}
+                  />
+                )
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* 图片查看器 */}
+        {zoomImage && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out animate-fade-in" onClick={() => setZoomImage(null)}>
+            <img src={zoomImage} alt="" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl" />
+            <button className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors" onClick={(e) => { e.stopPropagation(); setZoomImage(null) }}><X className="w-6 h-6" /></button>
+          </div>
+        )}
+        {/* 操作栏 */}
+        {!isStreaming && (
+          <div className="flex items-center justify-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors" onClick={() => setEditing(true)} title="编辑"><Edit2 className="w-3.5 h-3.5" /></button>
+            <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors" onClick={handleCopy} title="复制"><Copy className="w-3.5 h-3.5" /></button>
+            <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover transition-colors disabled:opacity-50" disabled={regenerating} onClick={async () => { setRegenerating(true); try { const result = await window.api.imageGen.generate(message.content); if (result.success && result.images?.length) { await updateMessageImages(message.id, result.images) } } catch { /* 忽略 */ } setRegenerating(false) }} title="重新生图">
+              {regenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            </button>
+            <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-bg-hover transition-colors" onClick={() => character && deleteMessage(message.id, character)} title="删除"><Trash2 className="w-3.5 h-3.5" /></button>
+          </div>
+        )}
+      </>
+    )
+  }
+
   return (
     <>
-    <div className="px-4 group animate-fade-in-up" style={{ marginBottom: `${settings.messageSpacing}px` }}>
-      <div className={cn('w-[65%] mx-auto flex gap-4', isUser && 'flex-row-reverse')} style={{ minWidth: '500px', maxWidth: '880px' }}>
+    <div className={cn('px-4 group', shouldAnimate && 'animate-fade-in-up')} style={{ marginBottom: `${settings.messageSpacing}px` }}>
+      <div className={cn('mx-auto flex gap-4', isUser && 'flex-row-reverse')} style={hasOnlyImages ? { maxWidth: `${settings.messageWidth ?? 768}px` } : { maxWidth: `${settings.messageWidth ?? 768}px`, width: '100%' }}>
         {/* 头像 */}
         <div
           className={cn(
@@ -205,7 +285,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           )}
         >
           {isUser ? (
-            <User className="w-5 h-5" />
+            persona?.avatar && !avatarError ? (
+              <img src={persona.avatar} alt="" className="w-full h-full rounded-full object-cover" onError={() => setAvatarError(true)} />
+            ) : (
+              <User className="w-5 h-5" />
+            )
           ) : isSystem ? (
             <ImageIcon className="w-5 h-5" />
           ) : character?.avatar && !avatarError ? (
@@ -216,11 +300,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
         </div>
 
         {/* 消息内容 */}
-        <div className={cn('flex-1 min-w-0', isUser && 'flex flex-col items-end')}>
+        <div className={cn(isUser && 'flex flex-col items-end', hasOnlyImages ? 'w-fit' : 'flex-1 min-w-0')}>
           {/* 名字和时间 */}
           <div className={cn('flex items-center gap-2 mb-1 text-xs text-tavern-text-muted', isUser && 'flex-row-reverse')}>
             <span className="font-medium text-tavern-text-soft">
-              {isUser ? '你' : isSystem ? '系统' : character?.translatedContent?.name ?? character?.name ?? 'AI'}
+              {isUser ? settings.userName : isSystem ? '系统' : character?.translatedContent?.name ?? character?.name ?? 'AI'}
             </span>
             <span>{formatTime(message.timestamp)}</span>
             {settings.showTokenCount && message.content && (
@@ -263,17 +347,18 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           {/* 气泡 */}
           <div
             className={cn(
-              'msg-bubble px-5 py-3.5 max-w-full',
+              'msg-bubble max-w-full',
+              hasOnlyImages ? 'p-2' : 'px-5 py-3.5',
               settings.bubbleStyle === 'round' && 'rounded-2xl',
               settings.bubbleStyle === 'standard' && 'rounded-lg',
               settings.bubbleStyle === 'sharp' && 'rounded-sm',
               isUser
-                ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/20 dark:to-orange-900/10 dark:border-amber-700/30 text-amber-950 dark:text-amber-50'
+                ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
                 : 'bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100'
             )}
           >
             {message.images?.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-2">
+              <div className={cn('flex flex-wrap gap-2', (displayContent || thought) && 'mb-2')}>
                 {message.images.map((img, i) => (
                   imgErrors.has(i) ? (
                     <button
@@ -361,7 +446,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                   ]}
                   components={markdownComponents}
                 >
-                  {displayContent || (isStreamingThis ? '' : '（空消息）')}
+                  {displayContent || (isStreamingThis ? '' : (thought ? '💭 内容已在"内心想法"中展开' : '（空消息）'))}
                 </ReactMarkdown>
               )}
             </div>

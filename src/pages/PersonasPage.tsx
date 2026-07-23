@@ -4,45 +4,43 @@ import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
-import { UserCircle, Plus, Trash2, Pencil, Check, ImagePlus } from 'lucide-react'
+import { UserCircle, Plus, Trash2, Pencil, Check, ImagePlus, Star } from 'lucide-react'
 import type { Persona } from '../../shared/types'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { usePersonaStore } from '../store/usePersonaStore'
 
 export function PersonasPage() {
   const { settings, updateSettings } = useSettingsStore()
-  const [personas, setPersonas] = useState<Persona[]>([])
+  const { personas, loadPersonas: storeLoadPersonas, savePersona, deletePersona: storeDeletePersona } = usePersonaStore()
   const [editing, setEditing] = useState<Persona | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
-  const loadPersonas = () => {
-    window.api.persona.list().then((list) => {
-      // 首次使用：自动创建默认身份
-      if (list.length === 0) {
-        const defaultPersona: Persona = {
-          id: nanoid(),
-          name: settings.userName || '用户',
-          description: settings.userDescription || '',
-          persona: settings.userPersona || '',
-          avatar: '',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        }
-        window.api.persona.save(defaultPersona).then(() => {
-          updateSettings({ activePersonaId: defaultPersona.id })
-          setPersonas([defaultPersona])
-        })
-      } else {
-        setPersonas(list)
-        // 如果没有激活的身份，激活第一个
-        if (!settings.activePersonaId && list.length > 0) {
-          activatePersona(list[0])
-        }
+  const loadPersonasAndInit = async () => {
+    await storeLoadPersonas()
+    const list = usePersonaStore.getState().personas
+    // 首次使用：自动创建默认身份
+    if (list.length === 0) {
+      const defaultPersona: Persona = {
+        id: nanoid(),
+        name: settings.userName || '用户',
+        description: settings.userDescription || '',
+        persona: settings.userPersona || '',
+        avatar: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       }
-    })
+      await savePersona(defaultPersona)
+      updateSettings({ activePersonaId: defaultPersona.id })
+    } else {
+      // 如果没有激活的身份，激活第一个
+      if (!settings.activePersonaId && list.length > 0) {
+        activatePersona(list[0])
+      }
+    }
   }
 
   useEffect(() => {
-    loadPersonas()
+    loadPersonasAndInit()
   }, [])
 
   const activatePersona = (p: Persona) => {
@@ -68,9 +66,8 @@ export function PersonasPage() {
 
   const handleSave = async () => {
     if (!editing) return
-    await window.api.persona.save(editing)
+    await savePersona(editing)
     setEditing(null)
-    loadPersonas()
     // 如果是当前激活的身份，同步更新 settings
     if (settings.activePersonaId === editing.id) {
       activatePersona(editing)
@@ -87,18 +84,21 @@ export function PersonasPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return
-    await window.api.persona.delete(deleteId)
+    await storeDeletePersona(deleteId)
     // 如果删除的是当前激活身份，切换到第一个
     if (settings.activePersonaId === deleteId) {
-      const remaining = personas.filter((p) => p.id !== deleteId)
+      const remaining = usePersonaStore.getState().personas
       if (remaining.length > 0) {
         activatePersona(remaining[0])
       } else {
         updateSettings({ activePersonaId: null, userName: '用户', userDescription: '', userPersona: '' })
       }
     }
+    // 如果删除的是默认身份，清除
+    if (settings.defaultPersonaId === deleteId) {
+      updateSettings({ defaultPersonaId: null })
+    }
     setDeleteId(null)
-    loadPersonas()
   }
 
   return (
@@ -162,6 +162,21 @@ export function PersonasPage() {
 
                     {/* 操作 */}
                     <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          updateSettings({ defaultPersonaId: p.id })
+                        }}
+                        className={cn(
+                          'p-1.5 rounded text-xs transition-colors',
+                          settings.defaultPersonaId === p.id
+                            ? 'text-tavern-accent bg-tavern-accent-soft'
+                            : 'text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover'
+                        )}
+                        title={settings.defaultPersonaId === p.id ? '当前默认身份' : '设为默认身份'}
+                      >
+                        <Star className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditing({ ...p }) }}
                         className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover"

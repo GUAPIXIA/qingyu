@@ -29,6 +29,17 @@ const DEFAULT_TEMPLATE: InstructTemplate = {
 }
 
 const TEMPLATE_MAP: Record<string, Partial<InstructTemplate>> = {
+  // ===== Llama 系列 =====
+  'llama2': {
+    systemPrefix: '[INST] <<SYS>>\n',
+    systemSuffix: '\n<</SYS>>\n\n',
+    userPrefix: '[INST] ',
+    userSuffix: ' [/INST]',
+    assistantPrefix: '',
+    assistantSuffix: '</s>',
+    stopSequences: ['</s>', '[INST]'],
+    appendAssistantPrefix: false,
+  },
   'llama3': {
     systemPrefix: '<|start_header_id|>system<|end_header_id|>\n\n',
     systemSuffix: '<|eot_id|>',
@@ -58,6 +69,17 @@ const TEMPLATE_MAP: Record<string, Partial<InstructTemplate>> = {
     assistantSuffix: '</s>',
     stopSequences: ['</s>', '[INST]'],
     appendAssistantPrefix: false,
+  },
+  // Phi-3 系列
+  'phi3': {
+    systemPrefix: '<|system|>\n',
+    systemSuffix: '<|end|>\n',
+    userPrefix: '<|user|>\n',
+    userSuffix: '<|end|>\n',
+    assistantPrefix: '<|assistant|>\n',
+    assistantSuffix: '<|end|>\n',
+    stopSequences: ['<|end|>', '<|user|>'],
+    appendAssistantPrefix: true,
   },
 }
 

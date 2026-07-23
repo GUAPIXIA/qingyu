@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { Send, Square, ImagePlus, X, Sparkles, Loader2, Undo2, Wand2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { useChatStore, lorebookCache } from '../../store/useChatStore'
+import { useChatStore } from '../../store/useChatStore'
+import { lorebookCache } from '../../utils/lorebook'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
+import { downloadFile } from '../../utils/download'
 import type { Character, Preset, Lorebook, ChatParams } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
@@ -23,9 +25,9 @@ interface ChatInputProps {
   disabled?: boolean
 }
 
-/** 草稿存储 key（按角色 ID 隔离） */
-function draftKey(characterId: string) {
-  return `chat-draft:${characterId}`
+/** 草稿存储 key（按角色 ID + 会话 ID 隔离） */
+function draftKey(characterId: string, sessionId?: string | null) {
+  return `chat-draft:${characterId}:${sessionId || 'default'}`
 }
 
 export function ChatInput({ character, disabled }: ChatInputProps) {
@@ -35,7 +37,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
   const [text, setText] = useState(() => {
     // 启动时恢复草稿
     try {
-      return localStorage.getItem(draftKey(character.id)) ?? ''
+      return localStorage.getItem(draftKey(character.id, currentSessionId)) ?? ''
     } catch {
       return ''
     }
@@ -53,7 +55,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // H-09 修复：追踪活跃的 AI 辅助请求，组件卸载时取消
   const activeRequestIdsRef = useRef<Set<string>>(new Set())
-  const { sendMessage, isStreaming, stopStreaming, activePresetId, activeLorebookIds } = useChatStore()
+  const { sendMessage, isStreaming, stopStreaming, activePresetId, activeLorebookIds, currentSessionId } = useChatStore()
   const { settings, getActiveProfile } = useSettingsStore()
   const { characters, selectCharacter } = useCharacterStore()
 
@@ -101,14 +103,9 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         const sid = chatStore.currentSessionId
         if (!sid) return
         const content = await window.api.chat.exportChat(character.id, sid, format)
-        // 触发下载
-        const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/markdown' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${character.name}-对话.${format === 'json' ? 'json' : 'md'}`
-        a.click()
-        URL.revokeObjectURL(url)
+        const mimeType = format === 'json' ? 'application/json' : 'text/markdown'
+        const ext = format === 'json' ? 'json' : 'md'
+        downloadFile(content, `${character.name}-对话.${ext}`, mimeType)
         showNotification(`已导出为 ${format.toUpperCase()} 格式`)
       },
       swipeMessage: async (direction) => {
@@ -136,7 +133,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
           const presets = await window.api.preset.list()
           const target = presets.find((p: any) => p.id === nameOrId || p.name === nameOrId)
           if (target) {
-            chatStore.setActivePreset(target.id)
+            chatStore.setActivePreset(target.id, character.id)
             showNotification(`已切换到预设: ${target.name}`)
             return true
           }
@@ -165,10 +162,10 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
           if (target) {
             const curIds = chatStore.activeLorebookIds
             if (curIds.includes(target.id)) {
-              chatStore.setActiveLorebooks(curIds.filter(id => id !== target.id))
+              chatStore.setActiveLorebooks(curIds.filter(id => id !== target.id), character.id)
               showNotification(`已关闭世界书: ${target.name}`)
             } else {
-              chatStore.setActiveLorebooks([...curIds, target.id])
+              chatStore.setActiveLorebooks([...curIds, target.id], character.id)
               showNotification(`已激活世界书: ${target.name}`)
             }
             return true
@@ -239,28 +236,28 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text])
 
-  // 切换角色时重新加载草稿
+  // 切换角色/会话时重新加载草稿
   useEffect(() => {
     try {
-      setText(localStorage.getItem(draftKey(character.id)) ?? '')
+      setText(localStorage.getItem(draftKey(character.id, currentSessionId)) ?? '')
     } catch {
       setText('')
     }
     setImages([])
     setOriginalText(null)
-  }, [character.id])
+  }, [character.id, currentSessionId])
 
   // 自动保存草稿（防抖）
   useEffect(() => {
     if (!text) {
-      try { localStorage.removeItem(draftKey(character.id)) } catch { /* ignore */ }
+      try { localStorage.removeItem(draftKey(character.id, currentSessionId)) } catch { /* ignore */ }
       return
     }
     const timer = setTimeout(() => {
-      try { localStorage.setItem(draftKey(character.id), text) } catch { /* ignore */ }
+      try { localStorage.setItem(draftKey(character.id, currentSessionId), text) } catch { /* ignore */ }
     }, 300)
     return () => clearTimeout(timer)
-  }, [text, character.id])
+  }, [text, character.id, currentSessionId])
 
   // P-10 修复：用 requestAnimationFrame 避免同步 reflow
   useEffect(() => {
@@ -292,17 +289,11 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       const presets = await window.api.preset.list()
       preset = presets.find(p => p.id === activePresetId) ?? null
     }
-    const lorebooks: Lorebook[] = []
+    let lorebooks: Lorebook[] = []
     if (activeLorebookIds.length > 0) {
-      const all = await window.api.lorebook.list()
-      for (const id of activeLorebookIds) {
-        const lb = all.find(b => b.id === id)
-        if (lb && lb.enabled) {
-          lorebooks.push(lb)
-          // 更新全局缓存供 buildContext 同步使用
-          lorebookCache.set(lb.id, lb)
-        }
-      }
+      lorebooks = (await lorebookCache.refresh(activeLorebookIds)).filter(lb => lb.enabled)
+    } else {
+      lorebookCache.clear()
     }
     return [preset, lorebooks]
   }
@@ -320,7 +311,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
           setImages([])
           setOriginalText(null)
           setCommandSuggestions([])
-          try { localStorage.removeItem(draftKey(character.id)) } catch { /* ignore */ }
+          try { localStorage.removeItem(draftKey(character.id, currentSessionId)) } catch { /* ignore */ }
           try {
             await cmd.execute(parsed.args, buildCommandContext())
           } catch (err) {
@@ -339,7 +330,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
     setImages([])
     setOriginalText(null)
     // 清除草稿
-    try { localStorage.removeItem(draftKey(character.id)) } catch { /* ignore */ }
+    try { localStorage.removeItem(draftKey(character.id, currentSessionId)) } catch { /* ignore */ }
     const [preset, lorebooks] = await loadActivePresetLorebook()
     await sendMessage(content, imgs, character, preset, lorebooks)
   }
@@ -423,15 +414,16 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         activeRequestIdsRef.current.delete(requestId)
         unbindChunk(); unbindDone(); unbindError()
       }
+      const cleanResult = () => result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
       const unbindChunk = window.api.ai.onChunk((data) => {
         if (data.requestId !== requestId) return
         result += data.text
-        opts.onChunk?.(data.text, result)
+        opts.onChunk?.(data.text, cleanResult())
       })
       const unbindDone = window.api.ai.onDone((doneId) => {
         if (doneId !== requestId) return
         cleanup()
-        resolve(result)
+        resolve(cleanResult())
       })
       const unbindError = window.api.ai.onError((data) => {
         if (data.requestId !== requestId) return
@@ -473,13 +465,34 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       const store = useChatStore.getState()
       const recentMessages = store.messages.slice(-6)
       const hasInput = originalInput.trim().length > 0
+      const userName = settings.userName || '用户'
+      const charName = character.translatedContent?.name ?? character.name
+
+      // 后处理：确保输出是用户视角，剥离角色视角内容
+      const ensureUserPerspective = (raw: string): string => {
+        let output = raw.trim()
+        // 如果输出以角色名开头（含冒号），说明 AI 以角色身份回复了，剥离角色部分
+        const charPrefix = new RegExp(`^\\*?${charName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[:：]\\s*`, 'i')
+        if (charPrefix.test(output)) {
+          // 找到用户发言部分（如果有的话）
+          const userLine = new RegExp(`(?:^|\\n)\\*?${userName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[:：]\\s*(.*)`, 'i')
+          const match = output.match(userLine)
+          if (match) {
+            output = match[1].trim()
+          } else {
+            // 没有用户部分，丢弃全部（AI 以角色视角回复了）
+            return ''
+          }
+        }
+        return output
+      }
 
       const systemPrompt = hasInput
-        ? `你是一个角色扮演对话续写助手。请根据对话上下文，以用户的身份和口吻，续写用户未完成的消息。只需要输出续写部分，不要添加任何解释。直接接在用户已有内容后面，保持语气和风格一致。`
-        : `你是一个角色扮演对话续写助手。请根据对话上下文，以用户的身份和口吻，生成一条合适的用户回复。只需要输出生成的内容，不要添加任何解释或标签。`
+        ? `你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 ${userName}】的身份和口吻，续写用户未完成的消息。\n\n严格要求：\n- 只输出 ${userName} 的话语，绝对不要输出 ${charName} 的话语\n- 不要以 ${charName} 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格`
+        : `你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 ${userName}】的身份和口吻，生成一条合适的用户回复。\n\n严格要求：\n- 只输出 ${userName} 的话语，绝对不要输出 ${charName} 的话语\n- 不要以 ${charName} 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格`
 
       const contextMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
-        { role: 'system', content: `${systemPrompt}\n\n当前角色：${character.name}\n角色设定：${character.description || '无'}\n场景：${character.scenario || '无'}` },
+        { role: 'system', content: `${systemPrompt}\n\n当前角色：${charName}\n角色设定：${character.description || '无'}\n场景：${character.scenario || '无'}` },
       ]
       for (const msg of recentMessages) {
         contextMessages.push({
@@ -489,7 +502,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       }
       contextMessages.push({
         role: 'user',
-        content: hasInput ? `请续写以下未完成的消息（直接接在后面的部分）：\n${originalInput}` : '请根据上下文生成我应该说的话',
+        content: hasInput ? `请以 ${userName} 的身份续写以下未完成的消息（直接接在后面的部分）：\n${originalInput}` : `请以 ${userName} 的身份根据上下文生成一条回复`,
       })
 
       const result = await callAiHelper({
@@ -498,10 +511,15 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         temperature: 0.7,
         maxTokens: 300,
         onChunk: (_delta, full) => {
-          setText(hasInput ? originalInput + full : full)
+          setText(hasInput ? originalInput + ensureUserPerspective(full) : ensureUserPerspective(full))
         },
       })
-      if (!result) setText(originalInput)
+      const cleaned = ensureUserPerspective(result)
+      if (cleaned) {
+        setText(hasInput ? originalInput + cleaned : cleaned)
+      } else {
+        setText(originalInput)
+      }
     } catch (err) {
       console.error('续写失败', err)
       setText(originalInput)
@@ -576,7 +594,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       )}
 
       {/* 输入框 */}
-      <div className="flex items-end gap-2">
+      <div className="flex items-center gap-2">
         <button
           onClick={handleImageSelect}
           className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors shrink-0"

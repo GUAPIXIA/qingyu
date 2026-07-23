@@ -3,12 +3,10 @@ import { nanoid } from 'nanoid'
 import type { GroupChat, GroupMessage, GroupSession, Character, Lorebook } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
+import { lorebookCache } from '../utils/lorebook'
 
 const STREAM_THROTTLE_MS = 50
 const STREAM_TIMEOUT_MS = 5 * 60 * 1000
-
-/** 世界书缓存：供 buildGroupContext 同步查找 */
-const groupLorebookCache = new Map<string, Lorebook>()
 
 interface ActiveStream {
   requestId: string
@@ -271,7 +269,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       if (doneId !== requestId) return
       unbindChunk(); unbindDone(); unbindError()
 
-      const finalResult = result || null
+      const finalResult = (result || '').replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() || null
       set((s: any) => ({
         messages: s.messages.map((m: GroupMessage) =>
           m.id === messageId ? { ...m, translation: finalResult, _showTranslation: true } : m
@@ -290,10 +288,11 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       }))
     })
 
+    const targetLang = useSettingsStore.getState().settings.translationTargetLang || '中文'
     window.api.ai.chat({
       requestId,
       messages: [
-        { role: 'system', content: '你是一个翻译助手。请将以下内容翻译成中文。只输出翻译结果，不要添加任何解释。' },
+        { role: 'system', content: `你是一个翻译助手。请将以下内容翻译成${targetLang}。只输出翻译结果，不要添加任何解释。` },
         { role: 'user', content: msg.content },
       ],
       provider: profile.provider,
@@ -301,7 +300,10 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       baseUrl: profile.baseUrl,
       model: profile.model,
       temperature: 0.3,
+      topP: 1,
       maxTokens: 2048,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
       stream: false,
     }).catch(() => {
       unbindChunk(); unbindDone(); unbindError()
@@ -317,7 +319,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const allLorebooks = await window.api.lorebook.list()
     for (const lb of allLorebooks) {
       if (lorebookIds.includes(lb.id)) {
-        groupLorebookCache.set(lb.id, lb)
+        lorebookCache.set(lb.id, lb)
       }
     }
   },
@@ -482,7 +484,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       const atEndEntries: { content: string; order: number }[] = []
 
       for (const lbId of group.lorebookIds) {
-        const lb = groupLorebookCache.get(lbId)
+        const lb = lorebookCache.get(lbId)
         if (!lb?.enabled) continue
         const triggered = lb.entries
           .filter(e => e.enabled)
@@ -755,9 +757,9 @@ async function streamGroupAI(
       apiKey: profile.apiKey,
       baseUrl: profile.baseUrl,
       model: profile.model,
-      temperature: preset?.temperature ?? profile.temperature ?? 0.8,
+      temperature: preset?.temperature ?? 0.8,
       topP: preset?.topP ?? 0.95,
-      maxTokens: preset?.maxTokens ?? profile.maxTokens ?? 1024,
+      maxTokens: preset?.maxTokens ?? 1024,
       frequencyPenalty: preset?.frequencyPenalty ?? 0,
       presencePenalty: preset?.presencePenalty ?? 0,
       stream: true,
@@ -878,9 +880,9 @@ async function streamGroupAIFree(
       apiKey: profile.apiKey,
       baseUrl: profile.baseUrl,
       model: profile.model,
-      temperature: preset?.temperature ?? profile.temperature ?? 0.8,
+      temperature: preset?.temperature ?? 0.8,
       topP: preset?.topP ?? 0.95,
-      maxTokens: preset?.maxTokens ?? profile.maxTokens ?? 1024,
+      maxTokens: preset?.maxTokens ?? 1024,
       frequencyPenalty: preset?.frequencyPenalty ?? 0,
       presencePenalty: preset?.presencePenalty ?? 0,
       stream: true,
