@@ -3,9 +3,14 @@ import { create } from 'zustand'
 import type { Message, Character, Preset, Lorebook, ChatParams, RegexRule, SessionPreview, ChatSession } from '../../shared/types'
 import { nanoid } from 'nanoid'
 import { useSettingsStore } from './useSettingsStore'
+import { usePersonaStore } from './usePersonaStore'
+import { useCharacterStore } from './useCharacterStore'
 import { estimateTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
 import { getInstructTemplate } from '../utils/chatTemplates'
+import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
+import { convertMessages } from '../utils/promptConverters'
+import { getEffectiveLorebookIds, lorebookCache } from '../utils/lorebook'
 
 // ===================== 常量 =====================
 
@@ -116,8 +121,10 @@ interface ChatState {
   deleteMessage: (messageId: string, character: Character) => Promise<void>
   clearChat: (characterId: string) => Promise<void>
   clearMessages: () => void
-  setActivePreset: (id: string | null) => void
-  setActiveLorebooks: (ids: string[]) => void
+  setActivePreset: (id: string | null, characterId?: string) => void
+  setActiveLorebooks: (ids: string[], characterId?: string) => void
+  /** 保存世界书绑定到角色（作为新会话的默认值），仅在角色编辑器或用户明确操作时调用 */
+  saveLorebookBinding: (characterId: string, ids: string[]) => Promise<void>
   applyRegex: (text: string, scope: 'input' | 'output', rules: RegexRule[]) => string
   buildContext: (character: Character, preset: Preset | null) => { role: 'system' | 'user' | 'assistant'; content: string }[]
   /** 启动 AI 翻译（全局状态，页面切换不中断） */
@@ -126,13 +133,14 @@ interface ChatState {
   toggleTranslation: (messageId: string) => void
   /** 创建带开场白的新会话（统一入口，避免逻辑分散） */
   createSessionWithGreeting: (character: Character, greeting?: string) => Promise<ChatSession | null>
+  /** 更新会话字段（如 personaId），同步后端和本地 state */
+  updateSessionField: (characterId: string, sessionId: string, field: string, value: unknown) => Promise<void>
+  /** 从当前会话同步世界书到 activeLorebookIds（不持久化，仅读取） */
+  syncLorebooksFromCurrentSession: (character: Character) => void
 }
 
 // 用于防止竞态条件的请求计数器
 let loadRequestId = 0
-
-/** 世界书缓存：供 buildContext 同步查找（无需 IPC） */
-export const lorebookCache = new Map<string, Lorebook>()
 
 // ===================== 流式状态管理（模块级，避免渲染抖动） =====================
 
@@ -389,22 +397,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadSessions: async (characterId) => {
     const sessions = await window.api.chat.listSessions(characterId)
-    set({ sessions, currentSessionId: sessions[0]?.id ?? null })
+    const currentId = sessions[0]?.id ?? null
+    set({ sessions, currentSessionId: currentId })
+    // 同步 persona 到 settings
+    if (currentId) {
+      const session = sessions.find(s => s.id === currentId)
+      const personaId = session?.personaId
+      const persona = personaId ? usePersonaStore.getState().getPersona(personaId) : undefined
+      const settingsStore = useSettingsStore.getState()
+      if (persona) {
+        settingsStore.updateSettings({
+          activePersonaId: persona.id,
+          userName: persona.name,
+          userDescription: persona.description,
+          userPersona: persona.persona,
+        })
+      }
+    }
   },
 
   createSession: async (characterId, title) => {
-    const session = await window.api.chat.createSession(characterId, title)
+    const charStore = useCharacterStore.getState()
+    const char = charStore.characters.find(c => c.id === characterId)
+    const initLorebookIds = getEffectiveLorebookIds(char)
+    const session = await window.api.chat.createSession(characterId, title, undefined, initLorebookIds)
     // 刷新会话列表
     const sessions = await window.api.chat.listSessions(characterId)
-    set({ sessions, currentSessionId: session.id })
+    set({ sessions, currentSessionId: session.id, messages: [], activeLorebookIds: initLorebookIds })
     return session
   },
 
   /** 统一入口：创建新会话并可选地插入开场白 */
   createSessionWithGreeting: async (character, greeting) => {
-    const session = await window.api.chat.createSession(character.id)
+    const initLorebookIds = getEffectiveLorebookIds(character)
+    const session = await window.api.chat.createSession(character.id, undefined, undefined, initLorebookIds)
     const sessions = await window.api.chat.listSessions(character.id)
-    set({ sessions, currentSessionId: session.id, messages: [] })
+    set({ sessions, currentSessionId: session.id, messages: [], activeLorebookIds: initLorebookIds })
 
     const g = greeting ?? character.firstMessage
     if (g) {
@@ -426,6 +454,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return session
   },
 
+  updateSessionField: async (characterId, sessionId, field, value) => {
+    await window.api.chat.updateSession(characterId, sessionId, { [field]: value })
+    set((s) => ({
+      sessions: s.sessions.map(sess =>
+        sess.id === sessionId ? { ...sess, [field]: value } as SessionPreview : sess
+      ),
+    }))
+  },
+
+  /** 从当前会话同步世界书选择，不触发持久化 */
+  syncLorebooksFromCurrentSession: (character) => {
+    const { sessions, currentSessionId } = get()
+    const session = sessions.find(s => s.id === currentSessionId)
+    // 会话有 lorebookIds 则用，否则回退到角色的 boundLorebookIds（向后兼容旧会话）
+    const ids = session?.lorebookIds ?? getEffectiveLorebookIds(character)
+    set({ activeLorebookIds: ids })
+  },
+
   switchSession: async (sessionId, character) => {
     // 切换会话时取消正在进行的流式请求
     if (get().isStreaming) {
@@ -438,6 +484,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const messages = await window.api.chat.listMessages(character.id, sessionId)
     if (currentLoadId !== loadRequestId) return
     set({ messages })
+    // 同步世界书：从会话恢复（或回退到角色绑定）
+    get().syncLorebooksFromCurrentSession(character)
+    // 同步 persona 到 settings
+    const session = get().sessions.find(s => s.id === sessionId)
+    const personaId = session?.personaId
+    const persona = personaId ? usePersonaStore.getState().getPersona(personaId) : undefined
+    const settingsStore = useSettingsStore.getState()
+    if (persona) {
+      settingsStore.updateSettings({
+        activePersonaId: persona.id,
+        userName: persona.name,
+        userDescription: persona.description,
+        userPersona: persona.persona,
+      })
+    } else {
+      // 恢复默认 persona
+      const defaultPersonaId = settingsStore.settings.defaultPersonaId
+      const defaultPersona = defaultPersonaId ? usePersonaStore.getState().getPersona(defaultPersonaId) : undefined
+      if (defaultPersona) {
+        settingsStore.updateSettings({
+          activePersonaId: defaultPersona.id,
+          userName: defaultPersona.name,
+          userDescription: defaultPersona.description,
+          userPersona: defaultPersona.persona,
+        })
+      } else {
+        settingsStore.updateSettings({
+          activePersonaId: null,
+          userName: '用户',
+          userDescription: '',
+          userPersona: '',
+        })
+      }
+    }
   },
 
   deleteCurrentSession: async (characterId) => {
@@ -533,7 +613,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const unbindDone = window.api.ai.onDone(async (doneId) => {
         if (doneId !== requestId) return
         unbindChunk(); unbindDone(); unbindError()
-        const summary = result.trim()
+        const summary = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
         if (summary) {
           try {
             await window.api.chat.updateMemory(character.id, currentSessionId, summary)
@@ -604,6 +684,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ messages: [] })
       return
     }
+
+    // 同步世界书：从当前会话恢复（或回退到角色绑定）
+    get().syncLorebooksFromCurrentSession(character)
 
     const messages = await window.api.chat.listMessages(character.id, sessionId)
 
@@ -752,12 +835,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }))
         window.api.chat.saveMessage(finalMsg).catch(() => {})
 
-        // 自动长记忆检查
+        // 自动长记忆检查：基于上次总结后的新消息数判断
         const { sessions: curSessions, currentSessionId: curSid } = get()
         const curSession = curSessions.find(s => s.id === curSid)
         if (curSession?.memoryEnabled && curSession.memoryMode === 'auto') {
-          const msgCount = get().messages.filter(m => m.content).length
-          if (msgCount > 0 && msgCount % (curSession.autoMemoryInterval || 10) === 0) {
+          const allMsgs = get().messages.filter(m => m.content)
+          // 统计上次总结后的新消息数
+          const lastSummaryTime = curSession.memoryUpdatedAt || 0
+          const newMsgCount = lastSummaryTime > 0
+            ? allMsgs.filter(m => m.timestamp > lastSummaryTime).length
+            : allMsgs.length
+          const interval = curSession.autoMemoryInterval || 10
+          if (newMsgCount >= interval) {
             get().triggerMemorySummary(character).catch(() => {})
           }
         }
@@ -885,12 +974,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }))
         window.api.chat.saveMessage(finalMsg).catch(() => {})
 
-        // 自动长记忆检查
+        // 自动长记忆检查：基于上次总结后的新消息数判断
         const { sessions: curSessions, currentSessionId: curSid } = get()
         const curSession = curSessions.find(s => s.id === curSid)
         if (curSession?.memoryEnabled && curSession.memoryMode === 'auto') {
-          const msgCount = get().messages.filter(m => m.content).length
-          if (msgCount > 0 && msgCount % (curSession.autoMemoryInterval || 10) === 0) {
+          const allMsgs = get().messages.filter(m => m.content)
+          // 统计上次总结后的新消息数
+          const lastSummaryTime = curSession.memoryUpdatedAt || 0
+          const newMsgCount = lastSummaryTime > 0
+            ? allMsgs.filter(m => m.timestamp > lastSummaryTime).length
+            : allMsgs.length
+          const interval = curSession.autoMemoryInterval || 10
+          if (newMsgCount >= interval) {
             get().triggerMemorySummary(character).catch(() => {})
           }
         }
@@ -1021,7 +1116,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       unbindChunk(); unbindDone(); unbindError()
 
       // 先准备好 updated 对象（不在 set 回调中执行副作用）
-      const finalResult = result
+      const finalResult = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
       set((state) => {
         const updated = { ...state.translatingMessages, [messageId]: { status: 'done' as const, content: finalResult } }
         const msgs = state.messages.map(m => m.id === messageId ? { ...m, translation: finalResult } : m)
@@ -1053,10 +1148,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return
     }
     const settings = useSettingsStore.getState().settings
+    const targetLang = settings.translationTargetLang || '中文'
     window.api.ai.chat({
       requestId,
       messages: [
-        { role: 'system', content: '你是一个翻译助手。请将以下文本翻译成中文。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。' },
+        { role: 'system', content: `你是一个翻译助手。请将以下文本翻译成${targetLang}。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。` },
         { role: 'user', content },
       ],
       provider: profile.provider,
@@ -1090,8 +1186,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ showTranslationIds: next })
   },
 
-  setActivePreset: (id) => set({ activePresetId: id }),
-  setActiveLorebooks: (ids) => set({ activeLorebookIds: ids }),
+  setActivePreset: (id, characterId) => {
+    set({ activePresetId: id })
+    // B-05 修复：保存预设绑定到角色
+    if (characterId) {
+      const charStore = useCharacterStore.getState()
+      const char = charStore.characters.find(c => c.id === characterId)
+      if (char && char.boundPresetId !== id) {
+        charStore.saveCharacter({ ...char, boundPresetId: id }).catch(() => {})
+      }
+    }
+  },
+  setActiveLorebooks: (ids, characterId) => {
+    set({ activeLorebookIds: ids })
+    if (characterId) {
+      // 仅持久化到当前会话（不同会话可拥有不同的世界书选择）
+      const { currentSessionId } = get()
+      if (currentSessionId) {
+        get().updateSessionField(characterId, currentSessionId, 'lorebookIds', ids)
+      }
+      // 注意：不再自动回写角色绑定，角色默认绑定通过 saveLorebookBinding 或角色编辑器保存
+    }
+  },
+
+  saveLorebookBinding: async (characterId, ids) => {
+    const charStore = useCharacterStore.getState()
+    const char = charStore.characters.find(c => c.id === characterId)
+    if (char) {
+      await charStore.saveCharacter({ ...char, boundLorebookIds: ids })
+    }
+  },
 
   applyRegex: (text, scope, rules) => {
     if (!text || rules.length === 0) return text
@@ -1156,7 +1280,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (character.personality) charDesc += '性格：' + replaceVariables(character.personality, userName, character.name) + '\n'
     if (character.scenario) charDesc += '场景：' + replaceVariables(character.scenario, userName, character.name) + '\n'
 
-    // 世界书注入（支持多个世界书合并）
+    // 世界书注入（支持多个世界书合并 + 递归扫描）
     const lorebookIds = get().activeLorebookIds
     if (lorebookIds.length > 0) {
       // 修复 #28: 扫描深度可配置（取激活世界书中的最大值，否则用默认）
@@ -1165,33 +1289,107 @@ export const useChatStore = create<ChatState>((set, get) => ({
         .filter((d): d is number => typeof d === 'number' && d > 0)
         .reduce((max, d) => Math.max(max, d), DEFAULT_LOREBOOK_SCAN_DEPTH)
 
-      const recentText = messages.slice(-scanDepth).map((m) => m.content).join(' ')
+      let recentText = messages.slice(-scanDepth).map((m) => m.content).join(' ')
 
-      // 修复 #30: before_char 条目按 order 正向追加
-      const beforeEntries: { content: string; order: number }[] = []
-      const afterEntries: { content: string; order: number }[] = []
-      const atEndEntries: { content: string; order: number }[] = []
-
+      // 收集所有世界书条目
+      const allEntries: { entry: any; lbId: string }[] = []
       for (const lbId of lorebookIds) {
         const lb = lorebookCache.get(lbId)
         if (!lb?.enabled) continue
-        const triggered = lb.entries
-          .filter((e) => e.enabled)
-          .filter((e) => e.keywords.some((k) => k && recentText.includes(k)))
-          .sort((a, b) => a.order - b.order)
-        for (const entry of triggered) {
-          // 概率检查：probability=100 必触发，=0 必不触发
-          if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
-          const entryContent = replaceVariables(entry.content, userName, character.name)
-          const item = { content: entryContent, order: entry.order }
-          if (entry.position === 'before_char') {
-            beforeEntries.push(item)
-          } else if (entry.position === 'after_char') {
-            afterEntries.push(item)
-          } else {
-            atEndEntries.push(item)
+        for (const entry of lb.entries) {
+          if (entry.enabled) {
+            allEntries.push({ entry, lbId })
           }
         }
+      }
+
+      // 递归扫描：条目内容可触发其他条目
+      const triggeredIds = new Set<string>()
+      const beforeEntries: { content: string; order: number }[] = []
+      const afterEntries: { content: string; order: number }[] = []
+      const atEndEntries: { content: string; order: number }[] = []
+      const MAX_RECURSIVE_DEPTH = 5  // 防止无限递归
+
+      // 优化：预编译正则 + 预分组普通关键词
+      const regexCache = new Map<string, RegExp>()
+      const plainKeywordEntries: typeof allEntries = []
+      const regexEntries: typeof allEntries = []
+      for (const item of allEntries) {
+        if (item.entry.useRegex) {
+          regexEntries.push(item)
+        } else {
+          plainKeywordEntries.push(item)
+        }
+      }
+
+      for (let depth = 0; depth < MAX_RECURSIVE_DEPTH; depth++) {
+        let newTriggered = false
+
+        // 普通关键词：先用 Set 快速排除，再做 includes
+        const recentTextLower = recentText.toLowerCase()
+
+        for (const { entry, lbId } of plainKeywordEntries) {
+          const entryId = `${lbId}:${entry.id || entry.keywords.join(',')}`
+          if (triggeredIds.has(entryId)) continue
+
+          const matched = entry.keywords.some((k) => {
+            if (!k) return false
+            return recentTextLower.includes(k.toLowerCase())
+          })
+          if (!matched) continue
+
+          if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
+
+          triggeredIds.add(entryId)
+          newTriggered = true
+
+          const entryContent = replaceVariables(entry.content, userName, character.name)
+          const item = { content: entryContent, order: entry.order }
+
+          if (entry.position === 'before_char') beforeEntries.push(item)
+          else if (entry.position === 'after_char') afterEntries.push(item)
+          else atEndEntries.push(item)
+
+          recentText += ' ' + entryContent
+        }
+
+        // 正则关键词：缓存编译后的 RegExp
+        for (const { entry, lbId } of regexEntries) {
+          const entryId = `${lbId}:${entry.id || entry.keywords.join(',')}`
+          if (triggeredIds.has(entryId)) continue
+
+          const matched = entry.keywords.some((k) => {
+            if (!k) return false
+            const cacheKey = `${k}|${entry.regexFlags || 'i'}`
+            let regex = regexCache.get(cacheKey)
+            if (!regex) {
+              try {
+                regex = new RegExp(k, entry.regexFlags || 'i')
+                regexCache.set(cacheKey, regex)
+              } catch {
+                return false
+              }
+            }
+            return regex.test(recentText)
+          })
+          if (!matched) continue
+
+          if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
+
+          triggeredIds.add(entryId)
+          newTriggered = true
+
+          const entryContent = replaceVariables(entry.content, userName, character.name)
+          const item = { content: entryContent, order: entry.order }
+
+          if (entry.position === 'before_char') beforeEntries.push(item)
+          else if (entry.position === 'after_char') afterEntries.push(item)
+          else atEndEntries.push(item)
+
+          recentText += ' ' + entryContent
+        }
+
+        if (!newTriggered) break
       }
 
       // before_char: 按 order 升序排列在 charDesc 之前
@@ -1215,8 +1413,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     context.push({ role: 'system', content: systemContent })
 
-    // 对话示例（变量替换）
-    if (character.exampleDialog) {
+    // 对话示例位置配置
+    const exampleDialogPosition = settings.exampleDialogPosition || 'after_system'
+
+    // 如果示例位置是 after_system（默认），在这里插入
+    if (exampleDialogPosition === 'after_system' && character.exampleDialog) {
       context.push({ role: 'system', content: '【对话示例】\n' + replaceVariables(character.exampleDialog, userName, character.name) })
     }
 
@@ -1226,7 +1427,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const model = profile?.model || settings.activeModel || 'gpt-4o-mini'
     const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
 
-    let usedTokens = estimateTokens(context.map((c) => c.content).join(''), model)
+    let usedTokens = context.reduce((sum, c) => sum + estimateTokens(c.content, model), 0)
     const recentMessages: typeof messages = []
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
@@ -1243,6 +1444,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
     }
 
+    // 如果示例位置是 after_history，在这里插入
+    if (exampleDialogPosition === 'after_history' && character.exampleDialog) {
+      context.push({ role: 'system', content: '【对话示例】\n' + replaceVariables(character.exampleDialog, userName, character.name) })
+    }
+
     // 修复 #27: postHistoryInstructions 应该放在历史消息之后（Author's Note 位置）
     if (character.postHistoryInstructions) {
       context.push({
@@ -1251,6 +1457,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
     }
 
-    return context
+    // Assistant Prefix：在上下文末尾添加空的 assistant 消息，引导模型输出格式
+    // 对于 instruct 模式且 appendAssistantPrefix=true 的情况，添加角色名前缀
+    const charName = character.translatedContent?.name ?? character.name
+    const instructTemplate = profile?.useInstructTemplate
+      ? getInstructTemplate(profile.provider, model)
+      : undefined
+    if (instructTemplate?.appendAssistantPrefix && charName) {
+      context.push({
+        role: 'assistant',
+        content: '',  // 空内容，让模型续写
+      })
+    }
+
+    // 消息后处理：合并连续相同角色消息
+    let processedContext = mergeConsecutiveMessages(context)
+
+    // 根据提供商转换消息格式（Claude/Gemini 需要特殊处理）
+    const provider = profile?.provider || 'openai'
+    processedContext = convertMessages(provider, processedContext, { charName, userName })
+
+    return processedContext
   },
 }))

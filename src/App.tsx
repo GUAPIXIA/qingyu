@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useCharacterStore } from './store/useCharacterStore'
+import { useChatStore } from './store/useChatStore'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
 import { CharactersPage } from './pages/CharactersPage'
@@ -18,8 +19,10 @@ import { McpPage } from './pages/McpPage'
 import { AnnouncementsPage } from './pages/AnnouncementsPage'
 
 export default function App() {
+  const navigate = useNavigate()
   const { settings, loadSettings } = useSettingsStore()
   const { loadCharacters } = useCharacterStore()
+  const { currentCharacter } = useCharacterStore()
 
   // 初始化加载
   useEffect(() => {
@@ -64,6 +67,36 @@ export default function App() {
       root.classList.add(`font-${settings.fontSize}`)
     }
   }, [settings.themeColor, settings.fontSize, settings.fontSizeCustom])
+
+  // 全局键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+N: 新建对话
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault()
+        navigate('/chat')
+        // 触发新建对话事件
+        window.dispatchEvent(new CustomEvent('shortcut:new-chat'))
+      }
+      // Ctrl+E: 导出对话
+      if (e.ctrlKey && e.key === 'e') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('shortcut:export-chat'))
+      }
+      // Ctrl+/: 打开命令面板
+      if (e.ctrlKey && e.key === '/') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('shortcut:command-palette'))
+      }
+      // Ctrl+Shift+C: 复制最后一条 AI 回复
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('shortcut:copy-last-ai'))
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [navigate])
 
   return (
     <Routes>

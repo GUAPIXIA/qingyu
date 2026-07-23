@@ -1,9 +1,9 @@
+/* 应用名称字体：站酷快乐体（ZCOOL KuaiLe）- 免费可商用 */
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* 应用名称字体：站酷快乐体（ZCOOL KuaiLe）- 免费可商用 */
-@import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap');
 
 .app-brand {
   font-family: 'ZCOOL KuaiLe', cursive;
@@ -208,6 +208,18 @@ body {
     @apply w-full px-3 py-2 rounded-lg bg-tavern-bg-soft border border-tavern-border text-tavern-text text-sm transition-colors;
     @apply focus:outline-none focus:border-tavern-accent focus:bg-tavern-accent-soft;
   }
+  /* select 下拉选项深色模式适配 */
+  select {
+    color-scheme: dark;
+  }
+  select option {
+    background-color: var(--tavern-bg-soft, #f0eef5);
+    color: var(--tavern-text, #1a1625);
+  }
+  .dark select option {
+    background-color: var(--tavern-bg-soft, #221d33);
+    color: var(--tavern-text, #e8e0f0);
+  }
   .textarea {
     @apply input resize-none;
   }
@@ -411,6 +423,10 @@ body {
   font-size: 0.875rem;
   line-height: 1.85;
 }
+
+/* 用户气泡内动作块和说话人标签适配琥珀底色 */
+.bubble-user .action-block { color: rgba(255, 251, 235, 0.85); }
+.bubble-user .dialogue-speaker { color: rgba(255, 251, 235, 0.7); }
 
 /* 旁白/叙述块 */
 .narration-block {

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Character } from '../../shared/types'
 import { nanoid } from 'nanoid'
+import { migrateLorebookId } from '../utils/lorebook'
 
 /** 创建示例角色 */
 function createSampleCharacter(): Character {
@@ -35,6 +36,9 @@ interface CharacterState {
   selectCharacter: (id: string | null) => void
   createCharacter: () => Character
   saveCharacter: (character: Character) => Promise<void>
+  /** 局部更新角色字段，不修改 updatedAt，不重新排序 */
+  patchCharacter: (id: string, patch: Partial<Character>) => Promise<void>
+  togglePin: (id: string) => Promise<void>
   deleteCharacter: (id: string) => Promise<void>
   importPng: () => Promise<Character | null>
   importJson: () => Promise<Character | null>
@@ -69,6 +73,29 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       await window.api.character.save(sample)
       characters = await window.api.character.list()
     }
+
+    // 迁移 legacy lorebookId 到 boundLorebookIds（后台静默保存）
+    let migrated = false
+    for (let i = 0; i < characters.length; i++) {
+      if (characters[i].lorebookId && (!characters[i].boundLorebookIds || characters[i].boundLorebookIds.length === 0)) {
+        characters[i] = migrateLorebookId(characters[i])
+        migrated = true
+      }
+    }
+    if (migrated) {
+      for (const c of characters) {
+        if (c.boundLorebookIds?.length === 1) {
+          window.api.character.save(c).catch(() => {})
+        }
+      }
+    }
+
+    // 置顶角色排在前面
+    characters.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1
+      if (!a.pinned && b.pinned) return 1
+      return b.updatedAt - a.updatedAt
+    })
 
     set({ characters, loaded: true })
 
@@ -117,6 +144,8 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   },
 
   saveCharacter: async (character) => {
+    // 自动迁移：如果只有 legacy lorebookId 而没有 boundLorebookIds，则转换
+    character = migrateLorebookId(character)
     character.updatedAt = Date.now()
     await window.api.character.save(character)
     set((state) => {
@@ -124,9 +153,53 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       const chars = [...state.characters]
       if (idx >= 0) chars[idx] = character
       else chars.push(character)
+      // 重新排序：置顶在前
+      chars.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        return b.updatedAt - a.updatedAt
+      })
       return {
         characters: chars,
         currentCharacter: state.currentCharacter?.id === character.id ? character : state.currentCharacter,
+      }
+    })
+  },
+
+  /** 局部更新角色字段，不修改 updatedAt，不重新排序 */
+  patchCharacter: async (id, patch) => {
+    const char = get().characters.find((c) => c.id === id)
+    if (!char) return
+    const updated = { ...char, ...patch }
+    await window.api.character.save(updated)
+    set((state) => {
+      const idx = state.characters.findIndex((c) => c.id === id)
+      if (idx < 0) return {}
+      const chars = [...state.characters]
+      chars[idx] = updated
+      return {
+        characters: chars,
+        currentCharacter: state.currentCharacter?.id === id ? updated : state.currentCharacter,
+      }
+    })
+  },
+
+  togglePin: async (id) => {
+    const char = get().characters.find((c) => c.id === id)
+    if (!char) return
+    const updated = { ...char, pinned: !char.pinned, updatedAt: Date.now() }
+    await window.api.character.save(updated)
+    set((state) => {
+      const chars = state.characters.map((c) => (c.id === id ? updated : c))
+      // 重新排序
+      chars.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        return b.updatedAt - a.updatedAt
+      })
+      return {
+        characters: chars,
+        currentCharacter: state.currentCharacter?.id === id ? updated : state.currentCharacter,
       }
     })
   },

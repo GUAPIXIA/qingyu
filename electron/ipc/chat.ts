@@ -1,13 +1,22 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, unlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { DIRS, readJson, writeJson } from '../services/storage'
+import { getDefaultSettings } from '../../shared/defaults'
 import { createLogger } from '../services/logger'
 import type { Message, ChatSession, SessionPreview } from '../../shared/types'
+import type { Settings } from '../../shared/types'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('chat')
+
+const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
+
+function getDefaultPersonaId(): string | null {
+  const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
+  return settings.defaultPersonaId ?? null
+}
 
 function getChatDir(characterId: string): string {
   return join(DIRS.chats(), characterId)
@@ -95,22 +104,12 @@ function appendMessage(characterId: string, sessionId: string, message: Message)
 
 /**
  * 更新单条消息（不存在则追加）
- * 性能优化：只追加新消息；对于已存在消息，做最小化重写
+ * 性能优化：始终追加，读取时通过 msgMap 按 id 去重取最新值
+ * isNew 始终返回 false（lastMessage 在 listSessions 时按需计算）
  */
-// L-05 修复：返回是否为新消息，避免 saveMessage 中重复读取
 function updateMessage(characterId: string, sessionId: string, message: Message): boolean {
-  const messages = readMessages(characterId, sessionId)
-  const idx = messages.findIndex((m) => m.id === message.id)
-  if (idx >= 0) {
-    // 更新已有消息：需要重写整个文件
-    messages[idx] = message
-    writeMessages(characterId, sessionId, messages)
-    return false
-  } else {
-    // 新消息：追加到文件末尾（高效）
-    appendMessage(characterId, sessionId, message)
-    return true
-  }
+  appendMessage(characterId, sessionId, message)
+  return false
 }
 
 /**
@@ -133,21 +132,54 @@ function updateSessionMeta(
 }
 
 /** 计算单个 session 的消息数和最后消息摘要 */
-// P-1 修复：仅统计行数 + 解析最后一行获取 lastMessage，避免全量 JSON 解析
+// 优化：只读尾部获取 lastMessage，行数通过扫描换行符统计（避免全量 JSON 解析）
 function computeMessageMeta(characterId: string, sessionId: string): { count: number; lastMessage: string } {
   const filePath = getSessionFile(characterId, sessionId)
   if (!existsSync(filePath)) return { count: 0, lastMessage: '' }
-  const content = readFileSync(filePath, 'utf-8')
-  const lines = content.split('\n').filter(l => l.trim())
-  const count = lines.length
+
+  let count = 0
   let lastMessage = ''
-  // 只解析最后一行获取预览文本
-  if (count > 0) {
+
+  try {
+    const fd = openSync(filePath, 'r')
     try {
-      const msg = JSON.parse(lines[count - 1]) as Message
-      if (msg.content) lastMessage = msg.content.slice(0, 50)
-    } catch { /* 忽略 */ }
-  }
+      const fileSize = statSync(filePath).size
+      if (fileSize === 0) return { count: 0, lastMessage: '' }
+
+      // 扫描全文统计行数（只读字节，不做 JSON 解析）
+      const BUF_SIZE = 64 * 1024
+      const buf = Buffer.alloc(BUF_SIZE)
+      let totalRead = 0
+      while (totalRead < fileSize) {
+        const toRead = Math.min(BUF_SIZE, fileSize - totalRead)
+        const bytesRead = readSync(fd, buf, 0, toRead, totalRead)
+        if (bytesRead === 0) break
+        for (let i = 0; i < bytesRead; i++) {
+          if (buf[i] === 0x0A) count++ // \n
+        }
+        totalRead += bytesRead
+      }
+
+      // 读取尾部 4KB 解析最后一行
+      if (count > 0) {
+        const tailSize = Math.min(4096, fileSize)
+        const tailBuf = Buffer.alloc(tailSize)
+        readSync(fd, tailBuf, 0, tailSize, fileSize - tailSize)
+        const tail = tailBuf.toString('utf-8')
+        const lastNewline = tail.lastIndexOf('\n')
+        const lastLine = (lastNewline >= 0 ? tail.slice(lastNewline + 1) : tail).trim()
+        if (lastLine) {
+          try {
+            const msg = JSON.parse(lastLine) as Message
+            if (msg.content) lastMessage = msg.content.slice(0, 50)
+          } catch { /* 忽略 */ }
+        }
+      }
+    } finally {
+      closeSync(fd)
+    }
+  } catch { /* 忽略 */ }
+
   return { count, lastMessage }
 }
 
@@ -208,6 +240,7 @@ function createDefaultSession(characterId: string): ChatSession {
     autoMemoryInterval: 10,
     memory: '',
     memoryUpdatedAt: 0,
+    personaId: getDefaultPersonaId(),
   }
 }
 
@@ -237,13 +270,15 @@ export function registerChatIPC(ipcMain: IpcMain): void {
         messageCount: meta.count,
         lastMessage: meta.lastMessage,
       } as SessionPreview
-    })
+    }).sort((a, b) => b.updatedAt - a.updatedAt)
   })
 
-  ipcMain.handle('chat:createSession', async (_e, characterId: string, title?: string) => {
+  ipcMain.handle('chat:createSession', async (_e, characterId: string, title?: string, personaId?: string | null, lorebookIds?: string[]) => {
     safeId(characterId)
     const sessions = loadSessions(characterId)
     const now = Date.now()
+    // 未指定 personaId 时继承默认身份
+    const effectivePersonaId = personaId !== undefined ? personaId : getDefaultPersonaId()
     const session: ChatSession = {
       id: nanoid(),
       characterId,
@@ -255,6 +290,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       autoMemoryInterval: 10,
       memory: '',
       memoryUpdatedAt: 0,
+      personaId: effectivePersonaId,
+      lorebookIds,
     }
     sessions.push(session)
     saveSessions(characterId, sessions)
@@ -286,6 +323,17 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       session.updatedAt = Date.now()
       saveSessions(characterId, sessions)
     }
+  })
+
+  ipcMain.handle('chat:updateSession', async (_e, characterId: string, sessionId: string, updates: Partial<ChatSession>) => {
+    safeId(characterId)
+    safeId(sessionId)
+    const sessions = loadSessions(characterId)
+    const idx = sessions.findIndex(s => s.id === sessionId)
+    if (idx === -1) throw new Error('会话不存在')
+    sessions[idx] = { ...sessions[idx], ...updates, updatedAt: Date.now() }
+    saveSessions(characterId, sessions)
+    return sessions[idx]
   })
 
   // ===== 消息管理 =====
@@ -389,12 +437,19 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     if (format === 'json') {
       return JSON.stringify(messages, null, 2)
     }
-    // Markdown 格式
+    // Markdown 格式（含图片）
     let md = `# 对话记录\n\n`
     for (const msg of messages) {
       const role = msg.role === 'user' ? '🧑 用户' : msg.role === 'assistant' ? '🎭 AI' : '系统'
       const time = new Date(msg.timestamp).toLocaleString('zh-CN')
-      md += `### ${role} · ${time}\n\n${msg.content}\n\n---\n\n`
+      md += `### ${role} · ${time}\n\n`
+      // 插入图片（base64 data URI）
+      if (msg.images && msg.images.length > 0) {
+        for (const img of msg.images) {
+          md += `![图片](${img})\n\n`
+        }
+      }
+      md += `${msg.content}\n\n---\n\n`
     }
     return md
   })

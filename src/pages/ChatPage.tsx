@@ -4,11 +4,13 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useChatStore } from '../store/useChatStore'
 import { useCharacterStore } from '../store/useCharacterStore'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { usePersonaStore } from '../store/usePersonaStore'
 import { MessageBubble } from '../components/chat/MessageBubble'
 import { ChatInput } from '../components/chat/ChatInput'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { TokenUsage } from '../components/chat/TokenUsage'
+import { ChatHeader } from '../components/chat/ChatHeader'
+import { Modal } from '../components/common/Modal'
 import { QuickSettingsPanel } from '../components/chat/QuickSettingsPanel'
 import { BackgroundPanel, PRESET_GRADIENTS } from '../components/chat/BackgroundPanel'
 import { ContextViewer } from '../components/chat/ContextViewer'
@@ -16,44 +18,33 @@ import { StatusBar } from '../components/chat/StatusBar'
 import { cn } from '../lib/utils'
 import { estimateTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
+import { getEffectiveLorebookIds } from '../utils/lorebook'
+import { downloadFile } from '../utils/download'
 import { nanoid } from 'nanoid'
 import type { Message } from '../../shared/types'
 import {
   MessageSquare,
   Settings as SettingsIcon,
   Trash2,
-  Download,
   Users,
-  ChevronDown,
-  ArrowDownToLine,
-  Eye,
-  Image,
-  Sliders,
-  Plus,
-  Layers,
-  Edit2,
-  Brain,
 } from 'lucide-react'
 
 export function ChatPage() {
   const navigate = useNavigate()
-  const { messages, loadMessages, isStreaming, clearChat, clearMessages, sessions, currentSessionId, loadSessions, switchSession, deleteSession, renameSession, toggleMemory, setMemoryMode, triggerMemorySummary, getStats } = useChatStore()
+  const { messages, loadMessages, isStreaming, clearChat, clearMessages, sessions, currentSessionId, loadSessions, switchSession, deleteSession, renameSession, toggleMemory, setMemoryMode, triggerMemorySummary, getStats, setActiveLorebooks, activeLorebookIds } = useChatStore()
   const { currentCharacter, characters, selectCharacter } = useCharacterStore()
   const { settings, loaded, updateSettings, getActiveProfile } = useSettingsStore()
-  const [showCharMenu, setShowCharMenu] = useState(false)
+  const { personas, loadPersonas, getPersona } = usePersonaStore()
   const [showClearConfirm, setShowClearConfirm] = useState(false)
-  const [showSessionMenu, setShowSessionMenu] = useState(false)
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
-  const [sessionEditTitle, setSessionEditTitle] = useState('')
-  const [showMemoryPanel, setShowMemoryPanel] = useState(false)
-  const [memoryStats, setMemoryStats] = useState<{ totalMessages: number; totalChars: number; durationStr: string } | null>(null)
-  const [memoryInterval, setMemoryInterval] = useState(10)
   const [showQuickSettings, setShowQuickSettings] = useState(false)
   const [showBgPanel, setShowBgPanel] = useState(false)
   const [showContextViewer, setShowContextViewer] = useState(false)
   const [greetingPickerOpen, setGreetingPickerOpen] = useState(false)
   const [selectedGreeting, setSelectedGreeting] = useState('')
-  const [charImgErrors, setCharImgErrors] = useState<Set<string>>(new Set())
+  // 世界书绑定确认弹窗
+  const [showLorebookConfirm, setShowLorebookConfirm] = useState(false)
+  const [pendingLorebookIds, setPendingLorebookIds] = useState<string[]>([])
+  const pendingSessionCallbackRef = useRef<(() => void) | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const virtuosoRef = useRef<VirtuosoHandle>(null)
@@ -92,36 +83,104 @@ export function ChatPage() {
         .catch((err) => {
           console.error('加载会话失败', err)
         })
-      // 自动激活角色卡关联的世界书
+      // B-05 修复：切换角色时替换（非合并）预设为新角色的绑定
       const chatStore = useChatStore.getState()
-      if (currentCharacter.lorebookId && !chatStore.activeLorebookIds.includes(currentCharacter.lorebookId)) {
-        chatStore.setActiveLorebooks([...chatStore.activeLorebookIds, currentCharacter.lorebookId])
+      // 预设：有绑定则激活，无绑定则重置为 null
+      const targetPreset = currentCharacter.boundPresetId ?? null
+      if (targetPreset !== chatStore.activePresetId) {
+        chatStore.setActivePreset(targetPreset)
       }
+      // 世界书：由 loadMessages → syncLorebooksFromCurrentSession 处理，不在此处手动同步
     } else {
       clearMessages()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCharacter?.id])
 
-  // 用户滚动监听已由 Virtuoso 的 atBottomStateChange 接管，无需手动监听
-  // 自动滚动也由 Virtuoso 的 followOutput 接管
+  // 加载 persona 列表
+  useEffect(() => { loadPersonas() }, [])
+
+  // 全局键盘快捷键事件监听
+  useEffect(() => {
+    const handleExportChat = async () => {
+      await handleExport()
+    }
+    const handleCopyLastAi = async () => {
+      const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
+      if (lastAssistant) {
+        await navigator.clipboard.writeText(lastAssistant.content)
+      }
+    }
+    window.addEventListener('shortcut:export-chat', handleExportChat)
+    window.addEventListener('shortcut:copy-last-ai', handleCopyLastAi)
+    return () => {
+      window.removeEventListener('shortcut:export-chat', handleExportChat)
+      window.removeEventListener('shortcut:copy-last-ai', handleCopyLastAi)
+    }
+  }, [messages, currentCharacter, currentSessionId])
+
+  // 新建会话统一入口（从 ChatHeader 触发）：检查绑定世界书 → 弹窗确认 → 创建会话
+  const handleCreateSession = () => {
+    checkBoundLorebooks(async () => {
+      if (!currentCharacter) return
+      const store = useChatStore.getState()
+      await store.createSession(currentCharacter.id)
+      // 如果有开场白，弹出选择器
+      const hasGreetings = currentCharacter.firstMessage || (currentCharacter.alternateGreetings && currentCharacter.alternateGreetings.length > 0)
+      if (hasGreetings) {
+        setGreetingPickerOpen(true)
+      }
+    })
+  }
 
   // Token 统计：useMemo 避免流式时每个 chunk 都重算
   const totalTokens = useMemo(() => {
     return messages.reduce((sum, m) => sum + estimateTokens(m.content), 0)
   }, [messages])
 
+  // 检查角色是否有绑定的世界书，如果有则弹窗确认
+  const checkBoundLorebooks = (callback: () => void) => {
+    if (!currentCharacter) {
+      callback()
+      return
+    }
+    const boundIds = getEffectiveLorebookIds(currentCharacter)
+    if (boundIds.length === 0) {
+      callback()
+      return
+    }
+    // 检查是否已经激活了这些世界书
+    const currentSet = new Set(activeLorebookIds)
+    const allActive = boundIds.every(id => currentSet.has(id))
+    if (allActive) {
+      callback()
+      return
+    }
+    // 弹窗确认，存储回调
+    pendingSessionCallbackRef.current = callback
+    setPendingLorebookIds(boundIds)
+    setShowLorebookConfirm(true)
+  }
+
+  // 确认使用绑定的世界书
+  const handleLorebookConfirm = async (useLorebooks: boolean) => {
+    setShowLorebookConfirm(false)
+    if (useLorebooks && pendingLorebookIds.length > 0) {
+      setActiveLorebooks(pendingLorebookIds, currentCharacter?.id)
+    }
+    setPendingLorebookIds([])
+    // 执行待处理的会话创建回调
+    if (pendingSessionCallbackRef.current) {
+      pendingSessionCallbackRef.current()
+      pendingSessionCallbackRef.current = null
+    }
+  }
+
   // 导出对话
   const handleExport = async () => {
     if (!currentCharacter || !currentSessionId) return
     const content = await window.api.chat.exportChat(currentCharacter.id, currentSessionId, 'md')
-    const blob = new Blob([content], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${currentCharacter.name}-对话.md`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadFile(content, `${currentCharacter.name}-对话.md`)
   }
 
   // 使用选中开场白开始对话
@@ -129,14 +188,16 @@ export function ChatPage() {
     if (!currentCharacter || !selectedGreeting) return
     setGreetingPickerOpen(false)
 
-    // 确保存在会话：没有已有会话时自动创建
-    let sid = currentSessionId
-    if (!sid) {
-      const session = await window.api.chat.createSession(currentCharacter.id)
-      const sessions = await window.api.chat.listSessions(currentCharacter.id)
-      useChatStore.setState({ sessions, currentSessionId: session.id })
-      sid = session.id
-    }
+    // 检查绑定的世界书
+    checkBoundLorebooks(async () => {
+      // 确保存在会话：没有已有会话时自动创建
+      let sid = currentSessionId
+      if (!sid) {
+        const session = await window.api.chat.createSession(currentCharacter.id)
+        const sessions = await window.api.chat.listSessions(currentCharacter.id)
+        useChatStore.setState({ sessions, currentSessionId: session.id })
+        sid = session.id
+      }
 
     const settings = useSettingsStore.getState().settings
     const processed = replaceVariables(selectedGreeting, settings.userName, currentCharacter.name)
@@ -153,7 +214,8 @@ export function ChatPage() {
     await window.api.chat.saveMessage(firstMsg)
     // 刷新 sessions 以更新 messageCount，确保下次加载时不重复弹出选择器
     const updatedSessions = await window.api.chat.listSessions(currentCharacter.id)
-    useChatStore.setState(s => ({ messages: [...s.messages, firstMsg], sessions: updatedSessions, currentSessionId: sid }))
+    useChatStore.setState(s => ({ messages: [firstMsg], sessions: updatedSessions, currentSessionId: sid }))
+    })
   }
 
   // 背景图片拖拽
@@ -256,34 +318,35 @@ export function ChatPage() {
     )
   }
 
-  // 封面作为背景：当开关开启且角色有封面时使用封面，否则使用手动设置的背景
+  // 聊天背景：优先使用 chatBackgroundParams.useCover（角色封面）或手动设置的背景图/渐变
   const effectiveBg = useMemo(() => {
-    const useCover = settings.useCoverAsBackground && currentCharacter?.cover
-    if (useCover) {
+    const params = currentCharacter?.chatBackgroundParams
+    const coverSrc = currentCharacter?.cover || currentCharacter?.avatar
+    if (params?.useCover && coverSrc) {
       return {
-        src: currentCharacter.cover!,
+        src: coverSrc,
         type: 'image' as const,
-        opacity: 40,
-        blur: 4,
-        posX: 50,
-        posY: 50,
-        scale: 100,
+        opacity: params.opacity ?? 12,
+        blur: params.blur ?? 2,
+        posX: params.posX ?? 50,
+        posY: params.posY ?? 50,
+        scale: params.scale ?? 100,
       }
     }
     if (currentCharacter?.chatBackground) {
       return {
         src: currentCharacter.chatBackground,
-        type: currentCharacter.chatBackgroundParams?.type ?? 'image',
-        opacity: currentCharacter.chatBackgroundParams?.opacity ?? 12,
-        blur: currentCharacter.chatBackgroundParams?.blur ?? 2,
-        posX: currentCharacter.chatBackgroundParams?.posX ?? 50,
-        posY: currentCharacter.chatBackgroundParams?.posY ?? 50,
-        scale: currentCharacter.chatBackgroundParams?.scale ?? 100,
-        gradient: currentCharacter.chatBackgroundParams?.gradient,
+        type: params?.type ?? 'image',
+        opacity: params?.opacity ?? 12,
+        blur: params?.blur ?? 2,
+        posX: params?.posX ?? 50,
+        posY: params?.posY ?? 50,
+        scale: params?.scale ?? 100,
+        gradient: params?.gradient,
       }
     }
     return null
-  }, [settings.useCoverAsBackground, currentCharacter?.cover, currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams])
+  }, [currentCharacter?.cover, currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams])
 
   if (!currentCharacter) {
     return (
@@ -343,406 +406,27 @@ export function ChatPage() {
       )}
 
       {/* 顶栏 */}
-      <header className="relative z-30 flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
-        <div className="flex items-center gap-3">
-          {/* 角色选择下拉 */}
-          <div className="relative">
-            <button
-              onClick={() => setShowCharMenu(!showCharMenu)}
-              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-tavern-bg-hover transition-colors"
-            >
-              {currentCharacter.avatar && !charImgErrors.has(currentCharacter.id) ? (
-                <img src={currentCharacter.avatar} alt="" className="w-8 h-8 rounded-full object-cover" onError={() => setCharImgErrors(prev => new Set(prev).add(currentCharacter.id))} />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-tavern-assistant/20 flex items-center justify-center text-tavern-assistant text-sm font-bold">
-                  {currentCharacter.translatedContent?.name?.[0] ?? currentCharacter.name[0]}
-                </div>
-              )}
-              <div className="text-left">
-                <div className="text-sm font-medium text-tavern-text">{currentCharacter.translatedContent?.name ?? currentCharacter.name}</div>
-                <div className="text-xs text-tavern-text-muted">
-                  {isStreaming ? '生成中...' : '在线'}
-                </div>
-              </div>
-              <ChevronDown className="w-4 h-4 text-tavern-text-muted" />
-            </button>
+      <ChatHeader
+        currentCharacter={currentCharacter}
+        messages={messages}
+        isStreaming={isStreaming}
+        totalTokens={totalTokens}
+        showQuickSettings={showQuickSettings}
+        showBgPanel={showBgPanel}
+        onExport={handleExport}
+        onClearConfirm={() => setShowClearConfirm(true)}
+        onShowContextViewer={() => setShowContextViewer(true)}
+        onShowQuickSettings={() => setShowQuickSettings(!showQuickSettings)}
+        onShowBgPanel={() => setShowBgPanel(!showBgPanel)}
+        onShowGreetingPicker={() => {
+          setSelectedGreeting(currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage)
+          setGreetingPickerOpen(true)
+        }}
+        onCreateSession={handleCreateSession}
+      />
 
-            {showCharMenu && (
-              <>
-                <div className="fixed inset-0 z-20" onClick={() => setShowCharMenu(false)} />
-                <div className="absolute top-full left-0 mt-1 w-64 max-h-80 overflow-y-auto bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl z-40 py-1">
-                  {characters.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-tavern-text-muted text-center">
-                      暂无角色，请先创建
-                    </div>
-                  ) : (
-                    characters.map((char) => (
-                      <button
-                        key={char.id}
-                        onClick={() => {
-                          selectCharacter(char.id)
-                          setShowCharMenu(false)
-                        }}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-3 py-2 hover:bg-tavern-bg-hover transition-colors text-left',
-                          char.id === currentCharacter.id && 'bg-tavern-accent-soft'
-                        )}
-                      >
-                        {char.avatar && !charImgErrors.has(char.id) ? (
-                          <img src={char.avatar} alt="" className="w-8 h-8 rounded-full object-cover" onError={() => setCharImgErrors(prev => new Set(prev).add(char.id))} />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-tavern-bg-hover flex items-center justify-center text-xs font-bold">
-                            {char.translatedContent?.name?.[0] ?? char.name[0]}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-tavern-text truncate">{char.translatedContent?.name ?? char.name}</div>
-                          {char.tags[0] && (
-                            <div className="text-xs text-tavern-text-muted truncate">{char.tags[0]}</div>
-                          )}
-                        </div>
-                      </button>
-                    ))
-                  )}
-                  <div className="border-t border-tavern-border-soft mt-1 pt-1">
-                    <button
-                      onClick={() => {
-                        navigate('/characters')
-                        setShowCharMenu(false)
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-tavern-bg-hover transition-colors text-sm text-tavern-accent"
-                    >
-                      <Users className="w-4 h-4" />
-                      管理角色
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* 会话切换器 */}
-          {sessions.length > 0 && (
-            <div className="flex items-center gap-1">
-              <span className="text-tavern-border-soft select-none">|</span>
-              <div className="relative">
-                <button
-                  onClick={() => setShowSessionMenu(!showSessionMenu)}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-tavern-bg-hover transition-colors text-sm text-tavern-text-soft"
-                  title="切换对话"
-                >
-                  <Layers className="w-3.5 h-3.5 text-tavern-text-muted" />
-                  <span className="max-w-[100px] truncate">
-                    {sessions.find(s => s.id === currentSessionId)?.title ?? '对话'}
-                  </span>
-                  <ChevronDown className="w-3 h-3 text-tavern-text-muted" />
-                </button>
-
-                {showSessionMenu && (
-                  <>
-                    <div className="fixed inset-0 z-20" onClick={() => setShowSessionMenu(false)} />
-                    <div className="absolute top-full left-0 mt-1 w-56 bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl z-40 py-1 max-h-72 overflow-y-auto">
-                      {sessions.map((s) => (
-                        <div
-                          key={s.id}
-                          className={cn(
-                            'flex items-center gap-2 px-3 py-2 hover:bg-tavern-bg-hover transition-colors',
-                            s.id === currentSessionId && 'bg-tavern-accent-soft'
-                          )}
-                        >
-                          {editingSessionId === s.id ? (
-                            <input
-                              className="input text-xs flex-1 py-1 px-2"
-                              value={sessionEditTitle}
-                              onChange={(e) => setSessionEditTitle(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  renameSession(currentCharacter!.id, s.id, sessionEditTitle)
-                                  setEditingSessionId(null)
-                                } else if (e.key === 'Escape') {
-                                  setEditingSessionId(null)
-                                }
-                              }}
-                              autoFocus
-                              onBlur={() => setEditingSessionId(null)}
-                            />
-                          ) : (
-                            <>
-                              <button
-                                className="flex-1 text-left text-sm text-tavern-text truncate"
-                                onClick={() => {
-                                  switchSession(s.id, currentCharacter!)
-                                  setShowSessionMenu(false)
-                                }}
-                              >
-                                {s.title}
-                                <span className="text-xs text-tavern-text-muted ml-2">
-                                  ({s.messageCount}条)
-                                </span>
-                              </button>
-                              <button
-                                className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-text"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setEditingSessionId(s.id)
-                                  setSessionEditTitle(s.title)
-                                }}
-                                title="重命名"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                              </button>
-                              {sessions.length > 1 && (
-                                <button
-                                  className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger"
-                                  onClick={async (e) => {
-                                    e.stopPropagation()
-                                    // 修复：统一走 store.deleteSession，不再绕过 store 直接 IPC
-                                    if (currentCharacter) {
-                                      await deleteSession(currentCharacter.id, s.id)
-                                    }
-                                  }}
-                                  title="删除"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-              <button
-                onClick={async () => {
-                  if (!currentCharacter) return
-                  // 创建新会话
-                  const session = await window.api.chat.createSession(currentCharacter.id)
-                  const sessions = await window.api.chat.listSessions(currentCharacter.id)
-                  useChatStore.setState({ sessions, currentSessionId: session.id, messages: [] })
-                  // 如有备选开场白，弹出选择器；否则直接用默认开场白
-                  if (currentCharacter.alternateGreetings && currentCharacter.alternateGreetings.length > 0) {
-                    setSelectedGreeting(currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage)
-                    setGreetingPickerOpen(true)
-                  } else {
-                    const settings = useSettingsStore.getState().settings
-                    const processed = replaceVariables(currentCharacter.firstMessage, settings.userName, currentCharacter.name)
-                    const firstMsg: Message = {
-                      id: nanoid(),
-                      sessionId: session.id,
-                      characterId: currentCharacter.id,
-                      role: 'assistant' as const,
-                      content: processed,
-                      images: [],
-                      isEditing: false,
-                      timestamp: Date.now(),
-                    }
-                    await window.api.chat.saveMessage(firstMsg)
-                    useChatStore.setState(() => ({ messages: [firstMsg] }))
-                  }
-                }}
-                className="p-1 rounded-lg text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover transition-colors"
-                title="新建对话"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-
-              {/* 长记忆按钮 */}
-              <div className="relative">
-                <button
-                  onClick={async () => {
-                    if (!currentCharacter || !currentSessionId) return
-                    const stats = await getStats(currentCharacter.id, currentSessionId)
-                    if (stats) setMemoryStats(stats)
-                    const curS = sessions.find(s => s.id === currentSessionId)
-                    setMemoryInterval(curS?.autoMemoryInterval ?? 10)
-                    setShowMemoryPanel(!showMemoryPanel)
-                  }}
-                  className={cn(
-                    'p-1 rounded-lg text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover transition-colors',
-                    showMemoryPanel && 'text-tavern-accent bg-tavern-bg-hover'
-                  )}
-                  title="长记忆"
-                >
-                  <Brain className="w-4 h-4" />
-                </button>
-
-                {showMemoryPanel && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowMemoryPanel(false)} />
-                    <div className="absolute top-full right-0 mt-1 w-72 bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl z-20 py-2 px-3 text-sm">
-                      <h4 className="font-medium text-tavern-text mb-2">长记忆设置</h4>
-
-                      {/* 开关 */}
-                      <label className="flex items-center justify-between py-1.5 cursor-pointer">
-                        <span className="text-tavern-text-soft">启用长记忆</span>
-                        <input
-                          type="checkbox"
-                          checked={sessions.find(s => s.id === currentSessionId)?.memoryEnabled ?? false}
-                          onChange={(e) => {
-                            if (currentCharacter && currentSessionId) toggleMemory(currentCharacter.id, currentSessionId, e.target.checked)
-                          }}
-                          className="toggle"
-                        />
-                      </label>
-
-                      {/* 模式选择 */}
-                      <div className="flex items-center justify-between py-1.5">
-                        <span className="text-tavern-text-soft">总结模式</span>
-                        <select
-                          value={sessions.find(s => s.id === currentSessionId)?.memoryMode ?? 'manual'}
-                          onChange={(e) => {
-                            if (currentCharacter && currentSessionId) {
-                              setMemoryMode(currentCharacter.id, currentSessionId, e.target.value as 'manual' | 'auto', memoryInterval)
-                            }
-                          }}
-                          className="input text-xs py-1 px-2 w-24"
-                        >
-                          <option value="manual">手动</option>
-                          <option value="auto">自动</option>
-                        </select>
-                      </div>
-
-                      {/* 自动间隔 */}
-                      {sessions.find(s => s.id === currentSessionId)?.memoryMode === 'auto' && (
-                        <div className="flex items-center justify-between py-1.5">
-                          <span className="text-tavern-text-soft">自动间隔</span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              value={memoryInterval}
-                              min={4}
-                              max={50}
-                              onChange={(e) => {
-                                const v = Math.max(4, Math.min(50, parseInt(e.target.value) || 10))
-                                setMemoryInterval(v)
-                                if (currentCharacter && currentSessionId) {
-                                  setMemoryMode(currentCharacter.id, currentSessionId, 'auto', v)
-                                }
-                              }}
-                              className="input text-xs py-1 px-2 w-16 text-center"
-                            />
-                            <span className="text-xs text-tavern-text-muted">条</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 手动总结 */}
-                      <button
-                        className="btn-secondary w-full mt-2 text-xs"
-                        onClick={() => {
-                          if (currentCharacter) triggerMemorySummary(currentCharacter)
-                        }}
-                        disabled={isStreaming}
-                      >
-                        立即总结
-                      </button>
-
-                      {/* 当前总结预览 */}
-                      {(() => {
-                        const s = sessions.find(s => s.id === currentSessionId)
-                        if (s?.memory) {
-                          return (
-                            <div className="mt-2 p-2 rounded bg-tavern-bg-hover text-xs text-tavern-text-muted max-h-20 overflow-y-auto">
-                              <span className="text-tavern-text-soft font-medium">当前摘要：</span>
-                              {s.memory.slice(0, 200)}{s.memory.length > 200 ? '...' : ''}
-                            </div>
-                          )
-                        }
-                        return null
-                      })()}
-
-                      {/* 统计信息 */}
-                      {memoryStats && (
-                        <div className="mt-2 pt-2 border-t border-tavern-border-soft text-xs text-tavern-text-muted space-y-0.5">
-                          <div className="flex justify-between">
-                            <span>总消息数</span>
-                            <span className="text-tavern-text-soft">{memoryStats.totalMessages}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>总文字量</span>
-                            <span className="text-tavern-text-soft">{memoryStats.totalChars.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>对话时长</span>
-                            <span className="text-tavern-text-soft">{memoryStats.durationStr}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 操作按钮 */}
-        <div className="flex items-center gap-1">
-          <TokenUsage tokens={totalTokens} maxTokens={activeProfile?.maxContext || 8192} />
-          <button
-            onClick={() => updateSettings({ autoScroll: !settings.autoScroll })}
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              settings.autoScroll
-                ? 'text-tavern-accent bg-tavern-accent-soft'
-                : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
-            )}
-            title={settings.autoScroll ? '自动滚动：开' : '自动滚动：关'}
-          >
-            <ArrowDownToLine className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setShowContextViewer(true)}
-            className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
-            title="查看上下文"
-          >
-            <Eye className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setShowQuickSettings(!showQuickSettings)}
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              showQuickSettings
-                ? 'text-tavern-accent bg-tavern-accent-soft'
-                : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
-            )}
-            title="快捷设置"
-          >
-            <Sliders className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setShowBgPanel(!showBgPanel)}
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              showBgPanel
-                ? 'text-tavern-accent bg-tavern-accent-soft'
-                : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
-            )}
-            title="聊天背景"
-          >
-            <Image className="w-5 h-5" />
-          </button>
-          <button
-            onClick={handleExport}
-            className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
-            title="导出对话"
-          >
-            <Download className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setShowClearConfirm(true)}
-            className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-bg-hover transition-colors"
-            title="清空对话"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
-
-      {/* 状态栏 */}
-      {currentCharacter && messages.length > 0 && (
+      {/* 状态栏 — 有消息或有激活世界书时显示 */}
+      {currentCharacter && (
         <div className="relative z-10"><StatusBar character={currentCharacter} messages={messages} /></div>
       )}
 
@@ -762,9 +446,11 @@ export function ChatPage() {
           />
         ) : (
           <Virtuoso
+            key={currentSessionId || 'empty'}
             ref={virtuosoRef}
             data={messages}
             className="h-full"
+            initialTopMostItemIndex={999999}
             followOutput={(isAtBottom) => {
               // 流式时若用户未手动向上滚动则跟随
               return settings.autoScroll && (isAtBottom || !userScrolledUpRef.current)
@@ -797,11 +483,48 @@ export function ChatPage() {
       <ConfirmDialog
         open={showClearConfirm}
         onClose={() => setShowClearConfirm(false)}
-        onConfirm={() => clearChat(currentCharacter.id)}
+        onConfirm={async () => {
+          await clearChat(currentCharacter.id)
+          // 清空后自动插入开场白或弹出选择器
+          const hasAltGreetings = currentCharacter.alternateGreetings && currentCharacter.alternateGreetings.length > 0
+          if (hasAltGreetings) {
+            setSelectedGreeting(currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage)
+            setGreetingPickerOpen(true)
+          } else if (currentCharacter.firstMessage) {
+            const settings = useSettingsStore.getState().settings
+            const processed = replaceVariables(currentCharacter.firstMessage, settings.userName, currentCharacter.name)
+            const firstMsg: Message = {
+              id: nanoid(),
+              sessionId: currentSessionId!,
+              characterId: currentCharacter.id,
+              role: 'assistant',
+              content: processed,
+              images: [],
+              isEditing: false,
+              timestamp: Date.now(),
+            }
+            await window.api.chat.saveMessage(firstMsg)
+            useChatStore.setState(s => ({ messages: [...s.messages, firstMsg] }))
+          }
+        }}
         title="清空对话"
         message={`确定要清空与 ${currentCharacter.translatedContent?.name ?? currentCharacter.name} 的所有对话记录吗？此操作不可撤销。`}
         confirmText="清空"
         danger
+      />
+
+      {/* 世界书绑定确认 */}
+      <ConfirmDialog
+        open={showLorebookConfirm}
+        onClose={() => {
+          setShowLorebookConfirm(false)
+          setPendingLorebookIds([])
+        }}
+        onConfirm={() => handleLorebookConfirm(true)}
+        cancelText="不使用"
+        title="使用绑定的世界书"
+        message={`当前角色绑定了 ${pendingLorebookIds.length} 个世界书，是否在本次对话中使用？`}
+        confirmText="使用"
       />
 
       {/* 快捷设置面板 */}
@@ -809,83 +532,84 @@ export function ChatPage() {
       <BackgroundPanel open={showBgPanel} onClose={() => setShowBgPanel(false)} />
 
       {/* 开场白选择面板 */}
-      {greetingPickerOpen && currentCharacter && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="card w-[560px] max-w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-            {/* 头部：角色信息 + 标题（固定） */}
-            <div className="flex items-center gap-3 p-5 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
-              <div className="w-12 h-12 rounded-lg overflow-hidden bg-tavern-bg-hover shrink-0">
-                {(currentCharacter.cover || currentCharacter.avatar) ? (
-                  <img
-                    src={currentCharacter.cover || currentCharacter.avatar}
-                    alt=""
-                    className="w-full h-full object-cover"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-tavern-text-muted text-lg font-display">
-                    {currentCharacter.translatedContent?.name?.[0] ?? currentCharacter.name[0]}
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-display font-bold text-lg truncate">{currentCharacter.translatedContent?.name ?? currentCharacter.name}</h3>
-                <p className="text-xs text-tavern-text-muted">选择一个开场白开始对话</p>
-              </div>
+      <Modal
+        open={greetingPickerOpen && !!currentCharacter}
+        onClose={() => { setGreetingPickerOpen(false); setSelectedGreeting('') }}
+        width="custom"
+        widthClassName="w-[560px]"
+        headerClassName="px-5 py-4 bg-tavern-bg-soft"
+        header={
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="w-12 h-12 rounded-lg overflow-hidden bg-tavern-bg-hover shrink-0">
+              {(currentCharacter?.cover || currentCharacter?.avatar) ? (
+                <img
+                  src={currentCharacter?.cover || currentCharacter?.avatar}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-tavern-text-muted text-lg font-display">
+                  {currentCharacter?.translatedContent?.name?.[0] ?? currentCharacter?.name[0]}
+                </div>
+              )}
             </div>
-
-            {/* 中间：可滚动的开场白列表 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {[currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage, ...(currentCharacter.alternateGreetings || [])]
-                .filter(Boolean)
-                .map((greeting, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      'p-3 rounded-lg border cursor-pointer transition-all text-sm',
-                      selectedGreeting === greeting
-                        ? 'border-tavern-accent bg-tavern-accent-soft shadow-sm'
-                        : 'border-tavern-border hover:bg-tavern-bg-hover hover:border-tavern-border-soft'
-                    )}
-                    onClick={() => setSelectedGreeting(greeting)}
-                  >
-                    <div className="flex gap-2.5">
-                      <span className={cn(
-                        'shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mt-0.5',
-                        selectedGreeting === greeting
-                          ? 'bg-tavern-accent text-tavern-bg'
-                          : 'bg-tavern-bg-hover text-tavern-text-muted'
-                      )}>
-                        {i + 1}
-                      </span>
-                      <div className="flex-1 line-clamp-4 whitespace-pre-wrap text-tavern-text-soft">
-                        {replaceVariables(greeting, settings.userName, currentCharacter.translatedContent?.name ?? currentCharacter.name)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-
-            {/* 底部：固定按钮区（始终可见） */}
-            <div className="flex items-center justify-between gap-2 p-4 border-t border-tavern-border-soft bg-tavern-bg-soft shrink-0">
-              <span className={cn(
-                'text-xs',
-                selectedGreeting ? 'text-tavern-accent' : 'text-tavern-text-muted'
-              )}>
-                {selectedGreeting ? '✓ 已选择开场白' : '请选择一条开场白，或跳过直接开始'}
-              </span>
-              <div className="flex gap-2">
-                <button className="btn-secondary" onClick={() => { setGreetingPickerOpen(false); setSelectedGreeting('') }}>
-                  跳过
-                </button>
-                <button className="btn-primary" onClick={handleStartWithGreeting} disabled={!selectedGreeting}>
-                  开始对话
-                </button>
-              </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display font-bold text-lg truncate">{currentCharacter?.translatedContent?.name ?? currentCharacter?.name}</h3>
+              <p className="text-xs text-tavern-text-muted">选择一个开场白开始对话</p>
             </div>
           </div>
-        </div>
-      )}
+        }
+        footer={
+          <>
+            <span className={cn(
+              'text-xs mr-auto',
+              selectedGreeting ? 'text-tavern-accent' : 'text-tavern-text-muted'
+            )}>
+              {selectedGreeting ? '✓ 已选择开场白' : '请选择一条开场白，或跳过直接开始'}
+            </span>
+            <button className="btn-secondary" onClick={() => { setGreetingPickerOpen(false); setSelectedGreeting('') }}>
+              跳过
+            </button>
+            <button className="btn-primary" onClick={handleStartWithGreeting} disabled={!selectedGreeting}>
+              开始对话
+            </button>
+          </>
+        }
+      >
+        {currentCharacter && (
+          <div className="space-y-2">
+            {[currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage, ...(currentCharacter.alternateGreetings || [])]
+              .filter(Boolean)
+              .map((greeting, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'p-3 rounded-lg border cursor-pointer transition-all text-sm',
+                    selectedGreeting === greeting
+                      ? 'border-tavern-accent bg-tavern-accent-soft shadow-sm'
+                      : 'border-tavern-border hover:bg-tavern-bg-hover hover:border-tavern-border-soft'
+                  )}
+                  onClick={() => setSelectedGreeting(greeting)}
+                >
+                  <div className="flex gap-2.5">
+                    <span className={cn(
+                      'shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mt-0.5',
+                      selectedGreeting === greeting
+                        ? 'bg-tavern-accent text-tavern-bg'
+                        : 'bg-tavern-bg-hover text-tavern-text-muted'
+                    )}>
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 line-clamp-4 whitespace-pre-wrap text-tavern-text-soft">
+                      {replaceVariables(greeting, settings.userName, currentCharacter.translatedContent?.name ?? currentCharacter.name)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </Modal>
 
       {/* 上下文查看器 */}
       <ContextViewer

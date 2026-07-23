@@ -1,9 +1,95 @@
 import React, { useState, useEffect, useRef } from 'react'
-import type { Character, ProviderType } from '../../../shared/types'
+import type { Character, ProviderType, Preset, Lorebook } from '../../../shared/types'
 import { Modal } from '../common/Modal'
 import { ImagePlus, X, Languages, Loader2, RefreshCw } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useSettingsStore } from '../../store/useSettingsStore'
+
+// B-05：记住 textarea 手动调整后的大小（使用原生 DOM 事件，React 合成事件无法捕获浏览器 resize handle）
+const TA_HEIGHTS_KEY = 'editor-ta-heights'
+function loadTaHeights(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(TA_HEIGHTS_KEY) || '{}') } catch { return {} }
+}
+function saveTaHeight(id: string, h: number) {
+  const heights = loadTaHeights()
+  heights[id] = h
+  localStorage.setItem(TA_HEIGHTS_KEY, JSON.stringify(heights))
+}
+/** 绑定 textarea ref：恢复记忆高度 + 监听原生 mouseup 保存高度 */
+function useTaResize(id: string, defaultMinH: number) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const saved = loadTaHeights()[id]
+
+  // 挂载后恢复记忆高度
+  useEffect(() => {
+    const ta = ref.current
+    if (ta && saved && saved > defaultMinH) {
+      ta.style.height = `${saved}px`
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 监听原生 mouseup（浏览器 resize handle 的 mouseup 不会触发 React 合成事件）
+  useEffect(() => {
+    const ta = ref.current
+    if (!ta) return
+    const onMouseUp = () => {
+      saveTaHeight(id, ta.offsetHeight)
+    }
+    ta.addEventListener('mouseup', onMouseUp)
+    return () => ta.removeEventListener('mouseup', onMouseUp)
+  }, [id])
+
+  const style: React.CSSProperties = {
+    minHeight: `${saved && saved > defaultMinH ? saved : defaultMinH}px`,
+  }
+  return { ref, style }
+}
+
+/** B-05：预设绑定选择器 */
+function PresetBinding({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
+  const [presets, setPresets] = useState<Preset[]>([])
+  useEffect(() => { window.api.preset.list().then(setPresets).catch(() => {}) }, [])
+  return (
+    <div>
+      <label className="label">绑定预设</label>
+      <select className="input text-sm" value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
+        <option value="">不绑定</option>
+        {presets.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+      <p className="text-xs text-tavern-text-muted mt-1">切换到此角色时自动激活该预设</p>
+    </div>
+  )
+}
+
+/** B-05：世界书绑定选择器 */
+function LorebookBinding({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
+  const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
+  useEffect(() => { window.api.lorebook.list().then(setLorebooks).catch(() => {}) }, [])
+  const toggle = (id: string) => {
+    if (value.includes(id)) onChange(value.filter(v => v !== id))
+    else onChange([...value, id])
+  }
+  return (
+    <div>
+      <label className="label">绑定世界书</label>
+      <div className="max-h-32 overflow-y-auto border border-tavern-border rounded-lg p-2 space-y-1">
+        {lorebooks.length === 0 ? (
+          <p className="text-xs text-tavern-text-muted py-1">暂无世界书</p>
+        ) : (
+          lorebooks.map((lb) => (
+            <label key={lb.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-tavern-bg-hover rounded px-1 py-0.5">
+              <input type="checkbox" checked={value.includes(lb.id)} onChange={() => toggle(lb.id)} className="accent-tavern-accent" />
+              <span className="truncate">{lb.name}</span>
+            </label>
+          ))
+        )}
+      </div>
+      <p className="text-xs text-tavern-text-muted mt-1">切换到此角色时自动激活选中的世界书</p>
+    </div>
+  )
+}
 
 interface CharacterEditorProps {
   character: Character
@@ -36,6 +122,15 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   // H-09 修复：追踪活跃的翻译请求，组件卸载时取消
   const activeRequestIdsRef = useRef<Set<string>>(new Set())
   const { settings } = useSettingsStore()
+
+  // B-05：textarea 高度记忆
+  const taDesc = useTaResize('desc', 120)
+  const taPersonality = useTaResize('personality', 80)
+  const taScenario = useTaResize('scenario', 80)
+  const taSysprompt = useTaResize('sysprompt', 80)
+  const taFirstmsg = useTaResize('firstmsg', 120)
+  const taPosthist = useTaResize('posthist', 60)
+  const taExdialog = useTaResize('exdialog', 100)
 
   useEffect(() => {
     setForm(character)
@@ -470,6 +565,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             </button>
           </label>
           <textarea
+            ref={taDesc.ref}
+            style={taDesc.style}
             className="textarea min-h-[120px] resize-y"
             value={form.description}
             onChange={(e) => update({ description: e.target.value })}
@@ -498,6 +595,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             </button>
           </label>
           <textarea
+            ref={taPersonality.ref}
+            style={taPersonality.style}
             className="textarea min-h-[80px] resize-y"
             value={form.personality}
             onChange={(e) => update({ personality: e.target.value })}
@@ -538,6 +637,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 </button>
               </label>
               <textarea
+                ref={taScenario.ref}
+                style={taScenario.style}
                 className="textarea min-h-[80px] resize-y"
                 value={form.scenario}
                 onChange={(e) => update({ scenario: e.target.value })}
@@ -549,12 +650,20 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             <div>
               <label className="label">角色系统提示词（覆盖预设）</label>
               <textarea
+                ref={taSysprompt.ref}
+                style={taSysprompt.style}
                 className="textarea min-h-[80px] resize-y"
                 value={form.systemPrompt || ''}
                 onChange={(e) => update({ systemPrompt: e.target.value })}
                 placeholder="为这个角色设定专属的系统提示词，留空则使用预设中的系统提示词"
               />
               <p className="text-xs text-tavern-text-muted mt-1">留空则使用预设中的系统提示词</p>
+            </div>
+
+            {/* B-05 修复：预设和世界书绑定 */}
+            <div className="grid grid-cols-2 gap-4">
+              <PresetBinding value={form.boundPresetId ?? null} onChange={(id) => update({ boundPresetId: id })} />
+              <LorebookBinding value={form.boundLorebookIds ?? []} onChange={(ids) => update({ boundLorebookIds: ids })} />
             </div>
 
             {/* 首条消息 */}
@@ -578,6 +687,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 </button>
               </label>
               <textarea
+                ref={taFirstmsg.ref}
+                style={taFirstmsg.style}
                 className="textarea min-h-[120px] resize-y"
                 value={form.firstMessage}
                 onChange={(e) => update({ firstMessage: e.target.value })}
@@ -637,6 +748,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             <div>
               <label className="label">对话后指令</label>
               <textarea
+                ref={taPosthist.ref}
+                style={taPosthist.style}
                 className="textarea min-h-[60px] resize-y"
                 value={form.postHistoryInstructions || ''}
                 onChange={(e) => update({ postHistoryInstructions: e.target.value })}
@@ -699,6 +812,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 </button>
               </label>
               <textarea
+                ref={taExdialog.ref}
+                style={taExdialog.style}
                 className="textarea min-h-[100px] resize-y font-mono text-xs"
                 value={form.exampleDialog}
                 onChange={(e) => update({ exampleDialog: e.target.value })}

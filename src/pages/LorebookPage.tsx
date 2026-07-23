@@ -17,6 +17,7 @@ import {
   Copy,
   ChevronDown,
   ChevronUp,
+  X,
 } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import type { Lorebook, LoreEntry } from '../../shared/types'
@@ -185,7 +186,7 @@ export function LorebookPage() {
     const unbindChunk = window.api.ai.onChunk((data) => {
       if (data.requestId !== requestId) return
       result += data.text
-      setTranslateResult(result)
+      setTranslateResult(result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim())
     })
     const unbindDone = window.api.ai.onDone((doneId) => {
       if (doneId !== requestId) return
@@ -193,7 +194,14 @@ export function LorebookPage() {
       setTranslatingField(null)
       setTranslateResult(null)
       if (result.trim()) {
-        onApply(result.trim())
+        // 剥离 <thought> / <thinking> 标签，避免 AI 将思考过程混入翻译结果
+        const cleanResult = result
+          .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+          .trim()
+        if (cleanResult) {
+          onApply(cleanResult)
+        }
       }
     })
     const unbindError = window.api.ai.onError((data) => {
@@ -203,10 +211,11 @@ export function LorebookPage() {
       setTranslateResult(null)
     })
 
+    const targetLang = settings.translationTargetLang || '中文'
     window.api.ai.chat({
       requestId,
       messages: [
-        { role: 'system', content: '你是一个翻译助手。请将以下文本翻译成中文。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的标点符号风格。' },
+        { role: 'system', content: `你是一个翻译助手。请将以下文本翻译成${targetLang}。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的标点符号风格。` },
         { role: 'user', content: text },
       ],
       provider: profile.provider,
@@ -461,6 +470,24 @@ export function LorebookPage() {
                                 )}>
                                   {entry.content || '无内容'}
                                 </p>
+                                {/* 翻译内容展示 */}
+                                {entry.translation && (
+                                  <div className={cn(
+                                    'mt-1.5 pl-2 border-l-2 border-tavern-accent',
+                                    expandedEntries.has(entry.id) ? '' : 'line-clamp-2'
+                                  )}>
+                                    <span className="text-xs text-tavern-accent font-medium">翻译：</span>
+                                    <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
+                                      {entry.translation}
+                                    </p>
+                                  </div>
+                                )}
+                                {/* 翻译流式预览（条目列表） */}
+                                {translatingField?.key === `entry-${entry.id}` && translateResult !== null && (
+                                  <div className="mt-1.5 p-2 rounded bg-tavern-bg-hover border border-tavern-border-soft text-xs text-tavern-text-soft max-h-24 overflow-y-auto">
+                                    {translateResult || '...'}
+                                  </div>
+                                )}
                               </div>
                               <div className="flex items-center gap-3 mt-1.5 text-xs text-tavern-text-muted">
                                 <span>{POSITION_LABELS[entry.position]}</span>
@@ -488,12 +515,15 @@ export function LorebookPage() {
                                 <Pencil className="w-4 h-4" />
                               </button>
                               <button
-                                className="btn-ghost p-1.5"
-                                title="AI 翻译此条目"
+                                className={cn(
+                                  'btn-ghost p-1.5',
+                                  entry.translation && 'text-tavern-accent'
+                                )}
+                                title={entry.translation ? 'AI 翻译此条目（已有翻译）' : 'AI 翻译此条目'}
                                 disabled={!!translatingField || !entry.content}
                                 onClick={() => handleAiTranslate(entry.content, `entry-${entry.id}`, (translated) => {
                                   const entries = selected.entries.map((e) =>
-                                    e.id === entry.id ? { ...e, content: translated } : e
+                                    e.id === entry.id ? { ...e, translation: translated } : e
                                   )
                                   updateLorebook(selected.id, { entries })
                                 })}
@@ -571,7 +601,7 @@ export function LorebookPage() {
                             title="AI 翻译内容"
                             disabled={!!translatingField || !editingEntry.content}
                             onClick={() => handleAiTranslate(editingEntry.content, `edit-${editingEntry.id}`, (translated) => {
-                              setEditingEntry({ ...editingEntry, content: translated })
+                              setEditingEntry({ ...editingEntry, translation: translated })
                             })}
                           >
                             {translatingField?.key === `edit-${editingEntry.id}` ? (
@@ -585,6 +615,24 @@ export function LorebookPage() {
                         {translatingField?.key === `edit-${editingEntry.id}` && translateResult !== null && (
                           <div className="mt-1.5 p-2 rounded bg-tavern-bg-hover border border-tavern-border-soft text-xs text-tavern-text-soft max-h-24 overflow-y-auto">
                             {translateResult || '...'}
+                          </div>
+                        )}
+                        {/* 已有翻译结果展示 */}
+                        {editingEntry.translation && translatingField?.key !== `edit-${editingEntry.id}` && (
+                          <div className="mt-1.5 flex items-start gap-2 p-2 rounded bg-tavern-bg-hover border border-tavern-border-soft">
+                            <div className="flex-1 min-w-0">
+                              <span className="text-xs text-tavern-accent font-medium">翻译结果：</span>
+                              <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
+                                {editingEntry.translation}
+                              </p>
+                            </div>
+                            <button
+                              className="btn-ghost p-0.5 shrink-0 text-tavern-text-muted hover:text-tavern-danger"
+                              title="清除翻译"
+                              onClick={() => setEditingEntry({ ...editingEntry, translation: undefined })}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         )}
                       </div>

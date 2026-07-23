@@ -68,9 +68,10 @@ const characterApi: CharacterAPI = {
 // ---- 对话 ----
 const chatApi: ChatAPI = {
   listSessions: (characterId) => ipcRenderer.invoke('chat:listSessions', characterId),
-  createSession: (characterId, title) => ipcRenderer.invoke('chat:createSession', characterId, title),
+  createSession: (characterId, title, personaId, lorebookIds) => ipcRenderer.invoke('chat:createSession', characterId, title, personaId, lorebookIds),
   deleteSession: (characterId, sessionId) => ipcRenderer.invoke('chat:deleteSession', characterId, sessionId),
   renameSession: (characterId, sessionId, title) => ipcRenderer.invoke('chat:renameSession', characterId, sessionId, title),
+  updateSession: (characterId, sessionId, updates) => ipcRenderer.invoke('chat:updateSession', characterId, sessionId, updates),
   listMessages: (characterId, sessionId) => ipcRenderer.invoke('chat:listMessages', characterId, sessionId),
   saveMessage: (message) => ipcRenderer.invoke('chat:saveMessage', message),
   deleteMessage: (id, characterId, sessionId) => ipcRenderer.invoke('chat:deleteMessage', { id, characterId, sessionId }),

@@ -10,6 +10,12 @@ import { sanitizeApiKey } from '../utils/pathGuard'
 
 const log = createLogger('ai')
 
+/** B-05 修复：归一化思考标签，将 <thinking> 转为 <thought>（兼容部分模型原生的 thinking 标签） */
+function normalizeThoughtTags(text: string): string {
+  if (!text) return text
+  return text.replace(/<thinking([\s>])/gi, '<thought$1').replace(/<\/thinking>/gi, '</thought>')
+}
+
 /** 默认请求超时时间（毫秒）- 5 分钟 */
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -132,7 +138,9 @@ const openaiAdapter: AIAdapter = {
       const content = data.choices?.[0]?.message?.content ?? ''
       // 处理推理模型的 reasoning_content（DeepSeek-R1 等）
       const reasoning = data.choices?.[0]?.message?.reasoning_content
-      const fullContent = reasoning ? `<thought>${reasoning}</thought>\n\n${content}` : content
+      let fullContent = reasoning ? `<thought>${reasoning}</thought>\n\n${content}` : content
+      // B-05 修复：归一化内容中可能含有的 <thinking> 标签
+      fullContent = normalizeThoughtTags(fullContent)
       onChunk(fullContent)
       // 解析 usage
       if (onUsage && data.usage) {
@@ -242,9 +250,9 @@ const openaiAdapter: AIAdapter = {
     // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
     if (streamedToolCalls.size > 0) {
       const toolCallsArray = Array.from(streamedToolCalls.values())
-      return fullText + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+      return normalizeThoughtTags(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
     }
-    return fullText
+    return normalizeThoughtTags(fullText)
   },
 
   async listModels(baseUrl, apiKey) {
@@ -362,9 +370,9 @@ const claudeAdapter: AIAdapter = {
       }
       // C-03 修复：如有 tool_use，附加标记供 toolLoop 解析
       if (rawToolCalls.length > 0) {
-        return content + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']'
+        return normalizeThoughtTags(content) + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']'
       }
-      return content
+      return normalizeThoughtTags(content)
     }
 
     const reader = response.body?.getReader()
@@ -465,9 +473,9 @@ const claudeAdapter: AIAdapter = {
     // C-03 修复：如有 tool_use，附加标记供 toolLoop 解析
     if (streamedToolCalls.size > 0) {
       const toolCallsArray = Array.from(streamedToolCalls.values())
-      return fullText + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+      return normalizeThoughtTags(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
     }
-    return fullText
+    return normalizeThoughtTags(fullText)
   },
 
   async listModels(baseUrl, apiKey) {
@@ -579,9 +587,9 @@ const geminiAdapter: AIAdapter = {
       }
       // C-03 修复：如有 functionCall，附加标记供 toolLoop 解析
       if (rawToolCalls.length > 0) {
-        return text + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']'
+        return normalizeThoughtTags(text) + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']'
       }
-      return text
+      return normalizeThoughtTags(text)
     }
 
     // 修复 #38: 改进的 Gemini 流式解析
@@ -708,9 +716,9 @@ const geminiAdapter: AIAdapter = {
     // C-03 修复：如有 functionCall，附加标记供 toolLoop 解析
     if (geminiFnCalls.size > 0) {
       const toolCallsArray = Array.from(geminiFnCalls.values())
-      return fullText + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+      return normalizeThoughtTags(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
     }
-    return fullText
+    return normalizeThoughtTags(fullText)
   },
 
   async listModels(baseUrl, apiKey) {
@@ -835,9 +843,9 @@ const ollamaAdapter: AIAdapter = {
       // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
       const toolCalls = data.message?.tool_calls
       if (toolCalls && toolCalls.length > 0) {
-        return content + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']'
+        return normalizeThoughtTags(content) + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']'
       }
-      return content
+      return normalizeThoughtTags(content)
     }
 
     const reader = response.body?.getReader()
@@ -887,9 +895,9 @@ const ollamaAdapter: AIAdapter = {
     }
     // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
     if (streamedToolCalls && streamedToolCalls.length > 0) {
-      return fullText + '[TOOL_CALL:' + JSON.stringify(streamedToolCalls) + ']'
+      return normalizeThoughtTags(fullText) + '[TOOL_CALL:' + JSON.stringify(streamedToolCalls) + ']'
     }
-    return fullText
+    return normalizeThoughtTags(fullText)
   },
 
   async listModels(baseUrl, _apiKey) {

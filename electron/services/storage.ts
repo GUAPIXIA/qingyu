@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync, rmSync, renameSync } from 'node:fs'
-import type { Settings } from '../../shared/types'
+import { getDefaultSettings } from '../../shared/defaults'
 
 const APP_NAME = '轻语'
 
@@ -30,45 +30,6 @@ export async function ensureDataDir(): Promise<void> {
   const settingsPath = join(DIRS.config(), 'settings.json')
   if (!existsSync(settingsPath)) {
     writeFileSync(settingsPath, JSON.stringify(getDefaultSettings(), null, 2), 'utf-8')
-  }
-}
-
-/** 默认设置 */
-export function getDefaultSettings(): Settings {
-  return {
-    activeProvider: 'openai',
-    providers: {
-      openai: { type: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-      claude: { type: 'claude', baseUrl: 'https://api.anthropic.com', model: 'claude-3-5-sonnet-20241022' },
-      gemini: { type: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com', model: 'gemini-1.5-flash' },
-      ollama: { type: 'ollama', baseUrl: 'http://localhost:11434', model: 'llama3.2' },
-    },
-    connectionProfiles: [],
-    activeProfileId: null,
-    activeModel: 'gpt-4o-mini',
-    activePresetId: null,
-    activeCharacterId: null,
-    theme: 'dark',
-    themeColor: 'amber',
-    fontSize: 'comfortable',
-    fontSizeCustom: 0,
-    bubbleStyle: 'round',
-    messageSpacing: 20,
-    streamOutput: true,
-    autoScroll: true,
-    ttsEnabled: false,
-    ttsModels: [],
-    activeTTSModelId: null,
-    imageGenModels: [],
-    activeImageGenModelId: null,
-    visionModels: [],
-    activeVisionModelId: null,
-    userName: '用户',
-    userDescription: '',
-    userPersona: '',
-    activePersonaId: null,
-    htmlRendering: false,
-    showTokenCount: true,
   }
 }
 

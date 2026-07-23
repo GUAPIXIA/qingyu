@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2 } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock } from 'lucide-react'
 import type { Preset, Lorebook } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { useCharacterStore } from '../../store/useCharacterStore'
+import { lorebookCache, getEffectiveLorebookIds } from '../../utils/lorebook'
 import { cn } from '../../lib/utils'
 
 interface QuickSettingsPanelProps {
@@ -16,16 +18,47 @@ const IMAGE_GEN_SIZES = [
 ]
 
 export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
-  const { activePresetId, activeLorebookIds, setActivePreset, setActiveLorebooks } = useChatStore()
+  const { activePresetId, activeLorebookIds, setActivePreset, setActiveLorebooks, saveLorebookBinding } = useChatStore()
   const { settings, updateSettings } = useSettingsStore()
+  const currentCharacter = useCharacterStore(s => s.currentCharacter)
+  const currentCharId = currentCharacter?.id
   const [presets, setPresets] = useState<Preset[]>([])
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
   const [lorebookExpanded, setLorebookExpanded] = useState(false)
   const [lorebookSearch, setLorebookSearch] = useState('')
 
+  // 计算角色绑定的世界书 ID 列表
+  const boundLorebookIds = useMemo(() => {
+    return getEffectiveLorebookIds(currentCharacter)
+  }, [currentCharacter?.boundLorebookIds, currentCharacter?.lorebookId])
+
+  // 区分绑定和手动选择的世界书
+  const manualLorebookIds = useMemo(
+    () => activeLorebookIds.filter(id => !boundLorebookIds.includes(id)),
+    [activeLorebookIds, boundLorebookIds],
+  )
+
+  // 组件挂载时预加载世界书（确保绑定芯片始终有名称）
   useEffect(() => {
+    window.api.lorebook.list().then((lbs) => {
+      setLorebooks(lbs)
+      for (const lb of lbs) { lorebookCache.set(lb.id, lb) }
+    }).catch(() => {})
+  }, [])
+
+  // 面板打开时刷新预设和世界书（获取最新数据）
+  useEffect(() => {
+    if (!open) return
     window.api.preset.list().then(setPresets)
-    window.api.lorebook.list().then(setLorebooks)
+    window.api.lorebook.list().then((lbs) => {
+      setLorebooks(lbs)
+      for (const lb of lbs) { lorebookCache.set(lb.id, lb) }
+      // 移除已禁用的世界书从激活列表
+      const disabledIds = lbs.filter(lb => !lb.enabled).map(lb => lb.id)
+      if (disabledIds.some(id => activeLorebookIds.includes(id))) {
+        setActiveLorebooks(activeLorebookIds.filter(id => !disabledIds.includes(id)), currentCharId)
+      }
+    })
   }, [open])
 
   const profile = useSettingsStore.getState().getActiveProfile()
@@ -73,7 +106,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
             <select
               className="input text-xs"
               value={activePresetId ?? ''}
-              onChange={(e) => setActivePreset(e.target.value || null)}
+              onChange={(e) => setActivePreset(e.target.value || null, currentCharId)}
             >
               <option value="">默认</option>
               {presets.map((p) => (
@@ -141,38 +174,57 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
               <>
                 {/* 已选中芯片 + 展开按钮 */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {activeLorebookIds.length === 0 ? (
-                    <button
-                      onClick={() => setLorebookExpanded(!lorebookExpanded)}
-                      className="text-xs text-tavern-text-muted hover:text-tavern-text transition-colors"
-                    >
-                      选择世界书 ({lorebooks.length})
-                      <ChevronDown className={cn('w-3 h-3 ml-0.5 inline transition-transform', lorebookExpanded && 'rotate-180')} />
-                    </button>
-                  ) : (
-                    <>
-                      {activeLorebookIds.map(id => {
-                        const lb = lorebooks.find(l => l.id === id)
-                        return lb ? (
-                          <span key={id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] bg-tavern-accent-soft text-tavern-accent border border-tavern-accent/20">
-                            {lb.name}
-                            <button
-                              className="hover:text-tavern-danger transition-colors"
-                              onClick={() => setActiveLorebooks(activeLorebookIds.filter(i => i !== id))}
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ) : null
-                      })}
-                      <button
-                        onClick={() => setLorebookExpanded(!lorebookExpanded)}
-                        className="text-[11px] text-tavern-text-muted hover:text-tavern-text transition-colors ml-0.5"
+                  {/* 角色绑定的世界书 — 始终显示，不受 activeLorebookIds 影响 */}
+                  {boundLorebookIds.map(id => {
+                    const lb = lorebooks.find(l => l.id === id)
+                    if (!lb) return null
+                    const isActive = activeLorebookIds.includes(id)
+                    return (
+                      <span
+                        key={id}
+                        className={cn(
+                          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] border transition-colors',
+                          isActive
+                            ? 'bg-tavern-accent-soft text-tavern-accent border-tavern-accent/20'
+                            : 'bg-tavern-bg-soft text-tavern-text-muted border-tavern-border-soft'
+                        )}
                       >
-                        {lorebookExpanded ? '收起' : `+${lorebooks.length - activeLorebookIds.length}`}
-                      </button>
-                    </>
-                  )}
+                        <Lock className="w-2.5 h-2.5 shrink-0" />
+                        <span className="max-w-[80px] truncate">{lb.name}</span>
+                        {!isActive && (
+                          <button
+                            className="text-tavern-text-muted hover:text-tavern-accent transition-colors"
+                            onClick={() => setActiveLorebooks([...activeLorebookIds, id], currentCharId)}
+                            title="激活此世界书"
+                          >
+                            <ChevronDown className="w-2.5 h-2.5 rotate-[-90deg]" />
+                          </button>
+                        )}
+                      </span>
+                    )
+                  })}
+                  {/* 手动选择的世界书 */}
+                  {manualLorebookIds.map(id => {
+                    const lb = lorebooks.find(l => l.id === id)
+                    return lb ? (
+                      <span key={id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] bg-tavern-bg-soft text-tavern-text-soft border border-tavern-border-soft">
+                        {lb.name}
+                        <button
+                          className="hover:text-tavern-danger transition-colors"
+                          onClick={() => setActiveLorebooks(activeLorebookIds.filter(i => i !== id), currentCharId)}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ) : null
+                  })}
+                  <button
+                    onClick={() => setLorebookExpanded(!lorebookExpanded)}
+                    className="text-[11px] text-tavern-text-muted hover:text-tavern-text transition-colors ml-0.5"
+                  >
+                    {lorebookExpanded ? '收起' : `选择世界书${activeLorebookIds.length > 0 ? ` (+${lorebooks.filter(lb => lb.enabled).length - activeLorebookIds.length})` : ` (${lorebooks.filter(lb => lb.enabled).length})`}`}
+                    <ChevronDown className={cn('w-3 h-3 ml-0.5 inline transition-transform', lorebookExpanded && 'rotate-180')} />
+                  </button>
                 </div>
 
                 {/* 展开的搜索+列表 */}
@@ -195,16 +247,17 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                       </div>
                     )}
                     <div className="max-h-40 overflow-y-auto -mx-0.5 px-0.5 space-y-0.5">
-                      {lorebooks.filter(lb => !lorebookSearch || lb.name.toLowerCase().includes(lorebookSearch.toLowerCase())).map(lb => {
+                      {lorebooks.filter(lb => lb.enabled && (!lorebookSearch || lb.name.toLowerCase().includes(lorebookSearch.toLowerCase()))).map(lb => {
                         const checked = activeLorebookIds.includes(lb.id)
+                        const isBound = boundLorebookIds.includes(lb.id)
                         return (
                           <button
                             key={lb.id}
                             onClick={() => {
                               if (checked) {
-                                setActiveLorebooks(activeLorebookIds.filter(id => id !== lb.id))
+                                setActiveLorebooks(activeLorebookIds.filter(id2 => id2 !== lb.id), currentCharId)
                               } else {
-                                setActiveLorebooks([...activeLorebookIds, lb.id])
+                                setActiveLorebooks([...activeLorebookIds, lb.id], currentCharId)
                               }
                             }}
                             className={cn(
@@ -214,19 +267,40 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                           >
                             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', checked ? 'bg-tavern-accent' : 'bg-tavern-border')} />
                             <span className="truncate flex-1">{lb.name}</span>
+                            {isBound && <Lock className="w-2.5 h-2.5 text-tavern-accent/60 shrink-0" />}
                             <span className="text-[10px] text-tavern-text-muted shrink-0 tabular-nums">{lb.entries.length}条</span>
                           </button>
                         )
                       })}
                     </div>
+                    {boundLorebookIds.length > 0 && (
+                      <p className="text-[10px] text-tavern-text-muted flex items-center gap-1 pt-0.5">
+                        <Lock className="w-2.5 h-2.5 shrink-0" />
+                        标注锁图标的为角色绑定的世界书，切换角色时自动激活
+                      </p>
+                    )}
                     {activeLorebookIds.length > 0 && (
                       <button
                         className="text-[11px] text-tavern-text-muted hover:text-tavern-danger transition-colors"
-                        onClick={() => setActiveLorebooks([])}
+                        onClick={() => setActiveLorebooks([], currentCharId)}
                       >
                         清除全部 ({activeLorebookIds.length})
                       </button>
                     )}
+                    {/* 当前选择与角色默认不同时，显示"保存为默认"按钮 */}
+                    {currentCharId && activeLorebookIds.length > 0 && (() => {
+                      const boundSet = new Set(boundLorebookIds)
+                      const activeSet = new Set(activeLorebookIds)
+                      const differs = boundSet.size !== activeSet.size || [...boundSet].some(id => !activeSet.has(id))
+                      return differs ? (
+                        <button
+                          className="text-[11px] text-tavern-accent hover:text-tavern-accent-hover transition-colors ml-2"
+                          onClick={() => saveLorebookBinding(currentCharId, activeLorebookIds)}
+                        >
+                          保存为默认 ({activeLorebookIds.length})
+                        </button>
+                      ) : null
+                    })()}
                   </div>
                 )}
               </>

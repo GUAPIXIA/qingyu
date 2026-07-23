@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react'
-import { Heart, MapPin, Smile } from 'lucide-react'
-import type { Character, Message } from '../../../shared/types'
+import { useState, useEffect, useMemo } from 'react'
+import { Heart, MapPin, Smile, BookOpen, Lock } from 'lucide-react'
+import { useChatStore } from '../../store/useChatStore'
+import { useCharacterStore } from '../../store/useCharacterStore'
+import { getEffectiveLorebookIds } from '../../utils/lorebook'
+import type { Character, Message, Lorebook } from '../../../shared/types'
 
 interface StatusBarProps {
   character: Character
@@ -49,15 +52,55 @@ function parseStatusFromMessages(messages: Message[]): StatusItem[] {
 
 export function StatusBar({ character, messages }: StatusBarProps) {
   const [statusItems, setStatusItems] = useState<StatusItem[]>([])
+  const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
+  const activeLorebookIds = useChatStore(s => s.activeLorebookIds)
+  const currentCharacter = useCharacterStore(s => s.currentCharacter)
 
   useEffect(() => {
     setStatusItems(parseStatusFromMessages(messages))
   }, [messages])
 
-  if (statusItems.length === 0) return null
+  // 加载世界书列表：角色切换 或 激活数量变化时重新加载
+  useEffect(() => {
+    window.api.lorebook.list().then(setLorebooks).catch(() => {})
+  }, [character.id, activeLorebookIds.length])
+
+  // 角色绑定的世界书 ID
+  const boundLorebookIds = useMemo(() => {
+    return getEffectiveLorebookIds(currentCharacter)
+  }, [currentCharacter?.boundLorebookIds, currentCharacter?.lorebookId])
+
+  // 解析激活的世界书名称
+  const activeLorebookNames = useMemo(() => {
+    return activeLorebookIds
+      .map(id => {
+        const lb = lorebooks.find(l => l.id === id)
+        return lb ? { id, name: lb.name, isBound: boundLorebookIds.includes(id) } : null
+      })
+      .filter(Boolean) as { id: string; name: string; isBound: boolean }[]
+  }, [activeLorebookIds, boundLorebookIds, lorebooks])
+
+  if (statusItems.length === 0 && activeLorebookNames.length === 0) return null
 
   return (
     <div className="flex items-center gap-3 px-4 py-2 border-b border-tavern-border-soft bg-tavern-bg-soft overflow-x-auto">
+      {/* 激活的世界书 — 直接可见，绑定世界书带锁图标 */}
+      {activeLorebookNames.map(lb => (
+        <div key={lb.id} className="flex items-center gap-1 text-xs whitespace-nowrap">
+          {lb.isBound ? (
+            <Lock className="w-3 h-3 text-tavern-accent" />
+          ) : (
+            <BookOpen className="w-3 h-3 text-tavern-text-muted" />
+          )}
+          <span className={lb.isBound ? 'text-tavern-accent font-medium' : 'text-tavern-text-muted'}>
+            {lb.name}
+          </span>
+        </div>
+      ))}
+      {/* 状态项分隔符 */}
+      {activeLorebookNames.length > 0 && statusItems.length > 0 && (
+        <span className="w-px h-4 bg-tavern-border-soft" />
+      )}
       {statusItems.map((item, i) => {
         const Icon = item.icon
         return (

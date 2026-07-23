@@ -102,12 +102,12 @@ export function Sidebar() {
         )}
       >
         {sidebarCollapsed ? (
-          <span className="text-lg font-medium text-black">轻</span>
+          <span className="text-lg font-medium text-tavern-text">轻</span>
         ) : (
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xl leading-tight font-medium text-black">轻语</span>
-              <span className="text-[10px] leading-none text-black/30">B站:超级本大王</span>
+              <span className="text-xl leading-tight font-medium text-tavern-text">轻语</span>
+              <span className="text-[10px] leading-none text-tavern-text-muted/50">B站:超级本大王</span>
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               <button
@@ -116,7 +116,7 @@ export function Sidebar() {
                   'flex items-center gap-1 text-[10px] leading-none transition-colors',
                   hasUpdate
                     ? 'text-tavern-accent hover:opacity-80 cursor-pointer'
-                    : 'text-black/60'
+                    : 'text-tavern-text-muted'
                 )}
                 title={hasUpdate ? `新版本 v${serverVersion} 可用，点击下载` : undefined}
               >
@@ -126,13 +126,13 @@ export function Sidebar() {
                 )}
               </button>
               {showServerVersion && (
-                <span className="text-[10px] text-black/40 leading-none">
+                <span className="text-[10px] text-tavern-text-muted/60 leading-none">
                   → v{serverVersion}
                 </span>
               )}
               <button
                 onClick={handleOpenGithub}
-                className="flex items-center gap-0.5 text-[10px] text-black/40 hover:text-tavern-accent transition-colors leading-none"
+                className="flex items-center gap-0.5 text-[10px] text-tavern-text-muted/60 hover:text-tavern-accent transition-colors leading-none"
                 title="前往 GitHub 主页"
               >
                 <ExternalLink className="w-2.5 h-2.5" />

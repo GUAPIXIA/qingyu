@@ -58,9 +58,10 @@ export interface CharacterAPI {
 // ===================== 对话接口 =====================
 export interface ChatAPI {
   listSessions(characterId: string): Promise<SessionPreview[]>
-  createSession(characterId: string, title?: string): Promise<ChatSession>
+  createSession(characterId: string, title?: string, personaId?: string | null, lorebookIds?: string[]): Promise<ChatSession>
   deleteSession(characterId: string, sessionId: string): Promise<void>
   renameSession(characterId: string, sessionId: string, title: string): Promise<void>
+  updateSession(characterId: string, sessionId: string, updates: Record<string, unknown>): Promise<ChatSession>
   listMessages(characterId: string, sessionId?: string): Promise<Message[]>
   saveMessage(message: Message): Promise<void>
   deleteMessage(id: string, characterId: string, sessionId?: string): Promise<void>

@@ -1,6 +1,7 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
-import { DIRS, writeJson, readJson, getDefaultSettings } from '../services/storage'
+import { DIRS, writeJson, readJson } from '../services/storage'
+import { getDefaultSettings } from '../../shared/defaults'
 import { saveCredential, getCredential } from '../services/safeStorage'
 import { createLogger } from '../services/logger'
 import type { Settings } from '../../shared/types'

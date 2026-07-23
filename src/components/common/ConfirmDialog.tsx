@@ -3,7 +3,7 @@ import { Modal } from './Modal'
 interface ConfirmDialogProps {
   open: boolean
   onClose: () => void
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
   title: string
   message: string
   confirmText?: string
@@ -30,8 +30,8 @@ export function ConfirmDialog({
         </button>
         <button
           className={danger ? 'btn-danger' : 'btn-primary'}
-          onClick={() => {
-            onConfirm()
+          onClick={async () => {
+            await onConfirm()
             onClose()
           }}
         >

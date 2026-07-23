@@ -22,7 +22,8 @@ import {
   type UsageGroupBy,
   type UsageFilter,
 } from '../services/usage'
-import { DIRS, readJson, getDefaultSettings } from '../services/storage'
+import { DIRS, readJson } from '../services/storage'
+import { getDefaultSettings } from '../../shared/defaults'
 import { createLogger } from '../services/logger'
 import type { Settings, UsageRecord, PricingRule } from '../../shared/types'
 
