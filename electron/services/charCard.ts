@@ -659,7 +659,8 @@ export function saveCharacter(character: Character): void {
   }
 
   // JSON 中不存 base64，只存空字符串（图片从文件读取）
-  const { avatar, cover, ...rest } = character
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { avatar: _avatar, cover: _cover, ...rest } = character
   writeJson(filePath, { ...rest, avatar: '', cover: '' })
 }
 

@@ -39,6 +39,8 @@ interface SettingsState {
   _saveTimer: ReturnType<typeof setTimeout> | null
   loadSettings: () => Promise<void>
   saveSettings: () => Promise<void>
+  /** 立即刷新待保存的设置到磁盘（绕过防抖） */
+  flushSettings: () => void
   updateSettings: (partial: Partial<Settings>) => void
   setActiveProvider: (provider: ProviderType) => void
   saveCredential: (provider: string, key: string) => Promise<void>
@@ -89,7 +91,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
 
     // 旧数据迁移：如果 profiles 为空但有旧版 provider 配置，自动创建 profile
-    let profiles = settings.connectionProfiles || []
+    const profiles = settings.connectionProfiles || []
     if (profiles.length === 0 && settings.providers) {
       const defaultProviders: ProviderType[] = ['openai', 'claude', 'gemini', 'ollama']
       const defaultMaxContext: Record<string, number> = {
@@ -204,6 +206,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     await window.api.settings.save(get().settings)
   },
 
+  /** 立即刷新待保存的设置到磁盘（绕过防抖），用于 app 退出前 */
+  flushSettings: () => {
+    const self = get()
+    if (self._saveTimer) {
+      clearTimeout(self._saveTimer)
+      set({ _saveTimer: null })
+    }
+    window.api.settings.save(get().settings).catch(() => {})
+  },
+
   updateSettings: (partial) => {
     set((state) => ({
       settings: { ...state.settings, ...partial },
@@ -258,28 +270,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   addProfile: (input) => {
-    set((state) => ({
-      settings: {
-        ...state.settings,
-        connectionProfiles: [
-          ...state.settings.connectionProfiles,
-          { ...input, id: nanoid() },
-        ],
-        // 如果是第一个 profile，自动设为 active
-        activeProfileId: state.settings.connectionProfiles.length === 0 && !state.settings.activeProfileId
-          ? null  // 会在下面的逻辑中处理
-          : state.settings.activeProfileId,
-      },
-    }))
-    const st = get()
-    if (st.settings.connectionProfiles.length === 1 && !st.settings.activeProfileId) {
-      set((state) => ({
+    const newProfile = { ...input, id: nanoid() }
+    set((state) => {
+      const profiles = [...state.settings.connectionProfiles, newProfile]
+      // 如果是第一个 profile，自动设为 active
+      const isFirst = state.settings.connectionProfiles.length === 0 && !state.settings.activeProfileId
+      return {
         settings: {
           ...state.settings,
-          activeProfileId: state.settings.connectionProfiles[0].id,
+          connectionProfiles: profiles,
+          activeProfileId: isFirst ? newProfile.id : state.settings.activeProfileId,
         },
-      }))
-    }
+      }
+    })
     get().saveSettings().catch(() => {})
   },
 

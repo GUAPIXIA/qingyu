@@ -21,8 +21,6 @@ import {
   Megaphone,
   ExternalLink,
 } from 'lucide-react'
-import { PROVIDER_INFO } from '../../utils/defaults'
-
 const navItems = [
   { to: '/chat', label: '对话', icon: MessageSquare },
   { to: '/characters', label: '角色卡', icon: Users },
@@ -41,7 +39,7 @@ const navItems = [
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
-  const { settings, getActiveProfile } = useSettingsStore()
+  const { getActiveProfile } = useSettingsStore()
 
   const activeProfile = getActiveProfile()
   const isConnected = activeProfile !== null && (activeProfile.provider === 'ollama' || !!activeProfile.apiKey)

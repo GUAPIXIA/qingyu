@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid'
 import { useSettingsStore } from './useSettingsStore'
 import { usePersonaStore } from './usePersonaStore'
 import { useCharacterStore } from './useCharacterStore'
-import { estimateTokens } from '../utils/tokenCounter'
+import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
 import { getInstructTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
@@ -32,23 +32,6 @@ const STREAM_TIMEOUT_FALLBACK_MS = 5 * 60 * 1000
 // ===================== 工具函数 =====================
 
 /** 按模型名推断默认最大上下文长度 */
-function getDefaultMaxContext(model?: string): number {
-  if (!model) return 32768
-  const m = model.toLowerCase()
-  if (m.includes('gpt-4o') || m.includes('gpt-4.1') || m.includes('gpt-4-turbo')) return 128000
-  if (m.includes('gpt-3.5')) return 16385
-  if (m.includes('claude-3.5') || m.includes('claude-3-5') || m.includes('claude-3') ||
-      m.includes('claude-4') || m.includes('claude-opus') || m.includes('claude-sonnet') ||
-      m.includes('claude-haiku')) return 200000
-  if (m.includes('gemini-1.5') || m.includes('gemini-2')) return 1048576
-  if (m.includes('deepseek')) return 64000
-  if (m.includes('qwen')) return 32768
-  if (m.includes('llama-3') || m.includes('llama3')) return 32768
-  if (m.includes('kimi') || m.includes('moonshot')) return 131072
-  if (m.includes('glm')) return 131072
-  return 32768
-}
-
 /** 将原始 API 错误转换为用户友好的中文提示 */
 function friendlyError(error: string): string {
   if (!error) return '未知错误'
@@ -115,6 +98,8 @@ interface ChatState {
   regenerateMessage: (messageId: string, character: Character, preset: Preset | null, lorebooks: Lorebook[]) => Promise<void>
   /** 切换消息的 Swipe 候选 */
   swipeMessage: (messageId: string, direction: number, character: Character) => Promise<void>
+  /** 继续续写：让 AI 从截断处继续生成，追加到现有消息末尾 */
+  continueMessage: (messageId: string, character: Character, preset: Preset | null, lorebooks: Lorebook[]) => Promise<void>
   editMessage: (messageId: string, newContent: string, character: Character) => Promise<void>
   /** 更新消息的图片（用于重新生图） */
   updateMessageImages: (messageId: string, images: string[]) => Promise<void>
@@ -148,6 +133,7 @@ interface StreamState {
   requestId: string
   aiMessageId: string
   accumulated: string
+  preContent?: string  // 续写模式下的已有内容，flush 时拼接到 accumulated 前面
   flushTimer: ReturnType<typeof setTimeout> | null
   unbindChunk: () => void
   unbindDone: () => void
@@ -174,7 +160,7 @@ function flushStream(set: StoreSet) {
     const idx = msgs.findIndex((m) => m.id === aiMessageId)
     if (idx < 0) return {}
     const newMsgs = msgs.slice()
-    newMsgs[idx] = { ...newMsgs[idx], content: accumulated }
+    newMsgs[idx] = { ...newMsgs[idx], content: (activeStream.preContent ?? '') + accumulated }
     return { messages: newMsgs }
   })
 }
@@ -211,6 +197,7 @@ async function streamAIResponse(
     aiMessageId: string
     character: Character
     preset: Preset | null
+    preContent?: string  // 续写模式下的前置内容，flush 时拼接到新内容前面
     onComplete: (fullContent: string) => Promise<void>
     onError?: (errMsg: string) => void
   },
@@ -327,6 +314,7 @@ async function streamAIResponse(
     requestId,
     aiMessageId,
     accumulated: '',
+    preContent: opts.preContent,
     flushTimer: null,
     unbindChunk,
     unbindDone,
@@ -397,8 +385,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadSessions: async (characterId) => {
     const sessions = await window.api.chat.listSessions(characterId)
-    const currentId = sessions[0]?.id ?? null
+    // 恢复上次打开的会话：直接从磁盘读取，避免与 loadSettings 竞态
+    let savedSessionId = useSettingsStore.getState().settings.activeSessionId
+    if (!savedSessionId) {
+      const freshSettings = await window.api.settings.get()
+      savedSessionId = freshSettings.activeSessionId ?? null
+    }
+    const savedSessionExists = savedSessionId && sessions.some(s => s.id === savedSessionId)
+    const currentId = savedSessionExists ? savedSessionId : (sessions[0]?.id ?? null)
     set({ sessions, currentSessionId: currentId })
+    // 持久化当前会话 ID，确保重启后能恢复上次的会话
+    if (currentId && currentId !== savedSessionId) {
+      useSettingsStore.getState().updateSettings({ activeSessionId: currentId })
+    }
     // 同步 persona 到 settings
     if (currentId) {
       const session = sessions.find(s => s.id === currentId)
@@ -424,6 +423,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // 刷新会话列表
     const sessions = await window.api.chat.listSessions(characterId)
     set({ sessions, currentSessionId: session.id, messages: [], activeLorebookIds: initLorebookIds })
+    // 持久化当前会话 ID
+    useSettingsStore.getState().updateSettings({ activeSessionId: session.id })
     return session
   },
 
@@ -433,6 +434,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const session = await window.api.chat.createSession(character.id, undefined, undefined, initLorebookIds)
     const sessions = await window.api.chat.listSessions(character.id)
     set({ sessions, currentSessionId: session.id, messages: [], activeLorebookIds: initLorebookIds })
+    // 持久化当前会话 ID
+    useSettingsStore.getState().updateSettings({ activeSessionId: session.id })
 
     const g = greeting ?? character.firstMessage
     if (g) {
@@ -478,6 +481,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       get().stopStreaming()
     }
     set({ currentSessionId: sessionId })
+    // 持久化当前会话 ID
+    useSettingsStore.getState().updateSettings({ activeSessionId: sessionId })
     // 重新加载消息
     const currentLoadId = ++loadRequestId
     set({ messages: [] })
@@ -533,6 +538,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     // 先 await 完成后再 set（修复 set 内部 await 反模式）
     set({ sessions: newSessions, currentSessionId: newSessionId, messages: newMessages })
+    // 持久化新的当前会话 ID
+    useSettingsStore.getState().updateSettings({ activeSessionId: newSessionId })
   },
 
   /** 删除指定会话（不再绕过 store） */
@@ -551,6 +558,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         newMessages = await window.api.chat.listMessages(characterId, newSid)
       }
       set({ sessions: newSessions, currentSessionId: newSid, messages: newMessages })
+      // 持久化新的当前会话 ID
+      useSettingsStore.getState().updateSettings({ activeSessionId: newSid })
     } else {
       set({ sessions: newSessions })
     }
@@ -676,8 +685,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     let sessionId = get().currentSessionId
     if (!sessionId) {
       const sessions = await window.api.chat.listSessions(character.id)
-      sessionId = sessions[0]?.id ?? null
+      // 恢复上次打开的会话：直接从磁盘读取
+      let savedSessionId = useSettingsStore.getState().settings.activeSessionId
+      if (!savedSessionId) {
+        const freshSettings = await window.api.settings.get()
+        savedSessionId = freshSettings.activeSessionId ?? null
+      }
+      const savedSessionExists = savedSessionId && sessions.some(s => s.id === savedSessionId)
+      sessionId = savedSessionExists ? savedSessionId : (sessions[0]?.id ?? null)
       set({ sessions, currentSessionId: sessionId })
+      // 持久化当前会话 ID，确保重启后能恢复
+      if (sessionId && sessionId !== savedSessionId) {
+        useSettingsStore.getState().updateSettings({ activeSessionId: sessionId })
+      }
     }
 
     if (!sessionId) {
@@ -826,8 +846,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         } catch { /* 忽略 */ }
 
         // 更新 UI 中的消息内容
+        const currentMsg = get().messages.find(m => m.id === aiMessageId) ?? aiMessage
         const finalMsg: Message = {
-          ...aiMessage,
+          ...currentMsg,
           content: finalContent,
         }
         set((s) => ({
@@ -1007,6 +1028,99 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
   },
 
+  /** 继续续写：让 AI 从截断处继续生成，创建新消息气泡 */
+  continueMessage: async (messageId, character, preset, _lorebooks) => {
+    // 流式中拒绝
+    if (get().isStreaming) {
+      set({ error: '正在生成回复中，请稍候' })
+      return
+    }
+
+    const messages = get().messages
+    const idx = messages.findIndex((m) => m.id === messageId)
+    if (idx < 0) return
+    const targetMsg = messages[idx]
+    if (targetMsg.role !== 'assistant') return
+
+    // 确保是最后一条消息
+    if (idx !== messages.length - 1) return
+
+    // 创建新的 AI 消息气泡（不复用原消息）
+    const newMsgId = nanoid()
+    const newMessage: Message = {
+      id: newMsgId,
+      sessionId: targetMsg.sessionId,
+      characterId: character.id,
+      role: 'assistant',
+      content: '',
+      images: [],
+      isEditing: false,
+      timestamp: Date.now(),
+    }
+
+    set((state) => ({
+      messages: [...state.messages, newMessage],
+      isStreaming: true,
+      streamingContent: '',
+      error: null,
+    }))
+
+    // 调用公共流式方法（流式到新消息，原消息保持不变）
+    await streamAIResponse(set, get, {
+      aiMessageId: newMsgId,
+      character,
+      preset,
+      onComplete: async (newContent) => {
+        if (!newContent) {
+          // 无新内容，移除占位消息
+          set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))
+          return
+        }
+
+        // 应用正则规则
+        let finalContent = newContent
+        try {
+          const regexRules = await window.api.regex.list()
+          if (regexRules.length > 0) {
+            finalContent = get().applyRegex(newContent, 'output', regexRules)
+          }
+        } catch { /* 忽略 */ }
+
+        const curMsg = get().messages.find(m => m.id === newMsgId)
+        if (!curMsg) return
+
+        const finalMsg: Message = {
+          ...curMsg,
+          content: finalContent,
+        }
+
+        set((s) => ({
+          messages: s.messages.map(m => m.id === newMsgId ? finalMsg : m),
+        }))
+        window.api.chat.saveMessage(finalMsg).catch(() => {})
+
+        // 自动长记忆检查
+        const { sessions: curSessions, currentSessionId: curSid } = get()
+        const curSession = curSessions.find(s => s.id === curSid)
+        if (curSession?.memoryEnabled && curSession.memoryMode === 'auto') {
+          const allMsgs = get().messages.filter(m => m.content)
+          const lastSummaryTime = curSession.memoryUpdatedAt || 0
+          const newMsgCount = lastSummaryTime > 0
+            ? allMsgs.filter(m => m.timestamp > lastSummaryTime).length
+            : allMsgs.length
+          const interval = curSession.autoMemoryInterval || 10
+          if (newMsgCount >= interval) {
+            get().triggerMemorySummary(character).catch(() => {})
+          }
+        }
+      },
+      onError: (_errMsg) => {
+        // 出错时移除占位消息
+        set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))
+      },
+    })
+  },
+
   /** 切换当前消息的候选回复 */
   swipeMessage: async (messageId, direction, character) => {
     const msg = get().messages.find(m => m.id === messageId)
@@ -1125,7 +1239,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // 在 set 之外执行 IPC 副作用（修复反模式）
       const msg = get().messages.find(m => m.id === messageId)
       if (msg) {
-        window.api.chat.saveMessage(msg).catch(() => {})
+        window.api.chat.saveMessage(msg).catch((err) => {
+          console.error('[translate] saveMessage failed:', err)
+        })
       }
     })
 
@@ -1255,11 +1371,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     // 用户人设注入
-    if (settings.userDescription || settings.userPersona) {
-      systemContent += '\n\n【用户人设】'
-      if (settings.userDescription) systemContent += '\n描述：' + settings.userDescription
-      if (settings.userPersona) systemContent += '\n性格：' + settings.userPersona
-    }
+    systemContent += '\n\n【用户人设】'
+    systemContent += '\n用户名：' + userName
+    if (settings.userDescription) systemContent += '\n描述：' + settings.userDescription
+    if (settings.userPersona) systemContent += '\n性格：' + settings.userPersona
 
     // 心理描写输出格式（修复 #33）：改为可配置，默认开启
     const enableThoughtFormat = settings.enableThoughtFormat !== false
@@ -1329,6 +1444,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const recentTextLower = recentText.toLowerCase()
 
         for (const { entry, lbId } of plainKeywordEntries) {
+          if (!Array.isArray(entry.keywords)) continue
           const entryId = `${lbId}:${entry.id || entry.keywords.join(',')}`
           if (triggeredIds.has(entryId)) continue
 
@@ -1355,6 +1471,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         // 正则关键词：缓存编译后的 RegExp
         for (const { entry, lbId } of regexEntries) {
+          if (!Array.isArray(entry.keywords)) continue
           const entryId = `${lbId}:${entry.id || entry.keywords.join(',')}`
           if (triggeredIds.has(entryId)) continue
 

@@ -22,6 +22,7 @@ const aiApi: AIAPI = {
   chat: (params) => ipcRenderer.invoke('ai:chat', params),
   cancelChat: (requestId) => ipcRenderer.invoke('ai:cancel', requestId),
   testConnection: (config) => ipcRenderer.invoke('ai:testConnection', config),
+  listModels: (provider, baseUrl, apiKey) => ipcRenderer.invoke('ai:listModels', provider, baseUrl, apiKey),
   countTokens: (text, model) => ipcRenderer.invoke('ai:countTokens', text, model),
   countMessagesTokens: (messages, model) => ipcRenderer.invoke('ai:countMessagesTokens', messages, model),
   onChunk: (callback) => {
@@ -214,6 +215,9 @@ contextBridge.exposeInMainWorld('api', {
     deleteMessage: (groupId, sessionId, messageId) => ipcRenderer.invoke('group:deleteMessage', groupId, sessionId, messageId),
     clearChat: (groupId, sessionId) => ipcRenderer.invoke('group:clearChat', groupId, sessionId),
     exportChat: (groupId, sessionId, format) => ipcRenderer.invoke('group:exportChat', groupId, sessionId, format),
+    updateMemory: (groupId, sessionId, memory) => ipcRenderer.invoke('group:updateMemory', groupId, sessionId, memory),
+    toggleMemory: (groupId, sessionId, enabled) => ipcRenderer.invoke('group:toggleMemory', groupId, sessionId, enabled),
+    setMemoryMode: (groupId, sessionId, mode, interval) => ipcRenderer.invoke('group:setMemoryMode', groupId, sessionId, mode, interval),
   },
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),

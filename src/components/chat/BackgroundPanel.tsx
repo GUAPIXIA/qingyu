@@ -76,7 +76,9 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
     if (useCover) {
       handleRemove()
     } else {
-      updateBg({ chatBackground: undefined, type: 'image', gradient: undefined, useCover: true })
+      // 封面本身是清晰的，启用时把模糊重置为 0，避免继承手动背景的高模糊值
+      updateBg({ chatBackground: undefined, type: 'image', gradient: undefined, useCover: true, blur: 0 })
+      setLocalBlur(0)
     }
   }
 

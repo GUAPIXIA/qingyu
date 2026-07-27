@@ -6,6 +6,7 @@ import { lorebookCache } from '../../utils/lorebook'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { downloadFile } from '../../utils/download'
+import { getDisplayName } from '../../utils/variables'
 import type { Character, Preset, Lorebook, ChatParams } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
@@ -146,8 +147,22 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
           const personas = await window.api.persona.list()
           const target = personas.find((p: any) => p.id === nameOrId || p.name === nameOrId)
           if (target) {
-            // 通过 settings store 切换
-            useSettingsStore.getState().updateSettings({ activePersonaId: target.id })
+            // 同步 persona 到 settings（与 ChatHeader.handleSwitchPersona 保持一致）
+            useSettingsStore.getState().updateSettings({
+              activePersonaId: target.id,
+              userName: target.name,
+              userDescription: target.description,
+              userPersona: target.persona,
+            })
+            // 保存到当前会话
+            if (chatStore.currentSessionId) {
+              await window.api.chat.updateSession(character.id, chatStore.currentSessionId, { personaId: target.id })
+              useChatStore.setState(s => ({
+                sessions: s.sessions.map(sess =>
+                  sess.id === chatStore.currentSessionId ? { ...sess, personaId: target.id } : sess
+                ),
+              }))
+            }
             showNotification(`已切换到人设: ${target.name}`)
             return true
           }
@@ -466,7 +481,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       const recentMessages = store.messages.slice(-6)
       const hasInput = originalInput.trim().length > 0
       const userName = settings.userName || '用户'
-      const charName = character.translatedContent?.name ?? character.name
+      const charName = getDisplayName(character)
 
       // 后处理：确保输出是用户视角，剥离角色视角内容
       const ensureUserPerspective = (raw: string): string => {
@@ -685,6 +700,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
           )}
           <textarea
             ref={textareaRef}
+            autoFocus
             value={text}
             onChange={(e) => {
               setText(e.target.value)

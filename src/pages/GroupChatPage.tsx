@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import type React from 'react'
 import { nanoid } from 'nanoid'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
@@ -9,7 +9,6 @@ import { GroupChatInput } from '../components/chat/GroupChatInput'
 import { GroupMemberBar } from '../components/chat/GroupMemberBar'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { Dropdown } from '../components/common/Dropdown'
 import { Modal } from '../components/common/Modal'
 import { SessionSwitcher } from '../components/common/SessionSwitcher'
 import { GroupChatSettingsPanel } from '../components/chat/GroupChatSettingsPanel'
@@ -20,23 +19,11 @@ import {
   Plus,
   Trash2,
   Users,
-  ArrowUp,
-  ArrowDown,
-  X,
   MessageSquare,
   Settings2,
-  Zap,
-  ZapOff,
   Edit2,
   Check,
-  AtSign,
-  Repeat,
-  ChevronDown,
-  Download,
-  BookOpen,
-  FileText,
   Eye,
-  Palette,
 } from 'lucide-react'
 
 export function GroupChatPage() {
@@ -190,8 +177,6 @@ export function GroupChatPage() {
       downloadFile(content, `${currentGroup.name}-群聊.md`)
     } catch { /* ignore */ }
   }
-
-  const availableChars = characters.filter(c => !currentGroup?.memberIds.includes(c.id))
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -384,6 +369,7 @@ export function GroupChatPage() {
                 </div>
               ) : (
                 <Virtuoso
+                  key={currentGroup?.id || 'default'}
                   ref={virtuosoRef}
                   data={messages}
                   className="h-full"

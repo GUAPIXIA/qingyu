@@ -142,7 +142,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
 
   ipcMain.handle('group:listSessions', async (_e, groupId: string) => {
     safeId(groupId)
-    let sessions = loadSessions(groupId)
+    const sessions = loadSessions(groupId)
     if (sessions.length === 0) {
       const now = Date.now()
       const defaultSession: GroupSession = {
@@ -152,6 +152,11 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         messageCount: 0,
         createdAt: now,
         updatedAt: now,
+        memoryEnabled: false,
+        memoryMode: 'manual',
+        autoMemoryInterval: 10,
+        memory: '',
+        memoryUpdatedAt: 0,
       }
       sessions.push(defaultSession)
       saveSessions(groupId, sessions)
@@ -177,6 +182,11 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       messageCount: 0,
       createdAt: now,
       updatedAt: now,
+      memoryEnabled: false,
+      memoryMode: 'manual',
+      autoMemoryInterval: 10,
+      memory: '',
+      memoryUpdatedAt: 0,
     }
     sessions.push(session)
     saveSessions(groupId, sessions)
@@ -289,6 +299,46 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       if (existsSync(dir)) {
         rmSync(dir, { recursive: true, force: true })
       }
+    }
+  })
+
+  // ---- 记忆管理 ----
+
+  ipcMain.handle('group:updateMemory', async (_e, groupId: string, sessionId: string, memory: string) => {
+    safeId(groupId)
+    safeId(sessionId)
+    const sessions = loadSessions(groupId)
+    const session = sessions.find(s => s.id === sessionId)
+    if (session) {
+      session.memory = memory
+      session.memoryUpdatedAt = Date.now()
+      session.updatedAt = Date.now()
+      saveSessions(groupId, sessions)
+    }
+  })
+
+  ipcMain.handle('group:toggleMemory', async (_e, groupId: string, sessionId: string, enabled: boolean) => {
+    safeId(groupId)
+    safeId(sessionId)
+    const sessions = loadSessions(groupId)
+    const session = sessions.find(s => s.id === sessionId)
+    if (session) {
+      session.memoryEnabled = enabled
+      session.updatedAt = Date.now()
+      saveSessions(groupId, sessions)
+    }
+  })
+
+  ipcMain.handle('group:setMemoryMode', async (_e, groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => {
+    safeId(groupId)
+    safeId(sessionId)
+    const sessions = loadSessions(groupId)
+    const session = sessions.find(s => s.id === sessionId)
+    if (session) {
+      session.memoryMode = mode
+      if (interval !== undefined) session.autoMemoryInterval = interval
+      session.updatedAt = Date.now()
+      saveSessions(groupId, sessions)
     }
   })
 

@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useCharacterStore } from './store/useCharacterStore'
-import { useChatStore } from './store/useChatStore'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
 import { CharactersPage } from './pages/CharactersPage'
@@ -22,13 +21,21 @@ export default function App() {
   const navigate = useNavigate()
   const { settings, loadSettings } = useSettingsStore()
   const { loadCharacters } = useCharacterStore()
-  const { currentCharacter } = useCharacterStore()
 
   // 初始化加载
   useEffect(() => {
     loadSettings()
     loadCharacters()
   }, [loadSettings, loadCharacters])
+
+  // 应用退出前立即刷新待保存的设置（绕过 300ms 防抖）
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      useSettingsStore.getState().flushSettings()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
 
   // L-03 修复：应用主题 + 监听系统主题变化
   useEffect(() => {
@@ -62,8 +69,10 @@ export default function App() {
     root.classList.remove('font-compact', 'font-comfortable', 'font-loose')
     if (settings.fontSize === 'custom') {
       root.style.setProperty('--font-size-base', `${settings.fontSizeCustom || 16}px`)
+      root.style.fontSize = `${settings.fontSizeCustom || 16}px`
     } else {
       root.style.removeProperty('--font-size-base')
+      root.style.fontSize = ''
       root.classList.add(`font-${settings.fontSize}`)
     }
   }, [settings.themeColor, settings.fontSize, settings.fontSizeCustom])

@@ -7,7 +7,7 @@ import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
-import { THEME_COLORS } from '../../utils/defaults'
+import { getDisplayName } from '../../utils/variables'
 import { X, Edit2, RefreshCw, Languages, Check } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 
@@ -36,7 +36,7 @@ import { MarkdownImage } from '../common/MarkdownImage'
 const markdownComponents = { img: MarkdownImage }
 
 export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, onDelete, onEdit, onRegenerate, onTranslate }: GroupChatMessageProps) {
-  const { currentCharacter, characters } = useCharacterStore()
+  const { characters } = useCharacterStore()
   const { settings } = useSettingsStore()
   const { getPersona } = usePersonaStore()
   const persona = getPersona(settings.activePersonaId)
@@ -128,7 +128,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
           'text-[10px] mb-0.5 text-tavern-text-muted',
           isUser ? 'text-right' : 'text-left'
         )}>
-          {isUser ? (settings.userName || '你') : (character?.translatedContent?.name ?? character?.name ?? '未知')}
+          {isUser ? (settings.userName || '你') : getDisplayName(character) || '未知'}
           {isStreaming && ' · 生成中...'}
         </div>
 

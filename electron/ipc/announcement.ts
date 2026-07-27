@@ -9,9 +9,9 @@
 
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { existsSync } from 'node:fs'
 import { DIRS, readJson, writeJson } from '../services/storage'
 import { createLogger } from '../services/logger'
+import { isSafeUrl } from '../utils/pathGuard'
 import type { Announcement } from '../../shared/types'
 
 const log = createLogger('announcement-ipc')
@@ -41,12 +41,17 @@ function httpGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const mod = url.startsWith('https') ? require('node:https') : require('node:http')
     mod.get(url, { timeout: 10000 }, (res: any) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume()
+        return httpGet(res.headers.location).then(resolve, reject)
+      }
       let data = ''
       res.on('data', (chunk: string) => { data += chunk })
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(data)
         } else {
+          res.resume()
           reject(new Error(`HTTP ${res.statusCode}`))
         }
       })
@@ -108,6 +113,9 @@ export function registerAnnouncementIPC(ipcMain: IpcMain): void {
 
   // 设置服务器地址
   ipcMain.handle('announcement:setServerUrl', async (_e, url: string) => {
+    if (!isSafeUrl(url)) {
+      throw new Error('URL 不安全：拒绝私有 IP、localhost 或非 HTTP(S) 协议')
+    }
     setServerUrl(url)
   })
 

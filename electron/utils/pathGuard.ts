@@ -1,5 +1,4 @@
-import { resolve, normalize, sep } from 'node:path'
-import { statSync } from 'node:fs'
+import { normalize, sep } from 'node:path'
 
 /**
  * 校验 ID 字符串仅包含安全字符

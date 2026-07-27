@@ -1,6 +1,5 @@
 import { Brain } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import type { Message } from '../../../shared/types'
 
 interface Session {
   id: string

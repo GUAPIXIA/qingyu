@@ -3,7 +3,6 @@ import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { cn } from '../lib/utils'
 import { Sliders, Plus, Upload, Trash2, Shield } from 'lucide-react'
 import type { Preset } from '../../shared/types'
 

@@ -16,6 +16,7 @@ import type {
   RegexRule,
   Persona,
   Announcement,
+  ProviderType,
 } from './types'
 
 // ===================== AI 调用接口 =====================
@@ -23,6 +24,7 @@ export interface AIAPI {
   chat(params: ChatParams): Promise<void>
   cancelChat(requestId: string): Promise<void>
   testConnection(config: APIConfig): Promise<{ success: boolean; models?: string[]; error?: string }>
+  listModels(provider: ProviderType, baseUrl: string, apiKey: string): Promise<{ success: boolean; models?: string[]; error?: string }>
   onChunk(callback: (data: { requestId: string; text: string }) => void): () => void
   onDone(callback: (requestId: string) => void): () => void
   onError(callback: (data: { requestId: string; error: string }) => void): () => void
@@ -123,6 +125,9 @@ export interface GroupChatAPI {
   deleteMessage(groupId: string, sessionId: string, messageId: string): Promise<void>
   clearChat(groupId: string, sessionId?: string): Promise<void>
   exportChat(groupId: string, sessionId: string, format: 'json' | 'md'): Promise<string>
+  updateMemory(groupId: string, sessionId: string, memory: string): Promise<void>
+  toggleMemory(groupId: string, sessionId: string, enabled: boolean): Promise<void>
+  setMemoryMode(groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number): Promise<void>
 }
 
 // ===================== TTS 接口 =====================

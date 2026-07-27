@@ -72,7 +72,7 @@ export async function chatWithTools(
     )
 
     // 检查 result 是否含 tool_calls 标记
-    const toolCallMatch = result.match(/\[TOOL_CALL:(.+?)\](?:\s*$)/)
+    const toolCallMatch = result.match(/\[TOOL_CALL:(.*)\]\s*$/)
     if (!toolCallMatch) {
       // 没有工具调用，结束循环
       return fullText || result
@@ -90,7 +90,7 @@ export async function chatWithTools(
     // 将 assistant 的 tool_calls 加入 messages
     messages.push({
       role: 'assistant',
-      content: result.replace(/\[TOOL_CALL:.+?\]/, '').trim() || null,
+      content: result.replace(/\[TOOL_CALL:.*\]\s*$/, '').trim() || null,
       tool_calls: toolCalls.map(tc => ({
         id: tc.id,
         type: 'function',

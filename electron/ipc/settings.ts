@@ -42,7 +42,7 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     })
     if (result.canceled || !result.filePath) return
 
-    const { readFileSync, readdirSync, existsSync } = require('node:fs')
+    const { readdirSync, existsSync } = require('node:fs')
     const backup: Record<string, unknown> = { version: 1, timestamp: Date.now() }
 
     // 备份设置
@@ -86,7 +86,7 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     })
     if (result.canceled || result.filePaths.length === 0) return
 
-    const { readFileSync, writeFileSync, mkdirSync } = require('node:fs')
+    const { readFileSync, mkdirSync } = require('node:fs')
     const backup = JSON.parse(readFileSync(result.filePaths[0], 'utf-8'))
 
     if (backup.settings) {

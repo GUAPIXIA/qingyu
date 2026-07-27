@@ -31,6 +31,24 @@ export async function countTokensAccurate(text: string, model: string): Promise<
   return estimateTokens(text, model)
 }
 
+/** 按模型名推断默认最大上下文长度 */
+export function getDefaultMaxContext(model?: string): number {
+  if (!model) return 32768
+  const m = model.toLowerCase()
+  if (m.includes('gpt-4o') || m.includes('gpt-4.1') || m.includes('gpt-4-turbo')) return 128000
+  if (m.includes('gpt-3.5')) return 16385
+  if (m.includes('claude-3.5') || m.includes('claude-3-5') || m.includes('claude-3') ||
+      m.includes('claude-4') || m.includes('claude-opus') || m.includes('claude-sonnet') ||
+      m.includes('claude-haiku')) return 200000
+  if (m.includes('gemini-1.5') || m.includes('gemini-2')) return 1048576
+  if (m.includes('deepseek')) return 64000
+  if (m.includes('qwen')) return 32768
+  if (m.includes('llama-3') || m.includes('llama3')) return 32768
+  if (m.includes('kimi') || m.includes('moonshot')) return 131072
+  if (m.includes('glm')) return 131072
+  return 32768
+}
+
 /** 格式化 Token 数 */
 export function formatTokens(tokens: number): string {
   if (tokens < 1000) return `${tokens}`

@@ -2,6 +2,7 @@ import type { Character } from '../../../shared/types'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { formatRelativeTime } from '../../utils/format'
+import { getDisplayName } from '../../utils/variables'
 import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
@@ -15,7 +16,7 @@ interface CharacterCardProps {
 }
 
 export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 'grid' }: CharacterCardProps) {
-  const { exportPng, exportJson, saveCharacter, togglePin, patchCharacter } = useCharacterStore()
+  const { exportPng, exportJson, togglePin, patchCharacter } = useCharacterStore()
   const blurStrength = useSettingsStore(s => s.settings.coverBlurStrength ?? 8)
   const [showMenu, setShowMenu] = useState(false)
   const [imgError, setImgError] = useState(false)
@@ -159,7 +160,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
           <div className="flex-1 min-w-0 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-medium text-tavern-text">{character.translatedContent?.name ?? character.name}</h3>
+                <h3 className="font-medium text-tavern-text">{getDisplayName(character)}</h3>
                 {character.pinned && (
                   <Pin className="w-3 h-3 text-tavern-accent fill-current" />
                 )}
@@ -243,7 +244,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, viewMode = 
 
       {/* 信息区 */}
       <div className="p-3">
-        <h3 className="font-medium text-tavern-text truncate">{character.translatedContent?.name ?? character.name}</h3>
+        <h3 className="font-medium text-tavern-text truncate">{getDisplayName(character)}</h3>
         {character.description && (
           <p className="text-xs text-tavern-text-muted mt-0.5 line-clamp-2 h-8">
             {character.translatedContent?.description ?? character.description}

@@ -5,7 +5,6 @@ import { cn } from '../../lib/utils'
 import {
   Send,
   Square,
-  Users,
   Repeat,
   Zap,
   AtSign,
@@ -61,7 +60,8 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
     m.name.toLowerCase().includes(mentionFilter.toLowerCase())
   )
 
-  const selectMention = (charId: string, name: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const selectMention = (charId: string, _name: string) => {
     setTargetCharId(charId)
     // 移除 @name 部分
     const lastAt = content.lastIndexOf('@')
@@ -99,7 +99,7 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
   const handleSelectImage = async () => {
     const path = await window.api.file.selectImage()
     if (path) {
-      const base64 = await window.api.file.readImageAsBase64(path)
+      await window.api.file.readImageAsBase64(path)
       // 暂不支持流式图片，作为占位预留
     }
   }

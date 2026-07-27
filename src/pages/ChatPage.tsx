@@ -17,7 +17,7 @@ import { ContextViewer } from '../components/chat/ContextViewer'
 import { StatusBar } from '../components/chat/StatusBar'
 import { cn } from '../lib/utils'
 import { estimateTokens } from '../utils/tokenCounter'
-import { replaceVariables } from '../utils/variables'
+import { replaceVariables, getDisplayName } from '../utils/variables'
 import { getEffectiveLorebookIds } from '../utils/lorebook'
 import { downloadFile } from '../utils/download'
 import { nanoid } from 'nanoid'
@@ -25,16 +25,15 @@ import type { Message } from '../../shared/types'
 import {
   MessageSquare,
   Settings as SettingsIcon,
-  Trash2,
   Users,
 } from 'lucide-react'
 
 export function ChatPage() {
   const navigate = useNavigate()
-  const { messages, loadMessages, isStreaming, clearChat, clearMessages, sessions, currentSessionId, loadSessions, switchSession, deleteSession, renameSession, toggleMemory, setMemoryMode, triggerMemorySummary, getStats, setActiveLorebooks, activeLorebookIds } = useChatStore()
-  const { currentCharacter, characters, selectCharacter } = useCharacterStore()
-  const { settings, loaded, updateSettings, getActiveProfile } = useSettingsStore()
-  const { personas, loadPersonas, getPersona } = usePersonaStore()
+  const { messages, loadMessages, isStreaming, clearChat, clearMessages, currentSessionId, loadSessions, setActiveLorebooks, activeLorebookIds } = useChatStore()
+  const { currentCharacter } = useCharacterStore()
+  const { settings, loaded, getActiveProfile } = useSettingsStore()
+  const { loadPersonas } = usePersonaStore()
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [showQuickSettings, setShowQuickSettings] = useState(false)
   const [showBgPanel, setShowBgPanel] = useState(false)
@@ -46,10 +45,7 @@ export function ChatPage() {
   const [pendingLorebookIds, setPendingLorebookIds] = useState<string[]>([])
   const pendingSessionCallbackRef = useRef<(() => void) | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const virtuosoRef = useRef<VirtuosoHandle>(null)
-  // 用户手动滚动状态：避免流式时强制把视图拉到底
-  const userScrolledUpRef = useRef(false)
   // 背景图片拖拽状态
   const [isDraggingBg, setIsDraggingBg] = useState(false)
   const bgImgRef = useRef<HTMLImageElement>(null)
@@ -65,7 +61,6 @@ export function ChatPage() {
       if (useChatStore.getState().isStreaming) {
         useChatStore.getState().stopStreaming()
       }
-      userScrolledUpRef.current = false
       loadSessions(currentCharacter.id)
         .then(() => loadMessages(currentCharacter))
         .then(() => {
@@ -99,6 +94,14 @@ export function ChatPage() {
 
   // 加载 persona 列表
   useEffect(() => { loadPersonas() }, [])
+
+  // 流式输出时自动滚动到底部：每次内容更新都锁定最后一行
+  useEffect(() => {
+    if (!isStreaming || !settings.autoScroll) return
+    requestAnimationFrame(() => {
+      virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'end', behavior: 'auto' })
+    })
+  }, [messages, isStreaming, settings.autoScroll])
 
   // 全局键盘快捷键事件监听
   useEffect(() => {
@@ -196,6 +199,8 @@ export function ChatPage() {
         const session = await window.api.chat.createSession(currentCharacter.id)
         const sessions = await window.api.chat.listSessions(currentCharacter.id)
         useChatStore.setState({ sessions, currentSessionId: session.id })
+        // 持久化当前会话 ID，确保重启后能恢复
+        useSettingsStore.getState().updateSettings({ activeSessionId: session.id })
         sid = session.id
       }
 
@@ -214,7 +219,7 @@ export function ChatPage() {
     await window.api.chat.saveMessage(firstMsg)
     // 刷新 sessions 以更新 messageCount，确保下次加载时不重复弹出选择器
     const updatedSessions = await window.api.chat.listSessions(currentCharacter.id)
-    useChatStore.setState(s => ({ messages: [firstMsg], sessions: updatedSessions, currentSessionId: sid }))
+    useChatStore.setState({ messages: [firstMsg], sessions: updatedSessions, currentSessionId: sid })
     })
   }
 
@@ -327,7 +332,7 @@ export function ChatPage() {
         src: coverSrc,
         type: 'image' as const,
         opacity: params.opacity ?? 12,
-        blur: params.blur ?? 2,
+        blur: params.blur ?? 0,
         posX: params.posX ?? 50,
         posY: params.posY ?? 50,
         scale: params.scale ?? 100,
@@ -392,9 +397,10 @@ export function ChatPage() {
               className="w-full h-full object-cover"
               style={{
                 opacity: effectiveBg.opacity / 100,
-                filter: `blur(${effectiveBg.blur}px)`,
+                filter: effectiveBg.blur > 0 ? `blur(${effectiveBg.blur}px)` : undefined,
                 objectPosition: `${effectiveBg.posX}% ${effectiveBg.posY}%`,
                 transform: `scale(${effectiveBg.scale / 100})`,
+                imageRendering: 'auto',
                 cursor: isDraggingBg ? 'grabbing' : 'grab',
               }}
               onMouseDown={handleBgMouseDown}
@@ -442,7 +448,7 @@ export function ChatPage() {
             className="h-full"
             icon={<MessageSquare className="w-8 h-8" />}
             title="开始新的对话"
-            description={`与 ${currentCharacter.translatedContent?.name ?? currentCharacter.name} 开始你的故事`}
+            description={`与 ${getDisplayName(currentCharacter)} 开始你的故事`}
           />
         ) : (
           <Virtuoso
@@ -451,14 +457,7 @@ export function ChatPage() {
             data={messages}
             className="h-full"
             initialTopMostItemIndex={999999}
-            followOutput={(isAtBottom) => {
-              // 流式时若用户未手动向上滚动则跟随
-              return settings.autoScroll && (isAtBottom || !userScrolledUpRef.current)
-            }}
-            atBottomStateChange={(atBottom) => {
-              // 同步用户滚动状态
-              userScrolledUpRef.current = !atBottom
-            }}
+            followOutput={settings.autoScroll ? 'smooth' : false}
             itemContent={(index, msg) => (
               <MessageBubble
                 key={msg.id}
@@ -508,7 +507,7 @@ export function ChatPage() {
           }
         }}
         title="清空对话"
-        message={`确定要清空与 ${currentCharacter.translatedContent?.name ?? currentCharacter.name} 的所有对话记录吗？此操作不可撤销。`}
+        message={`确定要清空与 ${getDisplayName(currentCharacter)} 的所有对话记录吗？此操作不可撤销。`}
         confirmText="清空"
         danger
       />
@@ -555,7 +554,7 @@ export function ChatPage() {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-display font-bold text-lg truncate">{currentCharacter?.translatedContent?.name ?? currentCharacter?.name}</h3>
+              <h3 className="font-display font-bold text-lg truncate">{getDisplayName(currentCharacter)}</h3>
               <p className="text-xs text-tavern-text-muted">选择一个开场白开始对话</p>
             </div>
           </div>

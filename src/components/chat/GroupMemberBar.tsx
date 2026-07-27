@@ -1,5 +1,6 @@
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { cn } from '../../lib/utils'
+import { getDisplayName } from '../../utils/variables'
 import { MessageSquare } from 'lucide-react'
 
 interface GroupMemberBarProps {
@@ -37,7 +38,7 @@ export function GroupMemberBar({ memberIds, currentSpeakerIndex, onSpeakerClick,
               color: themeColor,
               boxShadow: `0 0 0 2px ${themeColor}80, 0 2px 8px ${themeColor}30`,
             } : undefined}
-            title={m.translatedContent?.name ?? m.name}
+            title={getDisplayName(m)}
           >
             {/* 头像带呼吸动画指示器 */}
             <div className="relative">
@@ -58,7 +59,7 @@ export function GroupMemberBar({ memberIds, currentSpeakerIndex, onSpeakerClick,
                 <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-tavern-accent animate-pulse" />
               )}
             </div>
-            <span className={cn(isCurrent && 'font-medium')}>{m.translatedContent?.name ?? m.name}</span>
+            <span className={cn(isCurrent && 'font-medium')}>{getDisplayName(m)}</span>
             {isCurrent && (
               <MessageSquare className="w-3 h-3 opacity-70" />
             )}

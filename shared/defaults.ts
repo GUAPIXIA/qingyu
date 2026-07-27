@@ -14,6 +14,7 @@ export function getDefaultSettings(): Settings {
     activeModel: 'gpt-4o-mini',
     activePresetId: 'builtin-default',
     activeCharacterId: null,
+    activeSessionId: null,
     theme: 'dark',
     themeColor: 'amber',
     fontSize: 'comfortable',
