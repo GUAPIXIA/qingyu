@@ -1,6 +1,7 @@
 import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText, Download, Palette } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { getDisplayName } from '../../utils/variables'
 import type { GroupChat, Character, Lorebook, Preset } from '../../../shared/types'
 
 interface GroupChatSettingsPanelProps {
@@ -68,7 +69,7 @@ export function GroupChatSettingsPanel({
                         {char.translatedContent?.name?.[0] ?? char.name[0]}
                       </div>
                     )}
-                    <span className="flex-1 text-sm truncate">{char.translatedContent?.name ?? char.name}</span>
+                    <span className="flex-1 text-sm truncate">{getDisplayName(char)}</span>
                     {idx === group.currentSpeakerIndex && (
                       <span className="text-[10px] text-tavern-accent">当前</span>
                     )}
@@ -95,7 +96,7 @@ export function GroupChatSettingsPanel({
                 >
                   <option value="" disabled>+ 添加成员...</option>
                   {availableChars.map(c => (
-                    <option key={c.id} value={c.id}>{c.translatedContent?.name ?? c.name}</option>
+                    <option key={c.id} value={c.id}>{getDisplayName(c)}</option>
                   ))}
                 </select>
               </div>

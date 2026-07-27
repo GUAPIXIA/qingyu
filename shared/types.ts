@@ -254,6 +254,16 @@ export interface GroupSession {
   messageCount: number
   createdAt: number
   updatedAt: number
+  /** 是否启用长期记忆/对话摘要 */
+  memoryEnabled?: boolean
+  /** 记忆模式：manual 手动 / auto 自动 */
+  memoryMode?: 'manual' | 'auto'
+  /** 自动摘要间隔（消息数） */
+  autoMemoryInterval?: number
+  /** 对话历史摘要文本 */
+  memory?: string
+  /** 上次摘要时间 */
+  memoryUpdatedAt?: number
 }
 
 /** AI 后端提供商类型 */
@@ -289,6 +299,7 @@ export interface Settings {
   activeModel: string
   activePresetId: string | null
   activeCharacterId: string | null
+  activeSessionId: string | null
   theme: 'dark' | 'light' | 'system'
   themeColor: 'amber' | 'emerald' | 'ocean' | 'rose' | 'purple' | 'cyan'
   fontSize: 'compact' | 'comfortable' | 'loose' | 'custom'

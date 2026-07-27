@@ -205,6 +205,19 @@ async function getVoices(): Promise<{ id: string; name: string; lang: string }[]
   })
 }
 
+/** 杀死 TTS PowerShell 进程（应用退出时调用） */
+export function killTTS(): void {
+  if (psProcess && !psProcess.killed) {
+    try {
+      psProcess.stdin.write('exit\n')
+      psProcess.kill()
+    } catch { /* ignore */ }
+    psProcess = null
+    speechState = 'idle'
+    initPromise = null
+  }
+}
+
 export function registerTTSIPC(ipcMain: IpcMain): void {
   // 朗读
   ipcMain.handle('tts:speak', async (_e, text: string, voice?: string, rate?: number) => {

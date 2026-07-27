@@ -2,7 +2,6 @@ import type { IpcMain, Dialog } from 'electron'
 import { readFileSync } from 'node:fs'
 import { extname } from 'node:path'
 import { createLogger } from '../services/logger'
-import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('file')
 

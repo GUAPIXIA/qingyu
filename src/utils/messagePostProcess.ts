@@ -69,12 +69,13 @@ export function mergeConsecutiveMessages(messages: ChatMessage[]): ChatMessage[]
  */
 export function strictAlternatingMessages(
   messages: ChatMessage[],
-  placeholder = '[System message]'
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _placeholder = '[System message]'
 ): ChatMessage[] {
   if (!messages || messages.length === 0) return []
 
   // 第一步：合并连续相同角色
-  let result = mergeConsecutiveMessages(messages)
+  const result = mergeConsecutiveMessages(messages)
 
   // 第二步：确保 user/assistant 交替
   const final: ChatMessage[] = []

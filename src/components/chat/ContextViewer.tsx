@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import { Modal } from '../common/Modal'
-import { Eye, User, Bot, Settings } from 'lucide-react'
+import { User, Bot, Settings } from 'lucide-react'
 import type { Character, Preset } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { estimateTokens } from '../../utils/tokenCounter'

@@ -41,7 +41,8 @@ export function convertToOpenAI(messages: ChatMessage[]): ChatMessage[] {
  * @param names 角色名信息
  * @returns 转换后的消息数组
  */
-export function convertToClaude(messages: ChatMessage[], names: PromptNames): ChatMessage[] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function convertToClaude(messages: ChatMessage[], _names: PromptNames): ChatMessage[] {
   if (!messages || messages.length === 0) return []
 
   const result: ChatMessage[] = []

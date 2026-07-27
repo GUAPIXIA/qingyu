@@ -6,7 +6,7 @@ import { registerSettingsIPC } from './ipc/settings'
 import { registerLorebookIPC } from './ipc/lorebook'
 import { registerPresetIPC } from './ipc/preset'
 import { registerAIIPC } from './services/ai'
-import { registerTTSIPC } from './ipc/tts'
+import { registerTTSIPC, killTTS } from './ipc/tts'
 import { registerImageGenIPC } from './ipc/imageGen'
 import { registerFileIPC } from './ipc/file'
 import { registerRegexIPC } from './ipc/regex'
@@ -126,14 +126,20 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-// L-04 修复：应用退出前关闭所有 MCP server，加超时防止卡死
+// L-04 修复：应用退出前关闭所有 MCP server + TTS 进程，等待 pending IPC 写入完成
+let isQuitting = false
 app.on('before-quit', async (event) => {
+  if (isQuitting) return
+  isQuitting = true
   event.preventDefault()
+  killTTS()
   try {
     await Promise.race([
       mcpManager.shutdownAll(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('shutdown timeout')), 3000)),
     ])
   } catch { /* ignore */ }
+  // 等待 pending IPC 调用（如翻译 saveMessage）完成
+  await new Promise(resolve => setTimeout(resolve, 500))
   app.exit(0)
 })

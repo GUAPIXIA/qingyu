@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock } from 'lucide-react'
+import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw } from 'lucide-react'
 import type { Preset, Lorebook } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -26,6 +26,12 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
   const [lorebookExpanded, setLorebookExpanded] = useState(false)
   const [lorebookSearch, setLorebookSearch] = useState('')
+  // 模型列表
+  const [modelList, setModelList] = useState<string[]>([])
+  const [modelListLoading, setModelListLoading] = useState(false)
+  const [modelListError, setModelListError] = useState(false)
+  const [modelExpanded, setModelExpanded] = useState(false)
+  const [modelSearch, setModelSearch] = useState('')
 
   // 计算角色绑定的世界书 ID 列表
   const boundLorebookIds = useMemo(() => {
@@ -61,6 +67,52 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
     })
   }, [open])
 
+  // 面板打开时获取模型列表
+  useEffect(() => {
+    if (!open) return
+    const p = useSettingsStore.getState().getActiveProfile()
+    if (!p) {
+      setModelListError(true)
+      setModelList([])
+      return
+    }
+    setModelListLoading(true)
+    setModelListError(false)
+    window.api.ai.listModels(p.provider, p.baseUrl, p.apiKey)
+      .then((res) => {
+        if (res.success && res.models && res.models.length > 0) {
+          setModelList(res.models)
+          setModelListError(false)
+        } else {
+          setModelListError(true)
+          setModelList([])
+        }
+      })
+      .catch(() => {
+        setModelListError(true)
+        setModelList([])
+      })
+      .finally(() => setModelListLoading(false))
+  }, [open])
+
+  // 从 API 获取模型列表的手动刷新
+  const refreshModels = () => {
+    const p = useSettingsStore.getState().getActiveProfile()
+    if (!p) return
+    setModelListLoading(true)
+    setModelListError(false)
+    window.api.ai.listModels(p.provider, p.baseUrl, p.apiKey)
+      .then((res) => {
+        if (res.success && res.models && res.models.length > 0) {
+          setModelList(res.models)
+        } else {
+          setModelListError(true)
+        }
+      })
+      .catch(() => setModelListError(true))
+      .finally(() => setModelListLoading(false))
+  }
+
   const profile = useSettingsStore.getState().getActiveProfile()
   const activePreset = presets.find((p) => p.id === activePresetId)
 
@@ -89,13 +141,91 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
 
           {/* ===== 模型 ===== */}
           <Section icon={Cpu} title="模型">
-            <input
-              type="text"
-              className="input text-xs"
-              value={settings.activeModel}
-              onChange={(e) => updateSettings({ activeModel: e.target.value })}
-              placeholder="输入模型名称"
-            />
+            {/* API 模型下拉框 */}
+            {!modelListError && modelList.length > 0 ? (
+              <div className="space-y-1.5">
+                {/* 已选中 + 展开按钮 */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setModelExpanded(!modelExpanded)}
+                    className="flex items-center gap-1.5 flex-1 min-w-0 px-2 py-1 rounded-md text-xs bg-tavern-bg-soft border border-tavern-border-soft hover:border-tavern-border transition-colors text-left"
+                  >
+                    <span className="truncate flex-1">{settings.activeModel || '选择模型'}</span>
+                    <ChevronDown className={cn('w-3 h-3 shrink-0 text-tavern-text-muted transition-transform', modelExpanded && 'rotate-180')} />
+                  </button>
+                  <button
+                    onClick={refreshModels}
+                    disabled={modelListLoading}
+                    className="p-1 rounded-md hover:bg-tavern-bg-hover text-tavern-text-muted transition-colors shrink-0"
+                    title="刷新模型列表"
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5', modelListLoading && 'animate-spin')} />
+                  </button>
+                </div>
+                {/* 展开的搜索+列表 */}
+                {modelExpanded && (
+                  <div className="space-y-1 animate-fade-in">
+                    {modelList.length > 8 && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-tavern-bg-soft border border-tavern-border-soft">
+                        <Search className="w-3 h-3 text-tavern-text-muted shrink-0" />
+                        <input
+                          className="bg-transparent text-xs flex-1 outline-none placeholder:text-tavern-text-muted"
+                          placeholder="搜索模型..."
+                          value={modelSearch}
+                          onChange={e => setModelSearch(e.target.value)}
+                        />
+                        {modelSearch && (
+                          <button className="text-tavern-text-muted hover:text-tavern-text" onClick={() => setModelSearch('')}>
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <div className="max-h-40 overflow-y-auto -mx-0.5 px-0.5 space-y-0.5">
+                      {modelList
+                        .filter(m => !modelSearch || m.toLowerCase().includes(modelSearch.toLowerCase()))
+                        .map((m) => {
+                          const isActive = (settings.activeModel || profile?.model) === m
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => {
+                                updateSettings({ activeModel: m })
+                                setModelExpanded(false)
+                                setModelSearch('')
+                              }}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs transition-colors truncate',
+                                isActive
+                                  ? 'bg-tavern-accent-soft text-tavern-accent'
+                                  : 'hover:bg-tavern-bg-hover text-tavern-text-soft'
+                              )}
+                            >
+                              <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isActive ? 'bg-tavern-accent' : 'bg-tavern-border')} />
+                              <span className="truncate">{m}</span>
+                              {isActive && <span className="ml-auto text-[10px] text-tavern-accent/70 shrink-0">当前</span>}
+                            </button>
+                          )
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : modelListLoading ? (
+              <div className="flex items-center gap-2 py-1.5 text-xs text-tavern-text-muted">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                获取模型列表...
+              </div>
+            ) : (
+              /* 兜底：无可用模型列表时显示文本输入 */
+              <input
+                type="text"
+                className="input text-xs"
+                value={settings.activeModel}
+                onChange={(e) => updateSettings({ activeModel: e.target.value })}
+                placeholder="输入模型名称"
+              />
+            )}
             {profile?.baseUrl && (
               <p className="text-[11px] text-tavern-text-muted mt-1.5 truncate">{profile.baseUrl}</p>
             )}

@@ -8,6 +8,7 @@ import { usePersonaStore } from '../../store/usePersonaStore'
 import { Dropdown } from '../common/Dropdown'
 import { SessionSwitcher } from '../common/SessionSwitcher'
 import { CharacterAvatar } from '../character/CharacterAvatar'
+import { getDisplayName } from '../../utils/variables'
 import { MemoryPanel } from './MemoryPanel'
 import { TokenUsage } from './TokenUsage'
 import { cn } from '../../lib/utils'
@@ -41,7 +42,6 @@ export function ChatHeader({
   onShowContextViewer,
   onShowQuickSettings,
   onShowBgPanel,
-  onShowGreetingPicker,
   onCreateSession,
 }: ChatHeaderProps) {
   const navigate = useNavigate()
@@ -56,7 +56,6 @@ export function ChatHeader({
   const [memoryStats, setMemoryStats] = useState<{ totalMessages: number; totalChars: number; durationStr: string } | null>(null)
   const [memoryInterval, setMemoryInterval] = useState(10)
   const [showImgHistory, setShowImgHistory] = useState(false)
-  const [imgNotify, setImgNotify] = useState<string | null>(null)
 
   const activeProfile = getActiveProfile()
 
@@ -100,12 +99,12 @@ export function ChatHeader({
             <button className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-tavern-bg-hover transition-colors">
               <CharacterAvatar
                 avatar={currentCharacter.avatar}
-                name={currentCharacter.translatedContent?.name ?? currentCharacter.name}
+                name={getDisplayName(currentCharacter)}
                 size="md"
                 fallbackClassName="bg-tavern-assistant/20 text-tavern-assistant"
               />
               <div className="text-left">
-                <div className="text-sm font-medium text-tavern-text">{currentCharacter.translatedContent?.name ?? currentCharacter.name}</div>
+                <div className="text-sm font-medium text-tavern-text">{getDisplayName(currentCharacter)}</div>
                 <div className="text-xs text-tavern-text-muted">
                   {isStreaming ? '生成中...' : '在线'}
                 </div>
@@ -133,11 +132,11 @@ export function ChatHeader({
               >
                 <CharacterAvatar
                   avatar={char.avatar}
-                  name={char.translatedContent?.name ?? char.name}
+                  name={getDisplayName(char)}
                   size="md"
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-tavern-text truncate">{char.translatedContent?.name ?? char.name}</div>
+                  <div className="text-sm text-tavern-text truncate">{getDisplayName(char)}</div>
                   {char.tags[0] && (
                     <div className="text-xs text-tavern-text-muted truncate">{char.tags[0]}</div>
                   )}
@@ -189,27 +188,43 @@ export function ChatHeader({
             </button>
           }
         >
-          <button
-            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-tavern-bg-hover transition-colors text-sm text-tavern-text"
-            onClick={() => handleSwitchPersona(null)}
-          >
-            <UserCircle className="w-4 h-4 text-tavern-text-muted" />
-            不使用身份
-          </button>
-          {personas.map((p) => (
-            <button
-              key={p.id}
-              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-tavern-bg-hover transition-colors text-sm text-tavern-text"
-              onClick={() => handleSwitchPersona(p.id)}
-            >
-              {p.avatar ? (
-                <img src={p.avatar} alt="" className="w-5 h-5 rounded-full object-cover" />
-              ) : (
-                <UserCircle className="w-4 h-4 text-tavern-text-muted" />
-              )}
-              <span className="truncate">{p.name}</span>
-            </button>
-          ))}
+          {(() => {
+            const currentSession = sessions.find(s => s.id === currentSessionId)
+            const currentPersonaId = currentSession?.personaId
+            return (
+              <>
+                <button
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 hover:bg-tavern-bg-hover transition-colors text-sm text-tavern-text',
+                    !currentPersonaId && 'bg-tavern-accent-soft'
+                  )}
+                  onClick={() => handleSwitchPersona(null)}
+                >
+                  <UserCircle className="w-4 h-4 text-tavern-text-muted" />
+                  不使用身份
+                  {!currentPersonaId && <span className="ml-auto text-tavern-accent text-xs">✓</span>}
+                </button>
+                {personas.map((p) => (
+                  <button
+                    key={p.id}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-2 hover:bg-tavern-bg-hover transition-colors text-sm text-tavern-text',
+                      currentPersonaId === p.id && 'bg-tavern-accent-soft'
+                    )}
+                    onClick={() => handleSwitchPersona(p.id)}
+                  >
+                    {p.avatar ? (
+                      <img src={p.avatar} alt="" className="w-5 h-5 rounded-full object-cover" />
+                    ) : (
+                      <UserCircle className="w-4 h-4 text-tavern-text-muted" />
+                    )}
+                    <span className="truncate">{p.name}</span>
+                    {currentPersonaId === p.id && <span className="ml-auto text-tavern-accent text-xs">✓</span>}
+                  </button>
+                ))}
+              </>
+            )
+          })()}
         </Dropdown>
 
         {/* 会话切换器 + 长记忆按钮 */}

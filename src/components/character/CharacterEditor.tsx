@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import type { Character, ProviderType, Preset, Lorebook } from '../../../shared/types'
 import { Modal } from '../common/Modal'
 import { ImagePlus, X, Languages, Loader2, RefreshCw } from 'lucide-react'
-import { cn } from '../../lib/utils'
 import { useSettingsStore } from '../../store/useSettingsStore'
 
 // B-05：记住 textarea 手动调整后的大小（使用原生 DOM 事件，React 合成事件无法捕获浏览器 resize handle）
@@ -118,7 +117,6 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   const [coverReloading, setCoverReloading] = useState(false)
   const [coverError, setCoverError] = useState<string | null>(null)
   const [avatarError, setAvatarError] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   // H-09 修复：追踪活跃的翻译请求，组件卸载时取消
   const activeRequestIdsRef = useRef<Set<string>>(new Set())
   const { settings } = useSettingsStore()
@@ -254,9 +252,14 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       try {
         const result = await translateText(text, label, settings, profile, translatedName)
         if (result) {
-          const tc = { ...(form.translatedContent || {}) }
-          tc[key] = result
-          update({ translatedContent: tc } as Partial<Character>)
+          // 首条消息直接替换原文（用于发送给 AI），其他字段存入 translatedContent 双语显示
+          if (key === 'firstMessage') {
+            update({ firstMessage: result })
+          } else {
+            const tc = { ...(form.translatedContent || {}) }
+            tc[key] = result
+            update({ translatedContent: tc } as Partial<Character>)
+          }
           setTranslatedFields((prev) => new Set(prev).add(key))
         }
       } catch {
@@ -285,10 +288,15 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     try {
       const result = await translateText(text, fieldLabel, settings, profile, nameForContext)
       if (result) {
-        const tc = { ...(form.translatedContent || {}) }
-        tc[fieldKey] = result
-        update({ translatedContent: tc } as Partial<Character>)
-        setTranslatedFields(prev => new Set(prev).add(fieldKey))
+        // 首条消息直接替换原文（用于发送给 AI），其他字段存入 translatedContent 双语显示
+        if (fieldKey === 'firstMessage') {
+          update({ firstMessage: result })
+        } else {
+          const tc = { ...(form.translatedContent || {}) }
+          tc[fieldKey] = result
+          update({ translatedContent: tc } as Partial<Character>)
+          setTranslatedFields(prev => new Set(prev).add(fieldKey))
+        }
       }
     } catch {
       setTranslateError(`翻译"${fieldLabel}"失败`)
@@ -512,6 +520,27 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 onChange={(e) => update({ name: e.target.value })}
                 placeholder="输入角色名"
               />
+              {form.translatedContent?.name && form.translatedContent.name !== form.name && (
+                <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-tavern-accent font-medium">翻译：</span>
+                    <button
+                      className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
+                      onClick={() => {
+                        const tc = { ...form.translatedContent }
+                        delete tc.name
+                        update({ translatedContent: tc } as Partial<Character>)
+                      }}
+                      title="清除翻译"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-tavern-text-soft mt-0.5">
+                    {form.translatedContent.name}
+                  </p>
+                </div>
+              )}
             </div>
             <div>
               <label className="label">标签</label>
@@ -572,6 +601,27 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             onChange={(e) => update({ description: e.target.value })}
             placeholder="描述角色的外貌、身份、背景等基本信息"
           />
+          {form.translatedContent?.description && (
+            <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-tavern-accent font-medium">翻译：</span>
+                <button
+                  className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
+                  onClick={() => {
+                    const tc = { ...form.translatedContent }
+                    delete tc.description
+                    update({ translatedContent: tc } as Partial<Character>)
+                  }}
+                  title="清除翻译"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+              <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
+                {form.translatedContent.description}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* 性格 */}
@@ -602,6 +652,27 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
             onChange={(e) => update({ personality: e.target.value })}
             placeholder="描述角色的性格特点、说话方式等"
           />
+          {form.translatedContent?.personality && (
+            <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-tavern-accent font-medium">翻译：</span>
+                <button
+                  className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
+                  onClick={() => {
+                    const tc = { ...form.translatedContent }
+                    delete tc.personality
+                    update({ translatedContent: tc } as Partial<Character>)
+                  }}
+                  title="清除翻译"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+              <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
+                {form.translatedContent.personality}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* 高级选项 */}
@@ -644,6 +715,27 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 onChange={(e) => update({ scenario: e.target.value })}
                 placeholder="对话发生的场景和背景"
             />
+            {form.translatedContent?.scenario && (
+              <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-tavern-accent font-medium">翻译：</span>
+                  <button
+                    className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
+                    onClick={() => {
+                      const tc = { ...form.translatedContent }
+                      delete tc.scenario
+                      update({ translatedContent: tc } as Partial<Character>)
+                    }}
+                    title="清除翻译"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
+                  {form.translatedContent.scenario}
+                </p>
+              </div>
+            )}
           </div>
 
             {/* 角色系统提示词（覆盖预设） */}
@@ -819,6 +911,27 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 onChange={(e) => update({ exampleDialog: e.target.value })}
                 placeholder={'<START>\n{{user}}: 你好\n{{char}}: 你好呀！'}
               />
+              {form.translatedContent?.exampleDialog && (
+                <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-tavern-accent font-medium">翻译：</span>
+                    <button
+                      className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
+                      onClick={() => {
+                        const tc = { ...form.translatedContent }
+                        delete tc.exampleDialog
+                        update({ translatedContent: tc } as Partial<Character>)
+                      }}
+                      title="清除翻译"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
+                    {form.translatedContent.exampleDialog}
+                  </p>
+                </div>
+              )}
               <p className="text-xs text-tavern-text-muted mt-1">
                 使用 {'{{user}}'} 和 {'{{char}}'} 作为用户和角色名的占位符
               </p>

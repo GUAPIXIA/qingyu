@@ -66,7 +66,7 @@ export function UsagePage() {
 
   // 实时刷新：监听 ai:usage 事件
   useEffect(() => {
-    const unsubscribe = window.api.ai.onUsage?.((_data: any) => {
+    const unsubscribe = window.api.ai.onUsage?.(() => {
       // 延迟 100ms 等待记录写入完成
       setTimeout(() => loadData(), 100)
     })

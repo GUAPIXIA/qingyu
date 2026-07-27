@@ -1,6 +1,4 @@
 import type { IpcMain, Dialog } from 'electron'
-import { join } from 'node:path'
-import { DIRS, writeJson, readJson, removeFile, listJsonFiles } from '../services/storage'
 import { createLogger } from '../services/logger'
 import { safeSend } from '../utils/safeSend'
 import {

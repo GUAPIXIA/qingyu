@@ -1,6 +1,6 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
-import { DIRS, writeJson, readJson, listJsonFiles, removeFile } from '../services/storage'
+import { DIRS, writeJson, listJsonFiles, removeFile } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Preset } from '../../shared/types'
 import { nanoid } from 'nanoid'

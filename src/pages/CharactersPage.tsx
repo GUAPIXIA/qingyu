@@ -6,7 +6,7 @@ import { CharacterEditor } from '../components/character/CharacterEditor'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
-import { Users, Plus, Upload, FileUp, Search, MessageSquare, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning } from 'lucide-react'
+import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning } from 'lucide-react'
 import type { Character } from '../../shared/types'
 
 export function CharactersPage() {

@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeRaw from 'rehype-raw'
-import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause, User, Bot, Languages, GitBranch, Loader2, ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw } from 'lucide-react'
+import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause, User, Bot, Languages, GitBranch, Loader2, ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw, ChevronsDown } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -12,6 +12,7 @@ import { cn } from '../../lib/utils'
 import { formatTime } from '../../utils/format'
 import { estimateTokens } from '../../utils/tokenCounter'
 import { parseDialogue } from '../../utils/dialogue-parser'
+import { getDisplayName } from '../../utils/variables'
 
 interface MessageBubbleProps {
   message: Message
@@ -39,8 +40,18 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const [avatarError, setAvatarError] = useState(false)
   const [zoomImage, setZoomImage] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
+  const [continuing, setContinuing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { editMessage, deleteMessage, regenerateMessage, swipeMessage, isStreaming, currentRequestId, translatingMessages, showTranslationIds, translateMessage, updateMessageImages } = useChatStore()
+  const editMessage = useChatStore(s => s.editMessage)
+  const deleteMessage = useChatStore(s => s.deleteMessage)
+  const regenerateMessage = useChatStore(s => s.regenerateMessage)
+  const continueMessage = useChatStore(s => s.continueMessage)
+  const swipeMessage = useChatStore(s => s.swipeMessage)
+  const isStreaming = useChatStore(s => s.isStreaming)
+  const translatingMessages = useChatStore(s => s.translatingMessages)
+  const showTranslationIds = useChatStore(s => s.showTranslationIds)
+  const translateMessage = useChatStore(s => s.translateMessage)
+  const updateMessageImages = useChatStore(s => s.updateMessageImages)
   const { settings, getActiveTTS } = useSettingsStore()
   const [thoughtExpanded, setThoughtExpanded] = useState(settings.autoExpandThought ?? false)
   const { getPersona } = usePersonaStore()
@@ -304,7 +315,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           {/* 名字和时间 */}
           <div className={cn('flex items-center gap-2 mb-1 text-xs text-tavern-text-muted', isUser && 'flex-row-reverse')}>
             <span className="font-medium text-tavern-text-soft">
-              {isUser ? settings.userName : isSystem ? '系统' : character?.translatedContent?.name ?? character?.name ?? 'AI'}
+              {isUser ? settings.userName : isSystem ? '系统' : getDisplayName(character) || 'AI'}
             </span>
             <span>{formatTime(message.timestamp)}</span>
             {settings.showTokenCount && message.content && (
@@ -583,6 +594,50 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                 title="删除"
               >
                 <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* 继续续写按钮 — 始终可见，仅最后一条 assistant 消息 */}
+          {isLast && !isUser && !isSystem && !isStreaming && character && (
+            <div className="flex justify-center mt-1.5">
+              <button
+                className={cn(
+                  'px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5',
+                  continuing
+                    ? 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted cursor-not-allowed'
+                    : 'border-tavern-accent/40 bg-tavern-accent/5 text-tavern-accent hover:bg-tavern-accent/10 hover:border-tavern-accent/60 hover:shadow-sm',
+                )}
+                onClick={async () => {
+                  setContinuing(true)
+                  try {
+                    const chatStore = useChatStore.getState()
+                    let preset: any = null
+                    if (chatStore.activePresetId) {
+                      const presets = await window.api.preset.list()
+                      preset = presets.find((p: any) => p.id === chatStore.activePresetId) ?? null
+                    }
+                    const activeLorebooks: any[] = []
+                    if (chatStore.activeLorebookIds.length > 0) {
+                      const lorebooks = await window.api.lorebook.list()
+                      for (const id of chatStore.activeLorebookIds) {
+                        const lb = lorebooks.find((lb: any) => lb.id === id)
+                        if (lb && lb.enabled) activeLorebooks.push(lb)
+                      }
+                    }
+                    await continueMessage(message.id, character, preset, activeLorebooks)
+                  } catch { /* 忽略 */ }
+                  setContinuing(false)
+                }}
+                disabled={continuing}
+                title="让 AI 从上一次回复的结尾继续生成"
+              >
+                {continuing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ChevronsDown className="w-3.5 h-3.5" />
+                )}
+                继续续写
               </button>
             </div>
           )}

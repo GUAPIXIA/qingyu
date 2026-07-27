@@ -18,7 +18,7 @@ export function registerMcpIPC(ipcMain: IpcMain): void {
 
   ipcMain.handle('mcp:updateServer', async (_e, id: string, patch: any) => {
     safeId(id)
-    mcpManager.updateServer(id, patch)
+    return mcpManager.updateServer(id, patch)
   })
 
   ipcMain.handle('mcp:removeServer', async (_e, id: string) => {

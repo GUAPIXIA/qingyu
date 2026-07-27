@@ -112,6 +112,7 @@ export function ApiPage() {
     setContextRawInput('')
     setShowKey(false)
     setTestResult(null)
+    setEditingId(null)
   }
 
   const openEdit = (p: ConnectionProfile) => {
@@ -125,15 +126,18 @@ export function ApiPage() {
 
   const openAdd = () => {
     resetForm()
-    setEditingId(null)
     setShowAdd(true)
   }
 
   const handleSave = () => {
     if (!editForm.name.trim()) return
+    // 在保存前同步上下文长度（用户可能未触发 blur 直接点了保存）
+    if (contextRawInput.trim()) {
+      const maxCtx = parseContextInput(contextRawInput)
+      editForm.maxContext = maxCtx
+    }
     if (editingId) {
       updateProfile(editingId, editForm)
-      setEditingId(null)
     } else {
       addProfile(editForm)
       setShowAdd(false)
@@ -144,7 +148,6 @@ export function ApiPage() {
   const handleDelete = (id: string) => {
     deleteProfile(id)
     if (editingId === id) {
-      setEditingId(null)
       resetForm()
     }
   }
@@ -285,8 +288,9 @@ export function ApiPage() {
                 <div
                   className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-tavern-bg-hover/50 rounded-t-xl"
                   onClick={() => {
+                    // 正在新建时忽略 profile 卡片点击，防止覆盖新建表单
+                    if (showAdd) return
                     if (editingId === p.id) {
-                      setEditingId(null)
                       resetForm()
                     } else {
                       openEdit(p)
@@ -470,7 +474,7 @@ export function ApiPage() {
                           保存
                         </button>
                         <button
-                          onClick={() => { setEditingId(null); resetForm() }}
+                          onClick={() => { resetForm() }}
                           className="px-3 py-1.5 text-xs text-tavern-text-muted hover:text-tavern-text"
                         >
                           取消

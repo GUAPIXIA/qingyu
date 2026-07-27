@@ -51,7 +51,7 @@ function initDatabase() {
   // 初始化默认版本配置
   const now = new Date().toISOString()
   const defaults = {
-    latest_version: '0.8.4',
+    latest_version: '0.8.7',
     changelog: '',
     download_url: 'https://github.com/GUAPIXIA/qingyu/releases',
   }

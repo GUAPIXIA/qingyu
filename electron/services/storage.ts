@@ -3,8 +3,6 @@ import { join } from 'node:path'
 import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync, rmSync, renameSync } from 'node:fs'
 import { getDefaultSettings } from '../../shared/defaults'
 
-const APP_NAME = '轻语'
-
 /** 获取数据目录 */
 export function getDataDir(): string {
   return join(app.getPath('userData'), 'data')

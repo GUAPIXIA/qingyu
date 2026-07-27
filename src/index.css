@@ -137,6 +137,10 @@ html, body, #root {
   overflow: hidden;
 }
 
+html {
+  font-size: var(--font-size-base);
+}
+
 body {
   font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
   background-color: var(--tavern-bg);
@@ -146,10 +150,10 @@ body {
   user-select: none;
 }
 
-/* 字体大小档位 */
-.font-compact { --font-size-base: 14px; }
-.font-comfortable { --font-size-base: 16px; }
-.font-loose { --font-size-base: 18px; }
+/* 字体大小档位 — 同时设置变量和 html font-size（rem 基准） */
+.font-compact { --font-size-base: 14px; font-size: 14px; }
+.font-comfortable { --font-size-base: 16px; font-size: 16px; }
+.font-loose { --font-size-base: 18px; font-size: 18px; }
 
 /* 气泡圆角样式 */
 .bubble-round .msg-bubble { border-radius: 16px; }

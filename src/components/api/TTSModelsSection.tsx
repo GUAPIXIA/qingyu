@@ -3,8 +3,8 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import type { TTSModelConfig } from '../../../shared/types'
 import {
-  Volume2, Plus, Edit3, Trash2, Check, X, Eye, EyeOff,
-  Circle, ChevronUp, ChevronDown, GripVertical, Loader2,
+  Volume2, Plus, Trash2, Check, Eye, EyeOff,
+  Circle, ChevronUp, ChevronDown, Loader2,
 } from 'lucide-react'
 
 const TTS_PROVIDERS = [

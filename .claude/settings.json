@@ -25,7 +25,13 @@
       "Bash(curl -s http://cjbtj.xyz/admin/)",
       "Bash(curl -s http://cjbtj.xyz/api/announcements)",
       "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" -X POST http://cjbtj.xyz/api/auth/login -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"fgb54188\"}')",
-      "Bash(curl -sI http://cjbtj.xyz/admin/)"
+      "Bash(curl -sI http://cjbtj.xyz/admin/)",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "Bash(Select-Object -First 30)",
+      "Bash(npm run *)",
+      "Bash(npx vite *)",
+      "Bash(grep -n \"set\\({ sessions, currentSessionId\")",
+      "PowerShell(npx tsc --noEmit --pretty 2>&1)"
     ]
   }
 }
