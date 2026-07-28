@@ -4,6 +4,7 @@ import { DIRS, writeJson, readJson } from '../services/storage'
 import { getDefaultSettings } from '../../shared/defaults'
 import { saveCredential, getCredential } from '../services/safeStorage'
 import { createLogger } from '../services/logger'
+import { safeHandle } from '../utils/safeHandle'
 import type { Settings } from '../../shared/types'
 
 const log = createLogger('settings')
@@ -12,29 +13,29 @@ const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 
 export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 读取设置
-  ipcMain.handle('settings:get', async () => {
+  safeHandle(ipcMain, 'settings:get', async () => {
     return readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
   })
 
   // 保存设置
-  ipcMain.handle('settings:save', async (_e, settings: Settings) => {
+  safeHandle(ipcMain, 'settings:save', async (_e, settings: Settings) => {
     writeJson(SETTINGS_FILE(), settings)
     log.info('设置已保存', { activeProfileId: settings.activeProfileId || '(none)', theme: settings.theme })
   })
 
   // 保存凭据（加密）
-  ipcMain.handle('settings:saveCredential', async (_e, provider: string, key: string) => {
+  safeHandle(ipcMain, 'settings:saveCredential', async (_e, provider: string, key: string) => {
     saveCredential(provider, key)
     log.info('凭据已保存', { provider })
   })
 
   // 读取凭据
-  ipcMain.handle('settings:getCredential', async (_e, provider: string) => {
+  safeHandle(ipcMain, 'settings:getCredential', async (_e, provider: string) => {
     return getCredential(provider)
   })
 
   // 导出备份
-  ipcMain.handle('settings:exportBackup', async () => {
+  safeHandle(ipcMain, 'settings:exportBackup', async () => {
     const result = await dialog.showSaveDialog({
       title: '导出备份',
       defaultPath: `qingyu-backup-${Date.now()}.json`,
@@ -78,7 +79,7 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   })
 
   // 导入备份
-  ipcMain.handle('settings:importBackup', async () => {
+  safeHandle(ipcMain, 'settings:importBackup', async () => {
     const result = await dialog.showOpenDialog({
       title: '导入备份',
       filters: [{ name: 'JSON 备份', extensions: ['json'] }],

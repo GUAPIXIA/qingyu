@@ -412,8 +412,6 @@ body {
   font-weight: 500;
 }
 
-.dialogue-text::before { content: '\201C'; }
-.dialogue-text::after  { content: '\201D'; }
 
 /* 动作描述块 */
 .action-block {
@@ -431,6 +429,12 @@ body {
 /* 用户气泡内动作块和说话人标签适配琥珀底色 */
 .bubble-user .action-block { color: rgba(255, 251, 235, 0.85); }
 .bubble-user .dialogue-speaker { color: rgba(255, 251, 235, 0.7); }
+.bubble-user .dialogue-block {
+  background: rgba(255, 251, 235, 0.15);
+  border-left-color: rgba(255, 251, 235, 0.4);
+  box-shadow: none;
+}
+.bubble-user .dialogue-text { color: rgba(255, 251, 235, 0.95); }
 
 /* 旁白/叙述块 */
 .narration-block {

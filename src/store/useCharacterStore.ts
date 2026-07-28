@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Character } from '../../shared/types'
 import { nanoid } from 'nanoid'
 import { migrateLorebookId } from '../utils/lorebook'
+import { logError } from '../lib/logger'
 import { useSettingsStore } from './useSettingsStore'
 
 /** 创建示例角色 */
@@ -83,7 +84,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
     if (migrated) {
       for (const c of characters) {
         if (c.boundLorebookIds?.length === 1) {
-          window.api.character.save(c).catch(() => {})
+          window.api.character.save(c).catch((e) => logError('CharacterStore:save', e))
         }
       }
     }

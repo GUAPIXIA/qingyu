@@ -1,36 +1,59 @@
-import { useState, useMemo, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useCharacterStore } from '../store/useCharacterStore'
-import { CharacterCard } from '../components/character/CharacterCard'
-import { CharacterEditor } from '../components/character/CharacterEditor'
-import { EmptyState } from '../components/common/EmptyState'
-import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { cn } from '../lib/utils'
-import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning } from 'lucide-react'
-import type { Character } from '../../shared/types'
+import { useState, useMemo, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { useCharacterStore } from "../store/useCharacterStore"
+import { CharacterCard } from "../components/character/CharacterCard"
+import { CharacterEditor } from "../components/character/CharacterEditor"
+import { CharacterDetail } from "../components/character/CharacterDetail"
+import { EmptyState } from "../components/common/EmptyState"
+import { ConfirmDialog } from "../components/common/ConfirmDialog"
+import { cn } from "../lib/utils"
+import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp } from "lucide-react"
+import type { Character } from "../../shared/types"
+
+type CardSize = "sm" | "md" | "lg"
+type SortKey = "updatedAt" | "createdAt" | "name"
+
+function loadCardSize(): CardSize {
+  try { return (localStorage.getItem("char-card-size") as CardSize) || "md" } catch { return "md" }
+}
 
 export function CharactersPage() {
   const navigate = useNavigate()
   const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, createCharacter, importError, pendingAvatarId, importProgress } = useCharacterStore()
   const [editing, setEditing] = useState(false)
   const [editCharacter, setEditCharacter] = useState<Character | null>(null)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState("")
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [cardSize, setCardSize] = useState<CardSize>(loadCardSize)
+  const [sortKey, setSortKey] = useState<SortKey>("updatedAt")
+  const [detailCharacter, setDetailCharacter] = useState<Character | null>(null)
   const [batchResult, setBatchResult] = useState<{ total: number; successCount: number; failCount: number; fails: { name: string; error: string }[] } | null>(null)
 
   const filtered = useMemo(() => {
-    if (!search) return characters
-    const q = search.toLowerCase()
-    return characters.filter((c) => {
-      const nameMatch = c.name.toLowerCase().includes(q)
-      const tagMatch = c.tags.some((t) => t.toLowerCase().includes(q))
-      const descMatch = c.description?.toLowerCase().includes(q)
-      const personalityMatch = c.personality?.toLowerCase().includes(q)
-      const scenarioMatch = c.scenario?.toLowerCase().includes(q)
-      return nameMatch || tagMatch || descMatch || personalityMatch || scenarioMatch
+    let result = characters
+    if (search) {
+      const q = search.toLowerCase()
+      result = result.filter((c) => {
+        const nameMatch = c.name.toLowerCase().includes(q)
+        const tagMatch = c.tags.some((t) => t.toLowerCase().includes(q))
+        const descMatch = c.description?.toLowerCase().includes(q)
+        const personalityMatch = c.personality?.toLowerCase().includes(q)
+        const scenarioMatch = c.scenario?.toLowerCase().includes(q)
+        return nameMatch || tagMatch || descMatch || personalityMatch || scenarioMatch
+      })
+    }
+    return [...result].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      if (sortKey === "name") return a.name.localeCompare(b.name)
+      return (b[sortKey] as number) - (a[sortKey] as number)
     })
-  }, [characters, search])
+  }, [characters, search, sortKey])
+
+  const handleCardSizeChange = (size: CardSize) => {
+    setCardSize(size)
+    try { localStorage.setItem("char-card-size", size) } catch { /* ignore */ }
+  }
 
   const handleNew = () => {
     setEditCharacter(createCharacter())
@@ -50,7 +73,7 @@ export function CharactersPage() {
 
   const handleStartChat = (char: Character) => {
     selectCharacter(char.id)
-    navigate('/chat')
+    navigate("/chat")
   }
 
   const handleDelete = async () => {
@@ -60,7 +83,6 @@ export function CharactersPage() {
     }
   }
 
-  // JSON 导入无头像时自动打开编辑器
   useEffect(() => {
     if (pendingAvatarId) {
       const char = characters.find(c => c.id === pendingAvatarId)
@@ -76,21 +98,25 @@ export function CharactersPage() {
     if (result) {
       const fails = (result.results || [])
         .filter(r => !r.success)
-        .map(r => ({ name: r.name, error: r.error || '未知错误' }))
+        .map(r => ({ name: r.name, error: r.error || "未知错误" }))
       setBatchResult({
         total: result.total || 0,
         successCount: result.successCount || 0,
         failCount: result.failCount || 0,
         fails,
       })
-      // 5秒后自动清除
       setTimeout(() => setBatchResult(null), 8000)
     }
   }
 
+  const gridClass = viewMode === "list" ? "" : {
+    sm: "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2",
+    md: "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3",
+    lg: "grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4",
+  }[cardSize]
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* 导入错误提示 */}
       {importError && (
         <div className="flex items-center gap-2 px-4 py-2 bg-tavern-danger/10 border-b border-tavern-danger/30 text-tavern-danger text-sm animate-fade-in">
           <AlertCircle className="w-4 h-4 shrink-0" />
@@ -101,13 +127,12 @@ export function CharactersPage() {
         </div>
       )}
 
-      {/* 批量导入结果 */}
       {batchResult && (
         <div className={cn(
-          'flex items-center gap-2 px-4 py-2 border-b text-sm animate-fade-in',
+          "flex items-center gap-2 px-4 py-2 border-b text-sm animate-fade-in",
           batchResult.failCount > 0
-            ? 'bg-amber-500/10 border-amber-500/30 text-amber-600'
-            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600'
+            ? "bg-amber-500/10 border-amber-500/30 text-amber-600"
+            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
         )}>
           {batchResult.failCount > 0 ? (
             <Info className="w-4 h-4 shrink-0" />
@@ -120,7 +145,7 @@ export function CharactersPage() {
               <>，失败 <strong>{batchResult.failCount}</strong> 个
                 {batchResult.fails.length > 0 && (
                   <span className="ml-1 text-tavern-text-muted">
-                    （{batchResult.fails.map(f => f.name).join('、')}）
+                    （{batchResult.fails.map(f => f.name).join("、")}）
                   </span>
                 )}
               </>
@@ -132,14 +157,13 @@ export function CharactersPage() {
         </div>
       )}
 
-      {/* 导入进度条 */}
       {importProgress && (
         <div className="px-4 py-3 border-b border-tavern-border-soft bg-tavern-bg-soft animate-fade-in">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-sm">
-              {importProgress.status === 'processing' ? (
+              {importProgress.status === "processing" ? (
                 <Loader2 className="w-4 h-4 animate-spin text-tavern-accent" />
-              ) : importProgress.status === 'error' ? (
+              ) : importProgress.status === "error" ? (
                 <FileWarning className="w-4 h-4 text-tavern-danger" />
               ) : (
                 <CheckCircle className="w-4 h-4 text-emerald-500" />
@@ -149,32 +173,29 @@ export function CharactersPage() {
               </span>
             </div>
             <span className={cn(
-              'text-xs truncate ml-4 max-w-[50%]',
-              importProgress.status === 'error' ? 'text-tavern-danger' : 'text-tavern-text-muted'
+              "text-xs truncate ml-4 max-w-[50%]",
+              importProgress.status === "error" ? "text-tavern-danger" : "text-tavern-text-muted"
             )}>
               {importProgress.fileName}
             </span>
           </div>
-          {/* 进度条本体 */}
           <div className="w-full h-2 rounded-full bg-tavern-bg-hover overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-300 ease-out"
               style={{
                 width: `${Math.round((importProgress.current / importProgress.total) * 100)}%`,
-                background: importProgress.status === 'error'
-                  ? 'linear-gradient(90deg, #ef4444, #f87171)'
-                  : 'linear-gradient(90deg, #d4a574, #e8b88a)',
+                background: importProgress.status === "error"
+                  ? "linear-gradient(90deg, #ef4444, #f87171)"
+                  : "linear-gradient(90deg, #d4a574, #e8b88a)",
               }}
             />
           </div>
-          {/* 百分比数字 */}
           <div className="text-xs text-tavern-text-muted text-right mt-0.5">
             {Math.round((importProgress.current / importProgress.total) * 100)}%
           </div>
         </div>
       )}
 
-      {/* 顶栏 */}
       <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
         <h1 className="font-display text-lg font-bold">角色管理</h1>
         <div className="flex items-center gap-2">
@@ -197,10 +218,9 @@ export function CharactersPage() {
         </div>
       </header>
 
-      {/* 搜索栏 */}
       {characters.length > 0 && (
-        <div className="px-4 py-3 border-b border-tavern-border-soft flex items-center gap-3">
-          <div className="relative max-w-xs flex-1">
+        <div className="px-4 py-3 border-b border-tavern-border-soft flex items-center gap-3 flex-wrap">
+          <div className="relative max-w-xs flex-1 min-w-[160px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-tavern-text-muted" />
             <input
               type="text"
@@ -210,18 +230,45 @@ export function CharactersPage() {
               className="input pl-9"
             />
           </div>
-          {/* 视图切换 */}
+          <div className="flex items-center gap-1.5">
+            <ArrowDownUp className="w-3.5 h-3.5 text-tavern-text-muted" />
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="text-xs bg-tavern-bg-hover border border-tavern-border rounded-md px-2 py-1.5 text-tavern-text-soft outline-none"
+            >
+              <option value="updatedAt">最近更新</option>
+              <option value="createdAt">创建时间</option>
+              <option value="name">名称</option>
+            </select>
+          </div>
+          <div className="flex-1" />
+          <div className="flex items-center gap-0.5 bg-tavern-bg-hover rounded-lg p-0.5">
+            {(["sm", "md", "lg"] as CardSize[]).map((size) => (
+              <button
+                key={size}
+                onClick={() => handleCardSizeChange(size)}
+                className={cn(
+                  "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                  cardSize === size ? "bg-tavern-bg-card shadow-sm text-tavern-accent" : "text-tavern-text-muted hover:text-tavern-text"
+                )}
+                title={size === "sm" ? "小卡片" : size === "md" ? "中卡片" : "大卡片"}
+              >
+                {size === "sm" ? "小" : size === "md" ? "中" : "大"}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-0.5 bg-tavern-bg-hover rounded-lg p-0.5">
             <button
-              onClick={() => setViewMode('grid')}
-              className={cn('p-1.5 rounded transition-colors', viewMode === 'grid' ? 'bg-tavern-bg-card shadow-sm text-tavern-accent' : 'text-tavern-text-muted hover:text-tavern-text')}
+              onClick={() => setViewMode("grid")}
+              className={cn("p-1.5 rounded transition-colors", viewMode === "grid" ? "bg-tavern-bg-card shadow-sm text-tavern-accent" : "text-tavern-text-muted hover:text-tavern-text")}
               title="网格视图"
             >
               <Grid3X3 className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setViewMode('list')}
-              className={cn('p-1.5 rounded transition-colors', viewMode === 'list' ? 'bg-tavern-bg-card shadow-sm text-tavern-accent' : 'text-tavern-text-muted hover:text-tavern-text')}
+              onClick={() => setViewMode("list")}
+              className={cn("p-1.5 rounded transition-colors", viewMode === "list" ? "bg-tavern-bg-card shadow-sm text-tavern-accent" : "text-tavern-text-muted hover:text-tavern-text")}
               title="列表视图"
             >
               <List className="w-4 h-4" />
@@ -230,7 +277,6 @@ export function CharactersPage() {
         </div>
       )}
 
-      {/* 角色列表 */}
       <div className="flex-1 overflow-y-auto p-4">
         {characters.length === 0 ? (
           <EmptyState
@@ -258,13 +304,15 @@ export function CharactersPage() {
             title="未找到匹配的角色"
             description={`没有包含 "${search}" 的角色`}
           />
-        ) : viewMode === 'list' ? (
+        ) : viewMode === "list" ? (
           <div className="flex flex-col gap-3 max-w-3xl mx-auto">
             {filtered.map((char) => (
               <CharacterCard
                 key={char.id}
                 character={char}
                 viewMode="list"
+                cardSize={cardSize}
+                onDetail={() => setDetailCharacter(char)}
                 onEdit={() => handleEdit(char)}
                 onDelete={() => setDeleteId(char.id)}
                 onChat={() => handleStartChat(char)}
@@ -272,11 +320,13 @@ export function CharactersPage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className={cn("grid", gridClass)}>
             {filtered.map((char) => (
               <CharacterCard
                 key={char.id}
                 character={char}
+                cardSize={cardSize}
+                onDetail={() => setDetailCharacter(char)}
                 onEdit={() => handleEdit(char)}
                 onDelete={() => setDeleteId(char.id)}
                 onChat={() => handleStartChat(char)}
@@ -286,7 +336,6 @@ export function CharactersPage() {
         )}
       </div>
 
-      {/* 编辑器 */}
       {editing && editCharacter && (
         <CharacterEditor
           character={editCharacter}
@@ -295,7 +344,18 @@ export function CharactersPage() {
         />
       )}
 
-      {/* 删除确认 */}
+      {detailCharacter && (
+        <CharacterDetail
+          character={detailCharacter}
+          onClose={() => setDetailCharacter(null)}
+          onEdit={() => {
+            setDetailCharacter(null)
+            handleEdit(detailCharacter)
+          }}
+          onChat={() => handleStartChat(detailCharacter)}
+        />
+      )}
+
       <ConfirmDialog
         open={!!deleteId}
         onClose={() => setDeleteId(null)}

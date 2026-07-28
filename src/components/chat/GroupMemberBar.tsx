@@ -21,8 +21,9 @@ export function GroupMemberBar({ memberIds, currentSpeakerIndex, onSpeakerClick,
   return (
     <div className="border-t border-tavern-border-soft bg-tavern-bg-soft px-3 py-2 flex items-center gap-3 overflow-x-auto">
       <span className="text-[10px] text-tavern-text-muted shrink-0 font-medium">成员</span>
-      {members.map((m, idx) => {
-        const isCurrent = idx === currentSpeakerIndex
+      {members.map((m) => {
+        // 用角色 ID 匹配 currentSpeakerIndex，避免过滤后索引错位
+        const isCurrent = m.id === memberIds[currentSpeakerIndex]
         return (
           <button
             key={m.id}

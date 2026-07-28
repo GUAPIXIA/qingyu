@@ -21,6 +21,7 @@ import {
   Maximize2,
   Plug,
   ExternalLink,
+  Globe,
 } from 'lucide-react'
 
 export function SettingsPage() {
@@ -373,6 +374,28 @@ export function SettingsPage() {
                 ))}
               </div>
               <p className="text-xs text-tavern-text-muted mt-1">角色卡封面毛玻璃效果的模糊强度，0 = 禁用</p>
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* 网络 */}
+        <SectionCard title="网络" icon={<Globe className="w-4 h-4" />}>
+          <div className="mt-3 space-y-3">
+            <div>
+              <p className="text-sm mb-1.5">封面下载代理</p>
+              <p className="text-xs text-tavern-text-muted mb-2">
+                导入角色卡时通过代理服务器下载封面图片，留空则直连。格式如 http://127.0.0.1:7890
+              </p>
+              <input
+                type="text"
+                className="input text-sm w-full max-w-sm"
+                value={settings.coverProxyUrl ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value.trim()
+                  updateSettings({ coverProxyUrl: val || undefined })
+                }}
+                placeholder="http://127.0.0.1:7890"
+              />
             </div>
           </div>
         </SectionCard>

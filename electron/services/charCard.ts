@@ -1,11 +1,30 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { DIRS, writeJson, readJson } from './storage'
+import http from 'node:http'
+import https from 'node:https'
+import { DIRS, writeJson, readJson, readJsonAsync } from './storage'
 import type { Character, Lorebook, LoreEntry } from '../../shared/types'
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
 
 const log = createLogger('charCard')
+
+/** 全局 keep-alive Agent — 复用 TCP/TLS 连接，避免每次下载都重新握手 */
+const httpKeepAliveAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000,      // 空闲连接保留 30 秒
+  maxSockets: 10,             // 每个 host 最多 10 个并发连接
+  maxFreeSockets: 5,          // 空闲时保留 5 个
+  timeout: 30000,             // socket 超时
+})
+
+const httpsKeepAliveAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  maxSockets: 10,
+  maxFreeSockets: 5,
+  timeout: 30000,
+})
 
 /** PNG 签名 */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -127,7 +146,7 @@ function crc32(buf: Buffer): number {
 }
 
 /** 从 PNG 文件导入角色卡 */
-export async function importCharacterFromPng(filePath: string): Promise<Character> {
+export async function importCharacterFromPng(filePath: string, proxyUrl?: string): Promise<Character> {
   const buffer = readFileSync(filePath)
   const chunks = readPngTextChunks(buffer)
   // 优先读取 v2 的 chara 字段，fallback 到 v3 的 ccv3 字段
@@ -146,16 +165,31 @@ export async function importCharacterFromPng(filePath: string): Promise<Characte
   const parsed = JSON.parse(charaJson)
   // 头像直接用 PNG 文件的 base64
   const avatarBase64 = `data:image/png;base64,${buffer.toString('base64')}`
-  const character = await normalizeCharacter(parsed, avatarBase64)
+  const character = await normalizeCharacter(parsed, avatarBase64, proxyUrl)
   log.info('PNG 角色卡导入成功', { name: character.name, path: filePath.substring(0, 80) })
   return character
 }
 
 /** 从 JSON 文件导入角色卡 */
-export async function importCharacterFromJson(filePath: string): Promise<Character> {
+export async function importCharacterFromJson(filePath: string, proxyUrl?: string): Promise<Character> {
   const raw = readFileSync(filePath, 'utf-8')
   const parsed = JSON.parse(raw)
-  const character = await normalizeCharacter(parsed)
+
+  // 检测 SillyTavern 世界书格式：有 entries + scan_depth 且无 spec/data 包装
+  if (
+    parsed.entries &&
+    (Array.isArray(parsed.entries) ? parsed.entries.length > 0 : Object.keys(parsed.entries).length > 0) &&
+    typeof parsed.scan_depth === 'number' &&
+    !parsed.spec &&
+    !parsed.data
+  ) {
+    const entryCount = Array.isArray(parsed.entries) ? parsed.entries.length : Object.keys(parsed.entries).length
+    throw new Error(
+      `这个文件是世界书（Lorebook），包含 ${entryCount} 条条目，不是角色卡。\n请在世界书页面使用"导入 JSON"功能导入。`
+    )
+  }
+
+  const character = await normalizeCharacter(parsed, undefined, proxyUrl)
   log.info('JSON 角色卡导入成功', { name: character.name, path: filePath.substring(0, 80), hasAvatar: !!character.avatar })
   return character
 }
@@ -175,8 +209,184 @@ export interface DownloadResult {
 /** 下载超时时间（毫秒）- 大图片（如 2MB+）需要足够时间 */
 const DOWNLOAD_TIMEOUT_MS = 30000
 
-/** 下载图片并转为 base64 data URL */
-async function downloadImageAsBase64(url: string, maxRedirects: number = 5): Promise<DownloadResult> {
+/** 解析代理 URL */
+function parseProxyUrl(proxyUrl: string): { host: string; port: number } | null {
+  try {
+    const u = new URL(proxyUrl)
+    if (!u.hostname || !u.port) return null
+    return { host: u.hostname, port: parseInt(u.port, 10) }
+  } catch {
+    return null
+  }
+}
+
+/** 单次下载尝试（内部函数），可通过代理或直连 */
+function _downloadOne(url: string, proxy: { host: string; port: number } | null, maxRedirects: number): Promise<DownloadResult> {
+  const trimmed = url.trim()
+  const isHttps = trimmed.startsWith('https')
+  const targetUrl = new URL(trimmed)
+
+  return new Promise((resolve) => {
+    let settled = false
+    let req: any = null
+
+    const safeResolve = (result: DownloadResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolve(result)
+    }
+
+    const timeout = setTimeout(() => {
+      log.warn('封面下载超时', { url: trimmed.substring(0, 100), timeoutMs: DOWNLOAD_TIMEOUT_MS, viaProxy: !!proxy })
+      if (req) {
+        try { req.destroy() } catch { /* ignore */ }
+      }
+      safeResolve({ success: false, error: '下载超时，请检查网络连接', code: 'TIMEOUT' })
+    }, DOWNLOAD_TIMEOUT_MS)
+
+    try {
+      if (proxy) {
+        // ===== 通过代理下载 =====
+        const connectOpts: any = {
+          host: proxy.host,
+          port: proxy.port,
+          method: 'CONNECT',
+          path: `${targetUrl.hostname}:${targetUrl.port || (isHttps ? 443 : 80)}`,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          timeout: DOWNLOAD_TIMEOUT_MS,
+        }
+
+        log.debug('通过代理连接', { proxy: `${proxy.host}:${proxy.port}`, target: `${targetUrl.hostname}:${targetUrl.port || (isHttps ? 443 : 80)}` })
+
+        req = http.request(connectOpts)
+        req.on('connect', (_res: any, socket: any) => {
+          if (_res.statusCode !== 200) {
+            log.warn('代理 CONNECT 失败', { statusCode: _res.statusCode })
+            safeResolve({ success: false, error: `代理连接失败: HTTP ${_res.statusCode}`, code: 'NETWORK_ERROR' })
+            return
+          }
+
+          if (isHttps) {
+            const httpsReq = https.request({
+              host: targetUrl.hostname,
+              port: targetUrl.port || 443,
+              path: targetUrl.pathname + targetUrl.search,
+              method: 'GET',
+              headers: {
+                'Host': targetUrl.hostname,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+              },
+              socket,
+              agent: false,
+              timeout: DOWNLOAD_TIMEOUT_MS,
+            }, handleResponse)
+            httpsReq.on('error', (err: Error) => {
+              if (settled) return
+              log.warn('代理 HTTPS 请求失败', { error: err.message })
+              safeResolve({ success: false, error: `代理请求失败: ${err.message}`, code: 'NETWORK_ERROR' })
+            })
+            httpsReq.end()
+          } else {
+            const httpReq = http.request({
+              host: proxy.host,
+              port: proxy.port,
+              path: trimmed,
+              method: 'GET',
+              headers: {
+                'Host': targetUrl.hostname,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+              },
+              socket,
+              agent: false,
+              timeout: DOWNLOAD_TIMEOUT_MS,
+            }, handleResponse)
+            httpReq.on('error', (err: Error) => {
+              if (settled) return
+              log.warn('代理 HTTP 请求失败', { error: err.message })
+              safeResolve({ success: false, error: `代理请求失败: ${err.message}`, code: 'NETWORK_ERROR' })
+            })
+            httpReq.end()
+          }
+        })
+        req.on('error', (err: Error) => {
+          if (settled) return
+          log.warn('代理连接失败', { proxy: `${proxy.host}:${proxy.port}`, error: err.message })
+          safeResolve({ success: false, error: `代理连接失败: ${err.message}`, code: 'NETWORK_ERROR' })
+        })
+        req.end()
+      } else {
+        // ===== 直连下载 =====
+        const getter = isHttps ? https : http
+        req = getter.get(trimmed, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+          },
+          timeout: DOWNLOAD_TIMEOUT_MS,
+          agent: isHttps ? httpsKeepAliveAgent : httpKeepAliveAgent,
+        }, handleResponse).on('error', (err: Error) => {
+          if (settled) return
+          log.warn('封面下载连接失败', { url: trimmed.substring(0, 100), error: err.message })
+          safeResolve({ success: false, error: `连接失败: ${err.message}`, code: 'NETWORK_ERROR' })
+        })
+      }
+
+      // 统一的响应处理函数
+      function handleResponse(res: any) {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          log.debug('封面下载重定向', { from: trimmed.substring(0, 80), statusCode: res.statusCode })
+          // 递归跟随重定向，保持代理选择
+          _downloadOne(res.headers.location, proxy, maxRedirects - 1).then(safeResolve)
+          return
+        }
+        if (res.statusCode !== 200) {
+          const errorChunks: Buffer[] = []
+          res.on('data', (chunk: Buffer) => { if (errorChunks.length < 1) errorChunks.push(chunk) })
+          res.on('end', () => {
+            const preview = errorChunks.length > 0
+              ? errorChunks[0].subarray(0, 500).toString('utf-8').replace(/\s+/g, ' ').trim()
+              : '(空响应)'
+            log.warn('封面下载 HTTP 错误', { url: trimmed.substring(0, 100), statusCode: res.statusCode, bodyPreview: preview })
+            safeResolve({ success: false, error: `服务器返回 HTTP ${res.statusCode}`, code: 'HTTP_ERROR', statusCode: res.statusCode })
+          })
+          return
+        }
+        const chunks: Buffer[] = []
+        res.on('data', (chunk: Buffer) => chunks.push(chunk))
+        res.on('end', () => {
+          const buffer = Buffer.concat(chunks)
+          if (buffer.length === 0) {
+            log.warn('封面下载返回空数据', { url: trimmed.substring(0, 100) })
+            safeResolve({ success: false, error: '下载的图片数据为空', code: 'NETWORK_ERROR' })
+            return
+          }
+          const mime = detectMimeType(buffer)
+          const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`
+          log.info('封面下载成功', { url: trimmed.substring(0, 100), size: buffer.length, mime, viaProxy: !!proxy })
+          safeResolve({ success: true, data: dataUrl })
+        })
+        res.on('error', (err: Error) => {
+          if (settled) return
+          log.warn('封面下载流错误', { url: trimmed.substring(0, 100), error: err.message })
+          safeResolve({ success: false, error: `网络传输中断: ${err.message}`, code: 'NETWORK_ERROR' })
+        })
+      }
+    } catch (err: any) {
+      log.error('封面下载异常', { url: trimmed.substring(0, 100), error: err?.message ?? String(err) })
+      safeResolve({ success: false, error: `下载异常: ${err?.message ?? '未知错误'}`, code: 'UNKNOWN' })
+    }
+  })
+}
+
+/** 下载图片并转为 base64 data URL
+ *  如果配置了代理，直连和代理同时竞速，谁先返回用谁 */
+async function downloadImageAsBase64(url: string, proxyUrl?: string, maxRedirects: number = 5): Promise<DownloadResult> {
   // 前置 URL 校验
   if (!url || typeof url !== 'string') {
     log.warn('封面 URL 无效', { url: String(url) })
@@ -215,98 +425,30 @@ async function downloadImageAsBase64(url: string, maxRedirects: number = 5): Pro
     return { success: false, error: '重定向次数过多，下载失败', code: 'NETWORK_ERROR' }
   }
 
-  return new Promise((resolve) => {
-    // settled 标志：确保 Promise 只 resolve 一次，避免超时后后台请求仍触发 resolve/log
-    let settled = false
-    // 保存请求引用，超时时可主动取消
-    let req: any = null
+  // 解析代理配置
+  const proxy = proxyUrl ? parseProxyUrl(proxyUrl) : null
 
-    const safeResolve = (result: DownloadResult) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeout)
-      resolve(result)
-    }
+  // 无代理：直连
+  if (!proxy) {
+    return _downloadOne(trimmed, null, maxRedirects)
+  }
 
-    const timeout = setTimeout(() => {
-      log.warn('封面下载超时', { url: trimmed.substring(0, 100), timeoutMs: DOWNLOAD_TIMEOUT_MS })
-      // 主动取消正在进行的请求，避免超时后后台请求仍完成并记录误导性日志
-      if (req) {
-        try { req.destroy() } catch { /* ignore */ }
-      }
-      safeResolve({ success: false, error: '下载超时，请检查网络连接', code: 'TIMEOUT' })
-    }, DOWNLOAD_TIMEOUT_MS)
-
-    try {
-      const getter = trimmed.startsWith('https') ? require('node:https') : require('node:http')
-      req = getter.get(trimmed, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-        },
-        timeout: DOWNLOAD_TIMEOUT_MS,
-      }, (res: any) => {
-        // 处理重定向
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          log.debug('封面下载重定向', { from: trimmed.substring(0, 80), statusCode: res.statusCode })
-          // 递归跟随重定向
-          downloadImageAsBase64(res.headers.location, maxRedirects - 1).then(safeResolve)
-          return
-        }
-        if (res.statusCode !== 200) {
-          // 读取响应体开头以便诊断（如 CDN 返回 HTML 错误页）
-          const errorChunks: Buffer[] = []
-          res.on('data', (chunk: Buffer) => { if (errorChunks.length < 1) errorChunks.push(chunk) })
-          res.on('end', () => {
-            const preview = errorChunks.length > 0
-              ? errorChunks[0].subarray(0, 500).toString('utf-8').replace(/\s+/g, ' ').trim()
-              : '(空响应)'
-            log.warn('封面下载 HTTP 错误', { url: trimmed.substring(0, 100), statusCode: res.statusCode, bodyPreview: preview })
-            safeResolve({
-              success: false,
-              error: `服务器返回 HTTP ${res.statusCode}`,
-              code: 'HTTP_ERROR',
-              statusCode: res.statusCode,
-            })
-          })
-          return
-        }
-        const chunks: Buffer[] = []
-        res.on('data', (chunk: Buffer) => chunks.push(chunk))
-        res.on('end', () => {
-          const buffer = Buffer.concat(chunks)
-          if (buffer.length === 0) {
-            log.warn('封面下载返回空数据', { url: trimmed.substring(0, 100) })
-            safeResolve({ success: false, error: '下载的图片数据为空', code: 'NETWORK_ERROR' })
-            return
-          }
-          const mime = detectMimeType(buffer)
-          const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`
-          log.info('封面下载成功', { url: trimmed.substring(0, 100), size: buffer.length, mime })
-          safeResolve({ success: true, data: dataUrl })
-        })
-        res.on('error', (err: Error) => {
-          // 超时取消请求会触发此处，settled 已为 true 时忽略
-          if (settled) return
-          log.warn('封面下载流错误', { url: trimmed.substring(0, 100), error: err.message })
-          safeResolve({ success: false, error: `网络传输中断: ${err.message}`, code: 'NETWORK_ERROR' })
-        })
-      }).on('error', (err: Error) => {
-        // 超时取消请求可能触发此处，settled 已为 true 时忽略
-        if (settled) return
-        log.warn('封面下载连接失败', { url: trimmed.substring(0, 100), error: err.message })
-        safeResolve({ success: false, error: `连接失败: ${err.message}`, code: 'NETWORK_ERROR' })
-      })
-    } catch (err: any) {
-      log.error('封面下载异常', { url: trimmed.substring(0, 100), error: err?.message ?? String(err) })
-      safeResolve({ success: false, error: `下载异常: ${err?.message ?? '未知错误'}`, code: 'UNKNOWN' })
-    }
-  })
+  // 有代理：直连与代理竞速，谁先返回成功用谁
+  log.info('封面下载竞速', { url: trimmed.substring(0, 100), proxy: `${proxy.host}:${proxy.port}` })
+  try {
+    return await Promise.any([
+      _downloadOne(trimmed, null, maxRedirects),
+      _downloadOne(trimmed, proxy, maxRedirects),
+    ])
+  } catch {
+    // 全部失败
+    log.warn('封面下载：直连和代理均失败', { url: trimmed.substring(0, 100) })
+    return { success: false, error: '直连和代理均下载失败，请检查网络', code: 'NETWORK_ERROR' }
+  }
 }
 
 /** 将各种格式归一化为 Character */
-async function normalizeCharacter(parsed: any, avatarBase64?: string): Promise<Character> {
+async function normalizeCharacter(parsed: any, avatarBase64?: string, proxyUrl?: string): Promise<Character> {
   const data = parsed.data ?? parsed
   const now = Date.now()
 
@@ -327,7 +469,7 @@ async function normalizeCharacter(parsed: any, avatarBase64?: string): Promise<C
           finalAvatar = imageUrl
         } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
           // URL -> 下载
-          const result = await downloadImageAsBase64(imageUrl)
+          const result = await downloadImageAsBase64(imageUrl, proxyUrl)
           if (result.success && result.data) {
             finalAvatar = result.data
             log.info('角色卡封面下载成功', { name: data.name, url: imageUrl.substring(0, 100) })
@@ -664,16 +806,20 @@ export function saveCharacter(character: Character): void {
   writeJson(filePath, { ...rest, avatar: '', cover: '' })
 }
 
-/** 读取角色列表 */
-export function listCharacters(): Character[] {
+/** 读取角色列表（异步并行读取，不阻塞主进程事件循环） */
+export async function listCharacters(): Promise<Character[]> {
   const charDir = DIRS.characters()
   if (!existsSync(charDir)) return []
 
-  const chars: Character[] = []
   const files = readdirSync(charDir).filter((f) => f.endsWith('.json'))
 
-  for (const file of files) {
-    const char = readJson<Character>(join(charDir, file))
+  // 并行读取所有角色 JSON
+  const results = await Promise.all(
+    files.map((file) => readJsonAsync<Character>(join(charDir, file))),
+  )
+
+  const chars: Character[] = []
+  for (const char of results) {
     if (char) {
       // 从文件读取头像和封面
       const avatar = readAvatar(char.id)
@@ -726,9 +872,9 @@ export function deleteCharacter(id: string): void {
 }
 
 /** 重新从 URL 加载角色封面头像 */
-export async function reloadAvatarFromUrl(characterId: string, url: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }> {
+export async function reloadAvatarFromUrl(characterId: string, url: string, proxyUrl?: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }> {
   log.info('重新加载封面', { characterId, url: url.substring(0, 100) })
-  const result = await downloadImageAsBase64(url)
+  const result = await downloadImageAsBase64(url, proxyUrl)
   if (!result.success || !result.data) {
     log.warn('重新加载封面失败', { characterId, code: result.code ?? 'UNKNOWN', error: result.error ?? '' })
     return { success: false, avatar: '', error: result.error, code: result.code }

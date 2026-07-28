@@ -1,6 +1,6 @@
+import { useState, useEffect } from 'react'
 import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText, Download, Palette } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { useGroupChatStore } from '../../store/useGroupChatStore'
 import { getDisplayName } from '../../utils/variables'
 import type { GroupChat, Character, Lorebook, Preset } from '../../../shared/types'
 
@@ -38,6 +38,20 @@ export function GroupChatSettingsPanel({
   onExport,
 }: GroupChatSettingsPanelProps) {
   const availableChars = characters.filter(c => !group.memberIds.includes(c.id))
+
+  // 滑块和文本域使用本地 state，避免拖动时频繁写盘
+  const [localMaxRounds, setLocalMaxRounds] = useState(group.maxRounds)
+  const [localSpeakerInterval, setLocalSpeakerInterval] = useState(group.speakerInterval)
+  const [localSystemPrompt, setLocalSystemPrompt] = useState(group.systemPrompt)
+  const [localOpacity, setLocalOpacity] = useState(group.chatBackgroundParams?.opacity ?? 0.3)
+  const [localBlur, setLocalBlur] = useState(group.chatBackgroundParams?.blur ?? 0)
+
+  // group 变化时同步本地 state
+  useEffect(() => { setLocalMaxRounds(group.maxRounds) }, [group.maxRounds])
+  useEffect(() => { setLocalSpeakerInterval(group.speakerInterval) }, [group.speakerInterval])
+  useEffect(() => { setLocalSystemPrompt(group.systemPrompt) }, [group.systemPrompt])
+  useEffect(() => { setLocalOpacity(group.chatBackgroundParams?.opacity ?? 0.3) }, [group.chatBackgroundParams?.opacity])
+  useEffect(() => { setLocalBlur(group.chatBackgroundParams?.blur ?? 0) }, [group.chatBackgroundParams?.blur])
 
   return (
     <>
@@ -213,8 +227,10 @@ export function GroupChatSettingsPanel({
                   min="1"
                   max="5"
                   step="1"
-                  value={group.maxRounds}
-                  onChange={e => onSave({ ...group, maxRounds: Number(e.target.value) })}
+                  value={localMaxRounds}
+                  onChange={e => setLocalMaxRounds(Number(e.target.value))}
+                  onMouseUp={() => onSave({ ...group, maxRounds: localMaxRounds })}
+                  onTouchEnd={() => onSave({ ...group, maxRounds: localMaxRounds })}
                   className="w-full accent-tavern-accent"
                 />
               </div>
@@ -228,8 +244,10 @@ export function GroupChatSettingsPanel({
                   min="500"
                   max="5000"
                   step="500"
-                  value={group.speakerInterval}
-                  onChange={e => onSave({ ...group, speakerInterval: Number(e.target.value) })}
+                  value={localSpeakerInterval}
+                  onChange={e => setLocalSpeakerInterval(Number(e.target.value))}
+                  onMouseUp={() => onSave({ ...group, speakerInterval: localSpeakerInterval })}
+                  onTouchEnd={() => onSave({ ...group, speakerInterval: localSpeakerInterval })}
                   className="w-full accent-tavern-accent"
                 />
               </div>
@@ -240,11 +258,9 @@ export function GroupChatSettingsPanel({
           <div>
             <label className="label">自定义 System Prompt</label>
             <textarea
-              value={group.systemPrompt}
-              onChange={e => {
-                useGroupChatStore.setState({ currentGroup: { ...group, systemPrompt: e.target.value } })
-              }}
-              onBlur={e => onSave({ ...group, systemPrompt: e.target.value })}
+              value={localSystemPrompt}
+              onChange={e => setLocalSystemPrompt(e.target.value)}
+              onBlur={() => onSave({ ...group, systemPrompt: localSystemPrompt })}
               rows={4}
               placeholder="可选：为群聊添加上下文提示..."
               className="w-full bg-tavern-bg border border-tavern-border-soft rounded-lg px-2.5 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent resize-none placeholder:text-tavern-text-muted/50"
@@ -271,20 +287,20 @@ export function GroupChatSettingsPanel({
                   min="0"
                   max="100"
                   step="5"
-                  value={Math.round((group.chatBackgroundParams?.opacity ?? 0.3) * 100)}
-                  onChange={e => onSave({
+                  value={Math.round(localOpacity * 100)}
+                  onChange={e => setLocalOpacity(Number(e.target.value) / 100)}
+                  onMouseUp={() => onSave({
                     ...group,
-                    chatBackgroundParams: {
-                      ...group.chatBackgroundParams,
-                      opacity: Number(e.target.value) / 100,
-                      type: group.chatBackgroundParams?.type ?? 'gradient',
-                      blur: group.chatBackgroundParams?.blur ?? 0,
-                    },
+                    chatBackgroundParams: { ...group.chatBackgroundParams, opacity: localOpacity, type: group.chatBackgroundParams?.type ?? 'gradient', blur: localBlur },
+                  })}
+                  onTouchEnd={() => onSave({
+                    ...group,
+                    chatBackgroundParams: { ...group.chatBackgroundParams, opacity: localOpacity, type: group.chatBackgroundParams?.type ?? 'gradient', blur: localBlur },
                   })}
                   className="flex-1 accent-tavern-accent"
                 />
                 <span className="text-[10px] text-tavern-text-muted w-8 text-right">
-                  {Math.round((group.chatBackgroundParams?.opacity ?? 0.3) * 100)}%
+                  {Math.round(localOpacity * 100)}%
                 </span>
               </div>
 
@@ -296,19 +312,19 @@ export function GroupChatSettingsPanel({
                   min="0"
                   max="20"
                   step="1"
-                  value={group.chatBackgroundParams?.blur ?? 0}
-                  onChange={e => onSave({
+                  value={localBlur}
+                  onChange={e => setLocalBlur(Number(e.target.value))}
+                  onMouseUp={() => onSave({
                     ...group,
-                    chatBackgroundParams: {
-                      ...group.chatBackgroundParams,
-                      blur: Number(e.target.value),
-                      type: group.chatBackgroundParams?.type ?? 'gradient',
-                      opacity: group.chatBackgroundParams?.opacity ?? 0.3,
-                    },
+                    chatBackgroundParams: { ...group.chatBackgroundParams, blur: localBlur, type: group.chatBackgroundParams?.type ?? 'gradient', opacity: localOpacity },
+                  })}
+                  onTouchEnd={() => onSave({
+                    ...group,
+                    chatBackgroundParams: { ...group.chatBackgroundParams, blur: localBlur, type: group.chatBackgroundParams?.type ?? 'gradient', opacity: localOpacity },
                   })}
                   className="flex-1 accent-tavern-accent"
                 />
-                <span className="text-[10px] text-tavern-text-muted w-8 text-right">{group.chatBackgroundParams?.blur ?? 0}px</span>
+                <span className="text-[10px] text-tavern-text-muted w-8 text-right">{localBlur}px</span>
               </div>
 
               {/* 预设渐变 */}

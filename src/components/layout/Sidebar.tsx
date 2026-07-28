@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { useUIStore } from '../../store/useUIStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
+import { logError } from '../../lib/logger'
 import {
   MessageSquare,
   Users,
@@ -39,7 +40,7 @@ const navItems = [
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
-  const { getActiveProfile } = useSettingsStore()
+  const { settings, getActiveProfile } = useSettingsStore()
 
   const activeProfile = getActiveProfile()
   const isConnected = activeProfile !== null && (activeProfile.provider === 'ollama' || !!activeProfile.apiKey)
@@ -67,22 +68,22 @@ export function Sidebar() {
 
   // 获取本地版本 + 在线版本检查
   useEffect(() => {
-    window.api.app.getVersion().then(v => setAppVersion(v)).catch(() => {})
+    window.api.app.getVersion().then(v => setAppVersion(v)).catch((e) => logError('Sidebar:getVersion', e))
     window.api.app.checkVersion().then(info => {
       if (info?.version) {
         setServerVersion(info.version)
         setDownloadUrl(info.downloadUrl || GITHUB_URL + '/releases')
       }
-    }).catch(() => {})
+    }).catch((e) => logError('Sidebar:checkVersion', e))
   }, [])
 
   const handleOpenDownload = () => {
     const url = downloadUrl || GITHUB_URL + '/releases'
-    window.api.app.openExternal(url).catch(() => {})
+    window.api.app.openExternal(url).catch((e) => logError('Sidebar:openExternal', e))
   }
 
   const handleOpenGithub = () => {
-    window.api.app.openExternal(GITHUB_URL).catch(() => {})
+    window.api.app.openExternal(GITHUB_URL).catch((e) => logError('Sidebar:openExternal', e))
   }
 
   return (
@@ -141,7 +142,7 @@ export function Sidebar() {
       </div>
 
       {/* 导航 */}
-      <nav className="flex-1 py-3 px-2 space-y-1">
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
@@ -176,7 +177,7 @@ export function Sidebar() {
               />
               <span className="text-tavern-text-soft truncate">
                 {isConnected && activeProfile
-                  ? activeProfile.model || '未选模型'
+                  ? settings.activeModel || activeProfile.model || '未选模型'
                   : '未连接'}
               </span>
             </div>

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { GroupChat, GroupMessage, GroupSession, Character } from '../../shared/types'
+import type { GroupChat, GroupMessage, GroupSession, Character, Preset } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { lorebookCache } from '../utils/lorebook'
@@ -9,9 +9,23 @@ import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { getInstructTemplate } from '../utils/chatTemplates'
+import { logError } from '../lib/logger'
 
 const STREAM_THROTTLE_MS = 50
 const STREAM_TIMEOUT_MS = 5 * 60 * 1000
+
+/** 对文本应用正则规则（与单聊 applyRegex 逻辑一致） */
+function applyRegexRules(text: string, rules: any[]): string {
+  return rules.reduce((acc, rule) => {
+    if (rule.enabled && (rule.scope === 'output' || rule.scope === 'both')) {
+      try {
+        const regex = new RegExp(rule.pattern, rule.flags || 'g')
+        return acc.replace(regex, rule.replacement)
+      } catch { return acc }
+    }
+    return acc
+  }, text)
+}
 
 /** 将原始 API 错误转换为用户友好的中文提示 */
 function friendlyError(error: string): string {
@@ -36,6 +50,7 @@ interface ActiveStream {
   unbindChunk: () => void
   unbindDone: () => void
   unbindError: () => void
+  unbindUsage: () => void
   timeoutHandle: ReturnType<typeof setTimeout> | null
 }
 
@@ -51,6 +66,7 @@ function cleanupActiveStream() {
   activeStream.unbindChunk()
   activeStream.unbindDone()
   activeStream.unbindError()
+  activeStream.unbindUsage()
   activeStream = null
 }
 
@@ -95,8 +111,9 @@ interface GroupChatState {
   editMessage: (groupId: string, sessionId: string, messageId: string, content: string) => Promise<void>
   regenerateMessage: (messageId: string) => Promise<void>
   translateMessage: (messageId: string) => Promise<void>
+  insertCharacterMessage: (charId: string, content: string) => Promise<void>
 
-  buildGroupContext: (targetCharId?: string) => { role: 'system' | 'user' | 'assistant'; content: string }[]
+  buildGroupContext: (targetCharId?: string, preset?: Preset | null) => { role: 'system' | 'user' | 'assistant'; content: string }[]
   ensureLorebooksLoaded: (lorebookIds: string[]) => Promise<void>
 
   toggleMemory: (groupId: string, sessionId: string, enabled: boolean) => Promise<void>
@@ -165,21 +182,27 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   createSession: async (groupId) => {
+    clearPollingTimer()
+    cleanupActiveStream()
     const session = await window.api.group.createSession(groupId)
     const sessions = await window.api.group.listSessions(groupId)
-    set({ sessions, currentSessionId: session.id, messages: [] })
+    set({ sessions, currentSessionId: session.id, messages: [], isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
   },
 
   switchSession: async (groupId, sessionId) => {
-    set({ currentSessionId: sessionId })
+    clearPollingTimer()
+    cleanupActiveStream()
+    set({ currentSessionId: sessionId, isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
     await get().loadMessages(groupId, sessionId)
   },
 
   deleteSession: async (groupId, sessionId) => {
+    clearPollingTimer()
+    cleanupActiveStream()
     await window.api.group.deleteSession(groupId, sessionId)
     const sessions = await window.api.group.listSessions(groupId)
     const newSid = sessions[0]?.id ?? null
-    set({ sessions, currentSessionId: newSid, messages: [] })
+    set({ sessions, currentSessionId: newSid, messages: [], isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
     if (newSid) {
       await get().loadMessages(groupId, newSid)
     }
@@ -203,11 +226,14 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   clearChat: async (groupId) => {
+    // 停止正在进行的流式生成和轮询
+    clearPollingTimer()
+    cleanupActiveStream()
     const { currentSessionId } = get()
     if (currentSessionId) {
       await window.api.group.clearChat(groupId, currentSessionId)
     }
-    set({ messages: [] })
+    set({ messages: [], isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
   },
 
   deleteMessage: async (groupId, sessionId, messageId) => {
@@ -218,10 +244,11 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   editMessage: async (groupId, sessionId, messageId, content) => {
+    if (get().isStreaming) return
     await window.api.group.editMessage(groupId, sessionId, messageId, content)
     set(s => ({
       messages: s.messages.map(m =>
-        m.id === messageId ? { ...m, content } : m
+        m.id === messageId ? { ...m, content, translation: undefined, _showTranslation: false } : m
       ),
     }))
   },
@@ -236,6 +263,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     if (msgIdx < 0) return
 
     const targetMsg = state.messages[msgIdx]
+    // 不能重新生成用户消息
+    if (targetMsg.characterId === '__user__' || targetMsg.characterId === '__free__') return
     const charStore = useCharacterStore.getState()
     const speaker = charStore.characters.find(c => c.id === targetMsg.characterId)
     if (!speaker) return
@@ -292,6 +321,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
     const unbindDone = window.api.ai.onDone((doneId) => {
       if (doneId !== requestId) return
+      clearTimeout(translateTimeout)
       unbindChunk(); unbindDone(); unbindError()
 
       const finalResult = (result || '').replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() || null
@@ -300,10 +330,17 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
           m.id === messageId ? { ...m, translation: finalResult, _showTranslation: true } : m
         ),
       }))
+      // 持久化翻译结果
+      const { currentGroup, currentSessionId, messages: curMsgs } = get()
+      const updatedMsg = curMsgs.find(m => m.id === messageId)
+      if (currentGroup && currentSessionId && updatedMsg) {
+        window.api.group.saveMessage(currentGroup.id, currentSessionId, updatedMsg).catch((e) => logError('GroupChatStore:saveMessage', e))
+      }
     })
 
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
+      clearTimeout(translateTimeout)
       unbindChunk(); unbindDone(); unbindError()
 
       set((s: any) => ({
@@ -312,6 +349,17 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
         ),
       }))
     })
+
+    // 超时保护：5 分钟无响应自动清理
+    const translateTimeout = setTimeout(() => {
+      unbindChunk(); unbindDone(); unbindError()
+      window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
+      set((s: any) => ({
+        messages: s.messages.map((m: GroupMessage) =>
+          m.id === messageId ? { ...m, translation: null } : m
+        ),
+      }))
+    }, STREAM_TIMEOUT_MS)
 
     const targetLang = useSettingsStore.getState().settings.translationTargetLang || '中文'
     window.api.ai.chat({
@@ -331,6 +379,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       presencePenalty: 0,
       stream: false,
     }).catch(() => {
+      clearTimeout(translateTimeout)
       unbindChunk(); unbindDone(); unbindError()
       set((s: any) => ({
         messages: s.messages.map((m: GroupMessage) =>
@@ -429,7 +478,8 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         }
       })
 
-      const unbindError = window.api.ai.onError(() => {
+      const unbindError = window.api.ai.onError((data: { requestId: string }) => {
+        if (data.requestId !== requestId) return
         unbindChunk(); unbindDone(); unbindError()
       })
 
@@ -479,11 +529,28 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       ? Math.max(...state.messages.map(m => m.round), 0) + 1
       : 1
 
+    // 对用户输入应用正则规则（input/both）
+    let processedContent = content
+    try {
+      const regexRules = await window.api.regex.list()
+      if (regexRules.length > 0) {
+        processedContent = regexRules.reduce((acc, rule) => {
+          if (rule.enabled && (rule.scope === 'input' || rule.scope === 'both')) {
+            try {
+              const regex = new RegExp(rule.pattern, rule.flags || 'g')
+              return acc.replace(regex, rule.replacement)
+            } catch { return acc }
+          }
+          return acc
+        }, content)
+      }
+    } catch { /* 忽略正则加载失败 */ }
+
     const userMsg: GroupMessage = {
       id: nanoid(),
       groupId: currentGroup.id,
       characterId: '__user__',
-      content,
+      content: processedContent,
       images,
       timestamp: Date.now(),
       round: currentRound,
@@ -536,6 +603,9 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
     const { currentGroup, currentSessionId } = state
     if (!currentGroup || !currentSessionId || state.isStreaming) return
 
+    // 验证角色属于当前群聊
+    if (!currentGroup.memberIds.includes(charId)) return
+
     const charStore = useCharacterStore.getState()
     const speaker = charStore.characters.find(c => c.id === charId)
     if (!speaker) return
@@ -550,19 +620,70 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
     })
   },
 
+  /** 插入角色消息（不触发 AI 回复，用于开场白等） */
+  insertCharacterMessage: async (charId, content) => {
+    const { currentGroup, currentSessionId, messages } = get()
+    if (!currentGroup || !currentSessionId) return
+
+    const currentRound = messages.length > 0
+      ? Math.max(...messages.map(m => m.round), 0) + 1
+      : 1
+
+    const msg: GroupMessage = {
+      id: nanoid(),
+      groupId: currentGroup.id,
+      characterId: charId,
+      content,
+      images: [],
+      timestamp: Date.now(),
+      round: currentRound,
+    }
+    set(s => ({ messages: [...s.messages, msg] }))
+    await window.api.group.saveMessage(currentGroup.id, currentSessionId, msg)
+  },
+
   stopStreaming: () => {
     const requestId = activeStream?.requestId ?? ''
+    const msgId = activeStream?.msgId ?? ''
+    const accumulated = activeStream?.accumulated ?? ''
     cleanupActiveStream()
     clearPollingTimer()
     if (requestId) {
-      window.api.ai.cancelChat(requestId).catch(() => {})
+      window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
     }
-    set({ isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
+
+    const { currentGroup, currentSessionId, messages } = get()
+    const clean = accumulated.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+
+    if (msgId && clean && currentGroup && currentSessionId) {
+      // 有部分内容，持久化并保留
+      const updatedMsg: GroupMessage = {
+        ...(messages.find(m => m.id === msgId) as GroupMessage),
+        content: clean + '\n\n⚠️ 已停止生成',
+      }
+      set((s: any) => ({
+        messages: s.messages.map((m: GroupMessage) => m.id === msgId ? updatedMsg : m),
+        isStreaming: false,
+        currentStreamingCharId: null,
+        streamingContent: '',
+      }))
+      window.api.group.saveMessage(currentGroup.id, currentSessionId, updatedMsg).catch((e) => logError('GroupChatStore:saveMessage', e))
+    } else if (msgId) {
+      // 无内容，移除占位消息
+      set((s: any) => ({
+        messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
+        isStreaming: false,
+        currentStreamingCharId: null,
+        streamingContent: '',
+      }))
+    } else {
+      set({ isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
+    }
   },
 
   // ---- 群聊上下文构建 ----
 
-  buildGroupContext: (targetCharId?) => {
+  buildGroupContext: (targetCharId?, preset?) => {
     const state = get()
     const group = state.currentGroup
     if (!group) return []
@@ -624,9 +745,17 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
     let lorebookAfter = ''
     let lorebookAtEnd = ''
 
-    if (group.lorebookIds.length > 0) {
+    // 收集所有世界书 ID（群聊级 + 角色绑定）
+    const allLorebookIds = new Set<string>(group.lorebookIds)
+    members.forEach(m => {
+      if (m.boundLorebookIds) {
+        m.boundLorebookIds.forEach(id => allLorebookIds.add(id))
+      }
+    })
+
+    if (allLorebookIds.size > 0) {
       // 可配置扫描深度
-      const scanDepth = group.lorebookIds
+      const scanDepth = [...allLorebookIds]
         .map(id => lorebookCache.get(id)?.scanDepth)
         .filter((d): d is number => typeof d === 'number' && d > 0)
         .reduce((max, d) => Math.max(max, d), 10)
@@ -635,7 +764,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
 
       // 收集所有世界书条目
       const allEntries: { entry: any; lbId: string }[] = []
-      for (const lbId of group.lorebookIds) {
+      for (const lbId of allLorebookIds) {
         const lb = lorebookCache.get(lbId)
         if (!lb?.enabled) continue
         for (const entry of lb.entries) {
@@ -757,6 +886,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         if (m.description) systemContent += `描述：${replaceVariables(m.description, userName, m.name)}\n`
         if (m.personality) systemContent += `性格：${replaceVariables(m.personality, userName, m.name)}\n`
         if (m.scenario) systemContent += `场景：${replaceVariables(m.scenario, userName, m.name)}\n`
+        if (m.exampleDialog) systemContent += `\n对话示例：\n${replaceVariables(m.exampleDialog, userName, m.name)}\n`
       })
       if (lorebookAfter) systemContent += '\n' + lorebookAfter
     } else if (targetCharId) {
@@ -767,6 +897,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         if (target.personality) systemContent += `性格：${replaceVariables(target.personality, userName, target.name)}\n`
         if (target.scenario) systemContent += `场景：${replaceVariables(target.scenario, userName, target.name)}\n`
         if (target.systemPrompt) systemContent += `\n${replaceVariables(target.systemPrompt, userName, target.name)}\n`
+        if (target.exampleDialog) systemContent += `\n对话示例：\n${replaceVariables(target.exampleDialog, userName, target.name)}\n`
         if (lorebookAfter) systemContent += '\n' + lorebookAfter
       }
     }
@@ -782,10 +913,18 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       systemContent += lorebookAtEnd
     }
 
+    // 预设 systemPrompt 和 jailbreak（在 token 预算裁剪前注入，确保计入上下文长度）
+    if (preset?.systemPrompt) {
+      systemContent += '\n\n' + preset.systemPrompt
+    }
+    if (preset?.jailbreak && preset.jailbreak.trim()) {
+      systemContent += '\n\n' + preset.jailbreak
+    }
+
     // ===== 历史消息（Token 预算裁剪）=====
     const profile = settingsStore.getActiveProfile()
     const model = profile?.model || settings.activeModel || 'gpt-4o-mini'
-    const maxContext = profile?.maxContext || getDefaultMaxContext(model)
+    const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
 
     let usedTokens = estimateTokens(systemContent, model)
     const recentMessages: typeof state.messages = []
@@ -818,6 +957,11 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         })
       }
     })
+
+    // 后历史指令（mention/polling 模式注入目标角色的后历史指令）
+    if (targetChar?.postHistoryInstructions) {
+      historyContext.push({ role: 'system', content: replaceVariables(targetChar.postHistoryInstructions, userName, charNameForVars) })
+    }
 
     // Instruct 模板：appendAssistantPrefix 时追加空 assistant 消息
     const instructTemplate = profile?.useInstructTemplate
@@ -866,26 +1010,28 @@ async function streamGroupAI(
   const profile = settingsStore.getActiveProfile()
   if (!profile) return
 
-  // 加载预设
+  // 加载预设（群聊预设优先，回退到角色绑定预设）
   let preset = null
   if (group.presetId) {
     const allPresets = await window.api.preset.list()
     preset = allPresets.find(p => p.id === group.presetId) ?? null
+  } else if (speaker.boundPresetId) {
+    const allPresets = await window.api.preset.list()
+    preset = allPresets.find(p => p.id === speaker.boundPresetId) ?? null
   }
 
-  const context = get().buildGroupContext(speaker.id)
+  // 加载正则规则
+  let regexRules: any[] = []
+  try {
+    regexRules = await window.api.regex.list()
+  } catch { /* 忽略 */ }
 
-  // 注入预设 systemPrompt 和 jailbreak
-  if (preset && context.length > 0) {
-    let systemMsg = context[0].content
-    if (preset.systemPrompt) {
-      systemMsg += '\n\n' + preset.systemPrompt
-    }
-    if (preset.jailbreak) {
-      systemMsg += '\n\n' + preset.jailbreak
-    }
-    context[0] = { ...context[0], content: systemMsg }
+  // 预加载角色绑定的世界书
+  if (speaker.boundLorebookIds && speaker.boundLorebookIds.length > 0) {
+    await get().ensureLorebooksLoaded(speaker.boundLorebookIds)
   }
+
+  const context = get().buildGroupContext(speaker.id, preset)
 
   if (context.length === 0) return
 
@@ -934,10 +1080,13 @@ async function streamGroupAI(
     // 剥离 thought
     const clean = finalContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
 
+    // 应用正则规则
+    const processed = regexRules.length > 0 ? applyRegexRules(clean, regexRules) : clean
+
     // 更新消息
     set((s: any) => ({
       messages: s.messages.map((m: GroupMessage) =>
-        m.id === msgId ? { ...m, content: clean || '(无回复)' } : m,
+        m.id === msgId ? { ...m, content: processed || '(无回复)' } : m,
       ),
       isStreaming: false,
       currentStreamingCharId: null,
@@ -949,7 +1098,7 @@ async function streamGroupAI(
       id: msgId,
       groupId: group.id,
       characterId: speaker.id,
-      content: clean || '(无回复)',
+      content: processed || '(无回复)',
       images: [],
       timestamp: Date.now(),
       round,
@@ -994,6 +1143,25 @@ async function streamGroupAI(
     })
   })
 
+  // Token 用量监听
+  const unbindUsage = window.api.ai.onUsage((data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => {
+    if (data.requestId !== requestId) return
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    Promise.resolve(window.api.usage.calculateCost(model, data.promptTokens, data.completionTokens)).then((cost) => {
+      const usageInfo = { promptTokens: data.promptTokens, completionTokens: data.completionTokens, totalTokens: data.totalTokens, cost, model, timestamp: Date.now() }
+      set((s: any) => ({
+        messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, tokenUsage: usageInfo } : m),
+      }))
+      const sid = get().currentSessionId
+      if (sid) {
+        window.api.usage.record({
+          timestamp: Date.now(), characterId: speaker.id, sessionId: sid, model,
+          promptTokens: data.promptTokens, completionTokens: data.completionTokens, totalTokens: data.totalTokens, cost,
+        }).catch((e) => logError('GroupChatStore:recordUsage', e))
+      }
+    }).catch((e) => logError('GroupChatStore:recordUsage', e))
+  })
+
   activeStream = {
     requestId,
     msgId,
@@ -1002,10 +1170,31 @@ async function streamGroupAI(
     unbindChunk,
     unbindDone,
     unbindError,
+    unbindUsage,
     timeoutHandle: setTimeout(() => {
+      const partialContent = activeStream?.accumulated ?? ''
       cleanupActiveStream()
-      window.api.ai.cancelChat(requestId).catch(() => {})
-      set({ isStreaming: false, currentStreamingCharId: null })
+      window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
+      const clean = partialContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      if (clean) {
+        // 有部分内容，保留并标记超时
+        set((s: any) => ({
+          messages: s.messages.map((m: GroupMessage) =>
+            m.id === msgId ? { ...m, content: clean + '\n\n⚠️ 请求超时' } : m,
+          ),
+          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+        }))
+        window.api.group.saveMessage(group.id, sessionId, {
+          id: msgId, groupId: group.id, characterId: speaker.id,
+          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round,
+        }).catch((e) => logError('GroupChatStore:saveMessage', e))
+      } else {
+        // 无内容，移除占位消息
+        set((s: any) => ({
+          messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
+          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+        }))
+      }
     }, STREAM_TIMEOUT_MS),
   }
 
@@ -1058,19 +1247,23 @@ async function streamGroupAIFree(
     preset = allPresets.find(p => p.id === group.presetId) ?? null
   }
 
-  const context = get().buildGroupContext()
+  // 加载正则规则
+  let regexRules: any[] = []
+  try {
+    regexRules = await window.api.regex.list()
+  } catch { /* 忽略 */ }
 
-  // 注入预设 systemPrompt 和 jailbreak
-  if (preset && context.length > 0) {
-    let systemMsg = context[0].content
-    if (preset.systemPrompt) {
-      systemMsg += '\n\n' + preset.systemPrompt
-    }
-    if (preset.jailbreak) {
-      systemMsg += '\n\n' + preset.jailbreak
-    }
-    context[0] = { ...context[0], content: systemMsg }
+  // 预加载所有成员绑定的世界书
+  const charStore = useCharacterStore.getState()
+  const allBoundLbIds = group.memberIds
+    .map(id => charStore.characters.find(c => c.id === id)?.boundLorebookIds)
+    .filter(Boolean)
+    .flat() as string[]
+  if (allBoundLbIds.length > 0) {
+    await get().ensureLorebooksLoaded([...new Set(allBoundLbIds)])
   }
+
+  const context = get().buildGroupContext(undefined, preset)
 
   if (context.length === 0) return
 
@@ -1114,7 +1307,9 @@ async function streamGroupAIFree(
     cleanupActiveStream()
 
     const clean = finalContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
-    splitAndSaveMessages(set, get, group, sessionId, clean, round, msgId)
+    // 应用正则规则
+    const processed = regexRules.length > 0 ? applyRegexRules(clean, regexRules) : clean
+    splitAndSaveMessages(set, get, group, sessionId, processed, round, msgId)
   })
 
   const unbindError = window.api.ai.onError((data: { requestId: string; error: string }) => {
@@ -1122,19 +1317,62 @@ async function streamGroupAIFree(
     clearPollingTimer()
     cleanupActiveStream()
     const friendlyMsg = friendlyError(data.error)
+    const errContent = '⚠️ ' + friendlyMsg
     set((s: any) => ({
-      messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, content: '⚠️ ' + friendlyMsg } : m),
+      messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, content: errContent } : m),
       isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: data.error,
     }))
+    // 持久化错误消息
+    window.api.group.saveMessage(group.id, sessionId, {
+      id: msgId, groupId: group.id, characterId: '__free__',
+      content: errContent, images: [], timestamp: Date.now(), round,
+    }).catch((e) => logError('GroupChatStore:saveMessage', e))
+  })
+
+  // Token 用量监听
+  const unbindUsage = window.api.ai.onUsage((data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => {
+    if (data.requestId !== requestId) return
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    Promise.resolve(window.api.usage.calculateCost(model, data.promptTokens, data.completionTokens)).then((cost) => {
+      const usageInfo = { promptTokens: data.promptTokens, completionTokens: data.completionTokens, totalTokens: data.totalTokens, cost, model, timestamp: Date.now() }
+      set((s: any) => ({
+        messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, tokenUsage: usageInfo } : m),
+      }))
+      const sid = get().currentSessionId
+      if (sid) {
+        window.api.usage.record({
+          timestamp: Date.now(), characterId: '__free__', sessionId: sid, model,
+          promptTokens: data.promptTokens, completionTokens: data.completionTokens, totalTokens: data.totalTokens, cost,
+        }).catch((e) => logError('GroupChatStore:recordUsage', e))
+      }
+    }).catch((e) => logError('GroupChatStore:recordUsage', e))
   })
 
   activeStream = {
     requestId, msgId, accumulated: '', flushTimer: null,
-    unbindChunk, unbindDone, unbindError,
+    unbindChunk, unbindDone, unbindError, unbindUsage,
     timeoutHandle: setTimeout(() => {
+      const partialContent = activeStream?.accumulated ?? ''
       cleanupActiveStream()
-      window.api.ai.cancelChat(requestId).catch(() => {})
-      set({ isStreaming: false, currentStreamingCharId: null })
+      window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
+      const clean = partialContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      if (clean) {
+        set((s: any) => ({
+          messages: s.messages.map((m: GroupMessage) =>
+            m.id === msgId ? { ...m, content: clean + '\n\n⚠️ 请求超时' } : m,
+          ),
+          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+        }))
+        window.api.group.saveMessage(group.id, sessionId, {
+          id: msgId, groupId: group.id, characterId: '__free__',
+          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round,
+        }).catch((e) => logError('GroupChatStore:saveMessage', e))
+      } else {
+        set((s: any) => ({
+          messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
+          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+        }))
+      }
     }, STREAM_TIMEOUT_MS),
   }
 
@@ -1193,6 +1431,15 @@ async function splitAndSaveMessages(
       if (prev) {
         prev.content = content.slice(lastIdx, match.index).trim()
       }
+    } else if (match.index > 0) {
+      // 首个【】标记前有 preamble 文本，保存到首段内容中
+      const preamble = content.slice(0, match.index).trim()
+      if (preamble) {
+        segments.push({ name: match[1], content: '' })
+        segments[segments.length - 1].content = preamble
+        lastIdx = match.index + match[0].length
+        continue
+      }
     }
     segments.push({ name: match[1], content: '' })
     lastIdx = match.index + match[0].length
@@ -1225,7 +1472,7 @@ async function splitAndSaveMessages(
         images: [],
         timestamp: Date.now(),
         round,
-      }).catch(() => {})
+      }).catch((e) => logError('GroupChatStore:saveMessage', e))
     }
     return
   }
@@ -1305,8 +1552,12 @@ function checkAutoMemory(get: any) {
 }
 
 /** 检查 polling 模式下是否需要继续下一轮 */
-async function checkPollingContinue(set: any, get: any, group: GroupChat) {
+async function checkPollingContinue(set: any, get: any, _group: GroupChat) {
   const state = get()
+  // 使用最新的 currentGroup，避免闭包中过期引用
+  const group = state.currentGroup
+  if (!group) return
+
   const pollingMsgs = state.messages.filter((m: GroupMessage) => m.characterId !== '__user__' && m.characterId !== '__free__')
   const rounds = new Set(pollingMsgs.map((m: GroupMessage) => m.round))
   if (rounds.size >= group.maxRounds) return
@@ -1316,19 +1567,23 @@ async function checkPollingContinue(set: any, get: any, group: GroupChat) {
   if (!lastCharMsg) return
 
   const currentIdx = group.memberIds.indexOf(lastCharMsg.characterId)
+  if (currentIdx < 0) return
   const nextIdx = (currentIdx + 1) % group.memberIds.length
   const nextCharId = group.memberIds[nextIdx]
 
   // 更新 currentSpeakerIndex 并持久化
   const updatedGroup = { ...group, currentSpeakerIndex: nextIdx }
   set({ currentGroup: updatedGroup })
-  window.api.group.save(updatedGroup).catch(() => {})
+  window.api.group.save(updatedGroup).catch((e) => logError('GroupChatStore:save', e))
 
   // H-02 修复：保存定时器 handle，以便切换/删除群聊时清理
   clearPollingTimer()
   pollingTimer = setTimeout(() => {
     const currentState = get()
     if (currentState.isStreaming) return
+    // 定时器触发时再次检查群组是否仍为当前群组
+    const curGroup = currentState.currentGroup
+    if (!curGroup || curGroup.id !== group.id) return
     currentState.sendPollingRound(nextCharId)
   }, (group.speakerInterval || 2000))
 }

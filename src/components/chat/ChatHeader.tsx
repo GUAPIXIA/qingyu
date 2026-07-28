@@ -9,6 +9,7 @@ import { Dropdown } from '../common/Dropdown'
 import { SessionSwitcher } from '../common/SessionSwitcher'
 import { CharacterAvatar } from '../character/CharacterAvatar'
 import { getDisplayName } from '../../utils/variables'
+import { getDefaultMaxContext } from '../../utils/tokenCounter'
 import { MemoryPanel } from './MemoryPanel'
 import { TokenUsage } from './TokenUsage'
 import { cn } from '../../lib/utils'
@@ -280,7 +281,7 @@ export function ChatHeader({
 
       {/* 操作按钮 */}
       <div className="flex items-center gap-1">
-        <span className="mr-2"><TokenUsage tokens={totalTokens} maxTokens={activeProfile?.maxContext || 8192} /></span>
+        <span className="mr-2"><TokenUsage tokens={totalTokens} maxTokens={activeProfile?.maxContext || getDefaultMaxContext(activeProfile?.model || settings.activeModel)} /></span>
         <button
           onClick={() => updateSettings({ autoScroll: !settings.autoScroll })}
           className={cn(

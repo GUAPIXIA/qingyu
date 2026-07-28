@@ -27,11 +27,11 @@ import {
 } from 'lucide-react'
 
 export function GroupChatPage() {
-  const { characters, selectCharacter } = useCharacterStore()
+  const { characters } = useCharacterStore()
   const {
     groupChats, currentGroup, sessions, currentSessionId,
     messages,
-    isStreaming, currentStreamingCharId, streamingContent,
+    isStreaming,
     loadGroups, selectGroup, saveGroup, deleteGroup,
     createSession, switchSession, deleteSession, renameSession,
     clearChat, deleteMessage, editMessage, regenerateMessage, translateMessage,
@@ -377,16 +377,18 @@ export function GroupChatPage() {
                   itemContent={(index, m) => {
                     const memberIdx = currentGroup.memberIds.indexOf(m.characterId)
                     const isAiMsg = m.characterId !== '__user__'
+                    const isStreamingMsg = isStreaming && index === messages.length - 1 && isAiMsg
                     return (
                       <GroupChatMessage
                         key={m.id}
                         message={m}
                         memberIndex={memberIdx}
+                        isStreamingMessage={isStreamingMsg}
                         onDelete={
-                          !currentSessionId ? undefined : () => deleteMessage(currentGroup.id, currentSessionId!, m.id)
+                          !currentSessionId || isStreaming ? undefined : () => deleteMessage(currentGroup.id, currentSessionId!, m.id)
                         }
                         onEdit={
-                          !currentSessionId ? undefined : (content: string) => editMessage(currentGroup.id, currentSessionId!, m.id, content)
+                          !currentSessionId || isStreaming ? undefined : (content: string) => editMessage(currentGroup.id, currentSessionId!, m.id, content)
                         }
                         onRegenerate={
                           isAiMsg && !isStreaming ? () => regenerateMessage(m.id) : undefined
@@ -398,35 +400,7 @@ export function GroupChatPage() {
                     )
                   }}
                   components={{
-                    Footer: () => (
-                      <>
-                        {isStreaming && streamingContent && currentStreamingCharId && (
-                          <GroupChatMessage
-                            message={{
-                              id: '__streaming__',
-                              groupId: currentGroup.id,
-                              characterId: currentStreamingCharId,
-                              content: streamingContent,
-                              images: [],
-                              timestamp: Date.now(),
-                              round: messages.length > 0 ? messages[messages.length - 1].round : 1,
-                            }}
-                            memberIndex={currentGroup.memberIds.indexOf(currentStreamingCharId)}
-                          />
-                        )}
-                        {isStreaming && !streamingContent && (
-                          <div className="flex items-center gap-2 px-4 py-3">
-                            <div className="w-8 h-8 rounded-full bg-tavern-bg-hover animate-pulse" />
-                            <div className="flex gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-tavern-accent animate-bounce" style={{ animationDelay: '0ms' }} />
-                              <span className="w-1.5 h-1.5 rounded-full bg-tavern-accent animate-bounce" style={{ animationDelay: '150ms' }} />
-                              <span className="w-1.5 h-1.5 rounded-full bg-tavern-accent animate-bounce" style={{ animationDelay: '300ms' }} />
-                            </div>
-                          </div>
-                        )}
-                        <div className="h-4" />
-                      </>
-                    ),
+                    Footer: () => <div className="h-4" />,
                   }}
                 />
               )}
@@ -440,9 +414,7 @@ export function GroupChatPage() {
               memberIds={currentGroup.memberIds}
               currentSpeakerIndex={currentGroup.currentSpeakerIndex}
               themeColor={currentGroup.themeColor}
-              onSpeakerClick={(charId) => {
-                selectCharacter(charId)
-              }}
+              onSpeakerClick={() => {}}
             />
           </>
         )}
@@ -597,8 +569,8 @@ export function GroupChatPage() {
                       onClick={async () => {
                         setShowGreetingPicker(false)
                         if (!currentSessionId) return
-                        const { sendMessage } = useGroupChatStore.getState()
-                        await sendMessage(greeting, [], member.charId)
+                        const { insertCharacterMessage } = useGroupChatStore.getState()
+                        await insertCharacterMessage(member.charId, greeting)
                       }}
                       className="w-full text-left px-3 py-2.5 rounded-lg border border-tavern-border-soft hover:bg-tavern-accent-soft/30 text-xs text-tavern-text transition-all group"
                       style={currentGroup.themeColor ? { ['--gc-theme' as string]: currentGroup.themeColor } : undefined}

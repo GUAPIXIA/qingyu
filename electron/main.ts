@@ -21,6 +21,17 @@ import { initLogger, createLogger, getRecentLogs } from './services/logger'
 
 const isDev = !app.isPackaged
 
+// 全局错误兜底：捕获未处理的 Promise rejection 和未捕获异常，避免静默丢失
+process.on('unhandledRejection', (reason) => {
+  const logger = createLogger('process')
+  logger.error('未处理的 Promise rejection', { reason: String(reason) })
+})
+
+process.on('uncaughtException', (err) => {
+  const logger = createLogger('process')
+  logger.error('未捕获的异常', { error: err.message, stack: err.stack?.split('\n').slice(0, 3).join(' | ') })
+})
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
@@ -107,7 +118,7 @@ app.whenReady().then(async () => {
   })
 
   // 日志 IPC
-  ipcMain.handle('log:write', (_event, level: 'debug' | 'info' | 'warn' | 'error', mod: string, message: string, meta?: Record<string, any>) => {
+  ipcMain.handle('log:write', (_event, level: 'debug' | 'info' | 'warn' | 'error', mod: string, message: string, meta?: Record<string, unknown>) => {
     const logger = createLogger(mod)
     logger[level](message, meta)
   })

@@ -47,7 +47,7 @@ export function RegexPage() {
       return
     }
     try {
-      const regex = new RegExp(editing.pattern, 'g')
+      const regex = new RegExp(editing.pattern, editing.flags || 'g')
       setTestOutput(testInput.replace(regex, editing.replacement))
     } catch {
       setTestOutput('正则语法错误')
@@ -101,7 +101,7 @@ export function RegexPage() {
                   </div>
                 </div>
                 <div className="text-sm text-tavern-text-muted font-mono">
-                  <span className="text-tavern-text-soft">/{rule.pattern || '...'}/g</span>
+                  <span className="text-tavern-text-soft">/{rule.pattern || '...'}/{rule.flags || 'g'}</span>
                   <span className="text-tavern-accent mx-2">→</span>
                   <span className="text-tavern-text-soft">"{rule.replacement}"</span>
                 </div>
@@ -142,6 +142,16 @@ export function RegexPage() {
                 value={editing.replacement}
                 onChange={(e) => setEditing({ ...editing, replacement: e.target.value })}
                 placeholder="留空则删除匹配内容"
+              />
+            </div>
+            <div>
+              <label className="label">正则标志</label>
+              <input
+                type="text"
+                className="input font-mono"
+                value={editing.flags ?? 'g'}
+                onChange={(e) => setEditing({ ...editing, flags: e.target.value })}
+                placeholder="g (全局), i (忽略大小写), m (多行), s (dotAll)"
               />
             </div>
             <div>

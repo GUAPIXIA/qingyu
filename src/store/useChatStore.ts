@@ -11,6 +11,7 @@ import { getInstructTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { getEffectiveLorebookIds, lorebookCache } from '../utils/lorebook'
+import { logError } from '../lib/logger'
 
 // ===================== 常量 =====================
 
@@ -217,6 +218,20 @@ async function streamAIResponse(
   cleanupActiveStream()
 
   const contextMessages = get().buildContext(character, preset)
+
+  // 续写模式：preContent 存在时，追加续写指令引导 AI 接续上一段内容
+  if (opts.preContent) {
+    // 移除末尾可能存在的空 assistant prefix（续写不需要，否则会阻断续写指令）
+    const lastIdx = contextMessages.length - 1
+    if (lastIdx >= 0 && contextMessages[lastIdx].role === 'assistant' && !contextMessages[lastIdx].content) {
+      contextMessages.pop()
+    }
+    contextMessages.push({
+      role: 'user',
+      content: '请直接接续上一段内容的结尾继续写作，保持相同的风格、语气和叙事视角。不要重复已有内容，直接输出续写部分。',
+    })
+  }
+
   const requestId = nanoid()
 
   set({ isStreaming: true, currentRequestId: requestId, error: null })
@@ -287,7 +302,7 @@ async function streamAIResponse(
     activeStream = null
     set({ isStreaming: false, currentRequestId: null, streamingContent: '' })
     // 异步执行完成回调
-    onComplete(fullContent).catch(() => {})
+    onComplete(fullContent).catch((e) => logError('ChatStore:onComplete', e))
   })
 
   const unbindError = window.api.ai.onError((data: { requestId: string; error: string }) => {
@@ -854,7 +869,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => ({
           messages: s.messages.map((m) => (m.id === aiMessageId ? finalMsg : m)),
         }))
-        window.api.chat.saveMessage(finalMsg).catch(() => {})
+        window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
 
         // 自动长记忆检查：基于上次总结后的新消息数判断
         const { sessions: curSessions, currentSessionId: curSid } = get()
@@ -868,7 +883,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             : allMsgs.length
           const interval = curSession.autoMemoryInterval || 10
           if (newMsgCount >= interval) {
-            get().triggerMemorySummary(character).catch(() => {})
+            get().triggerMemorySummary(character).catch((e) => logError('ChatStore:memorySummary', e))
           }
         }
 
@@ -911,7 +926,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const aiMsg = state.messages.find((m) => m.id === aiMessageId)
         if (aiMsg && !aiMsg.content) {
           const updatedMsg: Message = { ...aiMsg, content: `⚠️ ${errMsg}` }
-          window.api.chat.saveMessage(updatedMsg).catch(() => {})
+          window.api.chat.saveMessage(updatedMsg).catch((e) => logError('ChatStore:saveMessage', e))
           set((s) => ({
             messages: s.messages.map((m) => (m.id === aiMessageId ? updatedMsg : m)),
           }))
@@ -993,7 +1008,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => ({
           messages: s.messages.map(m => m.id === messageId ? finalMsg : m),
         }))
-        window.api.chat.saveMessage(finalMsg).catch(() => {})
+        window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
 
         // 自动长记忆检查：基于上次总结后的新消息数判断
         const { sessions: curSessions, currentSessionId: curSid } = get()
@@ -1007,7 +1022,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             : allMsgs.length
           const interval = curSession.autoMemoryInterval || 10
           if (newMsgCount >= interval) {
-            get().triggerMemorySummary(character).catch(() => {})
+            get().triggerMemorySummary(character).catch((e) => logError('ChatStore:memorySummary', e))
           }
         }
       },
@@ -1023,7 +1038,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: newSwipes[newSwipeIndex],
         }
         set((s) => ({ messages: s.messages.map(m => m.id === messageId ? finalMsg : m) }))
-        window.api.chat.saveMessage(finalMsg).catch(() => {})
+        window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
       },
     })
   },
@@ -1070,6 +1085,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       aiMessageId: newMsgId,
       character,
       preset,
+      preContent: targetMsg.content,
       onComplete: async (newContent) => {
         if (!newContent) {
           // 无新内容，移除占位消息
@@ -1077,27 +1093,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return
         }
 
-        // 应用正则规则
-        let finalContent = newContent
+        // 应用正则规则（仅对新续写内容）
+        let processedNew = newContent
         try {
           const regexRules = await window.api.regex.list()
           if (regexRules.length > 0) {
-            finalContent = get().applyRegex(newContent, 'output', regexRules)
+            processedNew = get().applyRegex(newContent, 'output', regexRules)
           }
         } catch { /* 忽略 */ }
+
+        // 拼接原内容 + 续写内容
+        const fullContent = (targetMsg.content || '') + processedNew
 
         const curMsg = get().messages.find(m => m.id === newMsgId)
         if (!curMsg) return
 
         const finalMsg: Message = {
           ...curMsg,
-          content: finalContent,
+          content: fullContent,
         }
 
         set((s) => ({
           messages: s.messages.map(m => m.id === newMsgId ? finalMsg : m),
         }))
-        window.api.chat.saveMessage(finalMsg).catch(() => {})
+        window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
 
         // 自动长记忆检查
         const { sessions: curSessions, currentSessionId: curSid } = get()
@@ -1110,7 +1129,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             : allMsgs.length
           const interval = curSession.autoMemoryInterval || 10
           if (newMsgCount >= interval) {
-            get().triggerMemorySummary(character).catch(() => {})
+            get().triggerMemorySummary(character).catch((e) => logError('ChatStore:memorySummary', e))
           }
         }
       },
@@ -1240,7 +1259,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const msg = get().messages.find(m => m.id === messageId)
       if (msg) {
         window.api.chat.saveMessage(msg).catch((err) => {
-          console.error('[translate] saveMessage failed:', err)
+          logError('ChatStore:translate', err)
         })
       }
     })
@@ -1309,7 +1328,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const charStore = useCharacterStore.getState()
       const char = charStore.characters.find(c => c.id === characterId)
       if (char && char.boundPresetId !== id) {
-        charStore.saveCharacter({ ...char, boundPresetId: id }).catch(() => {})
+        charStore.saveCharacter({ ...char, boundPresetId: id }).catch((e) => logError('ChatStore:saveCharacter', e))
       }
     }
   },
@@ -1340,7 +1359,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (!rule.enabled) continue
       if (rule.scope !== scope && rule.scope !== 'both') continue
       // 使用安全正则创建（防 ReDoS）
-      const regex = safeRegExp(rule.pattern, 'g')
+      const regex = safeRegExp(rule.pattern, rule.flags || 'g')
       if (!regex) continue
       try {
         // 添加简单的执行超时保护（同步无法真超时，但限制字符串长度）

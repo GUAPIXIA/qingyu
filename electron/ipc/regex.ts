@@ -66,6 +66,7 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
       name: name || '新规则',
       pattern: '',
       replacement: '',
+      flags: 'g',
       enabled: true,
       scope: 'both',
     }

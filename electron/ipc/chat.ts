@@ -8,6 +8,7 @@ import type { Message, ChatSession, SessionPreview } from '../../shared/types'
 import type { Settings } from '../../shared/types'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
+import { safeHandle } from '../utils/safeHandle'
 
 const log = createLogger('chat')
 
@@ -247,7 +248,7 @@ function createDefaultSession(characterId: string): ChatSession {
 export function registerChatIPC(ipcMain: IpcMain): void {
   // ===== 会话管理 =====
 
-  ipcMain.handle('chat:listSessions', async (_e, characterId: string) => {
+  safeHandle(ipcMain, 'chat:listSessions', async (_e, characterId: string) => {
     safeId(characterId)
     // 迁移旧数据
     migrateOldData(characterId)
@@ -273,7 +274,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     }).sort((a, b) => b.updatedAt - a.updatedAt)
   })
 
-  ipcMain.handle('chat:createSession', async (_e, characterId: string, title?: string, personaId?: string | null, lorebookIds?: string[]) => {
+  safeHandle(ipcMain, 'chat:createSession', async (_e, characterId: string, title?: string, personaId?: string | null, lorebookIds?: string[]) => {
     safeId(characterId)
     const sessions = loadSessions(characterId)
     const now = Date.now()
@@ -299,7 +300,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     return session
   })
 
-  ipcMain.handle('chat:deleteSession', async (_e, characterId: string, sessionId: string) => {
+  safeHandle(ipcMain, 'chat:deleteSession', async (_e, characterId: string, sessionId: string) => {
     safeId(characterId)
     safeId(sessionId)
     // 删除 session 文件
@@ -313,7 +314,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     log.info('会话已删除', { characterId, sessionId })
   })
 
-  ipcMain.handle('chat:renameSession', async (_e, characterId: string, sessionId: string, title: string) => {
+  safeHandle(ipcMain, 'chat:renameSession', async (_e, characterId: string, sessionId: string, title: string) => {
     safeId(characterId)
     safeId(sessionId)
     const sessions = loadSessions(characterId)
@@ -325,7 +326,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     }
   })
 
-  ipcMain.handle('chat:updateSession', async (_e, characterId: string, sessionId: string, updates: Partial<ChatSession>) => {
+  safeHandle(ipcMain, 'chat:updateSession', async (_e, characterId: string, sessionId: string, updates: Partial<ChatSession>) => {
     safeId(characterId)
     safeId(sessionId)
     const sessions = loadSessions(characterId)
@@ -338,7 +339,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
 
   // ===== 消息管理 =====
 
-  ipcMain.handle('chat:listMessages', async (_e, characterId: string, sessionId?: string) => {
+  safeHandle(ipcMain, 'chat:listMessages', async (_e, characterId: string, sessionId?: string) => {
     safeId(characterId)
     if (sessionId) safeId(sessionId)
     // 迁移旧数据
@@ -358,7 +359,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
    * 优化：仅更新 session 的 updatedAt，不每次都计算 messageCount
    *      messageCount 在 listSessions 时按需计算
    */
-  ipcMain.handle('chat:saveMessage', async (_e, message: Message) => {
+  safeHandle(ipcMain, 'chat:saveMessage', async (_e, message: Message) => {
     safeId(message.characterId)
     const sid = message.sessionId || 'default'
     safeId(sid)
@@ -380,7 +381,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     }
   })
 
-  ipcMain.handle('chat:deleteMessage', async (_e, { id, characterId, sessionId }: { id: string; characterId: string; sessionId?: string }) => {
+  safeHandle(ipcMain, 'chat:deleteMessage', async (_e, { id, characterId, sessionId }: { id: string; characterId: string; sessionId?: string }) => {
     safeId(characterId)
     const sid = sessionId || 'default'
     safeId(sid)
@@ -401,7 +402,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
    * 清空对话：删除消息文件 + 同步重置 session 元数据
    * 修复 #48: 删除消息文件后，session 仍存在但 messageCount 应为 0
    */
-  ipcMain.handle('chat:clearChat', async (_e, characterId: string, sessionId?: string) => {
+  safeHandle(ipcMain, 'chat:clearChat', async (_e, characterId: string, sessionId?: string) => {
     safeId(characterId)
     if (sessionId) {
       safeId(sessionId)
@@ -430,7 +431,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   })
 
   // 导出对话
-  ipcMain.handle('chat:exportChat', async (_e, characterId: string, sessionId: string, format: 'md' | 'json') => {
+  safeHandle(ipcMain, 'chat:exportChat', async (_e, characterId: string, sessionId: string, format: 'md' | 'json') => {
     safeId(characterId)
     safeId(sessionId)
     const messages = readMessages(characterId, sessionId)
@@ -456,7 +457,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
 
   // ===== 长记忆 =====
 
-  ipcMain.handle('chat:updateMemory', async (_e, characterId: string, sessionId: string, memory: string) => {
+  safeHandle(ipcMain, 'chat:updateMemory', async (_e, characterId: string, sessionId: string, memory: string) => {
     safeId(characterId)
     safeId(sessionId)
     const sessions = loadSessions(characterId)
@@ -469,7 +470,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     }
   })
 
-  ipcMain.handle('chat:toggleMemory', async (_e, characterId: string, sessionId: string, enabled: boolean) => {
+  safeHandle(ipcMain, 'chat:toggleMemory', async (_e, characterId: string, sessionId: string, enabled: boolean) => {
     safeId(characterId)
     safeId(sessionId)
     const sessions = loadSessions(characterId)
@@ -481,7 +482,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     }
   })
 
-  ipcMain.handle('chat:setMemoryMode', async (_e, characterId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => {
+  safeHandle(ipcMain, 'chat:setMemoryMode', async (_e, characterId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => {
     safeId(characterId)
     safeId(sessionId)
     const sessions = loadSessions(characterId)
@@ -494,7 +495,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     }
   })
 
-  ipcMain.handle('chat:getStats', async (_e, characterId: string, sessionId: string) => {
+  safeHandle(ipcMain, 'chat:getStats', async (_e, characterId: string, sessionId: string) => {
     safeId(characterId)
     safeId(sessionId)
     const messages = readMessages(characterId, sessionId)

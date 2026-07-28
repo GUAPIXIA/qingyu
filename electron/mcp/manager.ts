@@ -1,6 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { McpClient } from './client'
-import type { McpServerConfig, McpTool, McpToolResult, McpServerStatus } from './types'
+import type { McpServerConfig, McpTool, McpToolResult, McpServerStatus } from '../../shared/types'
 import { DIRS, readJson, writeJson } from '../services/storage'
 import { join } from 'node:path'
 import { nanoid } from 'nanoid'
@@ -54,7 +53,7 @@ class McpManager {
     this.saveConfigs()
     // 如果配置变化且正在运行，重启
     if (wasRunning) {
-      this.restartServer(id).catch(() => {})
+      this.restartServer(id).catch((e) => log.error('Server 重启失败', { error: (e as Error).message }))
     }
   }
 
@@ -110,7 +109,7 @@ class McpManager {
   }
 
   /** 调用工具 */
-  async callTool(serverId: string, toolName: string, args: Record<string, any>): Promise<McpToolResult> {
+  async callTool(serverId: string, toolName: string, args: Record<string, unknown>): Promise<McpToolResult> {
     const client = this.clients.get(serverId)
     if (!client || !client.isConnected()) throw new Error(`Server ${serverId} 未连接`)
     return client.callTool(toolName, args)
