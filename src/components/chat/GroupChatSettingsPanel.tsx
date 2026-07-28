@@ -45,6 +45,7 @@ export function GroupChatSettingsPanel({
   const [localSystemPrompt, setLocalSystemPrompt] = useState(group.systemPrompt)
   const [localOpacity, setLocalOpacity] = useState(group.chatBackgroundParams?.opacity ?? 0.3)
   const [localBlur, setLocalBlur] = useState(group.chatBackgroundParams?.blur ?? 0)
+  const [localInputOpacity, setLocalInputOpacity] = useState(group.bubbleOpacity ?? 1)
 
   // group 变化时同步本地 state
   useEffect(() => { setLocalMaxRounds(group.maxRounds) }, [group.maxRounds])
@@ -52,6 +53,7 @@ export function GroupChatSettingsPanel({
   useEffect(() => { setLocalSystemPrompt(group.systemPrompt) }, [group.systemPrompt])
   useEffect(() => { setLocalOpacity(group.chatBackgroundParams?.opacity ?? 0.3) }, [group.chatBackgroundParams?.opacity])
   useEffect(() => { setLocalBlur(group.chatBackgroundParams?.blur ?? 0) }, [group.chatBackgroundParams?.blur])
+  useEffect(() => { setLocalInputOpacity(group.bubbleOpacity ?? 1) }, [group.bubbleOpacity])
 
   return (
     <>
@@ -397,6 +399,27 @@ export function GroupChatSettingsPanel({
                   移除背景图片
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* 气泡不透明度 */}
+          <div>
+            <label className="label">气泡不透明度</label>
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={Math.round(localInputOpacity * 100)}
+                onChange={e => setLocalInputOpacity(Number(e.target.value) / 100)}
+                onMouseUp={() => onSave({ ...group, bubbleOpacity: localInputOpacity })}
+                onTouchEnd={() => onSave({ ...group, bubbleOpacity: localInputOpacity })}
+                className="flex-1 accent-tavern-accent"
+              />
+              <span className="text-[10px] text-tavern-text-muted w-8 text-right">
+                {Math.round(localInputOpacity * 100)}%
+              </span>
             </div>
           </div>
 

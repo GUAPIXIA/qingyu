@@ -10,17 +10,20 @@ import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
 import { parseDialogue } from '../../utils/dialogue-parser'
 import { extractThought } from '../../utils/messagePostProcess'
-import { X, Edit2, RefreshCw, Languages, Check } from 'lucide-react'
+import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 
 interface GroupChatMessageProps {
   message: GroupMessage
   memberIndex?: number
   isStreamingMessage?: boolean
+  repliedMessage?: GroupMessage
+  bubbleOpacity?: number
   onDelete?: () => void
   onEdit?: (content: string) => void
   onRegenerate?: () => void
   onTranslate?: () => void
+  onReply?: () => void
 }
 
 const ROLE_COLORS = [
@@ -38,7 +41,7 @@ import { MarkdownImage } from '../common/MarkdownImage'
 
 const markdownComponents = { img: MarkdownImage }
 
-export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, isStreamingMessage, onDelete, onEdit, onRegenerate, onTranslate }: GroupChatMessageProps) {
+export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, isStreamingMessage, repliedMessage, bubbleOpacity, onDelete, onEdit, onRegenerate, onTranslate, onReply }: GroupChatMessageProps) {
   const { characters } = useCharacterStore()
   const { settings } = useSettingsStore()
   const { getPersona } = usePersonaStore()
@@ -71,6 +74,26 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
     return hasDialogueOrAction ? segments : null
   }, [displayContent, isStreaming])
 
+  // @提及高亮处理
+  const mentionHighlightedContent = useMemo(() => {
+    if (isStreaming || !displayContent) return displayContent
+    let result = displayContent
+    // 从消息中记录的 mentionedCharacterIds 获取角色名
+    if (message.mentionedCharacterIds && message.mentionedCharacterIds.length > 0) {
+      for (const charId of message.mentionedCharacterIds) {
+        const char = characters.find(c => c.id === charId)
+        if (char) {
+          const name = char.name
+          // 转义正则特殊字符
+          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          const regex = new RegExp(`@${escaped}`, 'g')
+          result = result.replace(regex, `<span class="mention-highlight">@${name}</span>`)
+        }
+      }
+    }
+    return result
+  }, [displayContent, isStreaming, message.mentionedCharacterIds, characters])
+
   if (isFree) {
     return null
   }
@@ -92,57 +115,77 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
     setEditDraft('')
   }
 
-  const hasActions = onDelete || onEdit || onRegenerate || onTranslate
+  const hasActions = onDelete || onEdit || onRegenerate || onTranslate || onReply
 
   return (
-    <div className={cn(
-      'flex gap-3 msg-row',
-      isUser ? 'flex-row-reverse' : 'flex-row'
-    )}>
-      {/* 头像 */}
-      <div className="shrink-0 mt-0.5">
-        {isUser ? (
-          persona?.avatar ? (
-            <img src={persona.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-tavern-user/15 text-tavern-user flex items-center justify-center text-xs font-bold">
-              {settings.userName?.[0] || '你'}
-            </div>
-          )
-        ) : character?.avatar ? (
-          <img src={character.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
-        ) : (
-          <div className={cn(
-            'w-8 h-8 rounded-full bg-tavern-bg-hover flex items-center justify-center text-xs font-bold',
-            isStreaming && 'animate-pulse'
-          )}>
-            {character?.translatedContent?.name?.[0] ?? character?.name?.[0] ?? '?'}
-          </div>
-        )}
-      </div>
-
-      {/* 气泡 */}
-      <div className={cn(
-        'max-w-[75%] min-w-[80px]',
-        isUser ? 'items-end' : 'items-start'
-      )}>
-        {/* 发送者名称 */}
+    <div className="px-4 group" style={{ marginBottom: `${settings.messageSpacing}px` }}>
+      <div className={cn('mx-auto flex gap-4', isUser && 'flex-row-reverse')} style={{ maxWidth: `${settings.messageWidth ?? 768}px`, width: '100%' }}>
+        {/* 头像 */}
         <div className={cn(
-          'text-[10px] mb-0.5 text-tavern-text-muted',
-          isUser ? 'text-right' : 'text-left'
+          'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
+          isUser
+            ? 'bg-gradient-to-br from-tavern-user/30 to-tavern-user/10 text-tavern-user ring-2 ring-tavern-user/20'
+            : 'bg-gradient-to-br from-tavern-assistant/30 to-tavern-assistant/10 text-tavern-assistant ring-2 ring-tavern-assistant/20'
         )}>
-          {isUser ? (settings.userName || '你') : getDisplayName(character) || '未知'}
-          {isStreaming && ' · 生成中...'}
+          {isUser ? (
+            persona?.avatar ? (
+              <img src={persona.avatar} className="w-full h-full rounded-full object-cover" alt="" />
+            ) : (
+              <span className="text-xs font-bold">{settings.userName?.[0] || '你'}</span>
+            )
+          ) : character?.avatar ? (
+            <img src={character.avatar} className="w-full h-full rounded-full object-cover" alt="" />
+          ) : (
+            <span className={cn('text-xs font-bold', isStreaming && 'animate-pulse')}>
+              {character?.translatedContent?.name?.[0] ?? character?.name?.[0] ?? '?'}
+            </span>
+          )}
         </div>
 
-        {/* 气泡本体 */}
-        <div className={cn(
-          'rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words relative group/bubble',
-          isUser
-            ? 'bg-tavern-user/15 border border-tavern-user/20 text-tavern-text rounded-br-md'
-            : cn('border-l-[3px] bg-tavern-bg-card', borderColor, 'text-tavern-text rounded-bl-md',
-                 isStreaming && 'border-dashed')
-        )}>
+        {/* 消息内容 */}
+        <div className={cn('flex-1 min-w-0', isUser && 'flex flex-col items-end')}>
+          {/* 名字和时间 */}
+          <div className={cn('flex items-center gap-2 mb-1 text-xs text-tavern-text-muted', isUser && 'flex-row-reverse')}>
+            <span className="font-medium text-tavern-text-soft">
+              {isUser ? (settings.userName || '你') : getDisplayName(character) || '未知'}
+            </span>
+            {isStreaming && <span className="text-tavern-accent">生成中...</span>}
+            <span>
+              {new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            {isUser && message.status === 'sending' && (
+              <Loader2 className="w-3 h-3 animate-spin text-tavern-text-muted" />
+            )}
+            {isUser && (!message.status || message.status === 'sent') && (
+              <Check className="w-3 h-3 text-tavern-text-muted/60" />
+            )}
+          </div>
+
+          {/* 气泡本体 */}
+          <div className={cn(
+            'msg-bubble max-w-full px-5 py-3.5 text-sm leading-relaxed break-words relative group/bubble',
+            settings.bubbleStyle === 'round' && 'rounded-2xl',
+            settings.bubbleStyle === 'standard' && 'rounded-lg',
+            settings.bubbleStyle === 'sharp' && 'rounded-sm',
+            isUser
+              ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50'
+              : cn('border-l-[3px] rounded-bl-sm shadow-sm',
+                   borderColor, 'text-tavern-text',
+                   isStreaming && 'border-dashed')
+          )}
+          style={!isUser ? { backgroundColor: `color-mix(in srgb, var(--tavern-bg-card) ${(bubbleOpacity ?? 1) * 100}%, transparent)` } : undefined}
+          >
+          {/* 引用回复块 */}
+          {repliedMessage && (
+            <div className="reply-quote mb-1.5">
+              <span className="reply-speaker">
+                {repliedMessage.characterId === '__user__'
+                  ? '用户'
+                  : (characters.find(c => c.id === repliedMessage.characterId)?.name ?? '未知')}
+              </span>
+              <span className="ml-1">{repliedMessage.content.slice(0, 50)}{repliedMessage.content.length > 50 ? '...' : ''}</span>
+            </div>
+          )}
           {isEditing ? (
             <div className="space-y-2">
               <textarea
@@ -224,12 +267,12 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[
-                      ...(settings.htmlRendering ? [rehypeRaw] : []),
+                      ...((settings.htmlRendering || (message.mentionedCharacterIds && message.mentionedCharacterIds.length > 0 && !isStreaming)) ? [rehypeRaw] : []),
                       rehypeHighlight,
                     ]}
                     components={markdownComponents}
                   >
-                    {displayContent || ''}
+                    {mentionHighlightedContent || ''}
                   </ReactMarkdown>
                 </div>
               )}
@@ -269,20 +312,21 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
                   ))}
                 </div>
               )}
-
-              {/* 时间 */}
-              <div className={cn(
-                'text-[10px] text-tavern-text-muted/60 mt-1',
-                isUser ? 'text-right' : 'text-left'
-              )}>
-                {new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-              </div>
             </>
           )}
 
           {/* 操作按钮组 (hover 可见) */}
           {hasActions && !isEditing && !isStreaming && (
             <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover/bubble:opacity-100 transition-opacity">
+              {onReply && (
+                <button
+                  onClick={onReply}
+                  className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent"
+                  title="引用回复"
+                >
+                  <Reply className="w-3 h-3" />
+                </button>
+              )}
               {onTranslate && (
                 <button
                   onClick={onTranslate}
@@ -321,6 +365,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
               )}
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>

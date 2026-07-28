@@ -45,6 +45,8 @@ export function getDefaultSettings(): Settings {
     useCoverAsBackground: false,
     translationTargetLang: '中文',
     coverProxyUrl: 'http://127.0.0.1:7890',
+    fontFamily: 'system',
+    customFontId: null,
     pricingRules: [
       { id: 'builtin-gpt4o', modelPattern: 'gpt-4o*', inputPricePer1M: 2.5, outputPricePer1M: 10, isBuiltin: true },
       { id: 'builtin-gpt4o-mini', modelPattern: 'gpt-4o-mini*', inputPricePer1M: 0.15, outputPricePer1M: 0.6, isBuiltin: true },

@@ -4,15 +4,15 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { formatRelativeTime } from '../../utils/format'
 import { getDisplayName } from '../../utils/variables'
 import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin, Languages, Loader2 } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import { cn } from '../../lib/utils'
 
 interface CharacterCardProps {
   character: Character
-  onEdit: () => void
-  onDelete: () => void
-  onChat: () => void
-  onDetail?: () => void
+  onEdit: (char: Character) => void
+  onDelete: (id: string) => void
+  onChat: (char: Character) => void
+  onDetail?: (char: Character) => void
   viewMode?: 'grid' | 'list'
   cardSize?: 'sm' | 'md' | 'lg'
 }
@@ -25,8 +25,47 @@ function splitPersonality(text: string): string[] {
     .filter(s => s.length > 0 && s.length < 20)
 }
 
-export function CharacterCard({ character, onEdit, onDelete, onChat, onDetail, viewMode = 'grid', cardSize = 'md' }: CharacterCardProps) {
-  const { exportPng, exportJson, togglePin, patchCharacter } = useCharacterStore()
+const SIZE_CONFIG = {
+  sm: {
+    coverAspect: 'aspect-square',
+    nameSize: 'text-xs',
+    showPersonality: 0,
+    showTags: 1,
+    showScenario: false,
+    showCreator: false,
+    padding: 'p-1.5',
+    gap: 'gap-1',
+    tagSize: 'text-[10px]',
+  },
+  md: {
+    coverAspect: 'aspect-[3/4]',
+    nameSize: 'text-sm',
+    showPersonality: 3,
+    showTags: 3,
+    showScenario: true,
+    showCreator: true,
+    padding: 'p-2.5',
+    gap: 'gap-1.5',
+    tagSize: 'text-[10px]',
+  },
+  lg: {
+    coverAspect: 'aspect-[2/3]',
+    nameSize: 'text-base',
+    showPersonality: 99,
+    showTags: 99,
+    showScenario: true,
+    showCreator: true,
+    padding: 'p-3',
+    gap: 'gap-2',
+    tagSize: 'text-xs',
+  },
+} as const
+
+function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, viewMode = 'grid', cardSize = 'md' }: CharacterCardProps) {
+  const exportPng = useCharacterStore(s => s.exportPng)
+  const exportJson = useCharacterStore(s => s.exportJson)
+  const togglePin = useCharacterStore(s => s.togglePin)
+  const patchCharacter = useCharacterStore(s => s.patchCharacter)
   const blurStrength = useSettingsStore(s => s.settings.coverBlurStrength ?? 8)
   const [showMenu, setShowMenu] = useState(false)
   const [imgError, setImgError] = useState(false)
@@ -122,44 +161,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, onDetail, v
     patchCharacter(character.id, { coverBlurEnabled: !blurEnabled })
   }
 
-  // ---- 尺寸相关配置 ----
-  const sizeConfig = {
-    sm: {
-      coverAspect: 'aspect-square',
-      nameSize: 'text-xs',
-      showPersonality: 0,
-      showTags: 1,
-      showScenario: false,
-      showCreator: false,
-      padding: 'p-1.5',
-      gap: 'gap-1',
-      tagSize: 'text-[10px]',
-    },
-    md: {
-      coverAspect: 'aspect-[3/4]',
-      nameSize: 'text-sm',
-      showPersonality: 3,
-      showTags: 3,
-      showScenario: true,
-      showCreator: true,
-      padding: 'p-2.5',
-      gap: 'gap-1.5',
-      tagSize: 'text-[10px]',
-    },
-    lg: {
-      coverAspect: 'aspect-[2/3]',
-      nameSize: 'text-base',
-      showPersonality: 99,
-      showTags: 99,
-      showScenario: true,
-      showCreator: true,
-      padding: 'p-3',
-      gap: 'gap-2',
-      tagSize: 'text-xs',
-    },
-  }[cardSize]
-
-  const cfg = sizeConfig
+  const cfg = SIZE_CONFIG[cardSize]
 
   const renderAvatar = (className: string) => (
     <div
@@ -175,6 +177,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, onDetail, v
             <img
               src={coverSrc}
               alt={character.name}
+              loading="lazy"
               className={cn(
                 'w-full h-full object-cover transition-all duration-300',
                 blurEnabled ? 'scale-110' : 'group-hover/cover:scale-105',
@@ -209,14 +212,14 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, onDetail, v
   const actionButtons = (
     <>
       <button
-        onClick={(e) => { e.stopPropagation(); onChat() }}
+        onClick={(e) => { e.stopPropagation(); onChat(character) }}
         className="p-2 rounded-lg bg-tavern-accent text-tavern-bg hover:bg-tavern-accent-hover transition-colors"
         title="开始对话"
       >
         <MessageSquare className="w-4 h-4" />
       </button>
       <button
-        onClick={(e) => { e.stopPropagation(); onEdit() }}
+        onClick={(e) => { e.stopPropagation(); onEdit(character) }}
         className="p-2 rounded-lg bg-white/90 text-gray-700 hover:bg-white hover:text-gray-900 transition-colors shadow-sm"
         title="编辑"
       >
@@ -251,7 +254,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, onDetail, v
         )}
       </button>
       <button
-        onClick={(e) => { e.stopPropagation(); onDelete() }}
+        onClick={(e) => { e.stopPropagation(); onDelete(character.id) }}
         className="p-2 rounded-lg bg-tavern-danger/90 text-white hover:bg-tavern-danger transition-colors"
         title="删除角色"
       >
@@ -324,7 +327,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, onDetail, v
       <>
         <div
           className="flex gap-4 p-3 rounded-xl border border-tavern-border-soft bg-tavern-bg-card hover:border-tavern-accent/50 transition-colors group cursor-pointer"
-          onClick={onDetail}
+          onClick={() => onDetail?.(character)}
         >
           <div className="shrink-0 relative">
             {renderAvatar('w-20 h-28 rounded-lg overflow-hidden')}
@@ -391,7 +394,7 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, onDetail, v
   return (
     <div
       className="card overflow-hidden group hover:border-tavern-accent transition-colors cursor-pointer"
-      onClick={onDetail}
+      onClick={() => onDetail?.(character)}
     >
       {/* 封面区 */}
       <div className="relative">
@@ -473,3 +476,5 @@ export function CharacterCard({ character, onEdit, onDelete, onChat, onDetail, v
     </div>
   )
 }
+
+export const CharacterCard = memo(CharacterCardImpl)

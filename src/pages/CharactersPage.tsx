@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from "react"
 import { useNavigate } from "react-router-dom"
 import { useCharacterStore } from "../store/useCharacterStore"
 import { CharacterCard } from "../components/character/CharacterCard"
@@ -30,10 +30,12 @@ export function CharactersPage() {
   const [detailCharacter, setDetailCharacter] = useState<Character | null>(null)
   const [batchResult, setBatchResult] = useState<{ total: number; successCount: number; failCount: number; fails: { name: string; error: string }[] } | null>(null)
 
+  const deferredSearch = useDeferredValue(search)
+
   const filtered = useMemo(() => {
     let result = characters
-    if (search) {
-      const q = search.toLowerCase()
+    if (deferredSearch) {
+      const q = deferredSearch.toLowerCase()
       result = result.filter((c) => {
         const nameMatch = c.name.toLowerCase().includes(q)
         const tagMatch = c.tags.some((t) => t.toLowerCase().includes(q))
@@ -48,7 +50,7 @@ export function CharactersPage() {
       if (sortKey === "name") return a.name.localeCompare(b.name)
       return (b[sortKey] as number) - (a[sortKey] as number)
     })
-  }, [characters, search, sortKey])
+  }, [characters, deferredSearch, sortKey])
 
   const handleCardSizeChange = (size: CardSize) => {
     setCardSize(size)
@@ -60,10 +62,10 @@ export function CharactersPage() {
     setEditing(true)
   }
 
-  const handleEdit = (char: Character) => {
+  const handleEdit = useCallback((char: Character) => {
     setEditCharacter({ ...char })
     setEditing(true)
-  }
+  }, [])
 
   const handleSave = async (char: Character) => {
     await saveCharacter(char)
@@ -71,10 +73,18 @@ export function CharactersPage() {
     setEditCharacter(null)
   }
 
-  const handleStartChat = (char: Character) => {
+  const handleStartChat = useCallback((char: Character) => {
     selectCharacter(char.id)
     navigate("/chat")
-  }
+  }, [selectCharacter, navigate])
+
+  const handleDetail = useCallback((char: Character) => {
+    setDetailCharacter(char)
+  }, [])
+
+  const handleDeleteById = useCallback((id: string) => {
+    setDeleteId(id)
+  }, [])
 
   const handleDelete = async () => {
     if (deleteId) {
@@ -312,10 +322,10 @@ export function CharactersPage() {
                 character={char}
                 viewMode="list"
                 cardSize={cardSize}
-                onDetail={() => setDetailCharacter(char)}
-                onEdit={() => handleEdit(char)}
-                onDelete={() => setDeleteId(char.id)}
-                onChat={() => handleStartChat(char)}
+                onDetail={handleDetail}
+                onEdit={handleEdit}
+                onDelete={handleDeleteById}
+                onChat={handleStartChat}
               />
             ))}
           </div>
@@ -326,10 +336,10 @@ export function CharactersPage() {
                 key={char.id}
                 character={char}
                 cardSize={cardSize}
-                onDetail={() => setDetailCharacter(char)}
-                onEdit={() => handleEdit(char)}
-                onDelete={() => setDeleteId(char.id)}
-                onChat={() => handleStartChat(char)}
+                onDetail={handleDetail}
+                onEdit={handleEdit}
+                onDelete={handleDeleteById}
+                onChat={handleStartChat}
               />
             ))}
           </div>

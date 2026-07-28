@@ -17,3 +17,13 @@ export const THEME_COLORS = {
   purple: { name: '星夜紫', color: '#a78bfa' },
   cyan: { name: '碧波青', color: '#22d3ee' },
 } as const
+
+/** 内置字体选项 */
+export const BUILTIN_FONTS = [
+  { value: 'system', label: '系统默认', family: '"Noto Sans SC", "Microsoft YaHei", sans-serif', preview: '轻语对话 ABC' },
+  { value: 'arial', label: 'Arial', family: 'Arial, "Helvetica Neue", Helvetica, sans-serif', preview: '轻语对话 ABC' },
+  { value: 'yahei', label: '微软雅黑', family: '"Microsoft YaHei", sans-serif', preview: '轻语对话 ABC' },
+  { value: 'simsun', label: '宋体', family: '"SimSun", "宋体", serif', preview: '轻语对话 ABC' },
+  { value: 'simhei', label: '黑体', family: '"SimHei", "黑体", sans-serif', preview: '轻语对话 ABC' },
+  { value: 'kaiti', label: '楷体', family: '"KaiTi", "楷体", serif', preview: '轻语对话 ABC' },
+] as const

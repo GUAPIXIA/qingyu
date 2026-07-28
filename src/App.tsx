@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useCharacterStore } from './store/useCharacterStore'
+import { BUILTIN_FONTS } from './utils/defaults'
 import { logError } from './lib/logger'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
@@ -77,6 +78,53 @@ export default function App() {
       root.classList.add(`font-${settings.fontSize}`)
     }
   }, [settings.themeColor, settings.fontSize, settings.fontSizeCustom])
+
+  // 字体族应用 + 自定义字体 @font-face 注入（font-display: swap 避免加载卡顿）
+  useEffect(() => {
+    const applyFont = async () => {
+      const fontFamily = settings.fontFamily ?? 'system'
+      const customFontId = settings.customFontId ?? null
+
+      let styleEl = document.getElementById('custom-fonts') as HTMLStyleElement | null
+
+      // 内置字体
+      const builtin = BUILTIN_FONTS.find(f => f.value === fontFamily)
+      if (builtin) {
+        document.body.style.fontFamily = builtin.family
+        // 清理自定义字体样式
+        if (styleEl) {
+          styleEl.textContent = ''
+        }
+        return
+      }
+
+      // 自定义字体
+      if (customFontId) {
+        try {
+          const fontPath = await window.api.font.getFontPath(customFontId)
+          if (!fontPath) {
+            // 字体文件不存在，回退系统默认
+            document.body.style.fontFamily = BUILTIN_FONTS[0].family
+            return
+          }
+          // 注入 @font-face（font-display: swap：加载前用系统字体，加载后切换）
+          if (!styleEl) {
+            styleEl = document.createElement('style')
+            styleEl.id = 'custom-fonts'
+            document.head.appendChild(styleEl)
+          }
+          styleEl.textContent = `@font-face { font-family: "${fontFamily}"; src: url("${fontPath}"); font-display: swap; }`
+          document.body.style.fontFamily = `"${fontFamily}", sans-serif`
+        } catch (e) {
+          logError('App:applyCustomFont', e)
+          document.body.style.fontFamily = BUILTIN_FONTS[0].family
+        }
+      } else {
+        document.body.style.fontFamily = BUILTIN_FONTS[0].family
+      }
+    }
+    applyFont()
+  }, [settings.fontFamily, settings.customFontId])
 
   // 全局错误兜底：捕获未处理的 Promise rejection 和渲染进程异常
   useEffect(() => {

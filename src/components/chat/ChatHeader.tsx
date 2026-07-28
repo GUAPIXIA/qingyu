@@ -57,6 +57,7 @@ export function ChatHeader({
   const [memoryStats, setMemoryStats] = useState<{ totalMessages: number; totalChars: number; durationStr: string } | null>(null)
   const [memoryInterval, setMemoryInterval] = useState(10)
   const [showImgHistory, setShowImgHistory] = useState(false)
+  const [imgNotify, setImgNotify] = useState<string | null>(null)
 
   const activeProfile = getActiveProfile()
 

@@ -443,3 +443,32 @@ body {
   line-height: 1.9;
   color: var(--tavern-text-soft);
 }
+
+/* ===================== @提及高亮 ===================== */
+.mention-highlight {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  padding: 0 4px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+/* ===================== 引用回复块 ===================== */
+.reply-quote {
+  border-left: 3px solid var(--tavern-border);
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  background: var(--tavern-bg-soft);
+  border-radius: 0 4px 4px 0;
+  font-size: 0.75rem;
+  color: var(--tavern-text-muted);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.reply-quote:hover {
+  background: var(--tavern-bg-hover);
+}
+.reply-quote .reply-speaker {
+  font-weight: 600;
+  color: var(--tavern-text-soft);
+}

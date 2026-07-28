@@ -227,6 +227,8 @@ export interface GroupChat {
   }
   /** 自定义主题色（十六进制） */
   themeColor?: string
+  /** 消息气泡不透明度 (0-1) */
+  bubbleOpacity?: number
 }
 
 /** 群聊消息 */
@@ -244,6 +246,22 @@ export interface GroupMessage {
   _showTranslation?: boolean
   /** Token 用量 */
   tokenUsage?: MessageTokenUsage
+  /** 引用回复的目标消息 ID */
+  replyToId?: string | null
+  /** 用户消息发送状态：sending 发送中 / sent 已发送（仅 characterId === '__user__'） */
+  status?: 'sending' | 'sent'
+  /** @提及的角色 ID 列表 */
+  mentionedCharacterIds?: string[]
+}
+
+/** 自定义字体信息 */
+export interface CustomFont {
+  id: string
+  name: string          // 显示名（不含扩展名）
+  fileName: string      // 存储文件名（id + 扩展名）
+  format: 'ttf' | 'otf'
+  size: number          // 文件大小（字节）
+  createdAt: number
 }
 
 /** 群聊会话 */
@@ -354,6 +372,10 @@ export interface Settings {
   translationTargetLang?: string
   /** 封面下载代理地址（如 http://127.0.0.1:7890），为空则不使用代理 */
   coverProxyUrl?: string
+  /** 对话字体族：'system' 使用系统默认，其余为字体族名或自定义字体名 */
+  fontFamily?: string
+  /** 自定义字体 ID（对应 font:list 返回的 id），null 表示使用内置字体 */
+  customFontId?: string | null
 }
 
 // ===================== 功能模型配置 =====================
