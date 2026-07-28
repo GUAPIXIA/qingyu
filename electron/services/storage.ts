@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync, rmSync, renameSync } from 'node:fs'
+import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync, rmSync, renameSync, openSync, readSync, closeSync, statSync } from 'node:fs'
+import { readFile, writeFile, readdir, rename } from 'node:fs/promises'
 import { getDefaultSettings } from '../../shared/defaults'
 
 /** 获取数据目录 */
@@ -82,5 +83,72 @@ export function removeDir(dirPath: string): void {
     if (existsSync(dirPath)) rmSync(dirPath, { recursive: true, force: true })
   } catch {
     // 忽略错误
+  }
+}
+
+/**
+ * 高效统计文件行数（仅扫描字节，不做字符串解析/JSON 解析）
+ * 用于 JSONL 消息文件的行数统计，避免全量读取大文件
+ */
+export function countLines(filePath: string): number {
+  if (!existsSync(filePath)) return 0
+  try {
+    const fd = openSync(filePath, 'r')
+    try {
+      const fileSize = statSync(filePath).size
+      if (fileSize === 0) return 0
+      let count = 0
+      const BUF_SIZE = 64 * 1024
+      const buf = Buffer.alloc(BUF_SIZE)
+      let totalRead = 0
+      while (totalRead < fileSize) {
+        const toRead = Math.min(BUF_SIZE, fileSize - totalRead)
+        const bytesRead = readSync(fd, buf, 0, toRead, totalRead)
+        if (bytesRead === 0) break
+        for (let i = 0; i < bytesRead; i++) {
+          if (buf[i] === 0x0A) count++
+        }
+        totalRead += bytesRead
+      }
+      return count
+    } finally {
+      closeSync(fd)
+    }
+  } catch {
+    return 0
+  }
+}
+
+// ===================== 异步版本（热路径使用，避免阻塞主进程事件循环） =====================
+
+/** 异步读取 JSON 文件 */
+export async function readJsonAsync<T>(filePath: string): Promise<T | null> {
+  try {
+    if (!existsSync(filePath)) return null
+    const raw = await readFile(filePath, 'utf-8')
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+/** 异步写入 JSON 文件（原子写入：temp + rename） */
+export async function writeJsonAsync(filePath: string, data: unknown): Promise<void> {
+  const tmpPath = filePath + '.tmp'
+  await writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+  await rename(tmpPath, filePath)
+}
+
+/** 异步列出目录下所有 JSON 文件（并行读取，不阻塞事件循环） */
+export async function listJsonFilesAsync<T>(dir: string): Promise<T[]> {
+  try {
+    if (!existsSync(dir)) return []
+    const files = (await readdir(dir)).filter((f) => f.endsWith('.json'))
+    const results = await Promise.all(
+      files.map((file) => readJsonAsync<T>(join(dir, file))),
+    )
+    return results.filter((r): r is T => r !== null)
+  } catch {
+    return []
   }
 }

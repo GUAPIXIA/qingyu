@@ -16,6 +16,7 @@ import { BackgroundPanel, PRESET_GRADIENTS } from '../components/chat/Background
 import { ContextViewer } from '../components/chat/ContextViewer'
 import { StatusBar } from '../components/chat/StatusBar'
 import { cn } from '../lib/utils'
+import { logError } from '../lib/logger'
 import { estimateTokens } from '../utils/tokenCounter'
 import { replaceVariables, getDisplayName } from '../utils/variables'
 import { getEffectiveLorebookIds } from '../utils/lorebook'
@@ -76,7 +77,7 @@ export function ChatPage() {
           }
         })
         .catch((err) => {
-          console.error('加载会话失败', err)
+          logError('ChatPage:loadSession', err)
         })
       // B-05 修复：切换角色时替换（非合并）预设为新角色的绑定
       const chatStore = useChatStore.getState()

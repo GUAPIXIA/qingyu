@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { cn } from '../lib/utils'
+import { logError } from '../lib/logger'
 import {
   Settings,
   MessageSquare,
@@ -128,7 +129,7 @@ export function HelpPage() {
   const [appVersion, setAppVersion] = useState('')
 
   useEffect(() => {
-    window.api.app.getVersion().then(v => setAppVersion(v)).catch(() => {})
+    window.api.app.getVersion().then(v => setAppVersion(v)).catch((e) => logError('HelpPage:getVersion', e))
   }, [])
 
   return (

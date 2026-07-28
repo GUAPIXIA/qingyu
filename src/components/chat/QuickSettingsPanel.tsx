@@ -6,6 +6,7 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { lorebookCache, getEffectiveLorebookIds } from '../../utils/lorebook'
 import { cn } from '../../lib/utils'
+import { logError } from '../../lib/logger'
 
 interface QuickSettingsPanelProps {
   open: boolean
@@ -49,7 +50,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
     window.api.lorebook.list().then((lbs) => {
       setLorebooks(lbs)
       for (const lb of lbs) { lorebookCache.set(lb.id, lb) }
-    }).catch(() => {})
+    }).catch((e) => logError('QuickSettings:loadModels', e))
   }, [])
 
   // 面板打开时刷新预设和世界书（获取最新数据）
@@ -203,7 +204,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                             >
                               <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isActive ? 'bg-tavern-accent' : 'bg-tavern-border')} />
                               <span className="truncate">{m}</span>
-                              {isActive && <span className="ml-auto text-[10px] text-tavern-accent/70 shrink-0">当前</span>}
+                              {isActive && <span className="ml-auto text-[11px] text-tavern-accent/70 shrink-0">当前</span>}
                             </button>
                           )
                         })}
@@ -227,7 +228,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
               />
             )}
             {profile?.baseUrl && (
-              <p className="text-[11px] text-tavern-text-muted mt-1.5 truncate">{profile.baseUrl}</p>
+              <p className="text-xs text-tavern-text-muted mt-1.5 truncate">{profile.baseUrl}</p>
             )}
           </Section>
 
@@ -244,7 +245,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
               ))}
             </select>
             {activePreset && (
-              <div className="mt-2 grid grid-cols-3 gap-1.5 text-[11px] text-tavern-text-muted">
+              <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs text-tavern-text-muted">
                 <ParamChip label="温度" value={activePreset.temperature} />
                 <ParamChip label="Top P" value={activePreset.topP} />
                 <ParamChip label="最大Token" value={activePreset.maxTokens} />
@@ -267,30 +268,53 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                 min={0} max={1} step={0.05}
                 disabled
               />
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-xs text-tavern-text-muted shrink-0">最大Token</label>
-                <div className="flex items-center gap-1.5">
-                  {[512, 1024, 2048, 4096].map((n) => (
-                    <button
-                      key={n}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-xs text-tavern-text-muted shrink-0">最大Token</label>
+                  <div className="flex items-center gap-1.5">
+                    {[512, 1024, 2048, 4096].map((n) => (
+                      <button
+                        key={n}
+                        disabled={!activePreset}
+                        onClick={async () => {
+                          if (!activePreset) return
+                          const updated = { ...activePreset, maxTokens: n }
+                          await window.api.preset.save(updated)
+                          setPresets(prev => prev.map(p => p.id === updated.id ? updated : p))
+                        }}
+                        className={cn(
+                          'px-2 py-0.5 rounded text-xs border transition-colors',
+                          !activePreset && 'opacity-50 cursor-not-allowed',
+                          (activePreset?.maxTokens ?? 1024) === n
+                            ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
+                            : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
+                        )}
+                      >
+                        {n >= 1024 ? `${n / 1024}k` : n}
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min={1}
                       disabled={!activePreset}
-                      onClick={async () => {
+                      value={activePreset?.maxTokens ?? 1024}
+                      onChange={async (e) => {
                         if (!activePreset) return
-                        const updated = { ...activePreset, maxTokens: n }
+                        const val = Number(e.target.value) || 1
+                        const updated = { ...activePreset, maxTokens: val }
+                        setPresets(prev => prev.map(p => p.id === updated.id ? updated : p))
+                      }}
+                      onBlur={async (e) => {
+                        if (!activePreset) return
+                        const val = Number(e.target.value) || 1
+                        const updated = { ...activePreset, maxTokens: val }
                         await window.api.preset.save(updated)
                         setPresets(prev => prev.map(p => p.id === updated.id ? updated : p))
                       }}
-                      className={cn(
-                        'px-2 py-0.5 rounded text-[11px] border transition-colors',
-                        !activePreset && 'opacity-50 cursor-not-allowed',
-                        (activePreset?.maxTokens ?? 1024) === n
-                          ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
-                          : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
-                      )}
-                    >
-                      {n >= 1024 ? `${n / 1024}k` : n}
-                    </button>
-                  ))}
+                      className="w-16 px-1.5 py-0.5 rounded text-xs border border-tavern-border-soft bg-tavern-bg text-tavern-text text-center focus:outline-none focus:border-tavern-accent/40 disabled:opacity-50"
+                      title="自定义 Token 数"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -304,7 +328,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
               <>
                 {/* 已选中芯片 + 展开按钮 */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {/* 角色绑定的世界书 — 始终显示，不受 activeLorebookIds 影响 */}
+                  {/* 角色绑定的世界书 - 始终显示，不受 activeLorebookIds 影响 */}
                   {boundLorebookIds.map(id => {
                     const lb = lorebooks.find(l => l.id === id)
                     if (!lb) return null
@@ -313,7 +337,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                       <span
                         key={id}
                         className={cn(
-                          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] border transition-colors',
+                          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs border transition-colors',
                           isActive
                             ? 'bg-tavern-accent-soft text-tavern-accent border-tavern-accent/20'
                             : 'bg-tavern-bg-soft text-tavern-text-muted border-tavern-border-soft'
@@ -337,7 +361,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                   {manualLorebookIds.map(id => {
                     const lb = lorebooks.find(l => l.id === id)
                     return lb ? (
-                      <span key={id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] bg-tavern-bg-soft text-tavern-text-soft border border-tavern-border-soft">
+                      <span key={id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs bg-tavern-bg-soft text-tavern-text-soft border border-tavern-border-soft">
                         {lb.name}
                         <button
                           className="hover:text-tavern-danger transition-colors"
@@ -350,7 +374,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                   })}
                   <button
                     onClick={() => setLorebookExpanded(!lorebookExpanded)}
-                    className="text-[11px] text-tavern-text-muted hover:text-tavern-text transition-colors ml-0.5"
+                    className="text-xs text-tavern-text-muted hover:text-tavern-text transition-colors ml-0.5"
                   >
                     {lorebookExpanded ? '收起' : `选择世界书${activeLorebookIds.length > 0 ? ` (+${lorebooks.filter(lb => lb.enabled).length - activeLorebookIds.length})` : ` (${lorebooks.filter(lb => lb.enabled).length})`}`}
                     <ChevronDown className={cn('w-3 h-3 ml-0.5 inline transition-transform', lorebookExpanded && 'rotate-180')} />
@@ -398,20 +422,20 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', checked ? 'bg-tavern-accent' : 'bg-tavern-border')} />
                             <span className="truncate flex-1">{lb.name}</span>
                             {isBound && <Lock className="w-2.5 h-2.5 text-tavern-accent/60 shrink-0" />}
-                            <span className="text-[10px] text-tavern-text-muted shrink-0 tabular-nums">{lb.entries.length}条</span>
+                            <span className="text-[11px] text-tavern-text-muted shrink-0 tabular-nums">{lb.entries.length}条</span>
                           </button>
                         )
                       })}
                     </div>
                     {boundLorebookIds.length > 0 && (
-                      <p className="text-[10px] text-tavern-text-muted flex items-center gap-1 pt-0.5">
+                      <p className="text-[11px] text-tavern-text-muted flex items-center gap-1 pt-0.5">
                         <Lock className="w-2.5 h-2.5 shrink-0" />
                         标注锁图标的为角色绑定的世界书，切换角色时自动激活
                       </p>
                     )}
                     {activeLorebookIds.length > 0 && (
                       <button
-                        className="text-[11px] text-tavern-text-muted hover:text-tavern-danger transition-colors"
+                        className="text-xs text-tavern-text-muted hover:text-tavern-danger transition-colors"
                         onClick={() => setActiveLorebooks([], currentCharId)}
                       >
                         清除全部 ({activeLorebookIds.length})
@@ -424,7 +448,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                       const differs = boundSet.size !== activeSet.size || [...boundSet].some(id => !activeSet.has(id))
                       return differs ? (
                         <button
-                          className="text-[11px] text-tavern-accent hover:text-tavern-accent-hover transition-colors ml-2"
+                          className="text-xs text-tavern-accent hover:text-tavern-accent-hover transition-colors ml-2"
                           onClick={() => saveLorebookBinding(currentCharId, activeLorebookIds)}
                         >
                           保存为默认 ({activeLorebookIds.length})
@@ -450,12 +474,12 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
               {(() => {
                 const imgProfile = useSettingsStore.getState().getActiveImageGen()
                 return imgProfile ? (
-                  <p className="text-[11px] text-tavern-text-muted truncate">
+                  <p className="text-xs text-tavern-text-muted truncate">
                     模型: {imgProfile.name} ({imgProfile.provider})
                   </p>
                 ) : (
-                  <p className="text-[11px] text-tavern-text-muted">
-                    未配置生图模型，前往 设置 → API → 生图
+                  <p className="text-xs text-tavern-text-muted">
+                    未配置生图模型，前往 设置 -&gt; API -&gt; 生图
                   </p>
                 )
               })()}
@@ -469,7 +493,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                       key={s}
                       onClick={() => updateSettings({ imageGenSize: s })}
                       className={cn(
-                        'px-2 py-0.5 rounded text-[11px] border transition-colors',
+                        'px-2 py-0.5 rounded text-xs border transition-colors',
                         (settings.imageGenSize ?? '512x512') === s
                           ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
                           : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
@@ -521,8 +545,8 @@ function Section({ icon: Icon, title, children }: { icon: React.ElementType; tit
 function ParamChip({ label, value }: { label: string; value: number | undefined }) {
   return (
     <div className="px-2 py-1 rounded-md bg-tavern-bg-soft border border-tavern-border-soft text-center">
-      <div className="text-[9px] uppercase tracking-wide opacity-60">{label}</div>
-      <div className="font-mono font-medium">{value ?? '—'}</div>
+      <div className="text-[11px] uppercase tracking-wide opacity-60">{label}</div>
+      <div className="font-mono font-medium text-xs">{value ?? '-'}</div>
     </div>
   )
 }

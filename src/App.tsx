@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useCharacterStore } from './store/useCharacterStore'
+import { logError } from './lib/logger'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
 import { CharactersPage } from './pages/CharactersPage'
@@ -76,6 +77,24 @@ export default function App() {
       root.classList.add(`font-${settings.fontSize}`)
     }
   }, [settings.themeColor, settings.fontSize, settings.fontSizeCustom])
+
+  // 全局错误兜底：捕获未处理的 Promise rejection 和渲染进程异常
+  useEffect(() => {
+    const handleUnhandledRejection = (e: PromiseRejectionEvent) => {
+      logError('App:unhandledRejection', e.reason)
+      e.preventDefault()
+    }
+    const handleError = (e: ErrorEvent) => {
+      logError('App:uncaughtError', e.error ?? e.message)
+      e.preventDefault()
+    }
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+    window.addEventListener('error', handleError)
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+      window.removeEventListener('error', handleError)
+    }
+  }, [])
 
   // 全局键盘快捷键
   useEffect(() => {

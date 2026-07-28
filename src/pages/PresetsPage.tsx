@@ -13,7 +13,7 @@ function createPreset(): Preset {
     description: '',
     systemPrompt: '',
     jailbreak: '',
-    maxContext: 8192,
+    maxContext: 0, // 0 = 跟随模型默认
     temperature: 0.8,
     topP: 0.95,
     maxTokens: 1024,
@@ -152,7 +152,7 @@ export function PresetsPage() {
                     Token {preset.maxTokens}
                   </span>
                   <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                    上下文 {preset.maxContext}
+                    上下文 {preset.maxContext > 0 ? preset.maxContext : '跟随模型'}
                   </span>
                 </div>
               </div>
@@ -262,13 +262,13 @@ export function PresetsPage() {
                 />
               </div>
               <div>
-                <label className="label">上下文长度</label>
+                <label className="label">上下文长度（0 = 跟随模型）</label>
                 <input
                   type="number"
-                  min={1}
+                  min={0}
                   className="input"
                   value={editingPreset.maxContext}
-                  onChange={(e) => updateField('maxContext', Number(e.target.value) || 1)}
+                  onChange={(e) => updateField('maxContext', Number(e.target.value) || 0)}
                 />
               </div>
               <div>

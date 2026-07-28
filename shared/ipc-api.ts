@@ -17,6 +17,13 @@ import type {
   Persona,
   Announcement,
   ProviderType,
+  UsageRecord,
+  McpServerConfig,
+  McpTool,
+  McpToolResult,
+  McpServerStatus,
+  AggregatedUsage,
+  UsageSummary,
 } from './types'
 
 // ===================== AI 调用接口 =====================
@@ -190,31 +197,31 @@ export interface FileAPI {
 
 // ===================== 日志接口 =====================
 export interface LogAPI {
-  write(level: 'debug' | 'info' | 'warn' | 'error', module: string, message: string, meta?: Record<string, any>): Promise<void>
+  write(level: 'debug' | 'info' | 'warn' | 'error', module: string, message: string, meta?: Record<string, unknown>): Promise<void>
   getRecent(limit?: number): Promise<string>
 }
 
 // ===================== 用量统计接口 =====================
 export interface UsageAPI {
-  record(record: { timestamp: number; characterId: string; sessionId: string; model: string; promptTokens: number; completionTokens: number; totalTokens: number; cost: number }): Promise<any>
-  query(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }): Promise<any[]>
-  aggregate(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }, groupBy: 'character' | 'session' | 'day' | 'model'): Promise<Array<{ key: string; promptTokens: number; completionTokens: number; totalTokens: number; cost: number; count: number }>>
-  summary(filter?: { startTs?: number; endTs?: number }): Promise<{ totalPrompt: number; totalCompletion: number; totalTokens: number; totalCost: number; count: number }>
+  record(record: Omit<UsageRecord, 'id'>): Promise<UsageRecord>
+  query(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }): Promise<UsageRecord[]>
+  aggregate(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }, groupBy: 'character' | 'session' | 'day' | 'model'): Promise<AggregatedUsage[]>
+  summary(filter?: { startTs?: number; endTs?: number }): Promise<UsageSummary>
   clear(): Promise<void>
   calculateCost(model: string, promptTokens: number, completionTokens: number): Promise<number>
 }
 
 // ===================== MCP 接口 =====================
 export interface McpAPI {
-  listServers(): Promise<any[]>
-  listServerStatuses(): Promise<Array<{ id: string; connected: boolean; toolCount: number; lastError?: string }>>
-  addServer(config: any): Promise<any>
-  updateServer(id: string, patch: any): Promise<void>
+  listServers(): Promise<McpServerConfig[]>
+  listServerStatuses(): Promise<McpServerStatus[]>
+  addServer(config: Omit<McpServerConfig, 'id'>): Promise<McpServerConfig>
+  updateServer(id: string, patch: Partial<McpServerConfig>): Promise<void>
   removeServer(id: string): Promise<void>
   startServer(id: string): Promise<void>
   stopServer(id: string): Promise<void>
-  listTools(): Promise<any[]>
-  callTool(serverId: string, toolName: string, args: Record<string, any>): Promise<any>
+  listTools(): Promise<McpTool[]>
+  callTool(serverId: string, toolName: string, args: Record<string, unknown>): Promise<McpToolResult>
 }
 
 // ===================== 在线公告接口 =====================

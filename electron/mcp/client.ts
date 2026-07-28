@@ -95,7 +95,7 @@ export class McpClient extends EventEmitter {
       else resolve(msg.result)
     }
     if (msg.method === 'notifications/tools/list_changed') {
-      this.refreshTools().catch(() => {})
+      this.refreshTools().catch((e) => log.error('刷新工具列表失败', { error: (e as Error).message }))
     }
   }
 

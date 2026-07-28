@@ -352,6 +352,8 @@ export interface Settings {
   useCoverAsBackground?: boolean
   /** 翻译目标语言（默认中文） */
   translationTargetLang?: string
+  /** 封面下载代理地址（如 http://127.0.0.1:7890），为空则不使用代理 */
+  coverProxyUrl?: string
 }
 
 // ===================== 功能模型配置 =====================
@@ -418,6 +420,8 @@ export interface RegexRule {
   name: string
   pattern: string
   replacement: string
+  /** 正则标志,默认 'g' */
+  flags?: string
   enabled: boolean
   scope: 'input' | 'output' | 'both'
 }
@@ -476,4 +480,79 @@ export interface Announcement {
   published: boolean
   createdAt: string
   updatedAt: string
+}
+
+// ===================== MCP 工具协议 =====================
+
+/** MCP Server 配置 */
+export interface McpServerConfig {
+  id: string
+  name: string
+  /** 传输方式 */
+  transport: 'stdio' | 'sse'
+  /** stdio: 命令和参数；sse: URL */
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  /** 是否启用 */
+  enabled: boolean
+  /** 自动启动 */
+  autoStart: boolean
+}
+
+/** MCP 工具定义 */
+export interface McpTool {
+  serverId: string
+  name: string
+  description: string
+  inputSchema: {
+    type: 'object'
+    properties: Record<string, {
+      type: string
+      description?: string
+      enum?: string[]
+    }>
+    required?: string[]
+  }
+}
+
+/** MCP 调用结果 */
+export interface McpToolResult {
+  content: Array<{
+    type: 'text' | 'image' | 'resource'
+    text?: string
+    data?: string  // base64
+    mimeType?: string
+  }>
+  isError?: boolean
+}
+
+/** Server 状态信息 */
+export interface McpServerStatus {
+  id: string
+  connected: boolean
+  toolCount: number
+  lastError?: string
+}
+
+// ===================== 用量统计聚合 =====================
+
+/** 用量聚合结果项 */
+export interface AggregatedUsage {
+  key: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cost: number
+  count: number
+}
+
+/** 用量汇总 */
+export interface UsageSummary {
+  totalPrompt: number
+  totalCompletion: number
+  totalTokens: number
+  totalCost: number
+  count: number
 }

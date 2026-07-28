@@ -3,6 +3,7 @@ import type { Character, ProviderType, Preset, Lorebook } from '../../../shared/
 import { Modal } from '../common/Modal'
 import { ImagePlus, X, Languages, Loader2, RefreshCw } from 'lucide-react'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { logError } from '../../lib/logger'
 
 // B-05：记住 textarea 手动调整后的大小（使用原生 DOM 事件，React 合成事件无法捕获浏览器 resize handle）
 const TA_HEIGHTS_KEY = 'editor-ta-heights'
@@ -47,7 +48,7 @@ function useTaResize(id: string, defaultMinH: number) {
 /** B-05：预设绑定选择器 */
 function PresetBinding({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
   const [presets, setPresets] = useState<Preset[]>([])
-  useEffect(() => { window.api.preset.list().then(setPresets).catch(() => {}) }, [])
+  useEffect(() => { window.api.preset.list().then(setPresets).catch((e) => logError('CharacterEditor:loadPresets', e)) }, [])
   return (
     <div>
       <label className="label">绑定预设</label>
@@ -65,7 +66,7 @@ function PresetBinding({ value, onChange }: { value: string | null; onChange: (i
 /** B-05：世界书绑定选择器 */
 function LorebookBinding({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
-  useEffect(() => { window.api.lorebook.list().then(setLorebooks).catch(() => {}) }, [])
+  useEffect(() => { window.api.lorebook.list().then(setLorebooks).catch((e) => logError('CharacterEditor:loadLorebooks', e)) }, [])
   const toggle = (id: string) => {
     if (value.includes(id)) onChange(value.filter(v => v !== id))
     else onChange([...value, id])
@@ -139,7 +140,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     return () => {
       const ids = Array.from(activeRequestIdsRef.current)
       for (const id of ids) {
-        window.api.ai.cancelChat(id).catch(() => {})
+        window.api.ai.cancelChat(id).catch((e) => logError('CharacterEditor:cancelChat', e))
       }
       activeRequestIdsRef.current.clear()
     }

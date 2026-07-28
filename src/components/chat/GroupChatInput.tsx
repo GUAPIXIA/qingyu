@@ -29,6 +29,7 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [targetCharId, setTargetCharId] = useState<string | null>(null)
   const [mentionFilter, setMentionFilter] = useState('')
+  const [selectedImages, setSelectedImages] = useState<string[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const { characters } = useCharacterStore()
@@ -75,17 +76,32 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
   const handleSend = async () => {
     if (!content.trim() || isStreaming) return
     const trimmed = content.trim()
-    setContent('')
-    setTargetCharId(null)
+    const images = [...selectedImages]
 
     if (group.chatMode === 'mention' && !targetCharId) {
       // 未点名则默认第一个成员
       const firstMember = members[0]
-      if (firstMember) {
-        await sendMessage(trimmed, [], firstMember.id)
+      if (!firstMember) {
+        return
       }
+      setContent('')
+      setSelectedImages([])
+      setTargetCharId(null)
+      resetTextareaHeight()
+      await sendMessage(trimmed, images, firstMember.id)
     } else {
-      await sendMessage(trimmed, [], targetCharId ?? undefined)
+      setContent('')
+      setSelectedImages([])
+      setTargetCharId(null)
+      resetTextareaHeight()
+      await sendMessage(trimmed, images, targetCharId ?? undefined)
+    }
+  }
+
+  const resetTextareaHeight = () => {
+    const el = textareaRef.current
+    if (el) {
+      el.style.height = 'auto'
     }
   }
 
@@ -99,8 +115,10 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
   const handleSelectImage = async () => {
     const path = await window.api.file.selectImage()
     if (path) {
-      await window.api.file.readImageAsBase64(path)
-      // 暂不支持流式图片，作为占位预留
+      const base64 = await window.api.file.readImageAsBase64(path)
+      if (base64) {
+        setSelectedImages(prev => [...prev, base64])
+      }
     }
   }
 
@@ -239,6 +257,23 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
               )}
               <span>{m.name}</span>
             </button>
+          ))}
+        </div>
+      )}
+
+      {/* 已选图片预览 */}
+      {selectedImages.length > 0 && (
+        <div className="flex gap-1.5 mb-2 flex-wrap">
+          {selectedImages.map((img, i) => (
+            <div key={i} className="relative">
+              <img src={img} alt="" className="w-12 h-12 rounded-lg object-cover border border-tavern-border-soft" />
+              <button
+                onClick={() => setSelectedImages(prev => prev.filter((_, idx) => idx !== i))}
+                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-tavern-danger text-white flex items-center justify-center text-[8px]"
+              >
+                ×
+              </button>
+            </div>
           ))}
         </div>
       )}

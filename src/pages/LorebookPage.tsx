@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
+import { logError } from '../lib/logger'
 import {
   BookOpen,
   BookMarked,
@@ -88,7 +89,7 @@ export function LorebookPage() {
     return () => {
       const ids = Array.from(activeRequestIdsRef.current)
       for (const id of ids) {
-        window.api.ai.cancelChat(id).catch(() => {})
+        window.api.ai.cancelChat(id).catch((e) => logError('LorebookPage:cancelChat', e))
       }
       activeRequestIdsRef.current.clear()
     }

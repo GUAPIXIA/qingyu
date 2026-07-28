@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -8,12 +8,15 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
+import { parseDialogue } from '../../utils/dialogue-parser'
+import { extractThought } from '../../utils/messagePostProcess'
 import { X, Edit2, RefreshCw, Languages, Check } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 
 interface GroupChatMessageProps {
   message: GroupMessage
   memberIndex?: number
+  isStreamingMessage?: boolean
   onDelete?: () => void
   onEdit?: (content: string) => void
   onRegenerate?: () => void
@@ -35,7 +38,7 @@ import { MarkdownImage } from '../common/MarkdownImage'
 
 const markdownComponents = { img: MarkdownImage }
 
-export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, onDelete, onEdit, onRegenerate, onTranslate }: GroupChatMessageProps) {
+export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, isStreamingMessage, onDelete, onEdit, onRegenerate, onTranslate }: GroupChatMessageProps) {
   const { characters } = useCharacterStore()
   const { settings } = useSettingsStore()
   const { getPersona } = usePersonaStore()
@@ -43,30 +46,30 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
   const [showThought, setShowThought] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editDraft, setEditDraft] = useState('')
-  const [showTranslation, setShowTranslation] = useState(false)
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
 
   const isUser = message.characterId === '__user__'
   const isFree = message.characterId === '__free__'
-  const isStreaming = message.id === '__streaming__'
+  const isStreaming = isStreamingMessage ?? false
 
   const character = characters.find(c => c.id === message.characterId)
   const colorIdx = memberIndex ?? 0
   const borderColor = ROLE_COLORS[colorIdx % ROLE_COLORS.length]
 
-  // B-05 修复：同时处理 <thought> 和 <thinking> 标签
-  const normalizedContent = (message.content || '')
-    .replace(/<thinking([\s>])/gi, '<thought$1')
-    .replace(/<\/thinking>/gi, '</thought>')
-  const thoughtMatch = normalizedContent.match(/<thought>([\s\S]*?)<\/thought>/i)
-  const thoughtContent = thoughtMatch?.[1]?.trim()
-  let mainContent = normalizedContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
-  // B-05 修复：剥离后为空时回退到思考内容，避免空消息
-  if (!mainContent && thoughtContent) {
-    mainContent = thoughtContent
-  }
+  // 提取 thought 块并剥离（统一处理 <thought> 和 <thinking> 标签）
+  const { thought: thoughtContent, content: mainContent, isFallback: isThoughtFallback } = extractThought(message.content || '')
 
+  // 翻译显示状态从 store 同步，而非本地 state
+  const showTranslation = message._showTranslation ?? false
   const displayContent = showTranslation && message.translation ? message.translation : mainContent
+
+  // 对话片段解析（群聊中抑制 speaker 标签，因为角色名已在外层显示）
+  const dialogueSegments = useMemo(() => {
+    if (isStreaming) return null
+    const segments = parseDialogue(displayContent)
+    const hasDialogueOrAction = segments.some(s => s.type === 'dialogue' || s.type === 'action')
+    return hasDialogueOrAction ? segments : null
+  }, [displayContent, isStreaming])
 
   if (isFree) {
     return null
@@ -166,8 +169,8 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
             </div>
           ) : (
             <>
-              {/* Thought 折叠区 */}
-              {thoughtContent && (
+              {/* Thought 折叠区（回退显示时不重复展示） */}
+              {thoughtContent && !isThoughtFallback && (
                 <div className="mb-1.5">
                   <button
                     onClick={() => setShowThought(!showThought)}
@@ -184,23 +187,57 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
               )}
 
               {/* 正文 */}
-              <div className="markdown-body">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[
-                    ...(settings.htmlRendering ? [rehypeRaw] : []),
-                    rehypeHighlight,
-                  ]}
-                  components={markdownComponents}
-                >
-                  {displayContent || ''}
-                </ReactMarkdown>
-              </div>
+              {dialogueSegments ? (
+                /* 分段渲染：对话/动作/旁白（群聊中抑制 speaker 标签避免重复） */
+                dialogueSegments.map((seg, i) => {
+                  if (seg.type === 'dialogue') {
+                    return (
+                      <div key={i} className="dialogue-block">
+                        <span className="dialogue-text">{seg.content}</span>
+                      </div>
+                    )
+                  }
+                  if (seg.type === 'action') {
+                    return (
+                      <div key={i} className="action-block">
+                        {seg.content}
+                      </div>
+                    )
+                  }
+                  return (
+                    <div key={i} className="narration-block">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[
+                          ...(settings.htmlRendering ? [rehypeRaw] : []),
+                          rehypeHighlight,
+                        ]}
+                        components={markdownComponents}
+                      >
+                        {seg.content}
+                      </ReactMarkdown>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="markdown-body">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[
+                      ...(settings.htmlRendering ? [rehypeRaw] : []),
+                      rehypeHighlight,
+                    ]}
+                    components={markdownComponents}
+                  >
+                    {displayContent || ''}
+                  </ReactMarkdown>
+                </div>
+              )}
 
               {/* 翻译切换 */}
               {message.translation && message.translation !== '...' && (
                 <button
-                  onClick={() => setShowTranslation(!showTranslation)}
+                  onClick={() => onTranslate?.()}
                   className="mt-1 text-[10px] text-tavern-accent hover:underline"
                 >
                   {showTranslation ? '显示原文' : '显示译文'}

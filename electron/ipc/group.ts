@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, rmSync } from 'node:fs'
-import { DIRS, readJson, writeJson } from '../services/storage'
+import { DIRS, readJson, writeJson, countLines } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { GroupChat, GroupMessage, GroupSession } from '../../shared/types'
 import { nanoid } from 'nanoid'
@@ -164,10 +164,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     // P-1 修复：仅统计行数获取 messageCount，避免全量 JSON 解析
     return sessions.map(s => {
       const filePath = getSessionFile(groupId, s.id)
-      const count = existsSync(filePath)
-        ? readFileSync(filePath, 'utf-8').split('\n').filter(l => l.trim()).length
-        : 0
-      return { ...s, messageCount: count }
+      return { ...s, messageCount: countLines(filePath) }
     })
   })
 
@@ -292,6 +289,8 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       if (session) {
         session.updatedAt = Date.now()
         session.messageCount = 0
+        session.memory = ''
+        session.memoryUpdatedAt = 0
         saveSessions(groupId, sessions)
       }
     } else {

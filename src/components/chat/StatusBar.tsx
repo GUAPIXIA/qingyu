@@ -3,6 +3,7 @@ import { Heart, MapPin, Smile, BookOpen, Lock } from 'lucide-react'
 import { useChatStore } from '../../store/useChatStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { getEffectiveLorebookIds } from '../../utils/lorebook'
+import { logError } from '../../lib/logger'
 import type { Character, Message, Lorebook } from '../../../shared/types'
 
 interface StatusBarProps {
@@ -26,12 +27,15 @@ function parseStatusFromMessages(messages: Message[]): StatusItem[] {
   for (const msg of messages) {
     if (msg.role !== 'assistant') continue
     // 匹配 [Status: key=value] 或 【状态: key=value】
-    const regex = /(?:\[Status:|【状态:)\s*([^=]+?)\s*=\s*([^\]]+?)\s*(?:\]|】)/gi
+    // 拆分为两个正则：【状态:】格式用 [^】] 排除字符，使 value 可含 ]
+    const regexBracket = /\[Status:\s*([^=]+?)\s*=\s*([^\]]+?)\s*\]/gi
+    const regexCJK = /【状态:\s*([^=]+?)\s*=\s*([^】]+?)\s*】/gi
     let match
-    while ((match = regex.exec(msg.content)) !== null) {
-      const key = match[1].trim()
-      const value = match[2].trim()
-      statusMap.set(key, value)
+    while ((match = regexBracket.exec(msg.content)) !== null) {
+      statusMap.set(match[1].trim(), match[2].trim())
+    }
+    while ((match = regexCJK.exec(msg.content)) !== null) {
+      statusMap.set(match[1].trim(), match[2].trim())
     }
   }
 
@@ -62,7 +66,7 @@ export function StatusBar({ character, messages }: StatusBarProps) {
 
   // 加载世界书列表：角色切换 或 激活数量变化时重新加载
   useEffect(() => {
-    window.api.lorebook.list().then(setLorebooks).catch(() => {})
+    window.api.lorebook.list().then(setLorebooks).catch((e) => logError('StatusBar:loadLorebooks', e))
   }, [character.id, activeLorebookIds.length])
 
   // 角色绑定的世界书 ID

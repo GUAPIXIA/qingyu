@@ -6,11 +6,14 @@ import { lorebookCache } from '../../utils/lorebook'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { downloadFile } from '../../utils/download'
+import { logError } from '../../lib/logger'
 import { getDisplayName } from '../../utils/variables'
+import { getDefaultMaxContext } from '../../utils/tokenCounter'
 import type { Character, Preset, Lorebook, ChatParams } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
 import { registerBuiltinCommands } from '../../commands/builtin'
+import { stripThought } from '../../utils/messagePostProcess'
 
 // 初始化内置命令（只执行一次）
 let commandsInitialized = false
@@ -193,7 +196,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         const messages = chatStore.messages
         // 简单估算
         const total = messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0)
-        const max = activeProfile?.maxContext ?? 8192
+        const max = activeProfile?.maxContext || getDefaultMaxContext(settings.activeModel || activeProfile?.model)
         return { total: Math.ceil(total / 4), max }  // 粗略估算 4 字符 = 1 token
       },
       callAiHelper: async (systemPrompt, userContent, options) => {
@@ -291,7 +294,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
     return () => {
       const ids = Array.from(activeRequestIdsRef.current)
       for (const id of ids) {
-        window.api.ai.cancelChat(id).catch(() => {})
+        window.api.ai.cancelChat(id).catch((e) => logError('ChatInput:cancelChat', e))
       }
       activeRequestIdsRef.current.clear()
     }
@@ -398,7 +401,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         setImages((prev) => [...prev, base64])
       }
     } catch (err) {
-      console.error('图片选择失败', err)
+      logError('ChatInput:selectImage', err)
     }
   }
 
@@ -429,7 +432,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         activeRequestIdsRef.current.delete(requestId)
         unbindChunk(); unbindDone(); unbindError()
       }
-      const cleanResult = () => result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const cleanResult = () => stripThought(result)
       const unbindChunk = window.api.ai.onChunk((data) => {
         if (data.requestId !== requestId) return
         result += data.text
@@ -536,7 +539,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         setText(originalInput)
       }
     } catch (err) {
-      console.error('续写失败', err)
+      logError('ChatInput:continue', err)
       setText(originalInput)
     } finally {
       setIsAiProcessing(false)
@@ -561,7 +564,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       })
       if (!result) setText(originalText)
     } catch (err) {
-      console.error('润色失败', err)
+      logError('ChatInput:polish', err)
       setText(originalText!)
       setOriginalText(null)
     } finally {

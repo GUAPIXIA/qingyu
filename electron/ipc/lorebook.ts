@@ -1,6 +1,6 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
-import { DIRS, writeJson, listJsonFiles, removeFile } from '../services/storage'
+import { DIRS, writeJson, listJsonFilesAsync, removeFile } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Lorebook } from '../../shared/types'
 import { safeId } from '../utils/pathGuard'
@@ -10,7 +10,7 @@ const log = createLogger('lorebook')
 export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 列表
   ipcMain.handle('lorebook:list', async () => {
-    return listJsonFiles<Lorebook>(DIRS.lorebooks())
+    return await listJsonFilesAsync<Lorebook>(DIRS.lorebooks())
   })
 
   // 保存

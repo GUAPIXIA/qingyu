@@ -31,7 +31,16 @@
       "Bash(npm run *)",
       "Bash(npx vite *)",
       "Bash(grep -n \"set\\({ sessions, currentSessionId\")",
-      "PowerShell(npx tsc --noEmit --pretty 2>&1)"
+      "PowerShell(npx tsc --noEmit --pretty 2>&1)",
+      "Bash(Select-Object -First 25)",
+      "Bash(Select-String \"dialogue-parser\")",
+      "Bash(node -e ' *)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(npx tsx *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(node --eval ' *)",
+      "Bash(git stash *)",
+      "Bash(git add *)"
     ]
   }
 }

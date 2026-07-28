@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Settings, ProviderType, ConnectionProfile, TTSModelConfig, ImageGenModelConfig, VisionModelConfig } from '../../shared/types'
 import { getDefaultSettings } from '../utils/defaults'
 import { nanoid } from 'nanoid'
+import { logError } from '../lib/logger'
 
 export interface ActiveProfile {
   name: string
@@ -203,7 +204,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   saveSettings: async () => {
-    await window.api.settings.save(get().settings)
+    try {
+      await window.api.settings.save(get().settings)
+    } catch (err) {
+      logError('SettingsStore:save', err)
+    }
   },
 
   /** 立即刷新待保存的设置到磁盘（绕过防抖），用于 app 退出前 */
@@ -213,7 +218,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       clearTimeout(self._saveTimer)
       set({ _saveTimer: null })
     }
-    window.api.settings.save(get().settings).catch(() => {})
+    window.api.settings.save(get().settings).catch((e) => logError('SettingsStore:flush', e))
   },
 
   updateSettings: (partial) => {
@@ -224,7 +229,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (self._saveTimer) clearTimeout(self._saveTimer)
     const timer = setTimeout(() => {
       set({ _saveTimer: null })
-      window.api.settings.save(get().settings).catch(() => {})
+      window.api.settings.save(get().settings).catch((e) => logError('SettingsStore:update', e))
     }, 300)
     set({ _saveTimer: timer })
   },
@@ -237,7 +242,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         activeModel: state.settings.providers[provider].model,
       },
     }))
-    get().saveSettings().catch(() => {}).catch(() => {})
+    void get().saveSettings()
   },
 
   saveCredential: async (provider, key) => {
@@ -264,7 +269,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       apiKey: profile.apiKey,
       baseUrl: profile.baseUrl,
       model: profile.model,
-      maxContext: profile.maxContext || 8192,
+      maxContext: profile.maxContext || 0, // 0 表示跟随模型默认
       useInstructTemplate: profile.useInstructTemplate,
     }
   },
@@ -283,7 +288,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   updateProfile: (id, patch) => {
@@ -295,7 +300,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ),
       },
     }))
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   deleteProfile: (id) => {
@@ -312,7 +317,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   setActiveProfileId: (id) => {
@@ -325,7 +330,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         activeModel: profile.model,
       },
     }))
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   // ========== TTS 模型管理 ==========
@@ -358,7 +363,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   updateTTSModel: (id, patch) => {
@@ -370,7 +375,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ),
       },
     }))
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   deleteTTSModel: (id) => {
@@ -383,14 +388,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings: { ...state.settings, ttsModels: models, activeTTSModelId: newActiveId },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   setActiveTTSModelId: (id) => {
     set((state) => ({
       settings: { ...state.settings, activeTTSModelId: id },
     }))
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   reorderTTSModels: (ids) => {
@@ -405,7 +410,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings: { ...state.settings, ttsModels: models },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   // ========== 生图模型管理 ==========
@@ -439,7 +444,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   updateImageGenModel: (id, patch) => {
@@ -451,7 +456,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ),
       },
     }))
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   deleteImageGenModel: (id) => {
@@ -464,14 +469,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings: { ...state.settings, imageGenModels: models, activeImageGenModelId: newActiveId },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   setActiveImageGenModelId: (id) => {
     set((state) => ({
       settings: { ...state.settings, activeImageGenModelId: id },
     }))
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   reorderImageGenModels: (ids) => {
@@ -486,7 +491,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings: { ...state.settings, imageGenModels: models },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   // ========== 识图模型管理 ==========
@@ -510,7 +515,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   updateVisionModel: (id, patch) => {
@@ -522,7 +527,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ),
       },
     }))
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   deleteVisionModel: (id) => {
@@ -535,14 +540,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings: { ...state.settings, visionModels: models, activeVisionModelId: newActiveId },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   setActiveVisionModelId: (id) => {
     set((state) => ({
       settings: { ...state.settings, activeVisionModelId: id },
     }))
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 
   reorderVisionModels: (ids) => {
@@ -557,6 +562,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings: { ...state.settings, visionModels: models },
       }
     })
-    get().saveSettings().catch(() => {})
+    void get().saveSettings()
   },
 }))
