@@ -9,6 +9,7 @@ import type {
   TTSAPI,
   ImageGenAPI,
   FileAPI,
+  FontAPI,
   RegexAPI,
   PersonaAPI,
   LogAPI,
@@ -132,6 +133,15 @@ const fileApi: FileAPI = {
   readImageAsBase64: (path) => ipcRenderer.invoke('file:readImageBase64', path),
 }
 
+// ---- 字体 ----
+const fontApi: FontAPI = {
+  selectFont: () => ipcRenderer.invoke('font:select'),
+  saveFont: (filePath) => ipcRenderer.invoke('font:save', filePath),
+  listFonts: () => ipcRenderer.invoke('font:list'),
+  deleteFont: (id) => ipcRenderer.invoke('font:delete', id),
+  getFontPath: (id) => ipcRenderer.invoke('font:getPath', id),
+}
+
 // ---- 正则表达式 ----
 const regexApi: RegexAPI = {
   list: () => ipcRenderer.invoke('regex:list'),
@@ -197,6 +207,7 @@ contextBridge.exposeInMainWorld('api', {
   regex: regexApi,
   persona: personaApi,
   file: fileApi,
+  font: fontApi,
   log: logApi,
   usage: usageApi,
   mcp: mcpApi,

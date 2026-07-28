@@ -1381,12 +1381,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const context: { role: 'system' | 'user' | 'assistant'; content: string }[] = []
 
     // ===== System Prompt 构建 =====
-    let systemContent = character.systemPrompt || preset?.systemPrompt || '你是一个角色扮演助手。请根据角色设定进行沉浸式对话，保持角色性格的一致性。'
+    const charNameForVars = character.translatedContent?.name || character.name
+    let systemContent = replaceVariables(
+      character.systemPrompt || preset?.systemPrompt || '你是一个角色扮演助手。请根据角色设定进行沉浸式对话，保持角色性格的一致性。',
+      userName,
+      charNameForVars,
+    )
 
     // jailbreak 改为可选（修复 #32）：只在 preset 有 jailbreak 且非空时附加
     // 用户可通过清空 preset.jailbreak 来禁用
     if (preset?.jailbreak && preset.jailbreak.trim()) {
-      systemContent += '\n\n' + preset.jailbreak
+      systemContent += '\n\n' + replaceVariables(preset.jailbreak, userName, charNameForVars)
     }
 
     // 用户人设注入
@@ -1595,11 +1600,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // Assistant Prefix：在上下文末尾添加空的 assistant 消息，引导模型输出格式
     // 对于 instruct 模式且 appendAssistantPrefix=true 的情况，添加角色名前缀
-    const charName = character.translatedContent?.name ?? character.name
     const instructTemplate = profile?.useInstructTemplate
       ? getInstructTemplate(profile.provider, model)
       : undefined
-    if (instructTemplate?.appendAssistantPrefix && charName) {
+    if (instructTemplate?.appendAssistantPrefix && charNameForVars) {
       context.push({
         role: 'assistant',
         content: '',  // 空内容，让模型续写
@@ -1611,7 +1615,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // 根据提供商转换消息格式（Claude/Gemini 需要特殊处理）
     const provider = profile?.provider || 'openai'
-    processedContext = convertMessages(provider, processedContext, { charName, userName })
+    processedContext = convertMessages(provider, processedContext, { charName: charNameForVars, userName })
 
     return processedContext
   },

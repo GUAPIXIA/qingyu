@@ -10,11 +10,15 @@ import {
   AtSign,
   Image as ImageIcon,
   ChevronDown,
+  X as XIcon,
+  Reply,
 } from 'lucide-react'
-import type { GroupChat } from '../../../shared/types'
+import type { GroupChat, GroupMessage } from '../../../shared/types'
 
 interface GroupChatInputProps {
   group: GroupChat
+  replyTo?: GroupMessage | null
+  onCancelReply?: () => void
 }
 
 const MODE_LABELS: Record<GroupChat['chatMode'], string> = {
@@ -23,7 +27,7 @@ const MODE_LABELS: Record<GroupChat['chatMode'], string> = {
   free: '自由',
 }
 
-export function GroupChatInput({ group }: GroupChatInputProps) {
+export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInputProps) {
   const [content, setContent] = useState('')
   const [showMention, setShowMention] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
@@ -77,6 +81,7 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
     if (!content.trim() || isStreaming) return
     const trimmed = content.trim()
     const images = [...selectedImages]
+    const replyToId = replyTo?.id ?? null
 
     if (group.chatMode === 'mention' && !targetCharId) {
       // 未点名则默认第一个成员
@@ -88,13 +93,15 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
       setSelectedImages([])
       setTargetCharId(null)
       resetTextareaHeight()
-      await sendMessage(trimmed, images, firstMember.id)
+      onCancelReply?.()
+      await sendMessage(trimmed, images, firstMember.id, replyToId)
     } else {
       setContent('')
       setSelectedImages([])
       setTargetCharId(null)
       resetTextareaHeight()
-      await sendMessage(trimmed, images, targetCharId ?? undefined)
+      onCancelReply?.()
+      await sendMessage(trimmed, images, targetCharId ?? undefined, replyToId)
     }
   }
 
@@ -258,6 +265,32 @@ export function GroupChatInput({ group }: GroupChatInputProps) {
               <span>{m.name}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* 引用回复预览条 */}
+      {replyTo && (
+        <div className="mb-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft">
+          <Reply className="w-3.5 h-3.5 text-tavern-accent shrink-0" />
+          <div className="min-w-0 flex-1 text-xs">
+            <span className="text-tavern-accent font-medium">
+              {replyTo.characterId === '__user__'
+                ? '用户'
+                : (characters.find(c => c.id === replyTo.characterId)?.name ?? '未知')
+            }:
+            </span>
+            <span className="text-tavern-text-muted ml-1 truncate">
+              {replyTo.content.slice(0, 60)}
+              {replyTo.content.length > 60 ? '...' : ''}
+            </span>
+          </div>
+          <button
+            onClick={onCancelReply}
+            className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors shrink-0"
+            title="取消引用"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

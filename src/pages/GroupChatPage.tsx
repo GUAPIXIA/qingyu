@@ -12,9 +12,10 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Modal } from '../components/common/Modal'
 import { SessionSwitcher } from '../components/common/SessionSwitcher'
 import { GroupChatSettingsPanel } from '../components/chat/GroupChatSettingsPanel'
+import { MemoryPanel } from '../components/chat/MemoryPanel'
 import { cn } from '../lib/utils'
 import { downloadFile } from '../utils/download'
-import type { GroupChat, Lorebook, Preset } from '../../shared/types'
+import type { GroupChat, GroupMessage, Lorebook, Preset } from '../../shared/types'
 import {
   Plus,
   Trash2,
@@ -24,6 +25,9 @@ import {
   Edit2,
   Check,
   Eye,
+  Search,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 
 export function GroupChatPage() {
@@ -35,6 +39,8 @@ export function GroupChatPage() {
     loadGroups, selectGroup, saveGroup, deleteGroup,
     createSession, switchSession, deleteSession, renameSession,
     clearChat, deleteMessage, editMessage, regenerateMessage, translateMessage,
+    sendPollingRound,
+    toggleMemory, setMemoryMode, triggerMemorySummary,
   } = useGroupChatStore()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -50,6 +56,13 @@ export function GroupChatPage() {
   const [contextContent, setContextContent] = useState<{ role: string; content: string }[]>([])
   const [showGreetingPicker, setShowGreetingPicker] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [replyToMessage, setReplyToMessage] = useState<GroupMessage | null>(null)
+  const [showMemoryPanel, setShowMemoryPanel] = useState(false)
+  const [memoryInterval, setMemoryInterval] = useState(10)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
+  const [memberSearch, setMemberSearch] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   // 初始加载
   useEffect(() => {
@@ -74,18 +87,36 @@ export function GroupChatPage() {
     selectGroup(group.id)
   }
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
+    setSelectedMemberIds([])
+    setMemberSearch('')
+    setShowCreateModal(true)
+  }
+
+  /** 切换角色选中状态 */
+  const toggleMemberSelect = (charId: string) => {
+    setSelectedMemberIds(prev =>
+      prev.includes(charId) ? prev.filter(id => id !== charId) : [...prev, charId]
+    )
+  }
+
+  /** 确认创建群聊：群聊名称按角色名逐个拼接 */
+  const confirmCreate = async () => {
+    if (selectedMemberIds.length === 0) return
+    const memberNames = selectedMemberIds
+      .map(id => characters.find(c => c.id === id)?.name ?? '未知')
+      .join('、')
     const newGroup: GroupChat = {
       id: nanoid(),
-      name: '新群聊',
-      memberIds: [],
+      name: memberNames,
+      memberIds: [...selectedMemberIds],
       currentSpeakerIndex: 0,
       autoMode: false,
       chatMode: 'polling',
       maxRounds: 1,
       speakerInterval: 2000,
       lorebookIds: [],
-      presetId: null,
+      presetId: 'builtin-default',
       systemPrompt: '',
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -93,6 +124,8 @@ export function GroupChatPage() {
     await saveGroup(newGroup)
     setSelectedId(newGroup.id)
     selectGroup(newGroup.id)
+    setShowCreateModal(false)
+    setSelectedMemberIds([])
   }
 
   const handleDelete = async () => {
@@ -178,19 +211,40 @@ export function GroupChatPage() {
     } catch { /* ignore */ }
   }
 
+  // 角色搜索过滤
+  const filteredCharacters = memberSearch.trim()
+    ? characters.filter(c =>
+        c.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+        (c.description && c.description.toLowerCase().includes(memberSearch.toLowerCase())) ||
+        (c.tags && c.tags.some(t => t.toLowerCase().includes(memberSearch.toLowerCase())))
+      )
+    : characters
+
   return (
     <div className="flex-1 flex overflow-hidden">
-      {/* ============ 左栏：群聊列表 ============ */}
-      <aside className="w-64 border-r border-tavern-border-soft bg-tavern-bg-soft flex flex-col shrink-0">
+      {/* ============ 左栏：群聊列表（可收起） ============ */}
+      <aside className={cn(
+        'border-r border-tavern-border-soft bg-tavern-bg-soft flex flex-col shrink-0 transition-all duration-200',
+        sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-64'
+      )}>
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-tavern-border-soft">
           <span className="text-xs font-medium text-tavern-text-muted">群聊列表</span>
-          <button
-            onClick={handleCreate}
-            className="btn-ghost p-1 rounded-lg hover:bg-tavern-accent-soft hover:text-tavern-accent"
-            title="新建群聊"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={handleCreate}
+              className="btn-ghost p-1 rounded-lg hover:bg-tavern-accent-soft hover:text-tavern-accent"
+              title="新建群聊"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="btn-ghost p-1 rounded-lg hover:bg-tavern-bg-hover text-tavern-text-muted"
+              title="收起列表"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto py-1">
@@ -245,10 +299,20 @@ export function GroupChatPage() {
         className="flex-1 flex flex-col overflow-hidden bg-tavern-bg relative"
         style={currentGroup?.themeColor ? { '--gc-theme': currentGroup.themeColor } as React.CSSProperties : undefined}
       >
+        {/* 收起状态下的展开按钮（始终可见，放在 main 顶部不遮挡内容） */}
+        {sidebarCollapsed && !currentGroup && (
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="absolute top-2 left-2 z-30 p-1.5 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors shadow-sm"
+            title="展开群聊列表"
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+          </button>
+        )}
         {/* 聊天背景 */}
         {currentGroup?.chatBackgroundParams && (
           <div
-            className="absolute inset-0 pointer-events-none"
+            className="absolute inset-0 z-0 pointer-events-none"
             style={{
               opacity: currentGroup.chatBackgroundParams.opacity ?? 0,
               filter: `blur(${currentGroup.chatBackgroundParams.blur ?? 0}px)`,
@@ -278,10 +342,19 @@ export function GroupChatPage() {
           <>
             {/* ---- 顶栏 ---- */}
             <header
-              className="flex items-center justify-between px-4 h-12 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0"
+              className="flex items-center justify-between px-4 h-12 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0 relative z-10"
               style={currentGroup?.themeColor ? { borderBottomColor: currentGroup.themeColor, borderBottomWidth: '2px' } : undefined}
             >
               <div className="flex items-center gap-2 min-w-0">
+                {sidebarCollapsed && (
+                  <button
+                    onClick={() => setSidebarCollapsed(false)}
+                    className="btn-ghost p-1 rounded-lg hover:bg-tavern-bg-hover text-tavern-text-muted shrink-0"
+                    title="展开群聊列表"
+                  >
+                    <PanelLeftOpen className="w-4 h-4" />
+                  </button>
+                )}
                 {editingName ? (
                   <div className="flex items-center gap-1">
                     <input
@@ -330,6 +403,48 @@ export function GroupChatPage() {
                   }
                   return null
                 })()}
+
+                {/* 长记忆 */}
+                {currentSessionId && (
+                  <MemoryPanel
+                    open={showMemoryPanel}
+                    onToggle={() => {
+                      if (!showMemoryPanel && currentSessionId) {
+                        const curS = sessions.find(s => s.id === currentSessionId)
+                        setMemoryInterval(curS?.autoMemoryInterval ?? 10)
+                      }
+                      setShowMemoryPanel(!showMemoryPanel)
+                    }}
+                    sessions={sessions}
+                    currentSessionId={currentSessionId}
+                    currentCharacterId={currentGroup?.id ?? null}
+                    memoryInterval={memoryInterval}
+                    onMemoryIntervalChange={setMemoryInterval}
+                    onToggleMemory={(enabled) => {
+                      if (currentGroup && currentSessionId) toggleMemory(currentGroup.id, currentSessionId, enabled)
+                    }}
+                    onSetMemoryMode={(mode, interval) => {
+                      if (currentGroup && currentSessionId) setMemoryMode(currentGroup.id, currentSessionId, mode, interval)
+                    }}
+                    onTriggerSummary={() => {
+                      triggerMemorySummary()
+                    }}
+                    isStreaming={isStreaming}
+                    memoryStats={messages.length > 0 ? {
+                      totalMessages: messages.length,
+                      totalChars: messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0),
+                      durationStr: messages.length > 1
+                        ? (() => {
+                            const ms = messages[messages.length - 1].timestamp - messages[0].timestamp
+                            const hours = Math.floor(ms / 3600000)
+                            const mins = Math.floor((ms % 3600000) / 60000)
+                            return hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`
+                          })()
+                        : '不足1分钟',
+                    } : null}
+                  />
+                )}
+
                 <button
                   onClick={() => {
                     const ctx = useGroupChatStore.getState().buildGroupContext()
@@ -359,7 +474,7 @@ export function GroupChatPage() {
             </header>
 
             {/* ---- 消息区域 ---- */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden relative z-0">
               {messages.length === 0 && !isStreaming ? (
                 <div className="flex items-center justify-center h-full text-xs text-tavern-text-muted">
                   <div className="text-center">
@@ -378,12 +493,21 @@ export function GroupChatPage() {
                     const memberIdx = currentGroup.memberIds.indexOf(m.characterId)
                     const isAiMsg = m.characterId !== '__user__'
                     const isStreamingMsg = isStreaming && index === messages.length - 1 && isAiMsg
+                    // 查找被引用的消息
+                    const repliedMessage = m.replyToId
+                      ? messages.find(msg => msg.id === m.replyToId)
+                      : undefined
                     return (
                       <GroupChatMessage
                         key={m.id}
                         message={m}
                         memberIndex={memberIdx}
                         isStreamingMessage={isStreamingMsg}
+                        repliedMessage={repliedMessage}
+                        bubbleOpacity={currentGroup.bubbleOpacity}
+                        onReply={
+                          !isStreaming ? () => setReplyToMessage(m) : undefined
+                        }
                         onDelete={
                           !currentSessionId || isStreaming ? undefined : () => deleteMessage(currentGroup.id, currentSessionId!, m.id)
                         }
@@ -407,15 +531,33 @@ export function GroupChatPage() {
             </div>
 
             {/* ---- 输入区 ---- */}
-            <GroupChatInput group={currentGroup} />
+            <div className="relative z-10">
+            <GroupChatInput
+              group={currentGroup}
+              replyTo={replyToMessage}
+              onCancelReply={() => setReplyToMessage(null)}
+            />
+            </div>
 
             {/* ---- 成员栏 ---- */}
+            <div className="relative z-10">
             <GroupMemberBar
               memberIds={currentGroup.memberIds}
               currentSpeakerIndex={currentGroup.currentSpeakerIndex}
               themeColor={currentGroup.themeColor}
-              onSpeakerClick={() => {}}
+              onSpeakerClick={(charId) => {
+                const idx = currentGroup.memberIds.indexOf(charId)
+                if (idx < 0) return
+                // 更新当前发言者索引
+                const updated = { ...currentGroup, currentSpeakerIndex: idx }
+                saveGroup(updated)
+                // polling 模式且非自动时，手动触发该角色发言
+                if (currentGroup.chatMode === 'polling' && !currentGroup.autoMode && !isStreaming) {
+                  sendPollingRound(charId)
+                }
+              }}
             />
+            </div>
           </>
         )}
       </main>
@@ -611,6 +753,103 @@ export function GroupChatPage() {
           </div>
         )
       })()}
+
+      {/* ============ 新建群聊：角色选择弹窗 ============ */}
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="新建群聊 - 选择角色"
+        width="md"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-xs text-tavern-text-muted">
+              已选 {selectedMemberIds.length} 位角色
+              {selectedMemberIds.length > 0 && (
+                <span className="ml-2 text-tavern-text-soft">
+                  群聊名称：{selectedMemberIds
+                    .map(id => characters.find(c => c.id === id)?.name ?? '未知')
+                    .join('、')}
+                </span>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowCreateModal(false)} className="btn-ghost text-xs">
+                取消
+              </button>
+              <button
+                onClick={confirmCreate}
+                disabled={selectedMemberIds.length === 0}
+                className="btn-primary text-xs"
+              >
+                创建群聊
+              </button>
+            </div>
+          </div>
+        }
+      >
+        {/* 搜索框 */}
+        <div className="mb-2 relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-tavern-text-muted" />
+          <input
+            value={memberSearch}
+            onChange={e => setMemberSearch(e.target.value)}
+            placeholder="搜索角色名称、描述或标签..."
+            className="w-full pl-8 pr-3 py-1.5 text-sm bg-tavern-bg border border-tavern-border rounded-lg text-tavern-text outline-none focus:border-tavern-accent"
+            autoFocus
+          />
+        </div>
+
+        <div className="space-y-1 max-h-72 overflow-y-auto">
+          {characters.length === 0 ? (
+            <div className="py-8 text-center text-sm text-tavern-text-muted">
+              暂无角色，请先创建或导入角色
+            </div>
+          ) : filteredCharacters.length === 0 ? (
+            <div className="py-8 text-center text-sm text-tavern-text-muted">
+              未找到匹配的角色
+            </div>
+          ) : (
+            filteredCharacters.map(char => {
+              const selected = selectedMemberIds.includes(char.id)
+              return (
+                <div
+                  key={char.id}
+                  onClick={() => toggleMemberSelect(char.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && toggleMemberSelect(char.id)}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors',
+                    selected
+                      ? 'bg-tavern-accent-soft border border-tavern-accent'
+                      : 'hover:bg-tavern-bg-hover border border-transparent'
+                  )}
+                >
+                  {char.avatar ? (
+                    <img src={char.avatar} className="w-9 h-9 rounded-lg object-cover shrink-0" alt="" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-lg bg-tavern-bg-hover flex items-center justify-center text-sm font-bold text-tavern-text-muted shrink-0">
+                      {char.name[0]}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-tavern-text truncate">{char.name}</div>
+                    {char.description && (
+                      <div className="text-xs text-tavern-text-muted truncate">{char.description}</div>
+                    )}
+                  </div>
+                  <div className={cn(
+                    'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors',
+                    selected ? 'bg-tavern-accent border-tavern-accent' : 'border-tavern-border'
+                  )}>
+                    {selected && <Check className="w-3 h-3 text-white" />}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

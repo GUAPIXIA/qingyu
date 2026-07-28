@@ -92,7 +92,7 @@ app.whenReady().then(async () => {
   registerAIIPC(ipcMain)
   registerTTSIPC(ipcMain)
   registerImageGenIPC(ipcMain)
-  registerFileIPC(ipcMain, dialog)
+  registerFileIPC(ipcMain, dialog, app)
   registerRegexIPC(ipcMain)
   registerPersonaIPC(ipcMain)
   registerUsageIPC(ipcMain)

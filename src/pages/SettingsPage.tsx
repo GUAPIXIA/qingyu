@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { THEME_COLORS, getDefaultSettings } from '../utils/defaults'
+import { THEME_COLORS, BUILTIN_FONTS, getDefaultSettings } from '../utils/defaults'
 import { cn } from '../lib/utils'
 import { SectionCard, Toggle, OptionGroup } from '../components/common/SettingsShared'
-import type { Settings } from '../../shared/types'
+import type { Settings, CustomFont } from '../../shared/types'
 import {
   Settings as SettingsIcon,
   Palette,
@@ -22,6 +22,9 @@ import {
   Plug,
   ExternalLink,
   Globe,
+  Type,
+  Upload as UploadIcon,
+  Trash2,
 } from 'lucide-react'
 
 export function SettingsPage() {
@@ -29,6 +32,64 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const [busy, setBusy] = useState<'export' | 'import' | null>(null)
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [customFonts, setCustomFonts] = useState<CustomFont[]>([])
+  const [fontUploading, setFontUploading] = useState(false)
+  const [fontError, setFontError] = useState<string | null>(null)
+
+  // 加载自定义字体列表
+  const loadCustomFonts = useCallback(async () => {
+    try {
+      const fonts = await window.api.font.listFonts()
+      setCustomFonts(fonts)
+    } catch {
+      // 忽略
+    }
+  }, [])
+
+  useEffect(() => {
+    loadCustomFonts()
+  }, [loadCustomFonts])
+
+  /** 上传字体文件 */
+  const handleUploadFont = async () => {
+    setFontError(null)
+    setFontUploading(true)
+    try {
+      const filePath = await window.api.font.selectFont()
+      if (!filePath) {
+        setFontUploading(false)
+        return
+      }
+      const fontInfo = await window.api.font.saveFont(filePath)
+      // 自动应用新字体
+      updateSettings({ fontFamily: fontInfo.name, customFontId: fontInfo.id })
+      await loadCustomFonts()
+    } catch (e) {
+      setFontError(e instanceof Error ? e.message : '字体上传失败')
+    } finally {
+      setFontUploading(false)
+    }
+  }
+
+  /** 删除自定义字体 */
+  const handleDeleteFont = async (id: string) => {
+    setFontError(null)
+    try {
+      await window.api.font.deleteFont(id)
+      // 如果正在使用该字体，回退系统默认
+      if (settings.customFontId === id) {
+        updateSettings({ fontFamily: 'system', customFontId: null })
+      }
+      await loadCustomFonts()
+    } catch (e) {
+      setFontError(e instanceof Error ? e.message : '字体删除失败')
+    }
+  }
+
+  /** 应用自定义字体 */
+  const handleApplyCustomFont = (font: CustomFont) => {
+    updateSettings({ fontFamily: font.name, customFontId: font.id })
+  }
 
   /** 导出备份 */
   const handleExport = async () => {
@@ -92,6 +153,109 @@ export function SettingsPage() {
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 左列 */}
             <div className="space-y-5">
+              {/* 对话字体 */}
+              <div>
+                <label className="label">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Type className="w-3.5 h-3.5" />对话字体
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {BUILTIN_FONTS.map(font => {
+                    const active = (settings.fontFamily ?? 'system') === font.value && !settings.customFontId
+                    return (
+                      <button
+                        key={font.value}
+                        onClick={() => updateSettings({ fontFamily: font.value, customFontId: null })}
+                        className={cn(
+                          'px-3 py-2 rounded-lg text-sm border transition-all text-left',
+                          active
+                            ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                            : 'border-tavern-border bg-tavern-bg hover:bg-tavern-bg-hover text-tavern-text-soft'
+                        )}
+                        style={{ fontFamily: font.family }}
+                      >
+                        <div className="font-medium">{font.label}</div>
+                        <div className="text-xs opacity-70 mt-0.5">{font.preview}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* 自定义字体区 */}
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleUploadFont}
+                      disabled={fontUploading}
+                      className="btn-secondary text-xs py-1.5"
+                    >
+                      {fontUploading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <UploadIcon className="w-3.5 h-3.5" />
+                      )}
+                      上传字体（TTF/OTF）
+                    </button>
+                    <span className="text-xs text-tavern-text-muted">最大 10MB</span>
+                  </div>
+
+                  {fontError && (
+                    <p className="text-xs text-tavern-danger">{fontError}</p>
+                  )}
+
+                  {customFonts.length > 0 && (
+                    <div className="space-y-1.5">
+                      {customFonts.map(font => {
+                        const active = settings.customFontId === font.id
+                        return (
+                          <div
+                            key={font.id}
+                            className={cn(
+                              'flex items-center justify-between gap-2 px-3 py-2 rounded-lg border transition-colors',
+                              active
+                                ? 'border-tavern-accent bg-tavern-accent-soft'
+                                : 'border-tavern-border-soft bg-tavern-bg hover:bg-tavern-bg-hover'
+                            )}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-tavern-text truncate">
+                                {font.name}
+                              </div>
+                              <div className="text-[10px] text-tavern-text-muted">
+                                {font.format.toUpperCase()} · {(font.size / 1024).toFixed(0)}KB
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {!active && (
+                                <button
+                                  onClick={() => handleApplyCustomFont(font)}
+                                  className="px-2 py-0.5 text-[10px] rounded bg-tavern-accent-soft text-tavern-accent hover:bg-tavern-accent/20 transition-colors"
+                                >
+                                  应用
+                                </button>
+                              )}
+                              {active && (
+                                <span className="text-[10px] text-tavern-accent flex items-center gap-0.5">
+                                  <Check className="w-3 h-3" />使用中
+                                </span>
+                              )}
+                              <button
+                                onClick={() => handleDeleteFont(font.id)}
+                                className="p-1 rounded text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-danger/10 transition-colors"
+                                title="删除字体"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* 主题模式 */}
               <div>
                 <label className="label">主题模式</label>

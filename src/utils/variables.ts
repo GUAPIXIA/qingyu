@@ -2,13 +2,19 @@ import type { Character } from '../../shared/types'
 
 /**
  * 变量替换工具
- * 将 {{user}} 替换为用户名，{{char}} 替换为角色名
+ * 将 {{user}} 替换为用户名，{{char}} 替换为角色名，{{original}} 替换为角色原名
  */
-export function replaceVariables(text: string, userName: string, charName: string): string {
+export function replaceVariables(
+  text: string,
+  userName: string,
+  charName: string,
+  originalCharName?: string,
+): string {
   if (!text) return text
   return text
     .replace(/\{\{user\}\}/gi, userName)
     .replace(/\{\{char\}\}/gi, charName)
+    .replace(/\{\{original\}\}/gi, originalCharName || charName)
 }
 
 /**

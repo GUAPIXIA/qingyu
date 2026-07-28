@@ -102,7 +102,7 @@ interface GroupChatState {
   renameSession: (groupId: string, sessionId: string, title: string) => Promise<void>
 
   loadMessages: (groupId: string, sessionId: string) => Promise<void>
-  sendMessage: (content: string, images: string[], targetCharId?: string) => Promise<void>
+  sendMessage: (content: string, images: string[], targetCharId?: string, replyToId?: string | null) => Promise<void>;
   sendPollingRound: (charId: string) => Promise<void>
   stopStreaming: () => void
   clearChat: (groupId: string) => Promise<void>
@@ -507,7 +507,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
 
   // ---- 核心：发送消息 ----
 
-  sendMessage: async (content, images, targetCharId) => {
+  sendMessage: async (content, images, targetCharId, replyToId) => {
     const state = get()
     const { currentGroup, currentSessionId } = state
     if (!currentGroup || !currentSessionId) return
@@ -546,6 +546,16 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       }
     } catch { /* 忽略正则加载失败 */ }
 
+    // 检测 @提及的角色 ID（从群成员名中匹配）
+    const mentionedCharacterIds: string[] = []
+    const charStore = useCharacterStore.getState()
+    for (const memberId of currentGroup.memberIds) {
+      const member = charStore.characters.find(c => c.id === memberId)
+      if (member && content.includes(`@${member.name}`)) {
+        mentionedCharacterIds.push(memberId)
+      }
+    }
+
     const userMsg: GroupMessage = {
       id: nanoid(),
       groupId: currentGroup.id,
@@ -554,13 +564,28 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       images,
       timestamp: Date.now(),
       round: currentRound,
+      replyToId: replyToId ?? null,
+      status: 'sending',
+      mentionedCharacterIds: mentionedCharacterIds.length > 0 ? mentionedCharacterIds : undefined,
     }
     set(s => ({ messages: [...s.messages, userMsg], error: null }))
     await window.api.group.saveMessage(currentGroup.id, currentSessionId, userMsg)
 
+    // 辅助函数：更新用户消息状态为 sent
+    const markUserMsgSent = (msgId: string) => {
+      set((s: any) => ({
+        messages: s.messages.map((m: GroupMessage) =>
+          m.id === msgId ? { ...m, status: 'sent' as const } : m,
+        ),
+      }))
+      const updated = get().messages.find(m => m.id === msgId)
+      if (updated && currentGroup && currentSessionId) {
+        window.api.group.saveMessage(currentGroup.id, currentSessionId, updated).catch((e) => logError('GroupChatStore:saveMessage', e))
+      }
+    }
+
     // 2. 根据模式获取 AI 回复
     const mode = currentGroup.chatMode
-    const charStore = useCharacterStore.getState()
 
     if (mode === 'mention' || mode === 'polling') {
       // mention/polling: 单个角色回复
@@ -573,16 +598,20 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
 
       if (!speakerId) {
         set({ error: '未指定发言角色' })
+        markUserMsgSent(userMsg.id)
         return
       }
 
       const speaker = charStore.characters.find(c => c.id === speakerId)
       if (!speaker) {
         set({ error: '发言角色不存在' })
+        markUserMsgSent(userMsg.id)
         return
       }
 
       await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, userMsg.round, () => {
+        // AI 回复完成后，更新用户消息状态
+        markUserMsgSent(userMsg.id)
         // onComplete: polling 模式下自动下一轮
         if (currentGroup.chatMode === 'polling' && currentGroup.autoMode) {
           checkPollingContinue(set, get, currentGroup)
@@ -593,6 +622,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
     } else {
       // free 模式：AI 一次返回多角色回复
       await streamGroupAIFree(set, get, currentGroup, currentSessionId, userMsg.round)
+      markUserMsgSent(userMsg.id)
       // 自动记忆检查
       checkAutoMemory(get)
     }
@@ -696,9 +726,9 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       .map(id => charStore.characters.find(c => c.id === id))
       .filter(Boolean) as Character[]
 
-    // 变量替换用的 charName（mention/polling 为目标角色名，free 为空）
+    // 变量替换用的 charName（mention/polling 为目标角色名，free 为成员列表）
     const targetChar = targetCharId ? members.find(m => m.id === targetCharId) : undefined
-    const charNameForVars = targetChar?.name || ''
+    const charNameForVars = targetChar?.name || members.map(m => m.name).join('、')
 
     let systemContent = ''
 
@@ -760,7 +790,12 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         .filter((d): d is number => typeof d === 'number' && d > 0)
         .reduce((max, d) => Math.max(max, d), 10)
 
-      let recentText = state.messages.slice(-scanDepth).map(m => m.content).join(' ')
+      // 扫描文本包含角色名前缀，使以角色名为关键词的世界书条目也能被触发
+      let recentText = state.messages.slice(-scanDepth).map(m => {
+        if (m.characterId === '__user__') return m.content
+        const c = members.find(mc => mc.id === m.characterId)
+        return `【${c?.name || '未知角色'}】${m.content}`
+      }).join(' ')
 
       // 收集所有世界书条目
       const allEntries: { entry: any; lbId: string }[] = []
@@ -886,6 +921,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         if (m.description) systemContent += `描述：${replaceVariables(m.description, userName, m.name)}\n`
         if (m.personality) systemContent += `性格：${replaceVariables(m.personality, userName, m.name)}\n`
         if (m.scenario) systemContent += `场景：${replaceVariables(m.scenario, userName, m.name)}\n`
+        if (m.systemPrompt) systemContent += `\n${replaceVariables(m.systemPrompt, userName, m.name)}\n`
         if (m.exampleDialog) systemContent += `\n对话示例：\n${replaceVariables(m.exampleDialog, userName, m.name)}\n`
       })
       if (lorebookAfter) systemContent += '\n' + lorebookAfter
@@ -915,10 +951,10 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
 
     // 预设 systemPrompt 和 jailbreak（在 token 预算裁剪前注入，确保计入上下文长度）
     if (preset?.systemPrompt) {
-      systemContent += '\n\n' + preset.systemPrompt
+      systemContent += '\n\n' + replaceVariables(preset.systemPrompt, userName, charNameForVars)
     }
     if (preset?.jailbreak && preset.jailbreak.trim()) {
-      systemContent += '\n\n' + preset.jailbreak
+      systemContent += '\n\n' + replaceVariables(preset.jailbreak, userName, charNameForVars)
     }
 
     // ===== 历史消息（Token 预算裁剪）=====
@@ -927,6 +963,22 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
     const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
 
     let usedTokens = estimateTokens(systemContent, model)
+
+    // 预计算后历史指令并预留 token 预算（避免裁剪后注入导致超限）
+    let postHistoryText = ''
+    if (group.chatMode === 'free') {
+      for (const m of members) {
+        if (m.postHistoryInstructions) {
+          postHistoryText += replaceVariables(m.postHistoryInstructions, userName, m.name) + '\n'
+        }
+      }
+    } else if (targetChar?.postHistoryInstructions) {
+      postHistoryText = replaceVariables(targetChar.postHistoryInstructions, userName, charNameForVars)
+    }
+    if (postHistoryText) {
+      usedTokens += estimateTokens(postHistoryText, model)
+    }
+
     const recentMessages: typeof state.messages = []
     for (let i = state.messages.length - 1; i >= 0; i--) {
       const msg = state.messages[i]
@@ -949,18 +1001,18 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         : (char?.name || '未知角色')
 
       if (m.characterId === '__user__') {
-        historyContext.push({ role: 'user', content: m.content })
+        historyContext.push({ role: 'user', content: replaceVariables(m.content, userName, charNameForVars) })
       } else {
         historyContext.push({
           role: 'assistant',
-          content: `【${speaker}】${m.content}`,
+          content: `【${speaker}】${replaceVariables(m.content, userName, speaker)}`,
         })
       }
     })
 
-    // 后历史指令（mention/polling 模式注入目标角色的后历史指令）
-    if (targetChar?.postHistoryInstructions) {
-      historyContext.push({ role: 'system', content: replaceVariables(targetChar.postHistoryInstructions, userName, charNameForVars) })
+    // 后历史指令（mention/polling 模式注入目标角色，free 模式注入所有成员，复用预计算结果）
+    if (postHistoryText.trim()) {
+      historyContext.push({ role: 'system', content: postHistoryText.trim() })
     }
 
     // Instruct 模板：appendAssistantPrefix 时追加空 assistant 消息

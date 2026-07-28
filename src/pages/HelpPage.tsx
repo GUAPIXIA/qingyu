@@ -17,6 +17,7 @@ import {
   GitBranch,
   Languages,
   ScrollText,
+  Type,
 } from 'lucide-react'
 
 type TabKey = 'guide' | 'faq'
@@ -85,6 +86,16 @@ const features = [
     icon: Palette,
     title: '主题切换',
     desc: '支持深色/浅色/跟随系统三种主题模式，以及琥珀金、翡翠绿、深海蓝、玫瑰粉等多种主题色。',
+  },
+  {
+    icon: Type,
+    title: '字体自定义',
+    desc: '对话页面支持自定义字体，内置 6 种常用字体（Arial、微软雅黑、宋体、黑体、楷体），也可上传 TTF/OTF 字体文件。设置页选择后即时生效，所有历史消息同步更新。',
+  },
+  {
+    icon: MessageSquare,
+    title: '群聊引用回复',
+    desc: '群聊中 hover 任意消息点击回复按钮即可引用回复。发送后气泡顶部显示引用块，支持 @角色名 高亮显示和发送状态指示。',
   },
 ]
 

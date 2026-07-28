@@ -24,6 +24,7 @@ import type {
   McpServerStatus,
   AggregatedUsage,
   UsageSummary,
+  CustomFont,
 } from './types'
 
 // ===================== AI 调用接口 =====================
@@ -195,6 +196,20 @@ export interface FileAPI {
   readImageAsBase64(path: string): Promise<string>
 }
 
+// ===================== 字体接口 =====================
+export interface FontAPI {
+  /** 选择字体文件（dialog），返回临时路径 */
+  selectFont(): Promise<string | null>
+  /** 保存字体到 userData/fonts/，返回字体信息 */
+  saveFont(filePath: string): Promise<CustomFont>
+  /** 列出所有已保存的自定义字体 */
+  listFonts(): Promise<CustomFont[]>
+  /** 删除指定字体 */
+  deleteFont(id: string): Promise<void>
+  /** 获取字体文件的完整路径（用于 @font-face src） */
+  getFontPath(id: string): Promise<string | null>
+}
+
 // ===================== 日志接口 =====================
 export interface LogAPI {
   write(level: 'debug' | 'info' | 'warn' | 'error', module: string, message: string, meta?: Record<string, unknown>): Promise<void>
@@ -255,6 +270,7 @@ export interface ExposedAPI {
   regex: RegexAPI
   persona: PersonaAPI
   file: FileAPI
+  font: FontAPI
   log: LogAPI
   usage: UsageAPI
   mcp: McpAPI
