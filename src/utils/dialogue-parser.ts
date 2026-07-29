@@ -18,6 +18,7 @@
  * - `*action*` → action（支持内含 * 的复杂动作描述）
  *
  * ### 保护机制
+ * - 围栏代码块 ```...``` / ~~~...~~~ → protected（不被解析）
  * - Markdown 粗体/粗斜体/删除线 → protected（不被解析）
  * - HTML 标签 → protected
  * - Markdown 图片/链接 → protected
@@ -66,6 +67,10 @@ export function parseDialogue(text: string): DialogueSegment[] {
     .replace(/\\"/g, '"')
     .replace(/[\u201C\u201D„‟＂「『‹«〝﹁﹃]/g, '"')
     .replace(/[」』›»〞﹂﹄]/g, '"')
+    // 保护围栏代码块（```...``` / ~~~...~~~），避免代码块内的 *、" 等字符触发误匹配
+    // 必须在 bold/italic 保护之前，否则代码块内的 ** 会被误保护
+    .replace(/```[\s\S]*?```/g, protect)
+    .replace(/~~~[\s\S]*?~~~/g, protect)
     // B-08: 保护英文缩写（don't, can't, it's 等），避免被单引号对话正则误匹配
     .replace(/\b[A-Za-z]+'[A-Za-z]+\b/g, protect)
     // B-06: 保护 markdown 粗体/粗斜体/删除线，避免被动作正则 *...* 误匹配

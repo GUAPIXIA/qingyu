@@ -164,6 +164,52 @@ describe('parseDialogue', () => {
       const hasDialogue = result.some((s) => s.type === 'dialogue')
       expect(hasDialogue).toBe(false)
     })
+
+    it('fenced code block with backticks is protected as plain text', () => {
+      const result = parseDialogue('```\nconst x = "hello"\n```')
+      expect(result).toHaveLength(1)
+      expect(result[0].type).toBe('plain')
+      const hasDialogue = result.some((s) => s.type === 'dialogue')
+      expect(hasDialogue).toBe(false)
+    })
+
+    it('code block with asterisks inside is not parsed as action', () => {
+      const result = parseDialogue('```\n*this is code, not action*\n```')
+      expect(result).toHaveLength(1)
+      expect(result[0].type).toBe('plain')
+      expect(result[0].content).toContain('*this is code, not action*')
+    })
+
+    it('code block with quotes inside is not parsed as dialogue', () => {
+      const result = parseDialogue('```python\nprint("hello world")\n```')
+      expect(result).toHaveLength(1)
+      expect(result[0].type).toBe('plain')
+      const hasDialogue = result.some((s) => s.type === 'dialogue')
+      expect(hasDialogue).toBe(false)
+    })
+
+    it('tilde-fenced code block is protected as plain text', () => {
+      const result = parseDialogue('~~~\nconst x = *not action*\n~~~')
+      expect(result).toHaveLength(1)
+      expect(result[0].type).toBe('plain')
+    })
+
+    it('code block alongside dialogue and action is parsed correctly', () => {
+      const result = parseDialogue('"Hello" she said\n```\ncode here\n```\n*waves*')
+      const types = result.map((s) => s.type)
+      expect(types).toContain('dialogue')
+      expect(types).toContain('plain')
+      expect(types).toContain('action')
+
+      const dialogueSeg = result.find((s) => s.type === 'dialogue')
+      expect(dialogueSeg?.content).toBe('Hello')
+
+      const actionSeg = result.find((s) => s.type === 'action')
+      expect(actionSeg?.content).toBe('waves')
+
+      const plainSegs = result.filter((s) => s.type === 'plain')
+      expect(plainSegs.length).toBeGreaterThanOrEqual(1) // " she said" + code block（合并在一个 plain 段）
+    })
   })
 
   describe('multiple dialogue blocks', () => {
