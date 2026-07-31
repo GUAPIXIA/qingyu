@@ -47,6 +47,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const [zoomImage, setZoomImage] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
   const [continuing, setContinuing] = useState(false)
+  /** OpenAI TTS 音频播放器（渲染进程播放 mp3） */
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const editMessage = useChatStore(s => s.editMessage)
   const deleteMessage = useChatStore(s => s.deleteMessage)
@@ -112,6 +114,39 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const handleSpeak = async () => {
     if (!message.content) return
     if (!ttsConfig) return
+    // OpenAI TTS：渲染进程直接控制音频播放
+    if (ttsConfig.provider === 'openai') {
+      if (ttsState === 'speaking') {
+        audioRef.current?.pause()
+        setTtsState('paused')
+        return
+      }
+      if (ttsState === 'paused') {
+        await audioRef.current?.play()
+        setTtsState('speaking')
+        return
+      }
+      const res = await window.api.tts.speak(message.content, {
+        provider: 'openai',
+        voice: ttsConfig.voice || 'alloy',
+        rate: 1,
+        model: ttsConfig.model,
+        apiKey: ttsConfig.apiKey,
+        baseUrl: ttsConfig.baseUrl,
+      })
+      if (res.success && res.audioBase64) {
+        const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)
+        audio.onended = () => setTtsState('idle')
+        audio.onerror = () => setTtsState('idle')
+        audioRef.current = audio
+        setTtsState('speaking')
+        await audio.play().catch(() => setTtsState('idle'))
+      } else {
+        setTtsState('idle')
+      }
+      return
+    }
+
     if (ttsState === 'speaking') {
       await window.api.tts.pause()
       setTtsState('paused')
@@ -129,6 +164,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   }
 
   const handleStopSpeak = async () => {
+    audioRef.current?.pause()
+    audioRef.current = null
     await window.api.tts.stop()
     setTtsState('idle')
   }

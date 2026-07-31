@@ -136,7 +136,7 @@ const presetApi: PresetAPI = {
 
 // ---- TTS ----
 const ttsApi: TTSAPI = {
-  speak: (text, options) => ipcRenderer.invoke('tts:speak', text, options.voice, options.rate),
+  speak: (text, options) => ipcRenderer.invoke('tts:speak', text, options),
   stop: () => ipcRenderer.invoke('tts:stop'),
   pause: () => ipcRenderer.invoke('tts:pause'),
   resume: () => ipcRenderer.invoke('tts:resume'),

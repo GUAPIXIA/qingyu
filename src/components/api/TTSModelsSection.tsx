@@ -8,14 +8,17 @@ import {
 } from 'lucide-react'
 
 const TTS_PROVIDERS = [
-  { value: 'edge' as const, label: '系统语音 (本地)', desc: 'Windows 内置语音（System.Speech）' },
-  { value: 'openai' as const, label: 'OpenAI TTS', desc: '需 API Key' },
+  { value: 'system' as const, label: '系统语音 (本地)', desc: 'Windows 内置语音（System.Speech）' },
+  { value: 'openai' as const, label: 'OpenAI TTS', desc: 'OpenAI 兼容 /audio/speech，音质好，需 API Key' },
 ]
+
+/** OpenAI TTS 预设音色 */
+const OPENAI_VOICE_OPTIONS = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'ash', 'ballad', 'coral', 'sage']
 
 function emptyForm(): TTSModelConfig {
   return {
-    id: '', name: '', provider: 'edge' as const,
-    model: '', voice: '', apiKey: '', baseUrl: '',
+    id: '', name: '', provider: 'system' as const,
+    model: 'tts-1', voice: 'alloy', apiKey: '', baseUrl: 'https://api.openai.com/v1',
     enabled: true, order: 0,
   }
 }
@@ -60,9 +63,9 @@ export function TTSModelsSection() {
     setTesting(true)
     setTestResult(null)
     try {
-      if (form.provider === 'edge') {
-        // Edge TTS: 检查本地语音引擎
-        const voices = await window.api.tts.listVoices('edge')
+      if (form.provider === 'system') {
+        // 系统语音：检查本地语音引擎
+        const voices = await window.api.tts.listVoices('system')
         if (voices.length > 0) {
           setTestResult({ success: true, message: `连接成功，${voices.length} 个可用语音` })
         } else {
@@ -202,20 +205,33 @@ export function TTSModelsSection() {
         </>
       )}
 
-      {/* 语音 */}
+      {/* 语音：openai 用预设下拉，system 手输（可用已选语音列表） */}
       <div>
-        <label className="label">语音 ID</label>
-        <input
-          type="text"
-          className="input text-sm"
-          value={form.voice}
-          onChange={(e) => setForm((f) => ({ ...f, voice: e.target.value }))}
-          placeholder={form.provider === 'edge' ? '例如 zh-CN-XiaoxiaoNeural' : '例如 alloy、nova'}
-        />
-        {form.provider === 'edge' && (
-          <p className="text-xs text-tavern-text-muted mt-1">
-            可使用 PowerShell 命令 <code className="text-tavern-accent text-[11px]">Get-WinUserLanguageList</code> 查看可用语音
-          </p>
+        <label className="label">语音</label>
+        {form.provider === 'openai' ? (
+          <select
+            className="select"
+            value={form.voice || 'alloy'}
+            onChange={(e) => setForm((f) => ({ ...f, voice: e.target.value }))}
+          >
+            {OPENAI_VOICE_OPTIONS.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            className="input text-sm"
+            value={form.voice}
+            onChange={(e) => setForm((f) => ({ ...f, voice: e.target.value }))}
+            placeholder="例如 zh-CN-XiaoxiaoNeural（留空使用默认）"
+          />
+        )}
+        {form.provider === 'openai' && (
+          <p className="text-xs text-tavern-text-muted mt-1">中文效果较好：nova（女）/ onyx（男）/ echo / fable</p>
+        )}
+        {form.provider === 'system' && (
+          <p className="text-xs text-tavern-text-muted mt-1">留空使用系统默认语音</p>
         )}
       </div>
 
@@ -313,7 +329,7 @@ export function TTSModelsSection() {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-tavern-text truncate">{m.name}</div>
                   <div className="text-xs text-tavern-text-muted">
-                    {m.provider === 'edge' ? 'Edge TTS' : 'OpenAI TTS'}
+                    {m.provider === 'openai' ? 'OpenAI TTS' : '系统语音'}
                     {m.voice ? ` · ${m.voice}` : ''}
                     {m.model ? ` · ${m.model}` : ''}
                   </div>
