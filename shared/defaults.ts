@@ -74,5 +74,9 @@ export function getDefaultSettings(): Settings {
       includeDescription: true,
       includePersona: true,
     },
+    contextCompression: {
+      enabled: true,
+      minDropTokens: 2000,
+    },
   }
 }

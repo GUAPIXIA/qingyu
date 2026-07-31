@@ -15,7 +15,7 @@ import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { parseMemoryResult, formatMemoryFacts, fitMemoryBudget } from '../utils/memory'
 import { expandMacros, buildMacroContext } from '../utils/macros'
 import { applyRegexRules as applyRegexRulesEngine, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
-import { logError, logInfo } from '../lib/logger'
+import { logError, logInfo, logWarn } from '../lib/logger'
 
 const STREAM_THROTTLE_MS = 50
 const STREAM_TIMEOUT_MS = 5 * 60 * 1000
@@ -68,6 +68,17 @@ interface ActiveStream {
 }
 
 let activeStream: ActiveStream | null = null
+
+/** 群聊上下文溢出压缩：待执行任务（buildGroupContext 标记，流式完成后消费） */
+interface PendingGroupCompression {
+  groupId: string
+  sessionId: string
+  droppedText: string
+  droppedStartTs: number
+  droppedEndTs: number
+}
+
+let pendingGroupCompression: PendingGroupCompression | null = null
 
 /** 轮询定时器 handle，用于切换/删除群聊时清理 */
 let pollingTimer: ReturnType<typeof setTimeout> | null = null
@@ -960,13 +971,54 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
     }
 
     const recentMessages: typeof state.messages = []
+    // 记录被裁剪的早期消息（供上下文溢出压缩）
+    let droppedStartTs = 0
+    let droppedEndTs = 0
+    let droppedTokens = 0
+    let droppedEndIndex = -1
     for (let i = state.messages.length - 1; i >= 0; i--) {
       const msg = state.messages[i]
       const tokenCount = estimateTokens(msg.content || '', model)
         + (msg.images?.length ? msg.images.length * 200 : 0)
-      if (usedTokens + tokenCount > budgetBase) break
+      if (usedTokens + tokenCount > budgetBase) {
+        const dropped = state.messages.slice(0, i + 1)
+        droppedTokens = dropped.reduce((s, m) => s + estimateTokens(m.content || '', model), 0)
+        droppedStartTs = dropped[0]?.timestamp ?? 0
+        droppedEndTs = dropped[dropped.length - 1]?.timestamp ?? 0
+        droppedEndIndex = i
+        break
+      }
       recentMessages.unshift(msg)
       usedTokens += tokenCount
+    }
+
+    // 上下文溢出压缩（P0-1）：有压缩摘要则注入；否则若裁剪量超阈值，标记异步压缩
+    const compression = settings.contextCompression ?? { enabled: true, minDropTokens: 2000 }
+    let compressedSummaryInjected = ''
+    if (compression.enabled && droppedTokens > 0 && currentSession) {
+      const covered = !!currentSession.compressedSummary
+        && !!currentSession.compressedRange
+        && droppedStartTs >= currentSession.compressedRange.startTs
+        && droppedEndTs <= currentSession.compressedRange.endTs
+      if (currentSession.compressedSummary && covered) {
+        compressedSummaryInjected = currentSession.compressedSummary
+      } else if (droppedTokens >= (compression.minDropTokens ?? 2000)) {
+        pendingGroupCompression = {
+          groupId: group.id,
+          sessionId: get().currentSessionId ?? '',
+          droppedText: droppedEndIndex >= 0
+            ? state.messages.slice(0, droppedEndIndex + 1).map((m) => {
+                if (m.characterId === '__user__' || m.characterId === '__free__') {
+                  return `${userName}: ${m.content}`
+                }
+                const c = members.find((mc) => mc.id === m.characterId)
+                return `【${c?.name || '未知角色'}】${m.content}`
+              }).join('\n')
+            : '',
+          droppedStartTs,
+          droppedEndTs,
+        }
+      }
     }
 
     const context: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = [
@@ -1004,6 +1056,14 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
     }
 
     const historyContext: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = []
+    // 上下文溢出压缩摘要：置于历史段最前
+    if (compressedSummaryInjected) {
+      historyContext.push({
+        role: 'system',
+        content: '【早期对话压缩摘要】\n' + compressedSummaryInjected,
+        keepSeparate: true,
+      })
+    }
     recentMessages.forEach(m => {
       const char = members.find(c => c.id === m.characterId)
       const speaker = m.characterId === '__user__'
@@ -1161,6 +1221,76 @@ async function fetchGroupSemanticLoreHits(get: any, group: GroupChat, charName: 
   }
 }
 
+/**
+ * 群聊上下文溢出压缩（P0-1）：异步压缩被裁剪的早期群聊内容，存群聊会话。
+ */
+async function compressGroupDroppedHistory(
+  get: any,
+  group: GroupChat,
+  pending: PendingGroupCompression,
+): Promise<void> {
+  if (!pending.sessionId || !pending.droppedText) return
+  const settings = useSettingsStore.getState().settings
+  const profile = useSettingsStore.getState().getActiveProfile()
+  if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) return
+
+  const requestId = `group-compress-${Date.now()}`
+  let result = ''
+  let finished = false
+
+  const unbindChunk = window.api.ai.onChunk((data) => {
+    if (data.requestId !== requestId) return
+    result += data.text
+  })
+  const unbindDone = window.api.ai.onDone((doneId) => {
+    if (doneId !== requestId) return
+    cleanup()
+    finished = true
+    const summary = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+    if (summary) {
+      window.api.group.updateSession(group.id, pending.sessionId, {
+        compressedSummary: summary,
+        compressedRange: { startTs: pending.droppedStartTs, endTs: pending.droppedEndTs },
+      }).then(async () => {
+        const sessions = await window.api.group.listSessions(group.id)
+        useGroupChatStore.setState({ sessions })
+      }).catch(() => { /* 忽略 */ })
+    }
+  })
+  const unbindError = window.api.ai.onError((data) => {
+    if (data.requestId !== requestId) return
+    cleanup()
+    finished = true
+  })
+  const cleanup = () => {
+    unbindChunk(); unbindDone(); unbindError()
+  }
+
+  window.api.ai.chat({
+    requestId,
+    messages: [
+      {
+        role: 'system',
+        content: `你是一个对话摘要助手。以下是群聊「${group.name}」的早期内容，即将被上下文裁剪。请压缩为 3-5 句中文摘要，必须保留：各角色身份与姓名、地点、目标、关键事件、未解决的问题、重要的约定。只输出摘要文本，不要任何解释。`,
+      },
+      { role: 'user', content: pending.droppedText.slice(0, 20000) },
+    ],
+    provider: profile.provider,
+    apiKey: profile.apiKey,
+    baseUrl: profile.baseUrl,
+    model: settings.activeModel || profile.model,
+    temperature: 0.3,
+    topP: 0.9,
+    maxTokens: 600,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    stream: true,
+  }).catch(() => {
+    cleanup()
+    if (!finished) logWarn('compressGroupDroppedHistory', '压缩请求失败')
+  })
+}
+
 async function streamGroupAI(
   set: any,
   get: any,
@@ -1303,6 +1433,13 @@ async function streamGroupAI(
         timestamp: Date.now(), characterId: speaker.id, sessionId: sid, model,
         inputChars: 0, outputChars, totalChars: outputChars,
       }).catch((e) => logError('GroupChatStore:recordUsage', e))
+    }
+
+    // 上下文溢出压缩：本轮结束后异步执行
+    if (pendingGroupCompression) {
+      const pc = pendingGroupCompression
+      pendingGroupCompression = null
+      compressGroupDroppedHistory(get, group, pc).catch((e) => logError('GroupChatStore:compress', e))
     }
 
     onComplete()
@@ -1526,6 +1663,13 @@ async function streamGroupAIFree(
         timestamp: Date.now(), characterId: '__free__', sessionId: sid, model,
         inputChars: 0, outputChars, totalChars: outputChars,
       }).catch((e) => logError('GroupChatStore:recordUsage', e))
+    }
+
+    // 上下文溢出压缩：本轮结束后异步执行
+    if (pendingGroupCompression) {
+      const pc = pendingGroupCompression
+      pendingGroupCompression = null
+      compressGroupDroppedHistory(get, group, pc).catch((e) => logError('GroupChatStore:compress', e))
     }
   })
 

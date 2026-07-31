@@ -141,6 +141,10 @@ export interface ChatSession {
   memoryUpdatedAt: number
   /** 关键事实列表（长记忆升级：摘要之外抽取的持久事实，随摘要一起更新） */
   memoryFacts?: string[]
+  /** 上下文溢出压缩摘要（历史被裁剪时异步压缩的早期内容） */
+  compressedSummary?: string
+  /** 已压缩消息的时间范围（防重复压缩） */
+  compressedRange?: { startTs: number; endTs: number }
   /** 绑定的用户身份 ID（null/undefined 时使用 Settings 中的默认身份） */
   personaId?: string | null
   /** 当前会话选中的世界书 ID 列表。undefined 表示未设置（回退到角色的 boundLorebookIds） */
@@ -288,6 +292,10 @@ export interface GroupSession {
   memoryUpdatedAt?: number
   /** 关键事实列表（长记忆升级） */
   memoryFacts?: string[]
+  /** 上下文溢出压缩摘要 */
+  compressedSummary?: string
+  /** 已压缩消息的时间范围 */
+  compressedRange?: { startTs: number; endTs: number }
 }
 
 /** AI 后端提供商类型 */
@@ -395,6 +403,12 @@ export interface Settings {
   semanticTrigger?: SemanticTriggerConfig
   /** 用户人设注入配置：与系统提示词的合并规则 */
   personaInjection?: PersonaInjectionConfig
+  /** 上下文溢出压缩配置：历史被裁剪时异步压缩早期内容 */
+  contextCompression?: {
+    enabled: boolean
+    /** 触发阈值：被裁剪的历史 token 量 ≥ 此值才压缩 */
+    minDropTokens: number
+  }
 }
 
 /** 用户人设注入配置（ST 的 User Persona description placement） */
