@@ -7,6 +7,7 @@ interface Session {
   memoryMode?: 'manual' | 'auto'
   autoMemoryInterval?: number
   memory?: string
+  memoryFacts?: string[]
 }
 
 interface MemoryPanelProps {
@@ -126,6 +127,18 @@ export function MemoryPanel({
               <div className="mt-2 p-2 rounded bg-tavern-bg-hover text-xs text-tavern-text-muted max-h-20 overflow-y-auto">
                 <span className="text-tavern-text-soft font-medium">当前摘要：</span>
                 {currentSession.memory.slice(0, 200)}{currentSession.memory.length > 200 ? '...' : ''}
+              </div>
+            )}
+
+            {currentSession?.memoryFacts && currentSession.memoryFacts.length > 0 && (
+              <div className="mt-2 p-2 rounded bg-tavern-bg-hover text-xs text-tavern-text-muted max-h-24 overflow-y-auto space-y-0.5">
+                <div className="text-tavern-text-soft font-medium">关键事实（{currentSession.memoryFacts.length}）：</div>
+                {currentSession.memoryFacts.slice(0, 8).map((f, i) => (
+                  <div key={i} className="truncate">• {f}</div>
+                ))}
+                {currentSession.memoryFacts.length > 8 && (
+                  <div className="text-tavern-text-muted/60">…共 {currentSession.memoryFacts.length} 条</div>
+                )}
               </div>
             )}
 

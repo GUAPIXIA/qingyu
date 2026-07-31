@@ -29,6 +29,10 @@ export interface Character {
   systemPrompt?: string
   /** 对话历史后注入指令 */
   postHistoryInstructions?: string
+  /** 长记忆默认配置：新建会话时继承（会话级开关可覆盖） */
+  defaultMemoryEnabled?: boolean
+  defaultMemoryMode?: 'manual' | 'auto'
+  defaultMemoryInterval?: number
   /** 创作者备注（隐藏元数据，导入导出保留） */
   creatorNotes?: string
   /** 角色级作者注释（覆盖全局 settings.authorNote；未设置时使用全局） */
@@ -135,6 +139,8 @@ export interface ChatSession {
   autoMemoryInterval: number
   memory: string
   memoryUpdatedAt: number
+  /** 关键事实列表（长记忆升级：摘要之外抽取的持久事实，随摘要一起更新） */
+  memoryFacts?: string[]
   /** 绑定的用户身份 ID（null/undefined 时使用 Settings 中的默认身份） */
   personaId?: string | null
   /** 当前会话选中的世界书 ID 列表。undefined 表示未设置（回退到角色的 boundLorebookIds） */
@@ -162,6 +168,11 @@ export interface LoreEntry {
   useRegex?: boolean
   /** 正则表达式标志（如 'i' 表示不区分大小写） */
   regexFlags?: string
+  /**
+   * 匹配模式：keyword = 仅关键词/正则，semantic = 仅语义（向量），both = 两者都参与（默认）。
+   * undefined 视为 both（兼容旧数据）。
+   */
+  matchMode?: 'keyword' | 'semantic' | 'both'
   /** AI 翻译结果（持久化，不替换原始 content） */
   translation?: string
 }
@@ -275,6 +286,8 @@ export interface GroupSession {
   memory?: string
   /** 上次摘要时间 */
   memoryUpdatedAt?: number
+  /** 关键事实列表（长记忆升级） */
+  memoryFacts?: string[]
 }
 
 /** AI 后端提供商类型 */
@@ -373,6 +386,23 @@ export interface Settings {
   customFontId?: string | null
   /** 作者注释（全局级；角色可设置 authorNote 覆盖） */
   authorNote?: AuthorNoteConfig
+  /** 语义触发（向量 RAG）配置：世界书条目语义匹配 + 向量检索 */
+  semanticTrigger?: SemanticTriggerConfig
+}
+
+/** 语义触发（向量 RAG）配置 */
+export interface SemanticTriggerConfig {
+  /** 是否启用语义触发 */
+  enabled: boolean
+  /** 嵌入服务提供商：openai = OpenAI 兼容 embeddings，ollama = Ollama /api/embed */
+  provider: 'openai' | 'ollama'
+  baseUrl: string
+  model: string
+  apiKey: string
+  /** 余弦相似度阈值（0-1），分数 ≥ 阈值才命中。默认 0.3 */
+  threshold: number
+  /** 每次最多注入的语义命中条目数。默认 3 */
+  maxResults: number
 }
 
 /** 作者注释配置（ST Author's Note 简化版） */

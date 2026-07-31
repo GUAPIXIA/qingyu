@@ -110,6 +110,52 @@ export interface LorebookAPI {
   importJson(): Promise<Lorebook | null>
 }
 
+// ===================== 语义触发（向量 RAG）接口 =====================
+export interface SemanticHit {
+  id: string
+  lbId: string
+  content: string
+  position: Lorebook['entries'][number]['position']
+  order: number
+  depth?: number
+  score: number
+}
+
+/** 嵌入服务连接配置（传输层，仅取 SemanticTriggerConfig 中的连接字段） */
+export interface EmbeddingEndpointConfig {
+  provider: 'openai' | 'ollama'
+  baseUrl: string
+  model: string
+  apiKey: string
+}
+
+export interface IndexResult {
+  ok: boolean
+  total?: number
+  indexed?: number
+  failed?: number
+  error?: string
+}
+
+export interface EmbeddingAPI {
+  /** 测试嵌入服务连接，返回向量维度 */
+  test(config: EmbeddingEndpointConfig): Promise<{ ok: boolean; dim?: number; error?: string }>
+  /** 为世界书生成/重建向量索引 */
+  indexLorebook(lorebookId: string, config: EmbeddingEndpointConfig): Promise<IndexResult>
+  /** 查询多个世界书的索引状态 */
+  indexStatus(lorebookIds: string[]): Promise<Record<string, { indexed: number; model: string; updatedAt: number }>>
+  /** 删除世界书向量索引 */
+  removeIndex(lorebookId: string): Promise<{ ok: boolean }>
+  /** 扫描文本语义检索，返回命中条目 */
+  semanticSearch(payload: {
+    scanText: string
+    lorebookIds: string[]
+    config: EmbeddingEndpointConfig
+    threshold?: number
+    maxResults?: number
+  }): Promise<SemanticHit[]>
+}
+
 // ===================== 预设接口 =====================
 export interface PresetAPI {
   list(): Promise<Preset[]>
@@ -136,6 +182,7 @@ export interface GroupChatAPI {
   updateMemory(groupId: string, sessionId: string, memory: string): Promise<void>
   toggleMemory(groupId: string, sessionId: string, enabled: boolean): Promise<void>
   setMemoryMode(groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number): Promise<void>
+  updateSession(groupId: string, sessionId: string, updates: Record<string, unknown>): Promise<void>
 }
 
 // ===================== TTS 接口 =====================
@@ -223,7 +270,6 @@ export interface UsageAPI {
   aggregate(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }, groupBy: 'character' | 'session' | 'day' | 'model'): Promise<AggregatedUsage[]>
   summary(filter?: { startTs?: number; endTs?: number }): Promise<UsageSummary>
   clear(): Promise<void>
-  calculateCost(model: string, promptTokens: number, completionTokens: number): Promise<number>
 }
 
 // ===================== MCP 接口 =====================
@@ -264,6 +310,7 @@ export interface ExposedAPI {
   chat: ChatAPI
   settings: SettingsAPI
   lorebook: LorebookAPI
+  embedding: EmbeddingAPI
   preset: PresetAPI
   tts: TTSAPI
   imageGen: ImageGenAPI

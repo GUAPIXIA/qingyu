@@ -55,5 +55,14 @@ export function getDefaultSettings(): Settings {
       position: 'middle',
       depth: 1,
     },
+    semanticTrigger: {
+      enabled: false,
+      provider: 'ollama',
+      baseUrl: 'http://localhost:11434',
+      model: 'nomic-embed-text',
+      apiKey: '',
+      threshold: 0.3,
+      maxResults: 3,
+    },
   }
 }
