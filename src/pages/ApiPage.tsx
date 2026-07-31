@@ -301,14 +301,25 @@ export function ApiPage() {
                   }}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <Circle
-                      className={cn(
-                        'w-3 h-3 shrink-0',
-                        p.id === settings.activeProfileId
-                          ? 'text-tavern-success fill-current'
-                          : 'text-tavern-text-muted'
-                      )}
-                    />
+                    {/* 点击圆点切换连接（模型随连接切换） */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (p.id !== settings.activeProfileId) setActiveProfileId(p.id)
+                      }}
+                      title={p.id === settings.activeProfileId ? '当前使用中' : '点击切换到此连接（模型跟随）'}
+                      className="p-0.5 -m-0.5 rounded-full hover:bg-tavern-bg-hover transition-colors shrink-0 group/dot"
+                    >
+                      <Circle
+                        className={cn(
+                          'w-3 h-3 transition-colors',
+                          p.id === settings.activeProfileId
+                            ? 'text-tavern-success fill-current'
+                            : 'text-tavern-text-muted group-hover/dot:text-tavern-success'
+                        )}
+                      />
+                    </button>
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-tavern-text truncate">{p.name}</div>
                       <div className="text-xs text-tavern-text-muted">
