@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { downloadFile } from '../../utils/download'
 import { logError } from '../../lib/logger'
+import { isLocalProvider } from '../../utils/defaults'
 import { getDisplayName } from '../../utils/variables'
 import type { Character, Preset, Lorebook, ChatParams } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
@@ -63,7 +64,7 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
   const { characters, selectCharacter } = useCharacterStore()
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (activeProfile.provider === 'ollama' || !!activeProfile.apiKey)
+  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || !!activeProfile.apiKey)
 
   // 显示通知（3 秒后自动消失）
   const showNotification = (msg: string) => {

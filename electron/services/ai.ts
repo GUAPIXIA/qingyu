@@ -1002,16 +1002,42 @@ const ollamaAdapter: AIAdapter = {
   },
 }
 
-// ===================== 适配器工厂 =====================
-const adapters: Record<ProviderType, AIAdapter> = {
+// ===================== 适配器注册表 =====================
+
+/**
+ * 内置适配器表。
+ * OpenRouter / vLLM / LM Studio / TabbyAPI 均为 OpenAI 兼容协议，复用 openaiAdapter；
+ * 未来需要特化时（如 vLLM extra_body）替换为独立实现即可。
+ */
+const builtinAdapters: Record<ProviderType, AIAdapter> = {
   openai: openaiAdapter,
   claude: claudeAdapter,
   gemini: geminiAdapter,
   ollama: ollamaAdapter,
+  openrouter: openaiAdapter,
+  vllm: openaiAdapter,
+  lmstudio: openaiAdapter,
+  tabby: openaiAdapter,
 }
 
-export function getAdapter(provider: ProviderType): AIAdapter {
-  return adapters[provider]
+/** 可注册适配器表（为阶段 4 扩展系统铺路：第三方 provider 可注册自定义适配器） */
+const adapterRegistry = new Map<string, AIAdapter>()
+
+/** 注册自定义 provider 适配器（覆盖内置同名项） */
+export function registerAdapter(provider: string, adapter: AIAdapter): void {
+  adapterRegistry.set(provider.toLowerCase(), adapter)
+}
+
+/** 注销自定义 provider 适配器 */
+export function unregisterAdapter(provider: string): void {
+  adapterRegistry.delete(provider.toLowerCase())
+}
+
+/** 获取适配器：自定义优先，内置次之，未知 provider 回退 OpenAI 兼容 */
+export function getAdapter(provider: string): AIAdapter {
+  const custom = adapterRegistry.get(provider.toLowerCase())
+  if (custom) return custom
+  return builtinAdapters[provider as ProviderType] ?? openaiAdapter
 }
 
 // ===================== IPC 注册 =====================

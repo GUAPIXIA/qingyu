@@ -4,6 +4,7 @@ import { Modal } from '../common/Modal'
 import { ImagePlus, X, Languages, Loader2, RefreshCw } from 'lucide-react'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { charAssetUrl } from '../../utils/asset'
+import { isLocalProvider } from '../../utils/defaults'
 import { logError } from '../../lib/logger'
 
 // B-05：记住 textarea 手动调整后的大小（使用原生 DOM 事件，React 合成事件无法捕获浏览器 resize handle）
@@ -222,7 +223,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     setTranslatedFields(new Set())
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
       setTranslateError('请先配置 API 连接')
       setTranslating(false)
       return
@@ -278,7 +279,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     if (!text || !text.trim()) return
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
       setTranslateError('请先配置 API 连接')
       return
     }
@@ -313,7 +314,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     if (!text || !text.trim()) return
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
       setTranslateError('请先配置 API 连接')
       return
     }
