@@ -175,6 +175,8 @@ export function ApiPage() {
     const preset = QUICK_PRESETS[key]
     setEditForm((f) => ({
       ...f,
+      // 名称为空时自动填充预设名，避免快速填入后保存按钮仍禁用
+      name: f.name.trim() ? f.name : preset.name,
       provider: preset.provider,
       baseUrl: preset.baseUrl,
     }))
@@ -470,7 +472,11 @@ export function ApiPage() {
                           {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
                           测试连接
                         </button>
-                        <button onClick={handleSave} className="btn-primary text-xs">
+                        <button
+                          onClick={handleSave}
+                          title={!editForm.name.trim() ? '请先填写连接名称' : '保存连接'}
+                          className="btn-primary text-xs"
+                        >
                           <Check className="w-3.5 h-3.5" />
                           保存
                         </button>
@@ -662,7 +668,12 @@ export function ApiPage() {
                         {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
                         测试连接
                       </button>
-                      <button onClick={handleSave} disabled={!editForm.name.trim()} className="btn-primary text-xs">
+                      <button
+                        onClick={handleSave}
+                        disabled={!editForm.name.trim()}
+                        title={!editForm.name.trim() ? '请先填写连接名称' : '保存连接'}
+                        className="btn-primary text-xs"
+                      >
                         <Check className="w-3.5 h-3.5" />
                         保存
                       </button>
