@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
 import { cn } from '../../lib/utils'
+import { charAssetUrl } from '../../utils/asset'
 import {
   Send,
   Square,
@@ -255,8 +256,8 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
                 targetCharId === m.id && 'bg-tavern-accent-soft text-tavern-accent'
               )}
             >
-              {m.avatar ? (
-                <img src={m.avatar} className="w-5 h-5 rounded-full object-cover" alt="" />
+              {(m.avatar || charAssetUrl(m.id, 'avatar', m.updatedAt)) ? (
+                <img src={m.avatar || charAssetUrl(m.id, 'avatar', m.updatedAt)} className="w-5 h-5 rounded-full object-cover" alt="" />
               ) : (
                 <div className="w-5 h-5 rounded-full bg-tavern-bg-hover flex items-center justify-center text-[10px] font-bold">
                   {m.name[0]}

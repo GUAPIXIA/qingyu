@@ -40,7 +40,8 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(node --eval ' *)",
       "Bash(git stash *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }

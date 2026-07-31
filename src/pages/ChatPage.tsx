@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useChatStore } from '../store/useChatStore'
 import { useCharacterStore } from '../store/useCharacterStore'
+import { charAssetUrl } from '../utils/asset'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { MessageBubble } from '../components/chat/MessageBubble'
@@ -17,7 +18,7 @@ import { ContextViewer } from '../components/chat/ContextViewer'
 import { StatusBar } from '../components/chat/StatusBar'
 import { cn } from '../lib/utils'
 import { logError } from '../lib/logger'
-import { estimateTokens } from '../utils/tokenCounter'
+import { countChars } from '../utils/charCounter'
 import { replaceVariables, getDisplayName } from '../utils/variables'
 import { getEffectiveLorebookIds } from '../utils/lorebook'
 import { downloadFile } from '../utils/download'
@@ -27,11 +28,16 @@ import {
   MessageSquare,
   Settings as SettingsIcon,
   Users,
+  Sparkles,
+  X,
 } from 'lucide-react'
+
+/** 长对话摘要引导提示的消息数阈值 */
+const MEMORY_HINT_THRESHOLD = 40
 
 export function ChatPage() {
   const navigate = useNavigate()
-  const { messages, loadMessages, isStreaming, clearChat, clearMessages, currentSessionId, loadSessions, setActiveLorebooks, activeLorebookIds } = useChatStore()
+  const { messages, loadMessages, isStreaming, clearChat, clearMessages, currentSessionId, loadSessions, setActiveLorebooks, activeLorebookIds, sessions } = useChatStore()
   const { currentCharacter } = useCharacterStore()
   const { settings, loaded, getActiveProfile } = useSettingsStore()
   const { loadPersonas } = usePersonaStore()
@@ -44,6 +50,8 @@ export function ChatPage() {
   // 世界书绑定确认弹窗
   const [showLorebookConfirm, setShowLorebookConfirm] = useState(false)
   const [pendingLorebookIds, setPendingLorebookIds] = useState<string[]>([])
+  // 长对话摘要引导提示：记录已关闭提示的会话 ID
+  const [memoryHintDismissed, setMemoryHintDismissed] = useState<string | null>(null)
   const pendingSessionCallbackRef = useRef<(() => void) | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const virtuosoRef = useRef<VirtuosoHandle>(null)
@@ -54,6 +62,25 @@ export function ChatPage() {
 
   const activeProfile = getActiveProfile()
   const isConnected = activeProfile !== null && (activeProfile.provider === 'ollama' || !!activeProfile.apiKey)
+
+  // 长对话且未开启长记忆时，引导开启自动摘要（节省 token + 保持主题连贯）
+  const currentChatSession = sessions.find(s => s.id === currentSessionId)
+  const showMemoryHint = !!currentCharacter && !!currentSessionId
+    && messages.length >= MEMORY_HINT_THRESHOLD
+    && !!currentChatSession && !currentChatSession.memoryEnabled
+    && memoryHintDismissed !== currentSessionId
+
+  const handleEnableAutoMemory = async () => {
+    if (!currentCharacter || !currentSessionId) return
+    setMemoryHintDismissed(currentSessionId)
+    try {
+      const store = useChatStore.getState()
+      await store.toggleMemory(currentCharacter.id, currentSessionId, true)
+      await store.setMemoryMode(currentCharacter.id, currentSessionId, 'auto')
+    } catch (e) {
+      logError('ChatPage:enableAutoMemory', e)
+    }
+  }
 
   // 加载消息（切换角色时）
   useEffect(() => {
@@ -137,9 +164,9 @@ export function ChatPage() {
     })
   }
 
-  // Token 统计：useMemo 避免流式时每个 chunk 都重算
-  const totalTokens = useMemo(() => {
-    return messages.reduce((sum, m) => sum + estimateTokens(m.content), 0)
+  // 字符统计：useMemo 避免流式时每个 chunk 都重算
+  const totalChars = useMemo(() => {
+    return messages.reduce((sum, m) => sum + countChars(m.content).total, 0)
   }, [messages])
 
   // 检查角色是否有绑定的世界书，如果有则弹窗确认
@@ -352,7 +379,7 @@ export function ChatPage() {
       }
     }
     return null
-  }, [currentCharacter?.cover, currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams])
+  }, [currentCharacter?.id, currentCharacter?.updatedAt, currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams])
 
   if (!currentCharacter) {
     return (
@@ -417,7 +444,7 @@ export function ChatPage() {
         currentCharacter={currentCharacter}
         messages={messages}
         isStreaming={isStreaming}
-        totalTokens={totalTokens}
+        totalChars={totalChars}
         showQuickSettings={showQuickSettings}
         showBgPanel={showBgPanel}
         onExport={handleExport}
@@ -435,6 +462,27 @@ export function ChatPage() {
       {/* 状态栏 — 有消息或有激活世界书时显示 */}
       {currentCharacter && (
         <div className="relative z-10"><StatusBar character={currentCharacter} messages={messages} /></div>
+      )}
+
+      {/* 长对话摘要引导提示条 */}
+      {showMemoryHint && (
+        <div className="relative z-10 flex items-center gap-2 px-4 py-1.5 text-xs bg-tavern-accent-soft border-b border-tavern-border-soft animate-fade-in">
+          <Sparkles className="w-3.5 h-3.5 text-tavern-accent shrink-0" />
+          <span className="flex-1 text-tavern-text-soft truncate">对话较长，开启自动摘要可节省 token 并保持主题连贯</span>
+          <button
+            onClick={handleEnableAutoMemory}
+            className="px-2 py-0.5 rounded font-medium text-tavern-accent hover:bg-tavern-accent/10 transition-colors shrink-0"
+          >
+            开启
+          </button>
+          <button
+            onClick={() => setMemoryHintDismissed(currentSessionId)}
+            className="text-tavern-text-muted hover:text-tavern-text transition-colors shrink-0"
+            title="本次会话不再提示"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
 
       {/* 消息列表 - 使用 Virtuoso 虚拟滚动 */}
@@ -541,9 +589,9 @@ export function ChatPage() {
         header={
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="w-12 h-12 rounded-lg overflow-hidden bg-tavern-bg-hover shrink-0">
-              {(currentCharacter?.cover || currentCharacter?.avatar) ? (
+              {currentCharacter ? (
                 <img
-                  src={currentCharacter?.cover || currentCharacter?.avatar}
+                  src={currentCharacter ? charAssetUrl(currentCharacter.id, 'cover', currentCharacter.updatedAt) : ''}
                   alt=""
                   className="w-full h-full object-cover"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}

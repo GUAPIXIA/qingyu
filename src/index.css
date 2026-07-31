@@ -380,68 +380,128 @@ body {
   animation: fadeInUp 0.3s ease-out;
 }
 
-/* ===================== 对话片段样式 ===================== */
+/* ===================== 对话片段样式（remark-roleplay 插件生成） ===================== */
 
-/* 对话容器 */
-.dialogue-block {
+/* 整段动作：<p class="action-block"><em>动作内容</em></p> */
+.markdown-body p.action-block {
+  position: relative;
+  margin: 0.375rem 0;
+  padding: 0.25rem 0.75rem 0.25rem 0.875rem;
+  border-left: none;
+  background: linear-gradient(to right, var(--action-bg) 0%, transparent 85%);
+  border-radius: 0 4px 4px 0;
+  font-style: italic;
+  color: var(--action-text);
+  font-size: 0.875rem;
+  line-height: 1.85;
+  overflow: hidden;
+}
+/* 渐变左边条 */
+.markdown-body p.action-block::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, var(--tavern-assistant), var(--color-accent));
+  opacity: 0.5;
+  border-radius: 2px;
+}
+
+/* 连续动作块间距收紧 */
+.markdown-body p.action-block + p.action-block {
+  margin-top: 0.125rem;
+}
+
+/* 行内动作：<em class="action-em">动作</em> */
+.markdown-body em.action-em {
+  font-style: italic;
+  color: var(--action-text);
+  background: var(--action-bg);
+  padding: 0.05em 0.4em;
+  border-radius: 4px;
+}
+
+/* 行内对话：<em class="dialogue-inline">"对话"</em> */
+.markdown-body em.dialogue-inline {
+  font-style: normal;
+  color: var(--dialogue-text);
+  font-weight: 500;
+  background: var(--dialogue-bg);
+  padding: 0.05em 0.4em;
+  border-radius: 4px;
+}
+
+/* 带说话人的对话块：<strong class="dialogue-block">...</strong> */
+.markdown-body strong.dialogue-block {
   display: flex;
   flex-direction: column;
+  font-weight: normal;
   margin: 0.5rem 0;
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
-  background: var(--dialogue-bg);
-  border-left: 3px solid var(--dialogue-border);
+  background: linear-gradient(to right, var(--dialogue-bg) 0%, transparent 90%);
+  border-left: 3px solid var(--color-accent);
   box-shadow: var(--dialogue-shadow);
 }
 
+/* 连续对话块间距收紧 */
+.markdown-body strong.dialogue-block + strong.dialogue-block {
+  margin-top: 0.25rem;
+}
+
 /* 说话人标签 */
-.dialogue-speaker {
+.markdown-body em.dialogue-speaker {
+  font-style: normal;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--dialogue-label);
   margin-bottom: 0.125rem;
   text-transform: none;
   letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+/* 说话人色标圆点 */
+.markdown-body em.dialogue-speaker::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  flex-shrink: 0;
 }
 
 /* 对话文本 */
-.dialogue-text {
+.markdown-body em.dialogue-text {
+  font-style: normal;
   font-size: 0.9375rem;
   line-height: 1.85;
   color: var(--dialogue-text);
   font-weight: 500;
 }
 
-
-/* 动作描述块 */
-.action-block {
-  margin: 0.375rem 0;
-  padding: 0.25rem 0.75rem;
-  border-left: 2px solid var(--action-border);
-  background: var(--action-bg);
-  border-radius: 0 4px 4px 0;
-  font-style: italic;
-  color: var(--action-text);
-  font-size: 0.875rem;
-  line-height: 1.85;
+/* 用户气泡内动作和对话适配琥珀底色 */
+.bubble-user .markdown-body p.action-block { color: rgba(255, 251, 235, 0.85); }
+.bubble-user .markdown-body p.action-block::before { opacity: 0.7; }
+.bubble-user .markdown-body em.action-em {
+  color: rgba(255, 251, 235, 0.85);
+  background: rgba(255, 251, 235, 0.12);
 }
-
-/* 用户气泡内动作块和说话人标签适配琥珀底色 */
-.bubble-user .action-block { color: rgba(255, 251, 235, 0.85); }
-.bubble-user .dialogue-speaker { color: rgba(255, 251, 235, 0.7); }
-.bubble-user .dialogue-block {
+.bubble-user .markdown-body em.dialogue-speaker { color: rgba(255, 251, 235, 0.7); }
+.bubble-user .markdown-body em.dialogue-speaker::before { background: rgba(255, 251, 235, 0.6); }
+.bubble-user .markdown-body strong.dialogue-block {
   background: rgba(255, 251, 235, 0.15);
   border-left-color: rgba(255, 251, 235, 0.4);
   box-shadow: none;
 }
-.bubble-user .dialogue-text { color: rgba(255, 251, 235, 0.95); }
-
-/* 旁白/叙述块 */
-.narration-block {
-  margin: 0.25rem 0;
-  font-size: 0.9375rem;
-  line-height: 1.9;
-  color: var(--tavern-text-soft);
+.bubble-user .markdown-body em.dialogue-text { color: var(--dialogue-text); }
+.bubble-user .markdown-body em.dialogue-inline {
+  color: var(--dialogue-text);
+  background: rgba(255, 251, 235, 0.12);
 }
 
 /* ===================== @提及高亮 ===================== */

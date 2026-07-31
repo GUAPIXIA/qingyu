@@ -2,6 +2,7 @@ import type { Character } from '../../../shared/types'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { formatRelativeTime } from '../../utils/format'
+import { charAssetUrl } from '../../utils/asset'
 import { getDisplayName } from '../../utils/variables'
 import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin, Languages, Loader2 } from 'lucide-react'
 import { useState, useMemo, memo } from 'react'
@@ -71,7 +72,7 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
   const [imgError, setImgError] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [translating, setTranslating] = useState(false)
-  const coverSrc = character.cover || character.avatar
+  const coverSrc = charAssetUrl(character.id, 'cover', character.updatedAt)
   const blurEnabled = character.coverBlurEnabled === true
 
   const handleTranslateFirstMessage = async (e: React.MouseEvent) => {

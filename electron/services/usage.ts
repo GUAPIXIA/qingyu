@@ -1,17 +1,17 @@
- 
+
 /**
- * Token 用量统计服务
+ * 字符用量统计服务
  *
  * - 持久化用量记录到 usage.json
  * - 支持按条件查询、聚合
- * - 根据定价规则计算费用
+ * - 统计用户输入与系统输出的字符数（中文/英文/数字/符号总和）
  */
 
 import { DIRS, readJson, writeJson } from './storage'
 import { join } from 'node:path'
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
-import type { UsageRecord, PricingRule } from '../../shared/types'
+import type { UsageRecord } from '../../shared/types'
 
 const log = createLogger('usage')
 
@@ -43,7 +43,7 @@ export function recordUsage(record: Omit<UsageRecord, 'id'>): UsageRecord {
   } else {
     writeJson(USAGE_FILE, records)
   }
-  log.info('用量记录已保存', { id: full.id, model: full.model, totalTokens: full.totalTokens })
+  log.info('用量记录已保存', { id: full.id, model: full.model, totalChars: full.totalChars })
   return full
 }
 
@@ -83,56 +83,19 @@ export function clearUsage(): void {
   log.info('用量记录已清空')
 }
 
-/** 模型名匹配（支持通配符 *，如 gpt-4*） */
-function matchModelPattern(model: string, pattern: string): boolean {
-  // 将通配符 * 转为 .*，其余正则特殊字符转义
-  const regexStr = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
-  try {
-    const re = new RegExp(`^${regexStr}$`)
-    return re.test(model)
-  } catch {
-    // 正则构造失败，退化为精确匹配
-    return model === pattern
-  }
-}
-
-/**
- * 根据 modelPattern 匹配规则计算费用
- * 找到第一个匹配的规则就用，找不到返回 0
- * 费用 = promptTokens/1_000_000*inputPricePer1M + completionTokens/1_000_000*outputPricePer1M
- */
-export function calculateCost(
-  model: string,
-  promptTokens: number,
-  completionTokens: number,
-  rules: PricingRule[],
-): number {
-  for (const rule of rules) {
-    if (matchModelPattern(model, rule.modelPattern)) {
-      const inputCost = (promptTokens / 1_000_000) * rule.inputPricePer1M
-      const outputCost = (completionTokens / 1_000_000) * rule.outputPricePer1M
-      return inputCost + outputCost
-    }
-  }
-  return 0
-}
-
 /** 聚合维度 */
 export type UsageGroupBy = 'character' | 'session' | 'day' | 'model'
 
 /** 聚合结果项 */
 export interface AggregatedUsage {
   key: string
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  cost: number
+  inputChars: number
+  outputChars: number
+  totalChars: number
   count: number
 }
 
-/** 按维度聚合用量，返回数组按 totalTokens 降序 */
+/** 按维度聚合用量，返回数组按 totalChars 降序 */
 export function aggregateUsage(records: UsageRecord[], groupBy: UsageGroupBy): AggregatedUsage[] {
   const map = new Map<string, AggregatedUsage>()
   for (const r of records) {
@@ -157,32 +120,29 @@ export function aggregateUsage(records: UsageRecord[], groupBy: UsageGroupBy): A
     if (!agg) {
       agg = {
         key,
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-        cost: 0,
+        inputChars: 0,
+        outputChars: 0,
+        totalChars: 0,
         count: 0,
       }
       map.set(key, agg)
     }
-    agg.promptTokens += r.promptTokens
-    agg.completionTokens += r.completionTokens
-    agg.totalTokens += r.totalTokens
-    agg.cost += r.cost
+    agg.inputChars += r.inputChars ?? 0
+    agg.outputChars += r.outputChars ?? 0
+    agg.totalChars += r.totalChars ?? 0
     agg.count += 1
   }
   const result = Array.from(map.values())
-  // 按 totalTokens 降序
-  result.sort((a, b) => b.totalTokens - a.totalTokens)
+  // 按 totalChars 降序
+  result.sort((a, b) => b.totalChars - a.totalChars)
   return result
 }
 
 /** 全局汇总 */
 export function getSummary(filter?: { startTs?: number; endTs?: number }): {
-  totalPrompt: number
-  totalCompletion: number
-  totalTokens: number
-  totalCost: number
+  totalInput: number
+  totalOutput: number
+  totalChars: number
   count: number
 } {
   let records = loadUsage()
@@ -194,21 +154,18 @@ export function getSummary(filter?: { startTs?: number; endTs?: number }): {
       records = records.filter((r) => r.timestamp <= (filter.endTs as number))
     }
   }
-  let totalPrompt = 0
-  let totalCompletion = 0
-  let totalTokens = 0
-  let totalCost = 0
+  let totalInput = 0
+  let totalOutput = 0
+  let totalChars = 0
   for (const r of records) {
-    totalPrompt += r.promptTokens
-    totalCompletion += r.completionTokens
-    totalTokens += r.totalTokens
-    totalCost += r.cost
+    totalInput += r.inputChars ?? 0
+    totalOutput += r.outputChars ?? 0
+    totalChars += r.totalChars ?? 0
   }
   return {
-    totalPrompt,
-    totalCompletion,
-    totalTokens,
-    totalCost,
+    totalInput,
+    totalOutput,
+    totalChars,
     count: records.length,
   }
 }

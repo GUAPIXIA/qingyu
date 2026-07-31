@@ -3,7 +3,7 @@ import { Modal } from '../common/Modal'
 import { User, Bot, Settings } from 'lucide-react'
 import type { Character, Preset } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
-import { estimateTokens } from '../../utils/tokenCounter'
+import { countChars, formatCharCount } from '../../utils/charCounter'
 import { cn } from '../../lib/utils'
 
 interface ContextViewerProps {
@@ -21,8 +21,8 @@ export function ContextViewer({ open, onClose, character, preset }: ContextViewe
     return buildContext(character, preset)
   }, [open, character, preset, buildContext])
 
-  const totalTokens = useMemo(() => {
-    return context.reduce((sum, msg) => sum + estimateTokens(msg.content), 0)
+  const totalChars = useMemo(() => {
+    return context.reduce((sum, msg) => sum + countChars(msg.content).total, 0)
   }, [context])
 
   const roleConfig = {
@@ -40,8 +40,8 @@ export function ContextViewer({ open, onClose, character, preset }: ContextViewe
             共 {context.length} 条消息
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <span className="text-tavern-text-muted">预估 Token:</span>
-            <span className="font-bold text-tavern-accent">{totalTokens}</span>
+            <span className="text-tavern-text-muted">总字符:</span>
+            <span className="font-bold text-tavern-accent">{formatCharCount(totalChars)}</span>
           </div>
         </div>
 
@@ -55,7 +55,7 @@ export function ContextViewer({ open, onClose, character, preset }: ContextViewe
                 <div className={cn('flex items-center gap-2 px-3 py-1.5 text-xs font-medium', cfg.bg, cfg.color)}>
                   <Icon className="w-3.5 h-3.5" />
                   {cfg.label}
-                  <span className="ml-auto text-tavern-text-muted">{estimateTokens(msg.content)} tok</span>
+                  <span className="ml-auto text-tavern-text-muted">{formatCharCount(countChars(msg.content).total)} 字符</span>
                 </div>
                 <div className="px-3 py-2 text-sm text-tavern-text-soft whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
                   {msg.content}

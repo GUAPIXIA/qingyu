@@ -3,12 +3,13 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeRaw from 'rehype-raw'
+import { charAssetUrl } from '../../utils/asset'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
-import { parseDialogue } from '../../utils/dialogue-parser'
+import { remarkRoleplay } from '../../utils/remark-roleplay'
 import { extractThought } from '../../utils/messagePostProcess'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
@@ -65,14 +66,6 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
   // 翻译显示状态从 store 同步，而非本地 state
   const showTranslation = message._showTranslation ?? false
   const displayContent = showTranslation && message.translation ? message.translation : mainContent
-
-  // 对话片段解析（群聊中抑制 speaker 标签，因为角色名已在外层显示）
-  const dialogueSegments = useMemo(() => {
-    if (isStreaming) return null
-    const segments = parseDialogue(displayContent)
-    const hasDialogueOrAction = segments.some(s => s.type === 'dialogue' || s.type === 'action')
-    return hasDialogueOrAction ? segments : null
-  }, [displayContent, isStreaming])
 
   // @提及高亮处理
   const mentionHighlightedContent = useMemo(() => {
@@ -133,8 +126,8 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
             ) : (
               <span className="text-xs font-bold">{settings.userName?.[0] || '你'}</span>
             )
-          ) : character?.avatar ? (
-            <img src={character.avatar} className="w-full h-full rounded-full object-cover" alt="" />
+          ) : character ? (
+            <img src={charAssetUrl(character.id, 'avatar', character.updatedAt)} className="w-full h-full rounded-full object-cover" alt="" />
           ) : (
             <span className={cn('text-xs font-bold', isStreaming && 'animate-pulse')}>
               {character?.translatedContent?.name?.[0] ?? character?.name?.[0] ?? '?'}
@@ -230,52 +223,16 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
               )}
 
               {/* 正文 */}
-              {dialogueSegments ? (
-                /* 分段渲染：对话/动作/旁白（群聊中抑制 speaker 标签避免重复） */
-                dialogueSegments.map((seg, i) => {
-                  if (seg.type === 'dialogue') {
-                    return (
-                      <div key={i} className="dialogue-block">
-                        <span className="dialogue-text">{seg.content}</span>
-                      </div>
-                    )
-                  }
-                  if (seg.type === 'action') {
-                    return (
-                      <div key={i} className="action-block">
-                        {seg.content}
-                      </div>
-                    )
-                  }
-                  return (
-                    <div key={i} className="narration-block">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[
-                          ...(settings.htmlRendering ? [rehypeRaw] : []),
-                          rehypeHighlight,
-                        ]}
-                        components={markdownComponents}
-                      >
-                        {seg.content}
-                      </ReactMarkdown>
-                    </div>
-                  )
-                })
-              ) : (
-                <div className="markdown-body">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[
-                      ...((settings.htmlRendering || (message.mentionedCharacterIds && message.mentionedCharacterIds.length > 0 && !isStreaming)) ? [rehypeRaw] : []),
-                      rehypeHighlight,
-                    ]}
-                    components={markdownComponents}
-                  >
-                    {mentionHighlightedContent || ''}
-                  </ReactMarkdown>
-                </div>
-              )}
+              <div className="markdown-body">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkRoleplay]}
+                  remarkRehypeOptions={{ allowDangerousHtml: true }}
+                  rehypePlugins={[rehypeRaw, rehypeHighlight]}
+                  components={markdownComponents}
+                >
+                  {mentionHighlightedContent || ''}
+                </ReactMarkdown>
+              </div>
 
               {/* 翻译切换 */}
               {message.translation && message.translation !== '...' && (

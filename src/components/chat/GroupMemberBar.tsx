@@ -1,6 +1,7 @@
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
+import { charAssetUrl } from '../../utils/asset'
 import { MessageSquare } from 'lucide-react'
 
 interface GroupMemberBarProps {
@@ -43,8 +44,8 @@ export function GroupMemberBar({ memberIds, currentSpeakerIndex, onSpeakerClick,
           >
             {/* 头像带呼吸动画指示器 */}
             <div className="relative">
-              {m.avatar ? (
-                <img src={m.avatar} className={cn(
+              {(m.avatar || charAssetUrl(m.id, 'avatar', m.updatedAt)) ? (
+                <img src={m.avatar || charAssetUrl(m.id, 'avatar', m.updatedAt)} className={cn(
                   'w-5 h-5 rounded-full object-cover',
                   isCurrent && 'ring-2 ring-current/30'
                 )} alt="" />

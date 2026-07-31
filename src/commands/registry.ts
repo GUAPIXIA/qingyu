@@ -14,6 +14,8 @@ export interface CommandContext {
   clearChat: () => Promise<void>
   /** 重新生成最后一条 AI 消息 */
   regenerateLastMessage: () => Promise<void>
+  /** 继续续写最后一条 AI 消息（与气泡"继续续写"按钮同路径） */
+  continueLastMessage: () => Promise<void>
   /** 触发长记忆总结 */
   triggerMemorySummary: () => Promise<void>
   /** 导出当前对话 */
