@@ -4,6 +4,7 @@ import type {
   ChatAPI,
   SettingsAPI,
   LorebookAPI,
+  EmbeddingAPI,
   PresetAPI,
   AIAPI,
   TTSAPI,
@@ -103,6 +104,15 @@ const lorebookApi: LorebookAPI = {
   importJson: () => ipcRenderer.invoke('lorebook:importJson'),
 }
 
+// ---- 语义触发（向量 RAG）----
+const embeddingApi: EmbeddingAPI = {
+  test: (config) => ipcRenderer.invoke('embedding:test', config),
+  indexLorebook: (lorebookId, config) => ipcRenderer.invoke('embedding:indexLorebook', lorebookId, config),
+  indexStatus: (lorebookIds) => ipcRenderer.invoke('embedding:indexStatus', lorebookIds),
+  removeIndex: (lorebookId) => ipcRenderer.invoke('embedding:removeIndex', lorebookId),
+  semanticSearch: (payload) => ipcRenderer.invoke('embedding:semanticSearch', payload),
+}
+
 // ---- 预设 ----
 const presetApi: PresetAPI = {
   list: () => ipcRenderer.invoke('preset:list'),
@@ -171,7 +181,6 @@ const usageApi: UsageAPI = {
   aggregate: (filter, groupBy) => ipcRenderer.invoke('usage:aggregate', filter, groupBy),
   summary: (filter) => ipcRenderer.invoke('usage:summary', filter),
   clear: () => ipcRenderer.invoke('usage:clear'),
-  calculateCost: (model, promptTokens, completionTokens) => ipcRenderer.invoke('usage:calculateCost', model, promptTokens, completionTokens),
 }
 
 // ---- MCP 工具 ----
@@ -201,6 +210,7 @@ contextBridge.exposeInMainWorld('api', {
   chat: chatApi,
   settings: settingsApi,
   lorebook: lorebookApi,
+  embedding: embeddingApi,
   preset: presetApi,
   tts: ttsApi,
   imageGen: imageGenApi,
@@ -229,6 +239,7 @@ contextBridge.exposeInMainWorld('api', {
     updateMemory: (groupId, sessionId, memory) => ipcRenderer.invoke('group:updateMemory', groupId, sessionId, memory),
     toggleMemory: (groupId, sessionId, enabled) => ipcRenderer.invoke('group:toggleMemory', groupId, sessionId, enabled),
     setMemoryMode: (groupId, sessionId, mode, interval) => ipcRenderer.invoke('group:setMemoryMode', groupId, sessionId, mode, interval),
+    updateSession: (groupId, sessionId, updates) => ipcRenderer.invoke('group:updateSession', groupId, sessionId, updates),
   },
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),

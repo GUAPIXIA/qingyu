@@ -162,6 +162,114 @@ export function fitLorebookBudget(
   return { kept, dropped: items.length - kept.length, usedTokens: used }
 }
 
+/**
+ * 将已裁剪的世界书条目按插入位置分发。
+ * 纯函数：供 triggerLorebooks 与 mergeSemanticHits 复用。
+ */
+export function distributeLoreItems(items: BudgetLoreItem[]): LorebookTriggerResult {
+  const result: LorebookTriggerResult = {
+    beforeChar: [],
+    afterChar: [],
+    atEnd: [],
+    atDepth: [],
+    triggeredCount: items.length,
+    droppedCount: 0,
+  }
+  for (const item of items) {
+    switch (item.position) {
+      case 'before_char':
+        result.beforeChar.push(item.content)
+        break
+      case 'after_char':
+        result.afterChar.push(item.content)
+        break
+      case 'at_depth':
+        result.atDepth.push({ content: item.content, order: item.order, depth: item.depth ?? 0 })
+        break
+      default:
+        result.atEnd.push(item.content)
+    }
+  }
+  return result
+}
+
+/**
+ * 合并语义命中（向量 RAG）条目与关键词触发结果。
+ * 策略：关键词命中的条目优先保留，语义命中条目按 order 升序填充剩余预算，
+ * 相同内容自动去重（与关键词重复的语义命中跳过）。
+ *
+ * @param base 关键词触发的分发结果（各段已裁剪，占用预算 ≤ budget）
+ * @param semanticItems 语义命中条目（尚未裁剪）
+ * @param budget 世界书总预算（tokens）
+ * @param model 用于 token 估算的模型
+ */
+export function mergeSemanticHits(
+  base: LorebookTriggerResult,
+  semanticItems: BudgetLoreItem[],
+  budget: number,
+  model: string,
+): LorebookTriggerResult {
+  if (semanticItems.length === 0) return base
+
+  // 关键词已保留条目的 token 占用（各段内容保序）
+  const baseTokens = estimateTokens(base.beforeChar.join(''), model)
+    + estimateTokens(base.afterChar.join(''), model)
+    + estimateTokens(base.atEnd.join(''), model)
+    + estimateTokens(base.atDepth.map((d) => d.content).join(''), model)
+
+  // 去重：跳过与关键词已保留内容重复的条目；候选之间按 order 升序
+  const seen = new Set<string>([
+    ...base.beforeChar,
+    ...base.afterChar,
+    ...base.atEnd,
+    ...base.atDepth.map((d) => d.content),
+  ])
+  const candidates = semanticItems
+    .filter((it) => {
+      if (seen.has(it.content)) return false
+      seen.add(it.content)
+      return true
+    })
+    .sort((a, b) => a.order - b.order)
+
+  // 剩余预算填充语义候选
+  let remaining = Math.max(0, budget - baseTokens)
+  const kept: BudgetLoreItem[] = []
+  for (const item of candidates) {
+    const t = estimateTokens(item.content, model)
+    if (t > remaining) continue
+    remaining -= t
+    kept.push(item)
+  }
+  if (kept.length === 0) return base
+
+  // 语义命中并入对应段（各段内按 order 有序）
+  const result: LorebookTriggerResult = {
+    beforeChar: [...base.beforeChar],
+    afterChar: [...base.afterChar],
+    atEnd: [...base.atEnd],
+    atDepth: [...base.atDepth],
+    triggeredCount: base.triggeredCount + kept.length,
+    droppedCount: base.droppedCount + (semanticItems.length - kept.length),
+  }
+  for (const item of kept) {
+    switch (item.position) {
+      case 'before_char':
+        result.beforeChar.push(item.content)
+        break
+      case 'after_char':
+        result.afterChar.push(item.content)
+        break
+      case 'at_depth':
+        result.atDepth.push({ content: item.content, order: item.order, depth: item.depth ?? 0 })
+        break
+      default:
+        result.atEnd.push(item.content)
+    }
+  }
+  return result
+}
+
 // ===================== 统一触发入口 =====================
 
 /**
@@ -185,12 +293,14 @@ export function triggerLorebooks(opts: LorebookTriggerOptions): LorebookTriggerR
 
   let recentText = scanText
 
-  // 收集所有启用条目
+  // 收集所有启用条目（matchMode = 'semantic' 的条目仅走语义触发，不参与关键词匹配）
   const allEntries: { entry: LoreEntry; lbId: string }[] = []
   for (const lb of lorebooks) {
     if (!lb?.enabled) continue
     for (const entry of lb.entries) {
-      if (entry.enabled) allEntries.push({ entry, lbId: lb.id })
+      if (!entry.enabled) continue
+      if ((entry.matchMode ?? 'both') === 'semantic') continue
+      allEntries.push({ entry, lbId: lb.id })
     }
   }
 

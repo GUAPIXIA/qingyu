@@ -341,6 +341,19 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     }
   })
 
+  /** 通用会话字段更新（长记忆事实等） */
+  ipcMain.handle('group:updateSession', async (_e, groupId: string, sessionId: string, updates: Record<string, unknown>) => {
+    safeId(groupId)
+    safeId(sessionId)
+    const sessions = loadSessions(groupId)
+    const session = sessions.find(s => s.id === sessionId)
+    if (session) {
+      Object.assign(session, updates)
+      session.updatedAt = Date.now()
+      saveSessions(groupId, sessions)
+    }
+  })
+
   // ---- 导出 ----
 
   ipcMain.handle('group:exportChat', async (_e, groupId: string, sessionId: string, format: 'json' | 'md') => {

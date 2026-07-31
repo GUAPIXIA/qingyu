@@ -3,14 +3,15 @@ import { nanoid } from 'nanoid'
 import type { GroupChat, GroupMessage, GroupSession, Character, Preset } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
-import { lorebookCache, triggerLorebooks } from '../utils/lorebook'
-import type { DepthLoreItem } from '../utils/lorebook'
+import { lorebookCache, triggerLorebooks, mergeSemanticHits } from '../utils/lorebook'
+import type { DepthLoreItem, BudgetLoreItem } from '../utils/lorebook'
 import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
 import { countChars } from '../utils/charCounter'
 import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
+import { parseMemoryResult, formatMemoryFacts, fitMemoryBudget } from '../utils/memory'
 import { logError, logInfo } from '../lib/logger'
 
 const STREAM_THROTTLE_MS = 50
@@ -124,6 +125,8 @@ interface GroupChatState {
 
   buildGroupContext: (targetCharId?: string, preset?: Preset | null) => { role: 'system' | 'user' | 'assistant'; content: string }[]
   ensureLorebooksLoaded: (lorebookIds: string[]) => Promise<void>
+  /** 语义触发（向量 RAG）命中条目缓存：群聊发言前预取，buildGroupContext 合并注入（不持久化） */
+  _semanticLoreHits: BudgetLoreItem[]
 
   toggleMemory: (groupId: string, sessionId: string, enabled: boolean) => Promise<void>
   setMemoryMode: (groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => Promise<void>
@@ -140,6 +143,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   currentStreamingCharId: null,
   streamingContent: '',
   error: null,
+  _semanticLoreHits: [],
 
   // ---- 群聊列表 ----
 
@@ -227,11 +231,12 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
   loadMessages: async (groupId, sessionId) => {
     const messages = await window.api.group.listMessages(groupId, sessionId)
-    set({ messages })
+    // 会话切换：清空语义命中缓存
+    set({ messages, _semanticLoreHits: [] })
   },
 
   clearMessages: () => {
-    set({ messages: [], error: null })
+    set({ messages: [], error: null, _semanticLoreHits: [] })
   },
 
   clearChat: async (groupId) => {
@@ -447,15 +452,27 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
     const currentSession = state.sessions.find(s => s.id === currentSessionId)
     const prevMemory = currentSession?.memory || ''
+    const prevFacts = currentSession?.memoryFacts ?? []
+    const prevFactsText = prevFacts.length > 0
+      ? prevFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')
+      : '无'
 
-    const systemPrompt = `你是一个对话摘要助手。请根据以下群聊「${currentGroup.name}」的最近对话（成员：${memberNames}），更新对话历史摘要。
+    const systemPrompt = `你是一个对话摘要助手。请根据以下群聊「${currentGroup.name}」的最近对话（成员：${memberNames}），更新对话历史摘要并抽取关键事实。
+
+输出格式（严格按此格式）：
+【摘要】
+2-4 句简洁摘要：主要事件、情节进展、角色关系变化、未解决的冲突或悬念。
+
+【事实】
+1. 具体事实
+2. 具体事实
 
 要求：
-1. 保留之前摘要中仍然重要的信息
-2. 总结新增的主要事件、情节进展、角色间关系变化
-3. 记录未解决的冲突或悬念
-4. 使用简洁的中文，200字以内
-${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
+- 事实必须是持久有效的信息（人名、身份、地点、目标、约定、关系等），不要写临时情绪。
+- 合并之前的事实：保留仍有效的事实，更新已变化的，删除已被推翻的，补充新事实。
+- 只输出上述格式内容。
+
+${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的事实】\n${prevFactsText}`
 
     const conversationText = recent.map(m => {
       const char = members.find(c => c.id === m.characterId)
@@ -477,11 +494,14 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       const unbindDone = window.api.ai.onDone((doneId) => {
         if (doneId !== requestId) return
         unbindChunk(); unbindDone(); unbindError()
-        const summary = (result || '').replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
-        if (summary) {
-          window.api.group.updateMemory(currentGroup.id, currentSessionId, summary)
+        const parsed = parseMemoryResult(result || '')
+        if (parsed.summary) {
+          window.api.group.updateMemory(currentGroup.id, currentSessionId, parsed.summary)
+          if (parsed.facts.length > 0) {
+            window.api.group.updateSession(currentGroup.id, currentSessionId, { memoryFacts: parsed.facts })
+          }
           const sessions = get().sessions.map(s =>
-            s.id === currentSessionId ? { ...s, memory: summary, memoryUpdatedAt: Date.now() } : s
+            s.id === currentSessionId ? { ...s, memory: parsed.summary, memoryUpdatedAt: Date.now(), memoryFacts: parsed.facts.length > 0 ? parsed.facts : s.memoryFacts } : s
           )
           set({ sessions })
         }
@@ -504,7 +524,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         model: profile.model,
         temperature: 0.3,
         topP: 1,
-        maxTokens: 512,
+        maxTokens: 1024,
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: false,
@@ -767,18 +787,6 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       systemContent += '\n【输出格式】如果需要描写角色内心活动或心理,请将心理描写放在 <thought>...</thought> 标签内。\n'
     }
 
-    // 长期记忆注入（对话历史摘要）
-    const { sessions, currentSessionId } = get()
-    const currentSession = sessions.find(s => s.id === currentSessionId)
-    if (currentSession?.memoryEnabled && currentSession.memory) {
-      systemContent += '\n\n【群聊历史摘要】\n' + currentSession.memory
-    }
-
-    // 群聊自定义 systemPrompt（含变量替换）
-    if (group.systemPrompt) {
-      systemContent += '\n' + replaceVariables(group.systemPrompt, userName, charNameForVars) + '\n'
-    }
-
     // ===== Token 预算框架（与单聊路径一致）=====
     const profile = settingsStore.getActiveProfile()
     const model = profile?.model || settings.activeModel || 'gpt-4o-mini'
@@ -789,6 +797,32 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       Math.floor((maxContext - reservedOutput) * TOKEN_BUDGET_SAFETY),
       Math.floor(maxContext * 0.25),
     )
+
+    // 长期记忆注入（摘要 + 关键事实，纳入 token 预算：不超过上下文预算的 10%，上限 800）
+    const { sessions, currentSessionId } = get()
+    const currentSession = sessions.find(s => s.id === currentSessionId)
+    if (currentSession?.memoryEnabled) {
+      const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
+      const fitted = fitMemoryBudget(
+        currentSession.memory || '',
+        currentSession.memoryFacts,
+        memoryBudget,
+        estimateTokens,
+        model,
+      )
+      if (fitted.summary) {
+        systemContent += '\n\n【群聊历史摘要】\n' + fitted.summary
+      }
+      const memoryFactsText = formatMemoryFacts(fitted.facts)
+      if (memoryFactsText) {
+        systemContent += '\n\n【关键事实】\n' + memoryFactsText
+      }
+    }
+
+    // 群聊自定义 systemPrompt（含变量替换）
+    if (group.systemPrompt) {
+      systemContent += '\n' + replaceVariables(group.systemPrompt, userName, charNameForVars) + '\n'
+    }
 
     // ===== 世界书注入（递归扫描 + 正则 + 变量替换 + at_depth 深度注入）=====
     let lorebookBefore = ''
@@ -821,14 +855,19 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
       const lorebookBudget = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
 
-      const result = triggerLorebooks({
-        lorebooks: lorebookCache.getAll([...allLorebookIds]),
-        scanText,
-        userName,
-        charName: charNameForVars,
-        budget: lorebookBudget,
+      const result = mergeSemanticHits(
+        triggerLorebooks({
+          lorebooks: lorebookCache.getAll([...allLorebookIds]),
+          scanText,
+          userName,
+          charName: charNameForVars,
+          budget: lorebookBudget,
+          model,
+        }),
+        get()._semanticLoreHits,
+        lorebookBudget,
         model,
-      })
+      )
 
       if (result.droppedCount > 0) {
         logInfo('buildGroupContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（预算 ${lorebookBudget} tokens）`)
@@ -1022,6 +1061,68 @@ async function flushStream(set: any) {
   }))
 }
 
+/**
+ * 群聊语义触发（向量 RAG）预取：发言前异步检索语义命中的世界书条目。
+ * 与单聊路径共用主进程 semanticSearch，失败静默降级为纯关键词触发。
+ */
+async function fetchGroupSemanticLoreHits(get: any, group: GroupChat, charName: string): Promise<void> {
+  const settings = useSettingsStore.getState().settings
+  const st = settings.semanticTrigger
+  const clear = () => {
+    if (get()._semanticLoreHits.length > 0) useGroupChatStore.setState({ _semanticLoreHits: [] })
+  }
+  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return clear()
+
+  // 群聊级 + 角色绑定世界书
+  const charStore = useCharacterStore.getState()
+  const allLorebookIds = new Set<string>(group.lorebookIds)
+  group.memberIds.forEach((mid) => {
+    const c = charStore.characters.find((ch) => ch.id === mid)
+    if (c?.boundLorebookIds) c.boundLorebookIds.forEach((id) => allLorebookIds.add(id))
+  })
+  const lorebookIds = [...allLorebookIds]
+  if (lorebookIds.length === 0) return clear()
+
+  const scanDepth = lorebookIds
+    .map(id => lorebookCache.get(id)?.scanDepth)
+    .filter((d): d is number => typeof d === 'number' && d > 0)
+    .reduce((max, d) => Math.max(max, d), 10)
+  const scanText = get().messages.slice(-scanDepth).map((m: GroupMessage) => {
+    if (m.characterId === '__user__') return m.content
+    const c = charStore.characters.find((ch) => ch.id === m.characterId)
+    return `【${c?.name || '未知角色'}】${m.content}`
+  }).join(' ')
+  if (!scanText.trim()) return clear()
+
+  try {
+    const hits = await window.api.embedding.semanticSearch({
+      scanText,
+      lorebookIds,
+      config: {
+        provider: st.provider,
+        baseUrl: st.baseUrl,
+        model: st.model,
+        apiKey: st.apiKey ?? '',
+      },
+      threshold: st.threshold,
+      maxResults: st.maxResults,
+    })
+    const items: BudgetLoreItem[] = (hits ?? []).map((h) => ({
+      content: replaceVariables(h.content, settings.userName, charName || '角色'),
+      order: h.order,
+      position: h.position,
+      depth: h.depth,
+    }))
+    useGroupChatStore.setState({ _semanticLoreHits: items })
+    if (items.length > 0) {
+      logInfo('fetchGroupSemanticLoreHits', `语义命中 ${items.length} 条世界书条目`)
+    }
+  } catch (e) {
+    logError('fetchGroupSemanticLoreHits', e)
+    clear()
+  }
+}
+
 async function streamGroupAI(
   set: any,
   get: any,
@@ -1055,6 +1156,9 @@ async function streamGroupAI(
   if (speaker.boundLorebookIds && speaker.boundLorebookIds.length > 0) {
     await get().ensureLorebooksLoaded(speaker.boundLorebookIds)
   }
+
+  // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
+  await fetchGroupSemanticLoreHits(get, group, speaker.name)
 
   const context = get().buildGroupContext(speaker.id, preset)
 
@@ -1285,6 +1389,9 @@ async function streamGroupAIFree(
   if (allBoundLbIds.length > 0) {
     await get().ensureLorebooksLoaded([...new Set(allBoundLbIds)])
   }
+
+  // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
+  await fetchGroupSemanticLoreHits(get, group, '')
 
   const context = get().buildGroupContext(undefined, preset)
 

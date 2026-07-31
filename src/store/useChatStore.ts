@@ -11,8 +11,9 @@ import { replaceVariables } from '../utils/variables'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages, stripThought, normalizeThoughtTags, trimContinuationOverlap } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
-import { getEffectiveLorebookIds, lorebookCache, triggerLorebooks } from '../utils/lorebook'
-import type { DepthLoreItem } from '../utils/lorebook'
+import { parseMemoryResult, formatMemoryFacts, fitMemoryBudget } from '../utils/memory'
+import { getEffectiveLorebookIds, lorebookCache, triggerLorebooks, mergeSemanticHits } from '../utils/lorebook'
+import type { DepthLoreItem, BudgetLoreItem } from '../utils/lorebook'
 import { logError, logInfo } from '../lib/logger'
 
 // ===================== 常量 =====================
@@ -137,10 +138,27 @@ interface ChatState {
   updateSessionField: (characterId: string, sessionId: string, field: string, value: unknown) => Promise<void>
   /** 从当前会话同步世界书到 activeLorebookIds（不持久化，仅读取） */
   syncLorebooksFromCurrentSession: (character: Character) => void
+  /** 语义触发（向量 RAG）命中条目缓存：发送消息时预取，buildContext 合并注入（不持久化） */
+  _semanticLoreHits: BudgetLoreItem[]
 }
 
 // 用于防止竞态条件的请求计数器
 let loadRequestId = 0
+
+/**
+ * 应用角色的默认长记忆配置到新会话（角色卡配置 defaultMemoryEnabled 时生效）。
+ * 仅初始化一次，用户后续可手动覆盖。
+ */
+async function applyDefaultMemory(character: Character | null | undefined, sessionId: string): Promise<void> {
+  if (!character?.defaultMemoryEnabled) return
+  try {
+    await window.api.chat.updateSession(character.id, sessionId, {
+      memoryEnabled: true,
+      memoryMode: character.defaultMemoryMode ?? 'auto',
+      autoMemoryInterval: character.defaultMemoryInterval ?? 10,
+    })
+  } catch { /* 忽略 */ }
+}
 
 // ===================== 流式状态管理（模块级，避免渲染抖动） =====================
 
@@ -198,6 +216,60 @@ function cleanupActiveStream() {
 }
 
 /**
+ * 语义触发（向量 RAG）预取：
+ * 发送消息 / 重新生成 / 续写前异步检索语义命中的世界书条目，
+ * 结果缓存到 store._semanticLoreHits，供 buildContext 同步合并。
+ * 任何失败静默降级为纯关键词触发（不影响主流程）。
+ */
+async function fetchSemanticLoreHits(get: StoreGet, character: Character): Promise<void> {
+  const settings = useSettingsStore.getState().settings
+  const st = settings.semanticTrigger
+  const clear = () => {
+    if (get()._semanticLoreHits.length > 0) useChatStore.setState({ _semanticLoreHits: [] })
+  }
+  // 快速失败：未启用 / 未配置 / 无激活世界书
+  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return clear()
+  const lorebookIds = get().activeLorebookIds
+  if (lorebookIds.length === 0) return clear()
+
+  // 扫描文本（与 buildContext 相同的 scanDepth 逻辑）
+  const scanDepth = lorebookIds
+    .map(id => lorebookCache.get(id)?.scanDepth)
+    .filter((d): d is number => typeof d === 'number' && d > 0)
+    .reduce((max, d) => Math.max(max, d), DEFAULT_LOREBOOK_SCAN_DEPTH)
+  const scanText = get().messages.slice(-scanDepth).map((m) => m.content).join(' ')
+  if (!scanText.trim()) return clear()
+
+  try {
+    const hits = await window.api.embedding.semanticSearch({
+      scanText,
+      lorebookIds,
+      config: {
+        provider: st.provider,
+        baseUrl: st.baseUrl,
+        model: st.model,
+        apiKey: st.apiKey ?? '',
+      },
+      threshold: st.threshold,
+      maxResults: st.maxResults,
+    })
+    const items: BudgetLoreItem[] = (hits ?? []).map((h) => ({
+      content: replaceVariables(h.content, settings.userName, character.name),
+      order: h.order,
+      position: h.position,
+      depth: h.depth,
+    }))
+    useChatStore.setState({ _semanticLoreHits: items })
+    if (items.length > 0) {
+      logInfo('fetchSemanticLoreHits', `语义命中 ${items.length} 条世界书条目`)
+    }
+  } catch (e) {
+    logError('fetchSemanticLoreHits', e)
+    clear()
+  }
+}
+
+/**
  * 抽取的公共 AI 流式响应方法
  * - 统一处理事件注册、节流、错误、超时
  * - 调用方只需提供 aiMessageId 和 onComplete 回调
@@ -228,6 +300,9 @@ async function streamAIResponse(
 
   // 如果已有进行中的流，先清理（防止状态泄漏）
   cleanupActiveStream()
+
+  // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
+  await fetchSemanticLoreHits(get, character)
 
   const contextMessages = get().buildContext(character, preset, { continuation: opts.continuation })
 
@@ -381,6 +456,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   error: null,
   activePresetId: null,
   activeLorebookIds: [],
+  _semanticLoreHits: [],
   translatingMessages: {},
   showTranslationIds: new Set(),
 
@@ -421,6 +497,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const char = charStore.characters.find(c => c.id === characterId)
     const initLorebookIds = getEffectiveLorebookIds(char)
     const session = await window.api.chat.createSession(characterId, title, undefined, initLorebookIds)
+    // 继承角色的默认长记忆配置
+    await applyDefaultMemory(char, session.id)
     // 刷新会话列表
     const sessions = await window.api.chat.listSessions(characterId)
     set({ sessions, currentSessionId: session.id, messages: [], activeLorebookIds: initLorebookIds })
@@ -433,6 +511,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   createSessionWithGreeting: async (character, greeting) => {
     const initLorebookIds = getEffectiveLorebookIds(character)
     const session = await window.api.chat.createSession(character.id, undefined, undefined, initLorebookIds)
+    // 继承角色的默认长记忆配置
+    await applyDefaultMemory(character, session.id)
     const sessions = await window.api.chat.listSessions(character.id)
     set({ sessions, currentSessionId: session.id, messages: [], activeLorebookIds: initLorebookIds })
     // 持久化当前会话 ID
@@ -604,6 +684,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       .join('\n')
 
     const previousMemory = session.memory || '无'
+    // 之前的关键事实（供模型合并更新）
+    const previousFacts = session.memoryFacts ?? []
+    const previousFactsText = previousFacts.length > 0
+      ? previousFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')
+      : '无'
 
     const requestId = `memory-summary-${Date.now()}`
     let result = ''
@@ -623,15 +708,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const unbindDone = window.api.ai.onDone(async (doneId) => {
         if (doneId !== requestId) return
         unbindChunk(); unbindDone(); unbindError()
-        const summary = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
-        if (summary) {
+        const parsed = parseMemoryResult(result)
+        if (parsed.summary) {
           try {
-            await window.api.chat.updateMemory(character.id, currentSessionId, summary)
+            await window.api.chat.updateMemory(character.id, currentSessionId, parsed.summary)
+            // 保存关键事实（会话字段，经 updateSession 持久化）
+            if (parsed.facts.length > 0) {
+              await window.api.chat.updateSession(character.id, currentSessionId, { memoryFacts: parsed.facts })
+            }
             const refreshedSessions = await window.api.chat.listSessions(character.id)
             set({ sessions: refreshedSessions })
           } catch { /* ignore */ }
         }
-        resolve(summary || null)
+        resolve(parsed.summary || null)
       })
       const unbindError = window.api.ai.onError((data) => {
         if (data.requestId !== requestId) return
@@ -648,7 +737,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: [
           {
             role: 'system',
-            content: `你是一个角色扮演对话总结助手。请用简洁的语言总结以下${character.name}与${userName}之间的对话，包括：\n1. 发生的主要事件和情节进展\n2. 角色之间关系的演变\n3. 当前未解决的问题或悬念\n\n只输出总结内容，不要添加任何解释或评价。\n\n之前的摘要：\n${previousMemory}`,
+            content: `你是一个角色扮演对话总结助手。请总结以下${character.name}与${userName}之间的对话，并抽取关键事实。
+
+输出格式（严格按此格式）：
+【摘要】
+2-4 句简洁摘要，覆盖：主要事件、情节进展、角色关系演变、当前未解决的问题。
+
+【事实】
+1. 具体事实
+2. 具体事实
+
+要求：
+- 事实必须是对话中确立的、对未来有参考价值的持久信息（人名、身份、地点、物品、目标、约定、关系等），不要写临时情绪或过场细节。
+- 合并之前的事实：保留仍有效的事实，更新已变化的事实，删除已被推翻的事实，补充新事实。
+- 只输出上述格式内容，不要添加任何解释或评价。
+
+之前的摘要：
+${previousMemory}
+
+之前的事实：
+${previousFactsText}`,
           },
           { role: 'user', content: `新对话内容：\n${messagesText}` },
         ],
@@ -658,7 +766,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         model: settings.activeModel || profile.model,
         temperature: 0.3,
         topP: 0.9,
-        maxTokens: 1024,
+        maxTokens: 2048,
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: true,
@@ -680,7 +788,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadMessages: async (character) => {
     // 竞态条件防护
     const currentLoadId = ++loadRequestId
-    set({ messages: [] }) // 先清空，避免显示旧角色消息
+    // 角色/会话切换：清空语义命中缓存，避免残留旧命中
+    set({ messages: [], _semanticLoreHits: [] }) // 先清空，避免显示旧角色消息
 
     // 先加载会话列表
     let sessionId = get().currentSessionId
@@ -1415,13 +1524,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       systemContent += '\n\n【输出格式要求】\n请先在 <thought>...</thought> 标签内输出角色的内心想法和心理活动，然后再输出角色的实际对话和行动。两部分必须分开。'
     }
 
-    // 长记忆注入
-    const { sessions, currentSessionId } = get()
-    const currentSession = sessions.find(s => s.id === currentSessionId)
-    if (currentSession?.memoryEnabled && currentSession.memory) {
-      systemContent += '\n\n【对话历史摘要】\n' + currentSession.memory
-    }
-
     // ===== Token 预算框架 =====
     // budgetBase = (maxContext − 输出预留) × 安全余量；世界书预算取其一定比例，剩余给历史
     const profile = useSettingsStore.getState().getActiveProfile()
@@ -1434,6 +1536,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       Math.floor((maxContext - reservedOutput) * TOKEN_BUDGET_SAFETY),
       Math.floor(maxContext * 0.25),
     )
+
+    // 长记忆注入（摘要 + 关键事实，纳入 token 预算：不超过上下文预算的 10%，上限 800）
+    const { sessions, currentSessionId } = get()
+    const currentSession = sessions.find(s => s.id === currentSessionId)
+    if (currentSession?.memoryEnabled) {
+      const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
+      const fitted = fitMemoryBudget(
+        currentSession.memory || '',
+        currentSession.memoryFacts,
+        memoryBudget,
+        estimateTokens,
+        model,
+      )
+      if (fitted.summary) {
+        systemContent += '\n\n【对话历史摘要】\n' + fitted.summary
+      }
+      const factsText = formatMemoryFacts(fitted.facts)
+      if (factsText) {
+        systemContent += '\n\n【关键事实】\n' + factsText
+      }
+    }
 
     // ===== 角色设定 + 世界书 =====
     let charDesc = ''
@@ -1457,14 +1580,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
       const lorebookBudget = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
 
-      const result = triggerLorebooks({
-        lorebooks: lorebookCache.getAll(lorebookIds),
-        scanText,
-        userName,
-        charName: character.name,
-        budget: lorebookBudget,
+      const result = mergeSemanticHits(
+        triggerLorebooks({
+          lorebooks: lorebookCache.getAll(lorebookIds),
+          scanText,
+          userName,
+          charName: character.name,
+          budget: lorebookBudget,
+          model,
+        }),
+        get()._semanticLoreHits,
+        lorebookBudget,
         model,
-      })
+      )
 
       if (result.droppedCount > 0) {
         logInfo('buildContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（预算 ${lorebookBudget} tokens）`)

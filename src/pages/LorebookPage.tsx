@@ -16,6 +16,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Brain,
+  CircleCheck,
+  CircleAlert,
 } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import type { Lorebook, LoreEntry } from '../../shared/types'
@@ -25,6 +28,12 @@ const POSITION_LABELS: Record<LoreEntry['position'], string> = {
   after_char: '角色定义后',
   at_depth: '历史消息中（按深度）',
   at_end: '消息末尾',
+}
+
+const MATCH_MODE_LABELS: Record<NonNullable<LoreEntry['matchMode']>, string> = {
+  keyword: '关键词',
+  semantic: '语义（向量）',
+  both: '关键词 + 语义',
 }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -67,6 +76,7 @@ function createEntry(): LoreEntry {
     order: 100,
     probability: 100,
     enabled: true,
+    matchMode: 'both',
   }
 }
 
@@ -80,6 +90,10 @@ export function LorebookPage() {
   /** AI 翻译状态：key 为字段标识 */
   const [translatingField, setTranslatingField] = useState<{ key: string; text: string } | null>(null)
   const [translateResult, setTranslateResult] = useState<string | null>(null)
+  /** 语义触发：向量索引状态（lorebookId -> 已索引条目数等） */
+  const [indexStatus, setIndexStatus] = useState<Record<string, { indexed: number; model: string; updatedAt: number }>>({})
+  const [indexingId, setIndexingId] = useState<string | null>(null)
+  const [indexError, setIndexError] = useState<string | null>(null)
 
   const { getActiveProfile, settings } = useSettingsStore()
 
@@ -102,8 +116,46 @@ export function LorebookPage() {
     window.api.lorebook.list().then((list) => {
       setLorebooks(list)
       if (list.length > 0) setSelectedId(list[0].id)
+      refreshIndexStatus(list.map((l) => l.id))
     })
   }, [])
+
+  /** 刷新向量索引状态 */
+  const refreshIndexStatus = async (ids: string[]) => {
+    if (ids.length === 0) return
+    try {
+      const status = await window.api.embedding.indexStatus(ids)
+      setIndexStatus(status)
+    } catch { /* 忽略 */ }
+  }
+
+  /** 为当前世界书生成/重建向量索引 */
+  const handleIndexLorebook = async () => {
+    if (!selected || indexingId) return
+    const st = settings.semanticTrigger
+    if (!st) {
+      setIndexError('请先在「设置 → 语义触发」中配置嵌入服务')
+      return
+    }
+    setIndexingId(selected.id)
+    setIndexError(null)
+    try {
+      const result = await window.api.embedding.indexLorebook(selected.id, {
+        provider: st.provider,
+        baseUrl: st.baseUrl,
+        model: st.model,
+        apiKey: st.apiKey ?? '',
+      })
+      if (!result.ok) {
+        setIndexError(result.error || '索引失败')
+      }
+      await refreshIndexStatus([selected.id])
+    } catch (e) {
+      setIndexError((e as Error).message)
+    } finally {
+      setIndexingId(null)
+    }
+  }
 
   const updateLorebook = (id: string, patch: Partial<Lorebook>) => {
     const current = lorebooks.find((l) => l.id === id)
@@ -418,6 +470,38 @@ export function LorebookPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* 语义触发：向量索引 */}
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      className="btn-secondary text-xs"
+                      disabled={indexingId !== null}
+                      onClick={handleIndexLorebook}
+                      title="为启用且匹配模式包含「语义」的条目生成向量索引（语义触发需在设置中启用）"
+                    >
+                      {indexingId === selected.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Brain className="w-3.5 h-3.5" />
+                      )}
+                      {indexingId === selected.id ? '索引中...' : '生成语义索引'}
+                    </button>
+                    {indexStatus[selected.id] && indexStatus[selected.id].indexed > 0 ? (
+                      <span className="text-xs text-tavern-text-muted flex items-center gap-1">
+                        <CircleCheck className="w-3.5 h-3.5 text-tavern-accent" />
+                        已索引 {indexStatus[selected.id].indexed} 个条目
+                        <span className="text-tavern-text-muted/60">（{indexStatus[selected.id].model}）</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-tavern-text-muted flex items-center gap-1">
+                        <CircleAlert className="w-3.5 h-3.5 text-tavern-text-muted" />
+                        未索引（语义触发条目需要先生成索引）
+                      </span>
+                    )}
+                    {indexError && (
+                      <span className="text-xs text-tavern-danger">{indexError}</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* 条目列表 */}
@@ -492,6 +576,9 @@ export function LorebookPage() {
                                 <span>{POSITION_LABELS[entry.position]}</span>
                                 <span>顺序 {entry.order}</span>
                                 <span>概率 {entry.probability}%</span>
+                                <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft">
+                                  {MATCH_MODE_LABELS[entry.matchMode ?? 'both']}
+                                </span>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -652,6 +739,30 @@ export function LorebookPage() {
                           <option value="at_depth">{POSITION_LABELS.at_depth}</option>
                           <option value="at_end">{POSITION_LABELS.at_end}</option>
                         </select>
+                      </div>
+                      <div>
+                        <label className="label">匹配模式</label>
+                        <select
+                          className="select"
+                          value={editingEntry.matchMode ?? 'both'}
+                          onChange={(e) =>
+                            setEditingEntry({
+                              ...editingEntry,
+                              matchMode: e.target.value as NonNullable<LoreEntry['matchMode']>,
+                            })
+                          }
+                        >
+                          <option value="keyword">{MATCH_MODE_LABELS.keyword}（仅关键词/正则）</option>
+                          <option value="semantic">{MATCH_MODE_LABELS.semantic}（需先生成语义索引）</option>
+                          <option value="both">{MATCH_MODE_LABELS.both}</option>
+                        </select>
+                        <p className="text-xs text-tavern-text-muted mt-1">
+                          {editingEntry.matchMode === 'semantic'
+                            ? '仅通过语义相似度触发：不依赖关键词，但需要先生成索引并启用「设置 → 语义触发」。'
+                            : editingEntry.matchMode === 'both'
+                              ? '关键词命中或语义相似（“猫娘”可触发含“猫咪”的条目）均可触发。'
+                              : '仅按关键词/正则匹配触发。'}
+                        </p>
                       </div>
                       {editingEntry.position === 'at_depth' && (
                         <div>

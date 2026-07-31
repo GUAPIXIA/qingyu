@@ -1,9 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron'
 import { join } from 'node:path'
+import { readFileSync, existsSync } from 'node:fs'
 import { registerCharacterIPC } from './ipc/character'
 import { registerChatIPC } from './ipc/chat'
 import { registerSettingsIPC } from './ipc/settings'
 import { registerLorebookIPC } from './ipc/lorebook'
+import { registerEmbeddingIPC } from './ipc/embedding'
 import { registerPresetIPC } from './ipc/preset'
 import { registerAIIPC } from './services/ai'
 import { registerTTSIPC, killTTS } from './ipc/tts'
@@ -16,20 +18,30 @@ import { registerMcpIPC } from './ipc/mcp'
 import { registerGroupIPC } from './ipc/group'
 import { registerAnnouncementIPC } from './ipc/announcement'
 import { mcpManager } from './mcp/manager'
-import { ensureDataDir } from './services/storage'
+import { ensureDataDir, DIRS } from './services/storage'
 import { initLogger, createLogger, getRecentLogs } from './services/logger'
+
+// 注册 tavern:// 自定义协议为标准协议（必须在 app.ready 之前）
+const _ele = require('electron') as typeof import('electron')
+_ele.protocol.registerSchemesAsPrivileged([
+  { scheme: 'tavern', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+])
 
 const isDev = !app.isPackaged
 
 // 全局错误兜底：捕获未处理的 Promise rejection 和未捕获异常，避免静默丢失
 process.on('unhandledRejection', (reason) => {
   const logger = createLogger('process')
-  logger.error('未处理的 Promise rejection', { reason: String(reason) })
+  if (reason instanceof Error) {
+    logger.error('未处理的 Promise rejection', { error: reason.message, stack: reason.stack?.split('\n').slice(0, 5).join(' | ') })
+  } else {
+    logger.error('未处理的 Promise rejection', { reason: String(reason) })
+  }
 })
 
 process.on('uncaughtException', (err) => {
   const logger = createLogger('process')
-  logger.error('未捕获的异常', { error: err.message, stack: err.stack?.split('\n').slice(0, 3).join(' | ') })
+  logger.error('未捕获的异常', { error: err.message, stack: err.stack?.split('\n').slice(0, 5).join(' | ') })
 })
 
 let mainWindow: BrowserWindow | null = null
@@ -78,16 +90,63 @@ app.whenReady().then(async () => {
   app.setName('轻语')
 
   await ensureDataDir()
+
+  // 注册 tavern:// 协议处理器：角色图片直接从磁盘按需加载，不经 base64/IPC
+  const charDir = DIRS.characters()
+  _ele.protocol.handle('tavern', (request) => {
+    const url = new URL(request.url)
+    if (url.hostname !== 'character') {
+      return new Response('Not found', { status: 404 })
+    }
+    const parts = url.pathname.split('/').filter(Boolean)
+    if (parts.length !== 2) return new Response('Bad request', { status: 400 })
+    const [id, kind] = parts
+    // 路径穿越防护：只允许字母、数字、下划线、短横线
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) return new Response('Forbidden', { status: 403 })
+    if (kind !== 'avatar' && kind !== 'cover') return new Response('Bad request', { status: 400 })
+
+    const mimeTypes: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' }
+    const extensions = ['png', 'jpg', 'jpeg', 'gif', 'webp']
+    // cover 请求先找 _cover 文件，找不到回退到 avatar 文件（与原 cover||avatar 逻辑一致）
+    const suffixes = kind === 'cover' ? ['_cover', ''] : ['']
+    for (const suffix of suffixes) {
+      for (const ext of extensions) {
+        const filePath = join(charDir, `${id}${suffix}.${ext}`)
+        if (existsSync(filePath)) {
+          return new Response(new Uint8Array(readFileSync(filePath)), { headers: { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' } })
+        }
+      }
+    }
+    return new Response('Not found', { status: 404 })
+  })
+
   initLogger(app.getPath('userData'))
 
   const appLogger = createLogger('main')
   appLogger.info('轻语启动', { version: app.getVersion(), isDev })
+
+  // 拦截 ipcMain.handle，统一捕获所有 IPC 处理器异常并记录（不吞错误，仍向渲染进程抛出）
+  const _originalHandle = ipcMain.handle.bind(ipcMain)
+  ipcMain.handle = ((channel: string, handler: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
+    return _originalHandle(channel, async (event, ...args) => {
+      try {
+        return await handler(event, ...args)
+      } catch (err) {
+        const ipcLogger = createLogger('ipc')
+        const errMsg = err instanceof Error ? err.message : String(err)
+        const errStack = err instanceof Error ? err.stack?.split('\n').slice(0, 5).join(' | ') : undefined
+        ipcLogger.error(`IPC ${channel} 异常`, { error: errMsg, ...(errStack ? { stack: errStack } : {}) })
+        throw err
+      }
+    })
+  }) as typeof ipcMain.handle
 
   // 注册所有 IPC 处理器
   registerCharacterIPC(ipcMain, dialog)
   registerChatIPC(ipcMain)
   registerSettingsIPC(ipcMain, dialog)
   registerLorebookIPC(ipcMain, dialog)
+  registerEmbeddingIPC(ipcMain)
   registerPresetIPC(ipcMain, dialog)
   registerAIIPC(ipcMain)
   registerTTSIPC(ipcMain)

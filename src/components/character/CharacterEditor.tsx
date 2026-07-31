@@ -919,6 +919,51 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
               )}
             </div>
 
+            {/* 长记忆默认配置：新会话继承 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="label mb-0">长记忆默认开启</label>
+                  <p className="text-xs text-tavern-text-muted">与该角色新建会话时自动启用长记忆（会话内可单独调整）</p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-[var(--color-accent)]"
+                    checked={!!form.defaultMemoryEnabled}
+                    onChange={(e) => update({ defaultMemoryEnabled: e.target.checked, defaultMemoryMode: e.target.checked ? (form.defaultMemoryMode ?? 'auto') : undefined })}
+                  />
+                  <span className="text-sm">{form.defaultMemoryEnabled ? '开' : '关'}</span>
+                </label>
+              </div>
+              {form.defaultMemoryEnabled && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <label className="label mb-0">默认总结模式</label>
+                    <select
+                      className="select w-28"
+                      value={form.defaultMemoryMode ?? 'auto'}
+                      onChange={(e) => update({ defaultMemoryMode: e.target.value as 'manual' | 'auto' })}
+                    >
+                      <option value="manual">手动</option>
+                      <option value="auto">自动</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="label mb-0">自动总结间隔（条）</label>
+                    <input
+                      type="number"
+                      min={4}
+                      max={50}
+                      className="input w-20"
+                      value={form.defaultMemoryInterval ?? 10}
+                      onChange={(e) => update({ defaultMemoryInterval: Math.max(4, Math.min(50, Number(e.target.value) || 10)) })}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
             {/* 群聊开场白 */}
             <div>
               <label className="label">群聊开场白</label>
