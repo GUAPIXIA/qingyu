@@ -133,9 +133,15 @@ export function TTSModelsSection() {
   }
 
   /** 试听：用当前表单配置合成并播放一句测试语音 */
+  const auditionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const auditionUnsubRef = useRef<(() => void) | null>(null)
+
   const stopAudition = async () => {
     auditionRef.current?.pause()
     auditionRef.current = null
+    if (auditionTimerRef.current) { clearTimeout(auditionTimerRef.current); auditionTimerRef.current = null }
+    auditionUnsubRef.current?.()
+    auditionUnsubRef.current = null
     // system 引擎：真正停止主进程播放
     if (form.provider !== 'openai' && form.provider !== 'edge') {
       await window.api.tts.stop().catch(() => {})
@@ -158,7 +164,16 @@ export function TTSModelsSection() {
         model: form.model,
         apiKey: form.apiKey,
         baseUrl: form.baseUrl,
+        // Edge TTS 走封面下载代理（国内网络）
+        proxy: form.provider === 'edge' ? (useSettingsStore.getState().settings.coverProxyUrl || undefined) : undefined,
       })
+      // 强制复位：无论何种引擎，试听最长 20 秒
+      if (auditionTimerRef.current) clearTimeout(auditionTimerRef.current)
+      auditionTimerRef.current = setTimeout(() => {
+        setAuditioning(false)
+        auditionTimerRef.current = null
+      }, 20000)
+
       if (res.success && res.audioBase64) {
         // openai/edge：渲染进程播放
         const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)
@@ -167,11 +182,11 @@ export function TTSModelsSection() {
         auditionRef.current = audio
         await audio.play().catch(() => setAuditioning(false))
       } else if (res.success) {
-        // system 引擎：主进程播放，等状态推送复位（idle）；5s 兜底
-        window.api.tts.onState((state) => {
+        // system 引擎：主进程播放，等状态推送复位（idle）
+        auditionUnsubRef.current?.()
+        auditionUnsubRef.current = window.api.tts.onState((state) => {
           if (state === 'idle') setAuditioning(false)
         })
-        setTimeout(() => setAuditioning(false), 8000)
       } else {
         setAuditioning(false)
         setTestResult({ success: false, message: res.error || '试听失败' })

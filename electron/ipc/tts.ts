@@ -310,7 +310,7 @@ export async function openaiSpeak(
 export async function edgeSpeak(
   text: string,
   voice: string,
-  opts: { rate?: string; pitch?: string; volume?: string } = {},
+  opts: { rate?: string; pitch?: string; volume?: string; proxy?: string } = {},
 ): Promise<string> {
   const { join } = await import('node:path')
   const { readFileSync, rmSync } = await import('node:fs')
@@ -325,10 +325,13 @@ export async function edgeSpeak(
     pitch: opts.pitch ?? '+0Hz',
     volume: opts.volume ?? '+0%',
     timeout: 30000,
+    // 国内网络直连微软服务可能失败，支持走代理（复用封面下载代理配置）
+    ...(opts.proxy ? { proxy: opts.proxy } : {}),
   })
   try {
     await tts.ttsPromise(text.slice(0, 3000), tmpFile)
     const buf = readFileSync(tmpFile)
+    if (buf.length === 0) throw new Error('Edge TTS 未生成音频数据（请检查网络或代理）')
     return buf.toString('base64')
   } finally {
     rmSync(tmpFile, { force: true })
@@ -347,6 +350,8 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
       model?: string
       apiKey?: string
       baseUrl?: string
+      /** 代理地址（Edge TTS 国内网络需要） */
+      proxy?: string
     } = {},
   ) => {
     stateSender = event.sender as Electron.WebContents
@@ -370,7 +375,7 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
 
       // Edge TTS（微软免费在线语音）：返回 mp3 base64
       if (opts.provider === 'edge') {
-        const audioBase64 = await edgeSpeak(text, opts.voice || 'zh-CN-XiaoxiaoNeural')
+        const audioBase64 = await edgeSpeak(text, opts.voice || 'zh-CN-XiaoxiaoNeural', { proxy: opts.proxy })
         log.info('Edge TTS 朗读', { textLen: text.length, voice: opts.voice })
         return { success: true, audioBase64 }
       }
