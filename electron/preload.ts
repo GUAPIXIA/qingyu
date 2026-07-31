@@ -112,6 +112,8 @@ const embeddingApi: EmbeddingAPI = {
   indexStatus: (lorebookIds) => ipcRenderer.invoke('embedding:indexStatus', lorebookIds),
   removeIndex: (lorebookId) => ipcRenderer.invoke('embedding:removeIndex', lorebookId),
   semanticSearch: (payload) => ipcRenderer.invoke('embedding:semanticSearch', payload),
+  embedFacts: (config, texts) => ipcRenderer.invoke('embedding:embedFacts', config, texts),
+  searchFacts: (payload) => ipcRenderer.invoke('embedding:searchFacts', payload),
 }
 
 // ---- 快捷回复 ----

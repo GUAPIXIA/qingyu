@@ -169,6 +169,17 @@ export interface EmbeddingAPI {
     threshold?: number
     maxResults?: number
   }): Promise<SemanticHit[]>
+  /** 为会话事实批量嵌入，返回向量数组（渲染进程负责存会话） */
+  embedFacts(config: EmbeddingEndpointConfig, texts: string[]): Promise<number[][]>
+  /** 事实语义检索：查询文本与事实向量比对，返回命中的事实文本 */
+  searchFacts(payload: {
+    query: string
+    facts: string[]
+    vectors: number[][]
+    config: EmbeddingEndpointConfig
+    threshold?: number
+    maxResults?: number
+  }): Promise<string[]>
 }
 
 // ===================== 预设接口 =====================
