@@ -17,7 +17,7 @@ import { expandMacros, buildMacroContext } from '../utils/macros'
 import { applyRegexRules, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
 import { getEffectiveLorebookIds, lorebookCache, triggerLorebooks, mergeSemanticHits } from '../utils/lorebook'
 import type { DepthLoreItem, BudgetLoreItem } from '../utils/lorebook'
-import { logError, logInfo } from '../lib/logger'
+import { logError, logInfo, logWarn } from '../lib/logger'
 
 // ===================== 常量 =====================
 
@@ -156,6 +156,19 @@ async function applyDefaultMemory(character: Character | null | undefined, sessi
   } catch { /* 忽略 */ }
 }
 
+/** 历史变更后使上下文压缩缓存失效（编辑/删除/清空消息时调用） */
+async function invalidateCompression(get: StoreGet, character: Character): Promise<void> {
+  const sid = get().currentSessionId
+  if (!sid) return
+  const cur = get().sessions.find((s) => s.id === sid)
+  if (cur?.compressedSummary) {
+    await window.api.chat.updateSession(character.id, sid, {
+      compressedSummary: null,
+      compressedRange: null,
+    }).catch(() => { /* 忽略 */ })
+  }
+}
+
 // ===================== 流式状态管理（模块级，避免渲染抖动） =====================
 
 interface StreamState {
@@ -170,6 +183,17 @@ interface StreamState {
 }
 
 let activeStream: StreamState | null = null
+
+/** 上下文溢出压缩：待执行的压缩任务（buildContext 标记，流式完成后消费） */
+interface PendingCompression {
+  characterId: string
+  sessionId: string
+  droppedText: string
+  droppedStartTs: number
+  droppedEndTs: number
+}
+
+let pendingCompression: PendingCompression | null = null
 
 // zustand store 的 set/get 类型（提前定义供 flushStream 使用）
 type StoreSet = (
@@ -276,6 +300,80 @@ async function fetchSemanticLoreHits(get: StoreGet, character: Character): Promi
     logError('fetchSemanticLoreHits', e)
     clear()
   }
+}
+
+/**
+ * 上下文溢出压缩（P0-1）：异步压缩将被裁剪的早期对话，结果存会话。
+ * 不阻塞主流程：buildContext 标记 pendingCompression，流式完成后调用。
+ */
+async function compressDroppedHistory(
+  get: StoreGet,
+  character: Character,
+  pending: PendingCompression,
+): Promise<void> {
+  if (!pending.sessionId || !pending.droppedText) return
+  const settings = useSettingsStore.getState().settings
+  const userName = settings.userName || '用户'
+  const profile = useSettingsStore.getState().getActiveProfile()
+  if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) return
+
+  const requestId = `compress-${Date.now()}`
+  let result = ''
+  let finished = false
+
+  const unbindChunk = window.api.ai.onChunk((data) => {
+    if (data.requestId !== requestId) return
+    result += data.text
+  })
+  const unbindDone = window.api.ai.onDone((doneId) => {
+    if (doneId !== requestId) return
+    cleanup()
+    finished = true
+    const summary = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+    if (summary) {
+      window.api.chat.updateSession(character.id, pending.sessionId, {
+        compressedSummary: summary,
+        compressedRange: { startTs: pending.droppedStartTs, endTs: pending.droppedEndTs },
+      }).then(async () => {
+        const sessions = await window.api.chat.listSessions(character.id)
+        useChatStore.setState({ sessions })
+        logInfo('compressDroppedHistory', `早期对话已压缩（${summary.length} 字，范围 ${new Date(pending.droppedStartTs).toLocaleString()} 起）`)
+      }).catch(() => { /* 忽略 */ })
+    }
+  })
+  const unbindError = window.api.ai.onError((data) => {
+    if (data.requestId !== requestId) return
+    cleanup()
+    finished = true
+    logWarn('compressDroppedHistory', `压缩失败：${data.error}`)
+  })
+  const cleanup = () => {
+    unbindChunk(); unbindDone(); unbindError()
+  }
+
+  window.api.ai.chat({
+    requestId,
+    messages: [
+      {
+        role: 'system',
+        content: `你是一个对话摘要助手。以下是角色扮演对话的早期内容，即将被上下文裁剪。请压缩为 3-5 句中文摘要，必须保留：人物身份与姓名、地点、目标、关键事件、未解决的问题、重要的约定。只输出摘要文本，不要任何解释。`,
+      },
+      { role: 'user', content: pending.droppedText.slice(0, 20000) },
+    ],
+    provider: profile.provider,
+    apiKey: profile.apiKey,
+    baseUrl: profile.baseUrl,
+    model: settings.activeModel || profile.model,
+    temperature: 0.3,
+    topP: 0.9,
+    maxTokens: 600,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    stream: true,
+  }).catch(() => {
+    cleanup()
+    if (!finished) logWarn('compressDroppedHistory', '压缩请求失败')
+  })
 }
 
 /**
@@ -395,6 +493,13 @@ async function streamAIResponse(
     set({ isStreaming: false, currentRequestId: null, streamingContent: '' })
     // 异步执行完成回调
     onComplete(fullContent).catch((e) => logError('ChatStore:onComplete', e))
+
+    // 上下文溢出压缩：本轮结束后异步压缩被裁剪的早期对话（不阻塞）
+    if (pendingCompression) {
+      const pc = pendingCompression
+      pendingCompression = null
+      compressDroppedHistory(get, character, pc).catch((e) => logError('ChatStore:compress', e))
+    }
   })
 
   const unbindError = window.api.ai.onError((data: { requestId: string; error: string }) => {
@@ -1321,6 +1426,8 @@ ${previousFactsText}`,
   },
 
   editMessage: async (messageId, newContent, character) => {
+    // 编辑历史后上下文压缩缓存失效
+    await invalidateCompression(get, character)
     const state = get()
     const msg = state.messages.find((m) => m.id === messageId)
     if (!msg) return
@@ -1341,6 +1448,8 @@ ${previousFactsText}`,
   },
 
   deleteMessage: async (messageId, character) => {
+    // 删除历史后上下文压缩缓存失效
+    await invalidateCompression(get, character)
     await window.api.chat.deleteMessage(messageId, character.id, get().currentSessionId ?? undefined)
     set((state) => ({ messages: state.messages.filter((m) => m.id !== messageId) }))
     // 同步更新 session 元数据
@@ -1352,6 +1461,16 @@ ${previousFactsText}`,
 
   clearChat: async (characterId) => {
     const sessionId = get().currentSessionId
+    // 清空历史后上下文压缩缓存失效
+    if (sessionId) {
+      const cur = get().sessions.find((s) => s.id === sessionId)
+      if (cur?.compressedSummary) {
+        await window.api.chat.updateSession(characterId, sessionId, {
+          compressedSummary: null,
+          compressedRange: null,
+        }).catch(() => { /* 忽略 */ })
+      }
+    }
     await window.api.chat.clearChat(characterId, sessionId ?? undefined)
     set({ messages: [] })
     // 同步 session 元数据
@@ -1718,17 +1837,65 @@ ${previousFactsText}`,
     }
 
     const recentMessages: typeof messages = []
+    // 记录被裁剪的早期消息（供上下文溢出压缩）
+    let droppedStartTs = 0
+    let droppedEndTs = 0
+    let droppedTokens = 0
+    let droppedEndIndex = -1
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       const tokenCount = estimateTokens(msg.content || '', model)
         + (msg.images?.length ? msg.images.length * IMAGE_TOKEN_ESTIMATE : 0)
-      if (usedTokens + tokenCount > budgetBase) break
+      if (usedTokens + tokenCount > budgetBase) {
+        // 将被丢弃的早期消息（索引 0..i）
+        const dropped = messages.slice(0, i + 1)
+        droppedTokens = dropped.reduce((s, m) => s + estimateTokens(m.content || '', model), 0)
+        droppedStartTs = dropped[0]?.timestamp ?? 0
+        droppedEndTs = dropped[dropped.length - 1]?.timestamp ?? 0
+        droppedEndIndex = i
+        break
+      }
       recentMessages.unshift(msg)
       usedTokens += tokenCount
     }
 
+    // 上下文溢出压缩（P0-1）：有压缩摘要则注入；否则若裁剪量超阈值，标记异步压缩
+    const compression = settings.contextCompression ?? { enabled: true, minDropTokens: 2000 }
+    let compressedSummaryInjected = ''
+    if (compression.enabled && droppedTokens > 0 && currentSession) {
+      const covered = !!currentSession.compressedSummary
+        && !!currentSession.compressedRange
+        && droppedStartTs >= currentSession.compressedRange.startTs
+        && droppedEndTs <= currentSession.compressedRange.endTs
+      if (currentSession.compressedSummary && covered) {
+        // 已被压缩覆盖：注入摘要（历史段之前）
+        compressedSummaryInjected = currentSession.compressedSummary
+      } else if (droppedTokens >= (compression.minDropTokens ?? 2000)) {
+        // 标记压缩任务，流式完成后异步执行
+        pendingCompression = {
+          characterId: character.id,
+          sessionId: get().currentSessionId ?? '',
+          droppedText: droppedEndIndex >= 0
+            ? messages.slice(0, droppedEndIndex + 1).map((m) =>
+                `${m.role === 'user' ? userName : charNameForVars}: ${m.content}`
+              ).join('\n')
+            : '',
+          droppedStartTs,
+          droppedEndTs,
+        }
+      }
+    }
+
     // 历史消息段（单独构建，供 at_depth 世界书在中间插入）
     const historySegment: { role: 'user' | 'assistant' | 'system'; content: string; keepSeparate?: boolean }[] = []
+    // 上下文溢出压缩摘要：置于历史段最前（keepSeparate 避免被合并）
+    if (compressedSummaryInjected) {
+      historySegment.push({
+        role: 'system',
+        content: '【早期对话压缩摘要】\n' + compressedSummaryInjected,
+        keepSeparate: true,
+      })
+    }
     for (const msg of recentMessages) {
       historySegment.push({
         role: msg.role === 'user' ? 'user' : 'assistant',
