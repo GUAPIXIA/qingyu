@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info } from 'lucide-react'
 import type { Preset, Lorebook } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
@@ -652,11 +652,27 @@ function SliderRow({ label, value, min, max, step, disabled, hint }: {
   )
 }
 
-/** ⓘ 点击弹出提示（说明气泡） */
+/** ⓘ 点击弹出提示（说明气泡）
+ * 关闭机制：document 级点击监听（不依赖 fixed 遮罩，规避面板 transform 导致 fixed 定位失效的问题）
+ */
 function HintIcon({ hint }: { hint: React.ReactNode }) {
   const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    // 捕获阶段监听，确保先于面板其他点击处理
+    document.addEventListener('click', handler)
+    return () => document.removeEventListener('click', handler)
+  }, [open])
+
   return (
-    <span className="relative inline-flex">
+    <span ref={ref} className="relative inline-flex">
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
@@ -665,12 +681,9 @@ function HintIcon({ hint }: { hint: React.ReactNode }) {
         <Info className="w-3.5 h-3.5" />
       </button>
       {open && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-30 text-[10px] leading-relaxed text-tavern-text-muted">
-            {hint}
-          </div>
-        </>
+        <div className="absolute left-0 top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-50 text-[10px] leading-relaxed text-tavern-text-muted">
+          {hint}
+        </div>
       )}
     </span>
   )
