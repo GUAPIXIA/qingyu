@@ -33,8 +33,6 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
   const [modelListError, setModelListError] = useState(false)
   const [modelExpanded, setModelExpanded] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
-  /** 示例对话说明提示：ⓘ 点击弹出 */
-  const [showExampleHint, setShowExampleHint] = useState(false)
 
   // 计算角色绑定的世界书 ID 列表
   const boundLorebookIds = useMemo(() => {
@@ -263,12 +261,28 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                 value={activePreset?.temperature ?? 0.8}
                 min={0} max={2} step={0.1}
                 disabled
+                hint={
+                  <>
+                    <p>控制输出的<strong className="text-tavern-text-soft">随机性 / 创造性</strong>：</p>
+                    <ul className="mt-1 list-disc pl-3 space-y-0.5">
+                      <li>低（0.2~0.5）：稳定、严谨、可预测，适合事实性回复</li>
+                      <li>高（1.0+）：发散、有创意、更“活”，但可能偏离设定</li>
+                      <li>角色扮演常用 0.7~1.0</li>
+                    </ul>
+                  </>
+                }
               />
               <SliderRow
                 label="Top P"
                 value={activePreset?.topP ?? 0.95}
                 min={0} max={1} step={0.05}
                 disabled
+                hint={
+                  <>
+                    <p><strong className="text-tavern-text-soft">核采样</strong>：只从累计概率达到 P 的高概率 token 中采样。</p>
+                    <p className="mt-1.5">与温度配合使用，一般保持 0.9~1.0。微调时与温度二选一即可，不必同时反复调。</p>
+                  </>
+                }
               />
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3">
@@ -564,30 +578,19 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                   <option value="off">关闭</option>
                 </select>
                 {/* 示例对话作用提示：ⓘ 点击弹出 */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowExampleHint((v) => !v)}
-                    className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent transition-colors"
-                    title="示例对话是什么？"
-                  >
-                    <Info className="w-3.5 h-3.5" />
-                  </button>
-                  {showExampleHint && (
+                <HintIcon
+                  hint={
                     <>
-                      <div className="fixed inset-0 z-20" onClick={() => setShowExampleHint(false)} />
-                      <div className="absolute right-0 top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-30 text-[10px] leading-relaxed text-tavern-text-muted">
-                        <p>
-                          角色卡「对话示例」会作为<strong className="text-tavern-text-soft">风格示范</strong>注入上下文，
-                          帮助 AI 模仿角色的语气、口癖与格式（few-shot）。
-                        </p>
-                        <p className="mt-1.5 pt-1.5 border-t border-tavern-border-soft">
-                          仅首轮 / 关闭可节省每轮固定的 token 开销。
-                        </p>
-                      </div>
+                      <p>
+                        角色卡「对话示例」会作为<strong className="text-tavern-text-soft">风格示范</strong>注入上下文，
+                        帮助 AI 模仿角色的语气、口癖与格式（few-shot）。
+                      </p>
+                      <p className="mt-1.5 pt-1.5 border-t border-tavern-border-soft">
+                        仅首轮 / 关闭可节省每轮固定的 token 开销。
+                      </p>
                     </>
-                  )}
-                </div>
+                  }
+                />
               </div>
             </div>
           </Section>
@@ -621,13 +624,16 @@ function ParamChip({ label, value }: { label: string; value: number | undefined 
   )
 }
 
-function SliderRow({ label, value, min, max, step, disabled }: {
-  label: string; value: number; min: number; max: number; step: number; disabled?: boolean
+function SliderRow({ label, value, min, max, step, disabled, hint }: {
+  label: string; value: number; min: number; max: number; step: number; disabled?: boolean; hint?: React.ReactNode
 }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className="text-xs text-tavern-text-muted">{label}</label>
+        <label className="flex items-center gap-0.5 text-xs text-tavern-text-muted">
+          <span>{label}</span>
+          {hint && <HintIcon hint={hint} />}
+        </label>
         <span className="text-xs font-mono text-tavern-text-soft tabular-nums">{value}</span>
       </div>
       <input
@@ -643,6 +649,30 @@ function SliderRow({ label, value, min, max, step, disabled }: {
         )}
       />
     </div>
+  )
+}
+
+/** ⓘ 点击弹出提示（说明气泡） */
+function HintIcon({ hint }: { hint: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
+        className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent transition-colors"
+      >
+        <Info className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-30 text-[10px] leading-relaxed text-tavern-text-muted">
+            {hint}
+          </div>
+        </>
+      )}
+    </span>
   )
 }
 
