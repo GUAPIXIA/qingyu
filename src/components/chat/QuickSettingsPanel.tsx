@@ -589,6 +589,8 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                   )}
                 </div>
               </div>
+            </div>
+          </Section>
 
         </div>
       </div>
