@@ -318,24 +318,31 @@ export async function edgeSpeak(
   const { EdgeTTS } = await import('node-edge-tts')
 
   const tmpFile = join(tmpdir(), `qingyu-tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`)
-  const tts = new EdgeTTS({
-    voice,
-    outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
-    rate: opts.rate ?? '+0%',
-    pitch: opts.pitch ?? '+0Hz',
-    volume: opts.volume ?? '+0%',
-    timeout: 30000,
-    // 国内网络直连微软服务可能失败，支持走代理（复用封面下载代理配置）
-    ...(opts.proxy ? { proxy: opts.proxy } : {}),
-  })
-  try {
-    await tts.ttsPromise(text.slice(0, 3000), tmpFile)
-    const buf = readFileSync(tmpFile)
-    if (buf.length === 0) throw new Error('Edge TTS 未生成音频数据（请检查网络或代理）')
-    return buf.toString('base64')
-  } finally {
-    rmSync(tmpFile, { force: true })
+  // 尝试顺序：配置代理 → 失败回退直连（直连在多数网络可用，代理配置可能失效）
+  const attempts: Array<string | undefined> = opts.proxy ? [opts.proxy, undefined] : [undefined]
+  let lastErr: unknown = null
+  for (const proxy of attempts) {
+    try {
+      const tts = new EdgeTTS({
+        voice,
+        outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
+        rate: opts.rate ?? '+0%',
+        pitch: opts.pitch ?? '+0Hz',
+        volume: opts.volume ?? '+0%',
+        timeout: 30000,
+        ...(proxy ? { proxy } : {}),
+      })
+      await tts.ttsPromise(text.slice(0, 3000), tmpFile)
+      const buf = readFileSync(tmpFile)
+      if (buf.length === 0) throw new Error('Edge TTS 未生成音频数据（请检查网络或代理）')
+      return buf.toString('base64')
+    } catch (e) {
+      lastErr = e
+      // 清理可能的部分文件后重试
+      try { rmSync(tmpFile, { force: true }) } catch { /* ignore */ }
+    }
   }
+  throw lastErr instanceof Error ? lastErr : new Error('Edge TTS 合成失败（请检查网络）')
 }
 
 export function registerTTSIPC(ipcMain: IpcMain): void {

@@ -474,6 +474,8 @@ export interface TTSModelConfig {
   voice: string
   apiKey: string
   baseUrl: string
+  /** Edge TTS 代理地址（如 http://127.0.0.1:7890）；留空 = 直连 */
+  proxy?: string
   enabled: boolean
   order: number
 }

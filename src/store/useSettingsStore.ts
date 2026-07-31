@@ -21,6 +21,7 @@ export interface ActiveTTSProfile {
   voice: string
   apiKey: string
   baseUrl: string
+  proxy?: string
 }
 
 export interface ActiveImageGenProfile {
@@ -353,6 +354,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       voice: m.voice,
       apiKey: m.apiKey,
       baseUrl: m.baseUrl,
+      proxy: m.proxy,
     }
   },
 
