@@ -1,5 +1,21 @@
 # 更新日志
 
+## [0.9.0] - 2026-07-31
+
+### 新功能
+
+- **Token 精确计数（tiktoken 接入）**：
+  - 接入 tiktoken 1.0.22 真实分词器，支持 o200k_base / cl100k_base / p50k_base / r50k_base / gpt2 五种编码
+  - gpt-4o / gpt-4.1 / o1 / o3 / o4 / gpt-5 等 OpenAI 模型走 tiktoken 官方模型表精确匹配
+  - Claude / Gemini / DeepSeek / Qwen / Llama / Mistral 等非 OpenAI 模型使用 token 效率相近的编码近似（cl100k_base / o200k_base）
+  - 编码实例缓存：避免每次计数都创建/释放分词器实例
+  - 未知模型自动回退启发式估算，不抛错
+  - 加载失败时自动降级启发式并写入日志
+  - 对比启发式估算：中文 RP 段落误差从 21% 降至 0，英文长文本从 30% 降至 0
+  - 打包产物已包含 wasm + 全部 BPE 编码文件，离线可用
+
+---
+
 ## [0.8.9] - 2026-07-29
 
 ### 新功能
