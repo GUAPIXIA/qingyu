@@ -8,7 +8,7 @@ import { useCharacterStore } from './useCharacterStore'
 import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
 import { countChars } from '../utils/charCounter'
 import { replaceVariables } from '../utils/variables'
-import { getInstructTemplate } from '../utils/chatTemplates'
+import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages, stripThought, normalizeThoughtTags, trimContinuationOverlap } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { getEffectiveLorebookIds, lorebookCache, triggerLorebooks } from '../utils/lorebook'
@@ -330,10 +330,13 @@ async function streamAIResponse(
     }, STREAM_TIMEOUT_FALLBACK_MS),
   }
 
-  // 构建 instruct 模板
-  const instructTemplate = profile.useInstructTemplate
-    ? getInstructTemplate(profile.provider, settings.activeModel || profile.model)
-    : undefined
+  // 构建 instruct 模板：预设显式指定 > profile 自动推断
+  const instructTemplate = resolveEffectiveTemplate(
+    preset?.contextTemplate,
+    profile.provider,
+    settings.activeModel || profile.model,
+    profile.useInstructTemplate,
+  )
 
   const params: ChatParams = {
     requestId,
@@ -607,9 +610,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     let errored = false
     let errMsg = ''
 
-    // 构建 instruct 模板（与 sendMessage 保持一致）
+    // 构建 instruct 模板（摘要无预设，跟随 profile 开关）
     const instructTemplate = profile.useInstructTemplate
-      ? getInstructTemplate(profile.provider, settings.activeModel || profile.model)
+      ? resolveEffectiveTemplate(undefined, profile.provider, settings.activeModel || profile.model, true)
       : undefined
 
     return new Promise((resolve) => {
@@ -1608,9 +1611,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Assistant Prefix：在上下文末尾添加空的 assistant 消息，引导模型输出格式
     // 对于 instruct 模式且 appendAssistantPrefix=true 的情况，添加角色名前缀
     // 续写模式跳过：空 prefix 会被 merge 进续写指令之后，干扰续写引导
-    const instructTemplate = profile?.useInstructTemplate
-      ? getInstructTemplate(profile.provider, model)
-      : undefined
+    const instructTemplate = resolveEffectiveTemplate(
+      preset?.contextTemplate,
+      profile?.provider || 'openai',
+      model,
+      profile?.useInstructTemplate,
+    )
     if (!opts?.continuation && instructTemplate?.appendAssistantPrefix && charNameForVars) {
       context.push({
         role: 'assistant',

@@ -10,7 +10,7 @@ import { countChars } from '../utils/charCounter'
 import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
-import { getInstructTemplate } from '../utils/chatTemplates'
+import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { logError, logInfo } from '../lib/logger'
 
 const STREAM_THROTTLE_MS = 50
@@ -986,9 +986,12 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
     }
 
     // Instruct 模板：appendAssistantPrefix 时追加空 assistant 消息
-    const instructTemplate = profile?.useInstructTemplate
-      ? getInstructTemplate(profile.provider, model)
-      : undefined
+    const instructTemplate = resolveEffectiveTemplate(
+      preset?.contextTemplate,
+      profile?.provider || 'openai',
+      model,
+      profile?.useInstructTemplate,
+    )
     if (instructTemplate?.appendAssistantPrefix && charNameForVars) {
       historyContext.push({ role: 'assistant', content: '' })
     }
@@ -1217,9 +1220,12 @@ async function streamGroupAI(
 
   // 发起 AI 请求
   try {
-    const instructTemplate = profile.useInstructTemplate
-      ? getInstructTemplate(profile.provider, profile.model)
-      : undefined
+    const instructTemplate = resolveEffectiveTemplate(
+      preset?.contextTemplate,
+      profile.provider,
+      profile.model,
+      profile.useInstructTemplate,
+    )
     await window.api.ai.chat({
       requestId,
       messages: context,
@@ -1386,9 +1392,12 @@ async function streamGroupAIFree(
   }
 
   try {
-    const instructTemplate = profile.useInstructTemplate
-      ? getInstructTemplate(profile.provider, profile.model)
-      : undefined
+    const instructTemplate = resolveEffectiveTemplate(
+      preset?.contextTemplate,
+      profile.provider,
+      profile.model,
+      profile.useInstructTemplate,
+    )
     await window.api.ai.chat({
       requestId,
       messages: context,

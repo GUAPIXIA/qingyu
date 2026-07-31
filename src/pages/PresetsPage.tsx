@@ -4,7 +4,22 @@ import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Sliders, Plus, Upload, Trash2, Shield } from 'lucide-react'
+import { BUILTIN_TEMPLATE_NAMES } from '../utils/chatTemplates'
 import type { Preset } from '../../shared/types'
+
+/** 模板名 → 展示标签 */
+const TEMPLATE_LABELS: Record<string, string> = {
+  chatml: 'ChatML（Qwen/DeepSeek）',
+  qwen: 'Qwen（ChatML）',
+  deepseek: 'DeepSeek（ChatML）',
+  llama2: 'Llama 2',
+  llama3: 'Llama 3',
+  mistral: 'Mistral',
+  phi3: 'Phi-3',
+  alpaca: 'Alpaca',
+  gemma: 'Gemma',
+  'command-r': 'Command R',
+}
 
 function createPreset(): Preset {
   return {
@@ -20,6 +35,7 @@ function createPreset(): Preset {
     frequencyPenalty: 0,
     presencePenalty: 0,
     isBuiltin: false,
+    contextTemplate: '',
   }
 }
 
@@ -224,6 +240,21 @@ export function PresetsPage() {
                 value={editingPreset.jailbreak}
                 onChange={(e) => updateField('jailbreak', e.target.value)}
               />
+            </div>
+
+            <div>
+              <label className="label">上下文模板（Ollama 本地模型用）</label>
+              <select
+                className="select"
+                value={editingPreset.contextTemplate || ''}
+                onChange={(e) => updateField('contextTemplate', e.target.value || undefined)}
+              >
+                <option value="">不启用（消息数组直发）</option>
+                {BUILTIN_TEMPLATE_NAMES.map((name) => (
+                  <option key={name} value={name}>{TEMPLATE_LABELS[name] ?? name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-tavern-text-muted mt-1">启用后 Ollama 改用纯文本接口 + 模板包装，适合 chat template 缺失/异常的本地模型；Qwen / DeepSeek 选 ChatML</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

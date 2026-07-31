@@ -2,6 +2,7 @@
 import type { IpcMain, WebContents } from 'electron'
 import type { ChatParams, ProviderType } from '../../shared/types'
 import { countTokens, countMessagesTokens } from './tokenizer'
+import { applyInstructTemplate } from '../../src/utils/chatTemplates'
 import { createLogger } from './logger'
 import { chatWithTools } from './toolLoop'
 import { safeSend } from '../utils/safeSend'
@@ -794,6 +795,89 @@ const ollamaAdapter: AIAdapter = {
   async chat(params, onChunk, signal, onUsage) {
     const { baseUrl, model, messages, temperature, topP, maxTokens,
             frequencyPenalty, presencePenalty, stream } = params
+
+    // Instruct 模板模式：把消息包装为纯文本，走 /api/generate（原始补全接口）
+    // 适用场景：本地模型的 chat template 缺失/异常，或需要精确控制包装格式时
+    if (params.instructTemplate) {
+      const { text, stopSequences } = applyInstructTemplate(messages, params.instructTemplate)
+      const url = `${baseUrl.replace(/\/$/, '')}/api/generate`
+
+      const options: Record<string, unknown> = {
+        temperature,
+        top_p: topP,
+      }
+      if (maxTokens && maxTokens > 0) options.num_predict = maxTokens
+      if (frequencyPenalty !== undefined) options.frequency_penalty = frequencyPenalty
+      if (presencePenalty !== undefined) options.presence_penalty = presencePenalty
+      // 模板停止序列
+      if (stopSequences.length > 0) options.stop = stopSequences
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, prompt: text, options, stream }),
+        signal,
+      })
+
+      if (!response.ok) {
+        const errText = await response.text()
+        throw new Error(`Ollama API 错误 ${response.status}: ${errText}`)
+      }
+
+      if (!stream) {
+        const data: any = await response.json()
+        const content = data.response ?? ''
+        onChunk(content)
+        if (onUsage) {
+          onUsage({
+            promptTokens: data.prompt_eval_count ?? 0,
+            completionTokens: data.eval_count ?? 0,
+            totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
+          })
+        }
+        return normalizeThoughtTags(content)
+      }
+
+      // 流式：/api/generate 返回 ndjson，每行 { response, done }
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('无法读取响应流')
+      const decoder = new TextDecoder()
+      let fullText = ''
+      let buffer = ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+              const parsed = JSON.parse(line)
+              const delta = parsed.response ?? ''
+              if (delta) {
+                fullText += delta
+                onChunk(delta)
+              }
+              if (parsed.done && parsed.eval_count !== undefined && onUsage) {
+                onUsage({
+                  promptTokens: parsed.prompt_eval_count ?? 0,
+                  completionTokens: parsed.eval_count ?? 0,
+                  totalTokens: (parsed.prompt_eval_count ?? 0) + (parsed.eval_count ?? 0),
+                })
+              }
+            } catch {
+              // 忽略
+            }
+          }
+        }
+      } finally {
+        try { reader.releaseLock() } catch { /* ignore */ }
+      }
+      return normalizeThoughtTags(fullText)
+    }
+
     const url = `${baseUrl.replace(/\/$/, '')}/api/chat`
 
     // 修复 #6: 补全采样参数
