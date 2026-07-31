@@ -213,6 +213,8 @@ export interface Preset {
   isBuiltin: boolean
   /** 上下文模板名（如 'chatml' / 'llama3' / 'alpaca'；空 = 不启用模板包装） */
   contextTemplate?: string
+  /** 分组名（按用途组织，如：通用 / 越狱 / 风格特化；空 = 未分组） */
+  group?: string
 }
 
 /** 群聊 */
