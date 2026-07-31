@@ -46,13 +46,15 @@ function setup(memoryFacts: string[] | undefined, semanticFactsHits: string[]) {
       memory: '摘要内容',
       memoryUpdatedAt: 0,
       memoryFacts,
-    } as ChatSession],
+      messageCount: 0,
+      lastMessage: '',
+    } as ChatSession & { messageCount: number; lastMessage: string }],
     currentSessionId: 's1',
     activeLorebookIds: [],
     _semanticFactsHits: semanticFactsHits,
   })
   useSettingsStore.setState({
-    settings: { ...getDefaultSettings(), memoryEnabled: undefined },
+    settings: { ...getDefaultSettings() },
   })
 }
 
