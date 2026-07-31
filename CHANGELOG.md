@@ -1,5 +1,19 @@
 # 更新日志
 
+## [0.9.2] - 2026-07-31
+
+### 作者注释（Author's Note）
+
+- **两级配置**：全局级（设置页）+ 角色级（角色编辑器覆盖全局）
+- **三档注入位置**：top（系统提示后）/ middle（历史消息中按深度）/ bottom（最新消息前）
+- **深度语义对齐 ST**：depth 0 = 最新消息之前，depth 1 = 倒数第二条之前（查证 ST populationInjectionPrompts 源码确认：倒序数组 splice(i)）
+- **keepSeparate 机制**：修复 mergeConsecutiveMessages 把注入的 system 消息合并进相邻消息的问题（同时修复 at_depth 世界书深度注入被合并的潜在 bug）
+- **预算纳入**：AN token 计入上下文预算（历史裁剪前预留）
+- **变量替换**：支持 {{char}} / {{user}}
+- 新增 8 个 buildContext 集成测试（位置/覆盖/关闭/变量替换）
+
+---
+
 ## [0.9.1] - 2026-07-31
 
 ### 世界书深度对齐（at_depth + 统一触发引擎）

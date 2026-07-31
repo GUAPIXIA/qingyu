@@ -31,6 +31,8 @@ export interface Character {
   postHistoryInstructions?: string
   /** 创作者备注（隐藏元数据，导入导出保留） */
   creatorNotes?: string
+  /** 角色级作者注释（覆盖全局 settings.authorNote；未设置时使用全局） */
+  authorNote?: AuthorNoteConfig
   /** 角色卡版本号 */
   characterVersion?: string
   /** 群聊专用开场白 */
@@ -367,6 +369,18 @@ export interface Settings {
   fontFamily?: string
   /** 自定义字体 ID（对应 font:list 返回的 id），null 表示使用内置字体 */
   customFontId?: string | null
+  /** 作者注释（全局级；角色可设置 authorNote 覆盖） */
+  authorNote?: AuthorNoteConfig
+}
+
+/** 作者注释配置（ST Author's Note 简化版） */
+export interface AuthorNoteConfig {
+  enabled: boolean
+  text: string
+  /** 注入位置：top = 系统提示之后，middle = 历史消息中（按 depth），bottom = 历史消息末尾 */
+  position: 'top' | 'middle' | 'bottom'
+  /** middle 时的注入深度：0 = 对话末尾，1 = 倒数第二条消息之后，依此类推 */
+  depth: number
 }
 
 // ===================== 功能模型配置 =====================

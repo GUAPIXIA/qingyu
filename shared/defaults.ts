@@ -40,6 +40,8 @@ export function getDefaultSettings(): Settings {
     showTokenCount: true,
     enableThoughtFormat: true,
     autoExpandThought: false,
+    exampleDialogMode: 'always',
+    lorebookRatio: 0.3,
     coverBlurStrength: 8,
     enableUsageTracking: true,
     useCoverAsBackground: false,
@@ -47,14 +49,11 @@ export function getDefaultSettings(): Settings {
     coverProxyUrl: 'http://127.0.0.1:7890',
     fontFamily: 'system',
     customFontId: null,
-    pricingRules: [
-      { id: 'builtin-gpt4o', modelPattern: 'gpt-4o*', inputPricePer1M: 2.5, outputPricePer1M: 10, isBuiltin: true },
-      { id: 'builtin-gpt4o-mini', modelPattern: 'gpt-4o-mini*', inputPricePer1M: 0.15, outputPricePer1M: 0.6, isBuiltin: true },
-      { id: 'builtin-claude35', modelPattern: 'claude-3-5*', inputPricePer1M: 3, outputPricePer1M: 15, isBuiltin: true },
-      { id: 'builtin-claude37', modelPattern: 'claude-3-7*', inputPricePer1M: 3, outputPricePer1M: 15, isBuiltin: true },
-      { id: 'builtin-gemini', modelPattern: 'gemini-*', inputPricePer1M: 1.25, outputPricePer1M: 5, isBuiltin: true },
-      { id: 'builtin-deepseek', modelPattern: 'deepseek*', inputPricePer1M: 0.14, outputPricePer1M: 0.28, isBuiltin: true },
-      { id: 'builtin-qwen', modelPattern: 'qwen*', inputPricePer1M: 0.5, outputPricePer1M: 1.5, isBuiltin: true },
-    ],
+    authorNote: {
+      enabled: false,
+      text: '',
+      position: 'middle',
+      depth: 1,
+    },
   }
 }

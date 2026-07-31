@@ -1384,7 +1384,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const userName = settings.userName || '用户'
     // 修复 #8: 保留图片消息（content 为空但有 images 时不丢弃）
     const messages = get().messages.filter((m) => (m.content || (m.images && m.images.length > 0)) && m.role !== 'system')
-    const context: { role: 'system' | 'user' | 'assistant'; content: string }[] = []
+    const context: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = []
 
     // ===== System Prompt 构建 =====
     const charNameForVars = character.translatedContent?.name || character.name
@@ -1489,6 +1489,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     context.push({ role: 'system', content: systemContent })
 
+    // ===== 作者注释（Author's Note）=====
+    // 角色级优先，回退全局；enabled 且文本非空才注入
+    const anConfig = character.authorNote ?? settings.authorNote
+    let anText = ''
+    if (anConfig?.enabled && anConfig.text?.trim()) {
+      anText = replaceVariables(anConfig.text.trim(), userName, character.name)
+    }
+
+    // top：紧跟系统提示注入（keepSeparate：避免被 merge 合并进系统提示）
+    if (anText && anConfig!.position === 'top') {
+      context.push({ role: 'system', content: anText, keepSeparate: true })
+    }
+
     // 对话示例位置与发送模式配置
     const exampleDialogPosition = settings.exampleDialogPosition || 'after_system'
     const exampleDialogMode = settings.exampleDialogMode || 'always'
@@ -1514,6 +1527,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ? replaceVariables(character.postHistoryInstructions, userName, character.name)
       : ''
     if (postHistoryText) usedTokens += estimateTokens(postHistoryText, model)
+    // 预留作者注释（middle/bottom 在历史段内注入，需计入预算）
+    if (anText && anConfig!.position !== 'top') {
+      usedTokens += estimateTokens(anText, model)
+    }
     // 预留 after_history 示例对话（同理）
     if (exampleDialogPosition === 'after_history' && exampleDialogContent) {
       usedTokens += estimateTokens(exampleDialogContent, model)
@@ -1530,7 +1547,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     // 历史消息段（单独构建，供 at_depth 世界书在中间插入）
-    const historySegment: { role: 'user' | 'assistant' | 'system'; content: string }[] = []
+    const historySegment: { role: 'user' | 'assistant' | 'system'; content: string; keepSeparate?: boolean }[] = []
     for (const msg of recentMessages) {
       historySegment.push({
         role: msg.role === 'user' ? 'user' : 'assistant',
@@ -1538,13 +1555,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
     }
 
-    // at_depth 世界书注入：按深度插入历史消息段
+    // at_depth 世界书 + 作者注释（middle/bottom）统一按深度注入历史消息段
     // ST 语义：depth 0 = 对话末尾，1 = 倒数第二条之后，n = 从末尾数 n 条之后
-    if (atDepthItems.length > 0) {
-      const sorted = [...atDepthItems].sort((a, b) => (a.depth - b.depth) || (a.order - b.order))
+    const depthInserts: { content: string; depth: number; order: number }[] =
+      atDepthItems.map((i) => ({ content: i.content, depth: i.depth, order: i.order }))
+    if (anText && anConfig!.position !== 'top') {
+      // bottom = 末尾（depth 0）；middle = 按配置深度；同深度下 AN 排在世界书前
+      const anDepth = anConfig!.position === 'middle' ? Math.max(0, anConfig!.depth) : 0
+      depthInserts.push({ content: anText, depth: anDepth, order: -1 })
+    }
+    if (depthInserts.length > 0) {
+      const sorted = depthInserts.sort((a, b) => (a.depth - b.depth) || (a.order - b.order))
       const insertMap = new Map<number, string[]>()
       for (const item of sorted) {
-        const idx = Math.max(0, Math.min(recentMessages.length, recentMessages.length - item.depth))
+        // ST 语义：depth 0 = 最新消息之前（末尾上方），depth 1 = 倒数第二条之前
+        const idx = Math.max(0, Math.min(recentMessages.length - 1, recentMessages.length - 1 - item.depth))
         if (!insertMap.has(idx)) insertMap.set(idx, [])
         insertMap.get(idx)!.push(item.content)
       }
@@ -1552,7 +1577,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const indices = [...insertMap.keys()].sort((a, b) => b - a)
       for (const idx of indices) {
         const contents = insertMap.get(idx)!
-        historySegment.splice(idx, 0, ...contents.map((c) => ({ role: 'system' as const, content: c })))
+        historySegment.splice(idx, 0, ...contents.map((c) => ({ role: 'system' as const, content: c, keepSeparate: true })))
       }
     }
 

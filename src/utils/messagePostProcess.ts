@@ -8,6 +8,8 @@
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
+  /** 标记为需保持独立的注入消息（如 at_depth 世界书、作者注释），跳过合并 */
+  keepSeparate?: boolean
   [key: string]: any
 }
 
@@ -33,6 +35,13 @@ export function mergeConsecutiveMessages(messages: ChatMessage[]): ChatMessage[]
 
     if (!lastMsg) {
       // 第一条消息直接加入
+      merged.push({ ...msg })
+      continue
+    }
+
+    // keepSeparate：按深度注入的 system 消息保持独立，不被合并进相邻消息
+    // （否则 at_depth 世界书 / 作者注释会被并入前一条消息，深度注入失效）
+    if (msg.keepSeparate || lastMsg.keepSeparate) {
       merged.push({ ...msg })
       continue
     }
@@ -181,3 +190,33 @@ export function stripThought(text: string): string {
   if (!text) return text
   return normalizeThoughtTags(text).replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
 }
+
+/** 续写重叠去重的最小重叠长度（字符） */
+const MIN_CONTINUATION_OVERLAP = 8
+
+/**
+ * 续写复述前缀去重
+ *
+ * 模型续写时常会复述原消息的结尾（如把最后一句重打一遍再接新内容）。
+ * 此函数检测 next 开头与 prev 结尾的最长重叠（≥ MIN_CONTINUATION_OVERLAP 字符），
+ * 剪掉 next 的重叠前缀并清理首部空白。
+ *
+ * 不做智能改写/段落重排，衔接语义由续写指令负责。
+ *
+ * @param prev 原消息内容
+ * @param next 模型返回的续写内容
+ * @returns 去重后的续写内容
+ */
+export function trimContinuationOverlap(prev: string, next: string): string {
+  if (!prev || !next) return next
+  // 最长可能重叠不超过两者较短长度
+  const maxOverlap = Math.min(prev.length, next.length)
+  for (let len = maxOverlap; len >= MIN_CONTINUATION_OVERLAP; len--) {
+    if (prev.endsWith(next.slice(0, len))) {
+      // 剪掉重叠前缀，并清理剪切处残留的首部空白
+      return next.slice(len).replace(/^\s+/, '')
+    }
+  }
+  return next
+}
+
