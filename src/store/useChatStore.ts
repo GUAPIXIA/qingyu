@@ -27,9 +27,11 @@ const STREAM_THROTTLE_MS = 50
 /** 默认世界书扫描深度（最近 N 条消息） */
 const DEFAULT_LOREBOOK_SCAN_DEPTH = 10
 
+/** 语义触发扫描文本的 token 上限（大上下文下扩大语义判断范围） */
+const SEMANTIC_SCAN_MAX_TOKENS = 4000
+
 /** 世界书 token 预算占上下文预算（budgetBase）的默认比例 */
 const DEFAULT_LOREBOOK_RATIO = 0.3
-
 /** 启发式 token 估算的安全余量系数（吸收估算误差，替代精确计数） */
 const TOKEN_BUDGET_SAFETY = 0.95
 
@@ -226,12 +228,25 @@ async function fetchSemanticLoreHits(get: StoreGet, character: Character): Promi
   const lorebookIds = get().activeLorebookIds
   if (lorebookIds.length === 0) return clear()
 
-  // 扫描文本（与 buildContext 相同的 scanDepth 逻辑）
+  // 语义扫描范围：按 token 预算自适应（上限 4000 token，下限 scanDepth 条），大上下文下判断范围更广
   const scanDepth = lorebookIds
     .map(id => lorebookCache.get(id)?.scanDepth)
     .filter((d): d is number => typeof d === 'number' && d > 0)
     .reduce((max, d) => Math.max(max, d), DEFAULT_LOREBOOK_SCAN_DEPTH)
-  const scanText = get().messages.slice(-scanDepth).map((m) => m.content).join(' ')
+  const activeModel = useSettingsStore.getState().getActiveProfile()?.model || settings.activeModel
+  const scanText = (() => {
+    const msgs = get().messages
+    const picked: string[] = []
+    let tokens = 0
+    for (let i = msgs.length - 1; i >= 0 && picked.length < scanDepth; i--) {
+      const content = msgs[i].content || ''
+      if (!content) continue
+      tokens += estimateTokens(content, activeModel)
+      if (picked.length > 0 && tokens > SEMANTIC_SCAN_MAX_TOKENS) break
+      picked.unshift(content)
+    }
+    return picked.join(' ')
+  })()
   if (!scanText.trim()) return clear()
 
   try {

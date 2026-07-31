@@ -23,6 +23,9 @@ const STREAM_TIMEOUT_MS = 5 * 60 * 1000
 /** 世界书 token 预算占上下文预算的默认比例（与单聊路径一致） */
 const DEFAULT_LOREBOOK_RATIO = 0.3
 
+/** 语义触发扫描文本的 token 上限（大上下文下扩大语义判断范围） */
+const SEMANTIC_SCAN_MAX_TOKENS = 4000
+
 /** 启发式 token 估算的安全余量系数 */
 const TOKEN_BUDGET_SAFETY = 0.95
 
@@ -1109,11 +1112,24 @@ async function fetchGroupSemanticLoreHits(get: any, group: GroupChat, charName: 
     .map(id => lorebookCache.get(id)?.scanDepth)
     .filter((d): d is number => typeof d === 'number' && d > 0)
     .reduce((max, d) => Math.max(max, d), 10)
-  const scanText = get().messages.slice(-scanDepth).map((m: GroupMessage) => {
-    if (m.characterId === '__user__') return m.content
-    const c = charStore.characters.find((ch) => ch.id === m.characterId)
-    return `【${c?.name || '未知角色'}】${m.content}`
-  }).join(' ')
+  // 语义扫描范围：按 token 预算自适应（上限 4000 token，下限 scanDepth 条）
+  const activeModel = useSettingsStore.getState().getActiveProfile()?.model || settings.activeModel
+  const scanText = (() => {
+    const msgs = get().messages
+    const picked: string[] = []
+    let tokens = 0
+    for (let i = msgs.length - 1; i >= 0 && picked.length < scanDepth; i--) {
+      const m = msgs[i] as GroupMessage
+      const content = m.characterId === '__user__'
+        ? m.content
+        : `【${charStore.characters.find((ch) => ch.id === m.characterId)?.name || '未知角色'}】${m.content}`
+      if (!m.content) continue
+      tokens += estimateTokens(content, activeModel)
+      if (picked.length > 0 && tokens > SEMANTIC_SCAN_MAX_TOKENS) break
+      picked.unshift(content)
+    }
+    return picked.join(' ')
+  })()
   if (!scanText.trim()) return clear()
 
   try {
