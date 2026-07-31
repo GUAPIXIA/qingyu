@@ -131,6 +131,7 @@ const presetApi: PresetAPI = {
   save: (preset) => ipcRenderer.invoke('preset:save', preset),
   delete: (id) => ipcRenderer.invoke('preset:delete', id),
   importJson: () => ipcRenderer.invoke('preset:importJson'),
+  exportJson: (id) => ipcRenderer.invoke('preset:exportJson', id),
 }
 
 // ---- TTS ----

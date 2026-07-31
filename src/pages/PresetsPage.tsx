@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { Sliders, Plus, Upload, Trash2, Shield } from 'lucide-react'
+import { Sliders, Plus, Upload, Trash2, Shield, Copy, Download, ChevronDown, ChevronRight } from 'lucide-react'
 import { BUILTIN_TEMPLATE_NAMES } from '../utils/chatTemplates'
 import type { Preset } from '../../shared/types'
 
@@ -36,13 +36,21 @@ function createPreset(): Preset {
     presencePenalty: 0,
     isBuiltin: false,
     contextTemplate: '',
+    group: '',
   }
+}
+
+/** 分组键：空 group 归入「未分组」 */
+function groupKey(preset: Preset): string {
+  return preset.group?.trim() || '未分组'
 }
 
 export function PresetsPage() {
   const [presets, setPresets] = useState<Preset[]>([])
   const [editingPreset, setEditingPreset] = useState<Preset | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [busyMsg, setBusyMsg] = useState<string | null>(null)
 
   const loadPresets = () => {
     window.api.preset.list().then(setPresets)
@@ -52,6 +60,26 @@ export function PresetsPage() {
     loadPresets()
   }, [])
 
+  /** 按分组聚合（保留组出现顺序） */
+  const grouped = useMemo(() => {
+    const map = new Map<string, Preset[]>()
+    for (const preset of presets) {
+      const key = groupKey(preset)
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(preset)
+    }
+    return [...map.entries()]
+  }, [presets])
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   const handleNew = () => {
     setEditingPreset(createPreset())
   }
@@ -59,6 +87,30 @@ export function PresetsPage() {
   const handleImport = async () => {
     const imported = await window.api.preset.importJson()
     if (imported) loadPresets()
+  }
+
+  /** 一键复制：基于任意预设（含内置）创建可编辑副本 */
+  const handleDuplicate = async (preset: Preset) => {
+    const copy: Preset = {
+      ...preset,
+      id: nanoid(),
+      name: `${preset.name} (副本)`,
+      isBuiltin: false,
+    }
+    await window.api.preset.save(copy)
+    loadPresets()
+  }
+
+  /** 导出单个预设 JSON */
+  const handleExport = async (preset: Preset) => {
+    setBusyMsg(`正在导出「${preset.name}」...`)
+    try {
+      const r = await window.api.preset.exportJson(preset.id)
+      if (r.error) setBusyMsg(`导出失败：${r.error}`)
+      else setBusyMsg(null)
+    } finally {
+      setBusyMsg(null)
+    }
   }
 
   const handleEdit = (preset: Preset) => {
@@ -123,56 +175,100 @@ export function PresetsPage() {
             }
           />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {presets.map((preset) => (
-              <div
-                key={preset.id}
-                onClick={() => handleEdit(preset)}
-                className="card p-4 cursor-pointer hover:bg-tavern-bg-hover transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Sliders className="w-4 h-4 text-tavern-accent shrink-0" />
-                    <h3 className="font-medium text-tavern-text truncate">{preset.name}</h3>
-                    {preset.isBuiltin && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tavern-accent-soft text-tavern-accent text-xs shrink-0">
-                        <Shield className="w-3 h-3" />
-                        内置
-                      </span>
-                    )}
-                  </div>
-                  {!preset.isBuiltin && (
-                    <button
-                      className="btn-ghost p-1.5 text-tavern-danger shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setDeleteId(preset.id)
-                      }}
-                      title="删除"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+          <div className="max-w-5xl mx-auto space-y-4">
+            {busyMsg && <div className="text-sm text-tavern-text-muted">{busyMsg}</div>}
+            {grouped.map(([group, groupPresets]) => {
+              const collapsed = collapsedGroups.has(group)
+              return (
+                <div key={group}>
+                  <button
+                    onClick={() => toggleGroup(group)}
+                    className="flex items-center gap-1.5 text-sm font-medium text-tavern-text-muted hover:text-tavern-text w-full mb-2"
+                  >
+                    {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    <span>{group}</span>
+                    <span className="text-xs text-tavern-text-muted/60">（{groupPresets.length} 个）</span>
+                  </button>
+                  {!collapsed && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {groupPresets.map((preset) => (
+                        <div
+                          key={preset.id}
+                          onClick={() => handleEdit(preset)}
+                          className="card p-4 cursor-pointer hover:bg-tavern-bg-hover transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Sliders className="w-4 h-4 text-tavern-accent shrink-0" />
+                              <h3 className="font-medium text-tavern-text truncate">{preset.name}</h3>
+                              {preset.isBuiltin && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tavern-accent-soft text-tavern-accent text-xs shrink-0">
+                                  <Shield className="w-3 h-3" />
+                                  内置
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              {/* 复制 */}
+                              <button
+                                className="btn-ghost p-1.5 text-tavern-text-muted hover:text-tavern-accent shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDuplicate(preset)
+                                }}
+                                title="复制为新预设"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              {/* 导出 */}
+                              <button
+                                className="btn-ghost p-1.5 text-tavern-text-muted hover:text-tavern-accent shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleExport(preset)
+                                }}
+                                title="导出 JSON"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                              {!preset.isBuiltin && (
+                                <button
+                                  className="btn-ghost p-1.5 text-tavern-danger shrink-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setDeleteId(preset.id)
+                                  }}
+                                  title="删除"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xs text-tavern-text-muted line-clamp-2 mb-3 min-h-[2rem]">
+                            {preset.description || '无描述'}
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
+                              温度 {preset.temperature}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
+                              TopP {preset.topP}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
+                              Token {preset.maxTokens}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
+                              上下文 {preset.maxContext > 0 ? preset.maxContext : '跟随模型'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <p className="text-xs text-tavern-text-muted line-clamp-2 mb-3 min-h-[2rem]">
-                  {preset.description || '无描述'}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                    温度 {preset.temperature}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                    TopP {preset.topP}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                    Token {preset.maxTokens}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                    上下文 {preset.maxContext > 0 ? preset.maxContext : '跟随模型'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -211,6 +307,19 @@ export function PresetsPage() {
                   value={editingPreset.name}
                   onChange={(e) => updateField('name', e.target.value)}
                 />
+              </div>
+              <div>
+                <label className="label">分组</label>
+                <input
+                  className="input"
+                  list="preset-groups"
+                  value={editingPreset.group ?? ''}
+                  onChange={(e) => updateField('group', e.target.value)}
+                  placeholder="如：通用 / 越狱 / 风格特化"
+                />
+                <datalist id="preset-groups">
+                  {grouped.map(([g]) => <option key={g} value={g} />)}
+                </datalist>
               </div>
               <div>
                 <label className="label">描述</label>

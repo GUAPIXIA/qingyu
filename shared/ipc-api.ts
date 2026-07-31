@@ -188,6 +188,7 @@ export interface PresetAPI {
   save(preset: Preset): Promise<void>
   delete(id: string): Promise<void>
   importJson(): Promise<Preset | null>
+  exportJson(id: string): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
 }
 
 // ===================== 群聊接口 =====================

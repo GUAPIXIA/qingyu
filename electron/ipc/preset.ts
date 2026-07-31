@@ -269,4 +269,29 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
     log.info('预设已导入', { id: preset.id, name: preset.name })
     return preset
   })
+
+  // 导出单个预设到 JSON
+  ipcMain.handle('preset:exportJson', async (_e, id: string) => {
+    safeId(id)
+    const { readFileSync, writeFileSync } = await import('node:fs')
+    const { dialog: d } = await import('electron')
+    // 内置预设：从内置列表读取
+    let preset: Preset | null = null
+    if (id.startsWith('builtin-')) {
+      preset = getBuiltinPresets().find((p) => p.id === id) ?? null
+    } else {
+      const raw = readFileSync(join(DIRS.presets(), `${id}.json`), 'utf-8')
+      preset = JSON.parse(raw) as Preset
+    }
+    if (!preset) return { ok: false, error: '预设不存在' }
+    const result = await d.showSaveDialog({
+      title: '导出预设',
+      defaultPath: `${preset.name}.json`,
+      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+    })
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    writeFileSync(result.filePath, JSON.stringify(preset, null, 2), 'utf-8')
+    log.info('预设已导出', { id: preset.id, name: preset.name })
+    return { ok: true }
+  })
 }
