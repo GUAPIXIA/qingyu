@@ -468,7 +468,8 @@ export interface AuthorNoteConfig {
 export interface TTSModelConfig {
   id: string
   name: string
-  provider: 'edge' | 'openai'
+  /** system = Windows 系统语音（System.Speech）；openai = OpenAI 兼容 TTS（/audio/speech）；'edge' 为旧值，加载时迁移为 system */
+  provider: 'system' | 'openai' | 'edge'
   model: string
   voice: string
   apiKey: string
@@ -507,7 +508,7 @@ export interface VisionModelConfig {
 
 /** TTS 选项 */
 export interface TTSOptions {
-  provider: 'edge' | 'openai'
+  provider: 'system' | 'openai' | 'edge'
   voice: string
   rate: number
 }

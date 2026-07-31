@@ -214,7 +214,8 @@ export interface GroupChatAPI {
 
 // ===================== TTS 接口 =====================
 export interface TTSAPI {
-  speak(text: string, options: TTSOptions): Promise<void>
+  /** 朗读。openai provider 返回 audioBase64（渲染进程播放）；system 本地引擎无返回 */
+  speak(text: string, options: TTSOptions & { model?: string; apiKey?: string; baseUrl?: string }): Promise<{ success: boolean; audioBase64?: string; error?: string }>
   stop(): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>

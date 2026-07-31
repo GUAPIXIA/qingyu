@@ -218,14 +218,88 @@ export function killTTS(): void {
   }
 }
 
+// ===================== OpenAI 兼容 TTS（3.2-A） =====================
+
+/** OpenAI TTS 预设音色 */
+export const OPENAI_VOICES = [
+  { id: 'alloy', name: 'alloy（中性）', lang: '多语言' },
+  { id: 'echo', name: 'echo（沉稳）', lang: '多语言' },
+  { id: 'fable', name: 'fable（叙述）', lang: '多语言' },
+  { id: 'onyx', name: 'onyx（低沉）', lang: '多语言' },
+  { id: 'nova', name: 'nova（女性）', lang: '多语言' },
+  { id: 'shimmer', name: 'shimmer（明亮）', lang: '多语言' },
+  { id: 'ash', name: 'ash（中性）', lang: '多语言' },
+  { id: 'ballad', name: 'ballad（叙述）', lang: '多语言' },
+  { id: 'coral', name: 'coral（温暖）', lang: '多语言' },
+  { id: 'sage', name: 'sage（柔和）', lang: '多语言' },
+] as const
+
+/** OpenAI 兼容 TTS：POST {baseUrl}/audio/speech → mp3 base64 */
+export async function openaiSpeak(
+  config: { baseUrl: string; apiKey: string; model: string; voice: string; speed?: number },
+  text: string,
+): Promise<string> {
+  const url = `${config.baseUrl.replace(/\/$/, '')}/audio/speech`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+    },
+    body: JSON.stringify({
+      model: config.model || 'tts-1',
+      input: text.slice(0, 4000),
+      voice: config.voice || 'alloy',
+      speed: config.speed ?? 1,
+      response_format: 'mp3',
+    }),
+    signal: AbortSignal.timeout(60_000),
+  })
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`TTS 错误 ${response.status}: ${errText.slice(0, 300)}`)
+  }
+  const buf = await response.arrayBuffer()
+  return Buffer.from(buf).toString('base64')
+}
+
 export function registerTTSIPC(ipcMain: IpcMain): void {
-  // 朗读
-  ipcMain.handle('tts:speak', async (_e, text: string, voice?: string, rate?: number) => {
+  // 朗读（provider 分发：openai 走 API 返回音频；system/edge 走本地引擎）
+  ipcMain.handle('tts:speak', async (
+    _e,
+    text: string,
+    opts: {
+      provider?: string
+      voice?: string
+      rate?: number
+      model?: string
+      apiKey?: string
+      baseUrl?: string
+    } = {},
+  ) => {
     try {
-      if (voice) await sendCommand({ action: 'setVoice', voice })
-      if (rate !== undefined) await sendCommand({ action: 'setRate', rate })
+      // OpenAI 兼容 TTS：返回 mp3 base64，由渲染进程播放
+      if (opts.provider === 'openai') {
+        if (!opts.apiKey) return { success: false, error: 'OpenAI TTS 未配置 API Key' }
+        const audioBase64 = await openaiSpeak(
+          {
+            baseUrl: opts.baseUrl || 'https://api.openai.com/v1',
+            apiKey: opts.apiKey,
+            model: opts.model || 'tts-1',
+            voice: opts.voice || 'alloy',
+            speed: opts.rate ?? 1,
+          },
+          text,
+        )
+        log.info('OpenAI TTS 朗读', { textLen: text.length, voice: opts.voice, model: opts.model })
+        return { success: true, audioBase64 }
+      }
+
+      // 系统语音引擎（原逻辑）
+      if (opts.voice) await sendCommand({ action: 'setVoice', voice: opts.voice })
+      if (opts.rate !== undefined) await sendCommand({ action: 'setRate', rate: opts.rate })
       await sendCommand({ action: 'speak', text })
-      log.info('TTS 朗读', { textLen: text.length, voice })
+      log.info('TTS 朗读（系统语音）', { textLen: text.length, voice: opts.voice })
       return { success: true }
     } catch (e) {
       log.error('TTS 朗读失败', { error: (e as Error).message })
@@ -260,7 +334,8 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
   })
 
   // 获取语音列表
-  ipcMain.handle('tts:getVoices', async () => {
+  ipcMain.handle('tts:getVoices', async (_e, provider?: string) => {
+    if (provider === 'openai') return OPENAI_VOICES
     const voices = await getVoices()
     log.info('已获取语音列表', { count: voices.length })
     return voices

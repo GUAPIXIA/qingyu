@@ -16,7 +16,7 @@ export interface ActiveProfile {
 
 export interface ActiveTTSProfile {
   name: string
-  provider: 'edge' | 'openai'
+  provider: TTSModelConfig['provider']
   model: string
   voice: string
   apiKey: string
@@ -136,17 +136,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings.ttsModels = [{
           id: nanoid(),
           name: '默认 TTS',
-          provider: (legacySettings.ttsProvider as 'edge' | 'openai') || 'edge',
-          model: legacySettings.ttsModel || '',
+          // 旧值 edge 迁移为 system（3.2-A：系统语音引擎）
+          provider: ((legacySettings.ttsProvider as 'edge' | 'openai') === 'openai' ? 'openai' : 'system') as TTSModelConfig['provider'],
+          model: legacySettings.ttsModel || 'tts-1',
           voice: legacySettings.ttsVoice || '',
           apiKey: '',
-          baseUrl: '',
+          baseUrl: 'https://api.openai.com/v1',
           enabled: true,
           order: 0,
         }]
         settings.activeTTSModelId = settings.ttsModels[0].id
       } else {
         settings.ttsModels = []
+      }
+    } else {
+      // 存量 'edge' 值统一迁移为 'system'
+      for (const m of settings.ttsModels) {
+        if (m.provider === 'edge') m.provider = 'system'
       }
     }
 
