@@ -105,6 +105,43 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
     return { ok: true }
   })
 
+  // 批量嵌入（会话事实向量化用，渲染进程存会话字段）
+  ipcMain.handle('embedding:embedFacts', async (_e, config: EmbeddingConfig, texts: string[]) => {
+    if (!isEmbeddingConfigured(config) || !Array.isArray(texts) || texts.length === 0) return []
+    try {
+      return await embedTexts(config, texts.map((t) => String(t)))
+    } catch (e) {
+      log.warn('事实向量化失败（回退全量注入）', { error: (e as Error).message })
+      return []
+    }
+  })
+
+  // 事实语义检索：查询 → 向量 → 与事实向量余弦 topK → 返回命中事实文本
+  ipcMain.handle('embedding:searchFacts', async (_e, payload: {
+    query: string
+    facts: string[]
+    vectors: number[][]
+    config: EmbeddingConfig
+    threshold?: number
+    maxResults?: number
+  }) => {
+    const { query, facts, vectors, config } = payload
+    const threshold = typeof payload.threshold === 'number' ? payload.threshold : 0.3
+    const maxResults = typeof payload.maxResults === 'number' ? payload.maxResults : 3
+    if (!query?.trim() || !isEmbeddingConfigured(config)) return []
+    if (!Array.isArray(facts) || facts.length === 0 || !Array.isArray(vectors) || vectors.length !== facts.length) return []
+    try {
+      const [queryVec] = await embedTexts(config, [query])
+      if (!queryVec || queryVec.length === 0) return []
+      const items = facts.map((_, i) => ({ id: String(i), vector: vectors[i] ?? [] }))
+      const hits = topKSimilar(queryVec, items, maxResults, threshold)
+      return hits.map((h) => facts[Number(h.id)]).filter(Boolean)
+    } catch (e) {
+      log.warn('事实语义检索失败（回退全量注入）', { error: (e as Error).message })
+      return []
+    }
+  })
+
   // 语义检索：扫描文本 → 向量 → 与各世界书条目余弦相似 → topK
   ipcMain.handle('embedding:semanticSearch', async (
     _e,

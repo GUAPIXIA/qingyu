@@ -136,6 +136,8 @@ interface ChatState {
   syncLorebooksFromCurrentSession: (character: Character) => void
   /** 语义触发（向量 RAG）命中条目缓存：发送消息时预取，buildContext 合并注入（不持久化） */
   _semanticLoreHits: BudgetLoreItem[]
+  /** 记忆事实语义检索命中缓存：仅注入相关事实（不持久化） */
+  _semanticFactsHits: string[]
 }
 
 // 用于防止竞态条件的请求计数器
@@ -303,6 +305,70 @@ async function fetchSemanticLoreHits(get: StoreGet, character: Character): Promi
 }
 
 /**
+ * 记忆事实语义检索预取（P0-2）：
+ * 流式前对当前对话扫描文本嵌入，与会话事实向量比对，仅缓存相关事实供注入。
+ * 未启用嵌入 / 无向量 / 失败时静默回退全量注入（_semanticFactsHits 清空）。
+ */
+async function fetchSemanticFacts(get: StoreGet, character: Character): Promise<void> {
+  const settings = useSettingsStore.getState().settings
+  const st = settings.semanticTrigger
+  const clear = () => {
+    if (get()._semanticFactsHits.length > 0) useChatStore.setState({ _semanticFactsHits: [] })
+  }
+  // 快速失败：未启用嵌入 / 无配置
+  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return clear()
+
+  const { sessions, currentSessionId } = get()
+  const session = sessions.find((s) => s.id === currentSessionId)
+  if (!session?.memoryEnabled || !session.memoryFacts?.length) return clear()
+  const vectors = session.factsVectors
+  if (!vectors || vectors.length !== session.memoryFacts.length) return clear()
+
+  // 查询文本：最近消息（与语义扫描一致，简化取最近 20 条）
+  const query = get().messages.slice(-20).map((m) => m.content).join(' ')
+  if (!query.trim()) return clear()
+
+  try {
+    const hits = await window.api.embedding.searchFacts({
+      query,
+      facts: session.memoryFacts,
+      vectors,
+      config: {
+        provider: st.provider,
+        baseUrl: st.baseUrl,
+        model: st.model,
+        apiKey: st.apiKey ?? '',
+      },
+      threshold: st.threshold,
+      maxResults: st.maxResults ?? 3,
+    })
+    useChatStore.setState({ _semanticFactsHits: hits ?? [] })
+  } catch {
+    clear()
+  }
+}
+
+/**
+ * 记忆事实向量化（P0-2）：保存事实后异步嵌入并存入会话，供语义检索注入。
+ */
+async function vectorizeSessionFacts(characterId: string, sessionId: string, facts: string[]): Promise<void> {
+  if (!facts?.length) return
+  const st = useSettingsStore.getState().settings.semanticTrigger
+  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return
+  try {
+    const vectors = await window.api.embedding.embedFacts({
+      provider: st.provider,
+      baseUrl: st.baseUrl,
+      model: st.model,
+      apiKey: st.apiKey ?? '',
+    }, facts)
+    if (vectors.length === facts.length) {
+      await window.api.chat.updateSession(characterId, sessionId, { factsVectors: vectors })
+    }
+  } catch { /* 向量化失败不阻塞，回退全量注入 */ }
+}
+
+/**
  * 上下文溢出压缩（P0-1）：异步压缩将被裁剪的早期对话，结果存会话。
  * 不阻塞主流程：buildContext 标记 pendingCompression，流式完成后调用。
  */
@@ -410,6 +476,8 @@ async function streamAIResponse(
 
   // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
   await fetchSemanticLoreHits(get, character)
+  // 记忆事实语义检索预取（P0-2）：失败回退全量注入
+  await fetchSemanticFacts(get, character)
 
   // 停止字符串（output 正则规则）：流式命中后截断 + 提前终止，省 token
   let stopStrings: string[] = []
@@ -592,6 +660,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activePresetId: null,
   activeLorebookIds: [],
   _semanticLoreHits: [],
+  _semanticFactsHits: [],
   translatingMessages: {},
   showTranslationIds: new Set(),
 
@@ -850,6 +919,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             // 保存关键事实（会话字段，经 updateSession 持久化）
             if (parsed.facts.length > 0) {
               await window.api.chat.updateSession(character.id, currentSessionId, { memoryFacts: parsed.facts })
+              // P0-2：事实向量化（异步，供语义检索注入）
+              vectorizeSessionFacts(character.id, currentSessionId, parsed.facts)
             }
             const refreshedSessions = await window.api.chat.listSessions(character.id)
             set({ sessions: refreshedSessions })
@@ -1698,9 +1769,12 @@ ${previousFactsText}`,
     const currentSession = sessions.find(s => s.id === currentSessionId)
     if (currentSession?.memoryEnabled) {
       const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
+      // P0-2：语义检索命中时仅注入相关事实，否则全量
+      const semanticFacts = get()._semanticFactsHits
+      const factsForInject = semanticFacts.length > 0 ? semanticFacts : (currentSession.memoryFacts ?? [])
       const fitted = fitMemoryBudget(
         currentSession.memory || '',
-        currentSession.memoryFacts,
+        factsForInject,
         memoryBudget,
         estimateTokens,
         model,

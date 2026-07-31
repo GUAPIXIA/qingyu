@@ -140,6 +140,8 @@ interface GroupChatState {
   ensureLorebooksLoaded: (lorebookIds: string[]) => Promise<void>
   /** 语义触发（向量 RAG）命中条目缓存：群聊发言前预取，buildGroupContext 合并注入（不持久化） */
   _semanticLoreHits: BudgetLoreItem[]
+  /** 记忆事实语义检索命中缓存（不持久化） */
+  _semanticFactsHits: string[]
 
   toggleMemory: (groupId: string, sessionId: string, enabled: boolean) => Promise<void>
   setMemoryMode: (groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => Promise<void>
@@ -157,6 +159,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   streamingContent: '',
   error: null,
   _semanticLoreHits: [],
+  _semanticFactsHits: [],
 
   // ---- 群聊列表 ----
 
@@ -245,11 +248,11 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   loadMessages: async (groupId, sessionId) => {
     const messages = await window.api.group.listMessages(groupId, sessionId)
     // 会话切换：清空语义命中缓存
-    set({ messages, _semanticLoreHits: [] })
+    set({ messages, _semanticLoreHits: [], _semanticFactsHits: [] })
   },
 
   clearMessages: () => {
-    set({ messages: [], error: null, _semanticLoreHits: [] })
+    set({ messages: [], error: null, _semanticLoreHits: [], _semanticFactsHits: [] })
   },
 
   clearChat: async (groupId) => {
@@ -512,6 +515,8 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
           window.api.group.updateMemory(currentGroup.id, currentSessionId, parsed.summary)
           if (parsed.facts.length > 0) {
             window.api.group.updateSession(currentGroup.id, currentSessionId, { memoryFacts: parsed.facts })
+            // P0-2：事实向量化（异步）
+            vectorizeGroupSessionFacts(currentGroup.id, currentSessionId, parsed.facts)
           }
           const sessions = get().sessions.map(s =>
             s.id === currentSessionId ? { ...s, memory: parsed.summary, memoryUpdatedAt: Date.now(), memoryFacts: parsed.facts.length > 0 ? parsed.facts : s.memoryFacts } : s
@@ -808,9 +813,12 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
     const currentSession = sessions.find(s => s.id === currentSessionId)
     if (currentSession?.memoryEnabled) {
       const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
+      // P0-2：语义检索命中时仅注入相关事实，否则全量
+      const semanticFacts = get()._semanticFactsHits
+      const factsForInject = semanticFacts.length > 0 ? semanticFacts : (currentSession.memoryFacts ?? [])
       const fitted = fitMemoryBudget(
         currentSession.memory || '',
-        currentSession.memoryFacts,
+        factsForInject,
         memoryBudget,
         estimateTokens,
         model,
@@ -1222,6 +1230,66 @@ async function fetchGroupSemanticLoreHits(get: any, group: GroupChat, charName: 
 }
 
 /**
+ * 群聊记忆事实语义检索预取（P0-2）：失败回退全量注入。
+ */
+async function fetchGroupSemanticFacts(get: any): Promise<void> {
+  const settings = useSettingsStore.getState().settings
+  const st = settings.semanticTrigger
+  const clear = () => {
+    if (get()._semanticFactsHits.length > 0) useGroupChatStore.setState({ _semanticFactsHits: [] })
+  }
+  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return clear()
+
+  const { sessions, currentSessionId } = get()
+  const session = sessions.find((s) => s.id === currentSessionId)
+  if (!session?.memoryEnabled || !session.memoryFacts?.length) return clear()
+  const vectors = session.factsVectors
+  if (!vectors || vectors.length !== session.memoryFacts.length) return clear()
+
+  const query = get().messages.slice(-20).map((m) => m.content).join(' ')
+  if (!query.trim()) return clear()
+
+  try {
+    const hits = await window.api.embedding.searchFacts({
+      query,
+      facts: session.memoryFacts,
+      vectors,
+      config: {
+        provider: st.provider,
+        baseUrl: st.baseUrl,
+        model: st.model,
+        apiKey: st.apiKey ?? '',
+      },
+      threshold: st.threshold,
+      maxResults: st.maxResults ?? 3,
+    })
+    useGroupChatStore.setState({ _semanticFactsHits: hits ?? [] })
+  } catch {
+    clear()
+  }
+}
+
+/**
+ * 群聊记忆事实向量化（P0-2）
+ */
+async function vectorizeGroupSessionFacts(groupId: string, sessionId: string, facts: string[]): Promise<void> {
+  if (!facts?.length) return
+  const st = useSettingsStore.getState().settings.semanticTrigger
+  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return
+  try {
+    const vectors = await window.api.embedding.embedFacts({
+      provider: st.provider,
+      baseUrl: st.baseUrl,
+      model: st.model,
+      apiKey: st.apiKey ?? '',
+    }, facts)
+    if (vectors.length === facts.length) {
+      await window.api.group.updateSession(groupId, sessionId, { factsVectors: vectors })
+    }
+  } catch { /* 忽略 */ }
+}
+
+/**
  * 群聊上下文溢出压缩（P0-1）：异步压缩被裁剪的早期群聊内容，存群聊会话。
  */
 async function compressGroupDroppedHistory(
@@ -1327,6 +1395,8 @@ async function streamGroupAI(
 
   // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
   await fetchGroupSemanticLoreHits(get, group, speaker.name)
+  // 记忆事实语义检索预取（P0-2）：失败回退全量注入
+  await fetchGroupSemanticFacts(get)
 
   const context = get().buildGroupContext(speaker.id, preset)
 
@@ -1586,6 +1656,8 @@ async function streamGroupAIFree(
 
   // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
   await fetchGroupSemanticLoreHits(get, group, '')
+  // 记忆事实语义检索预取（P0-2）
+  await fetchGroupSemanticFacts(get)
 
   const context = get().buildGroupContext(undefined, preset)
 

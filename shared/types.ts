@@ -141,6 +141,8 @@ export interface ChatSession {
   memoryUpdatedAt: number
   /** 关键事实列表（长记忆升级：摘要之外抽取的持久事实，随摘要一起更新） */
   memoryFacts?: string[]
+  /** 事实向量（与 memoryFacts 平行，语义检索注入用；memoryUpdatedAt 作缓存失效键） */
+  factsVectors?: number[][]
   /** 上下文溢出压缩摘要（历史被裁剪时异步压缩的早期内容） */
   compressedSummary?: string
   /** 已压缩消息的时间范围（防重复压缩） */
@@ -292,6 +294,8 @@ export interface GroupSession {
   memoryUpdatedAt?: number
   /** 关键事实列表（长记忆升级） */
   memoryFacts?: string[]
+  /** 事实向量（语义检索注入用） */
+  factsVectors?: number[][]
   /** 上下文溢出压缩摘要 */
   compressedSummary?: string
   /** 已压缩消息的时间范围 */
