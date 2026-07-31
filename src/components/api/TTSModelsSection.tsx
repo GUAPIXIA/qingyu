@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import type { TTSModelConfig } from '../../../shared/types'
 import {
   Volume2, Plus, Trash2, Check, Eye, EyeOff,
-  Circle, ChevronUp, ChevronDown, Loader2,
+  Circle, ChevronUp, ChevronDown, Loader2, Play, Square,
 } from 'lucide-react'
 
 const TTS_PROVIDERS = [
@@ -52,6 +52,9 @@ export function TTSModelsSection() {
   const [form, setForm] = useState<TTSModelConfig>(emptyForm())
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  /** 试听 */
+  const [auditioning, setAuditioning] = useState(false)
+  const auditionRef = useRef<HTMLAudioElement | null>(null)
 
   const models = [...settings.ttsModels].sort((a, b) => a.order - b.order)
 
@@ -129,7 +132,49 @@ export function TTSModelsSection() {
     }
   }
 
-  const moveModel = (id: string, direction: 'up' | 'down') => {
+  /** 试听：用当前表单配置合成并播放一句测试语音 */
+  const stopAudition = () => {
+    auditionRef.current?.pause()
+    auditionRef.current = null
+    setAuditioning(false)
+  }
+
+  const handleAudition = async () => {
+    if (auditioning) {
+      stopAudition()
+      return
+    }
+    setAuditioning(true)
+    setTestResult(null)
+    try {
+      const res = await window.api.tts.speak('你好，这是一段试听语音，用来检查当前音色效果。', {
+        provider: form.provider,
+        voice: form.voice || (form.provider === 'openai' ? 'alloy' : 'zh-CN-XiaoxiaoNeural'),
+        rate: 1,
+        model: form.model,
+        apiKey: form.apiKey,
+        baseUrl: form.baseUrl,
+      })
+      if (res.success && res.audioBase64) {
+        // openai/edge：渲染进程播放
+        const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)
+        audio.onended = () => { setAuditioning(false); auditionRef.current = null }
+        audio.onerror = () => { setAuditioning(false); auditionRef.current = null }
+        auditionRef.current = audio
+        await audio.play().catch(() => setAuditioning(false))
+      } else if (res.success) {
+        // system 引擎：主进程播放（无回调），定时复位
+        setTimeout(() => setAuditioning(false), 6000)
+      } else {
+        setAuditioning(false)
+        setTestResult({ success: false, message: res.error || '试听失败' })
+      }
+    } catch {
+      setAuditioning(false)
+    }
+  }
+
+  const handleMove = (id: string, direction: 'up' | 'down') => {
     const idx = models.findIndex((m) => m.id === id)
     if (idx < 0) return
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1
@@ -278,6 +323,21 @@ export function TTSModelsSection() {
           {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Circle className="w-3 h-3" />}
           {testing ? '测试中...' : '测试连接'}
         </button>
+        {/* 试听：用当前配置合成播放 */}
+        <button
+          onClick={handleAudition}
+          disabled={testing}
+          title="试听当前音色"
+          className={cn(
+            'px-3 py-1.5 rounded-lg text-xs border transition-colors flex items-center gap-1.5 disabled:opacity-50',
+            auditioning
+              ? 'border-tavern-danger text-tavern-danger hover:bg-tavern-danger/10'
+              : 'border-tavern-border-soft text-tavern-text-soft hover:border-tavern-accent hover:text-tavern-accent'
+          )}
+        >
+          {auditioning ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+          {auditioning ? '停止' : '试听'}
+        </button>
         <button
           onClick={() => { editingId ? setEditingId(null) : setShowAdd(false); resetForm() }}
           className="px-3 py-1.5 text-xs text-tavern-text-muted hover:text-tavern-text"
@@ -332,14 +392,14 @@ export function TTSModelsSection() {
               >
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={(e) => { e.stopPropagation(); moveModel(m.id, 'up') }}
+                    onClick={(e) => { e.stopPropagation(); handleMove(m.id, 'up') }}
                     disabled={idx === 0}
                     className="p-0.5 text-tavern-text-muted hover:text-tavern-text disabled:opacity-30"
                   >
                     <ChevronUp className="w-3 h-3" />
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); moveModel(m.id, 'down') }}
+                    onClick={(e) => { e.stopPropagation(); handleMove(m.id, 'down') }}
                     disabled={idx === models.length - 1}
                     className="p-0.5 text-tavern-text-muted hover:text-tavern-text disabled:opacity-30"
                   >
