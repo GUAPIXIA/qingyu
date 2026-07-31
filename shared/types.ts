@@ -87,6 +87,8 @@ export interface Message {
   swipes?: string[]
   /** 当前显示的候选索引 */
   swipeIndex?: number
+  /** 引用回复的目标消息 ID（单聊引用回复） */
+  replyToId?: string
   /** 本次 AI 回复的字符用量（仅 assistant 消息） */
   charUsage?: MessageCharUsage
 }
@@ -147,6 +149,8 @@ export interface ChatSession {
   compressedSummary?: string
   /** 已压缩消息的时间范围（防重复压缩） */
   compressedRange?: { startTs: number; endTs: number }
+  /** 是否已自动生成标题（防重复调用） */
+  titleGenerated?: boolean
   /** 绑定的用户身份 ID（null/undefined 时使用 Settings 中的默认身份） */
   personaId?: string | null
   /** 当前会话选中的世界书 ID 列表。undefined 表示未设置（回退到角色的 boundLorebookIds） */
@@ -413,6 +417,8 @@ export interface Settings {
     /** 触发阈值：被裁剪的历史 token 量 ≥ 此值才压缩 */
     minDropTokens: number
   }
+  /** 新会话自动生成标题（默认开） */
+  autoTitle?: boolean
 }
 
 /** 用户人设注入配置（ST 的 User Persona description placement） */

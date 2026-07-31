@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
-import { Send, Square, ImagePlus, X, Sparkles, Loader2, Undo2, Wand2 } from 'lucide-react'
+import { Send, Square, ImagePlus, X, Sparkles, Loader2, Undo2, Wand2, Reply } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useChatStore } from '../../store/useChatStore'
 import { lorebookCache } from '../../utils/lorebook'
@@ -11,7 +11,7 @@ import { isLocalProvider } from '../../utils/defaults'
 import { getDisplayName } from '../../utils/variables'
 import { expandMacros, buildMacroContext } from '../../utils/macros'
 import { getEffectiveQuickReplies } from '../../utils/quickReply'
-import type { Character, Preset, Lorebook, ChatParams, QuickReply, QuickReplyStore } from '../../../shared/types'
+import type { Character, Preset, Lorebook, ChatParams, QuickReply, QuickReplyStore, Message } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
 import { registerBuiltinCommands } from '../../commands/builtin'
@@ -29,6 +29,9 @@ function ensureCommandsInitialized() {
 interface ChatInputProps {
   character: Character
   disabled?: boolean
+  /** 引用回复：被引用消息（P1-5） */
+  replyTo?: Message | null
+  onCancelReply?: () => void
 }
 
 /** 草稿存储 key（按角色 ID + 会话 ID 隔离） */
@@ -36,7 +39,7 @@ function draftKey(characterId: string, sessionId?: string | null) {
   return `chat-draft:${characterId}:${sessionId || 'default'}`
 }
 
-export function ChatInput({ character, disabled }: ChatInputProps) {
+export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatInputProps) {
   // 初始化内置命令
   ensureCommandsInitialized()
 
@@ -410,7 +413,9 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
     // 清除草稿
     try { localStorage.removeItem(draftKey(character.id, currentSessionId)) } catch { /* ignore */ }
     const [preset, lorebooks] = await loadActivePresetLorebook()
-    await sendMessage(content, imgs, character, preset, lorebooks)
+    const replyId = replyTo?.id ?? undefined
+    onCancelReply?.()
+    await sendMessage(content, imgs, character, preset, lorebooks, replyId)
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -676,6 +681,29 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
           >
             <Undo2 className="w-3 h-3" />
             回退原文
+          </button>
+        </div>
+      )}
+
+      {/* 引用回复预览条（P1-5） */}
+      {replyTo && (
+        <div className="mb-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft">
+          <Reply className="w-3.5 h-3.5 text-tavern-accent shrink-0" />
+          <div className="min-w-0 flex-1 text-xs">
+            <span className="text-tavern-accent font-medium">
+              {replyTo.role === 'user' ? (settings.userName || '用户') : character.name}:
+            </span>
+            <span className="text-tavern-text-muted ml-1 truncate">
+              {replyTo.content.slice(0, 60)}
+              {replyTo.content.length > 60 ? '...' : ''}
+            </span>
+          </div>
+          <button
+            onClick={onCancelReply}
+            className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors shrink-0"
+            title="取消引用"
+          >
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}

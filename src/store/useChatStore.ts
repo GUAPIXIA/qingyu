@@ -103,7 +103,7 @@ interface ChatState {
     totalChars: number; durationStr: string
   } | null>
   loadMessages: (character: Character) => Promise<void>
-  sendMessage: (content: string, images: string[], character: Character, preset: Preset | null, lorebooks: Lorebook[]) => Promise<void>
+  sendMessage: (content: string, images: string[], character: Character, preset: Preset | null, lorebooks: Lorebook[], replyToId?: string) => Promise<void>
   /** 添加独立消息（不触发 AI 回复，用于生图等） */
   addStandaloneMessage: (content: string, images: string[], character: Character, role?: 'user' | 'assistant' | 'system') => Promise<void>
   stopStreaming: () => void
@@ -138,6 +138,8 @@ interface ChatState {
   _semanticLoreHits: BudgetLoreItem[]
   /** 记忆事实语义检索命中缓存：仅注入相关事实（不持久化） */
   _semanticFactsHits: string[]
+  /** 上次上下文构建的用量（P1-3 预警用，不持久化） */
+  lastContextUsage: { used: number; max: number } | null
 }
 
 // 用于防止竞态条件的请求计数器
@@ -443,6 +445,86 @@ async function compressDroppedHistory(
 }
 
 /**
+ * 会话标题自动生成（P1-4）：新会话达到 4 条消息后，AI 生成简短标题。
+ * 仅执行一次（titleGenerated 防重复），失败静默。
+ */
+async function maybeAutoTitle(get: StoreGet, character: Character): Promise<void> {
+  const settings = useSettingsStore.getState().settings
+  if (settings.autoTitle === false) return
+  const { sessions, currentSessionId, messages } = get()
+  const session = sessions.find((s) => s.id === currentSessionId)
+  if (!session || session.titleGenerated) return
+  // 仅对默认标题的新会话生成
+  if (!session.title.startsWith('新对话')) return
+  const userMsgs = messages.filter((m) => m.role === 'user')
+  if (userMsgs.length < 4) return
+
+  const profile = useSettingsStore.getState().getActiveProfile()
+  if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) return
+
+  const userName = settings.userName || '用户'
+  const recentText = messages.slice(-12).map((m) =>
+    `${m.role === 'user' ? userName : character.name}: ${m.content}`
+  ).join('\n')
+
+  const requestId = `autotitle-${Date.now()}`
+  let result = ''
+  let finished = false
+
+  const unbindChunk = window.api.ai.onChunk((data) => {
+    if (data.requestId !== requestId) return
+    result += data.text
+  })
+  const unbindDone = window.api.ai.onDone((doneId) => {
+    if (doneId !== requestId) return
+    cleanup()
+    finished = true
+    const title = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').replace(/[\n\r"「」『』]/g, '').trim().slice(0, 20)
+    if (title) {
+      window.api.chat.renameSession(character.id, session.id, title)
+        .then(() => window.api.chat.updateSession(character.id, session.id, { titleGenerated: true }))
+        .then(async () => {
+          const sessions = await window.api.chat.listSessions(character.id)
+          useChatStore.setState({ sessions })
+        })
+        .catch(() => { /* 忽略 */ })
+    }
+  })
+  const unbindError = window.api.ai.onError((data) => {
+    if (data.requestId !== requestId) return
+    cleanup()
+    finished = true
+  })
+  const cleanup = () => {
+    unbindChunk(); unbindDone(); unbindError()
+  }
+
+  window.api.ai.chat({
+    requestId,
+    messages: [
+      {
+        role: 'system',
+        content: '你是一个对话标题生成器。请为以下角色扮演对话生成一个 2-8 字的中文标题，概括对话主题或核心事件。只输出标题本身，不要引号、解释或多余内容。',
+      },
+      { role: 'user', content: recentText.slice(0, 3000) },
+    ],
+    provider: profile.provider,
+    apiKey: profile.apiKey,
+    baseUrl: profile.baseUrl,
+    model: settings.activeModel || profile.model,
+    temperature: 0.5,
+    topP: 0.9,
+    maxTokens: 50,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    stream: true,
+  }).catch(() => {
+    cleanup()
+    if (!finished) { /* 静默 */ }
+  })
+}
+
+/**
  * 抽取的公共 AI 流式响应方法
  * - 统一处理事件注册、节流、错误、超时
  * - 调用方只需提供 aiMessageId 和 onComplete 回调
@@ -568,6 +650,8 @@ async function streamAIResponse(
       pendingCompression = null
       compressDroppedHistory(get, character, pc).catch((e) => logError('ChatStore:compress', e))
     }
+    // 会话标题自动生成（P1-4）：新会话第 4 条用户消息后
+    maybeAutoTitle(get, character)
   })
 
   const unbindError = window.api.ai.onError((data: { requestId: string; error: string }) => {
@@ -661,6 +745,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeLorebookIds: [],
   _semanticLoreHits: [],
   _semanticFactsHits: [],
+  lastContextUsage: null,
   translatingMessages: {},
   showTranslationIds: new Set(),
 
@@ -1078,7 +1163,7 @@ ${previousFactsText}`,
     await window.api.chat.saveMessage(msg)
   },
 
-  sendMessage: async (content, images, character, preset, _lorebooks) => {
+  sendMessage: async (content, images, character, preset, _lorebooks, replyToId) => {
     // 流式中拒绝：现在给一个错误提示而不是静默忽略
     if (get().isStreaming) {
       set({ error: '正在生成回复中，请稍候或点击停止' })
@@ -1122,6 +1207,7 @@ ${previousFactsText}`,
       images,
       isEditing: false,
       timestamp: Date.now(),
+      replyToId: replyToId ?? undefined,
     }
     set((state) => ({ messages: [...state.messages, userMessage], error: null }))
     await window.api.chat.saveMessage(userMessage)
@@ -2049,6 +2135,9 @@ ${previousFactsText}`,
     // 根据提供商转换消息格式（Claude/Gemini 需要特殊处理）
     const provider = profile?.provider || 'openai'
     processedContext = convertMessages(provider, processedContext, { charName: charNameForVars, userName })
+
+    // 记录上下文用量（P1-3：上限预警）
+    useChatStore.setState({ lastContextUsage: { used: usedTokens, max: budgetBase } })
 
     return processedContext
   },

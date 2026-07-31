@@ -31,6 +31,7 @@ import {
   Users,
   Sparkles,
   X,
+  AlertTriangle,
 } from 'lucide-react'
 
 /** 长对话摘要引导提示的消息数阈值 */
@@ -53,6 +54,8 @@ export function ChatPage() {
   const [pendingLorebookIds, setPendingLorebookIds] = useState<string[]>([])
   // 长对话摘要引导提示：记录已关闭提示的会话 ID
   const [memoryHintDismissed, setMemoryHintDismissed] = useState<string | null>(null)
+  /** 引用回复：被引用的目标消息（P1-5） */
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null)
   const pendingSessionCallbackRef = useRef<(() => void) | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const virtuosoRef = useRef<VirtuosoHandle>(null)
@@ -80,6 +83,31 @@ export function ChatPage() {
       await store.setMemoryMode(currentCharacter.id, currentSessionId, 'auto')
     } catch (e) {
       logError('ChatPage:enableAutoMemory', e)
+    }
+  }
+
+  // 上下文上限预警（P1-3）：读取最近一次 buildContext 的用量
+  const lastContextUsage = useChatStore((s) => s.lastContextUsage)
+  const contextUsage = lastContextUsage && lastContextUsage.max > 0
+    ? {
+        used: lastContextUsage.used,
+        max: lastContextUsage.max,
+        ratio: lastContextUsage.used / lastContextUsage.max,
+        pct: Math.min(999, Math.round((lastContextUsage.used / lastContextUsage.max) * 100)),
+      }
+    : null
+
+  const handleSummarizeFromWarning = async () => {
+    if (!currentCharacter) return
+    try {
+      const store = useChatStore.getState()
+      const result = await store.triggerMemorySummary(currentCharacter)
+      if (!result) {
+        // 记忆未启用时提示引导
+        if (currentSessionId) await store.toggleMemory(currentCharacter.id, currentSessionId, true)
+      }
+    } catch (e) {
+      logError('ChatPage:summarizeFromWarning', e)
     }
   }
 
@@ -486,6 +514,32 @@ export function ChatPage() {
         </div>
       )}
 
+      {/* 上下文上限预警（P1-3）：用量 ≥85% 显示 */}
+      {contextUsage && contextUsage.ratio >= 0.85 && (
+        <div className={cn(
+          'relative z-10 flex items-center gap-2 px-4 py-1.5 text-xs border-b animate-fade-in',
+          contextUsage.ratio >= 1 ? 'bg-tavern-danger/10 border-tavern-danger/20' : 'bg-tavern-warning/10 border-tavern-warning/20'
+        )}>
+          <AlertTriangle className={cn('w-3.5 h-3.5 shrink-0', contextUsage.ratio >= 1 ? 'text-tavern-danger' : 'text-tavern-warning')} />
+          <span className="flex-1 text-tavern-text-soft truncate">
+            上下文已使用 {contextUsage.pct}%（{contextUsage.used}/{contextUsage.max} token）
+            {contextUsage.ratio >= 1 ? '，将裁剪早期历史' : '，接近上限将裁剪早期历史'}
+          </span>
+          <button
+            onClick={handleSummarizeFromWarning}
+            className="px-2 py-0.5 rounded font-medium text-tavern-accent hover:bg-tavern-accent/10 transition-colors shrink-0"
+          >
+            立即总结
+          </button>
+          <button
+            onClick={() => useChatStore.getState().clearChat(currentCharacter!.id)}
+            className="px-2 py-0.5 rounded font-medium text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-danger/10 transition-colors shrink-0"
+          >
+            清理历史
+          </button>
+        </div>
+      )}
+
       {/* 消息列表 - 使用 Virtuoso 虚拟滚动 */}
       <div
         className={cn(
@@ -508,14 +562,19 @@ export function ChatPage() {
             className="h-full"
             initialTopMostItemIndex={999999}
             followOutput={settings.autoScroll ? 'smooth' : false}
-            itemContent={(index, msg) => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                character={currentCharacter}
-                isLast={index === messages.length - 1}
-              />
-            )}
+            itemContent={(index, msg) => {
+              const replied = msg.replyToId ? messages.find((m) => m.id === msg.replyToId) ?? null : null
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  character={currentCharacter}
+                  isLast={index === messages.length - 1}
+                  repliedMessage={replied}
+                  onReply={() => setReplyToMessage(msg)}
+                />
+              )
+            }}
             components={{
               Footer: () => <div ref={messagesEndRef} className="h-4" />,
             }}
@@ -525,7 +584,11 @@ export function ChatPage() {
 
       {/* 输入区 */}
       <div className="relative z-10">
-        <ChatInput character={currentCharacter} />
+        <ChatInput
+          character={currentCharacter}
+          replyTo={replyToMessage}
+          onCancelReply={() => setReplyToMessage(null)}
+        />
       </div>
 
       {/* 清空确认 */}
