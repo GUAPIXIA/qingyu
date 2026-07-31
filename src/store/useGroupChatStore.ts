@@ -909,6 +909,11 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
     if (postHistoryText) {
       usedTokens += estimateTokens(postHistoryText, model)
     }
+    // 预留作者注释（middle/bottom 在历史段内注入）
+    const anConfig = settings.authorNote
+    if (anConfig?.enabled && anConfig.text?.trim() && anConfig.position !== 'top') {
+      usedTokens += estimateTokens(replaceVariables(anConfig.text.trim(), userName, charNameForVars), model)
+    }
 
     const recentMessages: typeof state.messages = []
     for (let i = state.messages.length - 1; i >= 0; i--) {
@@ -920,11 +925,21 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       usedTokens += tokenCount
     }
 
-    const context: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    const context: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = [
       { role: 'system', content: systemContent },
     ]
 
-    const historyContext: { role: 'system' | 'user' | 'assistant'; content: string }[] = []
+    // ===== 作者注释（Author's Note，群聊仅全局级，anConfig 已在预算预留处声明）=====
+    let anText = ''
+    if (anConfig?.enabled && anConfig.text?.trim()) {
+      anText = replaceVariables(anConfig.text.trim(), userName, charNameForVars)
+    }
+    // top：紧跟系统提示注入（keepSeparate：避免被 merge 合并进系统提示）
+    if (anText && anConfig!.position === 'top') {
+      context.push({ role: 'system', content: anText, keepSeparate: true })
+    }
+
+    const historyContext: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = []
     recentMessages.forEach(m => {
       const char = members.find(c => c.id === m.characterId)
       const speaker = m.characterId === '__user__'
@@ -941,12 +956,19 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       }
     })
 
-    // at_depth 世界书注入：按深度插入历史消息段（ST 语义：depth 0 = 末尾）
-    if (atDepthItems.length > 0) {
-      const sorted = [...atDepthItems].sort((a, b) => (a.depth - b.depth) || (a.order - b.order))
+    // at_depth 世界书 + 作者注释（middle/bottom）统一按深度注入历史消息段
+    const depthInserts: { content: string; depth: number; order: number }[] =
+      atDepthItems.map((i) => ({ content: i.content, depth: i.depth, order: i.order }))
+    if (anText && anConfig!.position !== 'top') {
+      const anDepth = anConfig!.position === 'middle' ? Math.max(0, anConfig!.depth) : 0
+      depthInserts.push({ content: anText, depth: anDepth, order: -1 })
+    }
+    if (depthInserts.length > 0) {
+      const sorted = depthInserts.sort((a, b) => (a.depth - b.depth) || (a.order - b.order))
       const insertMap = new Map<number, string[]>()
       for (const item of sorted) {
-        const idx = Math.max(0, Math.min(recentMessages.length, recentMessages.length - item.depth))
+        // ST 语义：depth 0 = 最新消息之前（末尾上方），depth 1 = 倒数第二条之前
+        const idx = Math.max(0, Math.min(recentMessages.length - 1, recentMessages.length - 1 - item.depth))
         if (!insertMap.has(idx)) insertMap.set(idx, [])
         insertMap.get(idx)!.push(item.content)
       }
@@ -954,7 +976,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       const indices = [...insertMap.keys()].sort((a, b) => b - a)
       for (const idx of indices) {
         const contents = insertMap.get(idx)!
-        historyContext.splice(idx, 0, ...contents.map((c) => ({ role: 'system' as const, content: c })))
+        historyContext.splice(idx, 0, ...contents.map((c) => ({ role: 'system' as const, content: c, keepSeparate: true })))
       }
     }
 

@@ -655,7 +655,7 @@ export function LorebookPage() {
                       </div>
                       {editingEntry.position === 'at_depth' && (
                         <div>
-                          <label className="label">注入深度（0 = 对话末尾）</label>
+                          <label className="label">注入深度（0 = 最新消息前）</label>
                           <input
                             type="number"
                             min={0}

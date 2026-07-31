@@ -3,6 +3,7 @@ import type { Character, ProviderType, Preset, Lorebook } from '../../../shared/
 import { Modal } from '../common/Modal'
 import { ImagePlus, X, Languages, Loader2, RefreshCw } from 'lucide-react'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { charAssetUrl } from '../../utils/asset'
 import { logError } from '../../lib/logger'
 
 // B-05：记住 textarea 手动调整后的大小（使用原生 DOM 事件，React 合成事件无法捕获浏览器 resize handle）
@@ -466,8 +467,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
               className="w-24 h-24 rounded-2xl overflow-hidden bg-tavern-bg-hover border border-tavern-border cursor-pointer relative group"
               onClick={handleImageSelect}
             >
-              {form.avatar && !avatarError ? (
-                <img src={form.avatar} alt="" className="w-full h-full object-cover" onError={() => setAvatarError(true)} />
+              {(form.avatar || (form.id ? charAssetUrl(form.id, 'avatar', form.updatedAt) : '')) && !avatarError ? (
+                <img src={form.avatar || charAssetUrl(form.id, 'avatar', form.updatedAt)} alt="" className="w-full h-full object-cover" onError={() => setAvatarError(true)} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-tavern-text-muted">
                   <ImagePlus className="w-8 h-8" />
@@ -848,6 +849,74 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
                 onChange={(e) => update({ postHistoryInstructions: e.target.value })}
                 placeholder="如：始终使用中文回复、禁止使用emoji、每次回复不超过200字..."
               />
+            </div>
+
+            {/* 角色级作者注释 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="label mb-0">角色级作者注释</label>
+                  <p className="text-xs text-tavern-text-muted">自定义后覆盖全局设置，关闭后使用全局</p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-[var(--color-accent)]"
+                    checked={!!form.authorNote}
+                    onChange={(e) => update({ authorNote: e.target.checked ? { enabled: true, text: '', position: 'middle', depth: 1 } : undefined })}
+                  />
+                  <span className="text-sm">自定义</span>
+                </label>
+              </div>
+              {form.authorNote && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <label className="label mb-0">启用注入</label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="accent-[var(--color-accent)]"
+                        checked={form.authorNote.enabled}
+                        onChange={(e) => update({ authorNote: { ...form.authorNote!, enabled: e.target.checked } })}
+                      />
+                      <span className="text-sm">{form.authorNote.enabled ? '开' : '关'}</span>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="label">注释内容</label>
+                    <textarea
+                      className="textarea min-h-[60px] resize-y"
+                      value={form.authorNote.text || ''}
+                      onChange={(e) => update({ authorNote: { ...form.authorNote!, text: e.target.value } })}
+                      placeholder="该角色独享的剧情引导，如：她暗恋主角但不愿承认…"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">注入位置</label>
+                    <select
+                      className="select"
+                      value={form.authorNote.position}
+                      onChange={(e) => update({ authorNote: { ...form.authorNote!, position: e.target.value as 'top' | 'middle' | 'bottom' } })}
+                    >
+                      <option value="top">系统提示之后</option>
+                      <option value="middle">历史消息中（按深度）</option>
+                      <option value="bottom">历史消息末尾</option>
+                    </select>
+                  </div>
+                  {form.authorNote.position === 'middle' && (
+                    <div>
+                      <label className="label">注入深度（0 = 最新消息前）</label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="input"
+                        value={form.authorNote.depth ?? 1}
+                        onChange={(e) => update({ authorNote: { ...form.authorNote!, depth: Math.max(0, Number(e.target.value) || 0) } })}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* 群聊开场白 */}
