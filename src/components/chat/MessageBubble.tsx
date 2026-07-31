@@ -141,8 +141,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
               provider: 'edge',
               voice: ttsConfig.voice || 'zh-CN-XiaoxiaoNeural',
               rate: 1,
-              // 国内网络直连微软服务可能失败，走封面下载代理
-              proxy: settings.coverProxyUrl || undefined,
+              // 代理按 TTS 配置（留空直连；代理失败主进程自动回退直连）
+              proxy: ttsConfig.proxy || undefined,
             }
           : {
               provider: 'openai',

@@ -164,8 +164,8 @@ export function TTSModelsSection() {
         model: form.model,
         apiKey: form.apiKey,
         baseUrl: form.baseUrl,
-        // Edge TTS 走封面下载代理（国内网络）
-        proxy: form.provider === 'edge' ? (useSettingsStore.getState().settings.coverProxyUrl || undefined) : undefined,
+        // Edge TTS 代理（配置留空直连；主进程代理失败自动回退直连）
+        proxy: form.provider === 'edge' ? (form.proxy || undefined) : undefined,
       })
       // 强制复位：无论何种引擎，试听最长 20 秒
       if (auditionTimerRef.current) clearTimeout(auditionTimerRef.current)
@@ -326,7 +326,20 @@ export function TTSModelsSection() {
           <p className="text-xs text-tavern-text-muted mt-1">中文效果较好：nova（女）/ onyx（男）/ echo / fable</p>
         )}
         {form.provider === 'edge' && (
-          <p className="text-xs text-tavern-text-muted mt-1">微软免费在线语音，无需 API Key；需联网</p>
+          <>
+            <p className="text-xs text-tavern-text-muted mt-1">微软免费在线语音，无需 API Key；默认直连，需联网</p>
+            <div className="mt-2">
+              <label className="label">代理地址（可选，留空直连）</label>
+              <input
+                type="text"
+                className="input text-xs font-mono"
+                value={form.proxy ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, proxy: e.target.value.trim() || undefined }))}
+                placeholder="http://127.0.0.1:7890"
+              />
+              <p className="text-xs text-tavern-text-muted mt-1">国内网络直连失败时才需要；代理失败会自动回退直连</p>
+            </div>
+          </>
         )}
         {form.provider === 'system' && (
           <p className="text-xs text-tavern-text-muted mt-1">留空使用系统默认语音</p>

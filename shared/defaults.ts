@@ -50,7 +50,7 @@ export function getDefaultSettings(): Settings {
     enableUsageTracking: true,
     useCoverAsBackground: false,
     translationTargetLang: '中文',
-    coverProxyUrl: 'http://127.0.0.1:7890',
+    coverProxyUrl: '',
     fontFamily: 'system',
     customFontId: null,
     authorNote: {
