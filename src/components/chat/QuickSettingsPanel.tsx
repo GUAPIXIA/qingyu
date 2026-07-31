@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw } from 'lucide-react'
+import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info } from 'lucide-react'
 import type { Preset, Lorebook } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -33,6 +33,8 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
   const [modelListError, setModelListError] = useState(false)
   const [modelExpanded, setModelExpanded] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+  /** 示例对话说明提示：ⓘ 点击弹出 */
+  const [showExampleHint, setShowExampleHint] = useState(false)
 
   // 计算角色绑定的世界书 ID 列表
   const boundLorebookIds = useMemo(() => {
@@ -561,14 +563,32 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                   <option value="first_turn">仅首轮</option>
                   <option value="off">关闭</option>
                 </select>
+                {/* 示例对话作用提示：ⓘ 点击弹出 */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowExampleHint((v) => !v)}
+                    className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent transition-colors"
+                    title="示例对话是什么？"
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                  </button>
+                  {showExampleHint && (
+                    <>
+                      <div className="fixed inset-0 z-20" onClick={() => setShowExampleHint(false)} />
+                      <div className="absolute right-0 top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-30 text-[10px] leading-relaxed text-tavern-text-muted">
+                        <p>
+                          角色卡「对话示例」会作为<strong className="text-tavern-text-soft">风格示范</strong>注入上下文，
+                          帮助 AI 模仿角色的语气、口癖与格式（few-shot）。
+                        </p>
+                        <p className="mt-1.5 pt-1.5 border-t border-tavern-border-soft">
+                          仅首轮 / 关闭可节省每轮固定的 token 开销。
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-              {/* 示例对话作用提示 */}
-              <p className="text-[10px] text-tavern-text-muted/80 leading-relaxed">
-                💡 角色卡「对话示例」会作为风格示范注入上下文，帮助 AI 模仿角色的语气、口癖与格式（few-shot）。
-                仅首轮 / 关闭可节省每轮固定的 token 开销。
-              </p>
-            </div>
-          </Section>
 
         </div>
       </div>
