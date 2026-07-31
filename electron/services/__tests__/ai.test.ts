@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-test' },
 }))
 
-import { getAdapter } from '../ai'
+import { getAdapter, registerAIIPC } from '../ai'
 import type { ChatParams } from '../../../shared/types'
 
 // ===================== 工具函数 =====================
@@ -382,5 +382,142 @@ describe('Ollama 适配器', () => {
 
     await expect(getAdapter('ollama').chat(params, vi.fn(), new AbortController().signal))
       .rejects.toThrow('404')
+  })
+})
+
+// ===================== 模型列表与连接测试 =====================
+
+describe('listModels', () => {
+  it('OpenAI：GET /models + Bearer 认证 + data[].id 解析', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] }))
+
+    const models = await getAdapter('openai').listModels('https://api.openai.com/v1', 'sk-key')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.openai.com/v1/models')
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer sk-key' })
+    expect(models).toEqual(['gpt-4o', 'gpt-4o-mini'])
+  })
+
+  it('Claude：GET /v1/models + x-api-key 头', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ data: [{ id: 'claude-3-5-sonnet' }] }))
+
+    const models = await getAdapter('claude').listModels('https://api.anthropic.com', 'sk-ant')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.anthropic.com/v1/models')
+    expect(init.headers).toMatchObject({ 'x-api-key': 'sk-ant', 'anthropic-version': '2023-06-01' })
+    expect(models).toEqual(['claude-3-5-sonnet'])
+  })
+
+  it('Gemini：GET /v1beta/models + 过滤 generateContent 模型 + 去 models/ 前缀', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({
+      models: [
+        { name: 'models/gemini-2.0-flash', supportedGenerationMethods: ['generateContent', 'embedContent'] },
+        { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+      ],
+    }))
+
+    const models = await getAdapter('gemini').listModels('https://generativelanguage.googleapis.com', 'sk')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models')
+    // 只保留支持 generateContent 的模型，且去掉 models/ 前缀
+    expect(models).toEqual(['gemini-2.0-flash'])
+  })
+
+  it('Ollama：GET /api/tags + 无认证头 + models[].name 解析', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ models: [{ name: 'llama3.2:latest' }, { name: 'qwen2.5:7b' }] }))
+
+    const models = await getAdapter('ollama').listModels('http://localhost:11434', '')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:11434/api/tags')
+    // Ollama 无需认证：fetch 无任何选项（init undefined）
+    expect(init).toBeUndefined()
+    expect(models).toEqual(['llama3.2:latest', 'qwen2.5:7b'])
+  })
+
+  it('非 2xx 响应抛出错误', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: 'bad key' }, 401))
+
+    await expect(getAdapter('openai').listModels('https://api.openai.com/v1', 'bad'))
+      .rejects.toThrow('401')
+  })
+})
+
+describe('testConnection', () => {
+  it('连接成功返回 true 并调用模型列表', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ data: [{ id: 'gpt-4o' }] }))
+
+    const ok = await getAdapter('openai').testConnection('https://api.openai.com/v1', 'sk-key')
+
+    expect(ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('连接失败（网络错误）返回 false 不抛错', async () => {
+    fetchMock.mockRejectedValue(new Error('fetch failed: ECONNREFUSED'))
+
+    const ok = await getAdapter('openai').testConnection('http://localhost:9999/v1', 'sk-key')
+
+    expect(ok).toBe(false)
+  })
+
+  it('连接失败（401）返回 false 不抛错', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: 'invalid api key' }, 401))
+
+    const ok = await getAdapter('claude').testConnection('https://api.anthropic.com', 'bad-key')
+
+    expect(ok).toBe(false)
+  })
+})
+
+// ===================== IPC 层连接测试 =====================
+
+describe('registerAIIPC 连接通道', () => {
+  function registerIpc() {
+    const registered = new Map<string, (...args: unknown[]) => unknown>()
+    const ipcMain = {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
+        registered.set(channel, handler)
+      }),
+    }
+    registerAIIPC(ipcMain as unknown as Parameters<typeof registerAIIPC>[0])
+    return registered
+  }
+
+  it('ai:testConnection 成功返回 models', async () => {
+    const registered = registerIpc()
+    // testConnection 内部 + handler 会调用两次 listModels，每次需新 Response
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ data: [{ id: 'gpt-4o' }] })))
+
+    const handler = registered.get('ai:testConnection')!
+    const result = await handler({}, { type: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-key' })
+
+    expect(result).toEqual({ success: true, models: ['gpt-4o'] })
+  })
+
+  it('ai:testConnection 失败返回 { success: false, error } 不抛异常', async () => {
+    const registered = registerIpc()
+    fetchMock.mockResolvedValue(jsonResponse({ error: 'invalid key' }, 401))
+
+    const handler = registered.get('ai:testConnection')!
+    const result = await handler({}, { type: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'bad' })
+
+    expect(result).toMatchObject({ success: false })
+    // testConnection 内部吞掉错误详情（返回 false），handler 返回通用文案
+    expect((result as { error: string }).error).toBe('连接失败')
+  })
+
+  it('ai:listModels 网络错误返回 { success: false, error }', async () => {
+    const registered = registerIpc()
+    fetchMock.mockRejectedValue(new Error('fetch failed: ECONNREFUSED'))
+
+    const handler = registered.get('ai:listModels')!
+    const result = await handler({}, 'ollama', 'http://localhost:11434', '')
+
+    expect(result).toMatchObject({ success: false })
+    expect((result as { error: string }).error).toContain('ECONNREFUSED')
   })
 })
