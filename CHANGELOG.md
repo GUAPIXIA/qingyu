@@ -15,6 +15,10 @@
 - **UI**：API 页提供商选择列表 + PROVIDER_INFO 描述 + OpenRouter 快速预设；默认 providers 配置补全
 - 新增 5 个注册表/请求构造测试，全量测试 326 → 331 通过
 
+### 版本号对齐
+
+- package.json / README badge 从 0.8.9 **对齐至 0.11.0**：0.9.0~0.11.0 的功能版本此前均已在 CHANGELOG 记录但 package.json 未同步递增，现统一对齐（应用内版本显示经 `app.getVersion()` 自动跟随）
+
 ---
 
 ## [0.10.2] - 2026-07-31
