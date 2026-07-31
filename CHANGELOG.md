@@ -4,15 +4,32 @@
 
 ### 新功能
 
-- **Token 精确计数（tiktoken 接入）**：
-  - 接入 tiktoken 1.0.22 真实分词器，支持 o200k_base / cl100k_base / p50k_base / r50k_base / gpt2 五种编码
-  - gpt-4o / gpt-4.1 / o1 / o3 / o4 / gpt-5 等 OpenAI 模型走 tiktoken 官方模型表精确匹配
-  - Claude / Gemini / DeepSeek / Qwen / Llama / Mistral 等非 OpenAI 模型使用 token 效率相近的编码近似（cl100k_base / o200k_base）
-  - 编码实例缓存：避免每次计数都创建/释放分词器实例
-  - 未知模型自动回退启发式估算，不抛错
-  - 加载失败时自动降级启发式并写入日志
-  - 对比启发式估算：中文 RP 段落误差从 21% 降至 0，英文长文本从 30% 降至 0
-  - 打包产物已包含 wasm + 全部 BPE 编码文件，离线可用
+- **功能状态表（docs/功能状态.md）**：
+  - 建立功能宣称与代码实现的一致性审计文档，全部功能按 已实现/部分实现/未实现 三态标注
+  - 修正 README 5 处失实宣称：世界书匹配模式（无向量/LLM）、TTS 提供商（实为 Windows 系统语音）、ComfyUI（未实现）、斜杠命令数（14 非 16+）、主题色（6 非 9 种）
+  - 修正 TTS 模型配置 UI 误导标签（"Edge TTS" → "系统语音"，实为 System.Speech）
+
+- **CI 流水线（.github/workflows/ci.yml）**：
+  - test job：pnpm 安装 → tsc 类型检查 → vitest 全量测试 → esbuild 主进程编译验证
+  - lint job：存量 152 个历史错误暂允许失败（continue-on-error），修复后收紧
+  - build-windows job：main 分支推送自动构建 NSIS 安装包并上传 artifact
+
+- **核心路径测试（AI 适配层）**：
+  - OpenAI / Claude / Gemini / Ollama 四适配器 19 个测试：请求构造、非流式/流式响应解析、SSE 跨 chunk 边界、reasoning 标签包装、tool_calls delta 收集、推理模型参数剔除、非 2xx 错误传播
+  - 群聊 mention 提取 4 个测试：@点名记录、无点名不记录、部分名不误匹配、多成员点名
+  - IPC safeHandle 4 个测试：正常透传、错误 rethrow、非 Error 值处理
+  - 全量测试 167 → 193 个
+
+### Token 精确计数（tiktoken 接入）
+
+- 接入 tiktoken 1.0.22 真实分词器，支持 o200k_base / cl100k_base / p50k_base / r50k_base / gpt2 五种编码
+- gpt-4o / gpt-4.1 / o1 / o3 / o4 / gpt-5 等 OpenAI 模型走 tiktoken 官方模型表精确匹配
+- Claude / Gemini / DeepSeek / Qwen / Llama / Mistral 等非 OpenAI 模型使用 token 效率相近的编码近似（cl100k_base / o200k_base）
+- 编码实例缓存：避免每次计数都创建/释放分词器实例
+- 未知模型自动回退启发式估算，不抛错
+- 加载失败时自动降级启发式并写入日志
+- 对比启发式估算：中文 RP 段落误差从 21% 降至 0，英文长文本从 30% 降至 0
+- 打包产物已包含 wasm + 全部 BPE 编码文件，离线可用
 
 ---
 
