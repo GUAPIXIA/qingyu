@@ -1,5 +1,18 @@
 # 更新日志
 
+## [0.9.1] - 2026-07-31
+
+### 世界书深度对齐（at_depth + 统一触发引擎）
+
+- **插入位置补全 4 档**：before_char / after_char / at_depth / at_end，at_depth 支持按深度在历史消息段内注入独立 system 消息（ST depth 语义：0 = 对话末尾）
+- **抽取 `triggerLorebooks()` 共享纯函数**（`src/utils/lorebook.ts`），消除单聊/群聊 150+ 行重复触发代码
+- **递归扫描、概率骰子、预算裁剪、位置分发** 全部纳入统一入口，单聊/群聊复用
+- **导入兼容**：角色卡内嵌世界书 + ST 世界书 JSON 均支持 at_depth / position 数字映射（0-3）
+- **LorebookPage UI** 新增 at_depth 位置选项 + depth 输入框（position='at_depth' 时显示）
+- **新增 8 个 triggerLorebooks 纯函数测试**：关键词触发 + 分发、深度保留、递归、概率跳过、禁用过滤、变量替换、预算裁剪、正则
+
+---
+
 ## [0.9.0] - 2026-07-31
 
 ### 新功能

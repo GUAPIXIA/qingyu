@@ -27,7 +27,7 @@ describe('useGroupChatStore', () => {
       _saveTimer: null,
     })
     // 重置角色 store
-    useCharacterStore.setState({ characters: [], loading: false, error: null })
+    useCharacterStore.setState({ characters: [] })
     vi.clearAllMocks()
   })
 
