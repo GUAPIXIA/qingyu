@@ -12,6 +12,7 @@ import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { parseMemoryResult, formatMemoryFacts, fitMemoryBudget } from '../utils/memory'
+import { applyRegexRules as applyRegexRulesEngine, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
 import { logError, logInfo } from '../lib/logger'
 
 const STREAM_THROTTLE_MS = 50
@@ -26,17 +27,13 @@ const TOKEN_BUDGET_SAFETY = 0.95
 /** 输出预留兜底值（preset.maxTokens 缺省时） */
 const DEFAULT_RESERVED_OUTPUT = 1024
 
-/** 对文本应用正则规则（与单聊 applyRegex 逻辑一致） */
+/** 对文本应用正则规则（与单聊 applyRegex 逻辑一致：output 走 text + markdown 两阶段） */
 function applyRegexRules(text: string, rules: any[]): string {
-  return rules.reduce((acc, rule) => {
-    if (rule.enabled && (rule.scope === 'output' || rule.scope === 'both')) {
-      try {
-        const regex = new RegExp(rule.pattern, rule.flags || 'g')
-        return acc.replace(regex, rule.replacement)
-      } catch { return acc }
-    }
-    return acc
-  }, text)
+  if (!text || rules.length === 0) return text
+  const scoped = rules as import('../../shared/types').RegexRule[]
+  let result = applyRegexRulesEngine(text, scoped, 'output', 'text').text
+  result = applyRegexRulesEngine(result, scoped, 'output', 'markdown').text
+  return result
 }
 
 /** 将原始 API 错误转换为用户友好的中文提示 */
@@ -558,20 +555,12 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
       ? Math.max(...state.messages.map(m => m.round), 0) + 1
       : 1
 
-    // 对用户输入应用正则规则（input/both）
+    // 对用户输入应用正则规则（input/both，text 阶段）
     let processedContent = content
     try {
       const regexRules = await window.api.regex.list()
       if (regexRules.length > 0) {
-        processedContent = regexRules.reduce((acc, rule) => {
-          if (rule.enabled && (rule.scope === 'input' || rule.scope === 'both')) {
-            try {
-              const regex = new RegExp(rule.pattern, rule.flags || 'g')
-              return acc.replace(regex, rule.replacement)
-            } catch { return acc }
-          }
-          return acc
-        }, content)
+        processedContent = applyRegexRulesEngine(content, regexRules, 'input', 'text').text
       }
     } catch { /* 忽略正则加载失败 */ }
 
@@ -1185,10 +1174,27 @@ async function streamGroupAI(
     error: null,
   }))
 
+  // 停止字符串（output 正则规则）：流式命中后截断 + 提前终止，省 token
+  const stopStrings = collectStopStrings(regexRules as any[])
+
   // 绑定流式事件
   const unbindChunk = window.api.ai.onChunk((data: { requestId: string; text: string }) => {
     if (data.requestId !== requestId || !activeStream || activeStream.requestId !== requestId) return
     activeStream.accumulated += data.text
+    // 停止字符串：命中后截断并提前终止（主进程取消后发 ai:done，走正常收尾）
+    if (stopStrings.length > 0) {
+      const idx = findStopIndex(activeStream.accumulated, stopStrings)
+      if (idx !== -1) {
+        activeStream.accumulated = activeStream.accumulated.slice(0, idx).trimEnd()
+        if (activeStream.flushTimer) {
+          clearTimeout(activeStream.flushTimer)
+          activeStream.flushTimer = null
+        }
+        flushStream(set)
+        window.api.ai.cancelChat(requestId).catch(() => {})
+        return
+      }
+    }
     if (activeStream.flushTimer === null) {
       activeStream.flushTimer = setTimeout(() => flushStream(set), STREAM_THROTTLE_MS)
     }
@@ -1209,8 +1215,10 @@ async function streamGroupAI(
     // 剥离 thought
     const clean = finalContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
 
-    // 应用正则规则
-    const processed = regexRules.length > 0 ? applyRegexRules(clean, regexRules) : clean
+    // 应用正则规则 + 停止字符串截断
+    const processed = regexRules.length > 0
+      ? truncateAtStop(applyRegexRules(clean, regexRules), collectStopStrings(regexRules as any)).text
+      : clean
 
     // 更新消息
     set((s: any) => ({
@@ -1417,9 +1425,26 @@ async function streamGroupAIFree(
     error: null,
   }))
 
+  // 停止字符串（output 正则规则）：流式命中后截断 + 提前终止，省 token
+  const stopStrings = collectStopStrings(regexRules as any[])
+
   const unbindChunk = window.api.ai.onChunk((data: { requestId: string; text: string }) => {
     if (data.requestId !== requestId || !activeStream || activeStream.requestId !== requestId) return
     activeStream.accumulated += data.text
+    // 停止字符串：命中后截断并提前终止
+    if (stopStrings.length > 0) {
+      const idx = findStopIndex(activeStream.accumulated, stopStrings)
+      if (idx !== -1) {
+        activeStream.accumulated = activeStream.accumulated.slice(0, idx).trimEnd()
+        if (activeStream.flushTimer) {
+          clearTimeout(activeStream.flushTimer)
+          activeStream.flushTimer = null
+        }
+        flushStream(set)
+        window.api.ai.cancelChat(requestId).catch(() => {})
+        return
+      }
+    }
     if (activeStream.flushTimer === null) {
       activeStream.flushTimer = setTimeout(() => flushStream(set), STREAM_THROTTLE_MS)
     }
@@ -1437,8 +1462,10 @@ async function streamGroupAIFree(
     cleanupActiveStream()
 
     const clean = finalContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
-    // 应用正则规则
-    const processed = regexRules.length > 0 ? applyRegexRules(clean, regexRules) : clean
+    // 应用正则规则 + 停止字符串截断
+    const processed = regexRules.length > 0
+      ? truncateAtStop(applyRegexRules(clean, regexRules), collectStopStrings(regexRules as any)).text
+      : clean
     splitAndSaveMessages(set, get, group, sessionId, processed, round, msgId)
 
     // 字符用量统计

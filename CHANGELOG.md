@@ -1,5 +1,19 @@
 # 更新日志
 
+## [0.9.5] - 2026-07-31
+
+### 正则系统增强
+
+- **触发器（triggerPattern）**：规则可配置触发条件正则，文本匹配才执行（如仅对含粗体标记的消息生效）；支持独立触发标志（默认 i）
+- **停止字符串（stopStrings）**：output 规则可配置停止字符串，流式生成中命中立即截断并提前终止请求（省 token）；同时作为输出后处理兜底（覆盖非流式场景）。单聊/群聊流式链路统一接入
+- **处理阶段（stage）**：text = 直接作用于输入/输出文本（默认）；markdown = 仅输出、在 text 规则之后链式应用（渲染层修复，如星号转义）
+- **分组管理（group）**：规则按用途分组（翻译修复 / 格式清理 / 越狱清理…），RegexPage 按组折叠展示、组名自动补全
+- **预览测试增强**：支持「全规则运行」（按 scope + 两阶段链路应用所有启用规则，显示应用/命中统计）与「仅当前规则」两种模式
+- **引擎抽取**（`src/utils/regex.ts`）：safeRegExp（ReDoS 防护）/ ruleMatchesScope / ruleMatchesStage / ruleTriggers / applyRuleOnce / applyRegexRules / findStopIndex / truncateAtStop / collectStopStrings 全部纯函数，单聊/群聊输入输出路径统一复用
+- 新增 29 个引擎测试，全量测试 290 → 319 通过
+
+---
+
 ## [0.9.4] - 2026-07-31
 
 ### 语义触发（向量 RAG）

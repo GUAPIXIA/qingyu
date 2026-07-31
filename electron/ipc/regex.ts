@@ -69,6 +69,8 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
       flags: 'g',
       enabled: true,
       scope: 'both',
+      group: '',
+      stage: 'text',
     }
     const rules = readRules()
     rules.push(rule)
