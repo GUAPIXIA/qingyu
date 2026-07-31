@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { Sliders, Plus, Upload, Trash2, Shield, Copy, Download, ChevronDown, ChevronRight } from 'lucide-react'
+import { Sliders, Plus, Upload, Trash2, Shield, Copy, Download, ChevronDown, ChevronRight, Sparkles, Play, Loader2, Wand2, X } from 'lucide-react'
 import { BUILTIN_TEMPLATE_NAMES } from '../utils/chatTemplates'
 import { cn } from '../lib/utils'
 import { estimateTokens } from '../utils/tokenCounter'
+import { parsePresetGeneration } from '../utils/presetGen'
+import { useSettingsStore } from '../store/useSettingsStore'
+import { isLocalProvider } from '../utils/defaults'
 import type { Preset } from '../../shared/types'
 
 /** 模板名 → 展示标签 */
@@ -53,6 +56,17 @@ export function PresetsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [busyMsg, setBusyMsg] = useState<string | null>(null)
+  // AI 生成预设
+  const [aiGenOpen, setAiGenOpen] = useState(false)
+  const [aiGenDesc, setAiGenDesc] = useState('')
+  const [aiGenBusy, setAiGenBusy] = useState(false)
+  const [aiGenError, setAiGenError] = useState<string | null>(null)
+  // 预设测试器
+  const [testInput, setTestInput] = useState('*轻轻推开门* 你终于来了，我等了好久。')
+  const [testOutput, setTestOutput] = useState('')
+  const [testBusy, setTestBusy] = useState(false)
+  const [testDone, setTestDone] = useState(false)
+  const testRequestRef = useRef<string | null>(null)
 
   const loadPresets = () => {
     window.api.preset.list().then(setPresets)
@@ -112,6 +126,160 @@ export function PresetsPage() {
       else setBusyMsg(null)
     } finally {
       setBusyMsg(null)
+    }
+  }
+
+  /** 流式调用辅助：注册 onChunk/onDone/onError，返回清理函数 */
+  const streamCall = (opts: {
+    requestId: string
+    messages: { role: 'system' | 'user'; content: string }[]
+    onResult: (text: string) => void
+    onError: (msg: string) => void
+    extra?: Partial<{ temperature: number; topP: number; maxTokens: number }>
+  }) => {
+    const profile = useSettingsStore.getState().getActiveProfile()
+    if (!profile) return
+    let result = ''
+    const unbindChunk = window.api.ai.onChunk((data) => {
+      if (data.requestId !== opts.requestId) return
+      result += data.text
+      // 流式实时展示（仅测试器用）
+      if (opts.extra?.maxTokens === undefined) {
+        // 默认非实时
+      }
+    })
+    const unbindDone = window.api.ai.onDone((doneId) => {
+      if (doneId !== opts.requestId) return
+      cleanup()
+      opts.onResult(result)
+    })
+    const unbindError = window.api.ai.onError((data) => {
+      if (data.requestId !== opts.requestId) return
+      cleanup()
+      opts.onError(data.error)
+    })
+    const cleanup = () => {
+      unbindChunk(); unbindDone(); unbindError()
+    }
+    const settings = useSettingsStore.getState().settings
+    window.api.ai.chat({
+      requestId: opts.requestId,
+      messages: opts.messages,
+      provider: profile.provider,
+      apiKey: profile.apiKey,
+      baseUrl: profile.baseUrl,
+      model: settings.activeModel || profile.model,
+      temperature: opts.extra?.temperature ?? 0.7,
+      topP: opts.extra?.topP ?? 0.95,
+      maxTokens: opts.extra?.maxTokens ?? 1024,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      stream: true,
+    }).catch(() => {
+      cleanup()
+    })
+  }
+
+  /** AI 生成预设：描述需求 → 生成 systemPrompt/jailbreak/参数建议 */
+  const handleAiGenerate = async () => {
+    if (!editingPreset || !aiGenDesc.trim() || aiGenBusy) return
+    const profile = useSettingsStore.getState().getActiveProfile()
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
+      setAiGenError('请先在 API 设置中配置连接')
+      return
+    }
+    setAiGenBusy(true)
+    setAiGenError(null)
+    const requestId = `preset-gen-${Date.now()}`
+    streamCall({
+      requestId,
+      messages: [
+        {
+          role: 'system',
+          content: `你是一个角色扮演预设配置生成器。根据用户的需求描述，生成中文预设。
+
+严格按以下格式输出：
+【SystemPrompt】
+200 字内的系统提示词（含角色扮演要求、回复风格、语气、长度控制）
+
+【Jailbreak】
+可选的越狱/创作提示词；不需要时写“无”
+
+【参数建议】
+温度: <0-2>
+TopP: <0-1>
+
+只输出上述格式内容。`,
+        },
+        { role: 'user', content: aiGenDesc.trim().slice(0, 500) },
+      ],
+      onResult: (result) => {
+        setAiGenBusy(false)
+        const parsed = parsePresetGeneration(result)
+        if (parsed.systemPrompt) {
+          updateField('systemPrompt', parsed.systemPrompt)
+          updateField('jailbreak', parsed.jailbreak)
+          if (parsed.temperature !== undefined) updateField('temperature', parsed.temperature)
+          if (parsed.topP !== undefined) updateField('topP', parsed.topP)
+          setAiGenOpen(false)
+          setAiGenDesc('')
+        } else {
+          setAiGenError('生成失败：未能解析输出')
+        }
+      },
+      onError: (msg) => {
+        setAiGenBusy(false)
+        setAiGenError(`生成失败：${msg}`)
+      },
+      extra: { maxTokens: 1200 },
+    })
+  }
+
+  /** 预设测试器：用当前预设参数对样例输入跑一次真实生成 */
+  const handleTestGenerate = async () => {
+    if (!editingPreset || !testInput.trim() || testBusy) return
+    const profile = useSettingsStore.getState().getActiveProfile()
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
+      setTestOutput('⚠ 请先在 API 设置中配置连接')
+      return
+    }
+    setTestBusy(true)
+    setTestDone(false)
+    setTestOutput('')
+    const requestId = `preset-test-${Date.now()}`
+    testRequestRef.current = requestId
+    const sys = [editingPreset.systemPrompt, editingPreset.jailbreak].filter(Boolean).join('\n\n')
+    streamCall({
+      requestId,
+      messages: [
+        { role: 'system', content: sys || '你是一个角色扮演助手。' },
+        { role: 'user', content: testInput.slice(0, 2000) },
+      ],
+      onResult: (result) => {
+        if (testRequestRef.current !== requestId) return
+        setTestBusy(false)
+        setTestDone(true)
+        setTestOutput(result.trim())
+      },
+      onError: (msg) => {
+        if (testRequestRef.current !== requestId) return
+        setTestBusy(false)
+        setTestDone(true)
+        setTestOutput(`⚠ ${msg}`)
+      },
+      extra: {
+        temperature: editingPreset.temperature,
+        topP: editingPreset.topP,
+        maxTokens: Math.max(256, Math.min(2048, editingPreset.maxTokens || 1024)),
+      },
+    })
+  }
+
+  const handleTestStop = () => {
+    if (testRequestRef.current) {
+      window.api.ai.cancelChat(testRequestRef.current).catch(() => {})
+      testRequestRef.current = null
+      setTestBusy(false)
     }
   }
 
@@ -300,6 +468,40 @@ export function PresetsPage() {
                 这是内置预设，保存后将自动创建一个可编辑的副本。
               </div>
             )}
+
+            {/* AI 生成预设（第三批） */}
+            <div className="rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/60">
+              <button
+                type="button"
+                onClick={() => setAiGenOpen((v) => !v)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-tavern-text-soft hover:text-tavern-accent transition-colors"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-tavern-accent" />
+                AI 生成预设
+                {aiGenOpen ? <ChevronDown className="w-3 h-3 ml-auto" /> : <ChevronRight className="w-3 h-3 ml-auto" />}
+              </button>
+              {aiGenOpen && (
+                <div className="px-3 pb-3 space-y-2">
+                  <textarea
+                    className="textarea min-h-[60px]"
+                    placeholder="描述你想要的预设风格，如：冷傲女王系，回复简短带刺，偶尔毒舌，喜欢用*动作描写*"
+                    value={aiGenDesc}
+                    onChange={(e) => setAiGenDesc(e.target.value)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleAiGenerate}
+                      disabled={aiGenBusy || !aiGenDesc.trim()}
+                      className="btn-primary text-xs"
+                    >
+                      {aiGenBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      {aiGenBusy ? '生成中...' : '生成预设'}
+                    </button>
+                    {aiGenError && <span className="text-xs text-tavern-danger">{aiGenError}</span>}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -492,6 +694,57 @@ export function PresetsPage() {
                 />
               </div>
               </div>
+            </div>
+
+            {/* 预设测试器（第三批） */}
+            <div className="rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-2">
+              <label className="label flex items-center gap-1.5">
+                <Play className="w-3.5 h-3.5 text-tavern-accent" />
+                预设测试器
+                <span className="text-xs text-tavern-text-muted font-normal">用当前预设参数真实调用一次，不保存到对话</span>
+              </label>
+              <div className="flex gap-1.5">
+                <textarea
+                  className="textarea min-h-[48px] flex-1"
+                  placeholder="输入测试消息..."
+                  value={testInput}
+                  onChange={(e) => setTestInput(e.target.value)}
+                />
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={handleTestGenerate}
+                    disabled={testBusy || !testInput.trim()}
+                    className="btn-primary text-xs"
+                    title="用当前 System Prompt + Jailbreak + 采样参数生成"
+                  >
+                    {testBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                    {testBusy ? '生成中' : '测试'}
+                  </button>
+                  {testBusy && (
+                    <button onClick={handleTestStop} className="btn-ghost text-xs text-tavern-danger">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {testOutput && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-tavern-text-muted">
+                      参数：温度 {editingPreset.temperature} · TopP {editingPreset.topP} · 最大 {editingPreset.maxTokens} tok
+                    </span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(testOutput)}
+                      className="text-xs text-tavern-text-muted hover:text-tavern-accent flex items-center gap-0.5"
+                    >
+                      <Copy className="w-3 h-3" /> 复制
+                    </button>
+                  </div>
+                  <div className="p-3 rounded-lg bg-tavern-bg-card border border-tavern-border-soft text-sm whitespace-pre-wrap max-h-56 overflow-y-auto">
+                    {testOutput}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
