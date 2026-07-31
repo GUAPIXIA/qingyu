@@ -82,3 +82,38 @@ describe('OPENAI_VOICES', () => {
     expect(ids.length).toBeGreaterThanOrEqual(6)
   })
 })
+
+describe('edgeSpeak（Edge TTS 引擎）', () => {
+  it('合成 mp3 并返回 base64（临时文件清理）', async () => {
+    // mock node-edge-tts：ttsPromise 写一个假 mp3 文件
+    let writtenPath = ''
+    vi.doMock('node-edge-tts', () => ({
+      EdgeTTS: class {
+        constructor(opts: any) { /* 记录构造参数 */ }
+        async ttsPromise(_text: string, audioPath: string) {
+          writtenPath = audioPath
+          const { writeFileSync } = await import('node:fs')
+          writeFileSync(audioPath, Buffer.from([0x66, 0xff, 0xf3]), 'utf-8')
+        }
+      },
+    }))
+    // 重新加载模块以应用 mock
+    vi.resetModules()
+    const { edgeSpeak } = await import('../tts')
+    const base64 = await edgeSpeak('你好', 'zh-CN-XiaoxiaoNeural')
+    expect(base64).toBe(Buffer.from([0x66, 0xff, 0xf3]).toString('base64'))
+    // 临时文件已清理
+    const { existsSync } = await import('node:fs')
+    expect(existsSync(writtenPath)).toBe(false)
+    vi.unmock('node-edge-tts')
+    vi.resetModules()
+  })
+
+  it('EDGE_VOICES 包含常用中文音色', async () => {
+    vi.resetModules()
+    const { EDGE_VOICES } = await import('../tts')
+    const ids = EDGE_VOICES.map((v) => v.id)
+    expect(ids).toContain('zh-CN-XiaoxiaoNeural')
+    expect(ids).toContain('zh-CN-YunxiNeural')
+  })
+})

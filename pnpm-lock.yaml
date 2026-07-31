@@ -20,6 +20,9 @@ importers:
       nanoid:
         specifier: ^5.0.7
         version: 5.1.16
+      node-edge-tts:
+        specifier: ^1.2.10
+        version: 1.2.10
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -2676,6 +2679,10 @@ packages:
 
   node-addon-api@1.7.2:
     resolution: {integrity: sha512-ibPK3iA+vaY1eEjESkQkM0BbCqFOaZMiXRTtdB0u7b4djtY6JnsjvPdUHVMg6xQt3B8fpTTWHI9A+ADjM9frzg==}
+
+  node-edge-tts@1.2.10:
+    resolution: {integrity: sha512-bV2i4XU54D45+US0Zm1HcJRkifuB3W438dWyuJEHLQdKxnuqlI1kim2MOvR6Q3XUQZvfF9PoDyR1Rt7aeXhPdQ==}
+    hasBin: true
 
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
@@ -6502,6 +6509,16 @@ snapshots:
 
   node-addon-api@1.7.2:
     optional: true
+
+  node-edge-tts@1.2.10:
+    dependencies:
+      https-proxy-agent: 7.0.2
+      ws: 8.21.1
+      yargs: 17.7.3
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
 
   node-releases@2.0.51: {}
 
