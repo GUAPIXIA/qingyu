@@ -220,6 +220,8 @@ export interface TTSAPI {
   pause(): Promise<void>
   resume(): Promise<void>
   getState(): Promise<{ state: 'idle' | 'speaking' | 'paused' }>
+  /** 订阅 TTS 状态变化（系统语音完成/停止事件），返回取消订阅函数 */
+  onState(callback: (state: 'idle' | 'speaking' | 'paused') => void): () => void
   listVoices(provider: string): Promise<Voice[]>
 }
 

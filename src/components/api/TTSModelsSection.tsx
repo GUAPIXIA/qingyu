@@ -133,15 +133,19 @@ export function TTSModelsSection() {
   }
 
   /** 试听：用当前表单配置合成并播放一句测试语音 */
-  const stopAudition = () => {
+  const stopAudition = async () => {
     auditionRef.current?.pause()
     auditionRef.current = null
+    // system 引擎：真正停止主进程播放
+    if (form.provider !== 'openai' && form.provider !== 'edge') {
+      await window.api.tts.stop().catch(() => {})
+    }
     setAuditioning(false)
   }
 
   const handleAudition = async () => {
     if (auditioning) {
-      stopAudition()
+      await stopAudition()
       return
     }
     setAuditioning(true)
@@ -163,14 +167,18 @@ export function TTSModelsSection() {
         auditionRef.current = audio
         await audio.play().catch(() => setAuditioning(false))
       } else if (res.success) {
-        // system 引擎：主进程播放（无回调），定时复位
-        setTimeout(() => setAuditioning(false), 6000)
+        // system 引擎：主进程播放，等状态推送复位（idle）；5s 兜底
+        window.api.tts.onState((state) => {
+          if (state === 'idle') setAuditioning(false)
+        })
+        setTimeout(() => setAuditioning(false), 8000)
       } else {
         setAuditioning(false)
         setTestResult({ success: false, message: res.error || '试听失败' })
       }
-    } catch {
+    } catch (e) {
       setAuditioning(false)
+      setTestResult({ success: false, message: e instanceof Error ? e.message : '试听失败' })
     }
   }
 

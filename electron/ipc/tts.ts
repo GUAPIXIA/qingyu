@@ -7,6 +7,15 @@ const log = createLogger('tts')
 let psProcess: ChildProcessWithoutNullStreams | null = null
 let speechState: 'idle' | 'speaking' | 'paused' = 'idle'
 let initPromise: Promise<void> | null = null
+/** 状态推送目标（最近一次调用 TTS 的窗口） */
+let stateSender: Electron.WebContents | null = null
+
+/** 推送 TTS 状态到渲染进程（系统语音完成事件等） */
+function pushState(): void {
+  if (stateSender && !stateSender.isDestroyed()) {
+    stateSender.send('tts:state', speechState)
+  }
+}
 
 /** H-06 修复：命令队列，串行化 TTS 命令 */
 let commandQueue: Promise<void> = Promise.resolve()
@@ -111,6 +120,19 @@ async function ensureProcess(): Promise<void> {
       }
     }
     psProcess.stdout?.on('data', onInitData)
+
+    // 持久监听：消费系统语音的完成/错误事件（命令响应由 sendCommand 单独处理）
+    psProcess.stdout?.on('data', (data) => {
+      const text = data.toString().trim()
+      if (!text) return
+      try {
+        const parsed = JSON.parse(text)
+        if (parsed.status === 'completed' || parsed.status === 'error') {
+          speechState = 'idle'
+          pushState()
+        }
+      } catch { /* 忽略非 JSON 输出 */ }
+    })
 
     psProcess.on('error', (err) => {
       initPromise = null
@@ -316,7 +338,7 @@ export async function edgeSpeak(
 export function registerTTSIPC(ipcMain: IpcMain): void {
   // 朗读（provider 分发：openai 走 API 返回音频；system/edge 走本地引擎）
   ipcMain.handle('tts:speak', async (
-    _e,
+    event,
     text: string,
     opts: {
       provider?: string
@@ -327,6 +349,7 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
       baseUrl?: string
     } = {},
   ) => {
+    stateSender = event.sender as Electron.WebContents
     try {
       // OpenAI 兼容 TTS：返回 mp3 base64，由渲染进程播放
       if (opts.provider === 'openai') {
@@ -357,6 +380,7 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
       if (opts.rate !== undefined) await sendCommand({ action: 'setRate', rate: opts.rate })
       await sendCommand({ action: 'speak', text })
       log.info('TTS 朗读（系统语音）', { textLen: text.length, voice: opts.voice })
+      pushState()
       return { success: true }
     } catch (e) {
       log.error('TTS 朗读失败', { error: (e as Error).message })
@@ -365,23 +389,29 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
   })
 
   // 暂停
-  ipcMain.handle('tts:pause', async () => {
+  ipcMain.handle('tts:pause', async (event) => {
+    stateSender = event.sender as Electron.WebContents
     await sendCommand({ action: 'pause' })
     speechState = 'paused'
+    pushState()
     return { success: true }
   })
 
   // 恢复
-  ipcMain.handle('tts:resume', async () => {
+  ipcMain.handle('tts:resume', async (event) => {
+    stateSender = event.sender as Electron.WebContents
     await sendCommand({ action: 'resume' })
     speechState = 'speaking'
+    pushState()
     return { success: true }
   })
 
   // 停止
-  ipcMain.handle('tts:stop', async () => {
+  ipcMain.handle('tts:stop', async (event) => {
+    stateSender = event.sender as Electron.WebContents
     await sendCommand({ action: 'stop' })
     speechState = 'idle'
+    pushState()
     return { success: true }
   })
 

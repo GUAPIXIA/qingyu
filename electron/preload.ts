@@ -141,6 +141,11 @@ const ttsApi: TTSAPI = {
   pause: () => ipcRenderer.invoke('tts:pause'),
   resume: () => ipcRenderer.invoke('tts:resume'),
   getState: () => ipcRenderer.invoke('tts:getState'),
+  onState: (callback) => {
+    const handler = (_e: unknown, state: 'idle' | 'speaking' | 'paused') => callback(state)
+    ipcRenderer.on('tts:state', handler)
+    return () => ipcRenderer.removeListener('tts:state', handler)
+  },
   listVoices: (provider) => ipcRenderer.invoke('tts:getVoices', provider),
 }
 

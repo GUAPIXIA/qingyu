@@ -47,7 +47,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const [zoomImage, setZoomImage] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
   const [continuing, setContinuing] = useState(false)
-  /** OpenAI TTS 音频播放器（渲染进程播放 mp3） */
+  /** OpenAI/Edge TTS 音频播放器（渲染进程播放 mp3） */
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const editMessage = useChatStore(s => s.editMessage)
@@ -65,6 +65,15 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const { getPersona } = usePersonaStore()
   const persona = getPersona(settings.activePersonaId)
   const ttsConfig = getActiveTTS()
+
+  // 系统语音完成事件：订阅主进程推送，播放结束自动复位（openai/edge 由 audio onended 处理）
+  useEffect(() => {
+    if (ttsConfig?.provider !== 'system') return
+    const unsubscribe = window.api.tts.onState((state) => {
+      if (state === 'idle') setTtsState('idle')
+    })
+    return unsubscribe
+  }, [ttsConfig?.provider])
 
   // 全局翻译状态
   const transState = translatingMessages[message.id]
@@ -113,8 +122,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
 
   const handleSpeak = async () => {
     if (!message.content) return
-    if (!ttsConfig) return
-    // OpenAI / Edge TTS：渲染进程直接控制音频播放（主进程返回 mp3 base64）
+    if (!ttsConfig) return    // OpenAI / Edge TTS：渲染进程直接控制音频播放（主进程返回 mp3 base64）
     if (ttsConfig.provider === 'openai' || ttsConfig.provider === 'edge') {
       if (ttsState === 'speaking') {
         audioRef.current?.pause()
