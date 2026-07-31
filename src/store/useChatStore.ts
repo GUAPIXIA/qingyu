@@ -1520,11 +1520,23 @@ ${previousFactsText}`,
       systemContent += '\n\n' + replaceVariables(preset.jailbreak, userName, charNameForVars)
     }
 
-    // 用户人设注入
-    systemContent += '\n\n【用户人设】'
-    systemContent += '\n用户名：' + userName
-    if (settings.userDescription) systemContent += '\n描述：' + settings.userDescription
-    if (settings.userPersona) systemContent += '\n性格：' + settings.userPersona
+    // 用户人设注入（可配置：开关 / 位置 / 字段，对齐 ST 的 persona placement）
+    const personaInjection = settings.personaInjection
+      ?? { enabled: true, position: 'system' as const, includeDescription: true, includePersona: true }
+    let personaText = ''
+    if (personaInjection.enabled) {
+      personaText += '用户名：' + userName
+      if (personaInjection.includeDescription !== false && settings.userDescription) {
+        personaText += '\n描述：' + replaceVariables(settings.userDescription, userName, charNameForVars)
+      }
+      if (personaInjection.includePersona !== false && settings.userPersona) {
+        personaText += '\n性格：' + replaceVariables(settings.userPersona, userName, charNameForVars)
+      }
+      // system 位置：拼入系统提示词（默认）
+      if (personaText && personaInjection.position === 'system') {
+        systemContent += '\n\n【用户人设】\n' + personaText
+      }
+    }
 
     // 心理描写输出格式（修复 #33）：改为可配置，默认开启
     const enableThoughtFormat = settings.enableThoughtFormat !== false
@@ -1627,6 +1639,11 @@ ${previousFactsText}`,
     if (charDesc) systemContent += '\n\n【角色设定】\n' + charDesc
 
     context.push({ role: 'system', content: systemContent })
+
+    // 用户人设 separate 模式：独立 system 消息（keepSeparate 避免被合并进相邻消息）
+    if (personaText && personaInjection.position === 'separate') {
+      context.push({ role: 'system', content: '【用户人设】\n' + personaText, keepSeparate: true })
+    }
 
     // ===== 作者注释（Author's Note）=====
     // 角色级优先，回退全局；enabled 且文本非空才注入

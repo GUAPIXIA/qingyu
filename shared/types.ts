@@ -388,6 +388,20 @@ export interface Settings {
   authorNote?: AuthorNoteConfig
   /** 语义触发（向量 RAG）配置：世界书条目语义匹配 + 向量检索 */
   semanticTrigger?: SemanticTriggerConfig
+  /** 用户人设注入配置：与系统提示词的合并规则 */
+  personaInjection?: PersonaInjectionConfig
+}
+
+/** 用户人设注入配置（ST 的 User Persona description placement） */
+export interface PersonaInjectionConfig {
+  /** 是否注入用户人设（关闭 = 仅保留 {{user}} 变量替换） */
+  enabled: boolean
+  /** 注入位置：system = 拼入系统提示词（默认）；separate = 独立 system 消息 */
+  position: 'system' | 'separate'
+  /** 是否注入用户描述（userDescription） */
+  includeDescription: boolean
+  /** 是否注入用户性格（userPersona） */
+  includePersona: boolean
 }
 
 /** 语义触发（向量 RAG）配置 */

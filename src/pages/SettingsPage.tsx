@@ -27,6 +27,7 @@ import {
   Trash2,
   StickyNote,
   Brain,
+  UserRound,
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react'
@@ -639,6 +640,82 @@ export function SettingsPage() {
                     <p className="text-xs text-tavern-text-muted mt-1">0 = 最新消息之前（对话末尾上方），1 = 倒数第二条消息之前，依此类推</p>
                   </div>
                 )}
+              </>
+            )}
+          </div>
+        </SectionCard>
+
+        {/* 用户人设注入 */}
+        <SectionCard title="用户人设注入" icon={<UserRound className="w-4 h-4" />}>
+          <div className="mt-3 space-y-4">
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-sm">注入用户人设</p>
+                <p className="text-xs text-tavern-text-muted">将用户名/描述/性格注入模型上下文（关闭后仅保留 {'{{user}}'} 变量替换）</p>
+              </div>
+              <Toggle
+                checked={settings.personaInjection?.enabled ?? true}
+                onChange={(v) => updateSettings({
+                  personaInjection: {
+                    ...(settings.personaInjection ?? { position: 'system', includeDescription: true, includePersona: true }),
+                    enabled: v,
+                  },
+                })}
+              />
+            </div>
+
+            {(settings.personaInjection?.enabled ?? true) && (
+              <>
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm">注入位置</p>
+                    <p className="text-xs text-tavern-text-muted">system = 拼入系统提示词（默认）；separate = 独立系统消息</p>
+                  </div>
+                  <select
+                    className="input text-sm py-1 px-2 w-36"
+                    value={settings.personaInjection?.position ?? 'system'}
+                    onChange={(e) => updateSettings({
+                      personaInjection: {
+                        ...(settings.personaInjection ?? { enabled: true, includeDescription: true, includePersona: true }),
+                        position: e.target.value as 'system' | 'separate',
+                      },
+                    })}
+                  >
+                    <option value="system">系统提示内</option>
+                    <option value="separate">独立系统消息</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="accent-[var(--color-accent)]"
+                      checked={settings.personaInjection?.includeDescription ?? true}
+                      onChange={(e) => updateSettings({
+                        personaInjection: {
+                          ...(settings.personaInjection ?? { enabled: true, position: 'system', includePersona: true }),
+                          includeDescription: e.target.checked,
+                        },
+                      })}
+                    />
+                    <span className="text-sm">注入用户描述</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="accent-[var(--color-accent)]"
+                      checked={settings.personaInjection?.includePersona ?? true}
+                      onChange={(e) => updateSettings({
+                        personaInjection: {
+                          ...(settings.personaInjection ?? { enabled: true, position: 'system', includeDescription: true }),
+                          includePersona: e.target.checked,
+                        },
+                      })}
+                    />
+                    <span className="text-sm">注入用户性格</span>
+                  </label>
+                </div>
               </>
             )}
           </div>

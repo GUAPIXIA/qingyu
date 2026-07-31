@@ -64,5 +64,11 @@ export function getDefaultSettings(): Settings {
       threshold: 0.3,
       maxResults: 3,
     },
+    personaInjection: {
+      enabled: true,
+      position: 'system',
+      includeDescription: true,
+      includePersona: true,
+    },
   }
 }

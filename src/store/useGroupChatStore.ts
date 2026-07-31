@@ -901,11 +901,22 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
       }
     }
 
-    // 用户人设
-    systemContent += '\n【用户人设】\n'
-    systemContent += `用户名：${userName}\n`
-    if (settings.userDescription) systemContent += `描述：${replaceVariables(settings.userDescription, userName, charNameForVars)}\n`
-    if (settings.userPersona) systemContent += `性格：${replaceVariables(settings.userPersona, userName, charNameForVars)}\n`
+    // 用户人设注入（可配置：开关 / 位置 / 字段，与单聊一致）
+    const personaInjection = settings.personaInjection
+      ?? { enabled: true, position: 'system' as const, includeDescription: true, includePersona: true }
+    let personaText = ''
+    if (personaInjection.enabled) {
+      personaText += `用户名：${userName}\n`
+      if (personaInjection.includeDescription !== false && settings.userDescription) {
+        personaText += `描述：${replaceVariables(settings.userDescription, userName, charNameForVars)}\n`
+      }
+      if (personaInjection.includePersona !== false && settings.userPersona) {
+        personaText += `性格：${replaceVariables(settings.userPersona, userName, charNameForVars)}\n`
+      }
+      if (personaText && personaInjection.position === 'system') {
+        systemContent += '\n【用户人设】\n' + personaText
+      }
+    }
 
     // 世界书 at_end 条目
     if (lorebookAtEnd) {
@@ -956,6 +967,11 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
     const context: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = [
       { role: 'system', content: systemContent },
     ]
+
+    // 用户人设 separate 模式：独立 system 消息
+    if (personaText && personaInjection.position === 'separate') {
+      context.push({ role: 'system', content: '【用户人设】\n' + personaText, keepSeparate: true })
+    }
 
     // ===== 作者注释（Author's Note，群聊仅全局级，anConfig 已在预算预留处声明）=====
     let anText = ''

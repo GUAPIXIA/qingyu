@@ -13,6 +13,7 @@ import {
   ChevronDown,
   X as XIcon,
   Reply,
+  UserRound,
 } from 'lucide-react'
 import type { GroupChat, GroupMessage } from '../../../shared/types'
 
@@ -35,6 +36,8 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
   const [targetCharId, setTargetCharId] = useState<string | null>(null)
   const [mentionFilter, setMentionFilter] = useState('')
   const [selectedImages, setSelectedImages] = useState<string[]>([])
+  /** 自由发言模式：发言人切换（null = 用户，否则以指定角色身份插入消息） */
+  const [freeSpeakerId, setFreeSpeakerId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const { characters } = useCharacterStore()
@@ -83,6 +86,16 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
     const trimmed = content.trim()
     const images = [...selectedImages]
     const replyToId = replyTo?.id ?? null
+
+    // 自由发言视角切换：以指定角色身份插入消息（不触发 AI 回复）
+    if (group.chatMode === 'free' && freeSpeakerId) {
+      setContent('')
+      setSelectedImages([])
+      resetTextareaHeight()
+      onCancelReply?.()
+      await useGroupChatStore.getState().insertCharacterMessage(freeSpeakerId, trimmed)
+      return
+    }
 
     if (group.chatMode === 'mention' && !targetCharId) {
       // 未点名则默认第一个成员
@@ -240,6 +253,39 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
                 +{members.length - 4}
               </button>
             )}
+          </div>
+        )}
+
+        {/* 自由发言视角切换：以用户或指定角色身份发言 */}
+        {group.chatMode === 'free' && (
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={() => setFreeSpeakerId(null)}
+              className={cn(
+                'w-6 h-6 rounded-full flex items-center justify-center border transition-colors',
+                freeSpeakerId === null
+                  ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                  : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
+              )}
+              title="以用户身份发言（默认）"
+            >
+              <UserRound className="w-3 h-3" />
+            </button>
+            {members.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setFreeSpeakerId(m.id)}
+                className={cn(
+                  'w-6 h-6 rounded-full flex items-center justify-center text-[10px] border transition-colors',
+                  freeSpeakerId === m.id
+                    ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                    : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
+                )}
+                title={`以「${m.name}」身份发言`}
+              >
+                {m.name[0]}
+              </button>
+            ))}
           </div>
         )}
       </div>
