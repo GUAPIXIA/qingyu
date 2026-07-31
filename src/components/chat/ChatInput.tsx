@@ -8,7 +8,6 @@ import { useCharacterStore } from '../../store/useCharacterStore'
 import { downloadFile } from '../../utils/download'
 import { logError } from '../../lib/logger'
 import { getDisplayName } from '../../utils/variables'
-import { getDefaultMaxContext } from '../../utils/tokenCounter'
 import type { Character, Preset, Lorebook, ChatParams } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
@@ -97,6 +96,17 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
         }
         const [preset, lorebooks] = await loadActivePresetLorebook()
         await chatStore.regenerateMessage(lastAssistant.id, character, preset, lorebooks)
+      },
+      continueLastMessage: async () => {
+        const messages = chatStore.messages
+        const lastMsg = messages[messages.length - 1]
+        // continueMessage 要求目标是最后一条消息且为 assistant
+        if (!lastMsg || lastMsg.role !== 'assistant') {
+          showNotification('最后一条消息不是 AI 回复，无法续写')
+          return
+        }
+        const [preset, lorebooks] = await loadActivePresetLorebook()
+        await chatStore.continueMessage(lastMsg.id, character, preset, lorebooks)
       },
       triggerMemorySummary: async () => {
         const result = await chatStore.triggerMemorySummary(character)
@@ -194,10 +204,8 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       },
       getTokenUsage: () => {
         const messages = chatStore.messages
-        // 简单估算
         const total = messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0)
-        const max = activeProfile?.maxContext || getDefaultMaxContext(settings.activeModel || activeProfile?.model)
-        return { total: Math.ceil(total / 4), max }  // 粗略估算 4 字符 = 1 token
+        return { total, max: 0 }
       },
       callAiHelper: async (systemPrompt, userContent, options) => {
         return callAiHelper({

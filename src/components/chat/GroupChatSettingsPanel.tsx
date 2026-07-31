@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText, Download, Palette } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
+import { charAssetUrl } from '../../utils/asset'
 import type { GroupChat, Character, Lorebook, Preset } from '../../../shared/types'
 
 interface GroupChatSettingsPanelProps {
@@ -78,8 +79,8 @@ export function GroupChatSettingsPanel({
                 return (
                   <div key={id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-tavern-bg-soft text-sm">
                     <span className="w-5 text-xs text-tavern-text-muted text-center">{idx + 1}</span>
-                    {char.avatar ? (
-                      <img src={char.avatar} className="w-6 h-6 rounded-full object-cover" alt="" />
+                    {(char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt)) ? (
+                      <img src={char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt)} className="w-6 h-6 rounded-full object-cover" alt="" />
                     ) : (
                       <div className="w-6 h-6 rounded-full bg-tavern-bg-hover flex items-center justify-center text-[10px] font-bold">
                         {char.translatedContent?.name?.[0] ?? char.name[0]}

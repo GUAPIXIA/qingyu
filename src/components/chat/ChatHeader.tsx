@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ArrowDownToLine, Eye, Sliders, Images, Image, Download, Trash2, Users, UserCircle, X, Plus } from 'lucide-react'
 import { useChatStore } from '../../store/useChatStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
+import { charAssetUrl } from '../../utils/asset'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { Dropdown } from '../common/Dropdown'
 import { SessionSwitcher } from '../common/SessionSwitcher'
 import { CharacterAvatar } from '../character/CharacterAvatar'
 import { getDisplayName } from '../../utils/variables'
-import { getDefaultMaxContext } from '../../utils/tokenCounter'
 import { MemoryPanel } from './MemoryPanel'
 import { TokenUsage } from './TokenUsage'
 import { cn } from '../../lib/utils'
@@ -19,7 +19,7 @@ interface ChatHeaderProps {
   currentCharacter: Character
   messages: Message[]
   isStreaming: boolean
-  totalTokens: number
+  totalChars: number
   showQuickSettings: boolean
   showBgPanel: boolean
   onExport: () => void
@@ -35,7 +35,7 @@ export function ChatHeader({
   currentCharacter,
   messages,
   isStreaming,
-  totalTokens,
+  totalChars,
   showQuickSettings,
   showBgPanel,
   onExport,
@@ -48,7 +48,7 @@ export function ChatHeader({
   const navigate = useNavigate()
   const { sessions, currentSessionId, switchSession, deleteSession, renameSession, toggleMemory, setMemoryMode, triggerMemorySummary, getStats } = useChatStore()
   const { characters, selectCharacter } = useCharacterStore()
-  const { settings, updateSettings, getActiveProfile } = useSettingsStore()
+  const { settings, updateSettings } = useSettingsStore()
   const { personas, getPersona } = usePersonaStore()
 
   const [showCharMenu, setShowCharMenu] = useState(false)
@@ -58,8 +58,6 @@ export function ChatHeader({
   const [memoryInterval, setMemoryInterval] = useState(10)
   const [showImgHistory, setShowImgHistory] = useState(false)
   const [imgNotify, setImgNotify] = useState<string | null>(null)
-
-  const activeProfile = getActiveProfile()
 
   // 切换当前会话的身份
   const handleSwitchPersona = async (personaId: string | null) => {
@@ -100,7 +98,7 @@ export function ChatHeader({
           trigger={
             <button className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-tavern-bg-hover transition-colors">
               <CharacterAvatar
-                avatar={currentCharacter.avatar}
+                avatar={currentCharacter.avatar || charAssetUrl(currentCharacter.id, 'avatar', currentCharacter.updatedAt)}
                 name={getDisplayName(currentCharacter)}
                 size="md"
                 fallbackClassName="bg-tavern-assistant/20 text-tavern-assistant"
@@ -133,7 +131,7 @@ export function ChatHeader({
                 )}
               >
                 <CharacterAvatar
-                  avatar={char.avatar}
+                  avatar={char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt)}
                   name={getDisplayName(char)}
                   size="md"
                 />
@@ -282,7 +280,7 @@ export function ChatHeader({
 
       {/* 操作按钮 */}
       <div className="flex items-center gap-1">
-        <span className="mr-2"><TokenUsage tokens={totalTokens} maxTokens={activeProfile?.maxContext || getDefaultMaxContext(activeProfile?.model || settings.activeModel)} /></span>
+        <span className="mr-2"><TokenUsage chars={totalChars} /></span>
         <button
           onClick={() => updateSettings({ autoScroll: !settings.autoScroll })}
           className={cn(

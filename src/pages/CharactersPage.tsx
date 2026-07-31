@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useDeferredValue } from "react"
+import { Virtuoso, VirtuosoGrid } from "react-virtuoso"
 import { useNavigate } from "react-router-dom"
 import { useCharacterStore } from "../store/useCharacterStore"
 import { CharacterCard } from "../components/character/CharacterCard"
@@ -287,7 +288,7 @@ export function CharactersPage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-hidden p-4">
         {characters.length === 0 ? (
           <EmptyState
             className="h-full"
@@ -315,8 +316,9 @@ export function CharactersPage() {
             description={`没有包含 "${search}" 的角色`}
           />
         ) : viewMode === "list" ? (
-          <div className="flex flex-col gap-3 max-w-3xl mx-auto">
-            {filtered.map((char) => (
+          <Virtuoso
+            data={filtered}
+            itemContent={(index, char) => (
               <CharacterCard
                 key={char.id}
                 character={char}
@@ -327,11 +329,16 @@ export function CharactersPage() {
                 onDelete={handleDeleteById}
                 onChat={handleStartChat}
               />
-            ))}
-          </div>
+            )}
+            className="h-full"
+            components={{
+              List: ({ children }) => <div className="flex flex-col gap-3 max-w-3xl mx-auto pb-4">{children}</div>,
+            }}
+          />
         ) : (
-          <div className={cn("grid", gridClass)}>
-            {filtered.map((char) => (
+          <VirtuosoGrid
+            data={filtered}
+            itemContent={(index, char) => (
               <CharacterCard
                 key={char.id}
                 character={char}
@@ -341,8 +348,10 @@ export function CharactersPage() {
                 onDelete={handleDeleteById}
                 onChat={handleStartChat}
               />
-            ))}
-          </div>
+            )}
+            listClassName={cn("grid", gridClass)}
+            className="h-full"
+          />
         )}
       </div>
 

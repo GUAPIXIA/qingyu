@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trash2, Download, TrendingUp, Hash, DollarSign } from 'lucide-react'
+import { ArrowLeft, Trash2, Download, Hash, Type } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { formatCharCount } from '../utils/charCounter'
 
 type GroupBy = 'character' | 'session' | 'day' | 'model'
 type TimeRange = 'today' | '7d' | '30d' | 'all'
 
 export function UsagePage() {
   const navigate = useNavigate()
-  const [summary, setSummary] = useState<{ totalPrompt: number; totalCompletion: number; totalTokens: number; totalCost: number; count: number } | null>(null)
-  const [records, setRecords] = useState<Array<{ key: string; promptTokens: number; completionTokens: number; totalTokens: number; cost: number; count: number }>>([])
+  const [summary, setSummary] = useState<{ totalInput: number; totalOutput: number; totalChars: number; count: number } | null>(null)
+  const [records, setRecords] = useState<Array<{ key: string; inputChars: number; outputChars: number; totalChars: number; count: number }>>([])
   const [groupBy, setGroupBy] = useState<GroupBy>('character')
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
   const [showClearConfirm, setShowClearConfirm] = useState(false)
-  // 分组 key → 显示名称映射
+  // 分组 key -> 显示名称映射
   const [keyNameMap, setKeyNameMap] = useState<Record<string, string>>({})
 
   // 按时间范围与分组维度加载数据
@@ -64,14 +65,17 @@ export function UsagePage() {
     loadData()
   }, [loadData])
 
-  // 实时刷新：监听 ai:usage 事件
+  // 实时刷新：监听 AI 调用完成事件
   useEffect(() => {
-    const unsubscribe = window.api.ai.onUsage?.(() => {
-      // 延迟 100ms 等待记录写入完成
-      setTimeout(() => loadData(), 100)
-    })
+    const refresh = () => {
+      // 延迟 200ms 等待记录写入完成
+      setTimeout(() => loadData(), 200)
+    }
+    const unbindUsage = window.api.ai.onUsage?.(refresh)
+    const unbindDone = window.api.ai.onDone(refresh)
     return () => {
-      if (typeof unsubscribe === 'function') unsubscribe()
+      if (typeof unbindUsage === 'function') unbindUsage()
+      if (typeof unbindDone === 'function') unbindDone()
     }
   }, [loadData])
 
@@ -83,13 +87,12 @@ export function UsagePage() {
 
   // 导出为 CSV（含 BOM 以兼容 Excel 中文显示）
   const handleExportCsv = () => {
-    const headers = ['分组', '输入Token', '输出Token', '总Token', '费用($)', '调用次数']
+    const headers = ['分组', '输入字符', '输出字符', '总字符', '调用次数']
     const rows = records.map(r => [
       resolveKeyName(r.key),
-      r.promptTokens,
-      r.completionTokens,
-      r.totalTokens,
-      r.cost.toFixed(4),
+      r.inputChars,
+      r.outputChars,
+      r.totalChars,
       r.count,
     ])
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
@@ -100,18 +103,6 @@ export function UsagePage() {
     a.download = `usage-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  const formatTokens = (n: number) => {
-    if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`
-    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
-    return n.toString()
-  }
-
-  const formatCost = (n: number) => {
-    if (n === 0) return '-'
-    if (n < 0.01) return `<$0.01`
-    return `$${n.toFixed(2)}`
   }
 
   /** 解析分组 key 为显示名称 */
@@ -135,7 +126,7 @@ export function UsagePage() {
 
   // 日趋势图表数据
   const dailyData = groupBy === 'day' ? records.slice().reverse() : []
-  const maxDailyTokens = dailyData.length > 0 ? Math.max(...dailyData.map(r => r.totalTokens)) : 1
+  const maxDailyChars = dailyData.length > 0 ? Math.max(...dailyData.map(r => r.totalChars)) : 1
 
   return (
     <div className="h-full flex flex-col">
@@ -160,16 +151,16 @@ export function UsagePage() {
       {/* 内容 */}
       <div className="flex-1 overflow-y-auto p-6">
         {/* 汇总卡片 */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-tavern-bg-soft rounded-xl p-4 border border-tavern-border-soft">
             <div className="flex items-center gap-2 text-tavern-text-muted text-xs mb-2">
-              <TrendingUp className="w-4 h-4" /> 总 Token
+              <Type className="w-4 h-4" /> 总字符数
             </div>
             <div className="text-2xl font-semibold tabular-nums">
-              {summary ? formatTokens(summary.totalTokens) : '-'}
+              {summary ? formatCharCount(summary.totalChars) : '-'}
             </div>
             <div className="text-xs text-tavern-text-muted mt-1">
-              输入 {summary ? formatTokens(summary.totalPrompt) : '-'} · 输出 {summary ? formatTokens(summary.totalCompletion) : '-'}
+              输入 {summary ? formatCharCount(summary.totalInput) : '-'} · 输出 {summary ? formatCharCount(summary.totalOutput) : '-'}
             </div>
           </div>
           <div className="bg-tavern-bg-soft rounded-xl p-4 border border-tavern-border-soft">
@@ -179,30 +170,19 @@ export function UsagePage() {
             <div className="text-2xl font-semibold tabular-nums">
               {summary ? summary.count : '-'}
             </div>
-            <div className="text-xs text-tavern-text-muted mt-1">次 API 调用</div>
-          </div>
-          <div className="bg-tavern-bg-soft rounded-xl p-4 border border-tavern-border-soft">
-            <div className="flex items-center gap-2 text-tavern-text-muted text-xs mb-2">
-              <DollarSign className="w-4 h-4" /> 总费用
-            </div>
-            <div className="text-2xl font-semibold tabular-nums">
-              {summary ? formatCost(summary.totalCost) : '-'}
-            </div>
-            <div className="text-xs text-tavern-text-muted mt-1">
-              {summary && summary.count > 0 ? `平均 ${formatCost(summary.totalCost / summary.count)}/次` : '-'}
-            </div>
+            <div className="text-xs text-tavern-text-muted mt-1">次 AI 调用</div>
           </div>
         </div>
 
         {/* 日趋势图表 */}
         {dailyData.length > 0 && (
           <div className="bg-tavern-bg-soft rounded-xl p-4 border border-tavern-border-soft mb-6">
-            <div className="text-sm font-medium mb-3">每日用量趋势</div>
+            <div className="text-sm font-medium mb-3">每日字符用量趋势</div>
             <div className="flex items-end gap-1" style={{ height: '120px' }}>
               {dailyData.map((d, i) => {
-                const height = maxDailyTokens > 0 ? (d.totalTokens / maxDailyTokens) * 100 : 0
+                const height = maxDailyChars > 0 ? (d.totalChars / maxDailyChars) * 100 : 0
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${d.key}: ${formatTokens(d.totalTokens)} tokens`}>
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${d.key}: ${formatCharCount(d.totalChars)} 字符`}>
                     <div className="w-full flex flex-col justify-end" style={{ height: '100px' }}>
                       <div
                         className="w-full rounded-t bg-tavern-accent/70 hover:bg-tavern-accent transition-colors min-h-[2px]"
@@ -257,17 +237,16 @@ export function UsagePage() {
             <thead>
               <tr className="border-b border-tavern-border-soft text-xs text-tavern-text-muted">
                 <th className="px-4 py-3 text-left font-medium">分组</th>
-                <th className="px-4 py-3 text-right font-medium">输入 Token</th>
-                <th className="px-4 py-3 text-right font-medium">输出 Token</th>
-                <th className="px-4 py-3 text-right font-medium">总 Token</th>
-                <th className="px-4 py-3 text-right font-medium">费用</th>
+                <th className="px-4 py-3 text-right font-medium">输入字符</th>
+                <th className="px-4 py-3 text-right font-medium">输出字符</th>
+                <th className="px-4 py-3 text-right font-medium">总字符</th>
                 <th className="px-4 py-3 text-right font-medium">次数</th>
               </tr>
             </thead>
             <tbody>
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-tavern-text-muted">
+                  <td colSpan={5} className="px-4 py-12 text-center text-tavern-text-muted">
                     暂无数据
                   </td>
                 </tr>
@@ -275,10 +254,9 @@ export function UsagePage() {
                 records.map((r, i) => (
                   <tr key={i} className="border-b border-tavern-border-soft/50 last:border-0 hover:bg-tavern-bg-hover/50">
                     <td className="px-4 py-3 text-sm font-medium">{resolveKeyName(r.key)}</td>
-                    <td className="px-4 py-3 text-sm text-right tabular-nums text-tavern-text-muted">{formatTokens(r.promptTokens)}</td>
-                    <td className="px-4 py-3 text-sm text-right tabular-nums text-tavern-text-muted">{formatTokens(r.completionTokens)}</td>
-                    <td className="px-4 py-3 text-sm text-right tabular-nums font-medium">{formatTokens(r.totalTokens)}</td>
-                    <td className="px-4 py-3 text-sm text-right tabular-nums text-tavern-text-muted">{formatCost(r.cost)}</td>
+                    <td className="px-4 py-3 text-sm text-right tabular-nums text-tavern-text-muted">{formatCharCount(r.inputChars)}</td>
+                    <td className="px-4 py-3 text-sm text-right tabular-nums text-tavern-text-muted">{formatCharCount(r.outputChars)}</td>
+                    <td className="px-4 py-3 text-sm text-right tabular-nums font-medium">{formatCharCount(r.totalChars)}</td>
                     <td className="px-4 py-3 text-sm text-right tabular-nums text-tavern-text-muted">{r.count}</td>
                   </tr>
                 ))

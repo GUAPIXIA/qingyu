@@ -15,6 +15,7 @@ import { GroupChatSettingsPanel } from '../components/chat/GroupChatSettingsPane
 import { MemoryPanel } from '../components/chat/MemoryPanel'
 import { cn } from '../lib/utils'
 import { downloadFile } from '../utils/download'
+import { charAssetUrl } from '../utils/asset'
 import type { GroupChat, GroupMessage, Lorebook, Preset } from '../../shared/types'
 import {
   Plus,
@@ -391,13 +392,13 @@ export function GroupChatPage() {
               </div>
 
               <div className="flex items-center gap-1">
-                {/* Token 总量 */}
+                {/* 字符总量 */}
                 {(() => {
-                  const totalTokens = messages.reduce((sum, m) => sum + (m.tokenUsage?.totalTokens ?? 0), 0)
-                  if (totalTokens > 0) {
+                  const totalChars = messages.reduce((sum, m) => sum + (m.charUsage?.totalChars ?? 0), 0)
+                  if (totalChars > 0) {
                     return (
                       <span className="text-[10px] text-tavern-text-muted px-1.5 py-0.5 rounded bg-tavern-bg-hover">
-                        {(totalTokens / 1000).toFixed(1)}k tokens
+                        {totalChars} 字符
                       </span>
                     )
                   }
@@ -646,10 +647,10 @@ export function GroupChatPage() {
           const char = characters.find(c => c.id === id)
           const displayName = char?.translatedContent?.name ?? char?.name ?? ''
           if (char?.groupOnlyGreetings && char.groupOnlyGreetings.length > 0) {
-            memberGreetings.push({ charId: id, charName: displayName, avatar: char.avatar, greetings: char.groupOnlyGreetings })
+            memberGreetings.push({ charId: id, charName: displayName, avatar: char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt), greetings: char.groupOnlyGreetings })
           } else if (char?.firstMessage) {
             const displayFirstMsg = char.translatedContent?.firstMessage ?? char.firstMessage
-            memberGreetings.push({ charId: id, charName: displayName, avatar: char.avatar, greetings: [displayFirstMsg] })
+            memberGreetings.push({ charId: id, charName: displayName, avatar: char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt), greetings: [displayFirstMsg] })
           }
         })
         if (memberGreetings.length === 0) return null
@@ -825,8 +826,8 @@ export function GroupChatPage() {
                       : 'hover:bg-tavern-bg-hover border border-transparent'
                   )}
                 >
-                  {char.avatar ? (
-                    <img src={char.avatar} className="w-9 h-9 rounded-lg object-cover shrink-0" alt="" />
+                  {(char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt)) ? (
+                    <img src={char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt)} className="w-9 h-9 rounded-lg object-cover shrink-0" alt="" />
                   ) : (
                     <div className="w-9 h-9 rounded-lg bg-tavern-bg-hover flex items-center justify-center text-sm font-bold text-tavern-text-muted shrink-0">
                       {char.name[0]}

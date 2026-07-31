@@ -1,6 +1,7 @@
 import type { Character } from '../../../shared/types'
 import { getDisplayName } from '../../utils/variables'
 import { formatRelativeTime } from '../../utils/format'
+import { charAssetUrl } from '../../utils/asset'
 import { X, Edit3, MessageSquare, Calendar, Tag, BookOpen, Sparkles, MessageCircle, MessagesSquare, Settings, Link2, User, Clock } from 'lucide-react'
 import { useState } from 'react'
 
@@ -49,7 +50,7 @@ function TagList({ tags }: { tags: string[] }) {
 
 export function CharacterDetail({ character, onClose, onEdit, onChat }: CharacterDetailProps) {
   const [imgError, setImgError] = useState(false)
-  const coverSrc = character.cover || character.avatar
+  const coverSrc = charAssetUrl(character.id, 'cover', character.updatedAt)
   const hasTranslation = character.translatedContent && Object.keys(character.translatedContent).length > 0
 
   return (

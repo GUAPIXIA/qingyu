@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeRaw from 'rehype-raw'
+import { charAssetUrl } from '../../utils/asset'
 import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause, User, Bot, Languages, GitBranch, Loader2, ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw, ChevronsDown } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
@@ -10,8 +11,8 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
 import { formatTime } from '../../utils/format'
-import { estimateTokens } from '../../utils/tokenCounter'
-import { parseDialogue } from '../../utils/dialogue-parser'
+import { countChars, formatCharCount } from '../../utils/charCounter'
+import { remarkRoleplay } from '../../utils/remark-roleplay'
 import { extractThought, stripThought } from '../../utils/messagePostProcess'
 import { getDisplayName } from '../../utils/variables'
 
@@ -84,15 +85,6 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
 
   // B-05：纯图片消息，气泡不应撑满整行
   const hasOnlyImages = message.images?.length > 0 && !displayContent && !(thought && !isSystem)
-
-  // 对话片段解析：将 *动作* / "对话" / Name: "对话" 拆分为结构化片段
-  const dialogueSegments = useMemo(() => {
-    if (isStreamingThis) return null
-    const segments = parseDialogue(displayContent)
-    // 如果没有识别出任何 dialogue/action 片段，返回 null（回退到普通 Markdown）
-    const hasDialogueOrAction = segments.some(s => s.type === 'dialogue' || s.type === 'action')
-    return hasDialogueOrAction ? segments : null
-  }, [displayContent, isUser, isStreamingThis])
 
   useEffect(() => {
     if (editing && textareaRef.current) {
@@ -289,8 +281,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             )
           ) : isSystem ? (
             <ImageIcon className="w-5 h-5" />
-          ) : character?.avatar && !avatarError ? (
-            <img src={character.avatar} alt="" className="w-full h-full rounded-full object-cover" onError={() => setAvatarError(true)} />
+          ) : !avatarError && character ? (
+            <img src={character.avatar || charAssetUrl(character.id, 'avatar', character.updatedAt)} alt="" className="w-full h-full rounded-full object-cover" onError={() => setAvatarError(true)} />
           ) : (
             <Bot className="w-5 h-5" />
           )}
@@ -305,8 +297,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             </span>
             <span>{formatTime(message.timestamp)}</span>
             {settings.showTokenCount && message.content && (
-              <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-muted/70 text-[10px]" title={message.tokenUsage ? `输入: ${message.tokenUsage.promptTokens} · 输出: ${message.tokenUsage.completionTokens} · 费用: $${message.tokenUsage.cost.toFixed(4)}` : ''}>
-                {message.tokenUsage ? `${message.tokenUsage.totalTokens} tok` : `${estimateTokens(message.content)} tok`}
+              <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-muted/70 text-[10px]" title={message.charUsage ? `输入: ${message.charUsage.inputChars} 字符 · 输出: ${message.charUsage.outputChars} 字符` : ''}>
+                {message.charUsage ? formatCharCount(message.charUsage.totalChars) : formatCharCount(countChars(message.content).total)}
               </span>
             )}
             {/* Swipe 多候选切换指示器 */}
@@ -400,52 +392,14 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             {/* system 消息只显示图片，不渲染对话文本 */}
             {!isSystem && (
             <div className={cn('markdown-body', isStreamingThis && 'typing-cursor')} onClick={handleMarkdownClick}>
-              {dialogueSegments ? (
-                /* 分段渲染：对话/动作/旁白 */
-                dialogueSegments.map((seg, i) => {
-                  if (seg.type === 'dialogue') {
-                    return (
-                      <div key={i} className="dialogue-block">
-                        {seg.speaker && <span className="dialogue-speaker">{seg.speaker}</span>}
-                        <span className="dialogue-text">{seg.content}</span>
-                      </div>
-                    )
-                  }
-                  if (seg.type === 'action') {
-                    return (
-                      <div key={i} className="action-block">
-                        {seg.content}
-                      </div>
-                    )
-                  }
-                  // plain 片段用 ReactMarkdown 渲染，支持 HTML 标签和 markdown 图片/链接
-                  return (
-                    <div key={i} className="narration-block">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[
-                          ...(settings.htmlRendering ? [rehypeRaw] : []),
-                          rehypeHighlight,
-                        ]}
-                        components={markdownComponents}
-                      >
-                        {seg.content}
-                      </ReactMarkdown>
-                    </div>
-                  )
-                })
-              ) : (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[
-                    ...(settings.htmlRendering ? [rehypeRaw] : []),
-                    rehypeHighlight,
-                  ]}
-                  components={markdownComponents}
-                >
-                  {displayContent || (isStreamingThis ? '' : (thought ? '💭 内容已在"内心想法"中展开' : '（空消息）'))}
-                </ReactMarkdown>
-              )}
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkRoleplay]}
+                remarkRehypeOptions={{ allowDangerousHtml: true }}
+                rehypePlugins={[rehypeRaw, rehypeHighlight]}
+                components={markdownComponents}
+              >
+                {displayContent || (isStreamingThis ? '' : (thought ? '💭 内容已在"内心想法"中展开' : '（空消息）'))}
+              </ReactMarkdown>
             </div>
             )}
             {/* 翻译状态指示 */}
@@ -612,7 +566,10 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                       }
                     }
                     await continueMessage(message.id, character, preset, activeLorebooks)
-                  } catch { /* 忽略 */ }
+                  } catch (e) {
+                    // 提示错误，避免静默失败
+                    useChatStore.setState({ error: `续写失败: ${e instanceof Error ? e.message : String(e)}` })
+                  }
                   setContinuing(false)
                 }}
                 disabled={continuing}

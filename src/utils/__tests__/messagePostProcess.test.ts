@@ -4,6 +4,7 @@ import {
   stripThought,
   mergeConsecutiveMessages,
   normalizeThoughtTags,
+  trimContinuationOverlap,
 } from '../messagePostProcess'
 
 describe('extractThought', () => {
@@ -256,3 +257,41 @@ describe('mergeConsecutiveMessages', () => {
     expect(result[2].content).toBe('a1\n\nsys3')
   })
 })
+
+describe('trimContinuationOverlap', () => {
+  it('trims overlapping prefix when model repeats the ending (>= 8 chars)', () => {
+    const prev = '她握紧了剑柄，转身望向黑暗深处的洞口'
+    const next = '转身望向黑暗深处的洞口，一阵冷风涌来'
+    expect(trimContinuationOverlap(prev, next)).toBe('，一阵冷风涌来')
+  })
+
+  it('prefers the longest overlap', () => {
+    const prev = 'abcdefgh abcdefgh'
+    const next = 'abcdefgh abcdefgh new content'
+    // 整段 17 字符重叠应整体剪掉，而非只剪 8 字符
+    expect(trimContinuationOverlap(prev, next)).toBe('new content')
+  })
+
+  it('returns next unchanged when overlap is shorter than threshold', () => {
+    const prev = '故事的结尾。'
+    const next = '尾。然后继续'
+    // 重叠仅 2 字符，低于阈值不剪
+    expect(trimContinuationOverlap(prev, next)).toBe(next)
+  })
+
+  it('returns next unchanged when no overlap', () => {
+    expect(trimContinuationOverlap('前文内容在此', '全新的续写内容')).toBe('全新的续写内容')
+  })
+
+  it('cleans leading whitespace after trimming', () => {
+    const prev = 'The story continues here'
+    const next = 'continues here\n\n  A new paragraph begins'
+    expect(trimContinuationOverlap(prev, next)).toBe('A new paragraph begins')
+  })
+
+  it('handles empty inputs', () => {
+    expect(trimContinuationOverlap('', 'next')).toBe('next')
+    expect(trimContinuationOverlap('prev', '')).toBe('')
+  })
+})
+

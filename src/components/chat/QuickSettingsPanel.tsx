@@ -459,6 +459,31 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                 )}
               </>
             )}
+            {/* 世界书 token 预算占比 */}
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-tavern-border-soft">
+              <span
+                className="text-xs text-tavern-text-muted"
+                title="世界书注入内容占上下文预算的最大比例，超出部分按 order 优先级丢弃"
+              >
+                Token 预算占比
+              </span>
+              <div className="flex items-center gap-1">
+                {([['20%', 0.2], ['30%', 0.3], ['50%', 0.5], ['不限', 1]] as const).map(([label, r]) => (
+                  <button
+                    key={label}
+                    onClick={() => updateSettings({ lorebookRatio: r })}
+                    className={cn(
+                      'px-2 py-0.5 rounded text-xs border transition-colors',
+                      (settings.lorebookRatio ?? 0.3) === r
+                        ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
+                        : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </Section>
 
           {/* ===== AI 生图 ===== */}
@@ -511,7 +536,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
           <Section icon={Hash} title="显示">
             <div className="space-y-2">
               <ToggleRow checked={settings.showTokenCount} onChange={(v) => updateSettings({ showTokenCount: v })}>
-                显示 Token 计数
+                显示字符计数
               </ToggleRow>
               <ToggleRow checked={settings.htmlRendering} onChange={(v) => updateSettings({ htmlRendering: v })}>
                 HTML 渲染
@@ -519,6 +544,24 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
               <ToggleRow checked={settings.streamOutput} onChange={(v) => updateSettings({ streamOutput: v })}>
                 流式输出
               </ToggleRow>
+              {/* 对话示例发送模式 */}
+              <div className="flex items-center justify-between gap-2 py-0.5">
+                <span
+                  className="text-xs text-tavern-text-soft select-none"
+                  title="仅首轮/关闭可节省每轮固定 token 成本"
+                >
+                  对话示例发送
+                </span>
+                <select
+                  value={settings.exampleDialogMode ?? 'always'}
+                  onChange={(e) => updateSettings({ exampleDialogMode: e.target.value as 'always' | 'first_turn' | 'off' })}
+                  className="input text-xs py-1 px-2 w-24"
+                >
+                  <option value="always">每轮</option>
+                  <option value="first_turn">仅首轮</option>
+                  <option value="off">关闭</option>
+                </select>
+              </div>
             </div>
           </Section>
 

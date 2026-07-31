@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
-import { vi } from 'vitest'
+import { vi, afterEach } from 'vitest'
+import { clearCollectedLogs } from '../lib/logger'
 import type { ExposedAPI } from '../../shared/ipc-api'
 
 // Mock window.api - 所有 IPC 方法 mock 为 vi.fn()
@@ -78,13 +79,16 @@ const mockApi: Partial<ExposedAPI> = {
   } as any,
   usage: {
     record: vi.fn().mockResolvedValue({}),
-    calculateCost: vi.fn().mockResolvedValue(0),
   } as any,
   app: {
     getVersion: vi.fn().mockResolvedValue('0.8.9'),
   } as any,
   announcement: {
     fetchList: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+  } as any,
+  log: {
+    write: vi.fn().mockResolvedValue(undefined),
+    getRecent: vi.fn().mockResolvedValue(''),
   } as any,
 }
 
@@ -112,3 +116,38 @@ if (!window.matchMedia) {
 vi.mock('nanoid', () => ({
   nanoid: vi.fn().mockReturnValue('mock-id'),
 }))
+
+// ---- 全局错误捕获（测试环境终端输出）----
+// 未捕获的错误会在此收集，afterEach 时检查并使测试失败
+
+const unhandledErrors: string[] = []
+
+window.addEventListener('error', (e: ErrorEvent) => {
+  const msg = e.error instanceof Error
+    ? `${e.error.message}\n${e.error.stack ?? ''}`
+    : e.message
+  console.error('\n━━━ 未捕获异常 ━━━')
+  console.error(msg)
+  console.error('━━━━━━━━━━━━━━━\n')
+  unhandledErrors.push(msg)
+})
+
+window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+  const reason = e.reason instanceof Error
+    ? `${e.reason.message}\n${e.reason.stack ?? ''}`
+    : String(e.reason)
+  console.error('\n━━━ 未处理 Promise rejection ━━━')
+  console.error(reason)
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+  unhandledErrors.push(`[unhandled rejection] ${reason}`)
+})
+
+afterEach(() => {
+  clearCollectedLogs()
+  if (unhandledErrors.length > 0) {
+    const count = unhandledErrors.length
+    const errors = unhandledErrors.join('\n  ')
+    unhandledErrors.length = 0
+    throw new Error(`测试期间发生 ${count} 个未捕获错误:\n  ${errors}`)
+  }
+})
