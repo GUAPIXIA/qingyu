@@ -13,6 +13,7 @@ import { GroupChatPage } from './pages/GroupChatPage'
 import { ApiPage } from './pages/ApiPage'
 import { HelpPage } from './pages/HelpPage'
 import { RegexPage } from './pages/RegexPage'
+import { QuickRepliesPage } from './pages/QuickRepliesPage'
 import { PersonasPage } from './pages/PersonasPage'
 import { PresetsPage } from './pages/PresetsPage'
 import { UsagePage } from './pages/UsagePage'
@@ -186,6 +187,7 @@ export default function App() {
         <Route path="presets" element={<PresetsPage />} />
         <Route path="group" element={<GroupChatPage />} />
         <Route path="regex" element={<RegexPage />} />
+        <Route path="quick-replies" element={<QuickRepliesPage />} />
         <Route path="personas" element={<PersonasPage />} />
         <Route path="usage" element={<UsagePage />} />
         <Route path="mcp" element={<McpPage />} />

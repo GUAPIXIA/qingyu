@@ -9,7 +9,9 @@ import { downloadFile } from '../../utils/download'
 import { logError } from '../../lib/logger'
 import { isLocalProvider } from '../../utils/defaults'
 import { getDisplayName } from '../../utils/variables'
-import type { Character, Preset, Lorebook, ChatParams } from '../../../shared/types'
+import { expandMacros, buildMacroContext } from '../../utils/macros'
+import { getEffectiveQuickReplies } from '../../utils/quickReply'
+import type { Character, Preset, Lorebook, ChatParams, QuickReply, QuickReplyStore } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
 import { registerBuiltinCommands } from '../../commands/builtin'
@@ -56,6 +58,8 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
   // 短暂通知（命令执行反馈）
   const [notification, setNotification] = useState<string | null>(null)
   const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 快捷回复
+  const [qrStore, setQrStore] = useState<QuickReplyStore>({ global: [], byCharacter: {} })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // H-09 修复：追踪活跃的 AI 辅助请求，组件卸载时取消
   const activeRequestIdsRef = useRef<Set<string>>(new Set())
@@ -65,6 +69,53 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
 
   const activeProfile = getActiveProfile()
   const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || !!activeProfile.apiKey)
+
+  // 快捷回复按钮：角色/会话切换时刷新
+  useEffect(() => {
+    let canceled = false
+    window.api.quickReply.listAll().then((s) => {
+      if (!canceled) setQrStore(s)
+    }).catch(() => { /* 忽略 */ })
+    return () => { canceled = true }
+  }, [character.id, currentSessionId])
+
+  const effectiveReplies = getEffectiveQuickReplies(qrStore, character.id)
+
+  /** 执行一条快捷回复（宏展开 + 动作分发） */
+  const runQuickReply = async (qr: QuickReply) => {
+    try {
+      if (qr.action === 'preset' && qr.presetId) {
+        useChatStore.getState().setActivePreset(qr.presetId, character.id)
+        showNotification('已切换预设')
+        return
+      }
+      if (qr.action === 'command' && qr.command?.trim().startsWith('/')) {
+        const parsed = parseCommand(qr.command.trim())
+        const cmd = parsed && findCommand(parsed.name)
+        if (cmd) {
+          await cmd.execute(parsed.args, buildCommandContext())
+          return
+        }
+      }
+      // text：宏展开后发送
+      const chatStore = useChatStore.getState()
+      const macroCtx = buildMacroContext(chatStore.messages, {
+        userName: settings.userName || '用户',
+        charName: character.name,
+        originalCharName: character.translatedContent?.name,
+      })
+      const content = expandMacros(qr.content, macroCtx).trim()
+      if (!content) return
+      if (qr.sendWithAI) {
+        const [preset, lorebooks] = await loadActivePresetLorebook()
+        await chatStore.sendMessage(content, [], character, preset, lorebooks)
+      } else {
+        await chatStore.addStandaloneMessage(content, [], character, 'user')
+      }
+    } catch (e) {
+      showNotification(`快捷回复执行失败: ${(e as Error).message}`)
+    }
+  }
 
   // 显示通知（3 秒后自动消失）
   const showNotification = (msg: string) => {
@@ -400,6 +451,15 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
       e.preventDefault()
       handleSend()
     }
+    // 快捷回复快捷键：Ctrl+1..9
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key) && effectiveReplies.length > 0) {
+      e.preventDefault()
+      const hotkey = Number(e.key)
+      const qr = effectiveReplies.find((q) => q.hotkey === hotkey)
+      if (qr && !isStreaming) {
+        runQuickReply(qr)
+      }
+    }
   }
 
   const handleImageSelect = async () => {
@@ -617,6 +677,28 @@ export function ChatInput({ character, disabled }: ChatInputProps) {
             <Undo2 className="w-3 h-3" />
             回退原文
           </button>
+        </div>
+      )}
+
+      {/* 快捷回复按钮栏 */}
+      {effectiveReplies.length > 0 && (
+        <div className="flex items-center flex-wrap gap-1.5 mb-2 px-1">
+          {effectiveReplies.map((qr) => (
+            <button
+              key={qr.id}
+              onClick={() => runQuickReply(qr)}
+              disabled={isStreaming}
+              title={qr.action === 'text'
+                ? (qr.sendWithAI ? '发送并触发 AI 回复' : '仅发送消息')
+                : qr.action === 'preset' ? '切换预设' : '触发命令'}
+              className="px-2.5 py-1 rounded-lg text-xs border border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:text-tavern-accent hover:border-tavern-accent disabled:opacity-50 transition-colors flex items-center gap-1"
+            >
+              {qr.hotkey != null && (
+                <span className="text-[10px] text-tavern-text-muted">Ctrl+{qr.hotkey}</span>
+              )}
+              <span className="truncate max-w-[10rem]">{qr.label}</span>
+            </button>
+          ))}
         </div>
       )}
 

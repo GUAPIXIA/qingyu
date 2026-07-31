@@ -514,6 +514,36 @@ export interface RegexRule {
   stopStrings?: string[]
 }
 
+// ===================== 快捷回复 =====================
+
+/** 快捷回复动作类型 */
+export interface QuickReply {
+  id: string
+  /** 按钮显示名 */
+  label: string
+  /** 发送内容（支持宏展开） */
+  content: string
+  /** text = 发送文本；preset = 切换预设；command = 触发斜杠命令 */
+  action: 'text' | 'preset' | 'command'
+  /** action=preset 时的预设 ID */
+  presetId?: string
+  /** action=command 时的命令文本（含 /） */
+  command?: string
+  /** 发送后是否触发 AI 回复（仅 action=text） */
+  sendWithAI: boolean
+  /** 键盘快捷键 1-9（Ctrl+数字触发） */
+  hotkey?: number
+  order: number
+  enabled: boolean
+}
+
+/** 快捷回复存储结构：全局 + 按角色 */
+export interface QuickReplyStore {
+  global: QuickReply[]
+  /** characterId → 角色专属快捷回复 */
+  byCharacter: Record<string, QuickReply[]>
+}
+
 // ===================== AI 调用参数 =====================
 
 export interface ChatParams {

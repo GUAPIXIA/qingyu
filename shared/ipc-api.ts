@@ -25,6 +25,7 @@ import type {
   AggregatedUsage,
   UsageSummary,
   CustomFont,
+  QuickReply,
 } from './types'
 
 // ===================== AI 调用接口 =====================
@@ -108,6 +109,20 @@ export interface LorebookAPI {
   save(lorebook: Lorebook): Promise<void>
   delete(id: string): Promise<void>
   importJson(): Promise<Lorebook | null>
+}
+
+// ===================== 快捷回复接口 =====================
+export interface QuickReplyAPI {
+  /** 读取全部（全局 + 角色级） */
+  listAll(): Promise<{ global: QuickReply[]; byCharacter: Record<string, QuickReply[]> }>
+  /** 全量保存 */
+  saveAll(store: { global: QuickReply[]; byCharacter: Record<string, QuickReply[]> }): Promise<void>
+  /** 删除指定角色的专属快捷回复 */
+  clearCharacter(characterId: string): Promise<void>
+  /** 导出 JSON 到文件 */
+  exportJson(): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
+  /** 从 JSON 文件导入（合并） */
+  importJson(): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
 }
 
 // ===================== 语义触发（向量 RAG）接口 =====================
@@ -311,6 +326,7 @@ export interface ExposedAPI {
   settings: SettingsAPI
   lorebook: LorebookAPI
   embedding: EmbeddingAPI
+  quickReply: QuickReplyAPI
   preset: PresetAPI
   tts: TTSAPI
   imageGen: ImageGenAPI

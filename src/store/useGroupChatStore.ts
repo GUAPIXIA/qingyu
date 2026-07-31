@@ -13,6 +13,7 @@ import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { parseMemoryResult, formatMemoryFacts, fitMemoryBudget } from '../utils/memory'
+import { expandMacros, buildMacroContext } from '../utils/macros'
 import { applyRegexRules as applyRegexRulesEngine, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
 import { logError, logInfo } from '../lib/logger'
 
@@ -966,7 +967,15 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
     }
 
     const context: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = [
-      { role: 'system', content: systemContent },
+      // 宏展开（群聊名 / 预设 / 人设 / 世界书 at_end / 角色设定均支持）
+      { role: 'system', content: expandMacros(systemContent, buildMacroContext(state.messages.map((m) => ({
+        role: (m.characterId === '__user__' || m.characterId === '__free__') ? 'user' as const : 'assistant' as const,
+        content: m.content,
+      })), {
+        userName,
+        charName: charNameForVars,
+        groupName: group.name,
+      })) },
     ]
 
     // 用户人设 separate 模式：独立 system 消息
@@ -977,7 +986,14 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
     // ===== 作者注释（Author's Note，群聊仅全局级，anConfig 已在预算预留处声明）=====
     let anText = ''
     if (anConfig?.enabled && anConfig.text?.trim()) {
-      anText = replaceVariables(anConfig.text.trim(), userName, charNameForVars)
+      anText = expandMacros(replaceVariables(anConfig.text.trim(), userName, charNameForVars), buildMacroContext(state.messages.map((m) => ({
+        role: (m.characterId === '__user__' || m.characterId === '__free__') ? 'user' as const : 'assistant' as const,
+        content: m.content,
+      })), {
+        userName,
+        charName: charNameForVars,
+        groupName: group.name,
+      }))
     }
     // top：紧跟系统提示注入（keepSeparate：避免被 merge 合并进系统提示）
     if (anText && anConfig!.position === 'top') {

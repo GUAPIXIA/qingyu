@@ -6,6 +6,7 @@ import { registerChatIPC } from './ipc/chat'
 import { registerSettingsIPC } from './ipc/settings'
 import { registerLorebookIPC } from './ipc/lorebook'
 import { registerEmbeddingIPC } from './ipc/embedding'
+import { registerQuickReplyIPC } from './ipc/quickReply'
 import { registerPresetIPC } from './ipc/preset'
 import { registerAIIPC } from './services/ai'
 import { registerTTSIPC, killTTS } from './ipc/tts'
@@ -147,6 +148,7 @@ app.whenReady().then(async () => {
   registerSettingsIPC(ipcMain, dialog)
   registerLorebookIPC(ipcMain, dialog)
   registerEmbeddingIPC(ipcMain)
+  registerQuickReplyIPC(ipcMain, dialog)
   registerPresetIPC(ipcMain, dialog)
   registerAIIPC(ipcMain)
   registerTTSIPC(ipcMain)

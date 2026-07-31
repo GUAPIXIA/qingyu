@@ -5,6 +5,7 @@ import type {
   SettingsAPI,
   LorebookAPI,
   EmbeddingAPI,
+  QuickReplyAPI,
   PresetAPI,
   AIAPI,
   TTSAPI,
@@ -113,6 +114,15 @@ const embeddingApi: EmbeddingAPI = {
   semanticSearch: (payload) => ipcRenderer.invoke('embedding:semanticSearch', payload),
 }
 
+// ---- 快捷回复 ----
+const quickReplyApi: QuickReplyAPI = {
+  listAll: () => ipcRenderer.invoke('quickReply:listAll'),
+  saveAll: (store) => ipcRenderer.invoke('quickReply:saveAll', store),
+  clearCharacter: (characterId) => ipcRenderer.invoke('quickReply:clearCharacter', characterId),
+  exportJson: () => ipcRenderer.invoke('quickReply:exportJson'),
+  importJson: () => ipcRenderer.invoke('quickReply:importJson'),
+}
+
 // ---- 预设 ----
 const presetApi: PresetAPI = {
   list: () => ipcRenderer.invoke('preset:list'),
@@ -211,6 +221,7 @@ contextBridge.exposeInMainWorld('api', {
   settings: settingsApi,
   lorebook: lorebookApi,
   embedding: embeddingApi,
+  quickReply: quickReplyApi,
   preset: presetApi,
   tts: ttsApi,
   imageGen: imageGenApi,

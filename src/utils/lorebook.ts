@@ -8,6 +8,7 @@
 import type { Character, Lorebook, LoreEntry } from '../../shared/types'
 import { estimateTokens } from './tokenCounter'
 import { replaceVariables } from './variables'
+import { expandMacros } from './macros'
 
 // ===================== 工具函数 =====================
 
@@ -334,7 +335,10 @@ export function triggerLorebooks(opts: LorebookTriggerOptions): LorebookTriggerR
       triggeredIds.add(entryId)
       newTriggered = true
 
-      const entryContent = replaceVariables(entry.content, userName, charName)
+      const entryContent = expandMacros(replaceVariables(entry.content, userName, charName), {
+        userName,
+        charName,
+      })
       triggeredItems.push({
         content: entryContent,
         order: entry.order,
@@ -372,7 +376,10 @@ export function triggerLorebooks(opts: LorebookTriggerOptions): LorebookTriggerR
       triggeredIds.add(entryId)
       newTriggered = true
 
-      const entryContent = replaceVariables(entry.content, userName, charName)
+      const entryContent = expandMacros(replaceVariables(entry.content, userName, charName), {
+        userName,
+        charName,
+      })
       triggeredItems.push({
         content: entryContent,
         order: entry.order,

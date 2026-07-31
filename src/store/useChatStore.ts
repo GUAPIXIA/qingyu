@@ -13,6 +13,7 @@ import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages, stripThought, normalizeThoughtTags, trimContinuationOverlap } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { parseMemoryResult, formatMemoryFacts, fitMemoryBudget } from '../utils/memory'
+import { expandMacros, buildMacroContext } from '../utils/macros'
 import { applyRegexRules, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
 import { getEffectiveLorebookIds, lorebookCache, triggerLorebooks, mergeSemanticHits } from '../utils/lorebook'
 import type { DepthLoreItem, BudgetLoreItem } from '../utils/lorebook'
@@ -1639,6 +1640,14 @@ ${previousFactsText}`,
 
     if (charDesc) systemContent += '\n\n【角色设定】\n' + charDesc
 
+    // 宏展开（预设 / 人设 / 世界书 at_end / 角色设定均支持 {{time}} {{random:}} 等）
+    const macroCtx = buildMacroContext(messages, {
+      userName,
+      charName: charNameForVars,
+      originalCharName: character.name,
+    })
+    systemContent = expandMacros(systemContent, macroCtx)
+
     context.push({ role: 'system', content: systemContent })
 
     // 用户人设 separate 模式：独立 system 消息（keepSeparate 避免被合并进相邻消息）
@@ -1651,7 +1660,7 @@ ${previousFactsText}`,
     const anConfig = character.authorNote ?? settings.authorNote
     let anText = ''
     if (anConfig?.enabled && anConfig.text?.trim()) {
-      anText = replaceVariables(anConfig.text.trim(), userName, character.name)
+      anText = expandMacros(replaceVariables(anConfig.text.trim(), userName, character.name), macroCtx)
     }
 
     // top：紧跟系统提示注入（keepSeparate：避免被 merge 合并进系统提示）
