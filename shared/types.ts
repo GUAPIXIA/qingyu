@@ -483,6 +483,16 @@ export interface RegexRule {
   flags?: string
   enabled: boolean
   scope: 'input' | 'output' | 'both'
+  /** 分组名（按用途组织：翻译修复 / 格式清理 / 越狱清理 等，空 = 未分组） */
+  group?: string
+  /** 处理阶段：text = 生成/输入文本（默认），markdown = 渲染前文本（仅 output，在 text 规则之后应用） */
+  stage?: 'text' | 'markdown'
+  /** 触发条件：文本匹配此正则才执行本规则（空 = 总是执行） */
+  triggerPattern?: string
+  /** 触发条件正则标志 */
+  triggerFlags?: string
+  /** 停止字符串（output）：生成文本命中后终止输出并截断（可多条） */
+  stopStrings?: string[]
 }
 
 // ===================== AI 调用参数 =====================

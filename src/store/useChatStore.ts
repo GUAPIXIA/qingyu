@@ -12,6 +12,7 @@ import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages, stripThought, normalizeThoughtTags, trimContinuationOverlap } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { parseMemoryResult, formatMemoryFacts, fitMemoryBudget } from '../utils/memory'
+import { applyRegexRules, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
 import { getEffectiveLorebookIds, lorebookCache, triggerLorebooks, mergeSemanticHits } from '../utils/lorebook'
 import type { DepthLoreItem, BudgetLoreItem } from '../utils/lorebook'
 import { logError, logInfo } from '../lib/logger'
@@ -64,16 +65,7 @@ function friendlyError(error: string): string {
 }
 
 /** 简单的正则 ReDoS 防护：限制模式长度和回溯复杂度 */
-function safeRegExp(pattern: string, flags = 'g'): RegExp | null {
-  if (!pattern || pattern.length > 500) return null
-  try {
-    // 创建带超时风险的 RegExp：限制量词嵌套深度
-    const regex = new RegExp(pattern, flags)
-    return regex
-  } catch {
-    return null
-  }
-}
+// 已迁移到 src/utils/regex.ts（safeRegExp），此处保留注释说明
 
 // ===================== 类型定义 =====================
 
@@ -304,6 +296,13 @@ async function streamAIResponse(
   // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
   await fetchSemanticLoreHits(get, character)
 
+  // 停止字符串（output 正则规则）：流式命中后截断 + 提前终止，省 token
+  let stopStrings: string[] = []
+  try {
+    const regexRules = await window.api.regex.list()
+    stopStrings = collectStopStrings(regexRules)
+  } catch { /* 忽略 */ }
+
   const contextMessages = get().buildContext(character, preset, { continuation: opts.continuation })
 
   const requestId = nanoid()
@@ -314,6 +313,20 @@ async function streamAIResponse(
     if (data.requestId !== requestId) return
     if (!activeStream || activeStream.requestId !== requestId) return
     activeStream.accumulated += data.text
+    // 停止字符串：命中后截断并提前终止（主进程取消后发 ai:done，走正常收尾）
+    if (stopStrings.length > 0) {
+      const idx = findStopIndex(activeStream.accumulated, stopStrings)
+      if (idx !== -1) {
+        activeStream.accumulated = activeStream.accumulated.slice(0, idx).trimEnd()
+        if (activeStream.flushTimer) {
+          clearTimeout(activeStream.flushTimer)
+          activeStream.flushTimer = null
+        }
+        flushStream(set)
+        window.api.ai.cancelChat(requestId).catch(() => {})
+        return
+      }
+    }
     // 节流：避免每个 chunk 都触发 set
     if (activeStream.flushTimer === null) {
       activeStream.flushTimer = setTimeout(() => flushStream(set), STREAM_THROTTLE_MS)
@@ -953,6 +966,8 @@ ${previousFactsText}`,
           const regexRules = await window.api.regex.list()
           if (regexRules.length > 0) {
             finalContent = get().applyRegex(fullContent, 'output', regexRules)
+            // 停止字符串：output 命中后终止生成并截断
+            finalContent = truncateAtStop(finalContent, collectStopStrings(regexRules)).text
           }
         } catch { /* 忽略 */ }
 
@@ -1088,6 +1103,8 @@ ${previousFactsText}`,
           const regexRules = await window.api.regex.list()
           if (regexRules.length > 0) {
             finalContent = get().applyRegex(fullContent, 'output', regexRules)
+            // 停止字符串：output 命中后终止生成并截断
+            finalContent = truncateAtStop(finalContent, collectStopStrings(regexRules)).text
           }
         } catch { /* 忽略 */ }
 
@@ -1187,6 +1204,8 @@ ${previousFactsText}`,
         const regexRules = await window.api.regex.list()
         if (regexRules.length > 0) {
           processed = get().applyRegex(processed, 'output', regexRules)
+          // 停止字符串：output 命中后终止生成并截断
+          processed = truncateAtStop(processed, collectStopStrings(regexRules)).text
         }
       } catch { /* 忽略 */ }
       // 复述前缀去重只作用于正文，跳过开头的 thought 块
@@ -1472,21 +1491,10 @@ ${previousFactsText}`,
 
   applyRegex: (text, scope, rules) => {
     if (!text || rules.length === 0) return text
-    let result = text
-    for (const rule of rules) {
-      if (!rule.enabled) continue
-      if (rule.scope !== scope && rule.scope !== 'both') continue
-      // 使用安全正则创建（防 ReDoS）
-      const regex = safeRegExp(rule.pattern, rule.flags || 'g')
-      if (!regex) continue
-      try {
-        // 添加简单的执行超时保护（同步无法真超时，但限制字符串长度）
-        if (result.length < 100000) {
-          result = result.replace(regex, rule.replacement)
-        }
-      } catch {
-        // 正则执行错误时跳过
-      }
+    // input 仅 text 阶段；output 先 text 后 markdown（渲染前文本）链式应用
+    let result = applyRegexRules(text, rules, scope, 'text').text
+    if (scope === 'output') {
+      result = applyRegexRules(result, rules, 'output', 'markdown').text
     }
     return result
   },
