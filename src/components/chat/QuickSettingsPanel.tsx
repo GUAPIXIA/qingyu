@@ -477,11 +477,25 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
             )}
             {/* 世界书 token 预算占比 */}
             <div className="flex items-center justify-between mt-2 pt-2 border-t border-tavern-border-soft">
-              <span
-                className="text-xs text-tavern-text-muted"
-                title="世界书注入内容占上下文预算的最大比例，超出部分按 order 优先级丢弃"
-              >
+              <span className="flex items-center gap-0.5 text-xs text-tavern-text-muted">
                 Token 预算占比
+                <HintIcon
+                  hint={
+                    <>
+                      <p>
+                        世界书注入最多占上下文预算的比例（默认 30%），超出部分按 order 优先级丢弃。
+                      </p>
+                      <p className="mt-1.5">
+                        它是<strong className="text-tavern-text-soft">天花板而非预扣</strong>：世界书实际用多少算多少，
+                        剩余预算全部留给历史消息，不会“锁死 70%”。
+                      </p>
+                      <p className="mt-1.5 pt-1.5 border-t border-tavern-border-soft">
+                        大上下文（如 1M）下 30% ≈ 30 万 token，通常远用不满，保持默认即可；
+                        仅在拥有超大世界书时考虑调大。
+                      </p>
+                    </>
+                  }
+                />
               </span>
               <div className="flex items-center gap-1">
                 {([['20%', 0.2], ['30%', 0.3], ['50%', 0.5], ['不限', 1]] as const).map(([label, r]) => (
