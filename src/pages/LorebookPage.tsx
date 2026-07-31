@@ -23,6 +23,7 @@ import type { Lorebook, LoreEntry } from '../../shared/types'
 const POSITION_LABELS: Record<LoreEntry['position'], string> = {
   before_char: '角色定义前',
   after_char: '角色定义后',
+  at_depth: '历史消息中（按深度）',
   at_end: '消息末尾',
 }
 
@@ -648,9 +649,27 @@ export function LorebookPage() {
                         >
                           <option value="before_char">{POSITION_LABELS.before_char}</option>
                           <option value="after_char">{POSITION_LABELS.after_char}</option>
+                          <option value="at_depth">{POSITION_LABELS.at_depth}</option>
                           <option value="at_end">{POSITION_LABELS.at_end}</option>
                         </select>
                       </div>
+                      {editingEntry.position === 'at_depth' && (
+                        <div>
+                          <label className="label">注入深度（0 = 对话末尾）</label>
+                          <input
+                            type="number"
+                            min={0}
+                            className="input"
+                            value={editingEntry.depth ?? 0}
+                            onChange={(e) =>
+                              setEditingEntry({
+                                ...editingEntry,
+                                depth: Math.max(0, Number(e.target.value) || 0),
+                              })
+                            }
+                          />
+                        </div>
+                      )}
                       <div>
                         <label className="label">顺序</label>
                         <input

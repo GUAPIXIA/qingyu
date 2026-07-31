@@ -559,7 +559,11 @@ async function normalizeCharacter(parsed: any, avatarBase64?: string, proxyUrl?:
         id: e.uid?.toString() ?? nanoid(),
         keywords: Array.isArray(e.key) ? e.key.filter(Boolean) : (e.key ? String(e.key).split(',').map((s: string) => s.trim()).filter(Boolean) : []),
         content: e.content ?? '',
-        position: e.position === 'before' ? 'before_char' : e.position === 'after' ? 'after_char' : 'at_end',
+        position: e.position === 'before' || e.position === 0 ? 'before_char'
+          : e.position === 'after' || e.position === 1 ? 'after_char'
+          : e.position === 'depth' || e.position === 'at_depth' || e.position === 2 ? 'at_depth'
+          : 'at_end',
+        depth: typeof e.depth === 'number' ? Math.max(0, e.depth) : 0,
         order: e.order ?? i,
         probability: e.probability ?? 100,
         enabled: e.disable ? false : (e.enabled !== undefined ? e.enabled : true),
@@ -806,14 +810,14 @@ export function saveCharacter(character: Character): void {
   writeJson(filePath, { ...rest, avatar: '', cover: '' })
 }
 
-/** 读取角色列表（异步并行读取，不阻塞主进程事件循环） */
+/** 读取角色列表（仅元数据，图片通过 tavern:// 协议按需加载） */
 export async function listCharacters(): Promise<Character[]> {
   const charDir = DIRS.characters()
   if (!existsSync(charDir)) return []
 
   const files = readdirSync(charDir).filter((f) => f.endsWith('.json'))
 
-  // 并行读取所有角色 JSON
+  // 并行读取所有角色 JSON（不含图片 base64，避免 IPC 传输大量数据）
   const results = await Promise.all(
     files.map((file) => readJsonAsync<Character>(join(charDir, file))),
   )
@@ -821,15 +825,6 @@ export async function listCharacters(): Promise<Character[]> {
   const chars: Character[] = []
   for (const char of results) {
     if (char) {
-      // 从文件读取头像和封面
-      const avatar = readAvatar(char.id)
-      if (avatar) {
-        char.avatar = avatar
-      }
-      const cover = readCover(char.id)
-      if (cover) {
-        char.cover = cover
-      }
       chars.push(char)
     }
   }

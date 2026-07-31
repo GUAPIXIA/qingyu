@@ -81,17 +81,18 @@ export interface Message {
   swipes?: string[]
   /** 当前显示的候选索引 */
   swipeIndex?: number
-  /** 本次 AI 回复的 token 用量（仅 assistant 消息） */
-  tokenUsage?: MessageTokenUsage
+  /** 本次 AI 回复的字符用量（仅 assistant 消息） */
+  charUsage?: MessageCharUsage
 }
 
-/** 单条消息的 token 统计 */
-export interface MessageTokenUsage {
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  /** 本次调用估算费用（美元） */
-  cost: number
+/** 单条消息的字符统计 */
+export interface MessageCharUsage {
+  /** 用户输入字符数 */
+  inputChars: number
+  /** 系统输出字符数 */
+  outputChars: number
+  /** 总字符数 */
+  totalChars: number
   /** 使用的模型 */
   model: string
   timestamp: number
@@ -104,23 +105,9 @@ export interface UsageRecord {
   characterId: string
   sessionId: string
   model: string
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  cost: number
-}
-
-/** 费用规则 */
-export interface PricingRule {
-  id: string
-  /** 模型名匹配模式（支持 *，如 gpt-4*） */
-  modelPattern: string
-  /** 输入价格（美元 / 1M tokens） */
-  inputPricePer1M: number
-  /** 输出价格（美元 / 1M tokens） */
-  outputPricePer1M: number
-  /** 是否内置（不可删除） */
-  isBuiltin?: boolean
+  inputChars: number
+  outputChars: number
+  totalChars: number
 }
 
 /** 用户身份/人设 */
@@ -163,7 +150,9 @@ export interface LoreEntry {
   id: string
   keywords: string[]
   content: string
-  position: 'before_char' | 'after_char' | 'at_end'
+  position: 'before_char' | 'after_char' | 'at_depth' | 'at_end'
+  /** at_depth 注入深度：0 = 对话末尾，1 = 倒数第二条消息之后，依此类推 */
+  depth?: number
   order: number
   probability: number // 0-100
   enabled: boolean
@@ -244,8 +233,8 @@ export interface GroupMessage {
   translation?: string | null
   /** 是否显示翻译 */
   _showTranslation?: boolean
-  /** Token 用量 */
-  tokenUsage?: MessageTokenUsage
+  /** 字符用量 */
+  charUsage?: MessageCharUsage
   /** 引用回复的目标消息 ID */
   replyToId?: string | null
   /** 用户消息发送状态：sending 发送中 / sent 已发送（仅 characterId === '__user__'） */
@@ -360,10 +349,12 @@ export interface Settings {
   coverBlurStrength?: number
   /** 对话示例位置：after_system（默认）= 系统提示后，after_history = 历史消息后 */
   exampleDialogPosition?: 'after_system' | 'after_history'
-  /** 是否启用 token 用量统计 */
+  /** 对话示例发送模式：always（默认）每轮发送 / first_turn 仅会话首轮 / off 关闭 */
+  exampleDialogMode?: 'always' | 'first_turn' | 'off'
+  /** 世界书 token 预算占上下文预算的比例（0-1，默认 0.3；1 = 不限制） */
+  lorebookRatio?: number
+  /** 是否启用字符用量统计 */
   enableUsageTracking?: boolean
-  /** 费用规则列表 */
-  pricingRules?: PricingRule[]
   /** 用户时区（用于按天统计） */
   timezone?: string
   /** 是否使用角色封面作为聊天背景（未设置封面的角色回退到手动背景） */
@@ -563,18 +554,16 @@ export interface McpServerStatus {
 /** 用量聚合结果项 */
 export interface AggregatedUsage {
   key: string
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  cost: number
+  inputChars: number
+  outputChars: number
+  totalChars: number
   count: number
 }
 
 /** 用量汇总 */
 export interface UsageSummary {
-  totalPrompt: number
-  totalCompletion: number
-  totalTokens: number
-  totalCost: number
+  totalInput: number
+  totalOutput: number
+  totalChars: number
   count: number
 }

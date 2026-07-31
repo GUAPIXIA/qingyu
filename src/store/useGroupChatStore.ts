@@ -3,16 +3,27 @@ import { nanoid } from 'nanoid'
 import type { GroupChat, GroupMessage, GroupSession, Character, Preset } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
-import { lorebookCache } from '../utils/lorebook'
+import { lorebookCache, triggerLorebooks } from '../utils/lorebook'
+import type { DepthLoreItem } from '../utils/lorebook'
 import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
+import { countChars } from '../utils/charCounter'
 import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { getInstructTemplate } from '../utils/chatTemplates'
-import { logError } from '../lib/logger'
+import { logError, logInfo } from '../lib/logger'
 
 const STREAM_THROTTLE_MS = 50
 const STREAM_TIMEOUT_MS = 5 * 60 * 1000
+
+/** 世界书 token 预算占上下文预算的默认比例（与单聊路径一致） */
+const DEFAULT_LOREBOOK_RATIO = 0.3
+
+/** 启发式 token 估算的安全余量系数 */
+const TOKEN_BUDGET_SAFETY = 0.95
+
+/** 输出预留兜底值（preset.maxTokens 缺省时） */
+const DEFAULT_RESERVED_OUTPUT = 1024
 
 /** 对文本应用正则规则（与单聊 applyRegex 逻辑一致） */
 function applyRegexRules(text: string, rules: any[]): string {
@@ -50,7 +61,6 @@ interface ActiveStream {
   unbindChunk: () => void
   unbindDone: () => void
   unbindError: () => void
-  unbindUsage: () => void
   timeoutHandle: ReturnType<typeof setTimeout> | null
 }
 
@@ -66,7 +76,6 @@ function cleanupActiveStream() {
   activeStream.unbindChunk()
   activeStream.unbindDone()
   activeStream.unbindError()
-  activeStream.unbindUsage()
   activeStream = null
 }
 
@@ -770,10 +779,22 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       systemContent += '\n' + replaceVariables(group.systemPrompt, userName, charNameForVars) + '\n'
     }
 
-    // ===== 世界书注入（递归扫描 + 正则 + 变量替换）=====
+    // ===== Token 预算框架（与单聊路径一致）=====
+    const profile = settingsStore.getActiveProfile()
+    const model = profile?.model || settings.activeModel || 'gpt-4o-mini'
+    const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
+    const reservedOutput = preset?.maxTokens ?? DEFAULT_RESERVED_OUTPUT
+    // 下限保护：maxTokens 配置过大时至少保留 25% 上下文预算
+    const budgetBase = Math.max(
+      Math.floor((maxContext - reservedOutput) * TOKEN_BUDGET_SAFETY),
+      Math.floor(maxContext * 0.25),
+    )
+
+    // ===== 世界书注入（递归扫描 + 正则 + 变量替换 + at_depth 深度注入）=====
     let lorebookBefore = ''
     let lorebookAfter = ''
     let lorebookAtEnd = ''
+    let atDepthItems: DepthLoreItem[] = []
 
     // 收集所有世界书 ID（群聊级 + 角色绑定）
     const allLorebookIds = new Set<string>(group.lorebookIds)
@@ -791,125 +812,39 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         .reduce((max, d) => Math.max(max, d), 10)
 
       // 扫描文本包含角色名前缀，使以角色名为关键词的世界书条目也能被触发
-      let recentText = state.messages.slice(-scanDepth).map(m => {
+      const scanText = state.messages.slice(-scanDepth).map(m => {
         if (m.characterId === '__user__') return m.content
         const c = members.find(mc => mc.id === m.characterId)
         return `【${c?.name || '未知角色'}】${m.content}`
       }).join(' ')
 
-      // 收集所有世界书条目
-      const allEntries: { entry: any; lbId: string }[] = []
-      for (const lbId of allLorebookIds) {
-        const lb = lorebookCache.get(lbId)
-        if (!lb?.enabled) continue
-        for (const entry of lb.entries) {
-          if (entry.enabled) {
-            allEntries.push({ entry, lbId })
-          }
-        }
+      const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
+      const lorebookBudget = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
+
+      const result = triggerLorebooks({
+        lorebooks: lorebookCache.getAll([...allLorebookIds]),
+        scanText,
+        userName,
+        charName: charNameForVars,
+        budget: lorebookBudget,
+        model,
+      })
+
+      if (result.droppedCount > 0) {
+        logInfo('buildGroupContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（预算 ${lorebookBudget} tokens）`)
       }
 
-      const triggeredIds = new Set<string>()
-      const beforeEntries: { content: string; order: number }[] = []
-      const afterEntries: { content: string; order: number }[] = []
-      const atEndEntries: { content: string; order: number }[] = []
-      const MAX_RECURSIVE_DEPTH = 5
-
-      // 预编译正则缓存 + 预分组 plain/regex 条目
-      const regexCache = new Map<string, RegExp>()
-      const plainKeywordEntries: typeof allEntries = []
-      const regexEntries: typeof allEntries = []
-      for (const item of allEntries) {
-        if (item.entry.useRegex) {
-          regexEntries.push(item)
-        } else {
-          plainKeywordEntries.push(item)
-        }
+      if (result.beforeChar.length > 0) {
+        lorebookBefore = result.beforeChar.join('\n') + '\n'
       }
-
-      for (let depth = 0; depth < MAX_RECURSIVE_DEPTH; depth++) {
-        let newTriggered = false
-
-        // 普通关键词
-        const recentTextLower = recentText.toLowerCase()
-        for (const { entry, lbId } of plainKeywordEntries) {
-          if (!Array.isArray(entry.keywords)) continue
-          const entryId = `${lbId}:${entry.id || entry.keywords.join(',')}`
-          if (triggeredIds.has(entryId)) continue
-
-          const matched = entry.keywords.some((k: string) => {
-            if (!k) return false
-            return recentTextLower.includes(k.toLowerCase())
-          })
-          if (!matched) continue
-
-          if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
-
-          triggeredIds.add(entryId)
-          newTriggered = true
-
-          const entryContent = replaceVariables(entry.content, userName, charNameForVars)
-          const item = { content: entryContent, order: entry.order }
-
-          if (entry.position === 'before_char') beforeEntries.push(item)
-          else if (entry.position === 'after_char') afterEntries.push(item)
-          else atEndEntries.push(item)
-
-          recentText += ' ' + entryContent
-        }
-
-        // 正则关键词
-        for (const { entry, lbId } of regexEntries) {
-          if (!Array.isArray(entry.keywords)) continue
-          const entryId = `${lbId}:${entry.id || entry.keywords.join(',')}`
-          if (triggeredIds.has(entryId)) continue
-
-          const matched = entry.keywords.some((k: string) => {
-            if (!k) return false
-            const cacheKey = `${k}|${entry.regexFlags || 'i'}`
-            let regex = regexCache.get(cacheKey)
-            if (!regex) {
-              try {
-                regex = new RegExp(k, entry.regexFlags || 'i')
-                regexCache.set(cacheKey, regex)
-              } catch {
-                return false
-              }
-            }
-            return regex.test(recentText)
-          })
-          if (!matched) continue
-
-          if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
-
-          triggeredIds.add(entryId)
-          newTriggered = true
-
-          const entryContent = replaceVariables(entry.content, userName, charNameForVars)
-          const item = { content: entryContent, order: entry.order }
-
-          if (entry.position === 'before_char') beforeEntries.push(item)
-          else if (entry.position === 'after_char') afterEntries.push(item)
-          else atEndEntries.push(item)
-
-          recentText += ' ' + entryContent
-        }
-
-        if (!newTriggered) break
+      if (result.afterChar.length > 0) {
+        lorebookAfter = result.afterChar.join('\n')
       }
-
-      beforeEntries.sort((a, b) => a.order - b.order)
-      afterEntries.sort((a, b) => a.order - b.order)
-      atEndEntries.sort((a, b) => a.order - b.order)
-
-      if (beforeEntries.length > 0) {
-        lorebookBefore = beforeEntries.map(e => e.content).join('\n') + '\n'
+      if (result.atEnd.length > 0) {
+        lorebookAtEnd = '\n\n' + result.atEnd.join('\n')
       }
-      if (afterEntries.length > 0) {
-        lorebookAfter = afterEntries.map(e => e.content).join('\n')
-      }
-      if (atEndEntries.length > 0) {
-        lorebookAtEnd = '\n\n' + atEndEntries.map(e => e.content).join('\n')
+      if (result.atDepth.length > 0) {
+        atDepthItems = result.atDepth
       }
     }
 
@@ -958,10 +893,6 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
     }
 
     // ===== 历史消息（Token 预算裁剪）=====
-    const profile = settingsStore.getActiveProfile()
-    const model = profile?.model || settings.activeModel || 'gpt-4o-mini'
-    const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
-
     let usedTokens = estimateTokens(systemContent, model)
 
     // 预计算后历史指令并预留 token 预算（避免裁剪后注入导致超限）
@@ -984,7 +915,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
       const msg = state.messages[i]
       const tokenCount = estimateTokens(msg.content || '', model)
         + (msg.images?.length ? msg.images.length * 200 : 0)
-      if (usedTokens + tokenCount > maxContext) break
+      if (usedTokens + tokenCount > budgetBase) break
       recentMessages.unshift(msg)
       usedTokens += tokenCount
     }
@@ -1009,6 +940,23 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory : ''}`
         })
       }
     })
+
+    // at_depth 世界书注入：按深度插入历史消息段（ST 语义：depth 0 = 末尾）
+    if (atDepthItems.length > 0) {
+      const sorted = [...atDepthItems].sort((a, b) => (a.depth - b.depth) || (a.order - b.order))
+      const insertMap = new Map<number, string[]>()
+      for (const item of sorted) {
+        const idx = Math.max(0, Math.min(recentMessages.length, recentMessages.length - item.depth))
+        if (!insertMap.has(idx)) insertMap.set(idx, [])
+        insertMap.get(idx)!.push(item.content)
+      }
+      // 从后往前插入，避免 index 偏移
+      const indices = [...insertMap.keys()].sort((a, b) => b - a)
+      for (const idx of indices) {
+        const contents = insertMap.get(idx)!
+        historyContext.splice(idx, 0, ...contents.map((c) => ({ role: 'system' as const, content: c })))
+      }
+    }
 
     // 后历史指令（mention/polling 模式注入目标角色，free 模式注入所有成员，复用预计算结果）
     if (postHistoryText.trim()) {
@@ -1156,6 +1104,21 @@ async function streamGroupAI(
       round,
     })
 
+    // 字符用量统计
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    const outputChars = countChars(processed || '').total
+    const usageInfo = { inputChars: 0, outputChars, totalChars: outputChars, model, timestamp: Date.now() }
+    set((s: any) => ({
+      messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, charUsage: usageInfo } : m),
+    }))
+    const sid = get().currentSessionId
+    if (sid) {
+      window.api.usage.record({
+        timestamp: Date.now(), characterId: speaker.id, sessionId: sid, model,
+        inputChars: 0, outputChars, totalChars: outputChars,
+      }).catch((e) => logError('GroupChatStore:recordUsage', e))
+    }
+
     onComplete()
   })
 
@@ -1195,25 +1158,6 @@ async function streamGroupAI(
     })
   })
 
-  // Token 用量监听
-  const unbindUsage = window.api.ai.onUsage((data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => {
-    if (data.requestId !== requestId) return
-    const model = useSettingsStore.getState().settings.activeModel || profile.model
-    Promise.resolve(window.api.usage.calculateCost(model, data.promptTokens, data.completionTokens)).then((cost) => {
-      const usageInfo = { promptTokens: data.promptTokens, completionTokens: data.completionTokens, totalTokens: data.totalTokens, cost, model, timestamp: Date.now() }
-      set((s: any) => ({
-        messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, tokenUsage: usageInfo } : m),
-      }))
-      const sid = get().currentSessionId
-      if (sid) {
-        window.api.usage.record({
-          timestamp: Date.now(), characterId: speaker.id, sessionId: sid, model,
-          promptTokens: data.promptTokens, completionTokens: data.completionTokens, totalTokens: data.totalTokens, cost,
-        }).catch((e) => logError('GroupChatStore:recordUsage', e))
-      }
-    }).catch((e) => logError('GroupChatStore:recordUsage', e))
-  })
-
   activeStream = {
     requestId,
     msgId,
@@ -1222,7 +1166,6 @@ async function streamGroupAI(
     unbindChunk,
     unbindDone,
     unbindError,
-    unbindUsage,
     timeoutHandle: setTimeout(() => {
       const partialContent = activeStream?.accumulated ?? ''
       cleanupActiveStream()
@@ -1362,6 +1305,17 @@ async function streamGroupAIFree(
     // 应用正则规则
     const processed = regexRules.length > 0 ? applyRegexRules(clean, regexRules) : clean
     splitAndSaveMessages(set, get, group, sessionId, processed, round, msgId)
+
+    // 字符用量统计
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    const outputChars = countChars(processed || '').total
+    const sid = get().currentSessionId
+    if (sid) {
+      window.api.usage.record({
+        timestamp: Date.now(), characterId: '__free__', sessionId: sid, model,
+        inputChars: 0, outputChars, totalChars: outputChars,
+      }).catch((e) => logError('GroupChatStore:recordUsage', e))
+    }
   })
 
   const unbindError = window.api.ai.onError((data: { requestId: string; error: string }) => {
@@ -1381,28 +1335,9 @@ async function streamGroupAIFree(
     }).catch((e) => logError('GroupChatStore:saveMessage', e))
   })
 
-  // Token 用量监听
-  const unbindUsage = window.api.ai.onUsage((data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => {
-    if (data.requestId !== requestId) return
-    const model = useSettingsStore.getState().settings.activeModel || profile.model
-    Promise.resolve(window.api.usage.calculateCost(model, data.promptTokens, data.completionTokens)).then((cost) => {
-      const usageInfo = { promptTokens: data.promptTokens, completionTokens: data.completionTokens, totalTokens: data.totalTokens, cost, model, timestamp: Date.now() }
-      set((s: any) => ({
-        messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, tokenUsage: usageInfo } : m),
-      }))
-      const sid = get().currentSessionId
-      if (sid) {
-        window.api.usage.record({
-          timestamp: Date.now(), characterId: '__free__', sessionId: sid, model,
-          promptTokens: data.promptTokens, completionTokens: data.completionTokens, totalTokens: data.totalTokens, cost,
-        }).catch((e) => logError('GroupChatStore:recordUsage', e))
-      }
-    }).catch((e) => logError('GroupChatStore:recordUsage', e))
-  })
-
   activeStream = {
     requestId, msgId, accumulated: '', flushTimer: null,
-    unbindChunk, unbindDone, unbindError, unbindUsage,
+    unbindChunk, unbindDone, unbindError,
     timeoutHandle: setTimeout(() => {
       const partialContent = activeStream?.accumulated ?? ''
       cleanupActiveStream()

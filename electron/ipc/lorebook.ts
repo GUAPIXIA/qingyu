@@ -67,7 +67,11 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
           id: e.uid?.toString() ?? require('nanoid').nanoid(),
           keywords: Array.isArray(e.key) ? e.key.filter((k: any) => typeof k === 'string') : (typeof e.key === 'string' ? e.key.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
           content: typeof e.content === 'string' ? e.content : '',
-          position: e.position === 0 || e.position === 'before' ? 'before_char' : e.position === 1 || e.position === 'after' ? 'after_char' : 'at_end',
+          position: e.position === 0 || e.position === 'before' ? 'before_char'
+            : e.position === 1 || e.position === 'after' ? 'after_char'
+            : e.position === 2 || e.position === 'depth' || e.position === 'at_depth' ? 'at_depth'
+            : 'at_end',
+          depth: typeof e.depth === 'number' ? Math.max(0, e.depth) : 0,
           order: typeof e.order === 'number' ? e.order : i,
           probability: typeof e.probability === 'number' ? Math.max(0, Math.min(100, e.probability)) : 100,
           enabled: e.disable ? false : (typeof e.enabled === 'boolean' ? e.enabled : true),

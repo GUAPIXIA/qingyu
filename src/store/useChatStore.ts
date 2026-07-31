@@ -6,12 +6,14 @@ import { useSettingsStore } from './useSettingsStore'
 import { usePersonaStore } from './usePersonaStore'
 import { useCharacterStore } from './useCharacterStore'
 import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
+import { countChars } from '../utils/charCounter'
 import { replaceVariables } from '../utils/variables'
 import { getInstructTemplate } from '../utils/chatTemplates'
-import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
+import { mergeConsecutiveMessages, stripThought, normalizeThoughtTags, trimContinuationOverlap } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
-import { getEffectiveLorebookIds, lorebookCache } from '../utils/lorebook'
-import { logError } from '../lib/logger'
+import { getEffectiveLorebookIds, lorebookCache, triggerLorebooks } from '../utils/lorebook'
+import type { DepthLoreItem } from '../utils/lorebook'
+import { logError, logInfo } from '../lib/logger'
 
 // ===================== 常量 =====================
 
@@ -20,6 +22,18 @@ const STREAM_THROTTLE_MS = 50
 
 /** 默认世界书扫描深度（最近 N 条消息） */
 const DEFAULT_LOREBOOK_SCAN_DEPTH = 10
+
+/** 世界书 token 预算占上下文预算（budgetBase）的默认比例 */
+const DEFAULT_LOREBOOK_RATIO = 0.3
+
+/** 启发式 token 估算的安全余量系数（吸收估算误差，替代精确计数） */
+const TOKEN_BUDGET_SAFETY = 0.95
+
+/** 输出预留兜底值（preset.maxTokens 缺省时） */
+const DEFAULT_RESERVED_OUTPUT = 1024
+
+/** 图片消息的 token 估算（每张） */
+const IMAGE_TOKEN_ESTIMATE = 200
 
 /** 长记忆摘要默认取最近消息数 */
 const MEMORY_SUMMARY_RECENT = 20
@@ -112,7 +126,7 @@ interface ChatState {
   /** 保存世界书绑定到角色（作为新会话的默认值），仅在角色编辑器或用户明确操作时调用 */
   saveLorebookBinding: (characterId: string, ids: string[]) => Promise<void>
   applyRegex: (text: string, scope: 'input' | 'output', rules: RegexRule[]) => string
-  buildContext: (character: Character, preset: Preset | null) => { role: 'system' | 'user' | 'assistant'; content: string }[]
+  buildContext: (character: Character, preset: Preset | null, opts?: { continuation?: boolean }) => { role: 'system' | 'user' | 'assistant'; content: string }[]
   /** 启动 AI 翻译（全局状态，页面切换不中断） */
   translateMessage: (messageId: string, content: string) => void
   /** 切换翻译显示 */
@@ -134,12 +148,10 @@ interface StreamState {
   requestId: string
   aiMessageId: string
   accumulated: string
-  preContent?: string  // 续写模式下的已有内容，flush 时拼接到 accumulated 前面
   flushTimer: ReturnType<typeof setTimeout> | null
   unbindChunk: () => void
   unbindDone: () => void
   unbindError: () => void
-  unbindUsage: () => void
   timeoutHandle: ReturnType<typeof setTimeout> | null
 }
 
@@ -161,7 +173,7 @@ function flushStream(set: StoreSet) {
     const idx = msgs.findIndex((m) => m.id === aiMessageId)
     if (idx < 0) return {}
     const newMsgs = msgs.slice()
-    newMsgs[idx] = { ...newMsgs[idx], content: (activeStream.preContent ?? '') + accumulated }
+    newMsgs[idx] = { ...newMsgs[idx], content: accumulated }
     return { messages: newMsgs }
   })
 }
@@ -181,7 +193,6 @@ function cleanupActiveStream() {
     activeStream.unbindChunk()
     activeStream.unbindDone()
     activeStream.unbindError()
-    activeStream.unbindUsage()
   } catch { /* ignore */ }
   activeStream = null
 }
@@ -198,7 +209,8 @@ async function streamAIResponse(
     aiMessageId: string
     character: Character
     preset: Preset | null
-    preContent?: string  // 续写模式下的前置内容，flush 时拼接到新内容前面
+    continuation?: boolean  // 续写模式：buildContext 注入续写指令并跳过 Assistant Prefix
+    inputText?: string   // 用户输入文本（用于字符统计），regenerate/continue 时为空
     onComplete: (fullContent: string) => Promise<void>
     onError?: (errMsg: string) => void
   },
@@ -217,20 +229,7 @@ async function streamAIResponse(
   // 如果已有进行中的流，先清理（防止状态泄漏）
   cleanupActiveStream()
 
-  const contextMessages = get().buildContext(character, preset)
-
-  // 续写模式：preContent 存在时，追加续写指令引导 AI 接续上一段内容
-  if (opts.preContent) {
-    // 移除末尾可能存在的空 assistant prefix（续写不需要，否则会阻断续写指令）
-    const lastIdx = contextMessages.length - 1
-    if (lastIdx >= 0 && contextMessages[lastIdx].role === 'assistant' && !contextMessages[lastIdx].content) {
-      contextMessages.pop()
-    }
-    contextMessages.push({
-      role: 'user',
-      content: '请直接接续上一段内容的结尾继续写作，保持相同的风格、语气和叙事视角。不要重复已有内容，直接输出续写部分。',
-    })
-  }
+  const contextMessages = get().buildContext(character, preset, { continuation: opts.continuation })
 
   const requestId = nanoid()
 
@@ -248,41 +247,6 @@ async function streamAIResponse(
 
   const unbindChunk = window.api.ai.onChunk(onChunk)
 
-  // 监听 token 用量（来自 AI 响应的 usage 字段）
-  const unbindUsage = window.api.ai.onUsage((data) => {
-    if (data.requestId !== requestId) return
-    // 计算费用
-    const model = useSettingsStore.getState().settings.activeModel || profile.model
-    Promise.resolve(window.api.usage.calculateCost(model, data.promptTokens, data.completionTokens)).then((cost) => {
-      const usageInfo = {
-        promptTokens: data.promptTokens,
-        completionTokens: data.completionTokens,
-        totalTokens: data.totalTokens,
-        cost,
-        model,
-        timestamp: Date.now(),
-      }
-      // 更新消息的 tokenUsage
-      set((state: ChatState) => ({
-        messages: state.messages.map(m => m.id === aiMessageId ? { ...m, tokenUsage: usageInfo } : m),
-      }))
-      // 持久化到用量记录
-      const sid = get().currentSessionId
-      if (sid) {
-        window.api.usage.record({
-          timestamp: Date.now(),
-          characterId: character.id,
-          sessionId: sid,
-          model,
-          promptTokens: data.promptTokens,
-          completionTokens: data.completionTokens,
-          totalTokens: data.totalTokens,
-          cost,
-        }).catch(() => { /* 忽略记录失败 */ })
-      }
-    }).catch(() => { /* 忽略 */ })
-  })
-
   const unbindDone = window.api.ai.onDone((doneId: string) => {
     if (doneId !== requestId) return
     // 立即 flush 残留内容
@@ -296,9 +260,32 @@ async function streamAIResponse(
     unbindChunk()
     unbindDone()
     unbindError()
-    unbindUsage()
     const fullContent = activeStream?.accumulated ?? ''
     if (activeStream?.timeoutHandle) clearTimeout(activeStream.timeoutHandle)
+
+    // 字符用量统计：精确计算输入和输出字符数
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    const outputChars = countChars(fullContent).total
+    const inputChars = opts.inputText ? countChars(opts.inputText).total : 0
+    const totalChars = inputChars + outputChars
+    const usageInfo = { inputChars, outputChars, totalChars, model, timestamp: Date.now() }
+    set((state: ChatState) => ({
+      messages: state.messages.map(m => m.id === aiMessageId ? { ...m, charUsage: usageInfo } : m),
+    }))
+    // 持久化到用量记录
+    const sid = get().currentSessionId
+    if (sid) {
+      window.api.usage.record({
+        timestamp: Date.now(),
+        characterId: character.id,
+        sessionId: sid,
+        model,
+        inputChars,
+        outputChars,
+        totalChars,
+      }).catch(() => { /* 忽略记录失败 */ })
+    }
+
     activeStream = null
     set({ isStreaming: false, currentRequestId: null, streamingContent: '' })
     // 异步执行完成回调
@@ -317,7 +304,6 @@ async function streamAIResponse(
     unbindChunk()
     unbindDone()
     unbindError()
-    unbindUsage()
     if (activeStream?.timeoutHandle) clearTimeout(activeStream.timeoutHandle)
     activeStream = null
     const friendly = friendlyError(data.error)
@@ -329,12 +315,10 @@ async function streamAIResponse(
     requestId,
     aiMessageId,
     accumulated: '',
-    preContent: opts.preContent,
     flushTimer: null,
     unbindChunk,
     unbindDone,
     unbindError,
-    unbindUsage,
     // 兜底超时：5 分钟无响应自动清理
     timeoutHandle: setTimeout(() => {
       if (activeStream?.requestId === requestId) {
@@ -373,7 +357,6 @@ async function streamAIResponse(
     unbindChunk()
     unbindDone()
     unbindError()
-    unbindUsage()
     if (activeStream?.flushTimer) clearTimeout(activeStream.flushTimer)
     if (activeStream?.timeoutHandle) clearTimeout(activeStream.timeoutHandle)
     activeStream = null
@@ -848,6 +831,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       aiMessageId,
       character,
       preset,
+      inputText: processedContent,
       onComplete: async (fullContent) => {
         if (!fullContent) return
 
@@ -1080,43 +1064,54 @@ export const useChatStore = create<ChatState>((set, get) => ({
       error: null,
     }))
 
-    // 调用公共流式方法（流式到新消息，原消息保持不变）
+    // 调用公共流式方法（流式到新气泡，气泡只含续写部分，原消息保持不变）
+    // 新内容清洗：归一化 thought 标签 → output 正则 → 复述前缀去重（跳过 thought 块）
+    // 心理描写保留：续写是独立气泡，thought 块与普通消息一样交给渲染层提取展示
+    const cleanContinuation = async (raw: string): Promise<string> => {
+      let processed = normalizeThoughtTags(raw)
+      // 正文为空（模型只输出了 thought）视为无有效续写
+      if (!stripThought(processed)) return ''
+      try {
+        const regexRules = await window.api.regex.list()
+        if (regexRules.length > 0) {
+          processed = get().applyRegex(processed, 'output', regexRules)
+        }
+      } catch { /* 忽略 */ }
+      // 复述前缀去重只作用于正文，跳过开头的 thought 块
+      const leadMatch = processed.match(/^\s*(?:<thought>[\s\S]*?<\/thought>\s*)+/i)
+      const lead = leadMatch ? leadMatch[0] : ''
+      const body = trimContinuationOverlap(targetMsg.content || '', processed.slice(lead.length))
+      if (!body.trim()) return ''
+      return lead ? lead.trimEnd() + '\n\n' + body : body
+    }
+
+    // 将清洗后的续写内容写入新气泡并持久化；内容为空则移除占位气泡
+    const finalizeContinuation = (content: string): boolean => {
+      if (!content) {
+        set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))
+        return false
+      }
+      const curMsg = get().messages.find(m => m.id === newMsgId)
+      if (!curMsg) return false
+      const finalMsg: Message = { ...curMsg, content }
+      set((s) => ({
+        messages: s.messages.map(m => m.id === newMsgId ? finalMsg : m),
+      }))
+      window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
+      return true
+    }
+
     await streamAIResponse(set, get, {
       aiMessageId: newMsgId,
       character,
       preset,
-      preContent: targetMsg.content,
+      continuation: true,
       onComplete: async (newContent) => {
-        if (!newContent) {
-          // 无新内容，移除占位消息
-          set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))
+        const processed = await cleanContinuation(newContent)
+        if (!finalizeContinuation(processed)) {
+          if (newContent) set({ error: '模型未输出有效续写内容' })
           return
         }
-
-        // 应用正则规则（仅对新续写内容）
-        let processedNew = newContent
-        try {
-          const regexRules = await window.api.regex.list()
-          if (regexRules.length > 0) {
-            processedNew = get().applyRegex(newContent, 'output', regexRules)
-          }
-        } catch { /* 忽略 */ }
-
-        // 拼接原内容 + 续写内容
-        const fullContent = (targetMsg.content || '') + processedNew
-
-        const curMsg = get().messages.find(m => m.id === newMsgId)
-        if (!curMsg) return
-
-        const finalMsg: Message = {
-          ...curMsg,
-          content: fullContent,
-        }
-
-        set((s) => ({
-          messages: s.messages.map(m => m.id === newMsgId ? finalMsg : m),
-        }))
-        window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
 
         // 自动长记忆检查
         const { sessions: curSessions, currentSessionId: curSid } = get()
@@ -1133,9 +1128,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         }
       },
-      onError: (_errMsg) => {
-        // 出错时移除占位消息
-        set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))
+      onError: (errMsg) => {
+        // 出错/超时：已流式出的部分内容保留（flushStream 已写入气泡），毫无内容才移除
+        const partial = get().messages.find(m => m.id === newMsgId)?.content || ''
+        if (!partial) {
+          set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))
+          return
+        }
+        cleanContinuation(partial)
+          .then((processed) => {
+            if (finalizeContinuation(processed)) {
+              set({ error: `续写中断，已保留部分内容（${errMsg}）` })
+            }
+          })
+          .catch((e) => logError('ChatStore:continueMessage', e))
       },
     })
   },
@@ -1373,7 +1379,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return result
   },
 
-  buildContext: (character, preset) => {
+  buildContext: (character, preset, opts) => {
     const settings = useSettingsStore.getState().settings
     const userName = settings.userName || '用户'
     // 修复 #8: 保留图片消息（content 为空但有 images 时不丢弃）
@@ -1413,14 +1419,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
       systemContent += '\n\n【对话历史摘要】\n' + currentSession.memory
     }
 
+    // ===== Token 预算框架 =====
+    // budgetBase = (maxContext − 输出预留) × 安全余量；世界书预算取其一定比例，剩余给历史
+    const profile = useSettingsStore.getState().getActiveProfile()
+    // 修复 #31: 按模型推断默认 maxContext
+    const model = profile?.model || settings.activeModel || 'gpt-4o-mini'
+    const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
+    const reservedOutput = preset?.maxTokens ?? DEFAULT_RESERVED_OUTPUT
+    // 下限保护：maxTokens 配置过大时至少保留 25% 上下文预算
+    const budgetBase = Math.max(
+      Math.floor((maxContext - reservedOutput) * TOKEN_BUDGET_SAFETY),
+      Math.floor(maxContext * 0.25),
+    )
+
     // ===== 角色设定 + 世界书 =====
     let charDesc = ''
     if (character.description) charDesc += replaceVariables(character.description, userName, character.name) + '\n'
     if (character.personality) charDesc += '性格：' + replaceVariables(character.personality, userName, character.name) + '\n'
     if (character.scenario) charDesc += '场景：' + replaceVariables(character.scenario, userName, character.name) + '\n'
 
-    // 世界书注入（支持多个世界书合并 + 递归扫描）
+    // 世界书注入（支持多个世界书合并 + 递归扫描 + at_depth 深度注入）
     const lorebookIds = get().activeLorebookIds
+    // at_depth 条目：历史消息构建后按深度插入（初始为空）
+    let atDepthItems: DepthLoreItem[] = []
     if (lorebookIds.length > 0) {
       // 修复 #28: 扫描深度可配置（取激活世界书中的最大值，否则用默认）
       const scanDepth = lorebookIds
@@ -1428,125 +1449,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
         .filter((d): d is number => typeof d === 'number' && d > 0)
         .reduce((max, d) => Math.max(max, d), DEFAULT_LOREBOOK_SCAN_DEPTH)
 
-      let recentText = messages.slice(-scanDepth).map((m) => m.content).join(' ')
+      const scanText = messages.slice(-scanDepth).map((m) => m.content).join(' ')
 
-      // 收集所有世界书条目
-      const allEntries: { entry: any; lbId: string }[] = []
-      for (const lbId of lorebookIds) {
-        const lb = lorebookCache.get(lbId)
-        if (!lb?.enabled) continue
-        for (const entry of lb.entries) {
-          if (entry.enabled) {
-            allEntries.push({ entry, lbId })
-          }
-        }
+      const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
+      const lorebookBudget = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
+
+      const result = triggerLorebooks({
+        lorebooks: lorebookCache.getAll(lorebookIds),
+        scanText,
+        userName,
+        charName: character.name,
+        budget: lorebookBudget,
+        model,
+      })
+
+      if (result.droppedCount > 0) {
+        logInfo('buildContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（预算 ${lorebookBudget} tokens）`)
       }
 
-      // 递归扫描：条目内容可触发其他条目
-      const triggeredIds = new Set<string>()
-      const beforeEntries: { content: string; order: number }[] = []
-      const afterEntries: { content: string; order: number }[] = []
-      const atEndEntries: { content: string; order: number }[] = []
-      const MAX_RECURSIVE_DEPTH = 5  // 防止无限递归
-
-      // 优化：预编译正则 + 预分组普通关键词
-      const regexCache = new Map<string, RegExp>()
-      const plainKeywordEntries: typeof allEntries = []
-      const regexEntries: typeof allEntries = []
-      for (const item of allEntries) {
-        if (item.entry.useRegex) {
-          regexEntries.push(item)
-        } else {
-          plainKeywordEntries.push(item)
-        }
+      // before_char: 排列在 charDesc 之前
+      if (result.beforeChar.length > 0) {
+        charDesc = result.beforeChar.join('\n') + '\n' + charDesc
       }
-
-      for (let depth = 0; depth < MAX_RECURSIVE_DEPTH; depth++) {
-        let newTriggered = false
-
-        // 普通关键词：先用 Set 快速排除，再做 includes
-        const recentTextLower = recentText.toLowerCase()
-
-        for (const { entry, lbId } of plainKeywordEntries) {
-          if (!Array.isArray(entry.keywords)) continue
-          const entryId = `${lbId}:${entry.id || entry.keywords.join(',')}`
-          if (triggeredIds.has(entryId)) continue
-
-          const matched = entry.keywords.some((k) => {
-            if (!k) return false
-            return recentTextLower.includes(k.toLowerCase())
-          })
-          if (!matched) continue
-
-          if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
-
-          triggeredIds.add(entryId)
-          newTriggered = true
-
-          const entryContent = replaceVariables(entry.content, userName, character.name)
-          const item = { content: entryContent, order: entry.order }
-
-          if (entry.position === 'before_char') beforeEntries.push(item)
-          else if (entry.position === 'after_char') afterEntries.push(item)
-          else atEndEntries.push(item)
-
-          recentText += ' ' + entryContent
-        }
-
-        // 正则关键词：缓存编译后的 RegExp
-        for (const { entry, lbId } of regexEntries) {
-          if (!Array.isArray(entry.keywords)) continue
-          const entryId = `${lbId}:${entry.id || entry.keywords.join(',')}`
-          if (triggeredIds.has(entryId)) continue
-
-          const matched = entry.keywords.some((k) => {
-            if (!k) return false
-            const cacheKey = `${k}|${entry.regexFlags || 'i'}`
-            let regex = regexCache.get(cacheKey)
-            if (!regex) {
-              try {
-                regex = new RegExp(k, entry.regexFlags || 'i')
-                regexCache.set(cacheKey, regex)
-              } catch {
-                return false
-              }
-            }
-            return regex.test(recentText)
-          })
-          if (!matched) continue
-
-          if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
-
-          triggeredIds.add(entryId)
-          newTriggered = true
-
-          const entryContent = replaceVariables(entry.content, userName, character.name)
-          const item = { content: entryContent, order: entry.order }
-
-          if (entry.position === 'before_char') beforeEntries.push(item)
-          else if (entry.position === 'after_char') afterEntries.push(item)
-          else atEndEntries.push(item)
-
-          recentText += ' ' + entryContent
-        }
-
-        if (!newTriggered) break
-      }
-
-      // before_char: 按 order 升序排列在 charDesc 之前
-      if (beforeEntries.length > 0) {
-        beforeEntries.sort((a, b) => a.order - b.order)
-        charDesc = beforeEntries.map(e => e.content).join('\n') + '\n' + charDesc
-      }
-      // after_char: 按 order 升序排列在 charDesc 之后
-      if (afterEntries.length > 0) {
-        afterEntries.sort((a, b) => a.order - b.order)
-        charDesc = charDesc + afterEntries.map(e => e.content).join('\n')
+      // after_char: 排列在 charDesc 之后
+      if (result.afterChar.length > 0) {
+        charDesc = charDesc + result.afterChar.join('\n')
       }
       // at_end: 追加到 systemContent 末尾
-      if (atEndEntries.length > 0) {
-        atEndEntries.sort((a, b) => a.order - b.order)
-        systemContent += '\n\n' + atEndEntries.map(e => e.content).join('\n')
+      if (result.atEnd.length > 0) {
+        systemContent += '\n\n' + result.atEnd.join('\n')
+      }
+      // at_depth: 延迟到历史消息构建后注入
+      if (result.atDepth.length > 0) {
+        atDepthItems = result.atDepth
       }
     }
 
@@ -1554,56 +1489,104 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     context.push({ role: 'system', content: systemContent })
 
-    // 对话示例位置配置
+    // 对话示例位置与发送模式配置
     const exampleDialogPosition = settings.exampleDialogPosition || 'after_system'
+    const exampleDialogMode = settings.exampleDialogMode || 'always'
+    // 首轮 = 用户消息不超过 1 条（含刚发送的这条）
+    const isFirstTurn = messages.filter(m => m.role === 'user').length <= 1
+    const shouldSendExample = !!character.exampleDialog
+      && exampleDialogMode !== 'off'
+      && (exampleDialogMode !== 'first_turn' || isFirstTurn)
+    const exampleDialogContent = shouldSendExample
+      ? '【对话示例】\n' + replaceVariables(character.exampleDialog!, userName, character.name)
+      : ''
 
     // 如果示例位置是 after_system（默认），在这里插入
-    if (exampleDialogPosition === 'after_system' && character.exampleDialog) {
-      context.push({ role: 'system', content: '【对话示例】\n' + replaceVariables(character.exampleDialog, userName, character.name) })
+    if (exampleDialogPosition === 'after_system' && exampleDialogContent) {
+      context.push({ role: 'system', content: exampleDialogContent })
     }
 
     // ===== 历史消息 =====
-    const profile = useSettingsStore.getState().getActiveProfile()
-    // 修复 #31: 按模型推断默认 maxContext
-    const model = profile?.model || settings.activeModel || 'gpt-4o-mini'
-    const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
-
     let usedTokens = context.reduce((sum, c) => sum + estimateTokens(c.content, model), 0)
+
+    // 预留 postHistoryInstructions（历史之后才注入，需先计入预算，参考群聊路径做法）
+    const postHistoryText = character.postHistoryInstructions
+      ? replaceVariables(character.postHistoryInstructions, userName, character.name)
+      : ''
+    if (postHistoryText) usedTokens += estimateTokens(postHistoryText, model)
+    // 预留 after_history 示例对话（同理）
+    if (exampleDialogPosition === 'after_history' && exampleDialogContent) {
+      usedTokens += estimateTokens(exampleDialogContent, model)
+    }
+
     const recentMessages: typeof messages = []
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       const tokenCount = estimateTokens(msg.content || '', model)
-      if (usedTokens + tokenCount > maxContext) break
+        + (msg.images?.length ? msg.images.length * IMAGE_TOKEN_ESTIMATE : 0)
+      if (usedTokens + tokenCount > budgetBase) break
       recentMessages.unshift(msg)
       usedTokens += tokenCount
     }
 
+    // 历史消息段（单独构建，供 at_depth 世界书在中间插入）
+    const historySegment: { role: 'user' | 'assistant' | 'system'; content: string }[] = []
     for (const msg of recentMessages) {
-      context.push({
+      historySegment.push({
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content,
       })
     }
 
+    // at_depth 世界书注入：按深度插入历史消息段
+    // ST 语义：depth 0 = 对话末尾，1 = 倒数第二条之后，n = 从末尾数 n 条之后
+    if (atDepthItems.length > 0) {
+      const sorted = [...atDepthItems].sort((a, b) => (a.depth - b.depth) || (a.order - b.order))
+      const insertMap = new Map<number, string[]>()
+      for (const item of sorted) {
+        const idx = Math.max(0, Math.min(recentMessages.length, recentMessages.length - item.depth))
+        if (!insertMap.has(idx)) insertMap.set(idx, [])
+        insertMap.get(idx)!.push(item.content)
+      }
+      // 从后往前插入，避免 index 偏移
+      const indices = [...insertMap.keys()].sort((a, b) => b - a)
+      for (const idx of indices) {
+        const contents = insertMap.get(idx)!
+        historySegment.splice(idx, 0, ...contents.map((c) => ({ role: 'system' as const, content: c })))
+      }
+    }
+
+    context.push(...historySegment)
+
     // 如果示例位置是 after_history，在这里插入
-    if (exampleDialogPosition === 'after_history' && character.exampleDialog) {
-      context.push({ role: 'system', content: '【对话示例】\n' + replaceVariables(character.exampleDialog, userName, character.name) })
+    if (exampleDialogPosition === 'after_history' && exampleDialogContent) {
+      context.push({ role: 'system', content: exampleDialogContent })
     }
 
     // 修复 #27: postHistoryInstructions 应该放在历史消息之后（Author's Note 位置）
-    if (character.postHistoryInstructions) {
+    if (postHistoryText) {
       context.push({
         role: 'system',
-        content: replaceVariables(character.postHistoryInstructions, userName, character.name),
+        content: postHistoryText,
+      })
+    }
+
+    // ===== 续写模式 =====
+    // 在 merge/convert 之前注入续写指令，保证指令经过完整消息管线（provider 格式转换）
+    if (opts?.continuation) {
+      context.push({
+        role: 'user',
+        content: '请直接接续上一段内容的结尾继续写作，保持相同的风格、语气和叙事视角。不要重复已有内容，直接输出续写部分。',
       })
     }
 
     // Assistant Prefix：在上下文末尾添加空的 assistant 消息，引导模型输出格式
     // 对于 instruct 模式且 appendAssistantPrefix=true 的情况，添加角色名前缀
+    // 续写模式跳过：空 prefix 会被 merge 进续写指令之后，干扰续写引导
     const instructTemplate = profile?.useInstructTemplate
       ? getInstructTemplate(profile.provider, model)
       : undefined
-    if (instructTemplate?.appendAssistantPrefix && charNameForVars) {
+    if (!opts?.continuation && instructTemplate?.appendAssistantPrefix && charNameForVars) {
       context.push({
         role: 'assistant',
         content: '',  // 空内容，让模型续写
