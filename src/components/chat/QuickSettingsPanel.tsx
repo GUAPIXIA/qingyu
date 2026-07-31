@@ -562,6 +562,11 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                   <option value="off">关闭</option>
                 </select>
               </div>
+              {/* 示例对话作用提示 */}
+              <p className="text-[10px] text-tavern-text-muted/80 leading-relaxed">
+                💡 角色卡「对话示例」会作为风格示范注入上下文，帮助 AI 模仿角色的语气、口癖与格式（few-shot）。
+                仅首轮 / 关闭可节省每轮固定的 token 开销。
+              </p>
             </div>
           </Section>
 
