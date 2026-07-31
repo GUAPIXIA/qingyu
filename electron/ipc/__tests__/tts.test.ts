@@ -84,12 +84,13 @@ describe('OPENAI_VOICES', () => {
 })
 
 describe('edgeSpeak（Edge TTS 引擎）', () => {
-  it('合成 mp3 并返回 base64（临时文件清理）', async () => {
+  it('合成 mp3 并返回 base64（临时文件清理 + proxy 透传）', async () => {
     // mock node-edge-tts：ttsPromise 写一个假 mp3 文件
     let writtenPath = ''
+    let ctorOpts: any = null
     vi.doMock('node-edge-tts', () => ({
       EdgeTTS: class {
-        constructor(opts: any) { /* 记录构造参数 */ }
+        constructor(opts: any) { ctorOpts = opts }
         async ttsPromise(_text: string, audioPath: string) {
           writtenPath = audioPath
           const { writeFileSync } = await import('node:fs')
@@ -100,11 +101,29 @@ describe('edgeSpeak（Edge TTS 引擎）', () => {
     // 重新加载模块以应用 mock
     vi.resetModules()
     const { edgeSpeak } = await import('../tts')
-    const base64 = await edgeSpeak('你好', 'zh-CN-XiaoxiaoNeural')
+    const base64 = await edgeSpeak('你好', 'zh-CN-XiaoxiaoNeural', { proxy: 'http://127.0.0.1:7890' })
     expect(base64).toBe(Buffer.from([0x66, 0xff, 0xf3]).toString('base64'))
+    // 代理透传到 EdgeTTS 构造参数
+    expect(ctorOpts.proxy).toBe('http://127.0.0.1:7890')
     // 临时文件已清理
     const { existsSync } = await import('node:fs')
     expect(existsSync(writtenPath)).toBe(false)
+    vi.unmock('node-edge-tts')
+    vi.resetModules()
+  })
+
+  it('空音频数据抛错', async () => {
+    vi.doMock('node-edge-tts', () => ({
+      EdgeTTS: class {
+        async ttsPromise(_text: string, audioPath: string) {
+          const { writeFileSync } = await import('node:fs')
+          writeFileSync(audioPath, Buffer.alloc(0), 'utf-8')
+        }
+      },
+    }))
+    vi.resetModules()
+    const { edgeSpeak } = await import('../tts')
+    await expect(edgeSpeak('x', 'zh-CN-XiaoxiaoNeural')).rejects.toThrow('未生成音频数据')
     vi.unmock('node-edge-tts')
     vi.resetModules()
   })

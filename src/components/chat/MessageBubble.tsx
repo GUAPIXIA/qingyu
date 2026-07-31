@@ -134,14 +134,25 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
         setTtsState('speaking')
         return
       }
-      const res = await window.api.tts.speak(message.content, {
-        provider: 'openai',
-        voice: ttsConfig.voice || 'alloy',
-        rate: 1,
-        model: ttsConfig.model,
-        apiKey: ttsConfig.apiKey,
-        baseUrl: ttsConfig.baseUrl,
-      })
+      const res = await window.api.tts.speak(
+        message.content,
+        ttsConfig.provider === 'edge'
+          ? {
+              provider: 'edge',
+              voice: ttsConfig.voice || 'zh-CN-XiaoxiaoNeural',
+              rate: 1,
+              // 国内网络直连微软服务可能失败，走封面下载代理
+              proxy: settings.coverProxyUrl || undefined,
+            }
+          : {
+              provider: 'openai',
+              voice: ttsConfig.voice || 'alloy',
+              rate: 1,
+              model: ttsConfig.model,
+              apiKey: ttsConfig.apiKey,
+              baseUrl: ttsConfig.baseUrl,
+            },
+      )
       if (res.success && res.audioBase64) {
         const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)
         audio.onended = () => setTtsState('idle')
