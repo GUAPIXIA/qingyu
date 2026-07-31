@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useGroupChatStore } from '../useGroupChatStore'
 import { useSettingsStore } from '../useSettingsStore'
+import { useCharacterStore } from '../useCharacterStore'
 import { getDefaultSettings } from '../../../shared/defaults'
-import type { GroupChat, GroupMessage } from '../../../shared/types'
+import type { GroupChat, GroupMessage, Character } from '../../../shared/types'
 
 describe('useGroupChatStore', () => {
   beforeEach(() => {
@@ -25,6 +26,8 @@ describe('useGroupChatStore', () => {
       loaded: true,
       _saveTimer: null,
     })
+    // 重置角色 store
+    useCharacterStore.setState({ characters: [], loading: false, error: null })
     vi.clearAllMocks()
   })
 
@@ -243,19 +246,87 @@ describe('useGroupChatStore', () => {
       }
       expect(msg.status).toBe('sending')
     })
+  })
 
-    it('GroupMessage supports mentionedCharacterIds field', () => {
-      const msg: GroupMessage = {
-        id: '1',
-        groupId: 'g1',
-        characterId: '__user__',
-        content: '@Alice hello',
-        images: [],
-        timestamp: 0,
-        round: 1,
-        mentionedCharacterIds: ['char-1'],
+  describe('mention 提取', () => {
+    /** 构造最小测试角色 */
+    function makeCharacter(id: string, name: string): Character {
+      return {
+        id, name, avatar: '', description: '', personality: '', scenario: '',
+        firstMessage: '', exampleDialog: '', tags: [], lorebookId: null,
+        creator: '', createdAt: 0, updatedAt: 0, alternateGreetings: [],
       }
-      expect(msg.mentionedCharacterIds).toEqual(['char-1'])
+    }
+
+    /** 配置完整群聊发送环境 */
+    function setupMentionGroup() {
+      // 配置 API profile
+      useSettingsStore.setState({
+        settings: {
+          ...getDefaultSettings(),
+          activeProfileId: 'p1',
+          connectionProfiles: [{
+            id: 'p1', name: 'test', provider: 'openai' as const,
+            baseUrl: 'http://localhost:1/v1', model: 'gpt-4o', apiKey: 'sk-test', maxContext: 8192,
+          }],
+        },
+      })
+      // 配置群成员（爱丽丝 与 千夏）
+      useCharacterStore.setState({
+        characters: [makeCharacter('c1', '爱丽丝'), makeCharacter('c2', '千夏')],
+      })
+      useGroupChatStore.setState({
+        currentGroup: {
+          id: 'g1', name: 'G', memberIds: ['c1', 'c2'],
+          currentSpeakerIndex: 0, autoMode: false, chatMode: 'mention' as const,
+          maxRounds: 1, speakerInterval: 2000, lorebookIds: [],
+          presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+        },
+        currentSessionId: 's1',
+      })
+    }
+
+    it('@点名消息记录 mentionedCharacterIds', async () => {
+      setupMentionGroup()
+      const saveMsg = vi.mocked(window.api.group.saveMessage)
+
+      await useGroupChatStore.getState().sendMessage('@爱丽丝 今晚去哪？', [], undefined)
+
+      // 用户消息已保存，且带正确的 mentionedCharacterIds
+      expect(saveMsg).toHaveBeenCalled()
+      const savedUserMsg = saveMsg.mock.calls[0][2] as GroupMessage
+      expect(savedUserMsg.characterId).toBe('__user__')
+      expect(savedUserMsg.mentionedCharacterIds).toEqual(['c1'])
+    })
+
+    it('无 @ 消息不记录 mentionedCharacterIds', async () => {
+      setupMentionGroup()
+      const saveMsg = vi.mocked(window.api.group.saveMessage)
+
+      await useGroupChatStore.getState().sendMessage('大家好', [], undefined)
+
+      const savedUserMsg = saveMsg.mock.calls[0][2] as GroupMessage
+      expect(savedUserMsg.mentionedCharacterIds).toBeUndefined()
+    })
+
+    it('部分名称不误匹配（@爱 不匹配 爱丽丝）', async () => {
+      setupMentionGroup()
+      const saveMsg = vi.mocked(window.api.group.saveMessage)
+
+      await useGroupChatStore.getState().sendMessage('@爱 你好', [], undefined)
+
+      const savedUserMsg = saveMsg.mock.calls[0][2] as GroupMessage
+      expect(savedUserMsg.mentionedCharacterIds).toBeUndefined()
+    })
+
+    it('多个成员被点名时全部记录', async () => {
+      setupMentionGroup()
+      const saveMsg = vi.mocked(window.api.group.saveMessage)
+
+      await useGroupChatStore.getState().sendMessage('@爱丽丝 @千夏 集合！', [], undefined)
+
+      const savedUserMsg = saveMsg.mock.calls[0][2] as GroupMessage
+      expect(savedUserMsg.mentionedCharacterIds).toEqual(['c1', 'c2'])
     })
   })
 })

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 
 const TTS_PROVIDERS = [
-  { value: 'edge' as const, label: 'Edge TTS (本地)', desc: 'Windows 系统自带' },
+  { value: 'edge' as const, label: '系统语音 (本地)', desc: 'Windows 内置语音（System.Speech）' },
   { value: 'openai' as const, label: 'OpenAI TTS', desc: '需 API Key' },
 ]
 
