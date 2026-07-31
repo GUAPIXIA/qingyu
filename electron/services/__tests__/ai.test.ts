@@ -521,3 +521,84 @@ describe('registerAIIPC 连接通道', () => {
     expect((result as { error: string }).error).toContain('ECONNREFUSED')
   })
 })
+
+// ===================== Ollama Instruct 模板模式 =====================
+
+describe('Ollama Instruct 模板模式（/api/generate）', () => {
+  it('启用模板时走 /api/generate + 消息包装 + 停止序列', async () => {
+    const params = makeParams({
+      provider: 'ollama',
+      baseUrl: 'http://localhost:11434',
+      stream: false,
+      messages: [
+        { role: 'system', content: '你是助手' },
+        { role: 'user', content: '你好' },
+      ],
+      instructTemplate: {
+        systemPrefix: '<|im_start|>system\n',
+        systemSuffix: '<|im_end|>\n',
+        userPrefix: '<|im_start|>user\n',
+        userSuffix: '<|im_end|>\n',
+        assistantPrefix: '<|im_start|>assistant\n',
+        assistantSuffix: '<|im_end|>\n',
+        stopSequences: ['<|im_end|>', '<|im_start|>'],
+        appendAssistantPrefix: true,
+      },
+    })
+    fetchMock.mockResolvedValue(jsonResponse({ response: '你好呀', done: true, prompt_eval_count: 8, eval_count: 3 }))
+
+    const onChunk = vi.fn()
+    const onUsage = vi.fn()
+    const result = await getAdapter('ollama').chat(params, onChunk, new AbortController().signal, onUsage)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:11434/api/generate')
+    const body = JSON.parse(init.body)
+    // 消息已按 ChatML 包装为纯文本 prompt
+    expect(body.prompt).toContain('<|im_start|>system\n你是助手<|im_end|>')
+    expect(body.prompt).toContain('<|im_start|>assistant\n') // appendAssistantPrefix
+    expect(body.messages).toBeUndefined() // 不使用 messages 数组
+    expect(body.options.stop).toEqual(['<|im_end|>', '<|im_start|>'])
+
+    expect(result).toBe('你好呀')
+    expect(onChunk).toHaveBeenCalledWith('你好呀')
+    expect(onUsage).toHaveBeenCalledWith({ promptTokens: 8, completionTokens: 3, totalTokens: 11 })
+  })
+
+  it('模板模式流式：解析 response 字段（非 message.content）', async () => {
+    const params = makeParams({
+      provider: 'ollama',
+      stream: true,
+      messages: [{ role: 'user', content: '嗨' }],
+      instructTemplate: {
+        systemPrefix: '', systemSuffix: '',
+        userPrefix: '<|im_start|>user\n', userSuffix: '<|im_end|>\n',
+        assistantPrefix: '<|im_start|>assistant\n', assistantSuffix: '<|im_end|>\n',
+        stopSequences: ['<|im_end|>'], appendAssistantPrefix: true,
+      },
+    })
+    fetchMock.mockResolvedValue(streamResponse([
+      '{"response":"你"}\n{"response":"好"}\n',
+      '{"response":"","done":true,"prompt_eval_count":5,"eval_count":2}\n',
+    ]))
+
+    const onChunk = vi.fn()
+    const onUsage = vi.fn()
+    const result = await getAdapter('ollama').chat(params, onChunk, new AbortController().signal, onUsage)
+
+    expect(result).toBe('你好')
+    expect(onChunk.mock.calls.flat()).toEqual(['你', '好'])
+    expect(onUsage).toHaveBeenCalledWith({ promptTokens: 5, completionTokens: 2, totalTokens: 7 })
+  })
+
+  it('未启用模板时仍走 /api/chat messages 路径', async () => {
+    const params = makeParams({ provider: 'ollama', baseUrl: 'http://localhost:11434', stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({ message: { content: 'hi' } }))
+
+    await getAdapter('ollama').chat(params, vi.fn(), new AbortController().signal)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:11434/api/chat')
+    expect(JSON.parse(init.body).messages).toBeDefined()
+  })
+})

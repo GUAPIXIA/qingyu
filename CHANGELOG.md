@@ -1,5 +1,18 @@
 # 更新日志
 
+## [0.9.3] - 2026-07-31
+
+### 上下文模板（Context Templates）
+
+- **内置模板补全**：ChatML / Qwen / DeepSeek（统一 ChatML 格式）、Alpaca、Gemma、Llama 2/3、Mistral、Phi-3、Command R
+- **模板真实生效**：修复模板系统半成品问题——此前 instructTemplate 传给 ChatParams 后无任何 adapter 消费（仅 appendAssistantPrefix 生效）。现 Ollama 适配器在模板模式下改用 /api/generate 纯文本接口 + 模板包装 + options.stop 停止序列
+- **预设级模板选择**：预设新增 contextTemplate 字段，编辑 UI 提供内置模板下拉；优先级：预设指定 > profile 自动推断 > 不启用
+- **单聊/群聊统一**：buildContext / sendMessage / 群聊上下文 均使用 resolveEffectiveTemplate 解析
+- **applyInstructTemplate 纯函数**：消息数组 → 模板包装文本 + 停止序列
+- 新增 15 个测试（模板解析 12 + Ollama generate 路径 3），全量 235 通过
+
+---
+
 ## [0.9.2] - 2026-07-31
 
 ### 作者注释（Author's Note）

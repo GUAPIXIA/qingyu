@@ -190,6 +190,8 @@ export interface Preset {
   frequencyPenalty: number
   presencePenalty: number
   isBuiltin: boolean
+  /** 上下文模板名（如 'chatml' / 'llama3' / 'alpaca'；空 = 不启用模板包装） */
+  contextTemplate?: string
 }
 
 /** 群聊 */
