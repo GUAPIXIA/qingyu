@@ -452,26 +452,55 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              {/* 预览示意图 */}
-              <div className="rounded-lg border border-tavern-border-soft bg-tavern-bg p-3 space-y-1">
-                <p className="text-xs text-tavern-text-muted mb-2 font-medium">气泡预览</p>
-                <div className={cn(
-                  'rounded-lg px-3 py-2 text-xs',
-                  settings.bubbleStyle === 'round' && 'rounded-2xl',
-                  settings.bubbleStyle === 'standard' && 'rounded-lg',
-                  settings.bubbleStyle === 'sharp' && 'rounded-sm',
-                  'bg-tavern-user/10 border border-tavern-user/20 ml-4'
-                )}>
-                  用户消息预览
+              {/* 预览示意图：模拟真实对话窗格，实时反映圆角/宽度/间距 */}
+              <div className="rounded-lg border border-tavern-border-soft bg-tavern-bg overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-tavern-bg-hover border-b border-tavern-border-soft">
+                  <p className="text-xs text-tavern-text-muted font-medium">气泡预览</p>
+                  <span className="text-[10px] text-tavern-text-muted/70">
+                    宽度 {(settings.messageWidth ?? 768)}px · 间距 {settings.messageSpacing}px
+                  </span>
                 </div>
-                <div className={cn(
-                  'rounded-lg px-3 py-2 text-xs',
-                  settings.bubbleStyle === 'round' && 'rounded-2xl',
-                  settings.bubbleStyle === 'standard' && 'rounded-lg',
-                  settings.bubbleStyle === 'sharp' && 'rounded-sm',
-                  'bg-tavern-bg-card border border-tavern-border-soft mr-4'
-                )}>
-                  AI 回复预览
+                <div className="p-3 bg-[var(--color-bg)]/40">
+                  {/* 消息宽度：按 400-1200 范围映射为容器百分比，滑杆变化直观可见 */}
+                  {(() => {
+                    const w = Math.min(Math.max(settings.messageWidth ?? 768, 400), 1200)
+                    const pct = Math.max(55, Math.min(100, Math.round((w / 1200) * 100)))
+                    const spacing = settings.messageSpacing ?? 20
+                    const bubbleStyle = settings.bubbleStyle ?? 'standard'
+                    const bubbleRadius = bubbleStyle === 'round' ? 'rounded-2xl'
+                      : bubbleStyle === 'sharp' ? 'rounded-sm'
+                      : 'rounded-lg'
+                    const aiBubble = cn(
+                      'msg-bubble px-4 py-2 text-sm shadow-sm',
+                      bubbleRadius,
+                      'bg-tavern-bg-card border border-tavern-border rounded-bl-sm text-slate-900 dark:text-slate-100'
+                    )
+                    const userBubble = cn(
+                      'msg-bubble px-4 py-2 text-sm shadow-md',
+                      bubbleRadius,
+                      'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm text-amber-950 dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 dark:text-amber-50'
+                    )
+                    return (
+                      <div className="space-y-0">
+                        <div className="mx-auto flex" style={{ maxWidth: `${pct}%`, marginBottom: `${spacing}px` }}>
+                          <div className={aiBubble}>
+                            她抬起头，轻声笑了笑。<br />
+                            「你真的这样想吗？」
+                          </div>
+                        </div>
+                        <div className="mx-auto flex flex-row-reverse" style={{ maxWidth: `${pct}%`, marginBottom: `${spacing}px` }}>
+                          <div className={userBubble}>
+                            是的，我确定。我们明天就出发。
+                          </div>
+                        </div>
+                        <div className="mx-auto flex" style={{ maxWidth: `${pct}%`, marginBottom: 0 }}>
+                          <div className={aiBubble}>
+                            那好，我先去准备行李。
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             </div>
