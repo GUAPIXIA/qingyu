@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeRaw from 'rehype-raw'
 import { charAssetUrl } from '../../utils/asset'
-import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause, User, Bot, Languages, GitBranch, Loader2, ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw, ChevronsDown } from 'lucide-react'
+import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause, User, Bot, Languages, GitBranch, Loader2, ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw, ChevronsDown, Reply } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -20,6 +20,10 @@ interface MessageBubbleProps {
   message: Message
   character: Character | null
   isLast: boolean
+  /** 被引用消息（P1-5 引用回复） */
+  repliedMessage?: Message | null
+  /** 触发引用该消息 */
+  onReply?: () => void
 }
 
 import { MarkdownImage } from '../common/MarkdownImage'
@@ -29,7 +33,7 @@ const markdownComponents = { img: MarkdownImage }
 // B-05：已播放过入场动画的消息 ID，避免虚拟滚动时反复播放
 const animatedIds = new Set<string>()
 
-export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast }: MessageBubbleProps) {
+export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast, repliedMessage, onReply }: MessageBubbleProps) {
   const shouldAnimate = !animatedIds.has(message.id)
   // 首帧渲染后立即标记为已动画
   if (shouldAnimate) {
@@ -248,6 +252,9 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           <div className="flex items-center justify-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors" onClick={() => setEditing(true)} title="编辑"><Edit2 className="w-3.5 h-3.5" /></button>
             <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors" onClick={handleCopy} title="复制"><Copy className="w-3.5 h-3.5" /></button>
+            {onReply && (
+              <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover transition-colors" onClick={onReply} title="引用回复"><Reply className="w-3.5 h-3.5" /></button>
+            )}
             <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover transition-colors disabled:opacity-50" disabled={regenerating} onClick={async () => { setRegenerating(true); try { const result = await window.api.imageGen.generate(message.content); if (result.success && result.images?.length) { await updateMessageImages(message.id, result.images) } } catch { /* 忽略 */ } setRegenerating(false) }} title="重新生图">
               {regenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             </button>
@@ -346,6 +353,26 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                 : 'bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100'
             )}
           >
+            {/* 引用回复：被引用消息摘要（P1-5） */}
+            {repliedMessage && (
+              <button
+                type="button"
+                onClick={onReply ? () => onReply() : undefined}
+                className="w-full flex items-start gap-1.5 mb-2 px-2.5 py-1.5 rounded-lg bg-tavern-bg-soft/80 border border-tavern-border-soft text-left hover:bg-tavern-bg-hover transition-colors"
+                title="点击引用这条消息"
+              >
+                <Reply className="w-3 h-3 text-tavern-accent shrink-0 mt-0.5" />
+                <span className="min-w-0 flex-1 text-xs">
+                  <span className="text-tavern-accent font-medium">
+                    {repliedMessage.role === 'user' ? (settings.userName || '用户') : (character?.name ?? '角色')}:
+                  </span>
+                  <span className="text-tavern-text-muted ml-1 line-clamp-2">
+                    {repliedMessage.content.slice(0, 80)}
+                    {repliedMessage.content.length > 80 ? '...' : ''}
+                  </span>
+                </span>
+              </button>
+            )}
             {message.images?.length > 0 && (
               <div className={cn('flex flex-wrap gap-2', (displayContent || thought) && 'mb-2')}>
                 {message.images.map((img, i) => (

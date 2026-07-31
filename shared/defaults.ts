@@ -78,5 +78,6 @@ export function getDefaultSettings(): Settings {
       enabled: true,
       minDropTokens: 2000,
     },
+    autoTitle: true,
   }
 }
