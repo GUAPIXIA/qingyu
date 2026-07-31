@@ -7,6 +7,7 @@ import { lorebookCache, triggerLorebooks, mergeSemanticHits } from '../utils/lor
 import type { DepthLoreItem, BudgetLoreItem } from '../utils/lorebook'
 import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
 import { countChars } from '../utils/charCounter'
+import { isLocalProvider } from '../utils/defaults'
 import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
@@ -545,7 +546,7 @@ ${prevMemory ? '【之前的摘要】\n' + prevMemory + '\n' : ''}【之前的�
 
     const settingsStore = useSettingsStore.getState()
     const profile = settingsStore.getActiveProfile()
-    if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
       set({ error: '请先在设置中配置 API 连接' })
       return
     }

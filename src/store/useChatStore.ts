@@ -7,6 +7,7 @@ import { usePersonaStore } from './usePersonaStore'
 import { useCharacterStore } from './useCharacterStore'
 import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
 import { countChars } from '../utils/charCounter'
+import { isLocalProvider } from '../utils/defaults'
 import { replaceVariables } from '../utils/variables'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages, stripThought, normalizeThoughtTags, trimContinuationOverlap } from '../utils/messagePostProcess'
@@ -284,7 +285,7 @@ async function streamAIResponse(
   const settingsStore = useSettingsStore.getState()
   const settings = settingsStore.settings
   const profile = settingsStore.getActiveProfile()
-  if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) {
+  if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
     set({ isStreaming: false, currentRequestId: null })
     onError?.('未配置 API 连接')
     return
@@ -683,7 +684,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!currentSessionId || !session?.memoryEnabled) return null
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) return null
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) return null
 
     const settings = useSettingsStore.getState().settings
     const userName = settings.userName || '用户'
@@ -895,7 +896,7 @@ ${previousFactsText}`,
     const settingsStore = useSettingsStore.getState()
     const profile = settingsStore.getActiveProfile()
 
-    if (!profile || (!profile.apiKey && profile.provider !== 'ollama')) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
       set({ error: '请先在设置中配置 API 连接' })
       return
     }

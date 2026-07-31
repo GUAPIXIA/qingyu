@@ -4,6 +4,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useChatStore } from '../store/useChatStore'
 import { useCharacterStore } from '../store/useCharacterStore'
 import { charAssetUrl } from '../utils/asset'
+import { isLocalProvider } from '../utils/defaults'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { MessageBubble } from '../components/chat/MessageBubble'
@@ -61,7 +62,7 @@ export function ChatPage() {
   const bgDragRef = useRef({ startX: 0, startY: 0, startPosX: 0, startPosY: 0 })
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (activeProfile.provider === 'ollama' || !!activeProfile.apiKey)
+  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || !!activeProfile.apiKey)
 
   // 长对话且未开启长记忆时，引导开启自动摘要（节省 token + 保持主题连贯）
   const currentChatSession = sessions.find(s => s.id === currentSessionId)

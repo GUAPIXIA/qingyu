@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { PROVIDER_INFO } from '../utils/defaults'
+import { PROVIDER_INFO, isLocalProvider } from '../utils/defaults'
 import { cn } from '../lib/utils'
 import type { ProviderType, ConnectionProfile } from '../../shared/types'
 import {
@@ -22,7 +22,7 @@ import { TTSModelsSection } from '../components/api/TTSModelsSection'
 import { ImageGenModelsSection } from '../components/api/ImageGenModelsSection'
 import { VisionModelsSection } from '../components/api/VisionModelsSection'
 
-const PROVIDERS: ProviderType[] = ['openai', 'claude', 'gemini', 'ollama']
+const PROVIDERS: ProviderType[] = ['openai', 'claude', 'gemini', 'ollama', 'openrouter', 'vllm', 'lmstudio', 'tabby']
 
 /** 快速配置预设 */
 const QUICK_PRESETS: Record<string, { name: string; provider: ProviderType; baseUrl: string; desc: string }> = {
@@ -33,6 +33,7 @@ const QUICK_PRESETS: Record<string, { name: string; provider: ProviderType; base
   dashscope: { name: '阿里百炼', provider: 'openai', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', desc: '通义千问' },
   openai: { name: 'OpenAI', provider: 'openai', baseUrl: 'https://api.openai.com/v1', desc: 'GPT 系列' },
   ollama: { name: 'Ollama', provider: 'ollama', baseUrl: 'http://localhost:11434', desc: '本地运行' },
+  openrouter: { name: 'OpenRouter', provider: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', desc: '一个 key 全模型' },
 } as const
 
 type PresetKey = keyof typeof QUICK_PRESETS
@@ -105,7 +106,7 @@ export function ApiPage() {
   })
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (activeProfile.provider === 'ollama' || !!activeProfile.apiKey)
+  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || !!activeProfile.apiKey)
 
   const resetForm = () => {
     setEditForm({ id: '', name: '', provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '', maxContext: 131072 })

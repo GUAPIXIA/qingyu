@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-test' },
 }))
 
-import { getAdapter, registerAIIPC } from '../ai'
+import { getAdapter, registerAIIPC, registerAdapter, unregisterAdapter } from '../ai'
 import type { ChatParams } from '../../../shared/types'
 
 // ===================== 工具函数 =====================
@@ -600,5 +600,56 @@ describe('Ollama Instruct 模板模式（/api/generate）', () => {
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('http://localhost:11434/api/chat')
     expect(JSON.parse(init.body).messages).toBeDefined()
+  })
+})
+
+describe('适配器注册表（3.1 提供商扩展）', () => {
+  it('OpenAI 兼容新提供商复用 openai 适配器（OpenRouter / vLLM / LM Studio / Tabby）', () => {
+    for (const p of ['openrouter', 'vllm', 'lmstudio', 'tabby']) {
+      expect(getAdapter(p)).toBe(getAdapter('openai'))
+    }
+  })
+
+  it('未知提供商回退 OpenAI 兼容适配器', () => {
+    expect(getAdapter('not-a-provider')).toBe(getAdapter('openai'))
+  })
+
+  it('registerAdapter 注册自定义适配器并优先于内置', async () => {
+    const custom = {
+      chat: vi.fn().mockResolvedValue('custom'),
+      listModels: vi.fn().mockResolvedValue(['m1']),
+      testConnection: vi.fn().mockResolvedValue(true),
+    }
+    registerAdapter('myprovider', custom)
+    expect(getAdapter('myprovider')).toBe(custom)
+    // 覆盖内置
+    registerAdapter('openai', custom)
+    expect(getAdapter('openai')).toBe(custom)
+    // 注销后回退
+    unregisterAdapter('myprovider')
+    unregisterAdapter('openai')
+    expect(getAdapter('myprovider')).toBe(getAdapter('openai'))
+  })
+
+  it('OpenRouter 请求走 OpenAI /chat/completions 格式（Bearer 认证）', async () => {
+    const params = makeParams({ provider: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'sk-or-123', stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'hi' } }] }))
+
+    await getAdapter('openrouter').chat(params, vi.fn(), new AbortController().signal)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions')
+    expect(init.headers.Authorization).toBe('Bearer sk-or-123')
+    expect(JSON.parse(init.body).messages).toBeDefined()
+  })
+
+  it('vLLM 请求走本地 /v1/chat/completions', async () => {
+    const params = makeParams({ provider: 'vllm', baseUrl: 'http://localhost:8000/v1', stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'hi' } }] }))
+
+    await getAdapter('vllm').chat(params, vi.fn(), new AbortController().signal)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:8000/v1/chat/completions')
   })
 })

@@ -291,7 +291,12 @@ export interface GroupSession {
 }
 
 /** AI 后端提供商类型 */
-export type ProviderType = 'openai' | 'claude' | 'gemini' | 'ollama'
+export type ProviderType =
+  | 'openai' | 'claude' | 'gemini' | 'ollama'
+  | 'openrouter'   // 路由聚合，一个 key 全模型（OpenAI 兼容）
+  | 'vllm'         // 本地推理（OpenAI 兼容，默认 /v1）
+  | 'lmstudio'     // LM Studio（OpenAI 兼容，默认 /v1）
+  | 'tabby'        // TabbyAPI / exllamav2（OpenAI 兼容）
 
 /** 连接配置 Profile */
 export interface ConnectionProfile {

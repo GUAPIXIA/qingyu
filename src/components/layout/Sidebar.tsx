@@ -4,6 +4,7 @@ import { useUIStore } from '../../store/useUIStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import { logError } from '../../lib/logger'
+import { isLocalProvider } from '../../utils/defaults'
 import {
   MessageSquare,
   Users,
@@ -43,7 +44,7 @@ export function Sidebar() {
   const { settings, getActiveProfile } = useSettingsStore()
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (activeProfile.provider === 'ollama' || !!activeProfile.apiKey)
+  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || !!activeProfile.apiKey)
 
   const [appVersion, setAppVersion] = useState('')
   const [serverVersion, setServerVersion] = useState<string | null>(null)

@@ -1,5 +1,22 @@
 # 更新日志
 
+## [0.11.0] - 2026-07-31
+
+### API 提供商扩展
+
+- **新增 4 个提供商**：
+  - OpenRouter：路由聚合，一个 key 访问全模型（默认 `https://openrouter.ai/api/v1`，API 页提供快速预设）
+  - vLLM：本地推理服务（默认 `http://localhost:8000/v1`）
+  - LM Studio：本地推理（默认 `http://localhost:1234/v1`）
+  - TabbyAPI：exllamav2 本地推理（默认 `http://localhost:5000/v1`）
+  - 均为 OpenAI 兼容协议，复用 openai 适配器（请求构造/流式/工具调用/模型列表全部生效），未来需要特化（如 vLLM extra_body）时替换为独立实现即可
+- **适配器注册表**（`registerAdapter` / `unregisterAdapter` / `getAdapter`）：自定义 provider 优先于内置，未知 provider 回退 OpenAI 兼容——为阶段 4 扩展系统铺路
+- **本地提供商统一判断**（`isLocalProvider`）：ollama / vllm / lmstudio / tabby 视为无需 API Key 即可连接，12 处连接判断（isConnected / 发送前校验 / 角色卡翻译等）统一收敛
+- **UI**：API 页提供商选择列表 + PROVIDER_INFO 描述 + OpenRouter 快速预设；默认 providers 配置补全
+- 新增 5 个注册表/请求构造测试，全量测试 326 → 331 通过
+
+---
+
 ## [0.10.2] - 2026-07-31
 
 ### 作者视角 / 用户视角增强
