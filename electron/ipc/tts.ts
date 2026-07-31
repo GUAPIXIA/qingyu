@@ -234,6 +234,24 @@ export const OPENAI_VOICES = [
   { id: 'sage', name: 'sage（柔和）', lang: '多语言' },
 ] as const
 
+/** Edge TTS 常用音色（微软免费在线语音，无需 key） */
+export const EDGE_VOICES = [
+  { id: 'zh-CN-XiaoxiaoNeural', name: '晓晓（女·温暖）', lang: 'zh-CN' },
+  { id: 'zh-CN-XiaoyiNeural', name: '晓伊（女·活泼）', lang: 'zh-CN' },
+  { id: 'zh-CN-YunxiNeural', name: '云希（男·阳光）', lang: 'zh-CN' },
+  { id: 'zh-CN-YunjianNeural', name: '云健（男·沉稳）', lang: 'zh-CN' },
+  { id: 'zh-CN-YunyangNeural', name: '云扬（男·专业）', lang: 'zh-CN' },
+  { id: 'zh-CN-YunxiaNeural', name: '云夏（男·少年）', lang: 'zh-CN' },
+  { id: 'zh-CN-liaoning-XiaobeiNeural', name: '晓北（女·东北）', lang: 'zh-CN' },
+  { id: 'zh-CN-shaanxi-XiaoniNeural', name: '晓妮（女·陕西）', lang: 'zh-CN' },
+  { id: 'zh-TW-HsiaoChenNeural', name: '曉臻（女·台湾）', lang: 'zh-TW' },
+  { id: 'zh-HK-HiuMaanNeural', name: '曉曼（女·香港）', lang: 'zh-HK' },
+  { id: 'en-US-AriaNeural', name: 'Aria（女·美音）', lang: 'en-US' },
+  { id: 'en-US-GuyNeural', name: 'Guy（男·美音）', lang: 'en-US' },
+  { id: 'ja-JP-NanamiNeural', name: 'Nanami（女·日语）', lang: 'ja-JP' },
+  { id: 'ko-KR-SunHiNeural', name: 'SunHi（女·韩语）', lang: 'ko-KR' },
+] as const
+
 /** OpenAI 兼容 TTS：POST {baseUrl}/audio/speech → mp3 base64 */
 export async function openaiSpeak(
   config: { baseUrl: string; apiKey: string; model: string; voice: string; speed?: number },
@@ -261,6 +279,38 @@ export async function openaiSpeak(
   }
   const buf = await response.arrayBuffer()
   return Buffer.from(buf).toString('base64')
+}
+
+/**
+ * Edge TTS（微软免费在线语音，无需 key）：合成 mp3 → base64。
+ * 使用 node-edge-tts（纯 JS WebSocket 协议），写入临时文件后读取。
+ */
+export async function edgeSpeak(
+  text: string,
+  voice: string,
+  opts: { rate?: string; pitch?: string; volume?: string } = {},
+): Promise<string> {
+  const { join } = await import('node:path')
+  const { readFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { EdgeTTS } = await import('node-edge-tts')
+
+  const tmpFile = join(tmpdir(), `qingyu-tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`)
+  const tts = new EdgeTTS({
+    voice,
+    outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
+    rate: opts.rate ?? '+0%',
+    pitch: opts.pitch ?? '+0Hz',
+    volume: opts.volume ?? '+0%',
+    timeout: 30000,
+  })
+  try {
+    await tts.ttsPromise(text.slice(0, 3000), tmpFile)
+    const buf = readFileSync(tmpFile)
+    return buf.toString('base64')
+  } finally {
+    rmSync(tmpFile, { force: true })
+  }
 }
 
 export function registerTTSIPC(ipcMain: IpcMain): void {
@@ -292,6 +342,13 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
           text,
         )
         log.info('OpenAI TTS 朗读', { textLen: text.length, voice: opts.voice, model: opts.model })
+        return { success: true, audioBase64 }
+      }
+
+      // Edge TTS（微软免费在线语音）：返回 mp3 base64
+      if (opts.provider === 'edge') {
+        const audioBase64 = await edgeSpeak(text, opts.voice || 'zh-CN-XiaoxiaoNeural')
+        log.info('Edge TTS 朗读', { textLen: text.length, voice: opts.voice })
         return { success: true, audioBase64 }
       }
 
@@ -336,6 +393,7 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
   // 获取语音列表
   ipcMain.handle('tts:getVoices', async (_e, provider?: string) => {
     if (provider === 'openai') return OPENAI_VOICES
+    if (provider === 'edge') return EDGE_VOICES
     const voices = await getVoices()
     log.info('已获取语音列表', { count: voices.length })
     return voices

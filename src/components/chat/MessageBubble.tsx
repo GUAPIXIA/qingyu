@@ -114,8 +114,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const handleSpeak = async () => {
     if (!message.content) return
     if (!ttsConfig) return
-    // OpenAI TTS：渲染进程直接控制音频播放
-    if (ttsConfig.provider === 'openai') {
+    // OpenAI / Edge TTS：渲染进程直接控制音频播放（主进程返回 mp3 base64）
+    if (ttsConfig.provider === 'openai' || ttsConfig.provider === 'edge') {
       if (ttsState === 'speaking') {
         audioRef.current?.pause()
         setTtsState('paused')

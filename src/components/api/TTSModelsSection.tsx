@@ -9,16 +9,33 @@ import {
 
 const TTS_PROVIDERS = [
   { value: 'system' as const, label: '系统语音 (本地)', desc: 'Windows 内置语音（System.Speech）' },
-  { value: 'openai' as const, label: 'OpenAI TTS', desc: 'OpenAI 兼容 /audio/speech，音质好，需 API Key' },
+  { value: 'edge' as const, label: 'Edge TTS', desc: '微软免费在线语音，音质好，无需 key' },
+  { value: 'openai' as const, label: 'OpenAI TTS', desc: 'OpenAI 兼容 /audio/speech，需 API Key' },
 ]
 
 /** OpenAI TTS 预设音色 */
 const OPENAI_VOICE_OPTIONS = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'ash', 'ballad', 'coral', 'sage']
 
+/** Edge TTS 常用音色 */
+const EDGE_VOICE_OPTIONS = [
+  { id: 'zh-CN-XiaoxiaoNeural', label: '晓晓（女·温暖）' },
+  { id: 'zh-CN-XiaoyiNeural', label: '晓伊（女·活泼）' },
+  { id: 'zh-CN-YunxiNeural', label: '云希（男·阳光）' },
+  { id: 'zh-CN-YunjianNeural', label: '云健（男·沉稳）' },
+  { id: 'zh-CN-YunyangNeural', label: '云扬（男·专业）' },
+  { id: 'zh-CN-YunxiaNeural', label: '云夏（男·少年）' },
+  { id: 'zh-CN-liaoning-XiaobeiNeural', label: '晓北（女·东北）' },
+  { id: 'zh-CN-shaanxi-XiaoniNeural', label: '晓妮（女·陕西）' },
+  { id: 'zh-TW-HsiaoChenNeural', label: '曉臻（女·台湾）' },
+  { id: 'zh-HK-HiuMaanNeural', label: '曉曼（女·香港）' },
+  { id: 'en-US-AriaNeural', label: 'Aria（女·美音）' },
+  { id: 'en-US-GuyNeural', label: 'Guy（男·美音）' },
+]
+
 function emptyForm(): TTSModelConfig {
   return {
     id: '', name: '', provider: 'system' as const,
-    model: 'tts-1', voice: 'alloy', apiKey: '', baseUrl: 'https://api.openai.com/v1',
+    model: 'tts-1', voice: 'zh-CN-XiaoxiaoNeural', apiKey: '', baseUrl: 'https://api.openai.com/v1',
     enabled: true, order: 0,
   }
 }
@@ -205,7 +222,7 @@ export function TTSModelsSection() {
         </>
       )}
 
-      {/* 语音：openai 用预设下拉，system 手输（可用已选语音列表） */}
+      {/* 语音：openai/edge 用预设下拉，system 手输 */}
       <div>
         <label className="label">语音</label>
         {form.provider === 'openai' ? (
@@ -216,6 +233,16 @@ export function TTSModelsSection() {
           >
             {OPENAI_VOICE_OPTIONS.map((v) => (
               <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        ) : form.provider === 'edge' ? (
+          <select
+            className="select"
+            value={form.voice || 'zh-CN-XiaoxiaoNeural'}
+            onChange={(e) => setForm((f) => ({ ...f, voice: e.target.value }))}
+          >
+            {EDGE_VOICE_OPTIONS.map((v) => (
+              <option key={v.id} value={v.id}>{v.label}</option>
             ))}
           </select>
         ) : (
@@ -229,6 +256,9 @@ export function TTSModelsSection() {
         )}
         {form.provider === 'openai' && (
           <p className="text-xs text-tavern-text-muted mt-1">中文效果较好：nova（女）/ onyx（男）/ echo / fable</p>
+        )}
+        {form.provider === 'edge' && (
+          <p className="text-xs text-tavern-text-muted mt-1">微软免费在线语音，无需 API Key；需联网</p>
         )}
         {form.provider === 'system' && (
           <p className="text-xs text-tavern-text-muted mt-1">留空使用系统默认语音</p>
