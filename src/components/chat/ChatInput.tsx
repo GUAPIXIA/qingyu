@@ -87,6 +87,8 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
   /** 执行一条快捷回复（宏展开 + 动作分发） */
   const runQuickReply = async (qr: QuickReply) => {
     try {
+      // 消费当前引用（快捷回复发送时清除引用条）
+      if (replyTo) onCancelReply?.()
       if (qr.action === 'preset' && qr.presetId) {
         useChatStore.getState().setActivePreset(qr.presetId, character.id)
         showNotification('已切换预设')
