@@ -215,6 +215,8 @@ export interface Preset {
   contextTemplate?: string
   /** 分组名（按用途组织，如：通用 / 越狱 / 风格特化；空 = 未分组） */
   group?: string
+  /** 预设级示例对话发送模式（覆盖全局 settings.exampleDialogMode） */
+  exampleDialogMode?: 'always' | 'first_turn' | 'off'
 }
 
 /** 群聊 */

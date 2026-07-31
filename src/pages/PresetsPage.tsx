@@ -5,6 +5,8 @@ import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Sliders, Plus, Upload, Trash2, Shield, Copy, Download, ChevronDown, ChevronRight } from 'lucide-react'
 import { BUILTIN_TEMPLATE_NAMES } from '../utils/chatTemplates'
+import { cn } from '../lib/utils'
+import { estimateTokens } from '../utils/tokenCounter'
 import type { Preset } from '../../shared/types'
 
 /** 模板名 → 展示标签 */
@@ -351,22 +353,76 @@ export function PresetsPage() {
               />
             </div>
 
-            <div>
-              <label className="label">上下文模板（Ollama 本地模型用）</label>
-              <select
-                className="select"
-                value={editingPreset.contextTemplate || ''}
-                onChange={(e) => updateField('contextTemplate', e.target.value || undefined)}
-              >
-                <option value="">不启用（消息数组直发）</option>
-                {BUILTIN_TEMPLATE_NAMES.map((name) => (
-                  <option key={name} value={name}>{TEMPLATE_LABELS[name] ?? name}</option>
-                ))}
-              </select>
-              <p className="text-xs text-tavern-text-muted mt-1">启用后 Ollama 改用纯文本接口 + 模板包装，适合 chat template 缺失/异常的本地模型；Qwen / DeepSeek 选 ChatML</p>
+            {/* Token 预算预览（第二批）：提示词体量直观可见 */}
+            <div className="px-3 py-2 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft text-xs flex items-center gap-3 flex-wrap">
+              <span className="text-tavern-text-muted">提示词占用（估算）：</span>
+              <span className="text-tavern-text-soft">System Prompt ≈ {estimateTokens(editingPreset.systemPrompt || '')} tok</span>
+              <span className="text-tavern-text-soft">Jailbreak ≈ {estimateTokens(editingPreset.jailbreak || '')} tok</span>
+              <span className="text-tavern-accent font-medium">合计 ≈ {estimateTokens((editingPreset.systemPrompt || '') + '\n\n' + (editingPreset.jailbreak || ''))} tok</span>
+              <span className="text-tavern-text-muted/70">不含角色设定与世界书，实际以模型为准</span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">上下文模板（Ollama 本地模型用）</label>
+                <select
+                  className="select"
+                  value={editingPreset.contextTemplate || ''}
+                  onChange={(e) => updateField('contextTemplate', e.target.value || undefined)}
+                >
+                  <option value="">不启用（消息数组直发）</option>
+                  {BUILTIN_TEMPLATE_NAMES.map((name) => (
+                    <option key={name} value={name}>{TEMPLATE_LABELS[name] ?? name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-tavern-text-muted mt-1">启用后 Ollama 改用纯文本接口 + 模板包装，适合 chat template 缺失/异常的本地模型；Qwen / DeepSeek 选 ChatML</p>
+              </div>
+              <div>
+                <label className="label">示例对话发送（覆盖全局设置）</label>
+                <select
+                  className="select"
+                  value={editingPreset.exampleDialogMode ?? ''}
+                  onChange={(e) => updateField('exampleDialogMode', (e.target.value || undefined) as 'always' | 'first_turn' | 'off' | undefined)}
+                >
+                  <option value="">跟随全局设置</option>
+                  <option value="always">每轮</option>
+                  <option value="first_turn">仅首轮</option>
+                  <option value="off">关闭</option>
+                </select>
+                <p className="text-xs text-tavern-text-muted mt-1">控制角色卡「对话示例」的注入时机（few-shot 风格示范）</p>
+              </div>
+            </div>
+
+            {/* 采样参数快捷模板 */}
+            <div>
+              <label className="label">采样参数</label>
+              <div className="flex gap-2 mb-3">
+                {[
+                  { name: '创意', temp: 1.1, topP: 0.98, fp: 0.3, pp: 0.3, desc: '高随机，剧情发散' },
+                  { name: '平衡', temp: 0.8, topP: 0.95, fp: 0, pp: 0, desc: '通用默认' },
+                  { name: '稳定', temp: 0.5, topP: 0.9, fp: 0, pp: 0, desc: '低随机，信息密集' },
+                ].map((tpl) => (
+                  <button
+                    key={tpl.name}
+                    title={tpl.desc}
+                    onClick={() => {
+                      updateField('temperature', tpl.temp)
+                      updateField('topP', tpl.topP)
+                      updateField('frequencyPenalty', tpl.fp)
+                      updateField('presencePenalty', tpl.pp)
+                    }}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs border transition-colors',
+                      editingPreset.temperature === tpl.temp && editingPreset.topP === tpl.topP
+                        ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                        : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
+                    )}
+                  >
+                    {tpl.name}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">温度：{editingPreset.temperature}</label>
                 <input
@@ -434,6 +490,7 @@ export function PresetsPage() {
                   onChange={(e) => updateField('presencePenalty', Number(e.target.value))}
                   className="w-full accent-tavern-accent"
                 />
+              </div>
               </div>
             </div>
           </div>
