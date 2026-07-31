@@ -1962,9 +1962,9 @@ ${previousFactsText}`,
       context.push({ role: 'system', content: anText, keepSeparate: true })
     }
 
-    // 对话示例位置与发送模式配置
+    // 对话示例位置与发送模式配置（预设级可覆盖全局）
     const exampleDialogPosition = settings.exampleDialogPosition || 'after_system'
-    const exampleDialogMode = settings.exampleDialogMode || 'always'
+    const exampleDialogMode = (preset?.exampleDialogMode ?? settings.exampleDialogMode) || 'always'
     // 首轮 = 用户消息不超过 1 条（含刚发送的这条）
     const isFirstTurn = messages.filter(m => m.role === 'user').length <= 1
     const shouldSendExample = !!character.exampleDialog
