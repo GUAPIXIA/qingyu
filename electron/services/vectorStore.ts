@@ -24,8 +24,29 @@ export interface VectorIndex {
 
 const CURRENT_VERSION = 1
 
-/** 内存缓存，避免频繁磁盘读取 */
+/** 内存缓存，避免频繁磁盘读取（LRU 上限，防止无限增长） */
 const cache = new Map<string, VectorIndex>()
+/** 缓存条目上限（超出时淘汰最久未用的） */
+const CACHE_MAX = 20
+
+function cacheSet(key: string, value: VectorIndex): void {
+  cache.delete(key)
+  cache.set(key, value)
+  // 超出上限：淘汰最早插入的条目
+  if (cache.size > CACHE_MAX) {
+    const oldest = cache.keys().next().value
+    if (oldest !== undefined) cache.delete(oldest)
+  }
+}
+
+function cacheGet(key: string): VectorIndex | null {
+  const v = cache.get(key)
+  if (!v) return null
+  // LRU：访问即提升到最新
+  cache.delete(key)
+  cache.set(key, v)
+  return v
+}
 
 function indexPath(lorebookId: string): string {
   return join(DIRS.vectors(), `${lorebookId}.json`)
@@ -33,11 +54,11 @@ function indexPath(lorebookId: string): string {
 
 /** 读取向量索引（带内存缓存） */
 export function getVectorIndex(lorebookId: string): VectorIndex | null {
-  const cached = cache.get(lorebookId)
+  const cached = cacheGet(lorebookId)
   if (cached) return cached
   const index = readJson<VectorIndex>(indexPath(lorebookId))
   if (index && index.entries && typeof index.entries === 'object') {
-    cache.set(lorebookId, index)
+    cacheSet(lorebookId, index)
     return index
   }
   return null
@@ -63,8 +84,17 @@ export function saveVectorIndex(
   vectors: Record<string, number[]>,
 ): VectorIndex {
   const normalized: Record<string, number[]> = {}
+  let dim: number | null = null
   for (const [id, v] of Object.entries(vectors)) {
-    if (Array.isArray(v) && v.length > 0) normalized[id] = l2Normalize(v)
+    if (Array.isArray(v) && v.length > 0) {
+      // 维度一致性检查：同一索引内向量维度必须一致（不一致说明嵌入服务配置变更）
+      if (dim === null) dim = v.length
+      else if (v.length !== dim) {
+        log.warn('向量维度不一致，已跳过该条目', { lorebookId, id, dim: v.length, expected: dim })
+        continue
+      }
+      normalized[id] = l2Normalize(v)
+    }
   }
   const index: VectorIndex = {
     version: CURRENT_VERSION,

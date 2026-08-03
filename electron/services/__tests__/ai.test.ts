@@ -236,6 +236,28 @@ describe('OpenAI 适配器', () => {
     await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
       .rejects.toThrow('429')
   })
+
+  it('含图片消息失败时错误附加「请求包含图片」诊断提示', async () => {
+    const params = makeParams({
+      stream: false,
+      messages: [
+        { role: 'user', content: '看图', images: ['data:image/png;base64,iVBORw0KGgo='] },
+      ],
+    })
+    fetchMock.mockResolvedValue(jsonResponse({ error: 'Unexpected item type in content.' }, 400))
+
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('请求包含图片')
+  })
+
+  it('无图片消息失败时错误不附带图片诊断', async () => {
+    const params = makeParams({ stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({ error: 'rate limited' }, 429))
+
+    const err = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+      .catch((e: unknown) => e as Error)
+    expect((err as Error).message).not.toContain('请求包含图片')
+  })
 })
 
 // ===================== Claude 适配器 =====================

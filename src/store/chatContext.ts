@@ -1,6 +1,6 @@
 import type { Character, Preset } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
-import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
+import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
@@ -234,6 +234,12 @@ export function buildChatContext(
   }
 
   // 按 token 预算裁剪历史消息（共享工具，含被裁剪范围记录）
+  // 图片 token 预算：历史中用户消息的图片按固定估算值计入（vision 模型看图开销），裁剪更保守
+  const historyImageTokens = messages.reduce(
+    (s, m) => s + (m.role === 'user' ? estimateImageTokens(m.images?.length ?? 0) : 0),
+    0,
+  )
+  usedTokens += historyImageTokens
   const { recent: recentMessages, droppedStartTs, droppedEndTs, droppedTokens, droppedEndIndex } = cropHistory(
     messages, usedTokens, budgetBase, model,
   )
@@ -276,9 +282,13 @@ export function buildChatContext(
     })
   }
   for (const msg of recentMessages) {
+    const isUser = msg.role === 'user'
     historySegment.push({
-      role: msg.role === 'user' ? 'user' : 'assistant',
+      role: isUser ? 'user' : 'assistant',
       content: msg.content,
+      // 用户消息携带图片（data URL）→ 发给 vision 模型识别；
+      // assistant 消息的 images 是生图产物，不回传给 AI
+      ...(isUser && msg.images?.length ? { images: msg.images } : {}),
     })
   }
 

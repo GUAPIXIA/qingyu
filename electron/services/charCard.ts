@@ -7,6 +7,7 @@ import type { Character, Lorebook, LoreEntry, RegexRule, QuickReply, QuickReplyS
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
 import { validateCharacterCard, formatValidationErrors } from './charCardValidator'
+import { isSafeUrl } from '../utils/pathGuard'
 
 const log = createLogger('charCard')
 
@@ -61,9 +62,12 @@ function readPngTextChunks(buffer: Buffer): Record<string, string> {
   }
   let offset = 8
   while (offset < buffer.length) {
+    // 边界检查：chunk 头（长度 4B + 类型 4B）或数据区越界时中止，防止损坏 PNG 引发内存问题
+    if (offset + 8 > buffer.length) break
     const length = buffer.readUInt32BE(offset)
     const type = buffer.toString('ascii', offset + 4, offset + 8)
     const dataStart = offset + 8
+    if (dataStart + length > buffer.length) break
     const data = buffer.subarray(dataStart, dataStart + length)
     if (type === 'tEXt') {
       const nullIdx = data.indexOf(0)
@@ -210,6 +214,9 @@ export interface DownloadResult {
 /** 下载超时时间（毫秒）- 大图片（如 2MB+）需要足够时间 */
 const DOWNLOAD_TIMEOUT_MS = 30000
 
+/** 封面下载大小上限（50MB），防止恶意响应耗尽内存 */
+const MAX_DOWNLOAD_SIZE = 50 * 1024 * 1024
+
 /** 解析代理 URL */
 function parseProxyUrl(proxyUrl: string): { host: string; port: number } | null {
   try {
@@ -283,7 +290,7 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
               socket,
               agent: false,
               timeout: DOWNLOAD_TIMEOUT_MS,
-            }, handleResponse)
+            } as import('node:http').RequestOptions, handleResponse)
             httpsReq.on('error', (err: Error) => {
               if (settled) return
               log.warn('代理 HTTPS 请求失败', { error: err.message })
@@ -305,7 +312,7 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
               socket,
               agent: false,
               timeout: DOWNLOAD_TIMEOUT_MS,
-            }, handleResponse)
+            } as import('node:http').RequestOptions, handleResponse)
             httpReq.on('error', (err: Error) => {
               if (settled) return
               log.warn('代理 HTTP 请求失败', { error: err.message })
@@ -341,9 +348,26 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
       // 统一的响应处理函数
       function handleResponse(res: import('node:http').IncomingMessage) {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          log.debug('封面下载重定向', { from: trimmed.substring(0, 80), statusCode: res.statusCode })
-          // 递归跟随重定向，保持代理选择
-          _downloadOne(res.headers.location, proxy, maxRedirects - 1).then(safeResolve)
+          // SSRF 防护：重定向目标重新校验（相对路径基于当前 URL 解析），
+          // 防止恶意服务器重定向到内网地址绕过初始检查
+          let redirectTarget: string
+          try {
+            redirectTarget = new URL(res.headers.location, trimmed).toString()
+          } catch {
+            safeResolve({ success: false, error: '重定向目标无效', code: 'INVALID_URL' })
+            return
+          }
+          if (!isSafeUrl(redirectTarget)) {
+            log.warn('封面下载重定向被拒绝（SSRF）', {
+              from: trimmed.substring(0, 80),
+              to: redirectTarget.substring(0, 80),
+            })
+            safeResolve({ success: false, error: '重定向目标不安全，已阻止', code: 'SSRF_BLOCKED' })
+            return
+          }
+          log.debug('封面下载重定向', { from: trimmed.substring(0, 80), to: redirectTarget.substring(0, 80), statusCode: res.statusCode })
+          // 递归跟随重定向（已解析为绝对 URL），保持代理选择
+          _downloadOne(redirectTarget, proxy, maxRedirects - 1).then(safeResolve)
           return
         }
         if (res.statusCode !== 200) {
@@ -359,7 +383,18 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
           return
         }
         const chunks: Buffer[] = []
-        res.on('data', (chunk: Buffer) => chunks.push(chunk))
+        let totalSize = 0
+        res.on('data', (chunk: Buffer) => {
+          totalSize += chunk.length
+          // 大小限制：防止恶意服务器返回超大响应耗尽内存
+          if (totalSize > MAX_DOWNLOAD_SIZE) {
+            log.warn('封面下载超过大小限制', { url: trimmed.substring(0, 100), maxMB: MAX_DOWNLOAD_SIZE / 1024 / 1024 })
+            try { res.destroy() } catch { /* ignore */ }
+            safeResolve({ success: false, error: '图片超过大小限制（50MB）', code: 'INVALID_FORMAT' })
+            return
+          }
+          chunks.push(chunk)
+        })
         res.on('end', () => {
           const buffer = Buffer.concat(chunks)
           if (buffer.length === 0) {
@@ -399,25 +434,10 @@ async function downloadImageAsBase64(url: string, proxyUrl?: string, maxRedirect
     return { success: false, error: 'URL 必须以 http:// 或 https:// 开头', code: 'INVALID_URL' }
   }
 
-  // SSRF 防护：拒绝私有 IP、localhost、元数据端点
-  try {
-    const parsed = new URL(trimmed)
-    const hostname = parsed.hostname.toLowerCase()
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-      log.warn('SSRF 防护：拒绝 localhost', { hostname })
-      return { success: false, error: '不允许访问本地地址', code: 'SSRF_BLOCKED' }
-    }
-    if (hostname.match(/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/)) {
-      log.warn('SSRF 防护：拒绝私有 IP', { hostname })
-      return { success: false, error: '不允许访问内网地址', code: 'SSRF_BLOCKED' }
-    }
-    if (hostname === '169.254.169.254') {
-      log.warn('SSRF 防护：拒绝云元数据端点', { hostname })
-      return { success: false, error: '不允许访问元数据服务', code: 'SSRF_BLOCKED' }
-    }
-  } catch {
-    log.warn('URL 解析失败', { url: trimmed.substring(0, 100) })
-    return { success: false, error: '无法解析图片 URL', code: 'INVALID_URL' }
+  // SSRF 防护：拒绝私有 IP、localhost、元数据端点（复用 pathGuard.isSafeUrl，含 IPv6 方括号剥离）
+  if (!isSafeUrl(trimmed)) {
+    log.warn('SSRF 防护：拒绝不安全地址', { url: trimmed.substring(0, 100) })
+    return { success: false, error: '不允许访问本地/内网/元数据地址', code: 'SSRF_BLOCKED' }
   }
 
   // 防止无限重定向
@@ -455,7 +475,12 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
   if (!validation.ok) {
     throw new Error(`角色卡校验失败：${formatValidationErrors(validation)}`)
   }
-  const data = (parsed as { data?: unknown }).data ?? parsed
+  // 角色卡数据：V2/V3 为 data 包裹，裸卡为顶层；导入时字段类型不做强校验（由校验器把关）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = ((parsed as { data?: Record<string, unknown> }).data ?? parsed) as Record<string, any>
+  // 裸卡顶层字段（V1/裸格式）：与 data 同级访问
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parsedTop = parsed as Record<string, any>
   const now = Date.now()
 
   // 确定头像来源：优先级 传入参数 > JSON 中的图片字段
@@ -465,7 +490,7 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
     const imageUrl =
       data.cover ?? data.avatar ?? data.image ?? data.image_url ??
       data.thumbnail ?? data.portrait ??
-      parsed.cover ?? parsed.avatar ?? parsed.image ?? parsed.image_url ??
+      parsedTop.cover ?? parsedTop.avatar ?? parsedTop.image ?? parsedTop.image_url ??
       null
 
     if (imageUrl) {
@@ -532,7 +557,7 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
 
   const character: Character = {
     id: nanoid(),
-    name: data.name ?? parsed.name ?? '未命名角色',
+    name: data.name ?? parsedTop.name ?? '未命名角色',
     avatar: finalAvatar,
     cover: finalAvatar, // 封面与头像初始同源，后续可单独更换
     description: data.description ?? '',
@@ -561,7 +586,8 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
   if (charBook && charBook.entries && Array.isArray(charBook.entries) && charBook.entries.length > 0) {
     try {
       const lorebookId = nanoid()
-      const entries: LoreEntry[] = charBook.entries.map((e: unknown, i: number) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const entries: LoreEntry[] = charBook.entries.map((e: Record<string, any>, i: number) => ({
         id: e.uid?.toString() ?? nanoid(),
         keywords: Array.isArray(e.key) ? e.key.filter(Boolean) : (e.key ? String(e.key).split(',').map((s: string) => s.trim()).filter(Boolean) : []),
         content: e.content ?? '',

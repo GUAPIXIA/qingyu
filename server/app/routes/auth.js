@@ -66,14 +66,14 @@ router.post('/login', async (req, res) => {
   const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username)
   if (!admin) {
     recordAttempt(ip)
-    return res.status(401).json({ error: '用户名或密码错误', remaining: rateInfo.remaining - 1 })
+    return res.status(401).json({ error: '用户名或密码错误', remaining: Math.max(0, rateInfo.remaining - 1) })
   }
 
   try {
     const valid = await bcrypt.compare(password, admin.password_hash)
     if (!valid) {
       recordAttempt(ip)
-      return res.status(401).json({ error: '用户名或密码错误', remaining: rateInfo.remaining - 1 })
+      return res.status(401).json({ error: '用户名或密码错误', remaining: Math.max(0, rateInfo.remaining - 1) })
     }
   } catch {
     return res.status(500).json({ error: '服务器内部错误' })

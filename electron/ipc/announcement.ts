@@ -9,7 +9,8 @@
 
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { http, https } from 'node:http'
+import http from 'node:http'
+import https from 'node:https'
 import { DIRS, readJson, writeJson } from '../services/storage'
 import { createLogger } from '../services/logger'
 import { isSafeUrl } from '../utils/pathGuard'

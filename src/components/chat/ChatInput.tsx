@@ -200,7 +200,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
             </div>
           )}
           <textarea
-            ref={textareaRef}
+            ref={textareaRef as React.Ref<HTMLTextAreaElement>}
             autoFocus
             value={text}
             onChange={(e) => {

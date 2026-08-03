@@ -13,7 +13,7 @@
     "electron:build": "node electron-build.mjs && vite build && electron-builder --win",
     "electron:preview": "node electron-build.mjs && vite build && electron .",
     "lint": "eslint .",
-    "check": "tsc -b --noEmit",
+    "check": "tsc -b --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { rmSync, mkdirSync } from 'node:fs'
+import { vi } from 'vitest'
 
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-vector-store-test' },
@@ -71,5 +72,25 @@ describe('vectorStore 增量失效', () => {
   it('无索引时标记静默跳过', () => {
     markStaleEntries(TEST_ID, ['e1']) // 没有保存过索引
     expect(countStaleEntries(TEST_ID)).toBe(0)
+  })
+})
+
+describe('vectorStore 维度一致性', () => {
+  it('同维度向量正常保存', () => {
+    saveVectorIndex(TEST_ID, 'test-model', { e1: vec(1, 0, 0), e2: vec(0, 1, 0) })
+    expect(countIndexedEntries(TEST_ID)).toBe(2)
+  })
+
+  it('维度不一致的条目被跳过（不同维度不混存，避免点积错乱）', () => {
+    saveVectorIndex(TEST_ID, 'test-model', {
+      e1: vec(1, 0, 0),        // 3 维
+      e2: vec(1, 0, 0, 0, 0),  // 5 维 → 应被跳过
+    })
+    expect(countIndexedEntries(TEST_ID)).toBe(1)
+  })
+
+  it('空向量数组不保存', () => {
+    saveVectorIndex(TEST_ID, 'test-model', { e1: [], e2: vec(0, 1) })
+    expect(countIndexedEntries(TEST_ID)).toBe(1)
   })
 })

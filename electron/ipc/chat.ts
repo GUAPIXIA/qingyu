@@ -98,13 +98,20 @@ function readMessages(characterId: string, sessionId: string): Message[] {
   return Array.from(msgMap.values()).sort((a, b) => a.timestamp - b.timestamp)
 }
 
-/** 重写整个 session 文件 */
+/** 重写整个 session 文件（原子写入：temp + rename，防止崩溃损坏会话文件） */
 function writeMessages(characterId: string, sessionId: string, messages: Message[]): void {
   const dir = getChatDir(characterId)
   mkdirSync(dir, { recursive: true })
   const filePath = getSessionFile(characterId, sessionId)
   const content = messages.map((m) => JSON.stringify(m)).join('\n')
-  writeFileSync(filePath, content ? content + '\n' : '', 'utf-8')
+  const tmpPath = filePath + '.tmp'
+  writeFileSync(tmpPath, content ? content + '\n' : '', 'utf-8')
+  try {
+    renameSync(tmpPath, filePath)
+  } catch (err) {
+    try { unlinkSync(tmpPath) } catch { /* ignore */ }
+    throw err
+  }
 }
 
 /** 追加单条消息 */
@@ -487,18 +494,20 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       return JSON.stringify(messages, null, 2)
     }
     // Markdown 格式（含图片）
+    // 修复：对话内容转义 Markdown 特殊字符，防止内容中的 # 标题 / *斜体* / `代码` 破坏导出格式
+    const escapeMd = (s: string) => s.replace(/([\\`*_[\]{}#])/g, '\\$1')
     let md = `# 对话记录\n\n`
     for (const msg of messages) {
       const role = msg.role === 'user' ? '🧑 用户' : msg.role === 'assistant' ? '🎭 AI' : '系统'
       const time = new Date(msg.timestamp).toLocaleString('zh-CN')
       md += `### ${role} · ${time}\n\n`
-      // 插入图片（base64 data URI）
+      // 插入图片（base64 data URI，不转义以保留图片语法）
       if (msg.images && msg.images.length > 0) {
         for (const img of msg.images) {
           md += `![图片](${img})\n\n`
         }
       }
-      md += `${msg.content}\n\n---\n\n`
+      md += `${escapeMd(msg.content)}\n\n---\n\n`
     }
     return md
   })

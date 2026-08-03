@@ -17,6 +17,7 @@ import {
   SEMANTIC_SCAN_MAX_TOKENS,
 } from './chatConstants'
 import { friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
+import { resolveVisionModel } from '../utils/visionModel'
 import type { ChatState, StoreGet, StoreSet } from './chatTypes'
 
 // ===================== 流式状态管理（模块级，避免渲染抖动） =====================
@@ -433,6 +434,10 @@ export async function streamAIResponse(
 
   const contextMessages = get().buildContext(character, preset, { continuation: opts.continuation })
 
+  // Vision：上下文含图片且配置了激活识图模型 → 本轮使用识图模型连接（未填字段回退当前 Profile）
+  const vision = resolveVisionModel(contextMessages)
+  const effectiveModel = vision?.model ?? (settings.activeModel || profile.model)
+
   const requestId = nanoid()
 
   set({ isStreaming: true, currentRequestId: requestId, error: null })
@@ -489,8 +494,8 @@ export async function streamAIResponse(
     const fullContent = activeStream?.accumulated ?? ''
     if (activeStream?.timeoutHandle) clearTimeout(activeStream.timeoutHandle)
 
-    // 字符用量统计：精确计算输入和输出字符数
-    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    // 字符用量统计：精确计算输入和输出字符数（model 记录实际使用的模型，含识图模型切换）
+    const model = effectiveModel
     const outputChars = countChars(fullContent).total
     const inputChars = opts.inputText ? countChars(opts.inputText).total : 0
     const totalChars = inputChars + outputChars
@@ -576,10 +581,10 @@ export async function streamAIResponse(
   const params: ChatParams = {
     requestId,
     messages: contextMessages,
-    provider: profile.provider,
-    apiKey: profile.apiKey,
-    baseUrl: profile.baseUrl,
-    model: settings.activeModel || profile.model,
+    provider: vision?.provider ?? profile.provider,
+    apiKey: vision?.apiKey ?? profile.apiKey,
+    baseUrl: vision?.baseUrl ?? profile.baseUrl,
+    model: effectiveModel,
     temperature: preset?.temperature ?? 0.8,
     topP: preset?.topP ?? 0.95,
     maxTokens: preset?.maxTokens ?? 1024,

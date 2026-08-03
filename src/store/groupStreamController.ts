@@ -13,6 +13,7 @@ import { applyRegexRules as applyRegexRulesEngine, truncateAtStop, collectStopSt
 import { logError, logInfo, logWarn } from '../lib/logger'
 import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS } from './chatConstants'
 import { friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
+import { resolveVisionModel } from '../utils/visionModel'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 
 // ====================== 流式状态管理（模块级） ======================
@@ -373,6 +374,9 @@ export async function streamGroupAI(
 
   if (context.length === 0) return
 
+  // Vision：上下文含图片且配置了激活识图模型 → 本轮使用识图模型连接（未填字段回退当前 Profile）
+  const vision = resolveVisionModel(context)
+
   // BUG-08：占位消息写入前再次校验，避免追加到切换后的群聊 UI
   if (!isGroupContextCurrent(get, group, sessionId)) return
 
@@ -602,10 +606,10 @@ export async function streamGroupAI(
     await window.api.ai.chat({
       requestId,
       messages: context,
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model: profile.model,
+      model: vision?.model ?? profile.model,
+      provider: vision?.provider ?? profile.provider,
+      apiKey: vision?.apiKey ?? profile.apiKey,
+      baseUrl: vision?.baseUrl ?? profile.baseUrl,
       temperature: preset?.temperature ?? 0.8,
       topP: preset?.topP ?? 0.95,
       maxTokens: preset?.maxTokens ?? 1024,
@@ -670,6 +674,9 @@ export async function streamGroupAIFree(
   const context = get().buildGroupContext(undefined, preset)
 
   if (context.length === 0) return
+
+  // Vision：上下文含图片且配置了激活识图模型 → 本轮使用识图模型连接（未填字段回退当前 Profile）
+  const vision = resolveVisionModel(context)
 
   // BUG-08：占位消息写入前再次校验，避免追加到切换后的群聊 UI
   if (!isGroupContextCurrent(get, group, sessionId)) return
@@ -836,10 +843,10 @@ export async function streamGroupAIFree(
     await window.api.ai.chat({
       requestId,
       messages: context,
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model: profile.model,
+      model: vision?.model ?? profile.model,
+      provider: vision?.provider ?? profile.provider,
+      apiKey: vision?.apiKey ?? profile.apiKey,
+      baseUrl: vision?.baseUrl ?? profile.baseUrl,
       temperature: preset?.temperature ?? 0.8,
       topP: preset?.topP ?? 0.95,
       maxTokens: preset?.maxTokens ?? 1024,

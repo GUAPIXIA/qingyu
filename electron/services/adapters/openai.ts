@@ -1,12 +1,16 @@
 import type { AIAdapter } from './types'
 import { normalizeThoughtTags } from './types'
 import { sanitizeApiKey } from '../../utils/pathGuard'
+import { toOpenAIContent, imageErrorHint } from './vision'
 
 export const openaiAdapter: AIAdapter = {
   async chat(params, onChunk, signal, onUsage) {
-    const { baseUrl, apiKey, model, messages, temperature, topP, maxTokens,
+    const { baseUrl, apiKey, model, temperature, topP, maxTokens,
             frequencyPenalty, presencePenalty, stream } = params
     const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
+
+    // Vision：带图片的消息转换为 content 数组格式（无图片消息保持字符串，兼容非视觉服务）
+    const messages = toOpenAIContent(params.messages)
 
     const body: Record<string, unknown> = {
       model,
@@ -60,11 +64,12 @@ export const openaiAdapter: AIAdapter = {
 
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`OpenAI API 错误 ${response.status}: ${sanitizeApiKey(errText)}`)
+      throw new Error(`OpenAI API 错误 ${response.status}: ${sanitizeApiKey(errText)}${imageErrorHint(params.messages)}`)
     }
 
     if (!stream) {
-      const data: { choices?: { message?: { content?: string } }[] } = await response.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data: any = await response.json()
       const content = data.choices?.[0]?.message?.content ?? ''
       // 处理推理模型的 reasoning_content（DeepSeek-R1 等）
       const reasoning = data.choices?.[0]?.message?.reasoning_content

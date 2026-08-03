@@ -4,11 +4,21 @@ const { authMiddleware } = require('../middleware/auth')
 
 const router = express.Router()
 
+/** 公告字段长度上限（防止超长内容拖垮数据库/渲染） */
+const LIMITS = { title: 200, summary: 500, content: 100000 }
+
+/** 解析并校验分页参数（page ≥ 1，pageSize 1-100） */
+function parsePagination(query) {
+  const rawPage = parseInt(query.page, 10)
+  const rawSize = parseInt(query.pageSize, 10)
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1
+  const pageSize = Number.isFinite(rawSize) && rawSize > 0 ? Math.min(rawSize, 100) : 20
+  return { page, pageSize, offset: (page - 1) * pageSize }
+}
+
 // 获取所有公告（管理员专用，含草稿，需认证）
 router.get('/admin', authMiddleware, (req, res) => {
-  const page = parseInt(req.query.page) || 1
-  const pageSize = parseInt(req.query.pageSize) || 20
-  const offset = (page - 1) * pageSize
+  const { page, pageSize, offset } = parsePagination(req.query)
 
   const countRow = db.prepare('SELECT COUNT(*) as total FROM announcements').get()
   const items = db.prepare(`
@@ -23,9 +33,7 @@ router.get('/admin', authMiddleware, (req, res) => {
 
 // 获取公告列表（公开，仅已发布）
 router.get('/', (req, res) => {
-  const page = parseInt(req.query.page) || 1
-  const pageSize = parseInt(req.query.pageSize) || 20
-  const offset = (page - 1) * pageSize
+  const { page, pageSize, offset } = parsePagination(req.query)
 
   const countRow = db.prepare('SELECT COUNT(*) as total FROM announcements WHERE published = 1').get()
   const items = db.prepare(`
@@ -72,6 +80,16 @@ router.post('/', authMiddleware, (req, res) => {
   const { title, content, summary, pinned, published } = req.body
   if (!title || !content) {
     return res.status(400).json({ error: '标题和内容不能为空' })
+  }
+  // 长度限制（防止超长存储与渲染开销）
+  if (typeof title !== 'string' || title.length > LIMITS.title) {
+    return res.status(400).json({ error: `标题长度不能超过 ${LIMITS.title} 字符` })
+  }
+  if (typeof content !== 'string' || content.length > LIMITS.content) {
+    return res.status(400).json({ error: `内容长度不能超过 ${LIMITS.content} 字符` })
+  }
+  if (summary !== undefined && (typeof summary !== 'string' || summary.length > LIMITS.summary)) {
+    return res.status(400).json({ error: `摘要长度不能超过 ${LIMITS.summary} 字符` })
   }
 
   const now = new Date().toISOString()

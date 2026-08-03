@@ -124,7 +124,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
             <img src={charAssetUrl(character.id, 'avatar', character.updatedAt)} className="w-full h-full rounded-full object-cover" alt="" />
           ) : (
             <span className={cn('text-xs font-bold', isStreaming && 'animate-pulse')}>
-              {character?.translatedContent?.name?.[0] ?? character?.name?.[0] ?? '?'}
+              {'?'}
             </span>
           )}
         </div>

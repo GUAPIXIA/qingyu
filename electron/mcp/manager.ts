@@ -140,7 +140,8 @@ class McpManager {
 
   async shutdownAll(): Promise<void> {
     const ids = Array.from(this.clients.keys())
-    await Promise.all(ids.map(id => this.stopServer(id)))
+    // 修复：allSettled 避免单个 server 关闭失败阻塞/影响其他 server
+    await Promise.allSettled(ids.map(id => this.stopServer(id)))
   }
 
   private saveConfigs() {

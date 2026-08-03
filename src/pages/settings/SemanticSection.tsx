@@ -200,7 +200,7 @@ export function SemanticSection(props: SemanticSectionProps) {
                         key={v}
                         className={cn(
                           'px-2.5 py-0.5 text-xs rounded border transition-colors',
-                          Math.round((settings.semanticTrigger.threshold ?? 0.3) * 100) === v
+                          Math.round(((settings.semanticTrigger?.threshold ?? 0.3)) * 100) === v
                             ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
                             : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
                         )}

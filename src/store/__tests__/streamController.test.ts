@@ -242,4 +242,76 @@ describe('streamAIResponse 流式控制', () => {
 
     await promise
   })
+
+  it('上下文含图片且配置激活识图模型 → 请求使用识图模型连接', async () => {
+    // 配置识图模型（独立连接）
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings,
+        visionModels: [{
+          id: 'v1', name: '识图', provider: 'openai', model: 'gpt-4o-vision',
+          baseUrl: 'https://vision.example.com/v1', apiKey: 'sk-vision', enabled: true, order: 0,
+        }],
+        activeVisionModelId: 'v1',
+      },
+    })
+    // 历史消息含一条带图片的用户消息
+    useChatStore.setState((state) => ({
+      messages: [
+        {
+          id: 'user-img-1',
+          sessionId: 's1',
+          characterId: 'char-1',
+          role: 'user',
+          content: '看这张图',
+          images: ['data:image/png;base64,iVBORw0KGgo='],
+          isEditing: false,
+          timestamp: Date.now() - 1000,
+        },
+        ...state.messages,
+      ],
+    }))
+
+    const callbacks = captureStreamCallbacks()
+    const promise = streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset: null,
+      onComplete: vi.fn().mockResolvedValue(undefined),
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const params = callbacks.chatParams as any
+    expect(params.model).toBe('gpt-4o-vision')
+    expect(params.provider).toBe('openai')
+    expect(params.baseUrl).toBe('https://vision.example.com/v1')
+    expect(params.apiKey).toBe('sk-vision')
+
+    await promise
+  })
+
+  it('上下文无图片时使用主对话模型（不切识图）', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings,
+        visionModels: [{
+          id: 'v1', name: '识图', model: 'gpt-4o-vision', enabled: true, order: 0,
+        }],
+        activeVisionModelId: 'v1',
+      },
+    })
+
+    const callbacks = captureStreamCallbacks()
+    const promise = streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset: null,
+      onComplete: vi.fn().mockResolvedValue(undefined),
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect((callbacks.chatParams as any).model).toBe('gpt-4o')
+
+    await promise
+  })
 })

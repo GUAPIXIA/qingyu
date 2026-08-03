@@ -3,6 +3,7 @@ import type { Character, ProviderType } from '../../../shared/types'
 import { Modal } from '../common/Modal'
 import { IdentitySection } from './editor/IdentitySection'
 import { AdvancedSection } from './editor/AdvancedSection'
+import type { TranslatableField } from './editor/types'
 import { Languages, Loader2 } from 'lucide-react'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
@@ -19,8 +20,8 @@ function saveTaHeight(id: string, h: number) {
   localStorage.setItem(TA_HEIGHTS_KEY, JSON.stringify(heights))
 }
 /** 绑定 textarea ref：恢复记忆高度 + 监听原生 mouseup 保存高度 */
-function useTaResize(id: string, defaultMinH: number) {
-  const ref = useRef<HTMLTextAreaElement>(null)
+function useTaResize(id: string, defaultMinH: number): { ref: React.RefObject<HTMLTextAreaElement>; style: React.CSSProperties } {
+  const ref = useRef<HTMLTextAreaElement | null>(null)
   const saved = loadTaHeights()[id]
 
   // 挂载后恢复记忆高度
@@ -45,7 +46,7 @@ function useTaResize(id: string, defaultMinH: number) {
   const style: React.CSSProperties = {
     minHeight: `${saved && saved > defaultMinH ? saved : defaultMinH}px`,
   }
-  return { ref, style }
+  return { ref: ref as React.RefObject<HTMLTextAreaElement>, style }
 }
 
 /** B-05：预设绑定选择器 */
@@ -55,7 +56,6 @@ interface CharacterEditorProps {
   onClose: () => void
 }
 
-type TranslatableField = keyof Pick<Character, 'name' | 'description' | 'personality' | 'scenario' | 'firstMessage' | 'exampleDialog'>
 const TRANSLATABLE_FIELDS: { key: TranslatableField; label: string }[] = [
   { key: 'name', label: '角色名' },
   { key: 'description', label: '角色描述' },

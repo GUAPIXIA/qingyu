@@ -1,7 +1,8 @@
 import { safeStorage as electronSafeStorage } from 'electron'
 import { join } from 'node:path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from 'node:fs'
 import { DIRS } from './storage'
+import { createLogger } from './logger'
 
 /** 凭据是否可用加密 */
 export function isEncryptionAvailable(): boolean {
@@ -39,6 +40,11 @@ export function getCredential(provider: string): string | null {
   if (!value) return null
 
   if (value.startsWith('plain:')) {
+    // 警告：该凭据以明文存储（加密不可用时回退，或旧版本数据），应尽快重新保存以启用加密
+    try {
+      const logger = createLogger('safeStorage')
+      logger.warn('检测到明文存储的凭据（plain:），建议重新保存以启用加密', { provider })
+    } catch { /* 忽略 */ }
     return value.slice(6)
   }
 
@@ -70,5 +76,13 @@ function readCredentialAll(): Record<string, string> {
 function writeCredentialAll(data: Record<string, string>): void {
   const path = getCredentialPath()
   mkdirSync(join(path, '..'), { recursive: true })
-  writeFileSync(path, JSON.stringify(data, null, 2), 'utf-8')
+  // 原子写入：temp + rename，防止崩溃导致凭据文件损坏
+  const tmpPath = path + '.tmp'
+  writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+  try {
+    renameSync(tmpPath, path)
+  } catch (err) {
+    try { unlinkSync(tmpPath) } catch { /* ignore */ }
+    throw err
+  }
 }

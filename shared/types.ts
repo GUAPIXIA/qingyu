@@ -510,7 +510,13 @@ export interface ImageGenModelConfig {
 export interface VisionModelConfig {
   id: string
   name: string
+  /** 提供商；留空 = 复用当前对话 Profile 的连接 */
+  provider?: string
   model: string
+  /** Base URL；留空 = 复用当前对话 Profile 的 baseUrl */
+  baseUrl?: string
+  /** API Key；留空 = 复用当前对话 Profile 的 apiKey */
+  apiKey?: string
   enabled: boolean
   order: number
 }
@@ -586,7 +592,7 @@ export interface QuickReplyStore {
 
 export interface ChatParams {
   requestId: string
-  messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+  messages: { role: 'system' | 'user' | 'assistant'; content: string; images?: string[] }[]
   provider: ProviderType
   apiKey: string
   baseUrl: string
@@ -608,8 +614,8 @@ export interface ChatParams {
       parameters: object  // JSON Schema
     }
   }>
-  /** 工具选择策略 */
-  toolChoice?: 'auto' | 'none' | 'required'
+  /** 工具选择策略（'auto' | 'none' | 'required'，或对象形式指定具体工具） */
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'auto' | 'any' | 'tool'; function?: { name: string } }
 }
 
 /** Instruct 模板配置（简化版，跨 IPC 传输） */

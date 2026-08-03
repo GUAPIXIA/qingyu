@@ -674,7 +674,7 @@ export function ChatPage() {
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-tavern-text-muted text-lg font-display">
-                  {currentCharacter?.translatedContent?.name?.[0] ?? currentCharacter?.name[0]}
+                  {'?'}
                 </div>
               )}
             </div>

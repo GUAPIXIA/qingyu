@@ -3,7 +3,7 @@ import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { lorebookCache, triggerLorebooks, mergeSemanticHits } from '../utils/lorebook'
 import type { DepthLoreItem } from '../utils/lorebook'
-import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
+import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
@@ -249,6 +249,12 @@ export function buildGroupChatContext(
   if (anConfig?.enabled && anConfig.text?.trim() && anConfig.position !== 'top') {
     usedTokens += estimateTokens(replaceVariables(anConfig.text.trim(), userName, charNameForVars), model)
   }
+  // 图片 token 预算：群聊用户消息的图片按固定估算值计入
+  const historyImageTokens = state.messages.reduce(
+    (s, m) => s + (m.characterId === '__user__' ? estimateImageTokens(m.images?.length ?? 0) : 0),
+    0,
+  )
+  usedTokens += historyImageTokens
 
   // 按 token 预算裁剪历史消息（共享工具，含被裁剪范围记录）
   const { recent: recentMessages, droppedStartTs, droppedEndTs, droppedTokens, droppedEndIndex } = cropHistory(
@@ -334,7 +340,12 @@ export function buildGroupChatContext(
       : (char?.name || '未知角色')
 
     if (m.characterId === '__user__') {
-      historyContext.push({ role: 'user', content: replaceVariables(m.content, userName, charNameForVars) })
+      historyContext.push({
+        role: 'user',
+        content: replaceVariables(m.content, userName, charNameForVars),
+        // 用户消息图片 → vision 模型识别（角色消息无图片回传）
+        ...(m.images?.length ? { images: m.images } : {}),
+      })
     } else {
       historyContext.push({
         role: 'assistant',

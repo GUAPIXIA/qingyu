@@ -138,7 +138,7 @@ export function CharacterDetail({ character, onClose, onEdit, onChat }: Characte
           </Section>
 
           {/* 对话设定 */}
-          {(character.firstMessage || character.alternateGreetings?.length > 0 || character.exampleDialog || character.groupOnlyGreetings?.length > 0) && (
+          {(character.firstMessage || character.alternateGreetings?.length > 0 || character.exampleDialog || (character.groupOnlyGreetings?.length ?? 0) > 0) && (
             <Section icon={MessagesSquare} title="对话设定">
               <div className="space-y-3">
                 <InfoRow icon={MessageSquare} label="首条消息" value={(character.translatedContent?.firstMessage ?? character.firstMessage) || undefined} />
