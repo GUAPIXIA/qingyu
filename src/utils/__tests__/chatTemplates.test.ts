@@ -9,7 +9,6 @@ import {
   resolveEffectiveTemplate,
   applyInstructTemplate,
   BUILTIN_TEMPLATE_NAMES,
-  type InstructTemplate,
 } from '../chatTemplates'
 
 const MESSAGES = [

@@ -12,7 +12,7 @@
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 interface PromptNames {
@@ -41,7 +41,6 @@ export function convertToOpenAI(messages: ChatMessage[]): ChatMessage[] {
  * @param names 角色名信息
  * @returns 转换后的消息数组
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function convertToClaude(messages: ChatMessage[], _names: PromptNames): ChatMessage[] {
   if (!messages || messages.length === 0) return []
 
@@ -54,7 +53,7 @@ export function convertToClaude(messages: ChatMessage[], _names: PromptNames): C
       if (systemContent) {
         systemContent += '\n\n'
       }
-      systemContent += msg.content
+      systemContent += msg.content ?? ''
     }
   }
 
@@ -73,7 +72,7 @@ export function convertToClaude(messages: ChatMessage[], _names: PromptNames): C
       // 连续相同角色，合并到上一条
       const lastMsg = result[result.length - 1]
       if (lastMsg) {
-        lastMsg.content += '\n\n' + msg.content
+        lastMsg.content += '\n\n' + (msg.content ?? '')
       }
     } else {
       // 不同角色，直接添加
@@ -95,9 +94,12 @@ export function convertToClaude(messages: ChatMessage[], _names: PromptNames): C
  * Gemini 格式转换
  *
  * Gemini 的要求：
- * 1. 支持 system 消息（作为 system_instruction）
+ * 1. 支持 system 消息（作为 system_instruction，需提取到最前并合并为一条）
  * 2. 消息格式类似 OpenAI
  * 3. 不支持连续的相同角色消息
+ *
+ * BUG-17 修复：system 消息不再与其他消息混在一起合并，
+ * 而是统一提取到结果最前（适配器/下游会将其转为 system_instruction）
  *
  * @param messages 原始消息数组
  * @returns 转换后的消息数组
@@ -108,12 +110,25 @@ export function convertToGemini(messages: ChatMessage[]): ChatMessage[] {
   const result: ChatMessage[] = []
   let lastRole: string | null = null
 
+  // 第一步：收集并合并所有 system 消息（提取到最前）
+  let systemContent = ''
   for (const msg of messages) {
+    if (msg.role !== 'system') continue
+    systemContent = systemContent ? `${systemContent}\n\n${msg.content}` : msg.content
+  }
+  if (systemContent) {
+    result.push({ role: 'system', content: systemContent })
+  }
+
+  // 第二步：处理非 system 消息，连续相同角色合并
+  for (const msg of messages) {
+    if (msg.role === 'system') continue
+
     if (msg.role === lastRole) {
       // 连续相同角色，合并
       const lastMsg = result[result.length - 1]
       if (lastMsg) {
-        lastMsg.content += '\n\n' + msg.content
+        lastMsg.content += '\n\n' + (msg.content ?? '')
       }
     } else {
       result.push({ ...msg })

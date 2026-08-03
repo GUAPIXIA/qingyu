@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.9-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.11.10-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-32.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -55,8 +55,10 @@
 
 ### 📚 世界书（Lorebook）
 - **关键词动态触发** — 检测到关键词时自动注入角色背景设定，支持正则匹配
+- **语义触发（向量 RAG）** — 按语义相似度触发条目（如"猫娘"可触发含"猫咪"的条目），支持 OpenAI 兼容 / Ollama 嵌入服务
+- **语义索引管理** — 条目内容修改后自动标记过期，重新生成索引即可更新
 - **条目管理** — 选择性启用、权重排序、递归扫描深度控制
-- 深度注入 / 双层级（全局+角色内嵌）/ 向量匹配 / LLM 匹配 规划中
+- 深度注入 / 双层级（全局+角色内嵌）已支持，LLM 匹配规划中
 
 ### 🎛️ 预设系统
 - **对话预设** — 可切换的 System Prompt 模板，配合角色使用
@@ -76,7 +78,7 @@
 - 字体大小四档 + 自定义
 
 ### 🔊 更多
-- **TTS 语音合成** — Windows 系统语音朗读（Edge TTS / Fish Audio / OpenAI TTS 规划中）
+- **TTS 语音合成** — Windows 系统语音 + Edge TTS（免费高质量网络语音）（Fish Audio / OpenAI TTS 规划中）
 - **MCP 工具集成** — 支持 Model Context Protocol，扩展 AI 能力
 - **斜杠命令** — `/help`、`/imagine`、`/continue` 等 14 个内置命令
 - **Token 用量统计** — 按模型/角色/日期多维度统计，费用自动估算（tiktoken 精确计数）
@@ -132,7 +134,7 @@ docker compose up -d --build
 
 | 层 | 技术 |
 |---|------|
-| 桌面框架 | Electron 32 |
+| 桌面框架 | Electron 31 |
 | 前端 | React 18 + TypeScript 5 |
 | 构建工具 | Vite 6 + esbuild |
 | UI 框架 | Tailwind CSS 3（CSS 变量主题系统） |
@@ -166,7 +168,7 @@ docker compose up -d --build
 │   │   ├── CharactersPage.tsx  # 角色卡管理
 │   │   ├── AnnouncementsPage.tsx  # 在线公告
 │   │   └── ...
-│   ├── store/                  # Zustand 状态管理（6 个 Store）
+│   ├── store/                  # Zustand 状态管理（模块化拆分：单聊/群聊 store + 共享模块）
 │   ├── commands/               # 斜杠命令系统
 │   └── utils/                  # 工具函数
 ├── electron/                   # Electron 主进程

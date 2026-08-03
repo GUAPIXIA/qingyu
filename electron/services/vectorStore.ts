@@ -18,6 +18,8 @@ export interface VectorIndex {
   /** 条目 id → 归一化向量 */
   entries: Record<string, number[]>
   updatedAt: number
+  /** 内容已变化、向量过期的条目 id（世界书保存时对比标记，重建索引后清空） */
+  stale?: string[]
 }
 
 const CURRENT_VERSION = 1
@@ -69,6 +71,7 @@ export function saveVectorIndex(
     model,
     entries: normalized,
     updatedAt: Date.now(),
+    stale: [],
   }
   writeJson(indexPath(lorebookId), index)
   cache.set(lorebookId, index)
@@ -86,4 +89,39 @@ export function removeVectorIndex(lorebookId: string): void {
 export function countIndexedEntries(lorebookId: string): number {
   const index = getVectorIndex(lorebookId)
   return index ? Object.keys(index.entries).length : 0
+}
+
+/**
+ * 标记条目向量过期（世界书保存后，内容/启用/匹配模式变化的条目）。
+ * 检索时跳过这些条目，避免旧向量误导；UI 可见"过期"状态。
+ */
+export function markStaleEntries(lorebookId: string, changedIds: string[]): void {
+  if (!changedIds || changedIds.length === 0) return
+  const index = getVectorIndex(lorebookId)
+  if (!index) return
+  const stale = new Set(index.stale ?? [])
+  for (const id of changedIds) {
+    if (id in index.entries) stale.add(id)
+  }
+  if (stale.size === 0) return
+  const updated = { ...index, stale: [...stale], updatedAt: Date.now() }
+  writeJson(indexPath(lorebookId), updated)
+  cache.set(lorebookId, updated)
+  log.info('条目向量已标记过期', { lorebookId, count: stale.size })
+}
+
+/** 清空过期标记（重建索引后调用） */
+export function clearStaleEntries(lorebookId: string): void {
+  const index = getVectorIndex(lorebookId)
+  if (!index) return
+  if (!index.stale || index.stale.length === 0) return
+  const updated = { ...index, stale: [], updatedAt: Date.now() }
+  writeJson(indexPath(lorebookId), updated)
+  cache.set(lorebookId, updated)
+}
+
+/** 统计过期条目数量 */
+export function countStaleEntries(lorebookId: string): number {
+  const index = getVectorIndex(lorebookId)
+  return index ? (index.stale ?? []).length : 0
 }

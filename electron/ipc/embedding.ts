@@ -12,7 +12,7 @@ import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { DIRS, readJson } from '../services/storage'
 import { embedTexts, testEmbedding, isEmbeddingConfigured, type EmbeddingConfig } from '../services/embedding'
-import { getVectorIndex, getVectorIndexes, saveVectorIndex, removeVectorIndex, countIndexedEntries } from '../services/vectorStore'
+import { getVectorIndex, saveVectorIndex, removeVectorIndex, countIndexedEntries, countStaleEntries, clearStaleEntries } from '../services/vectorStore'
 import { safeId } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
 import type { Lorebook, LoreEntry } from '../../shared/types'
@@ -29,7 +29,7 @@ export function isSemanticEligible(entry: LoreEntry): boolean {
 /** 读取单个世界书 */
 function readLorebook(id: string): Lorebook | null {
   safeId(id)
-  return readJson<Lorebook>(join(DIRS.lorebooks(), `${id}.json`))
+  return readJson<Lorebook>(join(DIRS.lorebooks(), `${id}.json`), 'lorebooks')
 }
 
 /** 语义检索命中项（主进程 → 渲染进程） */
@@ -78,6 +78,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
         else failed++
       })
       saveVectorIndex(lorebookId, config.model, map)
+      clearStaleEntries(lorebookId)
       log.info('世界书向量索引完成', { lorebookId, name: lb.name, total: targets.length, indexed: Object.keys(map).length })
       return { ok: true, total: targets.length, indexed: Object.keys(map).length, failed }
     } catch (e) {
@@ -87,13 +88,13 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
 
   // 查询索引状态
   ipcMain.handle('embedding:indexStatus', async (_e, lorebookIds: string[]) => {
-    const result: Record<string, { indexed: number; model: string; updatedAt: number }> = {}
+    const result: Record<string, { indexed: number; model: string; updatedAt: number; stale: number }> = {}
     for (const id of lorebookIds) {
       safeId(id)
       const index = getVectorIndex(id)
       result[id] = index
-        ? { indexed: countIndexedEntries(id), model: index.model, updatedAt: index.updatedAt }
-        : { indexed: 0, model: '', updatedAt: 0 }
+        ? { indexed: countIndexedEntries(id), model: index.model, updatedAt: index.updatedAt, stale: countStaleEntries(id) }
+        : { indexed: 0, model: '', updatedAt: 0, stale: 0 }
     }
     return result
   })
@@ -176,11 +177,13 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
       const [queryVec] = await embedTexts(config, [scanText])
       if (!queryVec || queryVec.length === 0) return []
 
-      // 3. 逐条目相似度检索
+      // 3. 逐条目相似度检索（跳过已标记过期的条目，避免旧向量误导）
       const pool: { id: string; lbId: string; score: number }[] = []
       for (const { lb, vectors } of indexed) {
+        const index = getVectorIndex(lb.id)
+        const stale = new Set(index?.stale ?? [])
         const items = lb.entries
-          .filter((e) => e.enabled && isSemanticEligible(e) && vectors[e.id])
+          .filter((e) => e.enabled && isSemanticEligible(e) && vectors[e.id] && !stale.has(e.id))
           .map((e) => ({ id: `${lb.id}:${e.id}`, vector: vectors[e.id] }))
         const hits = topKSimilar(queryVec, items, maxResults * 2, threshold)
         for (const hit of hits) {

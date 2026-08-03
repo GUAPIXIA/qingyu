@@ -1,8 +1,11 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
-import { DIRS, writeJson, listJsonFilesAsync, removeFile } from '../services/storage'
+import { existsSync, readFileSync } from 'node:fs'
+import { nanoid } from 'nanoid'
+import { DIRS, writeJson, readJson, listJsonFilesAsync, removeFile, withFileLock } from '../services/storage'
 import { createLogger } from '../services/logger'
-import type { Lorebook } from '../../shared/types'
+import type { Lorebook, LoreEntry } from '../../shared/types'
+import { getVectorIndex, markStaleEntries } from '../services/vectorStore'
 import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('lorebook')
@@ -13,10 +16,22 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return await listJsonFilesAsync<Lorebook>(DIRS.lorebooks())
   })
 
-  // 保存
+  // 保存（条目内容变化时自动标记向量索引过期，语义检索会跳过过期条目）
   ipcMain.handle('lorebook:save', async (_e, lorebook: Lorebook) => {
     safeId(lorebook.id)
-    writeJson(join(DIRS.lorebooks(), `${lorebook.id}.json`), lorebook)
+    const filePath = join(DIRS.lorebooks(), `${lorebook.id}.json`)
+    // NEW-M5：读-改-写整体持锁，避免并发保存互相覆盖
+    await withFileLock(filePath, () => {
+      const prev = existsSync(filePath) ? readJson<Lorebook>(filePath, 'lorebooks') : null
+      writeJson(filePath, lorebook)
+      // 有向量索引时，对比语义相关字段，标记变化的条目
+      if (getVectorIndex(lorebook.id)) {
+        const changedIds = diffSemanticEntries(prev?.entries ?? [], lorebook.entries)
+        if (changedIds.length > 0) {
+          markStaleEntries(lorebook.id, changedIds)
+        }
+      }
+    })
     log.info('世界书已保存', { id: lorebook.id, name: lorebook.name, entries: lorebook.entries.length })
   })
 
@@ -36,11 +51,10 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     })
     if (result.canceled || result.filePaths.length === 0) return null
 
-    const { readFileSync } = require('node:fs')
     const raw = readFileSync(result.filePaths[0], 'utf-8')
 
     // 格式校验
-    let parsed: any
+    let parsed: unknown
     try {
       parsed = JSON.parse(raw)
     } catch {
@@ -53,19 +67,27 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     }
 
     // 兼容 SillyTavern 世界书格式
+    // NEW-H2 修复：导入文件的 id 必须先通过 safeId 校验（防止路径遍历字符写入任意位置）；
+    // 非法时回退为新生成的 nanoid
+    let importedId: string
+    try {
+      importedId = parsed.id ? safeId(parsed.id) : nanoid()
+    } catch {
+      importedId = nanoid()
+    }
     const lorebook: Lorebook = {
-      id: parsed.id ?? require('nanoid').nanoid(),
+      id: importedId,
       name: parsed.name ?? '导入的世界书',
       description: parsed.description ?? '',
       entries: (Array.isArray(parsed.entries)
         ? parsed.entries
         : (typeof parsed.entries === 'object' && parsed.entries !== null ? Object.values(parsed.entries) : [])
-      ).map((e: any, i: number) => {
+      ).map((e: unknown, i: number) => {
         // 校验每个条目
         if (typeof e !== 'object' || e === null) return null
         return {
-          id: e.uid?.toString() ?? require('nanoid').nanoid(),
-          keywords: Array.isArray(e.key) ? e.key.filter((k: any) => typeof k === 'string') : (typeof e.key === 'string' ? e.key.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
+          id: e.uid?.toString() ?? nanoid(),
+          keywords: Array.isArray((e as { key?: unknown }).key) ? ((e as { key: unknown[] }).key).filter((k): k is string => typeof k === 'string') : (typeof (e as { key?: unknown }).key === 'string' ? (e as { key: string }).key.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
           content: typeof e.content === 'string' ? e.content : '',
           position: e.position === 0 || e.position === 'before' ? 'before_char'
             : e.position === 1 || e.position === 'after' ? 'after_char'
@@ -85,8 +107,31 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
       throw new Error('世界书没有有效的条目')
     }
 
-    writeJson(join(DIRS.lorebooks(), `${lorebook.id}.json`), lorebook)
+    writeJson(join(DIRS.lorebooks(), `${lorebook.id}.json`), lorebook, 'lorebooks')
     log.info('世界书已导入', { name: lorebook.name, entries: lorebook.entries.length })
     return lorebook
   })
+}
+
+/** 对比新旧条目，找出语义相关字段（内容/启用/匹配模式）变化的条目 id */
+function diffSemanticEntries(prev: LoreEntry[], next: LoreEntry[]): string[] {
+  const nextMap = new Map(next.map((e) => [e.id, e]))
+  const changed = new Set<string>()
+  for (const oldEntry of prev) {
+    const newEntry = nextMap.get(oldEntry.id)
+    if (!newEntry) {
+      // 条目被删除：其向量自然失效
+      changed.add(oldEntry.id)
+      continue
+    }
+    if (
+      oldEntry.content !== newEntry.content ||
+      oldEntry.enabled !== newEntry.enabled ||
+      (oldEntry.matchMode ?? 'both') !== (newEntry.matchMode ?? 'both')
+    ) {
+      changed.add(oldEntry.id)
+    }
+  }
+  // 新增条目没有向量，无需标记
+  return [...changed]
 }

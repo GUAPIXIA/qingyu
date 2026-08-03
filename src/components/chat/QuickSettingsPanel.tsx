@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info } from 'lucide-react'
+import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import type { Preset, Lorebook } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -33,11 +33,14 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
   const [modelListError, setModelListError] = useState(false)
   const [modelExpanded, setModelExpanded] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+  // 连接测试
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   // 计算角色绑定的世界书 ID 列表
   const boundLorebookIds = useMemo(() => {
     return getEffectiveLorebookIds(currentCharacter)
-  }, [currentCharacter?.boundLorebookIds, currentCharacter?.lorebookId])
+  }, [currentCharacter])
 
   // 区分绑定和手动选择的世界书
   const manualLorebookIds = useMemo(
@@ -66,6 +69,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
         setActiveLorebooks(activeLorebookIds.filter(id => !disabledIds.includes(id)), currentCharId)
       }
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   // 面板打开时获取模型列表
@@ -112,6 +116,32 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
       })
       .catch(() => setModelListError(true))
       .finally(() => setModelListLoading(false))
+  }
+
+  /** 测试当前 API 连接 */
+  const handleTestConnection = async () => {
+    const p = useSettingsStore.getState().getActiveProfile()
+    if (!p) return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await window.api.ai.testConnection({
+        type: p.provider,
+        baseUrl: p.baseUrl,
+        apiKey: p.apiKey,
+        model: p.model || settings.activeModel || 'gpt-4o-mini',
+      })
+      setTestResult({
+        success: res.success,
+        message: res.success
+          ? (res.models && res.models.length > 0 ? `连接成功，${res.models.length} 个模型可用` : '连接成功')
+          : (res.error ?? '连接失败'),
+      })
+    } catch (e) {
+      setTestResult({ success: false, message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setTesting(false)
+    }
   }
 
   const profile = useSettingsStore.getState().getActiveProfile()
@@ -161,6 +191,14 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                     title="刷新模型列表"
                   >
                     <RefreshCw className={cn('w-3.5 h-3.5', modelListLoading && 'animate-spin')} />
+                  </button>
+                  <button
+                    onClick={handleTestConnection}
+                    disabled={testing || !profile}
+                    className="p-1 rounded-md hover:bg-tavern-bg-hover text-tavern-text-muted transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="测试连接"
+                  >
+                    {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
                   </button>
                 </div>
                 {/* 展开的搜索+列表 */}
@@ -219,16 +257,32 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
               </div>
             ) : (
               /* 兜底：无可用模型列表时显示文本输入 */
-              <input
-                type="text"
-                className="input text-xs"
-                value={settings.activeModel}
-                onChange={(e) => updateSettings({ activeModel: e.target.value })}
-                placeholder="输入模型名称"
-              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  className="input text-xs flex-1 min-w-0"
+                  value={settings.activeModel}
+                  onChange={(e) => updateSettings({ activeModel: e.target.value })}
+                  placeholder="输入模型名称"
+                />
+                <button
+                  onClick={handleTestConnection}
+                  disabled={testing || !profile}
+                  className="p-1.5 rounded-md hover:bg-tavern-bg-hover text-tavern-text-muted transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="测试连接"
+                >
+                  {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             )}
             {profile?.baseUrl && (
               <p className="text-xs text-tavern-text-muted mt-1.5 truncate">{profile.baseUrl}</p>
+            )}
+            {testResult && (
+              <p className={cn('text-xs mt-1.5 flex items-start gap-1', testResult.success ? 'text-tavern-success' : 'text-tavern-danger')}>
+                {testResult.success ? <CheckCircle2 className="w-3 h-3 shrink-0 mt-px" /> : <XCircle className="w-3 h-3 shrink-0 mt-px" />}
+                <span className="break-all">{testResult.message}</span>
+              </p>
             )}
           </Section>
 

@@ -2,14 +2,13 @@ import React, { useState, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import rehypeRaw from 'rehype-raw'
 import { charAssetUrl } from '../../utils/asset'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
-import { remarkRoleplay } from '../../utils/remark-roleplay'
+import { remarkRoleplay, remarkMentionHighlight } from '../../utils/remark-roleplay'
 import { extractThought } from '../../utils/messagePostProcess'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
@@ -68,24 +67,19 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
   const displayContent = showTranslation && message.translation ? message.translation : mainContent
 
   // @提及高亮处理
-  const mentionHighlightedContent = useMemo(() => {
-    if (isStreaming || !displayContent) return displayContent
-    let result = displayContent
-    // 从消息中记录的 mentionedCharacterIds 获取角色名
-    if (message.mentionedCharacterIds && message.mentionedCharacterIds.length > 0) {
-      for (const charId of message.mentionedCharacterIds) {
-        const char = characters.find(c => c.id === charId)
-        if (char) {
-          const name = char.name
-          // 转义正则特殊字符
-          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          const regex = new RegExp(`@${escaped}`, 'g')
-          result = result.replace(regex, `<span class="mention-highlight">@${name}</span>`)
-        }
-      }
-    }
-    return result
-  }, [displayContent, isStreaming, message.mentionedCharacterIds, characters])
+  // BUG-09 修复：不再注入原始 HTML（原实现依赖 rehypeRaw，存在 XSS 风险），
+  // 改为 AST 层插件高亮，这里只提取需要高亮的角色名
+  const mentionNames = useMemo(() => {
+    if (!message.mentionedCharacterIds || message.mentionedCharacterIds.length === 0) return []
+    return message.mentionedCharacterIds
+      .map(charId => characters.find(c => c.id === charId)?.name)
+      .filter((n): n is string => !!n)
+  }, [message.mentionedCharacterIds, characters])
+  // 插件以 [工厂, 参数] 形式传入 remarkPlugins（unified 会在解析后以 tree 调用返回的 transformer）
+  const mentionHighlightPlugins: NonNullable<import('react-markdown').Options['remarkPlugins']> = useMemo(
+    () => (mentionNames.length > 0 ? [[remarkMentionHighlight, mentionNames]] : []),
+    [mentionNames]
+  )
 
   if (isFree) {
     return null
@@ -223,14 +217,15 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
               )}
 
               {/* 正文 */}
+              {/* BUG-09 修复：移除 rehypeRaw / allowDangerousHtml，防止消息内容中的原始 HTML 执行导致 XSS；
+                  @提及高亮由 remarkMentionHighlight 插件在 AST 层完成 */}
               <div className="markdown-body">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkRoleplay]}
-                  remarkRehypeOptions={{ allowDangerousHtml: true }}
-                  rehypePlugins={[rehypeRaw, rehypeHighlight]}
+                  remarkPlugins={[remarkGfm, remarkRoleplay, ...mentionHighlightPlugins]}
+                  rehypePlugins={[rehypeHighlight]}
                   components={markdownComponents}
                 >
-                  {mentionHighlightedContent || ''}
+                  {displayContent || ''}
                 </ReactMarkdown>
               </div>
 

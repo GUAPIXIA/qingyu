@@ -5,6 +5,20 @@ import { migrateLorebookId } from '../utils/lorebook'
 import { logError } from '../lib/logger'
 import { useSettingsStore } from './useSettingsStore'
 
+/** 导入角色卡后展示前端扩展落地提示（有内容才提示，8s 后自动清除） */
+function setImportNotice(cardExtras: { regexCount: number; quickReplyCount: number; skipped?: string[] } | null | undefined): void {
+  if (!cardExtras) return
+  const parts: string[] = []
+  if (cardExtras.regexCount > 0) parts.push(`${cardExtras.regexCount} 条正则脚本`)
+  if (cardExtras.quickReplyCount > 0) parts.push(`${cardExtras.quickReplyCount} 条快捷回复`)
+  if (parts.length === 0) return
+  const skippedNote = cardExtras.skipped && cardExtras.skipped.length > 0
+    ? `（跳过 ${cardExtras.skipped.length} 项不支持的功能）`
+    : ''
+  useCharacterStore.setState({ importNotice: `已导入角色卡前端扩展：${parts.join('、')}${skippedNote}` })
+  setTimeout(() => useCharacterStore.setState({ importNotice: null }), 8000)
+}
+
 /** 创建示例角色 */
 function createSampleCharacter(): Character {
   const now = Date.now()
@@ -31,6 +45,8 @@ interface CharacterState {
   currentCharacter: Character | null
   loaded: boolean
   importError: string | null
+  /** 导入角色卡时前端扩展（正则/快捷回复）落地的提示 */
+  importNotice: string | null
   pendingAvatarId: string | null
   /** 批量导入进度 */
   importProgress: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' } | null
@@ -60,6 +76,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   currentCharacter: null,
   loaded: false,
   importError: null,
+  importNotice: null,
   pendingAvatarId: null,
   importProgress: null,
 
@@ -219,6 +236,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       if (result.canceled) { set({ importProgress: null }); return null }
       if (result.success && result.character) {
         await get().loadCharacters()
+        setImportNotice(result.cardExtras)
         setTimeout(() => set({ importProgress: null }), 1500)
         return result.character
       }
@@ -241,6 +259,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       if (result.canceled) { set({ importProgress: null }); return null }
       if (result.success && result.character) {
         await get().loadCharacters()
+        setImportNotice(result.cardExtras)
         if (result.needAvatar) {
           set({ pendingAvatarId: result.character.id })
         }

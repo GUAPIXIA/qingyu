@@ -213,6 +213,22 @@ describe('OpenAI 适配器', () => {
     expect(body.reasoning_effort).toBe('medium')
   })
 
+  it('OpenCode Go kimi-k3：采样参数强制修正（temperature=1 / top_p=0.95）', async () => {
+    // 上游约束：kimi-k3 仅允许 temperature=1、top_p=0.95，项目默认 0.3/0.9 会直接 400
+    const params = makeParams({ stream: true, model: 'kimi-k3', temperature: 0.3, topP: 0.9 })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
+      'data: [DONE]\n',
+    ]))
+
+    await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.model).toBe('kimi-k3')
+    expect(body.temperature).toBe(1)
+    expect(body.top_p).toBe(0.95)
+  })
+
   it('非 2xx 响应抛出带状态码的错误', async () => {
     const params = makeParams({ stream: false })
     fetchMock.mockResolvedValue(jsonResponse({ error: 'rate limited' }, 429))

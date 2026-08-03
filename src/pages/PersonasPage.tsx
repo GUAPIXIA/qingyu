@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
@@ -14,6 +14,21 @@ export function PersonasPage() {
   const { personas, loadPersonas: storeLoadPersonas, savePersona, deletePersona: storeDeletePersona } = usePersonaStore()
   const [editing, setEditing] = useState<Persona | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000)
+  }
+
+  // 默认身份置顶显示
+  const sortedPersonas = [...personas].sort((a, b) => {
+    const aDefault = settings.defaultPersonaId === a.id ? 1 : 0
+    const bDefault = settings.defaultPersonaId === b.id ? 1 : 0
+    return bDefault - aDefault
+  })
 
   const loadPersonasAndInit = async () => {
     await storeLoadPersonas()
@@ -41,6 +56,7 @@ export function PersonasPage() {
 
   useEffect(() => {
     loadPersonasAndInit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const activatePersona = (p: Persona) => {
@@ -101,6 +117,15 @@ export function PersonasPage() {
     setDeleteId(null)
   }
 
+  // 切换默认身份（星标）：可设置也可取消
+  const handleToggleDefault = (p: Persona) => {
+    const isDefault = settings.defaultPersonaId === p.id
+    updateSettings({ defaultPersonaId: isDefault ? null : p.id })
+    showToast(isDefault
+      ? `已取消「${p.name}」的默认身份`
+      : `已将「${p.name}」设为默认身份，新建对话将默认使用`)
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
@@ -120,7 +145,7 @@ export function PersonasPage() {
           />
         ) : (
           <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {personas.map((p) => {
+            {sortedPersonas.map((p) => {
               const isActive = settings.activePersonaId === p.id
               return (
                 <div
@@ -151,6 +176,12 @@ export function PersonasPage() {
                             当前
                           </span>
                         )}
+                        {settings.defaultPersonaId === p.id && (
+                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-tavern-warning/15 text-tavern-warning shrink-0">
+                            <Star className="w-3 h-3" />
+                            默认
+                          </span>
+                        )}
                       </div>
                       {p.description && (
                         <p className="text-xs text-tavern-text-muted mt-1 line-clamp-2">{p.description}</p>
@@ -165,15 +196,15 @@ export function PersonasPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          updateSettings({ defaultPersonaId: p.id })
+                          handleToggleDefault(p)
                         }}
                         className={cn(
                           'p-1.5 rounded text-xs transition-colors',
                           settings.defaultPersonaId === p.id
-                            ? 'text-tavern-accent bg-tavern-accent-soft'
-                            : 'text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover'
+                            ? 'text-tavern-warning bg-tavern-warning/15'
+                            : 'text-tavern-text-muted hover:text-tavern-warning hover:bg-tavern-bg-hover'
                         )}
-                        title={settings.defaultPersonaId === p.id ? '当前默认身份' : '设为默认身份'}
+                        title={settings.defaultPersonaId === p.id ? '取消默认身份（新对话将不再默认使用）' : '设为默认身份（新建对话时默认使用）'}
                       >
                         <Star className="w-3.5 h-3.5" />
                       </button>
@@ -268,6 +299,13 @@ export function PersonasPage() {
         confirmText="删除"
         danger
       />
+
+      {/* 操作反馈提示 */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg bg-tavern-bg-soft border border-tavern-border shadow-xl text-sm text-tavern-text animate-in fade-in slide-in-from-top-2">
+          {toast}
+        </div>
+      )}
     </div>
   )
 }

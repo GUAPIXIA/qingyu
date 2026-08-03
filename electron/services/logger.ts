@@ -12,6 +12,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { unlinkSync, readFileSync } from 'node:fs'
 
 /** 日志级别 */
 export enum LogLevel {
@@ -57,7 +58,7 @@ function formatTime(): string {
 }
 
 /** 格式化 key=value 元数据 */
-function formatMeta(meta?: Record<string, any>): string {
+function formatMeta(meta?: Record<string, unknown>): string {
   if (!meta || Object.keys(meta).length === 0) return ''
   const parts: string[] = []
   for (const [k, v] of Object.entries(meta)) {
@@ -90,7 +91,7 @@ function rotateIfNeeded(): void {
     if (existsSync(oldPath)) {
       if (i >= MAX_LOG_FILES - 1) {
         // 删除最旧的
-        try { require('node:fs').unlinkSync(oldPath) } catch { /* ignore */ }
+        try { unlinkSync(oldPath) } catch { /* ignore */ }
       } else {
         try { renameSync(oldPath, newPath) } catch { /* ignore */ }
       }
@@ -121,23 +122,23 @@ export class Logger {
     this.module = module
   }
 
-  debug(message: string, meta?: Record<string, any>): void {
+  debug(message: string, meta?: Record<string, unknown>): void {
     this.log(LogLevel.DEBUG, message, meta)
   }
 
-  info(message: string, meta?: Record<string, any>): void {
+  info(message: string, meta?: Record<string, unknown>): void {
     this.log(LogLevel.INFO, message, meta)
   }
 
-  warn(message: string, meta?: Record<string, any>): void {
+  warn(message: string, meta?: Record<string, unknown>): void {
     this.log(LogLevel.WARN, message, meta)
   }
 
-  error(message: string, meta?: Record<string, any>): void {
+  error(message: string, meta?: Record<string, unknown>): void {
     this.log(LogLevel.ERROR, message, meta)
   }
 
-  private log(level: LogLevel, message: string, meta?: Record<string, any>): void {
+  private log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
     if (level < minLevel) return
 
     const line = `[${formatTime()}] [${LEVEL_NAMES[level]}] [${this.module}] ${message}${formatMeta(meta)}`
@@ -194,7 +195,7 @@ export function getRecentLogs(lineCount: number = 200): string {
   if (!existsSync(logPath)) return ''
 
   try {
-    const content = require('node:fs').readFileSync(logPath, 'utf-8')
+    const content = readFileSync(logPath, 'utf-8')
     const lines = content.split('\n').filter(Boolean)
     return lines.slice(-lineCount).join('\n')
   } catch {

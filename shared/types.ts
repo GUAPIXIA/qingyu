@@ -42,7 +42,7 @@ export interface Character {
   /** 群聊专用开场白 */
   groupOnlyGreetings?: string[]
   /** 扩展数据（保证导入导出往返） */
-  extensions?: Record<string, any>
+  extensions?: Record<string, unknown>
   /** 原始封面图片URL（用于重新加载封面，不导出） */
   _importImageUrl?: string
   /** 聊天页背景图（base64 data URL） */
@@ -69,6 +69,8 @@ export interface Character {
     scenario?: string
     firstMessage?: string
     exampleDialog?: string
+    /** 备选开场白译文（与 alternateGreetings 数组索引对齐，未翻译项为空字符串） */
+    alternateGreetings?: string[]
   }
 }
 
@@ -317,6 +319,9 @@ export type ProviderType =
   | 'vllm'         // 本地推理（OpenAI 兼容，默认 /v1）
   | 'lmstudio'     // LM Studio（OpenAI 兼容，默认 /v1）
   | 'tabby'        // TabbyAPI / exllamav2（OpenAI 兼容）
+  | 'deepseek'     // DeepSeek（OpenAI 兼容）
+  | 'groq'         // Groq 极速推理（OpenAI 兼容）
+  | 'siliconflow'  // 硅基流动（OpenAI 兼容）
 
 /** 连接配置 Profile */
 export interface ConnectionProfile {
@@ -387,6 +392,8 @@ export interface Settings {
   enableThoughtFormat?: boolean
   /** 心理描写是否默认展开，默认 false */
   autoExpandThought?: boolean
+  /** TTS 朗读时是否朗读内心想法（<thought> 块），默认 false */
+  ttsReadThought?: boolean
   /** 封面毛玻璃模糊强度（px，0 = 禁用，默认 8） */
   coverBlurStrength?: number
   /** 对话示例位置：after_system（默认）= 系统提示后，after_history = 历史消息后 */

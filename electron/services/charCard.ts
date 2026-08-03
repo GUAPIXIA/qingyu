@@ -3,9 +3,10 @@ import { join } from 'node:path'
 import http from 'node:http'
 import https from 'node:https'
 import { DIRS, writeJson, readJson, readJsonAsync } from './storage'
-import type { Character, Lorebook, LoreEntry } from '../../shared/types'
+import type { Character, Lorebook, LoreEntry, RegexRule, QuickReply, QuickReplyStore } from '../../shared/types'
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
+import { validateCharacterCard, formatValidationErrors } from './charCardValidator'
 
 const log = createLogger('charCard')
 
@@ -228,7 +229,7 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
 
   return new Promise((resolve) => {
     let settled = false
-    let req: any = null
+    let req: import('node:http').ClientRequest | null = null
 
     const safeResolve = (result: DownloadResult) => {
       if (settled) return
@@ -248,7 +249,7 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
     try {
       if (proxy) {
         // ===== 通过代理下载 =====
-        const connectOpts: any = {
+        const connectOpts: import('node:http').RequestOptions = {
           host: proxy.host,
           port: proxy.port,
           method: 'CONNECT',
@@ -260,7 +261,7 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
         log.debug('通过代理连接', { proxy: `${proxy.host}:${proxy.port}`, target: `${targetUrl.hostname}:${targetUrl.port || (isHttps ? 443 : 80)}` })
 
         req = http.request(connectOpts)
-        req.on('connect', (_res: any, socket: any) => {
+        req.on('connect', (_res: import('node:http').IncomingMessage, socket: import('node:net').Socket) => {
           if (_res.statusCode !== 200) {
             log.warn('代理 CONNECT 失败', { statusCode: _res.statusCode })
             safeResolve({ success: false, error: `代理连接失败: HTTP ${_res.statusCode}`, code: 'NETWORK_ERROR' })
@@ -338,7 +339,7 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
       }
 
       // 统一的响应处理函数
-      function handleResponse(res: any) {
+      function handleResponse(res: import('node:http').IncomingMessage) {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           log.debug('封面下载重定向', { from: trimmed.substring(0, 80), statusCode: res.statusCode })
           // 递归跟随重定向，保持代理选择
@@ -377,9 +378,9 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
           safeResolve({ success: false, error: `网络传输中断: ${err.message}`, code: 'NETWORK_ERROR' })
         })
       }
-    } catch (err: any) {
-      log.error('封面下载异常', { url: trimmed.substring(0, 100), error: err?.message ?? String(err) })
-      safeResolve({ success: false, error: `下载异常: ${err?.message ?? '未知错误'}`, code: 'UNKNOWN' })
+    } catch (err) {
+      log.error('封面下载异常', { url: trimmed.substring(0, 100), error: err instanceof Error ? err.message : String(err) })
+      safeResolve({ success: false, error: `下载异常: ${err instanceof Error ? err.message : '未知错误'}`, code: 'UNKNOWN' })
     }
   })
 }
@@ -448,8 +449,13 @@ async function downloadImageAsBase64(url: string, proxyUrl?: string, maxRedirect
 }
 
 /** 将各种格式归一化为 Character */
-async function normalizeCharacter(parsed: any, avatarBase64?: string, proxyUrl?: string): Promise<Character> {
-  const data = parsed.data ?? parsed
+async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyUrl?: string): Promise<Character> {
+  // 导入时校验角色卡基本结构（拦截损坏/非法卡）
+  const validation = validateCharacterCard(parsed)
+  if (!validation.ok) {
+    throw new Error(`角色卡校验失败：${formatValidationErrors(validation)}`)
+  }
+  const data = (parsed as { data?: unknown }).data ?? parsed
   const now = Date.now()
 
   // 确定头像来源：优先级 传入参数 > JSON 中的图片字段
@@ -555,7 +561,7 @@ async function normalizeCharacter(parsed: any, avatarBase64?: string, proxyUrl?:
   if (charBook && charBook.entries && Array.isArray(charBook.entries) && charBook.entries.length > 0) {
     try {
       const lorebookId = nanoid()
-      const entries: LoreEntry[] = charBook.entries.map((e: any, i: number) => ({
+      const entries: LoreEntry[] = charBook.entries.map((e: unknown, i: number) => ({
         id: e.uid?.toString() ?? nanoid(),
         keywords: Array.isArray(e.key) ? e.key.filter(Boolean) : (e.key ? String(e.key).split(',').map((s: string) => s.trim()).filter(Boolean) : []),
         content: e.content ?? '',
@@ -819,7 +825,7 @@ export async function listCharacters(): Promise<Character[]> {
 
   // 并行读取所有角色 JSON（不含图片 base64，避免 IPC 传输大量数据）
   const results = await Promise.all(
-    files.map((file) => readJsonAsync<Character>(join(charDir, file))),
+    files.map((file) => readJsonAsync<Character>(join(charDir, file), 'characters')),
   )
 
   const chars: Character[] = []
@@ -836,7 +842,7 @@ export async function listCharacters(): Promise<Character[]> {
 /** 读取单个角色 */
 export function getCharacter(id: string): Character | null {
   const filePath = join(DIRS.characters(), `${id}.json`)
-  const char = readJson<Character>(filePath)
+  const char = readJson<Character>(filePath, 'characters')
   if (char) {
     const avatar = readAvatar(id)
     if (avatar) char.avatar = avatar
@@ -878,4 +884,151 @@ export async function reloadAvatarFromUrl(characterId: string, url: string, prox
   saveCover(characterId, result.data) // 封面同步更新
   log.info('重新加载封面成功', { characterId })
   return { success: true, avatar: result.data }
+}
+
+// ===================== 角色卡前端扩展适配（regex_scripts / quick_replies） =====================
+
+/** 官方 SillyTavern regex_scripts 条目 → 项目 RegexRule（不支持的返回 null） */
+function convertRegexScript(script: unknown): RegexRule | null {
+  if (!script || typeof script !== 'object') return null
+  const s = script as Record<string, unknown>
+  const pattern = typeof s.findRegex === 'string' ? s.findRegex : ''
+  if (!pattern) return null
+  const replacement = typeof s.replaceString === 'string' ? s.replaceString : ''
+
+  // promptOnly：仅作用在 prompt 阶段，项目无此阶段 → 跳过
+  if (s.promptOnly === true) return null
+
+  // placement → scope（ST 默认 user_input + ai_output = both）
+  const placement: unknown[] = Array.isArray(s.placement) ? s.placement : []
+  const hasInput = placement.length === 0 || placement.includes('user_input')
+  const hasOutput = placement.length === 0 || placement.includes('ai_output')
+  const scope: RegexRule['scope'] = hasInput && hasOutput ? 'both' : hasInput ? 'input' : 'output'
+
+  // markdownOnly：仅 output 有 markdown 阶段（input 规则实际不会生效 → 跳过）
+  let stage: RegexRule['stage'] = 'text'
+  if (s.markdownOnly === true) {
+    if (!hasOutput) return null
+    stage = 'markdown'
+  }
+
+  return {
+    id: nanoid(),
+    name: typeof s.scriptName === 'string' && s.scriptName.trim() ? s.scriptName : '角色卡正则',
+    pattern,
+    replacement,
+    // ST 默认大小写不敏感
+    flags: 'gi',
+    enabled: s.disabled !== true,
+    scope,
+    group: '角色卡导入',
+    stage,
+  }
+}
+
+/** 官方 SillyTavern quick_replies 条目 → 项目 QuickReply（不支持的返回 null） */
+function convertCardQuickReply(qr: unknown, index: number): QuickReply | null {
+  if (!qr || typeof qr !== 'object') return null
+  const q = qr as Record<string, unknown>
+  const label = typeof q.label === 'string' && q.label.trim() ? q.label : '快捷回复'
+  const message = typeof q.message === 'string' ? q.message : (typeof q.content === 'string' ? q.content : '')
+  if (!message) return null
+  const isCommand = q.messageType === 'command' || q.messageType === 'slash'
+  const hotkey = typeof q.hotkey === 'number' && q.hotkey >= 1 && q.hotkey <= 9 ? q.hotkey : undefined
+  return {
+    id: typeof q.id === 'string' && q.id ? q.id : nanoid(),
+    label,
+    content: message,
+    action: isCommand ? 'command' : 'text',
+    command: isCommand ? message : undefined,
+    sendWithAI: true,
+    hotkey,
+    order: index,
+    enabled: true,
+  }
+}
+
+export interface CardExtrasResult {
+  regexCount: number
+  quickReplyCount: number
+  /** 因不支持而跳过的项描述 */
+  skipped: string[]
+}
+
+/**
+ * 角色卡前端扩展落地（幂等，可重复导入）：
+ * - extensions.regex_scripts → 正则规则库（group「角色卡导入」）
+ * - extensions.quick_replies → 角色级快捷回复
+ * 失败不阻断角色导入。
+ */
+export function importCardFrontendExtensions(character: Character): CardExtrasResult {
+  const result: CardExtrasResult = { regexCount: 0, quickReplyCount: 0, skipped: [] }
+  const exts = character.extensions
+  if (!exts || typeof exts !== 'object') return result
+
+  // ---- 正则脚本 ----
+  if (Array.isArray(exts.regex_scripts)) {
+    const rulesPath = join(DIRS.config(), 'regex', 'rules.json')
+    let existing: RegexRule[] = []
+    try {
+      if (existsSync(rulesPath)) existing = JSON.parse(readFileSync(rulesPath, 'utf-8')) as RegexRule[]
+    } catch { /* 文件损坏则从空列表开始 */ }
+    const existingKeys = new Set(existing.map(r => `${r.pattern}|${r.scope}|${r.stage ?? 'text'}`))
+    for (const script of exts.regex_scripts) {
+      const rule = convertRegexScript(script)
+      if (!rule) {
+        const s = script as Record<string, unknown> | null
+        if (s && typeof s.scriptName === 'string') result.skipped.push(`正则「${s.scriptName}」`)
+        continue
+      }
+      const key = `${rule.pattern}|${rule.scope}|${rule.stage}`
+      if (existingKeys.has(key)) continue // 已导入过（幂等）
+      existingKeys.add(key)
+      existing.push(rule)
+      result.regexCount++
+    }
+    if (result.regexCount > 0) {
+      try {
+        mkdirSync(join(DIRS.config(), 'regex'), { recursive: true })
+        writeFileSync(rulesPath, JSON.stringify(existing, null, 2), 'utf-8')
+      } catch (e) {
+        log.error('角色卡正则落地失败', { error: (e as Error).message })
+        result.regexCount = 0
+      }
+    }
+  }
+
+  // ---- 快捷回复 ----
+  if (Array.isArray(exts.quick_replies)) {
+    const storePath = join(DIRS.config(), 'quickReplies.json')
+    let store: QuickReplyStore = { global: [], byCharacter: {} }
+    try {
+      const raw = readJson<QuickReplyStore>(storePath)
+      if (raw && Array.isArray(raw.global)) store = { global: raw.global, byCharacter: raw.byCharacter ?? {} }
+    } catch { /* 重置 */ }
+    const charList = store.byCharacter[character.id] ?? []
+    const existingIds = new Set(charList.map(q => q.id))
+    for (let i = 0; i < exts.quick_replies.length; i++) {
+      const q = convertCardQuickReply(exts.quick_replies[i], i)
+      if (!q) continue
+      if (existingIds.has(q.id)) continue // 幂等
+      existingIds.add(q.id)
+      charList.push(q)
+      result.quickReplyCount++
+    }
+    if (result.quickReplyCount > 0) {
+      store.byCharacter[character.id] = charList
+      try {
+        writeJson(storePath, store)
+      } catch (e) {
+        log.error('角色卡快捷回复落地失败', { error: (e as Error).message })
+        result.quickReplyCount = 0
+      }
+    }
+  }
+
+  if (result.regexCount > 0 || result.quickReplyCount > 0 || result.skipped.length > 0) {
+    log.info('角色卡前端扩展已导入', { name: character.name, ...result })
+  }
+  return result
 }

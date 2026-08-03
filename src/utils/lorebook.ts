@@ -42,7 +42,16 @@ export function escapeRegExp(s: string): string {
 const CJK_BOUNDARY = /[\s，。、；：！？…·—""''（）【】《》〈〉「」『』,.!?;:()[\]{}<>"'|/\\-]/
 
 /** ASCII 关键词的词边界正则缓存 */
+// BUG-23 修复：限制缓存上限，超出时淘汰最早项，避免长期使用内存无限增长
+const ASCII_REGEX_CACHE_MAX = 500
 const asciiKeywordRegexCache = new Map<string, RegExp | null>()
+function cacheAsciiRegex(kw: string, regex: RegExp | null): void {
+  if (asciiKeywordRegexCache.size >= ASCII_REGEX_CACHE_MAX) {
+    const oldest = asciiKeywordRegexCache.keys().next().value
+    if (oldest !== undefined) asciiKeywordRegexCache.delete(oldest)
+  }
+  asciiKeywordRegexCache.set(kw, regex)
+}
 
 /**
  * 世界书普通关键词匹配（词边界感知，减少误触发）：
@@ -68,7 +77,7 @@ export function keywordMatch(keyword: string, textLower: string): boolean {
       } catch {
         regex = null
       }
-      asciiKeywordRegexCache.set(kw, regex)
+      cacheAsciiRegex(kw, regex)
     }
     return regex ? regex.test(textLower) : textLower.includes(kw)
   }
@@ -367,7 +376,10 @@ export function triggerLorebooks(opts: LorebookTriggerOptions): LorebookTriggerR
             return false
           }
         }
-        return regex.test(recentText)
+        // BUG-24 修复：与普通关键词一致在小写文本上匹配，避免同一关键词两种匹配行为
+        // 重置 lastIndex：带 g flag 的正则 test() 会推进 lastIndex 导致交替失败
+        regex.lastIndex = 0
+        return regex.test(recentTextLower)
       })
       if (!matched) continue
 

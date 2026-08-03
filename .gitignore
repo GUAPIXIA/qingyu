@@ -41,3 +41,5 @@ spec_*.json
 # Environment files (contain secrets)
 .env
 server/.env
+# 测试覆盖率报告
+coverage/

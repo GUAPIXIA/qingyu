@@ -28,7 +28,7 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => ({
       if (selectedAnnouncement && !items.find((a) => a.id === selectedAnnouncement.id)) {
         set({ selectedAnnouncement: null })
       }
-    } catch (err: any) {
+    } catch (err) {
       set({ error: err.message || '加载公告失败', loading: false })
     }
   },

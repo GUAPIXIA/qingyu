@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseDialogue, type DialogueSegment } from '../dialogue-parser'
+import { parseDialogue } from '../dialogue-parser'
 
 describe('parseDialogue', () => {
   describe('plain text / narration', () => {

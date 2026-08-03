@@ -35,12 +35,10 @@ jobs:
       - name: Electron main process build (esbuild)
         run: node electron-build.mjs
 
-  # Lint：当前存量 152 个错误（多为历史 no-explicit-any），允许失败避免阻塞
-  # TODO: 修复存量问题后移除 continue-on-error
+  # Lint：已清零存量错误（2026-08 清理 125 个），现在硬性门禁
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -88,3 +86,25 @@ jobs:
           name: qingyu-win-x64
           path: release-v2/*.exe
           if-no-files-found: error
+
+  # 依赖安全审计（供应链风险扫描）
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm audit (high severity)
+        run: pnpm audit --audit-level high

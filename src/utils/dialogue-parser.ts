@@ -46,7 +46,7 @@ export function parseDialogue(text: string): DialogueSegment[] {
 
   // 快速预检：如果文本不含任何对话/动作标记字符，直接返回纯文本
   // 注意：必须包含所有 Unicode 引号变体（""「」〝〞等），否则中文引号文本会被误判为纯文本
-  if (!/[*":：'\u201C\u201D\-~()\[\]「」『』〝〞]/.test(text)) {
+  if (!/[*":：'\u201C\u201D\-~()[\]「」『』〝〞]/.test(text)) {
     return [{ type: 'plain', content: text }]
   }
 
@@ -81,8 +81,8 @@ export function parseDialogue(text: string): DialogueSegment[] {
     .replace(/__[\s\S]+?__/g, protect)                 // 粗体 __...__
     .replace(/~~[\s\S]+?~~/g, protect)                 // 删除线 ~~...~~
     .replace(/<\/?[a-zA-Z][^>]*\/?>/g, protect)       // HTML 标签 <...>
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, protect)         // markdown 图片 ![alt](url)
-    .replace(/\[[^\]]*\]\([^)]*\)/g, protect)          // markdown 链接 [text](url)
+    .replace(/![[^\]]*\]\([^)]*\)/g, protect)         // markdown 图片 ![alt](url)
+    .replace(/[[^\]]*\]\([^)]*\)/g, protect)          // markdown 链接 [text](url)
     .replace(/`[^`\n]+`/g, protect)                   // 行内代码 `code`
 
   /** 将占位符还原为原始内容（循环处理嵌套占位符） */

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   extractThought,
   stripThought,
+  stripThoughtTags,
   mergeConsecutiveMessages,
   normalizeThoughtTags,
   trimContinuationOverlap,
@@ -73,6 +74,32 @@ describe('extractThought', () => {
     expect(result.thought).toBeNull()
     expect(result.content).toBe('')
     expect(result.isFallback).toBe(false)
+  })
+})
+
+describe('stripThoughtTags', () => {
+  it('keeps thought content but removes tags', () => {
+    expect(stripThoughtTags('<thought>thinking</thought>result')).toBe('thinkingresult')
+  })
+
+  it('normalizes <thinking> to <thought> before stripping', () => {
+    expect(stripThoughtTags('<thinking>deep</thinking>answer')).toBe('deepanswer')
+  })
+
+  it('keeps plain text unchanged', () => {
+    expect(stripThoughtTags('no thoughts here')).toBe('no thoughts here')
+  })
+
+  it('keeps content of multiple thought blocks', () => {
+    expect(stripThoughtTags('<thought>a</thought>mid<thought>b</thought>end')).toBe('amidbend')
+  })
+
+  it('returns empty string for empty input', () => {
+    expect(stripThoughtTags('')).toBe('')
+  })
+
+  it('handles case-insensitive tags', () => {
+    expect(stripThoughtTags('<THOUGHT>upper</THOUGHT>content')).toBe('uppercontent')
   })
 })
 

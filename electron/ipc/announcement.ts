@@ -9,6 +9,7 @@
 
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
+import { http, https } from 'node:http'
 import { DIRS, readJson, writeJson } from '../services/storage'
 import { createLogger } from '../services/logger'
 import { isSafeUrl } from '../utils/pathGuard'
@@ -39,8 +40,8 @@ function setServerUrl(url: string): void {
 /** 发起 HTTP GET 请求 */
 function httpGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? require('node:https') : require('node:http')
-    mod.get(url, { timeout: 10000 }, (res: any) => {
+    const mod = url.startsWith('https') ? https : http
+    mod.get(url, { timeout: 10000 }, (res: import('node:http').IncomingMessage) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume()
         return httpGet(res.headers.location).then(resolve, reject)
@@ -55,7 +56,7 @@ function httpGet(url: string): Promise<string> {
           reject(new Error(`HTTP ${res.statusCode}`))
         }
       })
-    }).on('error', reject).on('timeout', function(this: any) { this.destroy(); reject(new Error('请求超时')) })
+    }).on('error', reject).on('timeout', function(this: import('node:http').ClientRequest) { this.destroy(); reject(new Error('请求超时')) })
   })
 }
 
@@ -84,8 +85,8 @@ export function registerAnnouncementIPC(ipcMain: IpcMain): void {
         writeCache(data.items)
       }
       return data
-    } catch (err: any) {
-      log.warn('获取公告列表失败，使用缓存', { error: err.message })
+    } catch (err) {
+      log.warn('获取公告列表失败，使用缓存', { error: err instanceof Error ? err.message : String(err) })
       const cached = readCache()
       return { items: cached, total: cached.length, page, pageSize }
     }
@@ -99,8 +100,8 @@ export function registerAnnouncementIPC(ipcMain: IpcMain): void {
     try {
       const body = await httpGet(url)
       return JSON.parse(body) as Announcement
-    } catch (err: any) {
-      log.warn('获取公告详情失败，使用缓存', { id, error: err.message })
+    } catch (err) {
+      log.warn('获取公告详情失败，使用缓存', { id, error: err instanceof Error ? err.message : String(err) })
       const cached = readCache()
       return cached.find((a) => a.id === id) ?? null
     }
@@ -127,8 +128,8 @@ export function registerAnnouncementIPC(ipcMain: IpcMain): void {
     try {
       const body = await httpGet(url)
       return JSON.parse(body) as { version: string; changelog: string; downloadUrl: string }
-    } catch (err: any) {
-      log.warn('检查版本失败', { error: err.message })
+    } catch (err) {
+      log.warn('检查版本失败', { error: err instanceof Error ? err.message : String(err) })
       return null
     }
   })

@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, rmSync } from 'node:fs'
-import { DIRS, readJson, writeJson, countLines } from '../services/storage'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, rmSync } from 'node:fs'
+import { DIRS, readJson, writeJson, countLines, withFileLock } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { GroupChat, GroupMessage, GroupSession } from '../../shared/types'
 import { nanoid } from 'nanoid'
@@ -52,6 +52,20 @@ function saveSessions(groupId: string, sessions: GroupSession[]): void {
   const dir = getGroupDir(groupId)
   mkdirSync(dir, { recursive: true })
   writeJson(getSessionsFile(groupId), sessions)
+}
+
+// 与 chat.ts 对齐：sessions.json / index.json / 消息文件的读-改-写统一走 per-file 锁，
+// 避免并发 IPC handler 互相覆盖（BUG-10/19 同类问题）
+function withIndexLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  return withFileLock(getIndexFile(), fn)
+}
+
+function withSessionsLock<T>(groupId: string, fn: () => T | Promise<T>): Promise<T> {
+  return withFileLock(getSessionsFile(groupId), fn)
+}
+
+function withSessionFileLock<T>(groupId: string, sessionId: string, fn: () => T | Promise<T>): Promise<T> {
+  return withFileLock(getSessionFile(groupId, sessionId), fn)
 }
 
 // ===================== 消息管理 =====================
@@ -115,25 +129,31 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   ipcMain.handle('group:save', async (_e, group: GroupChat) => {
     safeId(group.id)
     group.updatedAt = Date.now()
-    const groups = loadGroups()
-    const idx = groups.findIndex(g => g.id === group.id)
-    if (idx >= 0) {
-      groups[idx] = group
-    } else {
-      groups.push(group)
-    }
-    saveGroups(groups)
+    await withIndexLock(() => {
+      const groups = loadGroups()
+      const idx = groups.findIndex(g => g.id === group.id)
+      if (idx >= 0) {
+        groups[idx] = group
+      } else {
+        groups.push(group)
+      }
+      saveGroups(groups)
+    })
     log.info('群聊已保存', { groupId: group.id, name: group.name })
   })
 
   ipcMain.handle('group:delete', async (_e, id: string) => {
     safeId(id)
-    const groups = loadGroups().filter(g => g.id !== id)
-    saveGroups(groups)
-    // 删除群聊目录
+    await withIndexLock(() => {
+      const groups = loadGroups().filter(g => g.id !== id)
+      saveGroups(groups)
+    })
+    // 删除群聊目录（rename 后删除，避免与进行中的写入冲突）
     const dir = getGroupDir(id)
     if (existsSync(dir)) {
-      rmSync(dir, { recursive: true, force: true })
+      const trashDir = join(DIRS.groups(), `.deleting-${id}-${Date.now()}`)
+      renameSync(dir, trashDir)
+      rmSync(trashDir, { recursive: true, force: true })
     }
     log.info('群聊已删除', { groupId: id })
   })
@@ -142,13 +162,43 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
 
   ipcMain.handle('group:listSessions', async (_e, groupId: string) => {
     safeId(groupId)
-    const sessions = loadSessions(groupId)
-    if (sessions.length === 0) {
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      if (sessions.length === 0) {
+        const now = Date.now()
+        const defaultSession: GroupSession = {
+          id: nanoid(),
+          groupId,
+          title: '默认会话',
+          messageCount: 0,
+          createdAt: now,
+          updatedAt: now,
+          memoryEnabled: false,
+          memoryMode: 'manual',
+          autoMemoryInterval: 10,
+          memory: '',
+          memoryUpdatedAt: 0,
+        }
+        sessions.push(defaultSession)
+        saveSessions(groupId, sessions)
+      }
+      // P-1 修复：仅统计行数获取 messageCount，避免全量 JSON 解析
+      return sessions.map(s => {
+        const filePath = getSessionFile(groupId, s.id)
+        return { ...s, messageCount: countLines(filePath) }
+      })
+    })
+  })
+
+  ipcMain.handle('group:createSession', async (_e, groupId: string) => {
+    safeId(groupId)
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
       const now = Date.now()
-      const defaultSession: GroupSession = {
+      const session: GroupSession = {
         id: nanoid(),
         groupId,
-        title: '默认会话',
+        title: `新对话 ${sessions.length + 1}`,
         messageCount: 0,
         createdAt: now,
         updatedAt: now,
@@ -158,59 +208,37 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         memory: '',
         memoryUpdatedAt: 0,
       }
-      sessions.push(defaultSession)
+      sessions.push(session)
       saveSessions(groupId, sessions)
-    }
-    // P-1 修复：仅统计行数获取 messageCount，避免全量 JSON 解析
-    return sessions.map(s => {
-      const filePath = getSessionFile(groupId, s.id)
-      return { ...s, messageCount: countLines(filePath) }
+      return session
     })
-  })
-
-  ipcMain.handle('group:createSession', async (_e, groupId: string) => {
-    safeId(groupId)
-    const sessions = loadSessions(groupId)
-    const now = Date.now()
-    const session: GroupSession = {
-      id: nanoid(),
-      groupId,
-      title: `新对话 ${sessions.length + 1}`,
-      messageCount: 0,
-      createdAt: now,
-      updatedAt: now,
-      memoryEnabled: false,
-      memoryMode: 'manual',
-      autoMemoryInterval: 10,
-      memory: '',
-      memoryUpdatedAt: 0,
-    }
-    sessions.push(session)
-    saveSessions(groupId, sessions)
-    return session
   })
 
   ipcMain.handle('group:deleteSession', async (_e, groupId: string, sessionId: string) => {
     safeId(groupId)
     safeId(sessionId)
-    const file = getSessionFile(groupId, sessionId)
-    if (existsSync(file)) {
-      unlinkSync(file)
-    }
-    const sessions = loadSessions(groupId).filter(s => s.id !== sessionId)
-    saveSessions(groupId, sessions)
+    return withSessionsLock(groupId, () => {
+      const file = getSessionFile(groupId, sessionId)
+      if (existsSync(file)) {
+        unlinkSync(file)
+      }
+      const sessions = loadSessions(groupId).filter(s => s.id !== sessionId)
+      saveSessions(groupId, sessions)
+    })
   })
 
   ipcMain.handle('group:renameSession', async (_e, groupId: string, sessionId: string, title: string) => {
     safeId(groupId)
     safeId(sessionId)
-    const sessions = loadSessions(groupId)
-    const session = sessions.find(s => s.id === sessionId)
-    if (session) {
-      session.title = title
-      session.updatedAt = Date.now()
-      saveSessions(groupId, sessions)
-    }
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find(s => s.id === sessionId)
+      if (session) {
+        session.title = title
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
   })
 
   // ---- 消息管理 ----
@@ -230,50 +258,60 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   ipcMain.handle('group:saveMessage', async (_e, groupId: string, sessionId: string, msg: GroupMessage) => {
     safeId(groupId)
     safeId(sessionId)
-    const messages = readMessages(groupId, sessionId)
-
-    const existing = messages.find(m => m.id === msg.id)
-    if (existing) {
-      updateMessage(groupId, sessionId, msg)
-    } else {
-      appendMessage(groupId, sessionId, msg)
-    }
+    // 读-改-写整体持锁，避免全量重写覆盖并发追加/删除的消息
+    await withSessionFileLock(groupId, sessionId, () => {
+      const messages = readMessages(groupId, sessionId)
+      const existing = messages.find(m => m.id === msg.id)
+      if (existing) {
+        updateMessage(groupId, sessionId, msg)
+      } else {
+        appendMessage(groupId, sessionId, msg)
+      }
+    })
 
     // 更新 session updatedAt
-    const sessions = loadSessions(groupId)
-    const session = sessions.find(s => s.id === sessionId)
-    if (session) {
-      session.updatedAt = Date.now()
-      saveSessions(groupId, sessions)
-    }
+    await withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find(s => s.id === sessionId)
+      if (session) {
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
   })
 
   ipcMain.handle('group:deleteMessage', async (_e, groupId: string, sessionId: string, messageId: string) => {
     safeId(groupId)
     safeId(sessionId)
     safeId(messageId)
-    const messages = readMessages(groupId, sessionId)
-    const filtered = messages.filter(m => m.id !== messageId)
-    writeMessages(groupId, sessionId, filtered)
+    await withSessionFileLock(groupId, sessionId, () => {
+      const messages = readMessages(groupId, sessionId)
+      const filtered = messages.filter(m => m.id !== messageId)
+      writeMessages(groupId, sessionId, filtered)
+    })
 
-    const sessions = loadSessions(groupId)
-    const session = sessions.find(s => s.id === sessionId)
-    if (session) {
-      session.updatedAt = Date.now()
-      saveSessions(groupId, sessions)
-    }
+    await withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find(s => s.id === sessionId)
+      if (session) {
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
   })
 
   ipcMain.handle('group:editMessage', async (_e, groupId: string, sessionId: string, messageId: string, content: string) => {
     safeId(groupId)
     safeId(sessionId)
     safeId(messageId)
-    const messages = readMessages(groupId, sessionId)
-    const message = messages.find(m => m.id === messageId)
-    if (message) {
-      message.content = content
-      writeMessages(groupId, sessionId, messages)
-    }
+    await withSessionFileLock(groupId, sessionId, () => {
+      const messages = readMessages(groupId, sessionId)
+      const message = messages.find(m => m.id === messageId)
+      if (message) {
+        message.content = content
+        writeMessages(groupId, sessionId, messages)
+      }
+    })
   })
 
   ipcMain.handle('group:clearChat', async (_e, groupId: string, sessionId?: string) => {
@@ -284,19 +322,26 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       if (existsSync(file)) {
         unlinkSync(file)
       }
-      const sessions = loadSessions(groupId)
-      const session = sessions.find(s => s.id === sessionId)
-      if (session) {
-        session.updatedAt = Date.now()
-        session.messageCount = 0
-        session.memory = ''
-        session.memoryUpdatedAt = 0
-        saveSessions(groupId, sessions)
-      }
+      return withSessionsLock(groupId, () => {
+        const sessions = loadSessions(groupId)
+        const session = sessions.find(s => s.id === sessionId)
+        if (session) {
+          session.updatedAt = Date.now()
+          session.messageCount = 0
+          session.memory = ''
+          session.memoryUpdatedAt = 0
+          saveSessions(groupId, sessions)
+        }
+      })
     } else {
+      // 清空整个群聊（含所有会话）：先对现有文件排队加锁，再 rename 后删除
       const dir = getGroupDir(groupId)
       if (existsSync(dir)) {
-        rmSync(dir, { recursive: true, force: true })
+        const files = readdirSync(dir).map((f) => join(dir, f))
+        await Promise.all(files.map((f) => withFileLock(f, () => {})))
+        const trashDir = join(DIRS.groups(), `.deleting-${groupId}-${Date.now()}`)
+        renameSync(dir, trashDir)
+        rmSync(trashDir, { recursive: true, force: true })
       }
     }
   })
@@ -306,52 +351,60 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   ipcMain.handle('group:updateMemory', async (_e, groupId: string, sessionId: string, memory: string) => {
     safeId(groupId)
     safeId(sessionId)
-    const sessions = loadSessions(groupId)
-    const session = sessions.find(s => s.id === sessionId)
-    if (session) {
-      session.memory = memory
-      session.memoryUpdatedAt = Date.now()
-      session.updatedAt = Date.now()
-      saveSessions(groupId, sessions)
-    }
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find(s => s.id === sessionId)
+      if (session) {
+        session.memory = memory
+        session.memoryUpdatedAt = Date.now()
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
   })
 
   ipcMain.handle('group:toggleMemory', async (_e, groupId: string, sessionId: string, enabled: boolean) => {
     safeId(groupId)
     safeId(sessionId)
-    const sessions = loadSessions(groupId)
-    const session = sessions.find(s => s.id === sessionId)
-    if (session) {
-      session.memoryEnabled = enabled
-      session.updatedAt = Date.now()
-      saveSessions(groupId, sessions)
-    }
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find(s => s.id === sessionId)
+      if (session) {
+        session.memoryEnabled = enabled
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
   })
 
   ipcMain.handle('group:setMemoryMode', async (_e, groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => {
     safeId(groupId)
     safeId(sessionId)
-    const sessions = loadSessions(groupId)
-    const session = sessions.find(s => s.id === sessionId)
-    if (session) {
-      session.memoryMode = mode
-      if (interval !== undefined) session.autoMemoryInterval = interval
-      session.updatedAt = Date.now()
-      saveSessions(groupId, sessions)
-    }
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find(s => s.id === sessionId)
+      if (session) {
+        session.memoryMode = mode
+        if (interval !== undefined) session.autoMemoryInterval = interval
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
   })
 
   /** 通用会话字段更新（长记忆事实等） */
   ipcMain.handle('group:updateSession', async (_e, groupId: string, sessionId: string, updates: Record<string, unknown>) => {
     safeId(groupId)
     safeId(sessionId)
-    const sessions = loadSessions(groupId)
-    const session = sessions.find(s => s.id === sessionId)
-    if (session) {
-      Object.assign(session, updates)
-      session.updatedAt = Date.now()
-      saveSessions(groupId, sessions)
-    }
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find(s => s.id === sessionId)
+      if (session) {
+        Object.assign(session, updates)
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
   })
 
   // ---- 导出 ----

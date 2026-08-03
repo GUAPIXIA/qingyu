@@ -75,8 +75,8 @@ describe('内置宏', () => {
     expect(expandMacros('{{TIME}} {{Random:甲|乙}}', makeCtx())).toMatch(/^\d{2}:\d{2} [甲乙]$/)
   })
 
-  it('参数中 \| 转义为字面竖线', () => {
-    // \| 输出字面竖线（不参与分隔）：选项为 [a|b] 与 [c]
+  it('参数中 | 转义为字面竖线', () => {
+    // | 输出字面竖线（不参与分隔）：选项为 [a|b] 与 [c]
     const result = expandMacros('{{random:a\\|b|c}}', makeCtx())
     expect(['a|b', 'c']).toContain(result)
   })

@@ -297,6 +297,11 @@ body {
     @apply bg-tavern-bg-card border border-tavern-border-soft rounded-xl;
   }
 
+  /* 编辑器字段卡片：独立圆角面板，分隔清晰 */
+  .field-card {
+    @apply rounded-xl border border-tavern-border-soft bg-tavern-bg-soft p-3.5;
+  }
+
   .label {
     @apply block text-sm text-tavern-text-soft mb-1.5 font-medium;
   }

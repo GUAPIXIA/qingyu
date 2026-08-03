@@ -98,7 +98,7 @@ export function VisionModelsSection() {
           <Check className="w-3.5 h-3.5" />保存
         </button>
         <button
-          onClick={() => { editingId ? setEditingId(null) : setShowAdd(false); resetForm() }}
+          onClick={() => { if (editingId) setEditingId(null); else setShowAdd(false); resetForm() }}
           className="px-3 py-1.5 text-xs text-tavern-text-muted hover:text-tavern-text"
         >
           取消

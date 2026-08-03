@@ -49,8 +49,8 @@ export interface CharacterAPI {
   get(id: string): Promise<Character | null>
   save(character: Character): Promise<void>
   delete(id: string): Promise<void>
-  importPng(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean }>
-  importJson(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; needAvatar?: boolean }>
+  importPng(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] } }>
+  importJson(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; needAvatar?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] } }>
   importBatch(): Promise<{
     success: boolean
     results?: { name: string; success: boolean; error?: string; needAvatar?: boolean }[]
@@ -158,7 +158,7 @@ export interface EmbeddingAPI {
   /** 为世界书生成/重建向量索引 */
   indexLorebook(lorebookId: string, config: EmbeddingEndpointConfig): Promise<IndexResult>
   /** 查询多个世界书的索引状态 */
-  indexStatus(lorebookIds: string[]): Promise<Record<string, { indexed: number; model: string; updatedAt: number }>>
+  indexStatus(lorebookIds: string[]): Promise<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>
   /** 删除世界书向量索引 */
   removeIndex(lorebookId: string): Promise<{ ok: boolean }>
   /** 扫描文本语义检索，返回命中条目 */
