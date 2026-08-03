@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol } from 'electron'
 import { join } from 'node:path'
 import { readFileSync, existsSync } from 'node:fs'
 import { registerCharacterIPC } from './ipc/character'
@@ -23,8 +23,7 @@ import { ensureDataDir, DIRS } from './services/storage'
 import { initLogger, createLogger, getRecentLogs } from './services/logger'
 
 // 注册 tavern:// 自定义协议为标准协议（必须在 app.ready 之前）
-const _ele = require('electron') as typeof import('electron')
-_ele.protocol.registerSchemesAsPrivileged([
+protocol.registerSchemesAsPrivileged([
   { scheme: 'tavern', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ])
 
@@ -94,7 +93,7 @@ app.whenReady().then(async () => {
 
   // 注册 tavern:// 协议处理器：角色图片直接从磁盘按需加载，不经 base64/IPC
   const charDir = DIRS.characters()
-  _ele.protocol.handle('tavern', (request) => {
+  protocol.handle('tavern', (request) => {
     const url = new URL(request.url)
     if (url.hostname !== 'character') {
       return new Response('Not found', { status: 404 })

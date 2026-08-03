@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import rehypeRaw from 'rehype-raw'
 import { charAssetUrl } from '../../utils/asset'
 import { Edit2, Check, X, RotateCcw, Trash2, Copy, Volume2, VolumeX, Play, Pause, User, Bot, Languages, GitBranch, Loader2, ChevronLeft, ChevronRight, Image as ImageIcon, RefreshCw, ChevronsDown, Reply } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
@@ -13,7 +12,7 @@ import { cn } from '../../lib/utils'
 import { formatTime } from '../../utils/format'
 import { countChars, formatCharCount } from '../../utils/charCounter'
 import { remarkRoleplay } from '../../utils/remark-roleplay'
-import { extractThought, stripThought } from '../../utils/messagePostProcess'
+import { extractThought, stripThought, stripThoughtTags } from '../../utils/messagePostProcess'
 import { getDisplayName } from '../../utils/variables'
 
 interface MessageBubbleProps {
@@ -31,14 +30,24 @@ import { MarkdownImage } from '../common/MarkdownImage'
 const markdownComponents = { img: MarkdownImage }
 
 // B-05：已播放过入场动画的消息 ID，避免虚拟滚动时反复播放
+// BUG-18 修复：限制 Set 上限，超出时淘汰最早标记的 ID，避免长时间使用内存无限增长
+const ANIMATED_IDS_MAX = 500
 const animatedIds = new Set<string>()
+function markAnimated(id: string): void {
+  if (animatedIds.size >= ANIMATED_IDS_MAX) {
+    const oldest = animatedIds.values().next().value
+    if (oldest !== undefined) animatedIds.delete(oldest)
+  }
+  animatedIds.add(id)
+}
 
 export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast, repliedMessage, onReply }: MessageBubbleProps) {
   const shouldAnimate = !animatedIds.has(message.id)
-  // 首帧渲染后立即标记为已动画
-  if (shouldAnimate) {
-    animatedIds.add(message.id)
-  }
+  // NEW-L7 修复：标记移入 effect，避免渲染阶段执行副作用（React 并发/严格模式下的不纯渲染）
+  useEffect(() => {
+    if (shouldAnimate) markAnimated(message.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [message.id])
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
   const [ttsState, setTtsState] = useState<'idle' | 'speaking' | 'paused'>('idle')
@@ -116,76 +125,108 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
     setEditing(false)
   }
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content)
+  const handleCopy = async () => {
+    // BUG-31 修复：处理 clipboard 写入失败（权限/焦点丢失等），避免静默失败
+    try {
+      await navigator.clipboard.writeText(message.content)
+    } catch {
+      // 回退方案：隐藏 textarea + execCommand
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = message.content
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+      } catch {
+        useChatStore.setState({ error: '复制失败：无法访问剪贴板' })
+      }
+    }
   }
 
   const handleSpeak = async () => {
     if (!message.content) return
+    // TTS 朗读前预处理：默认剥离内心想法（<thought> 块）；开启"朗读内心想法"时仅去掉标签、保留内容
+    const speakText = settings.ttsReadThought
+      ? stripThoughtTags(message.content)
+      : stripThought(message.content)
+    if (!speakText.trim()) return
     if (!ttsConfig) return    // OpenAI / Edge TTS：渲染进程直接控制音频播放（主进程返回 mp3 base64）
-    if (ttsConfig.provider === 'openai' || ttsConfig.provider === 'edge') {
-      if (ttsState === 'speaking') {
-        audioRef.current?.pause()
-        setTtsState('paused')
+    try {
+      if (ttsConfig.provider === 'openai' || ttsConfig.provider === 'edge') {
+        if (ttsState === 'speaking') {
+          audioRef.current?.pause()
+          setTtsState('paused')
+          return
+        }
+        if (ttsState === 'paused') {
+          await audioRef.current?.play()
+          setTtsState('speaking')
+          return
+        }
+        const res = await window.api.tts.speak(
+          speakText,
+          ttsConfig.provider === 'edge'
+            ? {
+                provider: 'edge',
+                voice: ttsConfig.voice || 'zh-CN-XiaoxiaoNeural',
+                rate: 1,
+                // 代理按 TTS 配置（留空直连；代理失败主进程自动回退直连）
+                proxy: ttsConfig.proxy || undefined,
+              }
+            : {
+                provider: 'openai',
+                voice: ttsConfig.voice || 'alloy',
+                rate: 1,
+                model: ttsConfig.model,
+                apiKey: ttsConfig.apiKey,
+                baseUrl: ttsConfig.baseUrl,
+              },
+        )
+        if (res.success && res.audioBase64) {
+          const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)
+          audio.onended = () => setTtsState('idle')
+          audio.onerror = () => setTtsState('idle')
+          audioRef.current = audio
+          setTtsState('speaking')
+          await audio.play().catch(() => setTtsState('idle'))
+        } else {
+          setTtsState('idle')
+        }
         return
       }
-      if (ttsState === 'paused') {
-        await audioRef.current?.play()
-        setTtsState('speaking')
-        return
-      }
-      const res = await window.api.tts.speak(
-        message.content,
-        ttsConfig.provider === 'edge'
-          ? {
-              provider: 'edge',
-              voice: ttsConfig.voice || 'zh-CN-XiaoxiaoNeural',
-              rate: 1,
-              // 代理按 TTS 配置（留空直连；代理失败主进程自动回退直连）
-              proxy: ttsConfig.proxy || undefined,
-            }
-          : {
-              provider: 'openai',
-              voice: ttsConfig.voice || 'alloy',
-              rate: 1,
-              model: ttsConfig.model,
-              apiKey: ttsConfig.apiKey,
-              baseUrl: ttsConfig.baseUrl,
-            },
-      )
-      if (res.success && res.audioBase64) {
-        const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)
-        audio.onended = () => setTtsState('idle')
-        audio.onerror = () => setTtsState('idle')
-        audioRef.current = audio
-        setTtsState('speaking')
-        await audio.play().catch(() => setTtsState('idle'))
-      } else {
-        setTtsState('idle')
-      }
-      return
-    }
 
-    if (ttsState === 'speaking') {
-      await window.api.tts.pause()
-      setTtsState('paused')
-    } else if (ttsState === 'paused') {
-      await window.api.tts.resume()
-      setTtsState('speaking')
-    } else {
-      await window.api.tts.speak(message.content, {
-        provider: ttsConfig.provider,
-        voice: ttsConfig.voice,
-        rate: 1,
-      })
-      setTtsState('speaking')
+      if (ttsState === 'speaking') {
+        await window.api.tts.pause()
+        setTtsState('paused')
+      } else if (ttsState === 'paused') {
+        await window.api.tts.resume()
+        setTtsState('speaking')
+      } else {
+        await window.api.tts.speak(speakText, {
+          provider: ttsConfig.provider,
+          voice: ttsConfig.voice,
+          rate: 1,
+        })
+        setTtsState('speaking')
+      }
+    } catch (err) {
+      // 审查报告 P2：TTS IPC 失败时复位状态，避免按钮卡死 + 未处理拒绝
+      setTtsState('idle')
+      useChatStore.setState({ error: `朗读失败: ${err instanceof Error ? err.message : String(err)}` })
     }
   }
 
   const handleStopSpeak = async () => {
     audioRef.current?.pause()
     audioRef.current = null
-    await window.api.tts.stop()
+    try {
+      await window.api.tts.stop()
+    } catch {
+      // 审查报告 P3：停止失败不阻断状态复位
+    }
     setTtsState('idle')
   }
 
@@ -210,23 +251,28 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
 
   const handleBranch = async () => {
     if (!character) return
-    // 创建新会话作为分支
-    const branchSession = await window.api.chat.createSession(character.id, `分支: ${message.content.slice(0, 20)}...`)
-    if (!branchSession) return
-    const { messages } = useChatStore.getState()
-    const branchIdx = messages.findIndex((m) => m.id === message.id)
-    if (branchIdx < 0) return
-    const branchMsgs = messages.slice(0, branchIdx + 1)
-    for (const msg of branchMsgs) {
-      const branchMsg = { ...msg, id: `${msg.id}_b`, sessionId: branchSession.id, characterId: character.id }
-      await window.api.chat.saveMessage(branchMsg)
+    try {
+      // 创建新会话作为分支
+      const branchSession = await window.api.chat.createSession(character.id, `分支: ${message.content.slice(0, 20)}...`)
+      if (!branchSession) return
+      const { messages } = useChatStore.getState()
+      const branchIdx = messages.findIndex((m) => m.id === message.id)
+      if (branchIdx < 0) return
+      const branchMsgs = messages.slice(0, branchIdx + 1)
+      for (const msg of branchMsgs) {
+        const branchMsg = { ...msg, id: `${msg.id}_b`, sessionId: branchSession.id, characterId: character.id }
+        await window.api.chat.saveMessage(branchMsg)
+      }
+      // 刷新会话列表
+      const sessions = await window.api.chat.listSessions(character.id)
+      useChatStore.setState({ sessions, currentSessionId: branchSession.id })
+      // 切换到新分支
+      const branchMessages = await window.api.chat.listMessages(character.id, branchSession.id)
+      useChatStore.setState({ messages: branchMessages })
+    } catch (err) {
+      // 审查报告 P1：IPC 失败时提示用户，避免未处理拒绝与状态脱节
+      useChatStore.setState({ error: `创建分支失败: ${err instanceof Error ? err.message : String(err)}` })
     }
-    // 刷新会话列表
-    const sessions = await window.api.chat.listSessions(character.id)
-    useChatStore.setState({ sessions, currentSessionId: branchSession.id })
-    // 切换到新分支
-    const branchMessages = await window.api.chat.listMessages(character.id, branchSession.id)
-    useChatStore.setState({ messages: branchMessages })
   }
 
   // Markdown 内嵌图片：加载失败时通过父容器委托放大预览
@@ -420,11 +466,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                 <Reply className="w-3 h-3 text-tavern-accent shrink-0 mt-0.5" />
                 <span className="min-w-0 flex-1 text-xs">
                   <span className="text-tavern-accent font-medium">
-                    {repliedMessage.role === 'user' ? (settings.userName || '用户') : (character?.name ?? '角色')}:
+                    {repliedMessage.role === 'user' ? (settings.userName || '用户') : repliedMessage.role === 'system' ? '系统' : (character?.name ?? '角色')}:
                   </span>
                   <span className="text-tavern-text-muted ml-1 line-clamp-2">
-                    {repliedMessage.content.slice(0, 80)}
-                    {repliedMessage.content.length > 80 ? '...' : ''}
+                    {(repliedMessage.content || '').slice(0, 80)}
+                    {(repliedMessage.content || '').length > 80 ? '...' : ''}
                   </span>
                 </span>
               </button>
@@ -475,10 +521,10 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             {/* system 消息只显示图片，不渲染对话文本 */}
             {!isSystem && (
             <div className={cn('markdown-body', isStreamingThis && 'typing-cursor')} onClick={handleMarkdownClick}>
+              {/* BUG-09 修复：移除 rehypeRaw / allowDangerousHtml，防止消息内容中的原始 HTML（如 <script>、<img onerror>）执行导致 XSS */}
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkRoleplay]}
-                remarkRehypeOptions={{ allowDangerousHtml: true }}
-                rehypePlugins={[rehypeRaw, rehypeHighlight]}
+                rehypePlugins={[rehypeHighlight]}
                 components={markdownComponents}
               >
                 {displayContent || (isStreamingThis ? '' : (thought ? '💭 内容已在"内心想法"中展开' : '（空消息）'))}
@@ -527,20 +573,23 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                   className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
                   onClick={async () => {
                     const chatStore = useChatStore.getState()
-                    let preset: any = null
+                    let preset: import('../../../shared/types').Preset | null = null
                     if (chatStore.activePresetId) {
                       const presets = await window.api.preset.list()
-                      preset = presets.find((p: any) => p.id === chatStore.activePresetId) ?? null
+                      preset = presets.find((p) => p.id === chatStore.activePresetId) ?? null
                     }
-                    const activeLorebooks: any[] = []
+                    const activeLorebooks: import('../../../shared/types').Lorebook[] = []
                     if (chatStore.activeLorebookIds.length > 0) {
                       const lorebooks = await window.api.lorebook.list()
                       for (const id of chatStore.activeLorebookIds) {
-                        const lb = lorebooks.find((lb: any) => lb.id === id)
+                        const lb = lorebooks.find((lb) => lb.id === id)
                         if (lb && lb.enabled) activeLorebooks.push(lb)
                       }
                     }
-                    await regenerateMessage(message.id, character, preset, activeLorebooks)
+                    await regenerateMessage(message.id, character, preset, activeLorebooks).catch((e) => {
+                      // 与续写按钮一致：IPC/加载失败时提示而非静默
+                      useChatStore.setState({ error: `重新生成失败: ${e instanceof Error ? e.message : String(e)}` })
+                    })
                   }}
                   title="重新生成"
                   disabled={isStreaming}
@@ -635,16 +684,16 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                   setContinuing(true)
                   try {
                     const chatStore = useChatStore.getState()
-                    let preset: any = null
+                    let preset: import('../../../shared/types').Preset | null = null
                     if (chatStore.activePresetId) {
                       const presets = await window.api.preset.list()
-                      preset = presets.find((p: any) => p.id === chatStore.activePresetId) ?? null
+                      preset = presets.find((p) => p.id === chatStore.activePresetId) ?? null
                     }
-                    const activeLorebooks: any[] = []
+                    const activeLorebooks: import('../../../shared/types').Lorebook[] = []
                     if (chatStore.activeLorebookIds.length > 0) {
                       const lorebooks = await window.api.lorebook.list()
                       for (const id of chatStore.activeLorebookIds) {
-                        const lb = lorebooks.find((lb: any) => lb.id === id)
+                        const lb = lorebooks.find((lb) => lb.id === id)
                         if (lb && lb.enabled) activeLorebooks.push(lb)
                       }
                     }

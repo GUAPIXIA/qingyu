@@ -4,7 +4,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useChatStore } from '../store/useChatStore'
 import { useCharacterStore } from '../store/useCharacterStore'
 import { charAssetUrl } from '../utils/asset'
-import { isLocalProvider } from '../utils/defaults'
+import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { MessageBubble } from '../components/chat/MessageBubble'
@@ -65,7 +65,7 @@ export function ChatPage() {
   const bgDragRef = useRef({ startX: 0, startY: 0, startPosX: 0, startPosY: 0 })
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || !!activeProfile.apiKey)
+  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || isLocalUrl(activeProfile.baseUrl) || !!activeProfile.apiKey)
 
   // 长对话且未开启长记忆时，引导开启自动摘要（节省 token + 保持主题连贯）
   const currentChatSession = sessions.find(s => s.id === currentSessionId)
@@ -150,7 +150,7 @@ export function ChatPage() {
   }, [currentCharacter?.id])
 
   // 加载 persona 列表
-  useEffect(() => { loadPersonas() }, [])
+  useEffect(() => { loadPersonas() }, [loadPersonas])
 
   // 流式输出时自动滚动到底部：每次内容更新都锁定最后一行
   useEffect(() => {
@@ -177,6 +177,7 @@ export function ChatPage() {
       window.removeEventListener('shortcut:export-chat', handleExportChat)
       window.removeEventListener('shortcut:copy-last-ai', handleCopyLastAi)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, currentCharacter, currentSessionId])
 
   // 新建会话统一入口（从 ChatHeader 触发）：检查绑定世界书 → 弹窗确认 → 创建会话
@@ -258,6 +259,16 @@ export function ChatPage() {
         useChatStore.setState({ sessions, currentSessionId: session.id })
         // 持久化当前会话 ID，确保重启后能恢复
         useSettingsStore.getState().updateSettings({ activeSessionId: session.id })
+        // 同步新会话绑定的身份（后端继承默认身份）到 settings，使发送消息立即生效
+        const persona = session.personaId ? usePersonaStore.getState().getPersona(session.personaId) : undefined
+        if (persona) {
+          useSettingsStore.getState().updateSettings({
+            activePersonaId: persona.id,
+            userName: persona.name,
+            userDescription: persona.description,
+            userPersona: persona.persona,
+          })
+        }
         sid = session.id
       }
 
@@ -336,6 +347,36 @@ export function ChatPage() {
     }
   }, [isDraggingBg])
 
+  // 聊天背景：优先使用 chatBackgroundParams.useCover（角色封面）或手动设置的背景图/渐变
+  const effectiveBg = useMemo(() => {
+    const params = currentCharacter?.chatBackgroundParams
+    const coverSrc = currentCharacter?.cover || currentCharacter?.avatar
+    if (params?.useCover && coverSrc) {
+      return {
+        src: coverSrc,
+        type: 'image' as const,
+        opacity: params.opacity ?? 12,
+        blur: params.blur ?? 0,
+        posX: params.posX ?? 50,
+        posY: params.posY ?? 50,
+        scale: params.scale ?? 100,
+      }
+    }
+    if (currentCharacter?.chatBackground) {
+      return {
+        src: currentCharacter.chatBackground,
+        type: params?.type ?? 'image',
+        opacity: params?.opacity ?? 12,
+        blur: params?.blur ?? 2,
+        posX: params?.posX ?? 50,
+        posY: params?.posY ?? 50,
+        scale: params?.scale ?? 100,
+        gradient: params?.gradient,
+      }
+    }
+    return null
+  }, [currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams, currentCharacter?.avatar, currentCharacter?.cover])
+
   // 首次使用引导
   if (loaded && !isConnected) {
     return (
@@ -380,35 +421,6 @@ export function ChatPage() {
     )
   }
 
-  // 聊天背景：优先使用 chatBackgroundParams.useCover（角色封面）或手动设置的背景图/渐变
-  const effectiveBg = useMemo(() => {
-    const params = currentCharacter?.chatBackgroundParams
-    const coverSrc = currentCharacter?.cover || currentCharacter?.avatar
-    if (params?.useCover && coverSrc) {
-      return {
-        src: coverSrc,
-        type: 'image' as const,
-        opacity: params.opacity ?? 12,
-        blur: params.blur ?? 0,
-        posX: params.posX ?? 50,
-        posY: params.posY ?? 50,
-        scale: params.scale ?? 100,
-      }
-    }
-    if (currentCharacter?.chatBackground) {
-      return {
-        src: currentCharacter.chatBackground,
-        type: params?.type ?? 'image',
-        opacity: params?.opacity ?? 12,
-        blur: params?.blur ?? 2,
-        posX: params?.posX ?? 50,
-        posY: params?.posY ?? 50,
-        scale: params?.scale ?? 100,
-        gradient: params?.gradient,
-      }
-    }
-    return null
-  }, [currentCharacter?.id, currentCharacter?.updatedAt, currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams])
 
   if (!currentCharacter) {
     return (
@@ -691,7 +703,7 @@ export function ChatPage() {
       >
         {currentCharacter && (
           <div className="space-y-2">
-            {[currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage, ...(currentCharacter.alternateGreetings || [])]
+            {[currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage, ...(currentCharacter.alternateGreetings || []).map((g, i) => currentCharacter.translatedContent?.alternateGreetings?.[i] || g)]
               .filter(Boolean)
               .map((greeting, i) => (
                 <div

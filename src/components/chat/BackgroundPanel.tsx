@@ -34,7 +34,7 @@ export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
       setLocalOpacity(p.opacity ?? 12)
       setLocalBlur(p.blur ?? 2)
     }
-  }, [open, character?.id])
+  }, [open, character, character?.chatBackgroundParams])
 
   if (!open || !character) return null
 

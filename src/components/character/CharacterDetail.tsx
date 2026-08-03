@@ -2,7 +2,7 @@ import type { Character } from '../../../shared/types'
 import { getDisplayName } from '../../utils/variables'
 import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
-import { X, Edit3, MessageSquare, Calendar, Tag, BookOpen, Sparkles, MessageCircle, MessagesSquare, Settings, Link2, User, Clock } from 'lucide-react'
+import { X, Edit3, MessageSquare, Tag, BookOpen, Sparkles, MessageCircle, MessagesSquare, Settings, Link2, User, Clock } from 'lucide-react'
 import { useState } from 'react'
 
 interface CharacterDetailProps {
@@ -142,8 +142,9 @@ export function CharacterDetail({ character, onClose, onEdit, onChat }: Characte
             <Section icon={MessagesSquare} title="对话设定">
               <div className="space-y-3">
                 <InfoRow icon={MessageSquare} label="首条消息" value={(character.translatedContent?.firstMessage ?? character.firstMessage) || undefined} />
-                {character.alternateGreetings.length > 0 && (
-                  <InfoRow icon={MessagesSquare} label={`备选问候语 (${character.alternateGreetings.length})`} value={character.alternateGreetings.join('\n\n')} />
+                {/* BUG-07 修复：与条件判断一致使用可选链，旧角色卡缺字段时不再崩溃 */}
+                {character.alternateGreetings?.length > 0 && (
+                  <InfoRow icon={MessagesSquare} label={`备选问候语 (${character.alternateGreetings.length})`} value={character.alternateGreetings.map((g, i) => character.translatedContent?.alternateGreetings?.[i] || g).join('\n\n')} />
                 )}
                 <InfoRow icon={MessageCircle} label="对话示例" value={(character.translatedContent?.exampleDialog ?? character.exampleDialog) || undefined} mono />
                 {character.groupOnlyGreetings && character.groupOnlyGreetings.length > 0 && (

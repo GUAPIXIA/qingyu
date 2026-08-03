@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useCallback, useDeferredValue } from "react"
-import { Virtuoso, VirtuosoGrid } from "react-virtuoso"
 import { useNavigate } from "react-router-dom"
 import { useCharacterStore } from "../store/useCharacterStore"
 import { CharacterCard } from "../components/character/CharacterCard"
@@ -8,7 +7,7 @@ import { CharacterDetail } from "../components/character/CharacterDetail"
 import { EmptyState } from "../components/common/EmptyState"
 import { ConfirmDialog } from "../components/common/ConfirmDialog"
 import { cn } from "../lib/utils"
-import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp } from "lucide-react"
+import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp, Sparkles } from "lucide-react"
 import type { Character } from "../../shared/types"
 
 type CardSize = "sm" | "md" | "lg"
@@ -20,7 +19,7 @@ function loadCardSize(): CardSize {
 
 export function CharactersPage() {
   const navigate = useNavigate()
-  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, createCharacter, importError, pendingAvatarId, importProgress } = useCharacterStore()
+  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, createCharacter, importError, importNotice, pendingAvatarId, importProgress } = useCharacterStore()
   const [editing, setEditing] = useState(false)
   const [editCharacter, setEditCharacter] = useState<Character | null>(null)
   const [search, setSearch] = useState("")
@@ -102,6 +101,7 @@ export function CharactersPage() {
         useCharacterStore.setState({ pendingAvatarId: null })
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAvatarId, characters])
 
   const handleBatchImport = async () => {
@@ -120,6 +120,8 @@ export function CharactersPage() {
     }
   }
 
+  // 网格布局类：小/中/大卡片使用不同断点列数（VirtuosoGrid 已弃用——
+  // 其对不等高卡片会滚动错位闪烁；直接渲染全部卡片，数量不大时更稳）
   const gridClass = viewMode === "list" ? "" : {
     sm: "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2",
     md: "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3",
@@ -133,6 +135,16 @@ export function CharactersPage() {
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span className="flex-1">{importError}</span>
           <button onClick={() => useCharacterStore.setState({ importError: null })} className="p-0.5 hover:opacity-70">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {importNotice && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-600 text-sm animate-fade-in">
+          <Sparkles className="w-4 h-4 shrink-0" />
+          <span className="flex-1">{importNotice}</span>
+          <button onClick={() => useCharacterStore.setState({ importNotice: null })} className="p-0.5 hover:opacity-70">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -288,7 +300,7 @@ export function CharactersPage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden p-4">
+      <div className="flex-1 overflow-y-auto p-4">
         {characters.length === 0 ? (
           <EmptyState
             className="h-full"
@@ -316,9 +328,8 @@ export function CharactersPage() {
             description={`没有包含 "${search}" 的角色`}
           />
         ) : viewMode === "list" ? (
-          <Virtuoso
-            data={filtered}
-            itemContent={(index, char) => (
+          <div className="flex flex-col gap-3 max-w-3xl mx-auto pb-4">
+            {filtered.map((char) => (
               <CharacterCard
                 key={char.id}
                 character={char}
@@ -329,16 +340,11 @@ export function CharactersPage() {
                 onDelete={handleDeleteById}
                 onChat={handleStartChat}
               />
-            )}
-            className="h-full"
-            components={{
-              List: ({ children }) => <div className="flex flex-col gap-3 max-w-3xl mx-auto pb-4">{children}</div>,
-            }}
-          />
+            ))}
+          </div>
         ) : (
-          <VirtuosoGrid
-            data={filtered}
-            itemContent={(index, char) => (
+          <div className={cn("grid pb-4", gridClass)}>
+            {filtered.map((char) => (
               <CharacterCard
                 key={char.id}
                 character={char}
@@ -348,10 +354,8 @@ export function CharactersPage() {
                 onDelete={handleDeleteById}
                 onChat={handleStartChat}
               />
-            )}
-            listClassName={cn("grid", gridClass)}
-            className="h-full"
-          />
+            ))}
+          </div>
         )}
       </div>
 

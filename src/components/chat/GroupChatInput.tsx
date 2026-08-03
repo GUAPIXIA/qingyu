@@ -63,14 +63,13 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
     } else {
       setShowMention(false)
     }
-  }, [content, group.chatMode])
+  }, [content, group.chatMode, showMention])
 
   const filteredMembers = members.filter(m =>
     m.name.toLowerCase().includes(mentionFilter.toLowerCase())
   )
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const selectMention = (charId: string, _name: string) => {
+    const selectMention = (charId: string, _name: string) => {
     setTargetCharId(charId)
     // 移除 @name 部分
     const lastAt = content.lastIndexOf('@')

@@ -10,6 +10,9 @@ export const PROVIDER_INFO = {
   vllm: { name: 'vLLM (本地)', description: '本地推理服务（OpenAI 兼容）', placeholder: '无需密钥', keyLabel: 'API Key（可选）' },
   lmstudio: { name: 'LM Studio (本地)', description: 'LM Studio 本地推理', placeholder: '无需密钥', keyLabel: 'API Key（可选）' },
   tabby: { name: 'TabbyAPI', description: 'exllamav2 本地推理', placeholder: '无需密钥', keyLabel: 'API Key（可选）' },
+  deepseek: { name: 'DeepSeek', description: '深度求索，高性价比', placeholder: 'sk-...', keyLabel: 'API Key' },
+  groq: { name: 'Groq', description: '极速推理（Llama 系列）', placeholder: 'gsk_...', keyLabel: 'API Key' },
+  siliconflow: { name: '硅基流动', description: '国内多模型聚合', placeholder: 'sk-...', keyLabel: 'API Key' },
 } as const
 
 /** 无需 API Key 的本地提供商 */
@@ -18,6 +21,16 @@ export const LOCAL_PROVIDERS: readonly string[] = ['ollama', 'vllm', 'lmstudio',
 /** 是否本地提供商（无需 API Key 即可连接） */
 export function isLocalProvider(provider: string | null | undefined): boolean {
   return !!provider && LOCAL_PROVIDERS.includes(provider)
+}
+
+/**
+ * 是否本地地址（localhost / 127.0.0.1 / 0.0.0.0 / ::1）
+ * 本地部署的 OpenAI 兼容服务（vLLM / LM Studio / TabbyAPI 等）无需 API Key，
+ * 协议类型统一为 openai 后据此判定免 Key。
+ */
+export function isLocalUrl(baseUrl: string | null | undefined): boolean {
+  if (!baseUrl) return false
+  return /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?)(?::\d+)?(?:\/|$)/i.test(baseUrl.trim())
 }
 
 /** 主题色信息 */

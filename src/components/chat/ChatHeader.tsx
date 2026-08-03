@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ArrowDownToLine, Eye, Sliders, Images, Image, Download, Trash2, Users, UserCircle, X, Plus } from 'lucide-react'
+import { ChevronDown, ArrowDownToLine, Eye, Sliders, Images, Image, Download, Trash2, Users, UserCircle, X, Plus, Star } from 'lucide-react'
 import { useChatStore } from '../../store/useChatStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { charAssetUrl } from '../../utils/asset'
@@ -57,7 +57,6 @@ export function ChatHeader({
   const [memoryStats, setMemoryStats] = useState<{ totalMessages: number; totalChars: number; durationStr: string } | null>(null)
   const [memoryInterval, setMemoryInterval] = useState(10)
   const [showImgHistory, setShowImgHistory] = useState(false)
-  const [imgNotify, setImgNotify] = useState<string | null>(null)
 
   // 切换当前会话的身份
   const handleSwitchPersona = async (personaId: string | null) => {
@@ -137,7 +136,7 @@ export function ChatHeader({
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-tavern-text truncate">{getDisplayName(char)}</div>
-                  {char.tags[0] && (
+                  {char.tags?.[0] && (
                     <div className="text-xs text-tavern-text-muted truncate">{char.tags[0]}</div>
                   )}
                 </div>
@@ -219,6 +218,11 @@ export function ChatHeader({
                       <UserCircle className="w-4 h-4 text-tavern-text-muted" />
                     )}
                     <span className="truncate">{p.name}</span>
+                    {settings.defaultPersonaId === p.id && (
+                      <span title="默认身份" className="shrink-0">
+                        <Star className="w-3 h-3 text-tavern-warning" />
+                      </span>
+                    )}
                     {currentPersonaId === p.id && <span className="ml-auto text-tavern-accent text-xs">✓</span>}
                   </button>
                 ))}
@@ -348,9 +352,10 @@ export function ChatHeader({
                           <button
                             key={i}
                             onClick={() => {
-                              navigator.clipboard.writeText(img)
-                              setImgNotify('图片已复制')
-                              setTimeout(() => setImgNotify(null), 2000)
+                              // NEW-L9 修复：复制失败时提示，避免静默失败
+                              navigator.clipboard.writeText(img).catch(() => {
+                                useChatStore.setState({ error: '复制图片失败：无法访问剪贴板' })
+                              })
                               setShowImgHistory(false)
                             }}
                             className="aspect-square rounded-lg overflow-hidden bg-tavern-bg-hover hover:ring-2 hover:ring-tavern-accent transition-all"

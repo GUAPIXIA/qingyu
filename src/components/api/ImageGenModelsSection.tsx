@@ -354,7 +354,7 @@ export function ImageGenModelsSection() {
           {testing ? '测试中...' : '测试连接'}
         </button>
         <button
-          onClick={() => { editingId ? setEditingId(null) : setShowAdd(false); resetForm() }}
+          onClick={() => { if (editingId) setEditingId(null); else setShowAdd(false); resetForm() }}
           className="px-3 py-1.5 text-xs text-tavern-text-muted hover:text-tavern-text"
         >
           取消

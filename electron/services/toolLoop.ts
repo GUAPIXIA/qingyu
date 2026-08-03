@@ -45,9 +45,20 @@ export async function chatWithTools(
 
   // 复制 messages 以便追加 tool 消息
   const messages: any[] = [...params.messages]
+  // BUG-02 修复：fullText 只在最后一轮累积——每轮开始时重置，
+  // 避免中间轮次的 assistant 文本（如“让我查一下...”）被拼进最终结果
   let fullText = ''
 
+  // BUG-12 修复：无外部 signal 时创建可追踪的 AbortController，
+  // 保留引用以便中止时取消循环
+  const fallbackController = new AbortController()
+  const effectiveSignal = signal ?? fallbackController.signal
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    if (effectiveSignal.aborted) throw new Error('Aborted')
+    // 每轮开始时重置，仅保留当前轮文本
+    fullText = ''
+
     const roundParams: ChatParams = {
       ...params,
       tools: openaiTools,
@@ -67,9 +78,12 @@ export async function chatWithTools(
     const result = await adapter.chat(
       roundParams,
       toolCallsAdapter,
-      signal ?? new AbortController().signal,
+      effectiveSignal,
       onUsage,
     )
+
+    // 中止检查：取消后不再继续下一轮
+    if (effectiveSignal.aborted) throw new Error('Aborted')
 
     // 检查 result 是否含 tool_calls 标记
     const toolCallMatch = result.match(/\[TOOL_CALL:(.*)\]\s*$/)
@@ -88,9 +102,10 @@ export async function chatWithTools(
     }
 
     // 将 assistant 的 tool_calls 加入 messages
+    // BUG-28 修复：content 用空字符串而非 null，兼容部分对 null 严格校验的 provider
     messages.push({
       role: 'assistant',
-      content: result.replace(/\[TOOL_CALL:.*\]\s*$/, '').trim() || null,
+      content: result.replace(/\[TOOL_CALL:.*\]\s*$/, '').trim() || '',
       tool_calls: toolCalls.map(tc => ({
         id: tc.id,
         type: 'function',
@@ -102,7 +117,9 @@ export async function chatWithTools(
     })
 
     // 执行每个工具调用
+    // BUG-03 修复：每轮工具调用前检查中止状态，取消后不再执行剩余工具
     for (const tc of toolCalls) {
+      if (effectiveSignal.aborted) throw new Error('Aborted')
       const name = tc.function?.name ?? tc.name ?? ''
       const argsStr = tc.function?.arguments ?? JSON.stringify(tc.args ?? {})
       let args: any = {}

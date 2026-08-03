@@ -159,7 +159,7 @@ async function ensureProcess(): Promise<void> {
 }
 
 /** 发送命令到 PowerShell 进程（H-06 修复：通过队列串行化，避免竞态） */
-function sendCommand(cmd: object): Promise<any> {
+function sendCommand(cmd: object): Promise<unknown> {
   const task = commandQueue.then(async () => {
     await ensureProcess()
     if (!psProcess || !psProcess.stdin || !psProcess.stdout) {
@@ -167,7 +167,7 @@ function sendCommand(cmd: object): Promise<any> {
     }
 
     const cmdStr = JSON.stringify(cmd)
-    return new Promise<any>((resolve) => {
+    return new Promise<unknown>((resolve) => {
       const onData = (data: Buffer) => {
         const text = data.toString().trim()
         if (!text) return
@@ -213,6 +213,13 @@ async function getVoices(): Promise<{ id: string; name: string; lang: string }[]
     ], { stdio: ['pipe', 'pipe', 'pipe'] })
 
     let output = ''
+    let settled = false
+    const finish = (voices: { id: string; name: string; lang: string }[]) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(voices)
+    }
     proc.stdout?.on('data', (data) => { output += data.toString() })
     proc.on('exit', () => {
       const voices = output.trim().split('\n')
@@ -221,9 +228,14 @@ async function getVoices(): Promise<{ id: string; name: string; lang: string }[]
           const [id, name, lang] = line.trim().split('|')
           return { id: id || name, name: name || id, lang: lang || 'zh-CN' }
         })
-      resolve(voices)
+      finish(voices)
     })
-    proc.on('error', () => resolve([]))
+    proc.on('error', () => finish([]))
+    // BUG-21 修复：超时保护——PowerShell 挂起时 kill 进程并返回空列表，避免 IPC 请求永久 pending
+    const timer = setTimeout(() => {
+      try { proc.kill() } catch { /* ignore */ }
+      finish([])
+    }, 10000)
   })
 }
 
@@ -334,6 +346,8 @@ export async function edgeSpeak(
       })
       await tts.ttsPromise(text.slice(0, 3000), tmpFile)
       const buf = readFileSync(tmpFile)
+      // 成功路径同样清理临时文件（防止残留堆积在系统 temp 目录）
+      try { rmSync(tmpFile, { force: true }) } catch { /* ignore */ }
       if (buf.length === 0) throw new Error('Edge TTS 未生成音频数据（请检查网络或代理）')
       return buf.toString('base64')
     } catch (e) {

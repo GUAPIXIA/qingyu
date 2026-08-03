@@ -72,7 +72,7 @@ export function StatusBar({ character, messages }: StatusBarProps) {
   // 角色绑定的世界书 ID
   const boundLorebookIds = useMemo(() => {
     return getEffectiveLorebookIds(currentCharacter)
-  }, [currentCharacter?.boundLorebookIds, currentCharacter?.lorebookId])
+  }, [currentCharacter])
 
   // 解析激活的世界书名称
   const activeLorebookNames = useMemo(() => {

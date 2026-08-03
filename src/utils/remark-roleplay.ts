@@ -17,6 +17,8 @@ interface MdastNode {
   value?: string
   children?: MdastNode[]
   data?: {
+    /** 覆盖渲染的 HTML 元素名（mdast-util-to-hast 支持） */
+    hName?: string
     hProperties?: Record<string, unknown>
   }
   [key: string]: unknown
@@ -28,6 +30,60 @@ function em(className: string, text: string): MdastNode {
     type: 'emphasis',
     data: { hProperties: { className: [className] } },
     children: [{ type: 'text', value: text }],
+  }
+}
+
+/** 转义正则特殊字符 */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * @提及高亮 remark 插件（BUG-09 修复配套）
+ *
+ * 在 AST 层把 text 节点中的 @角色名 拆分为带 className 的 span（通过 data.hName/hProperties，
+ * 不产生原始 HTML），因此不需要 rehypeRaw，消息中的恶意 HTML 依然不会被渲染。
+ *
+ * @param mentionedNames 需要高亮的角色名列表
+ */
+export function remarkMentionHighlight(mentionedNames: string[]) {
+  const names = [...new Set(mentionedNames.filter((n): n is string => !!n))]
+  return (tree: MdastNode) => {
+    if (names.length === 0 || !tree.children) return
+    const pattern = new RegExp(`@(${names.map(escapeRegExp).join('|')})`, 'g')
+
+    const highlight = (node: MdastNode): MdastNode[] => {
+      // 文本节点：拆分出 @名字 片段
+      if (node.type === 'text' && node.value) {
+        const parts: MdastNode[] = []
+        let last = 0
+        let m: RegExpExecArray | null
+        pattern.lastIndex = 0
+        while ((m = pattern.exec(node.value)) !== null) {
+          if (m.index > last) {
+            parts.push({ type: 'text', value: node.value.slice(last, m.index) })
+          }
+          parts.push({
+            type: 'text',
+            value: m[0],
+            data: { hName: 'span', hProperties: { className: ['mention-highlight'] } },
+          })
+          last = m.index + m[0].length
+        }
+        if (last === 0) return [node]
+        if (last < node.value.length) {
+          parts.push({ type: 'text', value: node.value.slice(last) })
+        }
+        return parts
+      }
+      // 递归处理嵌套节点（emphasis/strong 等内部的文本）
+      if (node.children) {
+        return [{ ...node, children: node.children.flatMap(highlight) }]
+      }
+      return [node]
+    }
+
+    tree.children = tree.children.flatMap(highlight)
   }
 }
 

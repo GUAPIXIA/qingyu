@@ -5,6 +5,7 @@ import { safeSend } from '../utils/safeSend'
 import {
   importCharacterFromPng,
   importCharacterFromJson,
+  importCardFrontendExtensions,
   exportCharacterToPng,
   exportCharacterToJson,
   saveCharacter,
@@ -48,14 +49,20 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
   ipcMain.handle('character:save', async (_e, character: Character) => {
     safeId(character.id)
     character.updatedAt = Date.now()
-    saveCharacter(character)
+    // NEW-M4：持锁保存
+    await withCharacterLock(character.id, () => {
+      saveCharacter(character)
+    })
     log.info('角色已保存', { id: character.id, name: character.name })
   })
 
   // 删除
   ipcMain.handle('character:delete', async (_e, id: string) => {
     safeId(id)
-    deleteCharacter(id)
+    // NEW-M4：持锁删除
+    await withCharacterLock(id, () => {
+      deleteCharacter(id)
+    })
     log.info('角色已删除', { id })
   })
 
@@ -79,14 +86,18 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
       const proxyUrl = getCoverProxyUrl()
       const character = await importCharacterFromPng(filePath, proxyUrl)
-      saveCharacter(character)
+      await withCharacterLock(character.id, () => {
+        saveCharacter(character)
+      })
+      // 角色卡前端扩展落地（正则脚本 / 快捷回复）
+      const cardExtras = importCardFrontendExtensions(character)
 
       safeSend(event.sender,'character:importProgress', {
         current: 1, total: 1, fileName: character.name, status: 'done' as const,
       })
 
       log.info('角色已导入 (PNG)', { id: character.id, name: character.name })
-      return { success: true, character }
+      return { success: true, character, cardExtras }
     } catch (e) {
       log.error('导入角色 PNG 失败', { error: (e as Error).message })
       return { success: false, error: (e as Error).message }
@@ -113,7 +124,11 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
       const proxyUrl = getCoverProxyUrl()
       const character = await importCharacterFromJson(filePath, proxyUrl)
-      saveCharacter(character)
+      await withCharacterLock(character.id, () => {
+        saveCharacter(character)
+      })
+      // 角色卡前端扩展落地（正则脚本 / 快捷回复）
+      const cardExtras = importCardFrontendExtensions(character)
       const needAvatar = !character.avatar
 
       safeSend(event.sender,'character:importProgress', {
@@ -121,7 +136,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       })
 
       log.info('角色已导入 (JSON)', { id: character.id, name: character.name })
-      return { success: true, character, needAvatar }
+      return { success: true, character, needAvatar, cardExtras }
     } catch (e) {
       log.error('导入角色 JSON 失败', { error: (e as Error).message })
       return { success: false, error: (e as Error).message }
@@ -255,7 +270,11 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
       const saveResults = await runWithPool(toImport, CONCURRENCY_LIMIT, async ({ character, fileName }) => {
         try {
-          saveCharacter(character)
+          await withCharacterLock(character.id, () => {
+            saveCharacter(character)
+          })
+          // 角色卡前端扩展落地（正则脚本 / 快捷回复）
+          importCardFrontendExtensions(character)
           const needAvatar = !character.avatar
           return { name: character.name, success: true, needAvatar }
         } catch (e) {

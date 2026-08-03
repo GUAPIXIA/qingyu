@@ -9,7 +9,7 @@ import { cn } from '../lib/utils'
 import { estimateTokens } from '../utils/tokenCounter'
 import { parsePresetGeneration } from '../utils/presetGen'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { isLocalProvider } from '../utils/defaults'
+import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import type { Preset } from '../../shared/types'
 
 /** 模板名 → 展示标签 */
@@ -65,7 +65,6 @@ export function PresetsPage() {
   const [testInput, setTestInput] = useState('*轻轻推开门* 你终于来了，我等了好久。')
   const [testOutput, setTestOutput] = useState('')
   const [testBusy, setTestBusy] = useState(false)
-  const [testDone, setTestDone] = useState(false)
   const testRequestRef = useRef<string | null>(null)
 
   const loadPresets = () => {
@@ -184,7 +183,7 @@ export function PresetsPage() {
   const handleAiGenerate = async () => {
     if (!editingPreset || !aiGenDesc.trim() || aiGenBusy) return
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
       setAiGenError('请先在 API 设置中配置连接')
       return
     }
@@ -239,12 +238,11 @@ TopP: <0-1>
   const handleTestGenerate = async () => {
     if (!editingPreset || !testInput.trim() || testBusy) return
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
       setTestOutput('⚠ 请先在 API 设置中配置连接')
       return
     }
     setTestBusy(true)
-    setTestDone(false)
     setTestOutput('')
     const requestId = `preset-test-${Date.now()}`
     testRequestRef.current = requestId
@@ -258,13 +256,11 @@ TopP: <0-1>
       onResult: (result) => {
         if (testRequestRef.current !== requestId) return
         setTestBusy(false)
-        setTestDone(true)
         setTestOutput(result.trim())
       },
       onError: (msg) => {
         if (testRequestRef.current !== requestId) return
         setTestBusy(false)
-        setTestDone(true)
         setTestOutput(`⚠ ${msg}`)
       },
       extra: {

@@ -1,0 +1,168 @@
+{
+  "summary": {
+    "projectName": "轻语 QingYu（酒馆）",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 25,
+    "overview": "项目拥有完整的本地校验命令面（lint/check/test/coverage），但核心 Electron/IPC 与 shared 契约层处于测试路由之外，且无任何 CI 或钩子强制门禁，当前 critical 级未提交变更（43 文件/2776 行）无法被机械验证；同时跨平台 agent 权限配置中存在已入库的明文生产凭据。会话证据源在本窗口不可用（0/5 源根存在），行为面与 Learning Capture 结论受证据边界限制。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Skills"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Skills",
+          "scopes": [
+            "Project"
+          ],
+          "count": 2,
+          "paths": [
+            ".mimocode/skills/vue3-vite-frontend/SKILL.md",
+            ".mimocode/skills/java-spring-vue-shop/SKILL.md"
+          ]
+        },
+        {
+          "surface": "Custom Agents",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        }
+      ]
+    },
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 46,
+        "summary": "存在 README 与大量中文规划文档，但无 AGENTS.md 或项目级 Rules 作为权威入口；知识分散于四个平台表面，文档已出现实际漂移（旧审查报告整删、新报告未跟踪重写）。无会话 Episode 可证实任务边界行为。",
+        "findingRefs": [
+          "no-canonical-agent-entry",
+          "mismatched-cross-platform-skills"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 40,
+        "summary": "package.json 提供完整的 dev/build/lint/check/test 命令面（Present）。但跨平台权限白名单将生产凭据与远程 root 操作、git 提交预授权一并入库，权限边界存在已确认的暴露缺陷；无观察到的执行行为证据。",
+        "findingRefs": [
+          "claude-settings-credential-exposure"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 38,
+        "summary": "存在 7 个测试文件与 test/coverage 脚本（Present），但 vitest 路由硬编码为 src 前缀，electron/ 与 shared/ 共 33 个文件（含全部 IPC handler 与契约）结构性不可达；当前 critical 变更恰集中于该层，所需的相关校验缺失，维度受 59 上限约束。测试执行结果未验证。",
+        "findingRefs": [
+          "electron-core-outside-test-route",
+          "coverage-threshold-unreachable"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 36,
+        "summary": "仓库内无 CI 工作流、无提交钩子、无合并保护痕迹，验收边界不可观察；无回滚/恢复路径的项目内声明。外部 CI 平台状态未验证，按 Unobserved 处理，交付验收这一必需检查未获支撑。",
+        "findingRefs": [
+          "no-enforced-quality-gate"
+        ]
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 35,
+        "summary": "评审窗口内 0/5 启用的会话源根存在，0 个可比 Episode，重复工作与清洁窗口判定被证据边界阻断；Memory 清单计数(2)与完整性审查覆盖(0)相互矛盾，Memory 健康不可断言。35 分仅表示完成了有边界的评审，不代表任何已验证的沉淀机制。",
+        "findingRefs": []
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "claude-settings-credential-exposure",
+      "title": "跨平台权限配置将生产凭据与高危操作预授权一并提交入库",
+      "severity": "High",
+      "reason": "事实：.claude/settings.json 的权限白名单条目中包含明文管理员登录口令、有效期内的 Bearer token、以及通过 sshpass 携带明文密码的生产服务器 root SSH 命令，并同时预授权 git stash/add/commit 等写操作；该文件被 git 跟踪且出现在当前变更集中。推断：任何获得仓库副本的人可直接取得生产管理端与 root 通道。不确定性：这些凭据当前是否仍然有效未验证；该平台会话是否仍在使用无运行时证据。owner：.claude/settings.json（跨平台 Claude 配置，非 Qoder 资产）。",
+      "expectedOutput": [
+        "仓库中不再保留任何明文生产凭据，高危远程操作不再处于默认预授权状态，轮换责任有明确交接。"
+      ],
+      "expectedArtifact": "净化后的权限配置",
+      "aiFixPrompt": "/better-harness fix this issue\n\n清理 .claude/settings.json 权限白名单中所有包含凭据（口令、token、sshpass 密码）的条目，将其收敛为不含敏感值的最小命令模式；凭据轮换（服务器管理员口令、root SSH 口令、签发的 token 失效）属于外部生产操作，需要单独授权后由运维 owner 执行，本次修复仅负责仓库侧清理并在提交说明中记录轮换待办。\n\n## Validation\n\n- 重新读取 .claude/settings.json，确认文件内不再出现任何口令、token 或 sshpass 明文\n- 确认凭据轮换待办已交接给具备生产权限的 owner 并留有记录",
+      "dimensionRefs": [
+        "controlled-execution"
+      ]
+    },
+    {
+      "id": "electron-core-outside-test-route",
+      "title": "Electron/shared 核心链路不在任何测试路由内，当前 critical 变更不可验证",
+      "severity": "High",
+      "reason": "事实：vitest.config.ts 的 include 硬编码为 src/**，electron/（30 文件，含全部 IPC handler 与主进程服务）与 shared/（IPC 契约、类型、默认值，3 文件）没有任何测试可以到达；当前未提交变更 43 文件/2776 行（diffSeverity=critical）的核心受影响文件恰好集中于该层（electron/main.ts、preload.ts、shared/ipc-api.ts 等 8 个核心推荐阅读文件全部在此）。推断：该层的任何回归只能靠手工启动应用发现。不确定性：测试实际执行结果未运行验证，为静态证据。owner：vitest.config.ts 的测试路由配置。",
+      "expectedOutput": [
+        "核心 IPC/契约层的变更从此至少有一条自动化检查可以给出行为证据，不再完全依赖手工启动应用。"
+      ],
+      "expectedArtifact": "扩展后的测试路由与首条主进程契约测试",
+      "aiFixPrompt": "/better-harness fix this issue\n\n扩展 vitest 测试路由覆盖 electron/ 与 shared/：为主进程侧增加一个 node 环境的测试配置（或 vitest projects 分组），并为至少一个已变更的 IPC handler（如 electron/services/usage.ts 或 charCard.ts）补一条最小契约测试。\n\n## Validation\n\n- 运行 pnpm test，确认新增的 electron/shared 侧测试被收集并通过\n- 确认 vitest 路由变更后原有 7 个 src 侧测试仍全部通过",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "no-enforced-quality-gate",
+      "title": "无 CI、无提交钩子：全部质量检查仅靠人工自觉，critical 变更可不经检查发布",
+      "severity": "Medium",
+      "reason": "事实：仓库内不存在 .github/workflows、GitLab CI、Jenkinsfile、husky、lefthook 等任何机械触发器；package.json 的 lint/check/test 十个脚本没有任何触发绑定；当前 critical 级未提交变更没有任何门禁接收方。推断：变更可以在零机械检查的情况下被提交与发布。不确定性：是否存在仓库外的外部 CI 平台未验证（静态证据边界内为 Unobserved）。owner：仓库根（新增 workflow 或钩子配置）。",
+      "expectedOutput": [
+        "既有的 check/lint/test 命令面获得一个机械执行点，critical 变更至少经过一轮自动检查才能合入。"
+      ],
+      "expectedArtifact": "最小 CI 工作流",
+      "aiFixPrompt": "/better-harness fix this issue\n\n为仓库添加一条最小 CI 工作流：安装依赖（pnpm）、运行 check（tsc -b --noEmit）、lint（eslint .）与 test（vitest run）三个既有脚本；不引入新的检查工具，仅绑定已声明的命令面。\n\n## Validation\n\n- 工作流文件通过语法校验并在一次推送上产生绿灯运行记录（若 CI 平台不可用，则以本地依序执行三个命令的退出码为替代验收）\n- 确认工作流未修改任何既有脚本语义",
+      "dimensionRefs": [
+        "reliable-delivery"
+      ]
+    },
+    {
+      "id": "no-canonical-agent-entry",
+      "title": "项目约定无权威入口：知识分散于四个平台表面且文档已实际漂移",
+      "severity": "Medium",
+      "reason": "事实：全仓库无 AGENTS.md/CLAUDE.md，Qoder 项目级 Rules/Skills/Commands 全部为零；构建与验证约定散落在 .trae/documents（30+ 份一次性规划文档）、.workbuddy/memory、.mimocode 与 .claude 四个非 Qoder 表面；当前 diff 中旧架构审查报告被整体删除（578 行）、新报告以未跟踪文件重写（478 行），changeDrift 另检出 3 项伴随漂移（UI 变更无测试伴随、配置与命令变更无文档伴随）。推断：agent 每次会话需重新发现验证命令与核心边界，依据过期文档行动的风险持续累积。不确定性：其他平台资产是否仍在使用无运行时证据。owner：项目根级 AGENTS.md（或 Qoder 项目 Rules）。",
+      "expectedOutput": [
+        "任何 agent 进入本工作区即可路由到唯一的命令面与核心边界描述，历史规划文档不再被误当作当前事实。"
+      ],
+      "expectedArtifact": "根级 AGENTS.md 权威入口",
+      "aiFixPrompt": "/better-harness fix this issue\n\n在项目根创建一份最小 AGENTS.md 作为唯一权威入口：记录命令面（dev/electron:dev/build/lint/check/test）、pnpm workspace 与 Electron 双进程结构、核心边界（electron/ipc、electron/services、shared 为契约层）、以及 .trae/documents 下规划文档为历史归档（不作为当前事实来源）的时效标注。不迁移或删除任何既有文档。\n\n## Validation\n\n- 重跑 core-change-watch evidence-pack，确认 agentInstructions 状态从 missing 转为 present\n- 确认 AGENTS.md 中的每条命令与 package.json 实际脚本一致",
+      "dimensionRefs": [
+        "task-understanding"
+      ]
+    },
+    {
+      "id": "coverage-threshold-unreachable",
+      "title": "覆盖率门禁声明 80/80/75/80，与 7:126 的测试规模脱节而被闲置",
+      "severity": "Low",
+      "reason": "事实：vitest.config.ts 声明 lines 80/functions 80/branches 75/statements 80 的阈值，coverage include 覆盖全部 src 与 shared，而实际仅 7 个测试文件且集中在 utils/store。推断：test:coverage 一旦执行几乎必然因阈值失败，导致该命令被回避而非修复，覆盖率信号失真——「必然失败」为静态推断，未实际运行验证。owner：vitest.config.ts 的 coverage 阈值段。",
+      "expectedOutput": [
+        "覆盖率命令从「必然失败而被闲置」变为「以当前基线防倒退」，覆盖率信号重新可信。"
+      ],
+      "expectedArtifact": "可执行的覆盖率基线门禁",
+      "aiFixPrompt": "/better-harness fix this issue\n\n先运行一次 pnpm test:coverage 取得真实覆盖率基线，然后把 vitest.config.ts 中的阈值调整为「当前实测值向下取整、不倒退」的策略，并在配置旁注释记录基线日期，使该命令回到可执行、可通过、防倒退的状态。\n\n## Validation\n\n- pnpm test:coverage 以退出码 0 完成\n- 阈值注释中记录了实测基线与日期",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "mismatched-cross-platform-skills",
+      "title": "跨平台 Skill 资产面向 Vue3 与 Java 商城栈，与本项目 Electron+React 形态不匹配",
+      "severity": "Low",
+      "reason": "事实：.mimocode/skills 下两个 SKILL.md 的 frontmatter 与适用场景声明分别面向 Vue 3 + Vite 与 Java Spring 微服务商城，而本项目为 Electron + React + Zustand 桌面应用；分析器确认两者均未被路由（routed no）。推断：若该平台 agent 在此工作区被触发，会被错误的技术栈流程误导。不确定性：该平台是否仍在本工作区使用无运行时证据（仅 mimocode 平台资产，不代表 Qoder 缺陷）。owner：.mimocode/skills 下两个 SKILL.md。",
+      "expectedOutput": [
+        "工作区内不再有会把 agent 引向 Vue/Java 工作流的活跃技能声明。"
+      ],
+      "expectedArtifact": "归档后的跨平台 Skill 目录",
+      "aiFixPrompt": "/better-harness fix this issue\n\n将 .mimocode/skills 下与本项目技术栈不匹配的两个 Skill（vue3-vite-frontend、java-spring-vue-shop）移入归档子目录或直接移除；若确认 mimocode 平台仍在使用，再另行编写匹配 Electron + React 栈的替代 Skill（创建新 Skill 属独立决策，不在本次修复范围）。\n\n## Validation\n\n- .mimocode/skills 下不再存在与项目栈冲突的活跃 SKILL.md\n- 归档或移除操作在提交说明中留有记录",
+      "dimensionRefs": [
+        "task-understanding"
+      ]
+    }
+  ]
+}

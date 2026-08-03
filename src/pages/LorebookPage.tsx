@@ -91,7 +91,7 @@ export function LorebookPage() {
   const [translatingField, setTranslatingField] = useState<{ key: string; text: string } | null>(null)
   const [translateResult, setTranslateResult] = useState<string | null>(null)
   /** 语义触发：向量索引状态（lorebookId -> 已索引条目数等） */
-  const [indexStatus, setIndexStatus] = useState<Record<string, { indexed: number; model: string; updatedAt: number }>>({})
+  const [indexStatus, setIndexStatus] = useState<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>({})
   const [indexingId, setIndexingId] = useState<string | null>(null)
   const [indexError, setIndexError] = useState<string | null>(null)
 
@@ -101,12 +101,13 @@ export function LorebookPage() {
   const activeRequestIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
+    const ref = activeRequestIdsRef
     return () => {
-      const ids = Array.from(activeRequestIdsRef.current)
+      const ids = Array.from(ref.current)
       for (const id of ids) {
         window.api.ai.cancelChat(id).catch((e) => logError('LorebookPage:cancelChat', e))
       }
-      activeRequestIdsRef.current.clear()
+      ref.current.clear()
     }
   }, [])
 
@@ -491,6 +492,12 @@ export function LorebookPage() {
                         <CircleCheck className="w-3.5 h-3.5 text-tavern-accent" />
                         已索引 {indexStatus[selected.id].indexed} 个条目
                         <span className="text-tavern-text-muted/60">（{indexStatus[selected.id].model}）</span>
+                        {indexStatus[selected.id].stale > 0 && (
+                          <span className="text-xs text-tavern-warning flex items-center gap-0.5">
+                            <CircleAlert className="w-3 h-3" />
+                            {indexStatus[selected.id].stale} 条已过期（内容修改后需重新索引）
+                          </span>
+                        )}
                       </span>
                     ) : (
                       <span className="text-xs text-tavern-text-muted flex items-center gap-1">

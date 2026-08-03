@@ -3,6 +3,7 @@ import { createLogger } from '../services/logger'
 import { generateImage, testImageGenConnection, type ImageGenOptions } from '../services/imageGen'
 import { readJson, DIRS } from '../services/storage'
 import { join } from 'node:path'
+import { sanitizeApiKey } from '../utils/pathGuard'
 import type { Settings, ConnectionProfile } from '../../shared/types'
 
 const log = createLogger('imageGenIPC')
@@ -64,7 +65,7 @@ async function translatePromptToEnglish(prompt: string, settings: Settings): Pro
     throw new Error(`翻译 API 返回 ${response.status}`)
   }
 
-  const data: any = await response.json()
+  const data: { choices?: { message?: { content?: string } }[] } = await response.json()
   const translated = data?.choices?.[0]?.message?.content?.trim()
   if (!translated) {
     throw new Error('翻译 API 返回空结果')
@@ -103,8 +104,8 @@ export function registerImageGenIPC(ipcMain: IpcMain): void {
             translated: translated.substring(0, 60),
           })
           finalPrompt = translated
-        } catch (err: any) {
-          log.warn('提示词翻译失败，使用原始提示词', { error: err?.message ?? String(err) })
+        } catch (err) {
+          log.warn('提示词翻译失败，使用原始提示词', { error: sanitizeApiKey(err instanceof Error ? err.message : String(err)) })
           // 降级：继续使用原始 prompt
         }
       }
@@ -112,8 +113,8 @@ export function registerImageGenIPC(ipcMain: IpcMain): void {
       log.info('生图调用', { provider: config.provider, prompt: finalPrompt.substring(0, 60), size })
 
       return await generateImage(config, finalPrompt, { ...options, size })
-    } catch (err: any) {
-      log.error('生图 IPC 异常', { error: err?.message ?? String(err) })
+    } catch (err) {
+      log.error('生图 IPC 异常', { error: err instanceof Error ? err.message : String(err) })
       return { success: false, error: err?.message ?? String(err) }
     }
   })

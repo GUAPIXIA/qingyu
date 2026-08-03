@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
-import type { Character, ProviderType, Preset, Lorebook } from '../../../shared/types'
+import type { Character, ProviderType } from '../../../shared/types'
 import { Modal } from '../common/Modal'
-import { ImagePlus, X, Languages, Loader2, RefreshCw } from 'lucide-react'
+import { IdentitySection } from './editor/IdentitySection'
+import { AdvancedSection } from './editor/AdvancedSection'
+import { Languages, Loader2 } from 'lucide-react'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { charAssetUrl } from '../../utils/asset'
-import { isLocalProvider } from '../../utils/defaults'
+import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
 import { logError } from '../../lib/logger'
 
 // B-05：记住 textarea 手动调整后的大小（使用原生 DOM 事件，React 合成事件无法捕获浏览器 resize handle）
@@ -48,51 +49,6 @@ function useTaResize(id: string, defaultMinH: number) {
 }
 
 /** B-05：预设绑定选择器 */
-function PresetBinding({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
-  const [presets, setPresets] = useState<Preset[]>([])
-  useEffect(() => { window.api.preset.list().then(setPresets).catch((e) => logError('CharacterEditor:loadPresets', e)) }, [])
-  return (
-    <div>
-      <label className="label">绑定预设</label>
-      <select className="input text-sm" value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">不绑定</option>
-        {presets.map((p) => (
-          <option key={p.id} value={p.id}>{p.name}</option>
-        ))}
-      </select>
-      <p className="text-xs text-tavern-text-muted mt-1">切换到此角色时自动激活该预设</p>
-    </div>
-  )
-}
-
-/** B-05：世界书绑定选择器 */
-function LorebookBinding({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
-  const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
-  useEffect(() => { window.api.lorebook.list().then(setLorebooks).catch((e) => logError('CharacterEditor:loadLorebooks', e)) }, [])
-  const toggle = (id: string) => {
-    if (value.includes(id)) onChange(value.filter(v => v !== id))
-    else onChange([...value, id])
-  }
-  return (
-    <div>
-      <label className="label">绑定世界书</label>
-      <div className="max-h-32 overflow-y-auto border border-tavern-border rounded-lg p-2 space-y-1">
-        {lorebooks.length === 0 ? (
-          <p className="text-xs text-tavern-text-muted py-1">暂无世界书</p>
-        ) : (
-          lorebooks.map((lb) => (
-            <label key={lb.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-tavern-bg-hover rounded px-1 py-0.5">
-              <input type="checkbox" checked={value.includes(lb.id)} onChange={() => toggle(lb.id)} className="accent-tavern-accent" />
-              <span className="truncate">{lb.name}</span>
-            </label>
-          ))
-        )}
-      </div>
-      <p className="text-xs text-tavern-text-muted mt-1">切换到此角色时自动激活选中的世界书</p>
-    </div>
-  )
-}
-
 interface CharacterEditorProps {
   character: Character
   onSave: (character: Character) => void
@@ -111,8 +67,9 @@ const TRANSLATABLE_FIELDS: { key: TranslatableField; label: string }[] = [
 
 export function CharacterEditor({ character, onSave, onClose }: CharacterEditorProps) {
   const [form, setForm] = useState<Character>(character)
+  // NEW-L10：记录当前编辑的角色 ID，仅在切换角色时重置表单
+  const lastCharIdRef = useRef(character.id)
   const [tagInput, setTagInput] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const [translating, setTranslating] = useState(false)
   const [translatingField, setTranslatingField] = useState<string | null>(null)
   const [translatedFields, setTranslatedFields] = useState<Set<string>>(new Set())
@@ -134,17 +91,23 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   const taExdialog = useTaResize('exdialog', 100)
 
   useEffect(() => {
-    setForm(character)
+    // NEW-L10 修复：仅当编辑对象切换（不同角色）时重置表单，
+    // 避免外部 character 对象更新（如自动保存刷新）覆盖用户未保存的编辑
+    if (character.id !== lastCharIdRef.current) {
+      lastCharIdRef.current = character.id
+      setForm(character)
+    }
   }, [character])
 
   // H-09 修复：组件卸载时取消所有活跃的翻译请求
   useEffect(() => {
+    const ref = activeRequestIdsRef
     return () => {
-      const ids = Array.from(activeRequestIdsRef.current)
+      const ids = Array.from(ref.current)
       for (const id of ids) {
         window.api.ai.cancelChat(id).catch((e) => logError('CharacterEditor:cancelChat', e))
       }
-      activeRequestIdsRef.current.clear()
+      ref.current.clear()
     }
   }, [])
 
@@ -211,8 +174,13 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   }
 
   const handleSave = () => {
+    // BUG-33 修复：不直接修改 form 状态对象（违反不可变更新原则），
+    // 通过 setForm 生成新对象，保存时同样使用新值
     if (!form.name.trim()) {
-      form.name = '未命名角色'
+      const renamed = { ...form, name: '未命名角色' }
+      setForm(renamed)
+      onSave(renamed)
+      return
     }
     onSave(form)
   }
@@ -223,7 +191,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     setTranslatedFields(new Set())
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
       setTranslateError('请先配置 API 连接')
       setTranslating(false)
       return
@@ -255,14 +223,10 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       try {
         const result = await translateText(text, label, settings, profile, translatedName)
         if (result) {
-          // 首条消息直接替换原文（用于发送给 AI），其他字段存入 translatedContent 双语显示
-          if (key === 'firstMessage') {
-            update({ firstMessage: result })
-          } else {
-            const tc = { ...(form.translatedContent || {}) }
-            tc[key] = result
-            update({ translatedContent: tc } as Partial<Character>)
-          }
+          // 译文统一存入 translatedContent，原文永不覆盖（UI 双语对照，AI 上下文按需取译文）
+          const tc = { ...(form.translatedContent || {}) }
+          tc[key] = result
+          update({ translatedContent: tc } as Partial<Character>)
           setTranslatedFields((prev) => new Set(prev).add(key))
         }
       } catch {
@@ -279,7 +243,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     if (!text || !text.trim()) return
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
       setTranslateError('请先配置 API 连接')
       return
     }
@@ -291,15 +255,11 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     try {
       const result = await translateText(text, fieldLabel, settings, profile, nameForContext)
       if (result) {
-        // 首条消息直接替换原文（用于发送给 AI），其他字段存入 translatedContent 双语显示
-        if (fieldKey === 'firstMessage') {
-          update({ firstMessage: result })
-        } else {
-          const tc = { ...(form.translatedContent || {}) }
-          tc[fieldKey] = result
-          update({ translatedContent: tc } as Partial<Character>)
-          setTranslatedFields(prev => new Set(prev).add(fieldKey))
-        }
+        // 译文统一存入 translatedContent，原文永不覆盖
+        const tc = { ...(form.translatedContent || {}) }
+        tc[fieldKey] = result
+        update({ translatedContent: tc } as Partial<Character>)
+        setTranslatedFields(prev => new Set(prev).add(fieldKey))
       }
     } catch {
       setTranslateError(`翻译"${fieldLabel}"失败`)
@@ -314,7 +274,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     if (!text || !text.trim()) return
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) {
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
       setTranslateError('请先配置 API 连接')
       return
     }
@@ -324,9 +284,13 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     try {
       const result = await translateText(text, '首条消息', settings, profile, nameForContext)
       if (result) {
-        const updated = [...greetings]
-        updated[index] = result
-        update({ alternateGreetings: updated })
+        // 译文存入 translatedContent.alternateGreetings（与原数组索引对齐），原文不覆盖
+        const originals = form.alternateGreetings || []
+        const tc = { ...(form.translatedContent || {}) }
+        const translated = [...(tc.alternateGreetings || new Array<string>(originals.length).fill(''))]
+        translated[index] = result
+        tc.alternateGreetings = translated
+        update({ translatedContent: tc } as Partial<Character>)
       }
     } catch {
       setTranslateError('翻译备选开场白失败')
@@ -427,7 +391,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       open
       onClose={onClose}
       title={character.name === '新角色' ? '创建角色' : '编辑角色'}
-      width="lg"
+      width="custom"
+      widthClassName="max-w-5xl"
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>取消</button>
@@ -453,649 +418,52 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         </>
       }
     >
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         {/* 翻译错误提示 */}
         {translateError && (
-          <div className="px-3 py-2 rounded bg-tavern-danger/10 border border-tavern-danger/30 text-sm text-tavern-danger">
+          <div className="px-3 py-2 rounded bg-tavern-danger/10 border border-tavern-danger/30 text-sm text-tavern-danger lg:col-span-2">
             {translateError}
           </div>
         )}
 
-        {/* 头像和名字 */}
-        <div className="flex gap-4">
-          <div className="shrink-0">
-            <div
-              className="w-24 h-24 rounded-2xl overflow-hidden bg-tavern-bg-hover border border-tavern-border cursor-pointer relative group"
-              onClick={handleImageSelect}
-            >
-              {(form.avatar || (form.id ? charAssetUrl(form.id, 'avatar', form.updatedAt) : '')) && !avatarError ? (
-                <img src={form.avatar || charAssetUrl(form.id, 'avatar', form.updatedAt)} alt="" className="w-full h-full object-cover" onError={() => setAvatarError(true)} />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-tavern-text-muted">
-                  <ImagePlus className="w-8 h-8" />
-                </div>
-              )}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <span className="text-xs text-white">更换头像</span>
-              </div>
-            </div>
-            {form._importImageUrl && !form.avatar && (
-              <button
-                className="btn-mini mt-2 w-full flex items-center justify-center gap-1"
-                onClick={handleReloadCover}
-                disabled={coverReloading}
-              >
-                {coverReloading ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-3 h-3" />
-                )}
-                重新加载封面
-              </button>
-            )}
-            {coverError && (
-              <p className="text-xs text-tavern-danger mt-1">{coverError}</p>
-            )}
-          </div>
-          <div className="flex-1 space-y-3">
-            <div>
-              <label className="label">
-                角色名 *
-                {(translatedFields.has('name') || form.translatedContent?.name) && (
-                  <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
-                )}
-                <button
-                  className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
-                  onClick={() => handleTranslateField('name')}
-                  disabled={translatingField === 'name' || !form.name}
-                  title="AI 翻译此字段"
-                >
-                  {translatingField === 'name' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Languages className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </label>
-              <input
-                className="input"
-                value={form.name}
-                onChange={(e) => update({ name: e.target.value })}
-                placeholder="输入角色名"
-              />
-              {form.translatedContent?.name && form.translatedContent.name !== form.name && (
-                <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-tavern-accent font-medium">翻译：</span>
-                    <button
-                      className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
-                      onClick={() => {
-                        const tc = { ...form.translatedContent }
-                        delete tc.name
-                        update({ translatedContent: tc } as Partial<Character>)
-                      }}
-                      title="清除翻译"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-tavern-text-soft mt-0.5">
-                    {form.translatedContent.name}
-                  </p>
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="label">标签</label>
-              <div className="flex flex-wrap gap-1.5 mb-1.5">
-                {form.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-tavern-accent-soft text-tavern-accent"
-                  >
-                    {tag}
-                    <button onClick={() => handleRemoveTag(tag)} className="hover:text-tavern-danger">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <input
-                className="input"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleAddTag()
-                  }
-                }}
-                placeholder="输入标签后回车"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 描述 */}
-        <div>
-          <label className="label">
-            角色描述
-            {(translatedFields.has('description') || form.translatedContent?.description) && (
-              <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
-            )}
-            <button
-              className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
-              onClick={() => handleTranslateField('description')}
-              disabled={translatingField === 'description' || !form.description}
-              title="AI 翻译此字段"
-            >
-              {translatingField === 'description' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Languages className="w-3.5 h-3.5" />
-              )}
-            </button>
-          </label>
-          <textarea
-            ref={taDesc.ref}
-            style={taDesc.style}
-            className="textarea min-h-[120px] resize-y"
-            value={form.description}
-            onChange={(e) => update({ description: e.target.value })}
-            placeholder="描述角色的外貌、身份、背景等基本信息"
+        <div className="space-y-4 min-w-0">
+          <IdentitySection
+            form={form}
+            update={update}
+            tagInput={tagInput}
+            setTagInput={setTagInput}
+            handleAddTag={handleAddTag}
+            handleRemoveTag={handleRemoveTag}
+            handleImageSelect={handleImageSelect}
+            handleReloadCover={handleReloadCover}
+            handleBackgroundSelect={handleBackgroundSelect}
+            coverReloading={coverReloading}
+            coverError={coverError}
+            avatarError={avatarError}
+            setAvatarError={setAvatarError}
+            taPersonality={taPersonality}
+            taScenario={taScenario}
+            taPosthist={taPosthist}
+            taExdialog={taExdialog}
+            translatedFields={translatedFields}
+            translatingField={translatingField}
+            handleTranslateField={handleTranslateField}
+            handleTranslateGreeting={handleTranslateGreeting}
           />
-          {form.translatedContent?.description && (
-            <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-tavern-accent font-medium">翻译：</span>
-                <button
-                  className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
-                  onClick={() => {
-                    const tc = { ...form.translatedContent }
-                    delete tc.description
-                    update({ translatedContent: tc } as Partial<Character>)
-                  }}
-                  title="清除翻译"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-              <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
-                {form.translatedContent.description}
-              </p>
-            </div>
-          )}
         </div>
-
-        {/* 性格 */}
-        <div>
-          <label className="label">
-            性格特征
-            {(translatedFields.has('personality') || form.translatedContent?.personality) && (
-              <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
-            )}
-            <button
-              className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
-              onClick={() => handleTranslateField('personality')}
-              disabled={translatingField === 'personality' || !form.personality}
-              title="AI 翻译此字段"
-            >
-              {translatingField === 'personality' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Languages className="w-3.5 h-3.5" />
-              )}
-            </button>
-          </label>
-          <textarea
-            ref={taPersonality.ref}
-            style={taPersonality.style}
-            className="textarea min-h-[80px] resize-y"
-            value={form.personality}
-            onChange={(e) => update({ personality: e.target.value })}
-            placeholder="描述角色的性格特点、说话方式等"
+        <div className="space-y-4 min-w-0">
+          <AdvancedSection
+            form={form}
+            update={update}
+            taDesc={taDesc}
+            taSysprompt={taSysprompt}
+            taFirstmsg={taFirstmsg}
+            translatedFields={translatedFields}
+            translatingField={translatingField}
+            handleTranslateField={handleTranslateField}
+            handleTranslateGreeting={handleTranslateGreeting}
           />
-          {form.translatedContent?.personality && (
-            <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-tavern-accent font-medium">翻译：</span>
-                <button
-                  className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
-                  onClick={() => {
-                    const tc = { ...form.translatedContent }
-                    delete tc.personality
-                    update({ translatedContent: tc } as Partial<Character>)
-                  }}
-                  title="清除翻译"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-              <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
-                {form.translatedContent.personality}
-              </p>
-            </div>
-          )}
         </div>
-
-        {/* 高级选项 */}
-        <div>
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-sm text-tavern-accent hover:text-tavern-accent-hover transition-colors"
-          >
-            {showAdvanced ? '▼ 收起高级选项' : '▶ 展开高级选项'}
-          </button>
-        </div>
-
-        {showAdvanced && (
-          <div className="space-y-4 animate-fade-in">
-            {/* 场景 */}
-            <div>
-              <label className="label">
-                场景设定
-                {(translatedFields.has('scenario') || form.translatedContent?.scenario) && (
-                  <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
-                )}
-                <button
-                  className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
-                  onClick={() => handleTranslateField('scenario')}
-                  disabled={translatingField === 'scenario' || !form.scenario}
-                  title="AI 翻译此字段"
-                >
-                  {translatingField === 'scenario' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Languages className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </label>
-              <textarea
-                ref={taScenario.ref}
-                style={taScenario.style}
-                className="textarea min-h-[80px] resize-y"
-                value={form.scenario}
-                onChange={(e) => update({ scenario: e.target.value })}
-                placeholder="对话发生的场景和背景"
-            />
-            {form.translatedContent?.scenario && (
-              <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-tavern-accent font-medium">翻译：</span>
-                  <button
-                    className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
-                    onClick={() => {
-                      const tc = { ...form.translatedContent }
-                      delete tc.scenario
-                      update({ translatedContent: tc } as Partial<Character>)
-                    }}
-                    title="清除翻译"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-                <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
-                  {form.translatedContent.scenario}
-                </p>
-              </div>
-            )}
-          </div>
-
-            {/* 角色系统提示词（覆盖预设） */}
-            <div>
-              <label className="label">角色系统提示词（覆盖预设）</label>
-              <textarea
-                ref={taSysprompt.ref}
-                style={taSysprompt.style}
-                className="textarea min-h-[80px] resize-y"
-                value={form.systemPrompt || ''}
-                onChange={(e) => update({ systemPrompt: e.target.value })}
-                placeholder="为这个角色设定专属的系统提示词，留空则使用预设中的系统提示词"
-              />
-              <p className="text-xs text-tavern-text-muted mt-1">留空则使用预设中的系统提示词</p>
-            </div>
-
-            {/* B-05 修复：预设和世界书绑定 */}
-            <div className="grid grid-cols-2 gap-4">
-              <PresetBinding value={form.boundPresetId ?? null} onChange={(id) => update({ boundPresetId: id })} />
-              <LorebookBinding value={form.boundLorebookIds ?? []} onChange={(ids) => update({ boundLorebookIds: ids })} />
-            </div>
-
-            {/* 首条消息 */}
-            <div>
-              <label className="label">
-                首条消息
-                {(translatedFields.has('firstMessage') || form.translatedContent?.firstMessage) && (
-                  <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
-                )}
-                <button
-                  className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
-                  onClick={() => handleTranslateField('firstMessage')}
-                  disabled={translatingField === 'firstMessage' || !form.firstMessage}
-                  title="AI 翻译此字段"
-                >
-                  {translatingField === 'firstMessage' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Languages className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </label>
-              <textarea
-                ref={taFirstmsg.ref}
-                style={taFirstmsg.style}
-                className="textarea min-h-[120px] resize-y"
-                value={form.firstMessage}
-                onChange={(e) => update({ firstMessage: e.target.value })}
-                placeholder="角色发送的第一条消息，用于开启对话"
-            />
-          </div>
-
-            {/* 备选开场白 */}
-            <div>
-              <label className="label">备选开场白</label>
-              <div className="space-y-2">
-                {(form.alternateGreetings || []).map((g, i) => (
-                  <div key={i} className="flex gap-2">
-                    <textarea
-                      className="textarea min-h-[60px] resize-y flex-1 text-sm"
-                      value={g}
-                      onChange={(e) => {
-                        const updated = [...(form.alternateGreetings || [])]
-                        updated[i] = e.target.value
-                        update({ alternateGreetings: updated })
-                      }}
-                      placeholder="备选的开场问候语"
-                    />
-                    <div className="flex flex-col gap-1 self-start shrink-0">
-                      <button
-                        className="btn-ghost p-1.5 text-tavern-text-muted hover:text-tavern-accent"
-                        onClick={() => handleTranslateGreeting(i)}
-                        disabled={translatingField === `greeting-${i}` || !g.trim()}
-                        title="AI 翻译"
-                      >
-                        {translatingField === `greeting-${i}` ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Languages className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                      <button
-                        className="btn-ghost p-1.5 text-tavern-danger"
-                        onClick={() => update({ alternateGreetings: (form.alternateGreetings || []).filter((_, j) => j !== i) })}
-                        title="删除"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                <button
-                  className="btn-ghost text-sm text-tavern-accent"
-                  onClick={() => update({ alternateGreetings: [...(form.alternateGreetings || []), ''] })}
-                >
-                  + 添加备选开场白
-                </button>
-              </div>
-            </div>
-
-            {/* 对话后指令 */}
-            <div>
-              <label className="label">对话后指令</label>
-              <textarea
-                ref={taPosthist.ref}
-                style={taPosthist.style}
-                className="textarea min-h-[60px] resize-y"
-                value={form.postHistoryInstructions || ''}
-                onChange={(e) => update({ postHistoryInstructions: e.target.value })}
-                placeholder="如：始终使用中文回复、禁止使用emoji、每次回复不超过200字..."
-              />
-            </div>
-
-            {/* 角色级作者注释 */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="label mb-0">角色级作者注释</label>
-                  <p className="text-xs text-tavern-text-muted">自定义后覆盖全局设置，关闭后使用全局</p>
-                </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="accent-[var(--color-accent)]"
-                    checked={!!form.authorNote}
-                    onChange={(e) => update({ authorNote: e.target.checked ? { enabled: true, text: '', position: 'middle', depth: 1 } : undefined })}
-                  />
-                  <span className="text-sm">自定义</span>
-                </label>
-              </div>
-              {form.authorNote && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <label className="label mb-0">启用注入</label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="accent-[var(--color-accent)]"
-                        checked={form.authorNote.enabled}
-                        onChange={(e) => update({ authorNote: { ...form.authorNote!, enabled: e.target.checked } })}
-                      />
-                      <span className="text-sm">{form.authorNote.enabled ? '开' : '关'}</span>
-                    </label>
-                  </div>
-                  <div>
-                    <label className="label">注释内容</label>
-                    <textarea
-                      className="textarea min-h-[60px] resize-y"
-                      value={form.authorNote.text || ''}
-                      onChange={(e) => update({ authorNote: { ...form.authorNote!, text: e.target.value } })}
-                      placeholder="该角色独享的剧情引导，如：她暗恋主角但不愿承认…"
-                    />
-                  </div>
-                  <div>
-                    <label className="label">注入位置</label>
-                    <select
-                      className="select"
-                      value={form.authorNote.position}
-                      onChange={(e) => update({ authorNote: { ...form.authorNote!, position: e.target.value as 'top' | 'middle' | 'bottom' } })}
-                    >
-                      <option value="top">系统提示之后</option>
-                      <option value="middle">历史消息中（按深度）</option>
-                      <option value="bottom">历史消息末尾</option>
-                    </select>
-                  </div>
-                  {form.authorNote.position === 'middle' && (
-                    <div>
-                      <label className="label">注入深度（0 = 最新消息前）</label>
-                      <input
-                        type="number"
-                        min={0}
-                        className="input"
-                        value={form.authorNote.depth ?? 1}
-                        onChange={(e) => update({ authorNote: { ...form.authorNote!, depth: Math.max(0, Number(e.target.value) || 0) } })}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* 长记忆默认配置：新会话继承 */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="label mb-0">长记忆默认开启</label>
-                  <p className="text-xs text-tavern-text-muted">与该角色新建会话时自动启用长记忆（会话内可单独调整）</p>
-                </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="accent-[var(--color-accent)]"
-                    checked={!!form.defaultMemoryEnabled}
-                    onChange={(e) => update({ defaultMemoryEnabled: e.target.checked, defaultMemoryMode: e.target.checked ? (form.defaultMemoryMode ?? 'auto') : undefined })}
-                  />
-                  <span className="text-sm">{form.defaultMemoryEnabled ? '开' : '关'}</span>
-                </label>
-              </div>
-              {form.defaultMemoryEnabled && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <label className="label mb-0">默认总结模式</label>
-                    <select
-                      className="select w-28"
-                      value={form.defaultMemoryMode ?? 'auto'}
-                      onChange={(e) => update({ defaultMemoryMode: e.target.value as 'manual' | 'auto' })}
-                    >
-                      <option value="manual">手动</option>
-                      <option value="auto">自动</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <label className="label mb-0">自动总结间隔（条）</label>
-                    <input
-                      type="number"
-                      min={4}
-                      max={50}
-                      className="input w-20"
-                      value={form.defaultMemoryInterval ?? 10}
-                      onChange={(e) => update({ defaultMemoryInterval: Math.max(4, Math.min(50, Number(e.target.value) || 10)) })}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* 群聊开场白 */}
-            <div>
-              <label className="label">群聊开场白</label>
-              <div className="space-y-2">
-                {(form.groupOnlyGreetings || []).map((g, i) => (
-                  <div key={i} className="flex gap-2">
-                    <textarea
-                      className="textarea min-h-[60px] resize-y flex-1 text-sm"
-                      value={g}
-                      onChange={(e) => {
-                        const updated = [...(form.groupOnlyGreetings || [])]
-                        updated[i] = e.target.value
-                        update({ groupOnlyGreetings: updated })
-                      }}
-                      placeholder="群聊中使用的开场问候语"
-                    />
-                    <button
-                      className="btn-ghost p-1.5 text-tavern-danger self-start shrink-0"
-                      onClick={() => update({ groupOnlyGreetings: (form.groupOnlyGreetings || []).filter((_, j) => j !== i) })}
-                      title="删除"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  className="btn-ghost text-sm text-tavern-accent"
-                  onClick={() => update({ groupOnlyGreetings: [...(form.groupOnlyGreetings || []), ''] })}
-                >
-                  + 添加群聊开场白
-                </button>
-              </div>
-            </div>
-
-            {/* 对话示例 */}
-            <div>
-              <label className="label">
-                对话示例
-                {(translatedFields.has('exampleDialog') || form.translatedContent?.exampleDialog) && (
-                  <span className="text-xs text-tavern-accent ml-1">(已翻译)</span>
-                )}
-                <button
-                  className="ml-2 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft transition-colors align-middle"
-                  onClick={() => handleTranslateField('exampleDialog')}
-                  disabled={translatingField === 'exampleDialog' || !form.exampleDialog}
-                  title="AI 翻译此字段"
-                >
-                  {translatingField === 'exampleDialog' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Languages className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </label>
-              <textarea
-                ref={taExdialog.ref}
-                style={taExdialog.style}
-                className="textarea min-h-[100px] resize-y font-mono text-xs"
-                value={form.exampleDialog}
-                onChange={(e) => update({ exampleDialog: e.target.value })}
-                placeholder={'<START>\n{{user}}: 你好\n{{char}}: 你好呀！'}
-              />
-              {form.translatedContent?.exampleDialog && (
-                <div className="mt-1.5 pl-2 border-l-2 border-tavern-accent">
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-tavern-accent font-medium">翻译：</span>
-                    <button
-                      className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors"
-                      onClick={() => {
-                        const tc = { ...form.translatedContent }
-                        delete tc.exampleDialog
-                        update({ translatedContent: tc } as Partial<Character>)
-                      }}
-                      title="清除翻译"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-tavern-text-soft mt-0.5 whitespace-pre-wrap">
-                    {form.translatedContent.exampleDialog}
-                  </p>
-                </div>
-              )}
-              <p className="text-xs text-tavern-text-muted mt-1">
-                使用 {'{{user}}'} 和 {'{{char}}'} 作为用户和角色名的占位符
-              </p>
-            </div>
-
-            {/* 创作者 */}
-            <div>
-              <label className="label">创作者</label>
-              <input
-                className="input"
-                value={form.creator}
-                onChange={(e) => update({ creator: e.target.value })}
-                placeholder="角色卡作者"
-              />
-            </div>
-
-            {/* 聊天背景 */}
-            <div>
-              <label className="label">聊天背景</label>
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-32 h-20 rounded-lg bg-tavern-bg-hover border border-tavern-border cursor-pointer overflow-hidden relative group shrink-0"
-                  onClick={handleBackgroundSelect}
-                >
-                  {form.chatBackground ? (
-                    <img src={form.chatBackground} className="w-full h-full object-cover" alt="" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-tavern-text-muted">
-                      <ImagePlus className="w-6 h-6" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="text-xs text-white">{form.chatBackground ? '更换背景' : '选择背景'}</span>
-                  </div>
-                </div>
-                {form.chatBackground && (
-                  <button
-                    className="btn-ghost text-xs text-tavern-danger shrink-0"
-                    onClick={() => update({ chatBackground: undefined })}
-                  >
-                    移除背景
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-tavern-text-muted mt-1">为该角色设置专属的聊天页背景图</p>
-            </div>
-          </div>
-        )}
       </div>
     </Modal>
   )

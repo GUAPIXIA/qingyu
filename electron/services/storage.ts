@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync, rmSync, renameSync, openSync, readSync, closeSync, statSync } from 'node:fs'
 import { readFile, writeFile, readdir, rename } from 'node:fs/promises'
 import { getDefaultSettings } from '../../shared/defaults'
+import { migrateData, currentSchemaVersion } from './migration'
+import type { DataDomain } from './migration'
 
 /** 获取数据目录 */
 export function getDataDir(): string {
@@ -33,24 +35,44 @@ export async function ensureDataDir(): Promise<void> {
   }
 }
 
-/** 读取 JSON 文件 */
-export function readJson<T>(filePath: string): T | null {
+/** 读取 JSON 文件。
+ *  传入 domain 时自动执行该数据域的版本迁移（旧数据升级到最新结构）。 */
+export function readJson<T>(filePath: string, domain?: DataDomain): T | null {
   try {
     if (!existsSync(filePath)) return null
     const raw = readFileSync(filePath, 'utf-8')
-    return JSON.parse(raw) as T
+    const parsed = JSON.parse(raw) as T
+    if (domain) {
+      const migrated = migrateData<T>(domain, parsed)
+      if (migrated) {
+        // 迁移成功：回写磁盘（自动带 schemaVersion），下次读取无需再迁移
+        try { writeJson(filePath, migrated) } catch { /* 回写失败不影响本次使用 */ }
+        return migrated
+      }
+    }
+    return parsed
   } catch {
     return null
   }
 }
 
-/** 写入 JSON 文件 */
-// L-05 修复：使用 temp 文件 + rename 保证原子写入，防止崩溃时数据损坏
-export function writeJson(filePath: string, data: unknown): void {
+/** 写入 JSON 文件（传入 domain 时自动附加当前 schemaVersion）。
+ *  L-05 修复：使用 temp 文件 + rename 保证原子写入，防止崩溃时数据损坏 */
+export function writeJson(filePath: string, data: unknown, domain?: DataDomain): void {
   mkdirSync(join(filePath, '..'), { recursive: true })
+  // 修复：数组数据域（如 sessions）不能被展开成对象，否则下次读取时 findIndex/find 会抛错
+  const payload = domain && data && typeof data === 'object' && !Array.isArray(data)
+    ? { ...(data as object), schemaVersion: currentSchemaVersion(domain) }
+    : data
   const tmpPath = filePath + '.tmp'
-  writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
-  renameSync(tmpPath, filePath)
+  writeFileSync(tmpPath, JSON.stringify(payload, null, 2), 'utf-8')
+  try {
+    renameSync(tmpPath, filePath)
+  } catch (err) {
+    // BUG-34：rename 失败时清理残留的 temp 文件，避免下次写入/读取异常
+    try { unlinkSync(tmpPath) } catch { /* ignore */ }
+    throw err
+  }
 }
 
 /** 列出目录下所有 JSON 文件 */
@@ -123,11 +145,19 @@ export function countLines(filePath: string): number {
 // ===================== 异步版本（热路径使用，避免阻塞主进程事件循环） =====================
 
 /** 异步读取 JSON 文件 */
-export async function readJsonAsync<T>(filePath: string): Promise<T | null> {
+export async function readJsonAsync<T>(filePath: string, domain?: DataDomain): Promise<T | null> {
   try {
     if (!existsSync(filePath)) return null
     const raw = await readFile(filePath, 'utf-8')
-    return JSON.parse(raw) as T
+    const parsed = JSON.parse(raw) as T
+    if (domain) {
+      const migrated = migrateData<T>(domain, parsed)
+      if (migrated) {
+        try { writeJsonAsync(filePath, migrated) } catch { /* 回写失败不影响本次使用 */ }
+        return migrated
+      }
+    }
+    return parsed
   } catch {
     return null
   }
@@ -137,7 +167,37 @@ export async function readJsonAsync<T>(filePath: string): Promise<T | null> {
 export async function writeJsonAsync(filePath: string, data: unknown): Promise<void> {
   const tmpPath = filePath + '.tmp'
   await writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
-  await rename(tmpPath, filePath)
+  try {
+    await rename(tmpPath, filePath)
+  } catch (err) {
+    // BUG-34：rename 失败时清理残留的 temp 文件
+    try { unlinkSync(tmpPath) } catch { /* ignore */ }
+    throw err
+  }
+}
+
+// ===================== per-path 写锁（防御并发读-改-写竞态） =====================
+
+/**
+ * 同一文件路径的写操作队列锁。
+ * 用于 sessions.json 等「读-改-写」场景：多个 IPC handler 并发操作同一文件时，
+ * 串行执行避免后写入覆盖先写入的修改（BUG-10/19）。
+ */
+const fileWriteQueues = new Map<string, Promise<void>>()
+
+export function withFileLock<T>(filePath: string, fn: () => T | Promise<T>): Promise<T> {
+  const prev = fileWriteQueues.get(filePath) ?? Promise.resolve()
+  const run = prev.then(fn)
+  // 链尾保存吞错后的 promise，保证队列继续推进（错误由调用方 await 捕获）
+  const tail = run.then(() => {}, () => {})
+  fileWriteQueues.set(filePath, tail)
+  // NEW-5 修复：队列排空后清理 Map 条目，避免长期运行（多角色/多会话）内存无限增长
+  tail.then(() => {
+    if (fileWriteQueues.get(filePath) === tail) {
+      fileWriteQueues.delete(filePath)
+    }
+  })
+  return run
 }
 
 /** 异步列出目录下所有 JSON 文件（并行读取，不阻塞事件循环） */

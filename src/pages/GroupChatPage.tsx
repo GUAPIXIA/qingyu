@@ -10,12 +10,13 @@ import { GroupMemberBar } from '../components/chat/GroupMemberBar'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Modal } from '../components/common/Modal'
+import { GreetingPickerModal } from './group/GreetingPickerModal'
+import { NewGroupModal } from './group/NewGroupModal'
 import { SessionSwitcher } from '../components/common/SessionSwitcher'
 import { GroupChatSettingsPanel } from '../components/chat/GroupChatSettingsPanel'
 import { MemoryPanel } from '../components/chat/MemoryPanel'
 import { cn } from '../lib/utils'
 import { downloadFile } from '../utils/download'
-import { charAssetUrl } from '../utils/asset'
 import type { GroupChat, GroupMessage, Lorebook, Preset } from '../../shared/types'
 import {
   Plus,
@@ -26,7 +27,6 @@ import {
   Edit2,
   Check,
   Eye,
-  Search,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
@@ -68,7 +68,7 @@ export function GroupChatPage() {
   // 初始加载
   useEffect(() => {
     loadGroups()
-  }, [])
+  }, [loadGroups])
 
   // 如果当前群聊有成员且无消息，自动弹出开场白选择器
   useEffect(() => {
@@ -81,6 +81,7 @@ export function GroupChatPage() {
         setShowGreetingPicker(true)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentGroup?.id, currentSessionId, messages.length])
 
   const handleSelect = (group: GroupChat) => {
@@ -640,100 +641,13 @@ export function GroupChatPage() {
       </Modal>
 
       {/* ============ 群聊开场白选择弹窗 ============ */}
-      {(() => {
-        if (!currentGroup || messages.length > 0 || isStreaming || !showGreetingPicker) return null
-        const memberGreetings: { charId: string; charName: string; avatar?: string; greetings: string[] }[] = []
-        currentGroup.memberIds.forEach(id => {
-          const char = characters.find(c => c.id === id)
-          const displayName = char?.translatedContent?.name ?? char?.name ?? ''
-          if (char?.groupOnlyGreetings && char.groupOnlyGreetings.length > 0) {
-            memberGreetings.push({ charId: id, charName: displayName, avatar: char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt), greetings: char.groupOnlyGreetings })
-          } else if (char?.firstMessage) {
-            const displayFirstMsg = char.translatedContent?.firstMessage ?? char.firstMessage
-            memberGreetings.push({ charId: id, charName: displayName, avatar: char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt), greetings: [displayFirstMsg] })
-          }
-        })
-        if (memberGreetings.length === 0) return null
-
-        return (
-          <Modal
-            open={true}
-            onClose={() => setShowGreetingPicker(false)}
-            width="custom"
-            widthClassName="w-[560px]"
-            headerClassName="px-5 py-4 bg-tavern-bg-soft"
-            header={
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-tavern-accent-soft text-tavern-accent"
-                  style={currentGroup.themeColor ? { backgroundColor: `${currentGroup.themeColor}20`, color: currentGroup.themeColor } : undefined}
-                >
-                  <Users className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-display font-bold text-lg truncate">{currentGroup.name}</h3>
-                  <p className="text-xs text-tavern-text-muted">
-                    选择一个开场白开始群聊对话 · {memberGreetings.length} 位角色
-                  </p>
-                </div>
-              </div>
-            }
-            footer={
-              <>
-                <span className="text-xs text-tavern-text-muted mr-auto">
-                  点击任意开场白开始群聊，或
-                </span>
-                <button
-                  className="btn-secondary text-xs"
-                  onClick={() => setShowGreetingPicker(false)}
-                >
-                  跳过，手动开始
-                </button>
-              </>
-            }
-          >
-            <div className="space-y-3">
-              {memberGreetings.map((member) => (
-                <div key={member.charId} className="space-y-1.5">
-                  <div className="flex items-center gap-2 px-1">
-                    {member.avatar ? (
-                      <img src={member.avatar} className="w-5 h-5 rounded-full object-cover" alt="" />
-                    ) : (
-                      <div className="w-5 h-5 rounded-full bg-tavern-bg-hover flex items-center justify-center text-[10px] font-bold text-tavern-text-muted">
-                        {member.charName[0]}
-                      </div>
-                    )}
-                    <span className="text-xs font-medium text-tavern-text">{member.charName}</span>
-                    <span className="text-[10px] text-tavern-text-muted">{member.greetings.length} 条开场白</span>
-                  </div>
-                  {member.greetings.map((greeting, gi) => (
-                    <button
-                      key={`${member.charId}-${gi}`}
-                      onClick={async () => {
-                        setShowGreetingPicker(false)
-                        if (!currentSessionId) return
-                        const { insertCharacterMessage } = useGroupChatStore.getState()
-                        await insertCharacterMessage(member.charId, greeting)
-                      }}
-                      className="w-full text-left px-3 py-2.5 rounded-lg border border-tavern-border-soft hover:bg-tavern-accent-soft/30 text-xs text-tavern-text transition-all group"
-                      style={currentGroup.themeColor ? { ['--gc-theme' as string]: currentGroup.themeColor } : undefined}
-                    >
-                      <span className="text-tavern-text-muted text-[10px] block mb-0.5">
-                        {member.greetings.length > 1 ? `开场白 #${gi + 1}` : '开场白'}
-                      </span>
-                      <span className="line-clamp-3 whitespace-pre-wrap">{greeting}</span>
-                      <div className="mt-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                        style={currentGroup.themeColor ? { color: currentGroup.themeColor } : undefined}>
-                        点击以 {member.charName} 的身份发送此开场白
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </Modal>
-        )
-      })()}
+      <GreetingPickerModal
+        open={showGreetingPicker}
+        group={currentGroup}
+        messagesCount={messages.length}
+        isStreaming={isStreaming}
+        onClose={() => setShowGreetingPicker(false)}
+      />
 
       {/* 空状态时不显示弹窗的自动触发提示：如果没有消息，自动弹出选择器 */}
       {currentGroup && messages.length === 0 && !isStreaming && !showGreetingPicker && (() => {
@@ -756,101 +670,18 @@ export function GroupChatPage() {
       })()}
 
       {/* ============ 新建群聊：角色选择弹窗 ============ */}
-      <Modal
+      <NewGroupModal
         open={showCreateModal}
+        characters={characters}
+        filteredCharacters={filteredCharacters}
+        selectedMemberIds={selectedMemberIds}
+        memberSearch={memberSearch}
+        onMemberSearchChange={setMemberSearch}
+        onToggleMember={toggleMemberSelect}
+        onCreate={confirmCreate}
         onClose={() => setShowCreateModal(false)}
-        title="新建群聊 - 选择角色"
-        width="md"
-        footer={
-          <div className="flex items-center justify-between w-full">
-            <span className="text-xs text-tavern-text-muted">
-              已选 {selectedMemberIds.length} 位角色
-              {selectedMemberIds.length > 0 && (
-                <span className="ml-2 text-tavern-text-soft">
-                  群聊名称：{selectedMemberIds
-                    .map(id => characters.find(c => c.id === id)?.name ?? '未知')
-                    .join('、')}
-                </span>
-              )}
-            </span>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowCreateModal(false)} className="btn-ghost text-xs">
-                取消
-              </button>
-              <button
-                onClick={confirmCreate}
-                disabled={selectedMemberIds.length === 0}
-                className="btn-primary text-xs"
-              >
-                创建群聊
-              </button>
-            </div>
-          </div>
-        }
-      >
-        {/* 搜索框 */}
-        <div className="mb-2 relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-tavern-text-muted" />
-          <input
-            value={memberSearch}
-            onChange={e => setMemberSearch(e.target.value)}
-            placeholder="搜索角色名称、描述或标签..."
-            className="w-full pl-8 pr-3 py-1.5 text-sm bg-tavern-bg border border-tavern-border rounded-lg text-tavern-text outline-none focus:border-tavern-accent"
-            autoFocus
-          />
-        </div>
+      />
 
-        <div className="space-y-1 max-h-72 overflow-y-auto">
-          {characters.length === 0 ? (
-            <div className="py-8 text-center text-sm text-tavern-text-muted">
-              暂无角色，请先创建或导入角色
-            </div>
-          ) : filteredCharacters.length === 0 ? (
-            <div className="py-8 text-center text-sm text-tavern-text-muted">
-              未找到匹配的角色
-            </div>
-          ) : (
-            filteredCharacters.map(char => {
-              const selected = selectedMemberIds.includes(char.id)
-              return (
-                <div
-                  key={char.id}
-                  onClick={() => toggleMemberSelect(char.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={e => e.key === 'Enter' && toggleMemberSelect(char.id)}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors',
-                    selected
-                      ? 'bg-tavern-accent-soft border border-tavern-accent'
-                      : 'hover:bg-tavern-bg-hover border border-transparent'
-                  )}
-                >
-                  {(char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt)) ? (
-                    <img src={char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt)} className="w-9 h-9 rounded-lg object-cover shrink-0" alt="" />
-                  ) : (
-                    <div className="w-9 h-9 rounded-lg bg-tavern-bg-hover flex items-center justify-center text-sm font-bold text-tavern-text-muted shrink-0">
-                      {char.name[0]}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-tavern-text truncate">{char.name}</div>
-                    {char.description && (
-                      <div className="text-xs text-tavern-text-muted truncate">{char.description}</div>
-                    )}
-                  </div>
-                  <div className={cn(
-                    'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors',
-                    selected ? 'bg-tavern-accent border-tavern-accent' : 'border-tavern-border'
-                  )}>
-                    {selected && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </Modal>
     </div>
   )
 }

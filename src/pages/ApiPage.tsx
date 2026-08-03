@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { PROVIDER_INFO, isLocalProvider } from '../utils/defaults'
+import { PROVIDER_INFO, isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { cn } from '../lib/utils'
 import type { ProviderType, ConnectionProfile } from '../../shared/types'
 import {
@@ -22,18 +22,26 @@ import { TTSModelsSection } from '../components/api/TTSModelsSection'
 import { ImageGenModelsSection } from '../components/api/ImageGenModelsSection'
 import { VisionModelsSection } from '../components/api/VisionModelsSection'
 
-const PROVIDERS: ProviderType[] = ['openai', 'claude', 'gemini', 'ollama', 'openrouter', 'vllm', 'lmstudio', 'tabby']
+/**
+ * 协议类型：只保留真实通信协议。
+ * DeepSeek / Groq / 硅基流动 / OpenRouter / OpenCode Go 等服务商均为 OpenAI 兼容，
+ * 本地 vLLM / LM Studio / TabbyAPI 亦为 OpenAI 兼容（本地地址免 Key），由快速填入或手填 Base URL 区分。
+ */
+const PROVIDERS: ProviderType[] = ['openai', 'claude', 'gemini', 'ollama']
 
-/** 快速配置预设 */
-const QUICK_PRESETS: Record<string, { name: string; provider: ProviderType; baseUrl: string; desc: string }> = {
-  deepseek: { name: 'DeepSeek', provider: 'openai', baseUrl: 'https://api.deepseek.com/v1', desc: '高性价比' },
+/** 快速配置预设（model 为可选的推荐默认模型，填入时模型为空则自动补上）
+ * provider 统一为 openai：服务商均为 OpenAI 兼容协议，由 baseUrl 区分 */
+const QUICK_PRESETS: Record<string, { name: string; provider: ProviderType; baseUrl: string; desc: string; model?: string }> = {
+  deepseek: { name: 'DeepSeek', provider: 'openai', baseUrl: 'https://api.deepseek.com', desc: '高性价比' },
+  groq: { name: 'Groq', provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', desc: '极速推理' },
   kimi: { name: 'Kimi', provider: 'openai', baseUrl: 'https://api.moonshot.cn/v1', desc: '长上下文' },
   zhipu: { name: '智谱', provider: 'openai', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', desc: '清华系' },
   siliconflow: { name: '硅基流动', provider: 'openai', baseUrl: 'https://api.siliconflow.cn/v1', desc: '多模型' },
   dashscope: { name: '阿里百炼', provider: 'openai', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', desc: '通义千问' },
   openai: { name: 'OpenAI', provider: 'openai', baseUrl: 'https://api.openai.com/v1', desc: 'GPT 系列' },
   ollama: { name: 'Ollama', provider: 'ollama', baseUrl: 'http://localhost:11434', desc: '本地运行' },
-  openrouter: { name: 'OpenRouter', provider: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', desc: '一个 key 全模型' },
+  openrouter: { name: 'OpenRouter', provider: 'openai', baseUrl: 'https://openrouter.ai/api/v1', desc: '一个 key 全模型' },
+  opencodeGo: { name: 'OpenCode Go', provider: 'openai', baseUrl: 'https://opencode.ai/zen/go/v1', desc: '低价订阅', model: 'glm-5.2' },
 } as const
 
 type PresetKey = keyof typeof QUICK_PRESETS
@@ -106,7 +114,7 @@ export function ApiPage() {
   })
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || !!activeProfile.apiKey)
+  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || isLocalUrl(activeProfile.baseUrl) || !!activeProfile.apiKey)
 
   const resetForm = () => {
     setEditForm({ id: '', name: '', provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '', maxContext: 131072 })
@@ -179,8 +187,43 @@ export function ApiPage() {
       name: f.name.trim() ? f.name : preset.name,
       provider: preset.provider,
       baseUrl: preset.baseUrl,
+      // 模型为空时自动填入预设推荐模型（如 OpenCode Go → glm-5.2）
+      model: f.model.trim() ? f.model : (preset.model ?? ''),
     }))
     setTestResult(null)
+  }
+
+  /** 模型列表中存在但当前协议/上游不可用的模型及原因（OpenCode Go 全量实测） */
+  const MODEL_NOTES: Record<string, { disabled: boolean; note: string }> = {
+    'gpt-5.6-luna': { disabled: true, note: '仅支持 /responses 端点，当前协议不可用' },
+    'mimo-v2-pro': { disabled: true, note: '已弃用，建议迁移 mimo-v2.5-pro' },
+    'mimo-v2-omni': { disabled: true, note: '已弃用，建议迁移 mimo-v2.5' },
+    'grok-4.5': { disabled: true, note: '上游暂不可用（Router.Unavailable）' },
+    'hy3-preview': { disabled: true, note: '上游暂不可用（ModelNotFound）' },
+    'kimi-k3': { disabled: false, note: '采样参数固定 temperature=1 / top_p=0.95（应用已自动修正）' },
+  }
+
+  const renderModelChip = (m: string) => {
+    const info = MODEL_NOTES[m]
+    const disabled = info?.disabled ?? false
+    return (
+      <button
+        key={m}
+        disabled={disabled}
+        onClick={() => setEditForm((f) => ({ ...f, model: m }))}
+        title={info?.note}
+        className={cn(
+          'px-2 py-0.5 rounded text-xs font-mono border transition-colors',
+          disabled
+            ? 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-muted line-through cursor-not-allowed'
+            : editForm.model === m
+              ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+              : 'border-tavern-border-soft bg-tavern-bg-soft hover:border-tavern-border text-tavern-text-soft'
+        )}
+      >
+        {m}
+      </button>
+    )
   }
 
   const providerLabel = (p: ProviderType) => PROVIDER_INFO[p].name
@@ -524,20 +567,7 @@ export function ApiPage() {
                         <div>
                           <p className="text-xs text-tavern-text-muted mb-1.5">可用模型（{testResult.models.length}）：</p>
                           <div className="flex flex-wrap gap-1">
-                            {testResult.models.map((m) => (
-                              <button
-                                key={m}
-                                onClick={() => setEditForm((f) => ({ ...f, model: m }))}
-                                className={cn(
-                                  'px-2 py-0.5 rounded text-xs font-mono border transition-colors',
-                                  editForm.model === m
-                                    ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
-                                    : 'border-tavern-border-soft bg-tavern-bg-soft hover:border-tavern-border text-tavern-text-soft'
-                                )}
-                              >
-                                {m}
-                              </button>
-                            ))}
+                            {testResult.models.map((m) => renderModelChip(m))}
                           </div>
                         </div>
                       )}
@@ -583,6 +613,11 @@ export function ApiPage() {
                           </button>
                         ))}
                       </div>
+                      {editForm.provider === 'openai' && (
+                        <p className="text-xs text-tavern-text-muted mt-1.5">
+                          OpenAI 兼容覆盖 DeepSeek / Kimi / 智谱 / 硅基流动 / OpenRouter / OpenCode Go 等服务商，及本地 vLLM / LM Studio / TabbyAPI（本地地址免 Key）
+                        </p>
+                      )}
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-tavern-bg border border-tavern-border-soft">
@@ -715,20 +750,7 @@ export function ApiPage() {
                       <div>
                         <p className="text-xs text-tavern-text-muted mb-1.5">可用模型（{testResult.models.length}）：</p>
                         <div className="flex flex-wrap gap-1">
-                          {testResult.models.map((m) => (
-                            <button
-                              key={m}
-                              onClick={() => setEditForm((f) => ({ ...f, model: m }))}
-                              className={cn(
-                                'px-2 py-0.5 rounded text-xs font-mono border transition-colors',
-                                editForm.model === m
-                                  ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
-                                  : 'border-tavern-border-soft bg-tavern-bg-soft hover:border-tavern-border text-tavern-text-soft'
-                              )}
-                            >
-                              {m}
-                            </button>
-                          ))}
+                          {testResult.models.map((m) => renderModelChip(m))}
                         </div>
                       </div>
                     )}

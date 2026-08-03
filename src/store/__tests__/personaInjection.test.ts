@@ -8,7 +8,7 @@ import { useChatStore } from '../useChatStore'
 import { useSettingsStore } from '../useSettingsStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { lorebookCache } from '../../utils/lorebook'
-import type { Character, Message, PersonaInjectionConfig } from '../../../shared/types'
+import type { Character, PersonaInjectionConfig } from '../../../shared/types'
 
 function makeCharacter(): Character {
   return {

@@ -10,7 +10,7 @@ interface ChatMessage {
   content: string
   /** 标记为需保持独立的注入消息（如 at_depth 世界书、作者注释），跳过合并 */
   keepSeparate?: boolean
-  [key: string]: any
+  [key: string]: unknown
 }
 
 /**
@@ -48,12 +48,12 @@ export function mergeConsecutiveMessages(messages: ChatMessage[]): ChatMessage[]
 
     // 如果角色相同，合并内容
     if (lastMsg.role === msg.role) {
-      lastMsg.content = `${lastMsg.content}\n\n${msg.content}`
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
     }
     // 如果当前是 system 且上一条是 user/assistant，合并到上一条
     // （system 穿插在对话中时，追加到前一条消息）
     else if (msg.role === 'system' && (lastMsg.role === 'user' || lastMsg.role === 'assistant')) {
-      lastMsg.content = `${lastMsg.content}\n\n${msg.content}`
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
     }
     // 其他情况，直接加入
     else {
@@ -78,7 +78,6 @@ export function mergeConsecutiveMessages(messages: ChatMessage[]): ChatMessage[]
  */
 export function strictAlternatingMessages(
   messages: ChatMessage[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _placeholder = '[System message]'
 ): ChatMessage[] {
   if (!messages || messages.length === 0) return []
@@ -98,9 +97,14 @@ export function strictAlternatingMessages(
 
     const lastMsg = final[final.length - 1]
 
+    // BUG-16 修复：与注释一致——连续相同角色时合并内容，而非直接 push
+    // （mergeConsecutiveMessages 已处理大部分场景，此处防御系统消息穿插等边界情况）
     if (!lastMsg || lastMsg.role === msg.role) {
-      // 角色相同，合并
-      final.push({ ...msg })
+      if (lastMsg && lastMsg.role === msg.role) {
+        lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
+      } else {
+        final.push({ ...msg })
+      }
     } else if (lastMsg.role === 'system') {
       // 上一条是 system，当前是 user/assistant，直接加入
       final.push({ ...msg })
@@ -134,11 +138,11 @@ export function semiStrictMessages(messages: ChatMessage[]): ChatMessage[] {
 
     // system 消息可以连续
     if (msg.role === 'system' && lastMsg.role === 'system') {
-      lastMsg.content = `${lastMsg.content}\n\n${msg.content}`
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
     }
     // user/assistant 相同角色合并
     else if (msg.role === lastMsg.role && msg.role !== 'system') {
-      lastMsg.content = `${lastMsg.content}\n\n${msg.content}`
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
     }
     // 其他情况直接加入
     else {
@@ -191,8 +195,38 @@ export function stripThought(text: string): string {
   return normalizeThoughtTags(text).replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
 }
 
+/** 去掉 <thought> 标签本身但保留内容（用于 TTS 朗读内心想法等场景） */
+export function stripThoughtTags(text: string): string {
+  if (!text) return text
+  return normalizeThoughtTags(text).replace(/<\/?thought>/gi, '').trim()
+}
+
 /** 续写重叠去重的最小重叠长度（字符） */
 const MIN_CONTINUATION_OVERLAP = 8
+
+/**
+ * 计算 prev 的最长后缀同时也是 next 的最长前缀（KMP，O(n+m)）
+ * BUG-25 修复：替代原实现逐长度 slice 比对的最坏 O(n²) 扫描
+ */
+function maxSuffixPrefix(prev: string, next: string): number {
+  if (prev.length === 0 || next.length === 0) return 0
+  // 计算 next 的 prefix 函数（最长相同前后缀长度表）
+  const lps = new Array<number>(next.length).fill(0)
+  let j = 0
+  for (let i = 1; i < next.length; i++) {
+    while (j > 0 && next[i] !== next[j]) j = lps[j - 1]
+    if (next[i] === next[j]) j++
+    lps[i] = j
+  }
+  // 在 prev 上做 KMP 扫描，结束时 j = prev 末尾处与 next 前缀的最长匹配长度
+  j = 0
+  for (let i = 0; i < prev.length; i++) {
+    while (j > 0 && prev[i] !== next[j]) j = lps[j - 1]
+    if (prev[i] === next[j]) j++
+    if (j === next.length) j = lps[j - 1]
+  }
+  return j
+}
 
 /**
  * 续写复述前缀去重
@@ -211,11 +245,12 @@ export function trimContinuationOverlap(prev: string, next: string): string {
   if (!prev || !next) return next
   // 最长可能重叠不超过两者较短长度
   const maxOverlap = Math.min(prev.length, next.length)
-  for (let len = maxOverlap; len >= MIN_CONTINUATION_OVERLAP; len--) {
-    if (prev.endsWith(next.slice(0, len))) {
-      // 剪掉重叠前缀，并清理剪切处残留的首部空白
-      return next.slice(len).replace(/^\s+/, '')
-    }
+  if (maxOverlap < MIN_CONTINUATION_OVERLAP) return next
+
+  const overlap = maxSuffixPrefix(prev, next)
+  if (overlap >= MIN_CONTINUATION_OVERLAP) {
+    // 剪掉重叠前缀，并清理剪切处残留的首部空白
+    return next.slice(overlap).replace(/^\s+/, '')
   }
   return next
 }

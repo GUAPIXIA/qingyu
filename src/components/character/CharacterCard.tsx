@@ -4,7 +4,7 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
 import { getDisplayName } from '../../utils/variables'
-import { isLocalProvider } from '../../utils/defaults'
+import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
 import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin, Languages, Loader2 } from 'lucide-react'
 import { useState, useMemo, memo } from 'react'
 import { cn } from '../../lib/utils'
@@ -82,7 +82,7 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
     if (!text || translating) return
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider))) return
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) return
 
     setTranslating(true)
     const requestId = `translate-fm-${Date.now()}-${Math.random().toString(36).slice(2)}`

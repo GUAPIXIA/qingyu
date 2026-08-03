@@ -4,6 +4,7 @@ import {
   BUILTIN_FONTS,
   THEME_COLORS,
   PROVIDER_INFO,
+  isLocalUrl,
   getDefaultSettings as reExportedGetDefaultSettings,
 } from '../defaults'
 
@@ -122,5 +123,29 @@ describe('PROVIDER_INFO', () => {
       expect(entry).toHaveProperty('placeholder')
       expect(entry).toHaveProperty('keyLabel')
     }
+  })
+})
+
+describe('isLocalUrl', () => {
+  it('识别 localhost 与回环地址', () => {
+    expect(isLocalUrl('http://localhost:11434')).toBe(true)
+    expect(isLocalUrl('http://localhost:8000/v1')).toBe(true)
+    expect(isLocalUrl('http://127.0.0.1:5000/v1')).toBe(true)
+    expect(isLocalUrl('http://0.0.0.0:8000')).toBe(true)
+    expect(isLocalUrl('http://[::1]:8080')).toBe(true)
+  })
+
+  it('识别无协议前缀的本地地址', () => {
+    expect(isLocalUrl('localhost:1234')).toBe(true)
+    expect(isLocalUrl('127.0.0.1:11434')).toBe(true)
+  })
+
+  it('拒绝远程地址与空值', () => {
+    expect(isLocalUrl('https://api.openai.com/v1')).toBe(false)
+    expect(isLocalUrl('https://opencode.ai/zen/go/v1')).toBe(false)
+    expect(isLocalUrl('https://localhost.evil.com')).toBe(false)
+    expect(isLocalUrl('')).toBe(false)
+    expect(isLocalUrl(null)).toBe(false)
+    expect(isLocalUrl(undefined)).toBe(false)
   })
 })

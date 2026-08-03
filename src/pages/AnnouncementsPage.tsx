@@ -73,7 +73,7 @@ export function AnnouncementsPage() {
                         {children}
                       </a>
                     ),
-                    code: ({ className, children, ...props }: any) => {
+                    code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode }) => {
                       const isInline = !className
                       if (isInline) {
                         return (

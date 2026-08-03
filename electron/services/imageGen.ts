@@ -51,9 +51,9 @@ export async function generateImage(
       default:
         return { success: false, error: `不支持的 provider: ${config.provider}` }
     }
-  } catch (err: any) {
-    log.error('生图失败', { provider: config.provider, error: err?.message ?? String(err) })
-    return { success: false, error: err?.message ?? String(err) }
+  } catch (err) {
+    log.error('生图失败', { provider: config.provider, error: err instanceof Error ? err.message : String(err) })
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -143,7 +143,7 @@ async function sdWebuiGenerate(
     throw new Error(`SD WebUI API 错误 ${response.status}: ${errText.substring(0, 200)}`)
   }
 
-  const data: any = await response.json()
+  const data: { images?: unknown } = await response.json()
   if (!data.images || !Array.isArray(data.images) || data.images.length === 0) {
     throw new Error('SD WebUI 返回的图片数据为空')
   }
@@ -191,15 +191,15 @@ async function openaiGenerate(
     throw new Error(`OpenAI API 错误 ${response.status}: ${errText.substring(0, 200)}`)
   }
 
-  const data: any = await response.json()
+  const data: { data?: { b64_json?: string }[] } = await response.json()
   if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
     throw new Error('OpenAI 返回的图片数据为空')
   }
 
   // OpenAI 返回 b64_json 字段
   const images = data.data
-    .map((item: any) => item.b64_json)
-    .filter((b64: string) => !!b64)
+    .map((item) => item.b64_json)
+    .filter((b64): b64 is string => !!b64)
     .map((b64: string) => `data:image/png;base64,${b64}`)
 
   if (images.length === 0) {
@@ -248,7 +248,7 @@ export async function testImageGenConnection(config: TestConnectionConfig): Prom
         return { success: false, error: `HTTP ${response.status}: ${response.statusText}` }
       }
 
-      const data: any = await response.json()
+      const data: { sd_model_checkpoint?: string; sd_model_hash?: string } = await response.json()
       const model = data?.sd_model_checkpoint || data?.sd_model_hash || '未知'
       return { success: true, message: `连接成功，当前模型: ${model}` }
     }
@@ -272,19 +272,19 @@ export async function testImageGenConnection(config: TestConnectionConfig): Prom
         return { success: false, error: `HTTP ${response.status}: ${errText.substring(0, 100)}` }
       }
 
-      const data: any = await response.json()
+      const data: { data?: unknown[] } = await response.json()
       const modelCount = data?.data?.length ?? 0
       return { success: true, message: `连接成功，可用模型 ${modelCount} 个` }
     }
 
     return { success: false, error: `不支持的 provider: ${config.provider}` }
-  } catch (err: any) {
-    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+  } catch (err) {
+    if ((err as Error)?.name === 'TimeoutError' || (err as Error)?.name === 'AbortError') {
       return { success: false, error: '连接超时（10秒），请检查地址是否正确及服务是否已启动' }
     }
-    if (err?.code === 'ECONNREFUSED') {
+    if ((err as NodeJS.ErrnoException)?.code === 'ECONNREFUSED') {
       return { success: false, error: '连接被拒绝，请确认服务已启动且端口正确' }
     }
-    return { success: false, error: err?.message ?? String(err) }
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
