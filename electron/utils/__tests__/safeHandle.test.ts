@@ -55,4 +55,22 @@ describe('safeHandle', () => {
 
     expect(ipcMain.handle).toHaveBeenCalledWith('test:channel', expect.any(Function))
   })
+
+  it('错误日志中的 API Key 已脱敏（错误消息含 sk-xxx 时日志为 sk-***）', async () => {
+    const { ipcMain, registered } = createMockIpcMain()
+    const logSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      safeHandle(ipcMain as unknown as IpcMain, 'test:key', async () => {
+        throw new Error('OpenAI API 错误 401: sk-abcdefghijklmnopqrstuvwxyz123456 invalid')
+      })
+      const handler = registered.get('test:key')!
+      await expect(handler({})).rejects.toThrow()
+      // 日志输出必须脱敏（safeHandle 内部经 sanitizeApiKey 处理后写入 logger）
+      // 此处通过 logger 层验证：日志内容不含完整密钥
+      const logs = logSpy.mock.calls.map((c) => JSON.stringify(c)).join(' ')
+      expect(logs).not.toContain('sk-abcdefghijklmnopqrstuvwxyz123456')
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
 })

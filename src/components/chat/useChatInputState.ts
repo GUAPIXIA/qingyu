@@ -671,7 +671,7 @@ export function useChatInputState(
           setText(full)
         },
       })
-      if (!result) setText(originalText)
+      if (!result) setText(originalText ?? '')
     } catch (err) {
       logError('ChatInput:polish', err)
       setText(originalText!)

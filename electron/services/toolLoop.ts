@@ -14,6 +14,22 @@ const log = createLogger('toolLoop')
 /** 工具调用循环最大轮数（防止无限循环） */
 const MAX_TOOL_ROUNDS = 10
 
+/** 单次 MCP 工具调用超时（毫秒） */
+const TOOL_CALL_TIMEOUT_MS = 60000
+
+/** 带超时的工具调用（防止工具永久挂起） */
+export async function callToolWithTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`工具调用超时（${Math.round(ms / 1000)} 秒）`)), ms)
+  })
+  try {
+    return await Promise.race([fn(), timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 /**
  * 带工具调用循环的 chat
  * 当 AI 返回 tool_calls 时：
@@ -131,7 +147,11 @@ export async function chatWithTools(
       try {
         const serverInfo = mcpManager.findToolServer(name)
         if (!serverInfo) throw new Error(`工具 ${name} 未找到`)
-        const mcpResult = await mcpManager.callTool(serverInfo.serverId, name, args)
+        // 修复：工具调用加超时，防止 MCP 工具永久挂起阻塞整个对话流
+        const mcpResult = await callToolWithTimeout(
+          () => mcpManager.callTool(serverInfo.serverId, name, args),
+          TOOL_CALL_TIMEOUT_MS,
+        )
         const resultText = mcpResult.content
           .filter((c: any) => c.type === 'text')
           .map((c: any) => c.text)

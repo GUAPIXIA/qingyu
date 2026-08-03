@@ -33,7 +33,7 @@ export async function runMemorySummary(
   if (recentMessages.length < MEMORY_SUMMARY_MIN) return null
 
   const messagesText = recentMessages
-    .map(m => `${m.role === 'user' ? '用户' : character.name}: ${m.content}`)
+    .map(m => `${m.role === 'user' ? userName : character.name}: ${m.content}`)
     .join('\n')
 
   const previousMemory = session.memory || '无'

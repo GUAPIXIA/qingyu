@@ -18,7 +18,8 @@ function authMiddleware(req, res, next) {
 
   const token = authHeader.split(' ')[1]
   try {
-    const decoded = jwt.verify(token, JWT_SECRET)
+    // 锁定算法，防止 JWT 算法混淆攻击（只接受 HS256）
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] })
     req.admin = decoded
     next()
   } catch {

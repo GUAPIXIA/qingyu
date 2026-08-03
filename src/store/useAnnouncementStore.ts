@@ -29,7 +29,7 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => ({
         set({ selectedAnnouncement: null })
       }
     } catch (err) {
-      set({ error: err.message || '加载公告失败', loading: false })
+      set({ error: err instanceof Error ? err.message : String(err), loading: false })
     }
   },
 

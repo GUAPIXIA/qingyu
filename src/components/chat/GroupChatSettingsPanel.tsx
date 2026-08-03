@@ -391,8 +391,10 @@ export function GroupChatSettingsPanel({
                     ...group,
                     chatBackground: undefined,
                     chatBackgroundParams: {
-                      ...group.chatBackgroundParams,
-                      type: 'gradient',
+                      ...group.chatBackgroundParams!,
+                      opacity: group.chatBackgroundParams!.opacity,
+                      blur: group.chatBackgroundParams!.blur,
+                      type: 'gradient' as const,
                     },
                   })}
                   className="w-full btn-ghost text-xs py-1 text-tavern-danger"

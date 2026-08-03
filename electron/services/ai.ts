@@ -97,7 +97,13 @@ async function chatWithRetry(
       log.warn(`请求失败，${delay}ms 后重试 (${attempt + 1}/${effectiveRetry + 1})`, {
         error: (err as Error).message,
       })
-      await new Promise(resolve => setTimeout(resolve, delay))
+      // 修复：退避等待响应取消信号（用户取消后立即中止，不干等完整延迟）
+      if (signal.aborted) throw err
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, delay)
+        signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
+      })
+      if (signal.aborted) throw err
     }
   }
   throw lastError
@@ -131,6 +137,8 @@ export function registerAIIPC(ipcMain: IpcMain): void {
   ipcMain.handle('ai:chat', async (event, params: ChatParams) => {
     const webContents = event.sender as WebContents
     const controller = new AbortController()
+    // 防御：同 requestId 重复发起时中止旧请求，避免旧 controller 泄漏
+    activeRequests.get(params.requestId)?.abort()
     activeRequests.set(params.requestId, controller)
 
     log.info('AI 请求开始', {
@@ -138,6 +146,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
       provider: params.provider,
       model: params.model,
       messageCount: params.messages.length,
+      imageMessages: params.messages.filter((m) => m.images && m.images.length > 0).length,
     })
 
     try {
@@ -192,7 +201,11 @@ export function registerAIIPC(ipcMain: IpcMain): void {
         safeSend(webContents, 'ai:error', { requestId: params.requestId, error: err.message })
       }
     } finally {
-      activeRequests.delete(params.requestId)
+      // 竞态保护：仅当 Map 中仍指向当前 controller 时才删除
+      // （防止同 requestId 被覆盖后，旧请求的 finally 误删新请求的 controller）
+      if (activeRequests.get(params.requestId) === controller) {
+        activeRequests.delete(params.requestId)
+      }
     }
   })
 
@@ -210,7 +223,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
     return countTokens(text, model)
   })
 
-  ipcMain.handle('ai:countMessagesTokens', async (_event, messages: { content: string; role: string }[], model: string) => {
+  ipcMain.handle('ai:countMessagesTokens', async (_event, messages: { content: string; role: string; images?: string[] }[], model: string) => {
     return countMessagesTokens(messages, model)
   })
 }

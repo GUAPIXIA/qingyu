@@ -12,6 +12,8 @@
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
+  /** 图片 data URL 数组（用户消息，供 vision 模型识别） */
+  images?: string[]
   [key: string]: unknown
 }
 
@@ -73,6 +75,10 @@ export function convertToClaude(messages: ChatMessage[], _names: PromptNames): C
       const lastMsg = result[result.length - 1]
       if (lastMsg) {
         lastMsg.content += '\n\n' + (msg.content ?? '')
+        // 合并图片（保持顺序，供 vision 模型识别）
+        if (msg.images?.length) {
+          lastMsg.images = [...(lastMsg.images ?? []), ...msg.images]
+        }
       }
     } else {
       // 不同角色，直接添加
@@ -129,6 +135,10 @@ export function convertToGemini(messages: ChatMessage[]): ChatMessage[] {
       const lastMsg = result[result.length - 1]
       if (lastMsg) {
         lastMsg.content += '\n\n' + (msg.content ?? '')
+        // 合并图片（保持顺序，供 vision 模型识别）
+        if (msg.images?.length) {
+          lastMsg.images = [...(lastMsg.images ?? []), ...msg.images]
+        }
       }
     } else {
       result.push({ ...msg })

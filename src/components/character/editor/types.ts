@@ -1,17 +1,20 @@
 import type { Character } from '../../../../shared/types'
-import type { RefObject, CSSProperties } from 'react'
+import type { LegacyRef, CSSProperties } from 'react'
 
 /** textarea 自动调整高度(useTaResize)的返回值 */
 export interface TaAutoSize {
-  ref: RefObject<HTMLTextAreaElement | null>
+  ref: LegacyRef<HTMLTextAreaElement>
   style: CSSProperties
 }
+
+/** 可翻译的角色字段 */
+export type TranslatableField = keyof Pick<Character, 'name' | 'description' | 'personality' | 'scenario' | 'firstMessage' | 'exampleDialog'>
 
 /** 翻译相关共享 props */
 export interface TranslateProps {
   translatedFields: Set<string>
   translatingField: string | null
-  handleTranslateField: (field: string) => void
+  handleTranslateField: (field: TranslatableField) => Promise<void>
   handleTranslateGreeting: (index: number) => void
 }
 

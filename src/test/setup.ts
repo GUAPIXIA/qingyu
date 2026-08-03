@@ -93,14 +93,17 @@ const mockApi: Partial<ExposedAPI> = {
 }
 
 // 注入 mock 到 window.api（不覆盖 window 本身）
-Object.defineProperty(window, 'api', {
-  value: mockApi,
-  writable: true,
-  configurable: true,
-})
+// 环境守卫：server 测试（node 环境）无 window，跳过 DOM 相关 mock
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'api', {
+    value: mockApi,
+    writable: true,
+    configurable: true,
+  })
+}
 
-// Mock matchMedia
-if (!window.matchMedia) {
+// Mock matchMedia（仅 DOM 环境）
+if (typeof window !== 'undefined' && !window.matchMedia) {
   Object.defineProperty(window, 'matchMedia', {
     value: vi.fn().mockReturnValue({
       matches: false,
@@ -119,28 +122,31 @@ vi.mock('nanoid', () => ({
 
 // ---- 全局错误捕获（测试环境终端输出）----
 // 未捕获的错误会在此收集，afterEach 时检查并使测试失败
+// （仅 DOM 环境注册，server 测试使用 node 环境）
 
 const unhandledErrors: string[] = []
 
-window.addEventListener('error', (e: ErrorEvent) => {
-  const msg = e.error instanceof Error
-    ? `${e.error.message}\n${e.error.stack ?? ''}`
-    : e.message
-  console.error('\n━━━ 未捕获异常 ━━━')
-  console.error(msg)
-  console.error('━━━━━━━━━━━━━━━\n')
-  unhandledErrors.push(msg)
-})
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (e: ErrorEvent) => {
+    const msg = e.error instanceof Error
+      ? `${e.error.message}\n${e.error.stack ?? ''}`
+      : e.message
+    console.error('\n━━━ 未捕获异常 ━━━')
+    console.error(msg)
+    console.error('━━━━━━━━━━━━━━━\n')
+    unhandledErrors.push(msg)
+  })
 
-window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
-  const reason = e.reason instanceof Error
-    ? `${e.reason.message}\n${e.reason.stack ?? ''}`
-    : String(e.reason)
-  console.error('\n━━━ 未处理 Promise rejection ━━━')
-  console.error(reason)
-  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
-  unhandledErrors.push(`[unhandled rejection] ${reason}`)
-})
+  window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+    const reason = e.reason instanceof Error
+      ? `${e.reason.message}\n${e.reason.stack ?? ''}`
+      : String(e.reason)
+    console.error('\n━━━ 未处理 Promise rejection ━━━')
+    console.error(reason)
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
+    unhandledErrors.push(`[unhandled rejection] ${reason}`)
+  })
+}
 
 afterEach(() => {
   clearCollectedLogs()

@@ -114,7 +114,8 @@ export function migrateData<T>(domain: DataDomain, data: unknown): T | null {
   for (const migration of chain) {
     if (version === migration.from) {
       try {
-        current = migration.run(current)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        current = migration.run(current) as any
         version = migration.to
       } catch {
         // 迁移失败：保留原数据，避免数据损坏

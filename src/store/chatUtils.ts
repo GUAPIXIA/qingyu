@@ -22,10 +22,17 @@ export function friendlyError(error: string): string {
   if (lower.includes('403') || lower.includes('forbidden')) return '访问被拒绝，请检查 API Key 权限'
   if (lower.includes('429') || lower.includes('rate limit')) return '请求过于频繁，请稍后再试'
   if (lower.includes('500') || lower.includes('502') || lower.includes('503')) return 'AI 服务暂时不可用，请稍后重试'
-  if (lower.includes('timeout') || lower.includes('aborted')) return '请求超时，请检查网络'
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('aborted')) return '请求超时，请检查网络'
   if (lower.includes('network') || lower.includes('econnrefused') || lower.includes('fetch failed')) return '网络连接失败，请检查网络或 Base URL'
   if (lower.includes('model not found')) return '模型不存在，请检查模型名'
   if (lower.includes('context length') || lower.includes('too long')) return '上下文过长，请清空部分对话'
+  // 图片/视觉相关错误（含适配器附加的「请求包含图片」诊断标记）
+  if (lower.includes('请求包含图片')) {
+    return '模型或网关不支持图片输入：请确认识图模型支持视觉（如 gpt-4o、qwen-vl 系列），且网关支持 data URL 图片格式；或检查识图模型配置'
+  }
+  if (lower.includes('image') && (lower.includes('400') || lower.includes('invalid'))) {
+    return '图片请求被拒绝：模型可能不支持视觉输入，请确认识图模型配置正确'
+  }
   return error.length > 100 ? error.slice(0, 100) + '...' : error
 }
 

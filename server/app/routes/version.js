@@ -32,7 +32,11 @@ router.put('/', authMiddleware, (req, res) => {
   const { version, changelog, downloadUrl } = req.body
 
   if (version !== undefined) {
-    setConfig('latest_version', String(version))
+    // semver 格式校验（x.y.z，可选 -预发布 后缀）
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version.trim())) {
+      return res.status(400).json({ error: '版本号格式无效，应为 x.y.z（如 1.2.3）' })
+    }
+    setConfig('latest_version', version.trim())
   }
   if (changelog !== undefined) {
     setConfig('changelog', String(changelog))

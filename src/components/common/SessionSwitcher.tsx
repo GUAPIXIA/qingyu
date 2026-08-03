@@ -4,15 +4,9 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { cn } from '../../lib/utils'
 import { Layers, ChevronDown, Edit2, Trash2, Plus, UserCircle } from 'lucide-react'
 
-interface Session {
-  id: string
-  title: string
-  messageCount: number
-  personaId?: string
-}
-
 interface SessionSwitcherProps {
-  sessions: Session[]
+  /** 兼容单聊 SessionPreview[] 与群聊 GroupSession[]（均含 id/title/messageCount） */
+  sessions: Array<{ id: string; title: string; messageCount: number; personaId?: string | null }>
   currentSessionId: string | null
   onSwitch: (sessionId: string) => void
   onRename: (sessionId: string, newTitle: string) => void | Promise<void>
@@ -121,8 +115,8 @@ export function SessionSwitcher({
                   <>
                     {showPersona && (
                       <div className="w-5 h-5 rounded-full overflow-hidden bg-tavern-bg-hover flex items-center justify-center shrink-0">
-                        {getPersona?.(s.personaId)?.avatar ? (
-                          <img src={getPersona(s.personaId)!.avatar} alt="" className="w-full h-full object-cover" />
+                        {getPersona?.(s.personaId ?? undefined)?.avatar ? (
+                          <img src={getPersona(s.personaId ?? undefined)!.avatar} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <UserCircle className="w-4 h-4 text-tavern-text-muted" />
                         )}

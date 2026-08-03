@@ -149,12 +149,15 @@ export function countTokens(text: string, model: string): number {
   }
 }
 
-/** 批量计数（每条消息 +4 token 的 role 元数据开销） */
+/** 每张图片的 token 估算（vision 模型视觉输入开销，OpenAI high-detail 粗略值） */
+export const IMAGE_TOKENS_PER_IMAGE = 500
+
+/** 批量计数（每条消息 +4 token 的 role 元数据开销，图片按固定值估算） */
 export function countMessagesTokens(
-  messages: { content: string; role: string }[],
+  messages: { content: string; role: string; images?: string[] }[],
   model: string,
 ): number[] {
-  return messages.map(m => countTokens(m.content, model) + 4)
+  return messages.map(m => countTokens(m.content, model) + 4 + (m.images?.length ?? 0) * IMAGE_TOKENS_PER_IMAGE)
 }
 
 /** 当前 tokenizer 工作模式（供调试/设置页展示） */

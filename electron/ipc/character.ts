@@ -16,12 +16,20 @@ import {
 } from '../services/charCard'
 import type { Character, Settings } from '../../shared/types'
 import { safeId } from '../utils/pathGuard'
-import { DIRS, readJson } from '../services/storage'
+import { DIRS, readJson, withFileLock } from '../services/storage'
 
 const log = createLogger('character')
 
 /** 并发池大小 */
 const CONCURRENCY_LIMIT = 3
+
+/**
+ * 角色级文件锁：基于角色 JSON 文件路径的串行写队列
+ * 防止并发保存/删除同一角色时互相覆盖（修复：此前调用未定义函数导致运行时崩溃）
+ */
+function withCharacterLock<T>(id: string, fn: () => T | Promise<T>): Promise<T> {
+  return withFileLock(join(DIRS.characters(), `${id}.json`), fn)
+}
 
 /** 读取当前设置中的封面代理 URL */
 function getCoverProxyUrl(): string | undefined {

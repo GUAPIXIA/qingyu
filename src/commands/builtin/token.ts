@@ -3,7 +3,7 @@ import type { CommandDef } from '../registry'
 /** 显示当前字符用量 */
 export const tokenCommand: CommandDef = {
   name: 'token',
-  aliases: ['tokens', 't', 'chars', 'c'],
+  aliases: ['tokens', 't', 'chars'],
   description: '显示当前对话字符用量',
   usage: '/token',
   execute: async (_args, ctx) => {

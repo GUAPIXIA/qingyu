@@ -1,20 +1,29 @@
 import type { AIAdapter } from './types'
 import { normalizeThoughtTags } from './types'
+import { parseImageDataUrl, imageErrorHint } from './vision'
 
 export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, onUsage) {
-    const { baseUrl, apiKey, model, messages, temperature, topP,
+    const { baseUrl, apiKey, model, temperature, topP,
             maxTokens, frequencyPenalty, presencePenalty, stream } = params
     const action = stream ? 'streamGenerateContent' : 'generateContent'
     const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models/${model}:${action}${stream ? '?alt=sse' : ''}`
 
     // 转换为 Gemini 格式
-    const systemMsg = messages.find((m) => m.role === 'system')
-    const contents = messages
+    const systemMsg = params.messages.find((m) => m.role === 'system')
+    const contents = params.messages
       .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      }))
+      .map((m) => {
+        const parts: Record<string, unknown>[] = [{ text: m.content }]
+        // Vision：图片转为 inline_data（Gemini 要求纯 base64 + mime_type）
+        for (const u of m.images ?? []) {
+          const p = parseImageDataUrl(u)
+          if (p) parts.push({ inline_data: { mime_type: p.mimeType, data: p.data } })
+        }
+        return {
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts,
+        }
+      })
 
     const generationConfig: Record<string, unknown> = {
       temperature,
@@ -57,14 +66,16 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
 
     if (!response.ok) {
       await response.text()
-      throw new Error(`Gemini API 错误 ${response.status}`)
+      throw new Error(`Gemini API 错误 ${response.status}${imageErrorHint(params.messages)}`)
     }
 
     if (!stream) {
-      const data: { candidates?: { content?: { parts?: { text?: string }[] } }[] } = await response.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data: any = await response.json()
       const parts = data.candidates?.[0]?.content?.parts ?? []
       let text = ''
-      const rawToolCalls: { name?: string; input?: unknown; id?: string }[] = []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawToolCalls: any[] = []
       for (const part of parts) {
         if (part.text) text += part.text
         else if (part.functionCall) {
@@ -254,8 +265,9 @@ function nextGeminiCallId(): number {
 }
 
 /** 从 Gemini 非 SSE 流中提取完整 JSON 对象（修复 JSON 数组片段解析） */
-function extractGeminiJsonObjects(buffer: string): { objects: unknown[]; remaining: string } {
-  const objects: unknown[] = []
+function extractGeminiJsonObjects(buffer: string): { objects: any[]; remaining: string } { // eslint-disable-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const objects: any[] = []
   // BUG-15 修复：单遍扫描，不再重置索引（原实现每提取一个对象就回到起点重扫，O(n²)）
   let depth = 0
   let start = -1

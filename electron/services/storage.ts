@@ -4,6 +4,7 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, unlink
 import { readFile, writeFile, readdir, rename } from 'node:fs/promises'
 import { getDefaultSettings } from '../../shared/defaults'
 import { migrateData, currentSchemaVersion } from './migration'
+import { createLogger } from './logger'
 import type { DataDomain } from './migration'
 
 /** 获取数据目录 */
@@ -52,6 +53,14 @@ export function readJson<T>(filePath: string, domain?: DataDomain): T | null {
     }
     return parsed
   } catch {
+    // 修复：区分「文件不存在」与「文件损坏」，损坏时记录日志便于排查
+    // （行为不变：仍返回 null，保证调用方兼容）
+    if (existsSync(filePath)) {
+      try {
+        const logger = createLogger('storage')
+        logger.warn('JSON 文件损坏或无法解析', { file: filePath.substring(0, 120) })
+      } catch { /* 日志失败忽略 */ }
+    }
     return null
   }
 }
@@ -208,7 +217,7 @@ export async function listJsonFilesAsync<T>(dir: string): Promise<T[]> {
     const results = await Promise.all(
       files.map((file) => readJsonAsync<T>(join(dir, file))),
     )
-    return results.filter((r): r is T => r !== null)
+    return results.filter((r) => r !== null) as T[]
   } catch {
     return []
   }

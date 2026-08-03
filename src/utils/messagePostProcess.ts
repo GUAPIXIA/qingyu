@@ -8,6 +8,8 @@
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
+  /** 图片 data URL 数组（用户消息，供 vision 模型识别） */
+  images?: string[]
   /** 标记为需保持独立的注入消息（如 at_depth 世界书、作者注释），跳过合并 */
   keepSeparate?: boolean
   [key: string]: unknown
@@ -49,6 +51,10 @@ export function mergeConsecutiveMessages(messages: ChatMessage[]): ChatMessage[]
     // 如果角色相同，合并内容
     if (lastMsg.role === msg.role) {
       lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
+      // 合并图片（保持顺序，供 vision 模型识别）
+      if (msg.images?.length) {
+        lastMsg.images = [...(lastMsg.images ?? []), ...msg.images]
+      }
     }
     // 如果当前是 system 且上一条是 user/assistant，合并到上一条
     // （system 穿插在对话中时，追加到前一条消息）

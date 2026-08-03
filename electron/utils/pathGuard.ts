@@ -53,20 +53,26 @@ export function isSafeUrl(urlStr: string): boolean {
       return false
     }
     const hostname = url.hostname.toLowerCase()
+    // IPv6 方括号：WHATWG URL 的 hostname 对 IPv6 地址保留方括号（如 [::1]），
+    // 需先剥离再比较，否则 [::1] / [fe80::1] / [fd00::1] 可绕过检查
+    const host = hostname.startsWith('[') && hostname.endsWith(']')
+      ? hostname.slice(1, -1)
+      : hostname
     // 拒绝 localhost
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0') {
       return false
     }
     // 拒绝私有 IP 段
-    if (hostname.match(/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/)) {
+    if (host.match(/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/)) {
       return false
     }
     // 拒绝云元数据端点
-    if (hostname === '169.254.169.254') {
+    if (host === '169.254.169.254') {
       return false
     }
-    // 拒绝 IPv6 私有地址
-    if (hostname.startsWith('fe80') || hostname.startsWith('fc') || hostname.startsWith('fd')) {
+    // 拒绝 IPv6 特殊地址段：唯一本地 fc00::/7（fc00-fdff）、链路本地 fe80::/10（fe80-febf）、组播 ff00::/8
+    // 前缀 16 位 + 冒号匹配，兼容压缩/未压缩形式（如 fd00::1 / fd00:1::2）
+    if (/^f[cd][0-9a-f]{2}:/i.test(host) || /^fe[89ab][0-9a-f]:/i.test(host) || /^ff[0-9a-f]{2}:/i.test(host)) {
       return false
     }
     return true

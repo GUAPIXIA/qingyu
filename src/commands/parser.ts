@@ -24,7 +24,7 @@ export function parseCommand(input: string): ParsedCommand | null {
   // 按空白分割，但保留引号内的内容
   const tokens = rest.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []
   if (tokens.length === 0) return null
-  const name = tokens[0].toLowerCase()
+  const name = (tokens[0] ?? '').toLowerCase()
   const args = tokens.slice(1).map(t => t.replace(/^["']|["']$/g, ''))
   return { name, args, raw: trimmed }
 }

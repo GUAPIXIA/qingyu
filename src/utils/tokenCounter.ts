@@ -21,6 +21,14 @@ export function estimateTokens(text: string, model?: string): number {
   return Math.ceil(cjkChars * chPerZhTok + punctuation * 0.25 + englishLike / chPerEnTok)
 }
 
+/** 每张图片的 token 估算值（OpenAI high-detail 视觉计费的粗略值，用于上下文预算） */
+export const IMAGE_TOKEN_ESTIMATE = 500
+
+/** 估算 N 张图片占用的 token 数 */
+export function estimateImageTokens(count: number): number {
+  return Math.max(0, count) * IMAGE_TOKEN_ESTIMATE
+}
+
 /** 异步精确计数（走 IPC tokenizer，失败时降级到启发式） */
 export async function countTokensAccurate(text: string, model: string): Promise<number> {
   try {

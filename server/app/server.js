@@ -8,14 +8,16 @@ require('dotenv').config()
 const announcementsRouter = require('./routes/announcements')
 const authRouter = require('./routes/auth')
 const versionRouter = require('./routes/version')
+const { resolveAllowedOrigins } = require('./cors')
 
 const app = express()
 const PORT = process.env.PORT || 3000
 
 // 安全中间件（关闭 CSP，管理后台依赖内联脚本）
 app.use(helmet({ contentSecurityPolicy: false }))
+// 修复：空数组是 truthy，[] || 默认值恒为 [] 导致跨域全拒；按长度判断（逻辑见 cors.js）
 app.use(cors({
-  origin: (process.env.ALLOWED_ORIGINS || '').split(',').filter(Boolean) || ['http://localhost:3000'],
+  origin: resolveAllowedOrigins(process.env.ALLOWED_ORIGINS),
   credentials: true,
 }))
 app.use(express.json({ limit: '1mb' }))
@@ -42,6 +44,16 @@ app.get('/admin', (_req, res) => {
 
 const server = app.listen(PORT, () => {
   console.log(`[Server] 公告服务已启动: http://localhost:${PORT}`)
+})
+
+// 404 与全局错误处理（修复：此前无兜底，路由未命中返回默认 HTML，异常错误无 JSON 响应）
+app.use((_req, res) => {
+  res.status(404).json({ error: '接口不存在' })
+})
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  console.error('[Server] 未捕获错误:', err)
+  res.status(500).json({ error: '服务器内部错误' })
 })
 
 server.on('error', (err) => {

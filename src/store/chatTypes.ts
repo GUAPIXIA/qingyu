@@ -5,6 +5,8 @@ import type { BudgetLoreItem } from '../utils/lorebook'
 export type ContextMessage = {
   role: 'system' | 'user' | 'assistant'
   content: string
+  /** 图片 data URL 数组（仅用户消息携带，供 vision 模型识别） */
+  images?: string[]
   keepSeparate?: boolean
 }
 

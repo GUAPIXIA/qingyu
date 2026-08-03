@@ -69,25 +69,28 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     // 兼容 SillyTavern 世界书格式
     // NEW-H2 修复：导入文件的 id 必须先通过 safeId 校验（防止路径遍历字符写入任意位置）；
     // 非法时回退为新生成的 nanoid
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = parsed as Record<string, any>
     let importedId: string
     try {
-      importedId = parsed.id ? safeId(parsed.id) : nanoid()
+      importedId = p.id ? safeId(p.id) : nanoid()
     } catch {
       importedId = nanoid()
     }
     const lorebook: Lorebook = {
       id: importedId,
-      name: parsed.name ?? '导入的世界书',
-      description: parsed.description ?? '',
-      entries: (Array.isArray(parsed.entries)
-        ? parsed.entries
-        : (typeof parsed.entries === 'object' && parsed.entries !== null ? Object.values(parsed.entries) : [])
-      ).map((e: unknown, i: number) => {
+      name: p.name ?? '导入的世界书',
+      description: p.description ?? '',
+      entries: (Array.isArray(p.entries)
+        ? p.entries
+        : (typeof p.entries === 'object' && p.entries !== null ? Object.values(p.entries) : [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ).map((e: Record<string, any>, i: number) => {
         // 校验每个条目
-        if (typeof e !== 'object' || e === null) return null
+        if (!e || typeof e !== 'object') return null
         return {
           id: e.uid?.toString() ?? nanoid(),
-          keywords: Array.isArray((e as { key?: unknown }).key) ? ((e as { key: unknown[] }).key).filter((k): k is string => typeof k === 'string') : (typeof (e as { key?: unknown }).key === 'string' ? (e as { key: string }).key.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
+          keywords: Array.isArray(e.key) ? e.key.filter((k: unknown): k is string => typeof k === 'string') : (typeof e.key === 'string' ? e.key.split(',').map((s: string) => s.trim()).filter(Boolean) : []),
           content: typeof e.content === 'string' ? e.content : '',
           position: e.position === 0 || e.position === 'before' ? 'before_char'
             : e.position === 1 || e.position === 'after' ? 'after_char'
@@ -100,7 +103,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
         }
       }).filter(Boolean) as Lorebook['entries'],
       enabled: true,
-      scanDepth: typeof parsed.scan_depth === 'number' ? Math.max(1, parsed.scan_depth) : 4,
+      scanDepth: typeof p.scan_depth === 'number' ? Math.max(1, p.scan_depth) : 4,
     }
 
     if (lorebook.entries.length === 0) {

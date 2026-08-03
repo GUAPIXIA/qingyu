@@ -1,11 +1,15 @@
 import type { AIAdapter } from './types'
 import { normalizeThoughtTags } from './types'
 import { sanitizeApiKey } from '../../utils/pathGuard'
+import { toClaudeContent, imageErrorHint } from './vision'
 
 export const claudeAdapter: AIAdapter = {
   async chat(params, onChunk, signal, onUsage) {
-    const { baseUrl, apiKey, model, messages, temperature, topP, maxTokens, stream } = params
+    const { baseUrl, apiKey, model, temperature, topP, maxTokens, stream } = params
     const url = `${baseUrl.replace(/\/$/, '')}/v1/messages`
+
+    // Vision：带图片的消息转换为 content 数组（base64 image source）
+    const messages = toClaudeContent(params.messages)
 
     // Claude 要求 system 单独传
     const systemMsg = messages.find((m) => m.role === 'system')
@@ -70,16 +74,18 @@ export const claudeAdapter: AIAdapter = {
 
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`Claude API 错误 ${response.status}: ${sanitizeApiKey(errText)}`)
+      throw new Error(`Claude API 错误 ${response.status}: ${sanitizeApiKey(errText)}${imageErrorHint(params.messages)}`)
     }
 
     if (!stream) {
-      const data: { content?: { type: string; thinking?: string; text?: string; input?: unknown; name?: string; id?: string }[] } = await response.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data: any = await response.json()
       // Claude 返回 content 数组，可能有 thinking / text / tool_use 三种类型
       const parts = data.content ?? []
       let thinking = ''
       let text = ''
-      const rawToolCalls: { name?: string; input?: unknown; id?: string }[] = []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawToolCalls: any[] = []
       for (const part of parts) {
         if (part.type === 'thinking') thinking += part.thinking
         else if (part.type === 'text') text += part.text

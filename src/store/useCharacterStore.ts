@@ -93,8 +93,9 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
     // 迁移 legacy lorebookId 到 boundLorebookIds（后台静默保存）
     let migrated = false
     for (let i = 0; i < characters.length; i++) {
-      if (characters[i].lorebookId && (!characters[i].boundLorebookIds || characters[i].boundLorebookIds.length === 0)) {
-        characters[i] = migrateLorebookId(characters[i])
+      const c = characters[i]
+      if (c && c.lorebookId && (!c.boundLorebookIds || c.boundLorebookIds.length === 0)) {
+        characters[i] = migrateLorebookId(c)
         migrated = true
       }
     }
