@@ -35,6 +35,12 @@ jobs:
       - name: Electron main process build (esbuild)
         run: node electron-build.mjs
 
+      # 依赖安全审计：critical 硬门禁（当前为 0，回归即红）
+      # 注：仍有 ~14 个 high 存量（electron-builder 构建链的传递依赖：tar/ini/brace-expansion），
+      # 仅影响打包工具不影响运行时，待上游修复后逐步收紧。npmjs 官方源用于审计（npmmirror 无 audit 端点）。
+      - name: Dependency audit (critical gate)
+        run: pnpm audit --registry=https://registry.npmjs.org --audit-level=critical
+
   # Lint：已清零存量错误（2026-08 清理 125 个），现在硬性门禁
   lint:
     name: Lint

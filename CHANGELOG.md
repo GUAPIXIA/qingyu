@@ -1,5 +1,28 @@
 # 更新日志
 
+## [0.11.14] - 2026-08-05
+
+### 依赖安全修复（漏洞 63 → 29，critical 清零）+ CI 审计门禁 + 路线图校准
+
+**依赖安全**
+
+- **全量依赖审计**（首次，官方 npm registry）：发现 **63 个漏洞（25 high / 3 critical）**，集中在三条链：vitest 2.1.0、electron-builder 24、electron 31
+- **升级 vitest 2.1 → 3.2.7**（含 @vitest/coverage-v8）：修复测试框架漏洞链（-20 漏洞）；全量 821 测试在 vitest 3 下全部通过
+- **升级 electron 31 → 32.0**：修复 Electron 运行时漏洞（-14）；electron 二进制下载改用 npmmirror 镜像（`electron_mirror`），并修复 `pnpm-workspace.yaml` 中 `allowBuilds` 的占位文本错误（此前 electron 构建脚本被忽略、二进制从未下载）
+- **升级 electron-builder 24 → 26.15.3**：构建链漏洞部分修复
+- **剩余 29 个**（14 high）均为 electron-builder 构建链的传递依赖（tar / ini / brace-expansion 等），仅影响打包工具不影响运行时，待上游修复
+
+**CI 门禁**
+
+- ci.yml 新增 **依赖审计步骤**（`pnpm audit --audit-level=critical`，官方源）：critical 已清零，回归即红；high 存量在注释中记录原因
+
+**文档校准**
+
+- **优化路线图 v1.1**：现状快照表与总览表此前停留在 v0.11.0（大量已完成项标注 ❌/⬜）——重写为 v0.11.13 真实状态（快捷回复/作者注释/RAG/上下文模板/tiktoken/宏系统等已全部完成），各阶段章节与版本规划表补充状态标注；执行追踪表本就准确，保留为权威依据
+- README 版本徽章 0.11.10 → 0.11.14（此前已滞后 4 个版本）
+
+---
+
 ## [0.11.13] - 2026-08-05
 
 ### 角色卡模块测试补全（95%+ 覆盖）+ 草稿封面降级修复 + act 警告清理
