@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, session } from 'electron'
 import { join } from 'node:path'
 import { readFileSync, existsSync } from 'node:fs'
 import { registerCharacterIPC } from './ipc/character'
@@ -21,6 +21,7 @@ import { registerAnnouncementIPC } from './ipc/announcement'
 import { mcpManager } from './mcp/manager'
 import { ensureDataDir, DIRS } from './services/storage'
 import { initLogger, createLogger, getRecentLogs } from './services/logger'
+import { sanitizeApiKey } from './utils/pathGuard'
 
 // 注册 tavern:// 自定义协议为标准协议（必须在 app.ready 之前）
 protocol.registerSchemesAsPrivileged([
@@ -81,9 +82,49 @@ function createWindow() {
     }
     return { action: 'deny' }
   })
+
+  // 页面内导航防护：仅允许应用自身 URL（dev: vite 服务；prod: 本地 index.html），
+  // 其余一律拦截并用系统浏览器打开。
+  // 防止 AI 消息/角色卡中的 Markdown 链接（<a href> 点击触发页面导航）把主窗口导航到外部站点
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const allowed =
+      (isDev && url.startsWith('http://localhost:5173')) ||
+      (!isDev && url.startsWith('file://') && url.includes('/dist/index.html'))
+    if (!allowed) {
+      event.preventDefault()
+      if (/^https?:\/\//i.test(url)) {
+        shell.openExternal(url)
+      }
+    }
+  })
 }
 
 app.whenReady().then(async () => {
+  // 生产环境注入 CSP（本地 file:// 页面无响应头，通过 webRequest 注入）
+  // 消息/公告渲染即使出现 HTML 注入也有脚本执行兜底限制
+  if (!isDev) {
+    const CSP = [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: tavern: https: http:",
+      "font-src 'self' data: file:",
+      "connect-src 'self' https: http: ws: wss:",
+      "object-src 'none'",
+      "base-uri 'none'",
+      "form-action 'none'",
+      "frame-ancestors 'none'",
+    ].join('; ')
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [CSP],
+        },
+      })
+    })
+  }
+
   // 移除默认菜单栏（帮助、窗口等）
   Menu.setApplicationMenu(null)
   // 显式设置应用名称（控制左上角标题栏显示）
@@ -135,7 +176,8 @@ app.whenReady().then(async () => {
         const ipcLogger = createLogger('ipc')
         const errMsg = err instanceof Error ? err.message : String(err)
         const errStack = err instanceof Error ? err.stack?.split('\n').slice(0, 5).join(' | ') : undefined
-        ipcLogger.error(`IPC ${channel} 异常`, { error: errMsg, ...(errStack ? { stack: errStack } : {}) })
+        // 脱敏后记录：错误消息/堆栈可能包含 API Key
+        ipcLogger.error(`IPC ${channel} 异常`, { error: sanitizeApiKey(errMsg), ...(errStack ? { stack: sanitizeApiKey(errStack) } : {}) })
         throw err
       }
     })
@@ -177,10 +219,17 @@ app.whenReady().then(async () => {
     logger.error('MCP 自动启动失败', { error: err.message })
   })
 
-  // 日志 IPC
-  ipcMain.handle('log:write', (_event, level: 'debug' | 'info' | 'warn' | 'error', mod: string, message: string, meta?: Record<string, unknown>) => {
-    const logger = createLogger(mod)
-    logger[level](message, meta)
+  // 日志 IPC（level 运行时校验，防止渲染进程传入任意方法名）
+  const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error'])
+  ipcMain.handle('log:write', (_event, level: string, mod: string, message: string, meta?: Record<string, unknown>) => {
+    if (!LOG_LEVELS.has(level) || typeof mod !== 'string' || typeof message !== 'string') {
+      throw new Error('日志参数无效')
+    }
+    const logger = createLogger(mod.slice(0, 64))
+    if (level === 'debug') logger.debug(message, meta)
+    else if (level === 'info') logger.info(message, meta)
+    else if (level === 'warn') logger.warn(message, meta)
+    else logger.error(message, meta)
   })
   ipcMain.handle('log:getRecent', (_event, limit?: number) => {
     return getRecentLogs(limit || 200)

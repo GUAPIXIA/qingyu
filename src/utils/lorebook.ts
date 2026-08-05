@@ -339,7 +339,8 @@ export function triggerLorebooks(opts: LorebookTriggerOptions): LorebookTriggerR
       const matched = entry.keywords.some((k) => !!k && keywordMatch(k, recentTextLower))
       if (!matched) continue
 
-      if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
+      const p = Math.min(100, Math.max(0, Number.isFinite(entry.probability) ? entry.probability : 100))
+      if (p < 100 && Math.random() * 100 >= p) continue
 
       triggeredIds.add(entryId)
       newTriggered = true
@@ -383,7 +384,8 @@ export function triggerLorebooks(opts: LorebookTriggerOptions): LorebookTriggerR
       })
       if (!matched) continue
 
-      if (entry.probability < 100 && Math.random() * 100 >= entry.probability) continue
+      const p = Math.min(100, Math.max(0, Number.isFinite(entry.probability) ? entry.probability : 100))
+      if (p < 100 && Math.random() * 100 >= p) continue
 
       triggeredIds.add(entryId)
       newTriggered = true

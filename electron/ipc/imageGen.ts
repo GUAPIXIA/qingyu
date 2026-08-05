@@ -65,7 +65,7 @@ async function translatePromptToEnglish(prompt: string, settings: Settings): Pro
     throw new Error(`翻译 API 返回 ${response.status}`)
   }
 
-  const data: { choices?: { message?: { content?: string } }[] } = await response.json()
+  const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
   const translated = data?.choices?.[0]?.message?.content?.trim()
   if (!translated) {
     throw new Error('翻译 API 返回空结果')
@@ -115,7 +115,7 @@ export function registerImageGenIPC(ipcMain: IpcMain): void {
       return await generateImage(config, finalPrompt, { ...options, size })
     } catch (err) {
       log.error('生图 IPC 异常', { error: err instanceof Error ? err.message : String(err) })
-      return { success: false, error: err?.message ?? String(err) }
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 

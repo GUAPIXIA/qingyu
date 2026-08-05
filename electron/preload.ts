@@ -18,6 +18,7 @@ import type {
   UsageAPI,
   McpAPI,
   AnnouncementAPI,
+  GroupChatAPI,
 } from '../shared/ipc-api'
 
 // ---- AI 调用 ----
@@ -59,6 +60,7 @@ const characterApi: CharacterAPI = {
   importPng: () => ipcRenderer.invoke('character:importPng'),
   importJson: () => ipcRenderer.invoke('character:importJson'),
   importBatch: () => ipcRenderer.invoke('character:importBatch'),
+  bindLorebook: (characterId, lorebookId) => ipcRenderer.invoke('character:bindLorebook', characterId, lorebookId),
   exportPng: (id) => ipcRenderer.invoke('character:exportPng', id),
   exportJson: (id) => ipcRenderer.invoke('character:exportJson', id),
   reloadAvatar: (characterId, url) => ipcRenderer.invoke('character:reloadAvatar', characterId, url),
@@ -222,6 +224,29 @@ const announcementApi: AnnouncementAPI = {
   setServerUrl: (url) => ipcRenderer.invoke('announcement:setServerUrl', url),
 }
 
+// ---- 群聊 ----
+
+/** 群聊 API（类型来自 shared/ipc-api 的 GroupChatAPI，参数自动获得类型） */
+const groupApi: GroupChatAPI = {
+  list: () => ipcRenderer.invoke('group:list'),
+  save: (group) => ipcRenderer.invoke('group:save', group),
+  delete: (id) => ipcRenderer.invoke('group:delete', id),
+  listSessions: (groupId) => ipcRenderer.invoke('group:listSessions', groupId),
+  createSession: (groupId) => ipcRenderer.invoke('group:createSession', groupId),
+  deleteSession: (groupId, sessionId) => ipcRenderer.invoke('group:deleteSession', groupId, sessionId),
+  renameSession: (groupId, sessionId, title) => ipcRenderer.invoke('group:renameSession', groupId, sessionId, title),
+  listMessages: (groupId, sessionId) => ipcRenderer.invoke('group:listMessages', groupId, sessionId),
+  saveMessage: (groupId, sessionId, msg) => ipcRenderer.invoke('group:saveMessage', groupId, sessionId, msg),
+  editMessage: (groupId, sessionId, messageId, content) => ipcRenderer.invoke('group:editMessage', groupId, sessionId, messageId, content),
+  deleteMessage: (groupId, sessionId, messageId) => ipcRenderer.invoke('group:deleteMessage', groupId, sessionId, messageId),
+  clearChat: (groupId, sessionId?) => ipcRenderer.invoke('group:clearChat', groupId, sessionId),
+  exportChat: (groupId, sessionId, format) => ipcRenderer.invoke('group:exportChat', groupId, sessionId, format),
+  updateMemory: (groupId, sessionId, memory) => ipcRenderer.invoke('group:updateMemory', groupId, sessionId, memory),
+  toggleMemory: (groupId, sessionId, enabled) => ipcRenderer.invoke('group:toggleMemory', groupId, sessionId, enabled),
+  setMemoryMode: (groupId, sessionId, mode, interval) => ipcRenderer.invoke('group:setMemoryMode', groupId, sessionId, mode, interval),
+  updateSession: (groupId, sessionId, updates) => ipcRenderer.invoke('group:updateSession', groupId, sessionId, updates),
+}
+
 contextBridge.exposeInMainWorld('api', {
   ai: aiApi,
   character: characterApi,
@@ -241,25 +266,7 @@ contextBridge.exposeInMainWorld('api', {
   usage: usageApi,
   mcp: mcpApi,
   announcement: announcementApi,
-  group: {
-    list: () => ipcRenderer.invoke('group:list'),
-    save: (group) => ipcRenderer.invoke('group:save', group),
-    delete: (id) => ipcRenderer.invoke('group:delete', id),
-    listSessions: (groupId) => ipcRenderer.invoke('group:listSessions', groupId),
-    createSession: (groupId) => ipcRenderer.invoke('group:createSession', groupId),
-    deleteSession: (groupId, sessionId) => ipcRenderer.invoke('group:deleteSession', groupId, sessionId),
-    renameSession: (groupId, sessionId, title) => ipcRenderer.invoke('group:renameSession', groupId, sessionId, title),
-    listMessages: (groupId, sessionId) => ipcRenderer.invoke('group:listMessages', groupId, sessionId),
-    saveMessage: (groupId, sessionId, msg) => ipcRenderer.invoke('group:saveMessage', groupId, sessionId, msg),
-    editMessage: (groupId, sessionId, messageId, content) => ipcRenderer.invoke('group:editMessage', groupId, sessionId, messageId, content),
-    deleteMessage: (groupId, sessionId, messageId) => ipcRenderer.invoke('group:deleteMessage', groupId, sessionId, messageId),
-    clearChat: (groupId, sessionId) => ipcRenderer.invoke('group:clearChat', groupId, sessionId),
-    exportChat: (groupId, sessionId, format) => ipcRenderer.invoke('group:exportChat', groupId, sessionId, format),
-    updateMemory: (groupId, sessionId, memory) => ipcRenderer.invoke('group:updateMemory', groupId, sessionId, memory),
-    toggleMemory: (groupId, sessionId, enabled) => ipcRenderer.invoke('group:toggleMemory', groupId, sessionId, enabled),
-    setMemoryMode: (groupId, sessionId, mode, interval) => ipcRenderer.invoke('group:setMemoryMode', groupId, sessionId, mode, interval),
-    updateSession: (groupId, sessionId, updates) => ipcRenderer.invoke('group:updateSession', groupId, sessionId, updates),
-  },
+  group: groupApi,
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkVersion: () => ipcRenderer.invoke('app:checkVersion'),

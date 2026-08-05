@@ -48,6 +48,10 @@ interface CharacterState {
   /** 导入角色卡时前端扩展（正则/快捷回复）落地的提示 */
   importNotice: string | null
   pendingAvatarId: string | null
+  /** 导入后检测到的候选世界书（待用户确认绑定） */
+  lorebookSuggestions: import('../../shared/ipc-api').LorebookSuggestion[] | null
+  /** 待绑定世界书的角色 ID */
+  pendingLorebookCharacterId: string | null
   /** 批量导入进度 */
   importProgress: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' } | null
   loadCharacters: () => Promise<void>
@@ -69,6 +73,8 @@ interface CharacterState {
   } | null>
   exportPng: (id: string) => Promise<void>
   exportJson: (id: string) => Promise<void>
+  /** 绑定/忽略导入时推荐的世界书（null = 忽略） */
+  bindSuggestedLorebook: (lorebookId: string | null) => Promise<void>
 }
 
 export const useCharacterStore = create<CharacterState>((set, get) => ({
@@ -79,6 +85,8 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   importNotice: null,
   pendingAvatarId: null,
   importProgress: null,
+  lorebookSuggestions: null,
+  pendingLorebookCharacterId: null,
 
   loadCharacters: async () => {
     let characters = await window.api.character.list()
@@ -238,6 +246,13 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       if (result.success && result.character) {
         await get().loadCharacters()
         setImportNotice(result.cardExtras)
+        // 世界书推荐（显式确认）：导入后弹出候选供用户选择绑定
+        if (result.lorebookSuggestions && result.lorebookSuggestions.length > 0) {
+          set({
+            lorebookSuggestions: result.lorebookSuggestions,
+            pendingLorebookCharacterId: result.character.id,
+          })
+        }
         setTimeout(() => set({ importProgress: null }), 1500)
         return result.character
       }
@@ -261,6 +276,13 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       if (result.success && result.character) {
         await get().loadCharacters()
         setImportNotice(result.cardExtras)
+        // 世界书推荐（显式确认）：导入后弹出候选供用户选择绑定
+        if (result.lorebookSuggestions && result.lorebookSuggestions.length > 0) {
+          set({
+            lorebookSuggestions: result.lorebookSuggestions,
+            pendingLorebookCharacterId: result.character.id,
+          })
+        }
         if (result.needAvatar) {
           set({ pendingAvatarId: result.character.id })
         }
@@ -318,5 +340,20 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
 
   exportJson: async (id) => {
     await window.api.character.exportJson(id)
+  },
+
+  bindSuggestedLorebook: async (lorebookId) => {
+    const characterId = get().pendingLorebookCharacterId
+    // 先清状态（无论绑定或忽略）
+    set({ lorebookSuggestions: null, pendingLorebookCharacterId: null })
+    if (!characterId || lorebookId === null) return
+    try {
+      await window.api.character.bindLorebook(characterId, lorebookId)
+      await get().loadCharacters()
+    } catch (e) {
+      logError('CharacterStore:bindLorebook', e)
+      set({ importError: e instanceof Error ? e.message : '绑定世界书失败' })
+      setTimeout(() => set({ importError: null }), 5000)
+    }
   },
 }))

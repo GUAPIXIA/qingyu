@@ -37,7 +37,7 @@ export function registerFileIPC(ipcMain: IpcMain, dialog: Dialog, app: App): voi
     return filePath
   })
 
-  // 读取图片为 base64（仅允许通过 dialog 选择或扩展名合法的路径）
+  // 读取图片为 base64（仅允许 dialog 选择的路径，防止任意文件读取）
   ipcMain.handle('file:readImageBase64', async (_e, filePath: string) => {
     try {
       if (!filePath || typeof filePath !== 'string') {
@@ -46,11 +46,18 @@ export function registerFileIPC(ipcMain: IpcMain, dialog: Dialog, app: App): voi
       if (filePath.length > 4096) {
         throw new Error('文件路径过长')
       }
+      // 路径必须是 dialog 选择后登记的，否则拒绝（防任意文件读取）
+      if (!validatedPaths.has(filePath)) {
+        throw new Error('路径未经验证：仅允许通过文件选择对话框读取图片')
+      }
       const ext = extname(filePath).toLowerCase()
       if (!ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
         throw new Error(`不支持的文件类型: ${ext}`)
       }
-      // 路径必须是 dialog 选择的或扩展名合法（防止目录穿越）
+      // 二次确认：文件确实存在
+      if (!existsSync(filePath)) {
+        throw new Error('文件不存在或已被移动')
+      }
       const buffer = readFileSync(filePath)
       const mime = ext === '.jpg' ? 'jpeg' : ext.slice(1)
       const result = `data:image/${mime};base64,${buffer.toString('base64')}`

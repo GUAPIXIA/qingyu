@@ -44,13 +44,21 @@ export interface AIAPI {
 }
 
 // ===================== 角色接口 =====================
+export interface LorebookSuggestion {
+  id: string
+  name: string
+  description: string
+  score: number
+  entryCount: number
+}
+
 export interface CharacterAPI {
   list(): Promise<Character[]>
   get(id: string): Promise<Character | null>
   save(character: Character): Promise<void>
   delete(id: string): Promise<void>
-  importPng(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] } }>
-  importJson(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; needAvatar?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] } }>
+  importPng(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[] }>
+  importJson(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; needAvatar?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[] }>
   importBatch(): Promise<{
     success: boolean
     results?: { name: string; success: boolean; error?: string; needAvatar?: boolean }[]
@@ -60,6 +68,7 @@ export interface CharacterAPI {
     error?: string
     canceled?: boolean
   }>
+  bindLorebook(characterId: string, lorebookId: string | null): Promise<void>
   exportPng(id: string): Promise<void>
   exportJson(id: string): Promise<void>
   reloadAvatar(characterId: string, url: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }>

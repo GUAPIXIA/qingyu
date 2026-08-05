@@ -12,6 +12,21 @@ import { safeHandle } from '../utils/safeHandle'
 
 const log = createLogger('chat')
 
+/** chat:updateSession 允许更新的字段白名单（防止注入 id/characterId 等关键字段） */
+const UPDATE_SESSION_FIELDS = new Set([
+  'title',
+  'memory',
+  'memoryEnabled',
+  'memoryMode',
+  'autoMemoryInterval',
+  'memoryUpdatedAt',
+  'memoryFacts',
+  'factsVectors',
+  'compressedSummary',
+  'compressedRange',
+  'titleGenerated',
+])
+
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 
 function getDefaultPersonaId(): string | null {
@@ -369,11 +384,24 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   safeHandle(ipcMain, 'chat:updateSession', async (_e, characterId: string, sessionId: string, updates: Partial<ChatSession>) => {
     safeId(characterId)
     safeId(sessionId)
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+      throw new Error('参数无效：updates 必须为对象')
+    }
+    // 字段白名单：仅允许更新常规会话字段，防止注入 id/characterId 等关键字段破坏数据
+    const clean: Partial<ChatSession> = {}
+    for (const key of Object.keys(updates)) {
+      if (!UPDATE_SESSION_FIELDS.has(key)) continue
+      const value = (updates as Record<string, unknown>)[key]
+      if (key === 'title' && typeof value === 'string' && value.length > 200) {
+        throw new Error('标题长度不能超过 200 字符')
+      }
+      ;(clean as Record<string, unknown>)[key] = value
+    }
     return withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId)
       const idx = sessions.findIndex(s => s.id === sessionId)
       if (idx === -1) throw new Error('会话不存在')
-      sessions[idx] = { ...sessions[idx], ...updates, updatedAt: Date.now() }
+      sessions[idx] = { ...sessions[idx], ...clean, updatedAt: Date.now() }
       saveSessions(characterId, sessions)
       return sessions[idx]
     })

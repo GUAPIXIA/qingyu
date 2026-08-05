@@ -38,8 +38,9 @@ const ROLE_COLORS = [
 ]
 
 import { MarkdownImage } from '../common/MarkdownImage'
+import { MarkdownLink } from '../common/MarkdownLink'
 
-const markdownComponents = { img: MarkdownImage }
+const markdownComponents = { img: MarkdownImage, a: MarkdownLink }
 
 export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, isStreamingMessage, repliedMessage, bubbleOpacity, onDelete, onEdit, onRegenerate, onTranslate, onReply }: GroupChatMessageProps) {
   const { characters } = useCharacterStore()

@@ -1,5 +1,6 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import { createLogger } from '../services/logger'
 import { safeSend } from '../utils/safeSend'
 import {
@@ -17,6 +18,7 @@ import {
 import type { Character, Settings } from '../../shared/types'
 import { safeId } from '../utils/pathGuard'
 import { DIRS, readJson, withFileLock } from '../services/storage'
+import { suggestLorebooks } from '../services/lorebookMatcher'
 
 const log = createLogger('character')
 
@@ -94,6 +96,8 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
       const proxyUrl = getCoverProxyUrl()
       const character = await importCharacterFromPng(filePath, proxyUrl)
+      // 世界书推荐（显式确认，替代旧的静默自动绑定）：角色卡不含内嵌世界书时返回候选
+      const lorebookSuggestions = suggestLorebooks(character)
       await withCharacterLock(character.id, () => {
         saveCharacter(character)
       })
@@ -104,8 +108,8 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
         current: 1, total: 1, fileName: character.name, status: 'done' as const,
       })
 
-      log.info('角色已导入 (PNG)', { id: character.id, name: character.name })
-      return { success: true, character, cardExtras }
+      log.info('角色已导入 (PNG)', { id: character.id, name: character.name, suggestions: lorebookSuggestions.length })
+      return { success: true, character, cardExtras, lorebookSuggestions }
     } catch (e) {
       log.error('导入角色 PNG 失败', { error: (e as Error).message })
       return { success: false, error: (e as Error).message }
@@ -132,6 +136,8 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
       const proxyUrl = getCoverProxyUrl()
       const character = await importCharacterFromJson(filePath, proxyUrl)
+      // 世界书推荐（显式确认，替代旧的静默自动绑定）
+      const lorebookSuggestions = suggestLorebooks(character)
       await withCharacterLock(character.id, () => {
         saveCharacter(character)
       })
@@ -143,12 +149,33 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
         current: 1, total: 1, fileName: character.name, status: 'done' as const,
       })
 
-      log.info('角色已导入 (JSON)', { id: character.id, name: character.name })
-      return { success: true, character, needAvatar, cardExtras }
+      log.info('角色已导入 (JSON)', { id: character.id, name: character.name, suggestions: lorebookSuggestions.length })
+      return { success: true, character, needAvatar, cardExtras, lorebookSuggestions }
     } catch (e) {
       log.error('导入角色 JSON 失败', { error: (e as Error).message })
       return { success: false, error: (e as Error).message }
     }
+  })
+
+  // 绑定世界书到角色（导入后由用户从推荐中显式选择，或单独手动设置）
+  ipcMain.handle('character:bindLorebook', async (_e, characterId: string, lorebookId: string | null) => {
+    safeId(characterId)
+    if (lorebookId !== null) {
+      safeId(lorebookId)
+      // 校验世界书存在
+      const lbPath = join(DIRS.lorebooks(), `${lorebookId}.json`)
+      if (!existsSync(lbPath)) throw new Error('世界书不存在')
+    }
+    return withCharacterLock(characterId, async () => {
+      const character = getCharacter(characterId)
+      if (!character) throw new Error('角色不存在')
+      // 新数据结构：boundLorebookIds 列表；lorebookId 保留为兼容字段
+      character.boundLorebookIds = lorebookId ? [lorebookId] : []
+      character.lorebookId = lorebookId
+      character.updatedAt = Date.now()
+      saveCharacter(character)
+      log.info('角色世界书已更新', { characterId, lorebookId })
+    })
   })
 
   // 导出 PNG

@@ -347,7 +347,8 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
 
       // 统一的响应处理函数
       function handleResponse(res: import('node:http').IncomingMessage) {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        const statusCode = res.statusCode ?? 0
+        if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
           // SSRF 防护：重定向目标重新校验（相对路径基于当前 URL 解析），
           // 防止恶意服务器重定向到内网地址绕过初始检查
           let redirectTarget: string
@@ -597,7 +598,7 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
           : 'at_end',
         depth: typeof e.depth === 'number' ? Math.max(0, e.depth) : 0,
         order: e.order ?? i,
-        probability: e.probability ?? 100,
+        probability: typeof e.probability === 'number' ? Math.max(0, Math.min(100, e.probability)) : 100,
         enabled: e.disable ? false : (e.enabled !== undefined ? e.enabled : true),
       }))
 
@@ -619,56 +620,9 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
     }
   }
 
-  // 自动匹配世界书：若角色卡不含内嵌世界书，扫描已有世界书库匹配
-  if (!character.lorebookId) {
-    try {
-      const lorebookDir = DIRS.lorebooks()
-      if (existsSync(lorebookDir)) {
-        const files = readdirSync(lorebookDir).filter(f => f.endsWith('.json'))
-        if (files.length > 0) {
-          const charText = [
-            character.name,
-            character.description,
-            character.personality,
-            character.scenario,
-            ...(character.tags || []),
-          ].filter(Boolean).join(' ').toLowerCase()
-
-          let bestScore = 0
-          let bestLorebookId: string | null = null
-
-          for (const file of files) {
-            const lb: Lorebook = JSON.parse(readFileSync(join(lorebookDir, file), 'utf-8'))
-            if (!lb.enabled) continue
-
-            const lbText = [
-              lb.name,
-              lb.description,
-              ...lb.entries.flatMap(e => e.keywords),
-            ].filter(Boolean).join(' ').toLowerCase()
-
-            const lbWords = new Set(lbText.split(/\s+/).filter(w => w.length > 1))
-            const charWords = new Set(charText.split(/\s+/).filter(w => w.length > 1))
-            let score = 0
-            for (const w of charWords) {
-              if (lbWords.has(w)) score++
-            }
-
-            if (score > bestScore) {
-              bestScore = score
-              bestLorebookId = lb.id
-            }
-          }
-
-          if (bestScore >= 2 && bestLorebookId) {
-            character.lorebookId = bestLorebookId
-          }
-        }
-      }
-    } catch {
-      // 匹配失败不阻断导入
-    }
-  }
+  // 世界书匹配已从导入流程移除（原自动绑定为静默副作用，且对中文失效）。
+  // 改为导入后由 IPC 层调用 lorebookMatcher.suggestLorebooks 返回候选，
+  // 前端弹窗让用户确认绑定（见 electron/ipc/character.ts）
 
   return character
 }

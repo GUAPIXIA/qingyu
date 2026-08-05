@@ -9,6 +9,17 @@ import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('group')
 
+/** group:updateSession 允许更新的字段白名单（防止注入 id/groupId 等关键字段） */
+const GROUP_UPDATE_SESSION_FIELDS = new Set([
+  'title',
+  'messageCount',
+  'memoryEnabled',
+  'memoryMode',
+  'autoMemoryInterval',
+  'memory',
+  'memoryUpdatedAt',
+])
+
 // ===================== 路径工具 =====================
 
 function getGroupDir(groupId: string): string {
@@ -94,8 +105,17 @@ function readMessages(groupId: string, sessionId: string): GroupMessage[] {
 function writeMessages(groupId: string, sessionId: string, messages: GroupMessage[]): void {
   const dir = getGroupDir(groupId)
   mkdirSync(dir, { recursive: true })
+  const filePath = getSessionFile(groupId, sessionId)
   const lines = messages.map(m => JSON.stringify(m)).join('\n') + '\n'
-  writeFileSync(getSessionFile(groupId, sessionId), lines, 'utf-8')
+  // 原子写入：temp + rename，防止崩溃导致会话文件损坏（与 chat.ts writeMessages 一致）
+  const tmpPath = filePath + '.tmp'
+  writeFileSync(tmpPath, lines, 'utf-8')
+  try {
+    renameSync(tmpPath, filePath)
+  } catch (err) {
+    try { unlinkSync(tmpPath) } catch { /* ignore */ }
+    throw err
+  }
 }
 
 function appendMessage(groupId: string, sessionId: string, message: GroupMessage): void {
@@ -396,11 +416,24 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   ipcMain.handle('group:updateSession', async (_e, groupId: string, sessionId: string, updates: Record<string, unknown>) => {
     safeId(groupId)
     safeId(sessionId)
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+      throw new Error('参数无效：updates 必须为对象')
+    }
+    // 字段白名单：仅允许更新常规会话字段，防止注入 id/groupId 等关键字段
+    const clean: Record<string, unknown> = {}
+    for (const key of Object.keys(updates)) {
+      if (!GROUP_UPDATE_SESSION_FIELDS.has(key)) continue
+      const value = updates[key]
+      if (key === 'title' && typeof value === 'string' && value.length > 200) {
+        throw new Error('标题长度不能超过 200 字符')
+      }
+      clean[key] = value
+    }
     return withSessionsLock(groupId, () => {
       const sessions = loadSessions(groupId)
       const session = sessions.find(s => s.id === sessionId)
       if (session) {
-        Object.assign(session, updates)
+        Object.assign(session, clean)
         session.updatedAt = Date.now()
         saveSessions(groupId, sessions)
       }

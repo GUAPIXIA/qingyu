@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 import { cn } from '../lib/utils'
 import { useAnnouncementStore } from '../store/useAnnouncementStore'
 import {
@@ -59,9 +58,10 @@ export function AnnouncementsPage() {
                 </span>
               </div>
               <div className="prose prose-sm prose-invert max-w-none select-text">
+                {/* 安全修复：移除 rehypeRaw。公告内容来自服务器，含不可信 HTML 时
+                    原始 HTML 会被渲染执行（存储型 XSS）。不渲染 HTML，仅支持 GFM */}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw]}
                   components={{
                     a: ({ href, children }) => (
                       <a

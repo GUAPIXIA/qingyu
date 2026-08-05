@@ -1,6 +1,6 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
 import { DIRS } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { RegexRule } from '../../shared/types'
@@ -29,7 +29,16 @@ function readRules(): RegexRule[] {
 }
 
 function writeRules(rules: RegexRule[]): void {
-  writeFileSync(getRulesPath(), JSON.stringify(rules, null, 2), 'utf-8')
+  // 原子写入：temp + rename，防止崩溃导致数据文件损坏
+  const path = getRulesPath()
+  const tmpPath = path + '.tmp'
+  writeFileSync(tmpPath, JSON.stringify(rules, null, 2), 'utf-8')
+  try {
+    renameSync(tmpPath, path)
+  } catch (err) {
+    try { unlinkSync(tmpPath) } catch { /* ignore */ }
+    throw err
+  }
 }
 
 export function registerRegexIPC(ipcMain: IpcMain): void {

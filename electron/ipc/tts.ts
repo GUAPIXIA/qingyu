@@ -167,13 +167,14 @@ function sendCommand(cmd: object): Promise<unknown> {
     }
 
     const cmdStr = JSON.stringify(cmd)
+    const proc = psProcess // 闭包内局部引用（类型收窄不跨闭包）
     return new Promise<unknown>((resolve) => {
       const onData = (data: Buffer) => {
         const text = data.toString().trim()
         if (!text) return
         try {
           const result = JSON.parse(text)
-          psProcess?.stdout?.off('data', onData)
+          proc?.stdout?.off('data', onData)
           if (result.status === 'speaking') speechState = 'speaking'
           else if (result.status === 'paused') speechState = 'paused'
           else if (result.status === 'idle' || result.status === 'completed') speechState = 'idle'
@@ -183,8 +184,8 @@ function sendCommand(cmd: object): Promise<unknown> {
         }
       }
 
-      psProcess.stdout.on('data', onData)
-      psProcess.stdin.write(cmdStr + '\n')
+      proc.stdout.on('data', onData)
+      proc.stdin.write(cmdStr + '\n')
 
       // 超时
       setTimeout(() => {

@@ -1,5 +1,36 @@
 # 更新日志
 
+## [0.11.11] - 2026-08-05
+
+### 安全加固（纵深防御）+ 世界书导入推荐 + 文件原子写入
+
+**安全加固**
+
+- **页面内导航防护**：`will-navigate` 仅允许应用自身 URL（dev: vite 服务；prod: 本地 index.html），AI 消息/角色卡中的 Markdown 链接点击不再能把主窗口导航到外部站点，一律拦截并转系统浏览器打开
+- **生产环境 CSP 注入**：本地 file:// 页面无响应头，通过 `webRequest.onHeadersReceived` 注入 CSP（`script-src 'self'` / `object-src 'none'` / `base-uri 'none'` / `frame-ancestors 'none'` 等），HTML 注入即使发生也有脚本执行兜底限制
+- **公告 HTML 消毒**：新增服务端纵深防御层 `sanitize.js`（白名单标签 + 黑名单属性/协议，杀伤性过滤），公告接口全量接入
+- **链接安全渲染**：新增 `MarkdownLink` 组件——仅 http/https 渲染为可点击链接，`javascript:` / `data:` / `file:` 等危险协议降级为纯文本；消息气泡 / 群聊消息 / 公告页接入
+- **防任意文件读取**：`file:readImageBase64` 仅允许 dialog 登记过的路径 + 文件存在二次确认，不再凭扩展名放行
+- **公告参数校验**：`page` / `pageSize` / `id` 均做类型与范围校验（防 URL 参数注入与超长请求）
+- **会话字段白名单**：`chat:updateSession` 仅允许更新 10 个常规字段（title/memory/memoryEnabled 等），防注入 `id` / `characterId` 等关键字段；标题限长 200 字符
+- **日志脱敏**：IPC 异常日志经 `sanitizeApiKey` 过滤，API Key 不再出现在日志中；移除 index.html 内联脚本以配合 CSP
+
+**世界书导入推荐（修复问题 32）**
+
+- **匹配算法重写**（`lorebookMatcher.ts`）：原实现按空格分词对中文完全失效——改为 CJK 感知词提取（英文/数字按边界分词，中文短段整段、长段拆 bigram）；加权计分（角色 name + tags 为高权重精确信号，description 等为宽信号）
+- **规模兜底**：世界书超 100 本或单文件超限时跳过匹配，防极端大库导入卡顿
+- **显式确认绑定**：导入角色卡后弹出「检测到相关世界书」Modal，按匹配度展示候选，用户确认后才绑定（替代旧的静默自动绑定）；新增 `bindLorebook` IPC 与 `LorebookSuggestion` 类型
+
+**稳定性与其它**
+
+- **配置文件原子写入**：群聊 / 人设 / 正则的配置写入改为 `临时文件 + rename` 原子替换，进程中断不再产生半截 JSON
+- **向量兜底修正**：embedding 结果缺失时补零向量沿用批次已知维度（原实现可能产生维度不一致导致下游点积错乱）
+- **用量统计兜底**：usage 记录 model 缺失时置为 `unknown`，不再出现空值行
+- **类型加固**：各模型适配器 / imageGen / tokenizer / preload 的 tsc 类型修正
+- **测试**：新增 lorebookMatcher 11 例 + sanitize 10 例；全量测试 **703 通过**（55 文件）
+
+---
+
 ## [0.11.10] - 2026-08-02
 
 ### OpenCode Go 订阅接入 + API 协议类型精简 + 角色卡编辑器布局优化

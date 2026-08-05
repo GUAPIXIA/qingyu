@@ -1,6 +1,7 @@
 const express = require('express')
 const db = require('../db')
 const { authMiddleware } = require('../middleware/auth')
+const { sanitizeHtml } = require('../sanitize')
 
 const router = express.Router()
 
@@ -93,13 +94,14 @@ router.post('/', authMiddleware, (req, res) => {
   }
 
   const now = new Date().toISOString()
+  // 存储型 XSS 防御：写入前消毒 HTML（白名单标签 + 事件属性/危险协议过滤）
   const result = db.prepare(`
     INSERT INTO announcements (title, content, summary, pinned, published, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
-    title,
-    content,
-    summary || '',
+    sanitizeHtml(title),
+    sanitizeHtml(content),
+    sanitizeHtml(summary || ''),
     pinned ? 1 : 0,
     published !== false ? 1 : 0,
     now,
@@ -130,9 +132,9 @@ router.put('/:id', authMiddleware, (req, res) => {
         updated_at = ?
     WHERE id = ?
   `).run(
-    title ?? null,
-    content ?? null,
-    summary ?? null,
+    title !== undefined ? sanitizeHtml(title) : null,
+    content !== undefined ? sanitizeHtml(content) : null,
+    summary !== undefined ? sanitizeHtml(summary) : null,
     pinned !== undefined ? (pinned ? 1 : 0) : null,
     published !== undefined ? (published ? 1 : 0) : null,
     now,

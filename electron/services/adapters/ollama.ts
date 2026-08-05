@@ -237,7 +237,7 @@ export const ollamaAdapter: AIAdapter = {
     const url = `${baseUrl.replace(/\/$/, '')}/api/tags`
     const response = await fetch(url)
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
-    const data: { models?: { name: string }[] } = await response.json()
+    const data = (await response.json()) as { models?: { name: string }[] }
     return (data.models ?? []).map((m: { name: string }) => m.name)
   },
 

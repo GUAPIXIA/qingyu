@@ -6,8 +6,9 @@ import { CharacterEditor } from "../components/character/CharacterEditor"
 import { CharacterDetail } from "../components/character/CharacterDetail"
 import { EmptyState } from "../components/common/EmptyState"
 import { ConfirmDialog } from "../components/common/ConfirmDialog"
+import { Modal } from "../components/common/Modal"
 import { cn } from "../lib/utils"
-import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp, Sparkles } from "lucide-react"
+import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp, Sparkles, BookOpen } from "lucide-react"
 import type { Character } from "../../shared/types"
 
 type CardSize = "sm" | "md" | "lg"
@@ -19,7 +20,7 @@ function loadCardSize(): CardSize {
 
 export function CharactersPage() {
   const navigate = useNavigate()
-  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, createCharacter, importError, importNotice, pendingAvatarId, importProgress } = useCharacterStore()
+  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, createCharacter, importError, importNotice, pendingAvatarId, importProgress, lorebookSuggestions, bindSuggestedLorebook } = useCharacterStore()
   const [editing, setEditing] = useState(false)
   const [editCharacter, setEditCharacter] = useState<Character | null>(null)
   const [search, setSearch] = useState("")
@@ -388,6 +389,50 @@ export function CharactersPage() {
         confirmText="删除"
         danger
       />
+
+      {/* 导入后世界书推荐（显式确认绑定，替代旧的静默自动绑定） */}
+      <Modal
+        open={!!lorebookSuggestions && lorebookSuggestions.length > 0}
+        onClose={() => bindSuggestedLorebook(null)}
+        title="检测到相关世界书"
+        width="md"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-tavern-text-muted">
+            刚导入的角色可能与以下世界书相关，是否绑定？绑定后切换到该角色时会自动加载对应世界书。
+          </p>
+          {lorebookSuggestions?.map((s) => (
+            <div
+              key={s.id}
+              className="flex items-center gap-3 p-3 rounded-lg bg-tavern-bg-soft border border-tavern-border"
+            >
+              <BookOpen className="w-5 h-5 text-tavern-accent shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium truncate">{s.name}</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-tavern-accent-soft text-tavern-accent shrink-0">
+                    匹配度 {s.score}
+                  </span>
+                </div>
+                <p className="text-xs text-tavern-text-muted truncate mt-0.5">
+                  {s.description || `${s.entryCount} 个条目`}
+                </p>
+              </div>
+              <button
+                className="btn-secondary text-xs shrink-0"
+                onClick={() => bindSuggestedLorebook(s.id)}
+              >
+                绑定
+              </button>
+            </div>
+          ))}
+          <div className="flex justify-end pt-1">
+            <button className="btn-secondary" onClick={() => bindSuggestedLorebook(null)}>
+              暂不绑定
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

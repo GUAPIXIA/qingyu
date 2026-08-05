@@ -143,7 +143,7 @@ async function sdWebuiGenerate(
     throw new Error(`SD WebUI API 错误 ${response.status}: ${errText.substring(0, 200)}`)
   }
 
-  const data: { images?: unknown } = await response.json()
+  const data = (await response.json()) as { images?: unknown }
   if (!data.images || !Array.isArray(data.images) || data.images.length === 0) {
     throw new Error('SD WebUI 返回的图片数据为空')
   }
@@ -191,7 +191,7 @@ async function openaiGenerate(
     throw new Error(`OpenAI API 错误 ${response.status}: ${errText.substring(0, 200)}`)
   }
 
-  const data: { data?: { b64_json?: string }[] } = await response.json()
+  const data = (await response.json()) as { data?: { b64_json?: string }[] }
   if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
     throw new Error('OpenAI 返回的图片数据为空')
   }
@@ -248,7 +248,7 @@ export async function testImageGenConnection(config: TestConnectionConfig): Prom
         return { success: false, error: `HTTP ${response.status}: ${response.statusText}` }
       }
 
-      const data: { sd_model_checkpoint?: string; sd_model_hash?: string } = await response.json()
+      const data = (await response.json()) as { sd_model_checkpoint?: string; sd_model_hash?: string }
       const model = data?.sd_model_checkpoint || data?.sd_model_hash || '未知'
       return { success: true, message: `连接成功，当前模型: ${model}` }
     }
@@ -272,7 +272,7 @@ export async function testImageGenConnection(config: TestConnectionConfig): Prom
         return { success: false, error: `HTTP ${response.status}: ${errText.substring(0, 100)}` }
       }
 
-      const data: { data?: unknown[] } = await response.json()
+      const data = (await response.json()) as { data?: unknown[] }
       const modelCount = data?.data?.length ?? 0
       return { success: true, message: `连接成功，可用模型 ${modelCount} 个` }
     }

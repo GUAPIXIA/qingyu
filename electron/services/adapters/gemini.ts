@@ -237,7 +237,7 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       headers: apiKey ? { 'x-goog-api-key': apiKey } : undefined,
     })
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
-    const data: { models?: { supportedGenerationMethods?: string[]; name: string }[] } = await response.json()
+    const data = (await response.json()) as { models?: { supportedGenerationMethods?: string[]; name: string }[] }
     return (data.models ?? [])
       .filter((m: { supportedGenerationMethods?: string[] }) =>
         m.supportedGenerationMethods?.includes('generateContent')

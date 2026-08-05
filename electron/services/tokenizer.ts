@@ -26,7 +26,7 @@ interface TiktokenApi {
   get_encoding_name_for_model(model: string): string
 }
 
-let _tiktoken: TiktokenApi | null = undefined
+let _tiktoken: TiktokenApi | null = null
 
 function tryLoadTiktoken(): TiktokenApi | null {
   if (_tiktoken !== undefined) return _tiktoken

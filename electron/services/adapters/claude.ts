@@ -243,7 +243,7 @@ export const claudeAdapter: AIAdapter = {
       },
     })
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
-    const data: { data?: { id: string }[] } = await response.json()
+    const data = (await response.json()) as { data?: { id: string }[] }
     return (data.data ?? []).map((m: { id: string }) => m.id)
   },
 

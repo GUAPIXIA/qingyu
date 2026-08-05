@@ -95,8 +95,14 @@ export async function embedTexts(config: EmbeddingConfig, texts: string[]): Prom
     const vectors = await embed(config, batch)
     results.push(...vectors)
   }
-  // 兜底：结果缺失时补零向量，避免下游维度错乱
-  while (results.length < clean.length) results.push([])
+  // 兜底：结果缺失时补零向量（沿用批次已知维度，避免维度不一致导致下游点积错乱）
+  let knownDim = 0
+  for (const v of results) {
+    if (v.length > 0) { knownDim = v.length; break }
+  }
+  while (results.length < clean.length) {
+    results.push(knownDim > 0 ? new Array(knownDim).fill(0) : [])
+  }
   return results
 }
 

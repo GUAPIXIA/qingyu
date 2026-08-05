@@ -27,11 +27,30 @@ export function loadUsage(): UsageRecord[] {
   return Array.isArray(data) ? data : []
 }
 
+/** 单条字段最大长度（防止异常数据撑爆磁盘/内存） */
+const MAX_FIELD_LEN = 256
+
 /** 追加一条用量记录，自动生成 id，返回完整记录。超过 MAX_RECORDS 时删除最早的 */
 export function recordUsage(record: Omit<UsageRecord, 'id'>): UsageRecord {
+  // 字段校验：字符串字段限长、数字字段必须为有限非负数（防御异常/恶意 IPC 数据）
+  const str = (v: unknown, fallback: string) =>
+    typeof v === 'string' && v.length > 0 && v.length <= MAX_FIELD_LEN ? v : fallback
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0)
+  const ts = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : Date.now())
+
+  const clean: Omit<UsageRecord, 'id'> = {
+    timestamp: ts(record.timestamp),
+    characterId: str(record.characterId, 'unknown'),
+    sessionId: str(record.sessionId, 'unknown'),
+    model: str(record.model, 'unknown'),
+    inputChars: num(record.inputChars),
+    outputChars: num(record.outputChars),
+    totalChars: num(record.totalChars),
+  }
+
   const records = loadUsage()
   const full: UsageRecord = {
-    ...record,
+    ...clean,
     id: nanoid(),
   }
   records.push(full)

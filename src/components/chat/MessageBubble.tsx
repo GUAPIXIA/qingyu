@@ -26,8 +26,9 @@ interface MessageBubbleProps {
 }
 
 import { MarkdownImage } from '../common/MarkdownImage'
+import { MarkdownLink } from '../common/MarkdownLink'
 
-const markdownComponents = { img: MarkdownImage }
+const markdownComponents = { img: MarkdownImage, a: MarkdownLink }
 
 // B-05：已播放过入场动画的消息 ID，避免虚拟滚动时反复播放
 // BUG-18 修复：限制 Set 上限，超出时淘汰最早标记的 ID，避免长时间使用内存无限增长

@@ -43,18 +43,19 @@ function httpGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const mod = url.startsWith('https') ? https : http
     mod.get(url, { timeout: 10000 }, (res: import('node:http').IncomingMessage) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      const statusCode = res.statusCode ?? 0
+      if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
         res.resume()
         return httpGet(res.headers.location).then(resolve, reject)
       }
       let data = ''
       res.on('data', (chunk: string) => { data += chunk })
       res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
+        if (statusCode >= 200 && statusCode < 300) {
           resolve(data)
         } else {
           res.resume()
-          reject(new Error(`HTTP ${res.statusCode}`))
+          reject(new Error(`HTTP ${statusCode}`))
         }
       })
     }).on('error', reject).on('timeout', function(this: import('node:http').ClientRequest) { this.destroy(); reject(new Error('请求超时')) })
@@ -75,8 +76,11 @@ function writeCache(items: Announcement[]): void {
 export function registerAnnouncementIPC(ipcMain: IpcMain): void {
   // 获取公告列表
   ipcMain.handle('announcement:fetchList', async (_e, page = 1, pageSize = 20) => {
+    // 参数校验（防 URL 参数注入/超长请求）
+    const safePage = Number.isFinite(page) && page >= 1 ? Math.min(Math.floor(page), 100000) : 1
+    const safeSize = Number.isFinite(pageSize) && pageSize >= 1 ? Math.min(Math.floor(pageSize), 100) : 20
     const baseUrl = getServerUrl()
-    const url = `${baseUrl}/api/announcements?page=${page}&pageSize=${pageSize}`
+    const url = `${baseUrl}/api/announcements?page=${safePage}&pageSize=${safeSize}`
 
     try {
       const body = await httpGet(url)
@@ -89,12 +93,16 @@ export function registerAnnouncementIPC(ipcMain: IpcMain): void {
     } catch (err) {
       log.warn('获取公告列表失败，使用缓存', { error: err instanceof Error ? err.message : String(err) })
       const cached = readCache()
-      return { items: cached, total: cached.length, page, pageSize }
+      return { items: cached, total: cached.length, page: safePage, pageSize: safeSize }
     }
   })
 
   // 获取公告详情
   ipcMain.handle('announcement:fetchDetail', async (_e, id: number) => {
+    // 参数校验：id 必须为正整数（防 URL 路径注入）
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error('公告 ID 无效')
+    }
     const baseUrl = getServerUrl()
     const url = `${baseUrl}/api/announcements/${id}`
 
