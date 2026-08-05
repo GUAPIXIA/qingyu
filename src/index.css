@@ -228,34 +228,17 @@ body {
     @apply input resize-none;
   }
 
-  /* 统一 textarea resize 手柄 — 双斜线样式 */
+  /* 统一 textarea resize 手柄 — 双斜线样式（纯 background 实现，不依赖伪元素定位）
+   * 颜色跟随主题变量：浅色/深色自动适配 */
   textarea::-webkit-resizer {
-    border-width: 0 0 6px 6px;
-    border-style: solid;
-    border-color: transparent;
-    border-bottom-color: var(--tavern-border, #d1d5db);
-    background: transparent;
-    width: 0;
-    height: 0;
-  }
-  textarea::-webkit-resizer::after {
-    content: '';
-    position: absolute;
-    bottom: 2px;
-    right: 2px;
-    width: 8px;
-    height: 8px;
+    width: 15px;
+    height: 15px;
     background:
-      linear-gradient(135deg, transparent 33%, var(--tavern-border, #d1d5db) 33%, var(--tavern-border, #d1d5db) 40%, transparent 40%),
-      linear-gradient(135deg, transparent 66%, var(--tavern-border, #d1d5db) 66%, var(--tavern-border, #d1d5db) 73%, transparent 73%);
-  }
-  .dark textarea::-webkit-resizer {
-    border-bottom-color: var(--tavern-border-soft, #374151);
-  }
-  .dark textarea::-webkit-resizer::after {
-    background:
-      linear-gradient(135deg, transparent 33%, var(--tavern-border-soft, #374151) 33%, var(--tavern-border-soft, #374151) 40%, transparent 40%),
-      linear-gradient(135deg, transparent 66%, var(--tavern-border-soft, #374151) 66%, var(--tavern-border-soft, #374151) 73%, transparent 73%);
+      linear-gradient(135deg, transparent 42%, var(--tavern-border, #d1d5db) 42% 50%, transparent 50%),
+      linear-gradient(135deg, transparent 58%, var(--tavern-border, #d1d5db) 58% 66%, transparent 66%);
+    background-position: right bottom;
+    background-repeat: no-repeat;
+    border-radius: 0 0 4px 0;
   }
 
   /* textarea 滚动条：溢出时 hover/focus 渐显 */

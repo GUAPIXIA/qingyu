@@ -7,6 +7,7 @@ import { logError } from './lib/logger'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
 import { CharactersPage } from './pages/CharactersPage'
+import { CharacterCreatePage } from './pages/CharacterCreatePage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LorebookPage } from './pages/LorebookPage'
 import { GroupChatPage } from './pages/GroupChatPage'
@@ -182,6 +183,7 @@ export default function App() {
         <Route path="chat" element={<ChatPage />} />
         <Route path="api" element={<ApiPage />} />
         <Route path="characters" element={<CharactersPage />} />
+        <Route path="character-create" element={<CharacterCreatePage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="lorebook" element={<LorebookPage />} />
         <Route path="presets" element={<PresetsPage />} />

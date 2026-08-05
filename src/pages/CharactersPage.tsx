@@ -8,7 +8,7 @@ import { EmptyState } from "../components/common/EmptyState"
 import { ConfirmDialog } from "../components/common/ConfirmDialog"
 import { Modal } from "../components/common/Modal"
 import { cn } from "../lib/utils"
-import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp, Sparkles, BookOpen } from "lucide-react"
+import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp, Sparkles, BookOpen, Wand2 } from "lucide-react"
 import type { Character } from "../../shared/types"
 
 type CardSize = "sm" | "md" | "lg"
@@ -223,7 +223,11 @@ export function CharactersPage() {
       <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
         <h1 className="font-display text-lg font-bold">角色管理</h1>
         <div className="flex items-center gap-2">
-          <button onClick={handleNew} className="btn-primary">
+          <button onClick={() => navigate('/character-create')} className="btn-primary" title="引导式制作角色卡（AI 辅助）">
+            <Wand2 className="w-4 h-4" />
+            制作角色卡
+          </button>
+          <button onClick={handleNew} className="btn-secondary">
             <Plus className="w-4 h-4" />
             新建角色
           </button>
