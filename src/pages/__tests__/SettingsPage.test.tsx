@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { SettingsPage } from '../SettingsPage'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -27,12 +27,13 @@ describe('SettingsPage 冒烟测试', () => {
     ;(window.api.settings as any).get = vi.fn().mockResolvedValue(getDefaultSettings())
   })
 
-  it('渲染设置页标题', () => {
+  it('渲染设置页标题', async () => {
     const { getByText } = render(
       <MemoryRouter>
         <SettingsPage />
       </MemoryRouter>
     )
+    await act(async () => {}) // 冲刷挂载异步（listFonts / settings.get）
     expect(getByText('设置')).toBeTruthy()
   })
 

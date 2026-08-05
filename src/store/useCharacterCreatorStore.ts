@@ -234,6 +234,8 @@ interface CharacterCreatorState {
   // 封面
   coverMode: 'upload' | 'generate'
   coverBase64: string | null
+  /** 封面来自草稿缩略图（低清 192×256）时为 true，保存前需重新上传/生成 */
+  coverIsThumb: boolean
   coverPrompt: string
   negativePrompt: string
   coverSize: string
@@ -323,6 +325,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
   draft: createEmptyDraft(),
   coverMode: 'upload',
   coverBase64: null,
+  coverIsThumb: false,
   coverPrompt: '',
   negativePrompt: 'lowres, bad anatomy, bad hands, worst quality, low quality, blurry, watermark',
   coverSize: '576x768',
@@ -344,7 +347,11 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
   setAvatarPosition: (pos) => set({ avatarPosition: pos }),
 
   setCover: (base64, mode) =>
-    set((state) => ({ coverBase64: base64, coverMode: mode ?? state.coverMode })),
+    set((state) => ({
+      coverBase64: base64,
+      coverMode: mode ?? state.coverMode,
+      coverIsThumb: false, // 用户主动上传/生成的封面视为高清，清除缩略图标记
+    })),
 
   setCoverPrompt: (coverPrompt) => set({ coverPrompt }),
   setNegativePrompt: (negativePrompt) => set({ negativePrompt }),
@@ -561,8 +568,12 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
   },
 
   saveCharacter: async () => {
-    const { draft, coverBase64, avatarPosition } = get()
+    const { draft, coverBase64, avatarPosition, coverIsThumb } = get()
     if (get().isSaving) return null
+    if (coverIsThumb) {
+      set({ error: '草稿封面是压缩缩略图（192×256），请回到「封面制作」重新上传或生成高清封面后再保存' })
+      return null
+    }
     set({ isSaving: true, error: null })
     try {
       const character: Character = {
@@ -616,6 +627,12 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       if (!saved || typeof saved !== 'object' || !saved.draft?.id) return false
       const restored = {
         ...saved.draft,
+        // 数组字段兜底：旧版本/手写草稿可能缺失，避免渲染层 .map 崩溃
+        tags: Array.isArray(saved.draft.tags) ? saved.draft.tags : [],
+        alternateGreetings: Array.isArray(saved.draft.alternateGreetings)
+          ? saved.draft.alternateGreetings
+          : [],
+        lorebookId: saved.draft.lorebookId ?? null,
         avatar: '',
         cover: saved.coverThumb ?? undefined,
       } as Character
@@ -624,6 +641,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
         draft: restored,
         avatarPosition: saved.avatarPosition ?? 'center',
         coverBase64: saved.coverThumb ?? null,
+        coverIsThumb: !!saved.coverThumb,
         coverMode: 'upload',
         error: null,
       })
@@ -662,6 +680,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       draft: createEmptyDraft(),
       coverMode: 'upload',
       coverBase64: null,
+      coverIsThumb: false,
       coverPrompt: '',
       negativePrompt: 'lowres, bad anatomy, bad hands, worst quality, low quality, blurry, watermark',
       coverSize: '576x768',

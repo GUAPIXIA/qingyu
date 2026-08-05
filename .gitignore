@@ -43,3 +43,6 @@ spec_*.json
 server/.env
 # 测试覆盖率报告
 coverage/
+
+# 审查临时产物
+lint*.json

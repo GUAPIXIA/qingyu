@@ -61,6 +61,17 @@ describe('parseExpandResult', () => {
     expect(result?.tags).toEqual(['黑客'])
   })
 
+  it('截断时 tags 数组也能部分恢复', () => {
+    const result = parseExpandResult('{"name":"零","tags":["赛博朋克","黑客","御姐"]')
+    expect(result?.name).toBe('零')
+    expect(result?.tags).toEqual(['赛博朋克', '黑客', '御姐'])
+  })
+
+  it('截断时转义字符正确反转义', () => {
+    const result = parseExpandResult('{"firstMessage":"*抬头* \\"来了\\"\\n然后笑了"')
+    expect(result?.firstMessage).toBe('*抬头* "来了"\n然后笑了')
+  })
+
   it('完全非 JSON 返回 null 不抛异常', () => {
     expect(parseExpandResult('完全不是 JSON 的内容')).toBeNull()
     expect(parseExpandResult('')).toBeNull()

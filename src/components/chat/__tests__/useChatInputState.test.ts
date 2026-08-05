@@ -75,21 +75,24 @@ describe('useChatInputState', () => {
     }
   })
 
-  it('初始状态：文本为空、无图片', () => {
+  it('初始状态：文本为空、无图片', async () => {
     const { result } = renderHook(() => useChatInputState(createCharacter()))
+    await act(async () => {}) // 冲刷挂载异步（quickReply）
     expect(result.current.text).toBe('')
     expect(result.current.images).toEqual([])
     expect(result.current.isAiProcessing).toBe(false)
   })
 
-  it('恢复草稿到输入框', () => {
+  it('恢复草稿到输入框', async () => {
     localStorage.setItem('chat-draft:char-1:s1', '草稿内容')
     const { result } = renderHook(() => useChatInputState(createCharacter()))
+    await act(async () => {}) // 冲刷挂载异步（quickReply）
     expect(result.current.text).toBe('草稿内容')
   })
 
   it('handleSend 空文本不发送', async () => {
     const { result } = renderHook(() => useChatInputState(createCharacter()))
+    await act(async () => {}) // 冲刷挂载异步（quickReply）
     await act(async () => {
       await result.current.handleSend()
     })
@@ -98,6 +101,7 @@ describe('useChatInputState', () => {
 
   it('handleSend 发送消息并清空输入', async () => {
     const { result } = renderHook(() => useChatInputState(createCharacter()))
+    await act(async () => {}) // 冲刷挂载异步（quickReply）
     act(() => {
       result.current.setText('你好世界')
     })
@@ -137,6 +141,7 @@ describe('useChatInputState', () => {
 
   it('/ 开头的内置命令被执行而非发送', async () => {
     const { result } = renderHook(() => useChatInputState(createCharacter()))
+    await act(async () => {}) // 冲刷挂载异步（quickReply）
     act(() => {
       result.current.setText('/clear')
     })
@@ -152,6 +157,7 @@ describe('useChatInputState', () => {
   it('流式中 handleSend 不发送', async () => {
     useChatStore.setState({ isStreaming: true } as any)
     const { result } = renderHook(() => useChatInputState(createCharacter()))
+    await act(async () => {}) // 冲刷挂载异步（quickReply）
     act(() => {
       result.current.setText('测试')
     })

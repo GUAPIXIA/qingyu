@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ChatPage } from '../ChatPage'
@@ -10,11 +11,12 @@ import { getDefaultSettings } from '../../../shared/defaults'
 import type { Character, ConnectionProfile } from '../../../shared/types'
 
 // jsdom 无布局测量，Virtuoso 虚拟列表不会渲染 itemContent；mock 为普通列表
-vi.mock('react-virtuoso', () => ({
-  Virtuoso: (props: { data: unknown[]; itemContent: (i: number, item: unknown) => React.ReactNode }) => (
+vi.mock('react-virtuoso', () => {
+  const Virtuoso = (props: { data: unknown[]; itemContent: (i: number, item: unknown) => React.ReactNode }) => (
     <div>{props.data.map((item, i) => props.itemContent(i, item))}</div>
-  ),
-}))
+  )
+  return { Virtuoso: React.forwardRef(Virtuoso) }
+})
 
 function makeCharacter(overrides: Partial<Character> = {}): Character {
   return {

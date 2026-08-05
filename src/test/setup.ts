@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { vi, afterEach } from 'vitest'
+import { act } from '@testing-library/react'
 import { clearCollectedLogs } from '../lib/logger'
 import type { ExposedAPI } from '../../shared/ipc-api'
 
@@ -73,6 +74,11 @@ const mockApi: Partial<ExposedAPI> = {
   } as any,
   regex: {
     list: vi.fn().mockResolvedValue([]),
+  } as any,
+  quickReply: {
+    listAll: vi.fn().mockResolvedValue([]),
+    save: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
   } as any,
   persona: {
     list: vi.fn().mockResolvedValue([]),
@@ -148,7 +154,12 @@ if (typeof window !== 'undefined') {
   })
 }
 
-afterEach(() => {
+afterEach(async () => {
+  // 冲刷挂起的微任务（promise.then 中的 setState），避免测试结束后的 act 警告
+  // 多轮冲刷：深层 promise 链（如发送消息的多次 await）可能跨多轮微任务
+  for (let i = 0; i < 5; i++) {
+    await act(async () => {})
+  }
   clearCollectedLogs()
   if (unhandledErrors.length > 0) {
     const count = unhandledErrors.length

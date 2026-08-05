@@ -66,24 +66,34 @@ export function CoverStep() {
           )}
         </div>
         {hasCover && (
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className="btn-secondary text-xs flex-1"
-              onClick={() => fileRef.current?.click()}
-            >
-              <Upload className="w-3.5 h-3.5" />
-              更换
-            </button>
-            <button
-              type="button"
-              className="btn-secondary text-xs"
-              onClick={() => store.setCover(null)}
-              title="移除封面"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <>
+            {store.coverIsThumb && (
+              <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 text-xs animate-fade-in">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                <span>
+                  草稿封面为压缩缩略图，保存前请重新上传或生成高清封面
+                </span>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-secondary text-xs flex-1"
+                onClick={() => fileRef.current?.click()}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                更换
+              </button>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                onClick={() => store.setCover(null)}
+                title="移除封面"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </>
         )}
         <input
           ref={fileRef}
@@ -100,6 +110,20 @@ export function CoverStep() {
 
       {/* 右侧操作区 */}
       <div className="space-y-4">
+        {store.error && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-tavern-danger/10 border border-tavern-danger/30 text-tavern-danger text-sm animate-fade-in">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span className="flex-1">{store.error}</span>
+            <button
+              type="button"
+              onClick={() => useCharacterCreatorStore.setState({ error: null })}
+              className="p-0.5 hover:opacity-70"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Tab */}
         <div className="flex gap-1 p-1 rounded-lg bg-tavern-bg-soft w-fit">
           <button
