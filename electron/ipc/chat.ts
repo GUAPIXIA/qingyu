@@ -202,8 +202,19 @@ function computeMessageMeta(characterId: string, sessionId: string): { count: nu
         const tailBuf = Buffer.alloc(tailSize)
         readSync(fd, tailBuf, 0, tailSize, fileSize - tailSize)
         const tail = tailBuf.toString('utf-8')
+        // 修复：消息文件以 \n 结尾（appendMessage 每行追加 \n），
+        // 最后一个 \n 后是空行——需取倒数第二行作为最后一条消息
         const lastNewline = tail.lastIndexOf('\n')
-        const lastLine = (lastNewline >= 0 ? tail.slice(lastNewline + 1) : tail).trim()
+        let lastLine = ''
+        if (lastNewline >= 0) {
+          lastLine = tail.slice(lastNewline + 1).trim()
+          if (!lastLine) {
+            const prevNewline = tail.lastIndexOf('\n', lastNewline - 1)
+            lastLine = (prevNewline >= 0 ? tail.slice(prevNewline + 1, lastNewline) : tail.slice(0, lastNewline)).trim()
+          }
+        } else {
+          lastLine = tail.trim()
+        }
         if (lastLine) {
           try {
             const msg = JSON.parse(lastLine) as Message
@@ -220,6 +231,39 @@ function computeMessageMeta(characterId: string, sessionId: string): { count: nu
   }
 
   return { count, lastMessage }
+}
+
+/** P2 修复：会话元数据缓存——文件 mtime+size 未变则复用统计结果，
+ * 避免 listSessions 每次对每个会话文件全量字节扫描（阻塞主进程事件循环） */
+interface MetaCacheEntry { mtimeMs: number; size: number; meta: { count: number; lastMessage: string } }
+const sessionMetaCache = new Map<string, MetaCacheEntry>()
+const META_CACHE_MAX = 1000
+
+export function computeMessageMetaCached(characterId: string, sessionId: string): { count: number; lastMessage: string } {
+  const filePath = getSessionFile(characterId, sessionId)
+  if (!existsSync(filePath)) return { count: 0, lastMessage: '' }
+  let st
+  try {
+    st = statSync(filePath)
+  } catch {
+    return { count: 0, lastMessage: '' }
+  }
+  const key = `${characterId}:${sessionId}`
+  const cached = sessionMetaCache.get(key)
+  if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+    return cached.meta
+  }
+  const meta = computeMessageMeta(characterId, sessionId)
+  sessionMetaCache.set(key, { mtimeMs: st.mtimeMs, size: st.size, meta })
+  // 超限时清除最早插入的一半条目（Map 迭代序 = 插入序）
+  if (sessionMetaCache.size > META_CACHE_MAX) {
+    let removed = 0
+    for (const k of sessionMetaCache.keys()) {
+      if (removed++ >= META_CACHE_MAX / 2) break
+      sessionMetaCache.delete(k)
+    }
+  }
+  return meta
 }
 
 /** 旧数据迁移：messages.jsonl -> default session */
@@ -312,9 +356,9 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       }
 
       // 优化：只读 messages 文件统计 count 和 lastMessage
-      // 这里仍然全量读，但通过 computeMessageMeta 复用逻辑
+      // P2 修复：mtime+size 缓存复用，文件未变时不再全量字节扫描
       return sessions.map(s => {
-        const meta = computeMessageMeta(characterId, s.id)
+        const meta = computeMessageMetaCached(characterId, s.id)
         return {
           ...s,
           messageCount: meta.count,

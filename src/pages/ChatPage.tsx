@@ -39,7 +39,18 @@ const MEMORY_HINT_THRESHOLD = 40
 
 export function ChatPage() {
   const navigate = useNavigate()
-  const { messages, loadMessages, isStreaming, clearChat, clearMessages, currentSessionId, loadSessions, setActiveLorebooks, activeLorebookIds, sessions } = useChatStore()
+  // P1 修复：选择性订阅 store 字段（此前无选择器订阅整个 store，
+  // 任何字段变化都全页重渲染——流式 50ms flush 时每秒 20 次整树协调）
+  const messages = useChatStore((s) => s.messages)
+  const sessions = useChatStore((s) => s.sessions)
+  const isStreaming = useChatStore((s) => s.isStreaming)
+  const currentSessionId = useChatStore((s) => s.currentSessionId)
+  const activeLorebookIds = useChatStore((s) => s.activeLorebookIds)
+  const loadMessages = useChatStore((s) => s.loadMessages)
+  const clearChat = useChatStore((s) => s.clearChat)
+  const clearMessages = useChatStore((s) => s.clearMessages)
+  const loadSessions = useChatStore((s) => s.loadSessions)
+  const setActiveLorebooks = useChatStore((s) => s.setActiveLorebooks)
   const { currentCharacter } = useCharacterStore()
   const { settings, loaded, getActiveProfile } = useSettingsStore()
   const { loadPersonas } = usePersonaStore()
@@ -194,9 +205,30 @@ export function ChatPage() {
     })
   }
 
-  // 字符统计：useMemo 避免流式时每个 chunk 都重算
+  // 字符统计：增量缓存——每条消息的 countChars 结果按 id 缓存，
+  // 流式时只有正在生成的消息变化，其余消息不再重复正则统计（P1 修复）
+  const charCountCacheRef = useRef(new Map<string, number>())
   const totalChars = useMemo(() => {
-    return messages.reduce((sum, m) => sum + countChars(m.content).total, 0)
+    const cache = charCountCacheRef.current
+    // 清理已删除消息的缓存条目（防长会话内存膨胀）
+    if (cache.size > messages.length + 50) {
+      const alive = new Set(messages.map((m) => m.id))
+      for (const id of [...cache.keys()]) {
+        if (!alive.has(id)) cache.delete(id)
+      }
+    }
+    let sum = 0
+    for (const m of messages) {
+      const cached = cache.get(m.id)
+      if (cached !== undefined) {
+        sum += cached
+      } else {
+        const c = countChars(m.content).total
+        cache.set(m.id, c)
+        sum += c
+      }
+    }
+    return sum
   }, [messages])
 
   // 检查角色是否有绑定的世界书，如果有则弹窗确认

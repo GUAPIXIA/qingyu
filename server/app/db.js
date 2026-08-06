@@ -74,6 +74,16 @@ function initDatabase() {
       console.error('[DB] 致命错误: ADMIN_PASSWORD 长度不足（至少需要 8 个字符），服务拒绝启动')
       process.exit(1)
     }
+    // H2 修复：拒绝常见弱密码/与用户名相同的密码，防止默认配置被直接利用
+    const WEAK_PASSWORDS = new Set([
+      'changeme123', 'admin', 'password', 'password123', 'admin123',
+      '12345678', '123456789', '1234567890', 'qwerty123', 'abc12345',
+      'letmein', 'welcome1', '1234qwer', 'replace_with_strong_password',
+    ])
+    if (WEAK_PASSWORDS.has(adminPassword.toLowerCase()) || adminPassword.toLowerCase() === 'admin') {
+      console.error('[DB] 致命错误: ADMIN_PASSWORD 为常见弱密码，服务拒绝启动。请设置强密码（至少 12 位，含大小写与数字）')
+      process.exit(1)
+    }
     const hash = bcrypt.hashSync(adminPassword, 10)
     db.prepare('INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)').run(
       'admin',

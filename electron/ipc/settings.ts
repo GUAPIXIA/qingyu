@@ -16,14 +16,62 @@ const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 /** 备份文件大小上限：100MB（N23 修复） */
 const MAX_BACKUP_SIZE = 100 * 1024 * 1024
 
+// ===================== H1 修复：API Key 加密存储 =====================
+// settings.json 曾明文保存 apiKey（profile/TTS/生图/识图模型）。
+// 现在保存时提取到 safeStorage 加密凭据库，settings.json 不落明文；
+// 读取时回填；备份导出/导入时剥离。
+type SecretItem = { id: string; apiKey?: string }
+type SecretListGetter = (s: Settings) => SecretItem[] | undefined
+
+const SECRET_COLLECTIONS: Array<{ get: SecretListGetter; prefix: string }> = [
+  { get: (s) => s.connectionProfiles, prefix: 'profile' },
+  { get: (s) => s.ttsModels, prefix: 'tts' },
+  { get: (s) => s.imageGenModels, prefix: 'imagegen' },
+  { get: (s) => s.visionModels, prefix: 'vision' },
+]
+
+/**
+ * 保存前剥离 apiKey：提取到 safeStorage 后从 settings 对象删除。
+ * @param persist 是否将明文 key 写入 safeStorage（保存/导入为 true；导出备份为 false，仅删除）
+ */
+export function stripSecrets(settings: Settings, persist: boolean): void {
+  for (const { get, prefix } of SECRET_COLLECTIONS) {
+    for (const item of get(settings) ?? []) {
+      if (typeof item.apiKey === 'string' && item.apiKey.length > 0) {
+        if (persist) {
+          saveCredential(`${prefix}-${item.id}`, item.apiKey)
+        }
+      }
+      delete item.apiKey
+    }
+  }
+}
+
+/** 读取后回填 safeStorage 中的凭据（无加密凭据时保留 settings 中旧明文兼容） */
+export function restoreSecrets(settings: Settings): void {
+  for (const { get, prefix } of SECRET_COLLECTIONS) {
+    for (const item of get(settings) ?? []) {
+      if (!item.apiKey) {
+        const key = getCredential(`${prefix}-${item.id}`)
+        if (key) item.apiKey = key
+      }
+    }
+  }
+}
+
 export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 读取设置
   safeHandle(ipcMain, 'settings:get', async () => {
-    return readJson<Settings>(SETTINGS_FILE(), 'settings') ?? getDefaultSettings()
+    const settings = readJson<Settings>(SETTINGS_FILE(), 'settings') ?? getDefaultSettings()
+    // H1 修复：回填 safeStorage 中的加密凭据（settings.json 不再落明文 apiKey）
+    restoreSecrets(settings)
+    return settings
   })
 
   // 保存设置
   safeHandle(ipcMain, 'settings:save', async (_e, settings: Settings) => {
+    // H1 修复：保存前剥离 apiKey 到 safeStorage（settings.json 不落明文）
+    stripSecrets(settings, true)
     // BUG-20 修复：写操作经 per-file 锁串行化，避免多个保存请求并发时相互覆盖
     await withFileLock(SETTINGS_FILE(), () => {
       writeJson(SETTINGS_FILE(), settings, 'settings')
@@ -53,8 +101,12 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
     const backup: Record<string, unknown> = { version: 1, timestamp: Date.now() }
 
-    // 备份设置
-    backup.settings = readJson(SETTINGS_FILE(), 'settings')
+    // 备份设置（H1 修复：导出剥离 apiKey，备份文件不携带凭据）
+    const settings = readJson<Settings>(SETTINGS_FILE(), 'settings')
+    if (settings) {
+      stripSecrets(settings, false)
+    }
+    backup.settings = settings
 
     // 备份角色
     const charDir = DIRS.characters()
@@ -117,7 +169,9 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     const lorebooks = safeIdList(backup.lorebooks, '世界书')
     const presets = safeIdList(backup.presets, '预设')
 
-    if (backup.settings) {
+    if (backup.settings && typeof backup.settings === 'object') {
+      // H1 修复：导入的 settings 若含明文 apiKey（旧备份），迁移进 safeStorage 后剥离落盘
+      stripSecrets(backup.settings as Settings, true)
       writeJson(SETTINGS_FILE(), backup.settings)
     }
     if (chars.length > 0) {

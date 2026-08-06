@@ -29,8 +29,10 @@ jobs:
       - name: Type check (tsc)
         run: pnpm check
 
-      - name: Unit tests (vitest)
-        run: pnpm test
+      - name: Unit tests (vitest, with coverage gate)
+        # E1 修复：启用覆盖率统计——vitest.config.ts 的 thresholds 门禁此前从未在 CI 执行，
+        # 覆盖率下降不会红；--coverage 使阈值生效（实测 29/47/72 高于阈值 15/35/65）
+        run: pnpm test:coverage
 
       - name: Electron main process build (esbuild)
         run: node electron-build.mjs

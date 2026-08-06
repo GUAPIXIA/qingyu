@@ -55,14 +55,12 @@ function parseStatusFromMessages(messages: Message[]): StatusItem[] {
 }
 
 export function StatusBar({ character, messages }: StatusBarProps) {
-  const [statusItems, setStatusItems] = useState<StatusItem[]>([])
+  // P1 修复：useMemo 替代 useEffect+useState（省一次渲染周期，
+  // 且仅在 messages 引用变化时重新解析状态）
+  const statusItems = useMemo(() => parseStatusFromMessages(messages), [messages])
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
   const activeLorebookIds = useChatStore(s => s.activeLorebookIds)
   const currentCharacter = useCharacterStore(s => s.currentCharacter)
-
-  useEffect(() => {
-    setStatusItems(parseStatusFromMessages(messages))
-  }, [messages])
 
   // 加载世界书列表：角色切换 或 激活数量变化时重新加载
   useEffect(() => {
