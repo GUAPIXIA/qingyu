@@ -304,6 +304,43 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     })
   })
 
+  // 批量保存消息：一次 IPC 读-改-写全部消息（群聊流式/自由发言拆分多次单条保存的优化，
+  // 减少 3-5 次 IPC 往返与文件全量重写为 1 次）
+  ipcMain.handle('group:saveMessagesBatch', async (_e, groupId: string, sessionId: string, msgs: GroupMessage[]) => {
+    safeId(groupId)
+    safeId(sessionId)
+    if (!Array.isArray(msgs) || msgs.length === 0) return
+    if (msgs.length > 200) {
+      throw new Error('批量保存消息数超过上限（200）')
+    }
+    await withSessionFileLock(groupId, sessionId, () => {
+      const messages = readMessages(groupId, sessionId)
+      const existingIds = new Set(messages.map(m => m.id))
+      for (const msg of msgs) {
+        if (!msg || typeof msg.id !== 'string' || msg.id.length > 64) continue
+        if (existingIds.has(msg.id)) {
+          // 已存在则原位更新
+          const idx = messages.findIndex(m => m.id === msg.id)
+          messages[idx] = msg
+        } else {
+          messages.push(msg)
+          existingIds.add(msg.id)
+        }
+      }
+      writeMessages(groupId, sessionId, messages)
+    })
+
+    // 更新 session updatedAt（与单条保存一致，仅一次）
+    await withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find(s => s.id === sessionId)
+      if (session) {
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
+  })
+
   ipcMain.handle('group:deleteMessage', async (_e, groupId: string, sessionId: string, messageId: string) => {
     safeId(groupId)
     safeId(sessionId)

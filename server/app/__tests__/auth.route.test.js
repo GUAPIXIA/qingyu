@@ -11,15 +11,10 @@ vi.mock('../middleware/auth', () => ({
   JWT_SECRET: 'test-secret-test-secret-test-secret-test-secret',
 }))
 
-let expressAvailable = false
-let express = null
+// server 依赖已纳入 pnpm workspace
+const express = require('express')
 let baseUrl = ''
 let server = null
-
-try {
-  express = require('express')
-  expressAvailable = true
-} catch { /* 本地未安装 server 依赖 */ }
 
 async function startServer() {
   const authRouter = require('../routes/auth')
@@ -32,14 +27,14 @@ async function startServer() {
 }
 
 beforeAll(async () => {
-  if (expressAvailable) await startServer()
+  await startServer()
 })
 
 afterAll(async () => {
   if (server) await new Promise((r) => server.close(r))
 })
 
-describe.skipIf(!expressAvailable)('登录失败响应', () => {
+describe('登录失败响应', () => {
   it('用户不存在返回 401 且 remaining 不小于 0', async () => {
     const res = await fetch(`${baseUrl}/login`, {
       method: 'POST',

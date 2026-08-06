@@ -939,7 +939,6 @@ export async function splitAndSaveMessages(
 
   // 移除占位消息，替换为拆分的角色消息
   const newMessages: GroupMessage[] = []
-  const savePromises: Promise<void>[] = []
   for (const seg of segments) {
     // 大小写不敏感 + 去除空格 进行角色名匹配
     const segName = seg.name.toLowerCase().trim()
@@ -964,7 +963,6 @@ export async function splitAndSaveMessages(
             round,
           }
           newMessages.push(gm)
-          savePromises.push(window.api.group.saveMessage(group.id, sessionId, gm))
         }
       }
       continue
@@ -980,11 +978,14 @@ export async function splitAndSaveMessages(
       round,
     }
     newMessages.push(gm)
-    savePromises.push(window.api.group.saveMessage(group.id, sessionId, gm))
   }
 
-  // 并行持久化
-  await Promise.all(savePromises)
+  // 持久化（优化：多条消息合并为一次批量保存，减少 IPC 往返与文件全量重写）
+  if (newMessages.length === 1) {
+    await window.api.group.saveMessage(group.id, sessionId, newMessages[0])
+  } else if (newMessages.length > 1) {
+    await window.api.group.saveMessagesBatch(group.id, sessionId, newMessages)
+  }
 
   set((s: GroupChatState) => ({
     messages: s.messages
@@ -1046,5 +1047,5 @@ export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGe
     const curGroup = currentState.currentGroup
     if (!curGroup || curGroup.id !== group.id) return
     currentState.sendPollingRound(nextCharId)
-  }, (group.speakerInterval || 2000))
+  }, Math.max(500, group.speakerInterval || 2000))
 }

@@ -237,6 +237,7 @@ const groupApi: GroupChatAPI = {
   renameSession: (groupId, sessionId, title) => ipcRenderer.invoke('group:renameSession', groupId, sessionId, title),
   listMessages: (groupId, sessionId) => ipcRenderer.invoke('group:listMessages', groupId, sessionId),
   saveMessage: (groupId, sessionId, msg) => ipcRenderer.invoke('group:saveMessage', groupId, sessionId, msg),
+  saveMessagesBatch: (groupId, sessionId, msgs) => ipcRenderer.invoke('group:saveMessagesBatch', groupId, sessionId, msgs),
   editMessage: (groupId, sessionId, messageId, content) => ipcRenderer.invoke('group:editMessage', groupId, sessionId, messageId, content),
   deleteMessage: (groupId, sessionId, messageId) => ipcRenderer.invoke('group:deleteMessage', groupId, sessionId, messageId),
   clearChat: (groupId, sessionId?) => ipcRenderer.invoke('group:clearChat', groupId, sessionId),

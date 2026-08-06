@@ -2,11 +2,12 @@ const Database = require('better-sqlite3')
 const path = require('path')
 const bcrypt = require('bcryptjs')
 
-const DATA_DIR = path.join(__dirname, 'data')
-const DB_PATH = path.join(DATA_DIR, 'tavern.db')
+const DATA_DIR = process.env.DB_DATA_DIR ? path.resolve(process.env.DB_DATA_DIR) : path.join(__dirname, 'data')
+// 测试可用 DB_PATH=:memory: 或临时文件隔离,避免污染真实数据库
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'tavern.db')
 
 const fs = require('fs')
-if (!fs.existsSync(DATA_DIR)) {
+if (DB_PATH !== ':memory:' && !fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true })
 }
 

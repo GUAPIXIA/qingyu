@@ -40,6 +40,7 @@ function setup() {
     characters: [makeCharacter('c1', '爱丽丝'), makeCharacter('c2', '千夏')],
   })
   ;(window.api.group as any).saveMessage = vi.fn().mockResolvedValue(undefined)
+  ;(window.api.group as any).saveMessagesBatch = vi.fn().mockResolvedValue(undefined)
   ;(window.api.group as any).save = vi.fn().mockResolvedValue(undefined)
 }
 
@@ -60,10 +61,13 @@ describe('splitAndSaveMessages 群聊自由发言拆分', () => {
     const content = '【爱丽丝】你好呀\n【千夏】大家好！'
     await splitAndSaveMessages(set as any, (() => ({})) as any, makeGroup(), 's1', content, 2, 'ph-1')
 
-    expect(window.api.group.saveMessage).toHaveBeenCalledTimes(2)
-    const calls = vi.mocked(window.api.group.saveMessage).mock.calls
-    const saved1 = calls[0][2] as GroupMessage
-    const saved2 = calls[1][2] as GroupMessage
+    // 优化：多条消息合并为一次批量保存
+    expect(window.api.group.saveMessage).not.toHaveBeenCalled()
+    expect(window.api.group.saveMessagesBatch).toHaveBeenCalledTimes(1)
+    const batch = vi.mocked(window.api.group.saveMessagesBatch).mock.calls[0][2] as GroupMessage[]
+    expect(batch).toHaveLength(2)
+    const saved1 = batch[0]
+    const saved2 = batch[1]
     expect(saved1.characterId).toBe('c1')
     expect(saved1.content).toBe('你好呀')
     expect(saved2.characterId).toBe('c2')

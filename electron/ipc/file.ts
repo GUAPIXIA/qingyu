@@ -151,6 +151,8 @@ export function registerFileIPC(ipcMain: IpcMain, dialog: Dialog, app: App): voi
       const fileName = `${id}.${format}`
       const destPath = join(fontsDir, fileName)
       copyFileSync(filePath, destPath)
+      // 用后即删：对话框路径登记不再保留（防长期累积；重复保存需重新选择）
+      validatedPaths.delete(filePath)
 
       const fontInfo: CustomFont = {
         id,

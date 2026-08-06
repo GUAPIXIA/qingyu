@@ -8,16 +8,15 @@ import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest'
 
 vi.hoisted(() => { process.env.JWT_SECRET = process.env.JWT_SECRET || 'x'.repeat(32) })
 
-// 检测 express 可用性（本地开发无 server 依赖时跳过）
-let expressAvailable = false
-let express = null
+import jwt from 'jsonwebtoken'
+
+// N20 兼容：middleware 校验 issuer/audience（qingyu-server/qingyu-admin）
+const authToken = jwt.sign({ id: 1, username: 'admin' }, process.env.JWT_SECRET, { issuer: 'qingyu-server', audience: 'qingyu-admin' })
+
+// server 依赖已纳入 pnpm workspace（express 由 server/app/package.json 声明）
+const express = require('express')
 let baseUrl = ''
 let server = null
-
-try {
-  express = require('express')
-  expressAvailable = true
-} catch { /* 本地未安装 server 依赖 */ }
 
 async function startServer() {
   const announcementsRouter = require('../routes/announcements')
@@ -32,14 +31,14 @@ async function startServer() {
 }
 
 beforeAll(async () => {
-  if (expressAvailable) await startServer()
+  await startServer()
 })
 
 afterAll(async () => {
   if (server) await new Promise((r) => server.close(r))
 })
 
-describe.skipIf(!expressAvailable)('公告分页参数', () => {
+describe('公告分页参数', () => {
   it('pageSize 超限时被限制到 100', async () => {
     const res = await fetch(`${baseUrl}?pageSize=999999`)
     expect(res.status).toBe(200)
@@ -60,11 +59,11 @@ describe.skipIf(!expressAvailable)('公告分页参数', () => {
   })
 })
 
-describe.skipIf(!expressAvailable)('公告创建校验', () => {
+describe('公告创建校验', () => {
   it('缺少标题或内容返回 400', async () => {
     const res = await fetch(baseUrl, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${authToken}` },
       body: JSON.stringify({ content: '只有内容' }),
     })
     expect(res.status).toBe(400)
@@ -73,16 +72,17 @@ describe.skipIf(!expressAvailable)('公告创建校验', () => {
   it('标题超长（>200 字符）返回 400', async () => {
     const res = await fetch(baseUrl, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${authToken}` },
       body: JSON.stringify({ title: 'x'.repeat(201), content: '内容' }),
     })
     expect(res.status).toBe(400)
   })
 })
 
-describe.skipIf(!expressAvailable)('404 兜底', () => {
+describe('404 兜底', () => {
   it('未知路径返回 JSON 404', async () => {
-    const res = await fetch(`${baseUrl}/no-such-route-xyz`)
+    // 双层路径不匹配 GET /:id 单段路由，落入 404 中间件
+    const res = await fetch(`${baseUrl}/no-such/x/y`)
     expect(res.status).toBe(404)
     const data = await res.json()
     expect(data.error).toBe('接口不存在')

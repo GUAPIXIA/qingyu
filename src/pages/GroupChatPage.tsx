@@ -33,16 +33,30 @@ import {
 
 export function GroupChatPage() {
   const { characters } = useCharacterStore()
-  const {
-    groupChats, currentGroup, sessions, currentSessionId,
-    messages,
-    isStreaming,
-    loadGroups, selectGroup, saveGroup, deleteGroup,
-    createSession, switchSession, deleteSession, renameSession,
-    clearChat, deleteMessage, editMessage, regenerateMessage, translateMessage,
-    sendPollingRound,
-    toggleMemory, setMemoryMode, triggerMemorySummary,
-  } = useGroupChatStore()
+  // 优化：选择性订阅（此前全量订阅 store，群聊流式/轮询时整页重渲染）
+  const groupChats = useGroupChatStore((s) => s.groupChats)
+  const currentGroup = useGroupChatStore((s) => s.currentGroup)
+  const sessions = useGroupChatStore((s) => s.sessions)
+  const currentSessionId = useGroupChatStore((s) => s.currentSessionId)
+  const messages = useGroupChatStore((s) => s.messages)
+  const isStreaming = useGroupChatStore((s) => s.isStreaming)
+  const loadGroups = useGroupChatStore((s) => s.loadGroups)
+  const selectGroup = useGroupChatStore((s) => s.selectGroup)
+  const saveGroup = useGroupChatStore((s) => s.saveGroup)
+  const deleteGroup = useGroupChatStore((s) => s.deleteGroup)
+  const createSession = useGroupChatStore((s) => s.createSession)
+  const switchSession = useGroupChatStore((s) => s.switchSession)
+  const deleteSession = useGroupChatStore((s) => s.deleteSession)
+  const renameSession = useGroupChatStore((s) => s.renameSession)
+  const clearChat = useGroupChatStore((s) => s.clearChat)
+  const deleteMessage = useGroupChatStore((s) => s.deleteMessage)
+  const editMessage = useGroupChatStore((s) => s.editMessage)
+  const regenerateMessage = useGroupChatStore((s) => s.regenerateMessage)
+  const translateMessage = useGroupChatStore((s) => s.translateMessage)
+  const sendPollingRound = useGroupChatStore((s) => s.sendPollingRound)
+  const toggleMemory = useGroupChatStore((s) => s.toggleMemory)
+  const setMemoryMode = useGroupChatStore((s) => s.setMemoryMode)
+  const triggerMemorySummary = useGroupChatStore((s) => s.triggerMemorySummary)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)

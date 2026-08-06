@@ -1,5 +1,26 @@
 # 更新日志
 
+## [0.11.18] - 2026-08-06
+
+### server 测试落地 + 群聊批量保存 + 页面订阅优化
+
+**测试（server 路由测试真正执行）**
+
+- `server/app` 纳入 pnpm workspace：express 等依赖统一安装，测试不再 `skipIf` 静默跳过（此前 CI 假绿，server 路由覆盖率 0%）
+- `db.js` 支持 `DB_PATH` 环境变量（测试用 `:memory:` 隔离，不污染真实数据库）；新增测试 setup 提供强密码与 JWT_SECRET
+- 修复测试认证：真实签发带 issuer/audience 的 JWT（N20 校验兼容；发现 vi.mock 对 CJS require 链无效）
+- better-sqlite3 升级 v12 并配置 npmmirror 预构建镜像（本机无 VS 编译工具链的替代方案）
+- server 测试从 14 跳过 → **5 文件 28 测试全部执行通过**
+
+**性能**
+
+- 群聊新增 `group:saveMessagesBatch` 批量保存接口：自由发言拆分/流式收尾多条消息从 N 次 IPC+文件全量重写降为 1 次（含 preload/类型/单元测试更新）
+- `GroupChatPage` 拆分为 23 个选择性订阅（此前全量订阅，群聊流式/轮询时整页重渲染）
+- 群聊轮询间隔下限 500ms（防误配 0 导致忙轮询）
+- `validatedPaths` 对话框路径登记用后即删（防长期累积）
+
+---
+
 ## [0.11.17] - 2026-08-06
 
 ### 打包体积优化 + IPC 死代码清理 + 群聊轮询减负

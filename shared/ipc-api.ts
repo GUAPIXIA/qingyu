@@ -211,6 +211,7 @@ export interface GroupChatAPI {
   renameSession(groupId: string, sessionId: string, title: string): Promise<void>
   listMessages(groupId: string, sessionId: string): Promise<GroupMessage[]>
   saveMessage(groupId: string, sessionId: string, msg: GroupMessage): Promise<void>
+  saveMessagesBatch(groupId: string, sessionId: string, msgs: GroupMessage[]): Promise<void>
   editMessage(groupId: string, sessionId: string, messageId: string, content: string): Promise<void>
   deleteMessage(groupId: string, sessionId: string, messageId: string): Promise<void>
   clearChat(groupId: string, sessionId?: string): Promise<void>
