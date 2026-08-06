@@ -18,6 +18,9 @@ import {
   Languages,
   ScrollText,
   Type,
+  Wand2,
+  Command,
+  Volume2,
 } from 'lucide-react'
 
 type TabKey = 'guide' | 'faq'
@@ -31,29 +34,44 @@ const steps = [
   {
     icon: Settings,
     title: '配置 AI 连接',
-    desc: '进入设置页面，选择 AI 提供商（OpenAI 兼容 / Claude / Gemini / Ollama），填写 API Key 与 Base URL，选择模型后保存。支持 DeepSeek、Kimi、智创聚合等兼容接口。',
+    where: '设置页 → AI 服务',
+    desc: '选择 AI 提供商（OpenAI 兼容 / Claude / Gemini / Ollama），填写 API Key 与 Base URL，选择模型后保存。支持 DeepSeek、Kimi、智创聚合等兼容接口；本地模型可用 Ollama（默认 http://localhost:11434）。',
   },
   {
     icon: FileUp,
     title: '导入或创建角色',
-    desc: '支持 PNG / JSON 格式的 SillyTavern 角色卡批量导入。也可以手动创建角色，填写描述、性格、首条消息等设定。导入时自动提取内嵌世界书。',
-  },
-  {
-    icon: Palette,
-    title: '编辑角色信息',
-    desc: '支持 AI 一键翻译角色卡（英 → 中），可拖拽调整文本框高度。支持自定义角色封面、标签、对话示例、场景设定等高级选项。',
+    where: '角色管理页 → 导入 / 新建',
+    desc: '支持 PNG / JSON 格式的 SillyTavern 角色卡批量导入，自动提取内嵌世界书与备用问候语；也可以使用“创建角色”向导从零生成角色设定。',
   },
   {
     icon: MessageSquare,
     title: '开始对话',
-    desc: '从角色管理页点击角色进入对话。支持单角色多会话、会话切换、对话分支。Enter 发送，Shift+Enter 换行。',
+    where: '点击角色卡片进入',
+    desc: '点击角色进入对话页。Enter 发送、Shift+Enter 换行、Esc 停止生成。同一角色支持多会话，随时切换、重命名或删除。',
+  },
+  {
+    icon: Layers,
+    title: '解锁进阶功能',
+    where: '角色设置 / 世界书页 / 群聊页',
+    desc: '为角色挂载世界书、启用长记忆、套用预设；或创建群聊，让多个角色同场互动、自由发言或指定发言。',
+  },
+  {
+    icon: ScrollText,
+    title: '备份数据',
+    where: '设置页 → 数据管理',
+    desc: '所有数据仅保存在本地。定期导出完整备份（含角色、对话、设置、世界书、预设），重装或迁移时一键导入恢复。',
   },
 ]
 
 const shortcuts: { key: string; desc: string }[] = [
   { key: 'Enter', desc: '发送消息' },
   { key: 'Shift + Enter', desc: '换行' },
-  { key: 'Esc', desc: '关闭弹窗 / 停止生成' },
+  { key: 'Esc', desc: '停止生成 / 关闭弹窗' },
+  { key: 'Ctrl + N', desc: '新建对话' },
+  { key: 'Ctrl + E', desc: '导出当前对话' },
+  { key: 'Ctrl + /', desc: '打开命令面板' },
+  { key: 'Ctrl + Shift + C', desc: '复制最后一条 AI 回复' },
+  { key: 'Tab / ↑↓', desc: '输入框命令补全切换' },
 ]
 
 const features = [
@@ -97,6 +115,31 @@ const features = [
     title: '群聊引用回复',
     desc: '群聊中 hover 任意消息点击回复按钮即可引用回复。发送后气泡顶部显示引用块，支持 @角色名 高亮显示和发送状态指示。',
   },
+  {
+    icon: BookOpen,
+    title: '世界书（Lorebook）',
+    desc: '根据对话关键词自动注入背景设定的动态知识库。角色卡可内嵌世界书，也可在世界书页独立创建与管理，支持分组、排序与嵌套。',
+  },
+  {
+    icon: Wand2,
+    title: '正则替换',
+    desc: '输入/输出消息的正则规则引擎：文本清洗、语气统一、内容过滤。支持多阶段应用（text/markdown）与停止字符串。',
+  },
+  {
+    icon: Zap,
+    title: '快捷回复',
+    desc: '预置常用消息模板。输入框输入 / 唤起命令列表，选择后自动插入模板内容，支持变量替换，适合常用指令与场景描述。',
+  },
+  {
+    icon: Volume2,
+    title: 'TTS 朗读',
+    desc: 'AI 回复支持朗读，可选系统语音、Edge、OpenAI TTS 三种后端。对话页 hover 消息点击喇叭按钮即可播放。',
+  },
+  {
+    icon: Command,
+    title: '命令面板',
+    desc: 'Ctrl+/ 打开命令面板，快速执行新建对话、导出当前对话、跳转页面等常用操作。',
+  },
 ]
 
 const faqs: { q: string; a: string }[] = [
@@ -131,6 +174,26 @@ const faqs: { q: string; a: string }[] = [
   {
     q: '对话记忆是如何工作的？',
     a: '开启长记忆后，系统会定期（手动或自动）调用 AI 对对话历史进行总结，生成的摘要会作为"对话历史摘要"注入到后续对话的 system prompt 中，帮助 AI 在长对话中保持一致性。',
+  },
+  {
+    q: '如何配置本地 Ollama 模型？',
+    a: '在 ollama.com 下载并安装 Ollama，运行 ollama pull <模型名>（如 qwen2.5:7b）拉取模型。然后在设置页选择"Ollama"提供商，Base URL 填 http://localhost:11434，模型名填你拉取的模型名称即可。',
+  },
+  {
+    q: 'API Key 是否安全？',
+    a: 'API Key 使用系统级加密（safeStorage）存储于本地，不会明文写入配置文件，也不会被上传到任何服务器；导出备份时会自动剥离 API Key。',
+  },
+  {
+    q: '什么是预设（Preset）？',
+    a: '预设是一组可复用的生成参数方案（温度、Top-P、上下文长度、提示词等）。可在设置中创建预设并分配给角色，同一角色可快速切换不同预设体验不同生成风格。',
+  },
+  {
+    q: '对话出错时如何排查？',
+    a: '对话页会直接显示错误信息（连接失败、超时、配额不足等）。常见排查：确认 API Key 有效且额度充足、检查 Base URL 是否可达；使用本地模型时确认 Ollama 已启动并已拉取模型。',
+  },
+  {
+    q: '什么是快捷回复？',
+    a: '快捷回复是预置的消息模板。在输入框输入 / 可唤起命令列表，选择后自动插入模板内容，支持变量替换，适合常用指令、动作描写等重复内容。',
   },
 ]
 
@@ -197,14 +260,18 @@ export function HelpPage() {
                   <span>角色卡格式：V1 / V2 / V3 兼容</span>
                   <span>数据存储：纯本地，无云端上传</span>
                 </div>
+                <div className="mt-3 px-3 py-2 rounded-lg bg-tavern-accent-soft/60 border border-tavern-accent/20 text-xs text-tavern-text-soft leading-relaxed">
+                  💡 第一次使用？按下方"新手入门"完成前 3 步（配置连接 → 导入角色 → 开始对话）即可开始体验。
+                </div>
               </section>
 
-              {/* 快速上手 */}
+              {/* 新手入门 */}
               <section className="card p-5">
-                <h2 className="font-medium flex items-center gap-2 mb-4">
+                <h2 className="font-medium flex items-center gap-2 mb-1">
                   <BookOpen className="w-4 h-4 text-tavern-accent" />
-                  快速上手
+                  新手入门
                 </h2>
+                <p className="text-xs text-tavern-text-muted mb-3">按顺序完成以下步骤，即可从零开始使用轻语。</p>
                 <div className="space-y-0">
                   {steps.map((step, idx) => {
                     const Icon = step.icon
@@ -223,7 +290,14 @@ export function HelpPage() {
                             <Icon className="w-4 h-4 text-tavern-accent" />
                           </div>
                           <div className="min-w-0">
-                            <div className="font-medium text-sm text-tavern-text">{step.title}</div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="font-medium text-sm text-tavern-text">{step.title}</div>
+                              {step.where && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-tavern-accent-soft text-tavern-accent font-medium">
+                                  {step.where}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-tavern-text-muted mt-0.5 leading-relaxed">
                               {step.desc}
                             </p>
