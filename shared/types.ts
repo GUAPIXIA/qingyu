@@ -174,7 +174,7 @@ export interface LoreEntry {
   /** at_depth 注入深度：0 = 对话末尾，1 = 倒数第二条消息之后，依此类推 */
   depth?: number
   order: number
-  probability: number // 0-100
+  probability: number // 0-100（运行时已有防御：导入/保存时 clamp，匹配时 Number.isFinite + clamp）
   enabled: boolean
   /** 是否使用正则表达式匹配关键词 */
   useRegex?: boolean

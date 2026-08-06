@@ -19,7 +19,12 @@ function authMiddleware(req, res, next) {
   const token = authHeader.split(' ')[1]
   try {
     // 锁定算法，防止 JWT 算法混淆攻击（只接受 HS256）
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] })
+    // N20 修复：校验 issuer/audience（与签发端一致，旧 token 需重新登录）
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      algorithms: ['HS256'],
+      issuer: 'qingyu-server',
+      audience: 'qingyu-admin',
+    })
     req.admin = decoded
     next()
   } catch {

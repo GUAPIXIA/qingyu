@@ -168,6 +168,13 @@ export async function readJsonAsync<T>(filePath: string, domain?: DataDomain): P
     }
     return parsed
   } catch {
+    // N21 修复：与 readJson 同步版一致，损坏时记录日志便于排查（行为不变：仍返回 null）
+    if (existsSync(filePath)) {
+      try {
+        const logger = createLogger('storage')
+        logger.warn('JSON 文件损坏或无法解析（异步读取）', { file: filePath.substring(0, 120) })
+      } catch { /* 日志失败忽略 */ }
+    }
     return null
   }
 }

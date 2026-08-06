@@ -58,6 +58,16 @@ export function isSafeUrl(urlStr: string): boolean {
     const host = hostname.startsWith('[') && hostname.endsWith(']')
       ? hostname.slice(1, -1)
       : hostname
+    // IPv4-mapped IPv6（如 ::ffff:127.0.0.1，WHATWG 序列化后为 ::ffff:7f00:1）：
+    // 实际连接目标是 IPv4 地址，必须按 IPv4 规则重新校验，
+    // 否则可绕过下方全部黑名单直达内网/云元数据
+    const v4mapped = host.match(/^::ffff:([0-9a-f:]+)$/i)
+    if (v4mapped) {
+      const groups = v4mapped[1].split(':').map((g) => g.padStart(4, '0'))
+      const n = parseInt(groups.join('').slice(-8), 16)
+      const ipv4 = `${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`
+      return isSafeUrl(`http://${ipv4}/`)
+    }
     // 拒绝 localhost
     if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0') {
       return false

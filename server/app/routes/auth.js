@@ -62,6 +62,13 @@ router.post('/login', async (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' })
   }
+  // N20 修复：登录参数长度限制，避免超长输入造成 bcrypt 无谓开销
+  if (typeof username !== 'string' || username.length > 64) {
+    return res.status(400).json({ error: '用户名长度不能超过 64 字符' })
+  }
+  if (typeof password !== 'string' || password.length > 128) {
+    return res.status(400).json({ error: '密码长度不能超过 128 字符' })
+  }
 
   const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username)
   if (!admin) {
@@ -82,7 +89,8 @@ router.post('/login', async (req, res) => {
   const token = jwt.sign(
     { id: admin.id, username: admin.username },
     JWT_SECRET,
-    { expiresIn: '24h' }
+    // N20 修复：绑定 issuer/audience，防止跨服务复用同一 JWT_SECRET 时凭据范围过大
+    { expiresIn: '24h', issuer: 'qingyu-server', audience: 'qingyu-admin' }
   )
 
   res.json({ token, username: admin.username })

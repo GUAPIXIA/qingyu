@@ -36,6 +36,16 @@ describe('isSafeUrl', () => {
     expect(isSafeUrl('http://[ff02::1]/')).toBe(false)
   })
 
+  it('拒绝 IPv4-mapped IPv6 地址（SSRF 变体绕过）', () => {
+    // 修复前：::ffff:127.0.0.1 等 IPv4 映射地址不匹配任何黑名单规则，可直达本机
+    expect(isSafeUrl('http://[::ffff:127.0.0.1]/')).toBe(false)
+    expect(isSafeUrl('http://[::ffff:169.254.169.254]/latest/meta-data')).toBe(false)
+    expect(isSafeUrl('http://[::ffff:10.0.0.1]/')).toBe(false)
+    expect(isSafeUrl('http://[::ffff:192.168.1.1]/')).toBe(false)
+    // 映射到公网地址仍应放行
+    expect(isSafeUrl('http://[::ffff:8.8.8.8]/')).toBe(true)
+  })
+
   it('拒绝私有 IPv4 段', () => {
     expect(isSafeUrl('http://10.0.0.1')).toBe(false)
     expect(isSafeUrl('http://172.16.0.1')).toBe(false)

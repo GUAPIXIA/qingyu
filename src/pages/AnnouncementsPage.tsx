@@ -60,38 +60,45 @@ export function AnnouncementsPage() {
               <div className="prose prose-sm prose-invert max-w-none select-text">
                 {/* 安全修复：移除 rehypeRaw。公告内容来自服务器，含不可信 HTML 时
                     原始 HTML 会被渲染执行（存储型 XSS）。不渲染 HTML，仅支持 GFM */}
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    a: ({ href, children }) => (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-tavern-accent underline hover:opacity-80"
-                      >
-                        {children}
-                      </a>
-                    ),
-                    code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode }) => {
-                      const isInline = !className
-                      if (isInline) {
+                {selectedAnnouncement.content ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ href, children }) => (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-tavern-accent underline hover:opacity-80"
+                        >
+                          {children}
+                        </a>
+                      ),
+                      code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode }) => {
+                        const isInline = !className
+                        if (isInline) {
+                          return (
+                            <code className="px-1 py-0.5 rounded bg-tavern-bg-soft text-tavern-accent text-xs" {...props}>
+                              {children}
+                            </code>
+                          )
+                        }
                         return (
-                          <code className="px-1 py-0.5 rounded bg-tavern-bg-soft text-tavern-accent text-xs" {...props}>
-                            {children}
-                          </code>
+                          <pre className="rounded-lg bg-tavern-bg-soft p-3 overflow-x-auto text-xs">
+                            <code className={className} {...props}>{children}</code>
+                          </pre>
                         )
-                      }
-                      return (
-                        <pre className="rounded-lg bg-tavern-bg-soft p-3 overflow-x-auto text-xs">
-                          <code className={className} {...props}>{children}</code>
-                        </pre>
-                      )
-                    },
-                  }}
-                >
-                  {selectedAnnouncement.content}
-                </ReactMarkdown>
+                      },
+                    }}
+                  >
+                    {selectedAnnouncement.content}
+                  </ReactMarkdown>
+                ) : (
+                  // N19 修复：列表接口不再返回 content，详情获取失败（离线等）时降级提示
+                  <p className="text-sm text-tavern-text-muted py-4">
+                    公告详情加载失败，请检查网络后重试
+                  </p>
+                )}
               </div>
             </div>
           </div>

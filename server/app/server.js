@@ -13,6 +13,15 @@ const { resolveAllowedOrigins } = require('./cors')
 const app = express()
 const PORT = process.env.PORT || 3000
 
+// N9 修复：登录限流依赖 req.ip。部署在反代(Nginx/Traefik 等)之后时，
+// 必须设置 TRUST_PROXY 让 Express 信任 X-Forwarded-For，否则所有客户端
+// 共享反代 IP 的限流桶(5 次失败即全站锁定 15 分钟)。
+// 默认不开启（保持"直连部署"行为，避免伪造 X-Forwarded-For 绕过限流）。
+if (process.env.TRUST_PROXY) {
+  const hops = Number.parseInt(process.env.TRUST_PROXY, 10)
+  app.set('trust proxy', Number.isFinite(hops) && hops >= 1 ? hops : true)
+}
+
 // 安全中间件（关闭 CSP，管理后台依赖内联脚本）
 app.use(helmet({ contentSecurityPolicy: false }))
 // 修复：空数组是 truthy，[] || 默认值恒为 [] 导致跨域全拒；按长度判断（逻辑见 cors.js）
@@ -53,7 +62,13 @@ app.use((_req, res) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
   console.error('[Server] 未捕获错误:', err)
-  res.status(500).json({ error: '服务器内部错误' })
+  // N17 修复：按错误状态码分级响应（如 body-parser 坏 JSON 会置 err.status=400）
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 600 ? err.status : 500
+  if (status === 500) {
+    res.status(500).json({ error: '服务器内部错误' })
+  } else {
+    res.status(status).json({ error: err.message || '请求错误' })
+  }
 })
 
 server.on('error', (err) => {

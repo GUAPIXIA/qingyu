@@ -136,6 +136,8 @@ async function sdWebuiGenerate(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    // R4 修复：生图请求无超时，SD WebUI 挂起时请求永不结束
+    signal: AbortSignal.timeout(120000),
   })
 
   if (!response.ok) {
@@ -184,6 +186,8 @@ async function openaiGenerate(
       Authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(body),
+    // R4 修复：生图请求无超时，Provider 挂起时请求永不结束
+    signal: AbortSignal.timeout(120000),
   })
 
   if (!response.ok) {

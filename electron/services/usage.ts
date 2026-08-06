@@ -7,7 +7,7 @@
  * - 统计用户输入与系统输出的字符数（中文/英文/数字/符号总和）
  */
 
-import { DIRS, readJson, writeJson } from './storage'
+import { DIRS, readJson, writeJson, withFileLock } from './storage'
 import { join } from 'node:path'
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
@@ -31,39 +31,42 @@ export function loadUsage(): UsageRecord[] {
 const MAX_FIELD_LEN = 256
 
 /** 追加一条用量记录，自动生成 id，返回完整记录。超过 MAX_RECORDS 时删除最早的 */
-export function recordUsage(record: Omit<UsageRecord, 'id'>): UsageRecord {
-  // 字段校验：字符串字段限长、数字字段必须为有限非负数（防御异常/恶意 IPC 数据）
-  const str = (v: unknown, fallback: string) =>
-    typeof v === 'string' && v.length > 0 && v.length <= MAX_FIELD_LEN ? v : fallback
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0)
-  const ts = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : Date.now())
+export function recordUsage(record: Omit<UsageRecord, 'id'>): Promise<UsageRecord> {
+  // N4 修复：读-改-写整体持文件锁，串行化并发调用，避免互相覆盖丢记录
+  return withFileLock(USAGE_FILE, () => {
+    // 字段校验：字符串字段限长、数字字段必须为有限非负数（防御异常/恶意 IPC 数据）
+    const str = (v: unknown, fallback: string) =>
+      typeof v === 'string' && v.length > 0 && v.length <= MAX_FIELD_LEN ? v : fallback
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0)
+    const ts = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : Date.now())
 
-  const clean: Omit<UsageRecord, 'id'> = {
-    timestamp: ts(record.timestamp),
-    characterId: str(record.characterId, 'unknown'),
-    sessionId: str(record.sessionId, 'unknown'),
-    model: str(record.model, 'unknown'),
-    inputChars: num(record.inputChars),
-    outputChars: num(record.outputChars),
-    totalChars: num(record.totalChars),
-  }
+    const clean: Omit<UsageRecord, 'id'> = {
+      timestamp: ts(record.timestamp),
+      characterId: str(record.characterId, 'unknown'),
+      sessionId: str(record.sessionId, 'unknown'),
+      model: str(record.model, 'unknown'),
+      inputChars: num(record.inputChars),
+      outputChars: num(record.outputChars),
+      totalChars: num(record.totalChars),
+    }
 
-  const records = loadUsage()
-  const full: UsageRecord = {
-    ...clean,
-    id: nanoid(),
-  }
-  records.push(full)
-  // 超过上限时按 timestamp 排序，保留最新的 MAX_RECORDS 条
-  if (records.length > MAX_RECORDS) {
-    records.sort((a, b) => a.timestamp - b.timestamp)
-    const trimmed = records.slice(records.length - MAX_RECORDS)
-    writeJson(USAGE_FILE, trimmed)
-  } else {
-    writeJson(USAGE_FILE, records)
-  }
-  log.info('用量记录已保存', { id: full.id, model: full.model, totalChars: full.totalChars })
-  return full
+    const records = loadUsage()
+    const full: UsageRecord = {
+      ...clean,
+      id: nanoid(),
+    }
+    records.push(full)
+    // 超过上限时按 timestamp 排序，保留最新的 MAX_RECORDS 条
+    if (records.length > MAX_RECORDS) {
+      records.sort((a, b) => a.timestamp - b.timestamp)
+      const trimmed = records.slice(records.length - MAX_RECORDS)
+      writeJson(USAGE_FILE, trimmed)
+    } else {
+      writeJson(USAGE_FILE, records)
+    }
+    log.info('用量记录已保存', { id: full.id, model: full.model, totalChars: full.totalChars })
+    return full
+  })
 }
 
 /** 用量查询过滤条件 */

@@ -2,6 +2,7 @@ import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, rmSync } from 'node:fs'
 import { DIRS, readJson, writeJson, countLines, withFileLock } from '../services/storage'
+import { escapeMarkdownContent } from '../utils/markdown'
 import { createLogger } from '../services/logger'
 import type { GroupChat, GroupMessage, GroupSession } from '../../shared/types'
 import { nanoid } from 'nanoid'
@@ -237,11 +238,14 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   ipcMain.handle('group:deleteSession', async (_e, groupId: string, sessionId: string) => {
     safeId(groupId)
     safeId(sessionId)
-    return withSessionsLock(groupId, () => {
+    // R1 修复：先取消息文件锁删除文件（锁序与 saveMessage 一致：消息锁 → sessions 锁）
+    await withSessionFileLock(groupId, sessionId, () => {
       const file = getSessionFile(groupId, sessionId)
       if (existsSync(file)) {
         unlinkSync(file)
       }
+    })
+    return withSessionsLock(groupId, () => {
       const sessions = loadSessions(groupId).filter(s => s.id !== sessionId)
       saveSessions(groupId, sessions)
     })
@@ -338,10 +342,13 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     safeId(groupId)
     if (sessionId) {
       safeId(sessionId)
-      const file = getSessionFile(groupId, sessionId)
-      if (existsSync(file)) {
-        unlinkSync(file)
-      }
+      // R1 修复：先取消息文件锁删除文件（锁序与 saveMessage 一致：消息锁 → sessions 锁）
+      await withSessionFileLock(groupId, sessionId, () => {
+        const file = getSessionFile(groupId, sessionId)
+        if (existsSync(file)) {
+          unlinkSync(file)
+        }
+      })
       return withSessionsLock(groupId, () => {
         const sessions = loadSessions(groupId)
         const session = sessions.find(s => s.id === sessionId)
@@ -449,11 +456,11 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     if (format === 'json') {
       return JSON.stringify(messages, null, 2)
     }
-    // Markdown 导出
+    // Markdown 导出（R5/N15 修复：内容统一转义，防 # 标题 / *斜体* / ![图片] 破坏格式）
     let md = ''
     for (const m of messages) {
       const speaker = m.characterId === '__user__' ? '用户' : m.characterId
-      md += `**${speaker}** (${new Date(m.timestamp).toLocaleString()}):\n${m.content}\n\n`
+      md += `**${speaker}** (${new Date(m.timestamp).toLocaleString()}):\n${escapeMarkdownContent(m.content)}\n\n`
     }
     return md
   })

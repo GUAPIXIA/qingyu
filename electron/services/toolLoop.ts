@@ -69,6 +69,14 @@ export async function chatWithTools(
   // 保留引用以便中止时取消循环
   const fallbackController = new AbortController()
   const effectiveSignal = signal ?? fallbackController.signal
+  // R4 修复：AI 请求无超时，Provider 挂起时请求永不结束。
+  // 内部 controller 供超时中止；外部 signal 中止时同步内部。
+  const internalController = new AbortController()
+  if (signal) {
+    signal.addEventListener('abort', () => internalController.abort(), { once: true })
+  }
+  const internalSignal = signal ? internalController.signal : fallbackController.signal
+  const AI_REQUEST_TIMEOUT_MS = 120000
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (effectiveSignal.aborted) throw new Error('Aborted')
@@ -90,13 +98,19 @@ export async function chatWithTools(
       }
     }
 
-    // 调用适配器
-    const result = await adapter.chat(
-      roundParams,
-      toolCallsAdapter,
-      effectiveSignal,
-      onUsage,
-    )
+    // 调用适配器（R4：120s 总超时，超时中止内部请求并报错）
+    let result: string
+    try {
+      result = await callToolWithTimeout(
+        () => adapter.chat(roundParams, toolCallsAdapter, internalSignal, onUsage),
+        AI_REQUEST_TIMEOUT_MS,
+      )
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('超时')) {
+        internalController.abort()
+      }
+      throw err
+    }
 
     // 中止检查：取消后不再继续下一轮
     if (effectiveSignal.aborted) throw new Error('Aborted')

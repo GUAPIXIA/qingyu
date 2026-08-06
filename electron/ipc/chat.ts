@@ -2,6 +2,7 @@ import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, unlinkSync, renameSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { DIRS, readJson, writeJson, withFileLock } from '../services/storage'
+import { escapeMarkdownContent } from '../utils/markdown'
 import { getDefaultSettings } from '../../shared/defaults'
 import { createLogger } from '../services/logger'
 import type { Message, ChatSession, SessionPreview } from '../../shared/types'
@@ -354,13 +355,16 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   safeHandle(ipcMain, 'chat:deleteSession', async (_e, characterId: string, sessionId: string) => {
     safeId(characterId)
     safeId(sessionId)
-    return withSessionsLock(characterId, () => {
-      // 删除 session 文件
+    // R1 修复：删除消息文件前先获取消息文件锁（与 saveMessage/deleteMessage 锁序一致：
+    // 消息锁 → sessions 锁），避免与并发写入竞态导致"删除后文件被重建/读到半删状态"
+    await withSessionFileLock(characterId, sessionId, () => {
       const filePath = getSessionFile(characterId, sessionId)
       if (existsSync(filePath)) {
         unlinkSync(filePath)
       }
-      // 从 sessions.json 中移除
+    })
+    // 从 sessions.json 中移除
+    return withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId).filter(s => s.id !== sessionId)
       saveSessions(characterId, sessions)
       log.info('会话已删除', { characterId, sessionId })
@@ -481,11 +485,14 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     safeId(characterId)
     if (sessionId) {
       safeId(sessionId)
-      // 清空指定 session 的消息文件
-      const filePath = getSessionFile(characterId, sessionId)
-      if (existsSync(filePath)) {
-        unlinkSync(filePath)
-      }
+      // R1 修复：清空指定 session 前先获取消息文件锁（锁序与 saveMessage 一致），
+      // 避免与并发写入竞态导致文件被重建或读到半删状态
+      await withSessionFileLock(characterId, sessionId, () => {
+        const filePath = getSessionFile(characterId, sessionId)
+        if (existsSync(filePath)) {
+          unlinkSync(filePath)
+        }
+      })
       // 重置 session 元数据
       return withSessionsLock(characterId, () => {
         const sessions = loadSessions(characterId)
@@ -522,8 +529,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       return JSON.stringify(messages, null, 2)
     }
     // Markdown 格式（含图片）
-    // 修复：对话内容转义 Markdown 特殊字符，防止内容中的 # 标题 / *斜体* / `代码` 破坏导出格式
-    const escapeMd = (s: string) => s.replace(/([\\`*_[\]{}#])/g, '\\$1')
+    // 修复：对话内容转义 Markdown 特殊字符，防止内容中的 # 标题 / *斜体* / `代码` / ![图片] 破坏导出格式
     let md = `# 对话记录\n\n`
     for (const msg of messages) {
       const role = msg.role === 'user' ? '🧑 用户' : msg.role === 'assistant' ? '🎭 AI' : '系统'
@@ -535,7 +541,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
           md += `![图片](${img})\n\n`
         }
       }
-      md += `${escapeMd(msg.content)}\n\n---\n\n`
+      md += `${escapeMarkdownContent(msg.content)}\n\n---\n\n`
     }
     return md
   })

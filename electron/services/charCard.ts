@@ -200,7 +200,7 @@ export async function importCharacterFromJson(filePath: string, proxyUrl?: strin
 }
 
 /** 图片下载错误码 */
-export type ImageDownloadCode = 'TIMEOUT' | 'HTTP_ERROR' | 'NETWORK_ERROR' | 'INVALID_URL' | 'INVALID_FORMAT' | 'SSRF_BLOCKED' | 'UNKNOWN'
+export type ImageDownloadCode = 'TIMEOUT' | 'HTTP_ERROR' | 'NETWORK_ERROR' | 'INVALID_URL' | 'INVALID_FORMAT' | 'SSRF_BLOCKED' | 'CANCELLED' | 'UNKNOWN'
 
 /** 图片下载结果 */
 export interface DownloadResult {
@@ -229,7 +229,7 @@ function parseProxyUrl(proxyUrl: string): { host: string; port: number } | null 
 }
 
 /** 单次下载尝试（内部函数），可通过代理或直连 */
-function _downloadOne(url: string, proxy: { host: string; port: number } | null, maxRedirects: number): Promise<DownloadResult> {
+function _downloadOne(url: string, proxy: { host: string; port: number } | null, maxRedirects: number, signal?: AbortSignal): Promise<DownloadResult> {
   const trimmed = url.trim()
   const isHttps = trimmed.startsWith('https')
   const targetUrl = new URL(trimmed)
@@ -245,6 +245,14 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
       resolve(result)
     }
 
+    // N14 修复：支持外部取消（竞速时输家被 abort 以释放连接）
+    const onAbort = () => {
+      if (req) {
+        try { req.destroy() } catch { /* ignore */ }
+      }
+      safeResolve({ success: false, error: '已取消', code: 'CANCELLED' })
+    }
+
     const timeout = setTimeout(() => {
       log.warn('封面下载超时', { url: trimmed.substring(0, 100), timeoutMs: DOWNLOAD_TIMEOUT_MS, viaProxy: !!proxy })
       if (req) {
@@ -252,6 +260,14 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
       }
       safeResolve({ success: false, error: '下载超时，请检查网络连接', code: 'TIMEOUT' })
     }, DOWNLOAD_TIMEOUT_MS)
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort()
+        return
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
 
     try {
       if (proxy) {
@@ -368,7 +384,7 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
           }
           log.debug('封面下载重定向', { from: trimmed.substring(0, 80), to: redirectTarget.substring(0, 80), statusCode: res.statusCode })
           // 递归跟随重定向（已解析为绝对 URL），保持代理选择
-          _downloadOne(redirectTarget, proxy, maxRedirects - 1).then(safeResolve)
+          _downloadOne(redirectTarget, proxy, maxRedirects - 1, signal).then(safeResolve)
           return
         }
         if (res.statusCode !== 200) {
@@ -457,11 +473,17 @@ async function downloadImageAsBase64(url: string, proxyUrl?: string, maxRedirect
 
   // 有代理：直连与代理竞速，谁先返回成功用谁
   log.info('封面下载竞速', { url: trimmed.substring(0, 100), proxy: `${proxy.host}:${proxy.port}` })
+  // N14 修复：竞速胜出后取消输家请求，释放连接
+  const directController = new AbortController()
+  const proxyController = new AbortController()
   try {
-    return await Promise.any([
-      _downloadOne(trimmed, null, maxRedirects),
-      _downloadOne(trimmed, proxy, maxRedirects),
+    const result = await Promise.any([
+      _downloadOne(trimmed, null, maxRedirects, directController.signal),
+      _downloadOne(trimmed, proxy, maxRedirects, proxyController.signal),
     ])
+    directController.abort()
+    proxyController.abort()
+    return result
   } catch {
     // 全部失败
     log.warn('封面下载：直连和代理均失败', { url: trimmed.substring(0, 100) })

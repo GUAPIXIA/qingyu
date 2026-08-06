@@ -45,8 +45,12 @@ describe('authMiddleware', () => {
     const verifySpy = vi.spyOn(jwt, 'verify').mockReturnValue({ id: 1, username: 'admin' })
     const next = mockNext()
     authMiddleware({ headers: { authorization: 'Bearer token-abc' } }, mockRes(), next)
-    // 关键断言：必须显式指定 algorithms: ['HS256']
-    expect(verifySpy).toHaveBeenCalledWith('token-abc', process.env.JWT_SECRET, { algorithms: ['HS256'] })
+    // 关键断言：必须显式指定 algorithms: ['HS256']，并绑定 issuer/audience（N20）
+    expect(verifySpy).toHaveBeenCalledWith('token-abc', process.env.JWT_SECRET, {
+      algorithms: ['HS256'],
+      issuer: 'qingyu-server',
+      audience: 'qingyu-admin',
+    })
     expect(next).toHaveBeenCalled()
   })
 

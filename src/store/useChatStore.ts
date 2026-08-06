@@ -187,8 +187,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   deleteCurrentSession: async (characterId) => {
-    const { currentSessionId } = get()
+    const { currentSessionId, sessions } = get()
     if (!currentSessionId) return
+    // N13 修复：会话不存在（已被其他操作删除）时跳过删除，仅刷新列表
+    if (!sessions.some(s => s.id === currentSessionId)) {
+      const newSessions = await window.api.chat.listSessions(characterId)
+      set({ sessions: newSessions, currentSessionId: newSessions[0]?.id ?? null })
+      return
+    }
     await window.api.chat.deleteSession(characterId, currentSessionId)
     // 刷新
     const newSessions = await window.api.chat.listSessions(characterId)
@@ -310,7 +316,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           timestamp: Date.now(),
         }
         await window.api.chat.saveMessage(firstMsg)
-        set({ messages: [firstMsg] })
+        // N25 修复：若加载期间用户已发送消息（messages 非空），不覆盖用户消息
+        set((state) => ({ messages: state.messages.length === 0 ? [firstMsg] : state.messages }))
       }
     } else {
       set({ messages })
@@ -853,10 +860,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
     let result = ''
     // P-4 修复：翻译 onChunk 节流，50ms flush 一次，避免高频 re-render
     let translateFlushTimer: ReturnType<typeof setTimeout> | null = null
+    // R3 修复：空闲超时（30s 无 chunk 即中止），流中断后翻译不再永不结束
+    let translateIdleTimer: ReturnType<typeof setTimeout> | null = null
+    const TRANSLATE_IDLE_TIMEOUT_MS = 30000
+    const clearTranslateTimers = () => {
+      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
+      if (translateIdleTimer) { clearTimeout(translateIdleTimer); translateIdleTimer = null }
+    }
 
     const unbindChunk = window.api.ai.onChunk((data) => {
       if (data.requestId !== requestId) return
       result += data.text
+      // R3：每次收到 chunk 重置空闲计时
+      if (translateIdleTimer) { clearTimeout(translateIdleTimer) }
+      translateIdleTimer = setTimeout(() => {
+        translateIdleTimer = null
+        clearTranslateTimers()
+        unbindChunk(); unbindDone(); unbindError()
+        window.api.ai.cancelChat(requestId).catch(() => {})
+        set((state) => ({
+          translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译超时（30 秒无响应）' } },
+        }))
+      }, TRANSLATE_IDLE_TIMEOUT_MS)
       if (translateFlushTimer === null) {
         translateFlushTimer = setTimeout(() => {
           translateFlushTimer = null
@@ -869,7 +894,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const unbindDone = window.api.ai.onDone((doneId) => {
       if (doneId !== requestId) return
-      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
+      clearTranslateTimers()
       unbindChunk(); unbindDone(); unbindError()
 
       // 先准备好 updated 对象（不在 set 回调中执行副作用）
@@ -890,7 +915,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
-      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
+      clearTranslateTimers()
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: friendlyError(data.error) } },
@@ -899,7 +924,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile) {
-      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
+      clearTranslateTimers()
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '未配置 API 连接' } },
@@ -925,7 +950,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       presencePenalty: 0,
       stream: true,
     }).catch(() => {
-      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
+      clearTranslateTimers()
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译请求失败' } },

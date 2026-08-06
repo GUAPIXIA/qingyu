@@ -34,20 +34,22 @@ export const useAnnouncementStore = create<AnnouncementState>((set, get) => ({
   },
 
   selectAnnouncement: async (id: number) => {
-    // 先尝试从已加载的列表中找到
-    const cached = get().announcements.find((a) => a.id === id)
-    if (cached) {
-      set({ selectedAnnouncement: cached })
-      return
-    }
-    // 从服务器获取详情
+    // N19 修复：详情始终从服务器获取（列表接口已不返回 content 全文），
+    // 失败（离线等）时降级用列表缓存展示标题/摘要
     try {
       const detail = await window.api.announcement.fetchDetail(id)
       if (detail) {
         set({ selectedAnnouncement: detail })
+        // 回写列表缓存，便于后续离线降级展示
+        set((s) => ({ announcements: s.announcements.map((a) => (a.id === id ? detail : a)) }))
+        return
       }
     } catch {
-      // 网络错误时静默处理
+      // 网络错误，走降级
+    }
+    const cached = get().announcements.find((a) => a.id === id)
+    if (cached) {
+      set({ selectedAnnouncement: cached })
     }
   },
 

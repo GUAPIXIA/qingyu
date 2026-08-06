@@ -38,27 +38,66 @@ function setServerUrl(url: string): void {
   writeJson(ANNOUNCE_CONFIG_FILE(), { serverUrl: url })
 }
 
-/** 发起 HTTP GET 请求 */
-function httpGet(url: string): Promise<string> {
+/** 公告 HTTP 请求限制（N3 修复：重定向 SSRF 校验 + 重定向次数 + 响应大小上限） */
+const MAX_REDIRECTS = 5
+const MAX_BODY_SIZE = 5 * 1024 * 1024 // 5MB（公告 JSON 场景足够）
+
+/** 发起 HTTP GET 请求（入口与每次重定向均做 SSRF 校验，响应体有大小上限） */
+export function httpGet(url: string, redirects = 0): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (!isSafeUrl(url)) {
+      reject(new Error('URL 不安全：拒绝私有 IP、localhost 或非 HTTP(S) 协议'))
+      return
+    }
+    let settled = false
+    const fail = (err: Error) => {
+      if (!settled) { settled = true; reject(err) }
+    }
     const mod = url.startsWith('https') ? https : http
     mod.get(url, { timeout: 10000 }, (res: import('node:http').IncomingMessage) => {
       const statusCode = res.statusCode ?? 0
       if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
         res.resume()
-        return httpGet(res.headers.location).then(resolve, reject)
+        if (redirects >= MAX_REDIRECTS) {
+          fail(new Error('重定向次数过多'))
+          return
+        }
+        // 重定向目标重新做 SSRF 校验（与 charCard 修复保持一致）
+        let target: string
+        try {
+          target = new URL(res.headers.location, url).toString()
+        } catch {
+          fail(new Error('重定向目标无效'))
+          return
+        }
+        if (!isSafeUrl(target)) {
+          fail(new Error('重定向目标不安全，已阻止: ' + target))
+          return
+        }
+        httpGet(target, redirects + 1).then(resolve, fail)
+        return
       }
       let data = ''
-      res.on('data', (chunk: string) => { data += chunk })
-      res.on('end', () => {
-        if (statusCode >= 200 && statusCode < 300) {
-          resolve(data)
-        } else {
-          res.resume()
-          reject(new Error(`HTTP ${statusCode}`))
+      let aborted = false
+      res.on('data', (chunk: string) => {
+        if (aborted) return
+        data += chunk
+        if (data.length > MAX_BODY_SIZE) {
+          aborted = true
+          res.destroy()
+          fail(new Error('响应体过大'))
         }
       })
-    }).on('error', reject).on('timeout', function(this: import('node:http').ClientRequest) { this.destroy(); reject(new Error('请求超时')) })
+      res.on('end', () => {
+        if (aborted || settled) return
+        if (statusCode >= 200 && statusCode < 300) {
+          settled = true
+          resolve(data)
+        } else {
+          fail(new Error(`HTTP ${statusCode}`))
+        }
+      })
+    }).on('error', fail).on('timeout', function(this: import('node:http').ClientRequest) { this.destroy(); fail(new Error('请求超时')) })
   })
 }
 

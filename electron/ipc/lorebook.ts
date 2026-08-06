@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid'
 import { DIRS, writeJson, readJson, listJsonFilesAsync, removeFile, withFileLock } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Lorebook, LoreEntry } from '../../shared/types'
-import { getVectorIndex, markStaleEntries } from '../services/vectorStore'
+import { getVectorIndex, markStaleEntries, removeVectorIndex } from '../services/vectorStore'
 import { safeId } from '../utils/pathGuard'
 
 const log = createLogger('lorebook')
@@ -39,6 +39,8 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
   ipcMain.handle('lorebook:delete', async (_e, id: string) => {
     safeId(id)
     removeFile(join(DIRS.lorebooks(), `${id}.json`))
+    // N5 修复：同步清理向量索引（磁盘文件 + 内存缓存），避免残留垃圾
+    removeVectorIndex(id)
     log.info('世界书已删除', { id })
   })
 

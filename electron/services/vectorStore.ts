@@ -104,7 +104,7 @@ export function saveVectorIndex(
     stale: [],
   }
   writeJson(indexPath(lorebookId), index)
-  cache.set(lorebookId, index)
+  cacheSet(lorebookId, index)
   return index
 }
 
@@ -136,7 +136,7 @@ export function markStaleEntries(lorebookId: string, changedIds: string[]): void
   if (stale.size === 0) return
   const updated = { ...index, stale: [...stale], updatedAt: Date.now() }
   writeJson(indexPath(lorebookId), updated)
-  cache.set(lorebookId, updated)
+  cacheSet(lorebookId, updated)
   log.info('条目向量已标记过期', { lorebookId, count: stale.size })
 }
 
@@ -147,7 +147,7 @@ export function clearStaleEntries(lorebookId: string): void {
   if (!index.stale || index.stale.length === 0) return
   const updated = { ...index, stale: [], updatedAt: Date.now() }
   writeJson(indexPath(lorebookId), updated)
-  cache.set(lorebookId, updated)
+  cacheSet(lorebookId, updated)
 }
 
 /** 统计过期条目数量 */

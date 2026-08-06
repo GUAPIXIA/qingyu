@@ -17,6 +17,9 @@ const ALLOWED_FONT_EXTENSIONS = new Set(['.ttf', '.otf'])
 /** 字体文件大小上限：10MB */
 const MAX_FONT_SIZE = 10 * 1024 * 1024
 
+/** 图片读取大小上限：20MB（N22 修复） */
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024
+
 // 记录通过 dialog 选择的合法路径（token 校验机制）
 const validatedPaths = new Set<string>()
 
@@ -59,6 +62,10 @@ export function registerFileIPC(ipcMain: IpcMain, dialog: Dialog, app: App): voi
         throw new Error('文件不存在或已被移动')
       }
       const buffer = readFileSync(filePath)
+      // N22 修复：图片大小上限，防超大文件撑爆内存
+      if (buffer.length > MAX_IMAGE_SIZE) {
+        throw new Error(`图片文件过大（${(buffer.length / 1024 / 1024).toFixed(1)}MB），上限 ${MAX_IMAGE_SIZE / 1024 / 1024}MB`)
+      }
       const mime = ext === '.jpg' ? 'jpeg' : ext.slice(1)
       const result = `data:image/${mime};base64,${buffer.toString('base64')}`
       log.info('图片已读取为 Base64', { size: buffer.length })
@@ -103,7 +110,10 @@ export function registerFileIPC(ipcMain: IpcMain, dialog: Dialog, app: App): voi
       properties: ['openFile'],
     })
     if (result.canceled || result.filePaths.length === 0) return null
-    return result.filePaths[0]
+    const filePath = result.filePaths[0]
+    // N12 修复：登记对话框选择结果，font:save 仅接受该路径（防任意文件读取/复制）
+    validatedPaths.add(filePath)
+    return filePath
   })
 
   // 保存字体到 userData/fonts/
@@ -111,6 +121,10 @@ export function registerFileIPC(ipcMain: IpcMain, dialog: Dialog, app: App): voi
     try {
       if (!filePath || typeof filePath !== 'string') {
         throw new Error('无效的文件路径')
+      }
+      // N12 修复：仅接受 font:select 对话框返回的路径，防任意文件读取/复制
+      if (!validatedPaths.has(filePath)) {
+        throw new Error('字体文件必须通过文件选择对话框选择')
       }
       const ext = extname(filePath).toLowerCase()
       if (!ALLOWED_FONT_EXTENSIONS.has(ext)) {

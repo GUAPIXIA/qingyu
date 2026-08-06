@@ -1,6 +1,6 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
-import { readdirSync, existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs'
+import { readdirSync, existsSync, writeFileSync, readFileSync, mkdirSync, statSync } from 'node:fs'
 import { DIRS, writeJson, readJson, withFileLock } from '../services/storage'
 import { getDefaultSettings } from '../../shared/defaults'
 import { saveCredential, getCredential } from '../services/safeStorage'
@@ -12,6 +12,9 @@ import type { Settings } from '../../shared/types'
 const log = createLogger('settings')
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
+
+/** 备份文件大小上限：100MB（N23 修复） */
+const MAX_BACKUP_SIZE = 100 * 1024 * 1024
 
 export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 读取设置
@@ -89,6 +92,12 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
       properties: ['openFile'],
     })
     if (result.canceled || result.filePaths.length === 0) return
+
+    // N23 修复：备份文件大小上限 100MB，防超大文件撑爆内存
+    const stat = statSync(result.filePaths[0])
+    if (stat.size > MAX_BACKUP_SIZE) {
+      throw new Error(`备份文件过大（${(stat.size / 1024 / 1024).toFixed(1)}MB），上限 ${MAX_BACKUP_SIZE / 1024 / 1024}MB`)
+    }
 
     const backup = JSON.parse(readFileSync(result.filePaths[0], 'utf-8'))
 

@@ -548,6 +548,13 @@ export async function streamAIResponse(
     activeStream = null
     const friendly = friendlyError(data.error)
     set({ isStreaming: false, currentRequestId: null, error: friendly })
+    // N26 修复：流式失败时同样执行待处理的上下文压缩（与 done 分支一致），
+    // 避免 pendingCompression 残留导致裁剪历史永远不被压缩
+    if (pendingCompression) {
+      const pc = pendingCompression
+      pendingCompression = null
+      compressDroppedHistory(get, set, character, pc).catch((e) => logError('ChatStore:compress', e))
+    }
     onError?.(friendly)
   })
 

@@ -39,10 +39,18 @@ router.put('/', authMiddleware, (req, res) => {
     setConfig('latest_version', version.trim())
   }
   if (changelog !== undefined) {
-    setConfig('changelog', String(changelog))
+    // N8 修复：长度限制 + 字符串类型（此前仅 String() 强转，可存近 1MB 任意文本）
+    if (typeof changelog !== 'string' || changelog.length > 50000) {
+      return res.status(400).json({ error: 'changelog 必须为字符串且不超过 50000 字符' })
+    }
+    setConfig('changelog', changelog)
   }
   if (downloadUrl !== undefined) {
-    setConfig('download_url', String(downloadUrl))
+    // N8 修复：协议白名单 + 长度限制（此前可注入任意域名做钓鱼/恶意下载引导）
+    if (typeof downloadUrl !== 'string' || downloadUrl.length > 2048 || !/^https?:\/\/[^\s]+$/i.test(downloadUrl)) {
+      return res.status(400).json({ error: 'downloadUrl 必须是 http/https 链接且不超过 2048 字符' })
+    }
+    setConfig('download_url', downloadUrl)
   }
 
   // 返回更新后的配置

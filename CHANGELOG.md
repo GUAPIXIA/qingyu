@@ -1,5 +1,34 @@
 # 更新日志
 
+## [0.11.15] - 2026-08-06
+
+### 安全与健壮性修复 26 项（项目审查报告全部问题修复）+ 公告列表瘦身
+
+**安全（高危）**
+
+- **IPv4-mapped IPv6 SSRF 绕过**（`pathGuard.ts`）：`::ffff:127.0.0.1` 等映射地址此前不匹配任何黑名单规则，可直达本机/内网/云元数据——提取最后 32 位转 IPv4 后按 IPv4 规则递归校验
+- **MCP 任意命令执行桥**（`mcp/manager.ts`）：`mcp:addServer/updateServer` 曾接受任意 `command/args/env` 直接 spawn——新增解释器黑名单（cmd/powershell/bash/node/python 等）、内联执行参数拒绝（`-c`/`/c`/`-e` 等）、含路径必须绝对、危险环境变量（`NODE_OPTIONS`/`LD_PRELOAD` 等）与长度限制
+- **公告下载重定向 SSRF + 无大小限制**（`announcement.ts`）：`httpGet` 入口与每次重定向重新 `isSafeUrl` 校验，限制重定向 5 次、响应体 5MB
+- **会话删除竞态**（`chat.ts`/`group.ts` 4 处）：单会话删除/清空先取消息文件锁再删（锁序与写入路径一致，消除"删除后文件被重建"竞态）
+
+**安全（中低危）**
+
+- `font:save` 复用 `validatedPaths` 对话框 token（仅接受 `font:select` 登记的路径，防任意文件读取）
+- 公告/版本写入口校验：PUT 公告复用长度限制（title≤200/content≤100000）、PUT version 的 changelog≤50000 与 downloadUrl 必须 http/https、PUT null 视为未提供（`COALESCE` 保留原值）
+- 登录参数长度限制（username≤64/password≤128）+ JWT 绑定 `issuer/audience`
+- `TRUST_PROXY` 环境变量（反代部署时登录限流正确取客户端 IP，默认关闭保持直连行为）
+- 公开公告列表不再返回 content 全文（详情按需获取，客户端离线降级提示）
+- 分页 page 上限 100000（防 SQLite int64 溢出）、错误中间件按 `err.status` 分级（坏 JSON 返回 400）
+
+**健壮性**
+
+- AI/生图请求超时：toolLoop AI 请求 120s（超时 abort 内部请求）、SD/OpenAI 生图 120s、单聊翻译 30s 空闲超时（超时 cancelChat）
+- 竞态修复：向量缓存写路径走 LRU、usage 并发写加锁、MCP startServer 并发去重、封面下载竞速胜出后 abort 输家、`firstMessage` 分支不覆盖用户已发消息、流式失败也执行 pendingCompression、`lorebook:delete` 清理向量索引、deleteCurrentSession 会话存在性校验
+- 输入限制：readImageBase64 20MB、importBackup 100MB、Markdown 导出统一转义（含 `![` 图片注入防护）、readJsonAsync 损坏日志
+- 修复均附单元测试（pathGuard +1 / manager +10 / announcement +6 / markdown +4，全量 842 通过）
+
+---
+
 ## [0.11.14] - 2026-08-05
 
 ### 依赖安全修复（漏洞 63 → 29，critical 清零）+ CI 审计门禁 + 路线图校准
