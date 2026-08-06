@@ -1031,10 +1031,11 @@ export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGe
   const nextIdx = (currentIdx + 1) % group.memberIds.length
   const nextCharId = group.memberIds[nextIdx]
 
-  // 更新 currentSpeakerIndex 并持久化
+  // 更新 currentSpeakerIndex（纯运行时 UI 状态：成员栏高亮"当前说话者"）
+  // 优化：不再每轮全量持久化群组文件（此前每 2s 一次整文件写入）；
+  // 群组文件只在创建/编辑时保存，重启后该索引回落到上次持久化值，轮询下一轮自动纠正
   const updatedGroup = { ...group, currentSpeakerIndex: nextIdx }
   set({ currentGroup: updatedGroup })
-  window.api.group.save(updatedGroup).catch((e) => logError('GroupChatStore:save', e))
 
   // H-02 修复：保存定时器 handle，以便切换/删除群聊时清理
   clearPollingTimer()

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useCharacterStore } from './store/useCharacterStore'
@@ -6,20 +6,25 @@ import { BUILTIN_FONTS } from './utils/defaults'
 import { logError } from './lib/logger'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
-import { CharactersPage } from './pages/CharactersPage'
-import { CharacterCreatePage } from './pages/CharacterCreatePage'
-import { SettingsPage } from './pages/SettingsPage'
-import { LorebookPage } from './pages/LorebookPage'
-import { GroupChatPage } from './pages/GroupChatPage'
-import { ApiPage } from './pages/ApiPage'
-import { HelpPage } from './pages/HelpPage'
-import { RegexPage } from './pages/RegexPage'
-import { QuickRepliesPage } from './pages/QuickRepliesPage'
-import { PersonasPage } from './pages/PersonasPage'
-import { PresetsPage } from './pages/PresetsPage'
-import { UsagePage } from './pages/UsagePage'
-import { McpPage } from './pages/McpPage'
-import { AnnouncementsPage } from './pages/AnnouncementsPage'
+// 优化：非首屏页面路由懒加载（拆包，减小初始 bundle；
+// ChatPage 为默认路由保持静态导入）
+function lazyPage<T extends ComponentType<any>>(importer: () => Promise<Record<string, unknown>>, name: string) {
+  return lazy(async () => ({ default: (await importer())[name] as T }))
+}
+const CharactersPage = lazyPage(() => import('./pages/CharactersPage'), 'CharactersPage')
+const CharacterCreatePage = lazyPage(() => import('./pages/CharacterCreatePage'), 'CharacterCreatePage')
+const SettingsPage = lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage')
+const LorebookPage = lazyPage(() => import('./pages/LorebookPage'), 'LorebookPage')
+const GroupChatPage = lazyPage(() => import('./pages/GroupChatPage'), 'GroupChatPage')
+const ApiPage = lazyPage(() => import('./pages/ApiPage'), 'ApiPage')
+const HelpPage = lazyPage(() => import('./pages/HelpPage'), 'HelpPage')
+const RegexPage = lazyPage(() => import('./pages/RegexPage'), 'RegexPage')
+const QuickRepliesPage = lazyPage(() => import('./pages/QuickRepliesPage'), 'QuickRepliesPage')
+const PersonasPage = lazyPage(() => import('./pages/PersonasPage'), 'PersonasPage')
+const PresetsPage = lazyPage(() => import('./pages/PresetsPage'), 'PresetsPage')
+const UsagePage = lazyPage(() => import('./pages/UsagePage'), 'UsagePage')
+const McpPage = lazyPage(() => import('./pages/McpPage'), 'McpPage')
+const AnnouncementsPage = lazyPage(() => import('./pages/AnnouncementsPage'), 'AnnouncementsPage')
 
 export default function App() {
   const navigate = useNavigate()
@@ -181,20 +186,20 @@ export default function App() {
       <Route path="/" element={<MainLayout />}>
         <Route index element={<Navigate to="/chat" replace />} />
         <Route path="chat" element={<ChatPage />} />
-        <Route path="api" element={<ApiPage />} />
-        <Route path="characters" element={<CharactersPage />} />
-        <Route path="character-create" element={<CharacterCreatePage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="lorebook" element={<LorebookPage />} />
-        <Route path="presets" element={<PresetsPage />} />
-        <Route path="group" element={<GroupChatPage />} />
-        <Route path="regex" element={<RegexPage />} />
-        <Route path="quick-replies" element={<QuickRepliesPage />} />
-        <Route path="personas" element={<PersonasPage />} />
-        <Route path="usage" element={<UsagePage />} />
-        <Route path="mcp" element={<McpPage />} />
-        <Route path="announcements" element={<AnnouncementsPage />} />
-        <Route path="help" element={<HelpPage />} />
+        <Route path="api" element={<Suspense fallback={null}><ApiPage /></Suspense>} />
+        <Route path="characters" element={<Suspense fallback={null}><CharactersPage /></Suspense>} />
+        <Route path="character-create" element={<Suspense fallback={null}><CharacterCreatePage /></Suspense>} />
+        <Route path="settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
+        <Route path="lorebook" element={<Suspense fallback={null}><LorebookPage /></Suspense>} />
+        <Route path="presets" element={<Suspense fallback={null}><PresetsPage /></Suspense>} />
+        <Route path="group" element={<Suspense fallback={null}><GroupChatPage /></Suspense>} />
+        <Route path="regex" element={<Suspense fallback={null}><RegexPage /></Suspense>} />
+        <Route path="quick-replies" element={<Suspense fallback={null}><QuickRepliesPage /></Suspense>} />
+        <Route path="personas" element={<Suspense fallback={null}><PersonasPage /></Suspense>} />
+        <Route path="usage" element={<Suspense fallback={null}><UsagePage /></Suspense>} />
+        <Route path="mcp" element={<Suspense fallback={null}><McpPage /></Suspense>} />
+        <Route path="announcements" element={<Suspense fallback={null}><AnnouncementsPage /></Suspense>} />
+        <Route path="help" element={<Suspense fallback={null}><HelpPage /></Suspense>} />
       </Route>
     </Routes>
   )

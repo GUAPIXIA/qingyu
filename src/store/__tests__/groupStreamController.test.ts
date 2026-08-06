@@ -215,7 +215,8 @@ describe('checkPollingContinue polling 轮询', () => {
 
     // currentSpeakerIndex 更新为下一个成员
     expect(set).toHaveBeenCalledWith({ currentGroup: { ...group, currentSpeakerIndex: 1 } })
-    expect(window.api.group.save).toHaveBeenCalled()
+    // 优化：不再每轮全量持久化群组文件（currentSpeakerIndex 为纯运行时状态）
+    expect(window.api.group.save).not.toHaveBeenCalled()
 
     // 定时器触发后发送下一轮
     await vi.advanceTimersByTimeAsync(2000)

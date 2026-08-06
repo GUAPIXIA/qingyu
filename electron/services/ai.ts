@@ -159,12 +159,11 @@ export function registerAIIPC(ipcMain: IpcMain): void {
             safeSend(webContents, 'ai:chunk', { requestId: params.requestId, text })
           },
           (toolCall) => {
+            // 契约漂移清理：此前外发 ai:toolCall/ai:toolResult 事件但渲染进程无消费者。
+            // 保留日志记录；UI 展示工具调用进度属新功能，接线时恢复事件外发。
             log.info('工具调用', { requestId: params.requestId, tool: toolCall.name })
-            safeSend(webContents, 'ai:toolCall', { requestId: params.requestId, ...toolCall })
           },
-          (result) => {
-            safeSend(webContents, 'ai:toolResult', { requestId: params.requestId, ...result })
-          },
+          () => { /* 工具结果：无 UI 消费者，不再外发 */ },
           (usage) => {
             safeSend(webContents, 'ai:usage', { requestId: params.requestId, ...usage })
           },
