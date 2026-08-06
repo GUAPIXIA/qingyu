@@ -1,5 +1,6 @@
 import type { IpcMain, WebContents } from 'electron'
 import type { ChatParams, ProviderType } from '../../shared/types'
+import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { countTokens, countMessagesTokens } from './tokenizer'
 import { createLogger } from './logger'
 import { chatWithTools } from './toolLoop'
@@ -156,7 +157,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
           params,
           (text) => {
             if (!activeRequests.has(params.requestId)) return
-            safeSend(webContents, 'ai:chunk', { requestId: params.requestId, text })
+            safeSend(webContents, IPC_EVENTS.aiChunk, { requestId: params.requestId, text })
           },
           (toolCall) => {
             // 契约漂移清理：此前外发 ai:toolCall/ai:toolResult 事件但渲染进程无消费者。
@@ -165,7 +166,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
           },
           () => { /* 工具结果：无 UI 消费者，不再外发 */ },
           (usage) => {
-            safeSend(webContents, 'ai:usage', { requestId: params.requestId, ...usage })
+            safeSend(webContents, IPC_EVENTS.aiUsage, { requestId: params.requestId, ...usage })
           },
           controller.signal,
         )
@@ -177,27 +178,27 @@ export function registerAIIPC(ipcMain: IpcMain): void {
           (text) => {
             // 检查请求是否还存在（可能已被取消）
             if (!activeRequests.has(params.requestId)) return
-            safeSend(webContents, 'ai:chunk', { requestId: params.requestId, text })
+            safeSend(webContents, IPC_EVENTS.aiChunk, { requestId: params.requestId, text })
           },
           controller.signal,
           DEFAULT_RETRY_COUNT,
           (usage) => {
             // 发送 usage 事件
-            safeSend(webContents, 'ai:usage', { requestId: params.requestId, ...usage })
+            safeSend(webContents, IPC_EVENTS.aiUsage, { requestId: params.requestId, ...usage })
           },
         )
       }
       log.info('AI 请求完成', { requestId: params.requestId, provider: params.provider, model: params.model })
-      safeSend(webContents, 'ai:done', params.requestId)
+      safeSend(webContents, IPC_EVENTS.aiDone, params.requestId)
     } catch (e) {
       const err = e as Error
       if (err.name === 'AbortError' || controller.signal.aborted) {
         log.info('AI 请求被取消', { requestId: params.requestId })
         // 被取消视为 done（前端会重置状态）
-        safeSend(webContents, 'ai:done', params.requestId)
+        safeSend(webContents, IPC_EVENTS.aiDone, params.requestId)
       } else {
         log.error('AI 请求失败', { requestId: params.requestId, provider: params.provider, model: params.model, error: err.message })
-        safeSend(webContents, 'ai:error', { requestId: params.requestId, error: err.message })
+        safeSend(webContents, IPC_EVENTS.aiError, { requestId: params.requestId, error: err.message })
       }
     } finally {
       // 竞态保护：仅当 Map 中仍指向当前 controller 时才删除

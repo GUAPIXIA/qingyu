@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { IPC_EVENTS } from '../shared/ipc-channels'
 import type {
   CharacterAPI,
   ChatAPI,
@@ -31,23 +32,23 @@ const aiApi: AIAPI = {
   countMessagesTokens: (messages, model) => ipcRenderer.invoke('ai:countMessagesTokens', messages, model),
   onChunk: (callback) => {
     const handler = (_e: unknown, data: { requestId: string; text: string }) => callback(data)
-    ipcRenderer.on('ai:chunk', handler)
-    return () => ipcRenderer.removeListener('ai:chunk', handler)
+    ipcRenderer.on(IPC_EVENTS.aiChunk, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.aiChunk, handler)
   },
   onDone: (callback) => {
     const handler = (_e: unknown, requestId: string) => callback(requestId)
-    ipcRenderer.on('ai:done', handler)
-    return () => ipcRenderer.removeListener('ai:done', handler)
+    ipcRenderer.on(IPC_EVENTS.aiDone, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.aiDone, handler)
   },
   onError: (callback) => {
     const handler = (_e: unknown, data: { requestId: string; error: string }) => callback(data)
-    ipcRenderer.on('ai:error', handler)
-    return () => ipcRenderer.removeListener('ai:error', handler)
+    ipcRenderer.on(IPC_EVENTS.aiError, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.aiError, handler)
   },
   onUsage: (callback) => {
     const handler = (_e: unknown, data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => callback(data)
-    ipcRenderer.on('ai:usage', handler)
-    return () => ipcRenderer.removeListener('ai:usage', handler)
+    ipcRenderer.on(IPC_EVENTS.aiUsage, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.aiUsage, handler)
   },
 }
 
@@ -66,8 +67,8 @@ const characterApi: CharacterAPI = {
   reloadAvatar: (characterId, url) => ipcRenderer.invoke('character:reloadAvatar', characterId, url),
   onImportProgress: (callback) => {
     const handler = (_e: unknown, data: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' }) => callback(data)
-    ipcRenderer.on('character:importProgress', handler)
-    return () => ipcRenderer.removeListener('character:importProgress', handler)
+    ipcRenderer.on(IPC_EVENTS.characterImportProgress, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.characterImportProgress, handler)
   },
 }
 

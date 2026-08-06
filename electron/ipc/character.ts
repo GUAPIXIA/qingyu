@@ -16,6 +16,7 @@ import {
   reloadAvatarFromUrl,
 } from '../services/charCard'
 import type { Character, Settings } from '../../shared/types'
+import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { safeId } from '../utils/pathGuard'
 import { DIRS, readJson, withFileLock } from '../services/storage'
 import { suggestLorebooks } from '../services/lorebookMatcher'
@@ -90,7 +91,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       const filePath = result.filePaths[0]
       const fileName = filePath.split(/[\\/]/).pop() || filePath
 
-      safeSend(event.sender,'character:importProgress', {
+      safeSend(event.sender,IPC_EVENTS.characterImportProgress, {
         current: 1, total: 1, fileName, status: 'processing' as const,
       })
 
@@ -104,7 +105,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       // 角色卡前端扩展落地（正则脚本 / 快捷回复）
       const cardExtras = importCardFrontendExtensions(character)
 
-      safeSend(event.sender,'character:importProgress', {
+      safeSend(event.sender,IPC_EVENTS.characterImportProgress, {
         current: 1, total: 1, fileName: character.name, status: 'done' as const,
       })
 
@@ -130,7 +131,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       const filePath = result.filePaths[0]
       const fileName = filePath.split(/[\\/]/).pop() || filePath
 
-      safeSend(event.sender,'character:importProgress', {
+      safeSend(event.sender,IPC_EVENTS.characterImportProgress, {
         current: 1, total: 1, fileName, status: 'processing' as const,
       })
 
@@ -145,7 +146,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       const cardExtras = importCardFrontendExtensions(character)
       const needAvatar = !character.avatar
 
-      safeSend(event.sender,'character:importProgress', {
+      safeSend(event.sender,IPC_EVENTS.characterImportProgress, {
         current: 1, total: 1, fileName: character.name, status: 'done' as const,
       })
 
@@ -262,7 +263,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
       for (const r of parseResults) {
         if ('error' in r) {
-          safeSend(event.sender, 'character:importProgress', {
+          safeSend(event.sender, IPC_EVENTS.characterImportProgress, {
             current: batchResults.length + failedParses.length + 1, total, fileName: r.fileName, status: 'error' as const,
           })
           failedParses.push({ name: r.fileName, success: false, error: r.error })
@@ -288,7 +289,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
             completedCount++
             const status = r.success ? 'done' as const : 'error' as const
             try {
-              safeSend(event.sender, 'character:importProgress', {
+              safeSend(event.sender, IPC_EVENTS.characterImportProgress, {
                 current: completedCount, total, fileName: r.name, status,
               })
             } catch {

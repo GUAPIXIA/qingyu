@@ -11,7 +11,8 @@ const sharedConfig = {
   format: 'cjs',
   target: 'node18',
   external: ['electron'],
-  sourcemap: true,
+  // 优化：主进程产物不产出 sourcemap（生产 asar 体积）
+  sourcemap: false,
   logLevel: 'info',
 }
 

@@ -183,24 +183,29 @@ app.whenReady().then(async () => {
     })
   }) as typeof ipcMain.handle
 
-  // 注册所有 IPC 处理器
-  registerCharacterIPC(ipcMain, dialog)
-  registerChatIPC(ipcMain)
-  registerSettingsIPC(ipcMain, dialog)
-  registerLorebookIPC(ipcMain, dialog)
-  registerEmbeddingIPC(ipcMain)
-  registerQuickReplyIPC(ipcMain, dialog)
-  registerPresetIPC(ipcMain, dialog)
-  registerAIIPC(ipcMain)
-  registerTTSIPC(ipcMain)
-  registerImageGenIPC(ipcMain)
-  registerFileIPC(ipcMain, dialog, app)
-  registerRegexIPC(ipcMain)
-  registerPersonaIPC(ipcMain)
-  registerUsageIPC(ipcMain)
-  registerMcpIPC(ipcMain)
-  registerGroupIPC(ipcMain)
-  registerAnnouncementIPC(ipcMain)
+  // 注册所有 IPC 处理器（注册器集中收口：新增 IPC 模块在此登记，防止遗漏）
+  const ipcRegistrars: Array<() => void> = [
+    () => registerCharacterIPC(ipcMain, dialog),
+    () => registerChatIPC(ipcMain),
+    () => registerSettingsIPC(ipcMain, dialog),
+    () => registerLorebookIPC(ipcMain, dialog),
+    () => registerEmbeddingIPC(ipcMain),
+    () => registerQuickReplyIPC(ipcMain, dialog),
+    () => registerPresetIPC(ipcMain, dialog),
+    () => registerAIIPC(ipcMain),
+    () => registerTTSIPC(ipcMain),
+    () => registerImageGenIPC(ipcMain),
+    () => registerFileIPC(ipcMain, dialog, app),
+    () => registerRegexIPC(ipcMain),
+    () => registerPersonaIPC(ipcMain),
+    () => registerUsageIPC(ipcMain),
+    () => registerMcpIPC(ipcMain),
+    () => registerGroupIPC(ipcMain),
+    () => registerAnnouncementIPC(ipcMain),
+  ]
+  for (const register of ipcRegistrars) {
+    register()
+  }
 
   // 应用版本号
   ipcMain.handle('app:getVersion', () => app.getVersion())
