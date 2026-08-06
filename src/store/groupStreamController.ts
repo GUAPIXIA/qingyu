@@ -9,7 +9,7 @@ import { countChars } from '../utils/charCounter'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { replaceVariables } from '../utils/variables'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
-import { applyRegexRules as applyRegexRulesEngine, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
+import { applyOutputRegexRules, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
 import { logError, logInfo, logWarn } from '../lib/logger'
 import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS } from './chatConstants'
 import { friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
@@ -73,14 +73,7 @@ export function clearPollingTimer() {
   }
 }
 
-/** 对文本应用正则规则（与单聊 applyRegex 逻辑一致：output 走 text + markdown 两阶段） */
-function applyRegexRules(text: string, rules: import('../../shared/types').RegexRule[]): string {
-  if (!text || rules.length === 0) return text
-  const scoped = rules as import('../../shared/types').RegexRule[]
-  let result = applyRegexRulesEngine(text, scoped, 'output', 'text').text
-  result = applyRegexRulesEngine(result, scoped, 'output', 'markdown').text
-  return result
-}
+/** 对文本应用 output 正则规则（两阶段：text + markdown，与单聊一致——增量共享 applyOutputRegexRules） */
 
 async function flushStream(set: GroupStoreSet) {
   if (!activeStream) return
@@ -469,7 +462,7 @@ export async function streamGroupAI(
 
     // 应用正则规则 + 停止字符串截断
     const processed = regexRules.length > 0
-      ? truncateAtStop(applyRegexRules(clean, regexRules), collectStopStrings(regexRules)).text
+      ? truncateAtStop(applyOutputRegexRules(clean, regexRules), collectStopStrings(regexRules)).text
       : clean
 
     // 更新消息
@@ -765,7 +758,7 @@ export async function streamGroupAIFree(
     const clean = finalContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
     // 应用正则规则 + 停止字符串截断
     const processed = regexRules.length > 0
-      ? truncateAtStop(applyRegexRules(clean, regexRules), collectStopStrings(regexRules)).text
+      ? truncateAtStop(applyOutputRegexRules(clean, regexRules), collectStopStrings(regexRules)).text
       : clean
     splitAndSaveMessages(set, get, group, sessionId, processed, round, msgId)
 

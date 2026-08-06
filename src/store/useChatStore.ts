@@ -7,7 +7,7 @@ import { useCharacterStore } from './useCharacterStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { replaceVariables } from '../utils/variables'
 import { stripThought, normalizeThoughtTags, trimContinuationOverlap } from '../utils/messagePostProcess'
-import { applyRegexRules, truncateAtStop, collectStopStrings } from '../utils/regex'
+import { applyRegexRules, applyOutputRegexRules, truncateAtStop, collectStopStrings } from '../utils/regex'
 import { getEffectiveLorebookIds } from '../utils/lorebook'
 import { logError } from '../lib/logger'
 import {
@@ -781,12 +781,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   applyRegex: (text, scope, rules) => {
     if (!text || rules.length === 0) return text
-    // input 仅 text 阶段；output 先 text 后 markdown（渲染前文本）链式应用
-    let result = applyRegexRules(text, rules, scope, 'text').text
+    // 增量共享：output 两阶段(text+markdown)收敛到 applyOutputRegexRules
     if (scope === 'output') {
-      result = applyRegexRules(result, rules, 'output', 'markdown').text
+      return applyOutputRegexRules(text, rules)
     }
-    return result
+    // input 仅 text 阶段
+    return applyRegexRules(text, rules, 'input', 'text').text
   },
 
   buildContext: (character, preset, opts) => {

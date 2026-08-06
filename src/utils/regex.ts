@@ -108,6 +108,17 @@ export function applyRegexRules(
 }
 
 /**
+ * output 两阶段应用（增量共享：单聊 applyRegex 与群聊本地包装收敛于此）。
+ * output 规则先 text 阶段后 markdown 阶段链式应用（渲染前文本）。
+ */
+export function applyOutputRegexRules(text: string, rules: RegexRule[]): string {
+  if (!text || rules.length === 0) return text
+  let result = applyRegexRules(text, rules, 'output', 'text').text
+  result = applyRegexRules(result, rules, 'output', 'markdown').text
+  return result
+}
+
+/**
  * 查找文本中第一个停止字符串的位置（按最短命中优先，保持列表顺序）。
  * 未命中返回 -1。
  */

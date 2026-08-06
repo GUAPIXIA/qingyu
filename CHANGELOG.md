@@ -1,5 +1,15 @@
 # 更新日志
 
+## [0.11.21] - 2026-08-06
+
+### MessageBubble 操作栏拆分 + 双轨正则收敛
+
+- **MessageActionBar 组件**：MessageBubble 三处操作栏（纯图 system / 用户 / AI）收敛为单一组件 `src/components/chat/MessageActionBar.tsx`——TTS 播放、翻译切换、分支、复制、AI 重新生成（preset/lorebook 上下文）、重新生图逻辑自治于组件；MessageBubble 从 729 行降至约 580 行，行为与原实现等价（chat 相关测试 105/105 通过）
+- **双轨增量共享**：`utils/regex.ts` 新增 `applyOutputRegexRules`（output 两阶段：text + markdown），单聊 `applyRegex` 与群聊本地包装收敛为同一函数，消除重复实现（正则/群聊/单聊测试 61/61 通过）
+- 剩余待排期：单聊/群聊完整合并（3-5 天，独立排期）
+
+---
+
 ## [0.11.20] - 2026-08-06
 
 ### useChatStore 拆分 + 双轨合并评估
