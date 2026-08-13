@@ -1,20 +1,21 @@
 import { create } from 'zustand'
-import type { Message, SessionPreview } from '../../shared/types'
+import type { Message, SessionPreview, Preset, Lorebook } from '../../shared/types'
 import { nanoid } from 'nanoid'
 import { useSettingsStore } from './useSettingsStore'
 import { usePersonaStore } from './usePersonaStore'
 import { useCharacterStore } from './useCharacterStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { replaceVariables } from '../utils/variables'
-import { stripThought, normalizeThoughtTags, trimContinuationOverlap } from '../utils/messagePostProcess'
 import { applyRegexRules, applyOutputRegexRules, truncateAtStop, collectStopStrings } from '../utils/regex'
-import { getEffectiveLorebookIds } from '../utils/lorebook'
+import { getEffectiveLorebookIds, lorebookCache } from '../utils/lorebook'
 import { logError } from '../lib/logger'
+import { translationMaxTokens } from './chatConstants'
 import {
   friendlyError, syncPersonaToSettings, applyDefaultMemory,
   invalidateCompression, nextLoadRequestId, currentLoadRequestId,
 } from './chatUtils'
 import { streamAIResponse, cleanupActiveStream } from './streamController'
+import { createChunkAccumulator } from './chunkAccumulator'
 import { buildChatContext } from './chatContext'
 import { runMemorySummary } from './memoryManager'
 import { regenerateChatMessage, continueChatMessage, swipeChatMessage } from './chatGeneration'
@@ -27,7 +28,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentSessionId: null,
   isStreaming: false,
   currentRequestId: null,
-  streamingContent: '',
   error: null,
   activePresetId: null,
   activeLorebookIds: [],
@@ -86,7 +86,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return session
   },
 
-  /** 统一入口：创建新会话并可选地插入开场白 */
+  /** 统一入口：创建新会话并可选地插入开场白（P-7：插入逻辑复用 insertGreetingMessage） */
   createSessionWithGreeting: async (character, greeting) => {
     const initLorebookIds = getEffectiveLorebookIds(character)
     const session = await window.api.chat.createSession(character.id, undefined, undefined, initLorebookIds)
@@ -101,20 +101,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const g = greeting ?? character.translatedContent?.firstMessage ?? character.firstMessage
     if (g) {
-      const settings = useSettingsStore.getState().settings
-      const processed = replaceVariables(g, settings.userName, character.name)
-      const firstMsg: Message = {
-        id: nanoid(),
-        sessionId: session.id,
-        characterId: character.id,
-        role: 'assistant',
-        content: processed,
-        images: [],
-        isEditing: false,
-        timestamp: Date.now(),
-      }
-      await window.api.chat.saveMessage(firstMsg)
-      set(() => ({ messages: [firstMsg] }))
+      await get().insertGreetingMessage(character, g)
     }
     return session
   },
@@ -126,6 +113,58 @@ export const useChatStore = create<ChatState>((set, get) => ({
         sess.id === sessionId ? { ...sess, [field]: value } as SessionPreview : sess
       ),
     }))
+  },
+
+  /** P-7 修复：本地 patch 会话元数据，避免高频全量 listSessions
+   *  （listSessions 在主进程要逐会话扫描消息文件统计行数） */
+  patchLocalSession: (sessionId, patch) => {
+    set((s) => ({
+      sessions: s.sessions.map(sess =>
+        sess.id === sessionId ? { ...sess, ...patch } as SessionPreview : sess
+      ),
+    }))
+  },
+
+  /** P-7 修复：向当前会话插入开场白消息（变量替换 + 保存 + 本地元数据 patch） */
+  insertGreetingMessage: async (character, greeting) => {
+    const sid = get().currentSessionId
+    if (!sid || !greeting) return
+    const settings = useSettingsStore.getState().settings
+    const processed = replaceVariables(greeting, settings.userName, character.name)
+    const firstMsg: Message = {
+      id: nanoid(),
+      sessionId: sid,
+      characterId: character.id,
+      role: 'assistant',
+      content: processed,
+      images: [],
+      isEditing: false,
+      timestamp: Date.now(),
+    }
+    await window.api.chat.saveMessage(firstMsg)
+    set((s) => ({ messages: [...s.messages, firstMsg] }))
+    get().patchLocalSession(sid, {
+      messageCount: get().messages.length,
+      lastMessage: processed.slice(0, 50),
+      updatedAt: Date.now(),
+    })
+  },
+
+  /** P-7 修复：加载当前激活的 preset 与世界书（regenerate/continue/快捷回复共用，消除三处重复） */
+  getActiveChatConfig: async () => {
+    const { activePresetId, activeLorebookIds } = get()
+    let preset: Preset | null = null
+    if (activePresetId) {
+      const presets = await window.api.preset.list()
+      preset = presets.find(p => p.id === activePresetId) ?? null
+    }
+    let lorebooks: Lorebook[] = []
+    if (activeLorebookIds.length > 0) {
+      lorebooks = (await lorebookCache.refresh(activeLorebookIds)).filter(lb => lb.enabled)
+    } else {
+      lorebookCache.clear()
+    }
+    return { preset, lorebooks }
   },
 
   /** 从当前会话同步世界书选择，不触发持久化 */
@@ -235,20 +274,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   renameSession: async (characterId, sessionId, title) => {
     await window.api.chat.renameSession(characterId, sessionId, title)
-    const sessions = await window.api.chat.listSessions(characterId)
-    set({ sessions })
+    // P-7：本地 patch，不再全量 listSessions
+    get().patchLocalSession(sessionId, { title, updatedAt: Date.now() })
   },
 
   toggleMemory: async (characterId, sessionId, enabled) => {
     await window.api.chat.toggleMemory(characterId, sessionId, enabled)
-    const sessions = await window.api.chat.listSessions(characterId)
-    set({ sessions })
+    // P-7：本地 patch，不再全量 listSessions
+    get().patchLocalSession(sessionId, { memoryEnabled: enabled, updatedAt: Date.now() })
   },
 
   setMemoryMode: async (characterId, sessionId, mode, interval) => {
     await window.api.chat.setMemoryMode(characterId, sessionId, mode, interval)
-    const sessions = await window.api.chat.listSessions(characterId)
-    set({ sessions })
+    // P-7：本地 patch，不再全量 listSessions
+    get().patchLocalSession(sessionId, {
+      memoryMode: mode,
+      ...(interval !== undefined ? { autoMemoryInterval: interval } : {}),
+      updatedAt: Date.now(),
+    })
   },
 
   triggerMemorySummary: async (character) => {
@@ -426,7 +469,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({
       messages: [...state.messages, aiMessage],
       isStreaming: true,
-      streamingContent: '',
     }))
 
     // 调用公共流式方法
@@ -532,7 +574,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // 兜底重置状态（防止 cancelChat IPC 失败导致卡住）
     cleanupActiveStream()
     if (get().isStreaming) {
-      set({ isStreaming: false, currentRequestId: null, streamingContent: '' })
+      set({ isStreaming: false, currentRequestId: null })
     }
   },
 
@@ -572,12 +614,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
     // 再保存到文件（updateMessage 会更新而非追加）
     await window.api.chat.saveMessage(updatedMsg)
-    // 更新 session 元数据（updatedAt / lastMessage / messageCount）
-    // 通过 listSessions 重新拉取，让后端做增量更新
-    try {
-      const sessions = await window.api.chat.listSessions(character.id)
-      set({ sessions })
-    } catch { /* ignore */ }
+    // P-7：本地 patch 会话元数据（不再全量 listSessions）
+    const sid = get().currentSessionId
+    if (sid) {
+      const msgs = get().messages
+      const isLast = msgs.length > 0 && msgs[msgs.length - 1].id === messageId
+      get().patchLocalSession(sid, {
+        messageCount: msgs.length,
+        ...(isLast ? { lastMessage: newContent.slice(0, 50) } : {}),
+        updatedAt: Date.now(),
+      })
+    }
   },
 
   deleteMessage: async (messageId, character) => {
@@ -588,11 +635,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await invalidateCompression(get, character)
     await window.api.chat.deleteMessage(messageId, character.id, sessionId)
     set((state) => ({ messages: state.messages.filter((m) => m.id !== messageId) }))
-    // 同步更新 session 元数据
-    try {
-      const sessions = await window.api.chat.listSessions(character.id)
-      set({ sessions })
-    } catch { /* ignore */ }
+    // P-7：本地 patch 会话元数据（不再全量 listSessions）
+    const sid = get().currentSessionId
+    if (sid) {
+      const msgs = get().messages
+      get().patchLocalSession(sid, {
+        messageCount: msgs.length,
+        lastMessage: msgs.length > 0 ? msgs[msgs.length - 1].content.slice(0, 50) : '',
+        updatedAt: Date.now(),
+      })
+    }
   },
 
   clearChat: async (characterId) => {
@@ -609,11 +661,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     await window.api.chat.clearChat(characterId, sessionId ?? undefined)
     set({ messages: [] })
-    // 同步 session 元数据
-    try {
-      const sessions = await window.api.chat.listSessions(characterId)
-      set({ sessions })
-    } catch { /* ignore */ }
+    // P-7：本地 patch 会话元数据（不再全量 listSessions）
+    if (sessionId) {
+      get().patchLocalSession(sessionId, { messageCount: 0, lastMessage: '', updatedAt: Date.now() })
+    }
   },
 
   /** 启动 AI 翻译 - 全局状态管理，页面切换不中断 */
@@ -635,52 +686,49 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
 
     const requestId = `translate-${messageId}-${Date.now()}`
-    let result = ''
-    // P-4 修复：翻译 onChunk 节流，50ms flush 一次，避免高频 re-render
-    let translateFlushTimer: ReturnType<typeof setTimeout> | null = null
-    // R3 修复：空闲超时（30s 无 chunk 即中止），流中断后翻译不再永不结束
-    let translateIdleTimer: ReturnType<typeof setTimeout> | null = null
-    const TRANSLATE_IDLE_TIMEOUT_MS = 30000
-    const clearTranslateTimers = () => {
-      if (translateFlushTimer) { clearTimeout(translateFlushTimer); translateFlushTimer = null }
-      if (translateIdleTimer) { clearTimeout(translateIdleTimer); translateIdleTimer = null }
-    }
-
-    const unbindChunk = window.api.ai.onChunk((data) => {
-      if (data.requestId !== requestId) return
-      result += data.text
-      // R3：每次收到 chunk 重置空闲计时
-      if (translateIdleTimer) { clearTimeout(translateIdleTimer) }
-      translateIdleTimer = setTimeout(() => {
-        translateIdleTimer = null
-        clearTranslateTimers()
+    // P-8 修复：chunk 累积器统一管理节流 flush + 空闲超时（30s 无 chunk 即中止），
+    // 替代此前手写的 timer 三件套
+    const acc = createChunkAccumulator({
+      onFlush: (accText) => {
+        set((state) => ({
+          translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'translating' as const, content: accText } },
+        }))
+      },
+      onIdleTimeout: () => {
         unbindChunk(); unbindDone(); unbindError()
         window.api.ai.cancelChat(requestId).catch(() => {})
         set((state) => ({
           translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译超时（30 秒无响应）' } },
         }))
-      }, TRANSLATE_IDLE_TIMEOUT_MS)
-      if (translateFlushTimer === null) {
-        translateFlushTimer = setTimeout(() => {
-          translateFlushTimer = null
-          set((state) => ({
-            translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'translating' as const, content: result } },
-          }))
-        }, 50)
-      }
+      },
+    })
+
+    const unbindChunk = window.api.ai.onChunk((data) => {
+      if (data.requestId !== requestId) return
+      acc.append(data.text)
     })
 
     const unbindDone = window.api.ai.onDone((doneId) => {
       if (doneId !== requestId) return
-      clearTranslateTimers()
       unbindChunk(); unbindDone(); unbindError()
 
       // 先准备好 updated 对象（不在 set 回调中执行副作用）
-      const finalResult = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const finalResult = acc.flushNow().replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      // R4 修复：模型返回空结果（如推理模型思考内容耗尽 maxTokens 导致正文为空）时，
+      // 不落库空译文、不自动切显示，改为错误提示，避免 UI 静默回退原文且下次仍重复翻译
+      if (!finalResult) {
+        set((state) => ({
+          translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译结果为空，请重试或更换模型' } },
+        }))
+        return
+      }
       set((state) => {
         const updated = { ...state.translatingMessages, [messageId]: { status: 'done' as const, content: finalResult } }
         const msgs = state.messages.map(m => m.id === messageId ? { ...m, translation: finalResult } : m)
-        return { translatingMessages: updated, messages: msgs }
+        // 翻译完成后自动显示译文：不依赖发起时的一次性 toggle（可能被重复点击抵消）
+        const nextShow = new Set(state.showTranslationIds)
+        nextShow.add(messageId)
+        return { translatingMessages: updated, messages: msgs, showTranslationIds: nextShow }
       })
       // 在 set 之外执行 IPC 副作用（修复反模式）
       const msg = get().messages.find(m => m.id === messageId)
@@ -693,7 +741,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
-      clearTranslateTimers()
+      acc.dispose()
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: friendlyError(data.error) } },
@@ -702,7 +750,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile) {
-      clearTranslateTimers()
+      acc.dispose()
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '未配置 API 连接' } },
@@ -723,12 +771,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       model: settings.activeModel || profile.model,
       temperature: 0.3,
       topP: 0.9,
-      maxTokens: 2048,
+      maxTokens: translationMaxTokens(content),
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: true,
     }).catch(() => {
-      clearTranslateTimers()
+      acc.dispose()
       unbindChunk(); unbindDone(); unbindError()
       set((state) => ({
         translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译请求失败' } },

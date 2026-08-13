@@ -64,9 +64,10 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const isStreaming = useChatStore(s => s.isStreaming)
   const translatingMessages = useChatStore(s => s.translatingMessages)
   const showTranslationIds = useChatStore(s => s.showTranslationIds)
-  const { settings } = useSettingsStore()
+  // P-6 修复：字段级选择器订阅（此前无选择器，settings 任何变化都重渲染全部气泡）
+  const settings = useSettingsStore((s) => s.settings)
   const [thoughtExpanded, setThoughtExpanded] = useState(settings.autoExpandThought ?? false)
-  const { getPersona } = usePersonaStore()
+  const getPersona = usePersonaStore((s) => s.getPersona)
   const persona = getPersona(settings.activePersonaId)
 
   // 全局翻译状态
@@ -85,12 +86,14 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
 
   // 决定显示的文本
   const displayContent = useMemo(() => {
-    if (showTranslation && transState?.content) {
-      const cleaned = stripThought(transState.content)
-      return cleaned || originalDisplay || ''
+    if (showTranslation) {
+      // 优先内存翻译结果，回退到持久化的 message.translation（重启/状态丢失后仍能显示译文）
+      const translated = transState?.content || message.translation || ''
+      const cleaned = stripThought(translated)
+      if (cleaned) return cleaned
     }
     return originalDisplay || ''
-  }, [showTranslation, transState?.content, originalDisplay])
+  }, [showTranslation, transState?.content, message.translation, originalDisplay])
 
   // B-05：纯图片消息，气泡不应撑满整行
   const hasOnlyImages = message.images?.length > 0 && !displayContent && !(thought && !isSystem)
@@ -360,7 +363,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                 翻译中...
               </div>
             )}
-            {showTranslation && transState?.status === 'error' && (
+            {transState?.status === 'error' && (
               <div className="mt-2 text-xs text-tavern-danger">
                 翻译失败: {transState.errorMsg || '未知错误'}
               </div>
@@ -390,20 +393,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                   setContinuing(true)
                   try {
                     const chatStore = useChatStore.getState()
-                    let preset: import('../../../shared/types').Preset | null = null
-                    if (chatStore.activePresetId) {
-                      const presets = await window.api.preset.list()
-                      preset = presets.find((p) => p.id === chatStore.activePresetId) ?? null
-                    }
-                    const activeLorebooks: import('../../../shared/types').Lorebook[] = []
-                    if (chatStore.activeLorebookIds.length > 0) {
-                      const lorebooks = await window.api.lorebook.list()
-                      for (const id of chatStore.activeLorebookIds) {
-                        const lb = lorebooks.find((lb) => lb.id === id)
-                        if (lb && lb.enabled) activeLorebooks.push(lb)
-                      }
-                    }
-                    await continueMessage(message.id, character, preset, activeLorebooks)
+                    const { preset, lorebooks } = await chatStore.getActiveChatConfig()
+                    await continueMessage(message.id, character, preset, lorebooks)
                   } catch (e) {
                     // 提示错误，避免静默失败
                     useChatStore.setState({ error: `续写失败: ${e instanceof Error ? e.message : String(e)}` })

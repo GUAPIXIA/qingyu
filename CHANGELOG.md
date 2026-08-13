@@ -1,5 +1,23 @@
 # 更新日志
 
+## [0.11.23] - 2026-08-13
+
+### P-8 大文件拆分 + 消息读取缓存 + 流式累积器收口
+
+- **大文件拆分（P-8）**：五个超大文件按职责拆出独立模块，合计净删约 2100 行重复/内联代码
+  - `charCard.ts` → `charCardPng.ts`（PNG tEXt/iTXt chunk 读写、CRC32、MIME 嗅探）+ `charCardDownload.ts`（封面下载：keep-alive 连接复用、代理 CONNECT 隧道、SSRF 前置校验 + 重定向复验、直连/代理竞速）
+  - `useChatInputState.ts` → `aiInputHelper.ts`（续写/润色纯逻辑：用户视角剥离、续写上下文构造、依赖注入式 AI 请求）+ `commandContext.ts`（斜杠命令 → store 操作映射集中收口，每次调用取最新快照避免陈旧闭包）
+  - `ChatPage.tsx` → `ChatGreetingPickerModal.tsx`（开场白选择弹窗）+ `ChatWelcomeGuide.tsx`（首次使用三步引导）
+  - `LorebookPage.tsx` → `src/pages/lorebook/`（条目编辑器、常量、展示组件）
+  - `McpPage.tsx` → `src/pages/mcp/`（服务器表单弹窗、测试面板、类型定义）
+- **消息读取缓存（P-6）**：`electron/ipc/chat.ts` readMessages 全量解析结果 LRU 缓存（容量 30），长会话切换不再重复读盘 + JSON.parse + 排序；append/delete/clear/deleteSession 全部写入路径同步更新或失效缓存
+- **流式 chunk 累积器**：新增 `chunkAccumulator.ts`，背景流式任务（翻译等）统一收口节流 flush + 空闲超时中止 + 显式 dispose/flushNow，消除 timer 泄漏
+- **lint 盲区补齐**：eslint 新增 server 端 CommonJS 生产代码与测试文件规则覆盖（此前无任何规则）；ignores 补充 dist-electron / coverage / .reasonix
+- **测试扩展**：新增 aiInputHelper / chatConstants / chatContext / chunkAccumulator / contextShared 测试，IPC chat、toolLoop、store 相关测试同步更新
+- **杂项**：vite esbuild 静默 duplicate-object-key 警告（Trae inspector 重复注入属性导致终端刷屏）；`.gitignore` 忽略 `.reasonix/` 本地工具数据；移除过期文档（CODE_WIKI / 优化路线图 / 功能状态 / 对话优化方案）与 `.claude/settings.json`；新增《项目全面审查报告》文档
+
+---
+
 ## [0.11.22] - 2026-08-06
 
 ### 帮助页新用户指引完善

@@ -59,7 +59,6 @@ const server = app.listen(PORT, () => {
 app.use((_req, res) => {
   res.status(404).json({ error: '接口不存在' })
 })
-// eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
   console.error('[Server] 未捕获错误:', err)
   // N17 修复：按错误状态码分级响应（如 body-parser 坏 JSON 会置 err.status=400）

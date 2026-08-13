@@ -83,7 +83,6 @@ async function flushStream(set: GroupStoreSet) {
     messages: s.messages.map((m: GroupMessage) =>
       m.id === msgId ? { ...m, content: accumulated } : m,
     ),
-    streamingContent: accumulated,
   }))
 }
 
@@ -390,7 +389,6 @@ export async function streamGroupAI(
     messages: [...s.messages, placeholder],
     isStreaming: true,
     currentStreamingCharId: speaker.id,
-    streamingContent: '',
     error: null,
   }))
 
@@ -430,7 +428,7 @@ export async function streamGroupAI(
           messages: s.messages.map((m: GroupMessage) =>
             m.id === msgId ? { ...m, content: clean + '\n\n⚠️ 请求超时' } : m,
           ),
-          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+          isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
         window.api.group.saveMessage(group.id, sessionId, {
           id: msgId, groupId: group.id, characterId: speaker.id,
@@ -439,7 +437,7 @@ export async function streamGroupAI(
       } else {
         set((s: GroupChatState) => ({
           messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
-          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+          isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
       }
     }, STREAM_IDLE_TIMEOUT_MS)
@@ -472,7 +470,6 @@ export async function streamGroupAI(
       ),
       isStreaming: false,
       currentStreamingCharId: null,
-      streamingContent: '',
     }))
 
     // 持久化
@@ -535,7 +532,6 @@ export async function streamGroupAI(
       ),
       isStreaming: false,
       currentStreamingCharId: null,
-      streamingContent: '',
       error: data.error,
     }))
 
@@ -572,7 +568,7 @@ export async function streamGroupAI(
           messages: s.messages.map((m: GroupMessage) =>
             m.id === msgId ? { ...m, content: clean + '\n\n⚠️ 请求超时' } : m,
           ),
-          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+          isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
         window.api.group.saveMessage(group.id, sessionId, {
           id: msgId, groupId: group.id, characterId: speaker.id,
@@ -582,7 +578,7 @@ export async function streamGroupAI(
         // 无内容，移除占位消息
         set((s: GroupChatState) => ({
           messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
-          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+          isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
       }
     }, STREAM_IDLE_TIMEOUT_MS),
@@ -616,7 +612,6 @@ export async function streamGroupAI(
     set({
       isStreaming: false,
       currentStreamingCharId: null,
-      streamingContent: '',
       error: err instanceof Error ? err.message : '请求失败',
     })
   }
@@ -690,7 +685,6 @@ export async function streamGroupAIFree(
     messages: [...s.messages, placeholder],
     isStreaming: true,
     currentStreamingCharId: '__free__',
-    streamingContent: '',
     error: null,
   }))
 
@@ -729,7 +723,7 @@ export async function streamGroupAIFree(
           messages: s.messages.map((m: GroupMessage) =>
             m.id === msgId ? { ...m, content: clean + '\n\n⚠️ 请求超时' } : m,
           ),
-          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+          isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
         window.api.group.saveMessage(group.id, sessionId, {
           id: msgId, groupId: group.id, characterId: '__free__',
@@ -738,7 +732,7 @@ export async function streamGroupAIFree(
       } else {
         set((s: GroupChatState) => ({
           messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
-          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+          isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
       }
     }, STREAM_IDLE_TIMEOUT_MS)
@@ -789,7 +783,7 @@ export async function streamGroupAIFree(
     const errContent = '⚠️ ' + friendlyMsg
     set((s: GroupChatState) => ({
       messages: s.messages.map((m: GroupMessage) => m.id === msgId ? { ...m, content: errContent } : m),
-      isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: data.error,
+      isStreaming: false, currentStreamingCharId: null, error: data.error,
     }))
     // 持久化错误消息
     window.api.group.saveMessage(group.id, sessionId, {
@@ -811,7 +805,7 @@ export async function streamGroupAIFree(
           messages: s.messages.map((m: GroupMessage) =>
             m.id === msgId ? { ...m, content: clean + '\n\n⚠️ 请求超时' } : m,
           ),
-          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+          isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
         window.api.group.saveMessage(group.id, sessionId, {
           id: msgId, groupId: group.id, characterId: '__free__',
@@ -820,7 +814,7 @@ export async function streamGroupAIFree(
       } else {
         set((s: GroupChatState) => ({
           messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
-          isStreaming: false, currentStreamingCharId: null, streamingContent: '', error: '请求超时',
+          isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
       }
     }, STREAM_IDLE_TIMEOUT_MS),
@@ -851,7 +845,7 @@ export async function streamGroupAIFree(
   } catch (err) {
     cleanupActiveStream()
     set({
-      isStreaming: false, currentStreamingCharId: null, streamingContent: '',
+      isStreaming: false, currentStreamingCharId: null,
       error: err instanceof Error ? err.message : '请求失败',
     })
   }
@@ -913,7 +907,7 @@ export async function splitAndSaveMessages(
           ? { ...m, characterId: fallbackCharId, content: content || '(无回复)' }
           : m,
       ),
-      isStreaming: false, currentStreamingCharId: null, streamingContent: '',
+      isStreaming: false, currentStreamingCharId: null,
     }))
     // 持久化更新后的占位消息
     if (fallbackChar) {
@@ -987,7 +981,6 @@ export async function splitAndSaveMessages(
       .sort((a: GroupMessage, b: GroupMessage) => a.timestamp - b.timestamp),
     isStreaming: false,
     currentStreamingCharId: null,
-    streamingContent: '',
   }))
 }
 

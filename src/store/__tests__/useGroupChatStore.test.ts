@@ -16,7 +16,6 @@ describe('useGroupChatStore', () => {
       messages: [],
       isStreaming: false,
       currentStreamingCharId: null,
-      streamingContent: '',
       error: null,
     })
     // 重置 settings store 以确保 getActiveProfile 可用
@@ -172,12 +171,10 @@ describe('useGroupChatStore', () => {
       useGroupChatStore.setState({
         isStreaming: true,
         currentStreamingCharId: 'c1',
-        streamingContent: 'partial',
       })
       useGroupChatStore.getState().stopStreaming()
       expect(useGroupChatStore.getState().isStreaming).toBe(false)
       expect(useGroupChatStore.getState().currentStreamingCharId).toBeNull()
-      expect(useGroupChatStore.getState().streamingContent).toBe('')
     })
   })
 

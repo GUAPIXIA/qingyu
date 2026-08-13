@@ -1,6 +1,7 @@
 import type { Character } from '../../../shared/types'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { translationMaxTokens } from '../../store/chatConstants'
 import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
 import { getDisplayName } from '../../utils/variables'
@@ -127,7 +128,7 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
           model: useSettingsStore.getState().settings.activeModel || profile.model,
           temperature: 0.3,
           topP: 0.9,
-          maxTokens: 4096,
+          maxTokens: translationMaxTokens(text),
           frequencyPenalty: 0,
           presencePenalty: 0,
           stream: true,

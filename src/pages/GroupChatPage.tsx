@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import type React from 'react'
 import { nanoid } from 'nanoid'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
@@ -57,6 +57,20 @@ export function GroupChatPage() {
   const toggleMemory = useGroupChatStore((s) => s.toggleMemory)
   const setMemoryMode = useGroupChatStore((s) => s.setMemoryMode)
   const triggerMemorySummary = useGroupChatStore((s) => s.triggerMemorySummary)
+
+  // P-6 修复：引用回复查找 O(n)→O(1)——构建 id→message 索引，仅在 messages 变化时重建
+  const messageMap = useMemo(() => {
+    const map = new Map<string, GroupMessage>()
+    for (const m of messages) map.set(m.id, m)
+    return map
+  }, [messages])
+
+  // P-8 修复：成员索引查找 O(n)→O(1)——itemContent 每条可见消息渲染都查 indexOf
+  const memberIndexMap = useMemo(() => {
+    const map = new Map<string, number>()
+    currentGroup?.memberIds.forEach((id, i) => map.set(id, i))
+    return map
+  }, [currentGroup?.memberIds])
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -506,12 +520,12 @@ export function GroupChatPage() {
                   className="h-full"
                   followOutput="smooth"
                   itemContent={(index, m) => {
-                    const memberIdx = currentGroup.memberIds.indexOf(m.characterId)
+                    const memberIdx = memberIndexMap.get(m.characterId) ?? -1
                     const isAiMsg = m.characterId !== '__user__'
                     const isStreamingMsg = isStreaming && index === messages.length - 1 && isAiMsg
-                    // 查找被引用的消息
+                    // 查找被引用的消息（P-6：Map 索引 O(1)）
                     const repliedMessage = m.replyToId
-                      ? messages.find(msg => msg.id === m.replyToId)
+                      ? messageMap.get(m.replyToId)
                       : undefined
                     return (
                       <GroupChatMessage

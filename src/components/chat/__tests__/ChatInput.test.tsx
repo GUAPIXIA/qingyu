@@ -77,7 +77,6 @@ function setupStores(connected = true) {
     sessions: [],
     currentSessionId: 's1',
     isStreaming: false,
-    streamingContent: '',
     error: null,
     activePresetId: null,
     activeLorebookIds: [],

@@ -46,10 +46,22 @@ export function ChatHeader({
   onCreateSession,
 }: ChatHeaderProps) {
   const navigate = useNavigate()
-  const { sessions, currentSessionId, switchSession, deleteSession, renameSession, toggleMemory, setMemoryMode, triggerMemorySummary, getStats } = useChatStore()
-  const { characters, selectCharacter } = useCharacterStore()
-  const { settings, updateSettings } = useSettingsStore()
-  const { personas, getPersona } = usePersonaStore()
+  // P-6 修复：字段级选择器订阅，避免流式 flush（50ms）时顶栏整体重渲染
+  const sessions = useChatStore((s) => s.sessions)
+  const currentSessionId = useChatStore((s) => s.currentSessionId)
+  const switchSession = useChatStore((s) => s.switchSession)
+  const deleteSession = useChatStore((s) => s.deleteSession)
+  const renameSession = useChatStore((s) => s.renameSession)
+  const toggleMemory = useChatStore((s) => s.toggleMemory)
+  const setMemoryMode = useChatStore((s) => s.setMemoryMode)
+  const triggerMemorySummary = useChatStore((s) => s.triggerMemorySummary)
+  const getStats = useChatStore((s) => s.getStats)
+  const characters = useCharacterStore((s) => s.characters)
+  const selectCharacter = useCharacterStore((s) => s.selectCharacter)
+  const settings = useSettingsStore((s) => s.settings)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const personas = usePersonaStore((s) => s.personas)
+  const getPersona = usePersonaStore((s) => s.getPersona)
 
   const [showCharMenu, setShowCharMenu] = useState(false)
   const [showPersonaMenu, setShowPersonaMenu] = useState(false)

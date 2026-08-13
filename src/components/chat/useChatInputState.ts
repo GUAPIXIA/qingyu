@@ -1,20 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useChatStore } from '../../store/useChatStore'
-import { lorebookCache } from '../../utils/lorebook'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { useCharacterStore } from '../../store/useCharacterStore'
-import { downloadFile } from '../../utils/download'
 import { logError } from '../../lib/logger'
 import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
 import { getDisplayName } from '../../utils/variables'
 import { expandMacros, buildMacroContext } from '../../utils/macros'
 import { getEffectiveQuickReplies } from '../../utils/quickReply'
-import type { Character, Preset, Lorebook, ChatParams, QuickReply, QuickReplyStore, Message } from '../../../shared/types'
+import type { Character, Preset, Lorebook, QuickReply, QuickReplyStore, Message } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
 import { registerBuiltinCommands } from '../../commands/builtin'
-import { stripThought } from '../../utils/messagePostProcess'
+import { callAiHelper as callAiHelperCore, ensureUserPerspective, buildContinueContext } from './aiInputHelper'
+import { createCommandContext } from './commandContext'
 
 // 初始化内置命令（只执行一次）
 let commandsInitialized = false
@@ -74,7 +72,9 @@ export function useChatInputState(
   // 初始化内置命令
   ensureCommandsInitialized()
 
-  const { currentSessionId } = useChatStore()
+  // P-6 修复：字段级选择器订阅——此前无选择器订阅整个 store，
+  // 流式 flush（50ms 一次）时输入框整体重渲染
+  const currentSessionId = useChatStore((s) => s.currentSessionId)
   const [text, setText] = useState(() => {
     // 启动时恢复草稿
     try {
@@ -98,9 +98,11 @@ export function useChatInputState(
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // H-09 修复：追踪活跃的 AI 辅助请求，组件卸载时取消
   const activeRequestIdsRef = useRef<Set<string>>(new Set())
-  const { sendMessage, isStreaming, stopStreaming, activePresetId, activeLorebookIds } = useChatStore()
-  const { settings, getActiveProfile } = useSettingsStore()
-  const { characters, selectCharacter } = useCharacterStore()
+  const sendMessage = useChatStore((s) => s.sendMessage)
+  const isStreaming = useChatStore((s) => s.isStreaming)
+  const stopStreaming = useChatStore((s) => s.stopStreaming)
+  const settings = useSettingsStore((s) => s.settings)
+  const getActiveProfile = useSettingsStore((s) => s.getActiveProfile)
 
   const activeProfile = getActiveProfile()
   const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || isLocalUrl(activeProfile.baseUrl) || !!activeProfile.apiKey)
@@ -123,19 +125,9 @@ export function useChatInputState(
     notificationTimerRef.current = setTimeout(() => setNotification(null), 3000)
   }
 
-  /** 加载当前选中的预设和所有激活的世界书（同时更新缓存） */
+  /** 加载当前选中的预设和所有激活的世界书（P-7：委托给 store 的 getActiveChatConfig，同时更新缓存） */
   const loadActivePresetLorebook = async (): Promise<[Preset | null, Lorebook[]]> => {
-    let preset: Preset | null = null
-    if (activePresetId) {
-      const presets = await window.api.preset.list()
-      preset = presets.find(p => p.id === activePresetId) ?? null
-    }
-    let lorebooks: Lorebook[] = []
-    if (activeLorebookIds.length > 0) {
-      lorebooks = (await lorebookCache.refresh(activeLorebookIds)).filter(lb => lb.enabled)
-    } else {
-      lorebookCache.clear()
-    }
+    const { preset, lorebooks } = await useChatStore.getState().getActiveChatConfig()
     return [preset, lorebooks]
   }
 
@@ -177,162 +169,13 @@ export function useChatInputState(
     }
   }
 
-  // 构建命令上下文
-  const buildCommandContext = (): CommandContext => {
-    const chatStore = useChatStore.getState()
-    return {
-      character,
-      sendMessage: async (content, imgs) => {
-        const [preset, lorebooks] = await loadActivePresetLorebook()
-        await chatStore.sendMessage(content, imgs, character, preset, lorebooks)
-      },
-      addImageMessage: async (imgs, content) => {
-        await chatStore.addStandaloneMessage(content ?? '', imgs, character, 'system')
-      },
-      clearChat: async () => {
-        await chatStore.clearChat(character.id)
-      },
-      regenerateLastMessage: async () => {
-        const messages = chatStore.messages
-        const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
-        if (!lastAssistant) {
-          showNotification('没有可重新生成的 AI 回复')
-          return
-        }
-        const [preset, lorebooks] = await loadActivePresetLorebook()
-        await chatStore.regenerateMessage(lastAssistant.id, character, preset, lorebooks)
-      },
-      continueLastMessage: async () => {
-        const messages = chatStore.messages
-        const lastMsg = messages[messages.length - 1]
-        // continueMessage 要求目标是最后一条消息且为 assistant
-        if (!lastMsg || lastMsg.role !== 'assistant') {
-          showNotification('最后一条消息不是 AI 回复，无法续写')
-          return
-        }
-        const [preset, lorebooks] = await loadActivePresetLorebook()
-        await chatStore.continueMessage(lastMsg.id, character, preset, lorebooks)
-      },
-      triggerMemorySummary: async () => {
-        const result = await chatStore.triggerMemorySummary(character)
-        if (result) showNotification('长记忆总结已完成')
-        else showNotification('长记忆总结失败或消息太少')
-      },
-      exportChat: async (format) => {
-        const sid = chatStore.currentSessionId
-        if (!sid) return
-        const content = await window.api.chat.exportChat(character.id, sid, format)
-        const mimeType = format === 'json' ? 'application/json' : 'text/markdown'
-        const ext = format === 'json' ? 'json' : 'md'
-        downloadFile(content, `${character.name}-对话.${ext}`, mimeType)
-        showNotification(`已导出为 ${format.toUpperCase()} 格式`)
-      },
-      swipeMessage: async (direction) => {
-        const messages = chatStore.messages
-        const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
-        if (!lastAssistant) {
-          showNotification('没有可切换的 AI 回复')
-          return
-        }
-        await chatStore.swipeMessage(lastAssistant.id, direction, character)
-      },
-      notify: showNotification,
-      switchCharacter: async (nameOrId) => {
-        const target = characters.find(c => c.id === nameOrId || c.name === nameOrId)
-        if (target) {
-          selectCharacter(target.id)
-          showNotification(`已切换到角色: ${target.name}`)
-          return true
-        }
-        showNotification(`未找到角色: ${nameOrId}`)
-        return false
-      },
-      switchPreset: async (nameOrId) => {
-        try {
-          const presets = await window.api.preset.list()
-          const target = presets.find((p) => p.id === nameOrId || p.name === nameOrId)
-          if (target) {
-            chatStore.setActivePreset(target.id, character.id)
-            showNotification(`已切换到预设: ${target.name}`)
-            return true
-          }
-        } catch { /* ignore */ }
-        showNotification(`未找到预设: ${nameOrId}`)
-        return false
-      },
-      switchPersona: async (nameOrId) => {
-        try {
-          const personas = await window.api.persona.list()
-          const target = personas.find((p) => p.id === nameOrId || p.name === nameOrId)
-          if (target) {
-            // 同步 persona 到 settings（与 ChatHeader.handleSwitchPersona 保持一致）
-            useSettingsStore.getState().updateSettings({
-              activePersonaId: target.id,
-              userName: target.name,
-              userDescription: target.description,
-              userPersona: target.persona,
-            })
-            // 保存到当前会话
-            if (chatStore.currentSessionId) {
-              await window.api.chat.updateSession(character.id, chatStore.currentSessionId, { personaId: target.id })
-              useChatStore.setState(s => ({
-                sessions: s.sessions.map(sess =>
-                  sess.id === chatStore.currentSessionId ? { ...sess, personaId: target.id } : sess
-                ),
-              }))
-            }
-            showNotification(`已切换到人设: ${target.name}`)
-            return true
-          }
-        } catch { /* ignore */ }
-        showNotification(`未找到人设: ${nameOrId}`)
-        return false
-      },
-      toggleLorebook: async (nameOrId) => {
-        try {
-          const lorebooks = await window.api.lorebook.list()
-          const target = lorebooks.find((lb) => lb.id === nameOrId || lb.name === nameOrId)
-          if (target) {
-            const curIds = chatStore.activeLorebookIds
-            if (curIds.includes(target.id)) {
-              chatStore.setActiveLorebooks(curIds.filter(id => id !== target.id), character.id)
-              showNotification(`已关闭世界书: ${target.name}`)
-            } else {
-              chatStore.setActiveLorebooks([...curIds, target.id], character.id)
-              showNotification(`已激活世界书: ${target.name}`)
-            }
-            return true
-          }
-        } catch { /* ignore */ }
-        showNotification(`未找到世界书: ${nameOrId}`)
-        return false
-      },
-      getTokenUsage: () => {
-        const messages = chatStore.messages
-        const total = messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0)
-        return { total, max: 0 }
-      },
-      callAiHelper: async (systemPrompt, userContent, options) => {
-        return callAiHelper({
-          systemPrompt,
-          userContent,
-          temperature: options?.temperature,
-          maxTokens: options?.maxTokens,
-        })
-      },
-      getRecentMessages: (count) => {
-        return chatStore.messages
-          .filter(m => m.content && m.content.trim())
-          .slice(-count)
-          .map(m => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            name: m.role === 'user' ? (settings.userName || '用户') : character.name,
-          }))
-      },
-      userName: settings.userName || '用户',
-    }
-  }
+  // 构建命令上下文（逻辑抽取至 commandContext.ts）
+  const buildCommandContext = (): CommandContext => createCommandContext({
+    character,
+    loadActivePresetLorebook,
+    showNotification,
+    callAiHelper,
+  })
 
   // 命令补全：检测 / 开头时显示建议
   useEffect(() => {
@@ -519,7 +362,7 @@ export function useChatInputState(
   }
 
   /**
-   * 抽取的公共 AI 辅助调用方法（修复 handleAiContinue / handleAiPolish 重复代码）
+   * 公共 AI 辅助调用（实现抽取至 aiInputHelper.ts；此处注入 profile/preset/请求集合）
    * @returns AI 生成的完整文本
    */
   const callAiHelper = async (opts: {
@@ -532,54 +375,12 @@ export function useChatInputState(
     const p = getActiveProfile()
     if (!p) throw new Error('未配置 API 连接')
     const [preset] = await loadActivePresetLorebook()
-    let result = ''
-    const requestId = `ai-helper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    activeRequestIdsRef.current.add(requestId)
-
-    return new Promise<string>((resolve, reject) => {
-      const cleanup = () => {
-        activeRequestIdsRef.current.delete(requestId)
-        unbindChunk(); unbindDone(); unbindError()
-      }
-      const cleanResult = () => stripThought(result)
-      const unbindChunk = window.api.ai.onChunk((data) => {
-        if (data.requestId !== requestId) return
-        result += data.text
-        opts.onChunk?.(data.text, cleanResult())
-      })
-      const unbindDone = window.api.ai.onDone((doneId) => {
-        if (doneId !== requestId) return
-        cleanup()
-        resolve(cleanResult())
-      })
-      const unbindError = window.api.ai.onError((data) => {
-        if (data.requestId !== requestId) return
-        cleanup()
-        reject(new Error(data.error))
-      })
-
-      const params: ChatParams = {
-        requestId,
-        messages: [
-          { role: 'system', content: opts.systemPrompt },
-          { role: 'user', content: opts.userContent },
-        ],
-        provider: p.provider,
-        apiKey: p.apiKey,
-        baseUrl: p.baseUrl,
-        model: settings.activeModel || p.model,
-        temperature: opts.temperature ?? preset?.temperature ?? 0.5,
-        topP: preset?.topP ?? 0.9,
-        maxTokens: opts.maxTokens ?? 800,
-        frequencyPenalty: preset?.frequencyPenalty ?? 0,
-        presencePenalty: preset?.presencePenalty ?? 0,
-        stream: false,
-      }
-
-      window.api.ai.chat(params).catch((err) => {
-        cleanup()
-        reject(err)
-      })
+    return callAiHelperCore({
+      ...opts,
+      profile: p,
+      activeModel: settings.activeModel || p.model,
+      preset,
+      activeRequestIds: activeRequestIdsRef.current,
     })
   }
 
@@ -595,41 +396,9 @@ export function useChatInputState(
       const userName = settings.userName || '用户'
       const charName = getDisplayName(character)
 
-      // 后处理：确保输出是用户视角，剥离角色视角内容
-      const ensureUserPerspective = (raw: string): string => {
-        let output = raw.trim()
-        // 如果输出以角色名开头（含冒号），说明 AI 以角色身份回复了，剥离角色部分
-        const charPrefix = new RegExp(`^\\*?${charName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[:：]\\s*`, 'i')
-        if (charPrefix.test(output)) {
-          // 找到用户发言部分（如果有的话）
-          const userLine = new RegExp(`(?:^|\\n)\\*?${userName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[:：]\\s*(.*)`, 'i')
-          const match = output.match(userLine)
-          if (match) {
-            output = match[1].trim()
-          } else {
-            // 没有用户部分，丢弃全部（AI 以角色视角回复了）
-            return ''
-          }
-        }
-        return output
-      }
-
-      const systemPrompt = hasInput
-        ? `你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 ${userName}】的身份和口吻，续写用户未完成的消息。\n\n严格要求：\n- 只输出 ${userName} 的话语，绝对不要输出 ${charName} 的话语\n- 不要以 ${charName} 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格`
-        : `你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 ${userName}】的身份和口吻，生成一条合适的用户回复。\n\n严格要求：\n- 只输出 ${userName} 的话语，绝对不要输出 ${charName} 的话语\n- 不要以 ${charName} 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格`
-
-      const contextMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
-        { role: 'system', content: `${systemPrompt}\n\n当前角色：${charName}\n角色设定：${character.description || '无'}\n场景：${character.scenario || '无'}` },
-      ]
-      for (const msg of recentMessages) {
-        contextMessages.push({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.content,
-        })
-      }
-      contextMessages.push({
-        role: 'user',
-        content: hasInput ? `请以 ${userName} 的身份续写以下未完成的消息（直接接在后面的部分）：\n${originalInput}` : `请以 ${userName} 的身份根据上下文生成一条回复`,
+      // 续写上下文与后处理逻辑抽取至 aiInputHelper.ts
+      const contextMessages = buildContinueContext({
+        character, userName, charName, recentMessages, originalInput, hasInput,
       })
 
       const result = await callAiHelper({
@@ -638,10 +407,10 @@ export function useChatInputState(
         temperature: 0.7,
         maxTokens: 300,
         onChunk: (_delta, full) => {
-          setText(hasInput ? originalInput + ensureUserPerspective(full) : ensureUserPerspective(full))
+          setText(hasInput ? originalInput + ensureUserPerspective(full, userName, charName) : ensureUserPerspective(full, userName, charName))
         },
       })
-      const cleaned = ensureUserPerspective(result)
+      const cleaned = ensureUserPerspective(result, userName, charName)
       if (cleaned) {
         setText(hasInput ? originalInput + cleaned : cleaned)
       } else {

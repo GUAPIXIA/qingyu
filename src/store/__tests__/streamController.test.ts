@@ -4,7 +4,7 @@ import { useSettingsStore } from '../useSettingsStore'
 import { usePersonaStore } from '../usePersonaStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { streamAIResponse, cleanupActiveStream } from '../streamController'
-import { STREAM_THROTTLE_MS } from '../chatConstants'
+import { STREAM_THROTTLE_MS, STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
 import type { Character, Message, ConnectionProfile } from '../../../shared/types'
 
 function createCharacter(overrides: Partial<Character> = {}): Character {
@@ -94,7 +94,6 @@ function setupStores() {
     sessions: [],
     currentSessionId: 's1',
     isStreaming: false,
-    streamingContent: '',
     error: null,
     activePresetId: null,
     activeLorebookIds: [],
@@ -311,6 +310,58 @@ describe('streamAIResponse 流式控制', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect((callbacks.chatParams as any).model).toBe('gpt-4o')
+
+    await promise
+  })
+
+  it('空闲超时：60s 无新 chunk 中止请求并报错', async () => {
+    const callbacks = captureStreamCallbacks()
+    const onError = vi.fn()
+
+    const promise = streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset: null,
+      onComplete: vi.fn().mockResolvedValue(undefined),
+      onError,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '开头' })
+    // 推进到空闲超时
+    await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MS + 10)
+
+    expect(window.api.ai.cancelChat).toHaveBeenCalled()
+    expect(useChatStore.getState().isStreaming).toBe(false)
+    expect(useChatStore.getState().error).toBe('请求超时')
+    expect(onError).toHaveBeenCalledWith('请求超时')
+
+    await promise
+  })
+
+  it('收到新 chunk 会重置空闲计时：不触发超时', async () => {
+    const callbacks = captureStreamCallbacks()
+    const onError = vi.fn()
+
+    const promise = streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset: null,
+      onComplete: vi.fn().mockResolvedValue(undefined),
+      onError,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const requestId = callbacks.chatParams!.requestId
+    for (let i = 0; i < 10; i++) {
+      callbacks.onChunk!({ requestId, text: `chunk${i}` })
+      await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MS - 100)
+    }
+
+    expect(window.api.ai.cancelChat).not.toHaveBeenCalled()
+    expect(useChatStore.getState().isStreaming).toBe(true)
+    expect(onError).not.toHaveBeenCalled()
 
     await promise
   })

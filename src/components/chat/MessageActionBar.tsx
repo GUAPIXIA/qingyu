@@ -34,7 +34,9 @@ export const MessageActionBar = React.memo(function MessageActionBar({
   const updateMessageImages = useChatStore((s) => s.updateMessageImages)
   const translatingMessages = useChatStore((s) => s.translatingMessages)
   const showTranslationIds = useChatStore((s) => s.showTranslationIds)
-  const { settings, getActiveTTS } = useSettingsStore()
+  // P-6 修复：字段级选择器订阅
+  const settings = useSettingsStore((s) => s.settings)
+  const getActiveTTS = useSettingsStore((s) => s.getActiveTTS)
 
   const [ttsState, setTtsState] = useState<'idle' | 'speaking' | 'paused'>('idle')
   const [regenerating, setRegenerating] = useState(false)
@@ -161,16 +163,13 @@ export const MessageActionBar = React.memo(function MessageActionBar({
 
   const handleTranslate = () => {
     if (!message.content || isTranslating) return
-    // 如果已有翻译结果，切换显示
-    if (transState?.status === 'done') {
-      // 无论当前是否显示翻译，切换显示状态
+    // 如果已有翻译结果（内存状态或持久化的 message.translation），切换显示
+    if (transState?.status === 'done' || message.translation) {
       useChatStore.getState().toggleTranslation(message.id)
       return
     }
-    // 发起翻译
+    // 发起翻译（翻译完成后会在 onDone 中自动加入 showTranslationIds 显示译文）
     translateMessage(message.id, message.content)
-    // 翻译开始后自动显示
-    useChatStore.getState().toggleTranslation(message.id)
   }
 
   const handleBranch = async () => {
@@ -199,24 +198,12 @@ export const MessageActionBar = React.memo(function MessageActionBar({
     }
   }
 
-  /** AI 消息重新生成：加载 preset/lorebook 上下文后重跑 */
+  /** AI 消息重新生成：加载 preset/lorebook 上下文后重跑（P-7：复用 getActiveChatConfig） */
   const handleRegenerate = async () => {
     if (!character) return
     const chatStore = useChatStore.getState()
-    let preset: import('../../../shared/types').Preset | null = null
-    if (chatStore.activePresetId) {
-      const presets = await window.api.preset.list()
-      preset = presets.find((p) => p.id === chatStore.activePresetId) ?? null
-    }
-    const activeLorebooks: import('../../../shared/types').Lorebook[] = []
-    if (chatStore.activeLorebookIds.length > 0) {
-      const lorebooks = await window.api.lorebook.list()
-      for (const id of chatStore.activeLorebookIds) {
-        const lb = lorebooks.find((lb) => lb.id === id)
-        if (lb && lb.enabled) activeLorebooks.push(lb)
-      }
-    }
-    await regenerateMessage(message.id, character, preset, activeLorebooks).catch((e) => {
+    const { preset, lorebooks } = await chatStore.getActiveChatConfig()
+    await regenerateMessage(message.id, character, preset, lorebooks).catch((e) => {
       // 与续写按钮一致：IPC/加载失败时提示而非静默
       useChatStore.setState({ error: `重新生成失败: ${e instanceof Error ? e.message : String(e)}` })
     })

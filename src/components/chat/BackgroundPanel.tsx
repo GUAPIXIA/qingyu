@@ -18,7 +18,9 @@ export const PRESET_GRADIENTS = [
 ] as const
 
 export function BackgroundPanel({ open, onClose }: BackgroundPanelProps) {
-  const { currentCharacter, saveCharacter } = useCharacterStore()
+  // P-6 修复：字段级选择器订阅
+  const currentCharacter = useCharacterStore((s) => s.currentCharacter)
+  const saveCharacter = useCharacterStore((s) => s.saveCharacter)
   const character = currentCharacter
 
   // hooks 必须在提前返回之前调用（React Hooks 规则）

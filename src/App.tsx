@@ -8,8 +8,8 @@ import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
 // 优化：非首屏页面路由懒加载（拆包，减小初始 bundle；
 // ChatPage 为默认路由保持静态导入）
-function lazyPage<T extends ComponentType<any>>(importer: () => Promise<Record<string, unknown>>, name: string) {
-  return lazy(async () => ({ default: (await importer())[name] as T }))
+function lazyPage(importer: () => Promise<Record<string, unknown>>, name: string) {
+  return lazy(async () => ({ default: (await importer())[name] as ComponentType }))
 }
 const CharactersPage = lazyPage(() => import('./pages/CharactersPage'), 'CharactersPage')
 const CharacterCreatePage = lazyPage(() => import('./pages/CharacterCreatePage'), 'CharacterCreatePage')

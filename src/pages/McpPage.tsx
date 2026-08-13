@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
+import { McpServerFormModal } from './mcp/McpServerFormModal'
+import { McpTestPanel } from './mcp/McpTestPanel'
+import { EMPTY_FORM } from './mcp/mcpTypes'
+import type { McpServerConfig, McpServerStatus, McpTool, ServerForm } from './mcp/mcpTypes'
 import {
   ArrowLeft,
   Plus,
@@ -14,68 +18,9 @@ import {
   Server,
   Circle,
   Loader2,
-  X,
   Terminal,
   Globe,
 } from 'lucide-react'
-
-/** MCP Server 配置 */
-interface McpServerConfig {
-  id: string
-  name: string
-  transport: 'stdio' | 'sse'
-  command?: string
-  args?: string[]
-  env?: Record<string, string>
-  url?: string
-  enabled: boolean
-  autoStart: boolean
-}
-
-/** MCP Server 运行状态 */
-interface McpServerStatus {
-  id: string
-  connected: boolean
-  toolCount: number
-  lastError?: string
-}
-
-/** MCP 工具定义 */
-interface McpTool {
-  serverId: string
-  name: string
-  description: string
-  inputSchema: {
-    type: 'object'
-    properties: Record<string, {
-      type: string
-      description?: string
-      enum?: string[]
-    }>
-    required?: string[]
-  }
-}
-
-/** 编辑表单临时状态 */
-interface ServerForm {
-  name: string
-  transport: 'stdio' | 'sse'
-  command: string
-  args: string // 逗号分隔
-  env: string // 每行 KEY=value
-  url: string
-  autoStart: boolean
-}
-
-const EMPTY_FORM: ServerForm = {
-  name: '',
-  transport: 'stdio',
-  command: '',
-  args: '',
-  env: '',
-  url: '',
-  autoStart: true,
-}
 
 export function McpPage() {
   const navigate = useNavigate()
@@ -260,7 +205,6 @@ export function McpPage() {
   }
 
   // 测试面板中当前选中的工具
-  const selectedTool = testTool ? tools.find((t) => t.name === testTool) : undefined
 
   return (
     <div className="h-full flex flex-col">
@@ -556,242 +500,32 @@ export function McpPage() {
         )}
       </div>
 
-      {/* 添加/编辑 Server 弹窗 */}
+      {/* 添加/编辑 Server 弹窗（P-8 拆至 McpServerFormModal） */}
       {showForm && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={closeForm}
-        >
-          <div
-            className="bg-tavern-bg-soft rounded-xl border border-tavern-border-soft w-full max-w-md mx-4 max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-tavern-border-soft">
-              <h3 className="text-sm font-medium flex items-center gap-2">
-                <Server className="w-4 h-4 text-tavern-accent" />
-                {editingId ? '编辑 Server' : '添加 Server'}
-              </h3>
-              <button
-                onClick={closeForm}
-                className="p-1 rounded hover:bg-tavern-bg-hover text-tavern-text-muted"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              {/* 名称 */}
-              <div>
-                <label className="label">名称</label>
-                <input
-                  type="text"
-                  className="input text-sm"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="如：filesystem"
-                  autoFocus
-                />
-              </div>
-
-              {/* 传输方式 */}
-              <div>
-                <label className="label">传输方式</label>
-                <div className="flex gap-1.5">
-                  {(['stdio', 'sse'] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setForm((f) => ({ ...f, transport: t }))}
-                      className={cn(
-                        'px-3 py-1 rounded text-xs border transition-colors',
-                        form.transport === t
-                          ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
-                          : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-soft hover:border-tavern-border'
-                      )}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* stdio 模式字段 */}
-              {form.transport === 'stdio' ? (
-                <>
-                  <div>
-                    <label className="label">命令 (command)</label>
-                    <input
-                      type="text"
-                      className="input text-sm font-mono"
-                      value={form.command}
-                      onChange={(e) => setForm((f) => ({ ...f, command: e.target.value }))}
-                      placeholder="如：npx"
-                    />
-                  </div>
-                  <div>
-                    <label className="label">参数 (逗号分隔)</label>
-                    <input
-                      type="text"
-                      className="input text-sm font-mono"
-                      value={form.args}
-                      onChange={(e) => setForm((f) => ({ ...f, args: e.target.value }))}
-                      placeholder="如：-y, @modelcontextprotocol/server-filesystem, /tmp"
-                    />
-                  </div>
-                  <div>
-                    <label className="label">环境变量 (每行 KEY=value)</label>
-                    <textarea
-                      className="textarea text-xs font-mono min-h-[80px]"
-                      value={form.env}
-                      onChange={(e) => setForm((f) => ({ ...f, env: e.target.value }))}
-                      placeholder={'API_KEY=xxx\nDEBUG=true'}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <label className="label">URL</label>
-                  <input
-                    type="text"
-                    className="input text-sm font-mono"
-                    value={form.url}
-                    onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-                    placeholder="https://example.com/sse"
-                  />
-                </div>
-              )}
-
-              {/* 自动启动 */}
-              <label className="flex items-center gap-2 cursor-pointer text-sm text-tavern-text-soft">
-                <input
-                  type="checkbox"
-                  checked={form.autoStart}
-                  onChange={(e) => setForm((f) => ({ ...f, autoStart: e.target.checked }))}
-                  className="rounded"
-                />
-                自动启动
-              </label>
-            </div>
-            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-tavern-border-soft">
-              <button onClick={closeForm} className="btn-ghost text-sm">
-                取消
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!form.name.trim()}
-                className="btn-primary text-sm"
-              >
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
+        <McpServerFormModal
+          editingId={editingId}
+          form={form}
+          setForm={setForm}
+          onSave={handleSave}
+          onClose={closeForm}
+        />
       )}
 
-      {/* 工具调用测试面板 */}
+      {/* 工具调用测试面板（P-8 拆至 McpTestPanel） */}
       {showTest && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setShowTest(false)}
-        >
-          <div
-            className="bg-tavern-bg-soft rounded-xl border border-tavern-border-soft w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-tavern-border-soft">
-              <h3 className="text-sm font-medium flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-tavern-accent" />
-                工具调用测试
-              </h3>
-              <button
-                onClick={() => setShowTest(false)}
-                className="p-1 rounded hover:bg-tavern-bg-hover text-tavern-text-muted"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              {/* 选择工具 */}
-              <div>
-                <label className="label">选择工具</label>
-                <select
-                  className="input text-sm"
-                  value={testTool}
-                  onChange={(e) => setTestTool(e.target.value)}
-                >
-                  {tools.length === 0 && <option value="">无可用工具</option>}
-                  {tools.map((t) => {
-                    const srv = servers.find((s) => s.id === t.serverId)
-                    return (
-                      <option key={`${t.serverId}/${t.name}`} value={t.name}>
-                        {srv?.name ?? t.serverId} / {t.name}
-                      </option>
-                    )
-                  })}
-                </select>
-              </div>
-
-              {/* 选中工具的参数 schema 提示 */}
-              {selectedTool?.inputSchema?.properties &&
-                Object.keys(selectedTool.inputSchema.properties).length > 0 && (
-                  <div className="text-xs bg-tavern-bg rounded-lg p-2.5 border border-tavern-border-soft space-y-1">
-                    <div className="text-tavern-text-muted mb-1">参数：</div>
-                    {Object.entries(selectedTool.inputSchema.properties).map(([key, prop]) => (
-                      <div key={key} className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-tavern-accent">{key}</span>
-                        <span className="text-tavern-text-muted">{prop.type}</span>
-                        {selectedTool.inputSchema.required?.includes(key) && (
-                          <span className="text-tavern-danger">*</span>
-                        )}
-                        {prop.description && (
-                          <span className="text-tavern-text-soft">{prop.description}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-              {/* JSON 参数输入 */}
-              <div>
-                <label className="label">参数 (JSON)</label>
-                <textarea
-                  className="textarea text-xs font-mono min-h-[100px]"
-                  value={testArgs}
-                  onChange={(e) => setTestArgs(e.target.value)}
-                  placeholder='{"key": "value"}'
-                />
-              </div>
-
-              <button
-                onClick={handleCallTool}
-                disabled={testing || !testTool}
-                className="btn-primary text-sm flex items-center gap-1.5"
-              >
-                {testing ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Play className="w-3.5 h-3.5" />
-                )}
-                调用
-              </button>
-
-              {/* 错误 */}
-              {testError && (
-                <p className="text-xs text-tavern-danger bg-tavern-danger/5 rounded px-2 py-1.5 break-all">
-                  {testError}
-                </p>
-              )}
-
-              {/* 结果 */}
-              {testResult !== null && (
-                <div>
-                  <div className="text-xs text-tavern-text-muted mb-1">结果：</div>
-                  <pre className="text-xs font-mono text-tavern-text-soft bg-tavern-bg rounded-lg p-2.5 border border-tavern-border-soft whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
-                    {testResult}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <McpTestPanel
+          tools={tools}
+          servers={servers}
+          testTool={testTool}
+          setTestTool={setTestTool}
+          testArgs={testArgs}
+          setTestArgs={setTestArgs}
+          testResult={testResult}
+          testError={testError}
+          testing={testing}
+          onCall={handleCallTool}
+          onClose={() => setShowTest(false)}
+        />
       )}
     </div>
   )

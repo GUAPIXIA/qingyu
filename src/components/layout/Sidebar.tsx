@@ -43,7 +43,8 @@ const navItems = [
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
-  const { settings, getActiveProfile } = useSettingsStore()
+  const settings = useSettingsStore((s) => s.settings)
+  const getActiveProfile = useSettingsStore((s) => s.getActiveProfile)
 
   const activeProfile = getActiveProfile()
   const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || isLocalUrl(activeProfile.baseUrl) || !!activeProfile.apiKey)

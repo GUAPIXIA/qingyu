@@ -69,7 +69,7 @@ export interface DepthInsertItem {
 
 /**
  * 按深度把内容（at_depth 世界书 + 作者注释 middle/bottom）注入历史消息段。
- * ST 语义：depth 0 = 对话末尾，1 = 倒数第二条之后，n = 从末尾数 n 条之后。
+ * ST 语义：depth 0 = 对话末尾（最新消息之后），1 = 倒数第二条消息之后，n = 从末尾数 n 条之后。
  */
 export function applyDepthInserts<T>(
   history: T[],
@@ -81,7 +81,9 @@ export function applyDepthInserts<T>(
   const sorted = [...inserts].sort((a, b) => (a.depth - b.depth) || (a.order - b.order))
   const insertMap = new Map<number, string[]>()
   for (const item of sorted) {
-    const idx = Math.max(0, Math.min(result.length - 1, result.length - 1 - item.depth))
+    // P-8 修复（off-by-one）：depth 0 应插在最新消息之后（idx = length），
+    // 此前 length-1-depth 把 depth 0 插在了最后一条消息之前，与 ST 语义/注释不符
+    const idx = Math.max(0, Math.min(result.length, result.length - item.depth))
     if (!insertMap.has(idx)) insertMap.set(idx, [])
     insertMap.get(idx)!.push(item.content)
   }

@@ -7,3 +7,8 @@ allowBuilds:
   esbuild: true
 onlyBuiltDependencies:
   - esbuild
+# 修复 electron-builder 26.15.3 与 @electron/get 3.0.0 的兼容 bug：
+# 3.0.0 的 types.js 为空（缺 ElectronDownloadCacheMode 枚举），导致打包在下载 electron 框架时崩溃；
+# 3.1.0 补全了该枚举，锁定到此版本。
+overrides:
+  '@electron/get': 3.1.0

@@ -10,7 +10,6 @@ export interface GroupChatState {
   messages: GroupMessage[]
   isStreaming: boolean
   currentStreamingCharId: string | null
-  streamingContent: string
   error: string | null
 
   loadGroups: () => Promise<void>

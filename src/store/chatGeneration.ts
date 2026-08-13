@@ -48,7 +48,6 @@ export async function regenerateChatMessage(
   set((state) => ({
     messages: state.messages.map((m) => (m.id === messageId ? updatedMsg : m)),
     isStreaming: true,
-    streamingContent: '',
     error: null,
   }))
 
@@ -159,7 +158,6 @@ export async function continueChatMessage(
   set((state) => ({
     messages: [...state.messages, newMessage],
     isStreaming: true,
-    streamingContent: '',
     error: null,
   }))
 

@@ -518,7 +518,7 @@ export async function streamAIResponse(
     }
 
     activeStream = null
-    set({ isStreaming: false, currentRequestId: null, streamingContent: '' })
+    set({ isStreaming: false, currentRequestId: null })
     // 异步执行完成回调
     onComplete(fullContent).catch((e) => logError('ChatStore:onComplete', e))
 

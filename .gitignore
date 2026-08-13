@@ -37,6 +37,7 @@ SillyTavern-Launcher/
 *_spec_*.json
 spec_*.json
 .trae/
+.reasonix/
 
 # Environment files (contain secrets)
 .env

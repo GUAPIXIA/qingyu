@@ -61,7 +61,6 @@ function resetStores() {
     currentSessionId: null,
     isStreaming: false,
     currentRequestId: null,
-    streamingContent: '',
     error: null,
     activePresetId: null,
     activeLorebookIds: [],
@@ -318,5 +317,200 @@ describe('useChatStore', () => {
     it('returns null for unknown key', () => {
       expect(semanticCacheGet('nope')).toBeNull()
     })
+  })
+
+  describe('translateMessage', () => {
+    it('翻译完成后自动把消息加入 showTranslationIds 并写入译文', async () => {
+      let chunkCb: any, doneCb: any
+      vi.mocked(window.api.ai.onChunk).mockImplementation((cb: any) => { chunkCb = cb; return () => {} })
+      vi.mocked(window.api.ai.onDone).mockImplementation((cb: any) => { doneCb = cb; return () => {} })
+
+      useSettingsStore.setState({
+        settings: {
+          ...getDefaultSettings(),
+          activeProfileId: 'p1',
+          activeModel: 'gpt-4o',
+          connectionProfiles: [
+            { id: 'p1', name: 'test', provider: 'openai', apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', maxContext: 0 },
+          ],
+        } as any,
+      })
+      useChatStore.setState({
+        currentSessionId: 's1',
+        messages: [makeMessage({ id: 'm1', role: 'assistant', content: 'Hello world' })],
+        translatingMessages: {},
+        showTranslationIds: new Set(),
+      } as any)
+
+      // 从 store 直接发起翻译（不手动 toggle），模拟翻译完成后自动显示
+      useChatStore.getState().translateMessage('m1', 'Hello world')
+
+      const chatCall = vi.mocked(window.api.ai.chat).mock.calls[0] as any
+      const requestId = chatCall[0].requestId
+      chunkCb({ requestId, text: '你好' })
+      chunkCb({ requestId, text: '世界' })
+      doneCb(requestId)
+
+      const final = useChatStore.getState()
+      expect(final.translatingMessages['m1']?.status).toBe('done')
+      expect(final.translatingMessages['m1']?.content).toBe('你好世界')
+      expect(final.showTranslationIds.has('m1')).toBe(true)
+      expect(final.messages[0].translation).toBe('你好世界')
+    })
+
+    it('翻译结果为空时不落库空译文、不自动切显示，并提示错误', async () => {
+      let chunkCb: any, doneCb: any
+      vi.mocked(window.api.ai.onChunk).mockImplementation((cb: any) => { chunkCb = cb; return () => {} })
+      vi.mocked(window.api.ai.onDone).mockImplementation((cb: any) => { doneCb = cb; return () => {} })
+
+      useSettingsStore.setState({
+        settings: {
+          ...getDefaultSettings(),
+          activeProfileId: 'p1',
+          activeModel: 'deepseek-v4-pro',
+          connectionProfiles: [
+            { id: 'p1', name: 'test', provider: 'openai', apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'deepseek-v4-pro', maxContext: 0 },
+          ],
+        } as any,
+      })
+      useChatStore.setState({
+        currentSessionId: 's1',
+        messages: [makeMessage({ id: 'm1', role: 'assistant', content: 'Hello world' })],
+        translatingMessages: {},
+        showTranslationIds: new Set(),
+      } as any)
+
+      useChatStore.getState().translateMessage('m1', 'Hello world')
+
+      const chatCall = vi.mocked(window.api.ai.chat).mock.calls[0] as any
+      const requestId = chatCall[0].requestId
+      // 模拟推理模型只输出思考内容，正文为空
+      chunkCb({ requestId, text: '<thought>我来翻译这段内容……</thought>' })
+      doneCb(requestId)
+
+      const final = useChatStore.getState()
+      expect(final.translatingMessages['m1']?.status).toBe('error')
+      expect(final.translatingMessages['m1']?.errorMsg).toContain('翻译结果为空')
+      expect(final.showTranslationIds.has('m1')).toBe(false)
+      expect(final.messages[0].translation).toBeUndefined()
+    })
+  })
+})
+
+// ===================== P-7 本地元数据 patch 与配置加载 =====================
+
+describe('P-7 本地会话元数据 patch / 配置加载收敛', () => {
+  function makeSession(overrides: Partial<SessionPreview> = {}): SessionPreview {
+    return {
+      id: 's1',
+      characterId: 'c1',
+      title: '新对话 1',
+      createdAt: 1000,
+      updatedAt: 1000,
+      memoryEnabled: false,
+      memoryMode: 'manual',
+      autoMemoryInterval: 10,
+      memory: '',
+      memoryUpdatedAt: 0,
+      messageCount: 0,
+      lastMessage: '',
+      ...overrides,
+    }
+  }
+
+  beforeEach(() => {
+    resetStores()
+    useChatStore.setState({
+      sessions: [makeSession(), makeSession({ id: 's2', title: '另一个会话' })],
+      currentSessionId: 's1',
+    })
+    vi.clearAllMocks()
+  })
+
+  it('patchLocalSession 只 patch 目标会话', () => {
+    useChatStore.getState().patchLocalSession('s1', { title: '改名后', messageCount: 5 })
+    const s = useChatStore.getState()
+    expect(s.sessions.find(x => x.id === 's1')).toMatchObject({ title: '改名后', messageCount: 5 })
+    expect(s.sessions.find(x => x.id === 's2')?.title).toBe('另一个会话')
+    expect(s.sessions.find(x => x.id === 's2')?.messageCount).toBe(0)
+  })
+
+  it('insertGreetingMessage 变量替换 + 保存 + 本地 patch 元数据', async () => {
+    const char = makeCharacter({ firstMessage: '你好，{{user}}' })
+    await useChatStore.getState().insertGreetingMessage(char, '你好，小明')
+    expect(window.api.chat.saveMessage).toHaveBeenCalledTimes(1)
+    const s = useChatStore.getState()
+    expect(s.messages).toHaveLength(1)
+    expect(s.messages[0].content).toContain('小明')
+    const sess = s.sessions.find(x => x.id === 's1')!
+    expect(sess.messageCount).toBe(1)
+    expect(sess.lastMessage).toContain('你好')
+  })
+
+  it('getActiveChatConfig 返回激活预设，世界书过滤 enabled', async () => {
+    vi.mocked(window.api.preset.list).mockResolvedValue([
+      { id: 'pr1', name: 'P1' }, { id: 'pr2', name: 'P2' },
+    ] as any)
+    vi.mocked(window.api.lorebook.list).mockResolvedValue([
+      { id: 'lb1', enabled: true }, { id: 'lb2', enabled: false },
+    ] as any)
+    useChatStore.setState({ activePresetId: 'pr2', activeLorebookIds: ['lb1', 'lb2'] })
+    const { preset, lorebooks } = await useChatStore.getState().getActiveChatConfig()
+    expect(preset?.id).toBe('pr2')
+    expect(lorebooks.map(l => l.id)).toEqual(['lb1'])
+  })
+
+  it('getActiveChatConfig 未激活时返回 null/空，并清理世界书缓存', async () => {
+    useChatStore.setState({ activePresetId: null, activeLorebookIds: [] })
+    const { preset, lorebooks } = await useChatStore.getState().getActiveChatConfig()
+    expect(preset).toBeNull()
+    expect(lorebooks).toEqual([])
+    expect(window.api.preset.list).not.toHaveBeenCalled()
+    expect(window.api.lorebook.list).not.toHaveBeenCalled()
+  })
+
+  it('editMessage 保存后本地 patch 元数据，不再全量 listSessions', async () => {
+    const char = makeCharacter()
+    useChatStore.setState({ messages: [makeMessage({ id: 'm1', role: 'user' })] })
+    vi.mocked(window.api.chat.listSessions).mockClear()
+    await useChatStore.getState().editMessage('m1', '编辑后的内容', char)
+    expect(window.api.chat.listSessions).not.toHaveBeenCalled()
+    const sess = useChatStore.getState().sessions.find(x => x.id === 's1')!
+    expect(sess.messageCount).toBe(1)
+    expect(sess.lastMessage).toBe('编辑后的内容')
+  })
+
+  it('renameSession 本地 patch，不再全量 listSessions', async () => {
+    vi.mocked(window.api.chat.listSessions).mockClear()
+    await useChatStore.getState().renameSession('c1', 's1', '新标题')
+    expect(window.api.chat.listSessions).not.toHaveBeenCalled()
+    const sess = useChatStore.getState().sessions.find(x => x.id === 's1')!
+    expect(sess.title).toBe('新标题')
+  })
+
+  it('clearChat 本地 patch 元数据清零，不再全量 listSessions', async () => {
+    useChatStore.setState({ messages: [makeMessage(), makeMessage({ id: 'm2' })] })
+    vi.mocked(window.api.chat.listSessions).mockClear()
+    await useChatStore.getState().clearChat('c1')
+    expect(window.api.chat.listSessions).not.toHaveBeenCalled()
+    const sess = useChatStore.getState().sessions.find(x => x.id === 's1')!
+    expect(sess.messageCount).toBe(0)
+    expect(sess.lastMessage).toBe('')
+  })
+
+  it('createSessionWithGreeting 复用 insertGreetingMessage（消息保存一次）', async () => {
+    const char = makeCharacter({ firstMessage: '欢迎' })
+    vi.mocked(window.api.chat.createSession).mockResolvedValue({ id: 'new-s', characterId: 'c1', title: '新对话' } as any)
+    vi.mocked(window.api.chat.listSessions).mockResolvedValue([
+      makeSession({ id: 'new-s' }),
+    ])
+    await useChatStore.getState().createSessionWithGreeting(char)
+    const s = useChatStore.getState()
+    expect(s.currentSessionId).toBe('new-s')
+    expect(s.messages).toHaveLength(1)
+    expect(s.messages[0].content).toBe('欢迎')
+    expect(window.api.chat.saveMessage).toHaveBeenCalledTimes(1)
+    // 元数据已本地 patch（messageCount 1）
+    expect(s.sessions.find(x => x.id === 'new-s')?.messageCount).toBe(1)
   })
 })

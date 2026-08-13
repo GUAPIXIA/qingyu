@@ -3,16 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useChatStore } from '../store/useChatStore'
 import { useCharacterStore } from '../store/useCharacterStore'
-import { charAssetUrl } from '../utils/asset'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { MessageBubble } from '../components/chat/MessageBubble'
 import { ChatInput } from '../components/chat/ChatInput'
+import { ChatGreetingPickerModal } from '../components/chat/ChatGreetingPickerModal'
+import { ChatWelcomeGuide } from '../components/chat/ChatWelcomeGuide'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { ChatHeader } from '../components/chat/ChatHeader'
-import { Modal } from '../components/common/Modal'
 import { QuickSettingsPanel } from '../components/chat/QuickSettingsPanel'
 import { BackgroundPanel, PRESET_GRADIENTS } from '../components/chat/BackgroundPanel'
 import { ContextViewer } from '../components/chat/ContextViewer'
@@ -20,14 +20,12 @@ import { StatusBar } from '../components/chat/StatusBar'
 import { cn } from '../lib/utils'
 import { logError } from '../lib/logger'
 import { countChars } from '../utils/charCounter'
-import { replaceVariables, getDisplayName } from '../utils/variables'
+import { getDisplayName } from '../utils/variables'
 import { getEffectiveLorebookIds } from '../utils/lorebook'
 import { downloadFile } from '../utils/download'
-import { nanoid } from 'nanoid'
 import type { Message } from '../../shared/types'
 import {
   MessageSquare,
-  Settings as SettingsIcon,
   Users,
   Sparkles,
   X,
@@ -276,50 +274,22 @@ export function ChatPage() {
     downloadFile(content, `${currentCharacter.name}-对话.md`)
   }
 
-  // 使用选中开场白开始对话
+  // 使用选中开场白开始对话（P-7：复用 store 统一入口，消除重复的建会话/同步 persona/插消息逻辑）
   const handleStartWithGreeting = async () => {
     if (!currentCharacter || !selectedGreeting) return
     setGreetingPickerOpen(false)
 
     // 检查绑定的世界书
     checkBoundLorebooks(async () => {
-      // 确保存在会话：没有已有会话时自动创建
-      let sid = currentSessionId
+      const store = useChatStore.getState()
+      const sid = store.currentSessionId
       if (!sid) {
-        const session = await window.api.chat.createSession(currentCharacter.id)
-        const sessions = await window.api.chat.listSessions(currentCharacter.id)
-        useChatStore.setState({ sessions, currentSessionId: session.id })
-        // 持久化当前会话 ID，确保重启后能恢复
-        useSettingsStore.getState().updateSettings({ activeSessionId: session.id })
-        // 同步新会话绑定的身份（后端继承默认身份）到 settings，使发送消息立即生效
-        const persona = session.personaId ? usePersonaStore.getState().getPersona(session.personaId) : undefined
-        if (persona) {
-          useSettingsStore.getState().updateSettings({
-            activePersonaId: persona.id,
-            userName: persona.name,
-            userDescription: persona.description,
-            userPersona: persona.persona,
-          })
-        }
-        sid = session.id
+        // 没有会话：创建新会话（含默认记忆/persona 同步）+ 插入开场白
+        await store.createSessionWithGreeting(currentCharacter, selectedGreeting)
+      } else {
+        // 已有（空）会话：直接插入开场白
+        await store.insertGreetingMessage(currentCharacter, selectedGreeting)
       }
-
-    const settings = useSettingsStore.getState().settings
-    const processed = replaceVariables(selectedGreeting, settings.userName, currentCharacter.name)
-    const firstMsg: Message = {
-      id: nanoid(),
-      sessionId: sid,
-      characterId: currentCharacter.id,
-      role: 'assistant',
-      content: processed,
-      images: [],
-      isEditing: false,
-      timestamp: Date.now(),
-    }
-    await window.api.chat.saveMessage(firstMsg)
-    // 刷新 sessions 以更新 messageCount，确保下次加载时不重复弹出选择器
-    const updatedSessions = await window.api.chat.listSessions(currentCharacter.id)
-    useChatStore.setState({ messages: [firstMsg], sessions: updatedSessions, currentSessionId: sid })
     })
   }
 
@@ -380,6 +350,13 @@ export function ChatPage() {
   }, [isDraggingBg])
 
   // 聊天背景：优先使用 chatBackgroundParams.useCover（角色封面）或手动设置的背景图/渐变
+  // P-6 修复：引用回复查找 O(n)→O(1)——构建 id→message 索引，仅在 messages 变化时重建
+  const messageMap = useMemo(() => {
+    const map = new Map<string, Message>()
+    for (const m of messages) map.set(m.id, m)
+    return map
+  }, [messages])
+
   const effectiveBg = useMemo(() => {
     const params = currentCharacter?.chatBackgroundParams
     const coverSrc = currentCharacter?.cover || currentCharacter?.avatar
@@ -409,48 +386,9 @@ export function ChatPage() {
     return null
   }, [currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams, currentCharacter?.avatar, currentCharacter?.cover])
 
-  // 首次使用引导
+  // 首次使用引导（抽取至 ChatWelcomeGuide）
   if (loaded && !isConnected) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="max-w-md text-center">
-          <div className="w-20 h-20 mx-auto rounded-2xl bg-tavern-accent-soft flex items-center justify-center mb-6">
-            <MessageSquare className="w-10 h-10 text-tavern-accent" />
-          </div>
-          <h2 className="text-xl font-display font-bold mb-2">欢迎使用轻语</h2>
-          <p className="text-tavern-text-soft mb-6">
-            开始你的 AI 角色扮演之旅。只需 3 步即可开启对话：
-          </p>
-          <div className="text-left space-y-3 mb-6">
-            <div className="flex gap-3 items-start p-3 rounded-lg bg-tavern-bg-card">
-              <span className="w-6 h-6 rounded-full bg-tavern-accent text-tavern-bg flex items-center justify-center text-sm font-bold shrink-0">1</span>
-              <div>
-                <div className="font-medium text-tavern-text">配置 AI 连接</div>
-                <div className="text-sm text-tavern-text-muted">选择 AI 服务商并填入 API 密钥</div>
-              </div>
-            </div>
-            <div className="flex gap-3 items-start p-3 rounded-lg bg-tavern-bg-card">
-              <span className="w-6 h-6 rounded-full bg-tavern-accent text-tavern-bg flex items-center justify-center text-sm font-bold shrink-0">2</span>
-              <div>
-                <div className="font-medium text-tavern-text">选择或创建角色</div>
-                <div className="text-sm text-tavern-text-muted">从角色库选择，或创建你的专属角色</div>
-              </div>
-            </div>
-            <div className="flex gap-3 items-start p-3 rounded-lg bg-tavern-bg-card">
-              <span className="w-6 h-6 rounded-full bg-tavern-accent text-tavern-bg flex items-center justify-center text-sm font-bold shrink-0">3</span>
-              <div>
-                <div className="font-medium text-tavern-text">开始对话</div>
-                <div className="text-sm text-tavern-text-muted">输入消息，享受沉浸式角色扮演</div>
-              </div>
-            </div>
-          </div>
-          <button className="btn-primary w-full" onClick={() => navigate('/settings')}>
-            <SettingsIcon className="w-4 h-4" />
-            开始配置
-          </button>
-        </div>
-      </div>
-    )
+    return <ChatWelcomeGuide />
   }
 
 
@@ -607,7 +545,7 @@ export function ChatPage() {
             initialTopMostItemIndex={999999}
             followOutput={settings.autoScroll ? 'smooth' : false}
             itemContent={(index, msg) => {
-              const replied = msg.replyToId ? messages.find((m) => m.id === msg.replyToId) ?? null : null
+              const replied = msg.replyToId ? (messageMap.get(msg.replyToId) ?? null) : null
               return (
                 <MessageBubble
                   key={msg.id}
@@ -641,26 +579,13 @@ export function ChatPage() {
         onClose={() => setShowClearConfirm(false)}
         onConfirm={async () => {
           await clearChat(currentCharacter.id)
-          // 清空后自动插入开场白或弹出选择器
+          // 清空后自动插入开场白或弹出选择器（P-7：复用 insertGreetingMessage）
           const hasAltGreetings = currentCharacter.alternateGreetings && currentCharacter.alternateGreetings.length > 0
           if (hasAltGreetings) {
             setSelectedGreeting(currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage)
             setGreetingPickerOpen(true)
           } else if (currentCharacter.firstMessage) {
-            const settings = useSettingsStore.getState().settings
-            const processed = replaceVariables(currentCharacter.firstMessage, settings.userName, currentCharacter.name)
-            const firstMsg: Message = {
-              id: nanoid(),
-              sessionId: currentSessionId!,
-              characterId: currentCharacter.id,
-              role: 'assistant',
-              content: processed,
-              images: [],
-              isEditing: false,
-              timestamp: Date.now(),
-            }
-            await window.api.chat.saveMessage(firstMsg)
-            useChatStore.setState(s => ({ messages: [...s.messages, firstMsg] }))
+            await useChatStore.getState().insertGreetingMessage(currentCharacter, currentCharacter.firstMessage)
           }
         }}
         title="清空对话"
@@ -687,85 +612,16 @@ export function ChatPage() {
       <QuickSettingsPanel open={showQuickSettings} onClose={() => setShowQuickSettings(false)} />
       <BackgroundPanel open={showBgPanel} onClose={() => setShowBgPanel(false)} />
 
-      {/* 开场白选择面板 */}
-      <Modal
+      {/* 开场白选择面板（抽取至 ChatGreetingPickerModal） */}
+      <ChatGreetingPickerModal
         open={greetingPickerOpen && !!currentCharacter}
+        character={currentCharacter}
+        selectedGreeting={selectedGreeting}
+        userName={settings.userName}
+        onSelectGreeting={setSelectedGreeting}
         onClose={() => { setGreetingPickerOpen(false); setSelectedGreeting('') }}
-        width="custom"
-        widthClassName="w-[560px]"
-        headerClassName="px-5 py-4 bg-tavern-bg-soft"
-        header={
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-12 h-12 rounded-lg overflow-hidden bg-tavern-bg-hover shrink-0">
-              {currentCharacter ? (
-                <img
-                  src={currentCharacter ? charAssetUrl(currentCharacter.id, 'cover', currentCharacter.updatedAt) : ''}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-tavern-text-muted text-lg font-display">
-                  {'?'}
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-display font-bold text-lg truncate">{getDisplayName(currentCharacter)}</h3>
-              <p className="text-xs text-tavern-text-muted">选择一个开场白开始对话</p>
-            </div>
-          </div>
-        }
-        footer={
-          <>
-            <span className={cn(
-              'text-xs mr-auto',
-              selectedGreeting ? 'text-tavern-accent' : 'text-tavern-text-muted'
-            )}>
-              {selectedGreeting ? '✓ 已选择开场白' : '请选择一条开场白，或跳过直接开始'}
-            </span>
-            <button className="btn-secondary" onClick={() => { setGreetingPickerOpen(false); setSelectedGreeting('') }}>
-              跳过
-            </button>
-            <button className="btn-primary" onClick={handleStartWithGreeting} disabled={!selectedGreeting}>
-              开始对话
-            </button>
-          </>
-        }
-      >
-        {currentCharacter && (
-          <div className="space-y-2">
-            {[currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage, ...(currentCharacter.alternateGreetings || []).map((g, i) => currentCharacter.translatedContent?.alternateGreetings?.[i] || g)]
-              .filter(Boolean)
-              .map((greeting, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'p-3 rounded-lg border cursor-pointer transition-all text-sm',
-                    selectedGreeting === greeting
-                      ? 'border-tavern-accent bg-tavern-accent-soft shadow-sm'
-                      : 'border-tavern-border hover:bg-tavern-bg-hover hover:border-tavern-border-soft'
-                  )}
-                  onClick={() => setSelectedGreeting(greeting)}
-                >
-                  <div className="flex gap-2.5">
-                    <span className={cn(
-                      'shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mt-0.5',
-                      selectedGreeting === greeting
-                        ? 'bg-tavern-accent text-tavern-bg'
-                        : 'bg-tavern-bg-hover text-tavern-text-muted'
-                    )}>
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 line-clamp-4 whitespace-pre-wrap text-tavern-text-soft">
-                      {replaceVariables(greeting, settings.userName, currentCharacter.translatedContent?.name ?? currentCharacter.name)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        )}
-      </Modal>
+        onStart={handleStartWithGreeting}
+      />
 
       {/* 上下文查看器 */}
       <ContextViewer

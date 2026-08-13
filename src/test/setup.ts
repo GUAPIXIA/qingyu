@@ -30,6 +30,13 @@ const mockApi: Partial<ExposedAPI> = {
     listMessages: vi.fn().mockResolvedValue([]),
     saveMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
+    updateSession: vi.fn().mockResolvedValue(undefined),
+    renameSession: vi.fn().mockResolvedValue(undefined),
+    toggleMemory: vi.fn().mockResolvedValue(undefined),
+    setMemoryMode: vi.fn().mockResolvedValue(undefined),
+    clearChat: vi.fn().mockResolvedValue(undefined),
+    exportChat: vi.fn().mockResolvedValue(''),
+    getStats: vi.fn().mockResolvedValue(null),
   } as any,
   settings: {
     get: vi.fn().mockResolvedValue({}),

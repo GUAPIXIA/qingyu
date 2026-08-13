@@ -12,7 +12,7 @@ interface GroupMemberBarProps {
 }
 
 export function GroupMemberBar({ memberIds, currentSpeakerIndex, onSpeakerClick, themeColor }: GroupMemberBarProps) {
-  const { characters } = useCharacterStore()
+  const characters = useCharacterStore((s) => s.characters)
   const members = memberIds
     .map(id => characters.find(c => c.id === id))
     .filter(Boolean) as NonNullable<typeof characters[number]>[]

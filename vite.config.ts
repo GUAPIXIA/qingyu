@@ -13,6 +13,16 @@ export default defineConfig(({ mode }) => ({
     // 优化：路由懒加载生效——chunk 大于 400KB 时提示拆分（默认 500KB 告警）
     chunkSizeWarningLimit: 600,
   },
+  esbuild: {
+    // 优化：静默 Duplicate attribute 警告。开发模式下 react-dev-locator 与 react-refresh/babel
+    // 共存时会向每个 JSX 元素重复注入 3 组 trae-inspector-* 属性，esbuild 对每处重复属性
+    // 打印一条含超长代码帧的 warning，导致终端刷屏（功能不受影响，仅注入冗余）。
+    // 若不再使用 Trae 的“点击元素跳转源码”功能，可删除下方 react({ babel: ... }) 中的
+    // react-dev-locator 插件，即可一并删除本段配置。
+    logOverride: {
+      'duplicate-object-key': 'silent',
+    },
+  },
   plugins: [
     react({
       babel: {

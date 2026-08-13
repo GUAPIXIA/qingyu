@@ -19,8 +19,14 @@ const IMAGE_GEN_SIZES = [
 ]
 
 export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
-  const { activePresetId, activeLorebookIds, setActivePreset, setActiveLorebooks, saveLorebookBinding } = useChatStore()
-  const { settings, updateSettings } = useSettingsStore()
+  // P-6 修复：字段级选择器订阅
+  const activePresetId = useChatStore((s) => s.activePresetId)
+  const activeLorebookIds = useChatStore((s) => s.activeLorebookIds)
+  const setActivePreset = useChatStore((s) => s.setActivePreset)
+  const setActiveLorebooks = useChatStore((s) => s.setActiveLorebooks)
+  const saveLorebookBinding = useChatStore((s) => s.saveLorebookBinding)
+  const settings = useSettingsStore((s) => s.settings)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
   const currentCharacter = useCharacterStore(s => s.currentCharacter)
   const currentCharId = currentCharacter?.id
   const [presets, setPresets] = useState<Preset[]>([])

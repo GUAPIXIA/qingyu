@@ -73,9 +73,114 @@ function withSessionFileLock<T>(characterId: string, sessionId: string, fn: () =
 }
 
 /** 读取指定 session 的消息（含数据完整性检查） */
-function readMessages(characterId: string, sessionId: string): Message[] {
+
+// ===================== 消息读取缓存（LRU） =====================
+/**
+ * P-6 修复：readMessages 全量解析结果缓存。
+ * 长会话（数千条消息）切换会话时避免重复读盘 + JSON.parse + 排序。
+ * 所有写入路径（appendMessage/deleteMessage/clearChat/deleteSession）同步更新或失效缓存，
+ * 保证缓存与磁盘一致。
+ */
+const messagesCache = new Map<string, Message[]>()
+const MESSAGES_CACHE_MAX = 30
+
+function messagesCacheKey(characterId: string, sessionId: string): string {
+  return `${characterId}/${sessionId}`
+}
+
+/** 读缓存（命中后移到末尾，实现 LRU） */
+function messagesCacheGet(characterId: string, sessionId: string): Message[] | undefined {
+  const key = messagesCacheKey(characterId, sessionId)
+  const hit = messagesCache.get(key)
+  if (!hit) return undefined
+  messagesCache.delete(key)
+  messagesCache.set(key, hit)
+  return hit
+}
+
+/** 写缓存（超限时淘汰最早插入的条目） */
+function messagesCacheSet(characterId: string, sessionId: string, messages: Message[]): void {
+  const key = messagesCacheKey(characterId, sessionId)
+  messagesCache.delete(key)
+  messagesCache.set(key, messages)
+  while (messagesCache.size > MESSAGES_CACHE_MAX) {
+    const oldest = messagesCache.keys().next().value
+    if (oldest === undefined) break
+    messagesCache.delete(oldest)
+  }
+}
+
+/** 失效缓存：指定 session，或整个角色的全部会话。P-6 导出仅供测试。 */
+export function messagesCacheInvalidate(characterId: string, sessionId?: string): void {
+  if (sessionId) {
+    messagesCache.delete(messagesCacheKey(characterId, sessionId))
+    return
+  }
+  const prefix = `${characterId}/`
+  for (const key of [...messagesCache.keys()]) {
+    if (key.startsWith(prefix)) messagesCache.delete(key)
+  }
+}
+
+// ===================== 消息文件 compact（P-8） =====================
+/**
+ * 消息文件采用"同 id 追加覆盖"策略（updateMessage 始终 append），
+ * 频繁编辑/swipe 会让 JSONL 堆满旧版本行。
+ * 设计：解析完成时重置计数；appendMessage 命中缓存时累计追加次数，
+ * 超过阈值标记待压缩；chat:listMessages 在消息文件锁内去重重写。
+ */
+const sessionAppendCounts = new Map<string, number>()
+const COMPACT_APPEND_THRESHOLD = 300
+const pendingCompactions = new Set<string>()
+
+/** 解析完成（或全量重写）后重置追加计数 */
+function resetAppendCount(characterId: string, sessionId: string): void {
+  sessionAppendCounts.set(messagesCacheKey(characterId, sessionId), 0)
+}
+
+/** appendMessage 缓存命中时累计；超阈值标记待压缩 */
+function bumpAppendCount(characterId: string, sessionId: string): void {
+  const key = messagesCacheKey(characterId, sessionId)
+  const next = (sessionAppendCounts.get(key) ?? 0) + 1
+  sessionAppendCounts.set(key, next)
+  if (next >= COMPACT_APPEND_THRESHOLD) {
+    pendingCompactions.add(key)
+  }
+}
+
+/** 消费待压缩标记；返回是否需要压缩 */
+function consumePendingCompaction(characterId: string, sessionId: string): boolean {
+  const key = messagesCacheKey(characterId, sessionId)
+  const hit = pendingCompactions.has(key)
+  if (hit) pendingCompactions.delete(key)
+  return hit
+}
+
+/** P-8：在消息文件锁内去重重写（compact）。导出仅供测试与 listMessages handler 复用。 */
+export async function compactSessionFile(characterId: string, sessionId: string): Promise<void> {
+  await withSessionFileLock(characterId, sessionId, () => {
+    if (!existsSync(getSessionFile(characterId, sessionId))) return
+    const fresh = readMessages(characterId, sessionId, true)
+    writeMessages(characterId, sessionId, fresh)
+    messagesCacheSet(characterId, sessionId, fresh)
+    resetAppendCount(characterId, sessionId)
+    log.info('消息文件已压缩去重', { characterId, sessionId, messageCount: fresh.length })
+  })
+}
+
+/** 读取指定 session 的消息（含数据完整性检查，结果走 LRU 缓存）。P-6 导出仅供测试。
+ *  bypassCache=true：绕过缓存直接读盘（compact 锁内重读用），不读写缓存。 */
+export function readMessages(characterId: string, sessionId: string, bypassCache = false): Message[] {
+  if (!bypassCache) {
+    const cached = messagesCacheGet(characterId, sessionId)
+    if (cached) return cached
+  }
   const filePath = getSessionFile(characterId, sessionId)
-  if (!existsSync(filePath)) return []
+  if (!existsSync(filePath)) {
+    // 文件不存在也缓存空数组：保证后续 appendMessage 能命中缓存做增量更新
+    if (!bypassCache) messagesCacheSet(characterId, sessionId, [])
+    return []
+  }
   const content = readFileSync(filePath, 'utf-8')
   const lines = content.split('\n').filter((line) => line.trim())
   const msgMap = new Map<string, Message>()
@@ -111,7 +216,23 @@ function readMessages(characterId: string, sessionId: string): Message[] {
     log.warn('消息文件包含损坏行', { characterId, sessionId, lineCount: corruptLines.length, lines: corruptLines.slice(0, 5) })
   }
 
-  return Array.from(msgMap.values()).sort((a, b) => a.timestamp - b.timestamp)
+  const result = Array.from(msgMap.values())
+  // P-8：文件按追加序存储（新消息 timestamp 递增），通常已有序；
+  // 仅当检测到乱序（旧数据/时钟回拨）时才做 O(n log n) 排序
+  let sorted = true
+  for (let i = 1; i < result.length; i++) {
+    if (result[i].timestamp < result[i - 1].timestamp) {
+      sorted = false
+      break
+    }
+  }
+  if (!sorted) result.sort((a, b) => a.timestamp - b.timestamp)
+  if (!bypassCache) {
+    messagesCacheSet(characterId, sessionId, result)
+    // 解析完成：重置追加计数，开始新一轮 compact 阈值统计
+    resetAppendCount(characterId, sessionId)
+  }
+  return result
 }
 
 /** 重写整个 session 文件（原子写入：temp + rename，防止崩溃损坏会话文件） */
@@ -130,12 +251,29 @@ function writeMessages(characterId: string, sessionId: string, messages: Message
   }
 }
 
-/** 追加单条消息 */
-function appendMessage(characterId: string, sessionId: string, message: Message): void {
+/** 追加单条消息（写入后同步更新读取缓存，避免下次 listMessages 重新全量解析）。P-6 导出仅供测试。 */
+export function appendMessage(characterId: string, sessionId: string, message: Message): void {
   const dir = getChatDir(characterId)
   mkdirSync(dir, { recursive: true })
   const filePath = getSessionFile(characterId, sessionId)
   writeFileSync(filePath, JSON.stringify(message) + '\n', { flag: 'a' })
+
+  // P-6：缓存命中则增量更新（同 id 覆盖，与 readMessages 的 msgMap 去重语义一致）
+  const key = messagesCacheKey(characterId, sessionId)
+  const cached = messagesCache.get(key)
+  if (cached) {
+    const idx = cached.findIndex((m) => m.id === message.id)
+    if (idx >= 0) {
+      cached[idx] = message
+    } else {
+      cached.push(message)
+    }
+    // 视为近期访问，维持 LRU 顺序
+    messagesCache.delete(key)
+    messagesCache.set(key, cached)
+    // P-8：磁盘上是追加写（旧版本行残留），累计追加次数供 compact 决策
+    bumpAppendCount(characterId, sessionId)
+  }
 }
 
 /**
@@ -146,25 +284,6 @@ function appendMessage(characterId: string, sessionId: string, message: Message)
 function updateMessage(characterId: string, sessionId: string, message: Message): boolean {
   appendMessage(characterId, sessionId, message)
   return false
-}
-
-/**
- * 增量更新 session 元数据
- * 避免每次 saveMessage 都重写整个 sessions.json
- * 注：当前仅 updatedAt 通过 saveMessage 内联更新，此函数保留供未来扩展使用
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function updateSessionMeta(
-  characterId: string,
-  sessionId: string,
-  patch: Partial<Pick<ChatSession, 'updatedAt' | 'memoryEnabled' | 'memoryMode' | 'autoMemoryInterval' | 'memory' | 'memoryUpdatedAt' | 'title'>>,
-): void {
-  const sessions = loadSessions(characterId)
-  const session = sessions.find(s => s.id === sessionId)
-  if (!session) return
-  Object.assign(session, patch)
-  session.updatedAt = patch.updatedAt ?? Date.now()
-  saveSessions(characterId, sessions)
 }
 
 /** 计算单个 session 的消息数和最后消息摘要 */
@@ -406,6 +525,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       if (existsSync(filePath)) {
         unlinkSync(filePath)
       }
+      // P-6：失效该会话的读取缓存
+      messagesCacheInvalidate(characterId, sessionId)
     })
     // 从 sessions.json 中移除
     return withSessionsLock(characterId, () => {
@@ -469,6 +590,12 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       const sessions = loadSessions(characterId)
       sid = sessions[0]?.id ?? 'default'
     }
+
+    // P-8 compact：追加覆盖次数超阈值时，在消息文件锁内去重重写
+    // （锁序：sessions 锁已释放 → 再拿消息锁，与 saveMessage 的"消息锁→sessions 锁"不冲突）
+    if (consumePendingCompaction(characterId, sid)) {
+      await compactSessionFile(characterId, sid)
+    }
     return readMessages(characterId, sid)
   })
 
@@ -509,6 +636,10 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       const messages = readMessages(characterId, sid)
       const filtered = messages.filter((m) => m.id !== id)
       writeMessages(characterId, sid, filtered)
+      // P-6：同步更新读取缓存（readMessages 已保证缓存存在）
+      messagesCacheSet(characterId, sid, filtered)
+      // P-8：全量重写后重置追加计数
+      resetAppendCount(characterId, sid)
     })
     // 同步 session updatedAt
     await withSessionsLock(characterId, () => {
@@ -536,6 +667,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
         if (existsSync(filePath)) {
           unlinkSync(filePath)
         }
+        // P-6：失效该会话的读取缓存
+        messagesCacheInvalidate(characterId, sessionId)
       })
       // 重置 session 元数据
       return withSessionsLock(characterId, () => {
@@ -560,6 +693,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
         const trashDir = join(DIRS.chats(), `.deleting-${characterId}-${Date.now()}`)
         renameSync(dir, trashDir)
         rmSync(trashDir, { recursive: true, force: true })
+        // P-6：失效该角色的全部读取缓存
+        messagesCacheInvalidate(characterId)
       }
     }
   })

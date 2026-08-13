@@ -6,6 +6,7 @@ import { AdvancedSection } from './editor/AdvancedSection'
 import type { TranslatableField } from './editor/types'
 import { Languages, Loader2 } from 'lucide-react'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { translationMaxTokens } from '../../store/chatConstants'
 import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
 import { logError } from '../../lib/logger'
 
@@ -375,7 +376,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         model: settings.activeModel || profile.model,
         temperature: 0.3,
         topP: 0.9,
-        maxTokens: 4096,
+        maxTokens: translationMaxTokens(text),
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: true,

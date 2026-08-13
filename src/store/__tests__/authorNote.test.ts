@@ -94,15 +94,15 @@ describe('buildContext 作者注释注入', () => {
     expect(ctx[1]).toMatchObject({ role: 'system', content: 'AN内容' })
   })
 
-  it('bottom 位置：AN 在最新消息之前（对话末尾上方）', () => {
+  it('bottom 位置：AN 在最新消息之后（对话末尾，ST 语义 depth 0）', () => {
     setupSettings({ enabled: true, text: 'AN内容', position: 'bottom', depth: 0 })
     useChatStore.setState({ messages: makeMessages(2) })
 
     const ctx = useChatStore.getState().buildContext(makeCharacter(), null)
-    // 4 条历史 [u0,a0,u1,a1]，depth 0 → 插在 a1 之前
+    // 4 条历史 [u0,a0,u1,a1]，depth 0 → 插在 a1 之后（P-8 修复 off-by-one）
     const anIndex = ctx.findIndex(c => c.content === 'AN内容')
-    expect(ctx[anIndex - 1].content).toBe('用户消息1')
-    expect(ctx[anIndex + 1].content).toBe('助手回复1')
+    expect(ctx[anIndex - 1].content).toBe('助手回复1')
+    expect(anIndex).toBe(ctx.length - 1)
   })
 
   it('middle 位置 depth=1：AN 插在倒数第二条消息之后', () => {
@@ -110,22 +110,22 @@ describe('buildContext 作者注释注入', () => {
     useChatStore.setState({ messages: makeMessages(3) })
 
     const ctx = useChatStore.getState().buildContext(makeCharacter(), null)
-    // 历史 6 条 [u0,a0,u1,a1,u2,a2]，depth=1 → 倒数第二条（u2）之前
-    // 结果：u0,a0,u1,a1,AN,u2,a2
+    // 历史 6 条 [u0,a0,u1,a1,u2,a2]，depth=1 → 倒数第二条（u2）之后
+    // 结果：u0,a0,u1,a1,u2,AN,a2
     const anIndex = ctx.findIndex(c => c.content === 'AN内容')
-    expect(ctx[anIndex - 1].content).toBe('助手回复1')
-    expect(ctx[anIndex + 1].content).toBe('用户消息2')
+    expect(ctx[anIndex - 1].content).toBe('用户消息2')
+    expect(ctx[anIndex + 1].content).toBe('助手回复2')
   })
 
-  it('middle 位置 depth=0：AN 在最新消息之前', () => {
+  it('middle 位置 depth=0：AN 在最新消息之后', () => {
     setupSettings({ enabled: true, text: 'AN内容', position: 'middle', depth: 0 })
     useChatStore.setState({ messages: makeMessages(2) })
 
     const ctx = useChatStore.getState().buildContext(makeCharacter(), null)
-    // 4 条历史，depth 0 → 插在最后一条（a1）之前
+    // 4 条历史，depth 0 → 插在最后一条（a1）之后（P-8 修复 off-by-one）
     const anIndex = ctx.findIndex(c => c.content === 'AN内容')
-    expect(ctx[anIndex - 1].content).toBe('用户消息1')
-    expect(ctx[anIndex + 1].content).toBe('助手回复1')
+    expect(ctx[anIndex - 1].content).toBe('助手回复1')
+    expect(anIndex).toBe(ctx.length - 1)
   })
 
   it('变量替换：{{char}} / {{user}}', () => {

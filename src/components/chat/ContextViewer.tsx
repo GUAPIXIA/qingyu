@@ -14,7 +14,7 @@ interface ContextViewerProps {
 }
 
 export function ContextViewer({ open, onClose, character, preset }: ContextViewerProps) {
-  const { buildContext } = useChatStore()
+  const buildContext = useChatStore((s) => s.buildContext)
 
   const context = useMemo(() => {
     if (!open) return []

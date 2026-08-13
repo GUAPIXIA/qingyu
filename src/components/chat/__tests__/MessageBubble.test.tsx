@@ -56,7 +56,6 @@ function setupStores() {
     sessions: [],
     currentSessionId: 's1',
     isStreaming: false,
-    streamingContent: '',
     error: null,
     activePresetId: null,
     activeLorebookIds: [],
@@ -261,6 +260,30 @@ describe('MessageBubble', () => {
         <MessageBubble message={createMessage()} character={createCharacter()} isLast={false} />
       )
       expect(getByText(/翻译失败/)).toBeTruthy()
+    })
+
+    it('翻译完成且显示开关打开时显示译文而非原文', () => {
+      useChatStore.setState({
+        translatingMessages: { 'msg-1': { status: 'done', content: '你好世界' } },
+        showTranslationIds: new Set(['msg-1']),
+      } as any)
+      const { getByText, queryByText } = render(
+        <MessageBubble message={createMessage({ content: 'Hello world' })} character={createCharacter()} isLast={false} />
+      )
+      expect(getByText('你好世界')).toBeTruthy()
+      expect(queryByText('Hello world')).toBeNull()
+    })
+
+    it('内存翻译状态丢失时回退显示持久化的 message.translation', () => {
+      useChatStore.setState({
+        translatingMessages: {},
+        showTranslationIds: new Set(['msg-1']),
+      } as any)
+      const { getByText, queryByText } = render(
+        <MessageBubble message={createMessage({ content: 'Hello world', translation: '你好世界' })} character={createCharacter()} isLast={false} />
+      )
+      expect(getByText('你好世界')).toBeTruthy()
+      expect(queryByText('Hello world')).toBeNull()
     })
   })
 })

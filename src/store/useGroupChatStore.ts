@@ -6,7 +6,7 @@ import { useCharacterStore } from './useCharacterStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { applyRegexRules as applyRegexRulesEngine } from '../utils/regex'
 import { lorebookCache } from '../utils/lorebook'
-import { STREAM_IDLE_TIMEOUT_MS } from './chatConstants'
+import { STREAM_IDLE_TIMEOUT_MS, translationMaxTokens } from './chatConstants'
 import { logError } from '../lib/logger'
 import { nextLoadRequestId, currentLoadRequestId } from './chatUtils'
 import {
@@ -26,7 +26,6 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   currentStreamingCharId: null,
-  streamingContent: '',
   error: null,
   _semanticLoreHits: [],
   _semanticFactsHits: [],
@@ -85,13 +84,13 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     cleanupActiveStream()
     const session = await window.api.group.createSession(groupId)
     const sessions = await window.api.group.listSessions(groupId)
-    set({ sessions, currentSessionId: session.id, messages: [], isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
+    set({ sessions, currentSessionId: session.id, messages: [], isStreaming: false, currentStreamingCharId: null })
   },
 
   switchSession: async (groupId, sessionId) => {
     clearPollingTimer()
     cleanupActiveStream()
-    set({ currentSessionId: sessionId, isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
+    set({ currentSessionId: sessionId, isStreaming: false, currentStreamingCharId: null })
     await get().loadMessages(groupId, sessionId)
   },
 
@@ -101,7 +100,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     await window.api.group.deleteSession(groupId, sessionId)
     const sessions = await window.api.group.listSessions(groupId)
     const newSid = sessions[0]?.id ?? null
-    set({ sessions, currentSessionId: newSid, messages: [], isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
+    set({ sessions, currentSessionId: newSid, messages: [], isStreaming: false, currentStreamingCharId: null })
     if (newSid) {
       await get().loadMessages(groupId, newSid)
     }
@@ -138,7 +137,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     if (currentSessionId) {
       await window.api.group.clearChat(groupId, currentSessionId)
     }
-    set({ messages: [], isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
+    set({ messages: [], isStreaming: false, currentStreamingCharId: null })
   },
 
   deleteMessage: async (groupId, sessionId, messageId) => {
@@ -238,9 +237,10 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       unbindChunk(); unbindDone(); unbindError()
 
       const finalResult = (result || '').replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() || null
+      // 空结果（推理模型思考内容耗尽 maxTokens 等）：不标记显示译文，避免 UI 显示原文却残留已翻译状态
       set((s) => ({
         messages: s.messages.map((m: GroupMessage) =>
-          m.id === messageId ? { ...m, translation: finalResult, _showTranslation: true } : m
+          m.id === messageId ? { ...m, translation: finalResult, _showTranslation: finalResult ? true : false } : m
         ),
       }))
       // 持久化翻译结果
@@ -287,7 +287,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       model: profile.model,
       temperature: 0.3,
       topP: 1,
-      maxTokens: 2048,
+      maxTokens: translationMaxTokens(msg.content),
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
@@ -537,7 +537,6 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
         messages: s.messages.map((m: GroupMessage) => m.id === msgId ? updatedMsg : m),
         isStreaming: false,
         currentStreamingCharId: null,
-        streamingContent: '',
       }))
       window.api.group.saveMessage(currentGroup.id, currentSessionId, updatedMsg).catch((e) => logError('GroupChatStore:saveMessage', e))
     } else if (msgId) {
@@ -546,10 +545,9 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
         messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
         isStreaming: false,
         currentStreamingCharId: null,
-        streamingContent: '',
       }))
     } else {
-      set({ isStreaming: false, currentStreamingCharId: null, streamingContent: '' })
+      set({ isStreaming: false, currentStreamingCharId: null })
     }
   },
 

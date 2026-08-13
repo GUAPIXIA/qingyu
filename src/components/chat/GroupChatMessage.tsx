@@ -43,9 +43,10 @@ import { MarkdownLink } from '../common/MarkdownLink'
 const markdownComponents = { img: MarkdownImage, a: MarkdownLink }
 
 export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, isStreamingMessage, repliedMessage, bubbleOpacity, onDelete, onEdit, onRegenerate, onTranslate, onReply }: GroupChatMessageProps) {
-  const { characters } = useCharacterStore()
-  const { settings } = useSettingsStore()
-  const { getPersona } = usePersonaStore()
+  // P-6 修复：字段级选择器订阅
+  const characters = useCharacterStore((s) => s.characters)
+  const settings = useSettingsStore((s) => s.settings)
+  const getPersona = usePersonaStore((s) => s.getPersona)
   const persona = getPersona(settings.activePersonaId)
   const [showThought, setShowThought] = useState(false)
   const [isEditing, setIsEditing] = useState(false)

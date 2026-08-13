@@ -3,6 +3,8 @@
  * 验证:settings.json 不落明文 apiKey——保存前剥离到 safeStorage,读取时回填,导出仅删除。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { unlinkSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 // mock electron:safeStorage 加密可用 + userData 隔离到临时目录
 vi.mock('electron', () => ({
@@ -41,8 +43,6 @@ function makeSettings(): Settings {
 
 beforeEach(() => {
   // 清理临时凭据文件（safeStorage 使用固定目录，测试间隔离）
-  const { unlinkSync, existsSync } = require('node:fs') as typeof import('node:fs')
-  const { join } = require('node:path') as typeof import('node:path')
   const path = join('/tmp/qingyu-settings-test/data/config', 'credentials.json')
   if (existsSync(path)) unlinkSync(path)
 })

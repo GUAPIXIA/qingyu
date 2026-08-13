@@ -40,8 +40,11 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
   const [freeSpeakerId, setFreeSpeakerId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const { characters } = useCharacterStore()
-  const { sendMessage, isStreaming, stopStreaming } = useGroupChatStore()
+  // P-6 修复：字段级选择器订阅
+  const characters = useCharacterStore((s) => s.characters)
+  const sendMessage = useGroupChatStore((s) => s.sendMessage)
+  const isStreaming = useGroupChatStore((s) => s.isStreaming)
+  const stopStreaming = useGroupChatStore((s) => s.stopStreaming)
 
   const members = group.memberIds
     .map(id => characters.find(c => c.id === id))

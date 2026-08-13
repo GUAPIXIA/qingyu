@@ -17,7 +17,6 @@ export interface ChatState {
   currentSessionId: string | null
   isStreaming: boolean
   currentRequestId: string | null
-  streamingContent: string
   error: string | null
   activePresetId: string | null
   /** 已激活的世界书 ID 列表（支持多选） */
@@ -70,6 +69,13 @@ export interface ChatState {
   createSessionWithGreeting: (character: Character, greeting?: string) => Promise<ChatSession | null>
   /** 更新会话字段（如 personaId），同步后端和本地 state */
   updateSessionField: (characterId: string, sessionId: string, field: string, value: unknown) => Promise<void>
+  /** P-7 修复：本地 patch 会话元数据（title/messageCount/lastMessage 等），
+   *  避免 editMessage/deleteMessage/clearChat 后全量 listSessions（主进程要扫描每个会话文件） */
+  patchLocalSession: (sessionId: string, patch: Partial<SessionPreview>) => void
+  /** 向当前会话插入开场白消息（变量替换 + 保存），用于开场白选择/清空后重插 */
+  insertGreetingMessage: (character: Character, greeting: string) => Promise<void>
+  /** P-7 修复：加载当前激活的 preset 与世界书（regenerate/continue 共用，消除三处重复） */
+  getActiveChatConfig: () => Promise<{ preset: Preset | null; lorebooks: Lorebook[] }>
   /** 从当前会话同步世界书到 activeLorebookIds（不持久化，仅读取） */
   syncLorebooksFromCurrentSession: (character: Character) => void
   /** 语义触发（向量 RAG）命中条目缓存：发送消息时预取，buildContext 合并注入（不持久化） */

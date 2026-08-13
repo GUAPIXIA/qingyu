@@ -55,7 +55,6 @@ function setupStores(connected: boolean, character: Character | null) {
     sessions: [],
     currentSessionId: null,
     isStreaming: false,
-    streamingContent: '',
     error: null,
     activePresetId: null,
     activeLorebookIds: [],
