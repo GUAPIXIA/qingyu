@@ -106,6 +106,8 @@ fun HtmlText(
     val imageUrls = remember(text, connection) {
         extractHtmlImages(text).map { resolveImageUrl(it, connection) ?: it }
     }
+    // 消息内嵌 <audio src=...>（角色首条消息等场景）：提取 URL 渲染播放器
+    val audioUrls = remember(text) { extractHtmlAudios(text) }
 
     Column(modifier = modifier.fillMaxWidth()) {
         if (annotated.isNotEmpty()) {
@@ -123,6 +125,12 @@ fun HtmlText(
                         .padding(vertical = 2.dp)
                         .clip(RoundedCornerShape(8.dp)),
                 )
+            }
+        }
+        if (audioUrls.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            audioUrls.forEach { url ->
+                AudioPlayerItem(url = url, modifier = Modifier.padding(vertical = 2.dp))
             }
         }
     }
