@@ -135,6 +135,9 @@ async function ensureProcess(): Promise<void> {
     })
 
     psProcess.on('error', (err) => {
+      // M-9 修复：spawn 失败必须置空引用——否则 psProcess 残留（killed=false），
+      // 下次 ensureProcess 永久早退，系统 TTS 卡死到重启
+      psProcess = null
       initPromise = null
       reject(err)
     })

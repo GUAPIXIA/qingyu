@@ -149,7 +149,9 @@ export const openaiAdapter: AIAdapter = {
             let key: string
             if (tc.index !== undefined) {
               key = String(tc.index)
-            } else if (tc.id && Array.from(streamedToolCalls.values()).some(v => v.id === tc.id)) {
+            } else if (tc.id) {
+              // M-4 修复：无 index 时统一用 id 关联（此前先查"id 已存在"再退化为 n:size，
+              // 同一 tool call 的后续 chunk 因 size 增长生成新键，被拆散成多个残缺条目）
               key = `id:${tc.id}`
             } else {
               key = `n:${streamedToolCalls.size}`

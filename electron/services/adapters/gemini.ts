@@ -121,13 +121,14 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       buffer += decoder.decode(value, { stream: true })
 
       if (isSSE) {
-        // SSE 格式：按 \n\n 分隔事件，每事件有 data: 行
-        const events = buffer.split('\n\n')
+        // SSE 格式：按空行分隔事件，每事件有 data: 行
+        // M-2 修复：兼容 CRLF 服务端（\r\n\r\n），此前 split('\n\n') 下 CRLF 流式一次不触发
+        const events = buffer.split(/\r?\n\r?\n/)
         buffer = events.pop() ?? ''
         for (const event of events) {
-          const dataLines = event.split('\n').filter(l => l.startsWith('data:'))
+          const dataLines = event.split(/\r?\n/).filter(l => l.trim().startsWith('data:'))
           for (const line of dataLines) {
-            const data = line.slice(5).trim()
+            const data = line.slice(line.indexOf(':') + 1).trim()
             if (!data) continue
             try {
               const parsed = JSON.parse(data)

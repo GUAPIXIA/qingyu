@@ -117,6 +117,12 @@ export class McpClient extends EventEmitter {
         this.pendingRequests.delete(id)
         reject(new Error(`写入失败: ${(err as Error).message}`))
       }
+      // M-11 修复：stdin 异步 EPIPE 以 error 事件发出，无监听器会升级为 uncaughtException 击穿主进程
+      this.process?.stdin?.once?.('error', (err: Error) => {
+        clearTimeout(timer)
+        this.pendingRequests.delete(id)
+        reject(new Error(`写入失败: ${err.message}`))
+      })
     })
   }
 

@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
-import { DIRS } from '../services/storage'
+import { DIRS, withFileLock } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Persona } from '../../shared/types'
 import { nanoid } from 'nanoid'
@@ -45,17 +45,20 @@ export function registerPersonaIPC(ipcMain: IpcMain): void {
 
   // 保存身份（新增或更新）
   ipcMain.handle('persona:save', async (_e, persona: Persona) => {
-    const personas = readPersonas()
-    const idx = personas.findIndex((p) => p.id === persona.id)
-    persona.updatedAt = Date.now()
-    if (idx >= 0) {
-      personas[idx] = persona
-    } else {
-      personas.push(persona)
-    }
-    writePersonas(personas)
-    log.info('身份已保存', { id: persona.id, name: persona.name })
-    return persona
+    // M-14 修复：读-改-写加文件锁，并发 save 不再后写覆盖先写（静默丢更新）
+    return withFileLock(getPersonasPath(), () => {
+      const personas = readPersonas()
+      const idx = personas.findIndex((p) => p.id === persona.id)
+      persona.updatedAt = Date.now()
+      if (idx >= 0) {
+        personas[idx] = persona
+      } else {
+        personas.push(persona)
+      }
+      writePersonas(personas)
+      log.info('身份已保存', { id: persona.id, name: persona.name })
+      return persona
+    })
   })
 
   // 删除身份

@@ -48,7 +48,13 @@ export function registerQuickReplyIPC(ipcMain: IpcMain, dialog: Dialog): void {
     for (const qr of clean.global) normalizeQuickReply(qr)
     for (const id of Object.keys(clean.byCharacter)) {
       safeId(id)
-      for (const qr of clean.byCharacter[id]) normalizeQuickReply(qr)
+      // M-15 修复：byCharacter 值未校验数组，脏数据（undefined 等）时 for..of 抛 TypeError 致 saveAll 整体失败
+      const list = clean.byCharacter[id]
+      if (!Array.isArray(list)) {
+        clean.byCharacter[id] = []
+        continue
+      }
+      for (const qr of list) normalizeQuickReply(qr)
     }
     writeJson(getStorePath(), clean)
     log.info('快捷回复已保存', {

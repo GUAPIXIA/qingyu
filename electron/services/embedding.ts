@@ -51,14 +51,25 @@ async function embedOpenAI(config: EmbeddingConfig, inputs: string[]): Promise<n
   }
   const data: any = await response.json()
   const embeddings = Array.isArray(data?.data) ? data.data : []
-  // 按输入顺序排列（部分兼容端点可能乱序，按 index 重排）
-  const sorted = embeddings
-    .filter((e: any) => Array.isArray(e.embedding))
-    .sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0))
-  if (sorted.length !== inputs.length) {
-    log.warn('嵌入结果数量与输入不匹配', { expected: inputs.length, got: sorted.length })
+  if (embeddings.length !== inputs.length) {
+    log.warn('嵌入结果数量与输入不匹配', { expected: inputs.length, got: embeddings.length })
   }
-  return sorted.map((e: any) => e.embedding as number[])
+  // M-3 修复：按 index 原位填充，缺失项补零——此前 filter+sort 后整体前移，
+  // 文本 i 会配上文本 i+1 的向量（检索静默失真）。
+  const result: number[][] = new Array(inputs.length)
+  let knownDim = 0
+  for (const e of embeddings) {
+    if (!Array.isArray(e?.embedding)) continue
+    const idx = typeof e.index === 'number' ? e.index : (embeddings.indexOf(e) ?? 0)
+    if (idx >= 0 && idx < inputs.length) {
+      result[idx] = e.embedding
+      if (e.embedding.length > 0) knownDim = e.embedding.length
+    }
+  }
+  for (let i = 0; i < result.length; i++) {
+    if (!result[i]) result[i] = knownDim > 0 ? new Array(knownDim).fill(0) : []
+  }
+  return result
 }
 
 /** Ollama /api/embed 接口 */

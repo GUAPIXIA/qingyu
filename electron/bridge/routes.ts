@@ -99,7 +99,17 @@ function originGuard(req: Request, res: Response, next: NextFunction): void {
   const isBrowser = /mozilla|chrome|safari|firefox|edg/i.test(ua) && !ua.includes('qingyu-companion')
   const origin = req.headers.origin
   if (isBrowser) {
-    if (origin && !origin.startsWith('http://127.0.0.1') && !origin.startsWith('http://localhost')) {
+    // M-12 修复：此前 startsWith('http://127.0.0.1') 可被 http://127.0.0.1.evil.com 绕过——
+    // 改为 URL 解析后精确校验 host（localhost / 127.0.0.1 / [::1]）
+    const allowed = origin && (() => {
+      try {
+        const u = new URL(origin)
+        return u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '[::1]' || u.hostname === '::1'
+      } catch {
+        return false
+      }
+    })()
+    if (!allowed) {
       res.status(403).json({ error: 'origin rejected' })
       return
     }

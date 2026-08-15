@@ -304,18 +304,34 @@ function computeMessageMeta(characterId: string, sessionId: string): { count: nu
       if (fileSize === 0) return { count: 0, lastMessage: '' }
 
       // 扫描全文统计行数（只读字节，不做 JSON 解析）
+      // M-13 修复：仅统计以 { 开头的完整 JSON 消息行——消息 content 含真实换行/多行
+      // pretty 历史数据时物理行数虚高，与 readMessages 按 id 去重语义不一致。
       const BUF_SIZE = 64 * 1024
       const buf = Buffer.alloc(BUF_SIZE)
       let totalRead = 0
+      let lineStart = true
+      let lineStartsWithBrace = false
       while (totalRead < fileSize) {
         const toRead = Math.min(BUF_SIZE, fileSize - totalRead)
         const bytesRead = readSync(fd, buf, 0, toRead, totalRead)
         if (bytesRead === 0) break
         for (let i = 0; i < bytesRead; i++) {
-          if (buf[i] === 0x0A) count++ // \n
+          const b = buf[i]
+          if (b === 0x0A) {
+            if (lineStartsWithBrace) count++
+            lineStart = true
+            lineStartsWithBrace = false
+          } else {
+            if (lineStart) {
+              lineStart = false
+              if (b === 0x7B) lineStartsWithBrace = true // '{'
+            }
+          }
         }
         totalRead += bytesRead
       }
+      // 文件末尾无 \n 的末行（处于行中且以 { 开头）
+      if (!lineStart && lineStartsWithBrace) count++
 
       // 读取尾部 4KB 解析最后一行
       if (count > 0) {

@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
-import { DIRS } from '../services/storage'
+import { DIRS, withFileLock } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { RegexRule } from '../../shared/types'
 import { nanoid } from 'nanoid'
@@ -51,22 +51,27 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
 
   // 保存规则（新增或更新）
   ipcMain.handle('regex:save', async (_e, rule: RegexRule) => {
-    const rules = readRules()
-    const idx = rules.findIndex((r) => r.id === rule.id)
-    if (idx >= 0) {
-      rules[idx] = rule
-    } else {
-      rules.push(rule)
-    }
-    writeRules(rules)
-    log.info('规则已保存', { id: rule.id, name: rule.name })
-    return rule
+    // M-14 修复：读-改-写加文件锁，并发 save 不再静默丢更新
+    return withFileLock(getRulesPath(), () => {
+      const rules = readRules()
+      const idx = rules.findIndex((r) => r.id === rule.id)
+      if (idx >= 0) {
+        rules[idx] = rule
+      } else {
+        rules.push(rule)
+      }
+      writeRules(rules)
+      log.info('规则已保存', { id: rule.id, name: rule.name })
+      return rule
+    })
   })
 
   // 删除规则
   ipcMain.handle('regex:delete', async (_e, id: string) => {
-    const rules = readRules().filter((r) => r.id !== id)
-    writeRules(rules)
+    await withFileLock(getRulesPath(), () => {
+      const rules = readRules().filter((r) => r.id !== id)
+      writeRules(rules)
+    })
     log.info('规则已删除', { id })
   })
 

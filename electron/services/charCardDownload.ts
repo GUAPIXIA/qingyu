@@ -196,6 +196,12 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
       function handleResponse(res: import('node:http').IncomingMessage) {
         const statusCode = res.statusCode ?? 0
         if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
+          // M-1 修复：重定向次数上限检查（此前只在入口校验，递归链无拦截，
+          // 持续 302 的服务器造成无终止的后台请求链，资源耗尽）
+          if (maxRedirects <= 0) {
+            safeResolve({ success: false, error: '重定向次数过多', code: 'NETWORK_ERROR' })
+            return
+          }
           // SSRF 防护：重定向目标重新校验（相对路径基于当前 URL 解析），
           // 防止恶意服务器重定向到内网地址绕过初始检查
           let redirectTarget: string
