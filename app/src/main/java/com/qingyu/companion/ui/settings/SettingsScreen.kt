@@ -149,7 +149,7 @@ fun SettingsScreen(
                     title = "检查更新",
                     subtitle = when {
                         ui.checkingVersion -> "正在获取最新版本…"
-                        ui.latestVersion != null -> "服务器最新版本 ${ui.latestVersion!!.version}"
+                        ui.latestVersion != null -> "服务器最新版本 ${ui.latestVersion!!.effectiveVersion}"
                         else -> "从公告服务器获取最新版本号"
                     },
                     onClick = vm::checkVersion,
@@ -176,23 +176,23 @@ fun SettingsScreen(
         val context = LocalContext.current
         AlertDialog(
             onDismissRequest = vm::clearLatestVersion,
-            title = { Text("最新版本 ${info.version}") },
+            title = { Text("最新版本 ${info.effectiveVersion}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("当前版本 ${BuildConfig.VERSION_NAME}（build ${BuildConfig.VERSION_CODE}）")
-                    if (info.changelog.isNotBlank()) {
+                    if (info.effectiveChangelog.isNotBlank()) {
                         Text(
                             "更新内容",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            info.changelog,
+                            info.effectiveChangelog,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (info.downloadUrl.isBlank()) {
+                    if (info.effectiveDownloadUrl.isBlank()) {
                         Text(
                             "本次更新暂无下载链接",
                             style = MaterialTheme.typography.bodySmall,
@@ -202,9 +202,9 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {
-                if (info.downloadUrl.isNotBlank()) {
+                if (info.effectiveDownloadUrl.isNotBlank()) {
                     TextButton(onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.effectiveDownloadUrl)))
                     }) { Text("下载") }
                 }
             },

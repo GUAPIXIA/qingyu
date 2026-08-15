@@ -57,7 +57,19 @@ data class AnnouncementPage(
 /** 版本信息（GET /api/v1/version 响应：PC 桥接层转发公告服务器 /api/version） */
 @Serializable
 data class VersionInfo(
+    /** PC 端版本 */
     val version: String = "",
     val changelog: String = "",
     val downloadUrl: String = "",
-)
+    /** 安卓端（伴侣端）版本，管理后台可单独配置；空表示服务器未配置 */
+    val androidVersion: String = "",
+    val androidChangelog: String = "",
+    val androidDownloadUrl: String = "",
+) {
+    /** 安卓端有效版本号：优先 androidVersion，空则回退 PC 端 version（兼容未配置安卓字段的旧服务器） */
+    val effectiveVersion: String get() = androidVersion.ifBlank { version }
+
+    val effectiveChangelog: String get() = androidChangelog.ifBlank { changelog }
+
+    val effectiveDownloadUrl: String get() = androidDownloadUrl.ifBlank { downloadUrl }
+}
