@@ -153,8 +153,9 @@ export function useChatInputState(
       const chatStore = useChatStore.getState()
       const macroCtx = buildMacroContext(chatStore.messages, {
         userName: settings.userName || '用户',
-        charName: character.name,
-        originalCharName: character.translatedContent?.name,
+        // M-26 修复：charName 应为译名优先、originalCharName 为原名（与全库约定一致），此前传反
+        charName: character.translatedContent?.name || character.name,
+        originalCharName: character.name,
       })
       const content = expandMacros(qr.content, macroCtx).trim()
       if (!content) return

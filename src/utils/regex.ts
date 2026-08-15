@@ -97,6 +97,7 @@ export function applyRegexRules(
   let applied = 0
   let matched = 0
   for (const rule of rules) {
+    if (!rule.enabled) continue // M-30 修复：禁用的规则不计入 applied
     if (!ruleMatchesScope(rule, scope)) continue
     if (!ruleMatchesStage(rule, scope, stage)) continue
     applied++

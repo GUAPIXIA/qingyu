@@ -57,7 +57,11 @@ export async function regenerateChatMessage(
     character,
     preset,
     onComplete: async (fullContent) => {
-      if (!fullContent) return
+      // M-18 修复：空回复/手动中止——移除占位消息（regenerate 路径）
+      if (!fullContent) {
+        set((state) => ({ messages: state.messages.filter((m) => m.id !== messageId) }))
+        return
+      }
 
       // 应用正则规则
       let finalContent = fullContent

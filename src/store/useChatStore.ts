@@ -230,6 +230,11 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   deleteCurrentSession: async (characterId) => {
     const { currentSessionId, sessions } = get()
     if (!currentSessionId) return
+    // M-19 修复：删除当前会话前取消进行中的流式（对齐 deleteSession）——
+    // 否则 onComplete 仍执行：AI 回复写入已删除会话（磁盘重建文件）、用量按新会话记账
+    if (get().isStreaming) {
+      get().stopStreaming()
+    }
     // N13 修复：会话不存在（已被其他操作删除）时跳过删除，仅刷新列表
     if (!sessions.some(s => s.id === currentSessionId)) {
       const newSessions = await window.api.chat.listSessions(characterId)
@@ -479,7 +484,11 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       preset,
       inputText: processedContent,
       onComplete: async (fullContent) => {
-        if (!fullContent) return
+        // M-18 修复：空回复/手动中止——移除占位消息，避免 UI 残留空气泡且不落盘
+        if (!fullContent) {
+          set((state) => ({ messages: state.messages.filter((m) => m.id !== aiMessageId) }))
+          return
+        }
 
         // 对 AI 输出应用正则规则
         let finalContent = fullContent
@@ -515,6 +524,15 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
             : allMsgs.length
           const interval = curSession.autoMemoryInterval || 10
           if (newMsgCount >= interval) {
+            // M-16 修复：触发前乐观更新本地 memoryUpdatedAt——总结完成时用户可能已切走会话，
+            // 本地 sessions 不刷新（NEW-M11），切回后恒旧导致 newMsgCount>=interval 恒真、
+            // 每条消息都重复触发总结（token 浪费/记忆反复重写）
+            const summaryTs = Date.now()
+            set((s) => ({
+              sessions: s.sessions.map((x) =>
+                x.id === curSession.id ? { ...x, memoryUpdatedAt: summaryTs } : x,
+              ),
+            }))
             get().triggerMemorySummary(character).catch((e) => logError('ChatStore:memorySummary', e))
           }
         }

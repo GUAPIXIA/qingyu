@@ -18,7 +18,8 @@ export function ContextViewer({ open, onClose, character, preset }: ContextViewe
 
   const context = useMemo(() => {
     if (!open) return []
-    return buildContext(character, preset)
+    // M-27 修复：只读查看不记录 lastContextUsage（trackUsage=false）
+    return buildContext(character, preset, { trackUsage: false })
   }, [open, character, preset, buildContext])
 
   const totalChars = useMemo(() => {

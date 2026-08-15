@@ -334,6 +334,9 @@ export function buildGroupChatContext(
     })
   }
   recentMessages.forEach(m => {
+    // M-23 修复：过滤空 content 消息（空占位/__free__ 错误消息）——
+    // 空 assistant 消息进上下文会干扰模型输出格式（单聊有对等过滤）
+    if (!m.content || !m.content.trim()) return
     const char = members.find(c => c.id === m.characterId)
     const speaker = m.characterId === '__user__'
       ? userName

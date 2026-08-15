@@ -377,10 +377,11 @@ export function triggerLorebooks(opts: LorebookTriggerOptions): LorebookTriggerR
             return false
           }
         }
-        // BUG-24 修复：与普通关键词一致在小写文本上匹配，避免同一关键词两种匹配行为
-        // 重置 lastIndex：带 g flag 的正则 test() 会推进 lastIndex 导致交替失败
+        // BUG-24 修复：重置 lastIndex：带 g flag 的正则 test() 会推进 lastIndex 导致交替失败
+        // M-29 修复：正则匹配用原文而非小写化文本——用户显式配置含大写字面量的正则
+        // （如 NPC_[A-Z]）在小写文本上永不命中（默认 flags 含 i 时原文匹配本就大小写不敏感）
         regex.lastIndex = 0
-        return regex.test(recentTextLower)
+        return regex.test(recentText)
       })
       if (!matched) continue
 

@@ -20,12 +20,16 @@ export function buildChatContext(
   set: StoreSet,
   character: Character,
   preset: Preset | null,
-  opts?: { continuation?: boolean },
+  opts?: { continuation?: boolean; trackUsage?: boolean },
 ): ContextMessage[] {
   const data = syncBuildData(character, preset)
   const result = buildContextMessagesFromData(data, opts)
   // 记录上下文用量（P1-3：上限预警）
-  set({ lastContextUsage: result.lastContextUsage })
+  // M-27 修复：trackUsage=false（ContextViewer 等只读查看场景）不写 lastContextUsage——
+  // 渲染期调用此前会用 preset=null 口径覆盖真实发送路径的用量记录，导致 85% 预警误报/漏报
+  if (opts?.trackUsage !== false) {
+    set({ lastContextUsage: result.lastContextUsage })
+  }
   // 上下文溢出压缩任务：流式完成后异步执行（原 buildChatContext 内直接标记）
   if (result.pendingCompression) {
     markPendingCompression(result.pendingCompression)

@@ -1026,12 +1026,21 @@ export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGe
 
   // H-02 修复：保存定时器 handle，以便切换/删除群聊时清理
   clearPollingTimer()
-  pollingTimer = setTimeout(() => {
-    const currentState = get()
-    if (currentState.isStreaming) return
-    // 定时器触发时再次检查群组是否仍为当前群组
-    const curGroup = currentState.currentGroup
-    if (!curGroup || curGroup.id !== group.id) return
-    currentState.sendPollingRound(nextCharId)
-  }, Math.max(500, group.speakerInterval || 2000))
+  const scheduleNextPoll = () => {
+    clearPollingTimer()
+    pollingTimer = setTimeout(() => {
+      const currentState = get()
+      if (currentState.isStreaming) {
+        // M-25 修复：流式中本轮跳过，但必须继续调度下一轮——
+        // 此前直接 return 导致自动轮询链永久中断，无恢复机制
+        scheduleNextPoll()
+        return
+      }
+      // 定时器触发时再次检查群组是否仍为当前群组
+      const curGroup = currentState.currentGroup
+      if (!curGroup || curGroup.id !== group.id) return
+      currentState.sendPollingRound(nextCharId)
+    }, Math.max(500, group.speakerInterval || 2000))
+  }
+  scheduleNextPoll()
 }

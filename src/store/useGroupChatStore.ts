@@ -214,6 +214,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       }))
       return
     }
+    // M-21 修复：翻译进行中（in-flight 标记 '...'）防重——重复点击不再并发两个请求互相覆盖
+    if (msg.translation === '...') return
 
     // 设置加载状态
     set(s => ({
@@ -229,11 +231,12 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const unbindChunk = window.api.ai.onChunk((data) => {
       if (data.requestId !== requestId) return
       result += data.text
+      armTranslateTimeout() // M-21：收到 chunk 续期空闲超时
     })
 
     const unbindDone = window.api.ai.onDone((doneId) => {
       if (doneId !== requestId) return
-      clearTimeout(translateTimeout)
+      clearTranslateTimeout()
       unbindChunk(); unbindDone(); unbindError()
 
       const finalResult = (result || '').replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() || null
@@ -253,7 +256,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
-      clearTimeout(translateTimeout)
+      clearTranslateTimeout()
       unbindChunk(); unbindDone(); unbindError()
 
       set((s) => ({
@@ -263,16 +266,24 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       }))
     })
 
-    // 超时保护：5 分钟无响应自动清理
-    const translateTimeout = setTimeout(() => {
-      unbindChunk(); unbindDone(); unbindError()
-      window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
-      set((s) => ({
-        messages: s.messages.map((m: GroupMessage) =>
-          m.id === messageId ? { ...m, translation: null } : m
-        ),
-      }))
-    }, STREAM_IDLE_TIMEOUT_MS)
+    // 超时保护：空闲超时自动清理（M-21 修复：收到 chunk 续期，长文本慢模型不再被一次性 60s 误杀）
+    let translateTimeout: ReturnType<typeof setTimeout> | null = null
+    const clearTranslateTimeout = () => {
+      if (translateTimeout) { clearTimeout(translateTimeout); translateTimeout = null }
+    }
+    const armTranslateTimeout = () => {
+      clearTranslateTimeout()
+      translateTimeout = setTimeout(() => {
+        unbindChunk(); unbindDone(); unbindError()
+        window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
+        set((s) => ({
+          messages: s.messages.map((m: GroupMessage) =>
+            m.id === messageId ? { ...m, translation: null } : m
+          ),
+        }))
+      }, STREAM_IDLE_TIMEOUT_MS)
+    }
+    armTranslateTimeout()
 
     const targetLang = useSettingsStore.getState().settings.translationTargetLang || '中文'
     window.api.ai.chat({
@@ -292,7 +303,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       presencePenalty: 0,
       stream: false,
     }).catch(() => {
-      clearTimeout(translateTimeout)
+      clearTranslateTimeout()
       unbindChunk(); unbindDone(); unbindError()
       set((s) => ({
         messages: s.messages.map((m: GroupMessage) =>
@@ -534,9 +545,16 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const clean = accumulated.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
 
     if (msgId && clean && currentGroup && currentSessionId) {
+      // M-22 修复：流式消息可能已被删除（deleteMessage 无 isStreaming 防护）——
+      // 找不到时跳过持久化，避免 {...undefined} 展开出无 id/characterId 的损坏消息被 append 落盘
+      const existing = messages.find(m => m.id === msgId)
+      if (!existing) {
+        set({ isStreaming: false, currentStreamingCharId: null })
+        return
+      }
       // 有部分内容，持久化并保留
       const updatedMsg: GroupMessage = {
-        ...(messages.find(m => m.id === msgId) as GroupMessage),
+        ...existing,
         content: clean + '\n\n⚠️ 已停止生成',
       }
       set((s) => ({
