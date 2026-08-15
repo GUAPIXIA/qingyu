@@ -41,9 +41,6 @@ spec_*.json
 
 # Environment files (contain secrets)
 .env
-server/.env
-# 服务端运行时数据（SQLite 数据库等）
-server/app/data/
 # 测试覆盖率报告
 coverage/
 
