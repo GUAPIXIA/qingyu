@@ -146,14 +146,16 @@ export function buildBridgeRouter(
       deviceName?: string
       deviceFingerprint?: string
     }
-    if (!pairingCode || !deviceName || !deviceFingerprint) {
+    if (!deviceName || !deviceFingerprint) {
       res.status(400).json({ error: '缺少配对参数' })
       return
     }
-    // 配对码校验（一次性 + 5 分钟）
-    if (!consumePairingCode(pairingCode)) {
-      res.status(401).json({ error: '配对码无效或已过期' })
-      return
+    // 配对码可选：提供则校验（一次性 + 5 分钟）；留空则跳过（仍依赖 PC 端人工确认兜底，§5.1）
+    if (pairingCode) {
+      if (!consumePairingCode(pairingCode)) {
+        res.status(401).json({ error: '配对码无效或已过期' })
+        return
+      }
     }
     // 已登记的受信任设备直接续签
     const existing = await import('./auth').then((m) => m.findDevice(deviceFingerprint))

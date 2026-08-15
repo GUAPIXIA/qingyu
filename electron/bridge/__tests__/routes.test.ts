@@ -286,6 +286,35 @@ describe('桥接路由集成', () => {
     }
   })
 
+  it('配对码可选：无配对码时跳过校验（靠人工确认兜底）', async () => {
+    const app = express()
+    app.use(express.json())
+    app.use('/api/v1', buildBridgeRouter(
+      new WsHub(),
+      new BridgeChatService(new WsHub(), () => {}),
+      () => {},
+      (_requestId, _deviceName) => {
+        setTimeout(() => settlePair(_requestId, true), 50)
+      },
+    ))
+    const { server, port } = await listen(app)
+    try {
+      const base = `http://127.0.0.1:${port}/api/v1`
+      // 无配对码（不传/空串均视为可选）：未登记设备挂起 -> 自动批准 -> 签发
+      const res = await fetch(`${base}/auth/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceName: '无码手机', deviceFingerprint: 'fp-nocode' }),
+      })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.token).toBeTruthy()
+      expect(body.deviceId).toBeTruthy()
+    } finally {
+      server.close()
+    }
+  })
+
   it('设置/世界书/预设端点：读改写全链路', async () => {
     const device = registerDevice('测试设备3', 'fp-test3')
     const token = signToken(device.deviceId)
