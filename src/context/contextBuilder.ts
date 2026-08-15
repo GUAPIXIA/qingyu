@@ -146,10 +146,12 @@ export function buildContextMessagesFromData(
   }
 
   // ===== 角色设定 + 世界书 =====
+  // M-28 修复：角色设定段统一用 charNameForVars（译名优先）——此前 systemPrompt/jailbreak/persona
+  // 用译名、description/personality/scenario 用原名，模型收到的角色自称自相矛盾
   let charDesc = ''
-  if (character.description) charDesc += replaceVariables(character.description, userName, character.name) + '\n'
-  if (character.personality) charDesc += '性格：' + replaceVariables(character.personality, userName, character.name) + '\n'
-  if (character.scenario) charDesc += '场景：' + replaceVariables(character.scenario, userName, character.name) + '\n'
+  if (character.description) charDesc += replaceVariables(character.description, userName, charNameForVars) + '\n'
+  if (character.personality) charDesc += '性格：' + replaceVariables(character.personality, userName, charNameForVars) + '\n'
+  if (character.scenario) charDesc += '场景：' + replaceVariables(character.scenario, userName, charNameForVars) + '\n'
 
   // 世界书注入（支持多个世界书合并 + 递归扫描 + at_depth 深度注入）
   const lorebookIds = data.chat.activeLorebookIds
@@ -231,7 +233,7 @@ export function buildContextMessagesFromData(
   const anConfig = character.authorNote ?? settings.authorNote
   let anText = ''
   if (anConfig?.enabled && anConfig.text?.trim()) {
-    anText = expandMacros(replaceVariables(anConfig.text.trim(), userName, character.name), macroCtx)
+    anText = expandMacros(replaceVariables(anConfig.text.trim(), userName, charNameForVars), macroCtx)
   }
 
   // top：紧跟系统提示注入（keepSeparate：避免被 merge 合并进系统提示）
@@ -248,7 +250,7 @@ export function buildContextMessagesFromData(
     && exampleDialogMode !== 'off'
     && (exampleDialogMode !== 'first_turn' || isFirstTurn)
   const exampleDialogContent = shouldSendExample
-    ? '【对话示例】\n' + replaceVariables(character.exampleDialog!, userName, character.name)
+    ? '【对话示例】\n' + replaceVariables(character.exampleDialog!, userName, charNameForVars)
     : ''
 
   // 如果示例位置是 after_system（默认），在这里插入
@@ -261,7 +263,7 @@ export function buildContextMessagesFromData(
 
   // 预留 postHistoryInstructions（历史之后才注入，需先计入预算，参考群聊路径做法）
   const postHistoryText = character.postHistoryInstructions
-    ? replaceVariables(character.postHistoryInstructions, userName, character.name)
+    ? replaceVariables(character.postHistoryInstructions, userName, charNameForVars)
     : ''
   if (postHistoryText) usedTokens += estimateTokens(postHistoryText, model)
   // 预留作者注释（middle/bottom 在历史段内注入，需计入预算）
