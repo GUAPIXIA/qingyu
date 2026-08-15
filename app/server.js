@@ -37,6 +37,13 @@ app.use('/api/auth', authRouter)
 app.use('/api/version', versionRouter)
 
 // 管理后台（/admin 路径）— 禁用缓存，避免浏览器 304 复用旧 CSP 头
+// 顺序注意：/admin（无斜杠）必须排在 express.static 之前，否则静态目录会先发
+// 301 重定向到绝对路径 /admin/，破坏 /qingyu 前缀挂载（nginx 转发场景跳丢前缀）。
+app.get('/admin', (_req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+  res.set('Pragma', 'no-cache')
+  res.sendFile(path.join(__dirname, 'admin', 'index.html'))
+})
 app.use('/admin', express.static(path.join(__dirname, 'admin'), {
   etag: false,
   lastModified: false,
@@ -45,11 +52,6 @@ app.use('/admin', express.static(path.join(__dirname, 'admin'), {
     res.set('Pragma', 'no-cache')
   }
 }))
-app.get('/admin', (_req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate')
-  res.set('Pragma', 'no-cache')
-  res.sendFile(path.join(__dirname, 'admin', 'index.html'))
-})
 
 const server = app.listen(PORT, () => {
   console.log(`[Server] 公告服务已启动: http://localhost:${PORT}`)
