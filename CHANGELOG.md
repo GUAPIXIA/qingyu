@@ -1,0 +1,63 @@
+# 更新日志
+
+## [0.1.1] - 2026-08-15
+
+### 初版发布：轻语安卓伴侣端（qingyu-companion）
+
+PC 端「轻语」的安卓伴侣端首版：只做远程连接与对话消费，不做本地 AI 对话。完整方案见 `docs/安卓伴侣端方案.md`。
+
+### 配对与连接
+
+- **扫码配对**（ZXing，二维码自动填入）+ 手动输入主机/端口/配对码，替代手抄配对码
+- **已配对设备管理**：多 PC 切换 / 移除
+- **版本协商**（`/api/v1/server/info`）+ **mDNS 自动发现** `_qingyu._tcp`（点击自动填入主机/端口）
+- **401 令牌失效横幅**：PC 吊销/过期令牌时提示重新配对（方案 §6.2）
+- 断线指数退避自动重连 + 连接状态栏
+
+### 会话列表
+
+- REST 拉取 + WS `session:updated` 增量刷新
+- **离线只读回退**（Room 本地缓存）
+- 二次确认删除 + **长按重命名**
+
+### 单聊
+
+- 发消息（`requestId` 幂等、**引用回复 replyToId**）
+- 流式接收（`ai:chunk` / `ai:done` / `ai:error`）+ 停止生成
+- 历史分页（`beforeId` 游标）+ **chunk 节流批量渲染**（方案 §8 弱网对策）
+- 发送中/失败气泡 + 手动重试 + **连接恢复自动重发**（断线队列，复用幂等键）
+- 聊天时间线（今天/昨天/MM-dd 日期分隔）+ 消息时间戳与 token 用量展示（`ai:usage` 事件）
+- **长按消息操作**：复制 / 编辑 / 删除 / 翻译 / **重新生成** / **朗读** / **引用回复**
+- **swipe 候选切换**
+- **快捷回复条**（text/preset/command 全类型，点击走 execute 端点，text 降级直发）
+
+### 多模态与朗读
+
+- **图片消息**：URL（桥接层静态路由）走 Coil、base64/data URI 兜底解码，多图两列平铺，点击全屏大图查看（左右滑动）
+- **TTS 朗读**：长按「朗读」→ ExoPlayer 拉取 PC 合成音频流边下边播（`Media3`，`TtsPlayer` 接口 + `ExoPlayerTtsPlayer` 实现）
+- **心理描写折叠**：`<thought>` / `<thinking>` 块提取（对齐 PC 端 `messagePostProcess.ts` 规范）+ 默认折叠展开
+
+### 渲染与角色
+
+- Markdown 本地渲染
+- 角色浏览（Coil 封面）+ **「设为当前角色」**（协议假设端点，PC 落地前失败仅提示）
+
+### 设置与阶段三
+
+- 设置页：**退出时清除全部数据**（二次确认）、**清除本地缓存**（保留连接）、连接管理入口、**内网穿透指引**（方案 §5.2 三路线）、关于/版本
+- **用量统计只读页**（`/api/v1/usage/summary`）
+- **公告同步页**（`/api/v1/announcements`）
+- 消息推送与自建中继方案见 `docs/阶段三方案.md`（设计稿，待评审）
+
+### 工程
+
+- 版本号集中管理：`gradle/libs.versions.toml` `[versions]` 中的 `appVersionName` / `appVersionCode` 为唯一权威来源，`app/build.gradle.kts` 引用（v0.1.1 / build 2）
+- 架构分层：`model`（DTO 对齐 `shared/types.ts` + WS 事件领域模型 + 消息合并纯函数）/ `network`（Retrofit + OkHttp + WebSocket + 连接管理 + mDNS）/ `data`（Room 缓存、DataStore 连接存储、仓库、DI 容器）/ `ui`（Compose 页面与组件）
+- JVM 单元测试覆盖 Markdown / thought / 消息合并 / 图片源等核心纯函数
+
+---
+
+## 版本记录说明
+
+- 0.1.0（开发版，未发布）：阶段一 MVP 功能开发，未产出独立版本记录
+- **0.1.1（初版）**：首个发布版本，合并 0.1.0 全部功能并正式建立版本管理
