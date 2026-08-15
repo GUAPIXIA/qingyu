@@ -140,7 +140,14 @@ class WsClientImpl(
         _state.value = WsClient.State.RECONNECTING
         scope.launch {
             delay(delayMs)
-            if (!stopped) openSocket(target)
+            // H-17 修复：延迟到期时校验 target 仍是当前连接（引入代次语义）——
+            // 此前只查 stopped，期间用户切换到 PC-B 并连接成功后，A 的延迟协程醒来
+            // 会先 cancelAll 杀掉 B 的连接再连回 A，造成 REST/WS 数据源错乱（会话串台）。
+            if (!stopped && connection === target) {
+                openSocket(target)
+            } else {
+                reconnectAttempts = 0
+            }
         }
     }
 
