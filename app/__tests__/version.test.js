@@ -67,6 +67,52 @@ describe('版本更新 semver 校验', () => {
   })
 })
 
+describe('安卓端版本配置', () => {
+  it('PUT 写入 androidVersion/androidChangelog/androidDownloadUrl', async () => {
+    const res = await fetch(baseUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({
+        androidVersion: '0.1.2',
+        androidChangelog: '检查更新功能',
+        androidDownloadUrl: 'https://example.com/qingyu-companion-0.1.2.apk',
+      }),
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.androidVersion).toBe('0.1.2')
+    expect(data.androidChangelog).toBe('检查更新功能')
+    expect(data.androidDownloadUrl).toBe('https://example.com/qingyu-companion-0.1.2.apk')
+  })
+
+  it('GET 返回安卓端字段', async () => {
+    const res = await fetch(baseUrl)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.androidVersion).toMatch(/^\d+\.\d+\.\d+/)
+    expect(typeof data.androidChangelog).toBe('string')
+    expect(typeof data.androidDownloadUrl).toBe('string')
+  })
+
+  it('非法 androidVersion 返回 400', async () => {
+    const res = await fetch(baseUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ androidVersion: 'v0.1' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('非法 androidDownloadUrl 返回 400', async () => {
+    const res = await fetch(baseUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ androidDownloadUrl: 'javascript:alert(1)' }),
+    })
+    expect(res.status).toBe(400)
+  })
+})
+
 describe('公开版本信息', () => {
   it('GET 返回版本配置', async () => {
     const res = await fetch(baseUrl)

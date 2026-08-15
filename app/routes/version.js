@@ -18,18 +18,22 @@ function setConfig(key, value) {
   ).run(key, value, now)
 }
 
-// 公开：获取最新版本信息
+// 公开：获取最新版本信息（PC 端 + 安卓端）
 router.get('/', (_req, res) => {
   const version = getConfig('latest_version') || '0.0.0'
   const changelog = getConfig('changelog') || ''
   const downloadUrl = getConfig('download_url') || ''
+  // 安卓端版本（伴侣端独立版本体系，管理后台可单独配置）
+  const androidVersion = getConfig('android_latest_version')
+  const androidChangelog = getConfig('android_changelog') || ''
+  const androidDownloadUrl = getConfig('android_download_url') || ''
 
-  res.json({ version, changelog, downloadUrl })
+  res.json({ version, changelog, downloadUrl, androidVersion, androidChangelog, androidDownloadUrl })
 })
 
-// 管理员：更新版本配置
+// 管理员：更新版本配置（PC 端 + 安卓端）
 router.put('/', authMiddleware, (req, res) => {
-  const { version, changelog, downloadUrl } = req.body
+  const { version, changelog, downloadUrl, androidVersion, androidChangelog, androidDownloadUrl } = req.body
 
   if (version !== undefined) {
     // semver 格式校验（x.y.z，可选 -预发布 后缀）
@@ -53,11 +57,34 @@ router.put('/', authMiddleware, (req, res) => {
     setConfig('download_url', downloadUrl)
   }
 
+  // ---- 安卓端（伴侣端）版本配置，与 PC 端字段同规则 ----
+  if (androidVersion !== undefined) {
+    if (typeof androidVersion !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(androidVersion.trim())) {
+      return res.status(400).json({ error: 'androidVersion 格式无效，应为 x.y.z（如 0.1.2）' })
+    }
+    setConfig('android_latest_version', androidVersion.trim())
+  }
+  if (androidChangelog !== undefined) {
+    if (typeof androidChangelog !== 'string' || androidChangelog.length > 50000) {
+      return res.status(400).json({ error: 'androidChangelog 必须为字符串且不超过 50000 字符' })
+    }
+    setConfig('android_changelog', androidChangelog)
+  }
+  if (androidDownloadUrl !== undefined) {
+    if (typeof androidDownloadUrl !== 'string' || androidDownloadUrl.length > 2048 || !/^https?:\/\/[^\s]+$/i.test(androidDownloadUrl)) {
+      return res.status(400).json({ error: 'androidDownloadUrl 必须是 http/https 链接且不超过 2048 字符' })
+    }
+    setConfig('android_download_url', androidDownloadUrl)
+  }
+
   // 返回更新后的配置
   const updated = {
     version: getConfig('latest_version') || '0.0.0',
     changelog: getConfig('changelog') || '',
     downloadUrl: getConfig('download_url') || '',
+    androidVersion: getConfig('android_latest_version'),
+    androidChangelog: getConfig('android_changelog') || '',
+    androidDownloadUrl: getConfig('android_download_url') || '',
   }
   res.json(updated)
 })

@@ -55,6 +55,9 @@ function initDatabase() {
     latest_version: '0.8.7',
     changelog: '',
     download_url: 'https://github.com/GUAPIXIA/qingyu/releases',
+    android_latest_version: '',
+    android_changelog: '',
+    android_download_url: '',
   }
   const insertConfig = db.prepare(
     'INSERT OR IGNORE INTO app_config (key, value, updated_at) VALUES (?, ?, ?)'

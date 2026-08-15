@@ -1,5 +1,16 @@
 # 更新日志
 
+## [1.0.2] - 2026-08-15
+
+### 多端版本管理（安卓端可独立配置最新版本）
+
+- `/api/version` 新增安卓端字段：`androidVersion` / `androidChangelog` / `androidDownloadUrl`（与 PC 端同规则校验：semver / 长度 / http(s) 白名单）
+- 管理后台「版本管理」面板拆分为 PC 端 + 安卓端两组，安卓端版本号/APK 下载地址/更新日志可直接在页面配置
+- `app_config` 默认值补充 android 字段（`INSERT OR IGNORE`，存量库自动补齐）
+- 测试新增 4 例（安卓字段写入/读取/非法版本/非法 URL），全量 32 通过
+
+---
+
 ## [1.0.1] - 2026-08-15
 
 ### 部署修复：Docker 构建兼容（Node 22）
