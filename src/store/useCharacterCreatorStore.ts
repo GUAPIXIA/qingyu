@@ -402,6 +402,9 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       },
       {
         onDone: (text) => {
+          // H-13 修复：主进程 abort 被视为正常结束并补发 aiDone，被取消/替换的旧请求
+          // 必须忽略其 onDone，否则污染新请求状态与草稿
+          if (get().expandRequestId !== requestId) return
           const parsed = parseExpandResult(text)
           set((state) => ({
             draft: { ...state.draft, ...(parsed ?? {}) },
@@ -410,7 +413,10 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
             error: parsed ? null : 'AI 返回内容无法解析，请重试或手动填写',
           }))
         },
-        onError: (err) => set({ isExpanding: false, expandRequestId: null, error: err }),
+        onError: (err) => {
+          if (get().expandRequestId !== requestId) return
+          set({ isExpanding: false, expandRequestId: null, error: err })
+        },
       },
     )
     set({ expandRequestId: requestId })
@@ -429,7 +435,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
     set({ generatingField: field, error: null })
 
     const { systemPrompt, userContent } = buildFieldGeneratePrompt(field, get().draft, userInput)
-    runAIChat(
+    const requestId = runAIChat(
       {
         messages: [
           { role: 'system', content: systemPrompt },
@@ -448,10 +454,12 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       },
       {
         onDone: (text) => {
+          // H-13：被取消/替换的旧请求忽略其补发 aiDone
+          if (get().expandRequestId !== requestId) return
           const content = cleanFieldOutput(text, field).trim()
           set((state) => {
             if (!content) {
-              return { generatingField: null, error: `「${FIELD_LABELS[field]}」生成失败，请重试` }
+              return { generatingField: null, expandRequestId: null, error: `「${FIELD_LABELS[field]}」生成失败，请重试` }
             }
             const draft = { ...state.draft }
             if (field === 'tags') {
@@ -463,12 +471,17 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
             } else {
               ;(draft as unknown as Record<string, unknown>)[field] = content
             }
-            return { draft, generatingField: null, error: null }
+            return { draft, generatingField: null, expandRequestId: null, error: null }
           })
         },
-        onError: (err) => set({ generatingField: null, error: err }),
+        onError: (err) => {
+          if (get().expandRequestId !== requestId) return
+          set({ generatingField: null, expandRequestId: null, error: err })
+        },
       },
     )
+    // H-12 修复：写入 expandRequestId（此前从不写入，取消按钮/重复点击取消完全失效）
+    set({ expandRequestId: requestId })
   },
 
   aiGenerateGreeting: async (index, userInput) => {
@@ -484,7 +497,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
     set({ generatingGreetingIndex: index, error: null })
 
     const { systemPrompt, userContent } = buildGreetingPrompt(index, get().draft, userInput)
-    runAIChat(
+    const requestId = runAIChat(
       {
         messages: [
           { role: 'system', content: systemPrompt },
@@ -503,10 +516,12 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       },
       {
         onDone: (text) => {
+          // H-13：被取消/替换的旧请求忽略其补发 aiDone
+          if (get().expandRequestId !== requestId) return
           const content = cleanFieldOutput(text).trim()
           set((state) => {
             if (!content) {
-              return { generatingGreetingIndex: null, error: '开场白生成失败，请重试' }
+              return { generatingGreetingIndex: null, expandRequestId: null, error: '开场白生成失败，请重试' }
             }
             const draft = { ...state.draft }
             if (index === -1) {
@@ -517,12 +532,17 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
               list[index] = content
               draft.alternateGreetings = list
             }
-            return { draft, generatingGreetingIndex: null, error: null }
+            return { draft, generatingGreetingIndex: null, expandRequestId: null, error: null }
           })
         },
-        onError: (err) => set({ generatingGreetingIndex: null, error: err }),
+        onError: (err) => {
+          if (get().expandRequestId !== requestId) return
+          set({ generatingGreetingIndex: null, expandRequestId: null, error: err })
+        },
       },
     )
+    // H-12 修复：写入 expandRequestId
+    set({ expandRequestId: requestId })
   },
 
   cancelExpand: () => {

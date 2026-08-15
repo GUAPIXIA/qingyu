@@ -187,7 +187,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           </div>
         )}
         {/* 操作栏 */}
-        <MessageActionBar bare message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => setEditing(true)} />
+        <MessageActionBar bare message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); setEditing(true) }} />
       </>
     )
   }
@@ -377,7 +377,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           </div>
 
           {/* 操作栏 */}
-          <MessageActionBar message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => setEditing(true)} />
+          <MessageActionBar message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); setEditing(true) }} />
 
           {/* 继续续写按钮 — 始终可见，仅最后一条 assistant 消息 */}
           {isLast && !isUser && !isSystem && !isStreaming && character && (

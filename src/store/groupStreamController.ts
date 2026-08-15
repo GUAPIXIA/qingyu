@@ -870,31 +870,31 @@ export async function splitAndSaveMessages(
   const pattern = /【(.+?)】/g
   const segments: { name: string; content: string }[] = []
   let lastIdx = 0
+  let preamble = ''
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(content)) !== null) {
-    if (lastIdx > 0 || segments.length > 0) {
+    const textBefore = content.slice(lastIdx, match.index).trim()
+    if (segments.length === 0) {
+      // H-14 修复：首个【】前的旁白文本先暂存，结束时并入首段内容
+      // （此前 push 后被后续迭代的 prev.content 覆盖，旁白被静默丢弃）
+      preamble = textBefore
+      segments.push({ name: match[1], content: '' })
+    } else {
       const prev = segments[segments.length - 1]
-      if (prev) {
-        prev.content = content.slice(lastIdx, match.index).trim()
-      }
-    } else if (match.index > 0) {
-      // 首个【】标记前有 preamble 文本，保存到首段内容中
-      const preamble = content.slice(0, match.index).trim()
-      if (preamble) {
-        segments.push({ name: match[1], content: '' })
-        segments[segments.length - 1].content = preamble
-        lastIdx = match.index + match[0].length
-        continue
-      }
+      prev.content = textBefore
+      segments.push({ name: match[1], content: '' })
     }
-    segments.push({ name: match[1], content: '' })
     lastIdx = match.index + match[0].length
   }
 
   // 最后一段
   if (segments.length > 0) {
     segments[segments.length - 1].content = content.slice(lastIdx).trim()
+    // 首段内容前并入旁白（若有），保证不被覆盖
+    if (preamble) {
+      segments[0].content = [preamble, segments[0].content].filter(Boolean).join('\n\n')
+    }
   }
 
   if (segments.length === 0) {

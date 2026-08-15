@@ -34,8 +34,9 @@ function detectMime(buf: Buffer): string {
 function readCharacterImage(characterId: string, prefix: 'avatar' | 'cover'): Buffer | null {
   const charDir = DIRS.characters()
   for (const ext of AVATAR_EXTS) {
-    // avatar 为 {id}.{ext}；cover 为 {id}.cover.{ext}（对齐 charCard 存储约定）
-    const name = prefix === 'avatar' ? `${characterId}.${ext}` : `${characterId}.cover.${ext}`
+    // avatar 为 {id}.{ext}；cover 为 {id}_cover.{ext}（H-7 修复：对齐 charCard.ts 实际存储约定，
+    // 此前用点号 {id}.cover.{ext} 永远读不到文件，/static/covers 恒 404）
+    const name = prefix === 'avatar' ? `${characterId}.${ext}` : `${characterId}_cover.${ext}`
     const filePath = join(charDir, name)
     if (existsSync(filePath)) {
       try {
@@ -94,12 +95,14 @@ export function buildStaticRouter(): Router {
         }
         const messages = chatData.readMessages(characterId, sessionId)
         const target = messages.find((m) => m.id === messageId)
-        const image = target?.images?.[index]
-        if (!image) {
+        const raw = target?.images?.[index]
+        if (!raw) {
           res.status(404).end()
           return
         }
-        const buf = Buffer.from(image, 'base64')
+        // H-8 修复：兼容 data:image/...;base64,... 与纯 base64 两种存储形式（对齐群聊分支处理）
+        const base64 = raw.startsWith('data:') ? raw.slice(raw.indexOf(',') + 1) : raw
+        const buf = Buffer.from(base64, 'base64')
         res.type(detectMime(buf)).send(buf)
       } catch {
         res.status(400).end()

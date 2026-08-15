@@ -307,17 +307,48 @@ export async function downloadImageAsBase64(url: string, proxyUrl?: string, maxR
   // N14 修复：竞速胜出后取消输家请求，释放连接
   const directController = new AbortController()
   const proxyController = new AbortController()
-  try {
-    const result = await Promise.any([
+  // H-3 修复：原 Promise.any 取"第一个 resolve"（_downloadOne 失败路径也是 resolve），
+  // 直连毫秒级快速失败会立刻落定并 abort 本可成功的代理链路。改为"第一个成功者胜"。
+  const result = await raceFirstSuccess(
+    [
       _downloadOne(trimmed, null, maxRedirects, directController.signal),
       _downloadOne(trimmed, proxy, maxRedirects, proxyController.signal),
-    ])
-    directController.abort()
-    proxyController.abort()
+    ],
+    [directController, proxyController]
+  )
+  if (result) {
     return result
-  } catch {
-    // 全部失败
-    log.warn('封面下载：直连和代理均失败', { url: trimmed.substring(0, 100) })
-    return { success: false, error: '直连和代理均下载失败，请检查网络', code: 'NETWORK_ERROR' }
   }
+  // 全部失败
+  log.warn('封面下载：直连和代理均失败', { url: trimmed.substring(0, 100) })
+  return { success: false, error: '直连和代理均下载失败，请检查网络', code: 'NETWORK_ERROR' }
+}
+
+/**
+ * H-3 修复：竞速下载——第一个成功者胜；全部失败返回 null。
+ * 与 Promise.any 的区别：只采纳 success=true 的结果，失败结果不结束竞速；
+ * 胜出时 abort 其余未完成请求（保留 N14 的连接释放优化）。
+ */
+function raceFirstSuccess<T extends { success: boolean }>(
+  promises: Array<Promise<T>>,
+  aborts: AbortController[]
+): Promise<T | null> {
+  return new Promise((resolve) => {
+    let pending = promises.length
+    promises.forEach((p, i) => {
+      p.then((r) => {
+        if (r.success) {
+          // 胜出：abort 其余（含已完成的，无副作用）
+          aborts.forEach((a, j) => { if (j !== i) a.abort() })
+          resolve(r)
+          return
+        }
+        pending -= 1
+        if (pending === 0) resolve(null)
+      }).catch(() => {
+        pending -= 1
+        if (pending === 0) resolve(null)
+      })
+    })
+  })
 }

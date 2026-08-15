@@ -183,7 +183,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
                 className="w-full min-h-[60px] bg-tavern-bg border border-tavern-border rounded-lg px-2.5 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent resize-none"
                 autoFocus
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault()
                     saveEdit()
                   }

@@ -117,7 +117,8 @@ describe('splitAndSaveMessages 群聊自由发言拆分', () => {
     const content = '（旁白）\n【爱丽丝】正文'
     await splitAndSaveMessages(set as any, (() => ({})) as any, makeGroup(), 's1', content, 1, 'ph')
     const saved = vi.mocked(window.api.group.saveMessage).mock.calls[0][2] as GroupMessage
-    expect(saved.content).toBe('正文')
+    // H-14 修复：旁白并入首段内容（此前被后续覆盖丢弃，测试锁定了错误行为）
+    expect(saved.content).toBe('（旁白）\n\n正文')
   })
 
   it('占位消息更新为空内容时使用 (无回复)', async () => {

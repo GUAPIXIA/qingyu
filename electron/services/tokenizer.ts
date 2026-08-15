@@ -29,7 +29,8 @@ interface TiktokenApi {
 let _tiktoken: TiktokenApi | null = null
 
 function tryLoadTiktoken(): TiktokenApi | null {
-  if (_tiktoken !== undefined) return _tiktoken
+  // H-1 修复：初始值为 null，判断应匹配 null 而非 undefined（此前恒早退，加载逻辑永不执行）
+  if (_tiktoken !== null) return _tiktoken
   try {
     _tiktoken = _nodeRequire('tiktoken') as TiktokenApi
     log.info('tiktoken 精确分词器加载成功')

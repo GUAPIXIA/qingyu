@@ -23,15 +23,12 @@ async function translatePromptToEnglish(prompt: string, settings: Settings): Pro
   }
 
   // 读取 API Key
-  const { readJson: readCredJson } = await import('../services/storage')
+  const { getCredential } = await import('../services/safeStorage')
   let apiKey = profile.apiKey || ''
   if (!apiKey && profile.id) {
-    try {
-      const creds = readCredJson<Record<string, string>>(join(DIRS.config(), 'credentials.json'))
-      if (creds && creds[profile.id]) {
-        apiKey = creds[profile.id]
-      }
-    } catch { /* ignore */ }
+    // H-6 修复：凭据键格式为 `profile-<id>`（settings.ts），且 credentials.json 存的是
+    // safeStorage 加密 base64，必须走 getCredential 解密后才能当 apiKey 使用
+    apiKey = getCredential(`profile-${profile.id}`) ?? ''
   }
   if (!apiKey) {
     throw new Error('API Key 未配置')

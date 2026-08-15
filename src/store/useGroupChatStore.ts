@@ -450,6 +450,10 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
         return
       }
 
+      // H-11 修复：进入流式前同步置位 isStreaming——否则置位要等 streamGroupAI 内部
+      // 多次 await（含语义检索网络往返）之后，窗口期再次回车会并发第二个流
+      // （覆盖模块级 activeStream，首流占位消息永久残留）。
+      set({ isStreaming: true })
       await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, userMsg.round, () => {
         // AI 回复完成后，更新用户消息状态
         markUserMsgSent(userMsg.id)
@@ -462,6 +466,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       })
     } else {
       // free 模式：AI 一次返回多角色回复
+      // H-11 修复：同 mention/polling，进入流式前同步置位 isStreaming 防双流并发
+      set({ isStreaming: true })
       await streamGroupAIFree(set, get, currentGroup, currentSessionId, userMsg.round)
       markUserMsgSent(userMsg.id)
       // 自动记忆检查

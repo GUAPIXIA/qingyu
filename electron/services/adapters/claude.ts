@@ -52,11 +52,17 @@ export const claudeAdapter: AIAdapter = {
     const lowerModel = model.toLowerCase()
     if ((lowerModel.includes('claude-3-7') || lowerModel.includes('claude-4') ||
          lowerModel.includes('claude-3.7')) && !lowerModel.includes('haiku')) {
-      // 思考预算为 max_tokens 的 1/3，最低 1024
-      const thinkingBudget = Math.max(1024, Math.floor((maxTokens || 4096) / 3))
-      body.thinking = { type: 'enabled', budget_tokens: thinkingBudget }
-      // 启用思考时 temperature 必须为 1
-      body.temperature = 1
+      // H-2 修复：Anthropic 要求 max_tokens > budget_tokens。
+      // 默认 maxTokens=1024 时预算会被钳到 0（等效禁用），避免 400；
+      // 预算 = min(1/3 max_tokens, max_tokens-1024)，最低 1024，且 max_tokens 必须 >1024 才启用。
+      const maxTok = maxTokens || 4096
+      if (maxTok > 1024) {
+        const thinkingBudget = Math.max(1024, Math.floor(maxTok / 3))
+        body.thinking = { type: 'enabled', budget_tokens: Math.min(thinkingBudget, maxTok - 1024) }
+        // 启用思考时 temperature 必须为 1；top_p 会与 temperature=1 冲突触发 400，一并移除
+        body.temperature = 1
+        delete body.top_p
+      }
     }
 
     const response = await fetch(url, {

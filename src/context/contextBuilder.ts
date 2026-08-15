@@ -156,11 +156,15 @@ export function buildContextMessagesFromData(
   // at_depth 条目：历史消息构建后按深度插入（初始为空）
   let atDepthItems: { content: string; depth: number; order: number }[] = []
   if (lorebookIds.length > 0) {
-    // 修复 #28: 扫描深度可配置（取激活世界书中的最大值，否则用默认）
-    const scanDepth = lorebookIds
+    // 修复 #28: 扫描深度可配置（取激活世界书中的最大值，无配置时用默认）
+    // H-16 修复：reduce 初始值此前误用 DEFAULT（10），等价于 max(配置, 10)，
+    // 用户调小配置（如 2/4）被静默抬回 10，条目过度触发。先收集配置值、空才回退默认。
+    const depths = lorebookIds
       .map(id => data.lorebooks.find((lb) => lb.id === id)?.scanDepth)
       .filter((d): d is number => typeof d === 'number' && d > 0)
-      .reduce((max, d) => Math.max(max, d), DEFAULT_LOREBOOK_SCAN_DEPTH)
+    const scanDepth = depths.length > 0
+      ? depths.reduce((max, d) => Math.max(max, d), 0)
+      : DEFAULT_LOREBOOK_SCAN_DEPTH
 
     const scanText = messages.slice(-scanDepth).map((m) => m.content).join(' ')
 

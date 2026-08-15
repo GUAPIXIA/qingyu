@@ -30,6 +30,7 @@ import { getBuiltinPresets } from '../ipc/preset'
 import { readRules } from '../ipc/regex'
 import { getSummary, queryUsage } from '../services/usage'
 import { fetchAnnouncementList, fetchVersionInfo } from '../ipc/announcement'
+import { readStore as readQuickReplyStore } from '../ipc/quickReply'
 import { restoreSecrets } from '../ipc/settings'
 import { chatWithRetry, getAdapter } from '../services/ai'
 import { mainContextProvider } from '../context/mainContextProvider'
@@ -271,6 +272,9 @@ export function buildBridgeRouter(
   router.get('/ai/models', async (_req, res) => {
     try {
       const settings = readJson<Settings>(join(DIRS.config(), 'settings.json'), 'settings') ?? getDefaultSettings()
+      // H-4 修复：settings.json 落盘时经 stripSecrets 剥离明文 apiKey，读取后必须回填，
+      // 否则手机端拉模型列表恒 401（同文件其他端点均调用了 restoreSecrets）
+      restoreSecrets(settings)
       const profile = settings.connectionProfiles?.find((p) => p.id === settings.activeProfileId)
       if (!profile) {
         res.status(400).json({ error: '未配置 API 连接' })
@@ -885,10 +889,10 @@ export function buildBridgeRouter(
 
   router.get('/quickReplies', async (_req, res) => {
     try {
-      // 与 quickReply:list 同一数据源：全局 + 按角色文件
-      const globalDir = join(DIRS.config(), 'quickReplies')
-      const global = await listJsonFilesAsync<QuickReply>(globalDir)
-      res.json({ global, byCharacter: [] })
+      // H-9 修复：与 quickReply:list 同一数据源（data/config/quickReplies.json 单文件），
+      // 此前误读 quickReplies 目录（从不被创建），手机端快捷回复恒为空列表
+      const store = readQuickReplyStore()
+      res.json({ global: store.global, byCharacter: store.byCharacter ?? {} })
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
     }
@@ -897,7 +901,8 @@ export function buildBridgeRouter(
   router.post('/quickReplies/:id/execute', async (req, res) => {
     try {
       const id = safeId(req.params.id)
-      const all = await listJsonFilesAsync<QuickReply>(join(DIRS.config(), 'quickReplies'))
+      const store = readQuickReplyStore()
+      const all = [...(store.global ?? []), ...Object.values(store.byCharacter ?? {}).flat()]
       const qr = all.find((q) => q.id === id)
       if (!qr) {
         res.status(404).json({ error: '快捷回复不存在' })

@@ -29,6 +29,9 @@ function readStore(): QuickReplyStore {
   return { global: store.global, byCharacter: store.byCharacter ?? {} }
 }
 
+/** H-9 修复：导出读接口供桥接层复用（此前桥接层误读 quickReplies 目录，数据源不一致恒为空） */
+export { readStore }
+
 export function registerQuickReplyIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 读取全部（全局 + 角色级）
   ipcMain.handle('quickReply:listAll', async () => {

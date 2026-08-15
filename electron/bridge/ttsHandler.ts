@@ -36,6 +36,8 @@ export function preprocessForTts(content: string, includeThought: boolean): stri
 function readActiveTtsConfig(): TTSModelConfig | null {
   const settingsFile = join(DIRS.config(), 'settings.json')
   const settings = readJson<Settings>(settingsFile, 'settings') ?? getDefaultSettings()
+  // H-5 修复：apiKey 落盘时被 stripSecrets 剥离，读取后必须回填，否则 openai 兼容 TTS 恒 401
+  restoreSecrets(settings)
   if (!settings.activeTTSModelId) return null
   return settings.ttsModels.find((m) => m.id === settings.activeTTSModelId && m.enabled) ?? null
 }

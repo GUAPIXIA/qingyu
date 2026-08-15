@@ -22,6 +22,9 @@ import { applyRegexRules, applyOutputRegexRules, truncateAtStop, collectStopStri
 import { createLogger } from '../services/logger'
 import type { Message, ProviderType } from '../../shared/types'
 
+// H-10 修复：幂等缓存 TTL（覆盖安卓端断线重发窗口后清理，避免无界内存增长）
+const IDEMPOTENCY_TTL_MS = 60_000
+
 const log = createLogger('bridge-chat')
 
 /** 会话变更通知（注入：主进程广播渲染层 + WS 转发） */
@@ -94,9 +97,11 @@ export class BridgeChatService {
       this.idempotency.set(requestId, userMessage)
       this.notifySessionChanged(sessionId, 'message')
 
-      // 组装（阶段 0b：与渲染层同一 contextBuilder 入口）
-      const { messages } = buildContextMessagesFromData(data)
-      const params = buildChatParamsFromData(data, messages)
+      // CR-2 修复：落盘后再取快照——此前用落盘前的旧快照构建上下文，
+      // AI 看不到本条用户消息（对上一轮作答）。saveMessage 后重新读取消息文件。
+      const freshData = await mainContextProvider.fetchBuildData(characterId, sessionId)
+      const { messages } = buildContextMessagesFromData(freshData)
+      const params = buildChatParamsFromData(freshData, messages)
       params.requestId = requestId
 
       // AI 流式（复用主进程 AI 服务，chunk 经 WS 推送）
@@ -157,6 +162,8 @@ export class BridgeChatService {
       chatData.saveMessage(characterId, aiMessage)
       this.hub.broadcast('ai:done', { requestId, sessionId, message: aiMessage })
       this.notifySessionChanged(sessionId, 'message')
+      // H-10 修复：幂等缓存保留 60s 幂等窗口后清理（含 base64 图片可达数 MB/条，长期不清理无界增长）
+      setTimeout(() => { this.idempotency.delete(requestId) }, IDEMPOTENCY_TTL_MS)
       return userMessage
     } finally {
       this.inFlight.delete(requestId)

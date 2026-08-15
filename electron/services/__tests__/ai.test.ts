@@ -324,15 +324,30 @@ describe('Claude 适配器', () => {
     expect(onUsage).toHaveBeenCalledWith({ promptTokens: 10, completionTokens: 5, totalTokens: 15 })
   })
 
-  it('Claude 3.7+ 启用 thinking 且强制 temperature=1', async () => {
+  it('Claude 3.7+ maxTokens=1024（默认）时不启用 thinking（避免 budget=max_tokens 触发 400）', async () => {
     const params = makeParams({ provider: 'claude', model: 'claude-3-7-sonnet', stream: false })
     fetchMock.mockResolvedValue(jsonResponse({ content: [{ type: 'text', text: 'hi' }] }))
 
     await getAdapter('claude').chat(params, vi.fn(), new AbortController().signal)
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 1024 })
+    // H-2 修复：Anthropic 要求 max_tokens > budget_tokens，1024/1024 相等必 400，故禁用
+    expect(body.thinking).toBeUndefined()
+    expect(body.temperature).toBe(0.7)
+  })
+
+  it('Claude 3.7+ maxTokens 充足时启用 thinking 且移除 top_p', async () => {
+    const params = makeParams({ provider: 'claude', model: 'claude-3-7-sonnet', maxTokens: 4096, stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({ content: [{ type: 'text', text: 'hi' }] }))
+
+    await getAdapter('claude').chat(params, vi.fn(), new AbortController().signal)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    // budget = min(floor(4096/3), 4096-1024) = min(1365, 3072) = 1365
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 1365 })
     expect(body.temperature).toBe(1)
+    // H-2 修复：thinking 模式下 top_p 与 temperature=1 冲突触发 400，必须移除
+    expect(body.top_p).toBeUndefined()
   })
 })
 
