@@ -233,6 +233,10 @@ interface QingyuApi {
         @Query("pageSize") pageSize: Int = 20,
     ): com.qingyu.companion.model.AnnouncementPage
 
+    /** 获取服务器最新版本信息（PC 桥接层转发公告服务器 /api/version） */
+    @GET("api/v1/version")
+    suspend fun versionInfo(): com.qingyu.companion.model.VersionInfo
+
     // ---------- 群聊（阶段二：查看与发言） ----------
 
     @GET("api/v1/groups")

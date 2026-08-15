@@ -53,3 +53,11 @@ data class AnnouncementPage(
     val page: Int,
     val pageSize: Int,
 )
+
+/** 版本信息（GET /api/v1/version 响应：PC 桥接层转发公告服务器 /api/version） */
+@Serializable
+data class VersionInfo(
+    val version: String = "",
+    val changelog: String = "",
+    val downloadUrl: String = "",
+)

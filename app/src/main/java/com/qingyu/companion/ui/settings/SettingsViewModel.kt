@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.model.ServerConnection
+import com.qingyu.companion.model.VersionInfo
 import com.qingyu.companion.network.ConnectionManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,10 @@ class SettingsViewModel(
         val connectionCount: Int = 0,
         /** 当前活跃连接（连接详情区展示） */
         val activeConnection: ServerConnection? = null,
+        /** 服务器最新版本信息（关于区「检查更新」，null=未检查/获取失败） */
+        val latestVersion: VersionInfo? = null,
+        /** 版本检查进行中 */
+        val checkingVersion: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -100,4 +105,29 @@ class SettingsViewModel(
     }
 
     fun clearMessage() = _ui.update { it.copy(message = null) }
+
+    /** 从公告服务器获取最新版本号（走 PC 桥接层 /api/v1/version） */
+    fun checkVersion() {
+        if (_ui.value.checkingVersion) return
+        viewModelScope.launch {
+            _ui.update { it.copy(checkingVersion = true, message = null) }
+            try {
+                val info = repository.fetchVersionInfo()
+                _ui.update { it.copy(checkingVersion = false, latestVersion = info) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update {
+                    it.copy(
+                        checkingVersion = false,
+                        message = e.message ?: "检查更新失败",
+                        isError = true,
+                    )
+                }
+            }
+        }
+    }
+
+    /** 关闭版本信息弹窗 */
+    fun clearLatestVersion() = _ui.update { it.copy(latestVersion = null) }
 }

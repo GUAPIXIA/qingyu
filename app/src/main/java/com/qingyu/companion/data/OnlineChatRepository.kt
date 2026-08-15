@@ -244,6 +244,9 @@ class OnlineChatRepository(
     override suspend fun listAnnouncements(): com.qingyu.companion.model.AnnouncementPage =
         api().listAnnouncements()
 
+    override suspend fun fetchVersionInfo(): com.qingyu.companion.model.VersionInfo? =
+        runCatching { api().versionInfo() }.getOrNull()
+
     // ---------- 群聊（阶段二：查看与发言） ----------
 
     override suspend fun listGroups(): List<com.qingyu.companion.model.GroupChat> =

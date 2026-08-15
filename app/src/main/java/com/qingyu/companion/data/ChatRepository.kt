@@ -148,6 +148,9 @@ interface ChatRepository {
 
     suspend fun listAnnouncements(): com.qingyu.companion.model.AnnouncementPage
 
+    /** 获取服务器最新版本信息（阶段三：走 PC 桥接层转发公告服务器；失败返回 null 不抛错） */
+    suspend fun fetchVersionInfo(): com.qingyu.companion.model.VersionInfo?
+
     // ---------- 群聊（阶段二：查看与发言） ----------
 
     suspend fun listGroups(): List<com.qingyu.companion.model.GroupChat>

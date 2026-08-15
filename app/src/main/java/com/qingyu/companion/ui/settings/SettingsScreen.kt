@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -44,6 +45,8 @@ import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.theme.Lantern
+import android.content.Intent
+import android.net.Uri
 
 /**
  * 设置页：
@@ -142,6 +145,16 @@ fun SettingsScreen(
                     title = "轻语伴侣",
                     subtitle = "版本 ${BuildConfig.VERSION_NAME}（build ${BuildConfig.VERSION_CODE}）· API v1",
                 )
+                RowItem(
+                    title = "检查更新",
+                    subtitle = when {
+                        ui.checkingVersion -> "正在获取最新版本…"
+                        ui.latestVersion != null -> "服务器最新版本 ${ui.latestVersion!!.version}"
+                        else -> "从公告服务器获取最新版本号"
+                    },
+                    onClick = vm::checkVersion,
+                    busy = ui.checkingVersion,
+                )
             }
 
             ui.message?.let { message ->
@@ -157,6 +170,48 @@ fun SettingsScreen(
             }
         }
         }
+    }
+
+    ui.latestVersion?.let { info ->
+        val context = LocalContext.current
+        AlertDialog(
+            onDismissRequest = vm::clearLatestVersion,
+            title = { Text("最新版本 ${info.version}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("当前版本 ${BuildConfig.VERSION_NAME}（build ${BuildConfig.VERSION_CODE}）")
+                    if (info.changelog.isNotBlank()) {
+                        Text(
+                            "更新内容",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            info.changelog,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (info.downloadUrl.isBlank()) {
+                        Text(
+                            "本次更新暂无下载链接",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (info.downloadUrl.isNotBlank()) {
+                    TextButton(onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)))
+                    }) { Text("下载") }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::clearLatestVersion) { Text("关闭") }
+            },
+        )
     }
 
     if (confirmWipe) {
