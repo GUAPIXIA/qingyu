@@ -197,7 +197,7 @@ fun PairingScreen(onPaired: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        "在 PC 端「设置 → 手机连接」开启后，填入主机、端口与配对码。",
+                        "在 PC 端「设置 → 手机连接」开启后，填入主机与端口即可配对（配对码可选，扫码自动填充）。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -221,7 +221,7 @@ fun PairingScreen(onPaired: () -> Unit) {
                     GlassTextField(
                         value = ui.pairingCode,
                         onValueChange = vm::onPairingCodeChange,
-                        label = "配对码（一次性）",
+                        label = "配对码（可选）",
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(12.dp))

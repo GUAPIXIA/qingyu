@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,8 +42,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.qingyu.companion.BuildConfig
+import com.qingyu.companion.data.ChatFontScale
+import com.qingyu.companion.data.ChatSpacing
 import com.qingyu.companion.data.LocalAppContainer
+import kotlinx.coroutines.launch
+import com.qingyu.companion.BuildConfig
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.theme.Lantern
@@ -70,6 +75,11 @@ fun SettingsScreen(
     val ui by vm.ui.collectAsState()
     var confirmWipe by remember { mutableStateOf(false) }
     var showTunnelGuide by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    // 本地 UI 偏好（字体缩放/消息间距）
+    val fontScale by container.uiPrefsStore.fontScale.collectAsState(initial = 1f)
+    val spacingMult by container.uiPrefsStore.spacingMultiplier.collectAsState(initial = 1f)
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -93,6 +103,36 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Section("外观") {
+                Text(
+                    "聊天字体大小（仅安卓端本地生效，不影响 PC 显示）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FontOptionRow(
+                    options = ChatFontScale.entries,
+                    selected = ChatFontScale.entries.firstOrNull { it.scale == fontScale } ?: ChatFontScale.STANDARD,
+                    labelOf = { it.label },
+                    onSelect = { option ->
+                        scope.launch { container.uiPrefsStore.setFontScale(option) }
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "消息间距",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FontOptionRow(
+                    options = ChatSpacing.entries,
+                    selected = ChatSpacing.entries.firstOrNull { it.multiplier == spacingMult } ?: ChatSpacing.STANDARD,
+                    labelOf = { it.label },
+                    onSelect = { option ->
+                        scope.launch { container.uiPrefsStore.setSpacing(option) }
+                    },
+                )
+            }
+
             Section("连接与安全") {
                 RowItem(
                     title = "连接管理",
@@ -320,4 +360,46 @@ private fun TunnelGuideDialog(onDismiss: () -> Unit) {
             TextButton(onClick = onDismiss) { Text("知道了") }
         },
     )
+}
+
+/** 档位选择行（字体大小 / 消息间距）：胶囊按钮组 */
+@Composable
+private fun <T> FontOptionRow(
+    options: List<T>,
+    selected: T,
+    labelOf: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { option ->
+            val isSelected = option == selected
+            androidx.compose.material3.Surface(
+                onClick = { onSelect(option) },
+                shape = RoundedCornerShape(10.dp),
+                color = if (isSelected) {
+                    Lantern.copy(alpha = 0.22f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                },
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (isSelected) Lantern.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                ),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    labelOf(option),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isSelected) Lantern else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+    }
 }

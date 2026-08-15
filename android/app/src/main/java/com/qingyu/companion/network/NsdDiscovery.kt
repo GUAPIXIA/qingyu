@@ -30,6 +30,10 @@ class NsdDiscovery(context: Context) {
     val devices: StateFlow<List<DiscoveredPc>> = _devices.asStateFlow()
 
     private var discoveryListener: NsdManager.DiscoveryListener? = null
+    // M-33 修复：Android NsdManager 同一时刻仅允许一个 resolveService 在途（API<23 并发
+    // 会以 FAILURE_ALREADY_ACTIVE 失败且静默不重试）——用队列串行化 resolve。
+    private var resolving = false
+    private val pendingResolve = ArrayDeque<NsdServiceInfo>()
     private var active = false
 
     fun start() {
@@ -40,8 +44,9 @@ class NsdDiscovery(context: Context) {
             override fun onDiscoveryStarted(serviceType: String) = Unit
 
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                // 只接受正确类型，避免其他 _tcp 服务混入
-                if (serviceInfo.serviceType != SERVICE_TYPE) return
+                // L-35 修复：部分 ROM 回调的 serviceType 带尾点（_qingyu._tcp.），
+                // 严格比较会整体失效——trimEnd('.') 后比较
+                if (serviceInfo.serviceType.trimEnd('.') != SERVICE_TYPE) return
                 resolve(serviceInfo)
             }
 
@@ -76,26 +81,44 @@ class NsdDiscovery(context: Context) {
 
     /** 解析服务拿 host/port；失败则静默跳过（下轮广播仍会再发现） */
     private fun resolve(serviceInfo: NsdServiceInfo) {
+        // M-33：入队 + 泵送，串行化 resolve（避免 API<23 并发 FAILURE_ALREADY_ACTIVE 丢设备）
+        pendingResolve.addLast(serviceInfo)
+        pumpResolve()
+    }
+
+    @Synchronized
+    private fun pumpResolve() {
+        if (resolving) return
+        val next = pendingResolve.removeFirstOrNull() ?: return
+        resolving = true
+        val onSettled = {
+            synchronized(this) { resolving = false }
+            pumpResolve()
+        }
         runCatching {
-            nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
-                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) = Unit
+            nsdManager.resolveService(next, object : NsdManager.ResolveListener {
+                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) = onSettled()
 
                 override fun onServiceResolved(resolved: NsdServiceInfo) {
-                    val host = resolved.host?.hostAddress ?: return
-                    val port = resolved.port
-                    if (port <= 0) return
-                    val pc = DiscoveredPc(
-                        name = resolved.serviceName,
-                        host = host,
-                        port = port,
-                    )
-                    // 去重：同 host:port 只保留一个
-                    _devices.value = (_devices.value.filterNot {
-                        it.host == pc.host && it.port == pc.port
-                    } + pc).sortedBy { it.name }
+                    try {
+                        val host = resolved.host?.hostAddress ?: return
+                        val port = resolved.port
+                        if (port <= 0) return
+                        val pc = DiscoveredPc(
+                            name = resolved.serviceName,
+                            host = host,
+                            port = port,
+                        )
+                        // 去重：同 host:port 只保留一个
+                        _devices.value = (_devices.value.filterNot {
+                            it.host == pc.host && it.port == pc.port
+                        } + pc).sortedBy { it.name }
+                    } finally {
+                        onSettled()
+                    }
                 }
             })
-        }
+        }.onFailure { onSettled() }
     }
 
     private companion object {

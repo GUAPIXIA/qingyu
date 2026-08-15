@@ -1,6 +1,7 @@
 package com.qingyu.companion.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -45,6 +46,9 @@ import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.LorebookDto
 import com.qingyu.companion.model.PresetDto
 import com.qingyu.companion.ui.theme.Accent
+import com.qingyu.companion.ui.theme.Lantern
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -140,8 +144,7 @@ fun QuickSettingsPanel(sessionId: String, onDismiss: () -> Unit) {
 
                 else -> {
                     // ---- 世界书 ----
-                    Text("世界书", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
+                    SectionTitle("📚", "世界书")
                     if (lorebooks.isEmpty()) {
                         Text(
                             "暂无世界书",
@@ -228,8 +231,7 @@ fun QuickSettingsPanel(sessionId: String, onDismiss: () -> Unit) {
                     Spacer(Modifier.height(18.dp))
 
                     // ---- 预设 ----
-                    Text("预设", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
+                    SectionTitle("🎛️", "预设")
                     if (presets.isEmpty()) {
                         Text(
                             "暂无预设",
@@ -281,8 +283,7 @@ fun QuickSettingsPanel(sessionId: String, onDismiss: () -> Unit) {
                     Spacer(Modifier.height(18.dp))
 
                     // ---- 模型 ----
-                    Text("模型", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
+                    SectionTitle("🤖", "模型")
                     if (modelsLoading) {
                         Box(
                             Modifier
@@ -342,8 +343,7 @@ fun QuickSettingsPanel(sessionId: String, onDismiss: () -> Unit) {
                     Spacer(Modifier.height(18.dp))
 
                     // ---- 采样参数（对齐 PC 端：温度/TopP 只读展示，MaxToken 可调） ----
-                    Text("采样参数", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
+                    SectionTitle("⚙️", "采样参数")
                     val activePresetObj = presets.firstOrNull { it.id == activePresetId }
                     if (activePresetObj != null) {
                         Text(
@@ -410,8 +410,7 @@ fun QuickSettingsPanel(sessionId: String, onDismiss: () -> Unit) {
                     Spacer(Modifier.height(18.dp))
 
                     // ---- 长记忆 ----
-                    Text("长记忆", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
+                    SectionTitle("🧠", "长记忆")
                     val mem = memory
                     if (mem == null) {
                         Text(
@@ -587,4 +586,36 @@ fun QuickSettingsPanel(sessionId: String, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+
+/**
+ * 对话设置分区标题：图标 + 琥珀色标题 + 渐变分隔线（强化栏与栏边界）。
+ */
+@Composable
+private fun SectionTitle(icon: String, title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            icon,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            color = Lantern,
+        )
+    }
+    Spacer(Modifier.height(6.dp))
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(Lantern.copy(alpha = 0.55f), Lantern.copy(alpha = 0.05f), Color.Transparent)
+                )
+            )
+    )
+    Spacer(Modifier.height(10.dp))
 }

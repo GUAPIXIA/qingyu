@@ -12,6 +12,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -75,24 +76,26 @@ fun AppBackground(
     }
 }
 
-/** 半透明玻璃顶栏（背景渐隐，标题衬线） */
+/** 半透明玻璃顶栏（背景渐隐，标题衬线；紧凑：小标题 + 收缩高度，全局默认紧凑） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppTopBar(
     title: String,
     navigationIcon: (@Composable () -> Unit)? = null,
     actions: (@Composable () -> Unit)? = null,
+    compact: Boolean = true,
 ) {
     TopAppBar(
         title = {
             Text(
                 title,
-                style = MaterialTheme.typography.titleLarge,
+                style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground,
             )
         },
         navigationIcon = { navigationIcon?.invoke() },
         actions = { actions?.invoke() },
+        windowInsets = if (compact) WindowInsets(0, 0, 0, 0) else TopAppBarDefaults.windowInsets,
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
             scrolledContainerColor = Color.Transparent,

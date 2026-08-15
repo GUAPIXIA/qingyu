@@ -97,4 +97,10 @@ interface CachedMessageDao {
             "ORDER BY timestamp DESC LIMIT :limit)"
     )
     suspend fun trimTo(sessionId: String, limit: Int)
+
+    /** M-34 修复：删除无对应会话的孤儿消息（会话裁剪后调用，防消息表含聊天明文只增不减） */
+    @Query(
+        "DELETE FROM cached_messages WHERE sessionId NOT IN (SELECT id FROM cached_sessions)"
+    )
+    suspend fun deleteOrphanMessages()
 }

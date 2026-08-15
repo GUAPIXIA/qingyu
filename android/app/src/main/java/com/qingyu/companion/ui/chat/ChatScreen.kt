@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -127,6 +128,10 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
     val pendingImages by vm.images.collectAsState()
     val clipboard = LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // 本地 UI 偏好：聊天字体缩放 + 消息间距
+    val fontScale by container.uiPrefsStore.fontScale.collectAsState(initial = 1f)
+    val spacingMult by container.uiPrefsStore.spacingMultiplier.collectAsState(initial = 1f)
 
     var menuMessage by remember { mutableStateOf<Message?>(null) }
     var editingMessage by remember { mutableStateOf<Message?>(null) }
@@ -290,6 +295,8 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
                                     onSwipe = { direction -> vm.swipe(item.message.id, direction) },
                                     onImageClick = { index -> viewer = imageUrls to index },
                                     imageUrls = imageUrls,
+                                    fontScale = fontScale,
+                                    spacingMultiplier = spacingMult,
                                     onCopy = {
                                         clipboard.setText(AnnotatedString(item.message.content))
                                     },
@@ -778,24 +785,31 @@ private fun InputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            // 图片按钮
-            IconButton(onClick = onPickImage) {
+            // 图片按钮（紧凑 40dp，对齐触控规范下限）
+            IconButton(
+                onClick = onPickImage,
+                modifier = Modifier.size(40.dp),
+            ) {
                 Icon(
                     Icons.Filled.Add,
                     contentDescription = "添加图片",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
                 )
             }
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp, max = 132.dp),
                 placeholder = { Text("输入消息…") },
                 maxLines = 4,
-                shape = RoundedCornerShape(18.dp),
+                textStyle = MaterialTheme.typography.bodyMedium,
+                shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -889,7 +903,7 @@ private fun PendingBubble(pending: PendingMessage, onRetry: () -> Unit) {
             shape = BubbleShape(isUser = true),
             modifier = Modifier.widthIn(max = 300.dp),
         ) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(10.dp)) {
                 Text(pending.content, style = MaterialTheme.typography.bodyMedium)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -946,7 +960,7 @@ private fun StreamingBubble(text: String) {
             ),
             modifier = Modifier.widthIn(max = 300.dp),
         ) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(10.dp)) {
                 MarkdownText(extractThought(text).content)
                 Text(
                     "▍",
@@ -983,6 +997,10 @@ private fun MessageBubble(
     onSpeak: (() -> Unit)? = null,
     onTranslate: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    /** 本地 UI 偏好：字体缩放系数（1f = 标准） */
+    fontScale: Float = 1f,
+    /** 本地 UI 偏好：消息间距倍数（1f = 标准） */
+    spacingMultiplier: Float = 1f,
 ) {
     val isUser = message.role == Role.user
     val isSystem = message.role == Role.system
@@ -1002,6 +1020,8 @@ private fun MessageBubble(
         label = "bubbleAlpha",
     )
     LaunchedEffect(message.id) { appeared = true }
+    // 本地 UI 偏好：消息间距（标准 4dp 垂直 padding × 倍数）
+    val bubbleSpacingDp = (4 * spacingMultiplier).dp
 
     Row(
         modifier = Modifier
@@ -1011,7 +1031,7 @@ private fun MessageBubble(
                 scaleY = scale
             }
             .alpha(bubbleAlpha)
-            .padding(vertical = 4.dp),
+            .padding(vertical = bubbleSpacingDp),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
         if (!isUser) {
@@ -1070,7 +1090,7 @@ private fun MessageBubble(
                     )
                     .combinedClickable(onClick = {}, onLongClick = onLongPress),
             ) {
-                Column(Modifier.padding(12.dp)) {
+                Column(Modifier.padding(10.dp)) {
                     // 引用块
                     referencedMessage?.let { ref ->
                         Surface(
@@ -1129,10 +1149,18 @@ private fun MessageBubble(
                         // 用户消息也走 Markdown 渲染（对齐 PC 端 ReactMarkdown），保留用户气泡深棕文字色
                         MarkdownText(
                             extraction.content,
-                            style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF3B2410)),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = Color(0xFF3B2410),
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontScale,
+                            ),
                         )
                     } else {
-                        MarkdownText(extraction.content)
+                        MarkdownText(
+                            extraction.content,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontScale,
+                            ),
+                        )
                     }
 
                     // 图片（imageUrls 已拼接完整 URL）

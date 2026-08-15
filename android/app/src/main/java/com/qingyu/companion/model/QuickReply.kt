@@ -29,9 +29,9 @@ enum class QuickReplyAction {
     command,
 }
 
-/** 快捷回复列表响应：全局 + 当前角色专属 */
+/** 快捷回复列表响应：全局 + 按角色专属（byCharacter 为角色 id → 列表） */
 @Serializable
 data class QuickReplyListResponse(
     val global: List<QuickReply>,
-    val byCharacter: List<QuickReply> = emptyList(),
+    val byCharacter: Map<String, List<QuickReply>> = emptyMap(),
 )

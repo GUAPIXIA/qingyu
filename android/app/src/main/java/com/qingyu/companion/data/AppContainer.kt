@@ -28,6 +28,8 @@ class AppContainer(context: Context) {
     val json: Json = NetworkModule.json
 
     val connectionStore: ConnectionStore = DataStoreConnectionStore(appContext, json)
+    /** 本地 UI 偏好（字体缩放/消息间距，纯显示不回写 PC） */
+    val uiPrefsStore: UiPrefsStore = UiPrefsStore(appContext)
     val deviceIdentity: DeviceIdentity = DeviceIdentity(appContext)
 
     val database: CacheDatabase = Room.databaseBuilder(

@@ -74,7 +74,7 @@ fun SessionCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AvatarBubble(name = avatarName, avatarUrl = avatarUrl, size = 48)

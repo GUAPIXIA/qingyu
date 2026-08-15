@@ -341,6 +341,9 @@ class OnlineChatRepository(
         sessionDao.clear()
         messageDao.clear()
         connectionStore.wipe()
+        // M-31 修复：断开活跃连接与 WS——此前只清存储，ConnectionManager 内存态与
+        // WsClient 不受影响，WS 继续重连、已擦除的 JWT 继续发 REST 请求（“退出时清除”名存实亡）
+        connectionManager.disconnectAll()
     }
 
     // ---------- 缓存写入 ----------
@@ -348,6 +351,8 @@ class OnlineChatRepository(
     private suspend fun cacheSessions(sessions: List<SessionPreview>) {
         sessionDao.upsertAll(sessions.map { it.toCache() })
         sessionDao.trimTo(CacheDatabase.MAX_CACHED_SESSIONS)
+        // M-34 修复：裁剪后清理被删会话的孤儿消息（含聊天明文，防只增不减）
+        messageDao.deleteOrphanMessages()
     }
 
     // ---------- 映射 ----------

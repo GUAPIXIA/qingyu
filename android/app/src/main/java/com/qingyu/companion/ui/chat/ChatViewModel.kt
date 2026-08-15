@@ -386,8 +386,8 @@ class ChatViewModel(
                 .onSuccess { resp ->
                     _ui.update {
                         it.copy(
-                            // 全部已启用类型（text/preset/command），点击时经 execute 端点分发
-                            quickReplies = (resp.global + resp.byCharacter)
+                            // 全部已启用类型（text/preset/command），点击时经 execute 端点分发；byCharacter 为 Map 值平铺
+                            quickReplies = (resp.global + resp.byCharacter.values.flatten())
                                 .filter { q -> q.enabled }
                                 .sortedBy { q -> q.order }
                         )
