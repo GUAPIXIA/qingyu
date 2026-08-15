@@ -1,5 +1,15 @@
 # 更新日志
 
+## [1.0.1] - 2026-08-15
+
+### 部署修复：Docker 构建兼容（Node 22）
+
+- **Dockerfile 镜像升级 node:18-slim → node:22-slim**：better-sqlite3@12.11.1 要求 Node 20+，18 下无预构建且镜像无编译链（缺 Python）导致 `docker compose build` 失败；22 为当前 LTS，预构建齐备
+- **Dockerfile 增加 `.npmrc` COPY**：构建时使用 npmmirror registry 与 better-sqlite3 预构建镜像源（国内服务器构建不再依赖 GitHub 下载）
+- **部署上线 47.92.7.207**（cjbtj.xyz）：代码含 0.11.14~0.11.18 全部安全加固（SSRF 防护 / sanitize 消毒 / CORS 空数组修复 / 404 与错误分级 JSON / TRUST_PROXY）；数据保留（公告/管理员），管理后台登录不受影响；部署前备份 `data.bak-20260815-141210`
+
+---
+
 ## [1.0.0] - 2026-08-15
 
 ### 初始版本：轻语公告服务端（tavern-announce）
