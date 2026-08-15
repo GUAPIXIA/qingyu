@@ -18,6 +18,8 @@ import { registerUsageIPC } from './ipc/usage'
 import { registerMcpIPC } from './ipc/mcp'
 import { registerGroupIPC } from './ipc/group'
 import { registerAnnouncementIPC } from './ipc/announcement'
+import { registerBridgeIPC, bridgeService } from './bridge'
+import { IPC_EVENTS } from '../shared/ipc-channels'
 import { mcpManager } from './mcp/manager'
 import { ensureDataDir, DIRS } from './services/storage'
 import { initLogger, createLogger, getRecentLogs } from './services/logger'
@@ -202,10 +204,23 @@ app.whenReady().then(async () => {
     () => registerMcpIPC(ipcMain),
     () => registerGroupIPC(ipcMain),
     () => registerAnnouncementIPC(ipcMain),
+    () => registerBridgeIPC(ipcMain),
   ]
   for (const register of ipcRegistrars) {
     register()
   }
+
+  // 阶段 0c + 阶段一：会话变更事件总线——渲染层上报 session:changed -> 广播 session:updated
+  // 给**其他**窗口（排除来源窗口，避免发送者自我刷新打断对话）+ 桥接层转推 WS（安卓端实时同步）
+  ipcMain.on(IPC_EVENTS.sessionChanged, (event, payload: { sessionId: string; change: string }) => {
+    if (!payload || typeof payload.sessionId !== 'string') return
+    for (const win of BrowserWindow.getAllWindows()) {
+      // 排除来源窗口：发送者不需要（也不应）收到自己的变更通知
+      if (win.isDestroyed() || !win.webContents || win.webContents === event.sender) continue
+      win.webContents.send(IPC_EVENTS.sessionUpdated, payload)
+    }
+    bridgeService.broadcastSessionChange(payload.sessionId, payload.change)
+  })
 
   // 应用版本号
   ipcMain.handle('app:getVersion', () => app.getVersion())
@@ -223,6 +238,17 @@ app.whenReady().then(async () => {
   mcpManager.autoStartAll().catch((err) => {
     logger.error('MCP 自动启动失败', { error: err.message })
   })
+
+  // 自动恢复桥接层（重启后 enabled=true 时无需手动在设置页开启）
+  try {
+    if (bridgeService.getConfig().enabled) {
+      bridgeService.start().catch((err) => {
+        logger.error('桥接层自动恢复失败', { error: err.message })
+      })
+    }
+  } catch (err) {
+    logger.warn('桥接层自动恢复跳过', { error: (err as Error).message })
+  }
 
   // 日志 IPC（level 运行时校验，防止渲染进程传入任意方法名）
   const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error'])

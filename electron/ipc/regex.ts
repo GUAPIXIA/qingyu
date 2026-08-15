@@ -28,6 +28,8 @@ function readRules(): RegexRule[] {
   }
 }
 
+export { readRules }
+
 function writeRules(rules: RegexRule[]): void {
   // 原子写入：temp + rename，防止崩溃导致数据文件损坏
   const path = getRulesPath()

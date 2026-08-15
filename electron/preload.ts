@@ -20,6 +20,8 @@ import type {
   McpAPI,
   AnnouncementAPI,
   GroupChatAPI,
+  SessionSyncAPI,
+  BridgeAPI,
 } from '../shared/ipc-api'
 
 // ---- AI 调用 ----
@@ -52,9 +54,40 @@ const aiApi: AIAPI = {
   },
 }
 
+// ---- 会话变更事件总线（阶段 0c） ----
+const sessionSyncApi: SessionSyncAPI = {
+  changed: (payload) => {
+    ipcRenderer.send(IPC_EVENTS.sessionChanged, payload)
+  },
+  onUpdated: (callback) => {
+    const handler = (_e: unknown, payload: Parameters<typeof callback>[0]) => callback(payload)
+    ipcRenderer.on(IPC_EVENTS.sessionUpdated, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.sessionUpdated, handler)
+  },
+}
+
+// ---- 桥接层（阶段一：手机连接） ----
+const bridgeApi: BridgeAPI = {
+  status: () => ipcRenderer.invoke('bridge:status'),
+  start: () => ipcRenderer.invoke('bridge:start'),
+  stop: () => ipcRenderer.invoke('bridge:stop'),
+  setConfig: (partial) => ipcRenderer.invoke('bridge:config', partial),
+  pairingInfo: () => ipcRenderer.invoke('bridge:pairingInfo'),
+  regeneratePairing: () => ipcRenderer.invoke('bridge:pairingInfo', true),
+  listDevices: () => ipcRenderer.invoke('bridge:listDevices'),
+  revokeDevice: (deviceId) => ipcRenderer.invoke('bridge:revokeDevice', deviceId),
+  approvePair: (requestId) => ipcRenderer.invoke('bridge:approvePair', requestId),
+  rejectPair: (requestId) => ipcRenderer.invoke('bridge:rejectPair', requestId),
+  onPairRequest: (callback) => {
+    const handler = (_e: unknown, data: { requestId: string; deviceName: string }) => callback(data)
+    ipcRenderer.on('bridge:pairRequest', handler)
+    return () => ipcRenderer.removeListener('bridge:pairRequest', handler)
+  },
+  wipeAll: () => ipcRenderer.invoke('bridge:wipeAll'),
+}
+
 // ---- 角色卡 ----
-const characterApi: CharacterAPI = {
-  list: () => ipcRenderer.invoke('character:list'),
+const characterApi: CharacterAPI = {  list: () => ipcRenderer.invoke('character:list'),
   get: (id) => ipcRenderer.invoke('character:get', id),
   save: (character) => ipcRenderer.invoke('character:save', character),
   delete: (id) => ipcRenderer.invoke('character:delete', id),
@@ -269,6 +302,8 @@ contextBridge.exposeInMainWorld('api', {
   mcp: mcpApi,
   announcement: announcementApi,
   group: groupApi,
+  sessionSync: sessionSyncApi,
+  bridge: bridgeApi,
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkVersion: () => ipcRenderer.invoke('app:checkVersion'),

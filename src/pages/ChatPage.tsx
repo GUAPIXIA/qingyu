@@ -203,6 +203,14 @@ export function ChatPage() {
     })
   }
 
+  // 全局快捷键 Ctrl+N / 命令面板“新建对话”：监听 App 派发的事件
+  useEffect(() => {
+    const handleNewChat = () => handleCreateSession()
+    window.addEventListener('shortcut:new-chat', handleNewChat)
+    return () => window.removeEventListener('shortcut:new-chat', handleNewChat)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCharacter])
+
   // 字符统计：增量缓存——每条消息的 countChars 结果按 id 缓存，
   // 流式时只有正在生成的消息变化，其余消息不再重复正则统计（P1 修复）
   const charCountCacheRef = useRef(new Map<string, number>())

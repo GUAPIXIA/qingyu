@@ -333,6 +333,74 @@ export interface AnnouncementAPI {
   setServerUrl(url: string): Promise<void>
 }
 
+/** 会话变更载荷（阶段 0c：事件总线） */
+export interface SessionChangePayload {
+  sessionId: string
+  /** created / message / title / deleted / swiped */
+  change: 'created' | 'message' | 'title' | 'deleted' | 'swiped'
+}
+
+/** 阶段 0c：会话变更事件总线（渲染层上报 -> 主进程广播，桥接层转推 WS） */
+export interface SessionSyncAPI {
+  /** 渲染层上报会话变更（middleware 自动调用） */
+  changed(payload: SessionChangePayload): void
+  /** 订阅主进程广播的会话变更（PC 双窗口同步 / 桥接层事件源） */
+  onUpdated(callback: (payload: SessionChangePayload) => void): () => void
+}
+
+// ===================== 桥接层接口（阶段一） =====================
+
+export interface BridgeConfig {
+  enabled: boolean
+  host: string
+  port: number
+  bindIps: string[]
+}
+
+export interface BridgeStatus {
+  running: boolean
+  config: BridgeConfig
+  bound: { host: string; port: number; clientCount: number } | null
+}
+
+export interface PairingInfo {
+  host: string
+  port: number
+  /** 二维码 fingerprint 字段（安卓端将其作为配对码使用） */
+  fingerprint: string
+  expiresInSec: number
+}
+
+export interface BridgeDeviceInfo {
+  deviceId: string
+  name: string
+  fingerprint: string
+  createdAt: number
+  lastSeen: number
+}
+
+/** 阶段一：PC 侧「手机连接」桥接层（设置页 + 配对审批） */
+export interface BridgeAPI {
+  status(): Promise<BridgeStatus>
+  start(): Promise<{ ok: boolean; host?: string; port?: number; error?: string }>
+  stop(): Promise<{ ok: boolean }>
+  setConfig(partial: Partial<Pick<BridgeConfig, 'enabled' | 'host' | 'port'>>): Promise<{
+    ok: boolean
+    config?: BridgeConfig
+    error?: string
+  }>
+  pairingInfo(): Promise<PairingInfo>
+  /** 强制生成新配对码（旧码作废）并返回最新配对信息 */
+  regeneratePairing(): Promise<PairingInfo>
+  listDevices(): Promise<BridgeDeviceInfo[]>
+  revokeDevice(deviceId: string): Promise<{ ok: boolean }>
+  approvePair(requestId: string): Promise<{ ok: boolean; error?: string }>
+  rejectPair(requestId: string): Promise<{ ok: boolean }>
+  /** 订阅配对审批请求（PC 端人工确认弹窗） */
+  onPairRequest(callback: (data: { requestId: string; deviceName: string }) => void): () => void
+  wipeAll(): Promise<{ ok: boolean }>
+}
+
 // ===================== 应用接口 =====================
 export interface AppAPI {
   /** 获取当前应用版本号 */
@@ -364,6 +432,8 @@ export interface ExposedAPI {
   mcp: McpAPI
   group: GroupChatAPI
   announcement: AnnouncementAPI
+  sessionSync: SessionSyncAPI
+  bridge: BridgeAPI
   app: AppAPI
 }
 

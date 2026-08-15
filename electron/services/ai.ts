@@ -59,7 +59,7 @@ export function getAdapter(provider: string): AIAdapter {
 const activeRequests = new Map<string, AbortController>()
 
 /** 带重试的 chat 调用 */
-async function chatWithRetry(
+export async function chatWithRetry(
   adapter: AIAdapter,
   params: ChatParams,
   onChunk: (text: string) => void,

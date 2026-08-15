@@ -19,10 +19,11 @@ import { createChunkAccumulator } from './chunkAccumulator'
 import { buildChatContext } from './chatContext'
 import { runMemorySummary } from './memoryManager'
 import { regenerateChatMessage, continueChatMessage, swipeChatMessage } from './chatGeneration'
+import { sessionEventReporter } from './sessionEventReporter'
 import type { ChatState } from './chatTypes'
 
 export type { ChatState }
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) => ({
   messages: [],
   sessions: [],
   currentSessionId: null,
@@ -840,4 +841,4 @@ export const useChatStore = create<ChatState>((set, get) => ({
   buildContext: (character, preset, opts) => {
     return buildChatContext(get, set, character, preset, opts)
   },
-}))
+})))

@@ -1,11 +1,16 @@
-import { lazy, Suspense, useEffect, type ComponentType } from 'react'
+import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useCharacterStore } from './store/useCharacterStore'
+import { useChatStore } from './store/useChatStore'
+import { useGroupChatStore } from './store/useGroupChatStore'
+import { useSessionSync } from './hooks/useSessionSync'
+import { usePairApproval } from './hooks/usePairApproval'
 import { BUILTIN_FONTS } from './utils/defaults'
 import { logError } from './lib/logger'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
+import { CommandPalette } from './components/common/CommandPalette'
 // 优化：非首屏页面路由懒加载（拆包，减小初始 bundle；
 // ChatPage 为默认路由保持静态导入）
 function lazyPage(importer: () => Promise<Record<string, unknown>>, name: string) {
@@ -30,6 +35,12 @@ export default function App() {
   const navigate = useNavigate()
   const { settings, loadSettings } = useSettingsStore()
   const { loadCharacters } = useCharacterStore()
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  // 阶段 0c：会话变更事件总线订阅（PC 双窗口同步；桥接层 WS 转推在阶段一接线）
+  useSessionSync()
+  // 阶段一：配对审批弹窗（PC 端人工确认，方案 §5.1）——返回值必须渲染，否则弹窗不显示
+  const pairApproval = usePairApproval()
 
   // 初始化加载
   useEffect(() => {
@@ -158,8 +169,8 @@ export default function App() {
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault()
         navigate('/chat')
-        // 触发新建对话事件
-        window.dispatchEvent(new CustomEvent('shortcut:new-chat'))
+        // 延迟派发：跨页面时等待 ChatPage 挂载并注册监听器
+        setTimeout(() => window.dispatchEvent(new CustomEvent('shortcut:new-chat')), 60)
       }
       // Ctrl+E: 导出对话
       if (e.ctrlKey && e.key === 'e') {
@@ -169,12 +180,21 @@ export default function App() {
       // Ctrl+/: 打开命令面板
       if (e.ctrlKey && e.key === '/') {
         e.preventDefault()
-        window.dispatchEvent(new CustomEvent('shortcut:command-palette'))
+        setPaletteOpen(true)
       }
       // Ctrl+Shift+C: 复制最后一条 AI 回复
       if (e.ctrlKey && e.shiftKey && e.key === 'C') {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('shortcut:copy-last-ai'))
+      }
+      // Esc: 停止生成（存在弹层遮罩时交给弹层处理——优先关闭弹窗）
+      if (e.key === 'Escape' && !document.querySelector('.fixed.inset-0')) {
+        if (useChatStore.getState().isStreaming) {
+          useChatStore.getState().stopStreaming()
+        }
+        if (useGroupChatStore.getState().isStreaming) {
+          useGroupChatStore.getState().stopStreaming()
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -182,7 +202,9 @@ export default function App() {
   }, [navigate])
 
   return (
-    <Routes>
+    <>
+      {pairApproval}
+      <Routes>
       <Route path="/" element={<MainLayout />}>
         <Route index element={<Navigate to="/chat" replace />} />
         <Route path="chat" element={<ChatPage />} />
@@ -201,6 +223,8 @@ export default function App() {
         <Route path="announcements" element={<Suspense fallback={null}><AnnouncementsPage /></Suspense>} />
         <Route path="help" element={<Suspense fallback={null}><HelpPage /></Suspense>} />
       </Route>
-    </Routes>
+      </Routes>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+    </>
   )
 }

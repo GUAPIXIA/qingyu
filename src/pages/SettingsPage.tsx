@@ -6,6 +6,7 @@ import { cn } from '../lib/utils'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { BehaviorSection } from './settings/BehaviorSection'
 import { SemanticSection } from './settings/SemanticSection'
+import { PhoneConnectionSection } from './settings/PhoneConnectionSection'
 import { SectionCard } from '../components/common/SettingsShared'
 import type { CustomFont } from '../../shared/types'
 import {
@@ -177,6 +178,7 @@ export function SettingsPage() {
           handleDeleteFont={handleDeleteFont}
         />
         <BehaviorSection settings={settings} updateSettings={updateSettings} />
+        <PhoneConnectionSection />
         <SemanticSection
           settings={settings}
           updateSettings={updateSettings}

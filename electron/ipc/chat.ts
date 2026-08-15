@@ -26,6 +26,8 @@ const UPDATE_SESSION_FIELDS = new Set([
   'compressedSummary',
   'compressedRange',
   'titleGenerated',
+  'lorebookIds',
+  'personaId',
 ])
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
@@ -442,7 +444,9 @@ function migrateOldData(characterId: string): string | null {
 function createDefaultSession(characterId: string): ChatSession {
   const now = Date.now()
   return {
-    id: 'default',
+    // 修复：默认会话 id 改为唯一值（原 'default' 固定 id 在多角色场景下
+    // 会生成多个同名会话，导致桥接层列表/安卓端 LazyColumn key 冲突崩溃）
+    id: nanoid(),
     characterId,
     title: '默认对话',
     createdAt: now,
@@ -807,3 +811,238 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     }
   })
 }
+
+// ============================================================================
+// 数据层门面（阶段 0a：ContextDataWriter 与桥接层复用，方案「安卓伴侣端方案」§7）
+// ============================================================================
+// 与上方 IPC handler 共用同一底层存储函数与锁（appendMessage / loadSessions /
+// saveSessions / withSessionFileLock / withSessionsLock / writeMessages /
+// messagesCacheSet / resetAppendCount / migrateOldData / createDefaultSession /
+// computeMessageMetaCached / consumePendingCompaction / compactSessionFile），
+// 保证 JSONL 格式与版本号字段一致（双端写入互操作，方案 §7 0a 验收）。
+
+/** 消息删除结果（供上层判断会话是否存在） */
+export interface ChatDataResult {
+  ok: boolean
+}
+
+/** 数据层门面：主进程侧读写会话/消息的统一入口（不含任何 IPC 依赖） */
+export const chatData = {
+  readMessages,
+
+  /** 会话列表（含消息数与最后消息摘要；无会话时自动创建默认会话） */
+  listSessions: async (characterId: string): Promise<SessionPreview[]> => {
+    safeId(characterId)
+    return withSessionsLock(characterId, () => {
+      migrateOldData(characterId)
+      const sessions = loadSessions(characterId)
+      if (sessions.length === 0) {
+        const defaultSession = createDefaultSession(characterId)
+        sessions.push(defaultSession)
+        saveSessions(characterId, sessions)
+      }
+      return sessions.map((s) => {
+        const meta = computeMessageMetaCached(characterId, s.id)
+        return { ...s, messageCount: meta.count, lastMessage: meta.lastMessage }
+      })
+    })
+  },
+
+  /** 追加/覆盖单条消息（与渲染层 saveMessage 同一落盘路径） */
+  saveMessage: (characterId: string, message: Message): void => {
+    appendMessage(characterId, message.sessionId, message)
+  },
+
+  /** 删除单条消息（与 IPC handler 相同的读-改-写锁路径） */
+  deleteMessage: async (
+    characterId: string,
+    messageId: string,
+    sessionId?: string,
+  ): Promise<void> => {
+    safeId(characterId)
+    const sid = sessionId || 'default'
+    safeId(sid)
+    safeId(messageId)
+    await withSessionFileLock(characterId, sid, () => {
+      const messages = readMessages(characterId, sid)
+      const filtered = messages.filter((m) => m.id !== messageId)
+      writeMessages(characterId, sid, filtered)
+      messagesCacheSet(characterId, sid, filtered)
+      resetAppendCount(characterId, sid)
+    })
+    await withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find((s) => s.id === sid)
+      if (session) {
+        session.updatedAt = Date.now()
+        saveSessions(characterId, sessions)
+      }
+    })
+  },
+
+  /** 重命名会话（与 IPC handler 同一路径） */
+  renameSession: async (characterId: string, sessionId: string, title: string): Promise<void> => {
+    safeId(characterId)
+    safeId(sessionId)
+    await withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find((s) => s.id === sessionId)
+      if (session) {
+        session.title = title
+        session.updatedAt = Date.now()
+        saveSessions(characterId, sessions)
+      }
+    })
+  },
+
+  /** 创建会话（与 IPC handler 同一路径，含默认身份继承） */
+  createSession: async (
+    characterId: string,
+    title?: string,
+    personaId?: string | null,
+    lorebookIds?: string[],
+  ): Promise<ChatSession> => {
+    safeId(characterId)
+    return withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const now = Date.now()
+      const effectivePersonaId = personaId !== undefined ? personaId : getDefaultPersonaId()
+      const session: ChatSession = {
+        id: nanoid(),
+        characterId,
+        title: title || `新对话 ${sessions.length + 1}`,
+        createdAt: now,
+        updatedAt: now,
+        memoryEnabled: false,
+        memoryMode: 'manual',
+        autoMemoryInterval: 10,
+        memory: '',
+        memoryUpdatedAt: 0,
+        personaId: effectivePersonaId,
+        lorebookIds,
+      }
+      sessions.push(session)
+      saveSessions(characterId, sessions)
+      log.info('会话已创建（数据层门面）', { characterId, sessionId: session.id })
+      return session
+    })
+  },
+
+  /** 更新记忆摘要（与 IPC handler 同一路径） */
+  updateMemory: async (characterId: string, sessionId: string, memory: string): Promise<void> => {
+    safeId(characterId)
+    safeId(sessionId)
+    await withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find((s) => s.id === sessionId)
+      if (session) {
+        session.memory = memory
+        session.memoryUpdatedAt = Date.now()
+        session.updatedAt = Date.now()
+        saveSessions(characterId, sessions)
+      }
+    })
+  },
+
+  /** 开关长记忆（与 IPC handler 同一路径） */
+  toggleMemory: async (characterId: string, sessionId: string, enabled: boolean): Promise<void> => {
+    safeId(characterId)
+    safeId(sessionId)
+    await withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find((s) => s.id === sessionId)
+      if (session) {
+        session.memoryEnabled = enabled
+        session.updatedAt = Date.now()
+        saveSessions(characterId, sessions)
+      }
+    })
+  },
+
+  /** 设置记忆模式（与 IPC handler 同一路径） */
+  setMemoryMode: async (
+    characterId: string,
+    sessionId: string,
+    mode: 'manual' | 'auto',
+    interval?: number,
+  ): Promise<void> => {
+    safeId(characterId)
+    safeId(sessionId)
+    await withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find((s) => s.id === sessionId)
+      if (session) {
+        session.memoryMode = mode
+        if (interval !== undefined) session.autoMemoryInterval = interval
+        session.updatedAt = Date.now()
+        saveSessions(characterId, sessions)
+      }
+    })
+  },
+
+  /** 更新会话字段（白名单过滤，与 IPC handler chat:updateSession 同一路径） */
+  updateSession: async (
+    characterId: string,
+    sessionId: string,
+    updates: Partial<ChatSession>,
+  ): Promise<ChatSession> => {
+    safeId(characterId)
+    safeId(sessionId)
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+      throw new Error('参数无效：updates 必须为对象')
+    }
+    const clean: Partial<ChatSession> = {}
+    for (const key of Object.keys(updates)) {
+      if (!UPDATE_SESSION_FIELDS.has(key)) continue
+      ;(clean as Record<string, unknown>)[key] = (updates as Record<string, unknown>)[key]
+    }
+    return withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const idx = sessions.findIndex((s) => s.id === sessionId)
+      if (idx === -1) throw new Error('会话不存在')
+      sessions[idx] = { ...sessions[idx], ...clean, updatedAt: Date.now() }
+      saveSessions(characterId, sessions)
+      return sessions[idx]
+    })
+  },
+
+  /** 清空指定会话消息（与 IPC handler chat:clearChat 同一路径：消息锁→sessions 锁） */
+  clearChat: async (characterId: string, sessionId: string): Promise<void> => {
+    safeId(characterId)
+    safeId(sessionId)
+    await withSessionFileLock(characterId, sessionId, () => {
+      const filePath = getSessionFile(characterId, sessionId)
+      if (existsSync(filePath)) unlinkSync(filePath)
+      messagesCacheInvalidate(characterId, sessionId)
+    })
+    await withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find((s) => s.id === sessionId)
+      if (session) {
+        session.updatedAt = Date.now()
+        session.memory = ''
+        session.memoryUpdatedAt = 0
+        saveSessions(characterId, sessions)
+      }
+    })
+  },
+
+  /** 删除会话（与 IPC handler chat:deleteSession 同一路径：删消息文件 + 从 sessions.json 移除） */
+  deleteSession: async (characterId: string, sessionId: string): Promise<void> => {
+    safeId(characterId)
+    safeId(sessionId)
+    await withSessionFileLock(characterId, sessionId, () => {
+      const filePath = getSessionFile(characterId, sessionId)
+      if (existsSync(filePath)) {
+        unlinkSync(filePath)
+      }
+      messagesCacheInvalidate(characterId, sessionId)
+    })
+    await withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId).filter((s) => s.id !== sessionId)
+      saveSessions(characterId, sessions)
+    })
+  },
+}
+
+export type ChatData = typeof chatData

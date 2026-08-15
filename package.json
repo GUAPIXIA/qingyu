@@ -10,7 +10,7 @@
     "dev": "vite",
     "electron:dev": "node electron-build.mjs && concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
     "build": "tsc -b && vite build",
-    "electron:build": "node electron-build.mjs && vite build && electron-builder --win",
+    "electron:build": "node electron-build.mjs && vite build && electron-builder --win --publish never",
     "electron:preview": "node electron-build.mjs && vite build && electron .",
     "lint": "eslint .",
     "check": "tsc -b --noEmit && tsc -p tsconfig.electron.json --noEmit",
@@ -19,16 +19,25 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "tiktoken": "^1.0.22"
+    "bonjour-service": "^1.4.4",
+    "express": "^4.22.2",
+    "express-rate-limit": "^8.6.2",
+    "qrcode": "^1.5.4",
+    "tiktoken": "^1.0.22",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
     "@testing-library/jest-dom": "^6.4.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.0",
+    "@types/express": "^5.0.6",
+    "@types/express-rate-limit": "^6.0.2",
     "@types/node": "^22.15.30",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.4.1",
     "@vitest/coverage-v8": "^3.2.7",
     "autoprefixer": "^10.4.21",
@@ -98,5 +107,6 @@
       "createDesktopShortcut": true,
       "shortcutName": "轻语"
     }
-  }
+  },
+  "packageManager": "pnpm@11.21.0+sha512.521705bce689924eac72f5a3587122f362689ef6571e55ba80076fd637c11132ecffada26fad4ea79c485bfddbfd3d5a2a5b05805a77e893de71ec8a6cca3bb1"
 }

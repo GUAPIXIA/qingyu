@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildChatContext } from '../chatContext'
 import { markPendingCompression } from '../streamController'
 import { useSettingsStore } from '../useSettingsStore'
+import { useChatStore } from '../useChatStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { lorebookCache } from '../../utils/lorebook'
 import type { Character, Lorebook, Message, SessionPreview } from '../../../shared/types'
@@ -88,7 +89,17 @@ function makeSession(overrides: Partial<SessionPreview> = {}): SessionPreview {
 
 function makeGet(overrides: Partial<ReturnType<typeof baseGet>> = {}) {
   const state = { ...baseGet(), ...overrides }
-  // 仅提供 buildChatContext 消费的字段子集，整体断言为 StoreGet
+  // 0b：buildChatContext 已改为薄封装，数据经 rendererContextProvider.syncBuildData
+  // 从真实 store 读取；测试改为种子化 useChatStore（makeGet 副作用写入）
+  useChatStore.setState({
+    messages: state.messages,
+    sessions: state.sessions,
+    currentSessionId: state.currentSessionId,
+    activeLorebookIds: state.activeLorebookIds,
+    _semanticLoreHits: state._semanticLoreHits,
+    _semanticFactsHits: state._semanticFactsHits,
+  } as never)
+  // 占位 get/set（薄封装不再消费，保留签名兼容）
   return (() => state) as never
 }
 

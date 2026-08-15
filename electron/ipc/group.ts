@@ -502,3 +502,119 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     return md
   })
 }
+
+// ============================================================================
+// 数据层门面（阶段二：桥接层群聊复用，与 IPC handler 共用底层存储函数与锁）
+// ============================================================================
+export const groupData = {
+  /** 群聊列表 */
+  listGroups: (): GroupChat[] => loadGroups(),
+
+  /** 群聊会话列表（无会话时自动创建默认会话，与 group:listSessions 一致） */
+  listSessions: async (groupId: string): Promise<GroupSession[]> => {
+    safeId(groupId)
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      if (sessions.length === 0) {
+        const now = Date.now()
+        const defaultSession: GroupSession = {
+          id: nanoid(),
+          groupId,
+          title: '默认会话',
+          messageCount: 0,
+          createdAt: now,
+          updatedAt: now,
+          memoryEnabled: false,
+          memoryMode: 'manual',
+          autoMemoryInterval: 10,
+          memory: '',
+          memoryUpdatedAt: 0,
+        }
+        sessions.push(defaultSession)
+        saveSessions(groupId, sessions)
+      }
+      return sessions.map((s) => {
+        const filePath = getSessionFile(groupId, s.id)
+        return { ...s, messageCount: countLines(filePath) }
+      })
+    })
+  },
+
+  /** 读群聊消息（按时间升序） */
+  readMessages: (groupId: string, sessionId: string): GroupMessage[] =>
+    readMessages(groupId, sessionId),
+
+  /** 追加一条群聊消息（用户发言落盘，与渲染层同一 JSONL 路径） */
+  appendMessage: (groupId: string, sessionId: string, message: GroupMessage): void =>
+    appendMessage(groupId, sessionId, message),
+
+  /** 覆盖式写回（编辑/删除） */
+  updateMessage: (groupId: string, sessionId: string, message: GroupMessage): void =>
+    updateMessage(groupId, sessionId, message),
+
+  /** 删除单条消息 */
+  deleteMessage: async (groupId: string, sessionId: string, messageId: string): Promise<void> => {
+    safeId(groupId)
+    safeId(sessionId)
+    safeId(messageId)
+    await withSessionFileLock(groupId, sessionId, () => {
+      const messages = readMessages(groupId, sessionId).filter((m) => m.id !== messageId)
+      writeMessages(groupId, sessionId, messages)
+    })
+  },
+
+  /** 新建群聊会话（与 IPC handler group:createSession 同一路径） */
+  createSession: async (groupId: string): Promise<GroupSession> => {
+    safeId(groupId)
+    return withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const now = Date.now()
+      const session: GroupSession = {
+        id: nanoid(),
+        groupId,
+        title: `新对话 ${sessions.length + 1}`,
+        messageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        memoryEnabled: false,
+        memoryMode: 'manual',
+        autoMemoryInterval: 10,
+        memory: '',
+        memoryUpdatedAt: 0,
+      }
+      sessions.push(session)
+      saveSessions(groupId, sessions)
+      return session
+    })
+  },
+
+  /** 重命名群聊会话（与 IPC handler group:renameSession 同一路径） */
+  renameSession: async (groupId: string, sessionId: string, title: string): Promise<void> => {
+    safeId(groupId)
+    safeId(sessionId)
+    await withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find((s) => s.id === sessionId)
+      if (session) {
+        session.title = title
+        session.updatedAt = Date.now()
+        saveSessions(groupId, sessions)
+      }
+    })
+  },
+
+  /** 保存/新增群聊（与 IPC handler group:save 同一路径） */
+  saveGroup: async (group: GroupChat): Promise<void> => {
+    safeId(group.id)
+    group.updatedAt = Date.now()
+    await withIndexLock(() => {
+      const groups = loadGroups()
+      const idx = groups.findIndex((g) => g.id === group.id)
+      if (idx >= 0) groups[idx] = group
+      else groups.push(group)
+      saveGroups(groups)
+    })
+  },
+}
+
+export type GroupData = typeof groupData
