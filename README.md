@@ -15,6 +15,18 @@
 
 ---
 
+## 📦 仓库结构
+
+本项目包含三个子项目：
+
+| 子项目 | 目录 | 说明 | 版本 |
+|--------|------|------|------|
+| **桌面客户端** | 仓库根目录 | Electron + React 主应用 | v0.11.23 |
+| **安卓伴侣端** | [`android/`](./android/README.md) | 远程连接与对话消费（配对 PC 使用） | v0.1.2 |
+| **公告服务端** | [`server/`](./server/README.md) | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.3 |
+
+---
+
 ## 📸 程序截图
 
 | 对话页面 | 对话预设 |
@@ -25,7 +37,7 @@
 
 ---
 
-## ✨ 功能特性
+## ✨ 桌面客户端功能特性
 
 ### 🤖 AI 对话
 - **多后端支持** — OpenAI 兼容接口 / Anthropic Claude / Google Gemini / Ollama，支持自定义 Base URL
@@ -69,7 +81,8 @@
 - 侧栏「公告」入口，拉取服务器在线公告
 - 支持 **Markdown 富文本**渲染（表格、代码块、图片等）
 - **离线缓存** — 网络不可达时自动使用本地缓存
-- 配套 **Docker 一键部署** 的服务端 + Web 管理后台
+- **版本检查** — 从公告服务器获取 PC / 安卓端最新版本号
+- 配套 **Docker 一键部署** 的服务端 + Web 管理后台（见 [`server/`](./server/)）
 
 ### 🎨 主题与外观
 - 深色 / 浅色 / 跟随系统 **三模式切换**
@@ -91,12 +104,32 @@
 
 ---
 
+## 📱 安卓伴侣端（[android/](./android/README.md)）
+
+PC 端「轻语」的安卓伴侣端：**只做远程连接与对话消费，不做本地 AI 对话**。
+
+- **扫码配对**（ZXing）+ mDNS 自动发现 + 已配对设备管理
+- **单聊**：流式接收、断线自动重发、长按操作（翻译/重新生成/朗读/引用回复）、swipe 候选、快捷回复
+- **多模态**：图片消息、TTS 音频流播放（ExoPlayer）、心理描写折叠、Markdown 渲染
+- **阶段三**：用量统计、公告同步、**检查更新**（从公告服务器获取最新版本号）
+- **离线只读**：Room 缓存最近会话，断网可回看
+
+```bash
+cd android
+./gradlew assembleDebug        # 构建 Debug APK
+./gradlew testDebugUnitTest    # 运行单元测试
+```
+
+> 完整方案见 `docs/安卓伴侣端方案.md`（位于仓库 docs 目录）。
+
+---
+
 ## 🚀 快速开始
 
 ### 桌面端（Windows）
 
 ```bash
-# 安装依赖
+# 安装依赖（需要 pnpm 10+ / Node 20+）
 pnpm install
 
 # 开发模式（Electron + Vite HMR）
@@ -104,29 +137,25 @@ pnpm electron:dev
 
 # 生产构建（NSIS 安装包）
 pnpm electron:build
+
+# 测试
+pnpm test
 ```
 
-### 在线公告服务端（可选）
+### 在线公告服务端（可选部署）
 
-如果你有自己的服务器，可以部署公告系统：
+公告服务在 [`server/`](./server/)，支持 Docker 一键部署，详见 [`server/README.md`](./server/README.md)：
 
 ```bash
-# 1. 将 server/ 目录上传至服务器
-scp -r server/ root@你的服务器IP:/opt/tavern-announce/
-
-# 2. SSH 登录，Docker Compose 一键启动
-cd /opt/tavern-announce
-docker compose up -d --build
-
-# 3. Nginx 反代配置示例
-#   location /api/ -> http://127.0.0.1:3000
-#   location /admin/ -> http://127.0.0.1:3000
-
-# 4. 访问 http://你的域名/admin/ 进入管理后台
-#    默认账号见服务端启动日志
+cd server
+cp .env.example .env          # 配置 JWT_SECRET 与 ADMIN_PASSWORD（强密码）
+docker compose up -d          # 或 npm install && npm start
 ```
 
-桌面端公告服务器 URL 可在 `electron/ipc/announcement.ts` 中修改默认值。
+- 管理后台：`http://你的域名/qingyu/admin`
+- 公告 API：`http://你的域名/qingyu/api/announcements`
+- 版本 API：`http://你的域名/qingyu/api/version`（PC / 安卓端独立版本号配置）
+- 桌面端默认公告服务器地址在 `electron/ipc/announcement.ts` 中修改（默认 `http://cjbtj.xyz/qingyu`）
 
 ---
 
@@ -134,7 +163,7 @@ docker compose up -d --build
 
 | 层 | 技术 |
 |---|------|
-| 桌面框架 | Electron 31 |
+| 桌面框架 | Electron 32 |
 | 前端 | React 18 + TypeScript 5 |
 | 构建工具 | Vite 6 + esbuild |
 | UI 框架 | Tailwind CSS 3（CSS 变量主题系统） |
@@ -144,46 +173,34 @@ docker compose up -d --build
 | 虚拟滚动 | react-virtuoso |
 | 图标 | lucide-react |
 | 打包 | electron-builder（NSIS） |
-| 服务端 | Express + better-sqlite3 + JWT + Docker |
+| 安卓端 | Kotlin + Jetpack Compose + Retrofit/OkHttp + Room + Media3（见 [android/README.md](./android/README.md)） |
+| 服务端 | Express + better-sqlite3 + JWT + Docker（见 [server/README.md](./server/README.md)） |
 
 ---
 
 ## 📁 项目结构
 
 ```
-轻语/
+qingyu/
 ├── src/                        # 前端 React 代码
 │   ├── main.tsx                # React 入口
 │   ├── App.tsx                 # 根组件（路由 + 主题初始化）
 │   ├── index.css               # 全局样式（CSS 变量 + Tailwind）
-│   ├── components/
-│   │   ├── api/                # API 配置组件
-│   │   ├── character/          # 角色编辑、角色卡片
-│   │   ├── chat/               # 聊天输入、消息气泡、群聊 UI
-│   │   ├── common/             # 通用组件（Modal、EmptyState）
-│   │   └── layout/             # MainLayout、Sidebar
-│   ├── pages/                  # 14 个路由页面
-│   │   ├── ChatPage.tsx        # 单角色对话
-│   │   ├── GroupChatPage.tsx   # 群聊
-│   │   ├── CharactersPage.tsx  # 角色卡管理
-│   │   ├── AnnouncementsPage.tsx  # 在线公告
-│   │   └── ...
-│   ├── store/                  # Zustand 状态管理（模块化拆分：单聊/群聊 store + 共享模块）
+│   ├── components/             # api / character / chat / common / layout
+│   ├── pages/                  # 路由页面（Chat / GroupChat / Characters / Announcements …）
+│   ├── store/                  # Zustand 状态管理（单聊/群聊 store + 共享模块）
 │   ├── commands/               # 斜杠命令系统
 │   └── utils/                  # 工具函数
 ├── electron/                   # Electron 主进程
 │   ├── main.ts                 # 主进程入口
 │   ├── preload.ts              # 预加载脚本（contextBridge）
-│   ├── ipc/                    # 14 个 IPC 处理器模块
+│   ├── ipc/                    # IPC 处理器模块
 │   ├── services/               # 后端服务（AI、存储、生图等）
+│   ├── bridge/                 # 安卓伴侣端桥接层（REST + WebSocket + 配对认证 + mDNS）
 │   └── mcp/                    # MCP 协议实现
-├── shared/                     # 前后端共享
-│   ├── types.ts                # 全部 TypeScript 类型定义
-│   └── ipc-api.ts              # IPC 接口契约
-└── server/                     # 在线公告服务端（可独立部署）
-    ├── Dockerfile
-    ├── docker-compose.yml
-    └── app/                    # Express + SQLite 后端
+├── shared/                     # 前后端共享（types.ts / ipc-api.ts / ipc-channels.ts）
+├── android/                    # 安卓伴侣端（独立子项目，见其 README）
+└── server/                     # 公告服务端（独立子项目，见其 README）
 ```
 
 ---
@@ -200,7 +217,9 @@ docker compose up -d --build
 
 ## 📝 更新日志
 
-详见 [CHANGELOG.md](./CHANGELOG.md)
+- 主应用：[CHANGELOG.md](./CHANGELOG.md)
+- 安卓伴侣端：[android/CHANGELOG.md](./android/CHANGELOG.md)
+- 公告服务端：[server/CHANGELOG.md](./server/CHANGELOG.md)
 
 ---
 
