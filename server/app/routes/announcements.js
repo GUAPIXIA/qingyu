@@ -80,7 +80,7 @@ router.get('/:id', (req, res) => {
 
 // 创建公告（需认证）
 router.post('/', authMiddleware, (req, res) => {
-  const { title, content, summary, pinned, published } = req.body
+  const { title, content, summary, pinned, published } = req.body || {}
   if (!title || !content) {
     return res.status(400).json({ error: '标题和内容不能为空' })
   }
@@ -121,7 +121,7 @@ router.put('/:id', authMiddleware, (req, res) => {
     return res.status(404).json({ error: '公告不存在' })
   }
 
-  const { title, content, summary, pinned, published } = req.body
+  const { title, content, summary, pinned, published } = req.body || {}
   const now = new Date().toISOString()
 
   // N7 修复：PUT 与 POST 一致的长度校验（此前仅 sanitizeHtml，可绕过长度限制存储超大内容）

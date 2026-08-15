@@ -56,6 +56,9 @@ describe('sanitizeHtml', () => {
     const payloads = [
       '<script>alert(1)</script>',
       '<img src=x onerror=alert(1)>',
+      // H-18 回归用例：斜杠分隔属性（HTML 规范中 / 等价于空白），此前可绕过标签重建正则
+      '<img/src=x/onerror=alert(1)>',
+      '<img src=x/onerror=alert(1)>',
       '<a href="javascript:alert(1)">x</a>',
       '<iframe src="https://evil"></iframe>',
       '<svg onload=alert(1)>',

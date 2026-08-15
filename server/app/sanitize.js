@@ -84,8 +84,10 @@ function sanitizeHtml(input) {
     .replace(/<(iframe|object|embed|link|meta|base|input|source|track|svg|frame|applet|param)\b[^>]*\/?>/gi, '')
 
   // 逐标签重建（白名单 + 属性过滤）
+  // H-18 修复：属性分隔从 \s+ 放宽为 [\s/]+——HTML 规范中 / 等价于空白，
+  // 否则 <img/src=x/onerror=alert(1)> 这类写法整标签不匹配，原样留在输出（onerror 未过滤）。
   out = out.replace(
-    /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:\s+(?:[a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/g,
+    /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:[\s/]+(?:[a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/g,
     (full, tagName, attrsStr) => rebuildTag(full, tagName, attrsStr)
   )
   return out

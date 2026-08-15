@@ -58,7 +58,7 @@ router.post('/login', async (req, res) => {
     return res.status(429).json({ error: `登录尝试次数过多，请等待 ${rateInfo.remainingSeconds} 秒后再试` })
   }
 
-  const { username, password } = req.body
+  const { username, password } = req.body || {}
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' })
   }
