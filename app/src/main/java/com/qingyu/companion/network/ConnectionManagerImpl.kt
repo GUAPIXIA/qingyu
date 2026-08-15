@@ -65,6 +65,13 @@ class ConnectionManagerImpl(
         }
     }
 
+    override suspend fun disconnectAll() {
+        store.setActive(null)
+        _active.value = null
+        cachedApi = null
+        wsClient.disconnect()
+    }
+
     override suspend fun checkCompatibility(
         connection: ServerConnection,
     ): ConnectionManager.CompatibilityResult {

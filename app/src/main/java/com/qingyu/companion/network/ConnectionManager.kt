@@ -36,6 +36,9 @@ interface ConnectionManager {
     /** PC 端吊销或用户主动移除 */
     suspend fun remove(deviceId: String)
 
+    /** M-31 修复：退出时清除——断开活跃连接与 WS（wipeLocalData 使用，彻底断开不再重连） */
+    suspend fun disconnectAll()
+
     /** 版本协商：启动时校验 X-Api-Version 兼容性（方案 §4.3） */
     suspend fun checkCompatibility(connection: ServerConnection): CompatibilityResult
 
