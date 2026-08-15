@@ -53,9 +53,10 @@ class WsClientImpl(
     private var webSocket: WebSocket? = null
     private var client: OkHttpClient? = null
 
-    /** 用户主动断开后不再重连 */
-    private var stopped = true
-    private var reconnectAttempts = 0
+    // M-32 修复：OkHttp 回调线程与协程线程并发读写，加 @Volatile 保证可见性
+    // （此前竞态导致间歇性多余重连/旧 socket 误判）
+    @Volatile private var stopped = true
+    @Volatile private var reconnectAttempts = 0
 
     override suspend fun connect(connection: ServerConnection) {
         this.connection = connection
