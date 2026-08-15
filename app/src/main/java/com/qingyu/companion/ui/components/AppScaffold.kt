@@ -76,14 +76,14 @@ fun AppBackground(
     }
 }
 
-/** 半透明玻璃顶栏（背景渐隐，标题衬线；compact=true 时更紧凑：小标题 + 收缩高度） */
+/** 半透明玻璃顶栏（背景渐隐，标题衬线；紧凑：小标题 + 收缩高度，全局默认紧凑） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppTopBar(
     title: String,
     navigationIcon: (@Composable () -> Unit)? = null,
     actions: (@Composable () -> Unit)? = null,
-    compact: Boolean = false,
+    compact: Boolean = true,
 ) {
     TopAppBar(
         title = {

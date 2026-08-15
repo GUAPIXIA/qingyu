@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -784,24 +785,31 @@ private fun InputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            // 图片按钮
-            IconButton(onClick = onPickImage) {
+            // 图片按钮（紧凑 40dp，对齐触控规范下限）
+            IconButton(
+                onClick = onPickImage,
+                modifier = Modifier.size(40.dp),
+            ) {
                 Icon(
                     Icons.Filled.Add,
                     contentDescription = "添加图片",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
                 )
             }
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp, max = 132.dp),
                 placeholder = { Text("输入消息…") },
                 maxLines = 4,
-                shape = RoundedCornerShape(18.dp),
+                textStyle = MaterialTheme.typography.bodyMedium,
+                shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -895,7 +903,7 @@ private fun PendingBubble(pending: PendingMessage, onRetry: () -> Unit) {
             shape = BubbleShape(isUser = true),
             modifier = Modifier.widthIn(max = 300.dp),
         ) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(10.dp)) {
                 Text(pending.content, style = MaterialTheme.typography.bodyMedium)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -952,7 +960,7 @@ private fun StreamingBubble(text: String) {
             ),
             modifier = Modifier.widthIn(max = 300.dp),
         ) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(10.dp)) {
                 MarkdownText(extractThought(text).content)
                 Text(
                     "▍",
@@ -1082,7 +1090,7 @@ private fun MessageBubble(
                     )
                     .combinedClickable(onClick = {}, onLongClick = onLongPress),
             ) {
-                Column(Modifier.padding(12.dp)) {
+                Column(Modifier.padding(10.dp)) {
                     // 引用块
                     referencedMessage?.let { ref ->
                         Surface(

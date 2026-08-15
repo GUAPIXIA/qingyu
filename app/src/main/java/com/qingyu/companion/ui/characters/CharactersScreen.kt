@@ -476,7 +476,7 @@ private fun CharacterDetailSheet(
                         "历史对话",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 12.dp),
+                        modifier = Modifier.padding(vertical = 9.dp),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                 }
