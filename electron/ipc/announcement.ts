@@ -18,8 +18,8 @@ import type { Announcement } from '../../shared/types'
 
 const log = createLogger('announcement-ipc')
 
-/** 默认公告服务器地址 */
-const DEFAULT_SERVER_URL = 'http://cjbtj.xyz'
+/** 默认公告服务器地址（轻语服务挂载在 /qingyu 前缀，nginx 剥前缀后转 3000） */
+const DEFAULT_SERVER_URL = 'http://cjbtj.xyz/qingyu'
 
 /** 公告服务器 URL 存储文件 */
 const ANNOUNCE_CONFIG_FILE = () => join(DIRS.config(), 'announce-config.json')
