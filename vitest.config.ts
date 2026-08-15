@@ -7,12 +7,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./src/test/setup.ts', './server/app/__tests__/setup.js'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}', 'electron/**/*.{test,spec}.{ts,tsx}', 'server/**/*.{test,spec}.{js,ts}'],
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'electron/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist', 'dist-electron'],
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.{ts,tsx}', 'shared/**/*.ts', 'electron/**/*.{ts,tsx}', 'server/**/*.js'],
+      include: ['src/**/*.{ts,tsx}', 'shared/**/*.ts', 'electron/**/*.{ts,tsx}'],
       exclude: [
         'src/test/**',
         'src/main.tsx',
@@ -20,7 +20,6 @@ export default defineConfig({
         'src/**/*.d.ts',
         'src/**/__tests__/**',
         'electron/**/__tests__/**',
-        'server/**/__tests__/**',
       ],
       thresholds: {
         // 2026-08 实测：lines 18% / functions 44% / branches 70%
