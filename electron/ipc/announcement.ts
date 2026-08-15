@@ -112,6 +112,60 @@ function writeCache(items: Announcement[]): void {
 }
 
 /** 注册公告 IPC 处理器 */
+/** 拉取公告列表（含缓存回退；供桥接层阶段三复用） */
+export async function fetchAnnouncementList(page = 1, pageSize = 20): Promise<{
+  items: Announcement[]
+  total: number
+  page: number
+  pageSize: number
+}> {
+  // 参数校验（防 URL 参数注入/超长请求）
+  const safePage = Number.isFinite(page) && page >= 1 ? Math.min(Math.floor(page), 100000) : 1
+  const safeSize = Number.isFinite(pageSize) && pageSize >= 1 ? Math.min(Math.floor(pageSize), 100) : 20
+  const baseUrl = getServerUrl()
+  const url = `${baseUrl}/api/announcements?page=${safePage}&pageSize=${safeSize}`
+
+  try {
+    const body = await httpGet(url)
+    const data = JSON.parse(body)
+    // 缓存列表（仅缓存 items，离线备用）
+    if (data.items) {
+      writeCache(data.items)
+    }
+    return data
+  } catch (err) {
+    log.warn('获取公告列表失败，使用缓存', { error: err instanceof Error ? err.message : String(err) })
+    const cached = readCache()
+    return { items: cached, total: cached.length, page: safePage, pageSize: safeSize }
+  }
+}
+
+/** 获取最新版本信息（供桥接层阶段三复用，对齐 app:checkVersion 语义：失败返回 null） */
+export async function fetchVersionInfo(): Promise<{ version: string; changelog: string; downloadUrl: string } | null> {
+  const baseUrl = getServerUrl()
+  const url = `${baseUrl}/api/version`
+
+  try {
+    const body = await httpGet(url)
+    return JSON.parse(body) as { version: string; changelog: string; downloadUrl: string }
+  } catch (err) {
+    log.warn('检查版本失败', { error: err instanceof Error ? err.message : String(err) })
+    return null
+  }
+}
+
+/** 获取公告详情（供桥接层阶段三复用） */
+export async function fetchAnnouncementDetail(id: number): Promise<Announcement | null> {
+  if (!Number.isInteger(id) || id <= 0) throw new Error('公告 ID 无效')
+  const baseUrl = getServerUrl()
+  try {
+    const body = await httpGet(`${baseUrl}/api/announcements/${id}`)
+    return JSON.parse(body) as Announcement
+  } catch {
+    return null
+  }
+}
+
 export function registerAnnouncementIPC(ipcMain: IpcMain): void {
   // 获取公告列表
   ipcMain.handle('announcement:fetchList', async (_e, page = 1, pageSize = 20) => {
@@ -170,16 +224,7 @@ export function registerAnnouncementIPC(ipcMain: IpcMain): void {
 
   // 检查最新版本
   ipcMain.handle('app:checkVersion', async () => {
-    const baseUrl = getServerUrl()
-    const url = `${baseUrl}/api/version`
-
-    try {
-      const body = await httpGet(url)
-      return JSON.parse(body) as { version: string; changelog: string; downloadUrl: string }
-    } catch (err) {
-      log.warn('检查版本失败', { error: err instanceof Error ? err.message : String(err) })
-      return null
-    }
+    return fetchVersionInfo()
   })
 
   log.info('公告 IPC 已注册')
