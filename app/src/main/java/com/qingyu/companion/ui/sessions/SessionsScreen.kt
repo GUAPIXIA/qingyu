@@ -144,19 +144,26 @@ fun SessionsScreen(
             AppTopBar(
                 title = "会话",
                 navigationIcon = null,
+                compact = true,
                 actions = {
-                    // 主要导航：群聊 / 角色（文字，清晰可点）
-                    TextButton(onClick = onOpenGroups) {
+                    // 主要导航：群聊 / 角色（文字，清晰可点；紧凑：小号文字 + 收紧 padding）
+                    TextButton(
+                        onClick = onOpenGroups,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
                         Text(
                             "群聊",
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(onClick = onOpenCharacters) {
+                    TextButton(
+                        onClick = onOpenCharacters,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
                         Text(
                             "角色",
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -166,7 +173,7 @@ fun SessionsScreen(
                             Icons.Filled.Refresh,
                             contentDescription = "刷新",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                     IconButton(onClick = onOpenSettings) {
@@ -174,10 +181,9 @@ fun SessionsScreen(
                             Icons.Filled.Settings,
                             contentDescription = "设置",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
-                    Spacer(Modifier.width(4.dp))
                 },
             )
         },
@@ -188,11 +194,11 @@ fun SessionsScreen(
                     .fillMaxSize()
                     .padding(padding),
             ) {
-                // 顶部工具条：连接状态（左）+ 排序（右，chip 样式）
+                // 顶部工具条：连接状态（左）+ 排序（右，chip 样式；紧凑：收紧 padding）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ConnectionStatusBar(state = ui.connection, onTap = onOpenPairing)
@@ -207,7 +213,7 @@ fun SessionsScreen(
                         ),
                     ) {
                         Row(
-                            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(

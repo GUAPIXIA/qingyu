@@ -43,10 +43,10 @@ fun ConnectionStatusBar(
     ) {
         Box(
             Modifier
-                .size(10.dp)
+                .size(8.dp)
                 .background(color, CircleShape)
         )
-        Spacer(Modifier.width(6.dp))
-        Text(text = label, style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.width(5.dp))
+        Text(text = label, style = MaterialTheme.typography.labelSmall)
     }
 }
