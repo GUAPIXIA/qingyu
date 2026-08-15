@@ -29,6 +29,9 @@ release
 release-v2
 .cache
 
+# PoC 临时验证脚本
+.poc-tmp-src/
+
 # SillyTavern tools
 SillyTavern-Launcher/
 

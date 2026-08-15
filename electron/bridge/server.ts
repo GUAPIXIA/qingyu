@@ -8,7 +8,7 @@
 import express, { type Express } from 'express'
 import { createServer, type Server } from 'node:http'
 import { WsHub } from './ws'
-import { buildBridgeRouter, API_VERSION } from './routes'
+import { buildBridgeRouter, API_VERSION, originGuard } from './routes'
 import { buildStaticRouter } from './static'
 import { BridgeChatService, type SessionChangedNotifier } from './chatService'
 import { createLogger } from '../services/logger'
@@ -42,7 +42,10 @@ export class BridgeServer {
     this.app = express()
     this.app.use(express.json({ limit: '10mb' }))
     this.app.use('/api/v1', buildBridgeRouter(this.hub, this.chatService, notifySessionChanged, onPairRequest))
-    this.app.use('/static', buildStaticRouter())
+    // H1 修复：/static 媒体路由此前挂在认证路由之外，任何 LAN 主机可无认证读取聊天图片/
+    // 角色素材。先挂 originGuard（阻断浏览器跨站 fetch 盗读，PC/安卓原生加载不受影响）；
+    // 完整修复（requireAuth + 客户端携带 token）需同步改 PC/安卓图片加载方式，见审计 H1。
+    this.app.use('/static', originGuard, buildStaticRouter())
     // 兜底 404
     this.app.use((_req, res) => {
       res.status(404).json({ error: 'not found' })

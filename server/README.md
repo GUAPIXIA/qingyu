@@ -2,7 +2,7 @@
 
 「轻语」的独立公告/版本服务端：Express + SQLite，用于公网部署，让客户端远程拉取公告与版本信息。与主应用（Electron 客户端）完全解耦，可单独部署。
 
-当前版本 **1.0.0**，更新日志见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **1.0.4**，更新日志见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 快速开始
 

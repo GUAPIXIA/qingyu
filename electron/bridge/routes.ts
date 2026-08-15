@@ -94,7 +94,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
 }
 
 /** 非浏览器 UA 放行 + 浏览器 Origin 校验（§6.3：防局域网恶意网页借浏览器发请求） */
-function originGuard(req: Request, res: Response, next: NextFunction): void {
+export function originGuard(req: Request, res: Response, next: NextFunction): void {
   const ua = (req.headers['user-agent'] ?? '').toLowerCase()
   const isBrowser = /mozilla|chrome|safari|firefox|edg/i.test(ua) && !ua.includes('qingyu-companion')
   const origin = req.headers.origin
@@ -109,10 +109,13 @@ function originGuard(req: Request, res: Response, next: NextFunction): void {
         return false
       }
     })()
-    if (!allowed) {
+    if (origin && !allowed) {
       res.status(403).json({ error: 'origin rejected' })
       return
     }
+    // 无 Origin 的浏览器请求（<img>/<script> 等 no-cors 标签或顶层导航）读取不到响应体
+    // （CORS 限制），且 <img>/<script> 无法携带 Authorization 头——放行以保证 PC/安卓端
+    // 图片能正常加载。能读到数据的跨站 fetch 必然携带 Origin，会被上面拦截。
   }
   next()
 }
