@@ -1,0 +1,16 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+captures/
+
+# Kotlin
+.kotlin/
+
+# 签名与密钥（令牌/配对相关，禁止入库）
+*.keystore
+*.jks
