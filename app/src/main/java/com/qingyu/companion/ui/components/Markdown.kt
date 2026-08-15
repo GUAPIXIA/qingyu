@@ -3,6 +3,7 @@ package com.qingyu.companion.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -40,6 +42,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import android.content.Intent
+import android.net.Uri
 import com.qingyu.companion.data.LocalAppContainer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -77,6 +81,8 @@ data class InlineStyles(
 
 private val HEADING = Regex("""^(#{1,6})\s+(.*)$""")
 private val LIST_ITEM = Regex("""^\s*([-*+]|\d+\.)\s+(.*)$""")
+/** GFM 任务列表项：- [ ] 任务 / - [x] 已完成 */
+private val TASK_ITEM = Regex("""^\[([ xX])\]\s+(.*)$""")
 private val HR = Regex("""^\s*(?:-{3,}|\*{3,}|_{3,})\s*$""")
 private val IMAGE_LINE = Regex("""^\s*!\[[^\]]*\]\(([^)\s]+)\)\s*$""")
 
@@ -198,9 +204,15 @@ fun parseMarkdown(source: String): List<MdBlock> {
 }
 
 /**
- * 行内 Markdown -> AnnotatedString。支持 `code`、~~删除线~~、**加粗**、*斜体*，可嵌套。
+ * 行内 Markdown -> AnnotatedString。支持 `code`、~~删除线~~、**加粗**、*斜体*、链接、可嵌套。
+ * @param links 可选：收集可点击链接区间（annotated 内字符区间 -> URL），供 ClickableText 使用。
  */
-fun inlineMarkdown(text: String, styles: InlineStyles, depth: Int = 0): AnnotatedString {
+fun inlineMarkdown(
+    text: String,
+    styles: InlineStyles,
+    depth: Int = 0,
+    links: MutableList<Pair<IntRange, String>>? = null,
+): AnnotatedString {
     val b = AnnotatedString.Builder()
     var i = 0
     // 防御：嵌套过深（异常格式）直接返回纯文本，避免 StackOverflowError
@@ -218,15 +230,41 @@ fun inlineMarkdown(text: String, styles: InlineStyles, depth: Int = 0): Annotate
                 }
             }
 
-            // 链接 [label](url)：渲染为链接样式（点击能力留待后续）
+            // 行内图片 ![alt](url)：降级为「🔗 图片」链接样式（可点击打开）
+            ch == '!' && text.getOrNull(i + 1) == '[' -> {
+                val close = text.indexOf(']', i + 2)
+                val urlEnd = if (close > i + 2) text.indexOf(')', close + 2) else -1
+                if (close != -1 && urlEnd != -1) {
+                    val url = text.substring(close + 2, urlEnd).trim()
+                    val label = text.substring(i + 2, close).ifBlank { "图片" }
+                    val start = b.length
+                    b.withStyle(styles.link) {
+                        b.append("🔗 $label")
+                    }
+                    if (url.startsWith("http://") || url.startsWith("https://")) {
+                        links?.add(Pair(IntRange(start, b.length), url))
+                    }
+                    i = urlEnd + 1
+                } else {
+                    b.append(ch); i++
+                }
+            }
+
+            // 链接 [label](url)：渲染为链接样式 + 可点击（仅 http/https，危险协议降级为纯文本）
             ch == '[' -> {
                 val close = text.indexOf(']', i + 1)
                 if (close > i + 1 && text.getOrNull(close + 1) == '(') {
                     val urlEnd = text.indexOf(')', close + 2)
                     if (urlEnd != -1) {
                         val label = text.substring(i + 1, close)
+                        val url = text.substring(close + 2, urlEnd).trim()
+                        val start = b.length
                         b.withStyle(styles.link) {
                             b.append(inlineMarkdown(label, styles, depth + 1))
+                        }
+                        // 链接可点击：仅 http/https（危险协议如 javascript:/data: 降级为纯文本）
+                        if (url.startsWith("http://") || url.startsWith("https://")) {
+                            links?.add(Pair(IntRange(start, b.length), url))
                         }
                         i = urlEnd + 1
                     } else {
@@ -297,6 +335,35 @@ fun inlineMarkdown(text: String, styles: InlineStyles, depth: Int = 0): Annotate
     return b.toAnnotatedString()
 }
 
+/**
+ * 可点击文本：处理链接区间（链接点击打开浏览器，仅 http/https 已在收集时过滤）。
+ */
+@Composable
+private fun MdText(
+    annotated: AnnotatedString,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    links: List<Pair<IntRange, String>>? = null,
+) {
+    val context = LocalContext.current
+    if (links.isNullOrEmpty()) {
+        Text(text = annotated, style = style, modifier = modifier)
+    } else {
+        ClickableText(
+            text = annotated,
+            style = style,
+            modifier = modifier,
+            onClick = { offset ->
+                links.firstOrNull { offset in it.first }?.let { (_, url) ->
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                }
+            },
+        )
+    }
+}
+
 @Composable
 fun MarkdownText(
     text: String,
@@ -343,16 +410,20 @@ fun MarkdownText(
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
                             )
                             Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = inlineMarkdown(block.text, styles),
+                            val links = remember(block.text) { mutableListOf<Pair<IntRange, String>>() }
+                            MdText(
+                                annotated = inlineMarkdown(block.text, styles, links = links),
                                 style = style.copy(fontStyle = FontStyle.Italic),
+                                links = links,
                             )
                         }
                     } else {
-                        Text(
-                            text = inlineMarkdown(block.text, styles),
+                        val links = remember(block.text) { mutableListOf<Pair<IntRange, String>>() }
+                        MdText(
+                            annotated = inlineMarkdown(block.text, styles, links = links),
                             style = style,
                             modifier = Modifier.padding(vertical = 2.dp),
+                            links = links,
                         )
                     }
                 }
@@ -364,10 +435,12 @@ fun MarkdownText(
                         3 -> 18.sp
                         else -> 16.sp
                     }
-                    Text(
-                        text = inlineMarkdown(block.text, styles),
+                    val links = remember(block.text) { mutableListOf<Pair<IntRange, String>>() }
+                    MdText(
+                        annotated = inlineMarkdown(block.text, styles, links = links),
                         style = style.copy(fontSize = size, fontWeight = FontWeight.Bold),
                         modifier = Modifier.padding(vertical = 4.dp),
+                        links = links,
                     )
                 }
 
@@ -375,27 +448,42 @@ fun MarkdownText(
 
                 is MdBlock.Image -> ImageBlock(block.url)
 
-                is MdBlock.Quote -> Text(
-                    text = inlineMarkdown(block.text, styles),
-                    style = style.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontStyle = FontStyle.Italic,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            BorderStroke(3.dp, MaterialTheme.colorScheme.primary),
-                            shape = MaterialTheme.shapes.extraSmall,
-                        )
-                        .padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
-                )
+                is MdBlock.Quote -> {
+                    val links = remember(block.text) { mutableListOf<Pair<IntRange, String>>() }
+                    MdText(
+                        annotated = inlineMarkdown(block.text, styles, links = links),
+                        style = style.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontStyle = FontStyle.Italic,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                BorderStroke(3.dp, MaterialTheme.colorScheme.primary),
+                                shape = MaterialTheme.shapes.extraSmall,
+                            )
+                            .padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
+                        links = links,
+                    )
+                }
 
                 is MdBlock.HorizontalRule -> HorizontalDivider()
 
                 is MdBlock.Table -> TableBlock(block, style)
 
                 is MdBlock.ListItem -> {
-                    val prefix = if (block.ordered) {
+                    // GFM 任务列表：- [ ] / - [x]（对齐 PC 端 remark-gfm checkbox）
+                    val taskMatch = TASK_ITEM.matchEntire(block.text)
+                    val taskChecked = taskMatch?.groupValues?.get(1)?.lowercase() == "x"
+                    val taskText = taskMatch?.groupValues?.get(2) ?: block.text
+                    val taskBox = if (taskMatch != null) {
+                        if (taskChecked) "☑ " else "☐ "
+                    } else {
+                        ""
+                    }
+                    val prefix = if (taskMatch != null) {
+                        taskBox
+                    } else if (block.ordered) {
                         orderedCounter += 1
                         "$orderedCounter. "
                     } else {
@@ -407,11 +495,20 @@ fun MarkdownText(
                     ) {
                         Text(
                             text = prefix,
-                            style = style,
+                            style = if (taskMatch != null && taskChecked) {
+                                style.copy(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textDecoration = TextDecoration.LineThrough,
+                                )
+                            } else {
+                                style
+                            },
                         )
-                        Text(
-                            text = inlineMarkdown(block.text, styles),
+                        val links = remember(taskText) { mutableListOf<Pair<IntRange, String>>() }
+                        MdText(
+                            annotated = inlineMarkdown(taskText, styles, links = links),
                             style = style,
+                            links = links,
                         )
                     }
                 }

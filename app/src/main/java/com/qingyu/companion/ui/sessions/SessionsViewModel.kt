@@ -74,12 +74,15 @@ class SessionsViewModel(
                     .let { all ->
                         if (characterId != null) all.filter { it.characterId == characterId } else all
                     }
+                    .filter { it.messageCount > 0 } // 无消息空会话不显示（PC 端历史遗留空壳）
                     .let { applySort(it) }
                 _ui.update { it.copy(sessions = sessions, loading = false, offline = false) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val cached = applySort(repository.listCachedSessions())
+                val cached = applySort(
+                    repository.listCachedSessions().filter { it.messageCount > 0 } // 缓存同样过滤空会话
+                )
                 _ui.update {
                     it.copy(
                         sessions = cached,
