@@ -28,8 +28,23 @@ interface MessageBubbleProps {
 import { MarkdownImage } from '../common/MarkdownImage'
 import { MarkdownLink } from '../common/MarkdownLink'
 import { MessageActionBar } from './MessageActionBar'
+import { remarkAudio } from '../../utils/remark-audio'
 
-const markdownComponents = { img: MarkdownImage, a: MarkdownLink }
+/** 消息内嵌 <audio> 播放器（对齐安卓端：外部音频 URL，白名单 http/https） */
+function MarkdownAudio({ src }: { src?: string }) {
+  if (!src) return null
+  return (
+    <audio
+      controls
+      loop
+      preload="none"
+      src={src}
+      style={{ width: '100%', maxWidth: 320, height: 44, margin: '4px 0' }}
+    />
+  )
+}
+
+const markdownComponents = { img: MarkdownImage, a: MarkdownLink, audio: MarkdownAudio }
 
 // B-05：已播放过入场动画的消息 ID，避免虚拟滚动时反复播放
 // BUG-18 修复：限制 Set 上限，超出时淘汰最早标记的 ID，避免长时间使用内存无限增长
@@ -348,7 +363,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             <div className={cn('markdown-body', isStreamingThis && 'typing-cursor')} onClick={handleMarkdownClick}>
               {/* BUG-09 修复：移除 rehypeRaw / allowDangerousHtml，防止消息内容中的原始 HTML（如 <script>、<img onerror>）执行导致 XSS */}
               <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkRoleplay]}
+                remarkPlugins={[remarkGfm, remarkRoleplay, remarkAudio]}
                 rehypePlugins={[rehypeHighlight]}
                 components={markdownComponents}
               >

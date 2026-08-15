@@ -39,8 +39,23 @@ const ROLE_COLORS = [
 
 import { MarkdownImage } from '../common/MarkdownImage'
 import { MarkdownLink } from '../common/MarkdownLink'
+import { remarkAudio } from '../../utils/remark-audio'
 
-const markdownComponents = { img: MarkdownImage, a: MarkdownLink }
+/** 消息内嵌 <audio> 播放器（对齐单聊：白名单 http/https） */
+function MarkdownAudio({ src }: { src?: string }) {
+  if (!src) return null
+  return (
+    <audio
+      controls
+      loop
+      preload="none"
+      src={src}
+      style={{ width: '100%', maxWidth: 320, height: 44, margin: '4px 0' }}
+    />
+  )
+}
+
+const markdownComponents = { img: MarkdownImage, a: MarkdownLink, audio: MarkdownAudio }
 
 export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, isStreamingMessage, repliedMessage, bubbleOpacity, onDelete, onEdit, onRegenerate, onTranslate, onReply }: GroupChatMessageProps) {
   // P-6 修复：字段级选择器订阅
@@ -223,7 +238,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
                   @提及高亮由 remarkMentionHighlight 插件在 AST 层完成 */}
               <div className="markdown-body">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkRoleplay, ...mentionHighlightPlugins]}
+                  remarkPlugins={[remarkGfm, remarkRoleplay, remarkAudio, ...mentionHighlightPlugins]}
                   rehypePlugins={[rehypeHighlight]}
                   components={markdownComponents}
                 >

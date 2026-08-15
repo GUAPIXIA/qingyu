@@ -60,7 +60,7 @@ export interface ChatState {
   /** 保存世界书绑定到角色（作为新会话的默认值），仅在角色编辑器或用户明确操作时调用 */
   saveLorebookBinding: (characterId: string, ids: string[]) => Promise<void>
   applyRegex: (text: string, scope: 'input' | 'output', rules: RegexRule[]) => string
-  buildContext: (character: Character, preset: Preset | null, opts?: { continuation?: boolean }) => ContextMessage[]
+  buildContext: (character: Character, preset: Preset | null, opts?: { continuation?: boolean; trackUsage?: boolean }) => ContextMessage[]
   /** 启动 AI 翻译（全局状态，页面切换不中断） */
   translateMessage: (messageId: string, content: string) => void
   /** 切换翻译显示 */
