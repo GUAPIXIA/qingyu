@@ -1,0 +1,11 @@
+# 依赖
+node_modules
+
+# 环境配置（含密钥，禁止入库）
+.env
+
+# 运行时数据（SQLite 数据库等）
+app/data/
+
+# 日志
+*.log

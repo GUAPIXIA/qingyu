@@ -1,0 +1,35 @@
+const jwt = require('jsonwebtoken')
+
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  console.error('[Auth] 致命错误: 未设置 JWT_SECRET 环境变量，服务拒绝启动')
+  process.exit(1)
+}
+if (JWT_SECRET.length < 32) {
+  console.error('[Auth] 致命错误: JWT_SECRET 长度不足（至少需要 32 个字符），服务拒绝启动')
+  process.exit(1)
+}
+
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '未提供认证令牌' })
+  }
+
+  const token = authHeader.split(' ')[1]
+  try {
+    // 锁定算法，防止 JWT 算法混淆攻击（只接受 HS256）
+    // N20 修复：校验 issuer/audience（与签发端一致，旧 token 需重新登录）
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      algorithms: ['HS256'],
+      issuer: 'qingyu-server',
+      audience: 'qingyu-admin',
+    })
+    req.admin = decoded
+    next()
+  } catch {
+    return res.status(401).json({ error: '认证令牌无效或已过期' })
+  }
+}
+
+module.exports = { authMiddleware, JWT_SECRET }

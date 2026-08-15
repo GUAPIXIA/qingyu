@@ -1,0 +1,173 @@
+const express = require('express')
+const db = require('../db')
+const { authMiddleware } = require('../middleware/auth')
+const { sanitizeHtml } = require('../sanitize')
+
+const router = express.Router()
+
+/** 公告字段长度上限（防止超长内容拖垮数据库/渲染） */
+const LIMITS = { title: 200, summary: 500, content: 100000 }
+
+/** 解析并校验分页参数（page ≥ 1 且 ≤ 100000，pageSize 1-100） */
+function parsePagination(query) {
+  const rawPage = parseInt(query.page, 10)
+  const rawSize = parseInt(query.pageSize, 10)
+  // N16 修复：page 上限 100000，防止超大值触发 SQLite int64 溢出返回 500
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.min(rawPage, 100000) : 1
+  const pageSize = Number.isFinite(rawSize) && rawSize > 0 ? Math.min(rawSize, 100) : 20
+  return { page, pageSize, offset: (page - 1) * pageSize }
+}
+
+// 获取所有公告（管理员专用，含草稿，需认证）
+router.get('/admin', authMiddleware, (req, res) => {
+  const { page, pageSize, offset } = parsePagination(req.query)
+
+  const countRow = db.prepare('SELECT COUNT(*) as total FROM announcements').get()
+  const items = db.prepare(`
+    SELECT id, title, summary, content, pinned, published, created_at as createdAt, updated_at as updatedAt
+    FROM announcements
+    ORDER BY pinned DESC, created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(pageSize, offset)
+
+  res.json({ items, total: countRow.total, page, pageSize })
+})
+
+// 获取公告列表（公开，仅已发布）
+// N19 修复：公开列表不返回 content 全文（详情走 GET /:id），避免带宽放大
+router.get('/', (req, res) => {
+  const { page, pageSize, offset } = parsePagination(req.query)
+
+  const countRow = db.prepare('SELECT COUNT(*) as total FROM announcements WHERE published = 1').get()
+  const items = db.prepare(`
+    SELECT id, title, summary, pinned, published, created_at as createdAt, updated_at as updatedAt
+    FROM announcements
+    WHERE published = 1
+    ORDER BY pinned DESC, created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(pageSize, offset)
+
+  res.json({ items, total: countRow.total, page, pageSize })
+})
+
+// 获取单条公告详情（管理员专用，含草稿，需认证）
+router.get('/admin/:id', authMiddleware, (req, res) => {
+  const item = db.prepare(`
+    SELECT id, title, summary, content, pinned, published, created_at as createdAt, updated_at as updatedAt
+    FROM announcements
+    WHERE id = ?
+  `).get(req.params.id)
+
+  if (!item) {
+    return res.status(404).json({ error: '公告不存在' })
+  }
+  res.json(item)
+})
+
+// 获取单条公告详情（公开，仅已发布）
+router.get('/:id', (req, res) => {
+  const item = db.prepare(`
+    SELECT id, title, summary, content, pinned, published, created_at as createdAt, updated_at as updatedAt
+    FROM announcements
+    WHERE id = ? AND published = 1
+  `).get(req.params.id)
+
+  if (!item) {
+    return res.status(404).json({ error: '公告不存在' })
+  }
+  res.json(item)
+})
+
+// 创建公告（需认证）
+router.post('/', authMiddleware, (req, res) => {
+  const { title, content, summary, pinned, published } = req.body
+  if (!title || !content) {
+    return res.status(400).json({ error: '标题和内容不能为空' })
+  }
+  // 长度限制（防止超长存储与渲染开销）
+  if (typeof title !== 'string' || title.length > LIMITS.title) {
+    return res.status(400).json({ error: `标题长度不能超过 ${LIMITS.title} 字符` })
+  }
+  if (typeof content !== 'string' || content.length > LIMITS.content) {
+    return res.status(400).json({ error: `内容长度不能超过 ${LIMITS.content} 字符` })
+  }
+  if (summary !== undefined && (typeof summary !== 'string' || summary.length > LIMITS.summary)) {
+    return res.status(400).json({ error: `摘要长度不能超过 ${LIMITS.summary} 字符` })
+  }
+
+  const now = new Date().toISOString()
+  // 存储型 XSS 防御：写入前消毒 HTML（白名单标签 + 事件属性/危险协议过滤）
+  const result = db.prepare(`
+    INSERT INTO announcements (title, content, summary, pinned, published, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    sanitizeHtml(title),
+    sanitizeHtml(content),
+    sanitizeHtml(summary || ''),
+    pinned ? 1 : 0,
+    published !== false ? 1 : 0,
+    now,
+    now
+  )
+
+  const item = db.prepare('SELECT id, title, summary, content, pinned, published, created_at as createdAt, updated_at as updatedAt FROM announcements WHERE id = ?').get(result.lastInsertRowid)
+  res.status(201).json(item)
+})
+
+// 更新公告（需认证）
+router.put('/:id', authMiddleware, (req, res) => {
+  const existing = db.prepare('SELECT id FROM announcements WHERE id = ?').get(req.params.id)
+  if (!existing) {
+    return res.status(404).json({ error: '公告不存在' })
+  }
+
+  const { title, content, summary, pinned, published } = req.body
+  const now = new Date().toISOString()
+
+  // N7 修复：PUT 与 POST 一致的长度校验（此前仅 sanitizeHtml，可绕过长度限制存储超大内容）
+  // N18 修复：null 视为"未提供"（与 undefined 一致），避免 {"title": null} 清空字段
+  if (title != null && (typeof title !== 'string' || title.length > LIMITS.title)) {
+    return res.status(400).json({ error: `标题长度不能超过 ${LIMITS.title} 字符` })
+  }
+  if (content != null && (typeof content !== 'string' || content.length > LIMITS.content)) {
+    return res.status(400).json({ error: `内容长度不能超过 ${LIMITS.content} 字符` })
+  }
+  if (summary != null && (typeof summary !== 'string' || summary.length > LIMITS.summary)) {
+    return res.status(400).json({ error: `摘要长度不能超过 ${LIMITS.summary} 字符` })
+  }
+
+  db.prepare(`
+    UPDATE announcements
+    SET title = COALESCE(?, title),
+        content = COALESCE(?, content),
+        summary = COALESCE(?, summary),
+        pinned = COALESCE(?, pinned),
+        published = COALESCE(?, published),
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    title != null ? sanitizeHtml(title) : null,
+    content != null ? sanitizeHtml(content) : null,
+    summary != null ? sanitizeHtml(summary) : null,
+    pinned != null ? (pinned ? 1 : 0) : null,
+    published != null ? (published ? 1 : 0) : null,
+    now,
+    req.params.id
+  )
+
+  const item = db.prepare('SELECT id, title, summary, content, pinned, published, created_at as createdAt, updated_at as updatedAt FROM announcements WHERE id = ?').get(req.params.id)
+  res.json(item)
+})
+
+// 删除公告（需认证）
+router.delete('/:id', authMiddleware, (req, res) => {
+  const existing = db.prepare('SELECT id FROM announcements WHERE id = ?').get(req.params.id)
+  if (!existing) {
+    return res.status(404).json({ error: '公告不存在' })
+  }
+
+  db.prepare('DELETE FROM announcements WHERE id = ?').run(req.params.id)
+  res.json({ success: true })
+})
+
+module.exports = router
