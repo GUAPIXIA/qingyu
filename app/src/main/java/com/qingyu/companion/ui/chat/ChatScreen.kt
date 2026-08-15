@@ -128,6 +128,10 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    // 本地 UI 偏好：聊天字体缩放 + 消息间距
+    val fontScale by container.uiPrefsStore.fontScale.collectAsState(initial = 1f)
+    val spacingMult by container.uiPrefsStore.spacingMultiplier.collectAsState(initial = 1f)
+
     var menuMessage by remember { mutableStateOf<Message?>(null) }
     var editingMessage by remember { mutableStateOf<Message?>(null) }
     var editText by remember { mutableStateOf("") }
@@ -290,6 +294,8 @@ fun ChatScreen(sessionId: String, onBack: () -> Unit) {
                                     onSwipe = { direction -> vm.swipe(item.message.id, direction) },
                                     onImageClick = { index -> viewer = imageUrls to index },
                                     imageUrls = imageUrls,
+                                    fontScale = fontScale,
+                                    spacingMultiplier = spacingMult,
                                     onCopy = {
                                         clipboard.setText(AnnotatedString(item.message.content))
                                     },
@@ -983,6 +989,10 @@ private fun MessageBubble(
     onSpeak: (() -> Unit)? = null,
     onTranslate: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    /** 本地 UI 偏好：字体缩放系数（1f = 标准） */
+    fontScale: Float = 1f,
+    /** 本地 UI 偏好：消息间距倍数（1f = 标准） */
+    spacingMultiplier: Float = 1f,
 ) {
     val isUser = message.role == Role.user
     val isSystem = message.role == Role.system
@@ -1002,6 +1012,8 @@ private fun MessageBubble(
         label = "bubbleAlpha",
     )
     LaunchedEffect(message.id) { appeared = true }
+    // 本地 UI 偏好：消息间距（标准 4dp 垂直 padding × 倍数）
+    val bubbleSpacingDp = (4 * spacingMultiplier).dp
 
     Row(
         modifier = Modifier
@@ -1011,7 +1023,7 @@ private fun MessageBubble(
                 scaleY = scale
             }
             .alpha(bubbleAlpha)
-            .padding(vertical = 4.dp),
+            .padding(vertical = bubbleSpacingDp),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
         if (!isUser) {
@@ -1129,10 +1141,18 @@ private fun MessageBubble(
                         // 用户消息也走 Markdown 渲染（对齐 PC 端 ReactMarkdown），保留用户气泡深棕文字色
                         MarkdownText(
                             extraction.content,
-                            style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF3B2410)),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = Color(0xFF3B2410),
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontScale,
+                            ),
                         )
                     } else {
-                        MarkdownText(extraction.content)
+                        MarkdownText(
+                            extraction.content,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontScale,
+                            ),
+                        )
                     }
 
                     // 图片（imageUrls 已拼接完整 URL）
