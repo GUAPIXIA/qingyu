@@ -119,8 +119,9 @@ class PairingViewModel(
         val host = _ui.value.host.trim()
         val port = _ui.value.port.trim().toIntOrNull()
         val code = _ui.value.pairingCode.trim()
-        if (host.isEmpty() || port == null || port !in 1..65535 || code.isEmpty()) {
-            _ui.update { it.copy(error = "请填写主机、端口（1-65535）与配对码") }
+        // 配对码可选：IP+端口直接配对（PC 端人工确认兜底）；提供则校验
+        if (host.isEmpty() || port == null || port !in 1..65535) {
+            _ui.update { it.copy(error = "请填写主机与端口（1-65535）") }
             return
         }
         viewModelScope.launch {
@@ -133,7 +134,7 @@ class PairingViewModel(
                     port = port,
                     token = "",
                     deviceId = "",
-                    fingerprint = code,
+                    fingerprint = code.ifEmpty { deviceIdentity.fingerprint },
                 )
                 val compat = connectionManager.checkCompatibility(probe)
                 when (compat) {
