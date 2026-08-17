@@ -1,5 +1,26 @@
 # 更新日志
 
+## [0.11.25] - 2026-08-17
+
+### 依赖升级 + 代码质量修复
+
+**依赖升级**
+- Electron 32.0.0 → 43.4.0（修复 EOL 版本安全问题，Chromium 152 + Node.js 24）
+
+**TypeScript 编译修复**
+- bridge/ttsHandler.ts: 添加缺失的 restoreSecrets 导入（H-5 补完）
+- bridge/routes.ts: pairingCode 类型安全处理（string | undefined → string）
+
+**ESLint 修复（17 项 → 0 项）**
+- 清理未使用的导入：ipcMain、readRules、QuickReply、ContextSettingsSnapshot、Preset 等
+- remark-audio.ts: 添加 AudioNode 接口替代 any 类型
+- ESLint 配置: 测试文件添加 argsIgnorePattern、vitest.config.js 解析修复
+
+**公告服务端**
+- 安装缺失的 jsonwebtoken 依赖
+
+---
+
 ## [0.11.24] - 2026-08-15
 
 ### 项目逻辑错误审查修复（P0/High/Medium 全量）+ 多端协同

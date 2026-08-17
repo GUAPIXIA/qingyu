@@ -13,7 +13,7 @@
  * 引用替换为 data 字段），仅 markPendingCompression 改为返回待处理项。
  */
 
-import type { ChatParams, Character, Preset, Settings } from '../../shared/types'
+import type { ChatParams, Character, Settings } from '../../shared/types'
 import type { ContextBuildData, SemanticLoreHit } from '../../shared/contextTypes'
 import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'

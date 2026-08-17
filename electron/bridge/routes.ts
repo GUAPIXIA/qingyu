@@ -27,7 +27,7 @@ import { getCharacter, listCharacters } from '../services/charCard'
 import { chatData } from '../ipc/chat'
 import { groupData } from '../ipc/group'
 import { getBuiltinPresets } from '../ipc/preset'
-import { readRules } from '../ipc/regex'
+
 import { getSummary, queryUsage } from '../services/usage'
 import { fetchAnnouncementList, fetchVersionInfo } from '../ipc/announcement'
 import { readStore as readQuickReplyStore } from '../ipc/quickReply'
@@ -62,7 +62,7 @@ import { safeId } from '../utils/pathGuard'
 import { sanitizeApiKey } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
 import type { Request, Response, NextFunction } from 'express'
-import type { Message, QuickReply, Settings, Lorebook, Preset, ChatParams, ProviderType, GroupChat } from '../../shared/types'
+import type { Message, Settings, Lorebook, Preset, ChatParams, ProviderType, GroupChat } from '../../shared/types'
 
 const log = createLogger('bridge-routes')
 
@@ -168,7 +168,7 @@ export function buildBridgeRouter(
     }
 
     // 未登记：挂起等待 PC 端人工确认（§5.1 防局域网抢扫）
-    const pair = enqueuePendingPair(deviceName, deviceFingerprint, pairingCode)
+    const pair = enqueuePendingPair(deviceName, deviceFingerprint, pairingCode ?? '')
     onPairRequest(pair.requestId, deviceName)
     const approved = await new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => resolve(false), PAIR_WAIT_TIMEOUT_MS)

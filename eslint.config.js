@@ -44,13 +44,14 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   {
     // server 端 CommonJS 生产代码（Express / 公告服务）:此前无任何规则覆盖,属 lint 盲区
     extends: [js.configs.recommended],
     files: ['server/**/*.{js,cjs}'],
-    ignores: ['server/**/__tests__/**'],
+    ignores: ['server/**/__tests__/**', 'server/**/vitest.config.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
@@ -61,9 +62,9 @@ export default tseslint.config(
     },
   },
   {
-    // server 端测试文件（vitest 运行,globals 注入 describe/it/expect;ESM import + CJS require 混用）
+    // server 端测试文件与 ESM 配置（vitest 运行,globals 注入 describe/it/expect;ESM import + CJS require 混用）
     extends: [js.configs.recommended],
-    files: ['server/**/__tests__/**/*.{js,cjs}'],
+    files: ['server/**/__tests__/**/*.{js,cjs}', 'server/**/vitest.config.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

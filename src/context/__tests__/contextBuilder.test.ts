@@ -10,11 +10,10 @@
  * 覆盖场景（方案 §7 0b 列举）：多世界书合并、at_depth 注入、正则管线不涉组装、
  * 记忆摘要注入、图片消息、无预设兜底、续写模式。
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type {
   ContextBuildData,
   ContextChatSnapshot,
-  ContextSettingsSnapshot,
 } from '../../../shared/contextTypes'
 import type { Character, Lorebook, Message, Preset, Settings } from '../../../shared/types'
 import { buildContextMessagesFromData, buildChatParamsFromData } from '../contextBuilder'

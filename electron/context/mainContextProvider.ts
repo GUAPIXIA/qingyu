@@ -27,7 +27,6 @@ import type {
   ContextBuildData,
   ContextChatSnapshot,
   ContextDataProvider,
-  ContextSettingsSnapshot,
 } from '../../shared/contextTypes'
 import type {
   ChatSession,

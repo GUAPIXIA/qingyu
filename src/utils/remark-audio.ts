@@ -6,9 +6,20 @@
  * 转换为自定义 hast 节点（hName='audio'），由 markdownComponents.audio 渲染播放器。
  * 不执行任意 HTML，仅接受显式 `<audio src="http(s)://...">` 形态。
  */
+interface AudioNode {
+  type: string
+  value?: string
+  url?: string
+  data?: {
+    hName: string
+    hProperties: Record<string, unknown>
+  }
+  children?: AudioNode[]
+}
+
 export function remarkAudio() {
-  return (tree: any) => {
-    walk(tree, (node: any) => {
+  return (tree: AudioNode) => {
+    walk(tree, (node: AudioNode) => {
       if (node.type !== 'html' || typeof node.value !== 'string') return
       const m = node.value.match(/<audio\s+[^>]*src\s*=\s*["']([^"']+)["'][^>]*>/i)
       if (!m) return
@@ -29,7 +40,7 @@ export function remarkAudio() {
   }
 }
 
-function walk(node: any, fn: (node: any) => void): void {
+function walk(node: AudioNode, fn: (node: AudioNode) => void): void {
   fn(node)
   if (Array.isArray(node?.children)) {
     for (const child of node.children) walk(child, fn)

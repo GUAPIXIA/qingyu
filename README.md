@@ -3,8 +3,8 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.23-blue?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/electron-32.x-47848f?style=flat-square" alt="electron">
+  <img src="https://img.shields.io/badge/version-0.11.25-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
   <img src="https://img.shields.io/badge/vite-6.x-646cff?style=flat-square" alt="vite">
@@ -21,7 +21,7 @@
 
 | 子项目 | 目录 | 说明 | 版本 |
 |--------|------|------|------|
-| **桌面客户端** | 仓库根目录 | Electron + React 主应用 | v0.11.23 |
+| **桌面客户端** | 仓库根目录 | Electron + React 主应用 | v0.11.25 |
 | **安卓伴侣端** | [`android/`](./android/README.md) | 远程连接与对话消费（配对 PC 使用） | v0.1.2 |
 | **公告服务端** | [`server/`](./server/README.md) | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.3 |
 
@@ -29,11 +29,21 @@
 
 ## 📸 程序截图
 
+### 🌙 深色主题
+
 | 对话页面 | 对话预设 |
 |:---:|:---:|
 | ![对话页面](png/对话页面.png) | ![对话预设](png/对话预设.png) |
 | **角色卡页面** | **设置页面** |
 | ![角色卡页面](png/角色卡页面.png) | ![设置页面](png/设置页面.png) |
+
+### ☀️ 浅色主题
+
+| 主页面 | 角色卡页面 |
+|:---:|:---:|
+| ![浅色主页面](png/浅色主页面.png) | ![浅色角色卡页面](png/浅色角色卡页面.png) |
+| **设置页面** | **关于页面** |
+| ![浅色设置页面](png/浅色设置页面.png) | ![浅色关于页面](png/浅色关于页面.png) |
 
 ---
 
@@ -163,7 +173,7 @@ docker compose up -d          # 或 npm install && npm start
 
 | 层 | 技术 |
 |---|------|
-| 桌面框架 | Electron 32 |
+| 桌面框架 | Electron 43 |
 | 前端 | React 18 + TypeScript 5 |
 | 构建工具 | Vite 6 + esbuild |
 | UI 框架 | Tailwind CSS 3（CSS 变量主题系统） |
