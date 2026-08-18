@@ -56,6 +56,7 @@ export function PersonasPage() {
 
   useEffect(() => {
     loadPersonasAndInit()
+    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

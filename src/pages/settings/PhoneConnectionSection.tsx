@@ -6,7 +6,7 @@
  * - 配对二维码数据：host/port/fingerprint（fingerprint = 一次性配对码）；
  * - 设备管理：已配对设备列表，可吊销（§5.1）。
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import QRCode from 'qrcode'
 import { SectionCard } from '../../components/common/SettingsShared'
 import type { BridgeConfig, BridgeDeviceInfo, PairingInfo } from '../../../shared/ipc-api'
@@ -29,6 +29,11 @@ export function PhoneConnectionSection() {
   /** 二维码 data URL（内容 { host, port, fingerprint }，对齐安卓端 PairingQrPayload） */
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [qrError, setQrError] = useState<string | null>(null)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current) }
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -144,7 +149,8 @@ export function PhoneConnectionSection() {
       }
     }
     setCopied(label)
-    setTimeout(() => setCopied(null), 2000)
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = setTimeout(() => setCopied(null), 2000)
   }
 
   /** 重新生成配对码（旧码作废，二维码同步刷新） */

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import type { TTSModelConfig } from '../../../shared/types'
@@ -135,6 +135,11 @@ export function TTSModelsSection() {
   /** 试听：用当前表单配置合成并播放一句测试语音 */
   const auditionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const auditionUnsubRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    return () => { stopAudition() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const stopAudition = async () => {
     auditionRef.current?.pause()

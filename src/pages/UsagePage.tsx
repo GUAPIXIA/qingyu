@@ -72,13 +72,16 @@ export function UsagePage() {
 
   // 实时刷新：监听 AI 调用完成事件
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
     const refresh = () => {
       // 延迟 200ms 等待记录写入完成
-      setTimeout(() => loadData(), 200)
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => loadData(), 200)
     }
     const unbindUsage = window.api.ai.onUsage?.(refresh)
     const unbindDone = window.api.ai.onDone(refresh)
     return () => {
+      if (timer) clearTimeout(timer)
       if (typeof unbindUsage === 'function') unbindUsage()
       if (typeof unbindDone === 'function') unbindDone()
     }

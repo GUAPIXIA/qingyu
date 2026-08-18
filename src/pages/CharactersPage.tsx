@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useDeferredValue } from "react"
+import { useState, useMemo, useEffect, useCallback, useDeferredValue, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useCharacterStore } from "../store/useCharacterStore"
 import { CharacterCard } from "../components/character/CharacterCard"
@@ -105,6 +105,12 @@ export function CharactersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAvatarId, characters])
 
+  useEffect(() => {
+    return () => { if (batchTimerRef.current) clearTimeout(batchTimerRef.current) }
+  }, [])
+
+  const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const handleBatchImport = async () => {
     const result = await importBatch()
     if (result) {
@@ -117,7 +123,8 @@ export function CharactersPage() {
         failCount: result.failCount || 0,
         fails,
       })
-      setTimeout(() => setBatchResult(null), 8000)
+      if (batchTimerRef.current) clearTimeout(batchTimerRef.current)
+      batchTimerRef.current = setTimeout(() => setBatchResult(null), 8000)
     }
   }
 
