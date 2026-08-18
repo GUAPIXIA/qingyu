@@ -1,5 +1,34 @@
 # 更新日志
 
+## [0.11.27] - 2026-08-18
+
+### 代码质量修复与测试覆盖提升
+
+**Bug 修复（P0-P2）**
+- **H-1/H-2/H-3**：群聊/单聊控制器写操作添加错误处理（safeSave/safeFire），消息保存失败时不再静默丢数据
+- **H-4**：双层 ErrorBoundary（路由层 + 消息级），单页/单消息崩溃不再拖垮全局
+- **H-5**：McpPage/QuickRepliesPage/UsagePage 改用 Promise.allSettled 容错
+- **M-1**：WS 双向心跳检测 + pong 超时（60s）+ 连接上限（10）
+- **M-3**：角色列表 N+1 查询改为 existsSync 文件存在性检查
+- **M-4**：replaceVariables 跨层导入修复（electron/ 不再 import src/）
+- **M-5**：CSP connect-src 去除 http:/ws: 仅保留 https:/wss:
+- **M-6**：5 处 setTimeout 未在 useEffect 中取消的问题清理
+- **M-9**：退出流程 MCP 关闭超时添加 warn 日志
+- **L-6**：server/info 版本号改为 app.getVersion() 动态读取
+- **L-7**：Claude API 版本号提取为 ANTHROPIC_API_VERSION 常量
+- **L-8**：isRetryableError 正则预编译为模块级常量
+
+**仓库管理**
+- 清理 android/ 和 server/ 路径追踪（独立仓库，不在桌面端仓库中追踪）
+- README 更新仓库结构说明
+
+**测试覆盖**
+- 新增 19 个测试文件，53 个测试用例
+- 覆盖率：34.49% → 39.06%（+4.57%）
+- 新增模块：electron/ipc（7 个 handler）、src/hooks（2 个 hook）、src/pages（7 个页面）、streamController 深度测试、ai 重试逻辑测试
+
+---
+
 ## [0.11.26] - 2026-08-18
 
 ### 长记忆可靠性与跨端体验
