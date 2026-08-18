@@ -8,7 +8,7 @@ import { EmptyState } from "../components/common/EmptyState"
 import { ConfirmDialog } from "../components/common/ConfirmDialog"
 import { Modal } from "../components/common/Modal"
 import { cn } from "../lib/utils"
-import { Users, Plus, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp, Sparkles, BookOpen, Wand2 } from "lucide-react"
+import { Users, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp, Sparkles, BookOpen, Wand2 } from "lucide-react"
 import type { Character } from "../../shared/types"
 
 type CardSize = "sm" | "md" | "lg"
@@ -20,7 +20,7 @@ function loadCardSize(): CardSize {
 
 export function CharactersPage() {
   const navigate = useNavigate()
-  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, createCharacter, importError, importNotice, pendingAvatarId, importProgress, lorebookSuggestions, bindSuggestedLorebook } = useCharacterStore()
+  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, importError, importNotice, pendingAvatarId, importProgress, lorebookSuggestions, bindSuggestedLorebook } = useCharacterStore()
   const [editing, setEditing] = useState(false)
   const [editCharacter, setEditCharacter] = useState<Character | null>(null)
   const [search, setSearch] = useState("")
@@ -56,11 +56,6 @@ export function CharactersPage() {
   const handleCardSizeChange = (size: CardSize) => {
     setCardSize(size)
     try { localStorage.setItem("char-card-size", size) } catch { /* ignore */ }
-  }
-
-  const handleNew = () => {
-    setEditCharacter(createCharacter())
-    setEditing(true)
   }
 
   const handleEdit = useCallback((char: Character) => {
@@ -234,10 +229,6 @@ export function CharactersPage() {
             <Wand2 className="w-4 h-4" />
             制作角色卡
           </button>
-          <button onClick={handleNew} className="btn-secondary">
-            <Plus className="w-4 h-4" />
-            新建角色
-          </button>
           <button onClick={() => importPng()} className="btn-secondary" title="导入 PNG 角色卡">
             <FileUp className="w-4 h-4" />
             PNG
@@ -318,12 +309,12 @@ export function CharactersPage() {
             className="h-full"
             icon={<Users className="w-8 h-8" />}
             title="还没有角色"
-            description="创建你的第一个角色，或从 SillyTavern 导入角色卡"
+            description="制作你的第一张角色卡，或从 SillyTavern 导入角色卡"
             action={
               <div className="flex gap-2">
-                <button className="btn-primary" onClick={handleNew}>
-                  <Plus className="w-4 h-4" />
-                  新建角色
+                <button className="btn-primary" onClick={() => navigate('/character-create')}>
+                  <Wand2 className="w-4 h-4" />
+                  制作角色卡
                 </button>
                 <button className="btn-secondary" onClick={() => importPng()}>
                   <FileUp className="w-4 h-4" />

@@ -39,9 +39,12 @@ import { mainContextProvider } from '../context/mainContextProvider'
 import { buildContextMessagesFromData } from '../../src/context/contextBuilder'
 import { buildContinueContext, ensureUserPerspective } from '../../src/components/chat/aiInputHelper'
 import { stripThought } from '../../src/utils/messagePostProcess'
-import { parseMemoryResult } from '../../src/utils/memory'
+import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../../src/utils/memory'
+import { buildMemorySummaryWindow } from '../../src/utils/memoryWindow'
+import { MEMORY_SUMMARY_MIN } from '../../src/store/chatConstants'
 import { replaceVariables as replaceVars } from '../utils/variables'
 import { getDefaultSettings } from '../../shared/defaults'
+import { normalizePreset } from '../../shared/preset'
 import { nanoid } from 'nanoid'
 import { replaceVariables } from '../utils/variables'
 import {
@@ -58,13 +61,14 @@ import {
 } from './auth'
 import { WsHub } from './ws'
 import { BridgeChatService, type SessionChangedNotifier } from './chatService'
-import { listAllSessions, findSessionById } from './sessionsIndex'
+import { listAllSessions, findSessionByCharacterId, findSessionById } from './sessionsIndex'
 import { handleTts } from './ttsHandler'
 import { safeId } from '../utils/pathGuard'
 import { sanitizeApiKey } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
+import { countTokens } from '../services/tokenizer'
 import type { Request, Response, NextFunction } from 'express'
-import type { Message, Settings, Lorebook, Preset, ChatParams, ProviderType, GroupChat } from '../../shared/types'
+import type { Message, Settings, Lorebook, Preset, ChatParams, ProviderType, GroupChat, MemoryFactRecord } from '../../shared/types'
 
 const log = createLogger('bridge-routes')
 
@@ -73,6 +77,36 @@ export const API_VERSION = 1
 
 /** 配对确认等待超时（安卓端 readTimeout 60s 内） */
 const PAIR_WAIT_TIMEOUT_MS = 55_000
+
+/**
+ * 旧数据可能在不同角色下复用 default 会话 ID；移动端传 characterId 时必须优先精确定位。
+ * 未传时保留旧协议的回退行为，保证旧客户端可继续使用。
+ */
+async function resolveSession(req: Request, sessionId: string) {
+  const characterId = typeof req.query.characterId === 'string' ? safeId(req.query.characterId) : undefined
+  return characterId
+    ? findSessionByCharacterId(characterId, sessionId)
+    : findSessionById(sessionId)
+}
+
+/** 历史文本发生改写后，撤销所有由旧历史推导出的记忆字段。 */
+async function invalidateSessionMemory(characterId: string, sessionId: string): Promise<void> {
+  await chatData.updateSession(characterId, sessionId, {
+    memory: '',
+    memoryCurrentState: '',
+    memoryFacts: [],
+    memoryFactHistory: [],
+    memoryFactParseFailureCount: 0,
+    memoryFactRetryAfterVersion: 0,
+    factsVectors: [],
+    memoryUpdatedAt: 0,
+    memoryLastMessageId: null,
+    memoryVersion: 0,
+    factsVectorVersion: 0,
+    compressedSummary: null,
+    compressedRange: null,
+  })
+}
 
 /** 校验 Bearer 令牌的中间件（JWT 校验 + 设备仍存在校验：吊销立即生效） */
 function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -336,6 +370,7 @@ export function buildBridgeRouter(
         maxTokens: p.maxTokens,
         maxContext: p.maxContext,
         contextTemplate: p.contextTemplate ?? '',
+        enableThoughtFormat: p.enableThoughtFormat,
       })))
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
@@ -363,6 +398,7 @@ export function buildBridgeRouter(
         updated = { ...updated, id: nanoid(), name: `${updated.name} (副本)`, isBuiltin: false }
         createdCopy = true
       }
+      updated = normalizePreset(updated)
       writeJson(join(DIRS.presets(), `${updated.id}.json`), updated)
       res.json({ ok: true, presetId: updated.id, createdCopy })
     } catch (e) {
@@ -372,7 +408,7 @@ export function buildBridgeRouter(
 
   router.get('/sessions/:sessionId/lorebooks', async (req, res) => {
     try {
-      const session = await findSessionById(safeId(req.params.sessionId))
+      const session = await resolveSession(req, safeId(req.params.sessionId))
       if (!session) { res.status(404).json({ error: '会话不存在' }); return }
       res.json({ lorebookIds: session.lorebookIds ?? [] })
     } catch (e) {
@@ -383,7 +419,7 @@ export function buildBridgeRouter(
   router.patch('/sessions/:sessionId/lorebooks', async (req, res) => {
     try {
       const sessionId = safeId(req.params.sessionId)
-      const session = await findSessionById(sessionId)
+      const session = await resolveSession(req, sessionId)
       if (!session) { res.status(404).json({ error: '会话不存在' }); return }
       const { lorebookIds } = (req.body ?? {}) as { lorebookIds?: string[] }
       if (!Array.isArray(lorebookIds)) { res.status(400).json({ error: '缺少 lorebookIds' }); return }
@@ -498,7 +534,7 @@ export function buildBridgeRouter(
   router.get('/sessions/:sessionId/messages', async (req, res) => {
     try {
       const sessionId = safeId(req.params.sessionId)
-      const session = await findSessionById(sessionId)
+      const session = await resolveSession(req, sessionId)
       if (!session) {
         res.status(404).json({ error: '会话不存在' })
         return
@@ -593,6 +629,7 @@ export function buildBridgeRouter(
       }
       const updated: Message = { ...target, content }
       chatData.saveMessage(session.characterId, updated)
+      await invalidateSessionMemory(session.characterId, sessionId)
       notifySessionChanged(sessionId, 'message')
       res.json(toApiMessage(updated))
     } catch (e) {
@@ -610,6 +647,7 @@ export function buildBridgeRouter(
         return
       }
       await chatData.deleteMessage(session.characterId, messageId, sessionId)
+      await invalidateSessionMemory(session.characterId, sessionId)
       notifySessionChanged(sessionId, 'message')
       res.json({ ok: true })
     } catch (e) {
@@ -742,13 +780,14 @@ export function buildBridgeRouter(
   /** 读取会话记忆配置与内容 */
   router.get('/sessions/:sessionId/memory', async (req, res) => {
     try {
-      const session = await findSessionById(safeId(req.params.sessionId))
+      const session = await resolveSession(req, safeId(req.params.sessionId))
       if (!session) { res.status(404).json({ error: '会话不存在' }); return }
       res.json({
         memoryEnabled: session.memoryEnabled ?? false,
         memoryMode: session.memoryMode ?? 'manual',
         autoMemoryInterval: session.autoMemoryInterval ?? 10,
         memory: session.memory ?? '',
+        memoryCurrentState: session.memoryCurrentState ?? '',
         memoryFacts: session.memoryFacts ?? [],
         memoryUpdatedAt: session.memoryUpdatedAt ?? 0,
         messageCount: session.messageCount ?? 0,
@@ -762,20 +801,22 @@ export function buildBridgeRouter(
   router.patch('/sessions/:sessionId/memory', async (req, res) => {
     try {
       const sessionId = safeId(req.params.sessionId)
-      const session = await findSessionById(sessionId)
+      const session = await resolveSession(req, sessionId)
       if (!session) { res.status(404).json({ error: '会话不存在' }); return }
-      const { memoryEnabled, memoryMode, autoMemoryInterval, memory, memoryFacts } = (req.body ?? {}) as {
+      const { memoryEnabled, memoryMode, autoMemoryInterval, memory, memoryCurrentState, memoryFacts } = (req.body ?? {}) as {
         memoryEnabled?: boolean
         memoryMode?: 'manual' | 'auto'
         autoMemoryInterval?: number
         memory?: string
-        memoryFacts?: string[]
+        memoryCurrentState?: string
+        memoryFacts?: MemoryFactRecord[]
       }
       const updates: Record<string, unknown> = {}
       if (typeof memoryEnabled === 'boolean') updates.memoryEnabled = memoryEnabled
       if (memoryMode === 'manual' || memoryMode === 'auto') updates.memoryMode = memoryMode
       if (typeof autoMemoryInterval === 'number') updates.autoMemoryInterval = autoMemoryInterval
       if (typeof memory === 'string') updates.memory = memory
+      if (typeof memoryCurrentState === 'string') updates.memoryCurrentState = memoryCurrentState
       if (Array.isArray(memoryFacts)) updates.memoryFacts = memoryFacts
       await chatData.updateSession(session.characterId, sessionId, updates)
       notifySessionChanged(sessionId, 'message')
@@ -785,11 +826,11 @@ export function buildBridgeRouter(
     }
   })
 
-  /** 触发长记忆总结（对齐渲染层 runMemorySummary：最近 20 条非 system 消息 + 前次摘要/事实合并） */
+  /** 触发长记忆总结（对齐渲染层：游标后的增量消息 + 有限衔接上下文）。 */
   router.post('/sessions/:sessionId/memory/summarize', async (req, res) => {
     try {
       const sessionId = safeId(req.params.sessionId)
-      const session = await findSessionById(sessionId)
+      const session = await resolveSession(req, sessionId)
       if (!session) { res.status(404).json({ error: '会话不存在' }); return }
       if (!session.memoryEnabled) { res.status(400).json({ error: '长记忆未开启' }); return }
       const data = await mainContextProvider.fetchBuildData(session.characterId, sessionId)
@@ -800,20 +841,37 @@ export function buildBridgeRouter(
       const userName = settings.userName || '用户'
       const charName = data.character.name
 
-      const recent = chatData.readMessages(session.characterId, sessionId)
+      const allMessages = chatData.readMessages(session.characterId, sessionId)
         .filter((m) => m.role !== 'system')
-        .slice(-20)
-      if (recent.length < 4) { res.status(400).json({ error: '消息太少，暂不总结' }); return }
+        .filter((m) => m.content.trim())
+      const formatMessage = (message: typeof allMessages[number]) =>
+        `${message.role === 'user' ? userName : charName}: ${message.content}`
+      const summaryWindow = buildMemorySummaryWindow(
+        allMessages,
+        session.memoryLastMessageId,
+        formatMessage,
+        (text) => countTokens(text, settings.activeModel || profile.model),
+      )
+      if (summaryWindow.pending.length < MEMORY_SUMMARY_MIN || summaryWindow.selected.length === 0) {
+        res.status(400).json({ error: '新增消息太少，暂不总结' })
+        return
+      }
 
-      const messagesText = recent
-        .map((m) => `${m.role === 'user' ? userName : charName}: ${m.content}`)
-        .join('\n')
+      const messagesText = [
+        summaryWindow.overlap.length > 0
+          ? `【已总结内容，仅作衔接】\n${summaryWindow.overlap.map(formatMessage).join('\n')}`
+          : '',
+        `【待总结的新对话】\n${summaryWindow.selected.map(formatMessage).join('\n')}`,
+      ].filter(Boolean).join('\n\n')
       const previousMemory = session.memory || '无'
-      const previousFactsText = (session.memoryFacts ?? []).length > 0
-        ? (session.memoryFacts ?? []).map((f, i) => `${i + 1}. ${f}`).join('\n')
-        : '无'
+      const previousFactsText = formatMemoryFacts(session.memoryFacts) || '无'
+      const nextMemoryVersion = (session.memoryVersion ?? 0) + 1
+      const shouldAttemptFactProposal = nextMemoryVersion >= (session.memoryFactRetryAfterVersion ?? 0)
 
-      const systemPrompt = `你是一个角色扮演对话总结助手。请总结以下${charName}与${userName}之间的对话，并抽取关键事实。\n\n输出格式（严格按此格式）：\n【摘要】\n2-4 句简洁摘要，覆盖：主要事件、情节进展、角色关系演变、当前未解决的问题。\n\n【事实】\n1. 具体事实\n2. 具体事实\n\n要求：\n- 事实必须是对话中确立的、对未来有参考价值的持久信息（人名、身份、地点、物品、目标、约定、关系等），不要写临时情绪或过场细节。\n- 合并之前的事实：保留仍有效的事实，更新已变化的事实，删除已被推翻的事实，补充新事实。\n- 只输出上述格式内容，不要添加任何解释或评价。\n\n之前的摘要：\n${previousMemory}\n\n之前的事实：\n${previousFactsText}`
+      const proposalFormat = shouldAttemptFactProposal
+        ? '【事实提案】\n```json\n[{"subject":"主体","predicate":"属性或关系","value":"值","changeType":"set","scope":"本会话","importance":3,"confidence":0.9}]\n```'
+        : '本次结构化事实更新正在退避；不要输出【事实提案】。'
+      const systemPrompt = `你是一个角色扮演对话总结助手。请根据以下${charName}与${userName}之间的对话，更新当前状态、长期时间线和关键事实。\n\n输出格式（严格按此格式）：\n【当前状态】\n1-3 句：当前场景、时间/地点、正在进行的目标或冲突、角色即时关系或情绪。只保留会影响下一轮对话的内容。\n\n【时间线】\n2-4 句：已发生的重要事件、关键转折与因果。不要重复当前状态。\n\n${proposalFormat}\n\n要求：\n- 事实必须是对话中确立的、对未来有参考价值的持久信息，不要写临时情绪或过场细节。\n- 只输出语义事实提案，绝对不要输出事实 ID、action、patch 或完整事实列表。changeType 用 set 表示新增/更新，clear 表示失效。\n- 服务端会按「主体 + 属性/关系 + scope + entityId」匹配；没有事实变更时输出空数组 []。\n- 只输出上述格式内容，不要添加任何解释或评价。\n\n之前的当前状态：\n${session.memoryCurrentState || '无'}\n\n之前的时间线：\n${previousMemory}\n\n之前的事实：\n${previousFactsText}\n\n事实范围默认为本会话。`
 
       const params: ChatParams = {
         requestId: `memory-summary-${Date.now()}`,
@@ -835,14 +893,52 @@ export function buildBridgeRouter(
 
       const full = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 1)
       const parsed = parseMemoryResult(full)
+      let responseFacts: MemoryFactRecord[] = parsed.facts
       if (parsed.summary) {
-        await chatData.updateMemory(session.characterId, sessionId, parsed.summary)
-        if (parsed.facts.length > 0) {
-          await chatData.updateSession(session.characterId, sessionId, { memoryFacts: parsed.facts })
+        const hasFactsSection = full.includes('【事实】')
+        const hasFactChangesSection = full.includes('【事实变更】')
+        const hasFactProposalsSection = full.includes('【事实提案】')
+        const hasCurrentStateSection = full.includes('【当前状态】')
+        let facts: MemoryFactRecord[] = hasFactsSection ? parsed.facts : (session.memoryFacts ?? [])
+        let memoryFactHistory = session.memoryFactHistory
+        let factStateUpdates: Record<string, number> = {}
+        if (shouldAttemptFactProposal && hasFactProposalsSection && parsed.factProposals) {
+          const applied = applyFactProposals(session.memoryFacts, session.memoryFactHistory, parsed.factProposals, summaryWindow.processedThroughMessageId ?? '')
+          facts = applied.facts
+          memoryFactHistory = applied.history
+          factStateUpdates = { memoryFactParseFailureCount: 0, memoryFactRetryAfterVersion: 0 }
+        } else if (hasFactChangesSection && parsed.factChanges) {
+          const applied = applyMemoryFactChanges(
+            session.memoryFacts,
+            session.memoryFactHistory,
+            parsed.factChanges,
+            summaryWindow.processedThroughMessageId ?? '',
+          )
+          facts = applied.facts
+          memoryFactHistory = applied.history
+          factStateUpdates = { memoryFactParseFailureCount: 0, memoryFactRetryAfterVersion: 0 }
+        } else if (shouldAttemptFactProposal && !hasFactsSection) {
+          const failureCount = (session.memoryFactParseFailureCount ?? 0) + 1
+          const retryAfterVersion = failureCount >= 3 ? nextMemoryVersion + 2 ** (failureCount - 2) : nextMemoryVersion
+          factStateUpdates = { memoryFactParseFailureCount: failureCount, memoryFactRetryAfterVersion: retryAfterVersion }
+          log.warn('结构化事实提案解析失败，已保留旧事实', { sessionId, failureCount, retryAfterVersion })
         }
+        responseFacts = facts
+        await chatData.updateSession(session.characterId, sessionId, {
+          memory: parsed.summary,
+          memoryCurrentState: hasCurrentStateSection ? parsed.currentState : (session.memoryCurrentState ?? ''),
+          memoryFacts: facts,
+          ...((shouldAttemptFactProposal && hasFactProposalsSection && parsed.factProposals) || (hasFactChangesSection && parsed.factChanges) ? { memoryFactHistory } : {}),
+          ...factStateUpdates,
+          factsVectors: [],
+          factsVectorVersion: 0,
+          memoryUpdatedAt: Date.now(),
+          memoryLastMessageId: summaryWindow.processedThroughMessageId,
+          memoryVersion: nextMemoryVersion,
+        })
         notifySessionChanged(sessionId, 'message')
       }
-      res.json({ ok: true, summary: parsed.summary, facts: parsed.facts })
+      res.json({ ok: true, summary: parsed.summary, facts: responseFacts })
     } catch (e) {
       res.status(500).json({ error: sanitizeApiKey((e as Error).message) })
     }
@@ -851,7 +947,7 @@ export function buildBridgeRouter(
   /** 上下文用量（对齐渲染层 P1-3：used/max/ratio，≥0.85 预警，≥1 危险） */
   router.get('/sessions/:sessionId/context-usage', async (req, res) => {
     try {
-      const session = await findSessionById(safeId(req.params.sessionId))
+      const session = await resolveSession(req, safeId(req.params.sessionId))
       if (!session) { res.status(404).json({ error: '会话不存在' }); return }
       const data = await mainContextProvider.fetchBuildData(session.characterId, session.id)
       if (!data.character) { res.status(404).json({ error: '角色不存在' }); return }

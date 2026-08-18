@@ -12,12 +12,12 @@ import { logError } from '../lib/logger'
 import { translationMaxTokens } from './chatConstants'
 import {
   friendlyError, syncPersonaToSettings, applyDefaultMemory,
-  invalidateCompression, nextLoadRequestId, currentLoadRequestId,
+  invalidateDerivedMemory, nextLoadRequestId, currentLoadRequestId,
 } from './chatUtils'
 import { streamAIResponse, cleanupActiveStream } from './streamController'
 import { createChunkAccumulator } from './chunkAccumulator'
 import { buildChatContext } from './chatContext'
-import { runMemorySummary } from './memoryManager'
+import { maybeRunAutoMemorySummary, runMemorySummary } from './memoryManager'
 import { regenerateChatMessage, continueChatMessage, swipeChatMessage } from './chatGeneration'
 import { sessionEventReporter } from './sessionEventReporter'
 import type { ChatState } from './chatTypes'
@@ -512,30 +512,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
         }))
         window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
 
-        // 自动长记忆检查：基于上次总结后的新消息数判断
-        const { sessions: curSessions, currentSessionId: curSid } = get()
-        const curSession = curSessions.find(s => s.id === curSid)
-        if (curSession?.memoryEnabled && curSession.memoryMode === 'auto') {
-          const allMsgs = get().messages.filter(m => m.content)
-          // 统计上次总结后的新消息数
-          const lastSummaryTime = curSession.memoryUpdatedAt || 0
-          const newMsgCount = lastSummaryTime > 0
-            ? allMsgs.filter(m => m.timestamp > lastSummaryTime).length
-            : allMsgs.length
-          const interval = curSession.autoMemoryInterval || 10
-          if (newMsgCount >= interval) {
-            // M-16 修复：触发前乐观更新本地 memoryUpdatedAt——总结完成时用户可能已切走会话，
-            // 本地 sessions 不刷新（NEW-M11），切回后恒旧导致 newMsgCount>=interval 恒真、
-            // 每条消息都重复触发总结（token 浪费/记忆反复重写）
-            const summaryTs = Date.now()
-            set((s) => ({
-              sessions: s.sessions.map((x) =>
-                x.id === curSession.id ? { ...x, memoryUpdatedAt: summaryTs } : x,
-              ),
-            }))
-            get().triggerMemorySummary(character).catch((e) => logError('ChatStore:memorySummary', e))
-          }
-        }
+        // 自动长记忆：成功提交后才推进消息游标；失败会保留重试机会。
+        maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
 
         // AI 自动生图：解析 [image: prompt] 标记
         const autoImgEnabled = useSettingsStore.getState().settings.imageGenAutoEnabled
@@ -620,8 +598,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   },
 
   editMessage: async (messageId, newContent, character) => {
-    // 编辑历史后上下文压缩缓存失效
-    await invalidateCompression(get, character)
+    // 编辑历史后，摘要/事实/向量和压缩摘要均失效。
+    const invalidated = await invalidateDerivedMemory(get, character)
+    if (invalidated) get().patchLocalSession(invalidated.sessionId, invalidated.patch)
     const state = get()
     const msg = state.messages.find((m) => m.id === messageId)
     if (!msg) return
@@ -650,8 +629,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     // NEW-1 修复：await 前捕获 sessionId——invalidateCompression 执行期间
     // 用户可能已切换会话，避免删除操作作用于错误会话
     const sessionId = get().currentSessionId ?? undefined
-    // 删除历史后上下文压缩缓存失效
-    await invalidateCompression(get, character)
+    // 删除历史后，摘要/事实/向量和压缩摘要均失效。
+    const invalidated = await invalidateDerivedMemory(get, character)
+    if (invalidated) get().patchLocalSession(invalidated.sessionId, invalidated.patch)
     await window.api.chat.deleteMessage(messageId, character.id, sessionId)
     set((state) => ({ messages: state.messages.filter((m) => m.id !== messageId) }))
     // P-7：本地 patch 会话元数据（不再全量 listSessions）
@@ -668,21 +648,27 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
 
   clearChat: async (characterId) => {
     const sessionId = get().currentSessionId
-    // 清空历史后上下文压缩缓存失效
-    if (sessionId) {
-      const cur = get().sessions.find((s) => s.id === sessionId)
-      if (cur?.compressedSummary) {
-        await window.api.chat.updateSession(characterId, sessionId, {
-          compressedSummary: null,
-          compressedRange: null,
-        }).catch(() => { /* 忽略 */ })
-      }
-    }
     await window.api.chat.clearChat(characterId, sessionId ?? undefined)
     set({ messages: [] })
     // P-7：本地 patch 会话元数据（不再全量 listSessions）
     if (sessionId) {
-      get().patchLocalSession(sessionId, { messageCount: 0, lastMessage: '', updatedAt: Date.now() })
+      get().patchLocalSession(sessionId, {
+        messageCount: 0,
+        lastMessage: '',
+        memory: '',
+        memoryFacts: [],
+        memoryFactHistory: [],
+        memoryFactParseFailureCount: 0,
+        memoryFactRetryAfterVersion: 0,
+        factsVectors: [],
+        memoryUpdatedAt: 0,
+        memoryLastMessageId: null,
+        memoryVersion: 0,
+        factsVectorVersion: 0,
+        compressedSummary: null,
+        compressedRange: null,
+        updatedAt: Date.now(),
+      })
     }
   },
 

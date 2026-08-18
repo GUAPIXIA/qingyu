@@ -135,20 +135,26 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
     expect(window.api.ai.chat).not.toHaveBeenCalled()
   })
 
-  it('成功流程：chunk 累积 → onDone 持久化摘要与事实', async () => {
+  it('成功流程：chunk 累积 → 原子持久化摘要、事实与处理游标', async () => {
     const callbacks = captureStreamCallbacks()
     const set = vi.fn()
     const p = runGroupMemorySummary((() => makeState()) as any, set)
 
     const requestId = callbacks.chatParams!.requestId
-    callbacks.onChunk!({ requestId, text: '【摘要】他们在森林重逢' })
+    callbacks.onChunk!({ requestId, text: '【当前状态】众人正在森林边缘休整。\n【时间线】他们在森林重逢' })
     callbacks.onChunk!({ requestId, text: '【事实】\n1. 目的地雪山' })
     callbacks.onDone!(requestId)
 
     await p
-    expect(window.api.group.updateMemory).toHaveBeenCalledWith('g1', 's1', '他们在森林重逢')
     expect(window.api.group.updateSession).toHaveBeenCalledWith('g1', 's1', {
+      memory: '他们在森林重逢',
+      memoryCurrentState: '众人正在森林边缘休整。',
       memoryFacts: ['目的地雪山'],
+      factsVectors: [],
+      factsVectorVersion: 0,
+      memoryUpdatedAt: expect.any(Number),
+      memoryLastMessageId: 'm5',
+      memoryVersion: 1,
     })
     // 本地 sessions 更新
     const sessions = set.mock.calls[0][0].sessions as typeof makeState extends never ? never : { id: string }[]
@@ -174,6 +180,30 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
 
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
+  })
+
+  it('群聊仅总结游标之后的消息，并将游标推进到增量末尾', async () => {
+    const callbacks = captureStreamCallbacks()
+    const messages = Array.from({ length: 8 }, (_, index) => makeMessage({
+      id: `m${index}`,
+      content: `增量消息${index}`,
+      characterId: index % 2 === 0 ? '__user__' : 'c1',
+    }))
+    const session = { ...makeState().sessions[0], memoryLastMessageId: 'm2' }
+    const p = runGroupMemorySummary((() => makeState({ messages, sessions: [session] })) as any, vi.fn())
+
+    const sent = (callbacks.chatParams as any).messages[1].content
+    expect(sent).toContain('【待总结的新对话】')
+    expect(sent).toContain('增量消息3')
+    expect(sent).toContain('增量消息7')
+    expect(sent).not.toContain('增量消息0')
+
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】群聊增量摘要\n【事实】\n' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+    await p
+    expect(window.api.group.updateSession).toHaveBeenCalledWith('g1', 's1', expect.objectContaining({
+      memoryLastMessageId: 'm7',
+    }))
   })
 
   it('chat 调用失败时静默处理（不影响主流程）', async () => {

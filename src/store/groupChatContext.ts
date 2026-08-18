@@ -8,7 +8,7 @@ import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
-import { fitMemoryBudget, formatMemoryFacts } from '../utils/memory'
+import { fitLayeredMemoryBudget, formatMemoryFacts } from '../utils/memory'
 import { expandMacros, buildMacroContext } from '../utils/macros'
 import { logInfo } from '../lib/logger'
 import { DEFAULT_LOREBOOK_RATIO, TOKEN_BUDGET_SAFETY, DEFAULT_RESERVED_OUTPUT } from './chatConstants'
@@ -80,7 +80,7 @@ export function buildGroupChatContext(
     Math.floor(maxContext * 0.25),
   )
 
-  // 长期记忆注入（摘要 + 关键事实，纳入 token 预算：不超过上下文预算的 10%，上限 800）
+  // 分层长期记忆：当前状态优先，其次相关事实，最后是时间线。
   const { sessions, currentSessionId } = get()
   const currentSession = sessions.find(s => s.id === currentSessionId)
   if (currentSession?.memoryEnabled) {
@@ -88,19 +88,23 @@ export function buildGroupChatContext(
     // P0-2：语义检索命中时仅注入相关事实，否则全量
     const semanticFacts = get()._semanticFactsHits
     const factsForInject = semanticFacts.length > 0 ? semanticFacts : (currentSession.memoryFacts ?? [])
-    const fitted = fitMemoryBudget(
+    const fitted = fitLayeredMemoryBudget(
+      currentSession.memoryCurrentState,
       currentSession.memory || '',
       factsForInject,
       memoryBudget,
       estimateTokens,
       model,
     )
-    if (fitted.summary) {
-      systemContent += '\n\n【群聊历史摘要】\n' + fitted.summary
+    if (fitted.currentState) {
+      systemContent += '\n\n【当前状态】\n' + fitted.currentState
     }
     const memoryFactsText = formatMemoryFacts(fitted.facts)
     if (memoryFactsText) {
       systemContent += '\n\n【关键事实】\n' + memoryFactsText
+    }
+    if (fitted.timeline) {
+      systemContent += '\n\n【群聊时间线】\n' + fitted.timeline
     }
   }
 
@@ -264,7 +268,9 @@ export function buildGroupChatContext(
   // 上下文溢出压缩（P0-1）：有压缩摘要则注入；否则若裁剪量超阈值，标记异步压缩
   const compression = settings.contextCompression ?? { enabled: true, minDropTokens: 2000 }
   let compressedSummaryInjected = ''
-  if (compression.enabled && droppedTokens > 0 && currentSession) {
+  // 群聊长期时间线已存在时，压缩摘要会与其重复，直接跳过。
+  const hasTimelineMemory = Boolean(currentSession?.memory?.trim())
+  if (compression.enabled && !hasTimelineMemory && droppedTokens > 0 && currentSession) {
     const covered = !!currentSession.compressedSummary
       && !!currentSession.compressedRange
       && droppedStartTs >= currentSession.compressedRange.startTs

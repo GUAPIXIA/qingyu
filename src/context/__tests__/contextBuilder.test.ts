@@ -205,6 +205,19 @@ function makeData(overrides: Partial<ContextBuildData> = {}): ContextBuildData {
 // ===== 快照测试 =====
 
 describe('buildContextMessagesFromData 防漂移快照', () => {
+  it('预设可覆盖全局心理描写格式', () => {
+    const disabled = buildContextMessagesFromData(makeData({
+      preset: makePreset({ enableThoughtFormat: false }),
+      settings: { settings: makeSettings({ enableThoughtFormat: true }), profile: null },
+    }))
+    expect(disabled.messages[0].content).not.toContain('<thought>')
+    const enabled = buildContextMessagesFromData(makeData({
+      preset: makePreset({ enableThoughtFormat: true }),
+      settings: { settings: makeSettings({ enableThoughtFormat: false }), profile: null },
+    }))
+    expect(enabled.messages[0].content).toContain('<thought>')
+  })
+
   it('基础场景：人设注入 + 世界书 before_char + 示例对话 + AN + 记忆摘要', () => {
     const data = makeData({
       settings: {
@@ -253,13 +266,60 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
     expect(result.messages).toMatchSnapshot('多世界书 at_depth 组装输出')
   })
 
-  it('记忆摘要与关键事实注入', () => {
+  it('时间线与关键事实注入', () => {
     const result = buildContextMessagesFromData(makeData())
     const systemText = result.messages[0].content
-    expect(systemText).toContain('【对话历史摘要】')
+    expect(systemText).toContain('【对话时间线】')
     expect(systemText).toContain('两人正在寻找避难所')
     expect(systemText).toContain('【关键事实】')
     expect(systemText).toContain('主角失忆')
+  })
+
+  it('分层记忆按当前状态、事实、时间线的顺序注入', () => {
+    const data = makeData({
+      chat: makeChat({
+        sessions: [{
+          ...makeChat().sessions[0],
+          memoryCurrentState: '当前在月落镇旅店，准备前往旧矿坑。',
+          memory: '两人在森林相遇后抵达月落镇。',
+          memoryFacts: ['矿坑地图由艾琳保管'],
+        }],
+      }),
+    })
+    const systemText = buildContextMessagesFromData(data).messages[0].content
+    const stateIndex = systemText.indexOf('【当前状态】')
+    const factsIndex = systemText.indexOf('【关键事实】')
+    const timelineIndex = systemText.indexOf('【对话时间线】')
+    expect(systemText).toContain('准备前往旧矿坑')
+    expect(stateIndex).toBeGreaterThan(-1)
+    expect(factsIndex).toBeGreaterThan(stateIndex)
+    expect(timelineIndex).toBeGreaterThan(factsIndex)
+  })
+
+  it('存在时间线记忆时不重复注入早期压缩摘要', () => {
+    const messages = Array.from({ length: 60 }, (_, index) => makeMessage({
+      id: `m${index}`,
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: '用于触发历史裁剪的长对话内容。'.repeat(16),
+      timestamp: index * 1000,
+    }))
+    const data = makeData({
+      preset: makePreset({ maxContext: 2048 }),
+      chat: makeChat({
+        messages,
+        sessions: [{
+          ...makeChat().sessions[0],
+          memory: '完整时间线由长期记忆维护。',
+          compressedSummary: '这段早期摘要不应与长期时间线重复注入。',
+          compressedRange: { startTs: 0, endTs: 999999 },
+        }],
+      }),
+    })
+    const result = buildContextMessagesFromData(data)
+    const allText = result.messages.map((message) => message.content).join('\n')
+    expect(allText).toContain('完整时间线由长期记忆维护。')
+    expect(allText).not.toContain('【早期对话压缩摘要】')
+    expect(allText).not.toContain('这段早期摘要不应与长期时间线重复注入。')
   })
 
   it('语义命中优先于全量事实', () => {

@@ -18,7 +18,18 @@ const GROUP_UPDATE_SESSION_FIELDS = new Set([
   'memoryMode',
   'autoMemoryInterval',
   'memory',
+  'memoryCurrentState',
   'memoryUpdatedAt',
+  'memoryFacts',
+  'memoryFactHistory',
+  'memoryFactParseFailureCount',
+  'memoryFactRetryAfterVersion',
+  'factsVectors',
+  'memoryLastMessageId',
+  'memoryVersion',
+  'factsVectorVersion',
+  'compressedSummary',
+  'compressedRange',
 ])
 
 // ===================== 路径工具 =====================
@@ -393,7 +404,18 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
           session.updatedAt = Date.now()
           session.messageCount = 0
           session.memory = ''
+          session.memoryCurrentState = ''
           session.memoryUpdatedAt = 0
+          session.memoryFacts = []
+          session.memoryFactHistory = []
+          session.memoryFactParseFailureCount = 0
+          session.memoryFactRetryAfterVersion = 0
+          session.factsVectors = []
+          session.memoryLastMessageId = null
+          session.memoryVersion = 0
+          session.factsVectorVersion = 0
+          session.compressedSummary = null
+          session.compressedRange = null
           saveSessions(groupId, sessions)
         }
       })

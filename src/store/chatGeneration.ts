@@ -9,6 +9,8 @@ import { truncateAtStop, collectStopStrings } from '../utils/regex'
 import { logError } from '../lib/logger'
 import { streamAIResponse } from './streamController'
 import type { ChatState } from './chatTypes'
+import { maybeRunAutoMemorySummary } from './memoryManager'
+import { invalidateDerivedMemory } from './chatUtils'
 
 type SetFn = (partial: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>)) => void
 type GetFn = () => ChatState
@@ -33,6 +35,16 @@ export async function regenerateChatMessage(
   if (idx < 0) return
   const targetMsg = messages[idx]
   if (targetMsg.role !== 'assistant') return
+
+  // 候选回复会改写既有历史，先撤销从旧版本历史推导出的记忆。
+  const invalidated = await invalidateDerivedMemory(get, character)
+  if (invalidated) {
+    set((state) => ({
+      sessions: state.sessions.map((session) =>
+        session.id === invalidated.sessionId ? { ...session, ...invalidated.patch } : session,
+      ),
+    }))
+  }
 
   // Swipe 策略：不删除原消息，而是追加新候选到 swipes 数组
   const swipes = targetMsg.swipes ?? [targetMsg.content]
@@ -89,21 +101,7 @@ export async function regenerateChatMessage(
       }))
       window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
 
-      // 自动长记忆检查：基于上次总结后的新消息数判断
-      const { sessions: curSessions, currentSessionId: curSid } = get()
-      const curSession = curSessions.find(s => s.id === curSid)
-      if (curSession?.memoryEnabled && curSession.memoryMode === 'auto') {
-        const allMsgs = get().messages.filter(m => m.content)
-        // 统计上次总结后的新消息数
-        const lastSummaryTime = curSession.memoryUpdatedAt || 0
-        const newMsgCount = lastSummaryTime > 0
-          ? allMsgs.filter(m => m.timestamp > lastSummaryTime).length
-          : allMsgs.length
-        const interval = curSession.autoMemoryInterval || 10
-        if (newMsgCount >= interval) {
-          get().triggerMemorySummary(character).catch((e) => logError('ChatStore:memorySummary', e))
-        }
-      }
+      maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
     },
     onError: (errMsg) => {
       const curMsg = get().messages.find(m => m.id === messageId)
@@ -216,20 +214,7 @@ export async function continueChatMessage(
         return
       }
 
-      // 自动长记忆检查
-      const { sessions: curSessions, currentSessionId: curSid } = get()
-      const curSession = curSessions.find(s => s.id === curSid)
-      if (curSession?.memoryEnabled && curSession.memoryMode === 'auto') {
-        const allMsgs = get().messages.filter(m => m.content)
-        const lastSummaryTime = curSession.memoryUpdatedAt || 0
-        const newMsgCount = lastSummaryTime > 0
-          ? allMsgs.filter(m => m.timestamp > lastSummaryTime).length
-          : allMsgs.length
-        const interval = curSession.autoMemoryInterval || 10
-        if (newMsgCount >= interval) {
-          get().triggerMemorySummary(character).catch((e) => logError('ChatStore:memorySummary', e))
-        }
-      }
+      maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
     },
     onError: (errMsg) => {
       // 出错/超时：已流式出的部分内容保留（flushStream 已写入气泡），毫无内容才移除
@@ -255,7 +240,7 @@ export async function swipeChatMessage(
   get: GetFn,
   messageId: string,
   direction: number,
-  _character: Character,
+  character: Character,
 ): Promise<void> {
   const msg = get().messages.find(m => m.id === messageId)
   if (!msg?.swipes || msg.swipes.length < 2) return
@@ -265,6 +250,14 @@ export async function swipeChatMessage(
     ...msg,
     swipeIndex: newIdx,
     content: msg.swipes[newIdx],
+  }
+  const invalidated = await invalidateDerivedMemory(get, character)
+  if (invalidated) {
+    set((state) => ({
+      sessions: state.sessions.map((session) =>
+        session.id === invalidated.sessionId ? { ...session, ...invalidated.patch } : session,
+      ),
+    }))
   }
   set((s) => ({ messages: s.messages.map(m => m.id === messageId ? updatedMsg : m) }))
   await window.api.chat.saveMessage(updatedMsg)

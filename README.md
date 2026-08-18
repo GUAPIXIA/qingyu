@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.11.25-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.11.26-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -17,15 +17,15 @@
 
 ## 📦 仓库结构
 
-本工作区包含三个子项目，分属两个 Git 仓库：
+本仓库包含三个协同发布的子项目：
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
-| **桌面客户端** | `酒馆/`（本仓库） | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.11.25 |
-| **安卓伴侣端** | `android/`（同级目录） | `GUAPIXIA/qingyu`（独立仓库） | 远程连接与对话消费（配对 PC 使用） | v0.1.2 |
-| **公告服务端** | `server/`（同级目录） | `GUAPIXIA/qingyu`（独立仓库） | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.3 |
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.11.26 |
+| **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.1.4 |
+| **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.3 |
 
-> ⚠️ `android/` 和 `server/` 均为独立的 Git 仓库，与 `酒馆/` 同级。修改对应代码请在各自目录下操作。
+> `android/` 与 `server/` 已纳入本仓库统一管理；本地 `.env`、数据库与构建产物仍不纳入版本控制。
 
 ---
 

@@ -21,6 +21,7 @@ import { registerQuickReplyIPC } from '../quickReply'
 
 describe('quickReply IPC', () => {
   let handlers: Record<string, Function>
+  const mockDialog = { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() }
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -32,7 +33,7 @@ describe('quickReply IPC', () => {
       }),
     }
     const mod = await import('../quickReply')
-    mod.registerQuickReplyIPC(mockIpcMain as any)
+    mod.registerQuickReplyIPC(mockIpcMain as any, mockDialog as any)
   })
 
   describe('quickReply:listAll', () => {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动图标前景：简化的对话气泡 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,26 C39.6,26 28,36.2 28,48.5 C28,55.6 31.9,61.9 38,66 L38,78 L50,70.2 C51.3,70.4 52.6,70.5 54,70.5 C68.4,70.5 80,60.3 80,48.5 C80,36.2 68.4,26 54,26 Z" />
+</vector>

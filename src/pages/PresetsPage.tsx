@@ -9,8 +9,11 @@ import { cn } from '../lib/utils'
 import { estimateTokens } from '../utils/tokenCounter'
 import { parsePresetGeneration } from '../utils/presetGen'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { useCharacterStore } from '../store/useCharacterStore'
+import { syncBuildData } from '../context/rendererContextProvider'
+import { buildChatParamsFromData, buildContextMessagesFromData } from '../context/contextBuilder'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
-import type { Preset } from '../../shared/types'
+import type { ChatParams, Message, Preset } from '../../shared/types'
 
 /** 模板名 → 展示标签 */
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -42,6 +45,7 @@ function createPreset(): Preset {
     isBuiltin: false,
     contextTemplate: '',
     group: '',
+    enableThoughtFormat: undefined,
   }
 }
 
@@ -131,10 +135,11 @@ export function PresetsPage() {
   /** 流式调用辅助：注册 onChunk/onDone/onError，返回清理函数 */
   const streamCall = (opts: {
     requestId: string
-    messages: { role: 'system' | 'user'; content: string }[]
+    messages: ChatParams['messages']
     onResult: (text: string) => void
     onError: (msg: string) => void
-    extra?: Partial<{ temperature: number; topP: number; maxTokens: number }>
+    extra?: Partial<Pick<ChatParams,
+      'temperature' | 'topP' | 'maxTokens' | 'frequencyPenalty' | 'presencePenalty' | 'instructTemplate'>>
   }) => {
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile) return
@@ -171,9 +176,10 @@ export function PresetsPage() {
       temperature: opts.extra?.temperature ?? 0.7,
       topP: opts.extra?.topP ?? 0.95,
       maxTokens: opts.extra?.maxTokens ?? 1024,
-      frequencyPenalty: 0,
-      presencePenalty: 0,
+      frequencyPenalty: opts.extra?.frequencyPenalty ?? 0,
+      presencePenalty: opts.extra?.presencePenalty ?? 0,
       stream: true,
+      instructTemplate: opts.extra?.instructTemplate,
     }).catch(() => {
       cleanup()
     })
@@ -246,13 +252,56 @@ TopP: <0-1>
     setTestOutput('')
     const requestId = `preset-test-${Date.now()}`
     testRequestRef.current = requestId
-    const sys = [editingPreset.systemPrompt, editingPreset.jailbreak].filter(Boolean).join('\n\n')
+    let messages: ChatParams['messages'] = [
+      {
+        role: 'system',
+        content: [editingPreset.systemPrompt, editingPreset.jailbreak].filter(Boolean).join('\n\n')
+          || '你是一个角色扮演助手。',
+      },
+      { role: 'user', content: testInput.slice(0, 2000) },
+    ]
+    let effectiveParams: Partial<Pick<ChatParams,
+      'temperature' | 'topP' | 'maxTokens' | 'frequencyPenalty' | 'presencePenalty' | 'instructTemplate'>> = {
+      temperature: editingPreset.temperature,
+      topP: editingPreset.topP,
+      maxTokens: editingPreset.maxTokens,
+      frequencyPenalty: editingPreset.frequencyPenalty,
+      presencePenalty: editingPreset.presencePenalty,
+    }
+
+    // 有当前角色时复用正式对话的完整上下文构建器，使测试结果包含角色卡、
+    // 人设、世界书、示例对话、心理描写与上下文模板。
+    const settings = useSettingsStore.getState().settings
+    const activeCharacter = useCharacterStore.getState().characters
+      .find((character) => character.id === settings.activeCharacterId)
+    if (activeCharacter) {
+      const data = syncBuildData(activeCharacter, editingPreset)
+      const testMessage: Message = {
+        id: `preset-test-message-${Date.now()}`,
+        sessionId: data.chat.currentSessionId ?? 'preset-test',
+        characterId: activeCharacter.id,
+        role: 'user',
+        content: testInput.slice(0, 2000),
+        images: [],
+        isEditing: false,
+        timestamp: Date.now(),
+      }
+      data.chat = { ...data.chat, messages: [...data.chat.messages, testMessage] }
+      const built = buildContextMessagesFromData(data)
+      const params = buildChatParamsFromData(data, built.messages)
+      messages = params.messages
+      effectiveParams = {
+        temperature: params.temperature,
+        topP: params.topP,
+        maxTokens: params.maxTokens,
+        frequencyPenalty: params.frequencyPenalty,
+        presencePenalty: params.presencePenalty,
+        instructTemplate: params.instructTemplate,
+      }
+    }
     streamCall({
       requestId,
-      messages: [
-        { role: 'system', content: sys || '你是一个角色扮演助手。' },
-        { role: 'user', content: testInput.slice(0, 2000) },
-      ],
+      messages,
       onResult: (result) => {
         if (testRequestRef.current !== requestId) return
         setTestBusy(false)
@@ -263,11 +312,7 @@ TopP: <0-1>
         setTestBusy(false)
         setTestOutput(`⚠ ${msg}`)
       },
-      extra: {
-        temperature: editingPreset.temperature,
-        topP: editingPreset.topP,
-        maxTokens: Math.max(256, Math.min(2048, editingPreset.maxTokens || 1024)),
-      },
+      extra: effectiveParams,
     })
   }
 
@@ -286,7 +331,7 @@ TopP: <0-1>
   const handleSave = async () => {
     if (!editingPreset) return
     // 内置预设保存时后端会自动创建副本并返回新 preset
-    const saved = (await window.api.preset.save(editingPreset)) as unknown as Preset
+    const saved = await window.api.preset.save(editingPreset)
     setEditingPreset(saved)
     loadPresets()
   }
@@ -589,6 +634,22 @@ TopP: <0-1>
                 </select>
                 <p className="text-xs text-tavern-text-muted mt-1">控制角色卡「对话示例」的注入时机（few-shot 风格示范）</p>
               </div>
+              <div>
+                <label className="label">心理描写格式（覆盖全局设置）</label>
+                <select
+                  className="select"
+                  value={editingPreset.enableThoughtFormat === undefined ? '' : String(editingPreset.enableThoughtFormat)}
+                  onChange={(e) => updateField(
+                    'enableThoughtFormat',
+                    e.target.value === '' ? undefined : e.target.value === 'true',
+                  )}
+                >
+                  <option value="">跟随全局设置</option>
+                  <option value="true">开启 &lt;thought&gt; 心理描写</option>
+                  <option value="false">关闭（适合短对话/短信体）</option>
+                </select>
+                <p className="text-xs text-tavern-text-muted mt-1">关闭后不会向模型追加心理活动输出要求</p>
+              </div>
             </div>
 
             {/* 采样参数快捷模板 */}
@@ -697,7 +758,7 @@ TopP: <0-1>
               <label className="label flex items-center gap-1.5">
                 <Play className="w-3.5 h-3.5 text-tavern-accent" />
                 预设测试器
-                <span className="text-xs text-tavern-text-muted font-normal">用当前预设参数真实调用一次，不保存到对话</span>
+                <span className="text-xs text-tavern-text-muted font-normal">复用当前角色与完整上下文，不保存到对话</span>
               </label>
               <div className="flex gap-1.5">
                 <textarea

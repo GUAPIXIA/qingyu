@@ -31,9 +31,16 @@ import { WsHub } from '../ws'
 import { BridgeChatService } from '../chatService'
 import { chatData, messagesCacheInvalidate } from '../../ipc/chat'
 import { generatePairingCode, settlePair, signToken, registerDevice } from '../auth'
+import { getDefaultSettings } from '../../../shared/defaults'
+
+vi.mock('../../services/ai', () => ({
+  chatWithRetry: vi.fn().mockResolvedValue('【摘要】桥接端增量摘要\n【事实】\n1. 新事实'),
+  getAdapter: vi.fn().mockReturnValue({}),
+}))
 
 const TEST_ROOT = '/tmp/qingyu-bridge-route-test'
 const CHAR_ID = 'char-001'
+const SECOND_CHAR_ID = 'char-002'
 
 function listen(app: express.Express): Promise<{ server: ReturnType<typeof createServer>; port: number }> {
   return new Promise((resolve, reject) => {
@@ -158,6 +165,21 @@ describe('桥接路由集成', () => {
       const sessions = await sessionsRes.json()
       expect(sessions.length).toBe(1)
       expect(sessions[0].characterId).toBe(CHAR_ID)
+      expect(sessions[0].lastMessage).toBe('消息14')
+
+      // 编辑第一条消息会以追加方式写入 JSONL；预览仍应显示时间最新的消息，而不是物理尾行。
+      chatData.saveMessage(CHAR_ID, {
+        id: 'm000',
+        sessionId: session.id,
+        characterId: CHAR_ID,
+        role: 'user',
+        content: '编辑后的第一条消息',
+        images: [],
+        isEditing: false,
+        timestamp: 1000,
+      })
+      const afterEditSessions = await (await fetch(`${base}/sessions`, { headers })).json()
+      expect(afterEditSessions[0].lastMessage).toBe('消息14')
 
       // 第一页（5 条，最新在前）
       const page1 = await (await fetch(`${base}/sessions/${session.id}/messages?limit=5`, { headers })).json()
@@ -175,6 +197,83 @@ describe('桥接路由集成', () => {
       // 分页合并后 10 条不重复
       const ids = new Set([...page1.messages, ...page2.messages].map((m: { id: string }) => m.id))
       expect(ids.size).toBe(10)
+    } finally {
+      server.close()
+    }
+  })
+
+  it('长记忆端点以 characterId 精确定位同名旧会话', async () => {
+    const session = {
+      id: 'default', title: '旧会话', createdAt: 1, updatedAt: 1,
+      memoryEnabled: true, memoryMode: 'manual', autoMemoryInterval: 10,
+      memory: '角色一记忆', memoryUpdatedAt: 1,
+    }
+    mkdirSync(join(DIRS.chats(), CHAR_ID), { recursive: true })
+    mkdirSync(join(DIRS.chats(), SECOND_CHAR_ID), { recursive: true })
+    writeFileSync(join(DIRS.chats(), CHAR_ID, 'sessions.json'), JSON.stringify([{ ...session, characterId: CHAR_ID }]))
+    writeFileSync(join(DIRS.chats(), SECOND_CHAR_ID, 'sessions.json'), JSON.stringify([{ ...session, characterId: SECOND_CHAR_ID, memory: '角色二记忆' }]))
+    writeFileSync(join(DIRS.characters(), `${SECOND_CHAR_ID}.json`), JSON.stringify({
+      id: SECOND_CHAR_ID, name: '第二角色', description: '', personality: '', scenario: '', firstMessage: '',
+      exampleDialog: '', tags: [], creator: '', createdAt: 0, updatedAt: 0, alternateGreetings: [], avatar: '',
+    }))
+
+    const device = registerDevice('测试设备-记忆', 'fp-memory')
+    const token = signToken(device.deviceId)
+    const app = express()
+    app.use(express.json())
+    app.use('/api/v1', buildBridgeRouter(new WsHub(), new BridgeChatService(new WsHub(), () => {}), () => {}))
+    const { server, port } = await listen(app)
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/api/v1/sessions/default/memory?characterId=${SECOND_CHAR_ID}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      expect(res.status).toBe(200)
+      expect((await res.json()).memory).toBe('角色二记忆')
+    } finally {
+      server.close()
+    }
+  })
+
+  it('移动端手动总结只处理游标后的预算窗口，并安全推进游标', async () => {
+    const settings = {
+      ...getDefaultSettings(),
+      activeProfileId: 'p-memory',
+      connectionProfiles: [{
+        id: 'p-memory', name: 'memory', provider: 'openai', baseUrl: 'https://api.example.com',
+        apiKey: 'sk-test', model: 'gpt-4o', maxContext: 8192,
+      }],
+    }
+    mkdirSync(DIRS.config(), { recursive: true })
+    writeFileSync(join(DIRS.config(), 'settings.json'), JSON.stringify(settings))
+
+    const session = await chatData.createSession(CHAR_ID, '增量记忆')
+    await chatData.updateSession(CHAR_ID, session.id, { memoryEnabled: true })
+    for (let index = 0; index < 4; index += 1) {
+      chatData.saveMessage(CHAR_ID, {
+        id: `large-${index}`,
+        sessionId: session.id,
+        characterId: CHAR_ID,
+        role: index % 2 === 0 ? 'user' : 'assistant',
+        content: `消息-${index}-${'长'.repeat(4000)}`,
+        images: [], isEditing: false, timestamp: 1000 + index,
+      })
+    }
+
+    const device = registerDevice('测试设备-增量记忆', 'fp-memory-window')
+    const token = signToken(device.deviceId)
+    const app = express()
+    app.use(express.json())
+    app.use('/api/v1', buildBridgeRouter(new WsHub(), new BridgeChatService(new WsHub(), () => {}), () => {}))
+    const { server, port } = await listen(app)
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/api/v1/sessions/${session.id}/memory/summarize?characterId=${CHAR_ID}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+      )
+      expect(res.status).toBe(200)
+      const updated = (await chatData.listSessions(CHAR_ID)).find((item) => item.id === session.id)
+      expect(updated?.memoryLastMessageId).toBe('large-0')
     } finally {
       server.close()
     }

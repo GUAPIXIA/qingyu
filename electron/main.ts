@@ -290,7 +290,7 @@ app.on('before-quit', async (event) => {
       new Promise((_, reject) => setTimeout(() => reject(new Error('shutdown timeout')), 3000)),
     ])
   } catch {
-    log.warn('MCP 进程关闭超时，强制退出')
+    createLogger('main').warn('MCP 进程关闭超时，强制退出')
   }
   // 等待 pending IPC 调用（如翻译 saveMessage）完成
   await new Promise(resolve => setTimeout(resolve, 500))

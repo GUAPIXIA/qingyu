@@ -153,6 +153,22 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
   const profile = useSettingsStore.getState().getActiveProfile()
   const activePreset = presets.find((p) => p.id === activePresetId)
 
+  /** 保存参数修改；内置预设会由后端创建副本，并立即切换到新副本。 */
+  const persistPresetUpdate = async (updated: Preset) => {
+    try {
+      const saved = await window.api.preset.save(updated)
+      setPresets((prev) => {
+        const exists = prev.some((preset) => preset.id === saved.id)
+        return exists
+          ? prev.map((preset) => preset.id === saved.id ? saved : preset)
+          : [...prev, saved]
+      })
+      if (saved.id !== updated.id) setActivePreset(saved.id, currentCharId)
+    } catch (error) {
+      logError('QuickSettings:savePreset', error)
+    }
+  }
+
   return (
     <>
       {/* 遮罩 */}
@@ -355,8 +371,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                         onClick={async () => {
                           if (!activePreset) return
                           const updated = { ...activePreset, maxTokens: n }
-                          await window.api.preset.save(updated)
-                          setPresets(prev => prev.map(p => p.id === updated.id ? updated : p))
+                          await persistPresetUpdate(updated)
                         }}
                         className={cn(
                           'px-2 py-0.5 rounded text-xs border transition-colors',
@@ -384,8 +399,7 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
                         if (!activePreset) return
                         const val = Number(e.target.value) || 1
                         const updated = { ...activePreset, maxTokens: val }
-                        await window.api.preset.save(updated)
-                        setPresets(prev => prev.map(p => p.id === updated.id ? updated : p))
+                        await persistPresetUpdate(updated)
                       }}
                       className="w-16 px-1.5 py-0.5 rounded text-xs border border-tavern-border-soft bg-tavern-bg text-tavern-text text-center focus:outline-none focus:border-tavern-accent/40 disabled:opacity-50"
                       title="自定义 Token 数"

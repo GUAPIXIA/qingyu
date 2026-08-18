@@ -3,11 +3,21 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useCharacterStore } from '../useCharacterStore'
+import type { Character } from '../../../shared/types'
 
-const mockList = vi.fn(async () => [])
+const mockList = vi.fn<() => Promise<Character[]>>(async () => [])
 const mockSave = vi.fn(async () => {})
 const mockDelete = vi.fn(async () => {})
 const mockGet = vi.fn(async () => null)
+
+function makeCharacter(overrides: Partial<Character> = {}): Character {
+  return {
+    id: 'c1', name: '角色1', avatar: '', description: '', personality: '', scenario: '',
+    firstMessage: '', exampleDialog: '', tags: [], lorebookId: null, alternateGreetings: [],
+    creator: '', createdAt: 0, updatedAt: 0,
+    ...overrides,
+  }
+}
 
 Object.defineProperty(window, 'api', {
   value: {
@@ -39,8 +49,8 @@ describe('useCharacterStore', () => {
   describe('loadCharacters', () => {
     it('加载角色列表', async () => {
       const mockChars = [
-        { id: 'c1', name: '角色1', updatedAt: 100 },
-        { id: 'c2', name: '角色2', updatedAt: 200 },
+        makeCharacter({ id: 'c1', name: '角色1', updatedAt: 100 }),
+        makeCharacter({ id: 'c2', name: '角色2', updatedAt: 200 }),
       ]
       mockList.mockResolvedValue(mockChars)
 
@@ -53,7 +63,7 @@ describe('useCharacterStore', () => {
 
     it('空列表时自动创建示例角色', async () => {
       mockList.mockResolvedValueOnce([])
-      mockList.mockResolvedValueOnce([{ id: 'sample', name: '艾莉娅' }])
+      mockList.mockResolvedValueOnce([makeCharacter({ id: 'sample', name: '艾莉娅' })])
 
       await useCharacterStore.getState().loadCharacters()
 
@@ -85,7 +95,7 @@ describe('useCharacterStore', () => {
 
   describe('deleteCharacter', () => {
     it('删除角色后刷新列表', async () => {
-      mockList.mockResolvedValue([{ id: 'c1', name: '角色1' }])
+      mockList.mockResolvedValue([makeCharacter({ id: 'c1', name: '角色1' })])
       await useCharacterStore.getState().loadCharacters()
 
       mockList.mockResolvedValue([])

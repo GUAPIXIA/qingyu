@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { runMemorySummary } from '../memoryManager'
 import { useSettingsStore } from '../useSettingsStore'
 import { getDefaultSettings } from '../../../shared/defaults'
-import { MEMORY_SUMMARY_RECENT, MEMORY_SUMMARY_MIN } from '../chatConstants'
-import type { Character, Message, ConnectionProfile } from '../../../shared/types'
+import { MEMORY_SUMMARY_MIN } from '../chatConstants'
+import type { Character, Message, ConnectionProfile, MemoryFact } from '../../../shared/types'
 
 function makeCharacter(overrides: Partial<Character> = {}): Character {
   return {
@@ -148,29 +148,35 @@ describe('runMemorySummary 长记忆摘要', () => {
     expect(result).toBeNull()
   })
 
-  it('成功流程：chunk 累积 → onDone 持久化摘要与事实并返回', async () => {
+  it('成功流程：chunk 累积 → 原子持久化摘要、事实与处理游标', async () => {
     setupSettings()
     const callbacks = captureStreamCallbacks()
     const set = vi.fn()
     const p = runMemorySummary((() => setupChatStoreState()) as any, set, makeCharacter())
 
     const requestId = callbacks.chatParams!.requestId
-    callbacks.onChunk!({ requestId, text: '【摘要】' })
+    callbacks.onChunk!({ requestId, text: '【当前状态】他们正在森林里寻找雪山入口。\n【时间线】' })
     callbacks.onChunk!({ requestId, text: '他们去了森林。' })
     callbacks.onChunk!({ requestId, text: '【事实】\n1. 目标是雪山\n2. 带了地图' })
     callbacks.onDone!(requestId)
 
     const summary = await p
     expect(summary).toBe('他们去了森林。')
-    expect(window.api.chat.updateMemory).toHaveBeenCalledWith('char-1', 's1', '他们去了森林。')
     expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', {
+      memory: '他们去了森林。',
+      memoryCurrentState: '他们正在森林里寻找雪山入口。',
       memoryFacts: ['目标是雪山', '带了地图'],
+      factsVectors: [],
+      factsVectorVersion: 0,
+      memoryUpdatedAt: expect.any(Number),
+      memoryLastMessageId: 'm5',
+      memoryVersion: 1,
     })
     // 会话列表刷新
     expect(window.api.chat.listSessions).toHaveBeenCalledWith('char-1')
   })
 
-  it('无事实时不调用 updateSession', async () => {
+  it('模型漏掉事实段时保留已有事实，避免解析异常误删', async () => {
     setupSettings()
     const callbacks = captureStreamCallbacks()
     const p = runMemorySummary((() => setupChatStoreState()) as any, vi.fn(), makeCharacter())
@@ -180,8 +186,90 @@ describe('runMemorySummary 长记忆摘要', () => {
     callbacks.onDone!(requestId)
 
     await p
-    expect(window.api.chat.updateMemory).toHaveBeenCalled()
-    expect(window.api.chat.updateSession).not.toHaveBeenCalled()
+    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+      memory: '只有摘要没有事实',
+      memoryCurrentState: '',
+      memoryFacts: ['旧事实'],
+      memoryFactParseFailureCount: 1,
+      memoryFactRetryAfterVersion: 1,
+    }))
+  })
+
+  it('无 ID 的事实提案由服务端匹配并应用', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const existing: MemoryFact = {
+      id: 'fact-relation', subject: '艾琳', predicate: '与用户的关系', value: '朋友',
+      status: 'active', importance: 3, confidence: 0.8, sourceMessageIds: [], updatedAt: 1,
+    }
+    const state = setupChatStoreState({ sessions: [{ ...setupChatStoreState().sessions[0], memoryFacts: [existing] }] })
+    const p = runMemorySummary((() => state) as any, vi.fn(), makeCharacter())
+
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【时间线】艾琳确认恋人关系。\n【事实提案】\n```json\n[{"subject":"艾琳","predicate":"与用户的关系","value":"恋人","changeType":"set","importance":5}]\n```' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+
+    await p
+    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+      memoryFacts: [expect.objectContaining({ id: 'fact-relation', value: '恋人', importance: 5 })],
+      memoryFactHistory: [expect.objectContaining({ value: '朋友', status: 'superseded' })],
+      memoryFactParseFailureCount: 0,
+    }))
+  })
+
+  it('结构化变更按 ID 更新事实，并保留可追溯字段', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const existing: MemoryFact = {
+      id: 'fact-location', subject: '艾琳', predicate: '所在地', value: '月落镇',
+      status: 'active', importance: 3, confidence: 0.8, sourceMessageIds: ['m0'], updatedAt: 1,
+    }
+    const state = setupChatStoreState({ sessions: [{ ...setupChatStoreState().sessions[0], memoryFacts: [existing] }] })
+    const p = runMemorySummary((() => state) as any, vi.fn(), makeCharacter())
+
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【时间线】艾琳前往旧矿坑。\n【事实变更】\n```json\n[{"action":"update","id":"fact-location","patch":{"value":"旧矿坑","importance":5,"confidence":0.95}}]\n```' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+
+    await p
+    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+      memoryFacts: [expect.objectContaining({ id: 'fact-location', value: '旧矿坑', status: 'active', importance: 5, sourceMessageIds: ['m0', 'm5'] })],
+      memoryFactHistory: [expect.objectContaining({ value: '月落镇', status: 'superseded', sourceMessageIds: ['m0', 'm5'] })],
+    }))
+  })
+
+  it('结构化事实变更格式无效时保留旧事实', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const p = runMemorySummary((() => setupChatStoreState()) as any, vi.fn(), makeCharacter())
+
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】新的摘要\n【事实变更】\nnot json' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+
+    await p
+    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+      memoryFacts: ['旧事实'],
+    }))
+  })
+
+  it('成功的空事实结果会原子清空旧事实和旧向量，并记录处理游标', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const p = runMemorySummary((() => setupChatStoreState()) as any, vi.fn(), makeCharacter())
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '【摘要】新的情节摘要。\n【事实】\n' })
+    callbacks.onDone!(requestId)
+
+    await p
+    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+      memory: '新的情节摘要。',
+      memoryCurrentState: '',
+      memoryFacts: [],
+      factsVectors: [],
+      factsVectorVersion: 0,
+      memoryLastMessageId: 'm5',
+      memoryVersion: 1,
+    }))
+    expect(window.api.chat.updateMemory).not.toHaveBeenCalled()
   })
 
   it('onError 流程：设置错误并返回 null', async () => {
@@ -246,21 +334,54 @@ describe('runMemorySummary 长记忆摘要', () => {
     await p
   })
 
-  it('仅取最近 MEMORY_SUMMARY_RECENT 条消息', async () => {
+  it('仅总结游标之后的消息，并将游标推进到本次增量末尾', async () => {
     setupSettings()
     const callbacks = captureStreamCallbacks()
-    const messages = makeMessages(MEMORY_SUMMARY_RECENT + 10)
+    const messages = makeMessages(8)
+    const session = {
+      ...setupChatStoreState().sessions[0],
+      memoryLastMessageId: 'm2',
+    }
+    const p = runMemorySummary(
+      (() => setupChatStoreState({ messages, sessions: [session] })) as any,
+      vi.fn(),
+      makeCharacter(),
+    )
+    const sent = (callbacks.chatParams as any).messages[1].content
+    expect(sent).toContain('【待总结的新对话】')
+    expect(sent).toContain('消息内容 3')
+    expect(sent).toContain('消息内容 7')
+    expect(sent).not.toContain('消息内容 0')
+
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】增量摘要\n【事实】\n' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+    await p
+    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+      memoryLastMessageId: 'm7',
+    }))
+  })
+
+  it('Token 预算截断后只推进到实际发送给模型的消息', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const messages = Array.from({ length: MEMORY_SUMMARY_MIN }, (_, index) => makeMessage({
+      id: `large-${index}`,
+      content: `消息-${index}-${'长'.repeat(4000)}`,
+    }))
     const p = runMemorySummary(
       (() => setupChatStoreState({ messages })) as any,
       vi.fn(),
       makeCharacter(),
     )
     const sent = (callbacks.chatParams as any).messages[1].content
-    // 只应包含最后 MEMORY_SUMMARY_RECENT 条
-    expect(sent).toContain(`消息内容 ${messages.length - 1}`)
-    expect(sent).not.toContain('消息内容 0')
+    expect(sent).toContain('消息-0-')
+    expect(sent).not.toContain('消息-1-')
 
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】首条长消息摘要\n【事实】\n' })
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
+    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+      memoryLastMessageId: 'large-0',
+    }))
   })
 })

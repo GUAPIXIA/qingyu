@@ -1,6 +1,6 @@
 import { useSettingsStore } from './useSettingsStore'
 import { usePersonaStore } from './usePersonaStore'
-import type { Character } from '../../shared/types'
+import type { Character, SessionPreview } from '../../shared/types'
 
 /** 防止会话加载竞态的请求计数器（模块级，跨调用共享） */
 export let loadRequestId = 0
@@ -79,6 +79,43 @@ export async function invalidateCompression(
       compressedRange: null,
     }).catch(() => { /* 忽略 */ })
   }
+}
+
+/**
+ * 消息被改写、删除或切换候选回复后，历史摘要、事实向量和压缩摘要都不再可信。
+ * 返回同一份 patch，调用方用于立即同步本地会话状态，避免本轮请求继续注入旧记忆。
+ */
+export async function invalidateDerivedMemory(
+  get: () => { currentSessionId: string | null; sessions: SessionPreview[] },
+  character: Character,
+): Promise<{ sessionId: string; patch: Partial<SessionPreview> } | null> {
+  const sessionId = get().currentSessionId
+  if (!sessionId) return null
+  const current = get().sessions.find((session) => session.id === sessionId)
+  if (!current) return null
+  const hasDerivedData = Boolean(
+    current.memory || current.memoryCurrentState || current.memoryFacts?.length || current.memoryFactHistory?.length || current.factsVectors?.length
+    || current.memoryLastMessageId || current.memoryVersion || current.memoryFactParseFailureCount || current.memoryFactRetryAfterVersion || current.compressedSummary,
+  )
+  if (!hasDerivedData) return null
+
+  const patch: Partial<SessionPreview> = {
+    memory: '',
+    memoryCurrentState: '',
+    memoryFacts: [],
+    memoryFactHistory: [],
+    memoryFactParseFailureCount: 0,
+    memoryFactRetryAfterVersion: 0,
+    factsVectors: [],
+    memoryUpdatedAt: 0,
+    memoryLastMessageId: null,
+    memoryVersion: 0,
+    factsVectorVersion: 0,
+    compressedSummary: null,
+    compressedRange: null,
+  }
+  await window.api.chat.updateSession(character.id, sessionId, patch).catch(() => { /* 忽略 */ })
+  return { sessionId, patch }
 }
 
 // ===================== 语义检索缓存 =====================

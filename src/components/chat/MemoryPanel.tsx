@@ -1,5 +1,7 @@
 import { Brain } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { memoryFactToText } from '../../utils/memory'
+import type { MemoryFactRecord } from '../../../shared/types'
 
 interface Session {
   id: string
@@ -7,7 +9,7 @@ interface Session {
   memoryMode?: 'manual' | 'auto'
   autoMemoryInterval?: number
   memory?: string
-  memoryFacts?: string[]
+  memoryFacts?: MemoryFactRecord[]
 }
 
 interface MemoryPanelProps {
@@ -134,7 +136,7 @@ export function MemoryPanel({
               <div className="mt-2 p-2 rounded bg-tavern-bg-hover text-xs text-tavern-text-muted max-h-24 overflow-y-auto space-y-0.5">
                 <div className="text-tavern-text-soft font-medium">关键事实（{currentSession.memoryFacts.length}）：</div>
                 {currentSession.memoryFacts.slice(0, 8).map((f, i) => (
-                  <div key={i} className="truncate">• {f}</div>
+                  <div key={typeof f === 'string' ? `${i}-${f}` : f.id} className="truncate">• {memoryFactToText(f)}</div>
                 ))}
                 {currentSession.memoryFacts.length > 8 && (
                   <div className="text-tavern-text-muted/60">…共 {currentSession.memoryFacts.length} 条</div>

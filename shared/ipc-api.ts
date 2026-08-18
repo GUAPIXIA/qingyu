@@ -194,7 +194,7 @@ export interface EmbeddingAPI {
 // ===================== 预设接口 =====================
 export interface PresetAPI {
   list(): Promise<Preset[]>
-  save(preset: Preset): Promise<void>
+  save(preset: Preset): Promise<Preset>
   delete(id: string): Promise<void>
   importJson(): Promise<Preset | null>
   exportJson(id: string): Promise<{ ok: boolean; canceled?: boolean; error?: string }>

@@ -3,12 +3,13 @@
  * 覆盖：流式响应、错误处理、超时、停止字符串、压缩
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { ActiveProfile } from '../../../shared/contextTypes'
 
 // ===== Mocks =====
 const mockOnChunk = vi.fn()
 const mockOnDone = vi.fn()
 const mockOnError = vi.fn()
-const mockChat = vi.fn(async () => ({}))
+const mockChat = vi.fn(async (_params: unknown) => undefined)
 const mockCancelChat = vi.fn(async () => ({}))
 const mockListSessions = vi.fn(async () => [])
 const mockUpdateSession = vi.fn(async () => ({}))
@@ -104,12 +105,15 @@ vi.mock('../chatUtils', () => ({
 }))
 
 // Mock useSettingsStore
-const mockGetActiveProfile = vi.fn(() => ({
+const makeActiveProfile = (): ActiveProfile => ({
+  name: '测试连接',
   provider: 'openai',
   apiKey: 'test-key',
   baseUrl: 'https://api.openai.com/v1',
   model: 'gpt-4',
-}))
+  maxContext: 0,
+})
+const mockGetActiveProfile = vi.fn<() => ActiveProfile | null>(() => makeActiveProfile())
 
 vi.mock('../useSettingsStore', () => ({
   useSettingsStore: {
@@ -181,12 +185,7 @@ describe('streamController - 深度测试', () => {
     })
 
     it('发送 chat 请求', async () => {
-      mockGetActiveProfile.mockReturnValue({
-        provider: 'openai',
-        apiKey: 'test-key',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4',
-      })
+      mockGetActiveProfile.mockReturnValue(makeActiveProfile())
 
       await streamAIResponse(mockSet, mockGet, {
         aiMessageId: 'msg-1',
@@ -199,12 +198,7 @@ describe('streamController - 深度测试', () => {
     })
 
     it('流式完成后调用 onComplete', async () => {
-      mockGetActiveProfile.mockReturnValue({
-        provider: 'openai',
-        apiKey: 'test-key',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4',
-      })
+      mockGetActiveProfile.mockReturnValue(makeActiveProfile())
 
       // 简化 mockSet，返回空对象
       mockSet.mockReturnValue({})
@@ -220,7 +214,7 @@ describe('streamController - 深度测试', () => {
       // 捕获 chat 调用中的 requestId
       mockChat.mockImplementation(async (opts: any) => {
         capturedRequestId = opts.requestId
-        return {}
+        return undefined
       })
 
       await streamAIResponse(mockSet, mockGet, {
@@ -237,12 +231,7 @@ describe('streamController - 深度测试', () => {
     })
 
     it('错误时设置错误状态', async () => {
-      mockGetActiveProfile.mockReturnValue({
-        provider: 'openai',
-        apiKey: 'test-key',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4',
-      })
+      mockGetActiveProfile.mockReturnValue(makeActiveProfile())
 
       // 捕获 onError 回调
       let errorCallback: Function

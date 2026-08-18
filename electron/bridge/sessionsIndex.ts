@@ -53,3 +53,13 @@ export async function findSessionById(sessionId: string): Promise<SessionWithCha
   const all = await listAllSessions()
   return all.find((s) => s.id === sessionId) ?? null
 }
+
+/** 按角色 + 会话 ID 精确定位；供客户端传入 characterId 消除旧数据同名会话的歧义。 */
+export async function findSessionByCharacterId(
+  characterId: string,
+  sessionId: string,
+): Promise<SessionWithCharacter | null> {
+  const sessions = await chatData.listSessions(characterId)
+  const session = sessions.find((item) => item.id === sessionId)
+  return session ? { ...session, characterId } : null
+}

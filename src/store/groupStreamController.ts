@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import type { GroupChat, GroupMessage, Character } from '../../shared/types'
+import type { GroupChat, GroupMessage, Character, MemoryFactRecord } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { lorebookCache } from '../utils/lorebook'
@@ -15,6 +15,7 @@ import { safeSave } from '../lib/safeOps'
 import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS } from './chatConstants'
 import { friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
 import { resolveVisionModel } from '../utils/visionModel'
+import { memoryFactsToTexts } from '../utils/memory'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 
 // ====================== 流式状态管理（模块级） ======================
@@ -184,9 +185,11 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
 
   const { sessions, currentSessionId } = get()
   const session = sessions.find((s) => s.id === currentSessionId)
-  if (!session?.memoryEnabled || !session.memoryFacts?.length) return clear()
+  const factTexts = memoryFactsToTexts(session?.memoryFacts)
+  if (!session?.memoryEnabled || !factTexts.length) return clear()
   const vectors = session.factsVectors
-  if (!vectors || vectors.length !== session.memoryFacts.length) return clear()
+  if (!vectors || vectors.length !== factTexts.length
+    || session.factsVectorVersion !== session.memoryVersion) return clear()
 
   const query = get().messages.slice(-20).map((m) => m.content).join(' ')
   if (!query.trim()) return clear()
@@ -202,7 +205,7 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
   try {
     const hits = await window.api.embedding.searchFacts({
       query,
-      facts: session.memoryFacts,
+      facts: factTexts,
       vectors,
       config: {
         provider: st.provider,
@@ -223,8 +226,14 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
 /**
  * 群聊记忆事实向量化（P0-2）
  */
-export async function vectorizeGroupSessionFacts(groupId: string, sessionId: string, facts: string[]): Promise<void> {
-  if (!facts?.length) return
+export async function vectorizeGroupSessionFacts(
+  groupId: string,
+  sessionId: string,
+  facts: MemoryFactRecord[],
+  memoryVersion: number,
+): Promise<void> {
+  const factTexts = memoryFactsToTexts(facts)
+  if (!factTexts.length) return
   const st = useSettingsStore.getState().settings.semanticTrigger
   if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return
   try {
@@ -233,9 +242,12 @@ export async function vectorizeGroupSessionFacts(groupId: string, sessionId: str
       baseUrl: st.baseUrl,
       model: st.model,
       apiKey: st.apiKey ?? '',
-    }, facts)
-    if (vectors.length === facts.length) {
-      await window.api.group.updateSession(groupId, sessionId, { factsVectors: vectors })
+    }, factTexts)
+    if (vectors.length === factTexts.length) {
+      await window.api.group.updateSession(groupId, sessionId, {
+        factsVectors: vectors,
+        factsVectorVersion: memoryVersion,
+      })
     }
   } catch { /* 忽略 */ }
 }
@@ -991,10 +1003,11 @@ export function checkAutoMemory(get: GroupStoreGet) {
   const session = state.sessions?.find((s) => s.id === state.currentSessionId)
   if (!session?.memoryEnabled || session.memoryMode !== 'auto') return
   const interval = session.autoMemoryInterval || 10
-  // 统计自上次摘要以来的新消息数
-  const lastUpdate = session.memoryUpdatedAt || 0
-  const newMsgs = state.messages.filter((m) => m.timestamp > lastUpdate)
-  if (newMsgs.length >= interval) {
+  // 按已处理的消息游标统计，编辑或设备时钟变化不会误判。
+  const cursor = session.memoryLastMessageId
+  const cursorIndex = cursor ? state.messages.findIndex((message) => message.id === cursor) : -1
+  const unsummarizedCount = cursorIndex >= 0 ? state.messages.length - cursorIndex - 1 : state.messages.length
+  if (unsummarizedCount >= interval) {
     state.triggerMemorySummary()
   }
 }

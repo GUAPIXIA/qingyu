@@ -132,6 +132,49 @@ export interface Persona {
 }
 
 /** 聊天会话 */
+export type MemoryFactStatus = 'active' | 'inactive' | 'superseded'
+
+/**
+ * 可追溯的长记忆事实。active 事实参与上下文和向量检索；历史事实仅用于审计与冲突追踪。
+ */
+export interface MemoryFact {
+  id: string
+  subject: string
+  predicate: string
+  value: string
+  status: MemoryFactStatus
+  importance: 1 | 2 | 3 | 4 | 5
+  confidence: number
+  /** 事实生效范围；用于在多角色/多分支场景下区分同名实体。 */
+  scope?: string
+  /** 可选实体 ID，优先于名称参与规范化键匹配。 */
+  entityId?: string
+  sourceMessageIds: string[]
+  updatedAt: number
+}
+
+/** 旧会话的字符串事实与新结构化事实并存，成功摘要时渐进迁移。 */
+export type MemoryFactRecord = string | MemoryFact
+
+/** 模型输出的语义提案，不含事实 ID；服务端负责键匹配和变更生成。 */
+export interface FactProposal {
+  subject: string
+  predicate: string
+  value: string
+  changeType: 'set' | 'clear'
+  scope?: string
+  entityId?: string
+  importance?: 1 | 2 | 3 | 4 | 5
+  confidence?: number
+}
+
+export interface MemoryFactChange {
+  action: 'add' | 'update' | 'deactivate'
+  id?: string
+  fact?: Pick<MemoryFact, 'subject' | 'predicate' | 'value'> & Partial<Pick<MemoryFact, 'scope' | 'entityId' | 'importance' | 'confidence'>>
+  patch?: Partial<Pick<MemoryFact, 'subject' | 'predicate' | 'value' | 'scope' | 'entityId' | 'importance' | 'confidence'>>
+}
+
 export interface ChatSession {
   id: string
   characterId: string
@@ -142,15 +185,29 @@ export interface ChatSession {
   memoryMode: 'manual' | 'auto'
   autoMemoryInterval: number
   memory: string
+  /** 当前情节状态：场景、地点、进行中的任务等，优先于时间线注入。 */
+  memoryCurrentState?: string
   memoryUpdatedAt: number
   /** 关键事实列表（长记忆升级：摘要之外抽取的持久事实，随摘要一起更新） */
-  memoryFacts?: string[]
+  memoryFacts?: MemoryFactRecord[]
+  /** 已被推翻或替代的事实，不参与上下文和向量检索。 */
+  memoryFactHistory?: MemoryFact[]
+  /** 最近连续的结构化事实解析失败次数；不影响时间线摘要推进。 */
+  memoryFactParseFailureCount?: number
+  /** 下一次允许尝试结构化事实的 memoryVersion，供指数退避使用。 */
+  memoryFactRetryAfterVersion?: number
   /** 事实向量（与 memoryFacts 平行，语义检索注入用；memoryUpdatedAt 作缓存失效键） */
   factsVectors?: number[][]
+  /** 最后一条已纳入长记忆的消息 ID；用于增量调度，不依赖设备时钟 */
+  memoryLastMessageId?: string | null
+  /** 长记忆快照版本；摘要/事实每次成功提交递增 */
+  memoryVersion?: number
+  /** factsVectors 对应的 memoryVersion；不一致时禁止语义检索 */
+  factsVectorVersion?: number
   /** 上下文溢出压缩摘要（历史被裁剪时异步压缩的早期内容） */
-  compressedSummary?: string
+  compressedSummary?: string | null
   /** 已压缩消息的时间范围（防重复压缩） */
-  compressedRange?: { startTs: number; endTs: number }
+  compressedRange?: { startTs: number; endTs: number } | null
   /** 是否已自动生成标题（防重复调用） */
   titleGenerated?: boolean
   /** 绑定的用户身份 ID（null/undefined 时使用 Settings 中的默认身份） */
@@ -219,6 +276,8 @@ export interface Preset {
   group?: string
   /** 预设级示例对话发送模式（覆盖全局 settings.exampleDialogMode） */
   exampleDialogMode?: 'always' | 'first_turn' | 'off'
+  /** 预设级心理描写格式开关；undefined = 跟随全局设置 */
+  enableThoughtFormat?: boolean
 }
 
 /** 群聊 */
@@ -300,16 +359,28 @@ export interface GroupSession {
   autoMemoryInterval?: number
   /** 对话历史摘要文本 */
   memory?: string
+  /** 当前群聊情节状态，优先于时间线注入。 */
+  memoryCurrentState?: string
   /** 上次摘要时间 */
   memoryUpdatedAt?: number
   /** 关键事实列表（长记忆升级） */
-  memoryFacts?: string[]
+  memoryFacts?: MemoryFactRecord[]
+  /** 已被推翻或替代的群聊事实，不参与上下文和向量检索。 */
+  memoryFactHistory?: MemoryFact[]
+  memoryFactParseFailureCount?: number
+  memoryFactRetryAfterVersion?: number
   /** 事实向量（语义检索注入用） */
   factsVectors?: number[][]
+  /** 最后一条已纳入长记忆的消息 ID */
+  memoryLastMessageId?: string | null
+  /** 长记忆快照版本 */
+  memoryVersion?: number
+  /** factsVectors 对应的长记忆版本 */
+  factsVectorVersion?: number
   /** 上下文溢出压缩摘要 */
-  compressedSummary?: string
+  compressedSummary?: string | null
   /** 已压缩消息的时间范围 */
-  compressedRange?: { startTs: number; endTs: number }
+  compressedRange?: { startTs: number; endTs: number } | null
 }
 
 /** AI 后端提供商类型 */

@@ -17,12 +17,19 @@ const log = createLogger('chat')
 const UPDATE_SESSION_FIELDS = new Set([
   'title',
   'memory',
+  'memoryCurrentState',
   'memoryEnabled',
   'memoryMode',
   'autoMemoryInterval',
   'memoryUpdatedAt',
   'memoryFacts',
+  'memoryFactHistory',
+  'memoryFactParseFailureCount',
+  'memoryFactRetryAfterVersion',
   'factsVectors',
+  'memoryLastMessageId',
+  'memoryVersion',
+  'factsVectorVersion',
   'compressedSummary',
   'compressedRange',
   'titleGenerated',
@@ -288,8 +295,9 @@ function updateMessage(characterId: string, sessionId: string, message: Message)
   return false
 }
 
-/** 计算单个 session 的消息数和最后消息摘要 */
-// 优化：只读尾部获取 lastMessage，行数通过扫描换行符统计（避免全量 JSON 解析）
+/** 计算物理文件统计与尾行摘要，尾行摘要仅作为异常数据的兼容回退。 */
+// 正常预览由 computeChronologicalMessageMeta 按 timestamp 计算，避免编辑旧消息
+// 后物理尾行覆盖真正的最后一条消息。
 function computeMessageMeta(characterId: string, sessionId: string): { count: number; lastMessage: string } {
   const filePath = getSessionFile(characterId, sessionId)
   if (!existsSync(filePath)) return { count: 0, lastMessage: '' }
@@ -376,6 +384,16 @@ interface MetaCacheEntry { mtimeMs: number; size: number; meta: { count: number;
 const sessionMetaCache = new Map<string, MetaCacheEntry>()
 const META_CACHE_MAX = 1000
 
+/** 按时间顺序计算会话摘要；编辑旧消息时，JSONL 物理尾行不代表最后一条消息。 */
+function computeChronologicalMessageMeta(characterId: string, sessionId: string): { count: number; lastMessage: string } {
+  const physicalMeta = computeMessageMeta(characterId, sessionId)
+  // 元数据层已有自己的 mtime+size 缓存；这里绕过消息 LRU，避免文件被外部追加后
+  // 复用旧消息列表而得到旧的预览文本。
+  const messages = readMessages(characterId, sessionId, true)
+  const lastMessage = messages[messages.length - 1]?.content ?? physicalMeta.lastMessage
+  return { count: physicalMeta.count, lastMessage: lastMessage.slice(0, 50) }
+}
+
 export function computeMessageMetaCached(characterId: string, sessionId: string): { count: number; lastMessage: string } {
   const filePath = getSessionFile(characterId, sessionId)
   if (!existsSync(filePath)) return { count: 0, lastMessage: '' }
@@ -390,7 +408,7 @@ export function computeMessageMetaCached(characterId: string, sessionId: string)
   if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
     return cached.meta
   }
-  const meta = computeMessageMeta(characterId, sessionId)
+  const meta = computeChronologicalMessageMeta(characterId, sessionId)
   sessionMetaCache.set(key, { mtimeMs: st.mtimeMs, size: st.size, meta })
   // 超限时清除最早插入的一半条目（Map 迭代序 = 插入序）
   if (sessionMetaCache.size > META_CACHE_MAX) {
@@ -698,7 +716,18 @@ export function registerChatIPC(ipcMain: IpcMain): void {
           session.updatedAt = Date.now()
           // 重置长记忆（清空对话时一并清除历史摘要）
           session.memory = ''
+          session.memoryCurrentState = ''
           session.memoryUpdatedAt = 0
+          session.memoryFacts = []
+          session.memoryFactHistory = []
+          session.memoryFactParseFailureCount = 0
+          session.memoryFactRetryAfterVersion = 0
+          session.factsVectors = []
+          session.memoryLastMessageId = null
+          session.memoryVersion = 0
+          session.factsVectorVersion = 0
+          session.compressedSummary = null
+          session.compressedRange = null
           saveSessions(characterId, sessions)
         }
       })
@@ -1037,7 +1066,18 @@ export const chatData = {
       if (session) {
         session.updatedAt = Date.now()
         session.memory = ''
+        session.memoryCurrentState = ''
         session.memoryUpdatedAt = 0
+        session.memoryFacts = []
+        session.memoryFactHistory = []
+        session.memoryFactParseFailureCount = 0
+        session.memoryFactRetryAfterVersion = 0
+        session.factsVectors = []
+        session.memoryLastMessageId = null
+        session.memoryVersion = 0
+        session.factsVectorVersion = 0
+        session.compressedSummary = null
+        session.compressedRange = null
         saveSessions(characterId, sessions)
       }
     })

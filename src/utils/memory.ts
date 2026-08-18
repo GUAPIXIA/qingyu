@@ -1,3 +1,5 @@
+import type { FactProposal, MemoryFact, MemoryFactChange, MemoryFactRecord } from '../../shared/types'
+
 /**
  * 长记忆结构化解析工具
  *
@@ -11,12 +13,103 @@
  */
 
 export interface ParsedMemory {
+  /** 最近情节的即时状态：场景、地点、进行中的目标等。 */
+  currentState: string
+  /** 长期时间线摘要；保留 summary 字段以兼容历史会话数据。 */
   summary: string
   facts: string[]
+  /** 未包含该段时为 undefined；包含但格式无效时为 null，调用方必须保留旧事实。 */
+  factChanges?: MemoryFactChange[] | null
+  /** 新格式：模型仅输出语义提案，服务端负责匹配事实 ID。 */
+  factProposals?: FactProposal[] | null
 }
 
 /** 事实列表上限（防止无限累积） */
 export const MAX_MEMORY_FACTS = 30
+
+function parseFactChange(raw: unknown): MemoryFactChange | null {
+  if (!raw || typeof raw !== 'object') return null
+  const item = raw as Record<string, unknown>
+  const action = item.action
+  if (action === 'add') {
+    const fact = item.fact
+    if (!fact || typeof fact !== 'object') return null
+    const value = fact as Record<string, unknown>
+    if (!['subject', 'predicate', 'value'].every((key) => typeof value[key] === 'string' && value[key].trim())) return null
+    const result: NonNullable<MemoryFactChange['fact']> = {
+      subject: String(value.subject).trim(),
+      predicate: String(value.predicate).trim(),
+      value: String(value.value).trim(),
+    }
+    if (typeof value.importance === 'number') result.importance = value.importance as MemoryFact['importance']
+    if (typeof value.confidence === 'number') result.confidence = value.confidence
+    return { action, fact: result }
+  }
+  if (action === 'update') {
+    if (typeof item.id !== 'string' || !item.id.trim() || !item.patch || typeof item.patch !== 'object') return null
+    const patch = item.patch as Record<string, unknown>
+    const result: NonNullable<MemoryFactChange['patch']> = {}
+    for (const key of ['subject', 'predicate', 'value'] as const) {
+      if (typeof patch[key] === 'string' && patch[key].trim()) result[key] = patch[key].trim()
+    }
+    if (typeof patch.importance === 'number') result.importance = patch.importance as MemoryFact['importance']
+    if (typeof patch.confidence === 'number') result.confidence = patch.confidence
+    if (Object.keys(result).length === 0) return null
+    return { action, id: item.id.trim(), patch: result }
+  }
+  if (action === 'deactivate' && typeof item.id === 'string' && item.id.trim()) {
+    return { action, id: item.id.trim() }
+  }
+  return null
+}
+
+function parseFactChanges(section: string): MemoryFactChange[] | null {
+  const jsonText = section.trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim()
+  try {
+    const value: unknown = JSON.parse(jsonText)
+    if (!Array.isArray(value)) return null
+    const changes = value.map(parseFactChange)
+    return changes.every((change): change is MemoryFactChange => change !== null) ? changes : null
+  } catch {
+    return null
+  }
+}
+
+function parseFactProposal(raw: unknown): FactProposal | null {
+  if (!raw || typeof raw !== 'object') return null
+  const item = raw as Record<string, unknown>
+  if (!['subject', 'predicate', 'value'].every((key) => typeof item[key] === 'string' && item[key].trim())) return null
+  if (item.changeType !== 'set' && item.changeType !== 'clear') return null
+  const proposal: FactProposal = {
+    subject: String(item.subject).trim(),
+    predicate: String(item.predicate).trim(),
+    value: String(item.value).trim(),
+    changeType: item.changeType,
+  }
+  if (typeof item.scope === 'string' && item.scope.trim()) proposal.scope = item.scope.trim()
+  if (typeof item.entityId === 'string' && item.entityId.trim()) proposal.entityId = item.entityId.trim()
+  if (typeof item.importance === 'number') proposal.importance = item.importance as FactProposal['importance']
+  if (typeof item.confidence === 'number') proposal.confidence = item.confidence
+  return proposal
+}
+
+function parseFactProposals(section: string): FactProposal[] | null {
+  const jsonText = section.trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim()
+  try {
+    const value: unknown = JSON.parse(jsonText)
+    if (!Array.isArray(value)) return null
+    const proposals = value.map(parseFactProposal)
+    return proposals.every((proposal): proposal is FactProposal => proposal !== null) ? proposals : null
+  } catch {
+    return null
+  }
+}
 
 /**
  * 解析模型输出的结构化记忆文本。
@@ -30,12 +123,17 @@ export function parseMemoryResult(text: string): ParsedMemory {
     .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
     .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
     .trim()
-  if (!cleaned) return { summary: '', facts: [] }
+  if (!cleaned) return { currentState: '', summary: '', facts: [] }
 
-  const summaryMatch = cleaned.match(/【摘要】([\s\S]*?)(?=【事实】|$)/)
-  const factsMatch = cleaned.match(/【事实】([\s\S]*)$/)
+  const currentStateMatch = cleaned.match(/【当前状态】([\s\S]*?)(?=【(?:时间线|摘要|事实|事实变更|事实提案)】|$)/)
+  const timelineMatch = cleaned.match(/【时间线】([\s\S]*?)(?=【(?:事实|事实变更|事实提案)】|$)/)
+  const summaryMatch = cleaned.match(/【摘要】([\s\S]*?)(?=【(?:事实|事实变更|事实提案)】|$)/)
+  const factsMatch = cleaned.match(/【事实】([\s\S]*?)(?=【(?:事实变更|事实提案)】|$)/)
+  const factChangesMatch = cleaned.match(/【事实变更】([\s\S]*)$/)
+  const factProposalsMatch = cleaned.match(/【事实提案】([\s\S]*)$/)
 
-  const summary = (summaryMatch?.[1] ?? '').trim()
+  const currentState = (currentStateMatch?.[1] ?? '').trim()
+  const summary = (timelineMatch?.[1] ?? summaryMatch?.[1] ?? '').trim()
   const facts = (factsMatch?.[1] ?? '')
     .split('\n')
     .map((l) => l.trim())
@@ -44,20 +142,279 @@ export function parseMemoryResult(text: string): ParsedMemory {
     .filter((l) => l.length > 0)
     .slice(0, MAX_MEMORY_FACTS)
 
-  return {
+  const parsed: ParsedMemory = {
+    currentState,
     // 兜底：没有【摘要】标记时使用全文（去掉【事实】部分）
-    summary: summary || cleaned.replace(/【事实】[\s\S]*$/, '').trim(),
+    summary: summary || (currentState ? '' : cleaned.replace(/【事实(?:变更|提案)?】[\s\S]*$/, '').trim()),
     facts,
   }
+  if (factChangesMatch) parsed.factChanges = parseFactChanges(factChangesMatch[1])
+  if (factProposalsMatch) parsed.factProposals = parseFactProposals(factProposalsMatch[1])
+  return parsed
+}
+
+/** 判断是否为已迁移的结构化事实。 */
+export function isMemoryFact(fact: MemoryFactRecord): fact is MemoryFact {
+  return typeof fact === 'object' && fact !== null
+    && typeof fact.id === 'string'
+    && typeof fact.subject === 'string'
+    && typeof fact.predicate === 'string'
+    && typeof fact.value === 'string'
+}
+
+/** 面向提示词和 UI 的稳定事实文本。 */
+export function memoryFactToText(fact: MemoryFactRecord): string {
+  if (typeof fact === 'string') return fact.trim()
+  const subject = fact.subject.trim()
+  const predicate = fact.predicate.trim()
+  const value = fact.value.trim()
+  return predicate ? `${subject}的${predicate}：${value}` : `${subject}：${value}`
+}
+
+/** 仅返回当前有效事实的可嵌入文本。 */
+export function memoryFactsToTexts(facts: MemoryFactRecord[] | undefined | null): string[] {
+  return (facts ?? [])
+    .filter((fact) => !isMemoryFact(fact) || fact.status === 'active')
+    .map(memoryFactToText)
+    .filter(Boolean)
+}
+
+function clampImportance(value: unknown): MemoryFact['importance'] {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : 3
+  return Math.min(5, Math.max(1, numeric)) as MemoryFact['importance']
+}
+
+function clampConfidence(value: unknown): number {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : 0.8
+  return Math.min(1, Math.max(0, numeric))
+}
+
+function stableLegacyId(text: string, index: number): string {
+  let hash = 0
+  for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0
+  return `legacy-${Math.abs(hash).toString(36)}-${index}`
+}
+
+function legacyFactToRecord(text: string, index: number, updatedAt: number): MemoryFact {
+  const trimmed = text.trim()
+  const match = trimmed.match(/^(.+?)的(.+?)[：:]\s*(.+)$/)
+  return {
+    id: stableLegacyId(trimmed, index),
+    subject: match?.[1]?.trim() || '历史事实',
+    predicate: match?.[2]?.trim() || '内容',
+    value: match?.[3]?.trim() || trimmed,
+    status: 'active',
+    importance: 3,
+    confidence: 0.7,
+    sourceMessageIds: [],
+    updatedAt,
+  }
+}
+
+function normalizeFact(fact: MemoryFactRecord, index: number, updatedAt: number): MemoryFact {
+  if (!isMemoryFact(fact)) return legacyFactToRecord(fact, index, updatedAt)
+  return {
+    ...fact,
+    subject: fact.subject.trim(),
+    predicate: fact.predicate.trim(),
+    value: fact.value.trim(),
+    status: fact.status === 'inactive' || fact.status === 'superseded' ? fact.status : 'active',
+    importance: clampImportance(fact.importance),
+    confidence: clampConfidence(fact.confidence),
+    sourceMessageIds: Array.isArray(fact.sourceMessageIds) ? fact.sourceMessageIds.filter(Boolean) : [],
+    updatedAt: Number.isFinite(fact.updatedAt) ? fact.updatedAt : updatedAt,
+  }
+}
+
+function factKey(fact: Pick<MemoryFact, 'subject' | 'predicate' | 'scope' | 'entityId'>): string {
+  const normalize = (value: string | undefined) => (value ?? '').trim().toLocaleLowerCase()
+  return [normalize(fact.subject), normalize(fact.predicate), normalize(fact.scope), normalize(fact.entityId)].join('|')
+}
+
+function withSource(fact: MemoryFact, messageId: string, updatedAt: number): MemoryFact {
+  return {
+    ...fact,
+    sourceMessageIds: messageId && !fact.sourceMessageIds.includes(messageId)
+      ? [...fact.sourceMessageIds, messageId]
+      : fact.sourceMessageIds,
+    updatedAt,
+  }
+}
+
+/**
+ * 应用模型给出的增量事实变更。未知 ID 一律忽略，解析失败由调用方完全保留旧快照。
+ * 替代和停用的事实移动到 history，绝不参与后续上下文或向量检索。
+ */
+export function applyMemoryFactChanges(
+  previousFacts: MemoryFactRecord[] | undefined | null,
+  previousHistory: MemoryFact[] | undefined | null,
+  changes: MemoryFactChange[],
+  sourceMessageId: string,
+  updatedAt = Date.now(),
+): { facts: MemoryFact[]; history: MemoryFact[] } {
+  const facts = (previousFacts ?? []).map((fact, index) => normalizeFact(fact, index, updatedAt))
+    .filter((fact) => fact.status === 'active')
+  const history = (previousHistory ?? []).map((fact, index) => normalizeFact(fact, index, updatedAt))
+  const archive = (fact: MemoryFact, status: 'inactive' | 'superseded') => {
+    const archived = withSource({
+      ...fact,
+      id: `${fact.id}:history:${updatedAt}:${history.length}`,
+      status,
+    }, sourceMessageId, updatedAt)
+    history.push(archived)
+  }
+  const sameKey = (left: MemoryFact, right: Pick<MemoryFact, 'subject' | 'predicate' | 'scope' | 'entityId'>) =>
+    factKey(left) === factKey(right)
+
+  changes.forEach((change, index) => {
+    if (change.action === 'add' && change.fact) {
+      for (let i = facts.length - 1; i >= 0; i--) {
+        if (sameKey(facts[i], change.fact)) archive(facts.splice(i, 1)[0], 'superseded')
+      }
+      facts.push({
+        id: `fact-${updatedAt.toString(36)}-${index}`,
+        subject: change.fact.subject.trim(),
+        predicate: change.fact.predicate.trim(),
+        value: change.fact.value.trim(),
+        status: 'active',
+        importance: clampImportance(change.fact.importance),
+        confidence: clampConfidence(change.fact.confidence),
+        scope: change.fact.scope?.trim() || undefined,
+        entityId: change.fact.entityId?.trim() || undefined,
+        sourceMessageIds: sourceMessageId ? [sourceMessageId] : [],
+        updatedAt,
+      })
+      return
+    }
+    const targetIndex = facts.findIndex((fact) => fact.id === change.id)
+    if (targetIndex < 0) return
+    const target = facts[targetIndex]
+    if (change.action === 'deactivate') {
+      archive(target, 'inactive')
+      facts.splice(targetIndex, 1)
+      return
+    }
+    if (change.action === 'update' && change.patch) {
+      const next = withSource({
+        ...target,
+        ...change.patch,
+        importance: clampImportance(change.patch.importance ?? target.importance),
+        confidence: clampConfidence(change.patch.confidence ?? target.confidence),
+      }, sourceMessageId, updatedAt)
+      if (next.value !== target.value) archive(target, 'superseded')
+      for (let i = facts.length - 1; i >= 0; i--) {
+        if (i !== targetIndex && sameKey(facts[i], next)) archive(facts.splice(i, 1)[0], 'superseded')
+      }
+      const nextIndex = facts.findIndex((fact) => fact.id === target.id)
+      if (nextIndex >= 0) facts[nextIndex] = next
+    }
+  })
+  return { facts: facts.slice(0, MAX_MEMORY_FACTS), history }
+}
+
+/**
+ * 将模型的无 ID 语义提案转换为服务端事实变更。匹配键固定为
+ * subject + predicate + scope + entityId，模型无法越权修改同名但不同作用域的事实。
+ */
+export function applyFactProposals(
+  previousFacts: MemoryFactRecord[] | undefined | null,
+  previousHistory: MemoryFact[] | undefined | null,
+  proposals: FactProposal[],
+  sourceMessageId: string,
+  updatedAt = Date.now(),
+): { facts: MemoryFact[]; history: MemoryFact[] } {
+  let result = applyMemoryFactChanges(previousFacts, previousHistory, [], sourceMessageId, updatedAt)
+  proposals.forEach((proposal) => {
+    const target = result.facts.find((fact) => factKey(fact) === factKey(proposal))
+    if (proposal.changeType === 'clear') {
+      if (target) result = applyMemoryFactChanges(result.facts, result.history, [{ action: 'deactivate', id: target.id }], sourceMessageId, updatedAt)
+      return
+    }
+    const change: MemoryFactChange = target
+      ? {
+          action: 'update',
+          id: target.id,
+          patch: {
+            value: proposal.value,
+            importance: proposal.importance,
+            confidence: proposal.confidence,
+          },
+        }
+      : {
+          action: 'add',
+          fact: {
+            subject: proposal.subject,
+            predicate: proposal.predicate,
+            value: proposal.value,
+            scope: proposal.scope,
+            entityId: proposal.entityId,
+            importance: proposal.importance,
+            confidence: proposal.confidence,
+          },
+        }
+    result = applyMemoryFactChanges(result.facts, result.history, [change], sourceMessageId, updatedAt)
+  })
+  return result
+}
+
+/** 按 Token 预算裁剪文本，始终保留开头的高优先级内容。 */
+function truncateMemoryText(
+  text: string,
+  budget: number,
+  estimateTokens: (text: string, model?: string) => number,
+  model?: string,
+): string {
+  let result = text ?? ''
+  while (result.length > 0 && estimateTokens(result, model) > budget) {
+    result = result.slice(0, Math.max(0, result.length - 100))
+  }
+  return result
+}
+
+/**
+ * 分层记忆预算：当前状态优先，其次相关事实，最后才是时间线。
+ * 旧会话没有 currentState 时不会为该层预留预算，保持原有摘要可用空间。
+ */
+export function fitLayeredMemoryBudget(
+  currentState: string | undefined | null,
+  timeline: string,
+  facts: MemoryFactRecord[] | undefined | null,
+  budget: number,
+  estimateTokens: (text: string, model?: string) => number,
+  model?: string,
+): { currentState: string; timeline: string; facts: MemoryFactRecord[] } {
+  const safeBudget = Math.max(50, Math.floor(budget))
+  const stateText = currentState?.trim() ?? ''
+  const stateBudget = stateText
+    ? Math.min(240, Math.max(30, Math.floor(safeBudget * 0.3)))
+    : 0
+  const fittedState = stateBudget > 0
+    ? truncateMemoryText(stateText, stateBudget, estimateTokens, model)
+    : ''
+  const remaining = Math.max(0, safeBudget - estimateTokens(fittedState, model))
+  // 事实优先于时间线：保留 40% 预算给事实；没有事实时全部空间回流给时间线。
+  let factsRemaining = Math.max(0, Math.floor(remaining * 0.4))
+  const fittedFacts: MemoryFactRecord[] = []
+  for (const fact of facts ?? []) {
+    if (isMemoryFact(fact) && fact.status !== 'active') continue
+    const tokens = estimateTokens(memoryFactToText(fact), model) + 1
+    if (tokens > factsRemaining) break
+    fittedFacts.push(fact)
+    factsRemaining -= tokens
+  }
+  const usedFactTokens = fittedFacts.reduce((total, fact) => total + estimateTokens(memoryFactToText(fact), model) + 1, 0)
+  const timelineBudget = Math.max(0, remaining - usedFactTokens)
+  const fittedTimeline = truncateMemoryText(timeline ?? '', timelineBudget, estimateTokens, model)
+  return { currentState: fittedState, timeline: fittedTimeline, facts: fittedFacts }
 }
 
 /**
  * 将事实列表格式化为注入文本。
  * 空列表返回空字符串。
  */
-export function formatMemoryFacts(facts: string[] | undefined | null): string {
+export function formatMemoryFacts(facts: MemoryFactRecord[] | undefined | null): string {
   if (!facts || facts.length === 0) return ''
-  return facts.map((f, i) => `${i + 1}. ${f}`).join('\n')
+  return memoryFactsToTexts(facts).map((fact, i) => `${i + 1}. ${fact}`).join('\n')
 }
 
 /**
@@ -66,11 +423,11 @@ export function formatMemoryFacts(facts: string[] | undefined | null): string {
  */
 export function fitMemoryBudget(
   summary: string,
-  facts: string[] | undefined | null,
+  facts: MemoryFactRecord[] | undefined | null,
   budget: number,
   estimateTokens: (text: string, model?: string) => number,
   model?: string,
-): { summary: string; facts: string[] } {
+): { summary: string; facts: MemoryFactRecord[] } {
   const safeBudget = Math.max(50, Math.floor(budget))
   const summaryBudget = Math.max(30, Math.floor(safeBudget * 0.6))
 
@@ -83,9 +440,10 @@ export function fitMemoryBudget(
   // 事实：按顺序保留，直到填满剩余预算
   const list = facts ?? []
   let remaining = safeBudget - estimateTokens(s, model)
-  const kept: string[] = []
+  const kept: MemoryFactRecord[] = []
   for (const f of list) {
-    const t = estimateTokens(f, model) + 1 // +1 编号开销
+    if (isMemoryFact(f) && f.status !== 'active') continue
+    const t = estimateTokens(memoryFactToText(f), model) + 1 // +1 编号开销
     if (t > remaining) break
     kept.push(f)
     remaining -= t

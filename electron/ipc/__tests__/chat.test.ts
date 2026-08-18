@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-chat-test' },
 }))
 
-import { computeMessageMetaCached, readMessages, appendMessage, messagesCacheInvalidate, compactSessionFile } from '../chat'
+import { chatData, computeMessageMetaCached, readMessages, appendMessage, messagesCacheInvalidate, compactSessionFile } from '../chat'
 
 const TEST_DIR = '/tmp/qingyu-chat-test/data/chats/char-001'
 const SESSION_FILE = join(TEST_DIR, 's1.jsonl')
@@ -74,6 +74,33 @@ describe('computeMessageMetaCached', () => {
     writeFileSync(otherFile, JSON.stringify({ id: 'b', content: '另一会话' }) + '\n')
     expect(computeMessageMetaCached('char-001', 's1').count).toBe(1)
     expect(computeMessageMetaCached('char-001', 's2').count).toBe(1)
+  })
+})
+
+describe('会话派生记忆清理', () => {
+  it('清空会话时同时清除摘要、事实、向量与压缩摘要', async () => {
+    const session = await chatData.createSession('char-001', '记忆测试')
+    await chatData.updateSession('char-001', session.id, {
+      memory: '旧摘要',
+      memoryFacts: ['旧事实'],
+      factsVectors: [[0.1, 0.2]],
+      factsVectorVersion: 3,
+      memoryVersion: 3,
+      memoryLastMessageId: 'm3',
+      compressedSummary: '旧压缩摘要',
+      compressedRange: { startTs: 1, endTs: 3 },
+    })
+
+    await chatData.clearChat('char-001', session.id)
+
+    const cleared = (await chatData.listSessions('char-001')).find((item) => item.id === session.id)!
+    expect(cleared.memory).toBe('')
+    expect(cleared.memoryFacts).toEqual([])
+    expect(cleared.factsVectors).toEqual([])
+    expect(cleared.factsVectorVersion).toBe(0)
+    expect(cleared.memoryLastMessageId).toBeNull()
+    expect(cleared.compressedSummary).toBeNull()
+    expect(cleared.compressedRange).toBeNull()
   })
 })
 

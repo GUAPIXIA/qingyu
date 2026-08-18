@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import type { Character, Preset, ChatParams } from '../../shared/types'
+import type { Character, Preset, ChatParams, MemoryFactRecord } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { estimateTokens } from '../utils/tokenCounter'
 import { countChars } from '../utils/charCounter'
@@ -19,6 +19,7 @@ import {
 } from './chatConstants'
 import { friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
 import { resolveVisionModel } from '../utils/visionModel'
+import { memoryFactsToTexts } from '../utils/memory'
 import type { ChatState, StoreGet, StoreSet } from './chatTypes'
 
 // ===================== 流式状态管理（模块级，避免渲染抖动） =====================
@@ -178,9 +179,11 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
 
   const { sessions, currentSessionId } = get()
   const session = sessions.find((s) => s.id === currentSessionId)
-  if (!session?.memoryEnabled || !session.memoryFacts?.length) return clear()
+  const factTexts = memoryFactsToTexts(session?.memoryFacts)
+  if (!session?.memoryEnabled || !factTexts.length) return clear()
   const vectors = session.factsVectors
-  if (!vectors || vectors.length !== session.memoryFacts.length) return clear()
+  if (!vectors || vectors.length !== factTexts.length
+    || session.factsVectorVersion !== session.memoryVersion) return clear()
 
   // 查询文本：最近消息（与语义扫描一致，简化取最近 20 条）
   const query = get().messages.slice(-20).map((m) => m.content).join(' ')
@@ -197,7 +200,7 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
   try {
     const hits = await window.api.embedding.searchFacts({
       query,
-      facts: session.memoryFacts,
+      facts: factTexts,
       vectors,
       config: {
         provider: st.provider,
@@ -218,8 +221,14 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
 /**
  * 记忆事实向量化（P0-2）：保存事实后异步嵌入并存入会话，供语义检索注入。
  */
-export async function vectorizeSessionFacts(characterId: string, sessionId: string, facts: string[]): Promise<void> {
-  if (!facts?.length) return
+export async function vectorizeSessionFacts(
+  characterId: string,
+  sessionId: string,
+  facts: MemoryFactRecord[],
+  memoryVersion: number,
+): Promise<void> {
+  const factTexts = memoryFactsToTexts(facts)
+  if (!factTexts.length) return
   const st = useSettingsStore.getState().settings.semanticTrigger
   if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return
   try {
@@ -228,9 +237,13 @@ export async function vectorizeSessionFacts(characterId: string, sessionId: stri
       baseUrl: st.baseUrl,
       model: st.model,
       apiKey: st.apiKey ?? '',
-    }, facts)
-    if (vectors.length === facts.length) {
-      await window.api.chat.updateSession(characterId, sessionId, { factsVectors: vectors })
+    }, factTexts)
+    if (vectors.length === factTexts.length) {
+      // 即使旧请求晚到，也会携带旧版本；上下文构建器会拒绝版本不匹配的向量。
+      await window.api.chat.updateSession(characterId, sessionId, {
+        factsVectors: vectors,
+        factsVectorVersion: memoryVersion,
+      })
     }
   } catch { /* 向量化失败不阻塞，回退全量注入 */ }
 }

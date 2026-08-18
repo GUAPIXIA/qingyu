@@ -20,7 +20,7 @@ import { replaceVariables } from '../utils/variables'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
-import { fitMemoryBudget, formatMemoryFacts } from '../utils/memory'
+import { fitLayeredMemoryBudget, formatMemoryFacts } from '../utils/memory'
 import { expandMacros, buildMacroContext } from '../utils/macros'
 import { triggerLorebooks, mergeSemanticHits, type BudgetLoreItem } from '../utils/lorebook'
 import { logInfo } from '../lib/logger'
@@ -105,7 +105,7 @@ export function buildContextMessagesFromData(
   }
 
   // 心理描写输出格式（修复 #33）：改为可配置，默认开启
-  const enableThoughtFormat = settings.enableThoughtFormat !== false
+  const enableThoughtFormat = preset?.enableThoughtFormat ?? (settings.enableThoughtFormat !== false)
   if (enableThoughtFormat) {
     systemContent += '\n\n【输出格式要求】\n请先在 <thought>...</thought> 标签内输出角色的内心想法和心理活动，然后再输出角色的实际对话和行动。两部分必须分开。'
   }
@@ -121,7 +121,7 @@ export function buildContextMessagesFromData(
     Math.floor(maxContext * 0.25),
   )
 
-  // 长记忆注入（摘要 + 关键事实，纳入 token 预算：不超过上下文预算的 10%，上限 800）
+  // 分层长记忆注入：当前状态优先，其次相关事实，最后是时间线。
   const { sessions, currentSessionId } = data.chat
   const currentSession = sessions.find(s => s.id === currentSessionId)
   if (currentSession?.memoryEnabled) {
@@ -129,19 +129,23 @@ export function buildContextMessagesFromData(
     // P0-2：语义检索命中时仅注入相关事实，否则全量
     const semanticFacts = data.chat.semanticFactsHits
     const factsForInject = semanticFacts.length > 0 ? semanticFacts : (currentSession.memoryFacts ?? [])
-    const fitted = fitMemoryBudget(
+    const fitted = fitLayeredMemoryBudget(
+      currentSession.memoryCurrentState,
       currentSession.memory || '',
       factsForInject,
       memoryBudget,
       estimateTokens,
       model,
     )
-    if (fitted.summary) {
-      systemContent += '\n\n【对话历史摘要】\n' + fitted.summary
+    if (fitted.currentState) {
+      systemContent += '\n\n【当前状态】\n' + fitted.currentState
     }
     const factsText = formatMemoryFacts(fitted.facts)
     if (factsText) {
       systemContent += '\n\n【关键事实】\n' + factsText
+    }
+    if (fitted.timeline) {
+      systemContent += '\n\n【对话时间线】\n' + fitted.timeline
     }
   }
 
@@ -289,7 +293,9 @@ export function buildContextMessagesFromData(
   const compression = settings.contextCompression ?? { enabled: true, minDropTokens: 2000 }
   let compressedSummaryInjected = ''
   let pendingCompression: PendingCompression | undefined
-  if (compression.enabled && droppedTokens > 0 && currentSession) {
+  // 长期时间线已覆盖更早历史时，不再注入或重复生成压缩摘要。
+  const hasTimelineMemory = Boolean(currentSession?.memory?.trim())
+  if (compression.enabled && !hasTimelineMemory && droppedTokens > 0 && currentSession) {
     const covered = !!currentSession.compressedSummary
       && !!currentSession.compressedRange
       && droppedStartTs >= currentSession.compressedRange.startTs

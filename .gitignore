@@ -54,8 +54,4 @@ lint*.json
 .qoder/
 .codebuddy/
 
-# 安卓伴侣端（独立仓库，不在桌面端仓库中追踪）
-android/
-
-# 公告服务端（独立仓库，不在桌面端仓库中追踪）
-server/
+# android/ 与 server/ 为本仓库的子项目；各自的 .gitignore 继续排除运行时配置与构建产物。

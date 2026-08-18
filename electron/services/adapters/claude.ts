@@ -21,7 +21,9 @@ export const claudeAdapter: AIAdapter = {
     const body: Record<string, unknown> = {
       model,
       max_tokens: maxTokens || 4096,
-      temperature,
+      // Anthropic 的 temperature 上限为 1；跨提供商预设可配置到 2，
+      // 在适配器边界归一化，避免创意预设直接触发 400。
+      temperature: Math.min(1, Math.max(0, temperature)),
       top_p: topP,
       messages: chatMessages,
       stream,

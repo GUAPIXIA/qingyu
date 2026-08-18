@@ -106,7 +106,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       { id: 'page-chat', label: '前往：聊天', icon: MessageSquare, group: '页面', action: () => navigate('/chat') },
       { id: 'page-group', label: '前往：群聊', icon: Users, group: '页面', action: () => navigate('/group') },
       { id: 'page-characters', label: '前往：角色', icon: Bot, group: '页面', action: () => navigate('/characters') },
-      { id: 'page-character-create', label: '前往：创建角色', icon: Plus, group: '页面', action: () => navigate('/character-create') },
+      { id: 'page-character-create', label: '前往：制作角色卡', icon: Plus, group: '页面', action: () => navigate('/character-create') },
       { id: 'page-lorebook', label: '前往：世界书', icon: BookOpen, group: '页面', action: () => navigate('/lorebook') },
       { id: 'page-presets', label: '前往：预设', icon: SlidersHorizontal, group: '页面', action: () => navigate('/presets') },
       { id: 'page-regex', label: '前往：正则', icon: Regex, group: '页面', action: () => navigate('/regex') },
