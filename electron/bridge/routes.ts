@@ -39,10 +39,10 @@ import { buildContextMessagesFromData } from '../../src/context/contextBuilder'
 import { buildContinueContext, ensureUserPerspective } from '../../src/components/chat/aiInputHelper'
 import { stripThought } from '../../src/utils/messagePostProcess'
 import { parseMemoryResult } from '../../src/utils/memory'
-import { replaceVariables as replaceVars } from '../../src/utils/variables'
+import { replaceVariables as replaceVars } from '../utils/variables'
 import { getDefaultSettings } from '../../shared/defaults'
 import { nanoid } from 'nanoid'
-import { replaceVariables } from '../../src/utils/variables'
+import { replaceVariables } from '../utils/variables'
 import {
   consumePairingCode,
   enqueuePendingPair,
