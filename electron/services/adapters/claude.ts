@@ -1,4 +1,7 @@
 import type { AIAdapter } from './types'
+
+/** Claude API 版本号，更新时只需改此处 */
+const ANTHROPIC_API_VERSION = '2023-06-01'
 import { normalizeThoughtTags } from './types'
 import { sanitizeApiKey } from '../../utils/pathGuard'
 import { toClaudeContent, imageErrorHint } from './vision'
@@ -71,7 +74,7 @@ export const claudeAdapter: AIAdapter = {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         // API 版本（可定期更新）
-        'anthropic-version': '2023-06-01',
+        'anthropic-version': ANTHROPIC_API_VERSION,
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify(body),
@@ -245,7 +248,7 @@ export const claudeAdapter: AIAdapter = {
     const response = await fetch(url, {
       headers: {
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'anthropic-version': ANTHROPIC_API_VERSION,
       },
     })
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)

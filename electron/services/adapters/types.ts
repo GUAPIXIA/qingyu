@@ -15,6 +15,11 @@ export const DEFAULT_RETRY_COUNT = 1
 /** 可重试的 HTTP 状态码 */
 export const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
 
+/** 预编译的可重试状态码正则（避免每次调用时重新创建） */
+const RETRYABLE_REGEXES = [...RETRYABLE_STATUS].map(
+  (code) => new RegExp(`(^|[^0-9])${code}([^0-9]|$)`)
+)
+
 export interface AIAdapter {
   chat(
     params: ChatParams,
@@ -73,8 +78,8 @@ export function isRetryableError(err: unknown): boolean {
     if (msg.includes('network') || msg.includes('fetch failed')) return true
     if (msg.includes('econnrefused') || msg.includes('econnreset')) return true
     // NEW-L6 修复：状态码用词边界匹配，避免子串误判（如 "4000" 命中 "400"）
-    for (const code of RETRYABLE_STATUS) {
-      if (new RegExp(`(^|[^0-9])${code}([^0-9]|$)`).test(msg)) return true
+    for (const re of RETRYABLE_REGEXES) {
+      if (re.test(msg)) return true
     }
   }
   return false
