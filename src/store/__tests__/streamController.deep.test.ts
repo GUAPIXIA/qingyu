@@ -157,6 +157,7 @@ describe('streamController - 深度测试', () => {
       })
       mockGet.mockReturnValue({
         messages: [],
+        sessions: [],
         buildContext: vi.fn(() => []),
         currentSessionId: 'session-1',
         _semanticLoreHits: [],
