@@ -111,7 +111,7 @@ app.whenReady().then(async () => {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: tavern: https: http:",
       "font-src 'self' data: file:",
-      "connect-src 'self' https: http: ws: wss:",
+      "connect-src 'self' https: wss:",  // P0-5: 去掉 http:/ws: 防止 XSS 绕过后外发数据到内网/攻击者服务器
       "object-src 'none'",
       "base-uri 'none'",
       "form-action 'none'",
