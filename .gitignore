@@ -53,3 +53,6 @@ lint*.json
 # AI 工具目录（本地工具数据，不入库）
 .qoder/
 .codebuddy/
+
+# 安卓伴侣端（独立仓库，不在桌面端仓库中追踪）
+android/
