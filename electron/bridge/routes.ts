@@ -23,6 +23,7 @@ import { Router } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import { join } from 'node:path'
 import { readJson, writeJson, listJsonFilesAsync, DIRS } from '../services/storage'
+import { existsSync } from 'node:fs'
 import { getCharacter, listCharacters } from '../services/charCard'
 import { chatData } from '../ipc/chat'
 import { groupData } from '../ipc/group'
@@ -194,14 +195,15 @@ export function buildBridgeRouter(
     try {
       const chars = await listCharacters()
       // 下发给安卓端的角色子集：封面转静态路由 URL（§4.2，tavern:// 不可达）
-      // 注意：listCharacters 不含图片 base64，avatar 需经 getCharacter 按需读文件判断
+      // 直接检查文件存在性，避免 N+1 读取完整角色文件
       res.json(chars.map((c) => {
-        const full = getCharacter(c.id)
+        const avatarPath = join(DIRS.characters(), `${c.id}.png`)
+        const coverPath = join(DIRS.characters(), `${c.id}_cover.png`)
         return {
           id: c.id,
           name: c.name,
-          avatarUrl: full?.avatar ? `/static/avatars/${c.id}` : null,
-          coverUrl: full?.cover ? `/static/covers/${c.id}` : null,
+          avatarUrl: existsSync(avatarPath) ? `/static/avatars/${c.id}` : null,
+          coverUrl: existsSync(coverPath) ? `/static/covers/${c.id}` : null,
           description: c.description,
           personality: c.personality,
           scenario: c.scenario,
