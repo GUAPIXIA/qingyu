@@ -9,6 +9,7 @@ import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
+import { ErrorBoundary } from '../common/ErrorBoundary'
 import { formatTime } from '../../utils/format'
 import { countChars, formatCharCount } from '../../utils/charCounter'
 import { remarkRoleplay } from '../../utils/remark-roleplay'
@@ -316,6 +317,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
               </button>
             )}
             {message.images?.length > 0 && (
+              <ErrorBoundary fallback={<div className="text-xs text-tavern-danger">⚠️ 图片加载异常</div>}>
               <div className={cn('flex flex-wrap gap-2', (displayContent || thought) && 'mb-2')}>
                 {message.images.map((img, i) => (
                   imgErrors.has(i) ? (
@@ -340,6 +342,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                   )
                 ))}
               </div>
+              </ErrorBoundary>
             )}
             {/* 心理描写折叠区块 */}
             {thought && !isSystem && (
@@ -362,6 +365,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             {!isSystem && (
             <div className={cn('markdown-body', isStreamingThis && 'typing-cursor')} onClick={handleMarkdownClick}>
               {/* BUG-09 修复：移除 rehypeRaw / allowDangerousHtml，防止消息内容中的原始 HTML（如 <script>、<img onerror>）执行导致 XSS */}
+              <ErrorBoundary fallback={<pre className="text-xs text-tavern-danger whitespace-pre-wrap break-all">⚠️ 消息渲染异常</pre>}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkRoleplay, remarkAudio]}
                 rehypePlugins={[rehypeHighlight]}
@@ -369,6 +373,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
               >
                 {displayContent || (isStreamingThis ? '' : (thought ? '💭 内容已在"内心想法"中展开' : '（空消息）'))}
               </ReactMarkdown>
+              </ErrorBoundary>
             </div>
             )}
             {/* 翻译状态指示 */}

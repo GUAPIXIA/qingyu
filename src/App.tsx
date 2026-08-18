@@ -8,6 +8,7 @@ import { useSessionSync } from './hooks/useSessionSync'
 import { usePairApproval } from './hooks/usePairApproval'
 import { BUILTIN_FONTS } from './utils/defaults'
 import { logError } from './lib/logger'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
 import { CommandPalette } from './components/common/CommandPalette'
@@ -208,20 +209,20 @@ export default function App() {
       <Route path="/" element={<MainLayout />}>
         <Route index element={<Navigate to="/chat" replace />} />
         <Route path="chat" element={<ChatPage />} />
-        <Route path="api" element={<Suspense fallback={null}><ApiPage /></Suspense>} />
-        <Route path="characters" element={<Suspense fallback={null}><CharactersPage /></Suspense>} />
-        <Route path="character-create" element={<Suspense fallback={null}><CharacterCreatePage /></Suspense>} />
-        <Route path="settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
-        <Route path="lorebook" element={<Suspense fallback={null}><LorebookPage /></Suspense>} />
-        <Route path="presets" element={<Suspense fallback={null}><PresetsPage /></Suspense>} />
-        <Route path="group" element={<Suspense fallback={null}><GroupChatPage /></Suspense>} />
-        <Route path="regex" element={<Suspense fallback={null}><RegexPage /></Suspense>} />
-        <Route path="quick-replies" element={<Suspense fallback={null}><QuickRepliesPage /></Suspense>} />
-        <Route path="personas" element={<Suspense fallback={null}><PersonasPage /></Suspense>} />
-        <Route path="usage" element={<Suspense fallback={null}><UsagePage /></Suspense>} />
-        <Route path="mcp" element={<Suspense fallback={null}><McpPage /></Suspense>} />
-        <Route path="announcements" element={<Suspense fallback={null}><AnnouncementsPage /></Suspense>} />
-        <Route path="help" element={<Suspense fallback={null}><HelpPage /></Suspense>} />
+        <Route path="api" element={<ErrorBoundary><Suspense fallback={null}><ApiPage /></Suspense></ErrorBoundary>} />
+        <Route path="characters" element={<ErrorBoundary><Suspense fallback={null}><CharactersPage /></Suspense></ErrorBoundary>} />
+        <Route path="character-create" element={<ErrorBoundary><Suspense fallback={null}><CharacterCreatePage /></Suspense></ErrorBoundary>} />
+        <Route path="settings" element={<ErrorBoundary><Suspense fallback={null}><SettingsPage /></Suspense></ErrorBoundary>} />
+        <Route path="lorebook" element={<ErrorBoundary><Suspense fallback={null}><LorebookPage /></Suspense></ErrorBoundary>} />
+        <Route path="presets" element={<ErrorBoundary><Suspense fallback={null}><PresetsPage /></Suspense></ErrorBoundary>} />
+        <Route path="group" element={<ErrorBoundary><Suspense fallback={null}><GroupChatPage /></Suspense></ErrorBoundary>} />
+        <Route path="regex" element={<ErrorBoundary><Suspense fallback={null}><RegexPage /></Suspense></ErrorBoundary>} />
+        <Route path="quick-replies" element={<ErrorBoundary><Suspense fallback={null}><QuickRepliesPage /></Suspense></ErrorBoundary>} />
+        <Route path="personas" element={<ErrorBoundary><Suspense fallback={null}><PersonasPage /></Suspense></ErrorBoundary>} />
+        <Route path="usage" element={<ErrorBoundary><Suspense fallback={null}><UsagePage /></Suspense></ErrorBoundary>} />
+        <Route path="mcp" element={<ErrorBoundary><Suspense fallback={null}><McpPage /></Suspense></ErrorBoundary>} />
+        <Route path="announcements" element={<ErrorBoundary><Suspense fallback={null}><AnnouncementsPage /></Suspense></ErrorBoundary>} />
+        <Route path="help" element={<ErrorBoundary><Suspense fallback={null}><HelpPage /></Suspense></ErrorBoundary>} />
       </Route>
       </Routes>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
