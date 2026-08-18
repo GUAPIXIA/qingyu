@@ -4,6 +4,7 @@ import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
 import { logError } from '../lib/logger'
+import { safeSave } from '../lib/safeOps'
 import {
   BookOpen,
   BookMarked,
@@ -130,20 +131,20 @@ export function LorebookPage() {
     }
   }
 
-  const updateLorebook = (id: string, patch: Partial<Lorebook>) => {
+  const updateLorebook = async (id: string, patch: Partial<Lorebook>) => {
     const current = lorebooks.find((l) => l.id === id)
     if (!current) return
     const updated: Lorebook = { ...current, ...patch }
     setLorebooks((prev) => prev.map((l) => (l.id === id ? updated : l)))
-    window.api.lorebook.save(updated)
+    await safeSave(() => window.api.lorebook.save(updated), '世界书保存')
   }
 
-  const handleNew = () => {
+  const handleNew = async () => {
     const lb = createLorebook()
     setLorebooks((prev) => [...prev, lb])
     setSelectedId(lb.id)
     setEditingEntry(null)
-    window.api.lorebook.save(lb)
+    await safeSave(() => window.api.lorebook.save(lb), '世界书保存')
   }
 
   const handleImport = async () => {

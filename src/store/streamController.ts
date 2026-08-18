@@ -10,6 +10,7 @@ import { collectStopStrings, findStopIndex } from '../utils/regex'
 import { lorebookCache } from '../utils/lorebook'
 import type { BudgetLoreItem } from '../utils/lorebook'
 import { logError, logInfo, logWarn } from '../lib/logger'
+import { safeFire } from '../lib/safeOps'
 import {
   STREAM_THROTTLE_MS,
   STREAM_IDLE_TIMEOUT_MS,
@@ -270,7 +271,7 @@ async function compressDroppedHistory(
         const sessions = await window.api.chat.listSessions(character.id)
         set({ sessions })
         logInfo('compressDroppedHistory', `早期对话已压缩（${summary.length} 字，范围 ${new Date(pending.droppedStartTs).toLocaleString()} 起）`)
-      }).catch(() => { /* 忽略 */ })
+      }).catch((e) => logError('StreamController:compressSummary', e))
     }
   })
   const unbindError = window.api.ai.onError((data) => {
@@ -351,7 +352,7 @@ async function maybeAutoTitle(get: StoreGet, set: StoreSet, character: Character
           const sessions = await window.api.chat.listSessions(character.id)
           set({ sessions })
         })
-        .catch(() => { /* 忽略 */ })
+        .catch((e) => logError('StreamController:renameSession', e))
     }
   })
   const unbindError = window.api.ai.onError((data) => {
@@ -506,7 +507,7 @@ export async function streamAIResponse(
     // 持久化到用量记录
     const sid = get().currentSessionId
     if (sid) {
-      window.api.usage.record({
+      safeFire(() => window.api.usage.record({
         timestamp: Date.now(),
         characterId: character.id,
         sessionId: sid,
@@ -514,7 +515,7 @@ export async function streamAIResponse(
         inputChars,
         outputChars,
         totalChars,
-      }).catch(() => { /* 忽略记录失败 */ })
+      }), '用量记录')
     }
 
     activeStream = null

@@ -11,6 +11,7 @@ import { replaceVariables } from '../utils/variables'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { applyOutputRegexRules, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
 import { logError, logInfo, logWarn } from '../lib/logger'
+import { safeSave } from '../lib/safeOps'
 import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS } from './chatConstants'
 import { friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
 import { resolveVisionModel } from '../utils/visionModel'
@@ -273,7 +274,7 @@ async function compressGroupDroppedHistory(
       }).then(async () => {
         const sessions = await window.api.group.listSessions(group.id)
         set({ sessions })
-      }).catch(() => { /* 忽略 */ })
+      }).catch((e) => logError('GroupChatStore:compressSummary', e))
     }
   })
   const unbindError = window.api.ai.onError((data) => {
@@ -473,7 +474,7 @@ export async function streamGroupAI(
     }))
 
     // 持久化
-    window.api.group.saveMessage(group.id, sessionId, {
+    safeSave(() => window.api.group.saveMessage(group.id, sessionId, {
       id: msgId,
       groupId: group.id,
       characterId: speaker.id,
@@ -481,7 +482,7 @@ export async function streamGroupAI(
       images: [],
       timestamp: Date.now(),
       round,
-    })
+    }), '消息保存')
 
     // 字符用量统计
     const model = useSettingsStore.getState().settings.activeModel || profile.model
@@ -535,7 +536,7 @@ export async function streamGroupAI(
       error: data.error,
     }))
 
-    window.api.group.saveMessage(group.id, sessionId, {
+    safeSave(() => window.api.group.saveMessage(group.id, sessionId, {
       id: msgId,
       groupId: group.id,
       characterId: speaker.id,
@@ -543,7 +544,7 @@ export async function streamGroupAI(
       images: [],
       timestamp: Date.now(),
       round,
-    })
+    }), '错误消息保存')
 
     // NEW-M12 修复：错误时也调用 onComplete，保证 polling 轮询链/自动记忆检查继续推进
     onComplete()
