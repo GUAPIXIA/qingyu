@@ -42,17 +42,21 @@ export function McpPage() {
   const [testResult, setTestResult] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // 加载数据
   const loadData = async () => {
-    const [s, st, t] = await Promise.all([
+    setLoadError(null)
+    const [serversR, statusesR, toolsR] = await Promise.allSettled([
       window.api.mcp.listServers(),
       window.api.mcp.listServerStatuses(),
       window.api.mcp.listTools(),
     ])
-    setServers(s as McpServerConfig[])
-    setStatuses(st as McpServerStatus[])
-    setTools(t as McpTool[])
+    if (serversR.status === 'fulfilled') setServers(serversR.value as McpServerConfig[])
+    if (statusesR.status === 'fulfilled') setStatuses(statusesR.value as McpServerStatus[])
+    if (toolsR.status === 'fulfilled') setTools(toolsR.value as McpTool[])
+    const failures = [serversR, statusesR, toolsR].filter(r => r.status === 'rejected')
+    if (failures.length > 0) setLoadError(`部分数据加载失败（${failures.length}/3）`)
   }
 
   useEffect(() => {
@@ -238,6 +242,12 @@ export function McpPage() {
           </button>
         </div>
       </header>
+
+      {loadError && (
+        <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-200">
+          ⚠️ {loadError}
+        </div>
+      )}
 
       {/* 概览条 */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-tavern-border-soft bg-tavern-bg-soft text-xs text-tavern-text-muted">

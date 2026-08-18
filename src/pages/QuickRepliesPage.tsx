@@ -23,18 +23,22 @@ export function QuickRepliesPage() {
   const [editing, setEditing] = useState<EditingEntry | null>(null)
   const [deleteKey, setDeleteKey] = useState<{ scope: 'global' | 'character'; characterId?: string; id: string } | null>(null)
   const [busyMsg, setBusyMsg] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const macros = useMemo(() => listMacros(), [])
 
   const load = async () => {
-    const [s, cs, ps] = await Promise.all([
+    setLoadError(null)
+    const [storeR, charsR, presetsR] = await Promise.allSettled([
       window.api.quickReply.listAll(),
       window.api.character.list(),
       window.api.preset.list(),
     ])
-    setStore(s)
-    setCharacters(cs)
-    setPresets(ps)
+    if (storeR.status === 'fulfilled') setStore(storeR.value)
+    if (charsR.status === 'fulfilled') setCharacters(charsR.value)
+    if (presetsR.status === 'fulfilled') setPresets(presetsR.value)
+    const failures = [storeR, charsR, presetsR].filter(r => r.status === 'rejected')
+    if (failures.length > 0) setLoadError(`部分数据加载失败（${failures.length}/3）`)
   }
 
   useEffect(() => {
@@ -156,6 +160,12 @@ export function QuickRepliesPage() {
           </button>
         </div>
       </header>
+
+      {loadError && (
+        <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-200">
+          ⚠️ {loadError}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-4">
         {busyMsg && <div className="mb-3 text-sm text-tavern-text-muted">{busyMsg}</div>}

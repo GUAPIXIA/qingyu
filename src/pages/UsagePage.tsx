@@ -14,11 +14,13 @@ export function UsagePage() {
   const [groupBy, setGroupBy] = useState<GroupBy>('character')
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   // 分组 key -> 显示名称映射
   const [keyNameMap, setKeyNameMap] = useState<Record<string, string>>({})
 
   // 按时间范围与分组维度加载数据
   const loadData = useCallback(async () => {
+    setLoadError(null)
     const now = Date.now()
     const ranges: Record<TimeRange, number | undefined> = {
       today: now - 24 * 60 * 60 * 1000,
@@ -28,12 +30,15 @@ export function UsagePage() {
     }
     const startTs = ranges[timeRange]
     const filter = startTs ? { startTs } : {}
-    const [s, r] = await Promise.all([
+    const [summaryR, recordsR] = await Promise.allSettled([
       window.api.usage.summary(filter),
       window.api.usage.aggregate(filter, groupBy),
     ])
-    setSummary(s)
-    setRecords(r)
+    if (summaryR.status === 'fulfilled') setSummary(summaryR.value)
+    if (recordsR.status === 'fulfilled') setRecords(recordsR.value)
+    if (summaryR.status === 'rejected' || recordsR.status === 'rejected') {
+      setLoadError('部分用量数据加载失败')
+    }
 
     // 解析分组 key 为可读名称
     const nameMap: Record<string, string> = {}
@@ -53,7 +58,7 @@ export function UsagePage() {
           sessionCharMap.set(rec.sessionId, charMap.get(rec.characterId) ?? rec.characterId)
         }
       }
-      for (const rec of r) {
+      for (const rec of (recordsR.status === 'fulfilled' ? recordsR.value : [])) {
         const charName = sessionCharMap.get(rec.key) ?? ''
         nameMap[rec.key] = charName || rec.key
       }
@@ -147,6 +152,12 @@ export function UsagePage() {
           </button>
         </div>
       </div>
+
+      {loadError && (
+        <div className="mx-6 mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-200">
+          ⚠️ {loadError}
+        </div>
+      )}
 
       {/* 内容 */}
       <div className="flex-1 overflow-y-auto p-6">
