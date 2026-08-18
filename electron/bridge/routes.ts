@@ -19,6 +19,7 @@
  *   POST /characters/:id/activate        设为当前角色（协议假设）
  *   GET  /sessions/:id/messages/:mid/tts TTS 音频流（协议假设）
  */
+import { app } from 'electron'
 import { Router } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import { join } from 'node:path'
@@ -141,7 +142,7 @@ export function buildBridgeRouter(
   })
 
   router.get('/server/info', (_req, res) => {
-    res.json({ apiVersion: API_VERSION, appVersion: '0.11.23' })
+    res.json({ apiVersion: API_VERSION, appVersion: app.getVersion() })
   })
 
   router.post('/auth/pair', pairLimiter, async (req, res) => {

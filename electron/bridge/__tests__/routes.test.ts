@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 vi.mock('electron', () => ({
-  app: { getPath: () => '/tmp/qingyu-bridge-route-test' },
+  app: { getPath: () => '/tmp/qingyu-bridge-route-test', getVersion: () => '0.11.25' },
   safeStorage: {
     isEncryptionAvailable: () => false,
   },
