@@ -29,14 +29,16 @@
 
 以下事项必须在 `0.11.28` 完成，否则不进入 `0.12.0` 主干迁移：
 
-- [ ] Bridge 不再凭 fingerprint 直接续签 Token。
-- [ ] JWT 密钥不再明文落盘。
-- [ ] WebSocket URL 不携带长期 Token。
-- [ ] `/static` 媒体路由完成鉴权。
-- [ ] MCP 高风险工具具有权限拦截与确认流程。
-- [ ] MCP Server 在每次启动前重新验证配置。
-- [ ] `pnpm check`、`pnpm lint`、`pnpm test` 全部通过。
-- [ ] 安全 PoC 已转换为“攻击必须失败”的回归测试。
+- [x] Bridge 不再凭 fingerprint 直接续签 Token。 — `v0.11.28` `routes.ts:POST /auth/pair` 强制 `consumePairingCode` + `enqueuePendingPair` 人工确认，`auth.test.ts` 覆盖。
+- [x] JWT 密钥不再明文落盘。 — `auth.ts:getJwtSecret` 仅 `safeStorage`，发现 `bridge/secret` 明文即轮换并删除，`auth.test.ts:发现旧明文副本时删除并轮换` 通过。
+- [x] WebSocket URL 不携带长期 Token。 — `ws.ts` 仅读 `Authorization: Bearer`，`securityRegression.test.ts:WS 拒绝 query 长期令牌` 通过。
+- [x] `/static` 媒体路由完成鉴权。 — `server.ts` `/static` 挂 `requireAuth`，`securityRegression.test.ts:静态媒体要求有效 Bearer` 通过。
+- [x] MCP 高风险工具具有权限拦截与确认流程。 — `toolPermission.ts` L0-L3 + `toolLoop.ts` 调用前 `requestToolPermission`，`toolPermission.test.ts` 3 项通过。
+- [x] MCP Server 在每次启动前重新验证配置。 — `manager.ts:startServer` 首行 `validateServerConfig(config)`，`manager.test.ts` 覆盖。
+- [x] `pnpm check`、`pnpm lint`、`pnpm test` 全部通过。 — 2026-08-19 核验：`check` 0、`lint` 0、`test` 104文件/1059用例全绿。
+- [x] 安全 PoC 已转换为“攻击必须失败”的回归测试。 — `securityRegression.test.ts` 2 项 + `bridgeHost.test.ts` 3 项 + `auth.test.ts` 5 项安全回归全绿。
+
+> 核验时间：2026-08-19 `main@c5ab2ed` / Tag `v0.11.28`，详见 `docs/0.11.28-前置核验报告.md`。
 
 原因：`0.12.0` 会将更多生成能力集中到主进程。如果授权边界没有先收口，统一引擎会同时放大 Bridge 与 MCP 的风险面。
 
