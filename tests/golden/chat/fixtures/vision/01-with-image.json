@@ -1,0 +1,18 @@
+{
+  "id": "vision-01",
+  "description": "视觉模型：含图消息时切换识图模型",
+  "input": { "content": "看图", "images": ["data:image/png;base64,abcd"] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "hasImage": true,
+    "activeModel": "gpt-4o-mini",
+    "visionModel": "gpt-4o"
+  },
+  "modelResponses": [{ "delta": "看到图了" }],
+  "expected": {
+    "userMessage": { "content": "看图" },
+    "assistantMessage": { "content": "看到图了" }
+  },
+  "expectedContext": { "effectiveModel": "gpt-4o" }
+}

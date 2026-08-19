@@ -1,0 +1,17 @@
+{
+  "id": "stop-strings-03",
+  "description": "stopStrings：未命中则不截断",
+  "input": { "content": "go", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "", "replacement": "", "scope": "output", "stage": "text", "enabled": true, "stopStrings": ["STOP"] }
+    ]
+  },
+  "modelResponses": [{ "delta": "complete response" }],
+  "expected": {
+    "userMessage": { "content": "go" },
+    "assistantMessage": { "content": "complete response" }
+  }
+}

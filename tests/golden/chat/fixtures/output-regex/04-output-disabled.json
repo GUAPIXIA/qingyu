@@ -1,0 +1,17 @@
+{
+  "id": "output-regex-04",
+  "description": "output 正则：enabled=false 不生效",
+  "input": { "content": "hi", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "hi", "replacement": "hello", "scope": "output", "stage": "text", "enabled": false }
+    ]
+  },
+  "modelResponses": [{ "delta": "hi there" }],
+  "expected": {
+    "userMessage": { "content": "hi" },
+    "assistantMessage": { "content": "hi there" }
+  }
+}

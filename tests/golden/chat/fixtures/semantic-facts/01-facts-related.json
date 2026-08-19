@@ -1,0 +1,18 @@
+{
+  "id": "semantic-facts-01",
+  "description": "语义事实：仅注入相关事实",
+  "input": { "content": "提到小明的猫", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "memoryEnabled": true,
+    "memoryFacts": [{ "subject": "小明", "predicate": "拥有", "value": "一只猫" }, { "subject": "小红", "predicate": "喜欢", "value": "狗" }],
+    "semanticFactsHits": ["小明 拥有 一只猫"]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "提到小明的猫" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "factsInjected": ["小明 拥有 一只猫"] }
+}

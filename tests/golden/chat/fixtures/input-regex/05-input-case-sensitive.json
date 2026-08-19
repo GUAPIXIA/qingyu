@@ -1,0 +1,17 @@
+{
+  "id": "input-regex-05",
+  "description": "input 正则：大小写敏感，仅小写命中",
+  "input": { "content": "Hello HELLO hello", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "hello", "replacement": "hi", "scope": "input", "stage": "text", "enabled": true, "flags": "" }
+    ]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "Hello HELLO hi" },
+    "assistantMessage": { "content": "ok" }
+  }
+}

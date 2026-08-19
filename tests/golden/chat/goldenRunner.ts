@@ -15,8 +15,8 @@ export interface GoldenFixture {
   description: string
   input: { content: string; images?: string[]; replyToId?: string }
   contextSnapshot: Record<string, unknown>
-  modelResponses: Array<{ delta: string; usage?: unknown }>
-  expected: { userMessage: { content: string }; assistantMessage: { content: string } }
+  modelResponses: Array<{ delta?: string; usage?: unknown; error?: string; cancel?: boolean }>
+  expected: { userMessage: { content: string }; assistantMessage: { content: string; swipes?: string[]; swipeIndex?: number; generationStatus?: string; isNewBubble?: boolean } | null }
 }
 
 export function listFixtures(dir = join(__dirname, 'fixtures')): string[] {
@@ -48,8 +48,11 @@ export function validateFixture(fixture: GoldenFixture): string[] {
   if (!fixture.expected?.userMessage?.content && fixture.expected?.userMessage?.content !== '') {
     errors.push('expected.userMessage.content 缺失')
   }
-  if (!fixture.expected?.assistantMessage?.content && fixture.expected?.assistantMessage?.content !== '') {
-    errors.push('expected.assistantMessage.content 缺失')
+  // assistantMessage 允许 null（空内容不建消息，如 cancel-02）
+  if (fixture.expected?.assistantMessage !== null) {
+    if (!fixture.expected?.assistantMessage?.content && fixture.expected?.assistantMessage?.content !== '') {
+      errors.push('expected.assistantMessage.content 缺失')
+    }
   }
   return errors
 }

@@ -1,0 +1,17 @@
+{
+  "id": "lorebook-keyword-01",
+  "description": "关键词世界书：scanDepth 内命中",
+  "input": { "content": "你好 猫娘", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "activeLorebookIds": ["lb-1"],
+    "lorebooks": [{ "id": "lb-1", "name": "猫娘", "enabled": true, "scanDepth": 4, "entries": [{ "id": "e1", "keys": ["猫娘"], "content": "猫娘是可爱角色", "enabled": true, "position": "before_char", "order": 10 }] }]
+  },
+  "modelResponses": [{ "delta": "你好猫娘" }],
+  "expected": {
+    "userMessage": { "content": "你好 猫娘" },
+    "assistantMessage": { "content": "你好猫娘" }
+  },
+  "expectedContext": { "lorebookInjected": ["猫娘是可爱角色"] }
+}

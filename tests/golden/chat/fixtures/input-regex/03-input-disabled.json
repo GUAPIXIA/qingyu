@@ -1,0 +1,17 @@
+{
+  "id": "input-regex-03",
+  "description": "input 正则：enabled=false 不生效",
+  "input": { "content": "hello **world**", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "\\*\\*", "replacement": "", "scope": "input", "stage": "text", "enabled": false }
+    ]
+  },
+  "modelResponses": [{ "delta": "hi" }],
+  "expected": {
+    "userMessage": { "content": "hello **world**" },
+    "assistantMessage": { "content": "hi" }
+  }
+}

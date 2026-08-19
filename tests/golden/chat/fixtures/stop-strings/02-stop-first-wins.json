@@ -1,0 +1,17 @@
+{
+  "id": "stop-strings-02",
+  "description": "stopStrings：多个停止串，最早命中者截断",
+  "input": { "content": "go", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "", "replacement": "", "scope": "output", "stage": "text", "enabled": true, "stopStrings": ["STOP1", "STOP2"] }
+    ]
+  },
+  "modelResponses": [{ "delta": "a STOP2 b STOP1 c" }],
+  "expected": {
+    "userMessage": { "content": "go" },
+    "assistantMessage": { "content": "a " }
+  }
+}

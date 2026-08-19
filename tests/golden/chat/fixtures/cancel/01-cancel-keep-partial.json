@@ -1,0 +1,15 @@
+{
+  "id": "cancel-01",
+  "description": "停止生成：保留已生成非空部分，cancelled",
+  "input": { "content": "长文", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "cancelAt": "streaming"
+  },
+  "modelResponses": [{ "delta": "已生成" }, { "cancel": true }],
+  "expected": {
+    "userMessage": { "content": "长文" },
+    "assistantMessage": { "content": "已生成", "generationStatus": "cancelled" }
+  }
+}

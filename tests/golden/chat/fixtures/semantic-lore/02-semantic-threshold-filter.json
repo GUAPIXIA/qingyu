@@ -1,0 +1,18 @@
+{
+  "id": "semantic-lore-02",
+  "description": "语义世界书：阈值过滤低分命中",
+  "input": { "content": "完全无关", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "activeLorebookIds": ["lb-1"],
+    "semanticLoreHits": [],
+    "threshold": 0.8
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "完全无关" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "semanticMerged": false }
+}

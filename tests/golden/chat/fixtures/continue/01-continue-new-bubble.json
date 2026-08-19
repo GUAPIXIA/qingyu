@@ -1,0 +1,16 @@
+{
+  "id": "continue-01",
+  "description": "continue：不重复用户消息，新气泡仅含续写",
+  "input": { "content": "", "images": [], "action": "continue", "targetMessageId": "msg-last" },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "targetMessage": { "id": "msg-last", "role": "assistant", "content": "前文" },
+    "isLastMessage": true
+  },
+  "modelResponses": [{ "delta": " 续写内容" }],
+  "expected": {
+    "userMessage": { "content": "" },
+    "assistantMessage": { "content": " 续写内容", "isNewBubble": true }
+  }
+}

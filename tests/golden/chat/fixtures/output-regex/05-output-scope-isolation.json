@@ -1,0 +1,17 @@
+{
+  "id": "output-regex-05",
+  "description": "output 正则不影响 input，原样保留输入",
+  "input": { "content": "**输入**", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "\\*\\*", "replacement": "", "scope": "output", "stage": "text", "enabled": true }
+    ]
+  },
+  "modelResponses": [{ "delta": "**输出**" }],
+  "expected": {
+    "userMessage": { "content": "**输入**" },
+    "assistantMessage": { "content": "输出" }
+  }
+}

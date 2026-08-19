@@ -1,0 +1,17 @@
+{
+  "id": "lorebook-keyword-05",
+  "description": "世界书 disabled 条目不触发",
+  "input": { "content": "关键词", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "activeLorebookIds": ["lb-1"],
+    "lorebooks": [{ "id": "lb-1", "name": "lb", "enabled": true, "scanDepth": 4, "entries": [{ "id": "e1", "keys": ["关键词"], "content": "不应注入", "enabled": false, "position": "before_char", "order": 10 }] }]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "关键词" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "lorebookInjected": [] }
+}

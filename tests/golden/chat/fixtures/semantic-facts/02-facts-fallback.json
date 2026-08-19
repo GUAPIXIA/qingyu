@@ -1,0 +1,19 @@
+{
+  "id": "semantic-facts-02",
+  "description": "语义事实：无向量时全量注入",
+  "input": { "content": "任意", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "memoryEnabled": true,
+    "memoryFacts": [{ "subject": "A", "predicate": "是", "value": "B" }],
+    "factsVectors": null,
+    "semanticFactsHits": []
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "任意" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "factsInjected": ["A 是 B"] }
+}

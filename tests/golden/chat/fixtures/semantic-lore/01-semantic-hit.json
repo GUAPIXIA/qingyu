@@ -1,0 +1,18 @@
+{
+  "id": "semantic-lore-01",
+  "description": "语义世界书：向量命中合并到关键词结果",
+  "input": { "content": "猫娘很可爱", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "activeLorebookIds": ["lb-1"],
+    "lorebooks": [{ "id": "lb-1", "name": "lb", "enabled": true, "scanDepth": 4, "entries": [{ "id": "e1", "keys": ["猫咪"], "content": "猫咪条目", "enabled": true, "position": "before_char", "order": 10 }] }],
+    "semanticLoreHits": [{ "content": "语义命中的猫相关", "order": 5, "position": "before_char" }]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "猫娘很可爱" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "semanticMerged": true }
+}

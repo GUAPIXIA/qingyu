@@ -1,0 +1,18 @@
+{
+  "id": "semantic-lore-03",
+  "description": "语义世界书：未启用时回退纯关键词",
+  "input": { "content": "猫娘", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "activeLorebookIds": ["lb-1"],
+    "semanticEnabled": false,
+    "lorebooks": [{ "id": "lb-1", "name": "lb", "enabled": true, "scanDepth": 4, "entries": [{ "id": "e1", "keys": ["猫娘"], "content": "猫娘", "enabled": true, "position": "before_char", "order": 10 }] }]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "猫娘" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "fallbackKeywordOnly": true }
+}

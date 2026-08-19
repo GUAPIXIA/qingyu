@@ -1,0 +1,19 @@
+{
+  "id": "memory-title-02",
+  "description": "长记忆：memory + facts 注入系统提示",
+  "input": { "content": "test", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "memoryEnabled": true,
+    "memory": "时间线：A->B",
+    "memoryCurrentState": "当前在咖啡馆",
+    "memoryFacts": [{ "subject": "猫娘", "predicate": "喜欢", "value": "咖啡" }]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "test" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "injected": ["当前在咖啡馆", "时间线：A->B", "猫娘 喜欢 咖啡"] }
+}

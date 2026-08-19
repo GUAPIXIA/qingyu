@@ -1,0 +1,18 @@
+{
+  "id": "output-regex-02",
+  "description": "output 正则：markdown 阶段在 text 之后链式应用",
+  "input": { "content": "hello", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "\\*\\*", "replacement": "", "scope": "output", "stage": "text", "enabled": true },
+      { "id": "r2", "pattern": "world", "replacement": "世界", "scope": "output", "stage": "markdown", "enabled": true }
+    ]
+  },
+  "modelResponses": [{ "delta": "**hello** world" }],
+  "expected": {
+    "userMessage": { "content": "hello" },
+    "assistantMessage": { "content": "hello 世界" }
+  }
+}

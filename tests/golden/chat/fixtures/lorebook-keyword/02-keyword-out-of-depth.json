@@ -1,0 +1,18 @@
+{
+  "id": "lorebook-keyword-02",
+  "description": "关键词世界书：超出 scanDepth 不命中",
+  "input": { "content": "无关内容", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "activeLorebookIds": ["lb-1"],
+    "lorebooks": [{ "id": "lb-1", "name": "lb", "enabled": true, "scanDepth": 1, "entries": [{ "id": "e1", "keys": ["远古"], "content": "远古秘密", "enabled": true, "position": "before_char", "order": 10 }] }],
+    "history": [{ "role": "user", "content": "远古" }, { "role": "assistant", "content": "ok" }, { "role": "user", "content": "无关内容" }]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "无关内容" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "lorebookInjected": [] }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "input-regex-02",
+  "description": "input 正则：triggerPattern 命中才执行，未命中原样",
+  "input": { "content": "触发 **粗体**", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "\\*\\*", "replacement": "", "scope": "input", "stage": "text", "enabled": true, "triggerPattern": "粗体" },
+      { "id": "r1b", "pattern": "触发", "replacement": "命中", "scope": "input", "stage": "text", "enabled": true, "triggerPattern": "不存在的词" }
+    ]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "触发 粗体" },
+    "assistantMessage": { "content": "ok" }
+  }
+}

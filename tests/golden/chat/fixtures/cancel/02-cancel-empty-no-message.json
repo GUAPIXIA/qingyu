@@ -1,0 +1,15 @@
+{
+  "id": "cancel-02",
+  "description": "停止生成：空内容不建助手消息",
+  "input": { "content": "hi", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "cancelAt": "before_first_chunk"
+  },
+  "modelResponses": [{ "cancel": true }],
+  "expected": {
+    "userMessage": { "content": "hi" },
+    "assistantMessage": null
+  }
+}

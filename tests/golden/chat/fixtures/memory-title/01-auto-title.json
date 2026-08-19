@@ -1,0 +1,17 @@
+{
+  "id": "memory-title-01",
+  "description": "自动标题：第4条用户消息后触发",
+  "input": { "content": "第4条", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "session": { "title": "新对话", "titleGenerated": false, "messageCount": 7 },
+    "userMessages": 4
+  },
+  "modelResponses": [{ "delta": "猫娘日常" }],
+  "expected": {
+    "userMessage": { "content": "第4条" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedBackground": { "title": "猫娘日常" }
+}

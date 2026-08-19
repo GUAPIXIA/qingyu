@@ -1,0 +1,22 @@
+{
+  "id": "lorebook-keyword-04",
+  "description": "世界书预算裁剪：触发过多时按 order 丢弃",
+  "input": { "content": "关键词A 关键词B 关键词C", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "activeLorebookIds": ["lb-1"],
+    "lorebooks": [{ "id": "lb-1", "name": "lb", "enabled": true, "scanDepth": 4, "entries": [
+      { "id": "e1", "keys": ["关键词A"], "content": "内容A", "enabled": true, "position": "before_char", "order": 1 },
+      { "id": "e2", "keys": ["关键词B"], "content": "内容B", "enabled": true, "position": "before_char", "order": 2 },
+      { "id": "e3", "keys": ["关键词C"], "content": "内容C", "enabled": true, "position": "before_char", "order": 3 }
+    ] }],
+    "lorebookRatio": 0.05
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "关键词A 关键词B 关键词C" },
+    "assistantMessage": { "content": "ok" }
+  },
+  "expectedContext": { "budgetTrimmed": true }
+}

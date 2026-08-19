@@ -1,0 +1,18 @@
+{
+  "id": "output-regex-03",
+  "description": "output 正则：多规则链式，含 thought 清理",
+  "input": { "content": "hi", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "<thought>[\\s\\S]*?</thought>", "replacement": "", "scope": "output", "stage": "text", "enabled": true },
+      { "id": "r2", "pattern": "foo", "replacement": "bar", "scope": "output", "stage": "text", "enabled": true }
+    ]
+  },
+  "modelResponses": [{ "delta": "<thought>想</thought>foo is foo" }],
+  "expected": {
+    "userMessage": { "content": "hi" },
+    "assistantMessage": { "content": "bar is bar" }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "input-regex-04",
+  "description": "input 正则：多规则按 order 顺序链式应用",
+  "input": { "content": "aAbBcC", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "a", "replacement": "1", "scope": "input", "stage": "text", "enabled": true, "order": 1 },
+      { "id": "r2", "pattern": "b", "replacement": "2", "scope": "input", "stage": "text", "enabled": true, "order": 2 }
+    ]
+  },
+  "modelResponses": [{ "delta": "ok" }],
+  "expected": {
+    "userMessage": { "content": "1A2BcC" },
+    "assistantMessage": { "content": "ok" }
+  }
+}
