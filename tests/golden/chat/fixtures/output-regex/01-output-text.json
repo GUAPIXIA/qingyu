@@ -1,0 +1,17 @@
+{
+  "id": "output-regex-01",
+  "description": "output 正则：text 阶段去 thought 标签（桌面/chatGeneration 行为）",
+  "input": { "content": "你好", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r2", "pattern": "<thought>[\\s\\S]*?</thought>", "replacement": "", "scope": "output", "stage": "text", "enabled": true }
+    ]
+  },
+  "modelResponses": [{ "delta": "<thought>思考</thought>你好呀" }],
+  "expected": {
+    "userMessage": { "content": "你好" },
+    "assistantMessage": { "content": "你好呀" }
+  }
+}

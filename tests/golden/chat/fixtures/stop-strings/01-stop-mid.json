@@ -1,0 +1,17 @@
+{
+  "id": "stop-strings-01",
+  "description": "stopStrings：流中命中 <|im_end|> 截断并终止",
+  "input": { "content": "继续", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r3", "pattern": "", "replacement": "", "scope": "output", "stage": "text", "enabled": true, "stopStrings": ["<|im_end|>"] }
+    ]
+  },
+  "modelResponses": [{ "delta": "前半 " }, { "delta": "<|im_end|> 后半不应出现" }],
+  "expected": {
+    "userMessage": { "content": "继续" },
+    "assistantMessage": { "content": "前半" }
+  }
+}

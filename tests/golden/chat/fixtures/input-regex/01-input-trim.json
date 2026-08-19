@@ -1,0 +1,17 @@
+{
+  "id": "input-regex-01",
+  "description": "input 正则：input scope 清理 ** 标记，output 不影响",
+  "input": { "content": "你好 **世界**", "images": [] },
+  "contextSnapshot": {
+    "characterId": "char-1",
+    "sessionId": "sess-1",
+    "regexRules": [
+      { "id": "r1", "pattern": "\\*\\*", "replacement": "", "scope": "input", "stage": "text", "enabled": true }
+    ]
+  },
+  "modelResponses": [{ "delta": "收到：" }, { "delta": " 你好 世界" }],
+  "expected": {
+    "userMessage": { "content": "你好 世界" },
+    "assistantMessage": { "content": "收到： 你好 世界" }
+  }
+}
