@@ -2,7 +2,7 @@
  * McpPage 单元测试
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('react-router-dom', () => ({
   useNavigate: vi.fn(() => vi.fn()),
@@ -38,11 +38,13 @@ describe('McpPage', () => {
 
   it('渲染页面标题', async () => {
     render(<McpPage />)
+    await waitFor(() => expect(window.api.mcp.listServers).toHaveBeenCalled())
     expect(screen.getByText('MCP 工具')).toBeInTheDocument()
   })
 
-  it('显示添加按钮', () => {
+  it('显示添加按钮', async () => {
     render(<McpPage />)
+    await waitFor(() => expect(window.api.mcp.listServers).toHaveBeenCalled())
     expect(screen.getByText('添加')).toBeInTheDocument()
   })
 })

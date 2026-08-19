@@ -31,10 +31,8 @@ vi.mock('../../services/storage', () => ({
   withFileLock: vi.fn((_path: string, fn: () => unknown) => fn()),
 }))
 
-import { registerPersonaIPC } from '../persona'
-
 describe('persona IPC', () => {
-  let handlers: Record<string, Function>
+  let handlers: Record<string, (...args: unknown[]) => unknown>
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -42,7 +40,7 @@ describe('persona IPC', () => {
     mockReadFileSync.mockReturnValue('[]')
     handlers = {}
     const mockIpcMain = {
-      handle: vi.fn((channel: string, handler: Function) => {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
         handlers[channel] = handler
       }),
     }

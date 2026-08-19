@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'dist-electron', 'coverage', '.qoder', '.claude', '.codebuddy', '.trae', '.workbuddy', '.mimocode', '.reasonix'] },
+  { ignores: ['dist', 'dist-electron', 'release-v2', 'coverage', '.qoder', '.claude', '.codebuddy', '.trae', '.workbuddy', '.mimocode', '.reasonix'] },
   {
     // 生产代码:完整严格规则(no-explicit-any 默认 error)
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

@@ -12,7 +12,7 @@ import type { Character, ConnectionProfile } from '../../../shared/types'
 
 // jsdom 无布局测量，Virtuoso 虚拟列表不会渲染 itemContent；mock 为普通列表
 vi.mock('react-virtuoso', () => {
-  const Virtuoso = (props: { data: unknown[]; itemContent: (i: number, item: unknown) => React.ReactNode }) => (
+  const Virtuoso = (props: { data: unknown[]; itemContent: (i: number, item: unknown) => React.ReactNode }, _ref: React.ForwardedRef<HTMLDivElement>) => (
     <div>{props.data.map((item, i) => props.itemContent(i, item))}</div>
   )
   return { Virtuoso: React.forwardRef(Virtuoso) }
@@ -91,6 +91,13 @@ describe('ChatPage 冒烟测试', () => {
     const { findByText } = renderPage()
     expect(await findByText('欢迎使用轻语')).toBeTruthy()
     expect(screen.getByText('开始配置')).toBeTruthy()
+  })
+
+  it('未配置连接但已选择角色时仍可进入聊天界面', async () => {
+    setupStores(false, makeCharacter())
+    const { findByPlaceholderText, queryByText } = renderPage()
+    expect(await findByPlaceholderText(/请先在设置中配置 API 连接/)).toBeTruthy()
+    expect(queryByText('欢迎使用轻语')).toBeNull()
   })
 
   it('已连接但未选择角色时显示空状态', async () => {

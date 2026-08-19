@@ -2,7 +2,7 @@
  * RegexPage 单元测试
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('react-router-dom', () => ({
   useNavigate: vi.fn(() => vi.fn()),
@@ -34,13 +34,15 @@ describe('RegexPage', () => {
     vi.clearAllMocks()
   })
 
-  it('渲染页面标题', () => {
+  it('渲染页面标题', async () => {
     render(<RegexPage />)
+    await waitFor(() => expect(window.api.regex.list).toHaveBeenCalled())
     expect(screen.getByText('正则表达式')).toBeInTheDocument()
   })
 
-  it('显示新建按钮', () => {
+  it('显示新建按钮', async () => {
     render(<RegexPage />)
+    await waitFor(() => expect(window.api.regex.list).toHaveBeenCalled())
     expect(screen.getByText('新建规则')).toBeInTheDocument()
   })
 })

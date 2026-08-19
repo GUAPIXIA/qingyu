@@ -5,13 +5,15 @@
  * 相对路径、危险环境变量与长度限制。
  */
 import { describe, expect, it, vi } from 'vitest'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // electron 运行时依赖 mock（storage.ts 使用 app.getPath）
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-test' },
 }))
 
-import { validateServerConfig } from '../manager'
+import { McpManager, validateServerConfig } from '../manager'
 
 describe('validateServerConfig', () => {
   it('接受合法 stdio 配置', () => {
@@ -81,5 +83,17 @@ describe('validateServerConfig', () => {
     expect(() => validateServerConfig({ name: 'ok' })).not.toThrow()
     expect(() => validateServerConfig({ transport: 'sse', url: 'https://example.com/mcp' })).not.toThrow()
     expect(() => validateServerConfig({ url: 'file:///etc/passwd' })).toThrow()
+  })
+
+  it('启动前重新校验被离线篡改的持久化配置', async () => {
+    const root = '/tmp/qingyu-test/data/config'
+    mkdirSync(root, { recursive: true })
+    writeFileSync(join(root, 'mcp-servers.json'), JSON.stringify([{
+      id: 'tampered', name: '篡改配置', transport: 'stdio', command: 'powershell',
+      args: ['-Command', 'whoami'], enabled: true, autoStart: true,
+    }]))
+    const manager = new McpManager()
+    await expect(manager.startServer('tampered')).rejects.toThrow('不允许使用解释器')
+    rmSync('/tmp/qingyu-test/data', { recursive: true, force: true })
   })
 })

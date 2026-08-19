@@ -4,7 +4,7 @@ import { useUIStore } from '../../store/useUIStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import { logError } from '../../lib/logger'
-import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
+import { isConnectionConfigured } from '../../utils/defaults'
 import {
   MessageSquare,
   Users,
@@ -47,7 +47,7 @@ export function Sidebar() {
   const getActiveProfile = useSettingsStore((s) => s.getActiveProfile)
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || isLocalUrl(activeProfile.baseUrl) || !!activeProfile.apiKey)
+  const isConnected = isConnectionConfigured(activeProfile)
 
   const [appVersion, setAppVersion] = useState('')
   const [serverVersion, setServerVersion] = useState<string | null>(null)

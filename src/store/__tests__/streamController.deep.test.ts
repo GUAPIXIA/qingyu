@@ -204,9 +204,9 @@ describe('streamController - 深度测试', () => {
       mockSet.mockReturnValue({})
 
       // 捕获 onDone 回调并捕获 requestId
-      let doneCallback: Function
+      let doneCallback: ((requestId: string) => void) | undefined
       let capturedRequestId: string
-      mockOnDone.mockImplementation((cb: Function) => {
+      mockOnDone.mockImplementation((cb: (requestId: string) => void) => {
         doneCallback = cb
         return vi.fn()
       })
@@ -225,7 +225,7 @@ describe('streamController - 深度测试', () => {
       })
 
       // 模拟流式完成（使用捕获的 requestId）
-      doneCallback!(capturedRequestId!)
+      doneCallback?.(capturedRequestId!)
 
       expect(mockOnComplete).toHaveBeenCalled()
     })
@@ -234,8 +234,8 @@ describe('streamController - 深度测试', () => {
       mockGetActiveProfile.mockReturnValue(makeActiveProfile())
 
       // 捕获 onError 回调
-      let errorCallback: Function
-      mockOnError.mockImplementation((cb: Function) => {
+      let errorCallback: ((payload: { requestId: string; error: string }) => void) | undefined
+      mockOnError.mockImplementation((cb: (payload: { requestId: string; error: string }) => void) => {
         errorCallback = cb
         return vi.fn()
       })
@@ -248,7 +248,7 @@ describe('streamController - 深度测试', () => {
       })
 
       // 模拟错误
-      errorCallback!({ requestId: 'any', error: 'API 错误' })
+      errorCallback?.({ requestId: 'any', error: 'API 错误' })
 
       // 验证错误被处理（不会抛异常）
     })

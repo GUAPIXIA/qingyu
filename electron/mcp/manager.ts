@@ -79,7 +79,7 @@ export function validateServerConfig(config: Partial<McpServerConfig>): void {
   }
 }
 
-class McpManager {
+export class McpManager {
   private clients = new Map<string, McpClient>()
   private configs: McpServerConfig[] = []
   /** N24 修复：正在启动中的 server id（并发 start 去重） */
@@ -141,6 +141,8 @@ class McpManager {
   async startServer(id: string): Promise<void> {
     const config = this.configs.find(s => s.id === id)
     if (!config) throw new Error(`未找到 server: ${id}`)
+    // 每条启动路径都重新验证持久化配置，防止 mcp-servers.json 被离线篡改后自动执行。
+    validateServerConfig(config)
     // N24 修复：并发启动去重（避免同一 server 被并发 start 时重复 spawn）
     if (this.starting.has(id)) return
     if (this.clients.has(id) && this.clients.get(id)!.isConnected()) return

@@ -26,6 +26,7 @@ import {
   wipeDevices,
   isPairingCodeValid,
   revokePairingCode,
+  getJwtSecret,
 } from './auth'
 import { createLogger } from '../services/logger'
 import { safeId } from '../utils/pathGuard'
@@ -54,6 +55,8 @@ export function getNetworkCandidates(): { ip: string; name: string }[] {
   const candidates: { ip: string; name: string }[] = []
   const interfaces = networkInterfaces()
   for (const [name, infos] of Object.entries(interfaces)) {
+    // 虚拟交换机/VPN 地址通常无法被同一局域网中的手机直接访问。
+    if (/vmware|virtual|vethernet|wsl|vpn|loopback|hyper-v|tailscale|zerotier/i.test(name)) continue
     for (const info of infos ?? []) {
       if (info.family !== 'IPv4' || info.internal) continue
       const ip = info.address
@@ -64,6 +67,20 @@ export function getNetworkCandidates(): { ip: string; name: string }[] {
     }
   }
   return candidates
+}
+
+/**
+ * 解析本次真正可绑定的地址。
+ * 已保存地址只有仍属于当前候选网卡时才复用，避免换 Wi-Fi 后因旧 IP 导致 EADDRNOTAVAIL。
+ */
+export function resolveBridgeHost(
+  configuredHost: string,
+  candidates: { ip: string; name: string }[],
+): string {
+  if (configuredHost && candidates.some((candidate) => candidate.ip === configuredHost)) {
+    return configuredHost
+  }
+  return candidates[0]?.ip || '127.0.0.1'
 }
 
 /** 本机指纹（二维码校验用；hostname + MAC 哈希，稳定且不泄露原值） */
@@ -151,7 +168,14 @@ export class BridgeService {
 
   async start(): Promise<{ host: string; port: number }> {
     if (this.server) return this.getBoundInfo()!
-    const host = this.config.host || '127.0.0.1'
+    // 启动前验证/迁移安全密钥；生产环境 safeStorage 不可用时直接拒绝开放局域网端口。
+    getJwtSecret()
+    const host = resolveBridgeHost(this.config.host, getNetworkCandidates())
+    // 网卡地址可能在应用运行期间变化；把自动恢复后的地址持久化并用于二维码。
+    if (host !== this.config.host) {
+      this.config.host = host
+      this.saveConfig()
+    }
     // 配对审批 -> 通知渲染层弹窗（方案 §5.1 PC 侧人工确认）
     const onPairRequest = (requestId: string, deviceName: string): void => {
       for (const win of BrowserWindow.getAllWindows()) {
@@ -202,9 +226,7 @@ export class BridgeService {
     }
     // host 优先取绑定网卡，其次第一个局域网候选 IP（避免扫码连到 127.0.0.1）
     const candidates = getNetworkCandidates()
-    const host = this.config.host
-      || candidates[0]?.ip
-      || '127.0.0.1'
+    const host = resolveBridgeHost(this.config.host, candidates)
     return { host, port: this.config.port, fingerprint: this.pairingCode, expiresInSec: 5 * 60 }
   }
 
@@ -215,7 +237,10 @@ export class BridgeService {
   }
 
   revokeDevice(deviceId: string): boolean {
-    return revokeDevice(safeId(deviceId))
+    const safeDeviceId = safeId(deviceId)
+    const revoked = revokeDevice(safeDeviceId)
+    if (revoked) this.server?.disconnectDevice(safeDeviceId)
+    return revoked
   }
 
   /** 审批配对（渲染层弹窗确认后调用） */

@@ -8,6 +8,7 @@ import type { ChatParams } from '../../shared/types'
 import { mcpManager } from '../mcp/manager'
 import { getAdapter } from './ai'
 import { createLogger } from './logger'
+import { requestToolPermission } from '../mcp/toolPermission'
 
 const log = createLogger('toolLoop')
 
@@ -161,6 +162,14 @@ export async function chatWithTools(
       try {
         const serverInfo = mcpManager.findToolServer(name)
         if (!serverInfo) throw new Error(`工具 ${name} 未找到`)
+        const server = mcpManager.listServers().find((item) => item.id === serverInfo.serverId)
+        const allowed = await requestToolPermission({
+          serverName: server?.name ?? serverInfo.serverId,
+          toolName: name,
+          description: serverInfo.tool.description,
+          args,
+        })
+        if (!allowed) throw new Error('ToolPermissionDenied: 用户拒绝了工具调用')
         // 修复：工具调用加超时，防止 MCP 工具永久挂起阻塞整个对话流
         const mcpResult = await callToolWithTimeout(
           () => mcpManager.callTool(serverInfo.serverId, name, args),

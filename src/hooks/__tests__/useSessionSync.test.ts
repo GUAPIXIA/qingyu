@@ -71,8 +71,8 @@ describe('useSessionSync', () => {
 
   it('收到事件时刷新会话列表', () => {
     // 捕获回调
-    let callback: Function
-    mockOnUpdated.mockImplementation((cb: Function) => {
+    let callback: ((payload: { sessionId: string; change: string }) => void) | undefined
+    mockOnUpdated.mockImplementation((cb: (payload: { sessionId: string; change: string }) => void) => {
       callback = cb
       return mockUnbind
     })
@@ -80,14 +80,14 @@ describe('useSessionSync', () => {
     renderHook(() => useSessionSync())
 
     // 模拟收到事件
-    callback!({ sessionId: 'session-001', change: 'message' })
+    callback?.({ sessionId: 'session-001', change: 'message' })
 
     expect(mockLoadSessions).toHaveBeenCalledWith('char-001')
   })
 
   it('当前会话且非流式时刷新消息', () => {
-    let callback: Function
-    mockOnUpdated.mockImplementation((cb: Function) => {
+    let callback: ((payload: { sessionId: string; change: string }) => void) | undefined
+    mockOnUpdated.mockImplementation((cb: (payload: { sessionId: string; change: string }) => void) => {
       callback = cb
       return mockUnbind
     })
@@ -95,7 +95,7 @@ describe('useSessionSync', () => {
     renderHook(() => useSessionSync())
 
     // 模拟当前会话的事件
-    callback!({ sessionId: 'session-001', change: 'message' })
+    callback?.({ sessionId: 'session-001', change: 'message' })
 
     expect(mockLoadMessages).toHaveBeenCalled()
   })

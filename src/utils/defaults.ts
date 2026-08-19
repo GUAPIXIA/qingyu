@@ -33,6 +33,33 @@ export function isLocalUrl(baseUrl: string | null | undefined): boolean {
   return /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?)(?::\d+)?(?:\/|$)/i.test(baseUrl.trim())
 }
 
+/** 是否为无需单独 API Key 的 OpenCode Go 订阅端点。 */
+export function isOpenCodeGoUrl(baseUrl: string | null | undefined): boolean {
+  if (!baseUrl) return false
+  try {
+    const url = new URL(baseUrl.trim())
+    return url.protocol === 'https:'
+      && url.hostname.toLowerCase() === 'opencode.ai'
+      && /^\/zen\/go\/v1\/?$/i.test(url.pathname)
+  } catch {
+    return false
+  }
+}
+
+/** 判断连接配置是否具备发起请求所需的凭据。 */
+export function isConnectionConfigured(profile: {
+  provider: string
+  baseUrl?: string | null
+  apiKey?: string | null
+} | null | undefined): boolean {
+  return !!profile && (
+    isLocalProvider(profile.provider)
+    || isLocalUrl(profile.baseUrl)
+    || isOpenCodeGoUrl(profile.baseUrl)
+    || !!profile.apiKey?.trim()
+  )
+}
+
 /** 主题色信息 */
 export const THEME_COLORS = {
   amber: { name: '琥珀金', color: '#d4a574' },

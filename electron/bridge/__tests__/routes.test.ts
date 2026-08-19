@@ -202,6 +202,43 @@ describe('桥接路由集成', () => {
     }
   })
 
+  it('可从指定消息创建独立会话分支', async () => {
+    const sourceId = 'source-session'
+    mkdirSync(join(DIRS.chats(), CHAR_ID), { recursive: true })
+    writeFileSync(join(DIRS.chats(), CHAR_ID, 'sessions.json'), JSON.stringify([{
+      id: sourceId, characterId: CHAR_ID, title: '主线', createdAt: 1, updatedAt: 1,
+      memoryEnabled: false, memoryMode: 'manual', autoMemoryInterval: 10, memory: '', memoryUpdatedAt: 0,
+      personaId: 'persona-1', lorebookIds: ['book-1'],
+    }]))
+    chatData.saveMessage(CHAR_ID, {
+      id: 'source-message', sessionId: sourceId, characterId: CHAR_ID, role: 'user',
+      content: '分支点', images: [], isEditing: false, timestamp: 1000,
+    })
+    const device = registerDevice('测试设备-分支', 'fp-branch')
+    const token = signToken(device.deviceId)
+    const app = express()
+    app.use(express.json())
+    app.use('/api/v1', buildBridgeRouter(new WsHub(), new BridgeChatService(new WsHub(), () => {}), () => {}))
+    const { server, port } = await listen(app)
+    try {
+      const headers = { Authorization: `Bearer ${token}` }
+      const response = await fetch(`http://127.0.0.1:${port}/api/v1/sessions/${sourceId}/branch?messageId=source-message`, {
+        method: 'POST', headers,
+      })
+      expect(response.status).toBe(200)
+      const branch = await response.json()
+      expect(branch.id).not.toBe(sourceId)
+      expect(branch.title).toBe('主线 · 分支')
+      expect(branch.messageCount).toBe(1)
+      const messages = await (await fetch(`http://127.0.0.1:${port}/api/v1/sessions/${branch.id}/messages`, { headers })).json()
+      expect(messages.messages).toHaveLength(1)
+      expect(messages.messages[0].content).toBe('分支点')
+      expect(messages.messages[0].id).not.toBe('source-message')
+    } finally {
+      server.close()
+    }
+  })
+
   it('长记忆端点以 characterId 精确定位同名旧会话', async () => {
     const session = {
       id: 'default', title: '旧会话', createdAt: 1, updatedAt: 1,
@@ -371,20 +408,20 @@ describe('桥接路由集成', () => {
       expect(body.token).toBeTruthy()
       expect(body.deviceId).toBeTruthy()
 
-      // 已登记设备直接续签（无需再审批）
+      // 已登记 fingerprint 也必须重新消费配对码并经审批；不会走静默续签旁路。
       const again = await fetch(`${base}/auth/pair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pairingCode: generatePairingCode(), deviceName: '小米手机', deviceFingerprint: 'fp-1' }),
       })
       expect(again.status).toBe(200)
-      expect((await again.json()).deviceId).toBe(body.deviceId)
+      expect((await again.json()).deviceId).not.toBe(body.deviceId)
     } finally {
       server.close()
     }
   })
 
-  it('配对码可选：无配对码时跳过校验（靠人工确认兜底）', async () => {
+  it('无配对码时即使 PC 回调会批准也拒绝配对', async () => {
     const app = express()
     app.use(express.json())
     app.use('/api/v1', buildBridgeRouter(
@@ -398,16 +435,13 @@ describe('桥接路由集成', () => {
     const { server, port } = await listen(app)
     try {
       const base = `http://127.0.0.1:${port}/api/v1`
-      // 无配对码（不传/空串均视为可选）：未登记设备挂起 -> 自动批准 -> 签发
+      // 无配对码不得进入审批队列。
       const res = await fetch(`${base}/auth/pair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deviceName: '无码手机', deviceFingerprint: 'fp-nocode' }),
       })
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.token).toBeTruthy()
-      expect(body.deviceId).toBeTruthy()
+      expect(res.status).toBe(401)
     } finally {
       server.close()
     }

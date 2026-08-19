@@ -54,6 +54,7 @@ import {
   registerDevice,
   settlePair,
   signToken,
+  verifyAuthorizedToken,
   verifyToken,
   listDevices,
   revokeDevice,
@@ -62,7 +63,7 @@ import {
 import { WsHub } from './ws'
 import { BridgeChatService, type SessionChangedNotifier } from './chatService'
 import { listAllSessions, findSessionByCharacterId, findSessionById } from './sessionsIndex'
-import { handleTts } from './ttsHandler'
+import { handleGroupTts, handleTts } from './ttsHandler'
 import { safeId } from '../utils/pathGuard'
 import { sanitizeApiKey } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
@@ -109,10 +110,10 @@ async function invalidateSessionMemory(characterId: string, sessionId: string): 
 }
 
 /** 校验 Bearer 令牌的中间件（JWT 校验 + 设备仍存在校验：吊销立即生效） */
-function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization ?? ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : ''
-  const payload = verifyToken(token)
+  const payload = verifyAuthorizedToken(token)
   if (!payload) {
     log.warn('鉴权失败：令牌无效或已过期', { path: req.path })
     res.status(401).json({ error: 'unauthorized' })
@@ -189,22 +190,14 @@ export function buildBridgeRouter(
       res.status(400).json({ error: '缺少配对参数' })
       return
     }
-    // 配对码可选：提供则校验（一次性 + 5 分钟）；留空则跳过（仍依赖 PC 端人工确认兜底，§5.1）
-    if (pairingCode) {
-      if (!consumePairingCode(pairingCode)) {
-        res.status(401).json({ error: '配对码无效或已过期' })
-        return
-      }
-    }
-    // 已登记的受信任设备直接续签
-    const existing = await import('./auth').then((m) => m.findDevice(deviceFingerprint))
-    if (existing) {
-      res.json({ token: signToken(existing.deviceId), deviceId: existing.deviceId })
+    // fingerprint 仅作设备标识，首次与重新配对都必须消费一次性配对码。
+    if (!pairingCode || !consumePairingCode(pairingCode)) {
+      res.status(401).json({ error: '配对码无效或已过期' })
       return
     }
 
-    // 未登记：挂起等待 PC 端人工确认（§5.1 防局域网抢扫）
-    const pair = enqueuePendingPair(deviceName, deviceFingerprint, pairingCode ?? '')
+    // 始终挂起等待 PC 端人工确认，杜绝已知 fingerprint 续签旁路。
+    const pair = enqueuePendingPair(deviceName, deviceFingerprint, pairingCode)
     onPairRequest(pair.requestId, deviceName)
     const approved = await new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => resolve(false), PAIR_WAIT_TIMEOUT_MS)
@@ -555,6 +548,54 @@ export function buildBridgeRouter(
       res.json({
         messages: page.map(toApiMessage),
         nextCursor,
+      })
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message })
+    }
+  })
+
+  /** 从指定历史消息创建独立会话分支。 */
+  router.post('/sessions/:sessionId/branch', async (req, res) => {
+    try {
+      const sessionId = safeId(req.params.sessionId)
+      const rawMessageId = typeof req.query.messageId === 'string'
+        ? req.query.messageId
+        : (req.body as { messageId?: string } | undefined)?.messageId
+      if (!rawMessageId) { res.status(400).json({ error: '缺少 messageId' }); return }
+      const messageId = safeId(rawMessageId)
+      const session = await resolveSession(req, sessionId)
+      if (!session) { res.status(404).json({ error: '会话不存在' }); return }
+
+      const sourceMessages = chatData.readMessages(session.characterId, sessionId)
+      const branchIndex = sourceMessages.findIndex((message) => message.id === messageId)
+      if (branchIndex < 0) { res.status(404).json({ error: '消息不存在' }); return }
+
+      const branch = await chatData.createSession(
+        session.characterId,
+        `${session.title} · 分支`,
+        session.personaId,
+        session.lorebookIds,
+      )
+      const copied = sourceMessages.slice(0, branchIndex + 1)
+      const idMap = new Map(copied.map((message) => [message.id, nanoid()]))
+      for (const message of copied) {
+        await chatData.saveMessage(session.characterId, {
+          ...message,
+          id: idMap.get(message.id)!,
+          sessionId: branch.id,
+          replyToId: message.replyToId ? idMap.get(message.replyToId) : undefined,
+        })
+      }
+      notifySessionChanged(branch.id, 'created')
+      res.json({
+        id: branch.id,
+        characterId: branch.characterId,
+        characterName: getCharacter(branch.characterId)?.name ?? '',
+        title: branch.title,
+        createdAt: branch.createdAt,
+        updatedAt: branch.updatedAt,
+        messageCount: copied.length,
+        lastMessage: copied.at(-1)?.content.slice(0, 50) ?? '',
       })
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
@@ -1273,6 +1314,8 @@ export function buildBridgeRouter(
       res.status(400).json({ error: (e as Error).message })
     }
   })
+
+  router.get('/groups/:groupId/sessions/:sessionId/messages/:messageId/tts', handleGroupTts)
 
   /** 群聊发言：用户消息落盘（characterId='__user__'） */
   router.post('/groups/:groupId/sessions/:sessionId/messages', async (req, res) => {

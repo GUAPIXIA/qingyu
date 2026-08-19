@@ -2,7 +2,8 @@
  * 桥接层认证单测：配对码一次性/过期、JWT 签发/校验/过期、设备登记/吊销、审批队列。
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // electron mock：safeStorage 可加密 + userData 临时目录
 const encryptString = vi.fn()
@@ -35,6 +36,8 @@ const TEST_ROOT = '/tmp/qingyu-bridge-auth-test'
 
 beforeEach(() => {
   rmSync(TEST_ROOT, { recursive: true, force: true })
+  resetJwtSecretCache()
+  encryptionAvailable.mockReturnValue(true)
   encryptString.mockImplementation((s: string) => Buffer.from(s))
 })
 
@@ -79,6 +82,7 @@ describe('JWT（HMAC-SHA256）', () => {
     // 通过再次调用 getJwtSecret 读取持久化值对比（同值即稳定）
     expect(verifyToken(token)?.deviceId).toBe('dev-001')
     expect(getJwtSecret()).toEqual(secretBefore)
+    expect(existsSync(join(TEST_ROOT, 'data', 'config', 'bridge', 'secret'))).toBe(false)
   })
 
   it('密钥跨重启稳定（降级路径）：safeStorage 不可用时旧 token 重启后仍可验证', () => {
@@ -95,6 +99,31 @@ describe('JWT（HMAC-SHA256）', () => {
     expect(verifyToken(token)?.deviceId).toBe('dev-002')
     // 恢复
     encryptionAvailable.mockReturnValue(true)
+  })
+
+  it('发现旧明文副本时删除并轮换密钥，使旧 token 失效', () => {
+    resetJwtSecretCache()
+    const oldToken = signToken('dev-old')
+    const legacyDir = join(TEST_ROOT, 'data', 'config', 'bridge')
+    mkdirSync(legacyDir, { recursive: true })
+    writeFileSync(join(legacyDir, 'secret'), getJwtSecret().toString('base64'))
+    resetJwtSecretCache()
+    getJwtSecret()
+    expect(existsSync(join(legacyDir, 'secret'))).toBe(false)
+    expect(verifyToken(oldToken)).toBeNull()
+  })
+
+  it('生产环境安全存储不可用时拒绝生成 Bridge 密钥', () => {
+    encryptionAvailable.mockReturnValue(false)
+    const previous = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    try {
+      expect(() => getJwtSecret()).toThrow('安全存储不可用')
+    } finally {
+      if (previous === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = previous
+      encryptionAvailable.mockReturnValue(true)
+    }
   })
 })
 

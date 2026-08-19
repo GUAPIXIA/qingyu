@@ -2,7 +2,7 @@
  * AnnouncementsPage 单元测试
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
 
 vi.mock('react-router-dom', () => ({
   useNavigate: vi.fn(() => vi.fn()),

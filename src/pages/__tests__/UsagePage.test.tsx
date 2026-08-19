@@ -2,7 +2,7 @@
  * UsagePage 单元测试
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('react-router-dom', () => ({
   useNavigate: vi.fn(() => vi.fn()),
@@ -49,11 +49,13 @@ describe('UsagePage', () => {
 
   it('渲染页面标题', async () => {
     render(<UsagePage />)
+    await waitFor(() => expect(window.api.usage.summary).toHaveBeenCalled())
     expect(screen.getByText('用量统计')).toBeInTheDocument()
   })
 
-  it('显示导出按钮', () => {
+  it('显示导出按钮', async () => {
     render(<UsagePage />)
+    await waitFor(() => expect(window.api.usage.summary).toHaveBeenCalled())
     expect(screen.getByText('导出 CSV')).toBeInTheDocument()
   })
 })

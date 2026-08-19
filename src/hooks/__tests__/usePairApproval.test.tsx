@@ -37,8 +37,8 @@ describe('usePairApproval', () => {
   })
 
   it('收到请求时显示审批弹窗', () => {
-    let callback: Function
-    mockOnPairRequest.mockImplementation((cb: Function) => {
+    let callback: ((payload: { requestId: string; deviceName: string }) => void) | undefined
+    mockOnPairRequest.mockImplementation((cb: (payload: { requestId: string; deviceName: string }) => void) => {
       callback = cb
       return vi.fn()
     })
@@ -47,7 +47,7 @@ describe('usePairApproval', () => {
 
     // 模拟收到配对请求
     act(() => {
-      callback!({ requestId: 'req-001', deviceName: '测试手机' })
+      callback?.({ requestId: 'req-001', deviceName: '测试手机' })
     })
 
     // 应返回 JSX 元素

@@ -6,6 +6,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-test' },
+  dialog: { showMessageBox: vi.fn(async () => ({ response: 1 })) },
 }))
 
 // mock MCP 管理器与适配器注册表（toolLoop 通过 getAdapter 获取适配器）
@@ -14,6 +15,7 @@ const mcpMock = vi.hoisted(() => ({
   getAllTools: vi.fn(() => []),
   findToolServer: vi.fn(),
   callTool: vi.fn(),
+  listServers: vi.fn(() => [{ id: 'srv-1', name: '测试 MCP' }]),
 }))
 vi.mock('../../mcp/manager', () => ({ mcpManager: mcpMock }))
 
@@ -101,7 +103,7 @@ describe('chatWithTools 主循环', () => {
 
   it('含工具调用标记：执行工具并回传结果继续循环', async () => {
     mcpMock.getAllTools.mockReturnValue([{ name: 'search', description: '', inputSchema: {} }] as never)
-    mcpMock.findToolServer.mockReturnValue({ serverId: 'srv-1' })
+    mcpMock.findToolServer.mockReturnValue({ serverId: 'srv-1', tool: { description: '搜索公开信息' } })
     mcpMock.callTool.mockResolvedValue({
       content: [{ type: 'text', text: '搜索结果123' }],
       isError: false,

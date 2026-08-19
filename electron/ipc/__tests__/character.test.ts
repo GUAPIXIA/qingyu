@@ -3,7 +3,6 @@
  * 覆盖：list / get / save / delete / bindLorebook / exportPng / exportJson
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { IPC_EVENTS } from '../../../shared/ipc-channels'
 
 // ===== Mocks =====
 const mockListCharacters = vi.fn()
@@ -80,7 +79,7 @@ const mockCharacter = {
 
 // ===== 测试 =====
 describe('character IPC', () => {
-  let handlers: Record<string, Function>
+  let handlers: Record<string, (...args: unknown[]) => unknown>
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -92,7 +91,7 @@ describe('character IPC', () => {
     // 注册 IPC handlers 并捕获
     handlers = {}
     const mockIpcMain = {
-      handle: vi.fn((channel: string, handler: Function) => {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
         handlers[channel] = handler
       }),
     }

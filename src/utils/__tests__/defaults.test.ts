@@ -4,6 +4,7 @@ import {
   BUILTIN_FONTS,
   THEME_COLORS,
   PROVIDER_INFO,
+  isConnectionConfigured,
   isLocalUrl,
   getDefaultSettings as reExportedGetDefaultSettings,
 } from '../defaults'
@@ -147,5 +148,20 @@ describe('isLocalUrl', () => {
     expect(isLocalUrl('')).toBe(false)
     expect(isLocalUrl(null)).toBe(false)
     expect(isLocalUrl(undefined)).toBe(false)
+  })
+})
+
+describe('isConnectionConfigured', () => {
+  it('允许 OpenCode Go 端点在无 API Key 时使用', () => {
+    expect(isConnectionConfigured({
+      provider: 'openai',
+      baseUrl: 'https://opencode.ai/zen/go/v1/',
+      apiKey: '',
+    })).toBe(true)
+  })
+
+  it('普通远程端点仍要求 API Key', () => {
+    expect(isConnectionConfigured({ provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '' })).toBe(false)
+    expect(isConnectionConfigured({ provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test' })).toBe(true)
   })
 })

@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { logError } from '../../lib/logger'
-import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
+import { isConnectionConfigured } from '../../utils/defaults'
 import { getDisplayName } from '../../utils/variables'
 import { expandMacros, buildMacroContext } from '../../utils/macros'
 import { getEffectiveQuickReplies } from '../../utils/quickReply'
@@ -105,7 +105,7 @@ export function useChatInputState(
   const getActiveProfile = useSettingsStore((s) => s.getActiveProfile)
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || isLocalUrl(activeProfile.baseUrl) || !!activeProfile.apiKey)
+  const isConnected = isConnectionConfigured(activeProfile)
 
   // 快捷回复按钮：角色/会话切换时刷新
   useEffect(() => {

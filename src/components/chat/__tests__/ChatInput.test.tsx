@@ -147,7 +147,7 @@ describe('ChatInput', () => {
   describe('引用回复（BUG-06 回归）', () => {
     it('显示被引用消息预览', async () => {
       const replyTo = createMessage({ content: '被引用的内容' })
-      const { getByText } = render(
+      const { getByText } = await renderChatInput(
         <ChatInput character={createCharacter()} replyTo={replyTo} onCancelReply={vi.fn()} />
       )
       expect(getByText('被引用的内容')).toBeTruthy()
@@ -155,7 +155,7 @@ describe('ChatInput', () => {
 
     it('被引用消息 content 为空时不崩溃（BUG-06）', async () => {
       const replyTo = createMessage({ content: '' })
-      const { container } = render(
+      const { container } = await renderChatInput(
         <ChatInput character={createCharacter()} replyTo={replyTo} onCancelReply={vi.fn()} />
       )
       expect(container).toBeTruthy()
@@ -164,7 +164,7 @@ describe('ChatInput', () => {
     it('点击取消按钮调用 onCancelReply', async () => {
       const onCancelReply = vi.fn()
       const replyTo = createMessage({ content: '内容' })
-      const { getByTitle } = render(
+      const { getByTitle } = await renderChatInput(
         <ChatInput character={createCharacter()} replyTo={replyTo} onCancelReply={onCancelReply} />
       )
       fireEvent.click(getByTitle('取消引用'))

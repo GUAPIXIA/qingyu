@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useChatStore } from '../store/useChatStore'
 import { useCharacterStore } from '../store/useCharacterStore'
-import { isLocalProvider, isLocalUrl } from '../utils/defaults'
+import { isConnectionConfigured } from '../utils/defaults'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { MessageBubble } from '../components/chat/MessageBubble'
@@ -74,7 +74,7 @@ export function ChatPage() {
   const bgDragRef = useRef({ startX: 0, startY: 0, startPosX: 0, startPosY: 0 })
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || isLocalUrl(activeProfile.baseUrl) || !!activeProfile.apiKey)
+  const isConnected = isConnectionConfigured(activeProfile)
 
   // 长对话且未开启长记忆时，引导开启自动摘要（节省 token + 保持主题连贯）
   const currentChatSession = sessions.find(s => s.id === currentSessionId)
@@ -395,7 +395,9 @@ export function ChatPage() {
   }, [currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams, currentCharacter?.avatar, currentCharacter?.cover])
 
   // 首次使用引导（抽取至 ChatWelcomeGuide）
-  if (loaded && !isConnected) {
+  // 未选择角色时才显示首次配置引导。角色已选中后必须允许进入聊天界面；
+  // 模型连接问题由发送链路给出具体错误，不能在这里吞掉角色选择结果。
+  if (loaded && !isConnected && !currentCharacter) {
     return <ChatWelcomeGuide />
   }
 

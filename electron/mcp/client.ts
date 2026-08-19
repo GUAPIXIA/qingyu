@@ -27,7 +27,14 @@ export class McpClient extends EventEmitter {
     if (this.config.transport === 'stdio') {
       if (!this.config.command) throw new Error('stdio 模式需要 command')
       this.process = spawn(this.config.command, this.config.args ?? [], {
-        env: { ...process.env, ...this.config.env },
+        // 不继承 API Key、代理凭据等主进程完整环境，只保留启动所需最小集合。
+        env: {
+          PATH: process.env.PATH,
+          SystemRoot: process.env.SystemRoot,
+          TEMP: process.env.TEMP,
+          TMP: process.env.TMP,
+          ...this.config.env,
+        },
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
       })

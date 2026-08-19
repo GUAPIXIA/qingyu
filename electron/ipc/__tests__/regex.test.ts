@@ -26,17 +26,15 @@ vi.mock('node:fs', async (importOriginal) => {
   }
 })
 
-import { registerRegexIPC } from '../regex'
-
 describe('regex IPC', () => {
-  let handlers: Record<string, Function>
+  let handlers: Record<string, (...args: unknown[]) => unknown>
 
   beforeEach(async () => {
     vi.clearAllMocks()
     mockReadJson.mockReturnValue([])
     handlers = {}
     const mockIpcMain = {
-      handle: vi.fn((channel: string, handler: Function) => {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
         handlers[channel] = handler
       }),
     }

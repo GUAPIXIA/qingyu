@@ -9,7 +9,7 @@
  */
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, unlinkSync } from 'node:fs'
 import { DIRS, readJson, writeJson } from '../services/storage'
 import { saveCredential, getCredential, isEncryptionAvailable } from '../services/safeStorage'
 import { createLogger } from '../services/logger'
@@ -40,6 +40,7 @@ export interface BridgeDevice {
   fingerprint: string
   createdAt: number
   lastSeen: number
+  tokenVersion: number
 }
 
 /** 测试/密钥轮换用：清内存缓存（下次调用重新读取持久化密钥） */
@@ -74,6 +75,22 @@ export function getJwtSecret(): Buffer {
   // 1) 加密凭据（含 plain: 降级格式，经 safeStorage.getCredential 统一读取）
   const existing = getCredential(SECRET_CREDENTIAL_KEY)
   if (existing) {
+    const legacy = join(bridgeDir(), 'secret')
+    const credentialFile = join(DIRS.config(), 'credentials.json')
+    const rawCredential = readJson<Record<string, string>>(credentialFile, 'settings')?.[SECRET_CREDENTIAL_KEY]
+    const wasPlainCredential = rawCredential?.startsWith('plain:') === true
+    if (!isEncryptionAvailable() && process.env.NODE_ENV !== 'test') {
+      throw new Error('系统安全存储不可用，已拒绝启动局域网 Bridge')
+    }
+    if (isEncryptionAvailable() && (existsSync(legacy) || wasPlainCredential)) {
+      // 0.11.28 迁移：旧版无条件写过明文副本，迁移时必须轮换而不是继续使用已泄露密钥。
+      const rotated = randomBytes(32)
+      saveCredential(SECRET_CREDENTIAL_KEY, rotated.toString('base64'))
+      if (existsSync(legacy)) unlinkSync(legacy)
+      cachedSecret = rotated
+      log.warn('已迁移并轮换 Bridge JWT 密钥，所有旧设备需要重新配对')
+      return cachedSecret
+    }
     cachedSecret = Buffer.from(existing, 'base64')
     return cachedSecret
   }
@@ -82,30 +99,31 @@ export function getJwtSecret(): Buffer {
   const plainPath = join(bridgeDir(), 'secret')
   if (existsSync(plainPath)) {
     try {
-      cachedSecret = Buffer.from(readFileSync(plainPath, 'utf-8').trim(), 'base64')
+      const encoded = readFileSync(plainPath, 'utf-8').trim()
+      if (isEncryptionAvailable()) {
+        saveCredential(SECRET_CREDENTIAL_KEY, encoded)
+        unlinkSync(plainPath)
+      } else if (process.env.NODE_ENV !== 'test') {
+        throw new Error('系统安全存储不可用，已拒绝启动局域网 Bridge')
+      }
+      cachedSecret = Buffer.from(encoded, 'base64')
       return cachedSecret
     } catch {
       // 文件损坏：重新生成
     }
   }
 
-  // 3) 生成新密钥（优先 safeStorage 加密；降级写 plain: 前缀凭据 + 明文文件双保险）
+  // 3) 生成新密钥；生产环境禁止明文降级。
   const secret = randomBytes(32)
   const encoded = secret.toString('base64')
   if (isEncryptionAvailable()) {
-    try {
-      saveCredential(SECRET_CREDENTIAL_KEY, encoded)
-    } catch {
-      writePlainCredential(encoded)
-    }
+    saveCredential(SECRET_CREDENTIAL_KEY, encoded)
+    if (existsSync(plainPath)) unlinkSync(plainPath)
   } else {
+    if (process.env.NODE_ENV !== 'test') {
+      throw new Error('系统安全存储不可用，已拒绝启动局域网 Bridge')
+    }
     writePlainCredential(encoded)
-  }
-  // 明文文件兜底（与 plain: 凭据共存，任一可读）
-  try {
-    writeFileSync(plainPath, encoded, { mode: 0o600 })
-  } catch {
-    // 忽略
   }
   cachedSecret = secret
   log.warn('已生成新 JWT 密钥（先前无持久化密钥）')
@@ -134,6 +152,7 @@ export interface TokenPayload {
   iat: number
   /** 过期时间（ms） */
   exp: number
+  tokenVersion?: number
 }
 
 function base64url(buf: Buffer): string {
@@ -146,15 +165,26 @@ function sign(data: string, secret: Buffer): string {
 
 /** 签发长期设备令牌（JWT 风格：header.payload.signature） */
 export function signToken(deviceId: string, ttlMs = TOKEN_TTL_MS): string {
+  const tokenVersion = loadDevices().find((device) => device.deviceId === deviceId)?.tokenVersion ?? 1
   const payload: TokenPayload = {
     deviceId,
     iat: Date.now(),
     exp: Date.now() + ttlMs,
+    tokenVersion,
   }
   const header = base64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
   const body = base64url(Buffer.from(JSON.stringify(payload)))
   const signature = sign(`${header}.${body}`, getJwtSecret())
   return `${header}.${body}.${signature}`
+}
+
+/** 校验签名、设备吊销状态和令牌代次。 */
+export function verifyAuthorizedToken(token: string): TokenPayload | null {
+  const payload = verifyToken(token)
+  if (!payload) return null
+  const device = loadDevices().find((entry) => entry.deviceId === payload.deviceId)
+  if (!device || payload.tokenVersion !== (device.tokenVersion ?? 1)) return null
+  return payload
 }
 
 /** 校验令牌，返回载荷；无效/过期返回 null */
@@ -228,7 +258,10 @@ function loadDevices(): BridgeDevice[] {
 }
 
 function saveDevices(devices: BridgeDevice[]): void {
-  writeFileSync(devicesFile(), JSON.stringify(devices, null, 2))
+  const file = devicesFile()
+  const temp = `${file}.tmp`
+  writeFileSync(temp, JSON.stringify(devices, null, 2), { mode: 0o600 })
+  renameSync(temp, file)
 }
 
 export function listDevices(): BridgeDevice[] {
@@ -249,6 +282,7 @@ export function registerDevice(name: string, fingerprint: string): BridgeDevice 
     fingerprint,
     createdAt: Date.now(),
     lastSeen: Date.now(),
+    tokenVersion: 1,
   }
   const devices = loadDevices().filter((d) => d.fingerprint !== fingerprint)
   devices.push(device)

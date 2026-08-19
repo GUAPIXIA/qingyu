@@ -20,16 +20,14 @@ vi.mock('../../services/usage', () => ({
   clearUsage: vi.fn(),
 }))
 
-import { registerUsageIPC } from '../usage'
-
 describe('usage IPC', () => {
-  let handlers: Record<string, Function>
+  let handlers: Record<string, (...args: unknown[]) => unknown>
 
   beforeEach(async () => {
     vi.clearAllMocks()
     handlers = {}
     const mockIpcMain = {
-      handle: vi.fn((channel: string, handler: Function) => {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
         handlers[channel] = handler
       }),
     }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { PROVIDER_INFO, isLocalProvider, isLocalUrl } from '../utils/defaults'
+import { PROVIDER_INFO, isConnectionConfigured } from '../utils/defaults'
 import { cn } from '../lib/utils'
 import type { ProviderType, ConnectionProfile } from '../../shared/types'
 import {
@@ -114,7 +114,7 @@ export function ApiPage() {
   })
 
   const activeProfile = getActiveProfile()
-  const isConnected = activeProfile !== null && (isLocalProvider(activeProfile.provider) || isLocalUrl(activeProfile.baseUrl) || !!activeProfile.apiKey)
+  const isConnected = isConnectionConfigured(activeProfile)
 
   const resetForm = () => {
     setEditForm({ id: '', name: '', provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '', maxContext: 131072 })

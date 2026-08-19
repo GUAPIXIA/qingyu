@@ -17,10 +17,8 @@ vi.mock('../../services/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }))
 
-import { registerQuickReplyIPC } from '../quickReply'
-
 describe('quickReply IPC', () => {
-  let handlers: Record<string, Function>
+  let handlers: Record<string, (...args: unknown[]) => unknown>
   const mockDialog = { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() }
 
   beforeEach(async () => {
@@ -28,7 +26,7 @@ describe('quickReply IPC', () => {
     mockReadJsonAsync.mockResolvedValue({ global: [], byCharacter: {} })
     handlers = {}
     const mockIpcMain = {
-      handle: vi.fn((channel: string, handler: Function) => {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
         handlers[channel] = handler
       }),
     }

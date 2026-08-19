@@ -51,6 +51,10 @@ function readCharacterImage(characterId: string, prefix: 'avatar' | 'cover'): Bu
 
 export function buildStaticRouter(): Router {
   const router = Router()
+  router.use((_req, res, next) => {
+    res.set('Cache-Control', 'private, max-age=300')
+    next()
+  })
 
   router.get('/avatars/:characterId', (req: Request, res: Response) => {
     try {

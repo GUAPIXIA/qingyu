@@ -1,5 +1,32 @@
 # 更新日志
 
+## [0.11.28] - 2026-08-19
+
+### PC 对话修复
+
+- 修复未配置 AI 连接时，选择角色并开始对话仍被欢迎页拦截、无法进入角色聊天界面的问题。
+- 修复 OpenCode Go 无需 API Key 且连接测试成功时，侧栏与聊天输入区仍误报“未连接”的问题。
+
+### Bridge 安全热修
+
+- 配对不再允许使用已知 fingerprint 静默续签；首次及重新配对均要求一次性配对码与 PC 人工确认。
+- Bridge JWT 只写入 Electron `safeStorage`；发现旧明文副本时删除并轮换密钥，旧 Token 全部失效。
+- 设备令牌加入 `tokenVersion`，吊销后 REST、WS、静态媒体和 TTS 立即拒绝；已有 WS 会被主动断开。
+- WebSocket 长期 Token 从 URL query 移至 Upgrade `Authorization` Header；Android 公网地址强制 HTTPS/WSS。
+- `/static` 头像、封面、单聊及群聊图片统一 Bearer 鉴权并使用私有缓存；Android Coil 自动携带当前设备令牌。
+
+### MCP 与工程门禁
+
+- MCP 工具加入 L0～L3 风险分级；敏感读取、外部写入和本机变更调用必须经主进程逐次确认。
+- `McpManager.startServer()` 在每次启动前重新校验持久配置，MCP 子进程仅继承最小环境变量。
+- 历史安全 PoC 从默认回归集隔离，新增阻止 fingerprint 重放、明文密钥、未授权媒体和 WS Token URL 的安全回归。
+- 修复全部 ESLint Error，排除发布产物，清理 React `act(...)` 测试警告。
+
+### Android Bridge 与功能完善
+
+- 对话分支、群聊 TTS、代码块语法着色及旧网卡地址自动恢复。
+- Android 单测、APK 构建和模拟器联调同步通过。
+
 ## [0.11.27] - 2026-08-18
 
 ### 代码质量修复与测试覆盖提升

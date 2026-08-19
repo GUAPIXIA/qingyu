@@ -2,7 +2,7 @@
  * PresetsPage 单元测试
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 
 vi.mock('react-router-dom', () => ({
   useNavigate: vi.fn(() => vi.fn()),
@@ -34,8 +34,9 @@ describe('PresetsPage', () => {
     vi.clearAllMocks()
   })
 
-  it('渲染页面', () => {
+  it('渲染页面', async () => {
     const { container } = render(<PresetsPage />)
+    await waitFor(() => expect(window.api.preset.list).toHaveBeenCalled())
     expect(container).toBeDefined()
   })
 })

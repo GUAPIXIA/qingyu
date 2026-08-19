@@ -10,6 +10,7 @@
 import { join } from 'node:path'
 import { readJson, DIRS } from '../services/storage'
 import { chatData } from '../ipc/chat'
+import { groupData } from '../ipc/group'
 import { edgeSpeak, openaiSpeak } from '../ipc/tts'
 import { restoreSecrets } from '../ipc/settings'
 import { getDefaultSettings } from '../../shared/defaults'
@@ -104,6 +105,42 @@ export async function handleTts(req: Request, res: Response): Promise<void> {
     res.send(buf)
   } catch (e) {
     log.warn('TTS 合成失败', { error: (e as Error).message })
+    res.status(500).json({ error: `TTS 合成失败：${(e as Error).message}` })
+  }
+}
+
+/** 群聊消息 TTS；合成配置与单聊完全一致。 */
+export async function handleGroupTts(req: Request, res: Response): Promise<void> {
+  try {
+    const groupId = safeId(req.params.groupId)
+    const sessionId = safeId(req.params.sessionId)
+    const messageId = safeId(req.params.messageId)
+    const target = groupData.readMessages(groupId, sessionId).find((message) => message.id === messageId)
+    if (!target?.content) { res.status(404).json({ error: '消息不存在或不可朗读' }); return }
+
+    const settings = readJson<Settings>(join(DIRS.config(), 'settings.json'), 'settings') ?? getDefaultSettings()
+    const text = preprocessForTts(target.content, settings.ttsReadThought ?? false)
+    if (!text.trim()) { res.status(400).json({ error: '无可朗读内容' }); return }
+    const tts = readActiveTtsConfig()
+    if (!tts) { res.status(400).json({ error: '未配置活跃 TTS 模型（设置 → API 设置 → TTS）' }); return }
+
+    let audioBase64: string
+    if (tts.provider === 'edge') {
+      audioBase64 = await edgeSpeak(text, tts.voice || 'zh-CN-XiaoxiaoNeural', { proxy: tts.proxy || undefined })
+    } else if (tts.provider === 'openai') {
+      audioBase64 = await openaiSpeak({
+        baseUrl: tts.baseUrl || 'https://api.openai.com/v1', apiKey: tts.apiKey,
+        model: tts.model || 'tts-1', voice: tts.voice || 'alloy',
+      }, text)
+    } else {
+      res.status(501).json({ error: 'system 语音不支持流式输出，请配置 Edge/OpenAI TTS' }); return
+    }
+    const buf = Buffer.from(audioBase64, 'base64')
+    log.info('群聊 TTS 合成完成', { messageId, provider: tts.provider, bytes: buf.length })
+    res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': String(buf.length), 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=300' })
+    res.send(buf)
+  } catch (e) {
+    log.warn('群聊 TTS 合成失败', { error: (e as Error).message })
     res.status(500).json({ error: `TTS 合成失败：${(e as Error).message}` })
   }
 }

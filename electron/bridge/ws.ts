@@ -14,7 +14,7 @@
  */
 import { createServer } from 'node:http'
 import { WebSocketServer, WebSocket } from 'ws'
-import { verifyToken, touchDevice } from './auth'
+import { verifyAuthorizedToken, touchDevice } from './auth'
 import { createLogger } from '../services/logger'
 import { sanitizeApiKey } from '../utils/pathGuard'
 
@@ -36,6 +36,7 @@ export const activeChatControllers = new Map<string, AbortController>()
 export class WsHub {
   private wss: WebSocketServer | null = null
   private readonly clients = new Set<WebSocket>()
+  private readonly deviceBySocket = new Map<WebSocket, string>()
 
   /** 挂载到 HTTP server */
   attach(server: ReturnType<typeof createServer>, path = '/ws'): void {
@@ -48,16 +49,17 @@ export class WsHub {
         return
       }
 
-      // token 校验（query 参数）
-      const url = new URL(request.url ?? '', 'http://localhost')
-      const token = url.searchParams.get('token') ?? ''
-      const payload = verifyToken(token)
+      // 长期令牌仅经 Upgrade Header 传递，禁止出现在 URL/代理日志中。
+      const authorization = request.headers.authorization ?? ''
+      const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+      const payload = verifyAuthorizedToken(token)
       if (!payload) {
         socket.close(4001, 'unauthorized')
         return
       }
       touchDevice(payload.deviceId)
       this.clients.add(socket)
+      this.deviceBySocket.set(socket, payload.deviceId)
       log.info('设备已连接', { deviceId: payload.deviceId, clients: this.clients.size })
 
       // 心跳：ping + pong 超时检测
@@ -101,6 +103,7 @@ export class WsHub {
       socket.on('close', () => {
         clearInterval(heartbeat)
         this.clients.delete(socket)
+        this.deviceBySocket.delete(socket)
         log.info('设备断开', { clients: this.clients.size })
       })
       socket.on('error', (err) => {
@@ -127,11 +130,19 @@ export class WsHub {
     return this.clients.size
   }
 
+  /** 吊销设备时立即切断其已有 WS，不能等到下次重连才生效。 */
+  disconnectDevice(deviceId: string): void {
+    for (const [socket, connectedDeviceId] of this.deviceBySocket) {
+      if (connectedDeviceId === deviceId) socket.close(4001, 'device revoked')
+    }
+  }
+
   close(): void {
     for (const client of this.clients) {
       client.terminate()
     }
     this.clients.clear()
+    this.deviceBySocket.clear()
     this.wss?.close()
     this.wss = null
   }
