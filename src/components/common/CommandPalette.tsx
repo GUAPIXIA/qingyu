@@ -17,6 +17,7 @@ import {
   Settings,
   SlidersHorizontal,
   Square,
+  Terminal,
   User,
   Users,
   Zap,
@@ -25,6 +26,8 @@ import {
 import { useChatStore } from '../../store/useChatStore'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
 import { cn } from '../../lib/utils'
+import { listCommands } from '../../commands/registry'
+import { registerBuiltinCommands } from '../../commands/builtin'
 
 interface Command {
   /** 唯一 id，同时作为过滤匹配的补充文本 */
@@ -51,6 +54,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const selectedRef = useRef<HTMLButtonElement>(null)
 
   // 打开时重置状态并聚焦输入框
   useEffect(() => {
@@ -67,6 +71,22 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     navigate(path)
     setTimeout(() => window.dispatchEvent(new CustomEvent(eventName)), 60)
   }
+
+  // 命令面板与聊天输入框共用同一份斜杠命令注册表，避免两套清单漂移。
+  registerBuiltinCommands()
+  const slashCommands: Command[] = listCommands().map((cmd) => ({
+    id: `slash-${cmd.name}`,
+    label: `/${cmd.name}`,
+    desc: `${cmd.description} · ${cmd.usage}`,
+    icon: Terminal,
+    group: '指令',
+    action: () => {
+      navigate('/chat')
+      setTimeout(() => window.dispatchEvent(new CustomEvent('shortcut:insert-command', {
+        detail: { value: cmd.usage },
+      })), 60)
+    },
+  }))
 
   // 命令列表（直接构建，每次渲染闭包新鲜，无需 useMemo）
   const commands: Command[] = [
@@ -103,6 +123,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           useGroupChatStore.getState().stopStreaming()
         },
       },
+      ...slashCommands,
       { id: 'page-chat', label: '前往：聊天', icon: MessageSquare, group: '页面', action: () => navigate('/chat') },
       { id: 'page-group', label: '前往：群聊', icon: Users, group: '页面', action: () => navigate('/group') },
       { id: 'page-characters', label: '前往：角色', icon: Bot, group: '页面', action: () => navigate('/characters') },
@@ -130,6 +151,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   useEffect(() => {
     setSelectedIdx(0)
   }, [query])
+
+  // 键盘选择可能越过当前滚动窗口；始终让高亮命令保持可见。
+  useEffect(() => {
+    if (!open || filtered.length === 0) return
+    selectedRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [open, selectedIdx, filtered.length])
 
   const execute = (cmd: Command) => {
     onClose()
@@ -161,7 +188,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   if (!open) return null
 
   // 按分组渲染（操作 / 页面）
-  const groups = ['操作', '页面'] as const
+  const groups = ['操作', '指令', '页面'] as const
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4 animate-fade-in">
@@ -175,13 +202,17 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls="command-palette-list"
+            aria-activedescendant={filtered[selectedIdx] ? `command-${filtered[selectedIdx].id}` : undefined}
             placeholder="搜索命令或输入页面名称…"
             className="flex-1 bg-transparent outline-none text-sm text-tavern-text placeholder:text-tavern-text-muted"
           />
           <kbd className="px-1.5 py-0.5 rounded text-[10px] bg-tavern-bg-hover text-tavern-text-muted border border-tavern-border-soft shrink-0">Esc</kbd>
         </div>
         {/* 命令列表 */}
-        <div className="max-h-[45vh] overflow-y-auto py-1.5">
+        <div id="command-palette-list" role="listbox" className="max-h-[45vh] overflow-y-auto py-1.5">
           {filtered.length === 0 && (
             <div className="px-4 py-8 text-center text-sm text-tavern-text-muted">没有匹配的命令</div>
           )}
@@ -198,6 +229,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                   return (
                     <button
                       key={cmd.id}
+                      id={`command-${cmd.id}`}
+                      ref={selected ? selectedRef : undefined}
+                      role="option"
+                      aria-selected={selected}
                       onClick={() => execute(cmd)}
                       onMouseEnter={() => setSelectedIdx(idx)}
                       className={cn(

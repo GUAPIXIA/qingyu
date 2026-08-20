@@ -211,8 +211,23 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
       threshold: st.threshold,
       maxResults: st.maxResults ?? 3,
     })
-    set({ _semanticFactsHits: hits ?? [] })
-    semanticCacheSet(cacheKey, hits ?? [])
+    // 阶段三：检索排序（0.5语义+0.3新近+0.2重要性）
+    let rankedHits = hits ?? []
+    if (rankedHits.length > 0 && session.memoryFacts) {
+      try {
+        const { scoreAndRankFacts, memoryFactToText } = await import('../utils/memory')
+        const hitFacts = rankedHits
+          .map((text) => (session.memoryFacts as import('../../shared/types').MemoryFactRecord[]).find((f) => memoryFactToText(f) === text))
+          .filter(Boolean) as import('../../shared/types').MemoryFactRecord[]
+        if (hitFacts.length > 0) {
+          const semanticScores = hitFacts.map(() => 0.9)
+          const ranked = scoreAndRankFacts(hitFacts, semanticScores)
+          rankedHits = ranked.map((r) => memoryFactToText(r.fact))
+        }
+      } catch { /* 排序失败回退原始 hits */ }
+    }
+    set({ _semanticFactsHits: rankedHits })
+    semanticCacheSet(cacheKey, rankedHits)
   } catch {
     clear()
   }

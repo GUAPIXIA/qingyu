@@ -195,6 +195,18 @@ describe('ChatInput', () => {
   })
 
   describe('命令补全', () => {
+    it('接收命令面板选择并填入斜杠命令模板', async () => {
+      const { getByDisplayValue } = await renderChatInput(<ChatInput character={createCharacter()} />)
+
+      act(() => {
+        window.dispatchEvent(new CustomEvent('shortcut:insert-command', {
+          detail: { value: '/imagine [提示词]' },
+        }))
+      })
+
+      expect(getByDisplayValue('/imagine [提示词]')).toBeTruthy()
+    })
+
     it('输入 / 前缀显示命令建议下拉', async () => {
       const { getByPlaceholderText, findByText } = await renderChatInput(<ChatInput character={createCharacter()} />)
       // 单个 '/' 无 token 不触发，输入 '/h' 匹配 help 命令

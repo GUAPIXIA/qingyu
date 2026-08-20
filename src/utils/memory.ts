@@ -357,6 +357,96 @@ export function applyFactProposals(
   return result
 }
 
+/** 30 天线性衰减的最近性分数（0~1） */
+export function computeRecencyScore(updatedAt: number | undefined, now = Date.now()): number {
+  if (!Number.isFinite(updatedAt) || !updatedAt) return 0.5
+  const elapsed = now - (updatedAt as number)
+  if (elapsed <= 0) return 1
+  const thirtyDays = 30 * 24 * 60 * 60 * 1000
+  return Math.max(0, 1 - elapsed / thirtyDays)
+}
+
+export interface RankedFact {
+  fact: MemoryFactRecord
+  score: number
+  semantic: number
+  recency: number
+  importance: number
+}
+
+/**
+ * 事实检索评分与排序
+ * - 字符串事实：score = 0.7*semantic + 0.3*recency (importance 固定 3)
+ * - 结构化事实：score = 0.5*semantic + 0.3*recency + 0.2*importance(归一化)
+ * - semanticScores 为与 facts 等长的相似度数组（0~1），缺失时视为 0
+ * - 降级（vectors 缺失/语义不可用）：semanticScores 为 null/空时，按 importance 降序 + updatedAt 降序
+ */
+export function scoreAndRankFacts(
+  facts: MemoryFactRecord[],
+  semanticScores: number[] | null | undefined,
+  now = Date.now(),
+): RankedFact[] {
+  const list = facts ?? []
+  const hasSemantic = Array.isArray(semanticScores) && semanticScores.length === list.length && semanticScores.some((s) => s > 0)
+
+  // 降级：无语义分数时按 importance + recency 排序
+  if (!hasSemantic) {
+    return list
+      .map((fact) => {
+        const importance = isMemoryFact(fact) ? clampImportance(fact.importance) : 3
+        const recency = isMemoryFact(fact) ? computeRecencyScore(fact.updatedAt, now) : 0.5
+        const score = importance / 5 * 0.6 + recency * 0.4 // 降级权重：重要性 0.6 + 新近 0.4
+        return { fact, score, semantic: 0, recency, importance }
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        if (b.importance !== a.importance) return b.importance - a.importance
+        const aTime = isMemoryFact(a.fact) ? (a.fact.updatedAt ?? 0) : 0
+        const bTime = isMemoryFact(b.fact) ? (b.fact.updatedAt ?? 0) : 0
+        return bTime - aTime
+      })
+  }
+
+  return list
+    .map((fact, idx) => {
+      const semantic = Math.max(0, Math.min(1, semanticScores![idx] ?? 0))
+      const recency = isMemoryFact(fact) ? computeRecencyScore(fact.updatedAt, now) : 0.5
+      const importance = isMemoryFact(fact) ? clampImportance(fact.importance) : 3
+      const importanceNorm = importance / 5
+      const isStructured = isMemoryFact(fact)
+      const score = isStructured
+        ? semantic * 0.5 + recency * 0.3 + importanceNorm * 0.2
+        : semantic * 0.7 + recency * 0.3
+      return { fact, score, semantic, recency, importance }
+    })
+    .sort((a, b) => b.score - a.score)
+}
+
+/**
+ * 按预算选择事实：按评分降序，单条超限跳过继续（而非停止）
+ */
+export function selectFactsByBudget(
+  ranked: RankedFact[] | MemoryFactRecord[],
+  budget: number,
+  estimateTokens: (text: string, model?: string) => number,
+  model?: string,
+): MemoryFactRecord[] {
+  const safeBudget = Math.max(0, Math.floor(budget))
+  const items: RankedFact[] = Array.isArray(ranked) && ranked.length > 0 && typeof (ranked[0] as RankedFact).fact !== 'undefined'
+    ? (ranked as RankedFact[])
+    : (ranked as MemoryFactRecord[]).map((fact) => ({ fact, score: 0, semantic: 0, recency: 0, importance: isMemoryFact(fact) ? clampImportance(fact.importance) : 3 }))
+  const selected: MemoryFactRecord[] = []
+  let remaining = safeBudget
+  for (const item of items) {
+    if (isMemoryFact(item.fact) && item.fact.status !== 'active') continue
+    const tokens = estimateTokens(memoryFactToText(item.fact), model) + 1
+    if (tokens > remaining) continue
+    selected.push(item.fact)
+    remaining -= tokens
+  }
+  return selected
+}
+
 /** 按 Token 预算裁剪文本，始终保留开头的高优先级内容。 */
 function truncateMemoryText(
   text: string,
@@ -382,7 +472,8 @@ export function fitLayeredMemoryBudget(
   budget: number,
   estimateTokens: (text: string, model?: string) => number,
   model?: string,
-): { currentState: string; timeline: string; facts: MemoryFactRecord[] } {
+  semanticScores?: number[] | null,
+): { currentState: string; timeline: string; facts: MemoryFactRecord[]; retrievalMode: 'semantic' | 'fallback' } {
   const safeBudget = Math.max(50, Math.floor(budget))
   const stateText = currentState?.trim() ?? ''
   const stateBudget = stateText
@@ -393,19 +484,23 @@ export function fitLayeredMemoryBudget(
     : ''
   const remaining = Math.max(0, safeBudget - estimateTokens(fittedState, model))
   // 事实优先于时间线：保留 40% 预算给事实；没有事实时全部空间回流给时间线。
+  // 阶段三：检索排序 + 预算跳过（单条超限跳过继续）；透传 semanticScores 到预算层
+  const hasSemantic = Array.isArray(semanticScores) && semanticScores.length === (facts ?? []).length && semanticScores.some((s) => s > 0)
+  const retrievalMode: 'semantic' | 'fallback' = hasSemantic ? 'semantic' : 'fallback'
+  const rankedFacts = scoreAndRankFacts(facts ?? [], semanticScores ?? null).map((r) => r.fact)
   let factsRemaining = Math.max(0, Math.floor(remaining * 0.4))
   const fittedFacts: MemoryFactRecord[] = []
-  for (const fact of facts ?? []) {
+  for (const fact of rankedFacts) {
     if (isMemoryFact(fact) && fact.status !== 'active') continue
     const tokens = estimateTokens(memoryFactToText(fact), model) + 1
-    if (tokens > factsRemaining) break
+    if (tokens > factsRemaining) continue
     fittedFacts.push(fact)
     factsRemaining -= tokens
   }
   const usedFactTokens = fittedFacts.reduce((total, fact) => total + estimateTokens(memoryFactToText(fact), model) + 1, 0)
   const timelineBudget = Math.max(0, remaining - usedFactTokens)
   const fittedTimeline = truncateMemoryText(timeline ?? '', timelineBudget, estimateTokens, model)
-  return { currentState: fittedState, timeline: fittedTimeline, facts: fittedFacts }
+  return { currentState: fittedState, timeline: fittedTimeline, facts: fittedFacts, retrievalMode }
 }
 
 /**
@@ -418,8 +513,8 @@ export function formatMemoryFacts(facts: MemoryFactRecord[] | undefined | null):
 }
 
 /**
+ * @deprecated 已由 fitLayeredMemoryBudget 替代（分层预算 + 检索排序），仅保留兼容旧调用，待清理。
  * 记忆注入预算裁剪：优先保留摘要（占预算 60%），事实按顺序填满剩余预算。
- * 摘要超限时按字符尾部截断，事实超限时整体丢弃（保持事实完整性）。
  */
 export function fitMemoryBudget(
   summary: string,

@@ -137,6 +137,7 @@ const chatApi: ChatAPI = {
   toggleMemory: (characterId, sessionId, enabled) => ipcRenderer.invoke('chat:toggleMemory', characterId, sessionId, enabled),
   setMemoryMode: (characterId, sessionId, mode, interval) => ipcRenderer.invoke('chat:setMemoryMode', characterId, sessionId, mode, interval),
   getStats: (characterId, sessionId) => ipcRenderer.invoke('chat:getStats', characterId, sessionId),
+  getMemoryHistory: (characterId, sessionId, opts) => ipcRenderer.invoke('chat:getMemoryHistory', characterId, sessionId, opts),
 }
 
 // ---- 设置 ----

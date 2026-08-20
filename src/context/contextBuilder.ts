@@ -126,9 +126,10 @@ export function buildContextMessagesFromData(
   const currentSession = sessions.find(s => s.id === currentSessionId)
   if (currentSession?.memoryEnabled) {
     const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
-    // P0-2：语义检索命中时仅注入相关事实，否则全量
+    // P0-2：语义检索命中时仅注入相关事实，否则全量；透传语义分到预算层
     const semanticFacts = data.chat.semanticFactsHits
     const factsForInject = semanticFacts.length > 0 ? semanticFacts : (currentSession.memoryFacts ?? [])
+    const semanticScores = semanticFacts.length > 0 ? semanticFacts.map(() => 0.9) : null
     const fitted = fitLayeredMemoryBudget(
       currentSession.memoryCurrentState,
       currentSession.memory || '',
@@ -136,7 +137,11 @@ export function buildContextMessagesFromData(
       memoryBudget,
       estimateTokens,
       model,
+      semanticScores,
     )
+    if (fitted.retrievalMode === 'fallback' && factsForInject.length > 0) {
+      logInfo('buildContext', `记忆检索降级 fallback：向量缺失/语义为空，按 importance+recency 排序（facts=${factsForInject.length}）`)
+    }
     if (fitted.currentState) {
       systemContent += '\n\n【当前状态】\n' + fitted.currentState
     }

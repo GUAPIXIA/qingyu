@@ -818,7 +818,7 @@ export function buildBridgeRouter(
 
   // ===== 长记忆管理 =====
 
-  /** 读取会话记忆配置与内容 */
+  /** 读取会话记忆配置与内容（包含历史归档，只读不注入） */
   router.get('/sessions/:sessionId/memory', async (req, res) => {
     try {
       const session = await resolveSession(req, safeId(req.params.sessionId))
@@ -830,9 +830,32 @@ export function buildBridgeRouter(
         memory: session.memory ?? '',
         memoryCurrentState: session.memoryCurrentState ?? '',
         memoryFacts: session.memoryFacts ?? [],
+        memoryFactHistory: session.memoryFactHistory ?? [],
+        memoryVersion: session.memoryVersion ?? 0,
+        factsVectorVersion: session.factsVectorVersion ?? 0,
         memoryUpdatedAt: session.memoryUpdatedAt ?? 0,
         messageCount: session.messageCount ?? 0,
       })
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message })
+    }
+  })
+
+  /** 归档历史查询（分页 + 状态过滤，只读） */
+  router.get('/sessions/:sessionId/memory/history', async (req, res) => {
+    try {
+      const session = await resolveSession(req, safeId(req.params.sessionId))
+      if (!session) { res.status(404).json({ error: '会话不存在' }); return }
+      const status = typeof req.query.status === 'string' ? req.query.status : 'all'
+      const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200)
+      const offset = Math.max(Number(req.query.offset) || 0, 0)
+      let history = session.memoryFactHistory ?? []
+      if (status !== 'all') {
+        history = history.filter((h) => h.status === status)
+      }
+      const total = history.length
+      const sliced = history.slice(offset, offset + limit)
+      res.json({ history: sliced, total, offset, limit })
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
     }

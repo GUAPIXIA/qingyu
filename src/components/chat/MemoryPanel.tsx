@@ -1,7 +1,8 @@
-import { Brain } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Brain, History, Search } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { memoryFactToText } from '../../utils/memory'
-import type { MemoryFactRecord } from '../../../shared/types'
+import type { MemoryFact, MemoryFactRecord } from '../../../shared/types'
 
 interface Session {
   id: string
@@ -10,6 +11,7 @@ interface Session {
   autoMemoryInterval?: number
   memory?: string
   memoryFacts?: MemoryFactRecord[]
+  memoryFactHistory?: MemoryFact[]
 }
 
 interface MemoryPanelProps {
@@ -46,6 +48,29 @@ export function MemoryPanel({
   memoryStats,
 }: MemoryPanelProps) {
   const currentSession = sessions.find(s => s.id === currentSessionId)
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'inactive' | 'superseded'>('all')
+  const [showHistory, setShowHistory] = useState(false)
+
+  const filteredHistory = useMemo(() => {
+    const list = currentSession?.memoryFactHistory ?? []
+    const q = historySearch.trim().toLowerCase()
+    return list.filter((h) => {
+      if (historyFilter !== 'all' && h.status !== historyFilter) return false
+      if (!q) return true
+      const text = `${h.subject} ${h.predicate} ${h.value}`.toLowerCase()
+      return text.includes(q)
+    })
+  }, [currentSession?.memoryFactHistory, historySearch, historyFilter])
+
+  const groupedHistory = useMemo(() => {
+    const groups: Record<string, MemoryFact[]> = { inactive: [], superseded: [] }
+    for (const h of filteredHistory) {
+      const k = h.status === 'superseded' ? 'superseded' : 'inactive'
+      groups[k].push(h)
+    }
+    return groups
+  }, [filteredHistory])
 
   return (
     <div className="relative">
@@ -140,6 +165,85 @@ export function MemoryPanel({
                 ))}
                 {currentSession.memoryFacts.length > 8 && (
                   <div className="text-tavern-text-muted/60">…共 {currentSession.memoryFacts.length} 条</div>
+                )}
+              </div>
+            )}
+
+            {/* 历史归档（只读，不参与注入） */}
+            {currentSession?.memoryFactHistory !== undefined && (
+              <div className="mt-2 rounded bg-tavern-bg-hover text-xs">
+                <button
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="w-full flex items-center justify-between p-2 text-tavern-text-soft hover:text-tavern-text font-medium"
+                >
+                  <span className="flex items-center gap-1.5"><History className="w-3.5 h-3.5" />历史归档（{currentSession.memoryFactHistory.length}）</span>
+                  <span className="text-tavern-text-muted">{showHistory ? '收起' : '展开'}</span>
+                </button>
+                {showHistory && (
+                  <div className="px-2 pb-2 space-y-2">
+                    <div className="flex gap-1.5">
+                      <div className="flex-1 relative">
+                        <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-tavern-text-muted" />
+                        <input
+                          value={historySearch}
+                          onChange={(e) => setHistorySearch(e.target.value)}
+                          placeholder="搜索 主体/属性/值"
+                          className="w-full pl-6 pr-2 py-1 rounded bg-tavern-bg-card border border-tavern-border text-xs"
+                        />
+                      </div>
+                      <select
+                        value={historyFilter}
+                        onChange={(e) => setHistoryFilter(e.target.value as typeof historyFilter)}
+                        className="input text-xs py-1 px-1.5"
+                      >
+                        <option value="all">全部</option>
+                        <option value="inactive">inactive</option>
+                        <option value="superseded">superseded</option>
+                      </select>
+                    </div>
+                    {filteredHistory.length === 0 ? (
+                      <div className="text-tavern-text-muted text-center py-2">无匹配历史</div>
+                    ) : (
+                      <div className="max-h-36 overflow-y-auto space-y-2 pr-0.5">
+                        {(historyFilter === 'all' || historyFilter === 'superseded') && groupedHistory.superseded.length > 0 && (
+                          <div>
+                            <div className="text-[10px] tracking-wide text-tavern-text-muted mb-1">SUPERSEDED · 已替代（{groupedHistory.superseded.length}）</div>
+                            <div className="space-y-1">
+                              {groupedHistory.superseded.slice(0, 20).map((h) => (
+                                <div key={h.id} className="p-1.5 rounded bg-tavern-bg-card border border-tavern-border-soft">
+                                  <div className="truncate text-tavern-text-soft">{h.subject}的{h.predicate}：{h.value}</div>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-tavern-text-muted mt-0.5">
+                                    <span className="px-1 py-0.5 rounded bg-amber-500/15 text-amber-600">superseded</span>
+                                    <span>★{h.importance}</span>
+                                    <span>{new Date(h.updatedAt).toLocaleDateString()}</span>
+                                    {h.sourceMessageIds?.length ? <span>源:{h.sourceMessageIds.length}</span> : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {(historyFilter === 'all' || historyFilter === 'inactive') && groupedHistory.inactive.length > 0 && (
+                          <div>
+                            <div className="text-[10px] tracking-wide text-tavern-text-muted mb-1">INACTIVE · 已失效（{groupedHistory.inactive.length}）</div>
+                            <div className="space-y-1">
+                              {groupedHistory.inactive.slice(0, 20).map((h) => (
+                                <div key={h.id} className="p-1.5 rounded bg-tavern-bg-card border border-tavern-border-soft opacity-80">
+                                  <div className="truncate text-tavern-text-soft">{h.subject}的{h.predicate}：{h.value}</div>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-tavern-text-muted mt-0.5">
+                                    <span className="px-1 py-0.5 rounded bg-zinc-500/15 text-zinc-500">inactive</span>
+                                    <span>★{h.importance}</span>
+                                    <span>{new Date(h.updatedAt).toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {filteredHistory.length > 20 && <div className="text-[10px] text-tavern-text-muted text-center">…仅展示前 20 条，共 {filteredHistory.length} 条</div>}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}

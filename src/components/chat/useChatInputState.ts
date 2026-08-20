@@ -118,6 +118,22 @@ export function useChatInputState(
 
   const effectiveReplies = getEffectiveQuickReplies(qrStore, character.id)
 
+  // 全局命令面板选择斜杠命令后，将用法模板带入聊天输入框并聚焦。
+  useEffect(() => {
+    const handleInsertCommand = (event: Event) => {
+      const value = (event as CustomEvent<{ value?: string }>).detail?.value
+      if (!value?.startsWith('/')) return
+      setText(value)
+      requestAnimationFrame(() => {
+        const input = textareaRef.current
+        input?.focus()
+        input?.setSelectionRange(value.length, value.length)
+      })
+    }
+    window.addEventListener('shortcut:insert-command', handleInsertCommand)
+    return () => window.removeEventListener('shortcut:insert-command', handleInsertCommand)
+  }, [])
+
   // 显示通知（3 秒后自动消失）
   const showNotification = (msg: string) => {
     setNotification(msg)

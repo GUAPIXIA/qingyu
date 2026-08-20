@@ -855,6 +855,27 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       durationStr,
     }
   })
+
+  // ===== 长记忆历史归档（只读，不参与上下文注入） =====
+  safeHandle(ipcMain, 'chat:getMemoryHistory', async (_e, characterId: string, sessionId: string, opts?: { limit?: number; offset?: number; status?: string }) => {
+    safeId(characterId)
+    safeId(sessionId)
+    const limit = Math.min(Math.max(Number(opts?.limit) || 50, 1), 200)
+    const offset = Math.max(Number(opts?.offset) || 0, 0)
+    const status = typeof opts?.status === 'string' ? opts?.status : 'all'
+    return withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find((s) => s.id === sessionId)
+      if (!session) throw new Error('会话不存在')
+      let history = session.memoryFactHistory ?? []
+      if (status !== 'all') {
+        history = history.filter((h) => h.status === status)
+      }
+      const total = history.length
+      const sliced = history.slice(offset, offset + limit)
+      return { history: sliced, total }
+    })
+  })
 }
 
 // ============================================================================

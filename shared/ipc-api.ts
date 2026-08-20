@@ -102,6 +102,7 @@ export interface ChatAPI {
     durationMs: number
     durationStr: string
   }>
+  getMemoryHistory(characterId: string, sessionId: string, opts?: { limit?: number; offset?: number; status?: string }): Promise<{ history: import('./types').MemoryFact[]; total: number }>
 }
 
 // ===================== 设置接口 =====================
