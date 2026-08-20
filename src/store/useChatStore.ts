@@ -644,8 +644,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   },
 
   editMessage: async (messageId, newContent, character) => {
-    // 编辑历史后，摘要/事实/向量和压缩摘要均失效。
-    const invalidated = await invalidateDerivedMemory(get, character)
+    // 阶段五检查点：仅当编辑发生在游标前才失效
+    const invalidated = await invalidateDerivedMemory(get, character, messageId)
     if (invalidated) get().patchLocalSession(invalidated.sessionId, invalidated.patch)
     const state = get()
     const msg = state.messages.find((m) => m.id === messageId)
@@ -675,8 +675,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     // NEW-1 修复：await 前捕获 sessionId——invalidateCompression 执行期间
     // 用户可能已切换会话，避免删除操作作用于错误会话
     const sessionId = get().currentSessionId ?? undefined
-    // 删除历史后，摘要/事实/向量和压缩摘要均失效。
-    const invalidated = await invalidateDerivedMemory(get, character)
+    // 阶段五检查点：仅当删除发生在游标前才失效
+    const invalidated = await invalidateDerivedMemory(get, character, messageId)
     if (invalidated) get().patchLocalSession(invalidated.sessionId, invalidated.patch)
     await window.api.chat.deleteMessage(messageId, character.id, sessionId)
     set((state) => ({ messages: state.messages.filter((m) => m.id !== messageId) }))

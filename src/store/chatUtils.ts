@@ -82,13 +82,18 @@ export async function invalidateCompression(
 }
 
 /**
- * 消息被改写、删除或切换候选回复后，历史摘要、事实向量和压缩摘要都不再可信。
- * 返回同一份 patch，调用方用于立即同步本地会话状态，避免本轮请求继续注入旧记忆。
+ * 消息被改写、删除或切换候选回复后，历史摘要、事实向量和压缩摘要的失效策略（阶段五检查点）。
+ * - changedMessageId 为空（如 clearChat）→ 全量失效
+ * - 无检查点（memoryVersion 0 / memoryLastMessageId 空）→ 全量失效
+ * - 变更在游标之后 → 保留派生记忆（return null）
+ * - 变更在游标之前或等于游标 / 游标/消息找不到 → 全量失效
+ * 返回 patch 与 expectedVersion（乐观锁），调用方据此决定是否 patchLocalSession。
  */
 export async function invalidateDerivedMemory(
-  get: () => { currentSessionId: string | null; sessions: SessionPreview[] },
+  get: () => { currentSessionId: string | null; sessions: SessionPreview[]; messages?: { id: string }[] },
   character: Character,
-): Promise<{ sessionId: string; patch: Partial<SessionPreview> } | null> {
+  changedMessageId?: string | null,
+): Promise<{ sessionId: string; patch: Partial<SessionPreview>; expectedVersion: number } | null> {
   const sessionId = get().currentSessionId
   if (!sessionId) return null
   const current = get().sessions.find((session) => session.id === sessionId)
@@ -99,6 +104,29 @@ export async function invalidateDerivedMemory(
   )
   if (!hasDerivedData) return null
 
+  // 检查点逻辑：变更在游标后则保留
+  if (changedMessageId) {
+    const cursor = current.memoryLastMessageId
+    const version = current.memoryVersion ?? 0
+    // 无检查点则全量失效
+    if (!cursor || version === 0) {
+      // fallthrough to full invalidate
+    } else {
+      const messages = (get() as { messages?: { id: string }[] }).messages ?? []
+      const cursorIndex = messages.findIndex((m) => m.id === cursor)
+      const changedIndex = messages.findIndex((m) => m.id === changedMessageId)
+      // 消息或游标找不到 → 保守全量失效
+      if (cursorIndex === -1 || changedIndex === -1) {
+        // fallthrough
+      } else if (changedIndex > cursorIndex) {
+        // 变更在已总结范围之后，保留记忆
+        return null
+      }
+      // 变更在游标前或等于游标 → 全量失效（fallthrough）
+    }
+  }
+
+  const expectedVersion = current.memoryVersion ?? 0
   const patch: Partial<SessionPreview> = {
     memory: '',
     memoryCurrentState: '',
@@ -114,8 +142,13 @@ export async function invalidateDerivedMemory(
     compressedSummary: null,
     compressedRange: null,
   }
+  // 乐观锁：若版本已变则跳过（由调用方在 patchLocalSession 前二次校验）
+  const latest = get().sessions.find((s) => s.id === sessionId)
+  if (latest && (latest.memoryVersion ?? 0) !== expectedVersion) {
+    return null
+  }
   await window.api.chat.updateSession(character.id, sessionId, patch).catch(() => { /* 忽略 */ })
-  return { sessionId, patch }
+  return { sessionId, patch, expectedVersion }
 }
 
 // ===================== 语义检索缓存 =====================
