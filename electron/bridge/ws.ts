@@ -142,7 +142,13 @@ export class WsHub {
   /** 吊销设备时立即切断其已有 WS，不能等到下次重连才生效。 */
   disconnectDevice(deviceId: string): void {
     for (const [socket, connectedDeviceId] of this.deviceBySocket) {
-      if (connectedDeviceId === deviceId) socket.close(4001, 'device revoked')
+      if (connectedDeviceId === deviceId) {
+        // 吊销从服务端视角立即生效；不能依赖异步 close 事件才移除连接，
+        // 否则此窗口内 clientCount 与后续广播仍会把已吊销设备视为在线。
+        this.clients.delete(socket)
+        this.deviceBySocket.delete(socket)
+        socket.close(4001, 'device revoked')
+      }
     }
   }
 
