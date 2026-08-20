@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.12.1-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -21,7 +21,7 @@
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
-| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.12.0 |
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.12.1 |
 | **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.1.5 (build 6) |
 | **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.3 |
 
