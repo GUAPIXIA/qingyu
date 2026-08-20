@@ -119,10 +119,11 @@ export function buildTaskRouter(): Router {
   })
 
   // 重试（仅生成）
-  router.post('/tasks/:taskId/retry', async (req, res) => {
-    const snap = getTaskSnapshot(req.params.taskId)
+  router.post('/tasks/:taskId/retry', async (req: Request, res) => {
+    const snap = getTaskSnapshot(req.params.taskId as string)
     if (!snap) { res.status(404).json({ error: { code: 'TASK_NOT_FOUND' } }); return }
     const newRequestId = nanoid(8)
+    console.log('[taskRoutes retry] snap', snap.taskId, snap.state, 'newRequestId', newRequestId)
     const command: ChatCommand = {
       type: 'retry_generation',
       requestId: newRequestId,
@@ -145,7 +146,9 @@ export function buildTaskRouter(): Router {
       const task = await orch.handle(retryCmd)
       res.status(202).json({ task: { taskId: task.taskId, state: task.state } })
     } catch (e) {
-      res.status(500).json({ error: { code: (e as { code?: string }).code ?? 'UNKNOWN', message: (e as Error).message } })
+      const err = e as { code?: string; message?: string; stack?: string }
+      console.error('[taskRoutes retry] failed', err.stack ?? err.message)
+      res.status(500).json({ error: { code: err.code ?? 'UNKNOWN', message: err.message ?? String(e) } })
     }
   })
 
