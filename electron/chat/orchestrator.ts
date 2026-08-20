@@ -15,6 +15,7 @@ import { createDomainError, type DomainError } from '../../shared/chat-core/erro
 import { createTask, findByRequestId as findTaskByRequestId, getTaskSnapshot, updateTask, appendEvent } from './taskStore'
 import { transitionTask, acquireSessionOrThrow, releaseSession } from './taskManager'
 import type { MessagePort, ContextPort, ModelPort } from './ports'
+import { authorizeTool } from './toolGate'
 
 export interface OrchestratorDeps {
   messagePort: MessagePort
@@ -243,6 +244,65 @@ export class ChatOrchestrator {
         const domain = mapProviderError(e)
         transitionTask(taskId, 'failed', { error: domain })
         throw domain
+      }
+
+      // 12. 工具调用授权（waiting_approval）
+      // 检测 [TOOL_CALL:json] 标记，若命中则逐个授权（L0 自动，L1+ 需确认）
+      if (accumulated.includes('[TOOL_CALL:')) {
+        const m = accumulated.match(/\[TOOL_CALL:(.*)\]\s*$/)
+        if (m) {
+          try {
+            const calls = JSON.parse(m[1])
+            const list: Array<{ id: string; function?: { name: string; arguments: string }; name?: string; args?: unknown }> = Array.isArray(calls) ? calls : [calls]
+            for (const tc of list) {
+              const name = tc.function?.name ?? tc.name ?? ''
+              const argsStr = tc.function?.arguments ?? JSON.stringify(tc.args ?? {})
+              let args: Record<string, unknown> = {}
+              try { args = JSON.parse(argsStr) } catch {}
+              // 进入等待授权
+              transitionTask(taskId, 'waiting_approval')
+              const snapW = getTaskSnapshot(taskId)!
+              const seqReq = snapW.lastSequence + 1
+              appendEvent({
+                protocolVersion: 2,
+                eventId: makeEventId(),
+                taskId,
+                requestId: command.requestId,
+                sessionId,
+                sequence: seqReq,
+                type: 'task:approval_required',
+                timestamp: Date.now(),
+                payload: { tool: name, argsPreview: JSON.stringify(args).slice(0, 500) },
+              })
+              updateTask(taskId, (s) => ({ ...s, lastSequence: seqReq, updatedAt: Date.now() }))
+              const snapForGate = getTaskSnapshot(taskId)!
+              const decision = await authorizeTool({ serverName: 'mcp', toolName: name, args }, snapForGate)
+              const seqRes = getTaskSnapshot(taskId)!.lastSequence + 1
+              appendEvent({
+                protocolVersion: 2,
+                eventId: makeEventId(),
+                taskId,
+                requestId: command.requestId,
+                sessionId,
+                sequence: seqRes,
+                type: 'task:approval_resolved',
+                timestamp: Date.now(),
+                payload: { tool: name, decision },
+              })
+              updateTask(taskId, (s) => ({ ...s, lastSequence: seqRes, updatedAt: Date.now() }))
+              if (decision !== 'allow') {
+                throw createDomainError('TOOL_PERMISSION_DENIED', `工具 ${name} 被拒绝`, { safeDetails: { tool: name } })
+              }
+              // 恢复 streaming
+              transitionTask(taskId, 'streaming')
+            }
+            // 授权通过后，移除 TOOL_CALL 标记，继续后续流程（本版不执行真实工具，仅演示授权链路）
+            accumulated = accumulated.replace(/\[TOOL_CALL:.*\]\s*$/, '').trim()
+          } catch (e) {
+            if ((e as DomainError).code === 'TOOL_PERMISSION_DENIED') throw e
+            // 解析失败视为普通文本，忽略工具流程
+          }
+        }
       }
 
       // 14-15. postprocess（简化：直接用 accumulated，实际应走 PostProcessor）
