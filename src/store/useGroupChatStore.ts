@@ -8,7 +8,7 @@ import { applyRegexRules as applyRegexRulesEngine } from '../utils/regex'
 import { lorebookCache } from '../utils/lorebook'
 import { STREAM_IDLE_TIMEOUT_MS, translationMaxTokens } from './chatConstants'
 import { logError } from '../lib/logger'
-import { nextLoadRequestId, currentLoadRequestId } from './chatUtils'
+import { nextLoadRequestId, currentLoadRequestId, invalidateGroupDerivedMemory } from './chatUtils'
 import {
   streamGroupAI, streamGroupAIFree, checkPollingContinue, checkAutoMemory,
   cleanupActiveStream, clearPollingTimer, getActiveStream,
@@ -136,11 +136,21 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const { currentSessionId } = get()
     if (currentSessionId) {
       await window.api.group.clearChat(groupId, currentSessionId)
+      // 阶段五：clearChat 始终全量失效（changedMessageId=null）
+      const invalidated = await invalidateGroupDerivedMemory(get as unknown as () => never, groupId, null)
+      if (invalidated) {
+        set((s) => ({ sessions: s.sessions.map(ss => ss.id === invalidated.sessionId ? { ...ss, ...invalidated.patch } : ss) as never }))
+      }
     }
     set({ messages: [], isStreaming: false, currentStreamingCharId: null })
   },
 
   deleteMessage: async (groupId, sessionId, messageId) => {
+    // 阶段五检查点：仅当删除在游标前才失效
+    const invalidated = await invalidateGroupDerivedMemory(get as unknown as () => never, groupId, messageId)
+    if (invalidated) {
+      set((s) => ({ sessions: s.sessions.map(ss => ss.id === invalidated.sessionId ? { ...ss, ...invalidated.patch } : ss) as never }))
+    }
     await window.api.group.deleteMessage(groupId, sessionId, messageId)
     set(s => ({
       messages: s.messages.filter(m => m.id !== messageId),
@@ -149,6 +159,11 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
   editMessage: async (groupId, sessionId, messageId, content) => {
     if (get().isStreaming) return
+    // 阶段五检查点：仅当编辑在游标前才失效
+    const invalidated = await invalidateGroupDerivedMemory(get as unknown as () => never, groupId, messageId)
+    if (invalidated) {
+      set((s) => ({ sessions: s.sessions.map(ss => ss.id === invalidated.sessionId ? { ...ss, ...invalidated.patch } : ss) as never }))
+    }
     await window.api.group.editMessage(groupId, sessionId, messageId, content)
     set(s => ({
       messages: s.messages.map(m =>

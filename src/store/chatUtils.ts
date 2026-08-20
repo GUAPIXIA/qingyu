@@ -151,6 +151,62 @@ export async function invalidateDerivedMemory(
   return { sessionId, patch, expectedVersion }
 }
 
+/**
+ * 群聊检查点同步：与单聊 invalidateDerivedMemory 同逻辑，作用于 GroupSession。
+ * changedMessageId 为空（如 clearChat）→ 全量失效；游标后变更保留。
+ */
+export async function invalidateGroupDerivedMemory(
+  get: () => { currentSessionId: string | null; sessions: { id: string; memory?: string | null; memoryFacts?: unknown[]; memoryFactHistory?: unknown[]; factsVectors?: unknown[]; memoryLastMessageId?: string | null; memoryVersion?: number; compressedSummary?: string | null; compressedRange?: unknown }[]; messages?: { id: string }[] },
+  groupId: string,
+  changedMessageId?: string | null,
+): Promise<{ sessionId: string; patch: Record<string, unknown>; expectedVersion: number } | null> {
+  const sessionId = get().currentSessionId
+  if (!sessionId) return null
+  const current = get().sessions.find((s) => s.id === sessionId) as unknown as Record<string, unknown> & { memory?: string; memoryFacts?: unknown[]; memoryFactHistory?: unknown[]; factsVectors?: unknown[]; memoryLastMessageId?: string | null; memoryVersion?: number; compressedSummary?: string | null }
+  if (!current) return null
+  const hasDerived = Boolean(
+    current.memory || current.memoryCurrentState || (current.memoryFacts as unknown[])?.length || (current.memoryFactHistory as unknown[])?.length || (current.factsVectors as unknown[])?.length
+    || current.memoryLastMessageId || current.memoryVersion || current.compressedSummary,
+  )
+  if (!hasDerived) return null
+  if (changedMessageId) {
+    const cursor = current.memoryLastMessageId as string | null | undefined
+    const version = (current.memoryVersion as number | undefined) ?? 0
+    if (!cursor || version === 0) {
+      // fallthrough
+    } else {
+      const messages = get().messages ?? []
+      const cursorIndex = messages.findIndex((m) => m.id === cursor)
+      const changedIndex = messages.findIndex((m) => m.id === changedMessageId)
+      if (cursorIndex === -1 || changedIndex === -1) {
+        // fallthrough
+      } else if (changedIndex > cursorIndex) {
+        return null
+      }
+    }
+  }
+  const expectedVersion = (current.memoryVersion as number | undefined) ?? 0
+  const patch: Record<string, unknown> = {
+    memory: '',
+    memoryCurrentState: '',
+    memoryFacts: [],
+    memoryFactHistory: [],
+    memoryFactParseFailureCount: 0,
+    memoryFactRetryAfterVersion: 0,
+    factsVectors: [],
+    memoryUpdatedAt: 0,
+    memoryLastMessageId: null,
+    memoryVersion: 0,
+    factsVectorVersion: 0,
+    compressedSummary: null,
+    compressedRange: null,
+  }
+  const latest = get().sessions.find((s) => s.id === sessionId) as unknown as { memoryVersion?: number }
+  if (latest && (latest.memoryVersion ?? 0) !== expectedVersion) return null
+  await (window as unknown as { api: { group: { updateSession: (a: string, b: string, c: unknown) => Promise<void> } } }).api.group.updateSession(groupId, sessionId, patch).catch(() => {})
+  return { sessionId, patch, expectedVersion }
+}
+
 // ===================== 语义检索缓存 =====================
 
 /**
