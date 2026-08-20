@@ -44,11 +44,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
@@ -68,7 +70,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -143,10 +145,13 @@ internal fun MessageActionDialog(
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopy: () -> Unit,
+    onCopyMarkdown: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
     onEdit: () -> Unit,
     onTranslate: () -> Unit,
     onRegenerate: () -> Unit,
     onSpeak: () -> Unit,
+    onBranch: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val qy = qyColors()
@@ -199,6 +204,8 @@ internal fun MessageActionDialog(
             // 动作行（44dp 行高，图标 + 文字）
             ActionSheetRow(Icons.AutoMirrored.Filled.Reply, "引用回复", onReply)
             ActionSheetRow(Icons.Filled.ContentCopy, "复制文本", onCopy)
+            if (onCopyMarkdown != null) ActionSheetRow(Icons.Filled.ContentCopy, "复制 Markdown", onCopyMarkdown)
+            if (onShare != null) ActionSheetRow(Icons.Filled.Share, "分享", onShare)
             if (message.role == Role.user) {
                 ActionSheetRow(Icons.Filled.Edit, "编辑", onEdit)
             }
@@ -207,6 +214,7 @@ internal fun MessageActionDialog(
             }
             ActionSheetRow(Icons.Filled.Translate, "翻译", onTranslate)
             ActionSheetRow(Icons.Filled.VolumeUp, "朗读", onSpeak)
+            ActionSheetRow(Icons.Filled.AccountTree, "创建分支", onBranch)
 
             Spacer(Modifier.height(6.dp))
             HorizontalDivider(color = qy.lineSoft)

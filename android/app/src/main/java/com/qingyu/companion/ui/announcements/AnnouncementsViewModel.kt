@@ -3,6 +3,8 @@ package com.qingyu.companion.ui.announcements
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
+import com.qingyu.companion.data.CompanionError
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.Announcement
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,7 +42,8 @@ class AnnouncementsViewModel(
                     _ui.update { it.copy(items = page.items, loading = false) }
                 }
                 .onFailure { e ->
-                    _ui.update { it.copy(loading = false, error = e.message ?: "加载公告失败") }
+                    val msg = if (e is CompanionError) e.userMessage() else e.message ?: "加载公告失败"
+                    _ui.update { it.copy(loading = false, error = msg) }
                 }
         }
     }

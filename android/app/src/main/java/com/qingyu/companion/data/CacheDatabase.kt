@@ -10,11 +10,12 @@ import androidx.room.RoomDatabase
  * 重连后以 PC 为准刷新。
  */
 @Database(
-    entities = [CachedSession::class, CachedMessage::class],
+    entities = [CachedSession::class, CachedMessage::class, OutboxMessage::class],
     // v2：CachedMessage 新增 usage 列（token 用量缓存）。缓存为只读快照，
     // schema 变更时经 fallbackToDestructiveMigration 清库重建（无需保留迁移）
     // v3：CachedSession 新增 characterName 列（全局会话列表展示角色名）
-    version = 3,
+    // v4：OutboxMessage 持久化发件箱（P1-4.1 B1-2）
+    version = 4,
     exportSchema = false,
 )
 abstract class CacheDatabase : RoomDatabase() {
@@ -22,6 +23,8 @@ abstract class CacheDatabase : RoomDatabase() {
     abstract fun sessionDao(): CachedSessionDao
 
     abstract fun messageDao(): CachedMessageDao
+
+    abstract fun outboxDao(): OutboxDao
 
     companion object {
         const val DB_NAME = "qingyu-companion-cache"

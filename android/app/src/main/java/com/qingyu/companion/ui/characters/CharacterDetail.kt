@@ -34,13 +34,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,19 +78,24 @@ internal fun CharacterDetailSheet(
     character: Character,
     avatarUrl: String?,
     activating: Boolean,
+    creating: Boolean,
     onDismiss: () -> Unit,
     onOpenSessions: () -> Unit,
     onActivate: () -> Unit,
+    onStartChat: () -> Unit,
 ) {
     val qy = qyColors()
+    val sheetHeight = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = qy.card,
+        sheetState = sheetState,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .height(sheetHeight)
                 .padding(bottom = 24.dp),
         ) {
             // 头部：头像 + 名称 + 标签
@@ -150,7 +157,10 @@ internal fun CharacterDetailSheet(
 
             // 详情区块
             Column(
-                modifier = Modifier.padding(horizontal = 20.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 DetailSection("描述", character.translatedContent?.description ?: character.description)
@@ -196,6 +206,24 @@ internal fun CharacterDetailSheet(
                     }
                     Text(if (activating) "切换中…" else "设为当前")
                 }
+            }
+            Button(
+                onClick = onStartChat,
+                enabled = !creating,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = qy.accent,
+                    contentColor = qy.onAccent,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+            ) {
+                if (creating) {
+                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(if (creating) "创建中…" else "开始对话")
             }
         }
     }

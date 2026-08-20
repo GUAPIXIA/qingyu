@@ -40,7 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,14 +78,15 @@ import java.util.Locale
 fun CharactersScreen(
     onBack: () -> Unit,
     onOpenCharacterSessions: (characterId: String, characterName: String) -> Unit,
+    onOpenChat: (sessionId: String, characterId: String) -> Unit,
 ) {
     val qy = qyColors()
     val container = LocalAppContainer.current
     val vm: CharactersViewModel = viewModel(factory = viewModelFactory {
         initializer { CharactersViewModel(container.repository) }
     })
-    val ui by vm.ui.collectAsState()
-    val activeConnection by container.connectionManager.activeFlow.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val activeConnection by container.connectionManager.activeFlow.collectAsStateWithLifecycle()
     var detailCharacter by remember { mutableStateOf<Character?>(null) }
     // 搜索与排序
     var searchQuery by remember { mutableStateOf("") }
@@ -246,9 +247,11 @@ fun CharactersScreen(
             character = character,
             avatarUrl = resolveImageUrl(character.avatarUrl, activeConnection),
             activating = ui.activatingId == character.id,
+            creating = ui.creatingId == character.id,
             onDismiss = { detailCharacter = null },
             onOpenSessions = { onOpenCharacterSessions(character.id, character.name) },
             onActivate = { vm.activate(character.id, character.name) },
+            onStartChat = { vm.startChat(character.id) { sessionId -> onOpenChat(sessionId, character.id) } },
         )
     }
 }

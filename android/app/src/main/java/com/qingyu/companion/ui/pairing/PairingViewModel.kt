@@ -119,9 +119,8 @@ class PairingViewModel(
         val host = _ui.value.host.trim()
         val port = _ui.value.port.trim().toIntOrNull()
         val code = _ui.value.pairingCode.trim()
-        // 配对码可选：IP+端口直接配对（PC 端人工确认兜底）；提供则校验
-        if (host.isEmpty() || port == null || port !in 1..65535) {
-            _ui.update { it.copy(error = "请填写主机与端口（1-65535）") }
+        if (host.isEmpty() || port == null || port !in 1..65535 || code.isEmpty()) {
+            _ui.update { it.copy(error = "请填写主机、端口和 PC 端一次性配对码") }
             return
         }
         viewModelScope.launch {

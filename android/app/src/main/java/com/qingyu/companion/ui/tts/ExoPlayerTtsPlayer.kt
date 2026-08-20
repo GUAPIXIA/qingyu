@@ -1,13 +1,16 @@
 package com.qingyu.companion.ui.tts
 
 import android.content.Context
+import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.qingyu.companion.network.ConnectionManager
+import com.qingyu.companion.network.NetworkModule
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,12 +37,20 @@ class ExoPlayerTtsPlayer(
     private var player: ExoPlayer? = null
 
     override suspend fun play(sessionId: String, messageId: String) {
+        playPath("/api/v1/sessions/$sessionId/messages/$messageId/tts")
+    }
+
+    override suspend fun playGroup(groupId: String, sessionId: String, messageId: String) {
+        playPath("/api/v1/groups/$groupId/sessions/$sessionId/messages/$messageId/tts")
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun playPath(path: String) {
         val connection = connectionManager.activeConnection ?: return
         stopInternal()
         _state.value = TtsPlayer.State.SYNTHESIZING
 
-        val url = "http://${connection.host}:${connection.port}" +
-            "/api/v1/sessions/$sessionId/messages/$messageId/tts"
+        val url = NetworkModule.baseUrlOf(connection).removeSuffix("/") + path
         val token = connection.token
 
         // 鉴权 DataSource：令牌走 HTTP 头，音频流独立于 WS（方案 §3.3）

@@ -70,7 +70,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,6 +92,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -321,9 +322,15 @@ internal fun MessageBubble(
             .padding(vertical = bubbleSpacingDp),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
-        Column(
+        val config = LocalConfiguration.current
+    val bubbleMax = when {
+        config.screenWidthDp < 360 -> 260.dp
+        config.screenWidthDp < 600 -> 312.dp
+        else -> 420.dp
+    }
+    Column(
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-            modifier = Modifier.widthIn(max = 312.dp),
+            modifier = Modifier.widthIn(max = bubbleMax),
         ) {
             // 角色名标签（cap 11sp 弱文字）
             if (!isUser && !isSystem) {

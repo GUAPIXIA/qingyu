@@ -3,6 +3,8 @@ package com.qingyu.companion.ui.usage
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
+import com.qingyu.companion.data.CompanionError
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.UsageRecordDto
 import com.qingyu.companion.model.UsageSummary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,11 +48,12 @@ class UsageViewModel(
                     it.copy(today = summary.today, total = summary.total, records = records, loading = false)
                 }
             }.onFailure { e ->
-                _ui.update { it.copy(loading = false, error = e.message ?: "加载用量失败") }
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "加载用量失败"
+                _ui.update { it.copy(loading = false, error = msg) }
             }
         }
     }
 
     /** 千分位格式化 */
-    fun format(n: Long): String = String.format("%,d", n)
+    fun format(n: Long): String = String.format(java.util.Locale.getDefault(), "%,d", n)
 }

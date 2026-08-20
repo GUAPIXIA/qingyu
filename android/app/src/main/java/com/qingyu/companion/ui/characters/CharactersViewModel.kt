@@ -3,6 +3,8 @@ package com.qingyu.companion.ui.characters
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
+import com.qingyu.companion.data.CompanionError
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.Character
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +27,8 @@ class CharactersViewModel(
         val loading: Boolean = false,
         /** 正在切换的角色 id（按钮 loading 反馈） */
         val activatingId: String? = null,
+        /** 正在为角色创建会话的 id */
+        val creatingId: String? = null,
         val error: String? = null,
         val info: String? = null,
     )
@@ -45,7 +49,8 @@ class CharactersViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _ui.update { it.copy(loading = false, error = e.message ?: "加载角色失败") }
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "加载角色失败"
+                _ui.update { it.copy(loading = false, error = msg) }
             }
         }
     }
@@ -66,10 +71,34 @@ class CharactersViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "切换失败（PC 桥接层可能未实现该端点）"
                 _ui.update {
                     it.copy(
                         activatingId = null,
-                        error = e.message ?: "切换失败（PC 桥接层可能未实现该端点）",
+                        error = msg,
+                    )
+                }
+            }
+        }
+    }
+
+    /** 从角色详情直接创建会话，避免必须先切换角色再返回会话页。 */
+    fun startChat(characterId: String, onCreated: (sessionId: String) -> Unit) {
+        if (_ui.value.creatingId != null) return
+        viewModelScope.launch {
+            _ui.update { it.copy(creatingId = characterId, error = null, info = null) }
+            try {
+                val session = repository.createSession(characterId)
+                _ui.update { it.copy(creatingId = null) }
+                onCreated(session.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "新建对话失败"
+                _ui.update {
+                    it.copy(
+                        creatingId = null,
+                        error = msg,
                     )
                 }
             }

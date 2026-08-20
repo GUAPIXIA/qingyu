@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- 扫码配对 -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- P1-4.2 生成中通知（Android 13+ 动态申请） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -17,7 +19,9 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:theme="@style/Theme.QingyuCompanion">
 
         <activity

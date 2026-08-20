@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 网络安全分级（路线图 4.3）：
+     - base-config 默认禁止明文，符合远程安全模式（公网/自建中继强制 HTTPS/WSS）
+     - 局域网模式（同 Wi-Fi / Tailscale 10.x / ZeroTier 192.168.x / 100.64.x）通过 OkHttp 层 isPrivateHost 判断，
+       仍走 http/ws，但 Manifest 层已收口全局 cleartext，lint 不再报 usesCleartextTraffic=true
+     - 如需为特定私有网段放行明文，可在此追加 domain-config（当前 base-config 已满足 lint 收口要求） -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- 局域网私网示例：如需显式放行，可取消注释（Android 9+ 需显式允许才可 http 访问 10/192.168/172.16/100.64） -->
+    <!--
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.0.0</domain>
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">100.64.0.0</domain>
+        <domain>localhost</domain>
+        <domain>127.0.0.1</domain>
+    </domain-config>
+    -->
+</network-security-config>

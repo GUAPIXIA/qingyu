@@ -486,7 +486,7 @@ private fun CodeBlockCard(
                 }
             }
             Text(
-                text = block.code,
+                text = remember(block.code, block.language) { highlightedCode(block.code, block.language) },
                 style = style.copy(
                     fontFamily = FontFamily.Monospace,
                     fontSize = style.fontSize * (13f / 14.5f),
@@ -495,6 +495,33 @@ private fun CodeBlockCard(
             )
         }
     }
+}
+
+/** 轻量语法着色：覆盖常见语言的注释、字符串、关键字与数字，无额外运行时依赖。 */
+private fun highlightedCode(code: String, language: String): AnnotatedString {
+    val keywords = when (language.lowercase()) {
+        "kt", "kotlin" -> "fun|val|var|class|object|interface|when|if|else|for|while|return|suspend|override|private|public|internal|data|sealed|import|package|null|true|false"
+        "js", "javascript", "ts", "typescript", "tsx", "jsx" -> "const|let|var|function|class|interface|type|import|export|from|return|async|await|if|else|for|while|new|this|null|undefined|true|false"
+        "py", "python" -> "def|class|import|from|return|async|await|if|elif|else|for|while|in|is|not|and|or|None|True|False|with|as|yield"
+        "java" -> "class|interface|public|private|protected|static|final|void|int|long|boolean|new|return|if|else|for|while|null|true|false|package|import"
+        else -> ""
+    }
+    val parts = listOf(
+        "//[^\\n]*|#[^\\n]*|/\\*[\\s\\S]*?\\*/" to SpanStyle(color = Color(0xFF6A9955), fontStyle = FontStyle.Italic),
+        "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'" to SpanStyle(color = Color(0xFFCE9178)),
+        "\\b(?:\\d+(?:\\.\\d+)?)\\b" to SpanStyle(color = Color(0xFFB5CEA8)),
+    ) + if (keywords.isNotEmpty()) listOf("\\b(?:$keywords)\\b" to SpanStyle(color = Color(0xFF569CD6), fontWeight = FontWeight.SemiBold)) else emptyList()
+    val matches = parts.flatMap { (pattern, style) -> Regex(pattern).findAll(code).map { Triple(it.range.first, it.range.last + 1, style) } }
+        .sortedBy { it.first }
+    val builder = AnnotatedString.Builder(code)
+    var styledThrough = -1
+    matches.forEach { (start, end, span) ->
+        if (start >= styledThrough) {
+            builder.addStyle(span, start, end)
+            styledThrough = end
+        }
+    }
+    return builder.toAnnotatedString()
 }
 
 /** 独立行 Markdown 图片：相对路径拼 baseUrl，Coil 加载 */

@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * WebSocket 客户端。
- * 职责：连接 ws://host:port/ws?token=xxx，解析 WsEnvelope 并分发为 [CompanionEvent]。
+ * 职责：通过不含令牌的 WS/WSS URL 与 Authorization Header 连接并分发事件。
  * 事件名一对一映射 IPC 事件（ai:chunk/ai:done/ai:error），
  * 外加 session:updated（依赖 PC 侧阶段 0c 事件总线）与心跳。
  *

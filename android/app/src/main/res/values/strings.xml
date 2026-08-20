@@ -1,4 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">轻语伴侣</string>
+    <!-- 通用 -->
+    <string name="action_cancel">取消</string>
+    <string name="action_confirm">确认</string>
+    <string name="action_save">保存</string>
+    <string name="action_delete">删除</string>
+    <string name="action_retry">重试</string>
+    <string name="action_search">搜索</string>
+    <string name="action_close">关闭</string>
+    <string name="action_download">下载</string>
+    <string name="action_clear">清除</string>
+    <string name="action_create">创建</string>
+    <string name="action_enter">进入</string>
+    <string name="action_send">发送</string>
+    <string name="action_back">返回</string>
+    <string name="action_remove">移除</string>
+    <!-- 导航与标题 -->
+    <string name="title_edit_message">编辑消息</string>
+    <string name="title_delete_message">删除消息</string>
+    <string name="title_clear_session">清空并删除会话</string>
+    <string name="title_new_session">新建对话</string>
+    <string name="title_first_message">首条消息</string>
+    <string name="title_rename_session">重命名会话</string>
+    <string name="title_new_group">新建群聊</string>
+    <string name="title_group_name_empty">群聊名称（可空）</string>
+    <string name="title_memory_settings">长记忆设置</string>
+    <string name="title_intranet_guide">内网穿透指引</string>
+    <string name="title_wipe_on_exit">退出时清除</string>
+    <!-- 提示与状态 -->
+    <string name="msg_search_hint">搜索角色或标签…</string>
+    <string name="msg_load_older">加载更早消息</string>
+    <string name="msg_ai_generating">AI 回复生成中…</string>
+    <string name="msg_token_encrypted">令牌已通过 Keystore 加密存储；服务器指纹与本机随机 UUID 已区分命名</string>
+    <string name="msg_version_current">当前版本 %1$s（build %2$d）</string>
+    <string name="msg_version_latest">最新版本 %1$s</string>
+    <string name="msg_intranet_desc">局域网外连接 PC 的三条路线（任选其一）：</string>
+    <string name="msg_intranet_ack">知道了</string>
+    <string name="msg_image">图片</string>
+    <string name="msg_image_load_failed">无法加载图片</string>
+    <string name="msg_enable_long_memory">启用长记忆</string>
+    <string name="msg_current">当前</string>
+    <string name="msg_delete_session_confirm">确定删除「%1$s」？此操作会同步删除 PC 端数据。</string>
+    <string name="msg_rename_hint">标题</string>
+    <string name="msg_unnamed_session">未命名会话</string>
+    <string name="msg_edit_clear_confirm">确定删除这条消息？此操作会同步删除 PC 端数据。</string>
+    <!-- 无障碍 -->
+    <string name="cd_back">返回</string>
+    <string name="cd_add_image">添加图片</string>
+    <string name="cd_send">发送</string>
+    <string name="cd_clear_chat">清空对话</string>
+    <string name="cd_chat_settings">对话设置</string>
+    <string name="cd_new_session">新建对话</string>
+    <string name="cd_group">群聊</string>
+    <string name="cd_character">角色</string>
+    <string name="cd_refresh">刷新</string>
+    <string name="cd_settings">设置</string>
+    <string name="cd_delete">删除</string>
+    <string name="cd_message_image">消息图片</string>
+    <string name="cd_large_image">大图</string>
 </resources>

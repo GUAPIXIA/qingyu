@@ -96,6 +96,7 @@ class WsClientImpl(
         client = okClient
         val request = Request.Builder()
             .url(NetworkModule.wsUrlOf(target))
+            .header("Authorization", "Bearer ${target.token}")
             .header("User-Agent", UA)
             .build()
         webSocket = okClient.newWebSocket(request, listener)

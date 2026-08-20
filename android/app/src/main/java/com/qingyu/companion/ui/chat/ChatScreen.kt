@@ -28,7 +28,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,6 +38,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -48,7 +51,10 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import android.content.Intent
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
@@ -68,7 +74,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,6 +99,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
@@ -114,6 +121,8 @@ import com.qingyu.companion.ui.components.resolveImageUrl
 import com.qingyu.companion.ui.components.stripThought
 import com.qingyu.companion.ui.theme.qyColors
 import com.qingyu.companion.ui.tts.TtsPlayer
+import com.qingyu.companion.utils.SearchUtils
+import com.qingyu.companion.utils.ShareUtils
 import com.qingyu.companion.utils.uriToCompressedBase64
 
 
@@ -129,6 +138,7 @@ fun ChatScreen(
     sessionId: String,
     characterId: String? = null,
     onBack: () -> Unit,
+    onOpenBranch: (String, String) -> Unit,
 ) {
     val qy = qyColors()
     val container = LocalAppContainer.current
@@ -139,20 +149,22 @@ fun ChatScreen(
                 sessionId = sessionId,
                 expectedCharacterId = characterId,
                 ttsPlayer = container.ttsPlayer,
+                generationTracker = container.generationTracker,
+                draftStore = container.draftStore,
             )
         }
     })
-    val ui by vm.ui.collectAsState()
-    val input by vm.input.collectAsState()
-    val replyTo by vm.replyTo.collectAsState()
-    val pendingImages by vm.images.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val input by vm.input.collectAsStateWithLifecycle()
+    val replyTo by vm.replyTo.collectAsStateWithLifecycle()
+    val pendingImages by vm.images.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // 本地 UI 偏好：聊天字体缩放 + 消息间距 + 对话背景
-    val fontScale by container.uiPrefsStore.fontScale.collectAsState(initial = 1f)
-    val spacingMult by container.uiPrefsStore.spacingMultiplier.collectAsState(initial = 1f)
-    val bgEnabled by container.uiPrefsStore.chatBackground.collectAsState(initial = true)
+    val fontScale by container.uiPrefsStore.fontScale.collectAsStateWithLifecycle(initialValue = 1f)
+    val spacingMult by container.uiPrefsStore.spacingMultiplier.collectAsStateWithLifecycle(initialValue = 1f)
+    val bgEnabled by container.uiPrefsStore.chatBackground.collectAsStateWithLifecycle(initialValue = true)
 
     var menuMessage by remember { mutableStateOf<Message?>(null) }
     var editingMessage by remember { mutableStateOf<Message?>(null) }
@@ -162,6 +174,9 @@ fun ChatScreen(
     var showQuickSettings by remember { mutableStateOf(false) }
     // 清空对话确认
     var showClearConfirm by remember { mutableStateOf(false) }
+    // 搜索与分享
+    var showSearch by remember { mutableStateOf(false) }
+    val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
 
     // 选图（PhotoPicker，无需权限）
     val imagePicker = rememberLauncherForActivityResult(
@@ -175,7 +190,7 @@ fun ChatScreen(
         }
     }
 
-    val ttsState by container.ttsPlayer.state.collectAsState()
+    val ttsState by container.ttsPlayer.state.collectAsStateWithLifecycle()
 
     DisposableEffect(Unit) {
         onDispose { container.ttsPlayer.release() }
@@ -210,15 +225,40 @@ fun ChatScreen(
                     )
                 }
 
-                // 时间线：全屏延伸，滚动时从透明顶栏与底部输入区之下穿过
+                // 时间线：全屏延伸，滚动时从透明顶栏与底部输入区之下穿过；支持消息内搜索过滤
                 val timeline = remember(ui.messages, ui.pending) {
                     buildTimeline(ui.messages, ui.pending)
+                }
+                val filteredTimeline = remember(timeline, searchQuery) {
+                    if (searchQuery.isBlank()) timeline else timeline.filter { item ->
+                        when (item) {
+                            is TimelineItem.Entry -> SearchUtils.filterMessages(listOf(item.message), searchQuery).isNotEmpty()
+                            is TimelineItem.PendingEntry -> item.pending.content.contains(searchQuery, ignoreCase = true)
+                            is TimelineItem.DateHeader -> true
+                        }
+                    }
+                }
+                // 分享整段会话：纯文本/Markdown via Share Sheet
+                fun shareSession(asMarkdown: Boolean) {
+                    val text = ShareUtils.sessionExportText(ui.messages, asMarkdown)
+                    if (text.isBlank()) return
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, text)
+                    }
+                    context.startActivity(Intent.createChooser(intent, if (asMarkdown) "分享会话 Markdown" else "分享会话"))
+                }
+                val messageListState = rememberLazyListState(initialFirstVisibleItemIndex = 0)
+                // 历史消息异步加载完成后明确定位 index 0；时间线保证 index 0 是最新消息。
+                LaunchedEffect(sessionId, ui.messages.isNotEmpty()) {
+                    if (ui.messages.isNotEmpty()) messageListState.scrollToItem(0)
                 }
                 // 底部输入区实际高度（快捷回复/图片预览出现时自适应，让列表让位）
                 var footerHeightPx by remember { mutableStateOf(0) }
                 val density = LocalDensity.current
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    state = messageListState,
                     reverseLayout = true,
                     contentPadding = PaddingValues(
                         start = 16.dp,
@@ -238,7 +278,7 @@ fun ChatScreen(
                         }
                     }
 
-                    items(timeline, key = { item ->
+                    items(filteredTimeline, key = { item ->
                         when (item) {
                             is TimelineItem.DateHeader -> "date:${item.label}"
                             is TimelineItem.Entry -> "${item.message.sessionId}:${item.message.id}"
@@ -320,6 +360,39 @@ fun ChatScreen(
                     }
                 }
 
+                // 回到底部（流式时，用户上滑后不强制抢滚动）
+                val scope = androidx.compose.runtime.rememberCoroutineScope()
+                val isAtBottom by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { messageListState.firstVisibleItemIndex == 0 } }
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !isAtBottom,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = with(androidx.compose.ui.platform.LocalDensity.current){ footerHeightPx.toDp() } + 16.dp),
+                    enter = androidx.compose.animation.fadeIn(),
+                    exit = androidx.compose.animation.fadeOut(),
+                ) {
+                    androidx.compose.material3.FilledTonalButton(onClick = { scope.launch { messageListState.scrollToItem(0) } }) {
+                        androidx.compose.material3.Text("回到底部")
+                    }
+                }
+
+                // 搜索条（端侧过滤，不走网络）
+                AnimatedVisibility(
+                    visible = showSearch,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp).fillMaxWidth().background(qy.bg.copy(alpha = 0.96f)).padding(horizontal = 16.dp, vertical = 6.dp).zIndex(1f),
+                    enter = fadeIn(), exit = fadeOut(),
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = vm::onSearchQueryChange,
+                        placeholder = { Text("搜索消息…", color = qy.muted) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) IconButton(onClick = { vm.clearSearch() }) { Icon(Icons.Filled.Delete, contentDescription = "清除", tint = qy.muted, modifier = Modifier.size(16.dp)) }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = qy.accent, unfocusedBorderColor = qy.line),
+                    )
+                }
+
                 // ===== 透明顶栏（浮层：顶部渐隐，不遮挡消息） =====
                 Row(
                     modifier = Modifier
@@ -387,7 +460,13 @@ fun ChatScreen(
                             )
                         }
                     }
-                    // 右上角：清空 + 设置
+                    // 右上角：搜索/分享/清空 + 设置
+                    IconButton(onClick = { showSearch = !showSearch }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Filled.Search, contentDescription = "搜索", tint = if (showSearch) qy.accent else qy.soft, modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = { shareSession(false) }, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Filled.Share, contentDescription = "分享会话", tint = qy.soft, modifier = Modifier.size(18.dp))
+                    }
                     IconButton(
                         onClick = { showClearConfirm = true },
                         modifier = Modifier.size(38.dp),
@@ -417,6 +496,7 @@ fun ChatScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
+                        .imePadding()
                         .onGloballyPositioned { footerHeightPx = it.size.height }
                         .background(
                             Brush.verticalGradient(
@@ -626,7 +706,17 @@ fun ChatScreen(
                 vm.setReplyTo(message)
             },
             onCopy = {
-                clipboard.setText(AnnotatedString(message.content))
+                clipboard.setText(AnnotatedString(ShareUtils.messageToPlainText(message)))
+                menuMessage = null
+            },
+            onCopyMarkdown = {
+                clipboard.setText(AnnotatedString(ShareUtils.messageToMarkdown(message)))
+                menuMessage = null
+            },
+            onShare = {
+                val text = ShareUtils.messageToPlainText(message)
+                val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
+                context.startActivity(Intent.createChooser(intent, "分享消息"))
                 menuMessage = null
             },
             onEdit = {
@@ -646,6 +736,10 @@ fun ChatScreen(
                 menuMessage = null
                 container.ttsPlayer.stop()
                 vm.playTts(message.id)
+            },
+            onBranch = {
+                menuMessage = null
+                vm.branch(message.id, onOpenBranch)
             },
             onDelete = {
                 menuMessage = null

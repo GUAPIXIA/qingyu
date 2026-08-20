@@ -51,6 +51,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.activity.compose)
 
     implementation(platform(libs.androidx.compose.bom))
@@ -76,8 +78,11 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    // 配对令牌/连接配置持久化
+    // 配对令牌/连接配置持久化（DataStore + Keystore 加密）
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.security.crypto)
+    // 应用锁：生物识别/设备凭据（路线图 4.3）
+    implementation(libs.androidx.biometric)
 
     // TTS 音频流播放（独立 HTTP 流，边下边播）
     implementation(libs.media3.exoplayer)
@@ -90,6 +95,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     debugImplementation(libs.androidx.compose.ui.tooling)

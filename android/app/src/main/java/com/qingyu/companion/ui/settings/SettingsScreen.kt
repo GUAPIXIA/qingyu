@@ -1,7 +1,11 @@
 package com.qingyu.companion.ui.settings
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +36,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,7 +83,7 @@ fun SettingsScreen(
     val vm: SettingsViewModel = viewModel(factory = viewModelFactory {
         initializer { SettingsViewModel(container.repository, container.connectionManager) }
     })
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     var confirmWipe by remember { mutableStateOf(false) }
     var showTunnelGuide by remember { mutableStateOf(false) }
     var showFontOptions by remember { mutableStateOf(false) }
@@ -87,10 +91,17 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
 
     // 本地 UI 偏好（字体缩放/消息间距/主题/封面背景）
-    val fontScale by container.uiPrefsStore.fontScale.collectAsState(initial = 1f)
-    val spacingMult by container.uiPrefsStore.spacingMultiplier.collectAsState(initial = 1f)
-    val themeMode by container.uiPrefsStore.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
-    val bgEnabled by container.uiPrefsStore.chatBackground.collectAsState(initial = true)
+    val fontScale by container.uiPrefsStore.fontScale.collectAsStateWithLifecycle(initialValue = 1f)
+    val spacingMult by container.uiPrefsStore.spacingMultiplier.collectAsStateWithLifecycle(initialValue = 1f)
+    val themeMode by container.uiPrefsStore.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+    val bgEnabled by container.uiPrefsStore.chatBackground.collectAsStateWithLifecycle(initialValue = true)
+    val appLockEnabled by container.uiPrefsStore.appLockEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val hidePreview by container.uiPrefsStore.hideTaskPreview.collectAsStateWithLifecycle(initialValue = false)
+    val notifEnabled by container.uiPrefsStore.notificationsEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val notifHideContent by container.uiPrefsStore.notificationHideContent.collectAsStateWithLifecycle(initialValue = false)
+    val notifDndEnabled by container.uiPrefsStore.notificationDndEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val notifDndStart by container.uiPrefsStore.notificationDndStart.collectAsStateWithLifecycle(initialValue = 22)
+    val notifDndEnd by container.uiPrefsStore.notificationDndEnd.collectAsStateWithLifecycle(initialValue = 7)
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -203,6 +214,82 @@ fun SettingsScreen(
                         onClick = { confirmWipe = true },
                         danger = true,
                     )
+                }
+
+                Section("通知") {
+                    val context = LocalContext.current
+                    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+                    SettingSwitchRow(
+                        title = "任务通知",
+                        subtitle = if (Build.VERSION.SDK_INT >= 33) "AI 回复/长记忆/连接/安全事件（需系统权限）" else "AI 回复/长记忆/连接/安全事件",
+                        checked = notifEnabled,
+                        onCheckedChange = { enabled ->
+                            scope.launch { container.uiPrefsStore.setNotificationsEnabled(enabled) }
+                            if (enabled && Build.VERSION.SDK_INT >= 33) {
+                                val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                if (!granted) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        },
+                    )
+                    SettingSwitchRow(
+                        title = "隐藏通知内容",
+                        subtitle = "开启后仅显示通用文案，不展示会话/消息内容",
+                        checked = notifHideContent,
+                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setNotificationHideContent(enabled) } },
+                    )
+                    SettingSwitchRow(
+                        title = "免打扰",
+                        subtitle = "免打扰时段内不推送（${notifDndStart}:00-${notifDndEnd}:00）",
+                        checked = notifDndEnabled,
+                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setNotificationDndEnabled(enabled) } },
+                    )
+                    if (notifDndEnabled) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("时段", style = MaterialTheme.typography.bodySmall, color = qy.soft)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(22 to 7, 23 to 7, 0 to 8).forEach { (s, e) ->
+                                    val selected = notifDndStart == s && notifDndEnd == e
+                                    androidx.compose.material3.FilterChip(
+                                        selected = selected,
+                                        onClick = { scope.launch { container.uiPrefsStore.setNotificationDndWindow(s, e) } },
+                                        label = { Text("${s}:00-${e}:00", style = MaterialTheme.typography.labelSmall) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    SettingNavRow(
+                        title = "系统通知设置",
+                        subtitle = "管理渠道与权限（被系统拒绝时需手动开启）",
+                        onClick = {
+                            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply { putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName) }
+                            } else {
+                                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply { data = Uri.parse("package:${context.packageName}") }
+                            }
+                            context.startActivity(intent)
+                        },
+                    )
+                }
+
+                Section("隐私与安全") {
+                    SettingSwitchRow(
+                        title = "应用锁",
+                        subtitle = "启动时需生物识别/设备凭据（Room 含聊天明文）",
+                        checked = appLockEnabled,
+                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setAppLockEnabled(enabled) } },
+                    )
+                    SettingSwitchRow(
+                        title = "隐藏最近任务预览",
+                        subtitle = "离开后台后模糊/隐藏任务卡片（FLAG_SECURE）",
+                        checked = hidePreview,
+                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setHideTaskPreview(enabled) } },
+                    )
+                    androidx.compose.material3.Text("令牌已通过 Keystore 加密存储；服务器指纹与本机随机 UUID 已区分命名", style = androidx.compose.material3.MaterialTheme.typography.labelSmall, color = qy.soft, modifier = androidx.compose.ui.Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
                 }
 
                 Section("数据") {

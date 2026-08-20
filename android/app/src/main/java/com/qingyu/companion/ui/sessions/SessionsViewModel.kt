@@ -3,6 +3,8 @@ package com.qingyu.companion.ui.sessions
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
+import com.qingyu.companion.data.CompanionError
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.SessionPreview
 import com.qingyu.companion.network.WsClient
@@ -83,12 +85,13 @@ class SessionsViewModel(
                 val cached = applySort(
                     repository.listCachedSessions().filter { it.messageCount > 0 } // 缓存同样过滤空会话
                 )
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "无法连接 PC，已显示本地缓存"
                 _ui.update {
                     it.copy(
                         sessions = cached,
                         loading = false,
                         offline = true,
-                        error = e.message ?: "无法连接 PC，已显示本地缓存",
+                        error = msg,
                     )
                 }
             }
@@ -103,7 +106,8 @@ class SessionsViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _ui.update { it.copy(error = e.message ?: "删除失败") }
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "删除失败"
+                _ui.update { it.copy(error = msg) }
             }
             refresh()
         }
@@ -118,7 +122,8 @@ class SessionsViewModel(
                     refresh()
                 }
                 .onFailure { e ->
-                    _ui.update { it.copy(error = e.message ?: "新建对话失败") }
+                    val msg = if (e is CompanionError) e.userMessage() else e.message ?: "新建对话失败"
+                    _ui.update { it.copy(error = msg) }
                 }
         }
     }
@@ -133,7 +138,8 @@ class SessionsViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _ui.update { it.copy(error = e.message ?: "重命名失败") }
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "重命名失败"
+                _ui.update { it.copy(error = msg) }
             }
             refresh()
         }
