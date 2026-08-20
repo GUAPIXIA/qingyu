@@ -5,12 +5,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockReadJson = vi.fn()
 
-vi.mock('../../services/storage', () => ({
-  DIRS: { config: () => '/mock/config' },
-  readJson: mockReadJson,
-  writeJson: vi.fn(),
-  withFileLock: vi.fn((_path: string, fn: () => unknown) => fn()),
-}))
+vi.mock('../../services/storage', async () => {
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  return {
+    DIRS: { config: () => join(tmpdir(), 'qingyu-regex-test') },
+    readJson: mockReadJson,
+    writeJson: vi.fn(),
+    withFileLock: vi.fn((_path: string, fn: () => unknown) => fn()),
+  }
+})
 
 vi.mock('../../services/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),

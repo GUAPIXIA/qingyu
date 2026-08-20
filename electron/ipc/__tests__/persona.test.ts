@@ -27,10 +27,14 @@ vi.mock('../../utils/pathGuard', () => ({
   safeId: vi.fn(),
 }))
 
-vi.mock('../../services/storage', () => ({
-  DIRS: { config: () => '/mock/config' },
-  withFileLock: vi.fn((_path: string, fn: () => unknown) => fn()),
-}))
+vi.mock('../../services/storage', async () => {
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  return {
+    DIRS: { config: () => join(tmpdir(), 'qingyu-persona-test') },
+    withFileLock: vi.fn((_path: string, fn: () => unknown) => fn()),
+  }
+})
 
 describe('persona IPC', () => {
   let handlers: Record<string, (...args: unknown[]) => unknown>
