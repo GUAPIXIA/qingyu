@@ -34,9 +34,11 @@ export interface PersistAssistantMessage {
 export interface MessagePort {
   findSession(sessionId: string, characterId?: string): Promise<MessageRef | null>
   findByRequestId(sessionId: string, requestId: string): Promise<{ id: string } | null>
+  findMessage(sessionId: string, messageId: string): Promise<{ id: string; role: string; content: string; swipes?: string[]; swipeIndex?: number } | null>
   appendUserMessage(input: PersistUserMessage): Promise<{ id: string }>
   commitAssistantMessage(input: PersistAssistantMessage): Promise<{ id: string }>
   updateAssistantMessage(messageId: string, patch: { content: string }): Promise<void>
+  appendSwipedCandidate(messageId: string, content: string): Promise<{ id: string; content: string; swipes: string[]; swipeIndex: number }>
 }
 
 export interface BuildContextInput {

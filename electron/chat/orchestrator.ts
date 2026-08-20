@@ -46,11 +46,18 @@ export class ChatOrchestrator {
     const existing = findTaskByRequestId(command.requestId)
     if (existing) return existing
 
-    // 3. create queued task
+    // 3. create queued task（retry 需先解析原任务以确定 session/character）
     const now = Date.now()
     const taskId = makeTaskId()
-    const sessionId = (command as { sessionId?: string }).sessionId ?? ''
-    const characterId = (command as { characterId?: string }).characterId ?? 'default'
+    let sessionId = (command as { sessionId?: string }).sessionId ?? ''
+    let characterId = (command as { characterId?: string }).characterId ?? 'default'
+    let retryOfTask: TaskSnapshot | null = null
+    if (command.type === 'retry_generation') {
+      retryOfTask = getTaskSnapshot((command as { retryOfTaskId: string }).retryOfTaskId) ?? null
+      if (!retryOfTask) throw createDomainError('TASK_NOT_FOUND', '重试目标不存在')
+      sessionId = retryOfTask.sessionId
+      characterId = retryOfTask.characterId
+    }
 
     const snapshot: TaskSnapshot = {
       schemaVersion: 1,
@@ -65,6 +72,7 @@ export class ChatOrchestrator {
       lastSequence: 1,
       createdAt: now,
       updatedAt: now,
+      ...(retryOfTask ? { retryOfTaskId: retryOfTask.taskId } : {}),
     }
 
     createTask(snapshot)
@@ -79,11 +87,6 @@ export class ChatOrchestrator {
       timestamp: now,
       payload: { taskId },
     })
-
-    // 仅实现 send，其他类型先抛不支持（V12-12 再补）
-    if (command.type !== 'send') {
-      throw createDomainError('INVALID_COMMAND', `暂不支持 ${command.type}，迁移到 V12-12`)
-    }
 
     // 4. acquire session lock
     try {
@@ -103,31 +106,47 @@ export class ChatOrchestrator {
         throw createDomainError('SESSION_NOT_FOUND', '会话不存在')
       }
 
-      // 6. apply input regex — 由 ContextPort.build 内部统一处理，此处 content 原样传入
-      // 7. ensure user message persisted by requestId
-      const persisted = await this.deps.messagePort.findByRequestId(sessionId, command.requestId)
+      // 6-7. 用户消息处理（按类型分支）
       let userMessageId: string | undefined
-      if (!persisted) {
-        const um = await this.deps.messagePort.appendUserMessage({
-          id: nanoid(),
-          sessionId,
-          characterId,
-          content: command.content,
-          images: command.images ?? [],
-          replyToId: command.replyToId,
-          requestId: command.requestId,
-        })
-        userMessageId = um.id
-      } else {
-        userMessageId = persisted.id
+      if (command.type === 'send') {
+        const persisted = await this.deps.messagePort.findByRequestId(sessionId, command.requestId)
+        if (!persisted) {
+          const um = await this.deps.messagePort.appendUserMessage({
+            id: nanoid(),
+            sessionId,
+            characterId,
+            content: command.content,
+            images: command.images ?? [],
+            replyToId: command.replyToId,
+            requestId: command.requestId,
+          })
+          userMessageId = um.id
+        } else {
+          userMessageId = persisted.id
+        }
+        updateTask(taskId, (s) => ({ ...s, userMessageId, updatedAt: Date.now() }))
+      } else if (command.type === 'retry_generation') {
+        // 仅重试 AI，不重复用户消息
+        userMessageId = retryOfTask?.userMessageId
+        if (userMessageId) updateTask(taskId, (s) => ({ ...s, userMessageId, updatedAt: Date.now() }))
+      } else if (command.type === 'regenerate') {
+        const targetId = (command as { messageId: string }).messageId
+        const target = await this.deps.messagePort.findMessage(sessionId, targetId)
+        if (!target || target.role !== 'assistant') {
+          transitionTask(taskId, 'failed', { error: createDomainError('INVALID_COMMAND', '目标消息不存在或不可重生成') })
+          throw createDomainError('INVALID_COMMAND', '目标消息不存在或不可重生成')
+        }
+        // 不创建用户消息，记录 target 供后续 swipes 追加
+        updateTask(taskId, (s) => ({ ...s, userMessageId: undefined, updatedAt: Date.now() }))
+      } else if (command.type === 'continue') {
+        // 不重复用户消息
+        updateTask(taskId, (s) => ({ ...s, userMessageId: undefined, updatedAt: Date.now() }))
       }
-
-      // 更新快照的 userMessageId
-      updateTask(taskId, (s) => ({ ...s, userMessageId, updatedAt: Date.now() }))
 
       // 8-10. build context + select model
       transitionTask(taskId, 'preparing')
-      const ctx = await this.deps.contextPort.build({ sessionId, characterId, content: command.content })
+      const buildContent = (command as { content?: string }).content ?? ''
+      const ctx = await this.deps.contextPort.build({ sessionId, characterId, content: buildContent })
       transitionTask(taskId, 'streaming')
       updateTask(taskId, (s) => ({ ...s, model: ctx.model, contextFingerprint: ctx.fingerprint, updatedAt: Date.now() }))
 
@@ -309,18 +328,28 @@ export class ChatOrchestrator {
       flushChunk(true)
       const finalText = accumulated
 
-      // 16. finalizing -> commit assistant message
+      // 16. finalizing -> 落盘（regenerate 追加 swipe，其余新建）
       transitionTask(taskId, 'finalizing')
-      const assistantId = nanoid()
-      await this.deps.messagePort.commitAssistantMessage({
-        id: assistantId,
-        sessionId,
-        characterId,
-        content: finalText,
-        requestId: command.requestId,
-        generationTaskId: taskId,
-      })
-      updateTask(taskId, (s) => ({ ...s, assistantMessageId: assistantId, accumulatedText: finalText, updatedAt: Date.now() }))
+      if (command.type === 'regenerate') {
+        const targetId = (command as { messageId: string }).messageId
+        if (!finalText) {
+          transitionTask(taskId, 'failed', { error: createDomainError('INVALID_MODEL_RESPONSE', '空回复') })
+          throw createDomainError('INVALID_MODEL_RESPONSE', '空回复')
+        }
+        const res = await this.deps.messagePort.appendSwipedCandidate(targetId, finalText)
+        updateTask(taskId, (s) => ({ ...s, assistantMessageId: res.id, accumulatedText: finalText, updatedAt: Date.now() }))
+      } else {
+        const assistantId = nanoid()
+        await this.deps.messagePort.commitAssistantMessage({
+          id: assistantId,
+          sessionId,
+          characterId,
+          content: finalText,
+          requestId: command.requestId,
+          generationTaskId: taskId,
+        })
+        updateTask(taskId, (s) => ({ ...s, assistantMessageId: assistantId, accumulatedText: finalText, updatedAt: Date.now() }))
+      }
 
       // 17. completed
       transitionTask(taskId, 'completed')

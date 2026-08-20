@@ -33,6 +33,12 @@ function makeMessagePort(): MessagePort & { store: Map<string, { id: string; req
       return { id: input.id }
     },
     async updateAssistantMessage() {},
+    async findMessage(_sessionId: string, messageId: string) {
+      return { id: messageId, role: 'assistant', content: 'old', swipes: ['old'], swipeIndex: 0 }
+    },
+    async appendSwipedCandidate(messageId: string, content: string) {
+      return { id: messageId, content, swipes: ['old', content], swipeIndex: 1 }
+    },
   }
 }
 
@@ -173,5 +179,60 @@ describe('Orchestrator', () => {
     await new Promise((r) => setTimeout(r, 5))
     await expect(orch.handle(c2)).rejects.toMatchObject({ code: 'TASK_CONFLICT' })
     await p1
+  })
+
+  it('regenerate 追加新候选', async () => {
+    const mp = makeMessagePort()
+    const orch = new ChatOrchestrator({
+      messagePort: mp,
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'success', chunks: ['new'] }),
+    })
+    const c: ChatCommand = {
+      type: 'regenerate',
+      requestId: 'req-reg-1',
+      sessionId: 'sess-reg',
+      messageId: 'msg-1',
+      client: { kind: 'desktop', clientId: 'c1', protocolVersion: 2 },
+    }
+    const snap = await orch.handle(c)
+    expect(snap.state).toBe('completed')
+    expect(snap.accumulatedText).toBe('new')
+  })
+
+  it('regenerate 失败不破坏旧候选', async () => {
+    const mp = makeMessagePort()
+    const orch = new ChatOrchestrator({
+      messagePort: mp,
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'fail_before', error: 'timeout' }),
+    })
+    const c: ChatCommand = {
+      type: 'regenerate',
+      requestId: 'req-reg-fail',
+      sessionId: 'sess-reg',
+      messageId: 'msg-1',
+      client: { kind: 'desktop', clientId: 'c1', protocolVersion: 2 },
+    }
+    await expect(orch.handle(c)).rejects.toMatchObject({ code: 'PROVIDER_TIMEOUT' })
+    expect(findByRequestId('req-reg-fail')?.state).toBe('failed')
+  })
+
+  it('continue 新气泡', async () => {
+    const mp = makeMessagePort()
+    const orch = new ChatOrchestrator({
+      messagePort: mp,
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'success', chunks: ['cont'] }),
+    })
+    const c: ChatCommand = {
+      type: 'continue',
+      requestId: 'req-cont-1',
+      sessionId: 'sess-cont',
+      client: { kind: 'desktop', clientId: 'c1', protocolVersion: 2 },
+    }
+    const snap = await orch.handle(c)
+    expect(snap.state).toBe('completed')
+    expect(snap.accumulatedText).toBe('cont')
   })
 })

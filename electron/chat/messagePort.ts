@@ -57,8 +57,35 @@ export const chatMessagePort: MessagePort = {
   },
 
   async updateAssistantMessage(messageId, patch) {
-    // 暂未用于 v2 主路径，保留接口兼容
     void messageId
     void patch
+  },
+
+  async findMessage(sessionId, messageId) {
+    const { listAllSessions } = await import('../bridge/sessionsIndex')
+    const all = await listAllSessions()
+    const target = all.find((s) => s.id === sessionId)
+    if (!target) return null
+    const msgs = chatData.readMessages(target.characterId, sessionId)
+    const m = msgs.find((x) => x.id === messageId)
+    if (!m) return null
+    return { id: m.id, role: m.role, content: m.content, swipes: (m as unknown as { swipes?: string[] }).swipes, swipeIndex: (m as unknown as { swipeIndex?: number }).swipeIndex }
+  },
+
+  async appendSwipedCandidate(messageId, content) {
+    const { listAllSessions } = await import('../bridge/sessionsIndex')
+    const all = await listAllSessions()
+    for (const s of all) {
+      const msgs = chatData.readMessages(s.characterId, s.id)
+      const target = msgs.find((m) => m.id === messageId)
+      if (target) {
+        const swipes = (target as unknown as { swipes?: string[] }).swipes ?? [target.content]
+        const nextSwipes = [...swipes, content]
+        const updated = { ...target, swipes: nextSwipes, swipeIndex: nextSwipes.length - 1, content }
+        chatData.saveMessage(s.characterId, updated as unknown as Parameters<typeof chatData.saveMessage>[1])
+        return { id: messageId, content, swipes: nextSwipes, swipeIndex: nextSwipes.length - 1 }
+      }
+    }
+    throw new Error('目标消息不存在')
   },
 }
