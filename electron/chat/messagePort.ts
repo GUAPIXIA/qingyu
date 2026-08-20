@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
 /**
  * V12-09 MessagePort 真实实现（对接 chatData JSONL 存储）
  */

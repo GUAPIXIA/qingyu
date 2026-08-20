@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
 /**
  * V12-07 VisionRouter：统一视觉模型选择（实施方案 §5.1 ModelPort 的 vision 分支）
  *

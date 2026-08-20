@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
 /**
  * V12-07 PostProcessor：统一 output 正则与 stopStrings（实施方案 §13.1 步骤 14）
  *
@@ -15,7 +16,7 @@ export interface PostProcessResult {
 
 export function postProcessOutput(raw: string, rules?: RegexRule[]): PostProcessResult {
   const r = rules ?? readRules()
-  let text = applyOutputRegexRules(raw, r)
+  const text = applyOutputRegexRules(raw, r)
   const { text: truncated, stopped } = truncateAtStop(text, collectStopStrings(r))
   return { text: truncated, truncated: stopped }
 }

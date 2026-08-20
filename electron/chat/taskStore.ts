@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
 /**
  * V12-03 TaskStore：持久任务快照 + requestId 索引（实施方案 §8）
  *

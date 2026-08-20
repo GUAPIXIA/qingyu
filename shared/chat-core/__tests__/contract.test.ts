@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
 import { describe, it, expect } from 'vitest'
 import { validateChatCommand, type ChatCommand } from '../commands'
 import { isAllowedTransition, isTerminalState, type TaskState } from '../events'

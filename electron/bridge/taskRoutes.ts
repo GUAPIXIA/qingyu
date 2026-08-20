@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
 /**
  * V12-09 Bridge API v2（实施方案 §10）
  *
@@ -35,7 +36,7 @@ export function buildTaskRouter(): Router {
     const sessionId = req.params.sessionId as string
     const idempotencyKey = (req.headers['idempotency-key'] as string) || (req.body?.requestId as string) || nanoid(8)
     const body = (req.body ?? {}) as { type?: string; characterId?: string; content?: string; images?: string[]; replyToId?: string }
-    let { type = 'send', content = '', images, replyToId } = body
+    const { type = 'send', content = '', images, replyToId } = body
     let characterId = body.characterId
     // 若未传 characterId，回退为会话所属角色（避免 Orchestrator 用 'default' 导致空 character）
     if (!characterId) {

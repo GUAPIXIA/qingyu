@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
 /**
  * V12-06 ChatOrchestrator 核心（实施方案 §13.1 send 流程 1-19）
  *

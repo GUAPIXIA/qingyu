@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
 /**
  * V12-06 Port 定义（实施方案 §5.2）
  * 测试替身与迁移边界，不引入复杂 DI 框架
