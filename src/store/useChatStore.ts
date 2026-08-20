@@ -397,13 +397,50 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   },
 
   sendMessage: async (content, images, character, preset, _lorebooks, replyToId) => {
-    // V12-11: flag 隔离，新链路走 Orchestrator
+    // V12-11: flag 隔离，新链路走 Orchestrator（带流式占位）
     try {
-      const { useChatTaskStore, submitChatTask } = await import('./chatTaskStore')
+      const { useChatTaskStore } = await import('./chatTaskStore')
       if (useChatTaskStore.getState().chatEngineV2 && (window as unknown as { api?: { chatTask?: unknown } }).api?.chatTask) {
         const curSid = get().currentSessionId
         if (curSid) {
-          await submitChatTask(curSid, content, character.id)
+          // 复用旧链路的用户消息落屏逻辑，但 AI 侧走新链路
+          const userMsgId = nanoid()
+          const userMsg = { id: userMsgId, sessionId: curSid, characterId: character.id, role: 'user' as const, content, images: images ?? [], isEditing: false, timestamp: Date.now(), replyToId: replyToId ?? undefined }
+          set((s) => ({ messages: [...s.messages, userMsg] }))
+          // 先落盘用户消息（与旧链路一致，避免切页后丢失）
+          window.api.chat.saveMessage(userMsg).catch(() => {})
+          // 创建 AI 占位
+          const aiMsgId = nanoid()
+          const aiPlaceholder = { id: aiMsgId, sessionId: curSid, characterId: character.id, role: 'assistant' as const, content: '', images: [], isEditing: false, timestamp: Date.now() }
+          set((s) => ({ messages: [...s.messages, aiPlaceholder], isStreaming: true }))
+          // 提交任务并订阅流式事件
+          const { submitChatTask, subscribeTaskEvents } = await import('./chatTaskStore')
+          const task = await submitChatTask(curSid, content, character.id)
+          // 关联占位与任务，便于后续更新
+          const unsub = subscribeTaskEvents(task.taskId, (delta) => {
+            set((s) => {
+              const idx = s.messages.findIndex((m) => m.id === aiMsgId)
+              if (idx < 0) return {}
+              const next = s.messages.slice()
+              next[idx] = { ...next[idx], content: (next[idx].content ?? '') + delta }
+              return { messages: next }
+            })
+          })
+          // 轮询终态（简化：1s 后拉一次，实际靠 chatTask:event 推送）
+          const poll = setInterval(async () => {
+            try {
+              const snap = await (window as unknown as { api: { chatTask: { get: (id: string) => Promise<import('../../shared/chat-core/events').TaskSnapshot> } } }).api.chatTask.get(task.taskId)
+              if (snap.state === 'completed' || snap.state === 'failed' || snap.state === 'cancelled') {
+                clearInterval(poll)
+                unsub()
+                set({ isStreaming: false })
+                // 终态后重载消息文件，确保与落盘一致
+                const msgs = await window.api.chat.listMessages(character.id, curSid)
+                set({ messages: msgs as unknown as typeof get extends () => infer T ? T extends { messages: infer M } ? M : never : never })
+              }
+            } catch { /* ignore */ }
+          }, 1000)
+          setTimeout(() => { clearInterval(poll); unsub() }, 120000)
           return
         }
       }
