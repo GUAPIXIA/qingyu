@@ -12,6 +12,8 @@ import com.qingyu.companion.model.QuickReply
 import com.qingyu.companion.model.QuickReplyAction
 import com.qingyu.companion.network.WsClient
 import com.qingyu.companion.ui.tts.TtsPlayer
+import com.qingyu.companion.data.CompanionError
+import com.qingyu.companion.data.userMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,6 +40,8 @@ class ChatViewModel(
     /** 从会话列表带入的角色 ID；用于消除不同角色共用 default sessionId 的歧义。 */
     private val expectedCharacterId: String? = null,
     private val ttsPlayer: TtsPlayer? = null,
+    private val generationTracker: com.qingyu.companion.data.GenerationTracker? = null,
+    private val draftStore: com.qingyu.companion.data.DraftStore? = null,
 ) : ViewModel() {
 
     /** 所属角色 id（loadSessionInfo 时缓存，删除会话时精确定位） */
@@ -82,14 +86,27 @@ class ChatViewModel(
     private val _replyTo = MutableStateFlow<Message?>(null)
     val replyTo: StateFlow<Message?> = _replyTo.asStateFlow()
 
-    /** chunk 节流缓冲：requestId -> 已累积增量 */
+    /** chunk 节流缓冲：requestId -> 本批增量（每 FLUSH_INTERVAL_MS 清空） */
     private val chunkBuffer = LinkedHashMap<String, StringBuilder>()
+    /** 流式累积缓冲：requestId -> 完整累积文本（跨 flush 保留，done/error/stop 时清理） */
+    private val streamingAccumulated = HashMap<String, StringBuilder>()
     private var flushJob: Job? = null
 
     /** ai:usage 事件缓冲：requestId -> 用量（Done 到达时附加到消息） */
     private val usageBuffer = HashMap<String, MessageUsage>()
 
+    // 每会话草稿自动保存（5.2），发送后清除，切换恢复
+    private var draftJob: Job? = null
+
     init {
+        // 恢复草稿
+        draftStore?.let { ds ->
+            viewModelScope.launch {
+                runCatching { ds.getDraft(sessionId) }.onSuccess { saved ->
+                    if (saved.isNotEmpty()) _input.value = saved
+                }
+            }
+        }
         viewModelScope.launch {
             // StateFlow 天然去重，仅状态变化时触发
             repository.connectionState.collect { state ->
@@ -100,6 +117,16 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             repository.events.collect(::handleEvent)
+        }
+        // P1-4.1 B1-2：观察持久化发件箱，App 重启后可恢复（替代纯内存 pending）
+        viewModelScope.launch {
+            repository.observeOutbox(sessionId).collect { outboxPending ->
+                _ui.update { it.copy(pending = outboxPending) }
+            }
+        }
+        viewModelScope.launch {
+            // 恢复未完成发件箱（queued/failed -> queued 等待重发）
+            runCatching { repository.restoreOutbox() }
         }
         loadLatest()
         loadQuickReplies()
@@ -148,7 +175,19 @@ class ChatViewModel(
 
     fun onInputChange(value: String) {
         _input.value = value
+        draftJob?.cancel()
+        draftJob = viewModelScope.launch {
+            // 300ms 防抖，避免每字符都写 DataStore
+            delay(300)
+            runCatching { draftStore?.saveDraft(sessionId, value) }
+        }
     }
+
+    /** 消息内搜索 query（端侧过滤，不走网络） */
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+    fun onSearchQueryChange(q: String) { _searchQuery.value = q }
+    fun clearSearch() { _searchQuery.value = "" }
 
     /** 设置/清除引用回复目标（长按消息「引用回复」；发送成功后自动清除） */
     fun setReplyTo(message: Message?) {
@@ -171,11 +210,12 @@ class ChatViewModel(
                 throw e
             } catch (e: Exception) {
                 val cached = repository.listCachedMessages(sessionId)
+                val msg = if (e is com.qingyu.companion.data.CompanionError) e.userMessage() else e.message ?: "无法连接 PC，已显示本地缓存"
                 _ui.update {
                     it.copy(
                         messages = MessageOps.merge(emptyList(), cached),
                         loading = false,
-                        error = e.message ?: "无法连接 PC，已显示本地缓存",
+                        error = msg,
                     )
                 }
             }
@@ -249,19 +289,26 @@ class ChatViewModel(
         }
     }
 
-    /** 快捷回复点击：优先走 execute 端点（宏展开/预设/命令在 PC 侧），text 类型降级直发 */
+    /** 快捷回复点击：优先走 execute 端点，统一错误模型（P1-4.4） */
     fun onQuickReplyClick(qr: QuickReply) {
         viewModelScope.launch {
-            val executed = repository.executeQuickReply(qr.id)
-            if (executed) return@launch
-            // 降级：text 类型可直接发送（宏未展开为已知限制，README 协议假设）
-            if (qr.action == QuickReplyAction.text) {
-                doSend(qr.content)
-            } else {
-                report(
-                    Exception("快捷回复执行失败"),
-                    "该快捷回复需 PC 端执行（预设/命令），请确认桥接层已支持",
-                )
+            try {
+                val executed = repository.executeQuickReply(qr.id)
+                if (executed) return@launch
+                if (qr.action == QuickReplyAction.text) {
+                    doSend(qr.content)
+                } else {
+                    report(Exception("快捷回复执行失败"), "该快捷回复需 PC 端执行（预设/命令），请确认桥接层已支持")
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // 501 未实现时 text 类型可降级直发，其余按错误类型提示
+                val ce = (e as? CompanionError)
+                if (qr.action == QuickReplyAction.text && ce is CompanionError.ServerRejected && ce.code == 501) {
+                    doSend(qr.content)
+                } else {
+                    report(e)
+                }
             }
         }
     }
@@ -279,16 +326,17 @@ class ChatViewModel(
         val content = raw.trim()
         if (content.isEmpty() && images.isEmpty()) return
         val replyTarget = _replyTo.value
-        // 发送后清除引用与待发送图片
+        // 发送后清除引用、待发送图片与草稿
         _replyTo.value = null
         _images.value = emptyList()
         _input.value = ""
+        viewModelScope.launch { runCatching { draftStore?.clearDraft(sessionId) } }
         val requestId = UUID.randomUUID().toString()
         // 先本地入列（发送中），成功后替换为落盘消息；失败保留以便重试
         _ui.update {
             it.copy(
                 error = null,
-                pending = it.pending + PendingMessage(requestId, content, System.currentTimeMillis(), failed = false, images = images),
+                pending = it.pending + PendingMessage(requestId, content, System.currentTimeMillis(), failed = false, images = images, replyToId = replyTarget?.id),
             )
         }
         viewModelScope.launch {
@@ -301,6 +349,7 @@ class ChatViewModel(
                         streaming = Streaming.Generating(requestId, ""),
                     )
                 }
+                generationTracker?.onStarted(sessionId, _ui.value.characterName)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -328,7 +377,7 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             try {
-                val userMessage = repository.sendMessage(sessionId, requestId, pending.content, null, pending.images)
+                val userMessage = repository.sendMessage(sessionId, requestId, pending.content, pending.replyToId, pending.images)
                 _ui.update { st ->
                     st.copy(
                         messages = MessageOps.upsert(st.messages, userMessage),
@@ -336,6 +385,7 @@ class ChatViewModel(
                         streaming = Streaming.Generating(requestId, ""),
                     )
                 }
+                generationTracker?.onStarted(sessionId, _ui.value.characterName)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -355,7 +405,17 @@ class ChatViewModel(
         val current = _ui.value.streaming
         if (current is Streaming.Generating) {
             viewModelScope.launch { repository.stopGeneration(current.requestId) }
-            _ui.update { it.copy(streaming = Streaming.Idle) }
+            // 清理对应 requestId 的两级缓冲
+            chunkBuffer.remove(current.requestId)
+            streamingAccumulated.remove(current.requestId)
+            _ui.update {
+                val nextStreaming = if (streamingAccumulated.isEmpty()) Streaming.Idle else {
+                    val (otherId, otherSb) = streamingAccumulated.entries.first()
+                    Streaming.Generating(otherId, otherSb.toString())
+                }
+                it.copy(streaming = nextStreaming)
+            }
+            if (streamingAccumulated.isEmpty()) generationTracker?.onStopped(sessionId)
         }
     }
 
@@ -367,6 +427,14 @@ class ChatViewModel(
                     _ui.update { st -> st.copy(messages = MessageOps.upsert(st.messages, m)) }
                 }
                 .onFailure { e -> report(e, "重新生成失败") }
+        }
+    }
+
+    fun branch(messageId: String, onCreated: (String, String) -> Unit) {
+        viewModelScope.launch {
+            runCatching { repository.branchSession(sessionId, messageId) }
+                .onSuccess { branch -> onCreated(branch.id, branch.characterId) }
+                .onFailure { e -> report(e, "创建分支失败") }
         }
     }
 
@@ -392,8 +460,8 @@ class ChatViewModel(
         viewModelScope.launch {
             runCatching { repository.listQuickReplies(characterId = null) }
                 .onSuccess { resp ->
-                    _ui.update {
-                        it.copy(
+                    _ui.update { state ->
+                        state.copy(
                             // 全部已启用类型（text/preset/command），点击时经 execute 端点分发；byCharacter 为 Map 值平铺
                             quickReplies = (resp.global + resp.byCharacter.values.flatten())
                                 .filter { q -> q.enabled }
@@ -407,7 +475,9 @@ class ChatViewModel(
 
     fun editMessage(messageId: String, content: String) {
         val trimmed = content.trim()
-        if (trimmed.isEmpty()) return
+        if (trimmed.isEmpty()) {
+            return
+        }
         viewModelScope.launch {
             runCatching { repository.editMessage(sessionId, messageId, trimmed) }
                 .onSuccess { m ->
@@ -453,10 +523,14 @@ class ChatViewModel(
         }
     }
 
-    /** 将异常转为 UI 错误提示（跳过协程取消） */
+    /** 将异常转为 UI 错误提示（跳过协程取消，P1-4.4 统一错误模型） */
     private fun report(e: Throwable, fallback: String? = null) {
         if (e is CancellationException) throw e
-        _ui.update { it.copy(error = e.message ?: fallback) }
+        val msg = when (e) {
+            is CompanionError -> e.userMessage()
+            else -> e.message ?: fallback
+        }
+        _ui.update { it.copy(error = msg) }
     }
 
     private fun handleEvent(event: CompanionEvent) {
@@ -471,20 +545,36 @@ class ChatViewModel(
             is CompanionEvent.Done -> if (event.sessionId == sessionId) {
                 // 同一 requestId 的流式缓冲作废，直接替换为落盘完整消息
                 chunkBuffer.remove(event.requestId)
+                streamingAccumulated.remove(event.requestId)
                 val usage = usageBuffer.remove(event.requestId)
                 val message = if (usage != null) event.message.copy(usage = usage) else event.message
                 _ui.update { st ->
                     st.copy(
                         messages = MessageOps.upsert(st.messages, message),
-                        streaming = Streaming.Idle,
+                        streaming = if (streamingAccumulated.isEmpty()) Streaming.Idle else {
+                            // 仍有其他进行中流式，展示其中一个（避免 Idle 覆盖其他请求）
+                            val (otherId, otherSb) = streamingAccumulated.entries.first()
+                            Streaming.Generating(otherId, otherSb.toString())
+                        },
                     )
                 }
+                if (streamingAccumulated.isEmpty()) generationTracker?.onStopped(sessionId)
+                // P1-4.1 B1-2：发件箱完成清理（幂等）
+                viewModelScope.launch { runCatching { repository.clearCompletedOutbox(sessionId) } }
             }
 
             is CompanionEvent.Error -> if (event.sessionId == sessionId) {
                 chunkBuffer.remove(event.requestId)
+                streamingAccumulated.remove(event.requestId)
                 usageBuffer.remove(event.requestId)
-                _ui.update { it.copy(streaming = Streaming.Idle, error = event.message) }
+                _ui.update {
+                    val nextStreaming = if (streamingAccumulated.isEmpty()) Streaming.Idle else {
+                        val (otherId, otherSb) = streamingAccumulated.entries.first()
+                        Streaming.Generating(otherId, otherSb.toString())
+                    }
+                    it.copy(streaming = nextStreaming, error = event.message)
+                }
+                if (streamingAccumulated.isEmpty()) generationTracker?.onStopped(sessionId)
             }
 
             is CompanionEvent.Usage ->
@@ -512,9 +602,11 @@ class ChatViewModel(
                 chunkBuffer.clear()
                 _ui.update { st ->
                     var updated = st
-                    for ((reqId, text) in snapshot) {
+                    for ((reqId, delta) in snapshot) {
+                        val acc = streamingAccumulated.getOrPut(reqId) { StringBuilder() }
+                        acc.append(delta)
                         updated = updated.copy(
-                            streaming = Streaming.Generating(reqId, text)
+                            streaming = Streaming.Generating(reqId, acc.toString())
                         )
                     }
                     updated

@@ -43,13 +43,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.qingyu.companion.data.CompanionError
 import com.qingyu.companion.data.LocalAppContainer
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.model.GroupChat
 import com.qingyu.companion.model.GroupSession
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.AvatarBubble
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.ui.theme.qyColors
 import kotlinx.coroutines.launch
 
@@ -59,7 +62,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupsScreen(
-    onOpenGroupChat: (groupId: String, groupName: String, sessionId: String, memberNames: Map<String, String>) -> Unit,
+    onOpenGroupChat: (groupId: String, groupName: String, sessionId: String) -> Unit,
     onBack: () -> Unit,
 ) {
     val qy = qyColors()
@@ -83,7 +86,10 @@ fun GroupsScreen(
     LaunchedEffect(Unit) {
         runCatching { repository.listGroups() }
             .onSuccess { groups = it; loading = false }
-            .onFailure { e -> error = e.message ?: "加载群聊失败"; loading = false }
+            .onFailure { e ->
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "加载群聊失败"
+                error = msg; loading = false
+            }
     }
 
     // 选中群后加载会话与成员名
@@ -164,7 +170,6 @@ fun GroupsScreen(
                                                     selectedGroup!!.id,
                                                     selectedGroup!!.name,
                                                     session.id,
-                                                    memberNames,
                                                 )
                                             },
                                         shape = RoundedCornerShape(14.dp),
@@ -349,7 +354,8 @@ fun GroupsScreen(
                                 }
                                 .onFailure { e ->
                                     creating = false
-                                    error = e.message ?: "创建失败"
+                                    val msg = if (e is CompanionError) e.userMessage() else e.message ?: "创建失败"
+                                    error = msg
                                 }
                         }
                     },

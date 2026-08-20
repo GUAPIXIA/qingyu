@@ -34,7 +34,10 @@ data class PairResponse(
     val deviceId: String,
 )
 
-/** 已配对的 PC 连接配置（本地持久化） */
+/** 已配对的 PC 连接配置（本地持久化）
+ *  - fingerprint：PC 侧服务器公钥/设备指纹（非本机随机 UUID），用于重连校验防中间人（路线图 4.3 命名区分）
+ *  - token：长期 JWT，已通过 Keystore 加密落盘（EncryptedSharedPreferences）
+ */
 @Serializable
 data class ServerConnection(
     /** 用户自定义名称，如「家里的工作站」 */
@@ -43,6 +46,6 @@ data class ServerConnection(
     val port: Int,
     val token: String,
     val deviceId: String,
-    /** 配对时记录的 PC 指纹，重连时校验防中间人 */
+    /** PC 侧服务器公钥指纹（配对时记录，重连校验），与 DeviceIdentity.deviceInstallationId 区分 */
     val fingerprint: String,
 )

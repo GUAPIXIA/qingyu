@@ -40,7 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,7 +80,7 @@ fun PairingScreen(onPaired: () -> Unit) {
             )
         }
     })
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val qy = qyColors()
 
@@ -194,7 +194,7 @@ fun PairingScreen(onPaired: () -> Unit) {
                         color = qy.text,
                     )
                     Text(
-                        "在 PC 端「设置 → 手机连接」开启后，填入主机与端口即可配对（配对码可选，扫码自动填充）。",
+                        "在 PC 端「设置 → 手机连接」开启后，填入主机、端口和一次性配对码；也可以扫码自动填充。",
                         style = MaterialTheme.typography.bodySmall,
                         color = qy.soft,
                     )
@@ -218,7 +218,7 @@ fun PairingScreen(onPaired: () -> Unit) {
                     GlassTextField(
                         value = ui.pairingCode,
                         onValueChange = vm::onPairingCodeChange,
-                        label = "配对码（可选）",
+                        label = "一次性配对码",
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(12.dp))

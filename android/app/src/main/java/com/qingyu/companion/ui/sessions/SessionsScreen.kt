@@ -44,7 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,9 +65,11 @@ import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.AvatarBubble
 import com.qingyu.companion.ui.components.ConnectionStatusBar
+import androidx.compose.material.icons.filled.Search
 import com.qingyu.companion.ui.components.SessionCard
 import com.qingyu.companion.ui.components.resolveImageUrl
 import com.qingyu.companion.ui.theme.qyColors
+import com.qingyu.companion.utils.SearchUtils
 
 
 /**
@@ -87,9 +89,10 @@ fun SessionsScreen(
     val vm: SessionsViewModel = viewModel(factory = viewModelFactory {
         initializer { SessionsViewModel(container.repository) }
     })
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<SessionPreview?>(null) }
     var renamingSession by remember { mutableStateOf<SessionPreview?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
     var renameText by remember { mutableStateOf("") }
     var tokenInvalid by remember { mutableStateOf(false) }
     // 角色头像 map：characterId -> 完整头像 URL（PC 端同步）
@@ -105,7 +108,7 @@ fun SessionsScreen(
         container.connectionManager.tokenInvalidated.collect { tokenInvalid = true }
     }
     // 连接恢复/切换时重新拉取角色列表（含头像 URL）
-    val connState by container.connectionManager.activeFlow.collectAsState()
+    val connState by container.connectionManager.activeFlow.collectAsStateWithLifecycle()
     LaunchedEffect(connState) {
         if (connState != null) {
             runCatching { container.repository.listCharacters() }
@@ -245,6 +248,17 @@ fun SessionsScreen(
                     }
                 }
 
+                // 搜索框（端侧会话搜索，不走网络）
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("搜索会话…", color = qy.muted) },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = qy.muted, modifier = Modifier.size(18.dp)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = qy.accent, unfocusedBorderColor = qy.line, focusedContainerColor = qy.bg2),
+                )
+                val filteredSessions = remember(ui.sessions, searchQuery) { SearchUtils.filterSessions(ui.sessions, searchQuery) }
                 Box(Modifier.fillMaxSize()) {
                     when {
                         ui.loading && ui.sessions.isEmpty() -> {
@@ -258,6 +272,11 @@ fun SessionsScreen(
                             EmptyState(offline = ui.offline)
                         }
 
+                        filteredSessions.isEmpty() && searchQuery.isNotBlank() -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("无匹配会话", color = qy.muted)
+                            }
+                        }
                         else -> {
                             Column(Modifier.fillMaxSize()) {
                                 if (ui.offline) {
@@ -273,7 +292,7 @@ fun SessionsScreen(
                                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
-                                    items(ui.sessions, key = { "${it.characterId}:${it.id}" }) { session ->
+                                    items(filteredSessions, key = { "${it.characterId}:${it.id}" }) { session ->
                                         SessionCard(
                                             session = session,
                                             avatarUrl = avatarMap[session.characterId],

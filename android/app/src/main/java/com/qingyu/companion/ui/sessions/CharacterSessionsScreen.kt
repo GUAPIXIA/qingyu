@@ -30,7 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,7 +70,7 @@ fun CharacterSessionsScreen(
             initializer { SessionsViewModel(container.repository, characterId) }
         },
     )
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<SessionPreview?>(null) }
     var renamingSession by remember { mutableStateOf<SessionPreview?>(null) }
     var renameText by remember { mutableStateOf("") }

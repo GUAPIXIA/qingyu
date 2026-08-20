@@ -105,6 +105,9 @@ interface ChatRepository {
     /** 分页拉取（beforeId 游标），并写入本地缓存 */
     suspend fun listMessages(sessionId: String, beforeId: String? = null): MessagePage
 
+    /** 从指定消息创建独立会话分支，返回新会话。 */
+    suspend fun branchSession(sessionId: String, messageId: String): com.qingyu.companion.model.SessionPreview
+
     /** 发送用户消息（幂等键由调用方生成；replyToId 为引用回复目标，可空；images 为图片 base64） */
     suspend fun sendMessage(
         sessionId: String,
@@ -205,6 +208,15 @@ interface ChatRepository {
     suspend fun listCachedSessions(): List<SessionPreview>
 
     suspend fun listCachedMessages(sessionId: String): List<Message>
+
+    /** 观察发件箱（P1-4.1 B1-2）：sessionId -> PendingMessage 列表，App 重启后可恢复 */
+    fun observeOutbox(sessionId: String): kotlinx.coroutines.flow.Flow<List<com.qingyu.companion.model.PendingMessage>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    /** 恢复未完成发件箱（App 启动/重连时调用） */
+    suspend fun restoreOutbox() {}
+
+    /** 清理已完成的发件箱 */
+    suspend fun clearCompletedOutbox(sessionId: String) {}
 
     /** 仅清本地缓存（保留连接配置，方案 §6.9） */
     suspend fun clearLocalCache()

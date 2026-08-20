@@ -176,6 +176,12 @@ interface QingyuApi {
         @Query("beforeId") beforeId: String? = null,
     ): MessagePage
 
+    @POST("api/v1/sessions/{sessionId}/branch")
+    suspend fun branchSession(
+        @Path("sessionId") sessionId: String,
+        @Query("messageId") messageId: String,
+    ): com.qingyu.companion.model.SessionPreview
+
     @POST("api/v1/sessions/{sessionId}/messages")
     suspend fun sendMessage(
         @Path("sessionId") sessionId: String,

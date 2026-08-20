@@ -334,6 +334,98 @@ class ChatViewModelTest {
         assertNull(vm.replyTo.value)
     }
 
+    @Test
+    fun `引用回复失败 pending 保留 replyToId`() = runTest(dispatcher) {
+        repo.onSend = { _, _, _, _, _ -> throw RuntimeException("网络中断") }
+        vm.onInputChange("引用内容")
+        vm.setReplyTo(msg("origin-msg", content = "被引用"))
+        vm.send()
+        advanceUntilIdle()
+
+        val pending = vm.ui.value.pending.single()
+        assertEquals("origin-msg", pending.replyToId)
+        assertEquals("引用内容", pending.content)
+        assertTrue(pending.failed)
+    }
+
+    @Test
+    fun `重试保留 replyToId`() = runTest(dispatcher) {
+        // 首次失败，pending 带 replyToId
+        repo.onSend = { _, _, _, _, _ -> throw RuntimeException("断网") }
+        vm.onInputChange("重试内容")
+        vm.setReplyTo(msg("target-42", content = "原消息"))
+        vm.send()
+        advanceUntilIdle()
+        val reqId = vm.ui.value.pending.single().requestId
+        assertEquals("target-42", vm.ui.value.pending.single().replyToId)
+
+        // 重试应以同一 replyToId 重发
+        var retriedReplyId: String? = "not-set"
+        var retriedImages: List<String> = emptyList()
+        repo.onSend = { _, _, _, replyToId, images ->
+            retriedReplyId = replyToId
+            retriedImages = images
+            msg(id = reqId, content = "重试内容")
+        }
+        vm.retryPending(reqId)
+        advanceUntilIdle()
+
+        assertEquals("target-42", retriedReplyId)
+        assertTrue(vm.ui.value.pending.isEmpty())
+        assertEquals("重试内容", vm.ui.value.messages.single().content)
+    }
+
+    @Test
+    fun `断网重连自动重发保留 replyToId 与图片`() = runTest(dispatcher) {
+        // 首次失败，带图片与引用
+        repo.onSend = { _, _, _, _, _ -> throw RuntimeException("断网") }
+        vm.onInputChange("带图引用")
+        vm.setReplyTo(msg("img-target", content = "原图消息"))
+        // 模拟待发送图片（base64）
+        vm.onImagesChange(listOf("base64img"))
+        vm.send()
+        advanceUntilIdle()
+        val pending = vm.ui.value.pending.single()
+        assertEquals("img-target", pending.replyToId)
+        assertEquals(listOf("base64img"), pending.images)
+        assertTrue(pending.failed)
+
+        // 连接恢复自动重发（retryAllFailed 内部调用 retryPending）
+        var autoReplyId: String? = null
+        var autoImages: List<String> = emptyList()
+        repo.onSend = { _, _, _, replyToId, images ->
+            autoReplyId = replyToId
+            autoImages = images
+            msg(id = pending.requestId, content = "带图引用")
+        }
+        repo.setConnected(true)
+        advanceUntilIdle()
+
+        assertEquals("img-target", autoReplyId)
+        assertEquals(listOf("base64img"), autoImages)
+        assertTrue(vm.ui.value.pending.isEmpty())
+    }
+
+    @Test
+    fun `重试无引用时 replyToId 为空`() = runTest(dispatcher) {
+        repo.onSend = { _, _, _, _, _ -> throw RuntimeException("断网") }
+        vm.onInputChange("普通消息")
+        // 未设置 replyTo
+        vm.send()
+        advanceUntilIdle()
+        val reqId = vm.ui.value.pending.single().requestId
+        assertNull(vm.ui.value.pending.single().replyToId)
+
+        var retriedReplyId: String? = "not-set"
+        repo.onSend = { _, _, _, replyToId, _ ->
+            retriedReplyId = replyToId
+            msg(id = reqId, content = "普通消息")
+        }
+        vm.retryPending(reqId)
+        advanceUntilIdle()
+        assertNull(retriedReplyId)
+    }
+
     // ---------- 会话信息 ----------
 
     @Test
@@ -383,6 +475,12 @@ private class FakeChatRepository : ChatRepository {
         return MessagePage(messages = messages, nextCursor = null)
     }
 
+    override suspend fun branchSession(sessionId: String, messageId: String) =
+        com.qingyu.companion.model.SessionPreview(
+            id = "branch-session", characterId = "char-1", title = "分支",
+            createdAt = 1, updatedAt = 1, messageCount = 1, lastMessage = "消息",
+        )
+
     override suspend fun listCachedMessages(sessionId: String): List<Message> = cachedMessages
 
     override suspend fun sendMessage(
@@ -423,7 +521,7 @@ private class FakeChatRepository : ChatRepository {
 
     override suspend fun clearChat(sessionId: String) = Unit
 
-    override suspend fun getContextUsage(sessionId: String) = com.qingyu.companion.model.ContextUsageDto(
+    override suspend fun getContextUsage(sessionId: String, characterId: String?) = com.qingyu.companion.model.ContextUsageDto(
         used = 0, max = 0, ratio = 0.0, pct = 0,
     )
 
@@ -442,9 +540,9 @@ private class FakeChatRepository : ChatRepository {
     override suspend fun listModels() = throw UnsupportedOperationException()
     override suspend fun aiAssist(sessionId: String, type: String, content: String?) = throw UnsupportedOperationException()
     override suspend fun updatePreset(presetId: String, temperature: Double?, topP: Double?, maxTokens: Int?) = throw UnsupportedOperationException()
-    override suspend fun getSessionMemory(sessionId: String) = throw UnsupportedOperationException()
-    override suspend fun patchSessionMemory(sessionId: String, memoryEnabled: Boolean?, memoryMode: String?, autoMemoryInterval: Int?) = throw UnsupportedOperationException()
-    override suspend fun summarizeMemory(sessionId: String) = throw UnsupportedOperationException()
+    override suspend fun getSessionMemory(sessionId: String, characterId: String?) = throw UnsupportedOperationException()
+    override suspend fun patchSessionMemory(sessionId: String, memoryEnabled: Boolean?, memoryMode: String?, autoMemoryInterval: Int?, characterId: String?) = throw UnsupportedOperationException()
+    override suspend fun summarizeMemory(sessionId: String, characterId: String?) = throw UnsupportedOperationException()
     override suspend fun activateCharacter(characterId: String) = throw UnsupportedOperationException()
     override suspend fun usageSummary() = throw UnsupportedOperationException()
     override suspend fun usageRecords(limit: Int) = throw UnsupportedOperationException()

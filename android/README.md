@@ -4,7 +4,7 @@ PC 端「轻语」的安卓伴侣端：只做远程连接与对话消费，不�
 
 ## 版本
 
-当前版本 **0.1.1**（build 2，初版发布）。更新日志见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **0.1.5**（build 6，配合 PC 0.11.28/0.12.0）。更新日志见 [CHANGELOG.md](CHANGELOG.md)。
 
 - 版本号集中管理：`gradle/libs.versions.toml` `[versions]` 中的 `appVersionName` / `appVersionCode` 为唯一权威来源，`app/build.gradle.kts` 引用；发布新版本时仅需在该处递增，并同步更新 CHANGELOG.md。
 
@@ -49,9 +49,11 @@ app/src/main/java/com/qingyu/companion/
 
 ## 待办（阶段二剩余 / 阶段三）
 
-- 群聊（依赖 PC 桥接层群聊端点，协议 §4.3 未列出）
+- 群聊（PC 桥接层已实现 58 路由 `electron/bridge/routes.ts:1191-1630`，含建群/加人/会话/消息/TTS，安卓端待联调）
 - 生图指令触发即已透传（任何文本按用户消息发送，PC 侧解析 `/imagine`）；图片结果展示已就绪
 - **阶段三已落地**：用量统计只读页（`/api/v1/usage/summary`）、公告同步页（`/api/v1/announcements`）、内网穿透指引（`docs/内网穿透指引.md`）；消息推送与自建中继方案见 `docs/阶段三方案.md`（设计稿，待评审）
+
+> 已归档：早期 `docs/安卓端功能缺失分析.md` 中快捷设置/长记忆/AI续写/润色/清空对话等“缺失”项已在 `v0.1.2-v0.1.5` 落地，详见 CHANGELOG 0.1.2/0.1.3/0.1.5。
 
 ## 协议对接状态（PC 桥接层阶段一已落地）
 

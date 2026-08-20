@@ -43,6 +43,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** 会话列表只展示用户实际可见的正文，包含被服务端截断的未闭合 thought。 */
+fun sessionPreviewText(lastMessage: String): String {
+    val withoutClosedBlocks = stripThought(lastMessage)
+    val withoutTruncatedBlock = normalizeThoughtTags(withoutClosedBlocks)
+        .replace(Regex("""<thought(?:\s[^>]*)?>[\s\S]*$""", RegexOption.IGNORE_CASE), "")
+        .trim()
+    return withoutTruncatedBlock.ifBlank { "（无可见正文）" }
+}
+
 /**
  * 会话列表行（方案 B）：44dp 圆头像 + 标题/预览 + 时间右对齐。
  * 纯内容行，hover 由 Surface 按压反馈承担。
@@ -63,7 +72,7 @@ fun SessionCard(
     val title = session.title.ifBlank { "未命名会话" }
     val avatarName = session.characterName.ifBlank { title }
     // lastMessage 由 PC 桥接层按消息 timestamp 计算，安卓端只负责展示最新摘要。
-    val latestMessage = session.lastMessage.trim().ifBlank { "（无消息）" }
+    val latestMessage = sessionPreviewText(session.lastMessage)
     Surface(
         modifier = Modifier
             .fillMaxWidth()

@@ -23,7 +23,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +53,7 @@ fun UsageScreen(onBack: () -> Unit) {
     val vm: UsageViewModel = viewModel(factory = viewModelFactory {
         initializer { UsageViewModel(container.repository) }
     })
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -132,12 +132,12 @@ private fun SummaryCard(label: String, summary: UsageSummary?) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = qy.muted)
             Text(
-                String.format("%,d", summary.totalChars),
+                String.format(Locale.getDefault(), "%,d", summary.totalChars),
                 style = MaterialTheme.typography.headlineMedium,
                 color = qy.accent,
             )
             Text(
-                "总字符 · 输入 ${String.format("%,d", summary.totalInput)} · 输出 ${String.format("%,d", summary.totalOutput)} · 共 ${summary.count} 次对话",
+                "总字符 · 输入 ${String.format(Locale.getDefault(), "%,d", summary.totalInput)} · 输出 ${String.format(Locale.getDefault(), "%,d", summary.totalOutput)} · 共 ${summary.count} 次对话",
                 style = MaterialTheme.typography.bodySmall,
                 color = qy.soft,
             )

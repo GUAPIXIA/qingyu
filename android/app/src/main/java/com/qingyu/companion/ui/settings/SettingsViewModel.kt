@@ -3,6 +3,8 @@ package com.qingyu.companion.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
+import com.qingyu.companion.data.CompanionError
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.ServerConnection
 import com.qingyu.companion.model.VersionInfo
 import com.qingyu.companion.network.ConnectionManager
@@ -106,7 +108,7 @@ class SettingsViewModel(
 
     fun clearMessage() = _ui.update { it.copy(message = null) }
 
-    /** 从公告服务器获取最新版本号（走 PC 桥接层 /api/v1/version） */
+    /** 从公告服务器获取最新版本号（走 PC 桥接层 /api/v1/version，统一错误模型） */
     fun checkVersion() {
         if (_ui.value.checkingVersion) return
         viewModelScope.launch {
@@ -117,12 +119,9 @@ class SettingsViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "检查更新失败"
                 _ui.update {
-                    it.copy(
-                        checkingVersion = false,
-                        message = e.message ?: "检查更新失败",
-                        isError = true,
-                    )
+                    it.copy(checkingVersion = false, message = msg, isError = true)
                 }
             }
         }

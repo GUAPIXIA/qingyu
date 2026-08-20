@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 数据提取规则（Android 12+）：禁止云备份敏感数据（路线图 4.3 数据最小化） -->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- 排除所有应用私有数据（DataStore、Room、EncryptedSharedPreferences） -->
+        <exclude domain="sharedpref" />
+        <exclude domain="database" />
+        <exclude domain="file" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" />
+        <exclude domain="database" />
+        <exclude domain="file" />
+    </device-transfer>
+</data-extraction-rules>

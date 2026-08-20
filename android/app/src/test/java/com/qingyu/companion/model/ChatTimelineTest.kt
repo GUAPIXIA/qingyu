@@ -45,10 +45,10 @@ class ChatTimelineTest {
             dateOf = ::dayOf,
             labelOf = ::labelOf,
         )
-        // 底->上：最旧消息在底，日期头在最上
+        // reverseLayout 的 index 0 位于视觉底部，因此最新消息必须排在 index 0。
         assertEquals(3, items.size)
-        assertEquals(TimelineItem.Entry(msg("b", ts(1, 9))), items[0])
-        assertEquals(TimelineItem.Entry(msg("a", ts(1, 10))), items[1])
+        assertEquals(TimelineItem.Entry(msg("a", ts(1, 10))), items[0])
+        assertEquals(TimelineItem.Entry(msg("b", ts(1, 9))), items[1])
         assertEquals(TimelineItem.DateHeader("08-01"), items[2])
     }
 
@@ -59,13 +59,13 @@ class ChatTimelineTest {
             dateOf = ::dayOf,
             labelOf = ::labelOf,
         )
-        // 底->上：c, b, 08-01 头, a, 08-02 头
+        // 底->上：最新日的最新消息优先，最旧日位于顶部。
         assertEquals(5, items.size)
-        assertEquals(TimelineItem.Entry(msg("c", ts(1, 8))), items[0])
-        assertEquals(TimelineItem.Entry(msg("b", ts(1, 9))), items[1])
-        assertEquals(TimelineItem.DateHeader("08-01"), items[2])
-        assertEquals(TimelineItem.Entry(msg("a", ts(2, 10))), items[3])
-        assertEquals(TimelineItem.DateHeader("08-02"), items[4])
+        assertEquals(TimelineItem.Entry(msg("a", ts(2, 10))), items[0])
+        assertEquals(TimelineItem.DateHeader("08-02"), items[1])
+        assertEquals(TimelineItem.Entry(msg("b", ts(1, 9))), items[2])
+        assertEquals(TimelineItem.Entry(msg("c", ts(1, 8))), items[3])
+        assertEquals(TimelineItem.DateHeader("08-01"), items[4])
     }
 
     @Test
@@ -78,13 +78,13 @@ class ChatTimelineTest {
             dateOf = ::dayOf,
             labelOf = ::labelOf,
         )
-        // 底->上：m1, pending（pending 时间更新在上方），日期头最上
+        // pending 时间更新，位于视觉底部（index 0）。
         assertEquals(3, items.size)
-        assertEquals(TimelineItem.Entry(msg("m1", ts(1, 10))), items[0])
         assertEquals(
             TimelineItem.PendingEntry(PendingMessage("r1", "pending", ts(1, 11), false)),
-            items[1],
+            items[0],
         )
+        assertEquals(TimelineItem.Entry(msg("m1", ts(1, 10))), items[1])
         assertEquals(TimelineItem.DateHeader("08-01"), items[2])
     }
 
@@ -122,17 +122,17 @@ class ChatTimelineTest {
 
     @Test
     fun `同日不同时间戳合并排序稳定`() {
-        // 同一天的消息按时间降序（最新在上），再反转后最旧在底
+        // reverseLayout 的底部从 index 0 开始，最新消息必须最先。
         val items = buildTimeline(
             messages = listOf(msg("a", ts(1, 8)), msg("b", ts(1, 10)), msg("c", ts(1, 9))),
             dateOf = ::dayOf,
             labelOf = ::labelOf,
         )
-        // 底->上：a(8点), c(9点), b(10点), 日期头
+        // 底->上：b(10点), c(9点), a(8点), 日期头
         assertEquals(4, items.size)
-        assertEquals(TimelineItem.Entry(msg("a", ts(1, 8))), items[0])
+        assertEquals(TimelineItem.Entry(msg("b", ts(1, 10))), items[0])
         assertEquals(TimelineItem.Entry(msg("c", ts(1, 9))), items[1])
-        assertEquals(TimelineItem.Entry(msg("b", ts(1, 10))), items[2])
+        assertEquals(TimelineItem.Entry(msg("a", ts(1, 8))), items[2])
         assertEquals(TimelineItem.DateHeader("08-01"), items[3])
     }
 
@@ -164,10 +164,10 @@ class ChatTimelineTest {
             dateOf = ::dayOf,
             labelOf = ::labelOf,
         )
-        // 底->上：c, 08-01, b, 08-02, a, 08-03
+        // 底->上：a, 08-03, b, 08-02, c, 08-01
         assertEquals(6, items.size)
-        assertEquals(TimelineItem.DateHeader("08-01"), items[1])
+        assertEquals(TimelineItem.DateHeader("08-03"), items[1])
         assertEquals(TimelineItem.DateHeader("08-02"), items[3])
-        assertEquals(TimelineItem.DateHeader("08-03"), items[5])
+        assertEquals(TimelineItem.DateHeader("08-01"), items[5])
     }
 }

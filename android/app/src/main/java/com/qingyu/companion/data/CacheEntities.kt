@@ -43,6 +43,61 @@ data class CachedMessage(
     val usage: String?,
 )
 
+/**
+ * 发件箱：持久化待发送消息，App 被杀/断网后可恢复（P1-4.1 B1-2）。
+ * 对齐 PC TaskStore：queued->sending->awaiting_ai->completed/failed，requestId 幂等。
+ */
+@Entity(tableName = "outbox_messages")
+data class OutboxMessage(
+    @PrimaryKey val requestId: String,
+    val sessionId: String,
+    val content: String,
+    /** 图片：JSON 数组字符串（临时文件路径或 base64，读取时按需解析） */
+    val imagesJson: String,
+    val replyToId: String?,
+    val createdAt: Long,
+    val retryCount: Int = 0,
+    /** queued | sending | awaiting_ai | completed | failed */
+    val state: String,
+    val error: String? = null,
+)
+
+@Dao
+interface OutboxDao {
+    @Query("SELECT * FROM outbox_messages WHERE sessionId = :sessionId ORDER BY createdAt ASC")
+    suspend fun listForSession(sessionId: String): List<OutboxMessage>
+
+    @Query("SELECT * FROM outbox_messages WHERE sessionId = :sessionId ORDER BY createdAt ASC")
+    fun observeForSession(sessionId: String): kotlinx.coroutines.flow.Flow<List<OutboxMessage>>
+
+    @Query("SELECT * FROM outbox_messages ORDER BY createdAt ASC")
+    suspend fun listAll(): List<OutboxMessage>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: OutboxMessage)
+
+    @Query("UPDATE outbox_messages SET state = :state, error = :error, retryCount = :retryCount WHERE requestId = :requestId")
+    suspend fun updateState(requestId: String, state: String, error: String?, retryCount: Int)
+
+    @Query("DELETE FROM outbox_messages WHERE requestId = :requestId")
+    suspend fun delete(requestId: String)
+
+    @Query("DELETE FROM outbox_messages WHERE sessionId = :sessionId AND state = 'completed'")
+    suspend fun clearCompleted(sessionId: String)
+
+    @Query("DELETE FROM outbox_messages WHERE state = 'completed'")
+    suspend fun clearAllCompleted()
+
+    @Query("DELETE FROM outbox_messages WHERE sessionId NOT IN (SELECT id FROM cached_sessions)")
+    suspend fun deleteOrphan()
+
+    @Query("DELETE FROM outbox_messages")
+    suspend fun clear()
+
+    @Query("SELECT * FROM outbox_messages WHERE state IN ('queued','sending','awaiting_ai','failed') ORDER BY createdAt ASC")
+    suspend fun listPending(): List<OutboxMessage>
+}
+
 @Dao
 interface CachedSessionDao {
 

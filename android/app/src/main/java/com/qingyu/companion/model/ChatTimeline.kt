@@ -20,6 +20,8 @@ data class PendingMessage(
     val failed: Boolean,
     /** 本地待发送图片（base64，展示用） */
     val images: List<String> = emptyList(),
+    /** 引用回复目标消息 id（重试时保持引用语义，P0-3.5） */
+    val replyToId: String? = null,
 )
 
 /** 时间线条目 */
@@ -54,14 +56,15 @@ fun buildTimeline(
 ): List<TimelineItem> {
     if (messages.isEmpty() && pending.isEmpty()) return emptyList()
 
-    // 合并为带时间的条目，按时间降序（最新在前）
+    // 先按时间升序构建正常的视觉顺序（日期头 -> 旧消息 -> 新消息），
+    // 最后反转供 reverseLayout 使用，使 index 0 恰好是视觉底部的最新消息。
     val merged: List<Pair<Long, TimelineItem>> =
         messages.map { it.timestamp to TimelineItem.Entry(it) } +
             pending.map { it.timestamp to TimelineItem.PendingEntry(it) }
-    val sorted = merged.sortedByDescending { it.first }.map { it.second }
+    val sorted = merged.sortedBy { it.first }.map { it.second }
 
-    // 从最新到最旧遍历：日期变化处插入该组 header（组头位于组内最新消息上方），
-    // 构建出“上->下”显示顺序；最后整体反转为底->上（配合 reverseLayout）
+    // 从最旧到最新构建“上->下”显示顺序；最后整体反转为
+    // “底->上”数据顺序（配合 reverseLayout）。
     val display = mutableListOf<TimelineItem>()
     var prevKey: String? = null
     for (item in sorted) {

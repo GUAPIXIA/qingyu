@@ -47,6 +47,13 @@ class UiPrefsStore(private val context: Context) {
         val SPACING = stringPreferencesKey("chat_spacing")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val CHAT_BACKGROUND = booleanPreferencesKey("chat_background")
+        val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
+        val HIDE_TASK_PREVIEW = booleanPreferencesKey("hide_task_preview")
+        val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+        val NOTIFICATION_HIDE_CONTENT = booleanPreferencesKey("notification_hide_content")
+        val NOTIFICATION_DND_ENABLED = booleanPreferencesKey("notification_dnd_enabled")
+        val NOTIFICATION_DND_START = intPreferencesKey("notification_dnd_start")
+        val NOTIFICATION_DND_END = intPreferencesKey("notification_dnd_end")
     }
 
     /** 当前字体缩放系数（默认标准 1f） */
@@ -77,6 +84,34 @@ class UiPrefsStore(private val context: Context) {
     val chatBackground: Flow<Boolean> = context.uiPrefsDataStore.data
         .map { prefs -> prefs[Keys.CHAT_BACKGROUND] ?: true }
 
+    /** 应用锁：启动时需生物识别/设备凭据（默认关闭，路线图 4.3） */
+    val appLockEnabled: Flow<Boolean> = context.uiPrefsDataStore.data
+        .map { prefs -> prefs[Keys.APP_LOCK_ENABLED] ?: false }
+
+    /** 后台隐藏最近任务预览：离开后台后模糊/隐藏（默认关闭） */
+    val hideTaskPreview: Flow<Boolean> = context.uiPrefsDataStore.data
+        .map { prefs -> prefs[Keys.HIDE_TASK_PREVIEW] ?: false }
+
+    /** 通知总开关（默认开启，Android 13+ 仍需系统权限） */
+    val notificationsEnabled: Flow<Boolean> = context.uiPrefsDataStore.data
+        .map { prefs -> prefs[Keys.NOTIFICATIONS_ENABLED] ?: true }
+
+    /** 通知内容隐藏：开启后仅显示通用文案，不展示会话/消息内容（默认关闭） */
+    val notificationHideContent: Flow<Boolean> = context.uiPrefsDataStore.data
+        .map { prefs -> prefs[Keys.NOTIFICATION_HIDE_CONTENT] ?: false }
+
+    /** 免打扰总开关（默认关闭） */
+    val notificationDndEnabled: Flow<Boolean> = context.uiPrefsDataStore.data
+        .map { prefs -> prefs[Keys.NOTIFICATION_DND_ENABLED] ?: false }
+
+    /** 免打扰开始小时 0-23（默认 22） */
+    val notificationDndStart: Flow<Int> = context.uiPrefsDataStore.data
+        .map { prefs -> prefs[Keys.NOTIFICATION_DND_START] ?: 22 }
+
+    /** 免打扰结束小时 0-23（默认 7） */
+    val notificationDndEnd: Flow<Int> = context.uiPrefsDataStore.data
+        .map { prefs -> prefs[Keys.NOTIFICATION_DND_END] ?: 7 }
+
     suspend fun setFontScale(scale: ChatFontScale) {
         context.uiPrefsDataStore.edit { it[Keys.FONT_SCALE] = scale.name }
     }
@@ -91,5 +126,32 @@ class UiPrefsStore(private val context: Context) {
 
     suspend fun setChatBackground(enabled: Boolean) {
         context.uiPrefsDataStore.edit { it[Keys.CHAT_BACKGROUND] = enabled }
+    }
+
+    suspend fun setAppLockEnabled(enabled: Boolean) {
+        context.uiPrefsDataStore.edit { it[Keys.APP_LOCK_ENABLED] = enabled }
+    }
+
+    suspend fun setHideTaskPreview(enabled: Boolean) {
+        context.uiPrefsDataStore.edit { it[Keys.HIDE_TASK_PREVIEW] = enabled }
+    }
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) {
+        context.uiPrefsDataStore.edit { it[Keys.NOTIFICATIONS_ENABLED] = enabled }
+    }
+
+    suspend fun setNotificationHideContent(enabled: Boolean) {
+        context.uiPrefsDataStore.edit { it[Keys.NOTIFICATION_HIDE_CONTENT] = enabled }
+    }
+
+    suspend fun setNotificationDndEnabled(enabled: Boolean) {
+        context.uiPrefsDataStore.edit { it[Keys.NOTIFICATION_DND_ENABLED] = enabled }
+    }
+
+    suspend fun setNotificationDndWindow(startHour: Int, endHour: Int) {
+        context.uiPrefsDataStore.edit {
+            it[Keys.NOTIFICATION_DND_START] = startHour.coerceIn(0, 23)
+            it[Keys.NOTIFICATION_DND_END] = endHour.coerceIn(0, 23)
+        }
     }
 }

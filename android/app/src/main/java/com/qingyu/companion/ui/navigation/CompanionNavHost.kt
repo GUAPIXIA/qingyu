@@ -61,6 +61,9 @@ fun CompanionNavHost(
                 sessionId = backStackEntry.arguments?.getString("sessionId").orEmpty(),
                 characterId = backStackEntry.arguments?.getString("characterId"),
                 onBack = { navController.popBackStack() },
+                onOpenBranch = { sessionId, characterId ->
+                    navController.navigate(Routes.chat(sessionId, characterId))
+                },
             )
         }
         composable(Routes.CHARACTERS) {
@@ -68,6 +71,9 @@ fun CompanionNavHost(
                 onBack = { navController.popBackStack() },
                 onOpenCharacterSessions = { characterId, characterName ->
                     navController.navigate(Routes.characterSessions(characterId, characterName))
+                },
+                onOpenChat = { sessionId, characterId ->
+                    navController.navigate(Routes.chat(sessionId, characterId))
                 },
             )
         }
@@ -103,7 +109,7 @@ fun CompanionNavHost(
         }
         composable(Routes.GROUPS) {
             GroupsScreen(
-                onOpenGroupChat = { groupId, groupName, sessionId, memberNames ->
+                onOpenGroupChat = { groupId, groupName, sessionId ->
                     navController.navigate(Routes.groupChat(groupId, groupName, sessionId))
                 },
                 onBack = { navController.popBackStack() },
@@ -121,7 +127,6 @@ fun CompanionNavHost(
                 groupId = backStackEntry.arguments?.getString("groupId").orEmpty(),
                 groupName = backStackEntry.arguments?.getString("groupName").orEmpty(),
                 sessionId = backStackEntry.arguments?.getString("sessionId").orEmpty(),
-                memberNames = emptyMap(),
                 onBack = { navController.popBackStack() },
             )
         }

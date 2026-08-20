@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.qingyu.companion.model.ServerConnection
+import com.qingyu.companion.security.TokenCrypto
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -30,19 +31,41 @@ class DataStoreConnectionStore(
 
     override suspend fun loadAll(): List<ServerConnection> {
         val raw = context.companionDataStore.data.first()[Keys.CONNECTIONS] ?: return emptyList()
-        return runCatching { json.decodeFromString<List<ServerConnection>>(raw) }
+        val list = runCatching { json.decodeFromString<List<ServerConnection>>(raw) }
             .getOrDefault(emptyList())
+        // 解密：若 token 为 ENC:<deviceId> 占位，则从 EncryptedSharedPreferences 读取明文
+        return list.map { conn ->
+            if (conn.token.startsWith("ENC:")) {
+                val key = conn.token.removePrefix("ENC:")
+                val plain = TokenCrypto.getDecrypted(context, key) ?: conn.token
+                // 兼容：若 EncryptedPrefs 丢失，回退原 token（仍为占位则保持）
+                if (plain.startsWith("ENC:")) conn else conn.copy(token = plain)
+            } else {
+                // 迁移：明文 token 尝试在 EncryptedPrefs 中查找已加密副本，优先使用
+                val encrypted = TokenCrypto.getDecrypted(context, conn.deviceId)
+                if (encrypted != null && encrypted != conn.token) conn.copy(token = encrypted) else conn
+            }
+        }
     }
 
     override suspend fun save(connection: ServerConnection) {
+        // 加密落盘：尝试将 token 写入 EncryptedSharedPreferences，DataStore 仅存占位
+        val toSave = runCatching {
+            val encryptedPrefs = TokenCrypto.getEncryptedPrefs(context)
+            if (encryptedPrefs != null) {
+                TokenCrypto.putEncrypted(context, connection.deviceId, connection.token)
+                connection.copy(token = "ENC:${connection.deviceId}")
+            } else connection
+        }.getOrDefault(connection)
         context.companionDataStore.edit { prefs ->
             val current = prefs[Keys.CONNECTIONS]?.let { decode(it) } ?: emptyList()
-            val updated = current.filterNot { it.deviceId == connection.deviceId } + connection
+            val updated = current.filterNot { it.deviceId == toSave.deviceId } + toSave
             prefs[Keys.CONNECTIONS] = json.encodeToString(updated)
         }
     }
 
     override suspend fun remove(deviceId: String) {
+        TokenCrypto.removeEncrypted(context, deviceId)
         context.companionDataStore.edit { prefs ->
             val current = prefs[Keys.CONNECTIONS]?.let { decode(it) } ?: emptyList()
             prefs[Keys.CONNECTIONS] = json.encodeToString(
@@ -64,6 +87,7 @@ class DataStoreConnectionStore(
     }
 
     override suspend fun wipe() {
+        TokenCrypto.clearEncrypted(context)
         context.companionDataStore.edit { it.clear() }
     }
 

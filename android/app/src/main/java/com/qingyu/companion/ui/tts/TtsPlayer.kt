@@ -19,6 +19,9 @@ interface TtsPlayer {
     /** 请求朗读指定消息（PC 侧合成，独立 HTTP 流） */
     suspend fun play(sessionId: String, messageId: String)
 
+    /** 请求朗读群聊消息。 */
+    suspend fun playGroup(groupId: String, sessionId: String, messageId: String)
+
     fun stop()
 
     fun release()

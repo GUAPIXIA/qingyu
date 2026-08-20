@@ -47,10 +47,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,6 +79,7 @@ import com.qingyu.companion.ui.theme.qyColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 
 /**
@@ -92,7 +94,6 @@ fun GroupChatScreen(
     groupId: String,
     groupName: String,
     sessionId: String,
-    memberNames: Map<String, String>,
     onBack: () -> Unit,
 ) {
     val qy = qyColors()
@@ -100,11 +101,13 @@ fun GroupChatScreen(
     val vm: GroupChatViewModel = viewModel(
         key = "group-chat-$groupId-$sessionId",
         factory = viewModelFactory {
-            initializer { GroupChatViewModel(container.repository, groupId, sessionId, memberNames) }
+            initializer { GroupChatViewModel(container.repository, groupId, sessionId, container.generationTracker) }
         },
     )
-    val ui by vm.ui.collectAsState()
-    val input by vm.input.collectAsState()
+    val scope = rememberCoroutineScope()
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val input by vm.input.collectAsStateWithLifecycle()
+    val memberNames by vm.memberNames.collectAsStateWithLifecycle()
     // 消息操作状态
     var menuMessage by remember { mutableStateOf<GroupMessage?>(null) }
     var editingMessage by remember { mutableStateOf<GroupMessage?>(null) }
@@ -173,12 +176,32 @@ fun GroupChatScreen(
                 }
 
                 ui.error?.let {
-                    Text(
-                        it,
-                        color = qy.danger,
-                        style = MaterialTheme.typography.bodySmall,
+                    Row(
                         modifier = Modifier.padding(horizontal = 16.dp),
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            it,
+                            color = qy.danger,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (it.contains("重试")) {
+                            TextButton(onClick = vm::retryAiReply, enabled = !ui.generating) {
+                                Text("重试 AI", color = qy.accent)
+                            }
+                        }
+                    }
+                }
+                if (ui.generating) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = qy.accent)
+                        Spacer(Modifier.width(6.dp))
+                        Text("AI 回复生成中…", color = qy.soft, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
 
                 // 输入栏（方案 B）：bg2 圆角 22 + 细描边 + 40dp 圆形暖金发送键（收窄 2/5，居中）
@@ -187,7 +210,7 @@ fun GroupChatScreen(
                     shape = RoundedCornerShape(22.dp),
                     border = BorderStroke(1.dp, qy.line),
                     modifier = Modifier
-                        .fillMaxWidth(0.6f)
+                        .fillMaxWidth(if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840) 0.7f else 0.92f)
                         .padding(vertical = 8.dp)
                         .align(Alignment.CenterHorizontally),
                 ) {
@@ -222,13 +245,13 @@ fun GroupChatScreen(
                         Spacer(Modifier.width(10.dp))
                         Surface(
                             onClick = vm::send,
-                            enabled = input.isNotBlank() && !ui.sending,
+                            enabled = input.isNotBlank() && !ui.sending && !ui.generating,
                             shape = CircleShape,
                             color = qy.accent,
                             contentColor = qy.onAccent,
                         ) {
                             Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                                if (ui.sending) {
+                                if (ui.sending || ui.generating) {
                                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = qy.onAccent)
                                 } else {
                                     Icon(
@@ -259,6 +282,13 @@ fun GroupChatScreen(
             onTranslate = {
                 menuMessage = null
                 vm.translate(message.id)
+            },
+            onSpeak = {
+                menuMessage = null
+                container.ttsPlayer.stop()
+                scope.launch {
+                    container.ttsPlayer.playGroup(groupId, sessionId, message.id)
+                }
             },
             onDelete = {
                 menuMessage = null
