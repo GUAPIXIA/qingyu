@@ -27,6 +27,8 @@ import type {
   CustomFont,
   QuickReply,
 } from './types'
+import type { TaskSnapshot, EventPage } from './chat-core/events'
+import type { ChatCommand } from './chat-core/commands'
 
 // ===================== AI 调用接口 =====================
 export interface AIAPI {
@@ -412,10 +414,21 @@ export interface AppAPI {
 }
 
 // ===================== 完整 API 契约 =====================
+export interface ChatTaskAPI {
+  start(command: ChatCommand): Promise<{ taskId: string; state: string; lastSequence: number }>
+  get(taskId: string): Promise<TaskSnapshot | null>
+  listBySession(sessionId: string): Promise<TaskSnapshot[]>
+  eventsAfter(taskId: string, sequence: number): Promise<EventPage>
+  cancel(taskId: string): Promise<TaskSnapshot>
+  retry(taskId: string): Promise<{ taskId: string; state: string }>
+  onEvent(listener: (event: { taskId: string; type: string; task?: TaskSnapshot }) => void): () => void
+}
+
 export interface ExposedAPI {
   ai: AIAPI
   character: CharacterAPI
   chat: ChatAPI
+  chatTask: ChatTaskAPI
   settings: SettingsAPI
   lorebook: LorebookAPI
   embedding: EmbeddingAPI

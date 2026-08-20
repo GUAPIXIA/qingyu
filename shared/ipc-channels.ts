@@ -13,6 +13,8 @@ export const IPC_EVENTS = {
   // session:changed 渲染层->主进程上报；session:updated 主进程广播（供桥接层转推 WS）
   sessionChanged: 'session:changed',
   sessionUpdated: 'session:updated',
+  // V12-10：任务事件
+  chatTaskEvent: 'chatTask:event',
 } as const
 
 export type IpcEventChannel = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS]

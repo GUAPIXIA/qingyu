@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_EVENTS } from '../shared/ipc-channels'
+import type { ChatTaskAPI } from '../shared/ipc-api'
 import type {
   CharacterAPI,
   ChatAPI,
@@ -51,6 +52,21 @@ const aiApi: AIAPI = {
     const handler = (_e: unknown, data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => callback(data)
     ipcRenderer.on(IPC_EVENTS.aiUsage, handler)
     return () => ipcRenderer.removeListener(IPC_EVENTS.aiUsage, handler)
+  },
+}
+
+// ---- 任务（V12-10） ----
+const chatTaskApi: ChatTaskAPI = {
+  start: (command) => ipcRenderer.invoke('chatTask:start', command),
+  get: (taskId) => ipcRenderer.invoke('chatTask:get', taskId),
+  listBySession: (sessionId) => ipcRenderer.invoke('chatTask:listBySession', sessionId),
+  eventsAfter: (taskId, sequence) => ipcRenderer.invoke('chatTask:eventsAfter', taskId, sequence),
+  cancel: (taskId) => ipcRenderer.invoke('chatTask:cancel', taskId),
+  retry: (taskId) => ipcRenderer.invoke('chatTask:retry', taskId),
+  onEvent: (callback) => {
+    const handler = (_e: unknown, data: { taskId: string; type: string }) => callback(data as never)
+    ipcRenderer.on(IPC_EVENTS.chatTaskEvent, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.chatTaskEvent, handler)
   },
 }
 
@@ -286,6 +302,7 @@ contextBridge.exposeInMainWorld('api', {
   ai: aiApi,
   character: characterApi,
   chat: chatApi,
+  chatTask: chatTaskApi,
   settings: settingsApi,
   lorebook: lorebookApi,
   embedding: embeddingApi,

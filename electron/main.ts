@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { readFileSync, existsSync } from 'node:fs'
 import { registerCharacterIPC } from './ipc/character'
 import { registerChatIPC } from './ipc/chat'
+import { registerChatTaskIPC } from './ipc/chatTasks'
 import { registerSettingsIPC } from './ipc/settings'
 import { registerLorebookIPC } from './ipc/lorebook'
 import { registerEmbeddingIPC } from './ipc/embedding'
@@ -189,6 +190,7 @@ app.whenReady().then(async () => {
   const ipcRegistrars: Array<() => void> = [
     () => registerCharacterIPC(ipcMain, dialog),
     () => registerChatIPC(ipcMain),
+    () => registerChatTaskIPC(ipcMain, () => BrowserWindow.getAllWindows()[0] ?? null),
     () => registerSettingsIPC(ipcMain, dialog),
     () => registerLorebookIPC(ipcMain, dialog),
     () => registerEmbeddingIPC(ipcMain),
