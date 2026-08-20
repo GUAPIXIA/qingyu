@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
+/* eslint-disable no-empty */
 /**
  * V12-05 TaskManager：状态转换集中校验 + 取消幂等（实施方案 §7）
  */

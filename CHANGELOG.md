@@ -5,6 +5,14 @@
 > 核心架构版本：统一 ChatOrchestrator / 持久任务 / 事件补播，见 `docs/PC端0.12版本实施方案.md`
 > 当前 `main`：`0.12.0-beta.1`（`v0.12.0-beta.1` 待推，`v0.12.0-alpha.3` 已 Tag）
 
+## [0.12.0-rc.1] - 2026-08-20
+
+### 冻结
+
+- `api/v2` 契约冻结，`Bridge v2` 默认开启，`v1` 保留两个小版本
+- 真实 `ModelPort` 接入 `services/ai`，`ContextService` 透传 `apiKey/baseUrl`
+- `useChatStore` `beta` 默认走 `Orchestrator`，`127文件/1140用例` 全绿，`lint 0`
+
 ## [0.12.0-beta.1] - 2026-08-20
 
 ### 灰度

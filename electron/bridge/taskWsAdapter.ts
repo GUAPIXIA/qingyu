@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
+/* eslint-disable @typescript-eslint/no-unused-vars, no-empty */
 /**
  * V12-09 WS v2 适配（实施方案 §11）
  *

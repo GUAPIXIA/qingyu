@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * V12-13 TaskReconciler：启动对账（实施方案 §16）
  *

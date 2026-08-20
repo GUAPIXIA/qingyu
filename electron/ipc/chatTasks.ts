@@ -11,15 +11,19 @@ import { safeId } from '../utils/pathGuard'
 import { ChatOrchestrator } from '../chat/orchestrator'
 import { chatMessagePort } from '../chat/messagePort'
 import { contextService } from '../chat/contextService'
+import { RealModelPort } from '../chat/realModel'
 import { FakeModelPort } from '../chat/fakeModel'
 import { getTaskSnapshot, listActiveTasks, readEvents } from '../chat/taskStore'
 import type { ChatCommand } from '../../shared/chat-core/commands'
 
 function getOrchestrator(): ChatOrchestrator {
+  const modelPort = process.env.NODE_ENV === 'test'
+    ? new FakeModelPort({ kind: 'success', chunks: ['（desktop 占位）'] })
+    : new RealModelPort()
   return new ChatOrchestrator({
     messagePort: chatMessagePort,
     contextPort: contextService,
-    modelPort: new FakeModelPort({ kind: 'success', chunks: ['（desktop 占位）'] }),
+    modelPort,
   })
 }
 

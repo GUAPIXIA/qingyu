@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
+/* eslint-disable @typescript-eslint/no-unused-vars, no-empty */
 /**
  * V12-06 ChatOrchestrator 核心（实施方案 §13.1 send 流程 1-19）
  *
@@ -199,7 +199,7 @@ export class ChatOrchestrator {
 
       try {
         modelResult = await this.deps.modelPort.stream(
-          { messages: ctx.messages, model: ctx.model.model, provider: ctx.model.provider },
+          { messages: ctx.messages, model: ctx.model.model, provider: ctx.model.provider, apiKey: ctx.model.apiKey, baseUrl: ctx.model.baseUrl },
           {
             onChunk: (delta) => {
               accumulated += delta

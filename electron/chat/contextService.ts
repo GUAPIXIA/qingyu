@@ -28,6 +28,8 @@ export const contextService: ContextPort = {
       provider: profile?.provider ?? 'openai',
       model: profile?.model ?? data.settings.settings.activeModel ?? 'gpt-4o-mini',
       profileId: profile ? data.settings.settings.activeProfileId ?? undefined : undefined,
+      apiKey: profile?.apiKey,
+      baseUrl: profile?.baseUrl,
     }
 
     return {

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * V12-06 Port 定义（实施方案 §5.2）
  * 测试替身与迁移边界，不引入复杂 DI 框架
@@ -51,7 +51,7 @@ export interface BuildContextInput {
 export interface PreparedContext {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   fingerprint: string
-  model: { provider: string; model: string; profileId?: string }
+  model: { provider: string; model: string; profileId?: string; apiKey?: string; baseUrl?: string }
 }
 
 export interface ContextPort {
@@ -62,6 +62,8 @@ export interface ModelRequest {
   messages: PreparedContext['messages']
   model: string
   provider: string
+  apiKey?: string
+  baseUrl?: string
 }
 
 export interface ModelCallbacks {

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
+/* eslint-disable @typescript-eslint/no-unused-vars, no-empty */
 /**
  * V12-09 Bridge API v2（实施方案 §10）
  *
@@ -14,17 +14,20 @@ import { nanoid } from 'nanoid'
 import { ChatOrchestrator } from '../chat/orchestrator'
 import { chatMessagePort } from '../chat/messagePort'
 import { contextService } from '../chat/contextService'
+import { RealModelPort } from '../chat/realModel'
 import { FakeModelPort } from '../chat/fakeModel'
 import { findByRequestId, getTaskSnapshot, readEvents, listActiveTasks } from '../chat/taskStore'
 import { createDomainError } from '../../shared/chat-core/errors'
 import type { ChatCommand } from '../../shared/chat-core/commands'
 
 function getOrchestrator(): ChatOrchestrator {
-  // 复用 FakeModelPort 占位，后续接入真实 ModelPort
+  const modelPort = process.env.NODE_ENV === 'test'
+    ? new FakeModelPort({ kind: 'success', chunks: ['（v2 占位回复）'] })
+    : new RealModelPort()
   return new ChatOrchestrator({
     messagePort: chatMessagePort,
     contextPort: contextService,
-    modelPort: new FakeModelPort({ kind: 'success', chunks: ['（v2 占位回复）'] }),
+    modelPort,
   })
 }
 

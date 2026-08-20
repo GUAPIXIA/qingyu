@@ -397,6 +397,17 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   },
 
   sendMessage: async (content, images, character, preset, _lorebooks, replyToId) => {
+    // V12-11: flag 隔离，新链路走 Orchestrator
+    try {
+      const { useChatTaskStore, submitChatTask } = await import('./chatTaskStore')
+      if (useChatTaskStore.getState().chatEngineV2 && (window as unknown as { api?: { chatTask?: unknown } }).api?.chatTask) {
+        const curSid = get().currentSessionId
+        if (curSid) {
+          await submitChatTask(curSid, content, character.id)
+          return
+        }
+      }
+    } catch { /* fallback to legacy path */ }
     // 流式中拒绝：现在给一个错误提示而不是静默忽略
     if (get().isStreaming) {
       set({ error: '正在生成回复中，请稍候或点击停止' })

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
+/* eslint-disable @typescript-eslint/no-require-imports, no-empty */
 /**
  * 桥接层 WebSocket 模块（方案 §4.3 流式协议）。
  *

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-require-imports, no-empty */
+/* eslint-disable @typescript-eslint/no-unused-vars, no-empty */
 /**
  * V12-04 压缩与保留策略（实施方案 §8.4 + §9.4）
  *

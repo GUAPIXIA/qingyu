@@ -1,13 +1,14 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { rmSync } from 'node:fs'
 
-const TEST_ROOT = '/tmp/qingyu-chattasks-cov-test'
 vi.mock('electron', () => ({
-  app: { getPath: () => TEST_ROOT, getVersion: () => '0.12.0' },
+  app: { getPath: () => '/tmp/qingyu-chattasks-cov-test', getVersion: () => '0.12.0' },
   safeStorage: { isEncryptionAvailable: () => false, encryptString: (s: string) => Buffer.from(s), decryptString: (b: Buffer) => b.toString() },
   ipcMain: { handle: vi.fn() },
 }))
+
+const TEST_ROOT = '/tmp/qingyu-chattasks-cov-test'
 
 import { registerChatTaskIPC } from '../chatTasks'
 import { createTask } from '../../chat/taskStore'
