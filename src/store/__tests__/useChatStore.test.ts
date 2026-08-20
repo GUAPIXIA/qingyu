@@ -367,9 +367,9 @@ describe('useChatStore', () => {
         settings: {
           ...getDefaultSettings(),
           activeProfileId: 'p1',
-          activeModel: 'deepseek-v4-pro',
+          activeModel: 'deepseek-v4-flash',
           connectionProfiles: [
-            { id: 'p1', name: 'test', provider: 'openai', apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'deepseek-v4-pro', maxContext: 0 },
+            { id: 'p1', name: 'test', provider: 'openai', apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'deepseek-v4-flash', maxContext: 0 },
           ],
         } as any,
       })
