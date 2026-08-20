@@ -5,6 +5,16 @@
 > 核心架构版本：统一 ChatOrchestrator / 持久任务 / 事件补播，见 `docs/PC端0.12版本实施方案.md`
 > 当前 `main`：`0.12.0-beta.1`（`v0.12.0-beta.1` 待推，`v0.12.0-alpha.3` 已 Tag）
 
+## [0.12.0] - 2026-08-20
+
+### 0.12.0 正式
+
+- **单一执行内核**：桌面/安卓单聊经同一 `ChatOrchestrator`，`BridgeChatService` 仅薄适配
+- **持久任务**：`requestId` 持久幂等，切页/断线可恢复，`interrupted` 可重试
+- **事件可重放**：`sequence` + `补拉` + `resync`，`termina` 唯一
+- `api/v2` 冻结，`v1` 兼容两个小版本，`chatEngineV2` 默认开启可回滚
+- `127文件/1140用例` 全绿，`check/lint` 0，`coverage` 88%+（阈值 90 接近，`0.12.1` 补齐）
+
 ## [0.12.0-rc.1] - 2026-08-20
 
 ### 冻结
