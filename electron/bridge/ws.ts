@@ -96,6 +96,14 @@ export class WsHub {
               activeChatControllers.delete(requestId)
               log.info('客户端请求停止生成', { requestId })
             }
+            return
+          }
+          if (frame.event === 'task:subscribe' && typeof frame.payload === 'object' && frame.payload !== null) {
+            try {
+              const { handleTaskSubscribe } = require('./taskWsAdapter')
+              handleTaskSubscribe(socket as unknown as object, frame.payload as { sessionIds?: string[]; cursors?: Record<string, number> }, this)
+            } catch {}
+            return
           }
         } catch { /* 忽略非法帧 */ }
       })

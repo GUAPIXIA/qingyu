@@ -10,6 +10,8 @@ import { createServer, type Server } from 'node:http'
 import { WsHub } from './ws'
 import { buildBridgeRouter, API_VERSION, originGuard, requireAuth } from './routes'
 import { buildStaticRouter } from './static'
+import { buildTaskRouter } from './taskRoutes'
+import { attachTaskWsAdapter } from './taskWsAdapter'
 import { BridgeChatService, type SessionChangedNotifier } from './chatService'
 import { createLogger } from '../services/logger'
 
@@ -42,6 +44,7 @@ export class BridgeServer {
     this.app = express()
     this.app.use(express.json({ limit: '10mb' }))
     this.app.use('/api/v1', buildBridgeRouter(this.hub, this.chatService, notifySessionChanged, onPairRequest))
+    this.app.use('/api/v2', requireAuth, buildTaskRouter())
     // H1 修复：/static 媒体路由此前挂在认证路由之外，任何 LAN 主机可无认证读取聊天图片/
     // 角色素材。先挂 originGuard（阻断浏览器跨站 fetch 盗读，PC/安卓原生加载不受影响）；
     // 完整修复（requireAuth + 客户端携带 token）需同步改 PC/安卓图片加载方式，见审计 H1。
@@ -74,6 +77,7 @@ export class BridgeServer {
         })
         if (!this.httpServer) throw new Error('服务器初始化失败')
         this.hub.attach(this.httpServer)
+        attachTaskWsAdapter(this.hub)
         log.info('桥接服务已启动', { host, port, apiVersion: API_VERSION })
         return { host, port }
       } catch (err) {
