@@ -55,3 +55,22 @@ lint*.json
 .codebuddy/
 
 # android/ 与 server/ 为本仓库的子项目；各自的 .gitignore 继续排除运行时配置与构建产物。
+
+# === 目录治理补充（2026-08-20 冗余清理） ===
+.env.*
+!.env.example
+*.pem
+*.key
+*.keystore
+*.jks
+artifacts/
+.gradle/
+.kotlin/
+.idea/
+**/build/
+local.properties
+*.apk
+*.aab
+.poc-tmp/
+.poc-tmp-src/
+piolium/
