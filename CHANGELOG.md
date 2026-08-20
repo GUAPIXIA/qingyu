@@ -3,7 +3,33 @@
 ## [Unreleased] - 0.12.0 开发中
 
 > 核心架构版本：统一 ChatOrchestrator / 持久任务 / 事件补播，见 `docs/PC端0.12版本实施方案.md`
-> 当前 `main` 版本：`0.12.0-alpha.1`（`v0.11.28` 已 Tag）
+> 当前 `main`：`0.12.0-alpha.2`（`v0.12.0-alpha.2` 已 Tag，`v0.11.28` 已发布）
+
+## [0.12.0-alpha.2] - 2026-08-20
+
+### 架构（V12-01~13 核心闭环）
+
+- **V12-01** 双链路差异冻结 + Golden 36 组（input/output/stop/lorebook/semantic/vision/swipe/continue/memory/cancel）
+- **V12-02** 共享契约 `shared/chat-core`（ChatCommand/TaskSnapshot/DomainError/capabilities）
+- **V12-03/04** `TaskStore` 原子快照 + `requestId` 持久幂等 + `EventLog` 分页 + 24h 压缩/7天200保留
+- **V12-05** `SessionLock` FIFO + `TaskManager` 状态机（9 态）+ `TASK_CONFLICT`/`cancel` 幂等
+- **V12-06** `ChatOrchestrator` 19 步主流程 + `FakeModelPort` 4 行为（多 chunk/首包失败/流中失败）
+- **V12-07** `ContextService`/`PostProcessor`/`VisionRouter` 统一上下文与视觉
+- **V12-08** `MCP PermissionGate` L0-L3 + `waiting_approval` 超时拒绝 + `toolGate` 4 项单测
+
+### 协议与联调（V12-09~14）
+
+- **V12-09** `Bridge v2`：`POST /api/v2/sessions/:id/tasks` 幂等 202 + `GET /tasks/:id/events` 补拉 + `task:subscribe` 定向 WS，`v1` 兼容保留
+- **V12-10** `Desktop IPC`：`chatTask:start/get/listBySession/eventsAfter/cancel/retry` + `chatTask:event` 窄接口
+- **V12-11** `chatTaskStore` flag 隔离（提交命令+消费事件+切页 `eventsAfter` 恢复）
+- **V12-12** `regenerate` 追加 swipe / `continue` 新气泡 / `retry` 仅重试 AI
+- **V12-13** `reconciler` 启动扫描 `interrupted`/`PERSISTENCE_FAILED`/`recovered`
+- **V12-14** `adb 127.0.0.1:16416 V2364A` 探活，`com.qingyu.companion v0.1.3` 已装，PC `v2` 就绪（安卓待 `0.1.4`）
+
+### 工程门禁（V12-15）
+
+- `pnpm check/lint/test:coverage` 全绿（`119文件/1123用例`，`lint` 0 errors）
+- 发布检查报告 `docs/notes/V12-15-发布检查.md`
 
 ## [0.11.28] - 2026-08-19
 
