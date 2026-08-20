@@ -403,12 +403,10 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       if (useChatTaskStore.getState().chatEngineV2 && (window as unknown as { api?: { chatTask?: unknown } }).api?.chatTask) {
         const curSid = get().currentSessionId
         if (curSid) {
-          // 复用旧链路的用户消息落屏逻辑，但 AI 侧走新链路
+          // 乐观消息仅落屏，不落盘（由 Orchestrator 按 requestId 幂等落盘，避免双写）
           const userMsgId = nanoid()
           const userMsg = { id: userMsgId, sessionId: curSid, characterId: character.id, role: 'user' as const, content, images: images ?? [], isEditing: false, timestamp: Date.now(), replyToId: replyToId ?? undefined }
           set((s) => ({ messages: [...s.messages, userMsg] }))
-          // 先落盘用户消息（与旧链路一致，避免切页后丢失）
-          window.api.chat.saveMessage(userMsg).catch(() => {})
           // 创建 AI 占位
           const aiMsgId = nanoid()
           const aiPlaceholder = { id: aiMsgId, sessionId: curSid, characterId: character.id, role: 'assistant' as const, content: '', images: [], isEditing: false, timestamp: Date.now() }
