@@ -1,6 +1,8 @@
-import { UserRound, Brain, CheckCircle2, AlertCircle, Loader2, Plug } from 'lucide-react'
+import { useEffect } from 'react'
+import { UserRound, Brain, CheckCircle2, AlertCircle, Loader2, Plug, Link2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Toggle, SectionCard } from '../../components/common/SettingsShared'
+import { useSettingsStore } from '../../store/useSettingsStore'
 import type { Settings } from '../../../shared/types'
 
 interface SemanticSectionProps {
@@ -14,6 +16,28 @@ interface SemanticSectionProps {
 /** 用户人设注入 + 语义触发(向量 RAG) */
 export function SemanticSection(props: SemanticSectionProps) {
   const { settings, updateSettings, embedTestBusy, embedTestResult, handleEmbedTest } = props
+  const profiles = useSettingsStore((s) => s.settings.connectionProfiles)
+  // 启用时若未绑定档案，自动绑定首个档案（仅档案模式，不再支持手动填写）
+  useEffect(() => {
+    if (!settings.semanticTrigger?.enabled) return
+    if (profiles.length === 0) return
+    if (settings.semanticTrigger.profileId) {
+      const exists = profiles.some((p) => p.id === settings.semanticTrigger!.profileId)
+      if (exists) return
+    }
+    const p = profiles[0]
+    const mappedProvider = p.provider === 'ollama' ? 'ollama' as const : 'openai' as const
+    updateSettings({
+      semanticTrigger: {
+        ...settings.semanticTrigger!,
+        profileId: p.id,
+        provider: mappedProvider,
+        baseUrl: p.baseUrl,
+        apiKey: p.apiKey ?? '',
+      },
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.semanticTrigger?.enabled, settings.semanticTrigger?.profileId, profiles.length])
   return (
     <>
         <SectionCard title="用户人设注入" icon={<UserRound className="w-4 h-4" />}>
@@ -114,65 +138,72 @@ export function SemanticSection(props: SemanticSectionProps) {
 
             {settings.semanticTrigger?.enabled && (
               <>
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm">嵌入服务</p>
-                    <p className="text-xs text-tavern-text-muted">本地推荐 Ollama（免费），也可用 OpenAI 兼容 embeddings 服务</p>
+                {/* 嵌入连接：仅复用已有档案，不再手动填写地址/密钥 */}
+                {profiles.length === 0 ? (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+                    尚未创建连接档案。请先到 <span className="font-medium">API 设置</span> 创建对话连接，语义索引将直接复用其地址与密钥。
                   </div>
-                  <select
-                    className="input text-sm py-1 px-2 w-32"
-                    value={settings.semanticTrigger.provider}
-                    onChange={(e) => updateSettings({
-                      semanticTrigger: {
-                        ...settings.semanticTrigger!,
-                        provider: e.target.value as 'openai' | 'ollama',
-                      },
-                    })}
-                  >
-                    <option value="ollama">Ollama（本地）</option>
-                    <option value="openai">OpenAI 兼容</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Base URL</label>
-                    <input
-                      type="text"
-                      className="input text-sm"
-                      placeholder={settings.semanticTrigger.provider === 'ollama' ? 'http://localhost:11434' : 'https://api.openai.com/v1'}
-                      value={settings.semanticTrigger.baseUrl}
-                      onChange={(e) => updateSettings({
-                        semanticTrigger: { ...settings.semanticTrigger!, baseUrl: e.target.value.trim() },
-                      })}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">模型</label>
-                    <input
-                      type="text"
-                      className="input text-sm"
-                      placeholder={settings.semanticTrigger.provider === 'ollama' ? 'nomic-embed-text' : 'text-embedding-3-small'}
-                      value={settings.semanticTrigger.model}
-                      onChange={(e) => updateSettings({
-                        semanticTrigger: { ...settings.semanticTrigger!, model: e.target.value.trim() },
-                      })}
-                    />
-                  </div>
-                </div>
-
-                {settings.semanticTrigger.provider === 'openai' && (
-                  <div>
-                    <label className="label">API Key</label>
-                    <input
-                      type="password"
-                      className="input text-sm"
-                      placeholder="sk-..."
-                      value={settings.semanticTrigger.apiKey ?? ''}
-                      onChange={(e) => updateSettings({
-                        semanticTrigger: { ...settings.semanticTrigger!, apiKey: e.target.value.trim() },
-                      })}
-                    />
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between py-1 gap-3">
+                      <div className="flex items-center gap-2">
+                        <Link2 className="w-3.5 h-3.5 text-tavern-text-muted" />
+                        <div>
+                          <p className="text-sm">嵌入连接</p>
+                          <p className="text-xs text-tavern-text-muted">复用已有连接档案的地址与密钥</p>
+                        </div>
+                      </div>
+                      <select
+                        className="input text-sm py-1 px-2 w-52"
+                        value={settings.semanticTrigger.profileId ?? ''}
+                        onChange={(e) => {
+                          const pid = e.target.value
+                          const p = profiles.find((x) => x.id === pid)
+                          if (!p) return
+                          const mappedProvider = p.provider === 'ollama' ? 'ollama' as const : 'openai' as const
+                          updateSettings({
+                            semanticTrigger: {
+                              ...settings.semanticTrigger!,
+                              profileId: pid,
+                              provider: mappedProvider,
+                              baseUrl: p.baseUrl,
+                              apiKey: p.apiKey ?? '',
+                            },
+                          })
+                        }}
+                      >
+                        {profiles.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} · {p.baseUrl || '无地址'} ({p.provider})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {(() => {
+                      const pid = settings.semanticTrigger.profileId
+                      const p = pid ? profiles.find((x) => x.id === pid) : profiles[0]
+                      const effective = p ? { provider: p.provider === 'ollama' ? 'ollama' : 'openai', baseUrl: p.baseUrl } : null
+                      return effective ? (
+                        <div className="rounded-lg bg-tavern-bg-hover px-3 py-2 text-xs space-y-1">
+                          <div className="flex justify-between"><span className="text-tavern-text-muted">提供方</span><span className="font-medium">{effective.provider === 'ollama' ? 'Ollama（本地）' : 'OpenAI 兼容'}</span></div>
+                          <div className="flex justify-between gap-3"><span className="text-tavern-text-muted shrink-0">Base URL</span><span className="font-mono truncate">{effective.baseUrl || '（未填写）'}</span></div>
+                          <div className="text-tavern-text-muted">密钥已随档案复用，无需重复填写。</div>
+                        </div>
+                      ) : null
+                    })()}
+                    <div>
+                      <label className="label">嵌入模型</label>
+                      <input
+                        type="text"
+                        className="input text-sm"
+                        placeholder={settings.semanticTrigger.provider === 'ollama' ? 'nomic-embed-text' : 'text-embedding-3-small'}
+                        value={settings.semanticTrigger.model}
+                        onChange={(e) => updateSettings({
+                          semanticTrigger: { ...settings.semanticTrigger!, model: e.target.value.trim() },
+                        })}
+                      />
+                      <p className="text-xs text-tavern-text-muted mt-1">模型名与对话模型不同，此处填嵌入模型（如 Ollama 的 nomic-embed-text / 云端的 text-embedding-3-small）。</p>
+                    </div>
                   </div>
                 )}
 

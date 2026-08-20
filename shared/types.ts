@@ -524,6 +524,8 @@ export interface SemanticTriggerConfig {
   baseUrl: string
   model: string
   apiKey: string
+  /** 复用已有连接档案的 id（可选，复用其 baseUrl/apiKey/provider） */
+  profileId?: string | null
   /** 余弦相似度阈值（0-1），分数 ≥ 阈值才命中。默认 0.3 */
   threshold: number
   /** 每次最多注入的语义命中条目数。默认 3 */

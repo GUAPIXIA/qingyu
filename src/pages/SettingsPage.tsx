@@ -87,18 +87,24 @@ export function SettingsPage() {
     updateSettings({ fontFamily: font.name, customFontId: font.id })
   }
 
-  /** 测试嵌入服务连接 */
+  /** 测试嵌入服务连接（若关联档案则实时解析其最新地址/密钥） */
   const handleEmbedTest = async () => {
     const st = settings.semanticTrigger
     if (!st) return
+    // 若关联了档案，实时取档案最新值，避免档案改动后语义配置滞后
+    let effective = st
+    if (st.profileId) {
+      const p = settings.connectionProfiles.find((x) => x.id === st.profileId)
+      if (p) effective = { ...st, provider: p.provider === 'ollama' ? 'ollama' : 'openai', baseUrl: p.baseUrl, apiKey: p.apiKey ?? '' }
+    }
     setEmbedTestBusy(true)
     setEmbedTestResult(null)
     try {
       const result = await window.api.embedding.test({
-        provider: st.provider,
-        baseUrl: st.baseUrl,
-        model: st.model,
-        apiKey: st.apiKey ?? '',
+        provider: effective.provider,
+        baseUrl: effective.baseUrl,
+        model: effective.model,
+        apiKey: effective.apiKey ?? '',
       })
       setEmbedTestResult(result.ok
         ? { ok: true, text: `连接成功，向量维度 ${result.dim}` }

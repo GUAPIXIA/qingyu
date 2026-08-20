@@ -299,14 +299,24 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   updateProfile: (id, patch) => {
-    set((state) => ({
-      settings: {
-        ...state.settings,
-        connectionProfiles: state.settings.connectionProfiles.map((p) =>
-          p.id === id ? { ...p, ...patch } : p
-        ),
-      },
-    }))
+    set((state) => {
+      const nextProfiles = state.settings.connectionProfiles.map((p) =>
+        p.id === id ? { ...p, ...patch } : p
+      )
+      const updated = nextProfiles.find((p) => p.id === id)
+      let nextSemantic = state.settings.semanticTrigger
+      if (nextSemantic?.profileId === id && updated) {
+        const mappedProvider = updated.provider === 'ollama' ? 'ollama' as const : 'openai' as const
+        nextSemantic = { ...nextSemantic, provider: mappedProvider, baseUrl: updated.baseUrl, apiKey: updated.apiKey ?? '' }
+      }
+      return {
+        settings: {
+          ...state.settings,
+          connectionProfiles: nextProfiles,
+          ...(nextSemantic ? { semanticTrigger: nextSemantic } : {}),
+        },
+      }
+    })
     void get().saveSettings()
   },
 
@@ -316,11 +326,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const newActiveId = state.settings.activeProfileId === id
         ? (profiles[0]?.id ?? null)
         : state.settings.activeProfileId
+      const nextSemantic = state.settings.semanticTrigger?.profileId === id
+        ? { ...state.settings.semanticTrigger, profileId: null }
+        : state.settings.semanticTrigger
       return {
         settings: {
           ...state.settings,
           connectionProfiles: profiles,
           activeProfileId: newActiveId,
+          ...(nextSemantic ? { semanticTrigger: nextSemantic } : {}),
         },
       }
     })
