@@ -23,7 +23,7 @@ export const useChatTaskStore = create<ChatTaskState>(() => ({
   events: [],
   isTaskStreaming: false,
   error: null,
-  chatEngineV2: false,
+  chatEngineV2: true,
 }))
 
 /** 提交 send 命令（渲染层仅负责输入，执行在主进程） */

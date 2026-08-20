@@ -3,7 +3,15 @@
 ## [Unreleased] - 0.12.0 开发中
 
 > 核心架构版本：统一 ChatOrchestrator / 持久任务 / 事件补播，见 `docs/PC端0.12版本实施方案.md`
-> 当前 `main`：`0.12.0-alpha.2`（`v0.12.0-alpha.2` 已 Tag，`v0.11.28` 已发布）
+> 当前 `main`：`0.12.0-beta.1`（`v0.12.0-beta.1` 待推，`v0.12.0-alpha.3` 已 Tag）
+
+## [0.12.0-beta.1] - 2026-08-20
+
+### 灰度
+
+- `chatEngineV2` 默认开启（`V12-11` flag 隔离，`alpha` 默认关 → `beta` 默认开），桌面 `send/cancel` 走 `Orchestrator`，旧 `streamController` 保留作回滚
+- `Bridge v2` 默认开启，`api/v1` 保留兼容
+- 测试模型统一 `deepseek-v4-flash`
 
 ## [0.12.0-alpha.3] - 2026-08-20
 
