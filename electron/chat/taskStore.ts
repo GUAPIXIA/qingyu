@@ -168,13 +168,15 @@ export function readEvents(taskId: string, afterSequence: number, limit = 200): 
   all.sort((a, b) => a.sequence - b.sequence)
   const page = all.slice(0, limit)
   const next = all.length > limit ? page[page.length - 1].sequence : null
-  // 压缩后缺口检测：若 afterSequence 与首条 gap>1 且快照已压缩，提示 resync
+  // 压缩/缺口检测：afterSequence 已不在日志中但快照已推进，需 resync
   let resyncRequired = false
   let snapshot: TaskSnapshot | undefined
-  if (page.length === 0 && all.length === 0 && afterSequence > 0) {
-    // 可能已压缩，尝试取快照
-    const snap = getTaskSnapshot(taskId)
-    if (snap && snap.lastSequence > afterSequence) {
+  const snap = getTaskSnapshot(taskId)
+  if (snap) {
+    // 压缩后：日志仅剩 terminal，但 lastSequence 已远大于 afterSequence，且首条 sequence > afterSequence+1
+    const minSeq = all.length > 0 ? all[0].sequence : Infinity
+    const isGap = afterSequence < snap.lastSequence && (all.length === 0 || minSeq > afterSequence + 1)
+    if (isGap) {
       resyncRequired = true
       snapshot = snap
     }
