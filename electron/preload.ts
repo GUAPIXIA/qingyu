@@ -21,6 +21,8 @@ import type {
   McpAPI,
   AnnouncementAPI,
   GroupChatAPI,
+  UpdaterAPI,
+  UpdaterState,
   SessionSyncAPI,
   BridgeAPI,
 } from '../shared/ipc-api'
@@ -276,6 +278,21 @@ const announcementApi: AnnouncementAPI = {
   setServerUrl: (url) => ipcRenderer.invoke('announcement:setServerUrl', url),
 }
 
+// ---- 在线更新 ----
+const updaterApi: UpdaterAPI = {
+  check: () => ipcRenderer.invoke('updater:check'),
+  download: () => ipcRenderer.invoke('updater:download'),
+  install: () => ipcRenderer.invoke('updater:install'),
+  getState: () => ipcRenderer.invoke('updater:getState'),
+  getMirror: () => ipcRenderer.invoke('updater:getMirror'),
+  setMirror: (config) => ipcRenderer.invoke('updater:setMirror', config),
+  onEvent: (listener) => {
+    const handler = (_e: unknown, state: UpdaterState) => listener(state)
+    ipcRenderer.on(IPC_EVENTS.updaterEvent, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.updaterEvent, handler)
+  },
+}
+
 // ---- 群聊 ----
 
 /** 群聊 API（类型来自 shared/ipc-api 的 GroupChatAPI，参数自动获得类型） */
@@ -321,6 +338,7 @@ contextBridge.exposeInMainWorld('api', {
   usage: usageApi,
   mcp: mcpApi,
   announcement: announcementApi,
+  updater: updaterApi,
   group: groupApi,
   sessionSync: sessionSyncApi,
   bridge: bridgeApi,

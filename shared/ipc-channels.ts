@@ -15,6 +15,8 @@ export const IPC_EVENTS = {
   sessionUpdated: 'session:updated',
   // V12-10：任务事件
   chatTaskEvent: 'chatTask:event',
+  // 在线更新状态推送
+  updaterEvent: 'updater:event',
 } as const
 
 export type IpcEventChannel = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS]

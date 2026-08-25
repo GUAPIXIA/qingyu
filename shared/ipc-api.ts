@@ -351,6 +351,37 @@ export interface AnnouncementAPI {
   setServerUrl(url: string): Promise<void>
 }
 
+// ===================== 在线更新接口 =====================
+/** 更新状态机：空闲 / 检查中 / 有更新 / 已最新 / 下载中 / 下载完成 / 出错 */
+export type UpdaterStatus = 'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'
+
+export interface UpdaterState {
+  status: UpdaterStatus
+  /** 状态说明 / 错误消息 */
+  message: string
+  version?: string
+  releaseNotes?: string
+  /** 下载进度百分比（downloading 时有效） */
+  percent?: number
+  source?: 'mirror' | 'github'
+}
+
+export interface UpdateMirrorConfig {
+  /** 自托管镜像源 URL（指向含 latest.yml 与安装包的目录），空串表示未启用 */
+  mirrorUrl: string
+}
+
+export interface UpdaterAPI {
+  check(): Promise<UpdaterState>
+  download(): Promise<UpdaterState>
+  install(): Promise<void>
+  getState(): Promise<UpdaterState>
+  getMirror(): Promise<UpdateMirrorConfig>
+  setMirror(config: UpdateMirrorConfig): Promise<void>
+  /** 订阅主进程推送的状态变化，返回取消订阅函数 */
+  onEvent(listener: (state: UpdaterState) => void): () => void
+}
+
 /** 会话变更载荷（阶段 0c：事件总线） */
 export interface SessionChangePayload {
   sessionId: string
@@ -461,6 +492,7 @@ export interface ExposedAPI {
   mcp: McpAPI
   group: GroupChatAPI
   announcement: AnnouncementAPI
+  updater: UpdaterAPI
   sessionSync: SessionSyncAPI
   bridge: BridgeAPI
   app: AppAPI

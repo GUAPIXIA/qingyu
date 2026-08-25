@@ -26,6 +26,7 @@
   "dependencies": {
     "adm-zip": "^0.6.0",
     "bonjour-service": "^1.4.4",
+    "electron-updater": "^6.8.9",
     "express": "^4.22.2",
     "express-rate-limit": "^8.6.2",
     "qrcode": "^1.5.4",
@@ -112,8 +113,17 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "轻语"
-    }
+      "shortcutName": "轻语",
+      "differentialPackage": true
+    },
+    "artifactName": "QingYu-Setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "GUAPIXIA",
+        "repo": "qingyu"
+      }
+    ]
   },
   "packageManager": "pnpm@11.21.0+sha512.521705bce689924eac72f5a3587122f362689ef6571e55ba80076fd637c11132ecffada26fad4ea79c485bfddbfd3d5a2a5b05805a77e893de71ec8a6cca3bb1"
 }

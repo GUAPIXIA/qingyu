@@ -7,6 +7,7 @@ import { AppearanceSection } from './settings/AppearanceSection'
 import { BehaviorSection } from './settings/BehaviorSection'
 import { SemanticSection } from './settings/SemanticSection'
 import { PhoneConnectionSection } from './settings/PhoneConnectionSection'
+import { UpdaterSection } from './settings/UpdaterSection'
 import { SectionCard } from '../components/common/SettingsShared'
 import type { CustomFont } from '../../shared/types'
 import {
@@ -265,6 +266,9 @@ export function SettingsPage() {
         </div>
         <div id="settings-phone">
         <PhoneConnectionSection />
+        </div>
+        <div id="settings-updater">
+        <UpdaterSection />
         </div>
         <div id="settings-semantic">
         <SemanticSection

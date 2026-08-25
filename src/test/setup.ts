@@ -102,6 +102,15 @@ const mockApi: Partial<ExposedAPI> = {
   announcement: {
     fetchList: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   } as any,
+  updater: {
+    check: vi.fn().mockResolvedValue({ status: 'none', message: '已是最新版本' }),
+    download: vi.fn().mockResolvedValue({ status: 'error', message: '' }),
+    install: vi.fn().mockResolvedValue(undefined),
+    getState: vi.fn().mockResolvedValue({ status: 'idle', message: '' }),
+    getMirror: vi.fn().mockResolvedValue({ mirrorUrl: '' }),
+    setMirror: vi.fn().mockResolvedValue(undefined),
+    onEvent: vi.fn().mockReturnValue(() => {}),
+  } as any,
   log: {
     write: vi.fn().mockResolvedValue(undefined),
     getRecent: vi.fn().mockResolvedValue(''),

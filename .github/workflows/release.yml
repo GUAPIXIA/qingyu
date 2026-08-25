@@ -1,0 +1,43 @@
+name: Release
+
+# 推送 v* 标签触发：构建 Windows 安装包并发布到 GitHub Releases，
+# electron-updater 所需的 latest.yml / blockmap 由 electron-builder --publish 自动上传。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # 创建 Release 与上传产物
+
+jobs:
+  release:
+    name: Build & Publish
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check & build renderer
+        run: pnpm build
+
+      - name: Build Electron main process (esbuild)
+        run: node electron-build.mjs
+
+      # 发布到 GitHub Releases（publish 配置在 package.json > build.publish）
+      # 未签名：signAndEditExecutable=false，跳过代码签名步骤
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec electron-builder --win nsis --publish always

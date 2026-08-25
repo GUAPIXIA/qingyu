@@ -36,6 +36,22 @@ app.use('/api/announcements', announcementsRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/version', versionRouter)
 
+// 在线更新静态托管（electron-updater generic provider）——
+// 目录内存放 latest.yml / QingYu-Setup-x.y.z.exe / .blockmap，
+// 由发版时手动从 GitHub Releases 下载后放入（或 CI 同步）。
+// 客户端镜像地址填 http://<host>/qingyu/update（nginx 剥前缀场景对应本路由 /update）。
+const UPDATES_DIR = process.env.UPDATES_DIR || path.join(__dirname, 'data', 'updates')
+app.use('/update', express.static(UPDATES_DIR, {
+  // latest.yml 需强缓存禁用，否则客户端可能读到旧版本清单
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.yml')) {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+    } else {
+      res.set('Cache-Control', 'public, max-age=86400')
+    }
+  }
+}))
+
 // 管理后台（/admin 路径）— 禁用缓存，避免浏览器 304 复用旧 CSP 头
 // 顺序注意：/admin（无斜杠）必须排在 express.static 之前，否则静态目录会先发
 // 301 重定向到绝对路径 /admin/，破坏 /qingyu 前缀挂载（nginx 转发场景跳丢前缀）。

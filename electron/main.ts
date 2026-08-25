@@ -19,6 +19,7 @@ import { registerUsageIPC } from './ipc/usage'
 import { registerMcpIPC } from './ipc/mcp'
 import { registerGroupIPC } from './ipc/group'
 import { registerAnnouncementIPC } from './ipc/announcement'
+import { registerUpdaterIPC } from './services/updater'
 import { registerBridgeIPC, bridgeService } from './bridge'
 import { IPC_EVENTS } from '../shared/ipc-channels'
 import { mcpManager } from './mcp/manager'
@@ -206,6 +207,7 @@ app.whenReady().then(async () => {
     () => registerMcpIPC(ipcMain),
     () => registerGroupIPC(ipcMain),
     () => registerAnnouncementIPC(ipcMain),
+    () => registerUpdaterIPC(ipcMain),
     () => registerBridgeIPC(ipcMain),
   ]
   for (const register of ipcRegistrars) {
