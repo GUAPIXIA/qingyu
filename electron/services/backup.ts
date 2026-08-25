@@ -62,25 +62,12 @@ function listFilesRecursive(dir: string): string[] {
   const stack = [dir]
   while (stack.length) {
     const cur = stack.pop()!
-    let entries: string[] = []
-    try { entries = readdirSync(cur, { withFileTypes: true } as unknown as string[]) as unknown as string[] } catch { continue }
-    // readdirSync with withFileTypes returns Dirent
-    // fallback: read as string names
-    if (entries.length && typeof entries[0] === 'string') {
-      for (const name of entries as unknown as string[]) {
-        const full = join(cur, name)
-        try {
-          const st = statSync(full)
-          if (st.isDirectory()) stack.push(full)
-          else out.push(full)
-        } catch { /* ignore */ }
-      }
-    } else {
-      for (const ent of entries as unknown as Array<{ name: string; isDirectory: () => boolean }>) {
-        const full = join(cur, ent.name)
-        if (ent.isDirectory()) stack.push(full)
-        else out.push(full)
-      }
+    let entries: Array<import('node:fs').Dirent>
+    try { entries = readdirSync(cur, { withFileTypes: true }) } catch { continue }
+    for (const ent of entries) {
+      const full = join(cur, ent.name)
+      if (ent.isDirectory()) stack.push(full)
+      else out.push(full)
     }
   }
   return out
