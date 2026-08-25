@@ -38,13 +38,18 @@ export function SectionCard({
 export function Toggle({
   checked,
   onChange,
+  label,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
+  label?: string
 }) {
   return (
     <button
       type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
         'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',

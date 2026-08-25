@@ -91,6 +91,45 @@ function withSessionFileLock<T>(groupId: string, sessionId: string, fn: () => T 
   return withFileLock(getSessionFile(groupId, sessionId), fn)
 }
 
+function cleanGroupSessionUpdates(updates: Record<string, unknown>): Record<string, unknown> {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    throw new Error('参数无效：updates 必须为对象')
+  }
+  const clean: Record<string, unknown> = {}
+  for (const key of Object.keys(updates)) {
+    if (!GROUP_UPDATE_SESSION_FIELDS.has(key)) continue
+    const value = updates[key]
+    if (key === 'title' && typeof value === 'string' && value.length > 200) {
+      throw new Error('标题长度不能超过 200 字符')
+    }
+    clean[key] = value
+  }
+  return clean
+}
+
+async function updateSessionIfMemoryVersion(
+  groupId: string,
+  sessionId: string,
+  expectedVersion: number,
+  updates: Record<string, unknown>,
+): Promise<{ applied: boolean; currentVersion: number }> {
+  safeId(groupId)
+  safeId(sessionId)
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new Error('参数无效：expectedVersion')
+  const clean = cleanGroupSessionUpdates(updates)
+  return withSessionsLock(groupId, () => {
+    const sessions = loadSessions(groupId)
+    const session = sessions.find((item) => item.id === sessionId)
+    if (!session) throw new Error('会话不存在')
+    const currentVersion = session.memoryVersion ?? 0
+    if (currentVersion !== expectedVersion) return { applied: false, currentVersion }
+    Object.assign(session, clean)
+    session.updatedAt = Date.now()
+    saveSessions(groupId, sessions)
+    return { applied: true, currentVersion: session.memoryVersion ?? currentVersion }
+  })
+}
+
 // ===================== 消息管理 =====================
 
 function readMessages(groupId: string, sessionId: string): GroupMessage[] {
@@ -506,6 +545,9 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     })
   })
 
+  ipcMain.handle('group:updateSessionIfMemoryVersion', async (_e, groupId: string, sessionId: string, expectedVersion: number, updates: Record<string, unknown>) =>
+    updateSessionIfMemoryVersion(groupId, sessionId, expectedVersion, updates))
+
   // ---- 导出 ----
 
   ipcMain.handle('group:exportChat', async (_e, groupId: string, sessionId: string, format: 'json' | 'md') => {
@@ -624,6 +666,9 @@ export const groupData = {
       }
     })
   },
+
+  /** 仅当磁盘中的 memoryVersion 仍等于 expectedVersion 时应用更新。 */
+  updateSessionIfMemoryVersion,
 
   /** 保存/新增群聊（与 IPC handler group:save 同一路径） */
   saveGroup: async (group: GroupChat): Promise<void> => {

@@ -1,5 +1,6 @@
-import type { GroupChat, GroupMessage, GroupSession, Preset } from '../../shared/types'
+import type { GroupChat, GroupMessage, GroupSession, Preset, MemoryFactRecord } from '../../shared/types'
 import type { BudgetLoreItem } from '../utils/lorebook'
+import type { FactSearchHit } from '../../shared/ipc-api'
 
 /** 群聊 store 的完整状态与动作接口 */
 export interface GroupChatState {
@@ -41,10 +42,12 @@ export interface GroupChatState {
   /** 语义触发（向量 RAG）命中条目缓存：群聊发言前预取，buildGroupContext 合并注入（不持久化） */
   _semanticLoreHits: BudgetLoreItem[]
   /** 记忆事实语义检索命中缓存（不持久化） */
-  _semanticFactsHits: string[]
+  _semanticFactsHits: Array<FactSearchHit | string>
 
   toggleMemory: (groupId: string, sessionId: string, enabled: boolean) => Promise<void>
   setMemoryMode: (groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => Promise<void>
+  /** 手动维护当前群聊会话的关键事实，并使旧事实向量失效 */
+  updateMemoryFacts: (groupId: string, sessionId: string, facts: MemoryFactRecord[]) => Promise<void>
   triggerMemorySummary: () => Promise<void>
 }
 

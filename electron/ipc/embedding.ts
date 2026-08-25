@@ -20,6 +20,15 @@ import { topKSimilar } from '../../src/utils/vector'
 
 const log = createLogger('embedding-ipc')
 
+export function mapFactSearchHits(
+  hits: Array<{ id: string; score: number }>,
+  facts: string[],
+): Array<{ text: string; index: number; score: number }> {
+  return hits
+    .map((hit) => ({ text: facts[Number(hit.id)], index: Number(hit.id), score: hit.score }))
+    .filter((hit) => Boolean(hit.text))
+}
+
 /** 条目是否参与语义匹配 */
 export function isSemanticEligible(entry: LoreEntry): boolean {
   const mode = entry.matchMode ?? 'both'
@@ -117,7 +126,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
     }
   })
 
-  // 事实语义检索：查询 → 向量 → 与事实向量余弦 topK → 返回命中事实文本
+  // 事实语义检索：查询 → 向量 → 与事实向量余弦 topK → 返回文本与真实相似度
   ipcMain.handle('embedding:searchFacts', async (_e, payload: {
     query: string
     facts: string[]
@@ -136,7 +145,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
       if (!queryVec || queryVec.length === 0) return []
       const items = facts.map((_, i) => ({ id: String(i), vector: vectors[i] ?? [] }))
       const hits = topKSimilar(queryVec, items, maxResults, threshold)
-      return hits.map((h) => facts[Number(h.id)]).filter(Boolean)
+      return mapFactSearchHits(hits, facts)
     } catch (e) {
       log.warn('事实语义检索失败（回退全量注入）', { error: (e as Error).message })
       return []

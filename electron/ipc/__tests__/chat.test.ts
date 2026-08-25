@@ -78,6 +78,23 @@ describe('computeMessageMetaCached', () => {
 })
 
 describe('会话派生记忆清理', () => {
+  it('条件更新会话时拒绝过期的记忆版本，避免旧摘要覆盖新事实', async () => {
+    const session = await chatData.createSession('char-001', '并发记忆测试')
+    const first = await chatData.updateSessionIfMemoryVersion('char-001', session.id, 0, {
+      memory: '版本 1',
+      memoryVersion: 1,
+    })
+    const stale = await chatData.updateSessionIfMemoryVersion('char-001', session.id, 0, {
+      memory: '过期摘要',
+      memoryVersion: 1,
+    })
+
+    expect(first).toEqual({ applied: true, currentVersion: 1 })
+    expect(stale).toEqual({ applied: false, currentVersion: 1 })
+    const persisted = (await chatData.listSessions('char-001')).find((item) => item.id === session.id)!
+    expect(persisted.memory).toBe('版本 1')
+  })
+
   it('清空会话时同时清除摘要、事实、向量与压缩摘要', async () => {
     const session = await chatData.createSession('char-001', '记忆测试')
     await chatData.updateSession('char-001', session.id, {

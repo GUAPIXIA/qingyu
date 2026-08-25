@@ -300,6 +300,25 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     })
   },
 
+  updateMemoryFacts: async (characterId, sessionId, facts) => {
+    const session = get().sessions.find((item) => item.id === sessionId)
+    const patch = {
+      memoryFacts: facts,
+      memoryUpdatedAt: Date.now(),
+      memoryVersion: (session?.memoryVersion ?? 0) + 1,
+      factsVectors: [],
+      factsVectorVersion: -1,
+    }
+    const commit = await window.api.chat.updateSessionIfMemoryVersion(characterId, sessionId, session?.memoryVersion ?? 0, patch)
+    if (!commit.applied) {
+      const sessions = await window.api.chat.listSessions(characterId)
+      set({ sessions })
+      throw new Error('长记忆已发生变化，请重新编辑后再保存。')
+    }
+    get().patchLocalSession(sessionId, { ...patch, updatedAt: Date.now() })
+    set({ _semanticFactsHits: [] })
+  },
+
   triggerMemorySummary: async (character) => {
     return runMemorySummary(get, set, character)
   },

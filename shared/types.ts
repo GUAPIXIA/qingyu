@@ -435,6 +435,8 @@ export interface Settings {
   messageWidth: number
   streamOutput: boolean
   autoScroll: boolean
+  /** 新建对话时默认启用长记忆；仅影响后续创建的单聊和群聊 */
+  defaultMemoryEnabled?: boolean
   // TTS 多模型配置
   ttsEnabled: boolean
   ttsModels: TTSModelConfig[]
@@ -564,7 +566,7 @@ export interface TTSModelConfig {
 export interface ImageGenModelConfig {
   id: string
   name: string
-  provider: string          // 'openai' | 'sd-webui'
+  provider: string          // 'openai' | 'sd-webui' | 'comfyui'
   model: string
   apiKey: string
   baseUrl: string
@@ -577,6 +579,10 @@ export interface ImageGenModelConfig {
   steps?: number            // 默认 20
   cfgScale?: number         // 默认 7
   sampler?: string          // 如 'Euler a'
+  /** ComfyUI API 格式工作流 JSON；留空时使用内置基础文生图工作流 */
+  workflow?: string
+  /** ComfyUI 调度器；默认 normal */
+  scheduler?: string
 }
 
 /** 识图模型配置 */

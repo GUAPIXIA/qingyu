@@ -1,5 +1,51 @@
 /** 长记忆单次摘要的新增对话输入预算。超长单条消息会作为唯一例外完整保留，避免游标跳过内容。 */
 export const MEMORY_SUMMARY_INPUT_TOKEN_BUDGET = 6000
+export const MEMORY_SUMMARY_MIN_INPUT_TOKEN_BUDGET = 128
+
+/**
+ * 为摘要请求计算真实可用输入预算：模型上下文减去系统提示、输出和安全余量，
+ * 同时限制最大值，避免大上下文模型一次吞入过多历史。
+ */
+export function resolveMemorySummaryInputBudget(
+  maxContext: number,
+  systemPromptTokens: number,
+  reservedOutputTokens: number,
+): number {
+  const context = Number.isFinite(maxContext) && maxContext > 0 ? Math.floor(maxContext) : 8192
+  const prompt = Number.isFinite(systemPromptTokens) ? Math.max(0, Math.floor(systemPromptTokens)) : 0
+  const output = Number.isFinite(reservedOutputTokens) ? Math.max(0, Math.floor(reservedOutputTokens)) : 0
+  const safety = Math.max(128, Math.floor(context * 0.05))
+  return Math.min(
+    MEMORY_SUMMARY_INPUT_TOKEN_BUDGET,
+    Math.max(MEMORY_SUMMARY_MIN_INPUT_TOKEN_BUDGET, context - prompt - output - safety),
+  )
+}
+
+/** 单条消息超过模型可用窗口时保留首尾，并显式标记省略，避免请求永久失败。 */
+export function fitOversizedMemoryMessage(
+  text: string,
+  tokenBudget: number,
+  estimateTokens: (value: string) => number,
+): string {
+  if (estimateTokens(text) <= tokenBudget) return text
+  const marker = '\n…【消息过长，中间内容已省略】…\n'
+  let low = 0
+  let high = text.length
+  let best = marker
+  while (low <= high) {
+    const retained = Math.floor((low + high) / 2)
+    const headLength = Math.ceil(retained * 0.6)
+    const tailLength = retained - headLength
+    const candidate = `${text.slice(0, headLength)}${marker}${tailLength > 0 ? text.slice(-tailLength) : ''}`
+    if (estimateTokens(candidate) <= tokenBudget) {
+      best = candidate
+      low = retained + 1
+    } else {
+      high = retained - 1
+    }
+  }
+  return best
+}
 
 /** 为保持语义连续性，携带的已总结消息数量。 */
 export const MEMORY_SUMMARY_OVERLAP_COUNT = 2

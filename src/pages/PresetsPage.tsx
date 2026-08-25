@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { Sliders, Plus, Upload, Trash2, Shield, Copy, Download, ChevronDown, ChevronRight, Sparkles, Play, Loader2, Wand2, X } from 'lucide-react'
+import { Sliders, Plus, Upload, Trash2, Shield, Copy, Download, Sparkles, Play, Loader2, Wand2, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { BUILTIN_TEMPLATE_NAMES } from '../utils/chatTemplates'
 import { cn } from '../lib/utils'
 import { estimateTokens } from '../utils/tokenCounter'
@@ -49,16 +49,10 @@ function createPreset(): Preset {
   }
 }
 
-/** 分组键：空 group 归入「未分组」 */
-function groupKey(preset: Preset): string {
-  return preset.group?.trim() || '未分组'
-}
-
 export function PresetsPage() {
   const [presets, setPresets] = useState<Preset[]>([])
   const [editingPreset, setEditingPreset] = useState<Preset | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [busyMsg, setBusyMsg] = useState<string | null>(null)
   // AI 生成预设
   const [aiGenOpen, setAiGenOpen] = useState(false)
@@ -78,26 +72,6 @@ export function PresetsPage() {
   useEffect(() => {
     loadPresets()
   }, [])
-
-  /** 按分组聚合（保留组出现顺序） */
-  const grouped = useMemo(() => {
-    const map = new Map<string, Preset[]>()
-    for (const preset of presets) {
-      const key = groupKey(preset)
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(preset)
-    }
-    return [...map.entries()]
-  }, [presets])
-
-  const toggleGroup = (key: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
 
   const handleNew = () => {
     setEditingPreset(createPreset())
@@ -388,21 +362,8 @@ TopP: <0-1>
         ) : (
           <div className="max-w-5xl mx-auto space-y-4">
             {busyMsg && <div className="text-sm text-tavern-text-muted">{busyMsg}</div>}
-            {grouped.map(([group, groupPresets]) => {
-              const collapsed = collapsedGroups.has(group)
-              return (
-                <div key={group}>
-                  <button
-                    onClick={() => toggleGroup(group)}
-                    className="flex items-center gap-1.5 text-sm font-medium text-tavern-text-muted hover:text-tavern-text w-full mb-2"
-                  >
-                    {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    <span>{group}</span>
-                    <span className="text-xs text-tavern-text-muted/60">（{groupPresets.length} 个）</span>
-                  </button>
-                  {!collapsed && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {groupPresets.map((preset) => (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {presets.map((preset) => (
                         <div
                           key={preset.id}
                           onClick={() => handleEdit(preset)}
@@ -474,12 +435,8 @@ TopP: <0-1>
                             </span>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -552,19 +509,6 @@ TopP: <0-1>
                   value={editingPreset.name}
                   onChange={(e) => updateField('name', e.target.value)}
                 />
-              </div>
-              <div>
-                <label className="label">分组</label>
-                <input
-                  className="input"
-                  list="preset-groups"
-                  value={editingPreset.group ?? ''}
-                  onChange={(e) => updateField('group', e.target.value)}
-                  placeholder="如：通用 / 越狱 / 风格特化"
-                />
-                <datalist id="preset-groups">
-                  {grouped.map(([g]) => <option key={g} value={g} />)}
-                </datalist>
               </div>
               <div>
                 <label className="label">描述</label>

@@ -31,6 +31,7 @@ export function getDefaultSettings(): Settings {
     messageWidth: 768,
     streamOutput: true,
     autoScroll: true,
+    defaultMemoryEnabled: false,
     ttsEnabled: false,
     ttsModels: [],
     activeTTSModelId: null,

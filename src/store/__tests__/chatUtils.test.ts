@@ -1,8 +1,37 @@
 /**
  * chatUtils 单元测试（friendlyError 错误映射）
  */
-import { describe, expect, it } from 'vitest'
-import { friendlyError } from '../chatUtils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getDefaultSettings } from '../../../shared/defaults'
+import type { Character } from '../../../shared/types'
+import { useSettingsStore } from '../useSettingsStore'
+import { applyDefaultMemory, friendlyError } from '../chatUtils'
+
+const character = {
+  id: 'char-1',
+  defaultMemoryEnabled: false,
+} as Character
+
+describe('applyDefaultMemory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useSettingsStore.setState({ settings: getDefaultSettings(), _saveTimer: null })
+  })
+
+  it('全局默认开启时为新单聊启用自动长记忆', async () => {
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, defaultMemoryEnabled: true },
+    }))
+
+    await applyDefaultMemory(character, 'session-1')
+
+    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 'session-1', {
+      memoryEnabled: true,
+      memoryMode: 'auto',
+      autoMemoryInterval: 10,
+    })
+  })
+})
 
 describe('friendlyError', () => {
   it('基础映射：401 / 429 / 超时 / 网络', () => {

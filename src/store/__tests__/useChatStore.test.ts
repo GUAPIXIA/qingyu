@@ -113,6 +113,37 @@ describe('useChatStore', () => {
     })
   })
 
+  describe('updateMemoryFacts', () => {
+    it('持久化事实并使旧语义向量失效', async () => {
+      useChatStore.setState({
+        sessions: [{
+          id: 's1',
+          characterId: 'c1',
+          memoryVersion: 2,
+          factsVectors: [[0.1]],
+        } as SessionPreview],
+        _semanticFactsHits: ['旧命中'],
+      })
+
+      await useChatStore.getState().updateMemoryFacts('c1', 's1', ['手动添加的事实'])
+
+      expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('c1', 's1', 2, expect.objectContaining({
+        memoryFacts: ['手动添加的事实'],
+        memoryVersion: 3,
+        factsVectors: [],
+        factsVectorVersion: -1,
+        memoryUpdatedAt: expect.any(Number),
+      }))
+      expect(useChatStore.getState().sessions[0]).toEqual(expect.objectContaining({
+        memoryFacts: ['手动添加的事实'],
+        memoryVersion: 3,
+        factsVectors: [],
+        factsVectorVersion: -1,
+      }))
+      expect(useChatStore.getState()._semanticFactsHits).toEqual([])
+    })
+  })
+
   describe('loadMessages 首条消息', () => {
     it('有译文时优先注入译文首条消息，且不覆盖角色卡原文', async () => {
       const character = makeCharacter({

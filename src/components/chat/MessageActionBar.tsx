@@ -175,10 +175,12 @@ export const MessageActionBar = React.memo(function MessageActionBar({
   const handleBranch = async () => {
     if (!character) return
     try {
-      // 创建新会话作为分支
-      const branchSession = await window.api.chat.createSession(character.id, `分支: ${message.content.slice(0, 20)}...`)
+      const { messages, sessions: sourceSessions, currentSessionId } = useChatStore.getState()
+      const sourceSession = sourceSessions.find((session) => session.id === currentSessionId)
+      const branchTitle = sourceSession ? `${sourceSession.title} · 分支` : '对话分支'
+      // 分支名继承原会话标题，避免将消息正文暴露在会话列表中
+      const branchSession = await window.api.chat.createSession(character.id, branchTitle)
       if (!branchSession) return
-      const { messages } = useChatStore.getState()
       const branchIdx = messages.findIndex((m) => m.id === message.id)
       if (branchIdx < 0) return
       const branchMsgs = messages.slice(0, branchIdx + 1)

@@ -56,6 +56,7 @@ export function GroupChatPage() {
   const sendPollingRound = useGroupChatStore((s) => s.sendPollingRound)
   const toggleMemory = useGroupChatStore((s) => s.toggleMemory)
   const setMemoryMode = useGroupChatStore((s) => s.setMemoryMode)
+  const updateMemoryFacts = useGroupChatStore((s) => s.updateMemoryFacts)
   const triggerMemorySummary = useGroupChatStore((s) => s.triggerMemorySummary)
 
   // P-6 修复：引用回复查找 O(n)→O(1)——构建 id→message 索引，仅在 messages 变化时重建
@@ -469,6 +470,10 @@ export function GroupChatPage() {
                     }}
                     onSetMemoryMode={(mode, interval) => {
                       if (currentGroup && currentSessionId) setMemoryMode(currentGroup.id, currentSessionId, mode, interval)
+                    }}
+                    onUpdateMemoryFacts={(facts) => {
+                      if (!currentGroup || !currentSessionId) return Promise.resolve()
+                      return updateMemoryFacts(currentGroup.id, currentSessionId, facts)
                     }}
                     onTriggerSummary={() => {
                       triggerMemorySummary()

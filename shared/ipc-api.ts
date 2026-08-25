@@ -78,12 +78,19 @@ export interface CharacterAPI {
 }
 
 // ===================== 对话接口 =====================
+export interface MemoryVersionUpdateResult {
+  applied: boolean
+  currentVersion: number
+}
+
 export interface ChatAPI {
   listSessions(characterId: string): Promise<SessionPreview[]>
   createSession(characterId: string, title?: string, personaId?: string | null, lorebookIds?: string[]): Promise<ChatSession>
   deleteSession(characterId: string, sessionId: string): Promise<void>
   renameSession(characterId: string, sessionId: string, title: string): Promise<void>
   updateSession(characterId: string, sessionId: string, updates: Record<string, unknown>): Promise<ChatSession>
+  /** 在 sessions 文件锁内比较并更新记忆版本，过期写入不会落盘。 */
+  updateSessionIfMemoryVersion(characterId: string, sessionId: string, expectedVersion: number, updates: Record<string, unknown>): Promise<MemoryVersionUpdateResult>
   listMessages(characterId: string, sessionId?: string): Promise<Message[]>
   saveMessage(message: Message): Promise<void>
   deleteMessage(id: string, characterId: string, sessionId?: string): Promise<void>
@@ -183,7 +190,7 @@ export interface EmbeddingAPI {
   }): Promise<SemanticHit[]>
   /** 为会话事实批量嵌入，返回向量数组（渲染进程负责存会话） */
   embedFacts(config: EmbeddingEndpointConfig, texts: string[]): Promise<number[][]>
-  /** 事实语义检索：查询文本与事实向量比对，返回命中的事实文本 */
+  /** 事实语义检索：查询文本与事实向量比对，保留真实相似度。 */
   searchFacts(payload: {
     query: string
     facts: string[]
@@ -191,7 +198,13 @@ export interface EmbeddingAPI {
     config: EmbeddingEndpointConfig
     threshold?: number
     maxResults?: number
-  }): Promise<string[]>
+  }): Promise<FactSearchHit[]>
+}
+
+export interface FactSearchHit {
+  text: string
+  index: number
+  score: number
 }
 
 // ===================== 预设接口 =====================
@@ -223,6 +236,8 @@ export interface GroupChatAPI {
   toggleMemory(groupId: string, sessionId: string, enabled: boolean): Promise<void>
   setMemoryMode(groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number): Promise<void>
   updateSession(groupId: string, sessionId: string, updates: Record<string, unknown>): Promise<void>
+  /** 群聊会话的原子记忆版本条件更新。 */
+  updateSessionIfMemoryVersion(groupId: string, sessionId: string, expectedVersion: number, updates: Record<string, unknown>): Promise<MemoryVersionUpdateResult>
 }
 
 // ===================== TTS 接口 =====================

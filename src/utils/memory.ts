@@ -26,6 +26,8 @@ export interface ParsedMemory {
 
 /** 事实列表上限（防止无限累积） */
 export const MAX_MEMORY_FACTS = 30
+/** 历史事实只用于审计，保留最近记录以避免会话元数据无限增长。 */
+export const MAX_MEMORY_FACT_HISTORY = 200
 
 function parseFactChange(raw: unknown): MemoryFactChange | null {
   if (!raw || typeof raw !== 'object') return null
@@ -226,9 +228,49 @@ function normalizeFact(fact: MemoryFactRecord, index: number, updatedAt: number)
   }
 }
 
-function factKey(fact: Pick<MemoryFact, 'subject' | 'predicate' | 'scope' | 'entityId'>): string {
-  const normalize = (value: string | undefined) => (value ?? '').trim().toLocaleLowerCase()
-  return [normalize(fact.subject), normalize(fact.predicate), normalize(fact.scope), normalize(fact.entityId)].join('|')
+function normalizeIdentityPart(value: string | undefined): string {
+  return (value ?? '').trim().toLocaleLowerCase()
+}
+
+function normalizeScope(value: string | undefined): string {
+  const scope = normalizeIdentityPart(value)
+  if (!scope) return ''
+  if (['本会话', '当前会话', '会话', 'session'].includes(scope)) return 'session'
+  if (['本群聊', '当前群聊', '群聊', 'group'].includes(scope)) return 'group'
+  return scope
+}
+
+function scopesCompatible(left: string | undefined, right: string | undefined): boolean {
+  const a = normalizeScope(left)
+  const b = normalizeScope(right)
+  if (!a || !b || a === b) return true
+  if ((a === 'session' && b.startsWith('session:')) || (b === 'session' && a.startsWith('session:'))) return true
+  if ((a === 'group' && b.startsWith('group:')) || (b === 'group' && a.startsWith('group:'))) return true
+  return false
+}
+
+/** 旧事实缺少 scope/entityId 时按通配处理，便于渐进迁移且不制造重复项。 */
+function sameFactIdentity(
+  left: Pick<MemoryFact, 'subject' | 'predicate' | 'scope' | 'entityId'>,
+  right: Pick<MemoryFact, 'subject' | 'predicate' | 'scope' | 'entityId'>,
+): boolean {
+  if (normalizeIdentityPart(left.subject) !== normalizeIdentityPart(right.subject)) return false
+  if (normalizeIdentityPart(left.predicate) !== normalizeIdentityPart(right.predicate)) return false
+  if (!scopesCompatible(left.scope, right.scope)) return false
+  const leftEntity = normalizeIdentityPart(left.entityId)
+  const rightEntity = normalizeIdentityPart(right.entityId)
+  return !leftEntity || !rightEntity || leftEntity === rightEntity
+}
+
+function retainBestFacts(facts: MemoryFact[]): MemoryFact[] {
+  if (facts.length <= MAX_MEMORY_FACTS) return facts
+  const ranked = [...facts].sort((a, b) =>
+    b.importance - a.importance
+    || b.confidence - a.confidence
+    || b.updatedAt - a.updatedAt,
+  )
+  const keepIds = new Set(ranked.slice(0, MAX_MEMORY_FACTS).map((fact) => fact.id))
+  return facts.filter((fact) => keepIds.has(fact.id))
 }
 
 function withSource(fact: MemoryFact, messageId: string, updatedAt: number): MemoryFact {
@@ -264,7 +306,7 @@ export function applyMemoryFactChanges(
     history.push(archived)
   }
   const sameKey = (left: MemoryFact, right: Pick<MemoryFact, 'subject' | 'predicate' | 'scope' | 'entityId'>) =>
-    factKey(left) === factKey(right)
+    sameFactIdentity(left, right)
 
   changes.forEach((change, index) => {
     if (change.action === 'add' && change.fact) {
@@ -309,7 +351,10 @@ export function applyMemoryFactChanges(
       if (nextIndex >= 0) facts[nextIndex] = next
     }
   })
-  return { facts: facts.slice(0, MAX_MEMORY_FACTS), history }
+  return {
+    facts: retainBestFacts(facts),
+    history: history.length > MAX_MEMORY_FACT_HISTORY ? history.slice(-MAX_MEMORY_FACT_HISTORY) : history,
+  }
 }
 
 /**
@@ -325,7 +370,7 @@ export function applyFactProposals(
 ): { facts: MemoryFact[]; history: MemoryFact[] } {
   let result = applyMemoryFactChanges(previousFacts, previousHistory, [], sourceMessageId, updatedAt)
   proposals.forEach((proposal) => {
-    const target = result.facts.find((fact) => factKey(fact) === factKey(proposal))
+    const target = result.facts.find((fact) => sameFactIdentity(fact, proposal))
     if (proposal.changeType === 'clear') {
       if (target) result = applyMemoryFactChanges(result.facts, result.history, [{ action: 'deactivate', id: target.id }], sourceMessageId, updatedAt)
       return
@@ -336,6 +381,8 @@ export function applyFactProposals(
           id: target.id,
           patch: {
             value: proposal.value,
+            scope: proposal.scope ?? target.scope,
+            entityId: proposal.entityId ?? target.entityId,
             importance: proposal.importance,
             confidence: proposal.confidence,
           },
@@ -372,12 +419,13 @@ export interface RankedFact {
   semantic: number
   recency: number
   importance: number
+  confidence: number
 }
 
 /**
  * 事实检索评分与排序
  * - 字符串事实：score = 0.7*semantic + 0.3*recency (importance 固定 3)
- * - 结构化事实：score = 0.5*semantic + 0.3*recency + 0.2*importance(归一化)
+ * - 结构化事实：score = 0.5*semantic + 0.2*recency + 0.2*importance(归一化) + 0.1*confidence
  * - semanticScores 为与 facts 等长的相似度数组（0~1），缺失时视为 0
  * - 降级（vectors 缺失/语义不可用）：semanticScores 为 null/空时，按 importance 降序 + updatedAt 降序
  */
@@ -389,14 +437,15 @@ export function scoreAndRankFacts(
   const list = facts ?? []
   const hasSemantic = Array.isArray(semanticScores) && semanticScores.length === list.length && semanticScores.some((s) => s > 0)
 
-  // 降级：无语义分数时按 importance + recency 排序
+  // 降级：无语义分数时按 importance + recency + confidence 排序
   if (!hasSemantic) {
     return list
       .map((fact) => {
         const importance = isMemoryFact(fact) ? clampImportance(fact.importance) : 3
         const recency = isMemoryFact(fact) ? computeRecencyScore(fact.updatedAt, now) : 0.5
-        const score = importance / 5 * 0.6 + recency * 0.4 // 降级权重：重要性 0.6 + 新近 0.4
-        return { fact, score, semantic: 0, recency, importance }
+        const confidence = isMemoryFact(fact) ? clampConfidence(fact.confidence) : 0.7
+        const score = importance / 5 * 0.5 + recency * 0.3 + confidence * 0.2
+        return { fact, score, semantic: 0, recency, importance, confidence }
       })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score
@@ -412,12 +461,13 @@ export function scoreAndRankFacts(
       const semantic = Math.max(0, Math.min(1, semanticScores![idx] ?? 0))
       const recency = isMemoryFact(fact) ? computeRecencyScore(fact.updatedAt, now) : 0.5
       const importance = isMemoryFact(fact) ? clampImportance(fact.importance) : 3
+      const confidence = isMemoryFact(fact) ? clampConfidence(fact.confidence) : 0.7
       const importanceNorm = importance / 5
       const isStructured = isMemoryFact(fact)
       const score = isStructured
-        ? semantic * 0.5 + recency * 0.3 + importanceNorm * 0.2
+        ? semantic * 0.5 + recency * 0.2 + importanceNorm * 0.2 + confidence * 0.1
         : semantic * 0.7 + recency * 0.3
-      return { fact, score, semantic, recency, importance }
+      return { fact, score, semantic, recency, importance, confidence }
     })
     .sort((a, b) => b.score - a.score)
 }
@@ -434,7 +484,7 @@ export function selectFactsByBudget(
   const safeBudget = Math.max(0, Math.floor(budget))
   const items: RankedFact[] = Array.isArray(ranked) && ranked.length > 0 && typeof (ranked[0] as RankedFact).fact !== 'undefined'
     ? (ranked as RankedFact[])
-    : (ranked as MemoryFactRecord[]).map((fact) => ({ fact, score: 0, semantic: 0, recency: 0, importance: isMemoryFact(fact) ? clampImportance(fact.importance) : 3 }))
+    : (ranked as MemoryFactRecord[]).map((fact) => ({ fact, score: 0, semantic: 0, recency: 0, importance: isMemoryFact(fact) ? clampImportance(fact.importance) : 3, confidence: isMemoryFact(fact) ? clampConfidence(fact.confidence) : 0.7 }))
   const selected: MemoryFactRecord[] = []
   let remaining = safeBudget
   for (const item of items) {

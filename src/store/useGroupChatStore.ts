@@ -8,7 +8,12 @@ import { applyRegexRules as applyRegexRulesEngine } from '../utils/regex'
 import { lorebookCache } from '../utils/lorebook'
 import { STREAM_IDLE_TIMEOUT_MS, translationMaxTokens } from './chatConstants'
 import { logError } from '../lib/logger'
-import { nextLoadRequestId, currentLoadRequestId, invalidateGroupDerivedMemory } from './chatUtils'
+import {
+  applyDefaultGroupMemory,
+  nextLoadRequestId,
+  currentLoadRequestId,
+  invalidateGroupDerivedMemory,
+} from './chatUtils'
 import {
   streamGroupAI, streamGroupAIFree, checkPollingContinue, checkAutoMemory,
   cleanupActiveStream, clearPollingTimer, getActiveStream,
@@ -83,6 +88,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     clearPollingTimer()
     cleanupActiveStream()
     const session = await window.api.group.createSession(groupId)
+    await applyDefaultGroupMemory(groupId, session.id)
     const sessions = await window.api.group.listSessions(groupId)
     set({ sessions, currentSessionId: session.id, messages: [], isStreaming: false, currentStreamingCharId: null })
   },
@@ -354,6 +360,27 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       s.id === sessionId ? { ...s, memoryMode: mode, ...(interval !== undefined ? { autoMemoryInterval: interval } : {}) } : s
     )
     set({ sessions })
+  },
+
+  updateMemoryFacts: async (groupId, sessionId, facts) => {
+    const current = get().sessions.find((item) => item.id === sessionId)
+    const patch = {
+      memoryFacts: facts,
+      memoryUpdatedAt: Date.now(),
+      memoryVersion: (current?.memoryVersion ?? 0) + 1,
+      factsVectors: [],
+      factsVectorVersion: -1,
+    }
+    const commit = await window.api.group.updateSessionIfMemoryVersion(groupId, sessionId, current?.memoryVersion ?? 0, patch)
+    if (!commit.applied) {
+      const sessions = await window.api.group.listSessions(groupId)
+      set({ sessions })
+      throw new Error('群聊长记忆已发生变化，请重新编辑后再保存。')
+    }
+    set((state) => ({
+      sessions: state.sessions.map((session) => session.id === sessionId ? { ...session, ...patch } : session),
+      _semanticFactsHits: [],
+    }))
   },
 
   triggerMemorySummary: async () => {

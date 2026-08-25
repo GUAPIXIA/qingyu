@@ -104,6 +104,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     // setup.ts 的默认 mock 缺少这些方法，补充为 spy
     ;(window.api.chat as any).updateMemory = vi.fn().mockResolvedValue(undefined)
     ;(window.api.chat as any).updateSession = vi.fn().mockResolvedValue(undefined)
+    ;(window.api.chat as any).updateSessionIfMemoryVersion = vi.fn().mockResolvedValue({ applied: true, currentVersion: 1 })
     ;(window.api.chat as any).listSessions = vi.fn().mockResolvedValue([])
   })
 
@@ -162,7 +163,7 @@ describe('runMemorySummary 长记忆摘要', () => {
 
     const summary = await p
     expect(summary).toBe('他们去了森林。')
-    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', {
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, {
       memory: '他们去了森林。',
       memoryCurrentState: '他们正在森林里寻找雪山入口。',
       memoryFacts: ['目标是雪山', '带了地图'],
@@ -186,7 +187,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     callbacks.onDone!(requestId)
 
     await p
-    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
       memory: '只有摘要没有事实',
       memoryCurrentState: '',
       memoryFacts: ['旧事实'],
@@ -209,7 +210,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     callbacks.onDone!(callbacks.chatParams!.requestId)
 
     await p
-    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
       memoryFacts: [expect.objectContaining({ id: 'fact-relation', value: '恋人', importance: 5 })],
       memoryFactHistory: [expect.objectContaining({ value: '朋友', status: 'superseded' })],
       memoryFactParseFailureCount: 0,
@@ -230,7 +231,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     callbacks.onDone!(callbacks.chatParams!.requestId)
 
     await p
-    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
       memoryFacts: [expect.objectContaining({ id: 'fact-location', value: '旧矿坑', status: 'active', importance: 5, sourceMessageIds: ['m0', 'm5'] })],
       memoryFactHistory: [expect.objectContaining({ value: '月落镇', status: 'superseded', sourceMessageIds: ['m0', 'm5'] })],
     }))
@@ -245,7 +246,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     callbacks.onDone!(callbacks.chatParams!.requestId)
 
     await p
-    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
       memoryFacts: ['旧事实'],
     }))
   })
@@ -260,7 +261,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     callbacks.onDone!(requestId)
 
     await p
-    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
       memory: '新的情节摘要。',
       memoryCurrentState: '',
       memoryFacts: [],
@@ -293,6 +294,20 @@ describe('runMemorySummary 长记忆摘要', () => {
     const result = await runMemorySummary((() => setupChatStoreState()) as any, set, makeCharacter())
     expect(result).toBeNull()
     expect(set).toHaveBeenCalledWith({ error: '长记忆总结请求失败' })
+  })
+
+  it('提交时版本已变化则丢弃旧摘要并返回 null', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    ;(window.api.chat as any).updateSessionIfMemoryVersion = vi.fn().mockResolvedValue({ applied: false, currentVersion: 2 })
+    const set = vi.fn()
+    const p = runMemorySummary((() => setupChatStoreState()) as any, set, makeCharacter())
+
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】过期摘要\n【事实】\n' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+
+    await expect(p).resolves.toBeNull()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('旧摘要未写入') }))
   })
 
   it('传给 AI 的消息包含系统提示与角色信息', async () => {
@@ -356,7 +371,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】增量摘要\n【事实】\n' })
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
-    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
       memoryLastMessageId: 'm7',
     }))
   })
@@ -380,7 +395,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】首条长消息摘要\n【事实】\n' })
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
-    expect(window.api.chat.updateSession).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
       memoryLastMessageId: 'large-0',
     }))
   })

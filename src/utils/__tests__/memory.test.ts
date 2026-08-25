@@ -180,6 +180,40 @@ describe('applyMemoryFactChanges', () => {
 })
 
 describe('applyFactProposals', () => {
+  it('达到事实上限后保留新事实并淘汰最旧的同等重要事实', () => {
+    const current: MemoryFact[] = Array.from({ length: 30 }, (_, index) => ({
+      id: `old-${index}`,
+      subject: `主体${index}`,
+      predicate: '身份',
+      value: `值${index}`,
+      status: 'active',
+      importance: 3,
+      confidence: 0.8,
+      sourceMessageIds: [],
+      updatedAt: index + 1,
+    }))
+    const result = applyFactProposals(current, [], [{
+      subject: '新主体', predicate: '身份', value: '新事实', changeType: 'set', importance: 3,
+    }], 'm-new', 100)
+
+    expect(result.facts).toHaveLength(30)
+    expect(result.facts.some((fact) => fact.subject === '新主体')).toBe(true)
+    expect(result.facts.some((fact) => fact.id === 'old-0')).toBe(false)
+  })
+
+  it('把缺失、中文和规范会话作用域视为同一事实身份', () => {
+    const current: MemoryFact = {
+      id: 'fact-location', subject: '林夏', predicate: '所在地', value: '月落镇',
+      status: 'active', importance: 3, confidence: 0.8, sourceMessageIds: [], updatedAt: 1,
+    }
+    const result = applyFactProposals([current], [], [{
+      subject: '林夏', predicate: '所在地', value: '旧矿坑', changeType: 'set', scope: '本会话',
+    }], 'm2', 100)
+
+    expect(result.facts).toHaveLength(1)
+    expect(result.facts[0]).toMatchObject({ id: 'fact-location', value: '旧矿坑' })
+  })
+
   it('服务端按规范化键匹配提案，替代旧值并保留历史来源', () => {
     const current: MemoryFact = {
       id: 'fact-relation', subject: '林夏', predicate: '与用户的关系', value: '朋友',

@@ -1,5 +1,6 @@
-import type { Message, Character, Preset, Lorebook, RegexRule, SessionPreview, ChatSession } from '../../shared/types'
+import type { Message, Character, Preset, Lorebook, RegexRule, SessionPreview, ChatSession, MemoryFactRecord } from '../../shared/types'
 import type { BudgetLoreItem } from '../utils/lorebook'
+import type { FactSearchHit } from '../../shared/ipc-api'
 
 /** 上下文消息（buildContext 的中间产物，最终经 convertMessages 转为 provider 格式） */
 export type ContextMessage = {
@@ -34,6 +35,8 @@ export interface ChatState {
   renameSession: (characterId: string, sessionId: string, title: string) => Promise<void>
   toggleMemory: (characterId: string, sessionId: string, enabled: boolean) => Promise<void>
   setMemoryMode: (characterId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => Promise<void>
+  /** 手动维护当前会话的关键事实，并使旧事实向量失效 */
+  updateMemoryFacts: (characterId: string, sessionId: string, facts: MemoryFactRecord[]) => Promise<void>
   triggerMemorySummary: (character: Character) => Promise<string | null>
   getStats: (characterId: string, sessionId: string) => Promise<{
     totalMessages: number; userMessages: number; assistantMessages: number
@@ -81,7 +84,7 @@ export interface ChatState {
   /** 语义触发（向量 RAG）命中条目缓存：发送消息时预取，buildContext 合并注入（不持久化） */
   _semanticLoreHits: BudgetLoreItem[]
   /** 记忆事实语义检索命中缓存：仅注入相关事实（不持久化） */
-  _semanticFactsHits: string[]
+  _semanticFactsHits: Array<FactSearchHit | string>
   /** 上次上下文构建的用量（P1-3 预警用，不持久化） */
   lastContextUsage: { used: number; max: number } | null
 }

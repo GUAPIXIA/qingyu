@@ -11,6 +11,7 @@ import {
 const PROVIDERS = [
   { value: 'openai', label: 'OpenAI DALL-E' },
   { value: 'sd-webui', label: 'SD WebUI (A1111)' },
+  { value: 'comfyui', label: 'ComfyUI' },
 ]
 
 /** OpenAI DALL-E 尺寸选项 */
@@ -32,6 +33,14 @@ const SD_SAMPLERS = [
   'DDIM', 'PLMS', 'UniPC',
 ]
 
+/** ComfyUI 原生 KSampler 采样器名称 */
+const COMFY_SAMPLERS = [
+  'euler', 'euler_ancestral', 'heun', 'lms',
+  'dpm_2', 'dpm_2_ancestral', 'dpm_fast', 'dpm_adaptive',
+  'dpmpp_2s_ancestral', 'dpmpp_sde', 'dpmpp_2m',
+  'ddim', 'uni_pc',
+]
+
 const IMAGE_QUALITIES = [
   { value: 'standard', label: '标准' },
   { value: 'hd', label: 'HD 高清' },
@@ -39,6 +48,20 @@ const IMAGE_QUALITIES = [
 
 /** 根据 provider 返回空表单默认值 */
 function emptyForm(provider: string = 'openai'): ImageGenModelConfig {
+  if (provider === 'comfyui') {
+    return {
+      id: '', name: '', provider: 'comfyui',
+      model: '', apiKey: '', baseUrl: 'http://127.0.0.1:8188',
+      size: '512x512', quality: 'standard',
+      enabled: true, order: 0,
+      negativePrompt: '',
+      steps: 20,
+      cfgScale: 7,
+      sampler: 'euler',
+      scheduler: 'normal',
+      workflow: '',
+    }
+  }
   if (provider === 'sd-webui') {
     return {
       id: '', name: '', provider: 'sd-webui',
@@ -75,7 +98,9 @@ export function ImageGenModelsSection() {
   const models = [...settings.imageGenModels].sort((a, b) => a.order - b.order)
 
   const isSdWebui = form.provider === 'sd-webui'
-  const sizeOptions = isSdWebui ? SD_SIZES : OPENAI_SIZES
+  const isComfyUi = form.provider === 'comfyui'
+  const usesDiffusionSettings = isSdWebui || isComfyUi
+  const sizeOptions = usesDiffusionSettings ? SD_SIZES : OPENAI_SIZES
 
   const resetForm = () => {
     setForm(emptyForm())
@@ -104,8 +129,13 @@ export function ImageGenModelsSection() {
       return {
         ...f,
         provider,
-        baseUrl: f.baseUrl || defaults.baseUrl,
+        baseUrl: defaults.baseUrl,
         size: defaults.size,
+        steps: defaults.steps,
+        cfgScale: defaults.cfgScale,
+        sampler: defaults.sampler,
+        scheduler: defaults.scheduler,
+        workflow: defaults.workflow,
       }
     })
     setTestResult(null)
@@ -205,21 +235,21 @@ export function ImageGenModelsSection() {
           className="input text-xs font-mono"
           value={form.baseUrl}
           onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
-          placeholder={isSdWebui ? 'http://127.0.0.1:7860' : 'https://api.openai.com/v1'}
+          placeholder={isComfyUi ? 'http://127.0.0.1:8188' : isSdWebui ? 'http://127.0.0.1:7860' : 'https://api.openai.com/v1'}
         />
       </div>
 
-      {/* API Key（仅 OpenAI 显示） */}
+      {/* API Key（ComfyUI 本地服务可留空，远程代理可选） */}
       {!isSdWebui && (
         <div>
-          <label className="label">API Key</label>
+          <label className="label">API Key{isComfyUi ? '（可选）' : ''}</label>
           <div className="relative">
             <input
               type={showKey ? 'text' : 'password'}
               className="input text-xs pr-10"
               value={form.apiKey}
               onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
-              placeholder="sk-..."
+              placeholder={isComfyUi ? '本地服务留空' : 'sk-...'}
               autoComplete="off"
             />
             <button
@@ -235,14 +265,17 @@ export function ImageGenModelsSection() {
 
       {/* 模型名称 */}
       <div>
-        <label className="label">模型名称</label>
+        <label className="label">{isComfyUi ? 'Checkpoint 文件名' : '模型名称'}</label>
         <input
           type="text"
           className="input text-sm"
           value={form.model}
           onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-          placeholder={isSdWebui ? '（可选，如 v1-5-pruned）' : '例如 dall-e-3'}
+          placeholder={isComfyUi ? '例如 model.safetensors' : isSdWebui ? '（可选，如 v1-5-pruned）' : '例如 dall-e-3'}
         />
+        {isComfyUi && (
+          <p className="text-xs text-tavern-text-muted mt-1">使用自定义工作流且模型已写入工作流时可留空</p>
+        )}
       </div>
 
       {/* 尺寸 */}
@@ -260,7 +293,7 @@ export function ImageGenModelsSection() {
       </div>
 
       {/* 质量（仅 OpenAI 显示） */}
-      {!isSdWebui && (
+      {!usesDiffusionSettings && (
         <div>
           <label className="label">生成质量</label>
           <div className="flex flex-wrap gap-1.5 mt-1">
@@ -282,8 +315,8 @@ export function ImageGenModelsSection() {
         </div>
       )}
 
-      {/* SD WebUI 特有参数 */}
-      {isSdWebui && (
+      {/* SD WebUI / ComfyUI 扩散参数 */}
+      {usesDiffusionSettings && (
         <>
           {/* 负面提示词 */}
           <div>
@@ -329,14 +362,30 @@ export function ImageGenModelsSection() {
             <label className="label">采样器</label>
             <select
               className="input text-sm"
-              value={form.sampler ?? 'Euler a'}
+              value={form.sampler ?? (isComfyUi ? 'euler' : 'Euler a')}
               onChange={(e) => setForm((f) => ({ ...f, sampler: e.target.value }))}
             >
-              {SD_SAMPLERS.map((s) => (
+              {(isComfyUi ? COMFY_SAMPLERS : SD_SAMPLERS).map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
           </div>
+
+          {isComfyUi && (
+            <div>
+              <label className="label">API 工作流 JSON（可选）</label>
+              <textarea
+                className="textarea text-xs font-mono min-h-36"
+                value={form.workflow ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, workflow: e.target.value }))}
+                placeholder="粘贴 ComfyUI 导出的 API 格式工作流；留空使用基础文生图工作流"
+                spellCheck={false}
+              />
+              <p className="text-xs text-tavern-text-muted mt-1 leading-relaxed">
+                支持 {'{{prompt}}'}、{'{{negative_prompt}}'}、{'{{width}}'}、{'{{height}}'}、{'{{seed}}'}、{'{{steps}}'}、{'{{cfg}}'}、{'{{sampler}}'}、{'{{scheduler}}'} 和 {'{{checkpoint}}'} 占位符。
+              </p>
+            </div>
+          )}
         </>
       )}
 
@@ -437,7 +486,7 @@ export function ImageGenModelsSection() {
                     {m.model ? ` · ${m.model}` : ''}
                     {m.size ? ` · ${m.size}` : ''}
                     {m.provider === 'openai' && m.quality ? ` · ${m.quality}` : ''}
-                    {m.provider === 'sd-webui' && m.steps ? ` · ${m.steps}步` : ''}
+                    {(m.provider === 'sd-webui' || m.provider === 'comfyui') && m.steps ? ` · ${m.steps}步` : ''}
                   </div>
                 </div>
 

@@ -51,16 +51,32 @@ export function syncPersonaToSettings(personaId?: string | null): void {
 }
 
 /**
- * 应用角色的默认长记忆配置到新会话（角色卡配置 defaultMemoryEnabled 时生效）。
+ * 应用新会话的默认长记忆配置。角色卡已启用长记忆时优先使用角色参数，
+ * 否则回退到全局“新建对话默认开启长记忆”设置。
  * 仅初始化一次，用户后续可手动覆盖。
  */
 export async function applyDefaultMemory(character: Character | null | undefined, sessionId: string): Promise<void> {
-  if (!character?.defaultMemoryEnabled) return
+  if (!character) return
+  const globalDefaultEnabled = useSettingsStore.getState().settings.defaultMemoryEnabled ?? false
+  const useCharacterDefaults = character.defaultMemoryEnabled === true
+  if (!useCharacterDefaults && !globalDefaultEnabled) return
   try {
     await window.api.chat.updateSession(character.id, sessionId, {
       memoryEnabled: true,
-      memoryMode: character.defaultMemoryMode ?? 'auto',
-      autoMemoryInterval: character.defaultMemoryInterval ?? 10,
+      memoryMode: useCharacterDefaults ? (character.defaultMemoryMode ?? 'auto') : 'auto',
+      autoMemoryInterval: useCharacterDefaults ? (character.defaultMemoryInterval ?? 10) : 10,
+    })
+  } catch { /* 忽略 */ }
+}
+
+/** 将全局默认长记忆配置应用到新建群聊。 */
+export async function applyDefaultGroupMemory(groupId: string, sessionId: string): Promise<void> {
+  if (!(useSettingsStore.getState().settings.defaultMemoryEnabled ?? false)) return
+  try {
+    await window.api.group.updateSession(groupId, sessionId, {
+      memoryEnabled: true,
+      memoryMode: 'auto',
+      autoMemoryInterval: 10,
     })
   } catch { /* 忽略 */ }
 }
@@ -147,7 +163,8 @@ export async function invalidateDerivedMemory(
   if (latest && (latest.memoryVersion ?? 0) !== expectedVersion) {
     return null
   }
-  await window.api.chat.updateSession(character.id, sessionId, patch).catch(() => { /* 忽略 */ })
+  const commit = await window.api.chat.updateSessionIfMemoryVersion(character.id, sessionId, expectedVersion, patch).catch(() => null)
+  if (!commit?.applied) return null
   return { sessionId, patch, expectedVersion }
 }
 
@@ -203,7 +220,8 @@ export async function invalidateGroupDerivedMemory(
   }
   const latest = get().sessions.find((s) => s.id === sessionId) as unknown as { memoryVersion?: number }
   if (latest && (latest.memoryVersion ?? 0) !== expectedVersion) return null
-  await (window as unknown as { api: { group: { updateSession: (a: string, b: string, c: unknown) => Promise<void> } } }).api.group.updateSession(groupId, sessionId, patch).catch(() => {})
+  const commit = await window.api.group.updateSessionIfMemoryVersion(groupId, sessionId, expectedVersion, patch).catch(() => null)
+  if (!commit?.applied) return null
   return { sessionId, patch, expectedVersion }
 }
 

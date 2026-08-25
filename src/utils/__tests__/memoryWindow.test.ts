@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildMemorySummaryWindow } from '../memoryWindow'
+import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../memoryWindow'
 
 type TestMessage = { id: string; content: string }
 
@@ -44,5 +44,26 @@ describe('buildMemorySummaryWindow', () => {
 
     expect(window.selected.map((message) => message.id)).toEqual(['m0'])
     expect(window.processedThroughMessageId).toBe('m0')
+  })
+})
+
+describe('resolveMemorySummaryInputBudget', () => {
+  it('根据模型上下文、系统提示和输出预留动态缩小输入预算', () => {
+    expect(resolveMemorySummaryInputBudget(4096, 1600, 2048)).toBeLessThan(6000)
+    expect(resolveMemorySummaryInputBudget(128000, 1600, 2048)).toBe(6000)
+  })
+
+  it('配置异常时仍提供可用的最小预算', () => {
+    expect(resolveMemorySummaryInputBudget(1024, 900, 2048)).toBeGreaterThanOrEqual(128)
+  })
+})
+
+describe('fitOversizedMemoryMessage', () => {
+  it('超长单条消息保留首尾且不超过预算', () => {
+    const result = fitOversizedMemoryMessage('开头' + '中'.repeat(100) + '结尾', 30, (text) => text.length)
+    expect(result).toContain('开头')
+    expect(result).toContain('结尾')
+    expect(result).toContain('中间内容已省略')
+    expect(result.length).toBeLessThanOrEqual(30)
   })
 })

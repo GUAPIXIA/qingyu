@@ -209,6 +209,24 @@ describe('MessageBubble', () => {
       expect(deleteMessage).toHaveBeenCalledWith('msg-1', expect.anything())
     })
 
+    it('新建分支沿用原会话名称，不再截取消息正文', async () => {
+      const msg = createMessage({ content: '这段消息正文不应该成为分支名称' })
+      useChatStore.setState({
+        messages: [msg],
+        sessions: [{ id: 's1', title: '雨夜重逢' }],
+        currentSessionId: 's1',
+      } as any)
+
+      const { getByTitle } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+      fireEvent.click(getByTitle('从此处分支'))
+
+      await waitFor(() => {
+        expect(window.api.chat.createSession).toHaveBeenCalledWith('char-1', '雨夜重逢 · 分支')
+      })
+    })
+
     it('流式时隐藏操作栏', () => {
       useChatStore.setState({ isStreaming: true } as any)
       const { queryByTitle } = render(

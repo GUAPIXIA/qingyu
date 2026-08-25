@@ -31,6 +31,7 @@ const mockApi: Partial<ExposedAPI> = {
     saveMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
     updateSession: vi.fn().mockResolvedValue(undefined),
+    updateSessionIfMemoryVersion: vi.fn().mockResolvedValue({ applied: true, currentVersion: 1 }),
     renameSession: vi.fn().mockResolvedValue(undefined),
     toggleMemory: vi.fn().mockResolvedValue(undefined),
     setMemoryMode: vi.fn().mockResolvedValue(undefined),
@@ -67,6 +68,8 @@ const mockApi: Partial<ExposedAPI> = {
     editMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
     clearChat: vi.fn().mockResolvedValue(undefined),
+    updateSession: vi.fn().mockResolvedValue(undefined),
+    updateSessionIfMemoryVersion: vi.fn().mockResolvedValue({ applied: true, currentVersion: 1 }),
   } as any,
   file: {
     selectImage: vi.fn().mockResolvedValue(null),

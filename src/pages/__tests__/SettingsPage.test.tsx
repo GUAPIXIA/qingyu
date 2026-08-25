@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, fireEvent, waitFor, act, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { SettingsPage } from '../SettingsPage'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -127,5 +127,19 @@ describe('SettingsPage 冒烟测试', () => {
     const widthSlider = container.querySelector('input[type="range"][min="400"]') as HTMLInputElement
     expect(widthSlider).toBeTruthy()
     expect(widthSlider.max).toBe('1600')
+  })
+
+  it('可设置新建对话默认开启长记忆', async () => {
+    render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+    await act(async () => {})
+
+    const toggle = screen.getByRole('switch', { name: '新建对话默认开启长记忆' })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(toggle)
+    expect(useSettingsStore.getState().settings.defaultMemoryEnabled).toBe(true)
   })
 })

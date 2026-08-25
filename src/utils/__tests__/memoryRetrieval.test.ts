@@ -56,12 +56,12 @@ describe('scoreAndRankFacts - 字符串事实 0.7语义+0.3新近', () => {
   })
 })
 
-describe('scoreAndRankFacts - 结构化 0.5+0.3+0.2', () => {
+describe('scoreAndRankFacts - 结构化语义+新近+重要性+置信度', () => {
   it('综合分数正确', () => {
     const now = Date.now()
     const f = makeFact({ id: '1', subject: '林夏', predicate: '关系', value: '恋人', importance: 5, updatedAt: now })
     const ranked = scoreAndRankFacts([f], [0.8], now)
-    const expected = 0.8 * 0.5 + 1 * 0.3 + 1 * 0.2
+    const expected = 0.8 * 0.5 + 1 * 0.2 + 1 * 0.2 + 0.8 * 0.1
     expect(ranked[0].score).toBeCloseTo(expected, 2)
     expect(ranked[0].semantic).toBe(0.8)
     expect(ranked[0].recency).toBe(1)
@@ -72,6 +72,13 @@ describe('scoreAndRankFacts - 结构化 0.5+0.3+0.2', () => {
     const f2 = makeFact({ id: '2', subject: 'B', predicate: 'p', value: 'v2', importance: 5, updatedAt: now })
     const ranked = scoreAndRankFacts([f1, f2], [0.5, 0.5], now)
     expect((ranked[0].fact as MemoryFact).id).toBe('2')
+  })
+  it('其余条件相同时置信度高的事实排前', () => {
+    const now = Date.now()
+    const low = makeFact({ id: 'low', subject: 'A', predicate: 'p', value: 'v1', confidence: 0.2, updatedAt: now })
+    const high = makeFact({ id: 'high', subject: 'B', predicate: 'p', value: 'v2', confidence: 0.95, updatedAt: now })
+    const ranked = scoreAndRankFacts([low, high], [0.7, 0.7], now)
+    expect((ranked[0].fact as MemoryFact).id).toBe('high')
   })
 })
 

@@ -196,7 +196,7 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
 
   // 缓存：同一轮对话查询不变时复用（省嵌入 API 调用）
   const cacheKey = `gfacts|${session.id}|${query}|${st.model}`
-  const cached = semanticCacheGet<string[]>(cacheKey)
+  const cached = semanticCacheGet<import('../../shared/ipc-api').FactSearchHit[]>(cacheKey)
   if (cached) {
     set({ _semanticFactsHits: cached })
     return
@@ -216,8 +216,11 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
       threshold: st.threshold,
       maxResults: st.maxResults ?? 3,
     })
-    set({ _semanticFactsHits: hits ?? [] })
-    semanticCacheSet(cacheKey, hits ?? [])
+    const scoredHits = (hits ?? []).map((hit, index) => typeof hit === 'string'
+      ? { text: hit, index, score: 0 }
+      : hit)
+    set({ _semanticFactsHits: scoredHits })
+    semanticCacheSet(cacheKey, scoredHits)
   } catch {
     clear()
   }

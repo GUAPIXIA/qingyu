@@ -25,6 +25,7 @@ import type {
   Settings,
   SessionPreview,
 } from './types'
+import type { FactSearchHit } from './ipc-api'
 
 /** 活跃连接配置（对齐 useSettingsStore.getActiveProfile() 返回值） */
 export interface ActiveProfile {
@@ -53,7 +54,7 @@ export interface ContextChatSnapshot {
   currentSessionId: string | null
   activeLorebookIds: string[]
   /** P0-2 语义检索命中（长记忆事实） */
-  semanticFactsHits: string[]
+  semanticFactsHits: Array<FactSearchHit | string>
   /** P0-2 语义检索命中（世界书条目） */
   semanticLoreHits: SemanticLoreHit[]
 }

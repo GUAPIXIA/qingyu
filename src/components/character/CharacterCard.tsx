@@ -213,16 +213,16 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
     </div>
   )
 
-  // S2-C：常驻主操作“开始对话”，其余收进更多菜单；提升键盘可达与发现性
+  // 常驻“开始对话”图标按钮，其余操作收进更多菜单。
   const actionButtons = (
     <>
       <button
         onClick={(e) => { e.stopPropagation(); onChat(character) }}
         aria-label="开始对话"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-tavern-accent text-white hover:bg-tavern-accent-hover transition-colors text-xs font-medium shadow-sm"
+        title="开始对话"
+        className="inline-flex items-center justify-center p-2 rounded-full bg-tavern-accent text-white hover:bg-tavern-accent-hover transition-colors shadow-sm"
       >
-        <MessageSquare className="w-3.5 h-3.5" aria-hidden />
-        开始对话
+        <MessageSquare className="w-4 h-4" aria-hidden />
       </button>
       <div className="relative">
         <button

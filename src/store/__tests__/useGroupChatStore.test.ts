@@ -67,6 +67,26 @@ describe('useGroupChatStore', () => {
     })
   })
 
+  describe('createSession', () => {
+    it('全局默认开启时为新群聊启用自动长记忆', async () => {
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, defaultMemoryEnabled: true },
+      }))
+      const updateSession = vi.fn().mockResolvedValue(undefined)
+      window.api.group.updateSession = updateSession
+      vi.mocked(window.api.group.createSession).mockResolvedValue({ id: 'session-1' } as never)
+      vi.mocked(window.api.group.listSessions).mockResolvedValue([])
+
+      await useGroupChatStore.getState().createSession('group-1')
+
+      expect(updateSession).toHaveBeenCalledWith('group-1', 'session-1', {
+        memoryEnabled: true,
+        memoryMode: 'auto',
+        autoMemoryInterval: 10,
+      })
+    })
+  })
+
   describe('clearMessages', () => {
     it('resets messages and error to empty', () => {
       useGroupChatStore.setState({
@@ -76,6 +96,34 @@ describe('useGroupChatStore', () => {
       useGroupChatStore.getState().clearMessages()
       expect(useGroupChatStore.getState().messages).toEqual([])
       expect(useGroupChatStore.getState().error).toBeNull()
+    })
+  })
+
+  describe('updateMemoryFacts', () => {
+    it('持久化群聊事实并使旧语义向量失效', async () => {
+      const updateSession = vi.fn().mockResolvedValue({ applied: true, currentVersion: 5 })
+      window.api.group.updateSessionIfMemoryVersion = updateSession
+      useGroupChatStore.setState({
+        sessions: [{ id: 's1', groupId: 'g1', memoryVersion: 4, factsVectors: [[0.1]] } as never],
+        _semanticFactsHits: ['旧命中'],
+      })
+
+      await useGroupChatStore.getState().updateMemoryFacts('g1', 's1', ['群聊新事实'])
+
+      expect(updateSession).toHaveBeenCalledWith('g1', 's1', 4, expect.objectContaining({
+        memoryFacts: ['群聊新事实'],
+        memoryVersion: 5,
+        factsVectors: [],
+        factsVectorVersion: -1,
+        memoryUpdatedAt: expect.any(Number),
+      }))
+      expect(useGroupChatStore.getState().sessions[0]).toEqual(expect.objectContaining({
+        memoryFacts: ['群聊新事实'],
+        memoryVersion: 5,
+        factsVectors: [],
+        factsVectorVersion: -1,
+      }))
+      expect(useGroupChatStore.getState()._semanticFactsHits).toEqual([])
     })
   })
 

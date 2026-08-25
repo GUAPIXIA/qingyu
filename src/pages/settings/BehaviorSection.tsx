@@ -37,6 +37,20 @@ export function BehaviorSection(props: BehaviorSectionProps) {
               />
             </div>
 
+            <div className="flex items-center justify-between gap-4 py-1">
+              <div>
+                <p className="text-sm">新建对话默认开启长记忆</p>
+                <p className="text-xs text-tavern-text-muted">
+                  新建单聊和群聊时启用自动长记忆（每 10 条总结），已有会话不受影响
+                </p>
+              </div>
+              <Toggle
+                label="新建对话默认开启长记忆"
+                checked={settings.defaultMemoryEnabled ?? false}
+                onChange={(v) => updateSettings({ defaultMemoryEnabled: v })}
+              />
+            </div>
+
             <div className="flex items-center justify-between py-1">
               <div>
                 <p className="text-sm">内心想法默认展开</p>

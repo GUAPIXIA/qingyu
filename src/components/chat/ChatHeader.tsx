@@ -41,6 +41,7 @@ export function ChatHeader({
   const renameSession = useChatStore((s) => s.renameSession)
   const toggleMemory = useChatStore((s) => s.toggleMemory)
   const setMemoryMode = useChatStore((s) => s.setMemoryMode)
+  const updateMemoryFacts = useChatStore((s) => s.updateMemoryFacts)
   const triggerMemorySummary = useChatStore((s) => s.triggerMemorySummary)
   const getStats = useChatStore((s) => s.getStats)
   const characters = useCharacterStore((s) => s.characters)
@@ -269,6 +270,10 @@ export function ChatHeader({
               }}
               onSetMemoryMode={(mode, interval) => {
                 if (currentCharacter && currentSessionId) setMemoryMode(currentCharacter.id, currentSessionId, mode, interval)
+              }}
+              onUpdateMemoryFacts={(facts) => {
+                if (!currentCharacter || !currentSessionId) return Promise.resolve()
+                return updateMemoryFacts(currentCharacter.id, currentSessionId, facts)
               }}
               onTriggerSummary={() => {
                 if (currentCharacter) triggerMemorySummary(currentCharacter)

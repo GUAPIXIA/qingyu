@@ -17,12 +17,15 @@ function makeGet(sessions: unknown[], messages: { id: string }[], currentSession
   return () => ({ currentSessionId, sessions: sessions as never[], messages })
 }
 
-// Mock window.api.chat.updateSession
+// Mock window.api.chat.updateSessionIfMemoryVersion
 const updateCalls: unknown[] = []
 ;(globalThis as unknown as { window: unknown }).window = {
   api: {
     chat: {
-      updateSession: vi.fn(async (...args: unknown[]) => { updateCalls.push(args) }),
+      updateSessionIfMemoryVersion: vi.fn(async (...args: unknown[]) => {
+        updateCalls.push(args)
+        return { applied: true, currentVersion: 0 }
+      }),
     },
   },
 } as unknown

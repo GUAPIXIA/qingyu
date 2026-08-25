@@ -4,12 +4,14 @@ import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../utils/memory'
 import { estimateTokens } from '../utils/tokenCounter'
-import { buildMemorySummaryWindow } from '../utils/memoryWindow'
+import { getDefaultMaxContext } from '../utils/tokenCounter'
+import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../utils/memoryWindow'
 import { MEMORY_SUMMARY_MIN } from './chatConstants'
 import { friendlyError } from './chatUtils'
 import { logWarn } from '../lib/logger'
 import { vectorizeSessionFacts } from './streamController'
 import type { StoreGet, StoreSet } from './chatTypes'
+import { nanoid } from 'nanoid'
 
 /** 同一会话一次只允许一个总结任务，避免并发结果相互覆盖。 */
 const activeMemorySummaries = new Set<string>()
@@ -38,33 +40,49 @@ export async function runMemorySummary(
   const userName = settings.userName || '用户'
 
   const meaningfulMessages = messages.filter(m => m.role !== 'system' && m.content.trim())
+  const model = settings.activeModel || profile.model
+  const previousMemory = session.memory || '无'
+  const previousFacts = session.memoryFacts ?? []
+  const previousFactsText = formatMemoryFacts(previousFacts) || '无'
+  const promptOverheadTokens = estimateTokens(
+    `${character.name}\n${userName}\n${session.memoryCurrentState || '无'}\n${previousMemory}\n${previousFactsText}`,
+    model,
+  ) + 900
+  const summaryInputBudget = resolveMemorySummaryInputBudget(
+    profile.maxContext || getDefaultMaxContext(model),
+    promptOverheadTokens,
+    2048,
+  )
   const formatMessage = (message: typeof meaningfulMessages[number]) =>
     `${message.role === 'user' ? userName : character.name}: ${message.content}`
   const summaryWindow = buildMemorySummaryWindow(
     meaningfulMessages,
     session.memoryLastMessageId,
     formatMessage,
-    (text) => estimateTokens(text, settings.activeModel || profile.model),
+    (text) => estimateTokens(text, model),
+    { tokenBudget: summaryInputBudget },
   )
   // 最少消息数只针对尚未处理的增量内容；已总结的 overlap 不应重复计数。
   if (summaryWindow.pending.length < MEMORY_SUMMARY_MIN || summaryWindow.selected.length === 0) return null
   const processedThroughMessageId = summaryWindow.processedThroughMessageId
-  const nextMemoryVersion = (session.memoryVersion ?? 0) + 1
+  const baseMemoryVersion = session.memoryVersion ?? 0
+  const nextMemoryVersion = baseMemoryVersion + 1
+
+  const formatSelectedMessage = (message: typeof meaningfulMessages[number]) =>
+    summaryWindow.selected.length === 1
+      ? fitOversizedMemoryMessage(formatMessage(message), summaryInputBudget, (text) => estimateTokens(text, model))
+      : formatMessage(message)
 
   const messagesText = [
     summaryWindow.overlap.length > 0
       ? `【已总结内容，仅作衔接】\n${summaryWindow.overlap.map(formatMessage).join('\n')}`
       : '',
-    `【待总结的新对话】\n${summaryWindow.selected.map(formatMessage).join('\n')}`,
+    `【待总结的新对话】\n${summaryWindow.selected.map(formatSelectedMessage).join('\n')}`,
   ].filter(Boolean).join('\n\n')
 
-  const previousMemory = session.memory || '无'
-  // 之前的关键事实（供模型合并更新）
-  const previousFacts = session.memoryFacts ?? []
-  const previousFactsText = formatMemoryFacts(previousFacts) || '无'
   const shouldAttemptFactProposal = nextMemoryVersion >= (session.memoryFactRetryAfterVersion ?? 0)
 
-  const requestId = `memory-summary-${Date.now()}`
+  const requestId = `memory-summary-${nanoid()}`
   let result = ''
   let errored = false
   let errMsg = ''
@@ -88,8 +106,7 @@ export async function runMemorySummary(
       result += data.text
     })
     const unbindDone = window.api.ai.onDone(async (doneId) => {
-      if (doneId !== requestId) return
-      cleanup()
+      if (doneId !== requestId || cleanedUp) return
       const parsed = parseMemoryResult(result)
       if (parsed.summary) {
         try {
@@ -102,9 +119,28 @@ export async function runMemorySummary(
           let memoryFactHistory = session.memoryFactHistory
           let factStateUpdates: Record<string, number> = {}
           if (shouldAttemptFactProposal && hasFactProposalsSection && parsed.factProposals) {
-            const applied = applyFactProposals(session.memoryFacts, session.memoryFactHistory, parsed.factProposals, processedThroughMessageId ?? '')
-            facts = applied.facts
-            memoryFactHistory = applied.history
+            const scopedProposals = parsed.factProposals.map((proposal) => ({
+              ...proposal,
+              scope: `session:${currentSessionId}`,
+              entityId: proposal.entityId
+                ?? (proposal.subject.trim().toLocaleLowerCase() === character.name.trim().toLocaleLowerCase() ? character.id : undefined)
+                ?? (proposal.subject.trim().toLocaleLowerCase() === userName.trim().toLocaleLowerCase() ? '__user__' : undefined),
+            }))
+            let proposalFacts = session.memoryFacts
+            let proposalHistory = session.memoryFactHistory
+            for (const proposal of scopedProposals) {
+              const evidence = [...summaryWindow.selected].reverse().find((message) => {
+                const content = message.content.toLocaleLowerCase()
+                return [proposal.value, proposal.subject]
+                  .map((value) => value.trim().toLocaleLowerCase())
+                  .some((value) => value.length >= 2 && content.includes(value))
+              })
+              const applied = applyFactProposals(proposalFacts, proposalHistory, [proposal], evidence?.id ?? processedThroughMessageId ?? '')
+              proposalFacts = applied.facts
+              proposalHistory = applied.history
+            }
+            facts = proposalFacts ?? []
+            memoryFactHistory = proposalHistory
             factStateUpdates = { memoryFactParseFailureCount: 0, memoryFactRetryAfterVersion: 0 }
           } else if (hasFactChangesSection && parsed.factChanges) {
             const applied = applyMemoryFactChanges(
@@ -122,7 +158,7 @@ export async function runMemorySummary(
             factStateUpdates = { memoryFactParseFailureCount: failureCount, memoryFactRetryAfterVersion: retryAfterVersion }
             logWarn('memory', `结构化事实提案解析失败，已保留旧事实（会话 ${currentSessionId}，失败 ${failureCount} 次，重试版本 ${retryAfterVersion}）`)
           }
-          await window.api.chat.updateSession(character.id, currentSessionId, {
+          const commit = await window.api.chat.updateSessionIfMemoryVersion(character.id, currentSessionId, baseMemoryVersion, {
             memory: parsed.summary,
             memoryCurrentState: hasCurrentStateSection ? parsed.currentState : (session.memoryCurrentState ?? ''),
             memoryFacts: facts,
@@ -134,6 +170,16 @@ export async function runMemorySummary(
             memoryLastMessageId: processedThroughMessageId,
             memoryVersion: nextMemoryVersion,
           })
+          if (!commit.applied) {
+            set({ error: '长记忆已被其他操作更新，本次旧摘要未写入。请重试总结。' })
+            if (get().currentSessionId === currentSessionId) {
+              const refreshedSessions = await window.api.chat.listSessions(character.id)
+              set({ sessions: refreshedSessions })
+            }
+            cleanup()
+            resolve(null)
+            return
+          }
           // P0-2：事实向量化（异步，供语义检索注入）；版本不匹配时上下文会自动回退。
           if (facts.length > 0) vectorizeSessionFacts(character.id, currentSessionId, facts, nextMemoryVersion)
           // NEW-M11：摘要写入归属发起时会话（数据正确）；仅当用户仍停留在同一会话时刷新 UI，
@@ -142,8 +188,14 @@ export async function runMemorySummary(
             const refreshedSessions = await window.api.chat.listSessions(character.id)
             set({ sessions: refreshedSessions })
           }
-        } catch { /* ignore */ }
+        } catch (error) {
+          set({ error: `长记忆保存失败：${friendlyError(error instanceof Error ? error.message : String(error))}` })
+          cleanup()
+          resolve(null)
+          return
+        }
       }
+      cleanup()
       resolve(parsed.summary || null)
     })
     const unbindError = window.api.ai.onError((data) => {
@@ -168,17 +220,17 @@ export async function runMemorySummary(
 1-3 句：当前场景、时间/地点、正在进行的目标或冲突、角色即时关系或情绪。只保留会影响下一轮对话的内容。
 
 【时间线】
-2-4 句：已发生的重要事件、关键转折与因果。不要重复当前状态。
+最多 8 条按时间顺序排列的简短事件：保留仍会影响剧情、关系、承诺或任务的旧事件，并合并新事件；只有被新对话明确推翻时才改写旧事件。不要重复当前状态。
 
 ${shouldAttemptFactProposal ? `【事实提案】
 \`\`\`json
-[{"subject":"主体","predicate":"属性或关系","value":"值","changeType":"set","scope":"本会话","importance":3,"confidence":0.9}]
+[{"subject":"主体","predicate":"属性或关系","value":"值","changeType":"set","importance":3,"confidence":0.9}]
 \`\`\`` : '本次结构化事实更新正在退避；不要输出【事实提案】。'}
 
 要求：
 - 事实必须是对话中确立的、对未来有参考价值的持久信息（人名、身份、地点、物品、目标、约定、关系等），不要写临时情绪或过场细节。
 - 只输出语义事实提案，绝对不要输出事实 ID、action、patch 或完整事实列表。changeType 用 set 表示新增/更新，clear 表示失效。
-- 服务端会按「主体 + 属性/关系 + scope + entityId」匹配；没有事实变更时输出空数组 []。
+- 服务端负责规范化会话范围和角色身份；没有事实变更时输出空数组 []。
 - 只输出上述格式内容，不要添加任何解释或评价。
 
 之前的当前状态：
@@ -190,14 +242,14 @@ ${previousMemory}
 之前的事实：
 ${previousFactsText}
 
-事实范围默认为本会话。`,
+事实范围由服务端确定。`,
         },
         { role: 'user', content: `新对话内容：\n${messagesText}` },
       ],
       provider: profile.provider,
       apiKey: profile.apiKey,
       baseUrl: profile.baseUrl,
-      model: settings.activeModel || profile.model,
+      model,
       temperature: 0.3,
       topP: 0.9,
       maxTokens: 2048,

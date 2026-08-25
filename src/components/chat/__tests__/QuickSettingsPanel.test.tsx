@@ -77,4 +77,41 @@ describe('QuickSettingsPanel', () => {
     expect(onShowContextViewer).toHaveBeenCalledOnce()
     expect(onClose).toHaveBeenCalledOnce()
   })
+
+  it('统一关闭、刷新和连接测试按钮的图标容器样式', async () => {
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        activeProfileId: 'profile-1',
+        connectionProfiles: [{
+          id: 'profile-1', name: '测试连接', provider: 'openai', apiKey: 'sk-test',
+          baseUrl: 'https://api.example.com/v1', model: 'model-a', maxContext: 8192,
+        }],
+      },
+    }))
+    vi.mocked(window.api.ai.listModels).mockResolvedValueOnce({ success: true, models: ['model-a'] })
+    render(
+      <QuickSettingsPanel
+        open
+        onClose={vi.fn()}
+        messages={[]}
+        onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()}
+        onExport={vi.fn()}
+        onClearConfirm={vi.fn()}
+      />,
+    )
+
+    const refreshButton = await screen.findByRole('button', { name: '刷新模型列表' })
+    const buttons = [
+      screen.getByRole('button', { name: '关闭快捷设置' }),
+      refreshButton,
+      screen.getByRole('button', { name: '测试连接' }),
+    ]
+    for (const button of buttons) {
+      expect(button.className).toContain('h-7')
+      expect(button.className).toContain('w-7')
+      expect(button.className).toContain('rounded-lg')
+    }
+  })
 })

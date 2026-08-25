@@ -100,6 +100,7 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
     })
     ;(window.api.group as any).updateMemory = vi.fn().mockResolvedValue(undefined)
     ;(window.api.group as any).updateSession = vi.fn().mockResolvedValue(undefined)
+    ;(window.api.group as any).updateSessionIfMemoryVersion = vi.fn().mockResolvedValue({ applied: true, currentVersion: 1 })
   })
 
   it('无当前群聊时直接返回', async () => {
@@ -146,7 +147,7 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
     callbacks.onDone!(requestId)
 
     await p
-    expect(window.api.group.updateSession).toHaveBeenCalledWith('g1', 's1', {
+    expect(window.api.group.updateSessionIfMemoryVersion).toHaveBeenCalledWith('g1', 's1', 0, {
       memory: '他们在森林重逢',
       memoryCurrentState: '众人正在森林边缘休整。',
       memoryFacts: ['目的地雪山'],
@@ -201,7 +202,7 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
     callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】群聊增量摘要\n【事实】\n' })
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
-    expect(window.api.group.updateSession).toHaveBeenCalledWith('g1', 's1', expect.objectContaining({
+    expect(window.api.group.updateSessionIfMemoryVersion).toHaveBeenCalledWith('g1', 's1', 0, expect.objectContaining({
       memoryLastMessageId: 'm7',
     }))
   })
@@ -209,6 +210,23 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
   it('chat 调用失败时静默处理（不影响主流程）', async () => {
     ;(window.api.ai as any).chat = vi.fn().mockRejectedValue(new Error('network'))
     await runGroupMemorySummary((() => makeState()) as any, vi.fn())
+  })
+
+  it('未启用长记忆时不发起群聊总结', async () => {
+    await runGroupMemorySummary((() => makeState({ sessions: [{ ...makeState().sessions[0], memoryEnabled: false }] })) as any, vi.fn())
+    expect(window.api.ai.chat).not.toHaveBeenCalled()
+  })
+
+  it('提交时版本已变化则不更新本地会话', async () => {
+    const callbacks = captureStreamCallbacks()
+    ;(window.api.group as any).updateSessionIfMemoryVersion = vi.fn().mockResolvedValue({ applied: false, currentVersion: 3 })
+    const set = vi.fn()
+    const p = runGroupMemorySummary((() => makeState()) as any, set)
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【摘要】过期群聊摘要\n【事实】\n' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+    await p
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('旧摘要未写入') }))
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ sessions: expect.any(Array) }))
   })
 })
 

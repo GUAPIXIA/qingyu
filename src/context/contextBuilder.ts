@@ -128,8 +128,12 @@ export function buildContextMessagesFromData(
     const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
     // P0-2：语义检索命中时仅注入相关事实，否则全量；透传语义分到预算层
     const semanticFacts = data.chat.semanticFactsHits
-    const factsForInject = semanticFacts.length > 0 ? semanticFacts : (currentSession.memoryFacts ?? [])
-    const semanticScores = semanticFacts.length > 0 ? semanticFacts.map(() => 0.9) : null
+    const factsForInject = semanticFacts.length > 0
+      ? semanticFacts.map((hit) => typeof hit === 'string' ? hit : hit.text)
+      : (currentSession.memoryFacts ?? [])
+    const semanticScores = semanticFacts.length > 0
+      ? semanticFacts.map((hit) => typeof hit === 'string' ? 0 : hit.score)
+      : null
     const fitted = fitLayeredMemoryBudget(
       currentSession.memoryCurrentState,
       currentSession.memory || '',

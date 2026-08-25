@@ -128,6 +128,7 @@ const chatApi: ChatAPI = {
   deleteSession: (characterId, sessionId) => ipcRenderer.invoke('chat:deleteSession', characterId, sessionId),
   renameSession: (characterId, sessionId, title) => ipcRenderer.invoke('chat:renameSession', characterId, sessionId, title),
   updateSession: (characterId, sessionId, updates) => ipcRenderer.invoke('chat:updateSession', characterId, sessionId, updates),
+  updateSessionIfMemoryVersion: (characterId, sessionId, expectedVersion, updates) => ipcRenderer.invoke('chat:updateSessionIfMemoryVersion', characterId, sessionId, expectedVersion, updates),
   listMessages: (characterId, sessionId) => ipcRenderer.invoke('chat:listMessages', characterId, sessionId),
   saveMessage: (message) => ipcRenderer.invoke('chat:saveMessage', message),
   deleteMessage: (id, characterId, sessionId) => ipcRenderer.invoke('chat:deleteMessage', { id, characterId, sessionId }),
@@ -297,6 +298,7 @@ const groupApi: GroupChatAPI = {
   toggleMemory: (groupId, sessionId, enabled) => ipcRenderer.invoke('group:toggleMemory', groupId, sessionId, enabled),
   setMemoryMode: (groupId, sessionId, mode, interval) => ipcRenderer.invoke('group:setMemoryMode', groupId, sessionId, mode, interval),
   updateSession: (groupId, sessionId, updates) => ipcRenderer.invoke('group:updateSession', groupId, sessionId, updates),
+  updateSessionIfMemoryVersion: (groupId, sessionId, expectedVersion, updates) => ipcRenderer.invoke('group:updateSessionIfMemoryVersion', groupId, sessionId, expectedVersion, updates),
 }
 
 contextBridge.exposeInMainWorld('api', {

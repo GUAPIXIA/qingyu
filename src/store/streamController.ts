@@ -191,7 +191,7 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
 
   // 缓存：同一轮对话查询不变时复用（省嵌入 API 调用）
   const cacheKey = `facts|${session.id}|${query}|${st.model}`
-  const cached = semanticCacheGet<string[]>(cacheKey)
+  const cached = semanticCacheGet<import('../../shared/ipc-api').FactSearchHit[]>(cacheKey)
   if (cached) {
     set({ _semanticFactsHits: cached })
     return
@@ -212,17 +212,19 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
       maxResults: st.maxResults ?? 3,
     })
     // 阶段三：检索排序（0.5语义+0.3新近+0.2重要性）
-    let rankedHits = hits ?? []
+    let rankedHits = (hits ?? []).map((hit, index) => typeof hit === 'string'
+      ? { text: hit, index, score: 0 }
+      : hit)
     if (rankedHits.length > 0 && session.memoryFacts) {
       try {
         const { scoreAndRankFacts, memoryFactToText } = await import('../utils/memory')
-        const hitFacts = rankedHits
-          .map((text) => (session.memoryFacts as import('../../shared/types').MemoryFactRecord[]).find((f) => memoryFactToText(f) === text))
-          .filter(Boolean) as import('../../shared/types').MemoryFactRecord[]
-        if (hitFacts.length > 0) {
-          const semanticScores = hitFacts.map(() => 0.9)
-          const ranked = scoreAndRankFacts(hitFacts, semanticScores)
-          rankedHits = ranked.map((r) => memoryFactToText(r.fact))
+        const matched = rankedHits
+          .map((hit) => ({ hit, fact: (session.memoryFacts as import('../../shared/types').MemoryFactRecord[]).find((fact) => memoryFactToText(fact) === hit.text) }))
+          .filter((item): item is { hit: import('../../shared/ipc-api').FactSearchHit; fact: import('../../shared/types').MemoryFactRecord } => Boolean(item.fact))
+        if (matched.length > 0) {
+          const ranked = scoreAndRankFacts(matched.map((item) => item.fact), matched.map((item) => item.hit.score))
+          const scoreByText = new Map(matched.map((item) => [memoryFactToText(item.fact), item.hit]))
+          rankedHits = ranked.map((item) => scoreByText.get(memoryFactToText(item.fact))!).filter(Boolean)
         }
       } catch { /* 排序失败回退原始 hits */ }
     }

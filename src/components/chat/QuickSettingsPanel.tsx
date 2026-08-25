@@ -23,6 +23,9 @@ const IMAGE_GEN_SIZES = [
   '512x768', '768x512',
 ]
 
+const QUICK_BUTTON_ICON_CLASS = 'w-3.5 h-3.5 shrink-0'
+const QUICK_BUTTON_ICON_BADGE_CLASS = 'grid h-7 w-7 place-items-center rounded-lg border shrink-0'
+
 export function QuickSettingsPanel({
   open,
   onClose,
@@ -207,9 +210,9 @@ export function QuickSettingsPanel({
             <Sliders className="w-4 h-4 text-tavern-accent" />
             快捷设置
           </h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-tavern-bg-hover transition-colors">
-            <X className="w-4 h-4" />
-          </button>
+          <QuickIconButton label="关闭快捷设置" onClick={onClose}>
+            <X className={QUICK_BUTTON_ICON_CLASS} />
+          </QuickIconButton>
         </div>
 
         <div className="p-4 space-y-5">
@@ -218,8 +221,8 @@ export function QuickSettingsPanel({
           <Section icon={MessageSquare} title="对话操作">
             <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-2.5">
               <div className="flex items-center gap-2 pb-2 border-b border-tavern-border-soft">
-                <span className="grid place-items-center w-7 h-7 rounded-lg bg-tavern-accent-soft text-tavern-accent shrink-0">
-                  <ArrowDownToLine className="w-3.5 h-3.5" />
+                <span className={cn(QUICK_BUTTON_ICON_BADGE_CLASS, 'border-tavern-accent/15 bg-tavern-accent-soft text-tavern-accent')}>
+                  <ArrowDownToLine className={QUICK_BUTTON_ICON_CLASS} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-tavern-text-soft">自动滚动</p>
@@ -287,22 +290,20 @@ export function QuickSettingsPanel({
                     <span className="truncate flex-1">{settings.activeModel || '选择模型'}</span>
                     <ChevronDown className={cn('w-3 h-3 shrink-0 text-tavern-text-muted transition-transform', modelExpanded && 'rotate-180')} />
                   </button>
-                  <button
+                  <QuickIconButton
                     onClick={refreshModels}
                     disabled={modelListLoading}
-                    className="p-1 rounded-md hover:bg-tavern-bg-hover text-tavern-text-muted transition-colors shrink-0"
-                    title="刷新模型列表"
+                    label="刷新模型列表"
                   >
-                    <RefreshCw className={cn('w-3.5 h-3.5', modelListLoading && 'animate-spin')} />
-                  </button>
-                  <button
+                    <RefreshCw className={cn(QUICK_BUTTON_ICON_CLASS, modelListLoading && 'animate-spin')} />
+                  </QuickIconButton>
+                  <QuickIconButton
                     onClick={handleTestConnection}
                     disabled={testing || !profile}
-                    className="p-1 rounded-md hover:bg-tavern-bg-hover text-tavern-text-muted transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="测试连接"
+                    label="测试连接"
                   >
-                    {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
-                  </button>
+                    {testing ? <Loader2 className={cn(QUICK_BUTTON_ICON_CLASS, 'animate-spin')} /> : <Plug className={QUICK_BUTTON_ICON_CLASS} />}
+                  </QuickIconButton>
                 </div>
                 {/* 展开的搜索+列表 */}
                 {modelExpanded && (
@@ -317,9 +318,9 @@ export function QuickSettingsPanel({
                           onChange={e => setModelSearch(e.target.value)}
                         />
                         {modelSearch && (
-                          <button className="text-tavern-text-muted hover:text-tavern-text" onClick={() => setModelSearch('')}>
+                          <QuickIconButton compact label="清除模型搜索" onClick={() => setModelSearch('')}>
                             <X className="w-3 h-3" />
-                          </button>
+                          </QuickIconButton>
                         )}
                       </div>
                     )}
@@ -368,14 +369,13 @@ export function QuickSettingsPanel({
                   onChange={(e) => updateSettings({ activeModel: e.target.value })}
                   placeholder="输入模型名称"
                 />
-                <button
+                <QuickIconButton
                   onClick={handleTestConnection}
                   disabled={testing || !profile}
-                  className="p-1.5 rounded-md hover:bg-tavern-bg-hover text-tavern-text-muted transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="测试连接"
+                  label="测试连接"
                 >
-                  {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
-                </button>
+                  {testing ? <Loader2 className={cn(QUICK_BUTTON_ICON_CLASS, 'animate-spin')} /> : <Plug className={QUICK_BUTTON_ICON_CLASS} />}
+                </QuickIconButton>
               </div>
             )}
             {profile?.baseUrl && (
@@ -517,13 +517,13 @@ export function QuickSettingsPanel({
                         <Lock className="w-2.5 h-2.5 shrink-0" />
                         <span className="max-w-[80px] truncate">{lb.name}</span>
                         {!isActive && (
-                          <button
-                            className="text-tavern-text-muted hover:text-tavern-accent transition-colors"
+                          <QuickIconButton
+                            compact
                             onClick={() => setActiveLorebooks([...activeLorebookIds, id], currentCharId)}
-                            title="激活此世界书"
+                            label={`激活世界书 ${lb.name}`}
                           >
-                            <ChevronDown className="w-2.5 h-2.5 rotate-[-90deg]" />
-                          </button>
+                            <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                          </QuickIconButton>
                         )}
                       </span>
                     )
@@ -534,12 +534,14 @@ export function QuickSettingsPanel({
                     return lb ? (
                       <span key={id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs bg-tavern-bg-soft text-tavern-text-soft border border-tavern-border-soft">
                         {lb.name}
-                        <button
-                          className="hover:text-tavern-danger transition-colors"
+                        <QuickIconButton
+                          compact
+                          danger
                           onClick={() => setActiveLorebooks(activeLorebookIds.filter(i => i !== id), currentCharId)}
+                          label={`移除世界书 ${lb.name}`}
                         >
                           <X className="w-3 h-3" />
-                        </button>
+                        </QuickIconButton>
                       </span>
                     ) : null
                   })}
@@ -565,9 +567,9 @@ export function QuickSettingsPanel({
                           onChange={e => setLorebookSearch(e.target.value)}
                         />
                         {lorebookSearch && (
-                          <button className="text-tavern-text-muted hover:text-tavern-text" onClick={() => setLorebookSearch('')}>
+                          <QuickIconButton compact label="清除世界书搜索" onClick={() => setLorebookSearch('')}>
                             <X className="w-3 h-3" />
-                          </button>
+                          </QuickIconButton>
                         )}
                       </div>
                     )}
@@ -772,6 +774,46 @@ export function QuickSettingsPanel({
 
 /* ===== 子组件 ===== */
 
+function QuickIconButton({
+  label,
+  onClick,
+  children,
+  disabled = false,
+  compact = false,
+  danger = false,
+  className,
+}: {
+  label: string
+  onClick: React.MouseEventHandler<HTMLButtonElement>
+  children: React.ReactNode
+  disabled?: boolean
+  compact?: boolean
+  danger?: boolean
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center border border-transparent text-tavern-text-muted transition-colors',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-tavern-accent/60',
+        'disabled:cursor-not-allowed disabled:opacity-40',
+        compact ? 'h-5 w-5 rounded-md' : 'h-7 w-7 rounded-lg',
+        danger
+          ? 'hover:border-tavern-danger/15 hover:bg-tavern-danger/10 hover:text-tavern-danger'
+          : 'hover:border-tavern-border-soft hover:bg-tavern-bg-hover hover:text-tavern-accent',
+        className,
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
 function ActionButton({ icon: Icon, label, onClick, danger = false }: {
   icon: React.ElementType
   label: string
@@ -790,7 +832,14 @@ function ActionButton({ icon: Icon, label, onClick, danger = false }: {
           : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:border-tavern-accent/40 hover:text-tavern-accent',
       )}
     >
-      <Icon className="w-3.5 h-3.5 shrink-0" />
+      <span className={cn(
+        QUICK_BUTTON_ICON_BADGE_CLASS,
+        danger
+          ? 'border-tavern-danger/15 bg-tavern-danger/10 text-tavern-danger'
+          : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-muted',
+      )}>
+        <Icon className={QUICK_BUTTON_ICON_CLASS} />
+      </span>
       <span className="truncate">{label}</span>
     </button>
   )
@@ -888,13 +937,13 @@ function HintIcon({ hint }: { hint: React.ReactNode }) {
 
   return (
     <span ref={ref} className="relative inline-flex">
-      <button
-        type="button"
+      <QuickIconButton
+        compact
+        label="查看说明"
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
-        className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent transition-colors"
       >
-        <Info className="w-3.5 h-3.5" />
-      </button>
+        <Info className="w-3 h-3" />
+      </QuickIconButton>
       {open && (
         <div className="absolute left-0 top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-50 text-[10px] leading-relaxed text-tavern-text-muted">
           {hint}

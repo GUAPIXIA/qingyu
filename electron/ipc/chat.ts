@@ -81,6 +81,44 @@ function withSessionFileLock<T>(characterId: string, sessionId: string, fn: () =
   return withFileLock(getSessionFile(characterId, sessionId), fn)
 }
 
+function cleanSessionUpdates(updates: Partial<ChatSession>): Partial<ChatSession> {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    throw new Error('参数无效：updates 必须为对象')
+  }
+  const clean: Partial<ChatSession> = {}
+  for (const key of Object.keys(updates)) {
+    if (!UPDATE_SESSION_FIELDS.has(key)) continue
+    const value = (updates as Record<string, unknown>)[key]
+    if (key === 'title' && typeof value === 'string' && value.length > 200) {
+      throw new Error('标题长度不能超过 200 字符')
+    }
+    ;(clean as Record<string, unknown>)[key] = value
+  }
+  return clean
+}
+
+async function updateSessionIfMemoryVersion(
+  characterId: string,
+  sessionId: string,
+  expectedVersion: number,
+  updates: Partial<ChatSession>,
+): Promise<{ applied: boolean; currentVersion: number }> {
+  safeId(characterId)
+  safeId(sessionId)
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new Error('参数无效：expectedVersion')
+  const clean = cleanSessionUpdates(updates)
+  return withSessionsLock(characterId, () => {
+    const sessions = loadSessions(characterId)
+    const idx = sessions.findIndex((session) => session.id === sessionId)
+    if (idx === -1) throw new Error('会话不存在')
+    const currentVersion = sessions[idx].memoryVersion ?? 0
+    if (currentVersion !== expectedVersion) return { applied: false, currentVersion }
+    sessions[idx] = { ...sessions[idx], ...clean, updatedAt: Date.now() }
+    saveSessions(characterId, sessions)
+    return { applied: true, currentVersion: sessions[idx].memoryVersion ?? currentVersion }
+  })
+}
+
 /** 读取指定 session 的消息（含数据完整性检查） */
 
 // ===================== 消息读取缓存（LRU） =====================
@@ -614,6 +652,9 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     })
   })
 
+  safeHandle(ipcMain, 'chat:updateSessionIfMemoryVersion', async (_e, characterId: string, sessionId: string, expectedVersion: number, updates: Partial<ChatSession>) =>
+    updateSessionIfMemoryVersion(characterId, sessionId, expectedVersion, updates))
+
   // ===== 消息管理 =====
 
   safeHandle(ipcMain, 'chat:listMessages', async (_e, characterId: string, sessionId?: string) => {
@@ -1071,6 +1112,9 @@ export const chatData = {
       return sessions[idx]
     })
   },
+
+  /** 仅当磁盘中的 memoryVersion 仍等于 expectedVersion 时应用更新。 */
+  updateSessionIfMemoryVersion,
 
   /** 清空指定会话消息（与 IPC handler chat:clearChat 同一路径：消息锁→sessions 锁） */
   clearChat: async (characterId: string, sessionId: string): Promise<void> => {

@@ -4,7 +4,7 @@ import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
-import { UserCircle, Plus, Trash2, Pencil, Check, Star, Search, Download, Upload } from 'lucide-react'
+import { UserCircle, Plus, Trash2, Pencil, Star, Search, Download, Upload } from 'lucide-react'
 import type { Persona } from '../../shared/types'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
@@ -159,10 +159,7 @@ export function PersonasPage() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0 gap-2">
-        <div className="flex items-center gap-3">
-          <h1 className="font-display text-lg font-bold">用户身份</h1>
-          <span className="hidden sm:inline text-xs text-tavern-text-muted" title="当前身份作用于当前会话，默认身份作用于新建会话">当前 vs 默认</span>
-        </div>
+        <h1 className="font-display text-lg font-bold">用户身份</h1>
         <div className="flex items-center gap-2">
           <div className="hidden sm:flex items-center gap-1.5 bg-tavern-bg rounded-lg px-2 py-1 border border-tavern-border-soft">
             <Search className="w-3.5 h-3.5 text-tavern-text-muted" aria-hidden />
@@ -194,16 +191,11 @@ export function PersonasPage() {
           />
         ) : (
           <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {filtered.map((p) => {
-              const isActive = settings.activePersonaId === p.id
-              return (
+            {filtered.map((p) => (
                 <div
                   key={p.id}
-                  className={cn(
-                    'card p-4 cursor-pointer transition-all',
-                    isActive ? 'border-tavern-accent ring-1 ring-tavern-accent/30' : 'hover:border-tavern-accent/50'
-                  )}
-                  onClick={() => activatePersona(p)}
+                  className="card p-4 cursor-pointer transition-all hover:border-tavern-accent/50"
+                  onClick={() => setEditing({ ...p })}
                 >
                   <div className="flex items-start gap-3">
                     {/* 头像 */}
@@ -219,12 +211,6 @@ export function PersonasPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-tavern-text truncate">{p.name}</span>
-                        {isActive && (
-                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-tavern-accent-soft text-tavern-accent shrink-0">
-                            <Check className="w-3 h-3" />
-                            当前
-                          </span>
-                        )}
                         {settings.defaultPersonaId === p.id && (
                           <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-tavern-warning/15 text-tavern-warning shrink-0">
                             <Star className="w-3 h-3" />
@@ -272,8 +258,7 @@ export function PersonasPage() {
                     </div>
                   </div>
                 </div>
-              )
-            })}
+            ))}
           </div>
         )}
       </div>
