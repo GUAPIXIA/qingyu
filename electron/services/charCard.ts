@@ -146,6 +146,15 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
     && (rawImageUrl.startsWith('http://') || rawImageUrl.startsWith('https://')))
     ? rawImageUrl : undefined
 
+  // tags 归一化：兼容字符串、数组、缺失等脏格式（部分社区卡 tags 为 "a、b、c" 字符串）
+  const rawTags = data.tags ?? parsedTop.tags ?? []
+  let normalizedTags: string[] = []
+  if (Array.isArray(rawTags)) {
+    normalizedTags = rawTags.filter((t: unknown): t is string => typeof t === 'string' && t.trim().length > 0).map((t: string) => t.trim())
+  } else if (typeof rawTags === 'string') {
+    normalizedTags = rawTags.split(/[,，、\n]+/).map((s: string) => s.trim()).filter((s: string) => s.length > 0)
+  }
+
   const character: Character = {
     id: nanoid(),
     name: data.name ?? parsedTop.name ?? '未命名角色',
@@ -156,7 +165,7 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
     scenario: data.scenario ?? '',
     firstMessage: firstMes,
     exampleDialog: data.mes_example ?? data.exampleDialog ?? '',
-    tags: data.tags ?? [],
+    tags: normalizedTags,
     lorebookId: data.character_book?.id ?? null,
     creator: data.creator ?? '',
     createdAt: now,
@@ -386,6 +395,19 @@ export function saveCharacter(character: Character): void {
   writeJson(filePath, { ...rest, avatar: '', cover: '' })
 }
 
+/** 归一化已落盘的脏 tags（字符串 → 数组），并在必要时回写修复 */
+function normalizeStoredTags(char: Character): boolean {
+  const raw: unknown = (char as unknown as Record<string, unknown>).tags
+  if (Array.isArray(raw)) return false
+  let fixed: string[] = []
+  if (typeof raw === 'string') {
+    fixed = (raw as string).split(/[,，、\n]+/).map((s) => s.trim()).filter(Boolean)
+  }
+  // 非数组非字符串 → 兜底空数组
+  ;(char as unknown as Record<string, unknown>).tags = fixed
+  return true
+}
+
 /** 读取角色列表（仅元数据，图片通过 tavern:// 协议按需加载） */
 export async function listCharacters(): Promise<Character[]> {
   const charDir = DIRS.characters()
@@ -399,8 +421,18 @@ export async function listCharacters(): Promise<Character[]> {
   )
 
   const chars: Character[] = []
-  for (const char of results) {
+  for (let i = 0; i < results.length; i++) {
+    const char = results[i]
     if (char) {
+      if (normalizeStoredTags(char)) {
+        // 脏数据回写修复（同步写回 tags 字段，图片字段已剥离）
+        try {
+          const filePath = join(charDir, files[i])
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 剥离头像字段，仅保留 rest 写入
+          const { avatar: _a, cover: _c, ...rest } = char as unknown as Character & { avatar: string; cover?: string }
+          writeJson(filePath, { ...rest, avatar: '', cover: '' })
+        } catch { /* 忽略回写失败 */ }
+      }
       chars.push(char)
     }
   }
@@ -414,6 +446,13 @@ export function getCharacter(id: string): Character | null {
   const filePath = join(DIRS.characters(), `${id}.json`)
   const char = readJson<Character>(filePath, 'characters')
   if (char) {
+    if (normalizeStoredTags(char)) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 剥离头像字段，仅保留 rest 写入
+        const { avatar: _a, cover: _c, ...rest } = char as Character & { avatar: string; cover?: string }
+        writeJson(filePath, { ...rest, avatar: '', cover: '' })
+      } catch { /* 忽略回写失败 */ }
+    }
     const avatar = readAvatar(id)
     if (avatar) char.avatar = avatar
     const cover = readCover(id)

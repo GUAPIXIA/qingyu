@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.12.1-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.13.0-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -21,7 +21,7 @@
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
-| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.12.1 |
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.13.0 |
 | **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.1.5 (build 6) |
 | **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.3 |
 
@@ -106,12 +106,12 @@
 - **TTS 语音合成** — Windows 系统语音 + Edge TTS（免费高质量网络语音）（Fish Audio / OpenAI TTS 规划中）
 - **MCP 工具集成** — 支持 Model Context Protocol，扩展 AI 能力
 - **斜杠命令** — `/help`、`/imagine`、`/continue` 等 14 个内置命令
-- **Token 用量统计** — 按模型/角色/日期多维度统计，费用自动估算（tiktoken 精确计数）
+- **用量统计** — 按模型/角色/日期多维度统计，当前为字符数统计（精确 Token 与费用估算开发中）
 - **用户人设（Persona）** — 支持多用户身份切换
 
 ### 🔒 数据安全
 - **纯本地存储** — 所有数据在本地 AppData，无云端上传
-- **一键备份** — 完整导出/导入（角色、对话、设置、世界书、预设）
+- **一键备份** — 导出/导入设置、角色、世界书、预设（当前版本不含聊天记录与媒体，完整备份开发中）
 - **API Key 加密** — 系统级安全加密存储
 
 ---

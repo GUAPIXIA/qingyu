@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
-import { UserCircle, Plus, Trash2, Pencil, Check, Star } from 'lucide-react'
+import { UserCircle, Plus, Trash2, Pencil, Check, Star, Search, Download, Upload } from 'lucide-react'
 import type { Persona } from '../../shared/types'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
@@ -16,6 +16,8 @@ export function PersonasPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [search, setSearch] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -127,18 +129,64 @@ export function PersonasPage() {
       : `已将「${p.name}」设为默认身份，新建对话将默认使用`)
   }
 
+  const filtered = search.trim()
+    ? sortedPersonas.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.description.toLowerCase().includes(search.toLowerCase()) || p.persona.toLowerCase().includes(search.toLowerCase()))
+    : sortedPersonas
+
+  const handleExport = () => {
+    const blob = new Blob([JSON.stringify(personas, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `personas-${Date.now()}.json`; a.click(); URL.revokeObjectURL(url)
+    showToast(`已导出 ${personas.length} 个身份`)
+  }
+  const handleImportClick = () => fileInputRef.current?.click()
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement> & { target: HTMLInputElement }) => {
+    const file = e.target.files?.[0]; if (!file) return
+    try {
+      const text = await file.text(); const data = JSON.parse(text)
+      const list: Persona[] = Array.isArray(data) ? data : data.personas ?? []
+      let count = 0
+      for (const p of list) {
+        if (!p.name) continue
+        const persona: Persona = { id: nanoid(), name: String(p.name), description: String(p.description ?? ''), persona: String(p.persona ?? ''), avatar: String(p.avatar ?? ''), createdAt: Date.now(), updatedAt: Date.now() }
+        await savePersona(persona); count++
+      }
+      showToast(`已导入 ${count} 个身份`)
+    } catch (err) { showToast(`导入失败：${(err as Error).message}`) }
+    e.target.value = ''
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
-        <h1 className="font-display text-lg font-bold">用户身份</h1>
-        <button onClick={handleNew} className="btn-primary">
-          <Plus className="w-4 h-4" />
-          新建身份
-        </button>
+      <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0 gap-2">
+        <div className="flex items-center gap-3">
+          <h1 className="font-display text-lg font-bold">用户身份</h1>
+          <span className="hidden sm:inline text-xs text-tavern-text-muted" title="当前身份作用于当前会话，默认身份作用于新建会话">当前 vs 默认</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-1.5 bg-tavern-bg rounded-lg px-2 py-1 border border-tavern-border-soft">
+            <Search className="w-3.5 h-3.5 text-tavern-text-muted" aria-hidden />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索身份..." className="bg-transparent outline-none text-sm w-32 placeholder:text-tavern-text-muted" aria-label="搜索身份" />
+          </div>
+          <button onClick={handleImportClick} className="btn-ghost text-sm" aria-label="导入身份"><Upload className="w-4 h-4" /> 导入</button>
+          <button onClick={handleExport} className="btn-ghost text-sm" aria-label="导出身份"><Download className="w-4 h-4" /> 导出</button>
+          <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+          <button onClick={handleNew} className="btn-primary" aria-label="新建身份">
+            <Plus className="w-4 h-4" />
+            新建身份
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {personas.length === 0 ? (
+        {/* 移动端搜索 */}
+        <div className="sm:hidden mb-3 flex items-center gap-2 bg-tavern-bg rounded-lg px-3 py-2 border border-tavern-border-soft">
+          <Search className="w-4 h-4 text-tavern-text-muted" aria-hidden />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索身份..." className="flex-1 bg-transparent outline-none text-sm" aria-label="搜索身份" />
+        </div>
+        {filtered.length === 0 && personas.length > 0 ? (
+          <div className="text-center py-10 text-sm text-tavern-text-muted">无匹配身份</div>
+        ) : personas.length === 0 ? (
           <EmptyState
             icon={<UserCircle className="w-8 h-8" />}
             title="暂无用户身份"
@@ -146,7 +194,7 @@ export function PersonasPage() {
           />
         ) : (
           <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {sortedPersonas.map((p) => {
+            {filtered.map((p) => {
               const isActive = settings.activePersonaId === p.id
               return (
                 <div

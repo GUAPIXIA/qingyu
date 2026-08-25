@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '../lib/utils'
@@ -11,6 +11,8 @@ import {
   Loader2,
   AlertCircle,
   Inbox,
+  RefreshCw,
+  WifiOff,
 } from 'lucide-react'
 
 export function AnnouncementsPage() {
@@ -23,10 +25,29 @@ export function AnnouncementsPage() {
     selectAnnouncement,
     clearSelection,
   } = useAnnouncementStore()
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  const [readIds, setReadIds] = useState<Set<number>>(() => {
+    try { const raw = localStorage.getItem('announcement-read'); return new Set(raw ? JSON.parse(raw) : []) } catch { return new Set() }
+  })
+  const isOffline = !!error && announcements.length > 0
+
+  const handleLoad = useCallback(async () => {
+    await loadAnnouncements()
+    setLastUpdated(Date.now())
+  }, [loadAnnouncements])
+
+  const handleSelect = useCallback(async (id: number) => {
+    await selectAnnouncement(id)
+    setReadIds(prev => {
+      const next = new Set(prev); next.add(id)
+      try { localStorage.setItem('announcement-read', JSON.stringify([...next])) } catch { /* ignore */ }
+      return next
+    })
+  }, [selectAnnouncement])
 
   useEffect(() => {
-    loadAnnouncements()
-  }, [loadAnnouncements])
+    handleLoad()
+  }, [handleLoad])
 
   // 详情视图
   if (selectedAnnouncement) {
@@ -110,11 +131,19 @@ export function AnnouncementsPage() {
   // 列表视图
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <header className="flex items-center px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
+      <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0 gap-2">
         <h1 className="font-display text-lg font-bold flex items-center gap-2">
           <Megaphone className="w-5 h-5 text-tavern-accent" />
           公告
+          {announcements.some(a => !readIds.has(a.id)) && <span className="w-2 h-2 rounded-full bg-tavern-accent animate-pulse" aria-label="有未读公告" />}
         </h1>
+        <div className="flex items-center gap-2">
+          {lastUpdated && <span className="hidden sm:inline text-xs text-tavern-text-muted">{new Date(lastUpdated).toLocaleTimeString()} 更新</span>}
+          {isOffline && <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"><WifiOff className="w-3 h-3" /> 离线缓存</span>}
+          <button onClick={handleLoad} disabled={loading} aria-label="刷新公告" className="p-1.5 rounded-lg hover:bg-tavern-bg-hover text-tavern-text-muted hover:text-tavern-text disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-tavern-accent focus-visible:outline-none">
+            <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} aria-hidden />
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto">
@@ -153,10 +182,12 @@ export function AnnouncementsPage() {
           {/* 公告列表 */}
           {!loading && announcements.length > 0 && (
             <div className="space-y-3">
-              {announcements.map((a) => (
+              {announcements.map((a) => {
+                const isUnread = !readIds.has(a.id)
+                return (
                 <button
                   key={a.id}
-                  onClick={() => selectAnnouncement(a.id)}
+                  onClick={() => handleSelect(a.id)}
                   className={cn(
                     'w-full text-left card p-4 hover:border-tavern-accent/30 transition-colors',
                     !!a.pinned && 'ring-1 ring-tavern-accent/20'
@@ -165,13 +196,14 @@ export function AnnouncementsPage() {
                   <div className="flex items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
+                        {isUnread && <span className="w-2 h-2 rounded-full bg-tavern-accent shrink-0" aria-hidden />}
                         {!!a.pinned && (
                           <span className="flex items-center gap-1 text-xs text-tavern-accent">
                             <Pin className="w-3 h-3" />
                             置顶
                           </span>
                         )}
-                        <h3 className="font-medium text-sm text-tavern-text truncate">
+                        <h3 className={cn('font-medium text-sm truncate', isUnread ? 'text-tavern-text' : 'text-tavern-text-muted')}>
                           {a.title}
                         </h3>
                       </div>
@@ -186,7 +218,9 @@ export function AnnouncementsPage() {
                     </span>
                   </div>
                 </button>
-              ))}
+                )
+              }
+              )}
             </div>
           )}
         </div>

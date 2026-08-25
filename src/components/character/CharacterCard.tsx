@@ -6,7 +6,7 @@ import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
 import { getDisplayName } from '../../utils/variables'
 import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
-import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin, Languages, Loader2 } from 'lucide-react'
+import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin, Languages, Loader2, MoreHorizontal } from 'lucide-react'
 import { useState, useMemo, memo } from 'react'
 import { cn } from '../../lib/utils'
 
@@ -71,6 +71,7 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
   const patchCharacter = useCharacterStore(s => s.patchCharacter)
   const blurStrength = useSettingsStore(s => s.settings.coverBlurStrength ?? 8)
   const [showMenu, setShowMenu] = useState(false)
+  const [showCardMenu, setShowCardMenu] = useState(false)
   const [imgError, setImgError] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [translating, setTranslating] = useState(false)
@@ -212,64 +213,75 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
     </div>
   )
 
+  // S2-C：常驻主操作“开始对话”，其余收进更多菜单；提升键盘可达与发现性
   const actionButtons = (
     <>
       <button
         onClick={(e) => { e.stopPropagation(); onChat(character) }}
-        className="p-2 rounded-lg bg-tavern-accent text-tavern-bg hover:bg-tavern-accent-hover transition-colors"
-        title="开始对话"
+        aria-label="开始对话"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-tavern-accent text-white hover:bg-tavern-accent-hover transition-colors text-xs font-medium shadow-sm"
       >
-        <MessageSquare className="w-4 h-4" />
+        <MessageSquare className="w-3.5 h-3.5" aria-hidden />
+        开始对话
       </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onEdit(character) }}
-        className="p-2 rounded-lg bg-white/90 text-gray-700 hover:bg-white hover:text-gray-900 transition-colors shadow-sm"
-        title="编辑"
-      >
-        <Edit3 className="w-4 h-4" />
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
-        className="p-2 rounded-lg bg-white/90 text-gray-700 hover:bg-white hover:text-gray-900 transition-colors relative shadow-sm"
-        title="导出"
-      >
-        <Download className="w-4 h-4" />
-        {showMenu && (
+      <div className="relative">
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowCardMenu(v => !v) }}
+          aria-label="更多操作"
+          aria-expanded={showCardMenu}
+          className="p-2 rounded-full bg-white/90 text-gray-700 hover:bg-white shadow-sm transition-colors"
+        >
+          <MoreHorizontal className="w-4 h-4" aria-hidden />
+        </button>
+        {showCardMenu && (
           <>
-            <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false) }} />
-            <div className="absolute bottom-full right-0 mb-1 z-20 bg-tavern-bg-card border border-tavern-border rounded-lg shadow-xl py-1 text-sm min-w-[120px]">
+            <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowCardMenu(false) }} />
+            <div className="absolute bottom-full right-0 mb-1 z-20 bg-tavern-bg-card border border-tavern-border rounded-lg shadow-xl py-1 text-sm min-w-[140px]" role="menu">
               <button
-                onClick={(e) => { e.stopPropagation(); exportPng(character.id); setShowMenu(false) }}
-                className="w-full px-4 py-2 text-left hover:bg-tavern-bg-hover transition-colors flex items-center gap-2"
+                role="menuitem"
+                onClick={(e) => { e.stopPropagation(); onEdit(character); setShowCardMenu(false) }}
+                className="w-full px-3 py-2 text-left hover:bg-tavern-bg-hover flex items-center gap-2"
               >
-                <Download className="w-3.5 h-3.5" />
-                导出 PNG
+                <Edit3 className="w-3.5 h-3.5" /> 编辑
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); exportJson(character.id); setShowMenu(false) }}
-                className="w-full px-4 py-2 text-left hover:bg-tavern-bg-hover transition-colors flex items-center gap-2"
+                role="menuitem"
+                onClick={(e) => { e.stopPropagation(); setShowMenu(v => !v) }}
+                className="w-full px-3 py-2 text-left hover:bg-tavern-bg-hover flex items-center justify-between"
               >
-                <Download className="w-3.5 h-3.5" />
-                导出 JSON
+                <span className="flex items-center gap-2"><Download className="w-3.5 h-3.5" /> 导出</span>
+                <span className="text-xs text-tavern-text-muted">{showMenu ? '▲' : '▼'}</span>
+              </button>
+              {showMenu && (
+                <div className="mx-2 mb-1 bg-tavern-bg-hover/50 rounded p-1 space-y-1">
+                  <button onClick={(e) => { e.stopPropagation(); exportPng(character.id); setShowCardMenu(false); setShowMenu(false) }} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5">PNG</button>
+                  <button onClick={(e) => { e.stopPropagation(); exportJson(character.id); setShowCardMenu(false); setShowMenu(false) }} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5">JSON</button>
+                </div>
+              )}
+              <div className="border-t border-tavern-border-soft my-1" />
+              <button
+                role="menuitem"
+                onClick={(e) => { e.stopPropagation(); setShowCardMenu(false); onDelete(character.id) }}
+                className="w-full px-3 py-2 text-left hover:bg-tavern-danger/10 text-tavern-danger flex items-center gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> 删除
               </button>
             </div>
           </>
         )}
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(character.id) }}
-        className="p-2 rounded-lg bg-tavern-danger/90 text-white hover:bg-tavern-danger transition-colors"
-        title="删除角色"
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
+      </div>
     </>
   )
 
-  // 标签 + 性格碎片行
+  // 标签 + 性格碎片行（防御：已落盘脏数据的 tags 可能是字符串）
   const renderTagsAndChips = () => {
-    const visibleTags = character.tags.slice(0, cfg.showTags)
-    const hiddenTagCount = character.tags.length - visibleTags.length
+    const safeTags: string[] = Array.isArray(character.tags)
+      ? character.tags
+      : typeof character.tags === 'string'
+        ? (character.tags as string).split(/[,，、\n]+/).map((s: string) => s.trim()).filter(Boolean)
+        : []
+    const visibleTags = safeTags.slice(0, cfg.showTags)
+    const hiddenTagCount = safeTags.length - visibleTags.length
     const visibleChips = personalityChips.slice(0, cfg.showPersonality)
     const hiddenChipCount = personalityChips.length - visibleChips.length
 
@@ -418,10 +430,12 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
           <Pin className={cn('w-3.5 h-3.5', character.pinned && 'fill-current')} />
         </button>
 
-        {/* 操作按钮悬浮层 */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2 gap-1 pointer-events-none">
-          <div className="pointer-events-auto flex gap-1">{actionButtons}</div>
+        {/* 操作按钮 - S2-C：常驻主按钮，hover 才显示渐变遮罩 */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 flex items-end justify-end gap-1 pointer-events-none">
+          <div className="pointer-events-auto flex gap-1 items-center">{actionButtons}</div>
         </div>
+        {/* hover 遮罩（仅装饰，不控制按钮可见性） */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" aria-hidden />
       </div>
 
       {/* 信息区 */}
@@ -431,9 +445,12 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
         </h3>
 
         {/* 性格碎片 + 标签 */}
-        {(personalityChips.length > 0 || character.tags.length > 0) && (
-          <div className="mt-1.5">{renderTagsAndChips()}</div>
-        )}
+        {(() => {
+          const safeLen = Array.isArray(character.tags) ? character.tags.length : typeof character.tags === 'string' ? 1 : 0
+          return (personalityChips.length > 0 || safeLen > 0) && (
+            <div className="mt-1.5">{renderTagsAndChips()}</div>
+          )
+        })()}
 
         {/* 场景预览 */}
         {cfg.showScenario && scenarioText && (

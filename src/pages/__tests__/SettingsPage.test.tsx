@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { SettingsPage } from '../SettingsPage'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -43,10 +43,9 @@ describe('SettingsPage 冒烟测试', () => {
         <SettingsPage />
       </MemoryRouter>
     )
-    // SectionCard 默认折叠，仅断言标题可见
+    // S2-D 后左侧目录与 SectionCard 标题分别有对应入口
     expect(await findByText('API 设置')).toBeTruthy()
-    expect(await findByText('数据管理')).toBeTruthy()
-    expect(await findByText('网络')).toBeTruthy()
+    expect(await findByText('导出备份')).toBeTruthy()
   })
 
   it('点击导出备份调用 window.api.settings.exportBackup', async () => {
@@ -62,7 +61,7 @@ describe('SettingsPage 冒烟测试', () => {
   })
 
   it('点击导入备份调用 window.api.settings.importBackup', async () => {
-    vi.mocked(window.api.settings.importBackup).mockResolvedValue(undefined)
+    vi.mocked(window.api.settings.importBackup).mockResolvedValue({ status: 'success', counts: { characters: 1, lorebooks: 1, presets: 1 } })
     const { findByText } = render(
       <MemoryRouter>
         <SettingsPage />
@@ -75,14 +74,14 @@ describe('SettingsPage 冒烟测试', () => {
   })
 
   it('导入成功显示提示信息', async () => {
-    vi.mocked(window.api.settings.importBackup).mockResolvedValue(undefined)
+    vi.mocked(window.api.settings.importBackup).mockResolvedValue({ status: 'success', counts: { characters: 1, lorebooks: 1, presets: 1 } })
     const { findByText } = render(
       <MemoryRouter>
         <SettingsPage />
       </MemoryRouter>
     )
     fireEvent.click(await findByText('导入备份'))
-    expect(await findByText('导入成功，正在刷新...')).toBeTruthy()
+    expect(await findByText(/导入成功/)).toBeTruthy()
   })
 
   it('导入失败显示错误信息', async () => {
@@ -97,13 +96,13 @@ describe('SettingsPage 冒烟测试', () => {
   })
 
   it('渲染网络区块（封面下载代理配置）', async () => {
-    const { findByText } = render(
+    const { findByPlaceholderText, findAllByText } = render(
       <MemoryRouter>
         <SettingsPage />
       </MemoryRouter>
     )
-    expect(await findByText('网络')).toBeTruthy()
-    expect(screen.getByPlaceholderText('http://127.0.0.1:7890')).toBeTruthy()
+    expect((await findAllByText('网络')).length).toBeGreaterThanOrEqual(1)
+    expect(await findByPlaceholderText('http://127.0.0.1:7890')).toBeTruthy()
   })
 
   it('修改封面代理输入框调用 updateSettings', async () => {
@@ -115,5 +114,18 @@ describe('SettingsPage 冒烟测试', () => {
     const input = (await findByPlaceholderText('http://127.0.0.1:7890')) as HTMLInputElement
     fireEvent.change(input, { target: { value: 'http://127.0.0.1:1080' } })
     expect(useSettingsStore.getState().settings.coverProxyUrl).toBe('http://127.0.0.1:1080')
+  })
+
+  it('消息宽度最高可设置为 1600px', async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+    await act(async () => {})
+
+    const widthSlider = container.querySelector('input[type="range"][min="400"]') as HTMLInputElement
+    expect(widthSlider).toBeTruthy()
+    expect(widthSlider.max).toBe('1600')
   })
 })

@@ -68,19 +68,62 @@ export function validateCharacterCard(parsed: unknown): CardValidationResult {
   // 描述 / 首条消息建议有内容（缺失只警告，不拦截）
   const description = pick(card, 'description')
   if (description !== undefined && typeof description !== 'string') {
-    result.errors.push('角色描述（description）必须是字符串')
+    result.errors.push('角色描述（description）必须是字符串，当前为 ' + typeof description)
   } else if (description === undefined || String(description).trim() === '') {
     result.warnings.push('角色描述为空，导入后 AI 对角色认知可能不完整')
+  }
+
+  // 严格类型校验：字符串字段必须为字符串（防止脏数据导致前端崩溃）
+  const stringFields: Array<[string, string]> = [
+    ['personality', '性格（personality）'],
+    ['scenario', '场景（scenario）'],
+    ['mes_example', '对话示例（mes_example）'],
+    ['exampleDialog', '对话示例（exampleDialog）'],
+    ['creator', '创作者（creator）'],
+    ['creator_notes', '创作者备注（creator_notes）'],
+    ['character_version', '角色版本（character_version）'],
+    ['system_prompt', '系统提示词（system_prompt）'],
+    ['post_history_instructions', '历史后指令（post_history_instructions）'],
+  ]
+  for (const [key, label] of stringFields) {
+    const v = pick(card, key)
+    if (v !== undefined && v !== null && typeof v !== 'string') {
+      result.errors.push(`${label} 必须是字符串，当前为 ${typeof v}（值：${String(v).slice(0, 80)}）`)
+    }
   }
 
   // 首条消息：V2 为 first_mes，V3/bare 为 first_mes 或 firstMessage
   const firstMes = pick(card, 'first_mes')
   const firstMessage = pick(card, 'firstMessage')
   if (firstMes !== undefined && typeof firstMes !== 'string') {
-    result.errors.push('首条消息（first_mes）必须是字符串')
+    result.errors.push('首条消息（first_mes）必须是字符串，当前为 ' + typeof firstMes)
   }
   if (firstMessage !== undefined && typeof firstMessage !== 'string') {
-    result.errors.push('首条消息（firstMessage）必须是字符串')
+    result.errors.push('首条消息（firstMessage）必须是字符串，当前为 ' + typeof firstMessage)
+  }
+
+  // tags 必须为字符串数组（社区常见脏格式为字符串 "a、b、c"，此前会导致前端 visibleTags.map 崩溃）
+  const tags = pick(card, 'tags')
+  if (tags !== undefined && tags !== null) {
+    if (!Array.isArray(tags)) {
+      result.errors.push(`标签（tags）必须是字符串数组，当前为 ${typeof tags}（值：${String(tags).slice(0, 120)}）。请将 "a、b、c" 改为 ["a","b","c"]`)
+    } else {
+      const bad = (tags as unknown[]).findIndex(v => typeof v !== 'string')
+      if (bad !== -1) {
+        result.errors.push(`标签（tags）数组中第 ${bad + 1} 项不是字符串（值为：${String((tags as unknown[])[bad]).slice(0, 80)}）`)
+      }
+    }
+  }
+
+  // alternate_greetings / group_only_greetings 必须为字符串数组
+  for (const key of ['alternate_greetings', 'group_only_greetings'] as const) {
+    const v = pick(card, key)
+    if (v !== undefined && v !== null && !Array.isArray(v)) {
+      result.errors.push(`${key} 必须是字符串数组，当前为 ${typeof v}`)
+    } else if (Array.isArray(v)) {
+      const bad = (v as unknown[]).findIndex(x => typeof x !== 'string')
+      if (bad !== -1) result.errors.push(`${key}[${bad}] 不是字符串`)
+    }
   }
 
   // 结构完整性：V2 必须有 spec，V3 必须有 data

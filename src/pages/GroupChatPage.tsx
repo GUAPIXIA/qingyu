@@ -98,6 +98,17 @@ export function GroupChatPage() {
     loadGroups()
   }, [loadGroups])
 
+  // S3 I-06：进入时恢复上次选中，无则选第一个；避免空状态多一步操作
+  useEffect(() => {
+    if (groupChats.length === 0 || currentGroup || selectedId) return
+    const last = (() => { try { return localStorage.getItem('group-last-selected') } catch { return null } })()
+    const target = (last && groupChats.find(g => g.id === last)) || groupChats[0]
+    if (target) {
+      setSelectedId(target.id)
+      selectGroup(target.id)
+    }
+  }, [groupChats, currentGroup, selectedId, selectGroup])
+
   // 如果当前群聊有成员且无消息，自动弹出开场白选择器
   useEffect(() => {
     if (currentGroup && messages.length === 0 && !isStreaming && currentGroup.memberIds.length > 0) {
@@ -114,6 +125,7 @@ export function GroupChatPage() {
 
   const handleSelect = (group: GroupChat) => {
     setSelectedId(group.id)
+    try { localStorage.setItem('group-last-selected', group.id) } catch { /* ignore */ }
     selectGroup(group.id)
   }
 
@@ -246,7 +258,7 @@ export function GroupChatPage() {
     ? characters.filter(c =>
         c.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
         (c.description && c.description.toLowerCase().includes(memberSearch.toLowerCase())) ||
-        (c.tags && c.tags.some(t => t.toLowerCase().includes(memberSearch.toLowerCase())))
+        (Array.isArray(c.tags) && c.tags.some(t => t.toLowerCase().includes(memberSearch.toLowerCase())))
       )
     : characters
 
@@ -262,17 +274,19 @@ export function GroupChatPage() {
           <div className="flex items-center gap-0.5">
             <button
               onClick={handleCreate}
-              className="btn-ghost p-1 rounded-lg hover:bg-tavern-accent-soft hover:text-tavern-accent"
+              aria-label="新建群聊"
+              className="btn-ghost p-1 rounded-lg hover:bg-tavern-accent-soft hover:text-tavern-accent focus-visible:ring-2 focus-visible:ring-tavern-accent focus-visible:outline-none"
               title="新建群聊"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4" aria-hidden />
             </button>
             <button
               onClick={() => setSidebarCollapsed(true)}
-              className="btn-ghost p-1 rounded-lg hover:bg-tavern-bg-hover text-tavern-text-muted"
+              aria-label="收起群聊列表"
+              className="btn-ghost p-1 rounded-lg hover:bg-tavern-bg-hover text-tavern-text-muted focus-visible:ring-2 focus-visible:ring-tavern-accent focus-visible:outline-none"
               title="收起列表"
             >
-              <PanelLeftClose className="w-4 h-4" />
+              <PanelLeftClose className="w-4 h-4" aria-hidden />
             </button>
           </div>
         </div>

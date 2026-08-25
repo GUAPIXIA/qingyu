@@ -202,8 +202,15 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [navigate])
 
+  const isPreview = (() => { try { const p = new URLSearchParams(window.location.search).get('preview') === '1'; const m = Boolean((window as unknown as { __previewMode?: boolean }).__previewMode); return p || m } catch { return false } })()
   return (
     <>
+      {isPreview && (
+        <div className="h-6 shrink-0 flex items-center justify-center gap-2 bg-amber-100 text-amber-800 text-xs dark:bg-amber-900/30 dark:text-amber-200 border-b border-amber-200 dark:border-amber-700">
+          <span>🔍 预览模式 — 未连接 Electron，仅供界面查看（{window.location.search.includes('preview') ? '?preview=1' : '无 preload'}）</span>
+          <a href="?" className="underline hover:no-underline">退出预览</a>
+        </div>
+      )}
       {pairApproval}
       <Routes>
       <Route path="/" element={<MainLayout />}>

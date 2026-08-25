@@ -8,13 +8,15 @@ import { createLogger } from '../services/logger'
 import { safeHandle } from '../utils/safeHandle'
 import { safeId } from '../utils/pathGuard'
 import type { Settings } from '../../shared/types'
+import { createBackupV2, restoreBackupV2 } from '../services/backup'
 
 const log = createLogger('settings')
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 
-/** 备份文件大小上限：100MB（N23 修复） */
-const MAX_BACKUP_SIZE = 100 * 1024 * 1024
+/** 备份文件大小上限：V1 100MB，V2 2GB（zip 压缩后，含媒体可能数 GB） */
+const MAX_BACKUP_SIZE_V1 = 100 * 1024 * 1024
+const MAX_BACKUP_SIZE_V2 = 2 * 1024 * 1024 * 1024
 
 // ===================== H1 修复：API Key 加密存储 =====================
 // settings.json 曾明文保存 apiKey（profile/TTS/生图/识图模型）。
@@ -90,71 +92,75 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return getCredential(provider)
   })
 
-  // 导出备份
+  // 导出备份 - S1 Backup V2：zip + manifest + 哈希校验；兼容 V1 json 兜底
   safeHandle(ipcMain, 'settings:exportBackup', async () => {
     const result = await dialog.showSaveDialog({
-      title: '导出备份',
-      defaultPath: `qingyu-backup-${Date.now()}.json`,
-      filters: [{ name: 'JSON 备份', extensions: ['json'] }],
+      title: '导出备份（Backup V2）',
+      defaultPath: `qingyu-backup-v2-${Date.now()}.zip`,
+      filters: [
+        { name: 'ZIP 备份 (推荐)', extensions: ['zip'] },
+        { name: 'JSON 备份 (旧版兼容)', extensions: ['json'] },
+      ],
     })
-    if (result.canceled || !result.filePath) return
+    if (result.canceled || !result.filePath) return { status: 'canceled' as const }
 
-    const backup: Record<string, unknown> = { version: 1, timestamp: Date.now() }
-
-    // 备份设置（H1 修复：导出剥离 apiKey，备份文件不携带凭据）
-    const settings = readJson<Settings>(SETTINGS_FILE(), 'settings')
-    if (settings) {
-      stripSecrets(settings, false)
-    }
-    backup.settings = settings
-
-    // 备份角色
-    const charDir = DIRS.characters()
-    if (existsSync(charDir)) {
-      backup.characters = readdirSync(charDir)
-        .filter((f: string) => f.endsWith('.json'))
-        .map((f: string) => readJson(join(charDir, f)))
-    }
-
-    // 备份世界书
-    const loreDir = DIRS.lorebooks()
-    if (existsSync(loreDir)) {
-      backup.lorebooks = readdirSync(loreDir)
-        .filter((f: string) => f.endsWith('.json'))
-        .map((f: string) => readJson(join(loreDir, f)))
+    // 若用户选择 .json，仍走 V1 旧逻辑（兼容）
+    if (result.filePath.toLowerCase().endsWith('.json')) {
+      const backup: Record<string, unknown> = { version: 1, timestamp: Date.now() }
+      const settings = readJson<Settings>(SETTINGS_FILE(), 'settings')
+      if (settings) stripSecrets(settings, false)
+      backup.settings = settings
+      const charDir = DIRS.characters()
+      if (existsSync(charDir)) {
+        backup.characters = readdirSync(charDir).filter((f: string) => f.endsWith('.json')).map((f: string) => readJson(join(charDir, f)))
+      }
+      const loreDir = DIRS.lorebooks()
+      if (existsSync(loreDir)) {
+        backup.lorebooks = readdirSync(loreDir).filter((f: string) => f.endsWith('.json')).map((f: string) => readJson(join(loreDir, f)))
+      }
+      const presetDir = DIRS.presets()
+      if (existsSync(presetDir)) {
+        backup.presets = readdirSync(presetDir).filter((f: string) => f.endsWith('.json')).map((f: string) => readJson(join(presetDir, f)))
+      }
+      writeFileSync(result.filePath, JSON.stringify(backup, null, 2), 'utf-8')
+      log.info('备份已导出 (V1 JSON)', { path: result.filePath })
+      return { status: 'success' as const, path: result.filePath, version: 1 as const }
     }
 
-    // 备份预设
-    const presetDir = DIRS.presets()
-    if (existsSync(presetDir)) {
-      backup.presets = readdirSync(presetDir)
-        .filter((f: string) => f.endsWith('.json'))
-        .map((f: string) => readJson(join(presetDir, f)))
-    }
-
-    writeFileSync(result.filePath, JSON.stringify(backup, null, 2), 'utf-8')
-    log.info('备份已导出', { path: result.filePath, chars: (backup.characters as unknown[])?.length ?? 0, lorebooks: (backup.lorebooks as unknown[])?.length ?? 0 })
+    // V2 zip
+    const zipPath = result.filePath.toLowerCase().endsWith('.zip') ? result.filePath : `${result.filePath}.zip`
+    const { counts, totalBytes, excluded } = createBackupV2(zipPath)
+    return { status: 'success' as const, path: zipPath, version: 2 as const, counts, totalBytes, excluded, manifest: { counts, totalBytes, excluded } }
   })
 
-  // 导入备份
+  // 导入备份 - S1 Backup V2：支持 .zip(V2) + .json(V1 兼容)；V2 含哈希校验与 safeId 校验
   safeHandle(ipcMain, 'settings:importBackup', async () => {
     const result = await dialog.showOpenDialog({
       title: '导入备份',
-      filters: [{ name: 'JSON 备份', extensions: ['json'] }],
+      filters: [
+        { name: '备份文件', extensions: ['zip', 'json'] },
+        { name: 'ZIP 备份', extensions: ['zip'] },
+        { name: 'JSON 备份', extensions: ['json'] },
+      ],
       properties: ['openFile'],
     })
-    if (result.canceled || result.filePaths.length === 0) return
+    if (result.canceled || result.filePaths.length === 0) return { status: 'canceled' as const }
 
-    // N23 修复：备份文件大小上限 100MB，防超大文件撑爆内存
-    const stat = statSync(result.filePaths[0])
-    if (stat.size > MAX_BACKUP_SIZE) {
-      throw new Error(`备份文件过大（${(stat.size / 1024 / 1024).toFixed(1)}MB），上限 ${MAX_BACKUP_SIZE / 1024 / 1024}MB`)
+    const filePath = result.filePaths[0]
+    const stat = statSync(filePath)
+    const isZip = filePath.toLowerCase().endsWith('.zip')
+    const limit = isZip ? MAX_BACKUP_SIZE_V2 : MAX_BACKUP_SIZE_V1
+    if (stat.size > limit) {
+      throw new Error(`备份文件过大（${(stat.size / 1024 / 1024).toFixed(1)}MB），上限 ${limit / 1024 / 1024}MB`)
     }
 
-    const backup = JSON.parse(readFileSync(result.filePaths[0], 'utf-8'))
+    if (isZip) {
+      const { counts } = restoreBackupV2(filePath)
+      return { status: 'success' as const, version: 2 as const, counts }
+    }
 
-    // NEW-H1 修复：写入前先校验所有 id，防止恶意备份中的路径遍历字符写入任意位置；
-    // 校验全部通过后才开始写入（NEW-M6 的部分原子性：非法数据不会留下半导入状态）
+    // V1 JSON 兼容路径
+    const backup = JSON.parse(readFileSync(filePath, 'utf-8'))
     const safeIdList = (items: unknown[], label: string): { id: string; item: Record<string, unknown> }[] => {
       if (!Array.isArray(items)) return []
       return items.map((item) => {
@@ -168,30 +174,23 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     const chars = safeIdList(backup.characters, '角色')
     const lorebooks = safeIdList(backup.lorebooks, '世界书')
     const presets = safeIdList(backup.presets, '预设')
-
     if (backup.settings && typeof backup.settings === 'object') {
-      // H1 修复：导入的 settings 若含明文 apiKey（旧备份），迁移进 safeStorage 后剥离落盘
       stripSecrets(backup.settings as Settings, true)
       writeJson(SETTINGS_FILE(), backup.settings)
     }
     if (chars.length > 0) {
       mkdirSync(DIRS.characters(), { recursive: true })
-      for (const { id, item } of chars) {
-        writeJson(join(DIRS.characters(), `${id}.json`), item)
-      }
+      for (const { id, item } of chars) writeJson(join(DIRS.characters(), `${id}.json`), item)
     }
     if (lorebooks.length > 0) {
       mkdirSync(DIRS.lorebooks(), { recursive: true })
-      for (const { id, item } of lorebooks) {
-        writeJson(join(DIRS.lorebooks(), `${id}.json`), item)
-      }
+      for (const { id, item } of lorebooks) writeJson(join(DIRS.lorebooks(), `${id}.json`), item)
     }
     if (presets.length > 0) {
       mkdirSync(DIRS.presets(), { recursive: true })
-      for (const { id, item } of presets) {
-        writeJson(join(DIRS.presets(), `${id}.json`), item)
-      }
+      for (const { id, item } of presets) writeJson(join(DIRS.presets(), `${id}.json`), item)
     }
-    log.info('备份已导入', { chars: chars.length, lorebooks: lorebooks.length, presets: presets.length })
+    log.info('备份已导入 (V1 JSON)', { chars: chars.length, lorebooks: lorebooks.length, presets: presets.length })
+    return { status: 'success' as const, version: 1 as const, counts: { characters: chars.length, lorebooks: lorebooks.length, presets: presets.length } }
   })
 }

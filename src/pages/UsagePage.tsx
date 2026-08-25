@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trash2, Download, Hash, Type } from 'lucide-react'
+import { BarChart3, Trash2, Download, Hash, Type } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatCharCount } from '../utils/charCounter'
 
@@ -8,7 +7,6 @@ type GroupBy = 'character' | 'session' | 'day' | 'model'
 type TimeRange = 'today' | '7d' | '30d' | 'all'
 
 export function UsagePage() {
-  const navigate = useNavigate()
   const [summary, setSummary] = useState<{ totalInput: number; totalOutput: number; totalChars: number; count: number } | null>(null)
   const [records, setRecords] = useState<Array<{ key: string; inputChars: number; outputChars: number; totalChars: number; count: number }>>([])
   const [groupBy, setGroupBy] = useState<GroupBy>('character')
@@ -138,13 +136,14 @@ export function UsagePage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* 顶栏 */}
+      {/* 顶栏 - S2/I-08：同级页面移除返回箭头，H0 口径说明保留 */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-tavern-border">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-1.5 rounded-lg hover:bg-tavern-bg-hover">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-lg font-medium">用量统计</h1>
+          <BarChart3 className="w-5 h-5 text-tavern-accent" aria-hidden />
+          <div>
+            <h1 className="text-lg font-medium">用量统计</h1>
+            <p className="text-xs text-tavern-text-muted">当前为字符数统计，精确 Token 与费用估算开发中</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={handleExportCsv} className="btn-ghost flex items-center gap-1.5 text-sm">
@@ -168,7 +167,7 @@ export function UsagePage() {
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-tavern-bg-soft rounded-xl p-4 border border-tavern-border-soft">
             <div className="flex items-center gap-2 text-tavern-text-muted text-xs mb-2">
-              <Type className="w-4 h-4" /> 总字符数
+              <Type className="w-4 h-4" /> 总字符数 <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] leading-none dark:bg-amber-900/30 dark:text-amber-300">字符统计</span>
             </div>
             <div className="text-2xl font-semibold tabular-nums">
               {summary ? formatCharCount(summary.totalChars) : '-'}

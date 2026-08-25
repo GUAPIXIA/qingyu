@@ -23,6 +23,7 @@ import { countChars } from '../utils/charCounter'
 import { getDisplayName } from '../utils/variables'
 import { getEffectiveLorebookIds } from '../utils/lorebook'
 import { downloadFile } from '../utils/download'
+import { charAssetUrl } from '../utils/asset'
 import type { Message } from '../../shared/types'
 import {
   MessageSquare,
@@ -367,10 +368,9 @@ export function ChatPage() {
 
   const effectiveBg = useMemo(() => {
     const params = currentCharacter?.chatBackgroundParams
-    const coverSrc = currentCharacter?.cover || currentCharacter?.avatar
-    if (params?.useCover && coverSrc) {
+    if (params?.useCover && currentCharacter) {
       return {
-        src: coverSrc,
+        src: charAssetUrl(currentCharacter.id, 'cover', currentCharacter.updatedAt),
         type: 'image' as const,
         opacity: params.opacity ?? 12,
         blur: params.blur ?? 0,
@@ -392,7 +392,7 @@ export function ChatPage() {
       }
     }
     return null
-  }, [currentCharacter?.chatBackground, currentCharacter?.chatBackgroundParams, currentCharacter?.avatar, currentCharacter?.cover])
+  }, [currentCharacter])
 
   // 首次使用引导（抽取至 ChatWelcomeGuide）
   // 未选择角色时才显示首次配置引导。角色已选中后必须允许进入聊天界面；
@@ -463,20 +463,10 @@ export function ChatPage() {
       {/* 顶栏 */}
       <ChatHeader
         currentCharacter={currentCharacter}
-        messages={messages}
         isStreaming={isStreaming}
         totalChars={totalChars}
         showQuickSettings={showQuickSettings}
-        showBgPanel={showBgPanel}
-        onExport={handleExport}
-        onClearConfirm={() => setShowClearConfirm(true)}
-        onShowContextViewer={() => setShowContextViewer(true)}
         onShowQuickSettings={() => setShowQuickSettings(!showQuickSettings)}
-        onShowBgPanel={() => setShowBgPanel(!showBgPanel)}
-        onShowGreetingPicker={() => {
-          setSelectedGreeting(currentCharacter.translatedContent?.firstMessage ?? currentCharacter.firstMessage)
-          setGreetingPickerOpen(true)
-        }}
         onCreateSession={handleCreateSession}
       />
 
@@ -532,13 +522,14 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* 消息列表 - 使用 Virtuoso 虚拟滚动 */}
+      {/* 消息列表 - S2-B：正文限宽 780px 提升阅读舒适度 */}
       <div
         className={cn(
-          'flex-1 overflow-hidden relative z-0',
+          'flex-1 overflow-hidden relative z-0 flex justify-center',
           `bubble-${settings.bubbleStyle}`
         )}
       >
+        <div className="w-full max-w-[780px] h-full flex flex-col">
         {messages.length === 0 ? (
           <EmptyState
             className="h-full"
@@ -572,6 +563,7 @@ export function ChatPage() {
             }}
           />
         )}
+        </div>
       </div>
 
       {/* 输入区 */}
@@ -619,7 +611,15 @@ export function ChatPage() {
       />
 
       {/* 快捷设置面板 */}
-      <QuickSettingsPanel open={showQuickSettings} onClose={() => setShowQuickSettings(false)} />
+      <QuickSettingsPanel
+        open={showQuickSettings}
+        onClose={() => setShowQuickSettings(false)}
+        messages={messages}
+        onShowContextViewer={() => setShowContextViewer(true)}
+        onShowBgPanel={() => setShowBgPanel(true)}
+        onExport={handleExport}
+        onClearConfirm={() => setShowClearConfirm(true)}
+      />
       <BackgroundPanel open={showBgPanel} onClose={() => setShowBgPanel(false)} />
 
       {/* 开场白选择面板（抽取至 ChatGreetingPickerModal） */}

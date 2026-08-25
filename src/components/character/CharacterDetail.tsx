@@ -37,11 +37,12 @@ function Section({ icon: Icon, title, children }: { icon: React.ComponentType<{ 
   )
 }
 
-function TagList({ tags }: { tags: string[] }) {
-  if (tags.length === 0) return <p className="text-sm text-tavern-text-muted italic">无</p>
+function TagList({ tags }: { tags: string[] | unknown }) {
+  const safeTags: string[] = Array.isArray(tags) ? (tags as string[]) : typeof tags === 'string' ? (tags as string).split(/[,，、\n]+/).map((s: string) => s.trim()).filter(Boolean) : []
+  if (safeTags.length === 0) return <p className="text-sm text-tavern-text-muted italic">无</p>
   return (
     <div className="flex flex-wrap gap-1.5">
-      {tags.map(tag => (
+      {safeTags.map(tag => (
         <span key={tag} className="px-2 py-0.5 rounded text-xs bg-tavern-bg-hover text-tavern-text-soft">{tag}</span>
       ))}
     </div>

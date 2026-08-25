@@ -111,8 +111,8 @@ export interface SettingsAPI {
   save(settings: Settings): Promise<void>
   saveAPICredential(provider: string, key: string): Promise<void>
   getAPICredential(provider: string): Promise<string | null>
-  exportBackup(): Promise<void>
-  importBackup(): Promise<void>
+  exportBackup(): Promise<{ status: 'canceled' | 'success'; path?: string; version?: 1 | 2; counts?: Record<string, number>; totalBytes?: number; excluded?: string[] }>
+  importBackup(): Promise<{ status: 'canceled' | 'success'; version?: 1 | 2; counts?: Record<string, number> }>
 }
 
 // ===================== 世界书接口 =====================

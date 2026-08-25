@@ -15,6 +15,9 @@ interface AppearanceSectionProps {
   handleDeleteFont: (id: string) => void
 }
 
+const MIN_MESSAGE_WIDTH = 400
+const MAX_MESSAGE_WIDTH = 1600
+
 /** 外观设置(字体 / 主题 / 气泡样式 / 消息宽度间距 + 预览) */
 export function AppearanceSection(props: AppearanceSectionProps) {
   const { settings, updateSettings, customFonts, fontUploading, fontError, handleUploadFont, handleApplyCustomFont, handleDeleteFont } = props
@@ -231,8 +234,8 @@ export function AppearanceSection(props: AppearanceSectionProps) {
                 </label>
                 <input
                   type="range"
-                  min="400"
-                  max="1200"
+                  min={MIN_MESSAGE_WIDTH}
+                  max={MAX_MESSAGE_WIDTH}
                   step="8"
                   value={settings.messageWidth ?? 768}
                   onChange={(e) => updateSettings({ messageWidth: Number(e.target.value) })}
@@ -300,10 +303,10 @@ export function AppearanceSection(props: AppearanceSectionProps) {
                   </span>
                 </div>
                 <div className="p-3 bg-[var(--color-bg)]/40">
-                  {/* 消息宽度：按 400-1200 范围映射为容器百分比，滑杆变化直观可见 */}
+                  {/* 消息宽度：按完整可选范围映射为容器百分比，滑杆变化直观可见 */}
                   {(() => {
-                    const w = Math.min(Math.max(settings.messageWidth ?? 768, 400), 1200)
-                    const pct = Math.max(55, Math.min(100, Math.round((w / 1200) * 100)))
+                    const w = Math.min(Math.max(settings.messageWidth ?? 768, MIN_MESSAGE_WIDTH), MAX_MESSAGE_WIDTH)
+                    const pct = Math.round(55 + ((w - MIN_MESSAGE_WIDTH) / (MAX_MESSAGE_WIDTH - MIN_MESSAGE_WIDTH)) * 45)
                     const spacing = settings.messageSpacing ?? 20
                     const bubbleStyle = settings.bubbleStyle ?? 'standard'
                     const bubbleRadius = bubbleStyle === 'round' ? 'rounded-2xl'

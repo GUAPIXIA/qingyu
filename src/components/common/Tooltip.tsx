@@ -30,12 +30,13 @@ export function Tooltip({
   className,
 }: TooltipProps) {
   return (
-    <div className={cn('relative group', className)}>
+    <div className={cn('relative group', className)} tabIndex={-1}>
       {children}
       <div
+        role="tooltip"
         className={cn(
           'absolute z-50 px-2 py-1 text-xs text-white bg-tavern-bg-card border border-tavern-border rounded-lg shadow-lg',
-          'opacity-0 invisible group-hover:opacity-100 group-hover:visible',
+          'opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible',
           'transition-all duration-150 pointer-events-none whitespace-nowrap',
           positionClasses[position],
         )}

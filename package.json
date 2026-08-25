@@ -1,7 +1,7 @@
 {
   "name": "qingyu",
   "private": true,
-  "version": "0.12.1",
+  "version": "0.13.0",
   "type": "module",
   "description": "轻语 - 轻量级 AI 角色扮演客户端",
   "author": "QingYu",
@@ -24,6 +24,7 @@
     "version:release": "node scripts/version.mjs release"
   },
   "dependencies": {
+    "adm-zip": "^0.6.0",
     "bonjour-service": "^1.4.4",
     "express": "^4.22.2",
     "express-rate-limit": "^8.6.2",
@@ -36,6 +37,7 @@
     "@testing-library/jest-dom": "^6.4.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.0",
+    "@types/adm-zip": "^0.5.8",
     "@types/express": "^5.0.6",
     "@types/express-rate-limit": "^6.0.2",
     "@types/node": "^22.15.30",

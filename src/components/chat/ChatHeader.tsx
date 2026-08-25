@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ArrowDownToLine, Eye, Sliders, Images, Image, Download, Trash2, Users, UserCircle, X, Plus, Star } from 'lucide-react'
+import { ChevronDown, Sliders, Users, UserCircle, Plus, Star } from 'lucide-react'
 import { useChatStore } from '../../store/useChatStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { charAssetUrl } from '../../utils/asset'
@@ -13,36 +13,23 @@ import { getDisplayName } from '../../utils/variables'
 import { MemoryPanel } from './MemoryPanel'
 import { TokenUsage } from './TokenUsage'
 import { cn } from '../../lib/utils'
-import type { Character, Message } from '../../../shared/types'
+import type { Character } from '../../../shared/types'
 
 interface ChatHeaderProps {
   currentCharacter: Character
-  messages: Message[]
   isStreaming: boolean
   totalChars: number
   showQuickSettings: boolean
-  showBgPanel: boolean
-  onExport: () => void
-  onClearConfirm: () => void
-  onShowContextViewer: () => void
   onShowQuickSettings: () => void
-  onShowBgPanel: () => void
-  onShowGreetingPicker: () => void
   onCreateSession: () => void
 }
 
 export function ChatHeader({
   currentCharacter,
-  messages,
   isStreaming,
   totalChars,
   showQuickSettings,
-  showBgPanel,
-  onExport,
-  onClearConfirm,
-  onShowContextViewer,
   onShowQuickSettings,
-  onShowBgPanel,
   onCreateSession,
 }: ChatHeaderProps) {
   const navigate = useNavigate()
@@ -68,7 +55,6 @@ export function ChatHeader({
   const [showMemoryPanel, setShowMemoryPanel] = useState(false)
   const [memoryStats, setMemoryStats] = useState<{ totalMessages: number; totalChars: number; durationStr: string } | null>(null)
   const [memoryInterval, setMemoryInterval] = useState(10)
-  const [showImgHistory, setShowImgHistory] = useState(false)
 
   // 切换当前会话的身份
   const handleSwitchPersona = async (personaId: string | null) => {
@@ -294,29 +280,13 @@ export function ChatHeader({
         />
       </div>
 
-      {/* 操作按钮 */}
+      {/* 右上角快捷设置直达入口 */}
       <div className="flex items-center gap-1">
-        <span className="mr-2"><TokenUsage chars={totalChars} /></span>
+        <span className="mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
         <button
-          onClick={() => updateSettings({ autoScroll: !settings.autoScroll })}
-          className={cn(
-            'p-2 rounded-lg transition-colors',
-            settings.autoScroll
-              ? 'text-tavern-accent bg-tavern-accent-soft'
-              : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
-          )}
-          title={settings.autoScroll ? '自动滚动：开' : '自动滚动：关'}
-        >
-          <ArrowDownToLine className="w-5 h-5" />
-        </button>
-        <button
-          onClick={onShowContextViewer}
-          className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
-          title="查看上下文"
-        >
-          <Eye className="w-5 h-5" />
-        </button>
-        <button
+          type="button"
+          aria-label="快捷设置"
+          aria-expanded={showQuickSettings}
           onClick={onShowQuickSettings}
           className={cn(
             'p-2 rounded-lg transition-colors',
@@ -327,88 +297,6 @@ export function ChatHeader({
           title="快捷设置"
         >
           <Sliders className="w-5 h-5" />
-        </button>
-        {/* 生图历史 */}
-        <div className="relative">
-          <button
-            onClick={() => setShowImgHistory(v => !v)}
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              showImgHistory
-                ? 'text-tavern-accent bg-tavern-accent-soft'
-                : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
-            )}
-            title="生图历史"
-          >
-            <Images className="w-5 h-5" />
-          </button>
-          {showImgHistory && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowImgHistory(false)} />
-              <div className="absolute top-full right-0 mt-1 w-80 max-h-96 rounded-lg border border-tavern-border bg-tavern-bg-soft shadow-xl z-50 overflow-hidden">
-                <div className="px-3 py-2 border-b border-tavern-border-soft flex items-center justify-between">
-                  <span className="text-sm font-medium text-tavern-text">生图历史</span>
-                  <button onClick={() => setShowImgHistory(false)} className="p-1 rounded hover:bg-tavern-bg-hover">
-                    <X className="w-4 h-4 text-tavern-text-muted" />
-                  </button>
-                </div>
-                <div className="overflow-y-auto max-h-80 p-2">
-                  {(() => {
-                    const imgMsgs = messages.filter(m => m.images && m.images.length > 0)
-                    if (imgMsgs.length === 0) {
-                      return <div className="text-center py-8 text-sm text-tavern-text-muted">暂无生图记录</div>
-                    }
-                    return (
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {imgMsgs.flatMap(m => m.images).slice(-30).reverse().map((img, i) => (
-                          <button
-                            key={i}
-                            onClick={() => {
-                              // NEW-L9 修复：复制失败时提示，避免静默失败
-                              navigator.clipboard.writeText(img).catch(() => {
-                                useChatStore.setState({ error: '复制图片失败：无法访问剪贴板' })
-                              })
-                              setShowImgHistory(false)
-                            }}
-                            className="aspect-square rounded-lg overflow-hidden bg-tavern-bg-hover hover:ring-2 hover:ring-tavern-accent transition-all"
-                            title="点击复制图片"
-                          >
-                            <img src={img} className="w-full h-full object-cover" alt="" />
-                          </button>
-                        ))}
-                      </div>
-                    )
-                  })()}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-        <button
-          onClick={onShowBgPanel}
-          className={cn(
-            'p-2 rounded-lg transition-colors',
-            showBgPanel
-              ? 'text-tavern-accent bg-tavern-accent-soft'
-              : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
-          )}
-          title="聊天背景"
-        >
-          <Image className="w-5 h-5" />
-        </button>
-        <button
-          onClick={onExport}
-          className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
-          title="导出对话"
-        >
-          <Download className="w-5 h-5" />
-        </button>
-        <button
-          onClick={onClearConfirm}
-          className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-bg-hover transition-colors"
-          title="清空对话"
-        >
-          <Trash2 className="w-5 h-5" />
         </button>
       </div>
     </header>

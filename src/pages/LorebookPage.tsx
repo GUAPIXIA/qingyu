@@ -19,6 +19,7 @@ import {
   Brain,
   CircleCheck,
   CircleAlert,
+  Search,
 } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { translationMaxTokens } from '../store/chatConstants'
@@ -67,6 +68,8 @@ export function LorebookPage() {
   const [indexStatus, setIndexStatus] = useState<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>({})
   const [indexingId, setIndexingId] = useState<string | null>(null)
   const [indexError, setIndexError] = useState<string | null>(null)
+  const [bookSearch, setBookSearch] = useState('')
+  const [entrySearch, setEntrySearch] = useState('')
 
   const { getActiveProfile, settings } = useSettingsStore()
 
@@ -312,9 +315,14 @@ export function LorebookPage() {
         />
       ) : (
         <div className="flex-1 flex overflow-hidden">
-          {/* 左侧列表 */}
-          <aside className="w-72 border-r border-tavern-border-soft overflow-y-auto p-3 space-y-2 shrink-0">
-            {lorebooks.map((lb) => (
+          {/* 左侧列表 - S3：书级搜索 */}
+          <aside className="w-72 border-r border-tavern-border-soft overflow-y-auto p-3 space-y-2 shrink-0 flex flex-col">
+            <div className="flex items-center gap-2 bg-tavern-bg rounded-lg px-2 py-1.5 border border-tavern-border-soft shrink-0">
+              <Search className="w-3.5 h-3.5 text-tavern-text-muted" aria-hidden />
+              <input value={bookSearch} onChange={e => setBookSearch(e.target.value)} placeholder="搜索世界书..." className="flex-1 bg-transparent outline-none text-sm placeholder:text-tavern-text-muted" aria-label="搜索世界书" />
+            </div>
+            <div className="space-y-2 flex-1 overflow-y-auto">
+            {(bookSearch.trim() ? lorebooks.filter(lb => lb.name.toLowerCase().includes(bookSearch.toLowerCase()) || lb.description.toLowerCase().includes(bookSearch.toLowerCase())) : lorebooks).map((lb) => (
               <div
                 key={lb.id}
                 onClick={() => {
@@ -352,6 +360,7 @@ export function LorebookPage() {
                 </div>
               </div>
             ))}
+            </div>
           </aside>
 
           {/* 右侧编辑区 */}
@@ -489,24 +498,35 @@ export function LorebookPage() {
                   </div>
                 </div>
 
-                {/* 条目列表 */}
+                {/* 条目列表 - S3：条目搜索与过滤 */}
                 <div className="flex-1 overflow-y-auto p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium text-sm text-tavern-text">
+                  <div className="flex items-center justify-between mb-3 gap-2">
+                    <h3 className="font-medium text-sm text-tavern-text shrink-0">
                       条目（{selected.entries.length}）
                     </h3>
-                    <button className="btn-secondary" onClick={handleNewEntry}>
-                      <Plus className="w-4 h-4" />
-                      新建条目
-                    </button>
-                  </div>
-                  {selected.entries.length === 0 ? (
-                    <div className="text-center py-10 text-sm text-tavern-text-muted">
-                      暂无条目，点击「新建条目」开始添加
+                    <div className="flex items-center gap-2 flex-1 justify-end">
+                      <div className="flex items-center gap-1.5 bg-tavern-bg rounded-lg px-2 py-1 border border-tavern-border-soft w-48">
+                        <Search className="w-3.5 h-3.5 text-tavern-text-muted shrink-0" aria-hidden />
+                        <input value={entrySearch} onChange={e => setEntrySearch(e.target.value)} placeholder="搜索条目..." className="flex-1 bg-transparent outline-none text-xs placeholder:text-tavern-text-muted" aria-label="搜索条目" />
+                      </div>
+                      <button className="btn-secondary shrink-0" onClick={handleNewEntry}>
+                        <Plus className="w-4 h-4" />
+                        新建条目
+                      </button>
                     </div>
-                  ) : (
+                  </div>
+                  {(() => {
+                    const q = entrySearch.trim().toLowerCase()
+                    const filtered = q ? selected.entries.filter(e => e.keywords.join(' ').toLowerCase().includes(q) || e.content.toLowerCase().includes(q)) : selected.entries
+                    if (filtered.length === 0 && selected.entries.length > 0) {
+                      return <div className="text-center py-8 text-sm text-tavern-text-muted">无匹配条目</div>
+                    }
+                    if (selected.entries.length === 0) {
+                      return <div className="text-center py-10 text-sm text-tavern-text-muted">暂无条目，点击「新建条目」开始添加</div>
+                    }
+                    return (
                     <div className="space-y-2">
-                      {selected.entries.map((entry) => (
+                      {filtered.map((entry) => (
                         <div key={entry.id} className="card p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
@@ -621,7 +641,8 @@ export function LorebookPage() {
                         </div>
                       ))}
                     </div>
-                  )}
+                  )
+                  })()}
                 </div>
 
                 {/* 条目编辑表单（P-8 拆至 LorebookEntryEditor） */}

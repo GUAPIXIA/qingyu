@@ -39,7 +39,8 @@ export function CharactersPage() {
       const q = deferredSearch.toLowerCase()
       result = result.filter((c) => {
         const nameMatch = c.name.toLowerCase().includes(q)
-        const tagMatch = c.tags.some((t) => t.toLowerCase().includes(q))
+        const safeTags: string[] = Array.isArray(c.tags) ? c.tags : typeof c.tags === 'string' ? (c.tags as unknown as string).split(/[,，、\n]+/) : []
+        const tagMatch = safeTags.some((t) => t.toLowerCase().includes(q))
         const descMatch = c.description?.toLowerCase().includes(q)
         const personalityMatch = c.personality?.toLowerCase().includes(q)
         const scenarioMatch = c.scenario?.toLowerCase().includes(q)

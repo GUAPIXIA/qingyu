@@ -131,4 +131,28 @@ describe('ChatPage 冒烟测试', () => {
     const { findByText } = renderPage()
     expect(await findByText('你好，我是 Alice 的消息内容')).toBeTruthy()
   })
+
+  it('启用角色封面背景时通过角色资源协议加载已落盘的封面', async () => {
+    const character = makeCharacter({
+      cover: '',
+      avatar: '',
+      chatBackgroundParams: {
+        opacity: 20,
+        blur: 0,
+        type: 'image',
+        posX: 50,
+        posY: 50,
+        scale: 100,
+        useCover: true,
+      },
+    })
+    setupStores(true, character)
+
+    const { container } = renderPage()
+    await screen.findByPlaceholderText(/输入消息/)
+
+    const background = container.querySelector('img[draggable="false"]') as HTMLImageElement
+    expect(background).toBeTruthy()
+    expect(background.src).toContain('tavern://character/char-1/cover')
+  })
 })

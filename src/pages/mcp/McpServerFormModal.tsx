@@ -49,25 +49,32 @@ export function McpServerFormModal({ editingId, form, setForm, onSave, onClose }
             />
           </div>
 
-          {/* 传输方式 */}
+          {/* 传输方式 - H0: SSE 暂未实现，禁用并提示 */}
           <div>
             <label className="label">传输方式</label>
             <div className="flex gap-1.5">
-              {(['stdio', 'sse'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setForm((f) => ({ ...f, transport: t }))}
-                  className={cn(
-                    'px-3 py-1 rounded text-xs border transition-colors',
-                    form.transport === t
-                      ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
-                      : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-soft hover:border-tavern-border'
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
+              {(['stdio', 'sse'] as const).map((t) => {
+                const isSSE = t === 'sse'
+                return (
+                  <button
+                    key={t}
+                    disabled={isSSE}
+                    title={isSSE ? 'SSE 传输暂未实现，敬请期待' : undefined}
+                    onClick={() => !isSSE && setForm((f) => ({ ...f, transport: t }))}
+                    className={cn(
+                      'px-3 py-1 rounded text-xs border transition-colors',
+                      form.transport === t
+                        ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
+                        : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-soft hover:border-tavern-border',
+                      isSSE && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    {t}{isSSE && ' (暂未支持)'}
+                  </button>
+                )
+              })}
             </div>
+            <p className="mt-1 text-[11px] text-tavern-text-muted">SSE 传输后端暂未实现，选择后将无法连接，已暂时禁用。</p>
           </div>
 
           {/* stdio 模式字段 */}

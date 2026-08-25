@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle } from 'lucide-react'
-import type { Preset, Lorebook } from '../../../shared/types'
+import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle, MessageSquare, ArrowDownToLine, Eye, Image as ImageIcon, Images, Download, Trash2 } from 'lucide-react'
+import type { Preset, Lorebook, Message } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
@@ -11,6 +11,11 @@ import { logError } from '../../lib/logger'
 interface QuickSettingsPanelProps {
   open: boolean
   onClose: () => void
+  messages: Message[]
+  onShowContextViewer: () => void
+  onShowBgPanel: () => void
+  onExport: () => void
+  onClearConfirm: () => void
 }
 
 const IMAGE_GEN_SIZES = [
@@ -18,7 +23,15 @@ const IMAGE_GEN_SIZES = [
   '512x768', '768x512',
 ]
 
-export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
+export function QuickSettingsPanel({
+  open,
+  onClose,
+  messages,
+  onShowContextViewer,
+  onShowBgPanel,
+  onExport,
+  onClearConfirm,
+}: QuickSettingsPanelProps) {
   // P-6 修复：字段级选择器订阅
   const activePresetId = useChatStore((s) => s.activePresetId)
   const activeLorebookIds = useChatStore((s) => s.activeLorebookIds)
@@ -42,6 +55,10 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
   // 连接测试
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const generatedImages = useMemo(
+    () => messages.flatMap((message) => message.images ?? []).slice(-12).reverse(),
+    [messages],
+  )
 
   // 计算角色绑定的世界书 ID 列表
   const boundLorebookIds = useMemo(() => {
@@ -153,6 +170,11 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
   const profile = useSettingsStore.getState().getActiveProfile()
   const activePreset = presets.find((p) => p.id === activePresetId)
 
+  const openConversationTool = (action: () => void) => {
+    onClose()
+    action()
+  }
+
   /** 保存参数修改；内置预设会由后端创建副本，并立即切换到新副本。 */
   const persistPresetUpdate = async (updated: Preset) => {
     try {
@@ -191,6 +213,65 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
         </div>
 
         <div className="p-4 space-y-5">
+
+          {/* ===== 对话操作 ===== */}
+          <Section icon={MessageSquare} title="对话操作">
+            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-2.5">
+              <div className="flex items-center gap-2 pb-2 border-b border-tavern-border-soft">
+                <span className="grid place-items-center w-7 h-7 rounded-lg bg-tavern-accent-soft text-tavern-accent shrink-0">
+                  <ArrowDownToLine className="w-3.5 h-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-tavern-text-soft">自动滚动</p>
+                  <p className="text-[10px] text-tavern-text-muted">生成时跟随最新消息</p>
+                </div>
+                <ToggleSwitch
+                  label="自动滚动"
+                  checked={settings.autoScroll}
+                  onChange={(value) => updateSettings({ autoScroll: value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <ActionButton icon={Eye} label="查看上下文" onClick={() => openConversationTool(onShowContextViewer)} />
+                <ActionButton icon={ImageIcon} label="聊天背景" onClick={() => openConversationTool(onShowBgPanel)} />
+                <ActionButton icon={Download} label="导出对话" onClick={() => openConversationTool(onExport)} />
+                <ActionButton danger icon={Trash2} label="清空对话" onClick={() => openConversationTool(onClearConfirm)} />
+              </div>
+
+              <div className="pt-2 border-t border-tavern-border-soft">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-tavern-text-soft">
+                    <Images className="w-3.5 h-3.5 text-tavern-text-muted" />
+                    生图历史
+                  </span>
+                  {generatedImages.length > 0 && (
+                    <span className="text-[10px] tabular-nums text-tavern-text-muted">最近 {generatedImages.length} 张</span>
+                  )}
+                </div>
+                {generatedImages.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-tavern-border-soft px-3 py-4 text-center text-[11px] text-tavern-text-muted">
+                    暂无生图记录
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {generatedImages.map((image, index) => (
+                      <button
+                        key={`${image.slice(0, 32)}-${index}`}
+                        type="button"
+                        aria-label={`复制生图 ${index + 1}`}
+                        title="点击复制图片"
+                        onClick={() => navigator.clipboard.writeText(image).catch(() => useChatStore.setState({ error: '复制图片失败：无法访问剪贴板' }))}
+                        className="aspect-square rounded-lg overflow-hidden bg-tavern-bg-hover border border-transparent hover:border-tavern-accent hover:shadow-sm transition-all"
+                      >
+                        <img src={image} className="w-full h-full object-cover" alt="" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Section>
 
           {/* ===== 模型 ===== */}
           <Section icon={Cpu} title="模型">
@@ -690,6 +771,52 @@ export function QuickSettingsPanel({ open, onClose }: QuickSettingsPanelProps) {
 }
 
 /* ===== 子组件 ===== */
+
+function ActionButton({ icon: Icon, label, onClick, danger = false }: {
+  icon: React.ElementType
+  label: string
+  onClick: () => void
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-2 min-w-0 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors',
+        danger
+          ? 'border-tavern-danger/20 text-tavern-danger hover:bg-tavern-danger/10'
+          : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:border-tavern-accent/40 hover:text-tavern-accent',
+      )}
+    >
+      <Icon className="w-3.5 h-3.5 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  )
+}
+
+function ToggleSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-tavern-accent',
+        checked ? 'bg-tavern-accent' : 'bg-tavern-bg-hover',
+      )}
+    >
+      <span className={cn(
+        'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+        checked ? 'translate-x-4' : 'translate-x-0',
+      )} />
+    </button>
+  )
+}
 
 function Section({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
   return (

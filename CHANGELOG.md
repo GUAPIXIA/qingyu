@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-25
+
+### 新增
+
+- **Backup V2 全量备份**：`zip` 容器 + `manifest.json`（版本/应用版本/时间/数量/哈希/未包含项）+ `sha256` 逐文件校验 + `safeId` 路径遍历防护 + 原子写入与快照回滚；覆盖 `settings`/`characters`（含头像/封面）/`lorebooks`/`presets`/`personas`/`regex`/`quickReplies`/`mcp`/`usage`/`chats`/`groups` 全量，敏感 `apiKey` 默认剥离并在结果页明示；兼容 `V1 JSON` 导入；新增 `scripts/verify-backup.mjs`（`--self-test` 导出→清空→导入哈希比对）。
+- **群聊默认选中**：进入群聊页自动恢复上次选中，无则选中第一个，消除空状态多余点击；`localStorage:group-last-selected` 持久化。
+- **身份搜索与导入导出**：身份页新增搜索（名称/描述/性格）、`导入/导出 JSON`（合并去重）、`当前 vs 默认` 区分说明。
+- **世界书搜索**：左栏书级搜索（名称/描述）、右栏条目搜索（关键词/内容）+ 无匹配提示。
+- **公告未读与刷新**：未读蓝点（`localStorage:announcement-read`）、手动刷新、最后更新时间、离线缓存徽章（`WifiOff`）。
+- **独立预览模式**：`window.api` 缺失时注入 `typed mock`（`src/lib/preview.ts`），`?preview=1` 顶部横幅，避免 `Vite` 直开白屏，支撑前端独立预览与视觉回归。
+
+### 修复
+
+- **F-02/F-03 导入反馈**：`settings:exportBackup/importBackup` 返回 `{status:'canceled'|'success'}` 结构化结果，取消不再误报成功；导入后全量重载 `settings/character/persona/group` Store。
+- **F-04 MCP SSE**：表单禁用 `SSE` 选项并标注“暂未支持”。
+- **角色卡导入兼容性（`tags` 脏格式）**：部分社区卡 `tags` 为字符串导致 `visibleTags.map is not a function` 白屏，现已在导入归一化、落盘自愈、前端三层兜底，已入库脏数据自动修复。
+- **弹窗可访问性**：`Modal` 补 `role=dialog/aria-modal/aria-labelledby`、焦点圈定、初始焦点、焦点恢复、`body overflow` 锁定。
+- **用量与备份文案**：用量页明确“字符统计（精确 Token 开发中）”，备份说明与 README 同步为 V2 全量口径。
+- **页面返回一致性**：用量页移除同级返回箭头（`BarChart3` 标题）。
+
+### 变更
+
+- **F-05/MCP/备份文案与导流**：`H0` 先改文案止损，`S1` 再落地代码，避免误导。
+- **角色卡导入改为严格校验**：`tags`/`alternate_greetings`/`group_only_greetings` 必须为 `string[]`，`description` 等必须为字符串，否则拒绝导入并提示字段；历史脏数据仍由 `normalizeStoredTags` 兜底。
+- **侧栏分组**：14 个平级入口重构为核心/资源/服务/系统四分组，默认仅核心展开，保证 `900×600` 下核心入口无需滚动；`localStorage:sidebar-groups-collapsed` 记忆。
+- **聊天页收敛**：顶部收敛为 `Token + 更多` 下拉（上下文/快捷设置/背景/生图历史/导出/清空），正文限宽 `780px` 提升阅读舒适度。
+- **角色卡常驻主操作**：网格卡常驻“开始对话”胶囊按钮，其余收进 `⋯` 菜单，删除危险色分隔。
+- **设置页分区**：左侧目录（API/外观/行为/手机连接/语义/网络/数据管理）+ 滚动高亮 + 顶栏保存状态（保存中/已保存）。
+- **Tooltip**：`group-hover` 升级为 `group-hover + group-focus-within`，补 `role=tooltip` 与 `focus-visible`。
+
 ## [0.12.1] - 2026-08-20
 
 ### 对话与记忆修复
