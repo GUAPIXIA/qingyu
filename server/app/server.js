@@ -39,7 +39,7 @@ app.use('/api/version', versionRouter)
 // 在线更新静态托管（electron-updater generic provider）——
 // 目录内存放 latest.yml / QingYu-Setup-x.y.z.exe / .blockmap，
 // 由发版时手动从 GitHub Releases 下载后放入（或 CI 同步）。
-// 客户端镜像地址填 http://<host>/qingyu/update（nginx 剥前缀场景对应本路由 /update）。
+// 客户端镜像地址填 https://<host>/qingyu/update（nginx 剥前缀场景对应本路由 /update）。
 const UPDATES_DIR = process.env.UPDATES_DIR || path.join(__dirname, 'data', 'updates')
 app.use('/update', express.static(UPDATES_DIR, {
   // latest.yml 需强缓存禁用，否则客户端可能读到旧版本清单

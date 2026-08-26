@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { getDefaultSettings } from '../utils/defaults'
 import { cn } from '../lib/utils'
@@ -24,15 +24,17 @@ import {
   Smartphone,
   Brain,
   Check,
+  RefreshCw,
 } from 'lucide-react'
 
 export function SettingsPage() {
   const { settings, updateSettings } = useSettingsStore()
   const navigate = useNavigate()
+  const { hash } = useLocation()
   const [busy, setBusy] = useState<'export' | 'import' | null>(null)
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([])
-  const [activeSection, setActiveSection] = useState<string>('api')
+  const [activeSection, setActiveSection] = useState<string>('updater')
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved')
   const [fontUploading, setFontUploading] = useState(false)
   const [fontError, setFontError] = useState<string | null>(null)
@@ -53,6 +55,15 @@ export function SettingsPage() {
   useEffect(() => {
     loadCustomFonts()
   }, [loadCustomFonts])
+
+  useEffect(() => {
+    if (hash !== '#settings-updater') return
+    setActiveSection('updater')
+    const frame = requestAnimationFrame(() => {
+      document.getElementById('settings-updater')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [hash])
 
   // S2-D：监听设置变化显示保存状态（防抖 300ms）
   useEffect(() => {
@@ -179,6 +190,7 @@ export function SettingsPage() {
   }
 
   const sections = [
+    { id: 'updater', label: '软件更新', icon: RefreshCw },
     { id: 'api', label: 'API', icon: Plug },
     { id: 'appearance', label: '外观', icon: Palette },
     { id: 'behavior', label: '行为', icon: Sliders },
@@ -221,7 +233,7 @@ export function SettingsPage() {
             </button>
           ))}
         </nav>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4" onScroll={(e) => {
+        <div data-testid="settings-sections" className="flex-1 overflow-y-auto p-4 space-y-4" onScroll={(e) => {
           const container = e.currentTarget
           // 简易滚动高亮
           for (const s of sections) {
@@ -233,6 +245,9 @@ export function SettingsPage() {
             }
           }
         }}>
+        <div id="settings-updater">
+        <UpdaterSection />
+        </div>
         <div id="settings-api">
         <SectionCard title="API 设置" icon={<Plug className="w-4 h-4" />} defaultOpen={false}>
           <div className="mt-3">
@@ -266,9 +281,6 @@ export function SettingsPage() {
         </div>
         <div id="settings-phone">
         <PhoneConnectionSection />
-        </div>
-        <div id="settings-updater">
-        <UpdaterSection />
         </div>
         <div id="settings-semantic">
         <SemanticSection

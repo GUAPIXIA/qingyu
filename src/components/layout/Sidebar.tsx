@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useUIStore } from '../../store/useUIStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
@@ -22,7 +22,6 @@ import {
   BarChart3,
   Wrench,
   Megaphone,
-  ExternalLink,
   ChevronDown,
 } from 'lucide-react'
 
@@ -66,6 +65,7 @@ export function Sidebar() {
   const settings = useSettingsStore((s) => s.settings)
   const getActiveProfile = useSettingsStore((s) => s.getActiveProfile)
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   // S2-A：分组折叠状态（localStorage 持久化）
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
     try {
@@ -101,8 +101,6 @@ export function Sidebar() {
 
   const [appVersion, setAppVersion] = useState('')
   const [serverVersion, setServerVersion] = useState<string | null>(null)
-  const [downloadUrl, setDownloadUrl] = useState('')
-  const GITHUB_URL = 'https://github.com/GUAPIXIA/qingyu'
 
   /** 简单 semver 比较：返回 true 表示 remote > local */
   function isNewerVersion(local: string, remote: string): boolean {
@@ -126,19 +124,11 @@ export function Sidebar() {
     window.api.app.checkVersion().then(info => {
       if (info?.version) {
         setServerVersion(info.version)
-        setDownloadUrl(info.downloadUrl || GITHUB_URL + '/releases')
       }
     }).catch((e) => logError('Sidebar:checkVersion', e))
   }, [])
 
-  const handleOpenDownload = () => {
-    const url = downloadUrl || GITHUB_URL + '/releases'
-    window.api.app.openExternal(url).catch((e) => logError('Sidebar:openExternal', e))
-  }
-
-  const handleOpenGithub = () => {
-    window.api.app.openExternal(GITHUB_URL).catch((e) => logError('Sidebar:openExternal', e))
-  }
+  const handleOpenUpdater = () => navigate('/settings#settings-updater')
 
   return (
     <aside
@@ -164,14 +154,14 @@ export function Sidebar() {
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               <button
-                onClick={hasUpdate ? handleOpenDownload : undefined}
+                onClick={handleOpenUpdater}
                 className={cn(
                   'flex items-center gap-1 text-[10px] leading-none transition-colors',
                   hasUpdate
                     ? 'text-tavern-accent hover:opacity-80 cursor-pointer'
-                    : 'text-tavern-text-muted'
+                    : 'text-tavern-text-muted hover:text-tavern-accent'
                 )}
-                title={hasUpdate ? `新版本 v${serverVersion} 可用，点击下载` : undefined}
+                title={hasUpdate ? `公告版本 v${serverVersion} 可用，前往软件更新` : '前往软件更新'}
               >
                 v{appVersion || '...'}
                 {hasUpdate && (
@@ -183,13 +173,6 @@ export function Sidebar() {
                   → v{serverVersion}
                 </span>
               )}
-              <button
-                onClick={handleOpenGithub}
-                className="flex items-center gap-0.5 text-[10px] text-tavern-text-muted/60 hover:text-tavern-accent transition-colors leading-none"
-                title="前往 GitHub 主页"
-              >
-                <ExternalLink className="w-2.5 h-2.5" />
-              </button>
             </div>
           </div>
         )}

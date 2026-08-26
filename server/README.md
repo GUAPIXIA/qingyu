@@ -36,12 +36,12 @@ npm start              # 默认监听 3000 端口
 | POST | `/api/auth/login` | 公开 | 登录，5 次失败锁定 15 分钟 |
 | GET | `/api/version` | 公开 | 版本信息（version/changelog/downloadUrl） |
 | PUT | `/api/version` | JWT | 更新版本信息 |
-| GET | `/update/*` | 静态文件 | 在线更新镜像（electron-updater generic：latest.yml + 安装包 + blockmap） |
+| GET | `/update/*` | 静态文件 | PC 更新清单与手动下载（latest.yml + 安装包 + blockmap） |
 | GET | `/admin` | 页面 | 管理后台（浏览器维护公告） |
 
-## 在线更新镜像
+## 在线更新服务器源
 
-客户端自动更新支持双通道：自托管镜像优先、GitHub Releases 兑底。
+客户端检查更新时会并行读取本服务的 `latest.yml` 与 GitHub Releases，并分别显示版本。自动下载默认走 GitHub，本服务用于国内手动下载。
 
 发版后将以下文件放入 `app/data/updates/`（或设环境变量 `UPDATES_DIR` 指向自定义目录）：
 
@@ -52,7 +52,7 @@ updates/
 └── QingYu-Setup-x.y.z.exe.blockmap # 增量更新差异文件
 ```
 
-客户端设置页「软件更新 → 高级设置」填入镜像地址：`http://<host>/qingyu/update`（nginx 剥前缀场景）。
+客户端固定使用官方 HTTPS 地址，不再向用户提供镜像源输入框。部署时应先上传安装包和 blockmap，最后替换 `latest.yml`。
 
 ## 测试
 

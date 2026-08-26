@@ -284,8 +284,6 @@ const updaterApi: UpdaterAPI = {
   download: () => ipcRenderer.invoke('updater:download'),
   install: () => ipcRenderer.invoke('updater:install'),
   getState: () => ipcRenderer.invoke('updater:getState'),
-  getMirror: () => ipcRenderer.invoke('updater:getMirror'),
-  setMirror: (config) => ipcRenderer.invoke('updater:setMirror', config),
   onEvent: (listener) => {
     const handler = (_e: unknown, state: UpdaterState) => listener(state)
     ipcRenderer.on(IPC_EVENTS.updaterEvent, handler)

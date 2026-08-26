@@ -98,6 +98,8 @@ const mockApi: Partial<ExposedAPI> = {
   } as any,
   app: {
     getVersion: vi.fn().mockResolvedValue('0.8.9'),
+    checkVersion: vi.fn().mockResolvedValue(null),
+    openExternal: vi.fn().mockResolvedValue(undefined),
   } as any,
   announcement: {
     fetchList: vi.fn().mockResolvedValue({ items: [], total: 0 }),
@@ -107,8 +109,6 @@ const mockApi: Partial<ExposedAPI> = {
     download: vi.fn().mockResolvedValue({ status: 'error', message: '' }),
     install: vi.fn().mockResolvedValue(undefined),
     getState: vi.fn().mockResolvedValue({ status: 'idle', message: '' }),
-    getMirror: vi.fn().mockResolvedValue({ mirrorUrl: '' }),
-    setMirror: vi.fn().mockResolvedValue(undefined),
     onEvent: vi.fn().mockReturnValue(() => {}),
   } as any,
   log: {

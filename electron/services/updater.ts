@@ -1,45 +1,26 @@
 /**
  * 在线更新服务（electron-updater 封装）
  *
- * 双通道策略：
- * 1. 镜像源优先 —— 自托管公告服务端的静态目录（generic provider），
- *    国内用户下载快；未配置或检查失败时自动回退。
- * 2. GitHub Releases 兜底 —— CI 自动发版的权威来源。
+ * 固定双源策略：
+ * 1. 官方服务器 latest.yml 与 GitHub Releases 并行检查并分别展示结果；
+ * 2. 自动下载与安装始终使用 GitHub Provider，服务器仅提供手动下载。
  *
  * 状态通过 webContents.send 转发给渲染层：
  *   IPC_EVENTS.updaterEvent -> UpdaterState
  *
- * 注意：仅在打包安装（NSIS 安装器）环境下可用；开发模式下 checkForUpdates
- * 会抛出异常，统一捕获后以 error 状态上报。
+ * 注意：仅在打包安装（NSIS 安装器）环境下可用；开发模式会在调用底层
+ * updater 前明确返回 error 状态。
  */
 
 import type { IpcMain } from 'electron'
-import { BrowserWindow } from 'electron'
-import { join } from 'node:path'
-import { DIRS, readJson, writeJson } from './storage'
+import { app, BrowserWindow } from 'electron'
 import { createLogger } from './logger'
 import { IPC_EVENTS } from '../../shared/ipc-channels'
-import type { UpdateMirrorConfig, UpdaterStatus } from '../../shared/ipc-api'
+import type { UpdateSourceResult, UpdaterState } from '../../shared/ipc-api'
 
-/** 更新镜像源配置文件 */
-const UPDATE_CONFIG_FILE = () => join(DIRS.config(), 'update-config.json')
-
-/** 默认镜像源：留空表示未启用（仅走 GitHub Releases） */
-const DEFAULT_MIRROR_URL = ''
-
-interface UpdaterState {
-  status: UpdaterStatus
-  /** 当前状态说明 / 错误消息 */
-  message: string
-  /** 可用的新版本号 */
-  version?: string
-  /** 更新日志 */
-  releaseNotes?: string
-  /** 下载进度百分比（downloading 状态时有效） */
-  percent?: number
-  /** 本次结果来源 */
-  source?: 'mirror' | 'github'
-}
+const OFFICIAL_SERVER_FEED_URL = 'https://cjbtj.xyz/qingyu/update'
+const OFFICIAL_SERVER_LATEST_URL = `${OFFICIAL_SERVER_FEED_URL}/latest.yml`
+const GITHUB_PROVIDER = { provider: 'github' as const, owner: 'GUAPIXIA', repo: 'qingyu' }
 
 const logger = createLogger('updater')
 let state: UpdaterState = { status: 'idle', message: '' }
@@ -60,37 +41,6 @@ interface UpdateInfoLike {
 /** 动态取主窗口（注册时机早于 createWindow，不能缓存窗口引用） */
 function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] ?? null
-}
-
-/** 读取镜像源配置 */
-export function getMirrorConfig(): UpdateMirrorConfig {
-  return readJson<UpdateMirrorConfig>(UPDATE_CONFIG_FILE()) ?? { mirrorUrl: DEFAULT_MIRROR_URL }
-}
-
-/** 写入镜像源配置（URL 做协议白名单校验） */
-export function setMirrorConfig(config: UpdateMirrorConfig): void {
-  const mirrorUrl = (config.mirrorUrl || '').trim()
-  if (mirrorUrl && !/^https?:\/\/[^\s]+$/i.test(mirrorUrl)) {
-    throw new Error('镜像地址必须是 http/https 链接')
-  }
-  writeJson(UPDATE_CONFIG_FILE(), { mirrorUrl })
-}
-
-/** 极简 semver 比较：主干按数值逐段比较；预发布后缀低于正式版，预发布之间字符串比较 */
-export function semverGt(a: string, b: string): boolean {
-  const [coreA, preA] = a.split('-')
-  const [coreB, preB] = b.split('-')
-  const pa = coreA.split('.').map(Number)
-  const pb = coreB.split('.').map(Number)
-  for (let i = 0; i < 3; i++) {
-    const na = Number.isFinite(pa[i]) ? pa[i] : 0
-    const nb = Number.isFinite(pb[i]) ? pb[i] : 0
-    if (na !== nb) return na > nb
-  }
-  if (preA && !preB) return false
-  if (!preA && preB) return true
-  if (preA && preB) return preA > preB
-  return false
 }
 
 function sendEvent(): void {
@@ -151,30 +101,119 @@ function extractNotes(info: unknown): string | undefined {
   return undefined
 }
 
-/**
- * 通过指定 provider 检查一次更新。
- * 返回发现的新版本信息（无更新或检查失败返回 null）。
- */
-async function checkWithFeed(updater: AutoUpdater, feed: { url?: string }): Promise<UpdateInfoLike | null> {
-  updater.setFeedURL(
-    feed.url
-      ? { provider: 'generic', url: feed.url }
-      : { provider: 'github', owner: 'GUAPIXIA', repo: 'qingyu' },
-  )
+function normalizeVersion(value: string): { core: number[]; prerelease: Array<number | string> | null } | null {
+  const match = value.trim().replace(/^v/, '').match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/)
+  if (!match) return null
+  const prerelease = match[4]
+    ? match[4].split('.').map((part) => (/^\d+$/.test(part) ? Number(part) : part))
+    : null
+  return { core: [Number(match[1]), Number(match[2]), Number(match[3])], prerelease }
+}
+
+/** 按 SemVer 规则判断 remote 是否高于 local（覆盖项目使用的 alpha/beta/rc 版本）。 */
+export function isNewerVersion(local: string, remote: string): boolean {
+  const left = normalizeVersion(local)
+  const right = normalizeVersion(remote)
+  if (!left || !right) return false
+  for (let index = 0; index < 3; index += 1) {
+    if (right.core[index] !== left.core[index]) return right.core[index] > left.core[index]
+  }
+  if (left.prerelease === null) return false
+  if (right.prerelease === null) return true
+  const max = Math.max(left.prerelease.length, right.prerelease.length)
+  for (let index = 0; index < max; index += 1) {
+    const l = left.prerelease[index]
+    const r = right.prerelease[index]
+    if (l === undefined) return true
+    if (r === undefined) return false
+    if (l === r) continue
+    if (typeof l === 'number' && typeof r === 'string') return true
+    if (typeof l === 'string' && typeof r === 'number') return false
+    return r > l
+  }
+  return false
+}
+
+function yamlValue(body: string, key: string): string | undefined {
+  const match = body.match(new RegExp(`^${key}:\\s*(.+?)\\s*$`, 'm'))
+  if (!match) return undefined
+  const value = match[1].trim()
+  if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"'))) {
+    return value.slice(1, -1)
+  }
+  return value
+}
+
+/** 解析 electron-builder 生成的 latest.yml 中本功能所需的最小字段。 */
+export function parseServerLatestYaml(body: string): { version: string; downloadUrl: string } {
+  const version = yamlValue(body, 'version')
+  const filePath = yamlValue(body, 'path') ?? body.match(/^\s*-\s+url:\s*(.+?)\s*$/m)?.[1]?.replace(/^['"]|['"]$/g, '')
+  if (!version || !normalizeVersion(version)) throw new Error('服务器更新清单版本号无效')
+  if (!filePath) throw new Error('服务器更新清单缺少安装包路径')
+
+  const feedUrl = new URL(`${OFFICIAL_SERVER_FEED_URL}/`)
+  const downloadUrl = new URL(filePath, feedUrl)
+  if (downloadUrl.protocol !== 'https:' || downloadUrl.origin !== feedUrl.origin || !downloadUrl.pathname.startsWith(feedUrl.pathname)) {
+    throw new Error('服务器更新清单包含不安全的安装包地址')
+  }
+  return { version, downloadUrl: downloadUrl.toString() }
+}
+
+async function checkServerLatest(currentVersion: string): Promise<UpdateSourceResult> {
   try {
-    const result = await updater.checkForUpdates()
-    const info = result?.updateInfo
-    if (!info?.version) return null
-    return semverGt(info.version, updater.currentVersion.version) ? info : null
+    const response = await fetch(OFFICIAL_SERVER_LATEST_URL, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const parsed = parseServerLatestYaml(await response.text())
+    return {
+      status: isNewerVersion(currentVersion, parsed.version) ? 'available' : 'none',
+      version: parsed.version,
+      downloadUrl: parsed.downloadUrl,
+    }
   } catch (err) {
-    logger.warn('检查更新失败', { feed: feed.url ?? 'github', err: String(err) })
-    return null
+    const message = err instanceof Error ? err.message : String(err)
+    logger.warn('服务器更新清单获取失败', { err: message })
+    return { status: 'error', message }
   }
 }
 
-/** 检查更新：镜像源优先，GitHub 回退 */
+async function checkGitHub(updater: AutoUpdater): Promise<UpdateSourceResult> {
+  updater.setFeedURL(GITHUB_PROVIDER)
+  try {
+    const result = await updater.checkForUpdates()
+    if (!result) return { status: 'error', message: 'GitHub 更新服务未返回检查结果' }
+    const info = result.updateInfo as UpdateInfoLike | undefined
+    if (!info?.version) return { status: 'error', message: 'GitHub 更新清单缺少版本号' }
+    return {
+      status: result.isUpdateAvailable ? 'available' : 'none',
+      version: info.version,
+      releaseNotes: extractNotes(info),
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.warn('GitHub 更新检查失败', { err: message })
+    return { status: 'error', message }
+  }
+}
+
+/** 并行检查官方服务器与 GitHub；自动下载 Provider 始终保持 GitHub。 */
 export async function checkForUpdates(): Promise<UpdaterState> {
-  setState({ status: 'checking', message: '正在检查更新…', percent: undefined, version: undefined, releaseNotes: undefined })
+  setState({
+    status: 'checking',
+    message: '正在检查服务器与 GitHub…',
+    percent: undefined,
+    version: undefined,
+    releaseNotes: undefined,
+    server: undefined,
+    github: undefined,
+    hasAvailableUpdate: false,
+  })
+
+  if (!app.isPackaged) {
+    return setState({ status: 'error', message: '当前环境不支持在线更新（开发模式请手动构建安装包）' })
+  }
 
   let updater: AutoUpdater
   try {
@@ -184,46 +223,62 @@ export async function checkForUpdates(): Promise<UpdaterState> {
     return setState({ status: 'error', message: '当前环境不支持在线更新（开发模式请手动构建安装包）' })
   }
 
-  const { mirrorUrl } = getMirrorConfig()
+  const currentVersion = app.getVersion()
+  const [server, github] = await Promise.all([
+    checkServerLatest(currentVersion),
+    checkGitHub(updater),
+  ])
+  const hasAvailableUpdate = server.status === 'available' || github.status === 'available'
 
-  // 1) 镜像源优先
-  if (mirrorUrl) {
-    setState({ message: '正在从镜像源检查更新…', source: 'mirror' })
-    const info = await checkWithFeed(updater, { url: mirrorUrl })
-    if (info) {
-      return setState({
-        status: 'available',
-        message: `发现新版本 ${info.version}`,
-        version: info.version,
-        releaseNotes: extractNotes(info),
-        source: 'mirror',
-        percent: undefined,
-      })
-    }
+  if (server.status === 'error' && github.status === 'error') {
+    return setState({
+      status: 'error',
+      message: `检查更新失败（服务器：${server.message}；GitHub：${github.message}）`,
+      server,
+      github,
+      hasAvailableUpdate: false,
+      percent: undefined,
+    })
   }
 
-  // 2) GitHub Releases 兜底
-  setState({ message: '正在从 GitHub 检查更新…', source: 'github' })
-  const info = await checkWithFeed(updater, {})
-  if (!info) {
-    return setState({ status: 'none', message: '已是最新版本', percent: undefined, source: undefined })
+  if (!hasAvailableUpdate) {
+    const partialError = server.status === 'error'
+      ? '（服务器获取失败）'
+      : github.status === 'error'
+        ? '（GitHub 获取失败）'
+        : ''
+    return setState({
+      status: 'none',
+      message: `未发现新版本${partialError}`,
+      server,
+      github,
+      hasAvailableUpdate: false,
+      percent: undefined,
+    })
   }
+
+  const preferred = github.status === 'available' ? github : server
   return setState({
     status: 'available',
-    message: `发现新版本 ${info.version}`,
-    version: info.version,
-    releaseNotes: extractNotes(info),
-    source: 'github',
+    message: github.status === 'available'
+      ? '发现新版本，可通过 GitHub 自动更新'
+      : '服务器已发布新版本，GitHub 暂未同步',
+    version: preferred.version,
+    releaseNotes: github.releaseNotes,
+    server,
+    github,
+    hasAvailableUpdate: true,
     percent: undefined,
   })
 }
 
 /** 下载更新（进度经 download-progress 事件推送） */
 export async function downloadUpdate(): Promise<UpdaterState> {
-  if (!autoUpdater || state.status !== 'available') {
-    return setState({ status: 'error', message: '没有可下载的更新，请先检查更新' })
+  if (!autoUpdater || state.github?.status !== 'available') {
+    return setState({ status: 'error', message: 'GitHub 没有可自动下载的更新，请先检查更新' })
   }
   try {
+    autoUpdater.setFeedURL(GITHUB_PROVIDER)
     await autoUpdater.downloadUpdate()
     return state
   } catch (err) {
@@ -235,7 +290,7 @@ export async function downloadUpdate(): Promise<UpdaterState> {
 /** 退出并安装更新 */
 export function installUpdate(): void {
   if (state.status === 'downloaded') {
-    autoUpdater?.quitAndInstall(false, true)
+    autoUpdater?.quitAndInstall(true, true)
   }
 }
 
@@ -252,8 +307,4 @@ export function registerUpdaterIPC(ipcMain: IpcMain): void {
     installUpdate()
   })
   ipcMain.handle('updater:getState', () => getState())
-  ipcMain.handle('updater:getMirror', () => getMirrorConfig())
-  ipcMain.handle('updater:setMirror', (_e, config: UpdateMirrorConfig) => {
-    setMirrorConfig(config)
-  })
 }

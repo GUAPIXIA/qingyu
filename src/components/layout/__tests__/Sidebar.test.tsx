@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { getDefaultSettings } from '../../../../shared/defaults'
 import { useSettingsStore } from '../../../store/useSettingsStore'
 import { useUIStore } from '../../../store/useUIStore'
 import { Sidebar } from '../Sidebar'
+
+function LocationProbe() {
+  const location = useLocation()
+  return <output aria-label="当前位置">{location.pathname}{location.hash}</output>
+}
 
 describe('Sidebar', () => {
   beforeEach(() => {
@@ -40,5 +45,24 @@ describe('Sidebar', () => {
     expect(activeLink.className).toContain('bg-tavern-bg-card')
     expect(activeLink.className).toContain('after:bg-tavern-accent')
     expect(activeLink.className).not.toContain('bg-tavern-accent-soft')
+  })
+
+  it('点击公告版本进入设置的软件更新区，不再打开 GitHub', async () => {
+    ;(window.api.app as any).checkVersion = vi.fn().mockResolvedValue({
+      version: '0.13.0',
+      changelog: '',
+      downloadUrl: 'https://example.com/app.exe',
+    })
+    render(
+      <MemoryRouter initialEntries={['/chat']}>
+        <Sidebar />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByTitle('公告版本 v0.13.0 可用，前往软件更新'))
+    expect(await screen.findByText('/settings#settings-updater')).toBeInTheDocument()
+    expect(window.api.app.openExternal).not.toHaveBeenCalled()
+    expect(screen.queryByTitle('前往 GitHub 主页')).not.toBeInTheDocument()
   })
 })

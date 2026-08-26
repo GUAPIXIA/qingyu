@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.13.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.15.1-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -21,9 +21,9 @@
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
-| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.13.0 |
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.15.1 |
 | **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.1.5 (build 6) |
-| **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.3 |
+| **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |
 
 > `android/` 与 `server/` 已纳入本仓库统一管理；本地 `.env`、数据库与构建产物仍不纳入版本控制。
 
@@ -72,7 +72,7 @@
 - **角色封面** — 支持自定义封面图，可设为聊天页半透明背景
 
 ### 🖼️ 图片生成
-- **SD WebUI / OpenAI DALL-E** 双引擎支持（ComfyUI 规划中）
+- **SD WebUI / OpenAI DALL-E / ComfyUI** 多后端支持
 - 对话中 `/imagine` 命令生图，自动提取提示词
 - 中文提示词自动翻译为英文，提升出图质量
 - 多尺寸 / 多质量预设，灵活切换
@@ -93,8 +93,15 @@
 - 侧栏「公告」入口，拉取服务器在线公告
 - 支持 **Markdown 富文本**渲染（表格、代码块、图片等）
 - **离线缓存** — 网络不可达时自动使用本地缓存
-- **版本检查** — 从公告服务器获取 PC / 安卓端最新版本号
+- **版本提示** — 公告服务器分别维护 PC / 安卓端版本；PC 版本用于侧栏新版提示
 - 配套 **Docker 一键部署** 的服务端 + Web 管理后台（见 [`server/`](./server/)）
+
+### 🔄 软件更新（v0.15.0+）
+- **双源检查** — 并行读取官方服务器与 GitHub Releases 的 `latest.yml`，分别显示两个来源的最新版本
+- **GitHub 自动更新** — 支持下载进度、增量更新和重启安装
+- **服务器手动下载** — GitHub 访问不便时可使用官方服务器安装包
+- **按需展示** — 未发现新版本时隐藏手动下载安装区域
+- **发布自动化** — 推送 `v*` Tag 后由 GitHub Actions 完成检查、构建和 Release 发布
 
 ### 🎨 主题与外观
 - 深色 / 浅色 / 跟随系统 **三模式切换**
@@ -111,7 +118,7 @@
 
 ### 🔒 数据安全
 - **纯本地存储** — 所有数据在本地 AppData，无云端上传
-- **一键备份** — 导出/导入设置、角色、世界书、预设（当前版本不含聊天记录与媒体，完整备份开发中）
+- **全量备份 V2** — ZIP + manifest + SHA-256 校验，覆盖设置、角色、世界书、预设、身份、聊天与群聊等数据；敏感凭据默认排除
 - **API Key 加密** — 系统级安全加密存储
 
 ---
@@ -141,7 +148,7 @@ cd android
 ### 桌面端（Windows）
 
 ```bash
-# 安装依赖（需要 pnpm 10+ / Node 20+）
+# 安装依赖（推荐 pnpm 11 / Node.js 22）
 pnpm install
 
 # 开发模式（Electron + Vite HMR）
@@ -168,6 +175,13 @@ docker compose up -d          # 或 npm install && npm start
 - 公告 API：`http://你的域名/qingyu/api/announcements`
 - 版本 API：`http://你的域名/qingyu/api/version`（PC / 安卓端独立版本号配置）
 - 桌面端默认公告服务器地址在 `electron/ipc/announcement.ts` 中修改（默认 `http://cjbtj.xyz/qingyu`）
+- 桌面端更新清单：`https://你的域名/qingyu/update/latest.yml`（安装包与 blockmap 放在服务端更新目录）
+
+### 发布与上传
+
+- [项目更新与上传规范](./docs/项目更新与上传规范.md) — 面向管理员的版本号、GitHub Release、服务器上传、公告后台维护与回滚流程
+- [在线更新方案与使用指南](./docs/在线更新方案与使用指南.md) — 双源检查、自动更新和服务端镜像的技术说明
+- [项目推送与版本管理规范](./docs/项目推送与版本管理规范.md) — 分支、提交、Tag 与多端版本管理约定
 
 ---
 
@@ -232,6 +246,7 @@ qingyu/
 - 主应用：[CHANGELOG.md](./CHANGELOG.md)
 - 安卓伴侣端：[android/CHANGELOG.md](./android/CHANGELOG.md)
 - 公告服务端：[server/CHANGELOG.md](./server/CHANGELOG.md)
+- 发布操作：[docs/项目更新与上传规范.md](./docs/项目更新与上传规范.md)
 
 ---
 

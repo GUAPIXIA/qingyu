@@ -7,6 +7,7 @@ describe('HelpPage 新用户指引', () => {
     vi.clearAllMocks()
     ;(window.api.app as any) = {
       getVersion: vi.fn().mockResolvedValue('0.11.21'),
+      openExternal: vi.fn().mockResolvedValue(undefined),
     }
   })
 
@@ -52,5 +53,13 @@ describe('HelpPage 新用户指引', () => {
     expect(screen.getByText('什么是预设（Preset）？')).toBeTruthy()
     expect(screen.getByText('对话出错时如何排查？')).toBeTruthy()
     expect(screen.getByText('什么是快捷回复？')).toBeTruthy()
+  })
+
+  it('关于页面显示并可打开 GitHub 项目地址', async () => {
+    render(<HelpPage />)
+    await act(async () => {})
+
+    fireEvent.click(screen.getByRole('button', { name: /GitHub 项目地址/ }))
+    expect(window.api.app.openExternal).toHaveBeenCalledWith('https://github.com/GUAPIXIA/qingyu')
   })
 })

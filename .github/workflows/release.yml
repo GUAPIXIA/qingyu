@@ -29,7 +29,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Type check & build renderer
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tagVersion = '${{ github.ref_name }}'.TrimStart('v')
+          if ($packageVersion -ne $tagVersion) {
+            throw "Tag version $tagVersion does not match package.json version $packageVersion"
+          }
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build renderer
         run: pnpm build
 
       - name: Build Electron main process (esbuild)

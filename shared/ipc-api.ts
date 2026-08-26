@@ -355,6 +355,17 @@ export interface AnnouncementAPI {
 /** 更新状态机：空闲 / 检查中 / 有更新 / 已最新 / 下载中 / 下载完成 / 出错 */
 export type UpdaterStatus = 'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'
 
+export interface UpdateSourceResult {
+  status: 'available' | 'none' | 'error'
+  /** 此来源清单中的最新版本 */
+  version?: string
+  /** 此来源的说明或错误信息 */
+  message?: string
+  /** 此来源对应的手动下载地址 */
+  downloadUrl?: string
+  releaseNotes?: string
+}
+
 export interface UpdaterState {
   status: UpdaterStatus
   /** 状态说明 / 错误消息 */
@@ -363,12 +374,12 @@ export interface UpdaterState {
   releaseNotes?: string
   /** 下载进度百分比（downloading 时有效） */
   percent?: number
-  source?: 'mirror' | 'github'
-}
-
-export interface UpdateMirrorConfig {
-  /** 自托管镜像源 URL（指向含 latest.yml 与安装包的目录），空串表示未启用 */
-  mirrorUrl: string
+  /** 固定官方服务器 latest.yml 的检查结果 */
+  server?: UpdateSourceResult
+  /** GitHub Releases latest.yml 的检查结果 */
+  github?: UpdateSourceResult
+  /** 至少一个来源确认存在高于当前版本的更新 */
+  hasAvailableUpdate?: boolean
 }
 
 export interface UpdaterAPI {
@@ -376,8 +387,6 @@ export interface UpdaterAPI {
   download(): Promise<UpdaterState>
   install(): Promise<void>
   getState(): Promise<UpdaterState>
-  getMirror(): Promise<UpdateMirrorConfig>
-  setMirror(config: UpdateMirrorConfig): Promise<void>
   /** 订阅主进程推送的状态变化，返回取消订阅函数 */
   onEvent(listener: (state: UpdaterState) => void): () => void
 }

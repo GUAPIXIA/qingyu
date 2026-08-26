@@ -21,9 +21,13 @@ import {
   Wand2,
   Command,
   Volume2,
+  ExternalLink,
+  Github,
 } from 'lucide-react'
 
 type TabKey = 'guide' | 'faq'
+
+const GITHUB_PROJECT_URL = 'https://github.com/GUAPIXIA/qingyu'
 
 const tabs: { key: TabKey; label: string; icon: typeof BookOpen }[] = [
   { key: 'guide', label: '使用指南', icon: BookOpen },
@@ -260,6 +264,20 @@ export function HelpPage() {
                   <span>角色卡格式：V1 / V2 / V3 兼容</span>
                   <span>数据存储：纯本地，无云端上传</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.api.app.openExternal(GITHUB_PROJECT_URL).catch((error) => logError('HelpPage:openGithub', error))
+                  }}
+                  className="mt-3 flex w-full items-center gap-2.5 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/60 px-3 py-2 text-left transition-colors hover:border-tavern-accent/40 hover:bg-tavern-accent-soft/45"
+                >
+                  <Github className="h-4 w-4 shrink-0 text-tavern-accent" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-medium text-tavern-text">GitHub 项目地址</span>
+                    <span className="block truncate text-xs text-tavern-text-muted">{GITHUB_PROJECT_URL}</span>
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-tavern-text-muted" aria-hidden />
+                </button>
                 <div className="mt-3 px-3 py-2 rounded-lg bg-tavern-accent-soft/60 border border-tavern-accent/20 text-xs text-tavern-text-soft leading-relaxed">
                   💡 第一次使用？按下方"新手入门"完成前 3 步（配置连接 → 导入角色 → 开始对话）即可开始体验。
                 </div>

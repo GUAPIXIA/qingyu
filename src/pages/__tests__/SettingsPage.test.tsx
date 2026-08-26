@@ -48,6 +48,35 @@ describe('SettingsPage 冒烟测试', () => {
     expect(await findByText('导出备份')).toBeTruthy()
   })
 
+  it('将软件更新放在设置目录和内容区最上方', async () => {
+    const { getByTestId } = render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+    await act(async () => {})
+
+    const nav = screen.getByRole('navigation', { name: '设置分区' })
+    expect(nav.querySelector('button')?.textContent).toContain('软件更新')
+    expect(getByTestId('settings-sections').firstElementChild?.id).toBe('settings-updater')
+  })
+
+  it('通过 settings-updater 锚点定位软件更新区', async () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      render(
+        <MemoryRouter initialEntries={['/settings#settings-updater']}>
+          <SettingsPage />
+        </MemoryRouter>
+      )
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
   it('点击导出备份调用 window.api.settings.exportBackup', async () => {
     const { findByText } = render(
       <MemoryRouter>
