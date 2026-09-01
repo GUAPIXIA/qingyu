@@ -1,0 +1,21 @@
+{
+  "id": "native-future",
+  "name": "带未来字段的原生世界书",
+  "description": "验证 v1 对未知字段前向兼容",
+  "enabled": true,
+  "scanDepth": 4,
+  "futureBookOption": { "revision": 2 },
+  "entries": [
+    {
+      "id": "entry-future",
+      "keywords": ["未来"],
+      "content": "未来字段不参与当前运行时。",
+      "position": "at_end",
+      "order": 10,
+      "probability": 100,
+      "enabled": true,
+      "futureEntryOption": { "mode": "opaque" }
+    }
+  ]
+}
+

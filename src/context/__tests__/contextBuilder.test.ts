@@ -220,10 +220,11 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
 
   it('基础场景：人设注入 + 世界书 before_char + 示例对话 + AN + 记忆摘要', () => {
     const data = makeData({
+      character: makeCharacter({
+        authorNote: { enabled: true, text: '{{user}}正在被监视。', position: 'top', depth: 0 },
+      }),
       settings: {
-        settings: makeSettings({
-          authorNote: { enabled: true, text: '{{user}}正在被监视。', position: 'top', depth: 0 },
-        }),
+        settings: makeSettings(),
         profile: {
           name: '测试连接',
           provider: 'openai',
@@ -264,6 +265,55 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
     )
     expect(depthInserted).toBeDefined()
     expect(result.messages).toMatchSnapshot('多世界书 at_depth 组装输出')
+  })
+
+  it('canonical 特殊位置由统一 renderer 注入正确锚点', () => {
+    const runtimeEntry = (
+      id: string,
+      content: string,
+      insertion: NonNullable<Lorebook['entries'][number]['runtime']>['insertion'],
+    ): Lorebook['entries'][number] => ({
+      id,
+      keywords: [],
+      content,
+      position: 'at_end',
+      order: 1,
+      probability: 100,
+      enabled: true,
+      priority: 'always',
+      runtime: {
+        insertion,
+        retrieval: 'keyword',
+        adapterId: 'sillytavern.world-info',
+      },
+    })
+    const lorebook = makeLorebook('runtime-anchors', '特殊位置', {
+      entries: [
+        runtimeEntry('an-top', '世界书 AN 顶部', { kind: 'prompt', anchor: 'authors_note_top' }),
+        runtimeEntry('before-example', '世界书示例前', { kind: 'prompt', anchor: 'before_examples' }),
+        runtimeEntry('after-example', '世界书示例后', { kind: 'prompt', anchor: 'after_examples' }),
+        runtimeEntry('an-bottom', '世界书 AN 底部', { kind: 'prompt', anchor: 'authors_note_bottom' }),
+        runtimeEntry('outlet', '世界书命名出口', { kind: 'outlet', name: 'facts' }),
+      ],
+    })
+    const data = makeData({
+      chat: makeChat({ activeLorebookIds: [lorebook.id] }),
+      lorebooks: [lorebook],
+    })
+
+    const result = buildContextMessagesFromData(data, { lorebookDiagnosticsMode: 'preview' })
+    const indexOf = (text: string) => result.messages.findIndex((message) => message.content.includes(text))
+    expect(result.messages[0].content).toContain('世界书命名出口')
+    expect(indexOf('世界书 AN 顶部')).toBeGreaterThan(0)
+    expect(indexOf('世界书示例前')).toBeLessThan(indexOf('【对话示例】'))
+    expect(indexOf('世界书示例后')).toBeGreaterThan(indexOf('【对话示例】'))
+    expect(indexOf('世界书 AN 底部')).toBeGreaterThan(indexOf('那栋大楼看起来安全'))
+    expect(indexOf('世界书 AN 底部')).toBeLessThan(indexOf('请记住：主角失忆了'))
+    expect(result.lorebookDiagnostics?.entries.find((entry) => entry.entryId === 'outlet')).toMatchObject({
+      adapterId: 'sillytavern.world-info',
+      renderStatus: 'fallback',
+      renderTarget: 'outlet:facts → prompt_end',
+    })
   })
 
   it('时间线与关键事实注入', () => {

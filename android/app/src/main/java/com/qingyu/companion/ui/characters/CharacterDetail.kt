@@ -40,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -60,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.ui.components.AppBackground
@@ -67,6 +69,7 @@ import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.MarkdownText
 import com.qingyu.companion.ui.components.resolveImageUrl
 import com.qingyu.companion.ui.theme.qyColors
+import androidx.compose.ui.res.stringResource
 import android.util.Log
 import java.util.Locale
 
@@ -163,10 +166,10 @@ internal fun CharacterDetailSheet(
                     .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                DetailSection("描述", character.translatedContent?.description ?: character.description)
-                DetailSection("性格", character.translatedContent?.personality ?: character.personality)
-                DetailSection("场景", character.translatedContent?.scenario ?: character.scenario)
-                DetailSection("开场白", character.translatedContent?.firstMessage ?: character.firstMessage)
+                DetailSection(stringResource(R.string.characters_section_description), character.translatedContent?.description ?: character.description)
+                DetailSection(stringResource(R.string.characters_section_personality), character.translatedContent?.personality ?: character.personality)
+                DetailSection(stringResource(R.string.characters_section_scenario), character.translatedContent?.scenario ?: character.scenario)
+                DetailSection(stringResource(R.string.characters_section_first_message), character.translatedContent?.firstMessage ?: character.firstMessage)
             }
 
             // 操作按钮
@@ -180,10 +183,12 @@ internal fun CharacterDetailSheet(
                     onClick = onOpenSessions,
                     shape = RoundedCornerShape(12.dp),
                     color = qy.bg2,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .minimumInteractiveComponentSize(),
                 ) {
                     Text(
-                        "历史对话",
+                        stringResource(R.string.sessions_history_title),
                         style = MaterialTheme.typography.labelLarge,
                         color = qy.text,
                         modifier = Modifier.padding(vertical = 9.dp),
@@ -198,13 +203,21 @@ internal fun CharacterDetailSheet(
                         containerColor = qy.accent,
                         contentColor = qy.onAccent,
                     ),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .minimumInteractiveComponentSize(),
                 ) {
                     if (activating) {
                         CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(6.dp))
                     }
-                    Text(if (activating) "切换中…" else "设为当前")
+                    Text(
+                        if (activating) {
+                            stringResource(R.string.characters_activating)
+                        } else {
+                            stringResource(R.string.characters_activate)
+                        },
+                    )
                 }
             }
             Button(
@@ -217,13 +230,14 @@ internal fun CharacterDetailSheet(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = 20.dp)
+                    .minimumInteractiveComponentSize(),
             ) {
                 if (creating) {
                     CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(6.dp))
                 }
-                Text(if (creating) "创建中…" else "开始对话")
+                Text(if (creating) stringResource(R.string.characters_creating) else stringResource(R.string.action_start_chat))
             }
         }
     }

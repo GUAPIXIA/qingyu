@@ -1,6 +1,9 @@
 import { useSettingsStore } from './useSettingsStore'
 import { usePersonaStore } from './usePersonaStore'
-import type { Character, SessionPreview } from '../../shared/types'
+import { logWarn } from '../lib/logger'
+import { estimateTokens } from '../utils/tokenCounter'
+import type { LorebookCompressionRequest } from '../utils/lorebook'
+import type { Character, SessionPreview, LorebookCompressionCacheEntry, ProviderType } from '../../shared/types'
 
 /** 防止会话加载竞态的请求计数器（模块级，跨调用共享） */
 export let loadRequestId = 0
@@ -225,6 +228,51 @@ export async function invalidateGroupDerivedMemory(
   return { sessionId, patch, expectedVersion }
 }
 
+// ===================== 世界书超限压缩（阶段三） =====================
+
+/**
+ * 世界书超限条目 AI 压缩：非流式调用主进程，将本轮被丢弃的低分条目压缩为一段摘要。
+ * 调用方以 fire-and-forget 方式使用（不 await，不阻断发送）；任何失败返回 null，
+ * 由裁剪逻辑维持阶段二的直接丢弃行为（静默降级）。
+ */
+const lorebookCompressionInFlight = new Map<string, Promise<{ key: string; entry: LorebookCompressionCacheEntry } | null>>()
+
+export async function compressLorebookOverflow(
+  request: LorebookCompressionRequest,
+  conn: { provider: string; apiKey: string; baseUrl: string; model: string },
+): Promise<{ key: string; entry: LorebookCompressionCacheEntry } | null> {
+  if (!request.contents.length || request.targetTokens < 32) return null
+  const inFlightKey = [conn.provider, conn.baseUrl, conn.model, request.key, request.targetTokens].join('|')
+  const existing = lorebookCompressionInFlight.get(inFlightKey)
+  if (existing) return existing
+
+  const task = (async () => {
+    try {
+      const raw = await window.api.ai.compressLorebook({
+        contents: request.contents,
+        targetTokens: request.targetTokens,
+        provider: conn.provider as ProviderType,
+        apiKey: conn.apiKey,
+        baseUrl: conn.baseUrl,
+        model: conn.model,
+      })
+      // 去除思考标签与空白；空结果或超出目标均不写缓存，避免下一轮重复命中无效结果。
+      const summary = String(raw ?? '').replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      if (!summary || estimateTokens(summary, conn.model) > request.targetTokens) return null
+      const now = Date.now()
+      return {
+        key: request.key,
+        entry: { summary, entryKeys: request.entryKeys, createdAt: now, lastUsedAt: now },
+      }
+    } catch (e) {
+      logWarn('lorebookCompression', `世界书超限压缩失败（降级为直接裁剪）：${(e as Error)?.message ?? e}`)
+      return null
+    }
+  })().finally(() => lorebookCompressionInFlight.delete(inFlightKey))
+  lorebookCompressionInFlight.set(inFlightKey, task)
+  return task
+}
+
 // ===================== 语义检索缓存 =====================
 
 /**
@@ -248,4 +296,27 @@ export function semanticCacheGet<T>(key: string): T | null {
 export function semanticCacheSet(key: string, hits: unknown): void {
   if (semanticCache.size >= SEMANTIC_CACHE_MAX) semanticCache.clear()
   semanticCache.set(key, { hits, ts: Date.now() })
+}
+
+/**
+ * 构造语义检索缓存键。检索参数必须全部入键，避免用户切换服务、阈值或 topK 后
+ * 在 TTL 内误用上一套配置的结果。JSON 序列化也避免正文中的分隔符造成碰撞。
+ */
+export function buildSemanticCacheKey(input: {
+  scope: 'lore' | 'group-lore' | 'facts' | 'group-facts'
+  corpus: string
+  query: string
+  provider: string
+  baseUrl: string
+  model: string
+  threshold?: number
+  maxResults?: number
+}): string {
+  return JSON.stringify({
+    ...input,
+    baseUrl: input.baseUrl.trim().replace(/\/$/, ''),
+    model: input.model.trim(),
+    threshold: input.threshold ?? 0.3,
+    maxResults: input.maxResults ?? 3,
+  })
 }

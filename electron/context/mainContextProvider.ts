@@ -38,6 +38,7 @@ import type {
 } from '../../shared/types'
 import { getDefaultSettings } from '../../shared/defaults'
 import { restoreSecrets } from '../ipc/settings'
+import { listLorebookViews } from '../services/lorebookDocumentStore'
 
 /** 读取设置（含默认值兜底；H1：settings.json 不落 apiKey，需从 safeStorage 回填） */
 function readSettings(): Settings {
@@ -75,7 +76,7 @@ async function listAllPresets(): Promise<Preset[]> {
 
 /** 读取全部世界书（对齐 lorebook:list 语义） */
 async function listAllLorebooks(): Promise<Lorebook[]> {
-  return listJsonFilesAsync<Lorebook>(DIRS.lorebooks())
+  return listLorebookViews(DIRS.lorebooks())
 }
 
 /** 会话快照：消息 + 会话列表 + 激活世界书（会话级优先，回退角色绑定） */
@@ -102,6 +103,7 @@ async function buildChatSnapshot(
     // 语义检索命中：主进程暂缺，恒为空（桥接层按需接入 vectorStore）
     semanticFactsHits: [],
     semanticLoreHits: [],
+    semanticLoreAvailable: false,
   }
 }
 

@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -56,8 +57,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import androidx.compose.ui.res.stringResource
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.ServerConnection
+import com.qingyu.companion.model.ConnectionMode
 import com.qingyu.companion.network.DiscoveredPc
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
@@ -142,7 +146,7 @@ internal fun DiscoveredPcRow(pc: DiscoveredPc, onClick: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    pc.name.ifBlank { "未命名 PC" },
+                    pc.name.ifBlank { stringResource(R.string.pairing_pc_unnamed) },
                     style = MaterialTheme.typography.bodyLarge,
                     color = qy.text,
                 )
@@ -153,7 +157,7 @@ internal fun DiscoveredPcRow(pc: DiscoveredPc, onClick: () -> Unit) {
                 )
             }
             Text(
-                "填入",
+                stringResource(R.string.pairing_fill_in),
                 style = MaterialTheme.typography.labelMedium,
                 color = qy.accent,
             )
@@ -202,6 +206,12 @@ internal fun ConnectionRow(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
+                        if (connection.mode == ConnectionMode.RELAY) "服务器" else "局域网",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = qy.accent,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
                         "${connection.host}:${connection.port}",
                         style = MaterialTheme.typography.labelSmall,
                         color = qy.soft,
@@ -217,7 +227,7 @@ internal fun ConnectionRow(
                             color = qy.accentSoft,
                         ) {
                             Text(
-                                "当前",
+                                stringResource(R.string.msg_current),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = qy.accent,
                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
@@ -235,8 +245,9 @@ internal fun ConnectionRow(
                         containerColor = qy.accentSoft,
                         contentColor = qy.accent,
                     ),
+                    modifier = Modifier.minimumInteractiveComponentSize(),
                 ) {
-                    Text("进入", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.action_enter), style = MaterialTheme.typography.labelLarge)
                 }
             } else {
                 Surface(
@@ -244,9 +255,10 @@ internal fun ConnectionRow(
                     shape = RoundedCornerShape(percent = 50),
                     color = qy.bg2,
                     border = androidx.compose.foundation.BorderStroke(1.dp, qy.line),
+                    modifier = Modifier.minimumInteractiveComponentSize(),
                 ) {
                     Text(
-                        "切换",
+                        stringResource(R.string.pairing_switch_device),
                         style = MaterialTheme.typography.labelLarge,
                         color = qy.soft,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -256,7 +268,7 @@ internal fun ConnectionRow(
             IconButton(onClick = onRemove) {
                 Icon(
                     Icons.Filled.Delete,
-                    contentDescription = "移除",
+                    contentDescription = stringResource(R.string.action_remove),
                     tint = qy.danger,
                 )
             }
@@ -264,12 +276,10 @@ internal fun ConnectionRow(
     }
 }
 
-/** 构建 ZXing 扫码配置（仅 QR_CODE，提示语指向 PC 端配对二维码） */
-
-/** 构建 ZXing 扫码配置（仅 QR_CODE，提示语指向 PC 端配对二维码） */
-internal fun scanOptions(): ScanOptions =
+/** 构建 ZXing 扫码配置（仅 QR_CODE，提示语指向 PC 端配对二维码；文案由调用方从 strings.xml 传入） */
+internal fun scanOptions(prompt: String): ScanOptions =
     ScanOptions().apply {
         setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-        setPrompt("扫描 PC 端配对二维码")
+        setPrompt(prompt)
         setBeepEnabled(false)
     }

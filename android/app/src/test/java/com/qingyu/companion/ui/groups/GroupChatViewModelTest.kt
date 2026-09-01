@@ -186,6 +186,22 @@ class GroupChatViewModelTest {
         assertTrue(vm.ui.value.messages.none { it.content == "second" })
         assertFalse(vm.ui.value.sending)
     }
+
+    @Test
+    fun `翻译期间显示消息级加载状态并在完成后清除`() = runTest(dispatcher) {
+        repo.messages = mutableListOf(groupMsg("m1", content = "hello", characterId = "c1"))
+        repo.groupTranslation = "你好"
+        repo.translationDelay = 1_000L
+        vm.load()
+        advanceUntilIdle()
+
+        vm.translate("m1")
+        assertTrue("m1" in vm.ui.value.translatingMessageIds)
+        advanceUntilIdle()
+
+        assertEquals("你好", vm.ui.value.messages.single().translation)
+        assertFalse("m1" in vm.ui.value.translatingMessageIds)
+    }
 }
 
 private class FakeGroupRepository : ChatRepository {
@@ -198,6 +214,8 @@ private class FakeGroupRepository : ChatRepository {
     var failAi = false
     var aiError: Throwable? = null
     var delaySend: Long = 0
+    var translationDelay: Long = 0
+    var groupTranslation: String? = null
     var sendGroupMessageCalls = 0
 
     override suspend fun listCharacters(): List<com.qingyu.companion.model.Character> = groupCharacters
@@ -268,7 +286,10 @@ private class FakeGroupRepository : ChatRepository {
     override suspend fun patchGroup(groupId: String, patch: Map<String, Any?>) = throw UnsupportedOperationException()
     override suspend fun addGroupMembers(groupId: String, characterIds: List<String>) = throw UnsupportedOperationException()
     override suspend fun removeGroupMember(groupId: String, characterId: String) = throw UnsupportedOperationException()
-    override suspend fun groupTranslate(groupId: String, sessionId: String, messageId: String) = throw UnsupportedOperationException()
+    override suspend fun groupTranslate(groupId: String, sessionId: String, messageId: String): String? {
+        if (translationDelay > 0) kotlinx.coroutines.delay(translationDelay)
+        return groupTranslation
+    }
     override suspend fun listCachedSessions() = throw UnsupportedOperationException()
     override suspend fun listCachedMessages(sessionId: String) = throw UnsupportedOperationException()
     override suspend fun clearLocalCache() = throw UnsupportedOperationException()

@@ -23,11 +23,33 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // G-04：正式开启 R8 代码压缩 + 资源压缩（此前 isMinifyEnabled=false）
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // G-04 签名：CI/正式发布经环境变量注入密钥（ANDROID_KEYSTORE_*，见 .github/workflows/release.yml）；
+            // 本机未配置时回退 debug 签名——仅用于本地冒烟验证，正式发布必须走 CI secret。
+            // 注意：debug 签名证书是公开的，回退产物不得对外分发。
+            signingConfig = if (
+                System.getenv("ANDROID_KEYSTORE_PATH")?.isNotBlank() == true &&
+                System.getenv("ANDROID_KEYSTORE_PASSWORD")?.isNotBlank() == true &&
+                System.getenv("ANDROID_KEY_ALIAS")?.isNotBlank() == true &&
+                System.getenv("ANDROID_KEY_PASSWORD")?.isNotBlank() == true
+            ) {
+                signingConfigs.create("release") {
+                    storeFile = file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                    storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                    keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                    keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                }
+            } else {
+                logger.warn("未检测到 ANDROID_KEYSTORE_PATH/PASSWORD/ALIAS/KEY_PASSWORD 环境变量，" +
+                    "release 构建回退使用 debug 签名（仅限本地冒烟，禁止对外发布）")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -44,6 +66,13 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+// Room schema 导出（F-05）：KSP 参数指定 schemas 目录。
+// 每次 version 升级生成 app/schemas/com.qingyu.companion.data.CacheDatabase/<version>.json，
+// 随仓库保留，供后续版本迁移验证（MigrationTestHelper）与回滚审计（方案 §16.3）。
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {

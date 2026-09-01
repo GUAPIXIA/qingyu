@@ -5,7 +5,7 @@
  * 通过 mock electron 的 userData 路径隔离到临时目录。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
-import { rmSync, mkdirSync } from 'node:fs'
+import { rmSync, mkdirSync, existsSync } from 'node:fs'
 import { vi } from 'vitest'
 
 vi.mock('electron', () => ({
@@ -92,5 +92,16 @@ describe('vectorStore 维度一致性', () => {
   it('空向量数组不保存', () => {
     saveVectorIndex(TEST_ID, 'test-model', { e1: [], e2: vec(0, 1) })
     expect(countIndexedEntries(TEST_ID)).toBe(1)
+  })
+})
+
+describe('vectorStore 本地模型索引空间', () => {
+  it('按 model-id/version 隔离存储，并参与统一 stale 标记', () => {
+    const space = { provider: 'local' as const, model: 'tiny@1.0.0', modelId: 'tiny', modelVersion: '1.0.0' }
+    saveVectorIndex(TEST_ID, space.model, { e1: vec(1, 0, 0) }, space)
+    expect(existsSync(`/tmp/qingyu-vector-store-test/indexes/embedding/tiny/1.0.0/${TEST_ID}.json`)).toBe(true)
+    expect(getVectorIndex(TEST_ID, space)).toMatchObject({ provider: 'local', modelId: 'tiny', modelVersion: '1.0.0', dimensions: 3 })
+    markStaleEntries(TEST_ID, ['e1'])
+    expect(countStaleEntries(TEST_ID, space)).toBe(1)
   })
 })

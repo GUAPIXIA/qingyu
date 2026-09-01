@@ -51,7 +51,17 @@ data class TranslateResponse(
 data class ServerInfo(
     val apiVersion: Int,
     val appVersion: String,
-)
+    /** C-05：能力协商（旧版 PC 不返回该字段 → 默认空集走 legacy 路径） */
+    val capabilities: Set<String> = emptySet(),
+) {
+    companion object {
+        /** 设置同步 v2 能力标识（snapshot 端点 + settings:updated 事件） */
+        const val CAP_SETTINGS_SNAPSHOT_V2 = "settings_snapshot_v2"
+
+        /** F-01：task v2 事件流能力标识（/api/v2/tasks + WS task:*；对齐 PC protocol.ts SERVER_CAPABILITIES） */
+        const val CAP_TASK_EVENTS_V2 = "task_events_v2"
+    }
+}
 
 /** PATCH /api/v1/sessions/:id 请求（重命名，协议假设） */
 @Serializable

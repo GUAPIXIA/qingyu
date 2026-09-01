@@ -4,19 +4,27 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.data.CompanionError
-import com.qingyu.companion.data.userMessage
+import com.qingyu.companion.data.toCompanionError
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.SessionPreview
 import com.qingyu.companion.network.WsClient
+import com.qingyu.companion.ui.components.LoadState
+import com.qingyu.companion.ui.components.projectLoadState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
  * 会话列表 ViewModel：REST 拉取 + WS session:updated 增量刷新 + 离线只读回退。
+ *
+ * E-02：页面渲染统一消费 [loadState]（LoadState 投影，纯函数 [projectLoadState]）；
+ * [UiState] 保留原始字段供迁移中的旧读法（如角色历史会话页）过渡。
  */
 class SessionsViewModel(
     private val repository: ChatRepository,
@@ -26,9 +34,13 @@ class SessionsViewModel(
 
     data class UiState(
         val sessions: List<SessionPreview> = emptyList(),
-        val loading: Boolean = false,
+        /** 初始即 true：投影起点为 LoadState.Loading，避免首帧误判 Empty（E-02） */
+        val loading: Boolean = true,
         val offline: Boolean = false,
-        val error: String? = null,
+        /** 页面级加载错误：参与 [loadState] 投影（E-02）；刷新开始时清空 */
+        val pageError: CompanionError? = null,
+        /** 动作级错误（删除/重命名/新建失败）：不参与页面 LoadState 投影 */
+        val error: CompanionError? = null,
         val connection: WsClient.State = WsClient.State.DISCONNECTED,
         /** 排序模式：updated = 按时间（最近优先）｜name = 按角色名称 */
         val sortMode: String = "updated",
@@ -36,6 +48,15 @@ class SessionsViewModel(
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
+
+    /**
+     * E-02 统一异步页面状态：loading/pageError/sessions → LoadState 五态投影
+     * （纯函数 [projectSessionsLoadState]，全局会话页与角色历史会话页共用）。
+     * Screen 只需 `when (loadState)` 分发到 Qy 组件，不再手写状态 if/else。
+     */
+    val loadState: StateFlow<LoadState<List<SessionPreview>>> = _ui
+        .map { state -> projectSessionsLoadState(state) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, LoadState.Loading)
 
     init {
         viewModelScope.launch {
@@ -70,7 +91,7 @@ class SessionsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _ui.update { it.copy(loading = true, error = null) }
+            _ui.update { it.copy(loading = true, pageError = null) }
             try {
                 val sessions = repository.listSessions()
                     .let { all ->
@@ -78,20 +99,20 @@ class SessionsViewModel(
                     }
                     .filter { it.messageCount > 0 } // 无消息空会话不显示（PC 端历史遗留空壳）
                     .let { applySort(it) }
-                _ui.update { it.copy(sessions = sessions, loading = false, offline = false) }
+                _ui.update { it.copy(sessions = sessions, loading = false, offline = false, pageError = null) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                val err = e.toCompanionError()
                 val cached = applySort(
                     repository.listCachedSessions().filter { it.messageCount > 0 } // 缓存同样过滤空会话
                 )
-                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "无法连接 PC，已显示本地缓存"
                 _ui.update {
                     it.copy(
                         sessions = cached,
                         loading = false,
                         offline = true,
-                        error = msg,
+                        pageError = err,
                     )
                 }
             }
@@ -106,8 +127,7 @@ class SessionsViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "删除失败"
-                _ui.update { it.copy(error = msg) }
+                _ui.update { it.copy(error = e.toCompanionError()) }
             }
             refresh()
         }
@@ -122,8 +142,7 @@ class SessionsViewModel(
                     refresh()
                 }
                 .onFailure { e ->
-                    val msg = if (e is CompanionError) e.userMessage() else e.message ?: "新建对话失败"
-                    _ui.update { it.copy(error = msg) }
+                    _ui.update { it.copy(error = e.toCompanionError()) }
                 }
         }
     }
@@ -138,10 +157,22 @@ class SessionsViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "重命名失败"
-                _ui.update { it.copy(error = msg) }
+                _ui.update { it.copy(error = e.toCompanionError()) }
             }
             refresh()
         }
     }
 }
+
+/**
+ * 会话列表 LoadState 投影（纯函数，JVM 单测覆盖）：非空会话列表即「有内容」。
+ * 网络类错误 + 缓存列表 → Offline（只读）；其他错误即使有缓存也走 Error。
+ * 供 [SessionsViewModel.loadState] 使用（全局会话页与角色历史会话页共用）。
+ */
+internal fun projectSessionsLoadState(state: SessionsViewModel.UiState): LoadState<List<SessionPreview>> =
+    projectLoadState(
+        loading = state.loading,
+        error = state.pageError,
+        data = state.sessions,
+        hasContent = { it.isNotEmpty() },
+    )

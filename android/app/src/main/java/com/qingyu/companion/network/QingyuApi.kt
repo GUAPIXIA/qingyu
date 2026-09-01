@@ -12,6 +12,7 @@ import com.qingyu.companion.model.TranslateResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -79,6 +80,18 @@ interface QingyuApi {
     suspend fun patchSettings(
         @Body body: kotlinx.serialization.json.JsonObject,
     )
+
+    // ---------- 设置同步 v2（C-06；仅当 serverInfo capabilities 含 settings_snapshot_v2） ----------
+
+    /** 读取设置快照（revision 不透明字符串 + 安全子集 values） */
+    @GET("api/v1/settings/snapshot")
+    suspend fun getSettingsSnapshot(): com.qingyu.companion.model.SettingsSnapshotDto
+
+    /** 带 baseRevision 的乐观并发 PATCH；冲突返回 409 {error:'settings_conflict', current} */
+    @PATCH("api/v1/settings/snapshot")
+    suspend fun patchSettingsSnapshot(
+        @Body body: com.qingyu.companion.model.SettingsPatchRequestDto,
+    ): com.qingyu.companion.model.SettingsPatchResponseDto
 
     /** 世界书列表 */
     @GET("api/v1/lorebooks")
@@ -187,6 +200,13 @@ interface QingyuApi {
         @Path("sessionId") sessionId: String,
         @Body request: SendMessageRequest,
     ): com.qingyu.companion.model.Message
+
+    /** Relay 离线队列需要读取 202/响应头，不能先按 Message DTO 强制反序列化。 */
+    @POST("api/v1/sessions/{sessionId}/messages")
+    suspend fun sendMessageRaw(
+        @Path("sessionId") sessionId: String,
+        @Body request: SendMessageRequest,
+    ): retrofit2.Response<okhttp3.ResponseBody>
 
     @PATCH("api/v1/sessions/{sessionId}/messages/{messageId}")
     suspend fun editMessage(
@@ -347,4 +367,48 @@ interface QingyuApi {
     companion object {
         const val DEFAULT_PAGE_SIZE = 50
     }
+
+    // ---------- Task v2（F-01/F-02；仅当 serverInfo capabilities 含 task_events_v2 时使用，对齐 electron/bridge/taskRoutes.ts） ----------
+
+    /** 创建生成任务（幂等键经 Idempotency-Key header，重试复用同一 requestId 去重）；202 返回 task 引用与已落盘用户消息回执 */
+    @POST("api/v2/sessions/{sessionId}/tasks")
+    suspend fun createTask(
+        @Path("sessionId") sessionId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: com.qingyu.companion.model.CreateTaskRequest,
+    ): com.qingyu.companion.model.CreateTaskResponse
+
+    /** 查询任务快照（state/lastSequence/assistantMessageId 等兜底与恢复用） */
+    @GET("api/v2/tasks/{taskId}")
+    suspend fun getTask(
+        @Path("taskId") taskId: String,
+    ): com.qingyu.companion.model.TaskSnapshotEnvelopeDto
+
+    /** 事件补拉（F-02 cursor 缺口；afterSequence 为已应用的最后一条 sequence） */
+    @GET("api/v2/tasks/{taskId}/events")
+    suspend fun getTaskEvents(
+        @Path("taskId") taskId: String,
+        @Query("afterSequence") afterSequence: Long = 0,
+        @Query("limit") limit: Int = 200,
+    ): com.qingyu.companion.model.TaskEventPageDto
+
+    /** 会话任务列表（重启恢复时查询在途任务） */
+    @GET("api/v2/sessions/{sessionId}/tasks")
+    suspend fun listSessionTasks(
+        @Path("sessionId") sessionId: String,
+        @Query("state") state: String? = null,
+        @Query("limit") limit: Int = 20,
+    ): com.qingyu.companion.model.TaskListEnvelopeDto
+
+    /** 取消任务（幂等：重复取消返回当前快照） */
+    @POST("api/v2/tasks/{taskId}/cancel")
+    suspend fun cancelTask(
+        @Path("taskId") taskId: String,
+    ): com.qingyu.companion.model.TaskSnapshotEnvelopeDto
+
+    /** 仅重试生成（不重发用户消息）；返回新任务引用（快照子集） */
+    @POST("api/v2/tasks/{taskId}/retry")
+    suspend fun retryTask(
+        @Path("taskId") taskId: String,
+    ): com.qingyu.companion.model.TaskSnapshotEnvelopeDto
 }

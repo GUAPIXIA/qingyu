@@ -24,3 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "qingyu-companion"
 include(":app")
+// G-01 性能基线 benchmark 模块（com.android.test + androidx.benchmark，需真机/模拟器运行）
+include(":benchmark")

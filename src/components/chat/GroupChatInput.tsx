@@ -1,20 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
 import { cn } from '../../lib/utils'
 import { charAssetUrl } from '../../utils/asset'
-import {
-  Send,
-  Square,
-  Repeat,
-  Zap,
-  AtSign,
-  Image as ImageIcon,
-  ChevronDown,
-  X as XIcon,
-  Reply,
-  UserRound,
-} from 'lucide-react'
+import { ChevronDown, Image as ImageIcon, LoaderCircle, Play, Reply, Send, Square, X as XIcon } from 'lucide-react'
 import type { GroupChat, GroupMessage } from '../../../shared/types'
 
 interface GroupChatInputProps {
@@ -24,395 +13,281 @@ interface GroupChatInputProps {
 }
 
 const MODE_LABELS: Record<GroupChat['chatMode'], string> = {
-  mention: '@点名',
-  polling: '轮询',
-  free: '自由',
+  mention: '指定成员',
+  polling: '按顺序',
+  free: 'AI 自选',
 }
 
 export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInputProps) {
   const [content, setContent] = useState('')
   const [showMention, setShowMention] = useState(false)
-  const [showModeMenu, setShowModeMenu] = useState(false)
   const [targetCharId, setTargetCharId] = useState<string | null>(null)
+  const [mentionOverrideId, setMentionOverrideId] = useState<string | null>(null)
   const [mentionFilter, setMentionFilter] = useState('')
   const [selectedImages, setSelectedImages] = useState<string[]>([])
-  /** 自由发言模式：发言人切换（null = 用户，否则以指定角色身份插入消息） */
-  const [freeSpeakerId, setFreeSpeakerId] = useState<string | null>(null)
+  const [triggeringCharId, setTriggeringCharId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // P-6 修复：字段级选择器订阅
-  const characters = useCharacterStore((s) => s.characters)
-  const sendMessage = useGroupChatStore((s) => s.sendMessage)
-  const isStreaming = useGroupChatStore((s) => s.isStreaming)
-  const stopStreaming = useGroupChatStore((s) => s.stopStreaming)
+  const characters = useCharacterStore((state) => state.characters)
+  const sendMessage = useGroupChatStore((state) => state.sendMessage)
+  const triggerCharacterReply = useGroupChatStore((state) => state.triggerCharacterReply)
+  const isStreaming = useGroupChatStore((state) => state.isStreaming)
+  const stopStreaming = useGroupChatStore((state) => state.stopStreaming)
 
   const members = group.memberIds
-    .map(id => characters.find(c => c.id === id))
+    .map((id) => characters.find((character) => character.id === id))
     .filter(Boolean) as NonNullable<typeof characters[number]>[]
+  const memberKey = group.memberIds.join(',')
+  const firstMemberId = members[0]?.id ?? null
+  const targetStillPresent = !!targetCharId && members.some((member) => member.id === targetCharId)
+  const selectedTarget = members.find((member) => member.id === targetCharId) ?? members[0] ?? null
+  const mentionOverride = members.find((member) => member.id === mentionOverrideId) ?? null
+  const effectiveTarget = mentionOverride ?? selectedTarget
+  const nextSpeaker = members[group.currentSpeakerIndex % Math.max(members.length, 1)] ?? null
 
-  const targetChar = targetCharId ? members.find(m => m.id === targetCharId) : null
-
-  // @mention 检测
   useEffect(() => {
-    if (group.chatMode !== 'mention') return
+    if (targetStillPresent) return
+    setTargetCharId(firstMemberId)
+  }, [firstMemberId, memberKey, targetStillPresent])
 
-    const lastAt = content.lastIndexOf('@')
-    if (lastAt >= 0) {
-      const afterAt = content.slice(lastAt + 1)
-      // 不自动弹下拉框，仅在用户继续输入后过滤
-      if (afterAt.length === 0 && !showMention) return
-      setMentionFilter(afterAt)
-      setShowMention(true)
-    } else {
+  useEffect(() => {
+    if (group.chatMode !== 'mention') {
       setShowMention(false)
+      setMentionOverrideId(null)
+      return
     }
+    const lastAt = content.lastIndexOf('@')
+    if (lastAt < 0) {
+      setShowMention(false)
+      return
+    }
+    const afterAt = content.slice(lastAt + 1)
+    if (afterAt.length === 0 && !showMention) return
+    setMentionFilter(afterAt)
+    setShowMention(true)
   }, [content, group.chatMode, showMention])
 
-  const filteredMembers = members.filter(m =>
-    m.name.toLowerCase().includes(mentionFilter.toLowerCase())
-  )
+  const filteredMembers = members.filter((member) => member.name.toLowerCase().includes(mentionFilter.toLowerCase()))
 
-    const selectMention = (charId: string, _name: string) => {
-    setTargetCharId(charId)
-    // 移除 @name 部分
+  const resetTextareaHeight = () => {
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+  }
+
+  const selectMention = (charId: string) => {
+    setMentionOverrideId(charId)
     const lastAt = content.lastIndexOf('@')
-    if (lastAt >= 0) {
-      const before = content.slice(0, lastAt)
-      setContent(before.trimEnd())
-    }
+    if (lastAt >= 0) setContent(content.slice(0, lastAt).trimEnd())
     setShowMention(false)
   }
 
   const handleSend = async () => {
     if (!content.trim() || isStreaming) return
+    if (group.chatMode === 'mention' && !effectiveTarget) return
+
     const trimmed = content.trim()
     const images = [...selectedImages]
-    const replyToId = replyTo?.id ?? null
-
-    // 自由发言视角切换：以指定角色身份插入消息（不触发 AI 回复）
-    if (group.chatMode === 'free' && freeSpeakerId) {
-      setContent('')
-      setSelectedImages([])
-      resetTextareaHeight()
-      onCancelReply?.()
-      await useGroupChatStore.getState().insertCharacterMessage(freeSpeakerId, trimmed)
-      return
-    }
-
-    if (group.chatMode === 'mention' && !targetCharId) {
-      // 未点名则默认第一个成员
-      const firstMember = members[0]
-      if (!firstMember) {
-        return
-      }
-      setContent('')
-      setSelectedImages([])
-      setTargetCharId(null)
-      resetTextareaHeight()
-      onCancelReply?.()
-      await sendMessage(trimmed, images, firstMember.id, replyToId)
-    } else {
-      setContent('')
-      setSelectedImages([])
-      setTargetCharId(null)
-      resetTextareaHeight()
-      onCancelReply?.()
-      await sendMessage(trimmed, images, targetCharId ?? undefined, replyToId)
-    }
+    const responderId = group.chatMode === 'mention' ? effectiveTarget?.id : undefined
+    setContent('')
+    setSelectedImages([])
+    setMentionOverrideId(null)
+    resetTextareaHeight()
+    onCancelReply?.()
+    await sendMessage(trimmed, images, responderId, replyTo?.id ?? null)
   }
 
-  const resetTextareaHeight = () => {
-    const el = textareaRef.current
-    if (el) {
-      el.style.height = 'auto'
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault()
-      handleSend()
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault()
+      void handleSend()
     }
   }
 
   const handleSelectImage = async () => {
     const path = await window.api.file.selectImage()
-    if (path) {
-      const base64 = await window.api.file.readImageAsBase64(path)
-      if (base64) {
-        setSelectedImages(prev => [...prev, base64])
-      }
-    }
+    if (!path) return
+    const base64 = await window.api.file.readImageAsBase64(path)
+    if (base64) setSelectedImages((images) => [...images, base64])
   }
 
   const changeMode = async (mode: GroupChat['chatMode']) => {
-    const store = useGroupChatStore.getState()
-    await store.saveGroup({ ...group, chatMode: mode })
-    setShowModeMenu(false)
-    setTargetCharId(null)
+    if (mode === group.chatMode) return
+    setMentionOverrideId(null)
+    await useGroupChatStore.getState().saveGroup({ ...group, chatMode: mode })
+  }
+
+  const handleImmediateReply = async (charId: string) => {
+    if (isStreaming || triggeringCharId) return
+    setTriggeringCharId(charId)
+    try {
+      await triggerCharacterReply(charId)
+    } finally {
+      setTriggeringCharId(null)
+    }
   }
 
   return (
-    <div className="border-t border-tavern-border-soft bg-tavern-bg-soft/80 backdrop-blur p-3">
-      {/* 模式指示栏 */}
-      <div className="flex items-center gap-2 mb-2 px-1">
-        {/* 模式切换 */}
-        <div className="relative">
-          <button
-            onClick={() => setShowModeMenu(!showModeMenu)}
-            className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-tavern-bg-hover text-tavern-text-muted hover:text-tavern-text transition-colors"
+    <div className="border-t border-tavern-border-soft bg-tavern-bg-soft/90 px-3 pb-3 pt-2 backdrop-blur">
+      <div className="mb-2 flex min-h-8 items-center gap-2 overflow-x-auto whitespace-nowrap rounded-xl border border-tavern-border-soft bg-tavern-bg-card/70 px-2 py-1.5 shadow-sm">
+        <span className="shrink-0 text-[10px] font-medium text-tavern-text-muted">发送后</span>
+        <label className="relative shrink-0">
+          <select
+            aria-label="发送后回复规则"
+            value={group.chatMode}
+            disabled={isStreaming}
+            onChange={(event) => void changeMode(event.target.value as GroupChat['chatMode'])}
+            className="h-7 appearance-none rounded-lg border border-tavern-border-soft bg-tavern-bg px-2.5 pr-7 text-[11px] font-medium text-tavern-text-soft outline-none transition-colors hover:border-tavern-border focus:border-tavern-accent disabled:opacity-50"
           >
-            {group.chatMode === 'polling' && group.autoMode ? (
-              <Repeat className="w-3 h-3 text-tavern-success" />
-            ) : group.chatMode === 'mention' ? (
-              <AtSign className="w-3 h-3" />
-            ) : (
-              <Zap className="w-3 h-3" />
-            )}
-            {MODE_LABELS[group.chatMode]}
-            <ChevronDown className="w-3 h-3" />
-          </button>
+            {(Object.entries(MODE_LABELS) as [GroupChat['chatMode'], string][]).map(([mode, label]) => (
+              <option key={mode} value={mode}>{label}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-tavern-text-muted" />
+        </label>
 
-          {showModeMenu && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setShowModeMenu(false)} />
-              <div className="absolute bottom-full left-0 mb-1 w-36 bg-tavern-bg-card border border-tavern-border rounded-lg shadow-xl z-30 py-1">
-                {(Object.entries(MODE_LABELS) as [GroupChat['chatMode'], string][]).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => changeMode(key)}
-                    className={cn(
-                      'w-full text-left px-3 py-1.5 text-xs hover:bg-tavern-bg-hover transition-colors',
-                      key === group.chatMode && 'text-tavern-accent font-medium'
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* polling 模式额外控件 */}
-        {group.chatMode === 'polling' && (
-          <button
-            onClick={() => {
-              useGroupChatStore.getState().saveGroup({ ...group, autoMode: !group.autoMode })
-            }}
-            className={cn(
-              'px-2 py-0.5 text-xs rounded transition-colors',
-              group.autoMode
-                ? 'bg-tavern-success/10 text-tavern-success'
-                : 'bg-tavern-bg-hover text-tavern-text-muted hover:text-tavern-text'
-            )}
-          >
-            {group.autoMode ? <Repeat className="w-3 h-3 inline mr-0.5" /> : null}
-            自动 {group.autoMode ? 'ON' : 'OFF'}
-          </button>
-        )}
-
-        {/* 当前目标角色 */}
-        {group.chatMode === 'mention' && targetChar && (
-          <span className="text-xs text-tavern-accent bg-tavern-accent-soft px-1.5 py-0.5 rounded">
-            @{targetChar.name}
-          </span>
-        )}
-
-        {/* 轮数指示 */}
-        {group.chatMode === 'polling' && group.autoMode && (
-          <span className="text-[10px] text-tavern-text-muted ml-auto">
-            每轮 {group.maxRounds} 次
-          </span>
-        )}
-
-        {/* 成员快捷点名 */}
         {group.chatMode === 'mention' && (
-          <div className="flex items-center gap-1 ml-auto">
-            {members.slice(0, 4).map(m => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  setTargetCharId(m.id)
-                  setShowMention(false)
-                }}
-                className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center text-[10px] border transition-colors',
-                  targetCharId === m.id
-                    ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
-                    : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
-                )}
-                title={m.name}
-              >
-                {m.name[0]}
-              </button>
-            ))}
-            {members.length > 4 && (
-              <button
-                onClick={() => setShowMention(true)}
-                className="w-6 h-6 rounded-full bg-tavern-bg-hover text-[10px] text-tavern-text-muted hover:text-tavern-text"
-              >
-                +{members.length - 4}
-              </button>
-            )}
-          </div>
+          <label className="relative shrink-0">
+            <select
+              aria-label="指定回复成员"
+              value={selectedTarget?.id ?? ''}
+              disabled={isStreaming || members.length === 0}
+              onChange={(event) => setTargetCharId(event.target.value || null)}
+              className="h-7 max-w-40 appearance-none rounded-lg border border-tavern-accent/25 bg-tavern-accent-soft px-2.5 pr-7 text-[11px] font-medium text-tavern-accent outline-none disabled:opacity-50"
+            >
+              {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-tavern-accent" />
+          </label>
         )}
 
-        {/* 自由发言视角切换：以用户或指定角色身份发言 */}
-        {group.chatMode === 'free' && (
-          <div className="flex items-center gap-1 ml-auto">
-            <button
-              onClick={() => setFreeSpeakerId(null)}
-              className={cn(
-                'w-6 h-6 rounded-full flex items-center justify-center border transition-colors',
-                freeSpeakerId === null
-                  ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
-                  : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
-              )}
-              title="以用户身份发言（默认）"
-            >
-              <UserRound className="w-3 h-3" />
-            </button>
-            {members.map(m => (
-              <button
-                key={m.id}
-                onClick={() => setFreeSpeakerId(m.id)}
-                className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center text-[10px] border transition-colors',
-                  freeSpeakerId === m.id
-                    ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
-                    : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
-                )}
-                title={`以「${m.name}」身份发言`}
-              >
-                {m.name[0]}
-              </button>
-            ))}
-          </div>
+        {group.chatMode === 'polling' && (
+          <span className="shrink-0 text-[10px] text-tavern-text-muted">
+            下一位 <b className="font-medium text-tavern-text-soft">{nextSpeaker?.name ?? '等待成员'}</b>
+          </span>
         )}
+        {group.chatMode === 'polling' && group.autoMode && (
+          <span className="shrink-0 rounded-full bg-tavern-success/10 px-2 py-0.5 text-[10px] font-medium text-tavern-success">连续 {group.maxRounds} 轮</span>
+        )}
+        {group.chatMode === 'free' && <span className="shrink-0 text-[10px] text-tavern-text-muted">可由多人回应</span>}
+
+        <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-tavern-border-soft" />
+        <span className="shrink-0 text-[10px] font-medium text-tavern-text-muted">立即接话</span>
+        {members.map((member) => {
+          const isTriggering = triggeringCharId === member.id
+          const avatar = member.avatar || charAssetUrl(member.id, 'avatar', member.updatedAt)
+          return (
+            <button
+              key={member.id}
+              type="button"
+              disabled={isStreaming || triggeringCharId !== null}
+              aria-label={`让 ${member.name}立即接话`}
+              title={`让 ${member.name}根据当前对话立即接话`}
+              onClick={() => void handleImmediateReply(member.id)}
+              className={cn(
+                'group flex h-7 max-w-44 shrink-0 items-center gap-1.5 rounded-full border px-1.5 pr-2 text-[11px] transition-all',
+                isTriggering
+                  ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
+                  : 'border-tavern-border-soft bg-tavern-bg text-tavern-text-soft hover:border-tavern-accent/35 hover:text-tavern-accent',
+                (isStreaming || triggeringCharId !== null) && !isTriggering && 'opacity-45',
+              )}
+            >
+              <span className="grid h-[18px] w-[18px] shrink-0 place-items-center overflow-hidden rounded-full bg-tavern-bg-hover text-[9px] font-bold">
+                {avatar ? <img src={avatar} alt="" className="h-full w-full object-cover" /> : member.name[0]}
+              </span>
+              <span className="truncate">{isTriggering ? '生成中' : member.name}</span>
+              {isTriggering
+                ? <LoaderCircle className="h-3 w-3 shrink-0 animate-spin" />
+                : <Play className="h-2.5 w-2.5 shrink-0 opacity-45 transition-opacity group-hover:opacity-100" />}
+            </button>
+          )
+        })}
       </div>
 
-      {/* @mention 下拉 */}
-      {showMention && filteredMembers.length > 0 && (
-        <div className="mb-2 bg-tavern-bg-card border border-tavern-border rounded-lg shadow-lg max-h-32 overflow-y-auto">
-          {filteredMembers.map(m => (
-            <button
-              key={m.id}
-              onClick={() => selectMention(m.id, m.name)}
-              className={cn(
-                'w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-tavern-bg-hover transition-colors text-left',
-                targetCharId === m.id && 'bg-tavern-accent-soft text-tavern-accent'
-              )}
-            >
-              {(m.avatar || charAssetUrl(m.id, 'avatar', m.updatedAt)) ? (
-                <img src={m.avatar || charAssetUrl(m.id, 'avatar', m.updatedAt)} className="w-5 h-5 rounded-full object-cover" alt="" />
-              ) : (
-                <div className="w-5 h-5 rounded-full bg-tavern-bg-hover flex items-center justify-center text-[10px] font-bold">
-                  {m.name[0]}
-                </div>
-              )}
-              <span>{m.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 引用回复预览条 */}
-      {replyTo && (
-        <div className="mb-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft">
-          <Reply className="w-3.5 h-3.5 text-tavern-accent shrink-0" />
-          <div className="min-w-0 flex-1 text-xs">
-            <span className="text-tavern-accent font-medium">
-              {replyTo.characterId === '__user__'
-                ? '用户'
-                : (characters.find(c => c.id === replyTo.characterId)?.name ?? '未知')
-            }:
-            </span>
-            <span className="text-tavern-text-muted ml-1 truncate">
-              {replyTo.content.slice(0, 60)}
-              {replyTo.content.length > 60 ? '...' : ''}
-            </span>
-          </div>
-          <button
-            onClick={onCancelReply}
-            className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger transition-colors shrink-0"
-            title="取消引用"
-          >
-            <XIcon className="w-3.5 h-3.5" />
+      {mentionOverride && (
+        <div className="mb-2 flex items-center gap-1.5 text-[10px] text-tavern-text-muted">
+          <span>仅本轮由</span>
+          <span className="rounded-full bg-tavern-accent-soft px-2 py-0.5 font-medium text-tavern-accent">{mentionOverride.name}</span>
+          <button type="button" onClick={() => setMentionOverrideId(null)} className="rounded p-0.5 hover:text-tavern-danger" aria-label="取消本轮回复者">
+            <XIcon className="h-3 w-3" />
           </button>
         </div>
       )}
 
-      {/* 已选图片预览 */}
-      {selectedImages.length > 0 && (
-        <div className="flex gap-1.5 mb-2 flex-wrap">
-          {selectedImages.map((img, i) => (
-            <div key={i} className="relative">
-              <img src={img} alt="" className="w-12 h-12 rounded-lg object-cover border border-tavern-border-soft" />
-              <button
-                onClick={() => setSelectedImages(prev => prev.filter((_, idx) => idx !== i))}
-                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-tavern-danger text-white flex items-center justify-center text-[8px]"
-              >
-                ×
+      {showMention && filteredMembers.length > 0 && (
+        <div className="mb-2 max-h-32 overflow-y-auto rounded-lg border border-tavern-border bg-tavern-bg-card shadow-lg">
+          {filteredMembers.map((member) => {
+            const avatar = member.avatar || charAssetUrl(member.id, 'avatar', member.updatedAt)
+            return (
+              <button key={member.id} type="button" onClick={() => selectMention(member.id)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-tavern-bg-hover">
+                {avatar
+                  ? <img src={avatar} className="h-5 w-5 rounded-full object-cover" alt="" />
+                  : <span className="grid h-5 w-5 place-items-center rounded-full bg-tavern-bg-hover text-[10px] font-bold">{member.name[0]}</span>}
+                <span>{member.name}</span>
               </button>
+            )
+          })}
+        </div>
+      )}
+
+      {replyTo && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft px-3 py-1.5">
+          <Reply className="h-3.5 w-3.5 shrink-0 text-tavern-accent" />
+          <div className="min-w-0 flex-1 text-xs">
+            <span className="font-medium text-tavern-accent">
+              {replyTo.characterId === '__user__' ? '用户' : (characters.find((character) => character.id === replyTo.characterId)?.name ?? '未知')}:
+            </span>
+            <span className="ml-1 truncate text-tavern-text-muted">{replyTo.content.slice(0, 60)}{replyTo.content.length > 60 ? '...' : ''}</span>
+          </div>
+          <button type="button" onClick={onCancelReply} className="shrink-0 rounded p-0.5 text-tavern-text-muted transition-colors hover:text-tavern-danger" title="取消引用">
+            <XIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {selectedImages.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {selectedImages.map((image, index) => (
+            <div key={index} className="relative">
+              <img src={image} alt="" className="h-12 w-12 rounded-lg border border-tavern-border-soft object-cover" />
+              <button type="button" onClick={() => setSelectedImages((images) => images.filter((_, imageIndex) => imageIndex !== index))} className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-tavern-danger text-[8px] text-white" aria-label="移除图片">×</button>
             </div>
           ))}
         </div>
       )}
 
-      {/* 输入区 */}
       <div className="flex gap-2">
-        <div className="flex-1 relative">
+        <div className="relative flex-1">
           <textarea
             ref={textareaRef}
             value={content}
-            onChange={e => setContent(e.target.value)}
+            onChange={(event) => setContent(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              group.chatMode === 'mention'
-                ? '输入消息，使用 @ 点名角色...'
-                : '输入消息，所有角色将依次/自由回复...'
-            }
+            placeholder="输入消息…"
             rows={1}
-            className="w-full resize-none rounded-xl border border-tavern-border-soft bg-tavern-bg px-3 py-2.5 pr-10 text-sm text-tavern-text placeholder-tavern-text-muted/60 focus:outline-none focus:border-tavern-accent focus:ring-1 focus:ring-tavern-accent/30 transition-colors"
+            className="w-full resize-none rounded-xl border border-tavern-border-soft bg-tavern-bg px-3 py-2.5 pr-10 text-sm text-tavern-text transition-colors placeholder-tavern-text-muted/60 focus:border-tavern-accent focus:outline-none focus:ring-1 focus:ring-tavern-accent/30"
             style={{ minHeight: '42px', maxHeight: '120px' }}
-            onInput={(e) => {
-              // P-10 修复：用 requestAnimationFrame 避免同步 reflow
-              const el = e.currentTarget
+            onInput={(event) => {
+              const element = event.currentTarget
               requestAnimationFrame(() => {
-                el.style.height = 'auto'
-                el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+                element.style.height = 'auto'
+                element.style.height = `${Math.min(element.scrollHeight, 120)}px`
               })
             }}
           />
-          <button
-            onClick={handleSelectImage}
-            className="absolute right-2 bottom-2 p-1 rounded text-tavern-text-muted hover:text-tavern-text transition-colors"
-            title="上传图片"
-          >
-            <ImageIcon className="w-4 h-4" />
+          <button type="button" onClick={handleSelectImage} className="absolute bottom-2 right-2 rounded p-1 text-tavern-text-muted transition-colors hover:text-tavern-text" title="上传图片">
+            <ImageIcon className="h-4 w-4" />
           </button>
         </div>
 
         {isStreaming ? (
-          <button
-            onClick={stopStreaming}
-            className="shrink-0 w-10 h-10 rounded-xl bg-tavern-danger/20 text-tavern-danger hover:bg-tavern-danger/30 transition-colors flex items-center justify-center"
-          >
-            <Square className="w-4 h-4" />
+          <button type="button" onClick={stopStreaming} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tavern-danger/20 text-tavern-danger transition-colors hover:bg-tavern-danger/30" aria-label="停止生成">
+            <Square className="h-4 w-4" />
           </button>
         ) : (
-          <button
-            onClick={handleSend}
-            disabled={!content.trim()}
-            className={cn(
-              'shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors',
-              content.trim()
-                ? 'bg-tavern-accent text-white hover:bg-tavern-accent/90'
-                : 'bg-tavern-bg-hover text-tavern-text-muted cursor-not-allowed'
-            )}
-          >
-            <Send className="w-4 h-4" />
+          <button type="button" onClick={() => void handleSend()} disabled={!content.trim()} aria-label="发送消息" className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors',
+            content.trim() ? 'bg-tavern-accent text-white hover:bg-tavern-accent/90' : 'cursor-not-allowed bg-tavern-bg-hover text-tavern-text-muted',
+          )}>
+            <Send className="h-4 w-4" />
           </button>
         )}
       </div>

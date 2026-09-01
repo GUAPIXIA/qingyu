@@ -10,15 +10,23 @@
 
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { DIRS, readJson } from '../services/storage'
+import { DIRS } from '../services/storage'
+import { readLorebookView } from '../services/lorebookDocumentStore'
 import { embedTexts, testEmbedding, isEmbeddingConfigured, type EmbeddingConfig } from '../services/embedding'
 import { getVectorIndex, saveVectorIndex, removeVectorIndex, countIndexedEntries, countStaleEntries, clearStaleEntries } from '../services/vectorStore'
 import { safeId } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
 import type { Lorebook, LoreEntry } from '../../shared/types'
+import type { VectorIndex, VectorSpace } from '../services/vectorStore'
 import { topKSimilar } from '../../src/utils/vector'
+import { getLocalModelManager } from './localModels'
 
 const log = createLogger('embedding-ipc')
+
+async function embedWithProvider(config: EmbeddingConfig, texts: string[], inputKind: 'query' | 'passage'): Promise<number[][]> {
+  if (config.provider === 'local') return getLocalModelManager().embed(texts, inputKind)
+  return embedTexts(config, texts)
+}
 
 export function mapFactSearchHits(
   hits: Array<{ id: string; score: number }>,
@@ -31,14 +39,34 @@ export function mapFactSearchHits(
 
 /** 条目是否参与语义匹配 */
 export function isSemanticEligible(entry: LoreEntry): boolean {
+  if (entry.priority === 'always') return false
   const mode = entry.matchMode ?? 'both'
   return mode === 'semantic' || mode === 'both'
+}
+
+/** 查询向量与索引必须由同一模型生成，否则维度即使碰巧一致，相似度也没有意义。 */
+export function vectorSpaceFromConfig(config: EmbeddingConfig): VectorSpace {
+  if (config.provider === 'local') {
+    const splitAt = config.model.lastIndexOf('@')
+    return { provider: 'local', model: config.model, modelId: config.model.slice(0, splitAt), modelVersion: config.model.slice(splitAt + 1) }
+  }
+  return { provider: config.provider, model: config.model }
+}
+
+export function isVectorIndexCompatible(index: Pick<VectorIndex, 'model' | 'provider' | 'modelId' | 'modelVersion'>, config: Pick<EmbeddingConfig, 'model'> & Partial<Pick<EmbeddingConfig, 'provider'>>): boolean {
+  if (index.model.trim() !== config.model.trim()) return false
+  if (index.provider && config.provider && index.provider !== config.provider) return false
+  if (config.provider === 'local') {
+    const space = vectorSpaceFromConfig(config as EmbeddingConfig)
+    return index.modelId === space.modelId && index.modelVersion === space.modelVersion
+  }
+  return true
 }
 
 /** 读取单个世界书 */
 function readLorebook(id: string): Lorebook | null {
   safeId(id)
-  return readJson<Lorebook>(join(DIRS.lorebooks(), `${id}.json`), 'lorebooks')
+  return readLorebookView(join(DIRS.lorebooks(), `${id}.json`))
 }
 
 /** 语义检索命中项（主进程 → 渲染进程） */
@@ -51,11 +79,18 @@ export interface SemanticHit {
   order: number
   depth?: number
   score: number
+  /** 条目手写摘要（阶段三：预算紧张时代替全文注入） */
+  summary?: string
 }
 
 export function registerEmbeddingIPC(ipcMain: IpcMain): void {
   // 测试嵌入服务连接
   ipcMain.handle('embedding:test', async (_e, config: EmbeddingConfig) => {
+    if (config.provider === 'local') {
+      const [modelId, version] = config.model.split('@')
+      const result = await getLocalModelManager().test(modelId, version)
+      return { ok: result.ok, dim: result.dimensions, error: result.error }
+    }
     return testEmbedding(config)
   })
 
@@ -78,7 +113,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
     }
 
     try {
-      const vectors = await embedTexts(config, targets.map((t) => t.content))
+      const vectors = await embedWithProvider(config, targets.map((t) => t.content), 'passage')
       const map: Record<string, number[]> = {}
       let failed = 0
       targets.forEach((t, i) => {
@@ -86,8 +121,9 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
         if (v && v.length > 0) map[t.id] = v
         else failed++
       })
-      saveVectorIndex(lorebookId, config.model, map)
-      clearStaleEntries(lorebookId)
+      const space = vectorSpaceFromConfig(config)
+      saveVectorIndex(lorebookId, config.model, map, space)
+      clearStaleEntries(lorebookId, space)
       log.info('世界书向量索引完成', { lorebookId, name: lb.name, total: targets.length, indexed: Object.keys(map).length })
       return { ok: true, total: targets.length, indexed: Object.keys(map).length, failed }
     } catch (e) {
@@ -96,13 +132,14 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
   })
 
   // 查询索引状态
-  ipcMain.handle('embedding:indexStatus', async (_e, lorebookIds: string[]) => {
+  ipcMain.handle('embedding:indexStatus', async (_e, lorebookIds: string[], config?: EmbeddingConfig) => {
+    const space = config && isEmbeddingConfigured(config) ? vectorSpaceFromConfig(config) : undefined
     const result: Record<string, { indexed: number; model: string; updatedAt: number; stale: number }> = {}
     for (const id of lorebookIds) {
       safeId(id)
-      const index = getVectorIndex(id)
+      const index = getVectorIndex(id, space)
       result[id] = index
-        ? { indexed: countIndexedEntries(id), model: index.model, updatedAt: index.updatedAt, stale: countStaleEntries(id) }
+        ? { indexed: countIndexedEntries(id, space), model: index.model, updatedAt: index.updatedAt, stale: countStaleEntries(id, space) }
         : { indexed: 0, model: '', updatedAt: 0, stale: 0 }
     }
     return result
@@ -119,7 +156,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
   ipcMain.handle('embedding:embedFacts', async (_e, config: EmbeddingConfig, texts: string[]) => {
     if (!isEmbeddingConfigured(config) || !Array.isArray(texts) || texts.length === 0) return []
     try {
-      return await embedTexts(config, texts.map((t) => String(t)))
+      return await embedWithProvider(config, texts.map((t) => String(t)), 'passage')
     } catch (e) {
       log.warn('事实向量化失败（回退全量注入）', { error: (e as Error).message })
       return []
@@ -141,7 +178,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
     if (!query?.trim() || !isEmbeddingConfigured(config)) return []
     if (!Array.isArray(facts) || facts.length === 0 || !Array.isArray(vectors) || vectors.length !== facts.length) return []
     try {
-      const [queryVec] = await embedTexts(config, [query])
+      const [queryVec] = await embedWithProvider(config, [query], 'query')
       if (!queryVec || queryVec.length === 0) return []
       const items = facts.map((_, i) => ({ id: String(i), vector: vectors[i] ?? [] }))
       const hits = topKSimilar(queryVec, items, maxResults, threshold)
@@ -176,20 +213,20 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
       const indexed: { lb: Lorebook; vectors: Record<string, number[]> }[] = []
       for (const id of lorebookIds) {
         const lb = readLorebook(id)
-        const index = getVectorIndex(id)
-        if (!lb || !index) continue
+        const index = getVectorIndex(id, vectorSpaceFromConfig(config))
+        if (!lb || !index || !isVectorIndexCompatible(index, config)) continue
         indexed.push({ lb, vectors: index.entries })
       }
       if (indexed.length === 0) return []
 
       // 2. 扫描文本嵌入
-      const [queryVec] = await embedTexts(config, [scanText])
+      const [queryVec] = await embedWithProvider(config, [scanText], 'query')
       if (!queryVec || queryVec.length === 0) return []
 
       // 3. 逐条目相似度检索（跳过已标记过期的条目，避免旧向量误导）
       const pool: { id: string; lbId: string; score: number }[] = []
       for (const { lb, vectors } of indexed) {
-        const index = getVectorIndex(lb.id)
+        const index = getVectorIndex(lb.id, vectorSpaceFromConfig(config))
         const stale = new Set(index?.stale ?? [])
         const items = lb.entries
           .filter((e) => e.enabled && isSemanticEligible(e) && vectors[e.id] && !stale.has(e.id))
@@ -220,13 +257,16 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
           order: entry.order,
           depth: entry.position === 'at_depth' ? entry.depth ?? 0 : undefined,
           score: hit.score,
+          summary: entry.summary,
         })
         if (results.length >= maxResults) break
       }
       return results
     } catch (e) {
       log.warn('语义检索失败（静默降级为纯关键词）', { error: (e as Error).message })
-      return []
+      // 空数组表示“语义通道可用，但没有命中”。请求异常必须继续向上抛，
+      // 让渲染层能标记通道不可用，并仅使用词法/关键词通道。
+      throw e
     }
   })
 }

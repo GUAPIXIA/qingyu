@@ -3,6 +3,11 @@ package com.qingyu.companion.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
+import com.qingyu.companion.data.send.CancelQueuedMessageUseCase
+import com.qingyu.companion.data.send.ObserveOutboxUseCase
+import com.qingyu.companion.data.send.RetryGenerationUseCase
+import com.qingyu.companion.data.send.RetrySendUseCase
+import com.qingyu.companion.data.send.SendMessageUseCase
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.Message
 import com.qingyu.companion.model.MessageOps
@@ -10,6 +15,7 @@ import com.qingyu.companion.model.MessageUsage
 import com.qingyu.companion.model.PendingMessage
 import com.qingyu.companion.model.QuickReply
 import com.qingyu.companion.model.QuickReplyAction
+import com.qingyu.companion.model.Role
 import com.qingyu.companion.network.WsClient
 import com.qingyu.companion.ui.tts.TtsPlayer
 import com.qingyu.companion.data.CompanionError
@@ -42,6 +48,11 @@ class ChatViewModel(
     private val ttsPlayer: TtsPlayer? = null,
     private val generationTracker: com.qingyu.companion.data.GenerationTracker? = null,
     private val draftStore: com.qingyu.companion.data.DraftStore? = null,
+    // F-06：发送/重试/取消统一走 UseCase（默认由 repository 构造；ViewModel 只投影状态）
+    private val sendMessageUseCase: SendMessageUseCase = SendMessageUseCase(repository),
+    private val retrySendUseCase: RetrySendUseCase = RetrySendUseCase(repository),
+    private val retryGenerationUseCase: RetryGenerationUseCase = RetryGenerationUseCase(repository),
+    private val cancelQueuedMessageUseCase: CancelQueuedMessageUseCase = CancelQueuedMessageUseCase(repository),
 ) : ViewModel() {
 
     /** 所属角色 id（loadSessionInfo 时缓存，删除会话时精确定位） */
@@ -64,6 +75,8 @@ class ChatViewModel(
         val error: String? = null,
         /** AI 续写/润色处理中 */
         val aiProcessing: Boolean = false,
+        /** 正在翻译的消息；按消息粒度反馈，避免重复请求。 */
+        val translatingMessageIds: Set<String> = emptySet(),
         /** 上下文用量（≥0.85 预警） */
         val contextUsage: com.qingyu.companion.model.ContextUsageDto? = null,
         /** 文本型快捷回复（已启用），按 order 排序 */
@@ -119,8 +132,9 @@ class ChatViewModel(
             repository.events.collect(::handleEvent)
         }
         // P1-4.1 B1-2：观察持久化发件箱，App 重启后可恢复（替代纯内存 pending）
+        // F-06：经 ObserveOutboxUseCase 观察（仅当前活跃 PC 的未完成行）
         viewModelScope.launch {
-            repository.observeOutbox(sessionId).collect { outboxPending ->
+            ObserveOutboxUseCase(repository)(sessionId).collect { outboxPending ->
                 _ui.update { it.copy(pending = outboxPending) }
             }
         }
@@ -332,40 +346,131 @@ class ChatViewModel(
         _input.value = ""
         viewModelScope.launch { runCatching { draftStore?.clearDraft(sessionId) } }
         val requestId = UUID.randomUUID().toString()
+        val submitted = PendingMessage(
+            requestId = requestId,
+            content = content,
+            timestamp = System.currentTimeMillis(),
+            failed = false,
+            images = images,
+            replyToId = replyTarget?.id,
+        )
         // 先本地入列（发送中），成功后替换为落盘消息；失败保留以便重试
         _ui.update {
             it.copy(
                 error = null,
-                pending = it.pending + PendingMessage(requestId, content, System.currentTimeMillis(), failed = false, images = images, replyToId = replyTarget?.id),
+                pending = it.pending + submitted,
             )
         }
         viewModelScope.launch {
             try {
-                val userMessage = repository.sendMessage(sessionId, requestId, content, replyTarget?.id, images)
-                _ui.update { st ->
-                    st.copy(
-                        messages = MessageOps.upsert(st.messages, userMessage),
-                        pending = st.pending.filterNot { it.requestId == requestId },
-                        streaming = Streaming.Generating(requestId, ""),
-                    )
-                }
-                generationTracker?.onStarted(sessionId, _ui.value.characterName)
+                // F-06：网络/状态机逻辑下沉 SendMessageUseCase（Repository 状态机在事务内推进）
+                val result = sendMessageUseCase(sessionId, content, replyTarget?.id, images, requestId)
+                onSendResult(requestId, submitted, result)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _ui.update { st ->
-                    st.copy(
-                        pending = st.pending.map {
-                            if (it.requestId == requestId) it.copy(failed = true) else it
-                        },
-                        error = e.message ?: "发送失败",
-                    )
-                }
+                markPendingFailed(requestId, e)
             }
         }
     }
 
-    /** 重试失败消息：复用原幂等键（PC 侧已落盘则去重返回，方案 §4.3 幂等键） */
+    /**
+     * 处理双发送链路返回值：
+     * - v1 立即返回用户消息，pending 转落盘消息并进入流式占位；
+     * - v2 task 完成后返回助手消息，此时立即重拉权威列表，避免 pending 清除后用户消息消失。
+     */
+    private suspend fun onSendResult(requestId: String, submitted: PendingMessage, result: Message) {
+        if (result.role != Role.user) {
+            reconcileCompletedTask(requestId, submitted, result)
+            return
+        }
+        _ui.update { st ->
+            st.copy(
+                messages = MessageOps.upsert(st.messages, result),
+                pending = st.pending.filterNot { it.requestId == requestId },
+                streaming = Streaming.Generating(requestId, ""),
+            )
+        }
+        generationTracker?.onStarted(sessionId, _ui.value.characterName)
+    }
+
+    /** v2 完成态对账：优先使用服务端权威列表，网络补拉失败时保留本地用户消息快照。 */
+    private suspend fun reconcileCompletedTask(
+        requestId: String,
+        submitted: PendingMessage,
+        assistantMessage: Message,
+    ) {
+        val page = runCatching { repository.listMessages(sessionId) }.getOrNull()
+        val authoritativePage = page?.takeIf { candidate ->
+            val hasAssistant = candidate.messages.any { it.id == assistantMessage.id }
+            val hasUser = candidate.messages.any { message ->
+                message.role == Role.user &&
+                    message.content == submitted.content &&
+                    message.replyToId == submitted.replyToId
+            }
+            hasAssistant && hasUser
+        }
+        chunkBuffer.remove(requestId)
+        streamingAccumulated.remove(requestId)
+        usageBuffer.remove(requestId)
+        _ui.update { st ->
+            val reconciled = if (authoritativePage != null) {
+                // 仅用服务端最新页更新当前列表，保留用户已经向上加载的更早消息。
+                MessageOps.merge(st.messages, authoritativePage.messages)
+            } else {
+                val alreadyHasUser = st.messages.any { message ->
+                    message.role == Role.user &&
+                        message.content == submitted.content &&
+                        message.replyToId == submitted.replyToId &&
+                        kotlin.math.abs(message.timestamp - submitted.timestamp) <= USER_MATCH_WINDOW_MS
+                }
+                val withUser = if (alreadyHasUser) {
+                    st.messages
+                } else {
+                    MessageOps.upsert(
+                        st.messages,
+                        Message(
+                            id = requestId,
+                            sessionId = sessionId,
+                            characterId = expectedCharacterId?.takeIf { it.isNotBlank() }
+                                ?: resolvedCharacterId
+                                ?: assistantMessage.characterId,
+                            role = Role.user,
+                            content = submitted.content,
+                            images = submitted.images,
+                            timestamp = submitted.timestamp,
+                            replyToId = submitted.replyToId,
+                        ),
+                    )
+                }
+                MessageOps.upsert(withUser, assistantMessage)
+            }
+            val nextStreaming = if (streamingAccumulated.isEmpty()) Streaming.Idle else {
+                val (otherId, otherSb) = streamingAccumulated.entries.first()
+                Streaming.Generating(otherId, otherSb.toString())
+            }
+            st.copy(
+                messages = reconciled,
+                pending = st.pending.filterNot { it.requestId == requestId },
+                streaming = nextStreaming,
+                nextCursor = authoritativePage?.nextCursor ?: st.nextCursor,
+            )
+        }
+        if (streamingAccumulated.isEmpty()) generationTracker?.onStopped(sessionId)
+    }
+
+    private fun markPendingFailed(requestId: String, e: Exception) {
+        _ui.update { st ->
+            st.copy(
+                pending = st.pending.map {
+                    if (it.requestId == requestId) it.copy(failed = true) else it
+                },
+                error = e.message ?: "发送失败",
+            )
+        }
+    }
+
+    /** 重试失败消息：复用原幂等键（PC 侧已落盘则去重；引用/图片/requestId 由 UseCase 原样保持） */
     fun retryPending(requestId: String) {
         val pending = _ui.value.pending.firstOrNull { it.requestId == requestId } ?: return
         if (!pending.failed) return
@@ -377,27 +482,49 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             try {
-                val userMessage = repository.sendMessage(sessionId, requestId, pending.content, pending.replyToId, pending.images)
-                _ui.update { st ->
-                    st.copy(
-                        messages = MessageOps.upsert(st.messages, userMessage),
-                        pending = st.pending.filterNot { it.requestId == requestId },
-                        streaming = Streaming.Generating(requestId, ""),
-                    )
-                }
-                generationTracker?.onStarted(sessionId, _ui.value.characterName)
+                // F-06：RetrySendUseCase——发送失败行重发；已落盘用户消息的行自动转生成重试
+                val result = retrySendUseCase(sessionId, requestId)
+                onSendResult(requestId, pending, result)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                markPendingFailed(requestId, e)
+            }
+        }
+    }
+
+    /** F-06：仅重试 AI 生成（不重发用户消息；v2 有 taskId 走 /tasks/:id/retry）。 */
+    fun retryGeneration(requestId: String) {
+        _ui.update { it.copy(error = null) }
+        viewModelScope.launch {
+            try {
+                val message = retryGenerationUseCase(requestId)
                 _ui.update { st ->
                     st.copy(
-                        pending = st.pending.map {
-                            if (it.requestId == requestId) it.copy(failed = true) else it
-                        },
-                        error = e.message ?: "发送失败",
+                        messages = MessageOps.upsert(st.messages, message),
+                        pending = st.pending.filterNot { it.requestId == requestId },
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                markPendingFailed(requestId, e)
             }
+        }
+    }
+
+    /** F-06：取消排队/生成中的消息（queued/sending 本地取消；v2 任务同时请求 PC 取消）。 */
+    fun cancelPending(requestId: String) {
+        viewModelScope.launch {
+            runCatching { cancelQueuedMessageUseCase(requestId) }
+                .onSuccess { cancelled ->
+                    if (cancelled) {
+                        _ui.update { st ->
+                            st.copy(pending = st.pending.filterNot { it.requestId == requestId })
+                        }
+                    }
+                }
+                .onFailure { e -> report(e, "取消失败") }
         }
     }
 
@@ -508,18 +635,24 @@ class ChatViewModel(
     }
 
     fun translate(messageId: String) {
+        if (messageId in _ui.value.translatingMessageIds) return
+        _ui.update { it.copy(translatingMessageIds = it.translatingMessageIds + messageId, error = null) }
         viewModelScope.launch {
-            runCatching { repository.translate(sessionId, messageId) }
-                .onSuccess { resp ->
-                    _ui.update { st ->
-                        st.copy(
-                            messages = st.messages.map { m ->
-                                if (m.id == resp.messageId) m.copy(translation = resp.translation) else m
-                            }
-                        )
-                    }
+            try {
+                val resp = repository.translate(sessionId, messageId)
+                if (resp.translation.isBlank()) throw IllegalStateException("翻译结果为空，请重试")
+                _ui.update { st ->
+                    st.copy(
+                        messages = st.messages.map { m ->
+                            if (m.id == resp.messageId) m.copy(translation = resp.translation) else m
+                        }
+                    )
                 }
-                .onFailure { e -> report(e, "翻译失败") }
+            } catch (e: Exception) {
+                report(e, "翻译失败")
+            } finally {
+                _ui.update { it.copy(translatingMessageIds = it.translatingMessageIds - messageId) }
+            }
         }
     }
 
@@ -586,8 +719,18 @@ class ChatViewModel(
                 )
 
             // PC 侧新增消息 -> 刷新；标题/删除等变更由会话列表页处理
+            // （revision 预留字段当前恒 null；PC 补充后可在此做跳变检测触发补拉，见 model/WsEvent.kt TODO）
             is CompanionEvent.SessionUpdated ->
                 if (event.sessionId == sessionId && event.change == "message") loadLatest()
+
+            // 设置同步 v2 事件（方案 §7 C-04）由设置页仓库消费，聊天页无关
+            is CompanionEvent.SettingsUpdated -> Unit
+            is CompanionEvent.RelayCommandCompleted -> Unit
+            is CompanionEvent.RelayCommandExpired -> Unit
+
+            // F-01：task:* 帧事件——本设备 v2 任务由 Repository 轮询链路消费（cursor 去重后
+            // 转为同构 Chunk 事件流）；此分支面向 PC 端发起的任务推送，聊天页当前不消费
+            is CompanionEvent.TaskEvent -> Unit
         }
     }
 
@@ -621,5 +764,8 @@ class ChatViewModel(
 
         /** swipe 端点的"重新生成"约定方向（0 = 追加新候选，非循环切换） */
         const val DIRECTION_REGENERATE = 0
+
+        /** v2 补拉失败时识别已存在用户消息的时间窗口，避免本地兜底重复插入。 */
+        const val USER_MATCH_WINDOW_MS = 5 * 60 * 1000L
     }
 }

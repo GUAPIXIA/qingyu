@@ -129,6 +129,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       ttsModel?: string
       visionModel?: string
       imageGenModel?: string
+      /** @deprecated 全局作者注释已移除，仅保留角色卡 authorNote。 */
+      authorNote?: unknown
     }
 
     // TTS 迁移
@@ -197,13 +199,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     // 清理旧字段，保存迁移结果
     if (legacySettings.ttsProvider !== undefined || legacySettings.ttsVoice !== undefined ||
         legacySettings.ttsModel !== undefined || legacySettings.visionModel !== undefined ||
-        legacySettings.imageGenModel !== undefined) {
+        legacySettings.imageGenModel !== undefined || legacySettings.authorNote !== undefined) {
       const cleaned = settings as unknown as Record<string, unknown>
       delete cleaned.ttsProvider
       delete cleaned.ttsVoice
       delete cleaned.ttsModel
       delete cleaned.visionModel
       delete cleaned.imageGenModel
+      delete cleaned.authorNote
       await window.api.settings.save(settings)
     }
 

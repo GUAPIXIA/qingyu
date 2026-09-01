@@ -1,0 +1,56 @@
+{
+  "name": "角色内嵌完整世界书",
+  "description": "CCv2/CCv3 character_book 字段基线",
+  "scan_depth": 6,
+  "token_budget": 1024,
+  "recursive_scanning": false,
+  "entries": [
+    {
+      "id": "capital",
+      "keys": ["王城"],
+      "secondary_keys": ["帝国"],
+      "content": "王城设定",
+      "enabled": true,
+      "insertion_order": 42,
+      "position": "after_char",
+      "constant": false,
+      "use_regex": true,
+      "selective": true,
+      "extensions": {
+        "position": 4,
+        "depth": 3,
+        "role": 1,
+        "probability": 65,
+        "use_probability": true,
+        "vectorized": true,
+        "exclude_recursion": true,
+        "prevent_recursion": true,
+        "case_sensitive": false,
+        "match_whole_words": false,
+        "ignore_budget": true,
+        "scan_depth": 2,
+        "delay_until_recursion": true,
+        "group": "capital",
+        "group_override": true,
+        "group_weight": 180,
+        "use_group_scoring": true,
+        "character_filter": { "isExclude": true, "names": ["Bob"], "tags": ["blocked"] },
+        "triggers": ["continue"],
+        "sticky": 4,
+        "cooldown": 3,
+        "delay": 2
+      }
+    },
+    {
+      "id": "law",
+      "keys": [],
+      "content": "魔法守恒定律。",
+      "enabled": true,
+      "insertion_order": 10,
+      "position": "before_char",
+      "constant": true,
+      "use_regex": false
+    }
+  ]
+}
+

@@ -1,0 +1,50 @@
+{
+  "name": "ST 完整世界书",
+  "description": "覆盖当前 ST World Info 映射",
+  "scan_depth": 6,
+  "recursive_scanning": true,
+  "entries": {
+    "10": {
+      "uid": 10,
+      "key": ["王城", "首都"],
+      "keysecondary": ["帝国", "皇帝"],
+      "selective": true,
+      "selectiveLogic": 3,
+      "content": "王城是帝国首都。",
+      "position": 4,
+      "depth": 2,
+      "role": 0,
+      "order": 250,
+      "probability": 80,
+      "useProbability": true,
+      "disable": false,
+      "constant": true,
+      "vectorized": true,
+      "caseSensitive": true,
+      "matchWholeWords": false,
+      "excludeRecursion": true,
+      "preventRecursion": true,
+      "delayUntilRecursion": 2,
+      "scanDepth": 1,
+      "group": "王族, 地点",
+      "groupOverride": true,
+      "groupWeight": 250,
+      "useGroupScoring": true,
+      "characterFilter": { "isExclude": false, "names": ["Alice"], "tags": ["royal"] },
+      "triggers": ["normal", "continue"],
+      "sticky": 3,
+      "cooldown": 2,
+      "delay": 1
+    },
+    "11": {
+      "uid": 11,
+      "key": [],
+      "content": "与当前对话语义相关时出现。",
+      "position": 2,
+      "order": 100,
+      "disable": false,
+      "vectorized": true
+    }
+  }
+}
+

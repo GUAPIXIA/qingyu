@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- G-01 benchmark 模块（com.android.library + androidx.benchmark）：
+     插件 self-instrumenting 自动生成 instrumentation 与 profileable 目标变体；
+     库模块无需任何组件。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -10,6 +10,7 @@ import { useSettingsStore } from '../useSettingsStore'
 import { useChatStore } from '../useChatStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { lorebookCache } from '../../utils/lorebook'
+import type { BudgetLoreItem } from '../../utils/lorebook'
 import type { Character, Lorebook, Message, SessionPreview } from '../../../shared/types'
 
 vi.mock('../streamController', () => ({
@@ -65,6 +66,12 @@ function makeLorebook(id: string, entry: Partial<import('../../../shared/types')
       order: entry.order ?? 100,
       probability: entry.probability ?? 100,
       enabled: true,
+      matchMode: entry.matchMode,
+      priority: entry.priority,
+      summary: entry.summary,
+      sticky: entry.sticky,
+      cooldown: entry.cooldown,
+      delay: entry.delay,
     }],
   }
 }
@@ -109,7 +116,7 @@ function baseGet() {
     sessions: [] as SessionPreview[],
     currentSessionId: 's1',
     activeLorebookIds: [] as string[],
-    _semanticLoreHits: [],
+    _semanticLoreHits: [] as BudgetLoreItem[],
     _semanticFactsHits: [],
   }
 }
@@ -148,6 +155,35 @@ describe('buildChatContext', () => {
     expect(system.content).toContain('<thought>')
   })
 
+  it('无世界书触发的真实生成仍推进 recency 空轮次', () => {
+    const updateSession = vi.mocked(window.api.chat.updateSession)
+    const session = makeSession({ recentTriggeredIds: [['lb1:old']] })
+    const get = makeGet({ sessions: [session], activeLorebookIds: [] })
+    buildChatContext(get, vi.fn(), makeChar(), null)
+    expect(updateSession).toHaveBeenCalledWith('c1', 's1', expect.objectContaining({
+      recentTriggeredIds: [['lb1:old'], []],
+    }))
+  })
+
+  it('真实生成会把世界书 timed effects 写回当前会话', () => {
+    lorebookCache.set('lb1', makeLorebook('lb1', {
+      keywords: ['事件'], content: '周期事件', sticky: 3, cooldown: 2,
+    }))
+    const updateSession = vi.mocked(window.api.chat.updateSession)
+    const get = makeGet({
+      activeLorebookIds: ['lb1'],
+      sessions: [makeSession({ messageCount: 1 })],
+      messages: [makeMsg({ content: '事件' })],
+    })
+    buildChatContext(get, vi.fn(), makeChar(), null)
+    expect(updateSession).toHaveBeenCalledWith('c1', 's1', expect.objectContaining({
+      lorebookTimedEffects: {
+        sticky: { 'lb1:e-lb1': expect.objectContaining({ start: 1, end: 4 }) },
+        cooldown: { 'lb1:e-lb1': expect.objectContaining({ start: 1, end: 3 }) },
+      },
+    }))
+  })
+
   it('世界书 before_char 触发：注入在角色设定之前', () => {
     lorebookCache.set('lb1', makeLorebook('lb1', { keywords: ['猫'], content: '猫娘是世界的瑰宝' }))
     const char = makeChar()
@@ -165,6 +201,38 @@ describe('buildChatContext', () => {
     // before_char：位于【角色设定】标题之后、角色描述之前
     expect(lorePos).toBeGreaterThan(charTitlePos)
     expect(lorePos).toBeLessThan(descPos)
+  })
+
+  it('真实构建把世界书诊断快照写入当前会话的内存状态', () => {
+    lorebookCache.set('lb1', makeLorebook('lb1', { keywords: ['王城'], content: '王城设定' }))
+    const get = makeGet({
+      activeLorebookIds: ['lb1'],
+      messages: [makeMsg({ content: '抵达王城' })],
+    })
+    const set = vi.fn()
+
+    buildChatContext(get, set, makeChar(), null)
+
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      lastLorebookDiagnosticsSessionId: 's1',
+      lastLorebookDiagnostics: expect.objectContaining({
+        mode: 'live',
+        summary: expect.objectContaining({ injectedEntries: 1 }),
+      }),
+    }))
+  })
+
+  it('世界书 scanDepth=0 时不扫描聊天消息关键词', () => {
+    const book = makeLorebook('lb-zero', { keywords: ['事件'], content: '不应注入' })
+    book.scanDepth = 0
+    lorebookCache.set('lb-zero', book)
+    const get = makeGet({
+      activeLorebookIds: ['lb-zero'],
+      sessions: [makeSession({ messageCount: 1 })],
+      messages: [makeMsg({ content: '事件' })],
+    })
+    const context = buildChatContext(get, vi.fn(), makeChar(), null)
+    expect(context.map((item) => item.content).join('\n')).not.toContain('不应注入')
   })
 
   it('at_depth 世界书：depth 0 注入在最后一条历史消息之后', () => {
@@ -208,6 +276,19 @@ describe('buildChatContext', () => {
     expect(set).toHaveBeenCalledWith(expect.objectContaining({
       lastContextUsage: expect.objectContaining({ used: expect.any(Number), max: expect.any(Number) }),
     }))
+  })
+
+  it('只读上下文预览即使超预算也不标记历史压缩任务', () => {
+    const longText = '这是一条相当长的历史消息内容用来测试预算裁剪。'.repeat(8)
+    const messages = Array.from({ length: 40 }, (_, i) =>
+      makeMsg({ id: `preview-${i}`, role: i % 2 === 0 ? 'user' : 'assistant', content: longText, timestamp: 1000 + i }),
+    )
+    const get = makeGet({ messages, sessions: [makeSession()] })
+    buildChatContext(get, vi.fn(), makeChar(), {
+      id: 'pr-preview', name: 'P', description: '', systemPrompt: '', jailbreak: '', maxContext: 2000,
+      temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false,
+    }, { trackUsage: false })
+    expect(markPendingCompression).not.toHaveBeenCalled()
   })
 
   it('裁剪范围被压缩摘要覆盖时注入摘要而非重新标记', () => {
@@ -288,5 +369,24 @@ describe('buildChatContext', () => {
     })
     const ctx = buildChatContext(get, vi.fn(), char, null)
     expect(ctx[0].content).toContain('雨夜规则')
+  })
+
+  it('渲染快照保留语义 score/key，并按当前世界书元数据排序', () => {
+    const high = makeLorebook('high', { keywords: [], content: '高分语义条目', matchMode: 'semantic', order: 20 })
+    const low = makeLorebook('low', { keywords: [], content: '低分语义条目', matchMode: 'semantic', order: 1 })
+    lorebookCache.set('high', high)
+    lorebookCache.set('low', low)
+    const get = makeGet({
+      activeLorebookIds: ['high', 'low'],
+      sessions: [makeSession()],
+      // semanticSearch 返回按相似度降序的结果；数组次序即向量通道排名（阶段4 RRF）
+      _semanticLoreHits: [
+        { content: '高分语义条目', order: 20, position: 'before_char', score: 0.9, key: 'high:e-high' },
+        { content: '低分语义条目', order: 1, position: 'before_char', score: 0.1, key: 'low:e-low' },
+      ],
+    })
+    const ctx = buildChatContext(get, vi.fn(), makeChar(), null, { trackUsage: false })
+    const system = ctx[0].content
+    expect(system.indexOf('高分语义条目')).toBeLessThan(system.indexOf('低分语义条目'))
   })
 })

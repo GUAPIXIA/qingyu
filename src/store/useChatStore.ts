@@ -16,7 +16,7 @@ import {
 } from './chatUtils'
 import { streamAIResponse, cleanupActiveStream } from './streamController'
 import { createChunkAccumulator } from './chunkAccumulator'
-import { buildChatContext } from './chatContext'
+import { buildChatContext, buildChatContextReport } from './chatContext'
 import { maybeRunAutoMemorySummary, runMemorySummary } from './memoryManager'
 import { regenerateChatMessage, continueChatMessage, swipeChatMessage } from './chatGeneration'
 import { sessionEventReporter } from './sessionEventReporter'
@@ -33,8 +33,11 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   activePresetId: null,
   activeLorebookIds: [],
   _semanticLoreHits: [],
+  _semanticLoreAvailable: undefined,
   _semanticFactsHits: [],
   lastContextUsage: null,
+  lastLorebookDiagnostics: null,
+  lastLorebookDiagnosticsSessionId: null,
   translatingMessages: {},
   showTranslationIds: new Set(),
 
@@ -331,7 +334,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     // 竞态条件防护
     const currentLoadId = nextLoadRequestId()
     // 角色/会话切换：清空语义命中缓存，避免残留旧命中
-    set({ messages: [], _semanticLoreHits: [] }) // 先清空，避免显示旧角色消息
+    set({ messages: [], _semanticLoreHits: [], _semanticLoreAvailable: undefined }) // 先清空，避免显示旧角色消息
 
     // 先加载会话列表
     let sessionId = get().currentSessionId
@@ -909,5 +912,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
 
   buildContext: (character, preset, opts) => {
     return buildChatContext(get, set, character, preset, opts)
+  },
+  buildContextReport: (character, preset, opts) => {
+    return buildChatContextReport(character, preset, opts)
   },
 })))

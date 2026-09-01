@@ -1,8 +1,15 @@
 package com.qingyu.companion.network
 
+import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.ServerConnection
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -61,5 +68,65 @@ class WsClientImplTest {
         assertTrue("WebSocket should open", opened.await(3, TimeUnit.SECONDS))
         assertTrue("Android should reply to the bridge heartbeat", pong.await(3, TimeUnit.SECONDS))
         assertEquals("Bearer secret-token", server.takeRequest().getHeader("Authorization"))
+    }
+
+    /** 在建链前注册 SettingsUpdated 事件订阅（SharedFlow 无 replay，UNDISPATCHED 立即挂起在订阅点）。 */
+    private fun awaitSettingsUpdated(target: ServerConnection): CompanionEvent.SettingsUpdated = runBlocking {
+        val deferred = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(5_000) {
+                client.events.filterIsInstance<CompanionEvent.SettingsUpdated>().first()
+            }
+        }
+        client.connect(target)
+        deferred.await()
+    }
+
+    private fun connection(): ServerConnection = ServerConnection(
+        deviceId = "test",
+        host = server.hostName,
+        port = server.port,
+        token = "secret-token",
+        name = "PC",
+        fingerprint = "fingerprint",
+    )
+
+    @Test
+    fun `settings updated frame maps to CompanionEvent SettingsUpdated`() {
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    // 对齐 PC 侧契约：{event:"settings:updated", payload:{revision, changedFields, sourceDeviceId}}
+                    webSocket.send(
+                        """{"event":"settings:updated",""" +
+                            """"payload":{"revision":"r1","changedFields":["activeModel"],"sourceDeviceId":"pc-1","extra":"ignored"}}""",
+                    )
+                }
+            }),
+        )
+        server.start()
+
+        val event = awaitSettingsUpdated(connection())
+
+        assertEquals("r1", event.revision)
+        assertEquals(listOf("activeModel"), event.changedFields)
+        assertEquals("pc-1", event.sourceDeviceId)
+    }
+
+    @Test
+    fun `settings updated frame with minimal payload yields defaults`() {
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    webSocket.send("""{"event":"settings:updated","payload":{}}""")
+                }
+            }),
+        )
+        server.start()
+
+        val event = awaitSettingsUpdated(connection())
+
+        assertEquals("", event.revision)
+        assertTrue(event.changedFields.isEmpty())
+        assertEquals(null, event.sourceDeviceId)
     }
 }

@@ -1,21 +1,31 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle, MessageSquare, ArrowDownToLine, Eye, Image as ImageIcon, Images, Download, Trash2 } from 'lucide-react'
-import type { Preset, Lorebook, Message } from '../../../shared/types'
+import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle, MessageSquare, ArrowDownToLine, Eye, Image as ImageIcon, Images, Download, Trash2, Users } from 'lucide-react'
+import type { Preset, Lorebook, GroupChat } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { lorebookCache, getEffectiveLorebookIds } from '../../utils/lorebook'
 import { cn } from '../../lib/utils'
 import { logError } from '../../lib/logger'
+import { getDefaultMaxContext } from '../../utils/tokenCounter'
+import {
+  DEFAULT_LOREBOOK_RATIO,
+  DEFAULT_RESERVED_OUTPUT,
+  LOREBOOK_PRIORITY_BUDGET,
+  TOKEN_BUDGET_SAFETY,
+} from '../../store/chatConstants'
 
 interface QuickSettingsPanelProps {
   open: boolean
   onClose: () => void
-  messages: Message[]
+  messages: Array<{ images?: string[] }>
   onShowContextViewer: () => void
   onShowBgPanel: () => void
   onExport: () => void
   onClearConfirm: () => void
+  /** 传入时切换为群聊模式，复用单聊快捷设置并写回群聊级预设/世界书/节奏。 */
+  group?: GroupChat
+  onSaveGroup?: (group: GroupChat) => void | Promise<void>
 }
 
 const IMAGE_GEN_SIZES = [
@@ -34,17 +44,22 @@ export function QuickSettingsPanel({
   onShowBgPanel,
   onExport,
   onClearConfirm,
+  group,
+  onSaveGroup,
 }: QuickSettingsPanelProps) {
   // P-6 修复：字段级选择器订阅
-  const activePresetId = useChatStore((s) => s.activePresetId)
-  const activeLorebookIds = useChatStore((s) => s.activeLorebookIds)
+  const chatActivePresetId = useChatStore((s) => s.activePresetId)
+  const chatActiveLorebookIds = useChatStore((s) => s.activeLorebookIds)
   const setActivePreset = useChatStore((s) => s.setActivePreset)
   const setActiveLorebooks = useChatStore((s) => s.setActiveLorebooks)
   const saveLorebookBinding = useChatStore((s) => s.saveLorebookBinding)
   const settings = useSettingsStore((s) => s.settings)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const currentCharacter = useCharacterStore(s => s.currentCharacter)
+  const characters = useCharacterStore(s => s.characters)
   const currentCharId = currentCharacter?.id
+  const isGroup = !!group
+  const activePresetId = group ? group.presetId : chatActivePresetId
   const [presets, setPresets] = useState<Preset[]>([])
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
   const [lorebookExpanded, setLorebookExpanded] = useState(false)
@@ -62,17 +77,62 @@ export function QuickSettingsPanel({
     () => messages.flatMap((message) => message.images ?? []).slice(-12).reverse(),
     [messages],
   )
+  const lorebookBudgetPreview = useMemo(() => {
+    const profile = settings.connectionProfiles.find((item) => item.id === settings.activeProfileId)
+    const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
+    const maxContext = profile?.maxContext || getDefaultMaxContext(model)
+    const reservedOutput = presets.find((preset) => preset.id === activePresetId)?.maxTokens ?? DEFAULT_RESERVED_OUTPUT
+    const budgetBase = Math.max(0, Math.floor((maxContext - reservedOutput) * TOKEN_BUDGET_SAFETY))
+    const total = Math.floor(budgetBase * (settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO))
+    return {
+      total,
+      always: Math.floor(total * LOREBOOK_PRIORITY_BUDGET.always),
+      conditional: Math.floor(total * LOREBOOK_PRIORITY_BUDGET.alwaysPlusConditional),
+    }
+  }, [activePresetId, presets, settings.activeModel, settings.activeProfileId, settings.connectionProfiles, settings.lorebookRatio])
 
   // 计算角色绑定的世界书 ID 列表
   const boundLorebookIds = useMemo(() => {
+    if (group) {
+      return [...new Set(group.memberIds.flatMap((memberId) => {
+        const member = characters.find((character) => character.id === memberId)
+        return getEffectiveLorebookIds(member)
+      }))]
+    }
     return getEffectiveLorebookIds(currentCharacter)
-  }, [currentCharacter])
+  }, [characters, currentCharacter, group])
+
+  const activeLorebookIds = useMemo(
+    () => group
+      ? [...new Set([...boundLorebookIds, ...group.lorebookIds])]
+      : chatActiveLorebookIds,
+    [boundLorebookIds, chatActiveLorebookIds, group],
+  )
 
   // 区分绑定和手动选择的世界书
   const manualLorebookIds = useMemo(
-    () => activeLorebookIds.filter(id => !boundLorebookIds.includes(id)),
-    [activeLorebookIds, boundLorebookIds],
+    () => group
+      ? group.lorebookIds.filter(id => !boundLorebookIds.includes(id))
+      : activeLorebookIds.filter(id => !boundLorebookIds.includes(id)),
+    [activeLorebookIds, boundLorebookIds, group],
   )
+
+  const changeActivePreset = (presetId: string | null) => {
+    if (group && onSaveGroup) {
+      void onSaveGroup({ ...group, presetId })
+      return
+    }
+    setActivePreset(presetId, currentCharId)
+  }
+
+  const changeActiveLorebooks = (ids: string[]) => {
+    if (group && onSaveGroup) {
+      const memberBound = new Set(boundLorebookIds)
+      void onSaveGroup({ ...group, lorebookIds: [...new Set(ids.filter((id) => !memberBound.has(id)))] })
+      return
+    }
+    setActiveLorebooks(ids, currentCharId)
+  }
 
   // 组件挂载时预加载世界书（确保绑定芯片始终有名称）
   useEffect(() => {
@@ -92,7 +152,7 @@ export function QuickSettingsPanel({
       // 移除已禁用的世界书从激活列表
       const disabledIds = lbs.filter(lb => !lb.enabled).map(lb => lb.id)
       if (disabledIds.some(id => activeLorebookIds.includes(id))) {
-        setActiveLorebooks(activeLorebookIds.filter(id => !disabledIds.includes(id)), currentCharId)
+        changeActiveLorebooks(activeLorebookIds.filter(id => !disabledIds.includes(id)))
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,7 +248,7 @@ export function QuickSettingsPanel({
           ? prev.map((preset) => preset.id === saved.id ? saved : preset)
           : [...prev, saved]
       })
-      if (saved.id !== updated.id) setActivePreset(saved.id, currentCharId)
+      if (saved.id !== updated.id) changeActivePreset(saved.id)
     } catch (error) {
       logError('QuickSettings:savePreset', error)
     }
@@ -208,7 +268,7 @@ export function QuickSettingsPanel({
         <div className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft sticky top-0 bg-tavern-bg-card/95 backdrop-blur z-10">
           <h3 className="font-display font-bold flex items-center gap-2 text-sm">
             <Sliders className="w-4 h-4 text-tavern-accent" />
-            快捷设置
+            {isGroup ? '群聊快捷设置' : '快捷设置'}
           </h3>
           <QuickIconButton label="关闭快捷设置" onClick={onClose}>
             <X className={QUICK_BUTTON_ICON_CLASS} />
@@ -237,7 +297,7 @@ export function QuickSettingsPanel({
 
               <div className="grid grid-cols-2 gap-1.5">
                 <ActionButton icon={Eye} label="查看上下文" onClick={() => openConversationTool(onShowContextViewer)} />
-                <ActionButton icon={ImageIcon} label="聊天背景" onClick={() => openConversationTool(onShowBgPanel)} />
+                <ActionButton icon={isGroup ? Users : ImageIcon} label={isGroup ? '群聊管理' : '聊天背景'} onClick={() => openConversationTool(onShowBgPanel)} />
                 <ActionButton icon={Download} label="导出对话" onClick={() => openConversationTool(onExport)} />
                 <ActionButton danger icon={Trash2} label="清空对话" onClick={() => openConversationTool(onClearConfirm)} />
               </div>
@@ -275,6 +335,66 @@ export function QuickSettingsPanel({
               </div>
             </div>
           </Section>
+
+          {group && onSaveGroup && (
+            <Section icon={Users} title="接力设置">
+              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-3">
+                <p className="text-[10px] leading-relaxed text-tavern-text-muted">
+                  回复规则在输入区切换；这里仅配置“按顺序”模式的连续接力。
+                </p>
+                {group.chatMode === 'polling' ? (
+                  <>
+                  <div className="flex items-center justify-between border-t border-tavern-border-soft pt-2">
+                    <span className="min-w-0">
+                      <span className="block text-xs text-tavern-text-soft">自动接力</span>
+                      <span className="block text-[10px] text-tavern-text-muted">角色回复后自动轮到下一位</span>
+                    </span>
+                    <ToggleSwitch
+                      label="群聊自动接力"
+                      checked={group.autoMode}
+                      onChange={(autoMode) => void onSaveGroup({ ...group, autoMode })}
+                    />
+                  </div>
+                  {group.autoMode && (
+                    <div className="grid grid-cols-2 gap-2 border-t border-tavern-border-soft pt-2">
+                      <label className="space-y-1 text-[10px] text-tavern-text-muted">
+                        <span>最大轮数</span>
+                        <input
+                          aria-label="连续接力最大轮数"
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={group.maxRounds}
+                          onChange={(event) => void onSaveGroup({ ...group, maxRounds: Math.max(1, Math.min(20, Number(event.target.value) || 1)) })}
+                          className="w-full rounded-lg border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
+                        />
+                      </label>
+                      <label className="space-y-1 text-[10px] text-tavern-text-muted">
+                        <span>回复间隔</span>
+                        <select
+                          aria-label="连续接力回复间隔"
+                          value={group.speakerInterval}
+                          onChange={(event) => void onSaveGroup({ ...group, speakerInterval: Number(event.target.value) })}
+                          className="w-full rounded-lg border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
+                        >
+                          <option value={500}>0.5 秒</option>
+                          <option value={1000}>1 秒</option>
+                          <option value={2000}>2 秒</option>
+                          <option value={3000}>3 秒</option>
+                          <option value={5000}>5 秒</option>
+                        </select>
+                      </label>
+                    </div>
+                  )}
+                  </>
+                ) : (
+                  <p className="border-t border-tavern-border-soft pt-2 text-[10px] text-tavern-text-muted">
+                    当前回复规则不使用连续接力。
+                  </p>
+                )}
+              </div>
+            </Section>
+          )}
 
           {/* ===== 模型 ===== */}
           <Section icon={Cpu} title="模型">
@@ -392,9 +512,10 @@ export function QuickSettingsPanel({
           {/* ===== 预设 ===== */}
           <Section icon={Sparkles} title="预设">
             <select
+              aria-label={isGroup ? '群聊预设' : '对话预设'}
               className="input text-xs"
               value={activePresetId ?? ''}
-              onChange={(e) => setActivePreset(e.target.value || null, currentCharId)}
+              onChange={(e) => changeActivePreset(e.target.value || null)}
             >
               <option value="">默认</option>
               {presets.map((p) => (
@@ -519,7 +640,7 @@ export function QuickSettingsPanel({
                         {!isActive && (
                           <QuickIconButton
                             compact
-                            onClick={() => setActiveLorebooks([...activeLorebookIds, id], currentCharId)}
+                            onClick={() => changeActiveLorebooks([...activeLorebookIds, id])}
                             label={`激活世界书 ${lb.name}`}
                           >
                             <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
@@ -537,7 +658,7 @@ export function QuickSettingsPanel({
                         <QuickIconButton
                           compact
                           danger
-                          onClick={() => setActiveLorebooks(activeLorebookIds.filter(i => i !== id), currentCharId)}
+                          onClick={() => changeActiveLorebooks(activeLorebookIds.filter(i => i !== id))}
                           label={`移除世界书 ${lb.name}`}
                         >
                           <X className="w-3 h-3" />
@@ -580,11 +701,13 @@ export function QuickSettingsPanel({
                         return (
                           <button
                             key={lb.id}
+                            disabled={isGroup && isBound}
                             onClick={() => {
+                              if (isGroup && isBound) return
                               if (checked) {
-                                setActiveLorebooks(activeLorebookIds.filter(id2 => id2 !== lb.id), currentCharId)
+                                changeActiveLorebooks(activeLorebookIds.filter(id2 => id2 !== lb.id))
                               } else {
-                                setActiveLorebooks([...activeLorebookIds, lb.id], currentCharId)
+                                changeActiveLorebooks([...activeLorebookIds, lb.id])
                               }
                             }}
                             className={cn(
@@ -603,19 +726,19 @@ export function QuickSettingsPanel({
                     {boundLorebookIds.length > 0 && (
                       <p className="text-[11px] text-tavern-text-muted flex items-center gap-1 pt-0.5">
                         <Lock className="w-2.5 h-2.5 shrink-0" />
-                        标注锁图标的为角色绑定的世界书，切换角色时自动激活
+                        标注锁图标的为{isGroup ? '成员绑定' : '角色绑定'}世界书，{isGroup ? '在群聊中始终生效' : '切换角色时自动激活'}
                       </p>
                     )}
                     {activeLorebookIds.length > 0 && (
                       <button
                         className="text-xs text-tavern-text-muted hover:text-tavern-danger transition-colors"
-                        onClick={() => setActiveLorebooks([], currentCharId)}
+                        onClick={() => changeActiveLorebooks(boundLorebookIds)}
                       >
                         清除全部 ({activeLorebookIds.length})
                       </button>
                     )}
                     {/* 当前选择与角色默认不同时，显示"保存为默认"按钮 */}
-                    {currentCharId && activeLorebookIds.length > 0 && (() => {
+                    {!isGroup && currentCharId && activeLorebookIds.length > 0 && (() => {
                       const boundSet = new Set(boundLorebookIds)
                       const activeSet = new Set(activeLorebookIds)
                       const differs = boundSet.size !== activeSet.size || [...boundSet].some(id => !activeSet.has(id))
@@ -640,7 +763,7 @@ export function QuickSettingsPanel({
                   hint={
                     <>
                       <p>
-                        世界书注入最多占上下文预算的比例（默认 30%），超出部分按 order 优先级丢弃。
+                        世界书注入最多占上下文预算的比例（默认 30%），超出部分按优先级与相关度裁剪。
                       </p>
                       <p className="mt-1.5">
                         它是<strong className="text-tavern-text-soft">天花板而非预扣</strong>：世界书实际用多少算多少，
@@ -670,6 +793,15 @@ export function QuickSettingsPanel({
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="mt-2 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/50 px-2.5 py-2 text-[11px] text-tavern-text-muted space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-tavern-text-soft">预算预览</span>
+                <span>约 {lorebookBudgetPreview.total.toLocaleString()} token</span>
+              </div>
+              <div>常驻上限 40%：约 {lorebookBudgetPreview.always.toLocaleString()} token</div>
+              <div>常驻+条件累计 90%：约 {lorebookBudgetPreview.conditional.toLocaleString()} token（有细节命中时）</div>
+              <div>细节：使用总预算剩余额度</div>
             </div>
           </Section>
 

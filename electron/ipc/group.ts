@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlink
 import { DIRS, readJson, writeJson, countLines, withFileLock } from '../services/storage'
 import { escapeMarkdownContent } from '../utils/markdown'
 import { createLogger } from '../services/logger'
-import type { GroupChat, GroupMessage, GroupSession } from '../../shared/types'
+import type { GroupChat, GroupMessage, GroupSession, Settings } from '../../shared/types'
+import { getDefaultSettings } from '../../shared/defaults'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
 
@@ -30,7 +31,17 @@ const GROUP_UPDATE_SESSION_FIELDS = new Set([
   'factsVectorVersion',
   'compressedSummary',
   'compressedRange',
+  'personaId',
+  'recentTriggeredIds',
+  'lorebookCompressionCache',
 ])
+
+const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
+
+function getDefaultPersonaId(): string | null {
+  const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
+  return settings.defaultPersonaId ?? null
+}
 
 // ===================== 路径工具 =====================
 
@@ -249,6 +260,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
           autoMemoryInterval: 10,
           memory: '',
           memoryUpdatedAt: 0,
+          personaId: getDefaultPersonaId(),
         }
         sessions.push(defaultSession)
         saveSessions(groupId, sessions)
@@ -278,6 +290,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         autoMemoryInterval: 10,
         memory: '',
         memoryUpdatedAt: 0,
+        personaId: getDefaultPersonaId(),
       }
       sessions.push(session)
       saveSessions(groupId, sessions)
@@ -593,6 +606,7 @@ export const groupData = {
           autoMemoryInterval: 10,
           memory: '',
           memoryUpdatedAt: 0,
+          personaId: getDefaultPersonaId(),
         }
         sessions.push(defaultSession)
         saveSessions(groupId, sessions)
@@ -645,6 +659,7 @@ export const groupData = {
         autoMemoryInterval: 10,
         memory: '',
         memoryUpdatedAt: 0,
+        personaId: getDefaultPersonaId(),
       }
       sessions.push(session)
       saveSessions(groupId, sessions)

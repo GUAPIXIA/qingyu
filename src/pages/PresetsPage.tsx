@@ -54,6 +54,8 @@ export function PresetsPage() {
   const [editingPreset, setEditingPreset] = useState<Preset | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [busyMsg, setBusyMsg] = useState<string | null>(null)
+  const [importNotice, setImportNotice] = useState<{ message: string; error: boolean } | null>(null)
+  const importNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // AI 生成预设
   const [aiGenOpen, setAiGenOpen] = useState(false)
   const [aiGenDesc, setAiGenDesc] = useState('')
@@ -71,15 +73,34 @@ export function PresetsPage() {
 
   useEffect(() => {
     loadPresets()
+    return () => {
+      if (importNoticeTimerRef.current) clearTimeout(importNoticeTimerRef.current)
+    }
   }, [])
+
+  const showImportNotice = (message: string, error = false) => {
+    setImportNotice({ message, error })
+    if (importNoticeTimerRef.current) clearTimeout(importNoticeTimerRef.current)
+    importNoticeTimerRef.current = setTimeout(() => setImportNotice(null), error ? 6000 : 8000)
+  }
 
   const handleNew = () => {
     setEditingPreset(createPreset())
   }
 
   const handleImport = async () => {
-    const imported = await window.api.preset.importJson()
-    if (imported) loadPresets()
+    try {
+      const imported = await window.api.preset.importJson()
+      if (!imported) return
+      loadPresets()
+      const compatibilityLabel = imported.sourceFormat === 'standard' ? '（已转换标准格式）' : ''
+      const unsupported = imported.unsupportedFields.length > 0
+        ? `；未支持并已跳过：${imported.unsupportedFields.join('、')}`
+        : ''
+      showImportNotice(`已导入「${imported.preset.name}」${compatibilityLabel}${unsupported}`)
+    } catch (error) {
+      showImportNotice(`导入失败：${error instanceof Error ? error.message : String(error)}`, true)
+    }
   }
 
   /** 一键复制：基于任意预设（含内置）创建可编辑副本 */
@@ -164,7 +185,7 @@ export function PresetsPage() {
     if (!editingPreset || !aiGenDesc.trim() || aiGenBusy) return
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
-      setAiGenError('请先在 API 设置中配置连接')
+      setAiGenError('请先在“模型”页面配置连接')
       return
     }
     setAiGenBusy(true)
@@ -219,7 +240,7 @@ TopP: <0-1>
     if (!editingPreset || !testInput.trim() || testBusy) return
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
-      setTestOutput('⚠ 请先在 API 设置中配置连接')
+      setTestOutput('⚠ 请先在“模型”页面配置连接')
       return
     }
     setTestBusy(true)
@@ -761,6 +782,20 @@ TopP: <0-1>
         confirmText="删除"
         danger
       />
+
+      {importNotice && (
+        <div
+          role="status"
+          className={cn(
+            'fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-[min(42rem,calc(100vw-2rem))] px-4 py-2.5 rounded-lg border shadow-xl text-sm animate-in fade-in slide-in-from-top-2',
+            importNotice.error
+              ? 'bg-tavern-bg-soft border-tavern-danger text-tavern-danger'
+              : 'bg-tavern-bg-soft border-tavern-border text-tavern-text',
+          )}
+        >
+          {importNotice.message}
+        </div>
+      )}
     </div>
   )
 }

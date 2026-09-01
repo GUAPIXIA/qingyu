@@ -42,6 +42,11 @@ enum class ThemeMode(val label: String) {
 
 class UiPrefsStore(private val context: Context) {
 
+    companion object {
+        /** §16.1 useMainShell 默认值：Shell 为主区容器；关闭回退旧顶级路由（启动时生效） */
+        const val DEFAULT_USE_MAIN_SHELL = true
+    }
+
     private object Keys {
         val FONT_SCALE = stringPreferencesKey("chat_font_scale")
         val SPACING = stringPreferencesKey("chat_spacing")
@@ -54,6 +59,9 @@ class UiPrefsStore(private val context: Context) {
         val NOTIFICATION_DND_ENABLED = booleanPreferencesKey("notification_dnd_enabled")
         val NOTIFICATION_DND_START = intPreferencesKey("notification_dnd_start")
         val NOTIFICATION_DND_END = intPreferencesKey("notification_dnd_end")
+
+        // §16.1 本地 feature flag：E-01 MainShell（开发阶段允许回退旧导航）
+        val USE_MAIN_SHELL = booleanPreferencesKey("use_main_shell")
     }
 
     /** 当前字体缩放系数（默认标准 1f） */
@@ -112,6 +120,10 @@ class UiPrefsStore(private val context: Context) {
     val notificationDndEnd: Flow<Int> = context.uiPrefsDataStore.data
         .map { prefs -> prefs[Keys.NOTIFICATION_DND_END] ?: 7 }
 
+    /** §16.1 useMainShell：启用 MainShell 主区容器（默认开）；关闭回退旧 SESSIONS/CHARACTERS/GROUPS 顶级导航 */
+    val useMainShell: Flow<Boolean> = context.uiPrefsDataStore.data
+        .map { prefs -> prefs[Keys.USE_MAIN_SHELL] ?: DEFAULT_USE_MAIN_SHELL }
+
     suspend fun setFontScale(scale: ChatFontScale) {
         context.uiPrefsDataStore.edit { it[Keys.FONT_SCALE] = scale.name }
     }
@@ -153,5 +165,10 @@ class UiPrefsStore(private val context: Context) {
             it[Keys.NOTIFICATION_DND_START] = startHour.coerceIn(0, 23)
             it[Keys.NOTIFICATION_DND_END] = endHour.coerceIn(0, 23)
         }
+    }
+
+    /** §16.1 本地开发开关：切换后下次冷启动生效 */
+    suspend fun setUseMainShell(enabled: Boolean) {
+        context.uiPrefsDataStore.edit { it[Keys.USE_MAIN_SHELL] = enabled }
     }
 }

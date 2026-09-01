@@ -41,7 +41,7 @@ describe('Sidebar', () => {
     await act(async () => {})
 
     await waitFor(() => expect(screen.getByRole('button', { name: '服务' })).toHaveAttribute('aria-expanded', 'true'))
-    const activeLink = screen.getByRole('link', { name: 'API' })
+    const activeLink = screen.getByRole('link', { name: '模型' })
     expect(activeLink.className).toContain('bg-tavern-bg-card')
     expect(activeLink.className).toContain('after:bg-tavern-accent')
     expect(activeLink.className).not.toContain('bg-tavern-accent-soft')

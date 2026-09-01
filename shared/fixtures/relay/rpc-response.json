@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "type": "rpc:response",
+  "id": "00000000-0000-4000-8000-000000000012",
+  "replyTo": "00000000-0000-4000-8000-000000000010",
+  "sentAt": 1788172801000,
+  "payload": { "status": 200, "headers": { "content-type": "application/json" }, "body": {} }
+}

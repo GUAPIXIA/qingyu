@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { rmSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { getDefaultSettings } from '../../../shared/defaults'
 
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-group-cas-test' },
@@ -12,6 +13,19 @@ afterEach(() => {
 })
 
 describe('groupData memory version CAS', () => {
+  it('新建群聊会话继承默认用户身份', async () => {
+    const configDir = '/tmp/qingyu-group-cas-test/data/config'
+    mkdirSync(configDir, { recursive: true })
+    writeFileSync(`${configDir}/settings.json`, JSON.stringify({
+      ...getDefaultSettings(),
+      defaultPersonaId: 'persona-default',
+    }))
+
+    const session = await groupData.createSession('group-persona')
+
+    expect(session.personaId).toBe('persona-default')
+  })
+
   it('拒绝用旧版本覆盖已经提交的群聊记忆', async () => {
     const session = await groupData.createSession('group-cas')
     const first = await groupData.updateSessionIfMemoryVersion('group-cas', session.id, 0, {

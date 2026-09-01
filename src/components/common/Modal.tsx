@@ -38,6 +38,10 @@ export function Modal({
   const dialogRef = useRef<HTMLDivElement>(null)
   const prevFocusRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
+  // onClose 通常是内联箭头函数，每次渲染都会变化；用 ref 持有，
+  // 避免焦点管理 effect 因 onClose 变化而反复重跑（导致输入时焦点被抢回关闭按钮）
+  const onCloseRef = useRef(onClose)
+  useEffect(() => { onCloseRef.current = onClose })
 
   // S2-D 可访问性：焦点管理与 trap
   useEffect(() => {
@@ -58,7 +62,7 @@ export function Modal({
     }, 0)
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
+      if (e.key === 'Escape') { e.preventDefault(); onCloseRef.current(); return }
       if (e.key !== 'Tab') return
       const dialog = dialogRef.current
       if (!dialog) return
@@ -81,7 +85,7 @@ export function Modal({
       // 焦点恢复
       prevFocusRef.current?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

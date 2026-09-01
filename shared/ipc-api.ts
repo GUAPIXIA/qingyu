@@ -5,6 +5,7 @@ import type {
   SessionPreview,
   Lorebook,
   Preset,
+  PresetImportResult,
   GroupChat,
   GroupMessage,
   GroupSession,
@@ -27,6 +28,13 @@ import type {
   CustomFont,
   QuickReply,
 } from './types'
+import type { LocalModelAPI } from './localModels'
+import type {
+  LorebookCompatibilityReport,
+  LorebookDetectionResult,
+} from './lorebook/adapters/types'
+import type { LorebookMappingTemplate } from './lorebook/adapters/mapping'
+import type { LorebookHealthReport } from './lorebook/health'
 import type { TaskSnapshot, EventPage } from './chat-core/events'
 import type { ChatCommand } from './chat-core/commands'
 
@@ -43,6 +51,64 @@ export interface AIAPI {
   onUsage(callback: (data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => void): () => void
   countTokens(text: string, model: string): Promise<number>
   countMessagesTokens(messages: { content: string; role: string }[], model: string): Promise<number[]>
+  /** 世界书超限条目 AI 压缩（非流式，返回完整摘要文本；失败抛错由调用方降级） */
+  compressLorebook(payload: LorebookCompressPayload): Promise<string>
+  /** 关键词 enrichment 管线（聊天模型离线扩词，不依赖 embedding）：localize = 英文条目中文化；enrich = 通用扩词 */
+  localizeLorebookKeywords(payload: LorebookKeywordLocalizationPayload): Promise<LorebookKeywordLocalizationResult>
+}
+
+/** 世界书超限压缩请求（渲染进程 → 主进程） */
+export interface LorebookCompressPayload {
+  /** 被压缩条目内容（变量替换后） */
+  contents: string[]
+  /** 压缩目标 token（结果应不超过该值） */
+  targetTokens: number
+  provider: ProviderType
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
+export interface LorebookKeywordLocalizationEntry {
+  id: string
+  keywords: string[]
+  content: string
+}
+
+/** 关键词 enrichment 模式：localize = 英文条目中文化（旧行为）；enrich = 通用扩词（实体/别名/同义表达/多语言） */
+export type LorebookKeywordEnrichmentMode = 'localize' | 'enrich'
+
+/** AI 生成触发词的来源元数据（方案 7.5：保存生成来源、模型和时间） */
+export interface LorebookKeywordSuggestionSource {
+  provider: string
+  model: string
+  generatedAt: number
+  mode: LorebookKeywordEnrichmentMode
+}
+
+export interface LorebookKeywordLocalizationSuggestion {
+  entryId: string
+  aliases: string[]
+  /** 生成来源（模型与时间）；供 UI 追溯与 keywordProvenance 持久化。 */
+  source?: LorebookKeywordSuggestionSource
+}
+
+/** 关键词 enrichment 请求（渲染进程按小批次调用；localize 模式仅处理英文条目） */
+export interface LorebookKeywordLocalizationPayload {
+  requestId: string
+  entries: LorebookKeywordLocalizationEntry[]
+  /** 默认 localize（英文条目生成中文触发词）；enrich 为通用扩词管线。 */
+  mode?: LorebookKeywordEnrichmentMode
+  provider: ProviderType
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
+export interface LorebookKeywordLocalizationResult {
+  suggestions: LorebookKeywordLocalizationSuggestion[]
+  /** 请求由调用方主动取消；属于正常控制流，不是 IPC 错误。 */
+  cancelled?: boolean
 }
 
 // ===================== 角色接口 =====================
@@ -123,11 +189,64 @@ export interface SettingsAPI {
 }
 
 // ===================== 世界书接口 =====================
+export interface LorebookImportResult {
+  lorebook: Lorebook
+  detection: LorebookDetectionResult
+  report: LorebookCompatibilityReport
+}
+
+export interface LorebookImportFormatCandidate {
+  adapterId: string
+  formatLabel: string
+  confidence: number
+}
+
+/** 方案 §6.1：检测到多个相近格式时不静默猜测，返回候选让用户选择；导入源缓存在主进程 pendingId 下。 */
+export interface LorebookFormatChoicePending {
+  needsFormatChoice: true
+  pendingId: string
+  fileName: string
+  candidates: LorebookImportFormatCandidate[]
+}
+
+export type LorebookImportOutcome = LorebookImportResult | LorebookFormatChoicePending
+
+export interface LorebookImportOptions {
+  /** 歧义确认后完成导入：从主进程缓存取回导入源，并强制使用用户选择的 adapter。 */
+  pendingId?: string
+  /** 用户选择的格式 adapter id。 */
+  adapterId?: string
+}
+
 export interface LorebookAPI {
   list(): Promise<Lorebook[]>
-  save(lorebook: Lorebook): Promise<void>
+  /** expectedRevision 提供时做乐观冲突检测（方案 §10.3）；返回保存后的最新 revision。 */
+  save(lorebook: Lorebook, expectedRevision?: number): Promise<{ revision: number }>
   delete(id: string): Promise<void>
+  /** 兼容旧调用方：仅返回 Lorebook view。 */
   importJson(): Promise<Lorebook | null>
+  /** 阶段 2：返回格式检测与兼容性报告；格式歧义时返回 LorebookFormatChoicePending 而不是静默猜测。 */
+  importJsonDetailed(options?: LorebookImportOptions): Promise<LorebookImportOutcome | null>
+  /** 阶段 6 P2：映射向导。打开文件并返回截断预览与猜测模板；原始内容缓存在主进程。 */
+  openMappingSource(): Promise<{
+    sourceId: string
+    fileName: string
+    preview: unknown
+    guessedTemplate: LorebookMappingTemplate | null
+  } | null>
+  importWithTemplate(sourceId: string, template: LorebookMappingTemplate): Promise<LorebookImportResult>
+  /** 阶段 7：一次性数据健康检查。 */
+  healthCheck(): Promise<LorebookHealthReport>
+  listMappingTemplates(): Promise<LorebookMappingTemplate[]>
+  saveMappingTemplate(template: LorebookMappingTemplate): Promise<void>
+  deleteMappingTemplate(id: string): Promise<void>
+  exportJson(id: string, adapterId?: string): Promise<{
+    ok: boolean
+    canceled?: boolean
+    path?: string
+    adapterId?: string
+    report?: LorebookCompatibilityReport
+  }>
 }
 
 // ===================== 快捷回复接口 =====================
@@ -153,11 +272,13 @@ export interface SemanticHit {
   order: number
   depth?: number
   score: number
+  /** 条目手写摘要（阶段三：预算紧张时代替全文注入） */
+  summary?: string
 }
 
 /** 嵌入服务连接配置（传输层，仅取 SemanticTriggerConfig 中的连接字段） */
 export interface EmbeddingEndpointConfig {
-  provider: 'openai' | 'ollama'
+  provider: 'openai' | 'ollama' | 'local'
   baseUrl: string
   model: string
   apiKey: string
@@ -177,7 +298,7 @@ export interface EmbeddingAPI {
   /** 为世界书生成/重建向量索引 */
   indexLorebook(lorebookId: string, config: EmbeddingEndpointConfig): Promise<IndexResult>
   /** 查询多个世界书的索引状态 */
-  indexStatus(lorebookIds: string[]): Promise<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>
+  indexStatus(lorebookIds: string[], config?: EmbeddingEndpointConfig): Promise<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>
   /** 删除世界书向量索引 */
   removeIndex(lorebookId: string): Promise<{ ok: boolean }>
   /** 扫描文本语义检索，返回命中条目 */
@@ -212,7 +333,7 @@ export interface PresetAPI {
   list(): Promise<Preset[]>
   save(preset: Preset): Promise<Preset>
   delete(id: string): Promise<void>
-  importJson(): Promise<Preset | null>
+  importJson(): Promise<PresetImportResult | null>
   exportJson(id: string): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
 }
 
@@ -424,9 +545,22 @@ export interface BridgeStatus {
 export interface PairingInfo {
   host: string
   port: number
-  /** 二维码 fingerprint 字段（安卓端将其作为配对码使用） */
+  /** 二维码 fingerprint 字段（安卓端将其作为配对码使用；v2 中同值于 pairingCode） */
   fingerprint: string
   expiresInSec: number
+  // ===== QR v2（阶段 D-02；旧客户端忽略新增字段，向后兼容）=====
+  /** 稳定服务器 ID（bridgeIdentity uuid） */
+  serverId?: string
+  /** PC 展示名 */
+  displayName?: string
+  /** REST 协议版本 */
+  apiVersion?: number
+  /** 能力声明（QR v2 capabilities；与 /server/info 同集合子集） */
+  capabilities?: string[]
+  /** 配对码到期时间戳（ms；QR v2 expiresAt） */
+  expiresAt?: number
+  /** QR v2 端点候选（当前绑定的局域网 host + 端口） */
+  endpoints?: import('./pairingQr').PairingQrEndpoint[]
 }
 
 export interface BridgeDeviceInfo {
@@ -450,6 +584,8 @@ export interface BridgeAPI {
   pairingInfo(): Promise<PairingInfo>
   /** 强制生成新配对码（旧码作废）并返回最新配对信息 */
   regeneratePairing(): Promise<PairingInfo>
+  /** 生成配对二维码载荷 JSON（D-02）：v2 默认；legacy=旧格式 {host,port,fingerprint} */
+  pairingQrPayload(mode?: 'v2' | 'legacy'): Promise<string>
   listDevices(): Promise<BridgeDeviceInfo[]>
   revokeDevice(deviceId: string): Promise<{ ok: boolean }>
   approvePair(requestId: string): Promise<{ ok: boolean; error?: string }>
@@ -457,6 +593,28 @@ export interface BridgeAPI {
   /** 订阅配对审批请求（PC 端人工确认弹窗） */
   onPairRequest(callback: (data: { requestId: string; deviceName: string }) => void): () => void
   wipeAll(): Promise<{ ok: boolean }>
+}
+
+export type RelayStatus =
+  | { state: 'Disabled' }
+  | { state: 'Registering' | 'Connecting' | 'Online' | 'NeedsAuth' | 'ServiceUnavailable'; baseUrl: string; spaceId?: string }
+  | { state: 'Reconnecting'; baseUrl: string; spaceId?: string; attempt: number; nextAt: number }
+
+export interface RelayDeviceInfo { deviceId: string; name: string; role: 'pc' | 'android'; approvedAt: number; lastSeenAt?: number }
+export interface RelayPairRequest { requestId: string; deviceName: string; expiresAt: number }
+export interface RelayAPI {
+  status(): Promise<RelayStatus>
+  enable(baseUrl: string): Promise<{ ok: boolean; error?: string }>
+  disable(): Promise<{ ok: boolean }>
+  retry(): Promise<{ ok: boolean; error?: string }>
+  createPairTicket(): Promise<import('./relayProtocol').RelayPairingQr>
+  listDevices(): Promise<RelayDeviceInfo[]>
+  revokeDevice(deviceId: string): Promise<{ ok: boolean }>
+  approvePair(requestId: string): Promise<{ ok: boolean }>
+  rejectPair(requestId: string): Promise<{ ok: boolean }>
+  clearCache(): Promise<{ ok: boolean }>
+  onStatusChanged(callback: (status: RelayStatus) => void): () => void
+  onPairRequest(callback: (request: RelayPairRequest) => void): () => void
 }
 
 // ===================== 应用接口 =====================
@@ -488,6 +646,7 @@ export interface ExposedAPI {
   settings: SettingsAPI
   lorebook: LorebookAPI
   embedding: EmbeddingAPI
+  localModel: LocalModelAPI
   quickReply: QuickReplyAPI
   preset: PresetAPI
   tts: TTSAPI
@@ -504,6 +663,7 @@ export interface ExposedAPI {
   updater: UpdaterAPI
   sessionSync: SessionSyncAPI
   bridge: BridgeAPI
+  relay: RelayAPI
   app: AppAPI
 }
 

@@ -1,0 +1,8 @@
+{
+  "name": "Agnai 完整记忆书",
+  "description": "由 Agnai 记忆书导出的完整样本。",
+  "entries": [
+    { "name": "星陨峡谷", "entry": "星陨峡谷每逢秋夜会出现流星雨。", "keywords": ["星陨峡谷", "峡谷"], "priority": 3, "enabled": true, "id": "agn-201" },
+    { "name": "常驻设定", "entry": "这是一个魔法与蒸汽并存的大陆。", "keywords": ["世界设定"], "priority": 1, "enabled": false, "id": "agn-202" }
+  ]
+}

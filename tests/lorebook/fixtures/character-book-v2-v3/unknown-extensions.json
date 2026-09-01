@@ -1,0 +1,20 @@
+{
+  "name": "角色卡未知扩展世界书",
+  "extensions": { "future_book_field": 1 },
+  "entries": [
+    {
+      "id": "future",
+      "keys": ["未来"],
+      "content": "角色卡未来扩展测试。",
+      "enabled": true,
+      "insertion_order": 1,
+      "position": "before_char",
+      "constant": false,
+      "use_regex": false,
+      "extensions": {
+        "future_entry_field": { "version": 4 }
+      }
+    }
+  ]
+}
+

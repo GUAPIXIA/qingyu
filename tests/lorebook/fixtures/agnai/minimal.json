@@ -1,0 +1,7 @@
+{
+  "name": "Agnai 最小记忆书",
+  "description": "",
+  "entries": [
+    { "name": "主角条目", "entry": "主角是一位流浪的剑客。", "keywords": ["主角"], "priority": 10, "enabled": true, "id": "agn-1" }
+  ]
+}

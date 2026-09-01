@@ -35,5 +35,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 5173,
     strictPort: true,
+    // 开发模型可能包含数百 MB 的 ONNX；禁止 Vite 监听/扫描，避免安装提交时占用 staging。
+    watch: {
+      ignored: ['**/models/**'],
+    },
   },
 }))

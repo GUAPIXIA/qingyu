@@ -1,5 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { LocalModelTaskCenter } from './LocalModelTaskCenter'
+import { LocalModelUpdateAgent } from './LocalModelUpdateAgent'
 
 export function MainLayout() {
   return (
@@ -8,6 +10,8 @@ export function MainLayout() {
       <main className="flex-1 flex flex-col overflow-hidden">
         <Outlet />
       </main>
+      <LocalModelUpdateAgent />
+      <LocalModelTaskCenter />
     </div>
   )
 }

@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { GroupMessage } from '../../shared/types'
+import type { GroupMessage, GroupSession } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
+import { usePersonaStore } from './usePersonaStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { applyRegexRules as applyRegexRulesEngine } from '../utils/regex'
-import { lorebookCache } from '../utils/lorebook'
-import { STREAM_IDLE_TIMEOUT_MS, translationMaxTokens } from './chatConstants'
+import { lorebookCache, appendRecentTriggeredIds, touchCompressionCache, upsertCompressionCache } from '../utils/lorebook'
+import { compressLorebookOverflow } from './chatUtils'
+import { STREAM_IDLE_TIMEOUT_MS, translationMaxTokens, LOREBOOK_RECENCY_WINDOW } from './chatConstants'
 import { logError } from '../lib/logger'
 import {
   applyDefaultGroupMemory,
@@ -18,9 +20,38 @@ import {
   streamGroupAI, streamGroupAIFree, checkPollingContinue, checkAutoMemory,
   cleanupActiveStream, clearPollingTimer, getActiveStream,
 } from './groupStreamController'
-import { buildGroupChatContext } from './groupChatContext'
+import { buildGroupChatContext, type GroupContextBuildResult } from './groupChatContext'
 import { runGroupMemorySummary } from './groupMemoryManager'
 import type { GroupChatState } from './groupChatTypes'
+
+/** 群聊身份以会话为作用域；旧会话没有字段时才回退全局默认身份。 */
+function syncGroupPersonaToSettings(session?: GroupSession): void {
+  const settingsStore = useSettingsStore.getState()
+  const storedPersonaId = session?.personaId
+  const effectivePersonaId = storedPersonaId === undefined
+    ? settingsStore.settings.defaultPersonaId
+    : storedPersonaId
+  const persona = effectivePersonaId
+    ? usePersonaStore.getState().getPersona(effectivePersonaId)
+    : undefined
+
+  if (persona) {
+    settingsStore.updateSettings({
+      activePersonaId: persona.id,
+      userName: persona.name,
+      userDescription: persona.description,
+      userPersona: persona.persona,
+    })
+    return
+  }
+
+  settingsStore.updateSettings({
+    activePersonaId: null,
+    userName: '用户',
+    userDescription: '',
+    userPersona: '',
+  })
+}
 
 export type { GroupChatState }
 export const useGroupChatStore = create<GroupChatState>((set, get) => ({
@@ -33,7 +64,10 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   currentStreamingCharId: null,
   error: null,
   _semanticLoreHits: [],
+  _semanticLoreAvailable: undefined,
   _semanticFactsHits: [],
+  lastLorebookDiagnostics: null,
+  lastLorebookDiagnosticsSessionId: null,
 
   // ---- 群聊列表 ----
 
@@ -80,6 +114,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const sessions = await window.api.group.listSessions(groupId)
     set({ sessions, currentSessionId: sessions[0]?.id ?? null })
     if (sessions[0]) {
+      syncGroupPersonaToSettings(sessions[0])
       await get().loadMessages(groupId, sessions[0].id)
     }
   },
@@ -91,12 +126,14 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     await applyDefaultGroupMemory(groupId, session.id)
     const sessions = await window.api.group.listSessions(groupId)
     set({ sessions, currentSessionId: session.id, messages: [], isStreaming: false, currentStreamingCharId: null })
+    syncGroupPersonaToSettings(sessions.find((item) => item.id === session.id) ?? session)
   },
 
   switchSession: async (groupId, sessionId) => {
     clearPollingTimer()
     cleanupActiveStream()
     set({ currentSessionId: sessionId, isStreaming: false, currentStreamingCharId: null })
+    syncGroupPersonaToSettings(get().sessions.find((item) => item.id === sessionId))
     await get().loadMessages(groupId, sessionId)
   },
 
@@ -108,6 +145,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const newSid = sessions[0]?.id ?? null
     set({ sessions, currentSessionId: newSid, messages: [], isStreaming: false, currentStreamingCharId: null })
     if (newSid) {
+      syncGroupPersonaToSettings(sessions[0])
       await get().loadMessages(groupId, newSid)
     }
   },
@@ -118,21 +156,35 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     set({ sessions })
   },
 
+  setSessionPersona: async (personaId) => {
+    const { currentGroup, currentSessionId, sessions } = get()
+    if (!currentGroup || !currentSessionId) return
+    await window.api.group.updateSession(currentGroup.id, currentSessionId, { personaId })
+    const currentSession = sessions.find((item) => item.id === currentSessionId)
+    const updatedSession = currentSession
+      ? { ...currentSession, personaId, updatedAt: Date.now() }
+      : undefined
+    set((state) => ({
+      sessions: state.sessions.map((item) => item.id === currentSessionId ? updatedSession! : item),
+    }))
+    syncGroupPersonaToSettings(updatedSession)
+  },
+
   // ---- 消息 ----
 
   loadMessages: async (groupId, sessionId) => {
     // NEW-M10 修复：竞态防护——快速切换会话时，丢弃过期请求的结果
     const currentLoadId = nextLoadRequestId()
     // 会话切换：清空当前列表，避免显示旧会话消息
-    set({ messages: [], _semanticLoreHits: [], _semanticFactsHits: [] })
+    set({ messages: [], _semanticLoreHits: [], _semanticLoreAvailable: undefined, _semanticFactsHits: [] })
     const messages = await window.api.group.listMessages(groupId, sessionId)
     // 期间又发起了新的加载请求则放弃本次结果
     if (currentLoadId !== currentLoadRequestId()) return
-    set({ messages, _semanticLoreHits: [], _semanticFactsHits: [] })
+    set({ messages, _semanticLoreHits: [], _semanticLoreAvailable: undefined, _semanticFactsHits: [] })
   },
 
   clearMessages: () => {
-    set({ messages: [], error: null, _semanticLoreHits: [], _semanticFactsHits: [] })
+    set({ messages: [], error: null, _semanticLoreHits: [], _semanticLoreAvailable: undefined, _semanticFactsHits: [] })
   },
 
   clearChat: async (groupId) => {
@@ -550,6 +602,35 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     })
   },
 
+  triggerCharacterReply: async (charId) => {
+    const state = get()
+    const { currentGroup, currentSessionId } = state
+    if (!currentGroup || !currentSessionId) {
+      set({ error: '请先选择一个群聊会话' })
+      return
+    }
+    if (state.isStreaming) return
+    if (!currentGroup.memberIds.includes(charId)) {
+      set({ error: '该角色不在当前群聊中' })
+      return
+    }
+
+    const speaker = useCharacterStore.getState().characters.find((character) => character.id === charId)
+    if (!speaker) {
+      set({ error: '未找到要接话的角色' })
+      return
+    }
+
+    const currentRound = state.messages.length > 0
+      ? Math.max(...state.messages.map((message) => message.round), 0) + 1
+      : 1
+
+    // 即时接话是一次性的人工触发：只做记忆检查，不调用 checkPollingContinue。
+    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, () => {
+      checkAutoMemory(get)
+    })
+  },
+
   /** 插入角色消息（不触发 AI 回复，用于开场白等） */
   insertCharacterMessage: async (charId, content) => {
     const { currentGroup, currentSessionId, messages } = get()
@@ -619,7 +700,73 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
   // ---- 群聊上下文构建 ----
 
-  buildGroupContext: (targetCharId?, preset?) => {
-    return buildGroupChatContext(get, targetCharId, preset)
+  buildGroupContext: (targetCharId?, preset?, opts?) => {
+    const result = buildGroupChatContext(get, targetCharId, preset, {
+      ...opts,
+      lorebookDiagnosticsMode: opts?.trackUsage === false ? opts.lorebookDiagnosticsMode : 'live',
+    })
+    const group = get().currentGroup
+    const sid = get().currentSessionId
+    if (group && sid && opts?.trackUsage !== false) {
+      set({
+        lastLorebookDiagnostics: result.lorebookDiagnostics ?? null,
+        lastLorebookDiagnosticsSessionId: sid,
+      })
+      // 阶段二B：本轮触发的世界书条目 key 追加到当前群聊会话 recency 窗口（环形缓冲 + 持久化）
+      const cur = get().sessions.find(s => s.id === sid)
+      const nextRecent = appendRecentTriggeredIds(cur?.recentTriggeredIds, result.lorebookTriggeredIds ?? [], LOREBOOK_RECENCY_WINDOW)
+      const nextCache = touchCompressionCache(cur?.lorebookCompressionCache, result.lorebookCompressionCacheHitKeys ?? [])
+      const patch = {
+        recentTriggeredIds: nextRecent,
+        ...(result.lorebookTimedEffects ? { lorebookTimedEffects: result.lorebookTimedEffects } : {}),
+        ...(nextCache !== cur?.lorebookCompressionCache ? { lorebookCompressionCache: nextCache } : {}),
+      }
+      set(s => ({ sessions: s.sessions.map(ss => ss.id === sid ? { ...ss, ...patch } : ss) }))
+      window.api.group.updateSession(group.id, sid, patch).catch(() => { /* 忽略 */ })
+      // 阶段三：世界书超限压缩（非阻塞，失败静默降级为直接裁剪）
+      if (result.lorebookCompressions?.length) {
+        fireGroupLorebookCompression(get, set, group.id, sid, result.lorebookCompressions)
+      }
+    }
+    return result.messages
+  },
+  buildGroupContextReport: (targetCharId?, preset?) => {
+    return buildGroupChatContext(get, targetCharId, preset, {
+      trackUsage: false,
+      lorebookDiagnosticsMode: 'preview',
+    })
   },
 }))
+
+/**
+ * 群聊世界书超限压缩（阶段三）：异步 AI 压缩被丢弃条目并写入会话缓存（内存 + 持久化）。
+ * 下一轮同一集合再被丢弃时以缓存摘要注入；无 API 连接时静默跳过（降级为直接裁剪）。
+ */
+function fireGroupLorebookCompression(
+  get: () => GroupChatState,
+  set: (partial: Partial<GroupChatState> | ((s: GroupChatState) => Partial<GroupChatState>)) => void,
+  groupId: string,
+  sessionId: string,
+  requests: NonNullable<GroupContextBuildResult['lorebookCompressions']>,
+): void {
+  const settingsStore = useSettingsStore.getState()
+  const profile = settingsStore.getActiveProfile()
+  // 无 API 连接（且非本地服务）时不发起压缩：条目直接裁剪
+  if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) return
+  Promise.all(requests.map((request) => compressLorebookOverflow(request, {
+    provider: profile.provider,
+    apiKey: profile.apiKey,
+    baseUrl: profile.baseUrl,
+    model: settingsStore.settings.activeModel || profile.model,
+  }))).then((results) => {
+    const successful = results.filter((res) => !!res)
+    if (successful.length === 0) return
+    const cur = get().sessions.find(s => s.id === sessionId)
+    let nextCache = cur?.lorebookCompressionCache
+    for (const res of successful) {
+      if (res) nextCache = upsertCompressionCache(nextCache, res.key, res.entry)
+    }
+    set(s => ({ sessions: s.sessions.map(ss => ss.id === sessionId ? { ...ss, lorebookCompressionCache: nextCache } : ss) }))
+    window.api.group.updateSession(groupId, sessionId, { lorebookCompressionCache: nextCache }).catch(() => { /* 忽略 */ })
+  }).catch(() => { /* 忽略 */ })
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "scheme": "qingyu-relay-pair",
+  "relayBaseUrl": "https://relay.example.com/relay/v1/",
+  "ticket": "base64url_secret",
+  "displayName": "家里的电脑",
+  "expiresAt": 1788173100000
+}

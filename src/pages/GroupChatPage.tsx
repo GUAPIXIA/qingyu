@@ -4,9 +4,10 @@ import { nanoid } from 'nanoid'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useCharacterStore } from '../store/useCharacterStore'
 import { useGroupChatStore } from '../store/useGroupChatStore'
+import { usePersonaStore } from '../store/usePersonaStore'
+import { useSettingsStore } from '../store/useSettingsStore'
 import { GroupChatMessage } from '../components/chat/GroupChatMessage'
 import { GroupChatInput } from '../components/chat/GroupChatInput'
-import { GroupMemberBar } from '../components/chat/GroupMemberBar'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Modal } from '../components/common/Modal'
@@ -14,21 +15,26 @@ import { GreetingPickerModal } from './group/GreetingPickerModal'
 import { NewGroupModal } from './group/NewGroupModal'
 import { SessionSwitcher } from '../components/common/SessionSwitcher'
 import { GroupChatSettingsPanel } from '../components/chat/GroupChatSettingsPanel'
+import { GroupPersonaSwitcher } from '../components/chat/GroupPersonaSwitcher'
+import { QuickSettingsPanel } from '../components/chat/QuickSettingsPanel'
 import { MemoryPanel } from '../components/chat/MemoryPanel'
+import { LorebookDebugPanel } from '../components/chat/LorebookDebugPanel'
 import { cn } from '../lib/utils'
 import { downloadFile } from '../utils/download'
+import type { LorebookDiagnostics } from '../utils/lorebook'
 import type { GroupChat, GroupMessage, Lorebook, Preset } from '../../shared/types'
 import {
   Plus,
   Trash2,
   Users,
   MessageSquare,
-  Settings2,
   Edit2,
   Check,
   Eye,
   PanelLeftClose,
   PanelLeftOpen,
+  Sliders,
+  BookOpen,
 } from 'lucide-react'
 
 export function GroupChatPage() {
@@ -53,11 +59,14 @@ export function GroupChatPage() {
   const editMessage = useGroupChatStore((s) => s.editMessage)
   const regenerateMessage = useGroupChatStore((s) => s.regenerateMessage)
   const translateMessage = useGroupChatStore((s) => s.translateMessage)
-  const sendPollingRound = useGroupChatStore((s) => s.sendPollingRound)
   const toggleMemory = useGroupChatStore((s) => s.toggleMemory)
   const setMemoryMode = useGroupChatStore((s) => s.setMemoryMode)
   const updateMemoryFacts = useGroupChatStore((s) => s.updateMemoryFacts)
   const triggerMemorySummary = useGroupChatStore((s) => s.triggerMemorySummary)
+  const liveLorebookDiagnostics = useGroupChatStore((s) => s.lastLorebookDiagnostics)
+  const liveDiagnosticsSessionId = useGroupChatStore((s) => s.lastLorebookDiagnosticsSessionId)
+  const loadPersonas = usePersonaStore((s) => s.loadPersonas)
+  const messageWidth = useSettingsStore((s) => s.settings.messageWidth ?? 768)
 
   // P-6 修复：引用回复查找 O(n)→O(1)——构建 id→message 索引，仅在 messages 变化时重建
   const messageMap = useMemo(() => {
@@ -79,11 +88,14 @@ export function GroupChatPage() {
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [showQuickSettings, setShowQuickSettings] = useState(false)
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
   const [presets, setPresets] = useState<Preset[]>([])
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [showContextViewer, setShowContextViewer] = useState(false)
   const [contextContent, setContextContent] = useState<{ role: string; content: string }[]>([])
+  const [contextLorebookDiagnostics, setContextLorebookDiagnostics] = useState<LorebookDiagnostics | null>(null)
+  const [contextViewerTab, setContextViewerTab] = useState<'messages' | 'lorebook'>('messages')
   const [showGreetingPicker, setShowGreetingPicker] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [replyToMessage, setReplyToMessage] = useState<GroupMessage | null>(null)
@@ -96,8 +108,8 @@ export function GroupChatPage() {
 
   // 初始加载
   useEffect(() => {
-    loadGroups()
-  }, [loadGroups])
+    loadPersonas().catch(() => undefined).then(loadGroups)
+  }, [loadGroups, loadPersonas])
 
   // S3 I-06：进入时恢复上次选中，无则选第一个；避免空状态多一步操作
   useEffect(() => {
@@ -226,6 +238,7 @@ export function GroupChatPage() {
 
   // 会话操作
   const openSettings = async () => {
+    setShowQuickSettings(false)
     setShowSettings(true)
     try {
       const [lbs, prs] = await Promise.all([
@@ -387,10 +400,10 @@ export function GroupChatPage() {
           <>
             {/* ---- 顶栏 ---- */}
             <header
-              className="flex items-center justify-between px-4 h-12 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0 relative z-10"
+              className="flex items-center justify-between gap-3 px-4 h-16 border-b border-tavern-border-soft bg-tavern-bg-soft/95 backdrop-blur shrink-0 relative z-30"
               style={currentGroup?.themeColor ? { borderBottomColor: currentGroup.themeColor, borderBottomWidth: '2px' } : undefined}
             >
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 {sidebarCollapsed && (
                   <button
                     onClick={() => setSidebarCollapsed(false)}
@@ -422,6 +435,9 @@ export function GroupChatPage() {
                     </button>
                   </>
                 )}
+
+                <span className="mx-0.5 h-7 w-px shrink-0 bg-tavern-border-soft" aria-hidden />
+                <GroupPersonaSwitcher />
 
                 {/* ---- 会话管理 ---- */}
                 <SessionSwitcher
@@ -496,8 +512,10 @@ export function GroupChatPage() {
 
                 <button
                   onClick={() => {
-                    const ctx = useGroupChatStore.getState().buildGroupContext()
-                    setContextContent(ctx)
+                    const report = useGroupChatStore.getState().buildGroupContextReport()
+                    setContextContent(report.messages)
+                    setContextLorebookDiagnostics(report.lorebookDiagnostics ?? null)
+                    setContextViewerTab('messages')
                     setShowContextViewer(true)
                   }}
                   className="btn-ghost p-1.5 text-xs text-tavern-text-muted hover:text-tavern-text"
@@ -513,11 +531,22 @@ export function GroupChatPage() {
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
                 <button
-                  onClick={() => openSettings()}
-                  className="btn-ghost p-1.5 text-xs text-tavern-text-muted hover:text-tavern-text"
-                  title="群聊设置"
+                  type="button"
+                  aria-label="群聊快捷设置"
+                  aria-expanded={showQuickSettings}
+                  onClick={() => {
+                    setShowSettings(false)
+                    setShowQuickSettings((value) => !value)
+                  }}
+                  className={cn(
+                    'rounded-lg p-2 transition-colors',
+                    showQuickSettings
+                      ? 'bg-tavern-accent-soft text-tavern-accent'
+                      : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text',
+                  )}
+                  title="快捷设置"
                 >
-                  <Settings2 className="w-3.5 h-3.5" />
+                  <Sliders className="w-4 h-4" />
                 </button>
               </div>
             </header>
@@ -525,57 +554,74 @@ export function GroupChatPage() {
             {/* ---- 消息区域 ---- */}
             <div className="flex-1 overflow-hidden relative z-0">
               {messages.length === 0 && !isStreaming ? (
-                <div className="flex items-center justify-center h-full text-xs text-tavern-text-muted">
-                  <div className="text-center">
-                    <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p>选择成员并开始群聊对话</p>
+                <div className="flex items-center justify-center h-full px-6 text-tavern-text-muted">
+                  <div className="w-full max-w-md rounded-3xl border border-tavern-border-soft bg-tavern-bg-card/80 p-6 text-center shadow-sm backdrop-blur">
+                    <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-2xl bg-tavern-accent-soft text-tavern-accent">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <p className="font-display text-base font-semibold text-tavern-text">准备好开场了</p>
+                    <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed">
+                      选择发送后的回复规则，或直接点击一位角色，让 TA 根据当前对话接话。
+                    </p>
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-[10px]">
+                      <span className="rounded-xl bg-tavern-bg-soft px-2 py-2"><b className="block text-tavern-text-soft">指定成员</b>由固定成员回复</span>
+                      <span className="rounded-xl bg-tavern-bg-soft px-2 py-2"><b className="block text-tavern-text-soft">按顺序</b>成员依次接话</span>
+                      <span className="rounded-xl bg-tavern-bg-soft px-2 py-2"><b className="block text-tavern-text-soft">AI 自选</b>选择合适成员</span>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <Virtuoso
-                  key={currentGroup?.id || 'default'}
-                  ref={virtuosoRef}
-                  data={messages}
-                  className="h-full"
-                  followOutput="smooth"
-                  itemContent={(index, m) => {
-                    const memberIdx = memberIndexMap.get(m.characterId) ?? -1
-                    const isAiMsg = m.characterId !== '__user__'
-                    const isStreamingMsg = isStreaming && index === messages.length - 1 && isAiMsg
-                    // 查找被引用的消息（P-6：Map 索引 O(1)）
-                    const repliedMessage = m.replyToId
-                      ? messageMap.get(m.replyToId)
-                      : undefined
-                    return (
-                      <GroupChatMessage
-                        key={m.id}
-                        message={m}
-                        memberIndex={memberIdx}
-                        isStreamingMessage={isStreamingMsg}
-                        repliedMessage={repliedMessage}
-                        bubbleOpacity={currentGroup.bubbleOpacity}
-                        onReply={
-                          !isStreaming ? () => setReplyToMessage(m) : undefined
-                        }
-                        onDelete={
-                          !currentSessionId || isStreaming ? undefined : () => deleteMessage(currentGroup.id, currentSessionId!, m.id)
-                        }
-                        onEdit={
-                          !currentSessionId || isStreaming ? undefined : (content: string) => editMessage(currentGroup.id, currentSessionId!, m.id, content)
-                        }
-                        onRegenerate={
-                          isAiMsg && !isStreaming ? () => regenerateMessage(m.id) : undefined
-                        }
-                        onTranslate={
-                          !isStreaming ? () => translateMessage(m.id) : undefined
-                        }
-                      />
-                    )
-                  }}
-                  components={{
-                    Footer: () => <div className="h-4" />,
-                  }}
-                />
+                <div
+                  data-testid="group-message-scroll-column"
+                  className="mx-auto h-full w-full"
+                  style={{ maxWidth: `${messageWidth + 32}px` }}
+                >
+                  <Virtuoso
+                    key={`${currentGroup?.id || 'default'}:${currentSessionId || 'no-session'}`}
+                    ref={virtuosoRef}
+                    data={messages}
+                    className="h-full"
+                    initialTopMostItemIndex={999999}
+                    followOutput="smooth"
+                    itemContent={(index, m) => {
+                      const memberIdx = memberIndexMap.get(m.characterId) ?? -1
+                      const isAiMsg = m.characterId !== '__user__'
+                      const isStreamingMsg = isStreaming && index === messages.length - 1 && isAiMsg
+                      // 查找被引用的消息（P-6：Map 索引 O(1)）
+                      const repliedMessage = m.replyToId
+                        ? messageMap.get(m.replyToId)
+                        : undefined
+                      return (
+                        <GroupChatMessage
+                          key={m.id}
+                          message={m}
+                          memberIndex={memberIdx}
+                          isStreamingMessage={isStreamingMsg}
+                          repliedMessage={repliedMessage}
+                          bubbleOpacity={currentGroup.bubbleOpacity}
+                          onReply={
+                            !isStreaming ? () => setReplyToMessage(m) : undefined
+                          }
+                          onDelete={
+                            !currentSessionId || isStreaming ? undefined : () => deleteMessage(currentGroup.id, currentSessionId!, m.id)
+                          }
+                          onEdit={
+                            !currentSessionId || isStreaming ? undefined : (content: string) => editMessage(currentGroup.id, currentSessionId!, m.id, content)
+                          }
+                          onRegenerate={
+                            isAiMsg && !isStreaming ? () => regenerateMessage(m.id) : undefined
+                          }
+                          onTranslate={
+                            !isStreaming ? () => translateMessage(m.id) : undefined
+                          }
+                        />
+                      )
+                    }}
+                    components={{
+                      Footer: () => <div className="h-4" />,
+                    }}
+                  />
+                </div>
               )}
             </div>
 
@@ -585,26 +631,6 @@ export function GroupChatPage() {
               group={currentGroup}
               replyTo={replyToMessage}
               onCancelReply={() => setReplyToMessage(null)}
-            />
-            </div>
-
-            {/* ---- 成员栏 ---- */}
-            <div className="relative z-10">
-            <GroupMemberBar
-              memberIds={currentGroup.memberIds}
-              currentSpeakerIndex={currentGroup.currentSpeakerIndex}
-              themeColor={currentGroup.themeColor}
-              onSpeakerClick={(charId) => {
-                const idx = currentGroup.memberIds.indexOf(charId)
-                if (idx < 0) return
-                // 更新当前发言者索引
-                const updated = { ...currentGroup, currentSpeakerIndex: idx }
-                saveGroup(updated)
-                // polling 模式且非自动时，手动触发该角色发言
-                if (currentGroup.chatMode === 'polling' && !currentGroup.autoMode && !isStreaming) {
-                  sendPollingRound(charId)
-                }
-              }}
             />
             </div>
           </>
@@ -626,6 +652,20 @@ export function GroupChatPage() {
           onMoveMember={handleMoveMember}
           onToggleLorebook={toggleLorebook}
           onExport={handleExport}
+        />
+      )}
+
+      {currentGroup && (
+        <QuickSettingsPanel
+          open={showQuickSettings}
+          onClose={() => setShowQuickSettings(false)}
+          messages={messages}
+          group={currentGroup}
+          onSaveGroup={saveGroup}
+          onShowContextViewer={() => setShowContextViewer(true)}
+          onShowBgPanel={() => { void openSettings() }}
+          onExport={handleExport}
+          onClearConfirm={() => setShowClearConfirm(true)}
         />
       )}
 
@@ -669,21 +709,34 @@ export function GroupChatPage() {
         contentClassName="p-4"
       >
         <div className="space-y-3">
-          {contextContent.map((item, i) => (
-            <div key={i} className="space-y-1">
-              <span className={cn(
-                'text-[10px] font-medium px-1.5 py-0.5 rounded',
-                item.role === 'system' ? 'bg-purple-500/10 text-purple-400' :
-                item.role === 'user' ? 'bg-blue-500/10 text-blue-400' :
-                'bg-emerald-500/10 text-emerald-400'
-              )}>
-                {item.role.toUpperCase()}
-              </span>
-              <pre className="text-xs text-tavern-text whitespace-pre-wrap font-mono bg-tavern-bg rounded-lg p-3 max-h-40 overflow-y-auto border border-tavern-border-soft/50">
-                {item.content}
-              </pre>
-            </div>
-          ))}
+          <div className="flex gap-1 rounded-xl border border-tavern-border-soft bg-tavern-bg-soft p-1">
+            <button type="button" onClick={() => setContextViewerTab('messages')} className={cn('flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors', contextViewerTab === 'messages' ? 'bg-tavern-bg text-tavern-accent shadow-sm' : 'text-tavern-text-muted hover:text-tavern-text')}>
+              <MessageSquare className="h-3.5 w-3.5" />消息列表
+            </button>
+            <button type="button" onClick={() => setContextViewerTab('lorebook')} className={cn('flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors', contextViewerTab === 'lorebook' ? 'bg-tavern-bg text-tavern-accent shadow-sm' : 'text-tavern-text-muted hover:text-tavern-text')}>
+              <BookOpen className="h-3.5 w-3.5" />世界书触发
+            </button>
+          </div>
+          {contextViewerTab === 'messages' ? contextContent.map((item, i) => (
+              <div key={i} className="space-y-1">
+                <span className={cn(
+                  'text-[10px] font-medium px-1.5 py-0.5 rounded',
+                  item.role === 'system' ? 'bg-purple-500/10 text-purple-400' :
+                  item.role === 'user' ? 'bg-blue-500/10 text-blue-400' :
+                  'bg-emerald-500/10 text-emerald-400'
+                )}>
+                  {item.role.toUpperCase()}
+                </span>
+                <pre className="text-xs text-tavern-text whitespace-pre-wrap font-mono bg-tavern-bg rounded-lg p-3 max-h-40 overflow-y-auto border border-tavern-border-soft/50">
+                  {item.content}
+                </pre>
+              </div>
+            )) : (
+              <LorebookDebugPanel
+                live={liveDiagnosticsSessionId === currentSessionId ? liveLorebookDiagnostics : null}
+                preview={contextLorebookDiagnostics}
+              />
+            )}
         </div>
       </Modal>
 

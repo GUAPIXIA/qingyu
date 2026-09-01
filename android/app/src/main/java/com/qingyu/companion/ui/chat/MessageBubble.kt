@@ -1,18 +1,11 @@
 package com.qingyu.companion.ui.chat
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -22,55 +15,24 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Reply
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Translate
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,46 +40,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import coil.compose.AsyncImage
-import com.qingyu.companion.data.LocalAppContainer
+import com.qingyu.companion.R
 import com.qingyu.companion.model.Message
 import com.qingyu.companion.model.PendingMessage
-import com.qingyu.companion.model.QuickReply
 import com.qingyu.companion.model.Role
-import com.qingyu.companion.model.TimelineItem
-import com.qingyu.companion.model.buildTimeline
-import com.qingyu.companion.ui.components.AppBackground
-import com.qingyu.companion.ui.components.AvatarBubble
-import com.qingyu.companion.ui.components.ImageViewerDialog
 import com.qingyu.companion.ui.components.MarkdownText
 import com.qingyu.companion.ui.components.MessageImages
-import com.qingyu.companion.ui.components.QuickSettingsPanel
 import com.qingyu.companion.ui.components.extractThought
-import com.qingyu.companion.ui.components.resolveImageUrl
 import com.qingyu.companion.ui.components.scaledForChat
-import com.qingyu.companion.ui.components.stripThought
+import com.qingyu.companion.ui.components.translatedMessageContent
 import com.qingyu.companion.ui.theme.qyColors
-import com.qingyu.companion.ui.tts.TtsPlayer
-import com.qingyu.companion.utils.uriToCompressedBase64
+import com.qingyu.companion.utils.SearchUtils
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** 日期分隔：中线 + cap 字 */
 @Composable
@@ -153,11 +100,18 @@ internal fun DateHeaderRow(label: String) {
     }
 }
 
-/** 本地待发送/失败消息气泡：me-bg + 描边，发送中进度，失败重试 */
+/**
+ * 本地待发送/失败消息气泡：me-bg + 描边，发送中进度。
+ * E-04 错误动作语义：发送失败 → 重试发送；AI 失败 → 仅重试 AI；
+ * 离线排队 → 等待网络，可取消。
+ */
 @Composable
 internal fun PendingBubble(
     pending: PendingMessage,
     onRetry: () -> Unit,
+    onRetryGeneration: () -> Unit,
+    onCancel: () -> Unit,
+    connection: com.qingyu.companion.network.WsClient.State,
     fontScale: Float = 1f,
     spacingMultiplier: Float = 1f,
 ) {
@@ -181,31 +135,13 @@ internal fun PendingBubble(
                     style = MaterialTheme.typography.bodyMedium.scaledForChat(fontScale),
                     color = qy.text,
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(top = (6 * spacing).dp),
-                ) {
-                    if (pending.failed) {
-                        Text(
-                            "发送失败",
-                            style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
-                            color = qy.danger,
-                        )
-                        TextButton(onClick = onRetry) { Text("重试", color = qy.accent) }
-                    } else {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(12.dp),
-                            strokeWidth = 2.dp,
-                            color = qy.accent,
-                        )
-                        Text(
-                            "发送中…",
-                            style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
-                            color = qy.muted,
-                        )
-                    }
-                }
+                PendingErrorActions(
+                    pending = pending,
+                    connection = connection,
+                    onRetry = onRetry,
+                    onRetryGeneration = onRetryGeneration,
+                    onCancel = onCancel,
+                )
             }
         }
     }
@@ -264,6 +200,31 @@ private fun BubbleShape(isUser: Boolean): RoundedCornerShape =
         RoundedCornerShape(topStart = 6.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
     }
 
+/**
+ * 搜索命中文本（E-05）：命中区间高亮（accent 底 + accent 字），
+ * 复用 SearchUtils.highlightMatches；无查询时原样渲染。
+ */
+@Composable
+internal fun searchHighlightedText(text: String, query: String): androidx.compose.ui.text.AnnotatedString {
+    val qy = qyColors()
+    if (query.isBlank()) return androidx.compose.ui.text.AnnotatedString(text)
+    return buildAnnotatedString {
+        SearchUtils.highlightMatches(text, query).forEach { (part, hit) ->
+            if (hit) {
+                withStyle(
+                    SpanStyle(
+                        color = qy.accent,
+                        background = qy.accent.copy(alpha = 0.16f),
+                        fontStyle = FontStyle.Normal,
+                    )
+                ) { append(part) }
+            } else {
+                append(part)
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun MessageBubble(
@@ -281,16 +242,22 @@ internal fun MessageBubble(
     onRegenerate: (() -> Unit)? = null,
     onSpeak: (() -> Unit)? = null,
     onTranslate: (() -> Unit)? = null,
+    isTranslating: Boolean = false,
     onDelete: (() -> Unit)? = null,
     /** 本地 UI 偏好：字体缩放系数（1f = 标准） */
     fontScale: Float = 1f,
     /** 本地 UI 偏好：消息间距倍数（1f = 标准） */
     spacingMultiplier: Float = 1f,
+    /** 搜索高亮（E-05）：非空时正文/引用/翻译命中区间高亮 */
+    searchQuery: String = "",
 ) {
     val qy = qyColors()
     val isUser = message.role == Role.user
     val isSystem = message.role == Role.system
-    val extraction = remember(message.content) { extractThought(message.content) }
+    val displayedContent = remember(message.content, message.translation) {
+        translatedMessageContent(message.content, message.translation)
+    }
+    val extraction = remember(displayedContent) { extractThought(displayedContent) }
 
     // 气泡入场动画（消息新增时缩放 + 淡入）
     var appeared by remember(message.id) { mutableStateOf(false) }
@@ -323,19 +290,19 @@ internal fun MessageBubble(
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
         val config = LocalConfiguration.current
-    val bubbleMax = when {
-        config.screenWidthDp < 360 -> 260.dp
-        config.screenWidthDp < 600 -> 312.dp
-        else -> 420.dp
-    }
-    Column(
+        val bubbleMax = when {
+            config.screenWidthDp < 360 -> 260.dp
+            config.screenWidthDp < 600 -> 312.dp
+            else -> 420.dp
+        }
+        Column(
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
             modifier = Modifier.widthIn(max = bubbleMax),
         ) {
             // 角色名标签（cap 11sp 弱文字）
             if (!isUser && !isSystem) {
                 Text(
-                    characterName.ifBlank { "角色" },
+                    characterName.ifBlank { stringResource(R.string.chat_role_placeholder) },
                     style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
                     color = qy.muted,
                     modifier = Modifier.padding(start = 4.dp, bottom = 2.dp),
@@ -356,13 +323,19 @@ internal fun MessageBubble(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
+                            val refRole = if (ref.role == Role.user) {
+                                stringResource(R.string.chat_you)
+                            } else {
+                                stringResource(R.string.chat_other)
+                            }
+                            val refContent = translatedMessageContent(ref.content, ref.translation)
+                            val refPreview = refContent.take(40)
+                            val refTail = if (refContent.length > 40) "…" else ""
                             Text(
-                                text = buildString {
-                                    append(if (ref.role == Role.user) "你" else "对方")
-                                    append("：")
-                                    append(ref.content.take(40))
-                                    if (ref.content.length > 40) append("…")
-                                },
+                                text = searchHighlightedText(
+                                    stringResource(R.string.chat_reply_prefix_fmt, refRole, refPreview) + refTail,
+                                    searchQuery,
+                                ),
                                 style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
                                 color = qy.muted,
                                 maxLines = 2,
@@ -395,7 +368,7 @@ internal fun MessageBubble(
                             )
                             Column(Modifier.padding(horizontal = 11.dp, vertical = (7 * spacing).dp)) {
                                 Text(
-                                    "内心想法",
+                                    stringResource(R.string.chat_inner_thought),
                                     style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
                                     color = qy.accent,
                                 )
@@ -434,23 +407,21 @@ internal fun MessageBubble(
                         )
                     }
 
-                    // 翻译
-                    message.translation?.let { rawTranslation ->
-                        val translation = stripThought(rawTranslation)
-                        if (translation.isNotEmpty()) {
-                            Spacer(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(qy.lineSoft)
+                    if (isTranslating) {
+                        Row(
+                            modifier = Modifier.padding(top = contentGap),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.width(12.dp).height(12.dp),
+                                strokeWidth = 1.5.dp,
+                                color = qy.accent,
                             )
+                            Spacer(Modifier.width(6.dp))
                             Text(
-                                text = translation,
-                                style = MaterialTheme.typography.bodySmall.scaledForChat(fontScale).copy(
-                                    color = qy.soft,
-                                    fontStyle = FontStyle.Italic,
-                                ),
-                                modifier = Modifier.padding(top = contentGap),
+                                stringResource(R.string.chat_action_translating),
+                                style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
+                                color = qy.accent,
                             )
                         }
                     }
@@ -458,7 +429,12 @@ internal fun MessageBubble(
                     // token 用量
                     message.usage?.let { u ->
                         Text(
-                            text = "↑${u.promptTokens} · ↓${u.completionTokens} · 共 ${u.totalTokens} tokens",
+                            text = stringResource(
+                                R.string.chat_token_usage_fmt,
+                                u.promptTokens,
+                                u.completionTokens,
+                                u.totalTokens,
+                            ),
                             style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
                             color = qy.muted.copy(alpha = 0.8f),
                             modifier = Modifier.padding(top = 4.dp),
@@ -467,33 +443,36 @@ internal fun MessageBubble(
                 }
             }
 
-            // 时间戳
-            Text(
-                text = formatTime(message.timestamp),
-                style = MaterialTheme.typography.labelSmall,
-                color = qy.muted.copy(alpha = 0.7f),
-                modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp),
-            )
-
-            // 气泡操作排（对齐 PC 端 MessageActionBar）
+            // 时间与气泡操作共用一行；窄屏时可横向滑动查看完整操作。
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
                     .padding(start = 2.dp, top = 1.dp),
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    text = formatTime(message.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = qy.muted.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+
                 if (isUser) {
-                    ActionChip("复制", onCopy)
-                    ActionChip("编辑", onEdit)
-                    ActionChip("删除", onDelete)
+                    ActionChip(stringResource(R.string.chat_action_copy), onCopy)
+                    ActionChip(stringResource(R.string.chat_action_edit), onEdit)
+                    ActionChip(stringResource(R.string.chat_action_delete), onDelete)
                 } else {
-                    ActionChip("翻译", onTranslate)
-                    ActionChip("朗读", onSpeak)
-                    ActionChip("复制", onCopy)
-                    ActionChip("编辑", onEdit)
-                    ActionChip("重新生成", onRegenerate)
-                    ActionChip("删除", onDelete)
+                    ActionChip(
+                        stringResource(if (isTranslating) R.string.chat_action_translating else R.string.chat_action_translate),
+                        onTranslate.takeUnless { isTranslating },
+                    )
+                    ActionChip(stringResource(R.string.chat_action_speak), onSpeak)
+                    ActionChip(stringResource(R.string.chat_action_copy), onCopy)
+                    ActionChip(stringResource(R.string.chat_action_edit), onEdit)
+                    ActionChip(stringResource(R.string.chat_action_regenerate), onRegenerate)
+                    ActionChip(stringResource(R.string.chat_action_delete), onDelete)
                 }
             }
 
@@ -539,7 +518,7 @@ private fun SwipeControl(message: Message, onSwipe: (direction: Int) -> Unit) {
             )
         }
         Text(
-            " ${(message.swipeIndex ?: 0) + 1}/$total ",
+            stringResource(R.string.chat_swipe_fmt, (message.swipeIndex ?: 0) + 1, total),
             style = MaterialTheme.typography.labelSmall,
             color = qy.muted,
         )
@@ -560,6 +539,6 @@ private fun SwipeControl(message: Message, onSwipe: (direction: Int) -> Unit) {
 /** 消息气泡时间戳（HH:mm） */
 private fun formatTime(epochMs: Long): String {
     if (epochMs <= 0) return ""
-    return java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-        .format(java.util.Date(epochMs))
+    return SimpleDateFormat("HH:mm", Locale.getDefault())
+        .format(Date(epochMs))
 }

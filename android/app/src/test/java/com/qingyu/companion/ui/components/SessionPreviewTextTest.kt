@@ -5,6 +5,18 @@ import org.junit.Test
 
 class SessionPreviewTextTest {
     @Test
+    fun `global session title includes character and conversation names`() {
+        assertEquals("花藕子-新对话 2", sessionDisplayTitle("新对话 2", "花藕子", true))
+        assertEquals("新对话 2", sessionDisplayTitle("新对话 2", "花藕子", false))
+    }
+
+    @Test
+    fun `session title handles missing character without stray separator`() {
+        assertEquals("默认对话", sessionDisplayTitle("默认对话", "", true))
+        assertEquals("未命名会话", sessionDisplayTitle("", "花藕子", false))
+    }
+
+    @Test
     fun `preview shows final visible content without thought blocks`() {
         assertEquals(
             "最后一句正文",

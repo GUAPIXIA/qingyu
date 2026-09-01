@@ -1,0 +1,18 @@
+{
+  "baseRevision": "1a932d501546fabe3d5f38cf449da6bf2c1b611862df185d766ad343f2a1bde6",
+  "sourceDeviceId": "contract-test-device-1",
+  "patch": {
+    "translationTargetLang": "英语",
+    "streamOutput": false,
+    "lorebookRatio": 0.6,
+    "userName": "轻语用户",
+    "activePresetId": "builtin-default",
+    "apiKey": "sk-contract-test-leak",
+    "connectionProfiles": [],
+    "fontSize": 12,
+    "themeColor": "rose",
+    "messageWidth": 768,
+    "bubbleStyle": "round",
+    "messageSpacing": 4
+  }
+}

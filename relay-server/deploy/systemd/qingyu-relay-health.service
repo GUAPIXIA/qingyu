@@ -1,0 +1,7 @@
+[Unit]
+Description=QingYu Relay readiness check
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3100/relay/v1/health/ready

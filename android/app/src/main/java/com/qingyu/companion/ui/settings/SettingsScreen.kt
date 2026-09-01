@@ -1,74 +1,51 @@
 package com.qingyu.companion.ui.settings
 
-import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.qingyu.companion.BuildConfig
-import com.qingyu.companion.data.ChatFontScale
-import com.qingyu.companion.data.ChatSpacing
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.data.ThemeMode
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
+import com.qingyu.companion.ui.settings.sections.AboutDiagnosticsSection
+import com.qingyu.companion.ui.settings.sections.ConnectionDataSection
+import com.qingyu.companion.ui.settings.sections.LocalAppearanceSection
+import com.qingyu.companion.ui.settings.sections.LocalPrivacySection
+import com.qingyu.companion.ui.settings.sections.PcConversationSection
 import com.qingyu.companion.ui.theme.qyColors
 import kotlinx.coroutines.launch
 
 /**
- * 设置页（方案 B · 情感极简 · 分组卡片）：
- * - 外观：主题模式 / 聊天字体 / 消息间距 / 角色封面背景（本地偏好，不回写 PC）；
- * - 连接与安全：连接管理、当前连接、退出时清除；
- * - 数据：清除本地缓存；
- * - 远程访问：内网穿透指引（Tailscale / ZeroTier / frp）；
- * - 关于：用量统计 / 公告 / 版本 / 检查更新。
+ * 设置页编排容器（E-03 精简后：Scaffold + Sections 调用，不再膨胀）
+ * 各分区抽至 ui/settings/sections/，行级组件抽至 ui/settings/components/
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,20 +54,26 @@ fun SettingsScreen(
     onOpenPairing: () -> Unit,
     onOpenUsage: () -> Unit = {},
     onOpenAnnouncements: () -> Unit = {},
+    onOpenChat: (() -> Unit)? = null,
 ) {
     val qy = qyColors()
+    val context = LocalContext.current
     val container = LocalAppContainer.current
     val vm: SettingsViewModel = viewModel(factory = viewModelFactory {
-        initializer { SettingsViewModel(container.repository, container.connectionManager) }
+        initializer {
+            SettingsViewModel(
+                repository = container.repository,
+                connectionManager = container.connectionManager,
+                settingsSync = container.settingsSyncRepository,
+                settingsSyncOwned = false,
+                diagnosticsProvider = { container.connectionCoordinator.snapshotForDiagnostics() },
+                rejectionRegistry = container.settingsRejectionRegistry,
+            )
+        }
     })
     val ui by vm.ui.collectAsStateWithLifecycle()
-    var confirmWipe by remember { mutableStateOf(false) }
-    var showTunnelGuide by remember { mutableStateOf(false) }
-    var showFontOptions by remember { mutableStateOf(false) }
-    var showSpacingOptions by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // 本地 UI 偏好（字体缩放/消息间距/主题/封面背景）
     val fontScale by container.uiPrefsStore.fontScale.collectAsStateWithLifecycle(initialValue = 1f)
     val spacingMult by container.uiPrefsStore.spacingMultiplier.collectAsStateWithLifecycle(initialValue = 1f)
     val themeMode by container.uiPrefsStore.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
@@ -107,12 +90,12 @@ fun SettingsScreen(
         containerColor = Color.Transparent,
         topBar = {
             AppTopBar(
-                title = "设置",
+                title = stringResource(R.string.settings_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.cd_back),
                             tint = qy.soft,
                         )
                     }
@@ -129,212 +112,38 @@ fun SettingsScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Section("外观") {
-                    // 主题模式（三档：深色/浅色/跟随系统）
-                    OptionPickerRow(
-                        label = "主题模式",
-                        subtitle = themeMode.label,
-                        options = ThemeMode.entries,
-                        selected = themeMode,
-                        labelOf = { it.label },
-                        onSelect = { mode -> scope.launch { container.uiPrefsStore.setThemeMode(mode) } },
-                    )
-                    // 聊天字体大小
-                    SettingNavRow(
-                        title = "聊天字体大小",
-                        subtitle = "${ChatFontScale.entries.firstOrNull { it.scale == fontScale }?.label ?: "标准"} · 即时生效",
-                        onClick = {
-                            showFontOptions = !showFontOptions
-                            showSpacingOptions = false
-                        },
-                    )
-                    if (showFontOptions) {
-                        Column {
-                            ChatFontScale.entries.forEach { option ->
-                                SettingChoiceRow(
-                                    title = option.label,
-                                    subtitle = "正文与行距 ×${option.scale}",
-                                    selected = option.scale == fontScale,
-                                    onClick = {
-                                        scope.launch { container.uiPrefsStore.setFontScale(option) }
-                                        showFontOptions = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    // 消息间距
-                    SettingNavRow(
-                        title = "消息间距",
-                        subtitle = "${ChatSpacing.entries.firstOrNull { it.multiplier == spacingMult }?.label ?: "标准"} · 段落与气泡同步",
-                        onClick = {
-                            showSpacingOptions = !showSpacingOptions
-                            showFontOptions = false
-                        },
-                    )
-                    if (showSpacingOptions) {
-                        Column {
-                            ChatSpacing.entries.forEach { option ->
-                                SettingChoiceRow(
-                                    title = option.label,
-                                    subtitle = "气泡、段落与 Markdown 块 ×${option.multiplier}",
-                                    selected = option.multiplier == spacingMult,
-                                    onClick = {
-                                        scope.launch { container.uiPrefsStore.setSpacing(option) }
-                                        showSpacingOptions = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    // 角色封面背景
-                    SettingSwitchRow(
-                        title = "角色封面背景",
-                        subtitle = "对话页使用角色封面作沉浸背景",
-                        checked = bgEnabled,
-                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setChatBackground(enabled) } },
-                    )
-                }
+                LocalAppearanceSection(
+                    themeMode = themeMode,
+                    fontScale = fontScale,
+                    spacingMult = spacingMult,
+                    bgEnabled = bgEnabled,
+                    onThemeModeChange = { mode -> scope.launch { container.uiPrefsStore.setThemeMode(mode) } },
+                    onFontScaleChange = { option -> scope.launch { container.uiPrefsStore.setFontScale(option) } },
+                    onSpacingChange = { option -> scope.launch { container.uiPrefsStore.setSpacing(option) } },
+                    onBgEnabledChange = { enabled -> scope.launch { container.uiPrefsStore.setChatBackground(enabled) } },
+                )
 
-                Section("连接与安全") {
-                    SettingNavRow(
-                        title = "连接管理",
-                        subtitle = "已配对 ${ui.connectionCount} 台 PC，切换 / 移除 / 重新配对",
-                        onClick = onOpenPairing,
-                    )
-                    ui.activeConnection?.let { conn ->
-                        SettingNavRow(
-                            title = "当前连接",
-                            subtitle = "${conn.name}（${conn.host}:${conn.port}）· 设备 ID ${conn.deviceId.take(8)}",
-                        )
-                    }
-                    SettingNavRow(
-                        title = "退出时清除全部数据",
-                        subtitle = "清除本地缓存与全部连接配置，下次启动需重新配对",
-                        onClick = { confirmWipe = true },
-                        danger = true,
-                    )
-                }
+                PcConversationSection(vm = vm, ui = ui, onOpenChat = onOpenChat)
 
-                Section("通知") {
-                    val context = LocalContext.current
-                    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-                    SettingSwitchRow(
-                        title = "任务通知",
-                        subtitle = if (Build.VERSION.SDK_INT >= 33) "AI 回复/长记忆/连接/安全事件（需系统权限）" else "AI 回复/长记忆/连接/安全事件",
-                        checked = notifEnabled,
-                        onCheckedChange = { enabled ->
-                            scope.launch { container.uiPrefsStore.setNotificationsEnabled(enabled) }
-                            if (enabled && Build.VERSION.SDK_INT >= 33) {
-                                val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                if (!granted) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            }
-                        },
-                    )
-                    SettingSwitchRow(
-                        title = "隐藏通知内容",
-                        subtitle = "开启后仅显示通用文案，不展示会话/消息内容",
-                        checked = notifHideContent,
-                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setNotificationHideContent(enabled) } },
-                    )
-                    SettingSwitchRow(
-                        title = "免打扰",
-                        subtitle = "免打扰时段内不推送（${notifDndStart}:00-${notifDndEnd}:00）",
-                        checked = notifDndEnabled,
-                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setNotificationDndEnabled(enabled) } },
-                    )
-                    if (notifDndEnabled) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text("时段", style = MaterialTheme.typography.bodySmall, color = qy.soft)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf(22 to 7, 23 to 7, 0 to 8).forEach { (s, e) ->
-                                    val selected = notifDndStart == s && notifDndEnd == e
-                                    androidx.compose.material3.FilterChip(
-                                        selected = selected,
-                                        onClick = { scope.launch { container.uiPrefsStore.setNotificationDndWindow(s, e) } },
-                                        label = { Text("${s}:00-${e}:00", style = MaterialTheme.typography.labelSmall) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    SettingNavRow(
-                        title = "系统通知设置",
-                        subtitle = "管理渠道与权限（被系统拒绝时需手动开启）",
-                        onClick = {
-                            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply { putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName) }
-                            } else {
-                                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply { data = Uri.parse("package:${context.packageName}") }
-                            }
-                            context.startActivity(intent)
-                        },
-                    )
-                }
+                LocalPrivacySection(
+                    notifEnabled = notifEnabled,
+                    notifHideContent = notifHideContent,
+                    notifDndEnabled = notifDndEnabled,
+                    notifDndStart = notifDndStart,
+                    notifDndEnd = notifDndEnd,
+                    appLockEnabled = appLockEnabled,
+                    hidePreview = hidePreview,
+                    onNotifEnabledChange = { enabled -> scope.launch { container.uiPrefsStore.setNotificationsEnabled(enabled) } },
+                    onNotifHideContentChange = { enabled -> scope.launch { container.uiPrefsStore.setNotificationHideContent(enabled) } },
+                    onNotifDndEnabledChange = { enabled -> scope.launch { container.uiPrefsStore.setNotificationDndEnabled(enabled) } },
+                    onNotifDndWindowChange = { s, e -> scope.launch { container.uiPrefsStore.setNotificationDndWindow(s, e) } },
+                    onAppLockChange = { enabled -> scope.launch { container.uiPrefsStore.setAppLockEnabled(enabled) } },
+                    onHidePreviewChange = { enabled -> scope.launch { container.uiPrefsStore.setHideTaskPreview(enabled) } },
+                )
 
-                Section("隐私与安全") {
-                    SettingSwitchRow(
-                        title = "应用锁",
-                        subtitle = "启动时需生物识别/设备凭据（Room 含聊天明文）",
-                        checked = appLockEnabled,
-                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setAppLockEnabled(enabled) } },
-                    )
-                    SettingSwitchRow(
-                        title = "隐藏最近任务预览",
-                        subtitle = "离开后台后模糊/隐藏任务卡片（FLAG_SECURE）",
-                        checked = hidePreview,
-                        onCheckedChange = { enabled -> scope.launch { container.uiPrefsStore.setHideTaskPreview(enabled) } },
-                    )
-                    androidx.compose.material3.Text("令牌已通过 Keystore 加密存储；服务器指纹与本机随机 UUID 已区分命名", style = androidx.compose.material3.MaterialTheme.typography.labelSmall, color = qy.soft, modifier = androidx.compose.ui.Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
-                }
+                ConnectionDataSection(vm = vm, ui = ui, onOpenPairing = onOpenPairing)
 
-                Section("数据") {
-                    SettingNavRow(
-                        title = "清除本地缓存",
-                        subtitle = "仅清除离线会话缓存，保留连接配置",
-                        onClick = vm::clearCache,
-                        busy = ui.clearingCache,
-                    )
-                }
-
-                Section("远程访问") {
-                    SettingNavRow(
-                        title = "内网穿透指引",
-                        subtitle = "局域网外连接 PC 的三条路线（Tailscale / ZeroTier / frp）",
-                        onClick = { showTunnelGuide = true },
-                    )
-                }
-
-                Section("关于") {
-                    SettingNavRow(
-                        title = "用量统计",
-                        subtitle = "只读查看今日/累计字符用量",
-                        onClick = onOpenUsage,
-                    )
-                    SettingNavRow(
-                        title = "公告",
-                        subtitle = "查看来自 PC 侧的公告同步",
-                        onClick = onOpenAnnouncements,
-                    )
-                    SettingNavRow(
-                        title = "轻语伴侣",
-                        subtitle = "版本 ${BuildConfig.VERSION_NAME}（build ${BuildConfig.VERSION_CODE}）· API v1",
-                    )
-                    SettingNavRow(
-                        title = "检查更新",
-                        subtitle = when {
-                            ui.checkingVersion -> "正在获取最新版本…"
-                            ui.latestVersion != null -> "服务器最新版本 ${ui.latestVersion!!.effectiveVersion}"
-                            else -> "从公告服务器获取最新版本号"
-                        },
-                        onClick = vm::checkVersion,
-                        busy = ui.checkingVersion,
-                    )
-                }
+                AboutDiagnosticsSection(vm = vm, ui = ui, onOpenUsage = onOpenUsage, onOpenAnnouncements = onOpenAnnouncements)
 
                 ui.message?.let { message ->
                     Text(
@@ -346,303 +155,18 @@ fun SettingsScreen(
             }
         }
     }
-
-    ui.latestVersion?.let { info ->
-        val context = LocalContext.current
-        AlertDialog(
-            onDismissRequest = vm::clearLatestVersion,
-            containerColor = qy.card,
-            title = { Text("最新版本 ${info.effectiveVersion}", color = qy.text) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("当前版本 ${BuildConfig.VERSION_NAME}（build ${BuildConfig.VERSION_CODE}）", color = qy.soft)
-                    if (info.effectiveChangelog.isNotBlank()) {
-                        Text(
-                            "更新内容",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = qy.accent,
-                        )
-                        Text(
-                            info.effectiveChangelog,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = qy.soft,
-                        )
-                    }
-                    if (info.effectiveDownloadUrl.isBlank()) {
-                        Text(
-                            "本次更新暂无下载链接",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = qy.soft,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                if (info.effectiveDownloadUrl.isNotBlank()) {
-                    TextButton(onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.effectiveDownloadUrl)))
-                    }) { Text("下载", color = qy.accent) }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = vm::clearLatestVersion) { Text("关闭", color = qy.soft) }
-            },
-        )
-    }
-
-    if (confirmWipe) {
-        AlertDialog(
-            onDismissRequest = { confirmWipe = false },
-            containerColor = qy.card,
-            title = { Text("退出时清除", color = qy.text) },
-            text = {
-                Text(
-                    "将删除本地缓存与全部已配对 PC 的连接配置（PC 端数据不受影响）。确认继续？",
-                    color = qy.soft,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmWipe = false
-                    vm.wipeAll()
-                }) { Text("清除", color = qy.danger) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmWipe = false }) { Text("取消", color = qy.soft) }
-            },
-        )
-    }
-
-    if (showTunnelGuide) {
-        TunnelGuideDialog(onDismiss = { showTunnelGuide = false })
-    }
 }
 
-/** 设置分组卡片：标题 + 内容（bg2 圆角卡片内嵌行） */
-@Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
-    val qy = qyColors()
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            style = MaterialTheme.typography.labelMedium,
-            color = qy.muted,
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
-        )
-        Surface(
-            color = qy.bg2.copy(alpha = 0.7f),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(vertical = 4.dp)) {
-                content()
-            }
+/** 跳转系统「应用通知设置」（渠道与权限管理）；低版本回退到应用详情页 — 供 LocalPrivacySection 复用 */
+internal fun openSystemNotificationSettings(context: Context) {
+    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+            putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+        }
+    } else {
+        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
         }
     }
-}
-
-/** 设置导航行：标题 + 副标题 + 可选忙碌态 + 右箭头 */
-@Composable
-internal fun SettingNavRow(
-    title: String,
-    subtitle: String,
-    onClick: (() -> Unit)? = null,
-    busy: Boolean = false,
-    danger: Boolean = false,
-) {
-    val qy = qyColors()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = onClick != null) { onClick?.invoke() }
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (danger) qy.danger else qy.text,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = qy.soft,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (busy) {
-            CircularProgressIndicator(
-                Modifier.padding(start = 8.dp),
-                strokeWidth = 2.dp,
-                color = qy.accent,
-            )
-        } else if (onClick != null) {
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = qy.muted,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
-    }
-}
-
-/** 设置开关行：标题 + 副标题 + Switch */
-@Composable
-internal fun SettingSwitchRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    val qy = qyColors()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = qy.text)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = qy.soft,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-        )
-    }
-}
-
-/** 可展开设置的单项选择行：只高亮真正选中的档位。 */
-@Composable
-private fun SettingChoiceRow(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val qy = qyColors()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 26.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (selected) qy.accent else qy.text,
-            )
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = qy.soft,
-            )
-        }
-        if (selected) {
-            Text("当前", style = MaterialTheme.typography.labelSmall, color = qy.accent)
-        }
-    }
-}
-
-/** 选项行：点击选中高亮（泛型，用于字体/间距/主题等枚举选项） */
-@Composable
-internal fun <T> OptionPickerRow(
-    label: String,
-    subtitle: String = "",
-    options: List<T>,
-    selected: T,
-    labelOf: (T) -> String,
-    onSelect: (T) -> Unit,
-) {
-    val qy = qyColors()
-    val isSelected = options.any { it == selected }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onSelect(selected) }
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                label,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isSelected) qy.accent else qy.text,
-            )
-            if (subtitle.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = qy.soft,
-                )
-            }
-        }
-        if (isSelected) {
-            Box(
-                Modifier
-                    .padding(start = 8.dp)
-                    .background(qy.accent.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-            ) {
-                Text("当前", style = MaterialTheme.typography.labelSmall, color = qy.accent)
-            }
-        }
-    }
-}
-
-/** 内网穿透指引对话框（方案 §5.2 三路线：Tailscale / ZeroTier / frp） */
-@Composable
-internal fun TunnelGuideDialog(onDismiss: () -> Unit) {
-    val qy = qyColors()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = qy.card,
-        title = { Text("内网穿透指引", color = qy.text) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("局域网外连接 PC 的三条路线（任选其一）：", color = qy.soft)
-                listOf(
-                    "Tailscale" to "安装并登录同一账号，两端自动组网，配置最简单，推荐首选",
-                    "ZeroTier" to "自建虚拟局域网，需要两端加入同一 Network ID",
-                    "frp" to "自建服务器做反向代理，适合有公网服务器的用户",
-                ).forEach { (name, desc) ->
-                    Row(verticalAlignment = Alignment.Top) {
-                        Text(
-                            "• $name",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = qy.accent,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    Text(
-                        desc,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = qy.soft,
-                        modifier = Modifier.padding(start = 12.dp, bottom = 4.dp),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("知道了", color = qy.accent) }
-        },
-    )
+    context.startActivity(intent)
 }

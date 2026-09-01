@@ -1,5 +1,6 @@
 import type { GroupChat, GroupMessage, GroupSession, Preset, MemoryFactRecord } from '../../shared/types'
-import type { BudgetLoreItem } from '../utils/lorebook'
+import type { BudgetLoreItem, LorebookDiagnostics } from '../utils/lorebook'
+import type { GroupContextBuildResult } from './groupChatContext'
 import type { FactSearchHit } from '../../shared/ipc-api'
 
 /** 群聊 store 的完整状态与动作接口 */
@@ -24,10 +25,13 @@ export interface GroupChatState {
   switchSession: (groupId: string, sessionId: string) => Promise<void>
   deleteSession: (groupId: string, sessionId: string) => Promise<void>
   renameSession: (groupId: string, sessionId: string, title: string) => Promise<void>
+  setSessionPersona: (personaId: string | null) => Promise<void>
 
   loadMessages: (groupId: string, sessionId: string) => Promise<void>
   sendMessage: (content: string, images: string[], targetCharId?: string, replyToId?: string | null) => Promise<void>
   sendPollingRound: (charId: string) => Promise<void>
+  /** 让指定群成员仅根据当前上下文回复一次，不启动或推进自动接力。 */
+  triggerCharacterReply: (charId: string) => Promise<void>
   stopStreaming: () => void
   clearChat: (groupId: string) => Promise<void>
   clearMessages: () => void
@@ -37,12 +41,21 @@ export interface GroupChatState {
   translateMessage: (messageId: string) => Promise<void>
   insertCharacterMessage: (charId: string, content: string) => Promise<void>
 
-  buildGroupContext: (targetCharId?: string, preset?: Preset | null) => { role: 'system' | 'user' | 'assistant'; content: string }[]
+  buildGroupContext: (targetCharId?: string, preset?: Preset | null, opts?: {
+    trackUsage?: boolean
+    lorebookDiagnosticsMode?: 'live' | 'preview'
+  }) => { role: 'system' | 'user' | 'assistant'; content: string }[]
+  buildGroupContextReport: (targetCharId?: string, preset?: Preset | null) => GroupContextBuildResult
   ensureLorebooksLoaded: (lorebookIds: string[]) => Promise<void>
   /** 语义触发（向量 RAG）命中条目缓存：群聊发言前预取，buildGroupContext 合并注入（不持久化） */
   _semanticLoreHits: BudgetLoreItem[]
+  /** 最近一次世界书向量检索是否成功；用于区分“零命中”与“服务不可用”。 */
+  _semanticLoreAvailable: boolean | undefined
   /** 记忆事实语义检索命中缓存（不持久化） */
   _semanticFactsHits: Array<FactSearchHit | string>
+  /** 上一轮真实发送的世界书触发轨迹（仅内存）。 */
+  lastLorebookDiagnostics: LorebookDiagnostics | null
+  lastLorebookDiagnosticsSessionId: string | null
 
   toggleMemory: (groupId: string, sessionId: string, enabled: boolean) => Promise<void>
   setMemoryMode: (groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number) => Promise<void>

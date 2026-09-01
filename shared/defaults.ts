@@ -57,12 +57,6 @@ export function getDefaultSettings(): Settings {
     coverProxyUrl: '',
     fontFamily: 'system',
     customFontId: null,
-    authorNote: {
-      enabled: false,
-      text: '',
-      position: 'middle',
-      depth: 1,
-    },
     semanticTrigger: {
       enabled: false,
       provider: 'ollama',
@@ -71,6 +65,13 @@ export function getDefaultSettings(): Settings {
       apiKey: '',
       threshold: 0.3,
       maxResults: 3,
+    },
+    localModels: {
+      retrievalMode: 'auto',
+      autoIndex: true,
+      updatePolicy: 'notify',
+      idleOnly: true,
+      batchSize: 8,
     },
     personaInjection: {
       enabled: true,

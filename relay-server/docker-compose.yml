@@ -1,0 +1,47 @@
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: relay-server/Dockerfile
+    env_file: .env
+    ports: ["127.0.0.1:${RELAY_BIND_PORT:-3100}:3100"]
+    volumes: ["./secrets:/run/secrets:ro"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3100/relay/v1/health/live"], interval: 10s, timeout: 3s, retries: 10 }
+    restart: unless-stopped
+  migrate:
+    build:
+      context: ..
+      dockerfile: relay-server/Dockerfile
+    env_file: .env
+    environment:
+      RELAY_MIGRATIONS_DIR: /app/relay-server/migrations
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ["node", "relay-server/dist/relay-server/src/db/migrate.js"]
+    restart: "no"
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: qingyu_relay
+      POSTGRES_USER: qingyu_relay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes: ["relay-postgres:/var/lib/postgresql/data"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U qingyu_relay"], interval: 5s, timeout: 3s, retries: 10 }
+  redis:
+    image: redis:7-alpine
+    volumes: ["relay-redis:/data"]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 10 }
+  minio:
+    image: minio/minio:latest
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes: ["relay-minio:/data"]
+volumes:
+  relay-postgres:
+  relay-redis:
+  relay-minio:

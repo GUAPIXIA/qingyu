@@ -80,7 +80,9 @@ describe('chat:getMemoryHistory', () => {
 })
 
 describe('bridge GET /sessions/:id/memory/history', () => {
-  it('桥接历史接口分页过滤', async () => {
+  // 本用例动态 import bridge 全链路并起真实 HTTP 服务；整仓并发时 transform 拖慢，
+  // 5s 默认超时偶发误报（单跑 2.3s），放宽到 20s 吸收并发负载。
+  it('桥接历史接口分页过滤', { timeout: 20_000 }, async () => {
     // 复用 chatData 创建会话与历史
     const charId = 'char-bridge-hist'
     const session = await chatData.createSession(charId, '桥接历史')

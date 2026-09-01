@@ -21,26 +21,31 @@ export function GroupMemberBar({ memberIds, currentSpeakerIndex, onSpeakerClick,
 
   return (
     <div className="border-t border-tavern-border-soft bg-tavern-bg-soft px-3 py-2 flex items-center gap-3 overflow-x-auto">
-      <span className="text-[10px] text-tavern-text-muted shrink-0 font-medium">成员</span>
+      <span className="text-[10px] text-tavern-text-muted shrink-0 font-medium">
+        {onSpeakerClick ? '点成员让 TA 立即接话' : '群成员'}
+      </span>
       {members.map((m) => {
         // 用角色 ID 匹配 currentSpeakerIndex，避免过滤后索引错位
-        const isCurrent = m.id === memberIds[currentSpeakerIndex]
+        const isCurrent = !!onSpeakerClick && m.id === memberIds[currentSpeakerIndex]
         return (
           <button
             key={m.id}
             onClick={() => onSpeakerClick?.(m.id)}
+            disabled={!onSpeakerClick}
+            aria-label={onSpeakerClick ? `让 ${getDisplayName(m)} 立即接话` : getDisplayName(m)}
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 rounded-full text-xs transition-all shrink-0 relative',
               isCurrent
                 ? 'bg-tavern-accent-soft text-tavern-accent ring-2 ring-tavern-accent/50 shadow-sm'
-                : 'bg-tavern-bg-hover text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg'
+                : 'bg-tavern-bg-hover text-tavern-text-muted',
+              onSpeakerClick ? 'hover:text-tavern-text hover:bg-tavern-bg' : 'cursor-default opacity-80'
             )}
             style={isCurrent && themeColor ? {
               backgroundColor: `${themeColor}20`,
               color: themeColor,
               boxShadow: `0 0 0 2px ${themeColor}80, 0 2px 8px ${themeColor}30`,
             } : undefined}
-            title={getDisplayName(m)}
+            title={onSpeakerClick ? `让 ${getDisplayName(m)} 立即接话` : getDisplayName(m)}
           >
             {/* 头像带呼吸动画指示器 */}
             <div className="relative">

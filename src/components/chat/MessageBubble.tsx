@@ -288,6 +288,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             className={cn(
               'msg-bubble max-w-full',
               hasOnlyImages ? 'p-2' : 'px-5 py-3.5',
+              isUser && !hasOnlyImages && 'w-fit',
               settings.bubbleStyle === 'round' && 'rounded-2xl',
               settings.bubbleStyle === 'standard' && 'rounded-lg',
               settings.bubbleStyle === 'sharp' && 'rounded-sm',
@@ -434,6 +435,9 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             </div>
           )}
         </div>
+
+        {/* 对侧占位：预留头像宽度，使左右气泡对齐在同一中间列 */}
+        <div className="w-10 shrink-0" aria-hidden="true" />
       </div>
     </div>
 

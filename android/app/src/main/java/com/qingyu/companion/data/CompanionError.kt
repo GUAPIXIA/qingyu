@@ -1,5 +1,8 @@
 package com.qingyu.companion.data
 
+import com.qingyu.companion.model.SettingsConflictBodyDto
+import com.qingyu.companion.model.SettingsSnapshotDto
+import com.qingyu.companion.network.NetworkModule
 import kotlinx.serialization.SerializationException
 import retrofit2.HttpException
 import java.io.IOException
@@ -15,6 +18,25 @@ sealed class CompanionError(
     message: String,
     cause: Throwable? = null,
 ) : Exception(message, cause) {
+
+    companion object {
+        /**
+         * 从 409 响应体解析设置快照冲突（C-06）：
+         * 仅当 body 明确携带 `error: "settings_conflict"`（或结构不符但含该标记字符串）才映射，
+         * 其他端点的 409 不误判为设置冲突；current 解析失败时保留 null 供 UI 走「重新拉取」降级。
+         */
+        fun settingsConflictFrom(statusCode: Int, body: String?, cause: Throwable? = null): Conflict? {
+            if (statusCode != 409 || body == null) return null
+            val parsed = runCatching {
+                NetworkModule.json.decodeFromString(SettingsConflictBodyDto.serializer(), body)
+            }.getOrNull()
+            return when {
+                parsed?.error == "settings_conflict" -> Conflict(current = parsed.current, rawBody = body, cause = cause)
+                "settings_conflict" in body -> Conflict(current = null, rawBody = body, cause = cause)
+                else -> null
+            }
+        }
+    }
 
     /** 401 / token 失效 → 重新配对 */
     class Unauthorized(message: String = "未授权，请重新配对", cause: Throwable? = null) :
@@ -43,6 +65,17 @@ sealed class CompanionError(
     class ParseError(message: String = "数据解析失败", cause: Throwable? = null) :
         CompanionError(message, cause)
 
+    /**
+     * 设置同步 v2 乐观并发冲突（409 settings_conflict，方案 §7 C-02/C-06）。
+     * 保留服务端 current 快照供 UI 展示「PC 当前值 vs 本次修改」并支持再次应用。
+     */
+    class Conflict(
+        val current: SettingsSnapshotDto? = null,
+        val rawBody: String? = null,
+        message: String = "PC 设置已被其他端修改，需要确认保留哪一方",
+        cause: Throwable? = null,
+    ) : CompanionError(message, cause)
+
     /** 未知 */
     class Unknown(message: String = "未知错误", cause: Throwable? = null) :
         CompanionError(message, cause)
@@ -53,6 +86,11 @@ fun Throwable.toCompanionError(): CompanionError {
     if (this is CompanionError) return this
     if (this is HttpException) {
         val code = code()
+        // C-06：409 优先解析快照冲突（仅 settings 快照端点会返回该语义；解析失败回落 ServerRejected）
+        if (code == 409) {
+            val body = runCatching { response()?.errorBody()?.string() }.getOrNull()
+            CompanionError.settingsConflictFrom(code, body, this)?.let { return it }
+        }
         val msg = message() ?: response()?.errorBody()?.string()?.take(200) ?: "HTTP $code"
         return when (code) {
             401 -> CompanionError.Unauthorized(msg, this)
@@ -88,6 +126,7 @@ fun CompanionError.userMessage(): String = when (this) {
     is CompanionError.Timeout -> "请求超时，请重试"
     is CompanionError.ServerRejected -> "服务拒绝 ($code)：$message"
     is CompanionError.ParseError -> "数据解析失败，请升级"
+    is CompanionError.Conflict -> "PC 设置已被其他端修改，请选择保留哪一方"
     is CompanionError.Unknown -> message ?: "未知错误"
 }
 

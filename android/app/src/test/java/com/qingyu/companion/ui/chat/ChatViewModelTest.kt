@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -57,6 +58,10 @@ class ChatViewModelTest {
         timestamp = ts,
     )
 
+    /** v1 sendMessage 成功返回值：已落盘的用户消息。 */
+    private fun userMsg(id: String, content: String = id) =
+        msg(id = id, content = content).copy(role = Role.user)
+
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
@@ -74,7 +79,7 @@ class ChatViewModelTest {
     @Test
     fun `发送成功后消息入列表并清空输入`() = runTest(dispatcher) {
         repo.onSend = { _, requestId, content, _, _ ->
-            msg(id = requestId, content = content)
+            userMsg(id = requestId, content = content)
         }
         vm.onInputChange("你好")
         vm.send()
@@ -83,6 +88,42 @@ class ChatViewModelTest {
         assertEquals("你好", vm.ui.value.messages.single().content)
         assertEquals("", vm.input.value)
         assertTrue(vm.ui.value.pending.isEmpty())
+    }
+
+    @Test
+    fun `v2 返回助手消息后立即重拉并保留用户消息`() = runTest(dispatcher) {
+        val user = msg(id = "server-user", ts = 1_000L, content = "提问")
+            .copy(role = Role.user)
+        val assistant = msg(id = "server-ai", ts = 2_000L, content = "回答")
+        repo.onSend = { _, _, _, _, _ ->
+            // v2 task 链路完成时，服务端消息列表已包含用户消息和助手回复，
+            // 但 sendMessage 的直接返回值是最终助手消息。
+            repo.messages = listOf(assistant, user)
+            assistant
+        }
+
+        vm.onInputChange("提问")
+        vm.send()
+        advanceUntilIdle()
+
+        assertEquals(listOf("server-ai", "server-user"), vm.ui.value.messages.map { it.id })
+        assertTrue(vm.ui.value.pending.isEmpty())
+        assertTrue(vm.ui.value.streaming is ChatViewModel.Streaming.Idle)
+    }
+
+    @Test
+    fun `v2 完成后服务端列表短暂滞后时使用本地快照`() = runTest(dispatcher) {
+        val assistant = msg(id = "server-ai", ts = 2_000L, content = "回答")
+        repo.onSend = { _, _, _, _, _ -> assistant }
+
+        vm.onInputChange("提问")
+        vm.send()
+        advanceUntilIdle()
+
+        assertEquals(setOf("提问", "回答"), vm.ui.value.messages.map { it.content }.toSet())
+        assertEquals(setOf(Role.user, Role.assistant), vm.ui.value.messages.map { it.role }.toSet())
+        assertTrue(vm.ui.value.pending.isEmpty())
+        assertTrue(vm.ui.value.streaming is ChatViewModel.Streaming.Idle)
     }
 
     @Test
@@ -101,7 +142,7 @@ class ChatViewModelTest {
     @Test
     fun `空白输入不发送`() = runTest(dispatcher) {
         var sendCount = 0
-        repo.onSend = { _, _, _, _, _ -> sendCount++; msg("m") }
+        repo.onSend = { _, _, _, _, _ -> sendCount++; userMsg("m") }
         vm.onInputChange("   ")
         vm.send()
         advanceUntilIdle()
@@ -121,7 +162,7 @@ class ChatViewModelTest {
 
         // 重试：复用原幂等键
         repo.onSend = { _, rid, content, _, _ ->
-            msg(id = if (rid == requestId) "final-id" else rid, content = content)
+            userMsg(id = if (rid == requestId) "final-id" else rid, content = content)
         }
         vm.retryPending(requestId)
         advanceUntilIdle()
@@ -137,7 +178,7 @@ class ChatViewModelTest {
     @Test
     fun `chunk 累积后进入 streaming 状态`() = runTest(dispatcher) {
         // 发送一条消息触发流式
-        repo.onSend = { _, requestId, content, _, _ -> msg(id = requestId, content = content) }
+        repo.onSend = { _, requestId, content, _, _ -> userMsg(id = requestId, content = content) }
         vm.onInputChange("问")
         vm.send()
         advanceUntilIdle()
@@ -161,7 +202,7 @@ class ChatViewModelTest {
 
     @Test
     fun `done 到达替换流式缓冲为完整消息`() = runTest(dispatcher) {
-        repo.onSend = { _, requestId, content, _, _ -> msg(id = requestId, content = content) }
+        repo.onSend = { _, requestId, content, _, _ -> userMsg(id = requestId, content = content) }
         vm.onInputChange("问")
         vm.send()
         advanceUntilIdle()
@@ -239,8 +280,10 @@ class ChatViewModelTest {
         advanceUntilIdle()
 
         vm.translate("m1")
+        assertTrue("m1" in vm.ui.value.translatingMessageIds)
         advanceUntilIdle()
         assertEquals("你好", vm.ui.value.messages.single().translation)
+        assertFalse("m1" in vm.ui.value.translatingMessageIds)
     }
 
     @Test
@@ -260,7 +303,7 @@ class ChatViewModelTest {
     @Test
     fun `text 型快捷回复直接发送`() = runTest(dispatcher) {
         var sent = ""
-        repo.onSend = { _, _, content, _, _ -> sent = content; msg(id = "m") }
+        repo.onSend = { _, _, content, _, _ -> sent = content; userMsg(id = "m") }
         repo.quickReplyList = QuickReplyListResponse(
             global = listOf(QuickReply(id = "qr1", label = "早安", content = "早上好", action = QuickReplyAction.text, sendWithAI = false, order = 1, enabled = true)),
             byCharacter = emptyMap(),
@@ -276,7 +319,7 @@ class ChatViewModelTest {
     @Test
     fun `execute 成功则不直发`() = runTest(dispatcher) {
         var sent = false
-        repo.onSend = { _, _, _, _, _ -> sent = true; msg(id = "m") }
+        repo.onSend = { _, _, _, _, _ -> sent = true; userMsg(id = "m") }
         repo.onExecute = { true }
         vm.onQuickReplyClick(
             QuickReply(id = "qr1", label = "L", content = "", action = QuickReplyAction.command, sendWithAI = false, order = 1, enabled = true)
@@ -289,7 +332,7 @@ class ChatViewModelTest {
 
     @Test
     fun `连接恢复自动重发失败消息`() = runTest(dispatcher) {
-        repo.onSend = { _, rid, content, _, _ -> msg(id = rid, content = content) }
+        repo.onSend = { _, rid, content, _, _ -> userMsg(id = rid, content = content) }
         // 制造失败 pending
         repo.failNextSend = true
         vm.onInputChange("断线内容")
@@ -324,7 +367,7 @@ class ChatViewModelTest {
     @Test
     fun `引用回复随发送传递 replyToId 并清除`() = runTest(dispatcher) {
         var replyId: String? = "not-set"
-        repo.onSend = { _, _, _, replyToId, _ -> replyId = replyToId; msg(id = "m") }
+        repo.onSend = { _, _, _, replyToId, _ -> replyId = replyToId; userMsg(id = "m") }
         vm.onInputChange("回复你")
         vm.setReplyTo(msg("target-1", content = "原消息"))
         vm.send()
@@ -365,7 +408,7 @@ class ChatViewModelTest {
         repo.onSend = { _, _, _, replyToId, images ->
             retriedReplyId = replyToId
             retriedImages = images
-            msg(id = reqId, content = "重试内容")
+            userMsg(id = reqId, content = "重试内容")
         }
         vm.retryPending(reqId)
         advanceUntilIdle()
@@ -396,7 +439,7 @@ class ChatViewModelTest {
         repo.onSend = { _, _, _, replyToId, images ->
             autoReplyId = replyToId
             autoImages = images
-            msg(id = pending.requestId, content = "带图引用")
+            userMsg(id = pending.requestId, content = "带图引用")
         }
         repo.setConnected(true)
         advanceUntilIdle()
@@ -419,7 +462,7 @@ class ChatViewModelTest {
         var retriedReplyId: String? = "not-set"
         repo.onSend = { _, _, _, replyToId, _ ->
             retriedReplyId = replyToId
-            msg(id = reqId, content = "普通消息")
+            userMsg(id = reqId, content = "普通消息")
         }
         vm.retryPending(reqId)
         advanceUntilIdle()
@@ -490,10 +533,27 @@ private class FakeChatRepository : ChatRepository {
         replyToId: String?,
         images: List<String>,
     ): Message {
+        // F-06 Fake 语义与生产一致：发送前先记发件箱行（queued），失败保留（failed_send），
+        // 成功移除（completed 后清理）——retryPending 的 outboxEntry 回读才能闭环。
+        outbox[requestId] = com.qingyu.companion.model.PendingMessage(
+            requestId = requestId,
+            content = content,
+            timestamp = System.currentTimeMillis(),
+            failed = false,
+            images = images,
+            replyToId = replyToId,
+        )
         if (failNextSend) throw RuntimeException("网络中断")
-        return onSend?.invoke(sessionId, requestId, content, replyToId, images)
+        val result = onSend?.invoke(sessionId, requestId, content, replyToId, images)
             ?: Message(requestId, sessionId, "c1", Role.user, content, timestamp = System.currentTimeMillis())
+        outbox.remove(requestId)
+        return result
     }
+
+    /** 内存发件箱（requestId -> 行），模拟 Room outbox_messages 的最小行为 */
+    private val outbox = LinkedHashMap<String, com.qingyu.companion.model.PendingMessage>()
+
+    override suspend fun outboxEntry(requestId: String): com.qingyu.companion.model.PendingMessage? = outbox[requestId]
 
     override suspend fun editMessage(sessionId: String, messageId: String, content: String): Message =
         onEdit?.invoke(sessionId, messageId, content) ?: throw UnsupportedOperationException()

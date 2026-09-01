@@ -1,0 +1,20 @@
+{
+  "lorebookVersion": 4,
+  "futureBookMeta": { "tuned": true },
+  "entries": [
+    {
+      "text": "这座遗迹沉睡在沙漠深处。",
+      "keys": ["遗迹"],
+      "enabled": true,
+      "forceActivation": false,
+      "vectorized": false,
+      "caseSensitive": false,
+      "priority": 5,
+      "id": 301,
+      "comment": "",
+      "useProbability": true,
+      "probability": 100,
+      "futureEntryFlag": true
+    }
+  ]
+}

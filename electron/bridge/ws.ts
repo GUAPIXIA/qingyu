@@ -18,6 +18,8 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { verifyAuthorizedToken, touchDevice } from './auth'
 import { createLogger } from '../services/logger'
 import { sanitizeApiKey } from '../utils/pathGuard'
+import type { MobileEventSink } from './runtime/mobileEventBus'
+import { GenerationRegistry } from './runtime/generationRegistry'
 
 const log = createLogger('bridge-ws')
 
@@ -31,13 +33,12 @@ export interface WsEnvelope {
   payload?: unknown
 }
 
-/** 活跃请求的取消句柄：requestId -> AbortController（客户端 ai:stop 驱动） */
-export const activeChatControllers = new Map<string, AbortController>()
-
-export class WsHub {
+export class WsHub implements MobileEventSink {
   private wss: WebSocketServer | null = null
   private readonly clients = new Set<WebSocket>()
   private readonly deviceBySocket = new Map<WebSocket, string>()
+
+  constructor(private readonly generations = new GenerationRegistry()) {}
 
   /** 挂载到 HTTP server */
   attach(server: ReturnType<typeof createServer>, path = '/ws'): void {
@@ -93,8 +94,7 @@ export class WsHub {
           if (frame.event === 'ai:stop' && typeof frame.payload === 'object' && frame.payload !== null) {
             const requestId = (frame.payload as { requestId?: string }).requestId
             if (requestId) {
-              activeChatControllers.get(requestId)?.abort()
-              activeChatControllers.delete(requestId)
+              this.generations.cancel(requestId)
               log.info('客户端请求停止生成', { requestId })
             }
             return
@@ -129,6 +129,18 @@ export class WsHub {
         try {
           client.send(frame)
         } catch (err) {
+          log.warn('WS 推送失败', { error: (err as Error).message })
+        }
+      }
+    }
+  }
+
+  publish(event: string, payload?: unknown, targetDeviceId?: string): void {
+    const frame = JSON.stringify({ event, payload } satisfies WsEnvelope)
+    for (const client of this.clients) {
+      if (targetDeviceId && this.deviceBySocket.get(client) !== targetDeviceId) continue
+      if (client.readyState === WebSocket.OPEN) {
+        try { client.send(frame) } catch (err) {
           log.warn('WS 推送失败', { error: (err as Error).message })
         }
       }

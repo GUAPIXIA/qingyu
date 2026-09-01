@@ -28,12 +28,17 @@ function buildChatSnapshot(): ContextChatSnapshot {
     currentSessionId: store.currentSessionId,
     activeLorebookIds: store.activeLorebookIds,
     semanticFactsHits: store._semanticFactsHits,
+    semanticLoreAvailable: store._semanticLoreAvailable,
     // BudgetLoreItem -> SemanticLoreHit（shared 层不依赖 src 内部类型）
     semanticLoreHits: store._semanticLoreHits.map((hit) => ({
       content: hit.content,
       order: hit.order,
       position: hit.position,
       depth: hit.depth,
+      score: hit.score,
+      key: hit.key,
+      summary: hit.summary,
+      priority: hit.priority,
     })),
   }
 }

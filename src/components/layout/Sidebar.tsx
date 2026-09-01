@@ -45,7 +45,7 @@ const navGroups = [
   },
   {
     id: 'service', label: '服务', defaultOpen: false, items: [
-      { to: '/api', label: 'API', icon: Plug },
+      { to: '/api', label: '模型', icon: Plug },
       { to: '/mcp', label: 'MCP', icon: Wrench },
     ]
   },

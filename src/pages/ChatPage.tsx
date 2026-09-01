@@ -522,14 +522,18 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* 消息列表 - S2-B：正文限宽 780px 提升阅读舒适度 */}
+      {/* 消息列表：滚动列跟随消息宽度设置，并保留气泡两侧留白 */}
       <div
         className={cn(
           'flex-1 overflow-hidden relative z-0 flex justify-center',
           `bubble-${settings.bubbleStyle}`
         )}
       >
-        <div className="w-full max-w-[780px] h-full flex flex-col">
+        <div
+          data-testid="chat-message-scroll-column"
+          className="w-full h-full flex flex-col"
+          style={{ maxWidth: `${(settings.messageWidth ?? 768) + 32}px` }}
+        >
         {messages.length === 0 ? (
           <EmptyState
             className="h-full"

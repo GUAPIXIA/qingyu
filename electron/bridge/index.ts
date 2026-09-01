@@ -17,6 +17,11 @@ import { DIRS } from '../services/storage'
 import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { BridgeServer } from './server'
 import { MdnsAdvertiser } from './mdns'
+import { API_VERSION, SERVER_CAPABILITIES, PAIR_CODE_TTL_SEC, TLS_ENABLED } from './protocol'
+import { getServerId, getServerDisplayName } from './identity'
+import { buildPairingQrV2, buildPairingQrLegacy, type PairingQrEndpoint } from '../../shared/pairingQr'
+import { subscribeSettingsChanges } from '../services/settingsChangeBus'
+import type { PairingInfo } from '../../shared/ipc-api'
 import {
   generatePairingCode,
   listDevices,
@@ -25,12 +30,14 @@ import {
   getPendingPair,
   wipeDevices,
   isPairingCodeValid,
+  getPairingCodeExpiry,
   revokePairingCode,
   getJwtSecret,
 } from './auth'
 import { createLogger } from '../services/logger'
 import { safeId } from '../utils/pathGuard'
 import type { IpcMain } from 'electron'
+import { BridgeRuntime } from './runtime/bridgeRuntime'
 
 const log = createLogger('bridge')
 
@@ -83,6 +90,16 @@ export function resolveBridgeHost(
   return candidates[0]?.ip || '127.0.0.1'
 }
 
+/**
+ * C-04 防回环判定：change bus 事件是否应由桥接层再次广播到 WS。
+ * - 'pc' 来源（PC UI 保存）：需要转发，让手机感知；
+ * - 'android:<id>' 来源：安卓 PATCH 已在桥接路径广播过（写一次、广播一次），
+ *   再转发会造成事件回显/无限循环，必须跳过。
+ */
+export function shouldBroadcastSettingsToWs(source: 'pc' | `android:${string}`): boolean {
+  return source === 'pc'
+}
+
 /** 本机指纹（二维码校验用；hostname + MAC 哈希，稳定且不泄露原值） */
 export function getMachineFingerprint(): string {
   const hostname = (process.env.COMPUTERNAME || process.env.HOSTNAME || 'pc').toString()
@@ -101,6 +118,7 @@ export class BridgeService {
   private config: BridgeConfig = { ...DEFAULT_CONFIG }
   /** 当前生效的配对码（二维码内容） */
   private pairingCode = ''
+  private readonly runtime: BridgeRuntime
 
   /** 会话变更通知：广播渲染层 + WS（由本服务统一转发） */
   private onSessionChanged = (sessionId: string, change: string): void => {
@@ -114,7 +132,19 @@ export class BridgeService {
   }
 
   constructor() {
+    this.runtime = new BridgeRuntime(this.onSessionChanged)
     this.loadConfig()
+    // C-04：PC UI 保存设置（settings:save IPC）-> change bus -> WS settings:updated。
+    // 防回环：安卓来源事件由桥接 PATCH 路径直接广播，此处不重复转发
+    //（写一次、广播一次——避免 Android 来源的 PATCH 再触发一轮 PC 侧通知）。
+    subscribeSettingsChanges((event) => {
+      if (!shouldBroadcastSettingsToWs(event.source)) return
+      this.server?.broadcast('settings:updated', {
+        revision: event.revision,
+        changedFields: event.changedFields,
+        sourceDeviceId: 'pc',
+      })
+    })
   }
 
   // ===== 配置 =====
@@ -184,7 +214,7 @@ export class BridgeService {
         }
       }
     }
-    const server = new BridgeServer(this.onSessionChanged, onPairRequest)
+    const server = new BridgeServer(this.onSessionChanged, onPairRequest, this.runtime)
     const handle = await server.start({ host, port: this.config.port })
     this.server = server
     // mDNS 自动发现广播（_qingyu._tcp，锦上添花；失败不阻塞）
@@ -211,10 +241,12 @@ export class BridgeService {
   }
 
   /**
-   * 获取配对信息。
+   * 获取配对信息（QR v2 数据源；阶段 D-02）。
    * regenerate=true 强制生成新配对码；否则复用当前码，但当前码已消费/过期时自动重生成。
+   * 旧字段 host/port/fingerprint/expiresInSec 逐字节保持兼容；
+   * serverId/capabilities/expiresAt/endpoints 为 v2 增量（旧渲染层/客户端忽略即可）。
    */
-  getPairingInfo(regenerate = false): { host: string; port: number; fingerprint: string; expiresInSec: number } {
+  getPairingInfo(regenerate = false): PairingInfo {
     const invalid = this.pairingCode && !isPairingCodeValid(this.pairingCode)
     if (regenerate || !this.pairingCode || invalid) {
       // 强制重新生成时先作废旧码（防旧码仍可扫码配对）
@@ -227,10 +259,53 @@ export class BridgeService {
     // host 优先取绑定网卡，其次第一个局域网候选 IP（避免扫码连到 127.0.0.1）
     const candidates = getNetworkCandidates()
     const host = resolveBridgeHost(this.config.host, candidates)
-    return { host, port: this.config.port, fingerprint: this.pairingCode, expiresInSec: 5 * 60 }
+    const security: PairingQrEndpoint['security'] = TLS_ENABLED ? 'TLS' : 'LOCAL_CLEARTEXT'
+    const endpoints: PairingQrEndpoint[] = [{ host, port: this.config.port, security }]
+    // 多网卡时附带其余候选地址（安卓端可按可达性择优重试）
+    for (const candidate of candidates) {
+      if (candidate.ip !== host) {
+        endpoints.push({ host: candidate.ip, port: this.config.port, security })
+      }
+    }
+    const expiresAt = getPairingCodeExpiry(this.pairingCode) ?? Date.now() + PAIR_CODE_TTL_SEC * 1000
+    return {
+      host,
+      port: this.config.port,
+      fingerprint: this.pairingCode,
+      expiresInSec: Math.max(0, Math.round((expiresAt - Date.now()) / 1000)),
+      serverId: getServerId(),
+      displayName: getServerDisplayName(),
+      apiVersion: API_VERSION,
+      // QR v2 能力集合与 /server/info 一致（安卓端扫码即可协商，无需先拉 info）
+      capabilities: [...SERVER_CAPABILITIES],
+      expiresAt,
+      endpoints,
+    }
   }
 
   // ===== 设备管理 =====
+
+  /**
+   * 生成配对二维码载荷 JSON（D-02）。
+   * mode='v2'（默认）：QR v2（serverId/capabilities/expiresAt/endpoints/certificatePin:null）；
+   * mode='legacy'：旧格式 {host,port,fingerprint}（旧 Android 至少一个发布周期兼容）。
+   * 两种模式的配对码同为当前一次性 pairingCode，扫码后走同一 POST /auth/pair。
+   */
+  getPairingQrPayload(mode: 'v2' | 'legacy' = 'v2'): string {
+    const info = this.getPairingInfo()
+    if (mode === 'legacy') {
+      return JSON.stringify(buildPairingQrLegacy(info.host, info.port, info.fingerprint))
+    }
+    return JSON.stringify(buildPairingQrV2({
+      serverId: info.serverId ?? getServerId(),
+      displayName: info.displayName ?? getServerDisplayName(),
+      apiVersion: info.apiVersion ?? API_VERSION,
+      capabilities: info.capabilities ?? [...SERVER_CAPABILITIES],
+      pairingCode: info.fingerprint,
+      expiresAt: info.expiresAt ?? Date.now() + PAIR_CODE_TTL_SEC * 1000,
+      endpoints: info.endpoints ?? [{ host: info.host, port: info.port, security: TLS_ENABLED ? 'TLS' : 'LOCAL_CLEARTEXT' }],
+    }))
+  }
 
   listDevices() {
     return listDevices()
@@ -268,6 +343,12 @@ export class BridgeService {
   /** 注销（应用退出） */
   dispose(): void {
     this.stop()
+    this.runtime.dispose()
+  }
+
+  /** LAN 与 Relay 共用的唯一移动业务运行时。 */
+  getRuntime(): BridgeRuntime {
+    return this.runtime
   }
 }
 
@@ -302,6 +383,10 @@ export function registerBridgeIPC(ipcMainInstance: IpcMain): void {
 
   ipcMainInstance.handle('bridge:pairingInfo', (_e, regenerate?: boolean) =>
     bridgeService.getPairingInfo(regenerate === true))
+
+  // QR v2 载荷生成（mode='legacy' 输出旧格式；渲染层按用户"旧版兼容"切换调用）
+  ipcMainInstance.handle('bridge:pairingQrPayload', (_e, mode?: 'v2' | 'legacy') =>
+    bridgeService.getPairingQrPayload(mode === 'legacy' ? 'legacy' : 'v2'))
 
   ipcMainInstance.handle('bridge:listDevices', () => bridgeService.listDevices())
 

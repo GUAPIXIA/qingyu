@@ -35,6 +35,8 @@ const UPDATE_SESSION_FIELDS = new Set([
   'titleGenerated',
   'lorebookIds',
   'personaId',
+  'recentTriggeredIds',
+  'lorebookCompressionCache',
 ])
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')

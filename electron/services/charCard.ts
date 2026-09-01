@@ -1,12 +1,14 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { DIRS, writeJson, readJson, readJsonAsync } from './storage'
-import type { Character, Lorebook, LoreEntry, RegexRule, QuickReply, QuickReplyStore } from '../../shared/types'
+import type { Character, RegexRule, QuickReply, QuickReplyStore } from '../../shared/types'
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
 import { validateCharacterCard, formatValidationErrors } from './charCardValidator'
 import { readPngTextChunks, writePngTextChunk, detectMimeType } from './charCardPng'
 import { downloadImageAsBase64 } from './charCardDownload'
+import { saveLorebookDocumentInput } from './lorebookDocumentStore'
+import { importLorebookWithRegistry } from './lorebookAdapters/registry'
 
 const log = createLogger('charCard')
 
@@ -183,36 +185,18 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
 
   // 自动提取内嵌世界书
   const charBook = data.character_book
-  if (charBook && charBook.entries && Array.isArray(charBook.entries) && charBook.entries.length > 0) {
+  if (charBook && charBook.entries) {
     try {
       const lorebookId = nanoid()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const entries: LoreEntry[] = charBook.entries.map((e: Record<string, any>, i: number) => ({
-        id: e.uid?.toString() ?? nanoid(),
-        keywords: Array.isArray(e.key) ? e.key.filter(Boolean) : (e.key ? String(e.key).split(',').map((s: string) => s.trim()).filter(Boolean) : []),
-        content: e.content ?? '',
-        position: e.position === 'before' || e.position === 0 ? 'before_char'
-          : e.position === 'after' || e.position === 1 ? 'after_char'
-          : e.position === 'depth' || e.position === 'at_depth' || e.position === 2 ? 'at_depth'
-          : 'at_end',
-        depth: typeof e.depth === 'number' ? Math.max(0, e.depth) : 0,
-        order: e.order ?? i,
-        probability: typeof e.probability === 'number' ? Math.max(0, Math.min(100, e.probability)) : 100,
-        enabled: e.disable ? false : (e.enabled !== undefined ? e.enabled : true),
-      }))
-
-      const lorebook: Lorebook = {
+      const imported = importLorebookWithRegistry(charBook, {
         id: lorebookId,
-        name: charBook.name ?? `${character.name}的世界书`,
-        description: charBook.description ?? '',
-        entries,
-        enabled: true,
-        scanDepth: charBook.scan_depth ?? 4,
-      }
+        fallbackName: `${character.name}的世界书`,
+        file: { fileName: 'embedded-character_book.json', extension: 'json' },
+      })
 
       const lorebookDir = DIRS.lorebooks()
       mkdirSync(lorebookDir, { recursive: true })
-      writeJson(join(lorebookDir, `${lorebookId}.json`), lorebook)
+      saveLorebookDocumentInput(join(lorebookDir, `${lorebookId}.json`), imported.document)
       character.lorebookId = lorebookId
     } catch {
       // 提取失败不阻断角色导入

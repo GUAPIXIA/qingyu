@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "pc:hello",
+  "id": "hello-00000000-0000-4000-8000-000000000001",
+  "sentAt": 1788172800000,
+  "payload": {
+    "deviceId": "00000000-0000-4000-8000-000000000001",
+    "appVersion": "0.17.0",
+    "protocolVersion": 1,
+    "lastEventSeq": 42,
+    "capabilities": ["relay.rpc", "relay.cache"]
+  }
+}

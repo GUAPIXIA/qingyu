@@ -1,4 +1,4 @@
-import { Sliders, StickyNote } from 'lucide-react'
+import { Sliders } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Toggle, SectionCard } from '../../components/common/SettingsShared'
 import type { Settings } from '../../../shared/types'
@@ -8,12 +8,12 @@ interface BehaviorSectionProps {
   updateSettings: (partial: Partial<Settings>) => void
 }
 
-/** 显示与行为 + 作者注释 */
+/** 显示与行为 */
 export function BehaviorSection(props: BehaviorSectionProps) {
   const { settings, updateSettings } = props
   return (
     <>
-        <SectionCard title="显示与行为" icon={<Sliders className="w-4 h-4" />}>
+        <SectionCard title="显示与行为" icon={<Sliders className="w-4 h-4" />} storageKey="behavior">
           <div className="mt-3 space-y-4">
             <div className="flex items-center justify-between py-1">
               <div>
@@ -129,78 +129,6 @@ export function BehaviorSection(props: BehaviorSectionProps) {
               </div>
               <p className="text-xs text-tavern-text-muted mt-1">角色卡封面毛玻璃效果的模糊强度，0 = 禁用</p>
             </div>
-          </div>
-        </SectionCard>
-
-        {/* 作者注释 */}
-        <SectionCard title="作者注释" icon={<StickyNote className="w-4 h-4" />}>
-          <div className="mt-3 space-y-4">
-            <div className="flex items-center justify-between py-1">
-              <div>
-                <p className="text-sm">启用作者注释</p>
-                <p className="text-xs text-tavern-text-muted">在上下文中注入浮动注释（Author's Note），持续引导对话方向</p>
-              </div>
-              <Toggle
-                checked={settings.authorNote?.enabled ?? false}
-                onChange={(v) => updateSettings({
-                  authorNote: {
-                    ...(settings.authorNote ?? { enabled: false, text: '', position: 'middle', depth: 1 }),
-                    enabled: v,
-                  },
-                })}
-              />
-            </div>
-            {settings.authorNote?.enabled && (
-              <>
-                <div>
-                  <label className="label">注释内容</label>
-                  <textarea
-                    className="input min-h-[80px] w-full"
-                    placeholder="例：主角正在寻找失踪的妹妹，请记住这个目标并推动剧情发展…"
-                    value={settings.authorNote.text ?? ''}
-                    onChange={(e) => updateSettings({
-                      authorNote: { ...settings.authorNote!, text: e.target.value },
-                    })}
-                  />
-                  <p className="text-xs text-tavern-text-muted mt-1">支持 {'{{char}}'} / {'{{user}}'} 变量替换</p>
-                </div>
-                <div>
-                  <label className="label">注入位置</label>
-                  <select
-                    className="select"
-                    value={settings.authorNote.position}
-                    onChange={(e) => updateSettings({
-                      authorNote: {
-                        ...settings.authorNote!,
-                        position: e.target.value as 'top' | 'middle' | 'bottom',
-                      },
-                    })}
-                  >
-                    <option value="top">系统提示之后</option>
-                    <option value="middle">历史消息中（按深度）</option>
-                    <option value="bottom">历史消息末尾</option>
-                  </select>
-                </div>
-                {settings.authorNote.position === 'middle' && (
-                  <div>
-                    <label className="label">注入深度（0 = 最新消息前）</label>
-                    <input
-                      type="number"
-                      min={0}
-                      className="input"
-                      value={settings.authorNote.depth ?? 1}
-                      onChange={(e) => updateSettings({
-                        authorNote: {
-                          ...settings.authorNote!,
-                          depth: Math.max(0, Number(e.target.value) || 0),
-                        },
-                      })}
-                    />
-                    <p className="text-xs text-tavern-text-muted mt-1">0 = 最新消息之前（对话末尾上方），1 = 倒数第二条消息之前，依此类推</p>
-                  </div>
-                )}
-              </>
-            )}
           </div>
         </SectionCard>
     </>

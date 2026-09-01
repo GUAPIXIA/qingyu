@@ -23,6 +23,8 @@ Object.defineProperty(window, 'api', {
       list: vi.fn(async () => []),
       save: vi.fn(async () => ({})),
       delete: vi.fn(async () => ({})),
+      importJson: vi.fn(async () => null),
+      exportJson: vi.fn(async () => ({ ok: true })),
       getBuiltin: vi.fn(async () => []),
     },
   },
@@ -70,5 +72,34 @@ describe('PresetsPage', () => {
 
     fireEvent.click(firstPreset)
     expect(screen.queryByText('分组')).toBeNull()
+  })
+
+  it('导入标准格式后显示转换结果与未支持字段', async () => {
+    vi.mocked(window.api.preset.importJson).mockResolvedValueOnce({
+      sourceFormat: 'standard',
+      unsupportedFields: ['top_k', 'min_p'],
+      preset: {
+        id: 'imported-1',
+        name: 'Deepseek_V3_Preset_通用轻量版',
+        description: '',
+        systemPrompt: '提示词',
+        jailbreak: '',
+        maxContext: 0,
+        temperature: 0.75,
+        topP: 0.99,
+        maxTokens: 1024,
+        frequencyPenalty: 1.1,
+        presencePenalty: 1.1,
+        isBuiltin: false,
+      },
+    })
+
+    render(<PresetsPage />)
+    await waitFor(() => expect(window.api.preset.list).toHaveBeenCalled())
+    fireEvent.click(screen.getAllByRole('button', { name: /导入/ })[0])
+
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toContain('已转换标准格式')
+    expect(notice.textContent).toContain('top_k、min_p')
   })
 })

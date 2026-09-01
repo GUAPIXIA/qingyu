@@ -19,13 +19,12 @@
  *   POST /characters/:id/activate        设为当前角色（协议假设）
  *   GET  /sessions/:id/messages/:mid/tts TTS 音频流（协议假设）
  */
-import { app } from 'electron'
 import { Router } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import { join } from 'node:path'
-import { readJson, writeJson, listJsonFilesAsync, DIRS } from '../services/storage'
-import { existsSync } from 'node:fs'
-import { getCharacter, listCharacters } from '../services/charCard'
+import { readJson, writeJson, listJsonFilesAsync, DIRS, withFileLock } from '../services/storage'
+import { getCharacter } from '../services/charCard'
+import { listLorebookViews } from '../services/lorebookDocumentStore'
 import { chatData } from '../ipc/chat'
 import { groupData } from '../ipc/group'
 import { getBuiltinPresets } from '../ipc/preset'
@@ -34,6 +33,16 @@ import { getSummary, queryUsage } from '../services/usage'
 import { fetchAnnouncementList, fetchVersionInfo } from '../ipc/announcement'
 import { readStore as readQuickReplyStore } from '../ipc/quickReply'
 import { restoreSecrets } from '../ipc/settings'
+import {
+  buildSettingsSnapshot,
+  validateSettingsPatch,
+  type MobileSafeSettings,
+  type SettingsPatchRequest,
+  type SettingsPatchResponse,
+  type SettingsValidationContext,
+} from './settingsSync'
+import { emitSettingsChanged } from '../services/settingsChangeBus'
+import { API_VERSION as PROTOCOL_API_VERSION } from './protocol'
 import { chatWithRetry, getAdapter } from '../services/ai'
 import { mainContextProvider } from '../context/mainContextProvider'
 import { buildContextMessagesFromData } from '../../src/context/contextBuilder'
@@ -69,12 +78,14 @@ import { sanitizeApiKey } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
 import { countTokens } from '../services/tokenizer'
 import type { Request, Response, NextFunction } from 'express'
-import type { Message, Settings, Lorebook, Preset, ChatParams, ProviderType, GroupChat, MemoryFactRecord } from '../../shared/types'
+import type { Message, Settings, Preset, ChatParams, ProviderType, GroupChat, MemoryFactRecord } from '../../shared/types'
+import { DefaultMobileFacade, type MobileFacade } from './runtime/mobileFacade'
+import { GenerationRegistry } from './runtime/generationRegistry'
 
 const log = createLogger('bridge-routes')
 
-/** 版本协商：与安卓端 SUPPORTED_API_VERSION 对齐 */
-export const API_VERSION = 1
+/** 版本协商：与安卓端 SUPPORTED_API_VERSION 对齐（常量迁移至 protocol.ts，此处 re-export 保持兼容） */
+export const API_VERSION = PROTOCOL_API_VERSION
 
 /** 配对确认等待超时（安卓端 readTimeout 60s 内） */
 const PAIR_WAIT_TIMEOUT_MS = 55_000
@@ -163,6 +174,7 @@ export function buildBridgeRouter(
   chatService: BridgeChatService,
   notifySessionChanged: SessionChangedNotifier,
   onPairRequest: (requestId: string, deviceName: string) => void = () => {},
+  facade: MobileFacade = new DefaultMobileFacade(chatService, new GenerationRegistry()),
 ): Router {
   const router = Router()
   router.use(originGuard)
@@ -176,8 +188,8 @@ export function buildBridgeRouter(
     legacyHeaders: false,
   })
 
-  router.get('/server/info', (_req, res) => {
-    res.json({ apiVersion: API_VERSION, appVersion: app.getVersion() })
+  router.get('/server/info', async (_req, res) => {
+    try { res.json(await facade.serverInfo()) } catch (e) { res.status(500).json({ error: (e as Error).message }) }
   })
 
   router.post('/auth/pair', pairLimiter, async (req, res) => {
@@ -221,30 +233,7 @@ export function buildBridgeRouter(
 
   router.get('/characters', async (_req, res) => {
     try {
-      const chars = await listCharacters()
-      // 下发给安卓端的角色子集：封面转静态路由 URL（§4.2，tavern:// 不可达）
-      // 直接检查文件存在性，避免 N+1 读取完整角色文件
-      res.json(chars.map((c) => {
-        const avatarPath = join(DIRS.characters(), `${c.id}.png`)
-        const coverPath = join(DIRS.characters(), `${c.id}_cover.png`)
-        return {
-          id: c.id,
-          name: c.name,
-          avatarUrl: existsSync(avatarPath) ? `/static/avatars/${c.id}` : null,
-          coverUrl: existsSync(coverPath) ? `/static/covers/${c.id}` : null,
-          description: c.description,
-          personality: c.personality,
-          scenario: c.scenario,
-          firstMessage: c.firstMessage,
-          alternateGreetings: c.alternateGreetings ?? [],
-          tags: c.tags ?? [],
-          pinned: c.pinned ?? false,
-          creator: c.creator ?? '',
-          createdAt: c.createdAt ?? 0,
-          updatedAt: c.updatedAt ?? 0,
-          translatedContent: c.translatedContent ?? undefined,
-        }
-      }))
+      res.json(await facade.listCharacters())
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
     }
@@ -275,7 +264,6 @@ export function buildBridgeRouter(
       bubbleStyle: s.bubbleStyle,
       messageSpacing: s.messageSpacing,
       messageWidth: s.messageWidth,
-      authorNote: s.authorNote ?? null,
     }
   }
 
@@ -313,6 +301,116 @@ export function buildBridgeRouter(
     }
   })
 
+  // ===== 设置同步 v2（阶段 C：快照端点 + revision 冲突检测；旧端点保持逐字节不变）=====
+
+  const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
+
+  /**
+   * activeModel 存在性校验上下文：
+   * 优先使用当前 Profile 的模型列表缓存（listModels 成功后填充，见 /ai/models），
+   * 无缓存/无 Profile/拉取失败时返回 null（跳过存在性校验，仅校验类型——
+   * 避免离线 PC 让手机端的合法选择被误拒）。
+   */
+  const profileModelCache = new Map<string, { models: string[]; at: number }>()
+  const PROFILE_MODEL_TTL_MS = 5 * 60_000
+
+  async function buildValidationContext(settings: Settings): Promise<SettingsValidationContext> {
+    const custom = await listJsonFilesAsync<{ id?: string }>(DIRS.presets())
+    const knownPresetIds = [
+      ...getBuiltinPresets().map((p) => p.id),
+      ...custom.map((p) => p.id ?? '').filter(Boolean),
+    ]
+    const profile = settings.connectionProfiles?.find((p) => p.id === settings.activeProfileId)
+    if (!profile) return { knownModelIds: null, knownPresetIds }
+    const cached = profileModelCache.get(profile.id)
+    if (cached && Date.now() - cached.at < PROFILE_MODEL_TTL_MS) {
+      return { knownModelIds: cached.models, knownPresetIds }
+    }
+    return { knownModelIds: null, knownPresetIds }
+  }
+
+  /** GET /settings/snapshot：移动端安全子集快照（含 revision/capabilities；绝不含凭据） */
+  router.get('/settings/snapshot', (_req, res) => {
+    facade.settingsSnapshot().then((snapshot) => res.json(snapshot))
+      .catch((e) => res.status(500).json({ error: (e as Error).message }))
+  })
+
+  /**
+   * PATCH /settings/snapshot：baseRevision 乐观并发控制。
+   * - 陈旧 revision -> 409 {error:'settings_conflict', current}（文件未写入）；
+   * - 非法字段进 rejectedFields，合法字段照常应用；
+   * - 成功后广播 WS settings:updated（sourceDeviceId = 请求设备）。
+   * 防回环：本路径直接写文件、不经 settings:save IPC，写一次广播一次；
+   * 同时经 change bus 发 android: 来源事件（BridgeService 订阅侧对 android: 不再转发 WS）。
+   */
+  router.patch('/settings/snapshot', async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as Partial<SettingsPatchRequest>
+      const deviceId = (req as Request & { deviceId?: string }).deviceId ?? 'unknown'
+      if (typeof body.baseRevision !== 'string' || !body.baseRevision) {
+        res.status(400).json({ error: 'baseRevision_required' })
+        return
+      }
+      if (typeof body.patch !== 'object' || body.patch === null || Array.isArray(body.patch)) {
+        res.status(400).json({ error: 'patch_required' })
+        return
+      }
+
+      const file = SETTINGS_FILE()
+      const response = await withFileLock(file, async (): Promise<
+        | { conflict: true; current: ReturnType<typeof buildSettingsSnapshot> }
+        | { conflict: false; payload: SettingsPatchResponse }
+      > => {
+        const currentSettings = readJson<Settings>(file, 'settings') ?? getDefaultSettings()
+        const current = buildSettingsSnapshot(currentSettings)
+        if (body.baseRevision !== current.revision) {
+          return { conflict: true, current }
+        }
+        const ctx = await buildValidationContext(currentSettings)
+        const { accepted, rejected } = validateSettingsPatch(
+          body.patch as Record<string, unknown>,
+          ctx,
+        )
+        const appliedFields = Object.keys(accepted)
+        if (appliedFields.length > 0) {
+          const merged: Settings = {
+            ...currentSettings,
+            ...(accepted as Partial<MobileSafeSettings> as Partial<Settings>),
+          }
+          writeJson(file, merged, 'settings')
+        }
+        const next = buildSettingsSnapshot(readJson<Settings>(file, 'settings') ?? getDefaultSettings())
+        const payload: SettingsPatchResponse = {
+          ...next,
+          appliedFields,
+          rejectedFields: rejected,
+        }
+        return { conflict: false, payload }
+      })
+
+      if (response.conflict) {
+        res.status(409).json({ error: 'settings_conflict', current: response.current })
+        return
+      }
+      const { payload } = response
+      if (payload.appliedFields.length > 0) {
+        hub.broadcast('settings:updated', {
+          revision: payload.revision,
+          changedFields: payload.appliedFields,
+          sourceDeviceId: deviceId,
+        })
+        emitSettingsChanged({
+          revision: payload.revision,
+          changedFields: payload.appliedFields,
+          source: `android:${deviceId}`,
+        })
+      }
+      res.json(payload)
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message })
+    }
+  })
+
   /** 拉取模型列表：用 PC 端当前激活的 API Profile（provider/baseUrl/apiKey） */
   router.get('/ai/models', async (_req, res) => {
     try {
@@ -326,6 +424,14 @@ export function buildBridgeRouter(
         return
       }
       const models = await getAdapter(profile.provider).listModels(profile.baseUrl, profile.apiKey)
+      // 缓存本次 Profile 的模型列表（5 分钟 TTL），供 PATCH /settings/snapshot 的
+      // activeModel 存在性校验使用；拉取失败不写缓存（校验降级为仅类型检查）。
+      if (Array.isArray(models)) {
+        profileModelCache.set(profile.id, {
+          models: models.filter((m): m is string => typeof m === 'string'),
+          at: Date.now(),
+        })
+      }
       res.json({ models })
     } catch (e) {
       res.status(500).json({ error: sanitizeApiKey((e as Error).message) })
@@ -334,7 +440,7 @@ export function buildBridgeRouter(
 
   router.get('/lorebooks', async (_req, res) => {
     try {
-      const lorebooks = await listJsonFilesAsync<Lorebook>(DIRS.lorebooks())
+      const lorebooks = await listLorebookViews(DIRS.lorebooks())
       res.json(lorebooks.map((l) => ({
         id: l.id,
         name: l.name,
@@ -455,19 +561,7 @@ export function buildBridgeRouter(
 
   router.get('/sessions', async (_req, res) => {
     try {
-      const sessions = await listAllSessions()
-      const chars = await listCharacters()
-      const nameById = new Map(chars.map((c) => [c.id, c.name]))
-      res.json(sessions.map((s) => ({
-        id: s.id,
-        characterId: s.characterId,
-        characterName: nameById.get(s.characterId) ?? '',
-        title: s.title,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-        messageCount: s.messageCount,
-        lastMessage: s.lastMessage,
-      })))
+      res.json(await facade.listSessions())
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
     }
@@ -514,6 +608,7 @@ export function buildBridgeRouter(
         title: session.title,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
+        personaId: session.personaId ?? null,
         messageCount: firstMessageContent ? 1 : 0,
         lastMessage: firstMessageContent.slice(0, 50),
       })
@@ -527,28 +622,10 @@ export function buildBridgeRouter(
   router.get('/sessions/:sessionId/messages', async (req, res) => {
     try {
       const sessionId = safeId(req.params.sessionId)
-      const session = await resolveSession(req, sessionId)
-      if (!session) {
-        res.status(404).json({ error: '会话不存在' })
-        return
-      }
       const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100)
       const beforeId = typeof req.query.beforeId === 'string' ? req.query.beforeId : undefined
-      const all = chatData.readMessages(session.characterId, sessionId)
-      // 时间降序（最新在前），cursor 分页
-      const sorted = [...all].sort((a, b) => b.timestamp - a.timestamp)
-      const startIndex = beforeId
-        ? sorted.findIndex((m) => m.id === beforeId)
-        : -1
-      const sliceStart = startIndex >= 0 ? startIndex + 1 : 0
-      const page = sorted.slice(sliceStart, sliceStart + limit)
-      const nextCursor = sliceStart + limit < sorted.length
-        ? sorted[sliceStart + limit - 1]?.id
-        : null
-      res.json({
-        messages: page.map(toApiMessage),
-        nextCursor,
-      })
+      const characterId = typeof req.query.characterId === 'string' ? safeId(req.query.characterId) : undefined
+      res.json(await facade.listMessages({ sessionId, characterId, limit, beforeId }))
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
     }
@@ -620,8 +697,10 @@ export function buildBridgeRouter(
         ? images.filter((i): i is string => typeof i === 'string' && i.length > 0).slice(0, 8)
         : []
       // 流式响应标记：客户端通过 WS 接收 chunk，REST 仅返回用户消息
-      const userMessage = await chatService.sendMessage(sessionId, requestId, content.trim(), replyToId, safeImages)
-      res.json(toApiMessage(userMessage))
+      res.json(await facade.sendMessage(
+        { sessionId, content: content.trim(), replyToId, images: safeImages },
+        { requestId, sourceDeviceId: (req as Request & { deviceId?: string }).deviceId },
+      ))
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
     }
@@ -1041,8 +1120,10 @@ export function buildBridgeRouter(
         res.status(400).json({ error: '缺少 messageId' })
         return
       }
-      const message = await chatService.swipe(sessionId, messageId, direction)
-      res.json(toApiMessage(message))
+      res.json(await facade.swipe(
+        { sessionId, messageId, direction },
+        { requestId: `swipe:${sessionId}:${messageId}`, sourceDeviceId: (req as Request & { deviceId?: string }).deviceId },
+      ))
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
     }
@@ -1056,7 +1137,10 @@ export function buildBridgeRouter(
         res.status(400).json({ error: '缺少 messageId' })
         return
       }
-      const result = await chatService.translate(sessionId, messageId)
+      const result = await facade.translate(
+        { sessionId, messageId },
+        { requestId: `translate:${sessionId}:${messageId}`, sourceDeviceId: (req as Request & { deviceId?: string }).deviceId },
+      )
       res.json(result)
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })

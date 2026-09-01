@@ -175,20 +175,86 @@ export function normalizeThoughtTags(text: string): string {
 }
 
 /**
+ * 创建一个宽容的思考标签匹配器。
+ *
+ * 除标准标签外，还接受模型偶尔输出的反斜杠、额外空格和属性，例如：
+ * `\</ thought >`、`<thinking class="reasoning">`。
+ */
+function createThoughtTagRegex(): RegExp {
+  return /\\?<\s*(\/?)\s*(?:thought|thinking)\b[^>]*>/gi
+}
+
+interface ParsedThoughtBlocks {
+  thought: string | null
+  content: string
+}
+
+/**
+ * 以标签状态扫描文本，同时容错模型输出的不完整标签：
+ * - 孤立的结束标签：将它前面的片段视为泄漏的思考内容；
+ * - 未闭合的开始标签：将其后的剩余文本视为思考内容；
+ * - 多余的结束标签：继续收拢前一标签后泄漏的思考片段。
+ */
+function parseThoughtBlocks(text: string): ParsedThoughtBlocks {
+  const normalized = normalizeThoughtTags(text)
+  const tagRegex = createThoughtTagRegex()
+  const thoughts: string[] = []
+  const contentParts: string[] = []
+  const activeThoughtParts: string[] = []
+  let depth = 0
+  let cursor = 0
+  let match: RegExpExecArray | null
+
+  const flushThought = () => {
+    const value = activeThoughtParts.join('').trim()
+    if (value) thoughts.push(value)
+    activeThoughtParts.length = 0
+  }
+
+  while ((match = tagRegex.exec(normalized)) !== null) {
+    const segment = normalized.slice(cursor, match.index)
+    const isClosing = match[1] === '/'
+
+    if (isClosing) {
+      if (depth > 0) {
+        activeThoughtParts.push(segment)
+        depth--
+        if (depth === 0) flushThought()
+      } else {
+        // 模型只输出了 </thought> 时，结束标签之前通常就是泄漏的思考。
+        const leakedThought = segment.trim()
+        if (leakedThought) thoughts.push(leakedThought)
+      }
+    } else {
+      if (depth > 0) activeThoughtParts.push(segment)
+      else contentParts.push(segment)
+      depth++
+    }
+
+    cursor = tagRegex.lastIndex
+  }
+
+  const tail = normalized.slice(cursor)
+  if (depth > 0) {
+    activeThoughtParts.push(tail)
+    flushThought()
+  } else {
+    contentParts.push(tail)
+  }
+
+  return {
+    thought: thoughts.length > 0 ? thoughts.join('\n\n') : null,
+    content: contentParts.join('').trim(),
+  }
+}
+
+/**
  * 提取所有 <thought> 块内容
  * @returns thought: 拼接的思考内容（无则为 null）; content: 剥离 thought 后的正文（为空时回退到思考内容）; isFallback: 是否触发了回退
  */
 export function extractThought(text: string): { thought: string | null; content: string; isFallback: boolean } {
   if (!text) return { thought: null, content: '', isFallback: false }
-  const normalized = normalizeThoughtTags(text)
-  const thoughtRegex = /<thought>([\s\S]*?)<\/thought>/gi
-  const thoughts: string[] = []
-  let m: RegExpExecArray | null
-  while ((m = thoughtRegex.exec(normalized)) !== null) {
-    thoughts.push(m[1].trim())
-  }
-  const stripped = normalized.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
-  const thought = thoughts.length > 0 ? thoughts.join('\n\n') : null
+  const { thought, content: stripped } = parseThoughtBlocks(text)
   // 剥离后为空则回退到思考内容，避免显示"空消息"
   const isFallback = !stripped && !!thought
   const content = stripped || (thought ?? '')
@@ -198,13 +264,13 @@ export function extractThought(text: string): { thought: string | null; content:
 /** 剥离 <thought> 块，返回剩余正文（不做空回退） */
 export function stripThought(text: string): string {
   if (!text) return text
-  return normalizeThoughtTags(text).replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+  return parseThoughtBlocks(text).content
 }
 
 /** 去掉 <thought> 标签本身但保留内容（用于 TTS 朗读内心想法等场景） */
 export function stripThoughtTags(text: string): string {
   if (!text) return text
-  return normalizeThoughtTags(text).replace(/<\/?thought>/gi, '').trim()
+  return normalizeThoughtTags(text).replace(createThoughtTagRegex(), '').trim()
 }
 
 /** 续写重叠去重的最小重叠长度（字符） */

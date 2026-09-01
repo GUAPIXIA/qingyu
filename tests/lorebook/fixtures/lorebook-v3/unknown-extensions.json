@@ -1,0 +1,23 @@
+{
+  "spec": "lorebook_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "V3 未知扩展世界书",
+    "extensions": { "future_book_field": "opaque" },
+    "entries": [
+      {
+        "id": "future-v3",
+        "keys": ["扩展"],
+        "content": "V3 未知扩展测试。",
+        "enabled": true,
+        "insertion_order": 1,
+        "position": "after_char",
+        "constant": false,
+        "use_regex": false,
+        "extensions": {
+          "future_entry_field": [1, 2, 3]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "v": 1,
+  "type": "bridge:event",
+  "sentAt": 1788172801000,
+  "payload": { "eventSeq": 43, "event": "ai:chunk", "data": { "requestId": "command-1", "delta": "Hi" } }
+}

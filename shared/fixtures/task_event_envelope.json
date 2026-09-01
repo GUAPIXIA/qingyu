@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 2,
+  "eventId": "evt-contract-0001",
+  "taskId": "task-contract-0001",
+  "requestId": "req-contract-0001",
+  "sessionId": "session-contract-0001",
+  "sequence": 4,
+  "type": "task:chunk",
+  "timestamp": 1788000001000,
+  "payload": {
+    "delta": "这是来自 PC 侧 task:* 帧的契约测试增量文本。",
+    "accumulatedLength": 24
+  }
+}

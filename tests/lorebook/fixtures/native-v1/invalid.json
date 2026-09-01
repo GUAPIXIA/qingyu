@@ -1,0 +1,18 @@
+{
+  "name": "无效原生世界书",
+  "description": "缺少 id，且条目字段类型错误",
+  "enabled": true,
+  "scanDepth": -1,
+  "entries": [
+    {
+      "id": 7,
+      "keywords": "王城",
+      "content": "无效条目",
+      "position": "unknown",
+      "order": "first",
+      "probability": 120,
+      "enabled": "yes"
+    }
+  ]
+}
+

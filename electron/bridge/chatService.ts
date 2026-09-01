@@ -15,7 +15,8 @@ import { getAdapter, chatWithRetry } from '../services/ai'
 import type { TokenUsageInfo } from '../services/adapters/types'
 import { mainContextProvider } from '../context/mainContextProvider'
 import { buildContextMessagesFromData, buildChatParamsFromData } from '../../src/context/contextBuilder'
-import { activeChatControllers, type WsHub } from './ws'
+import type { MobileEventSink } from './runtime/mobileEventBus'
+import { GenerationRegistry } from './runtime/generationRegistry'
 import { findSessionById } from './sessionsIndex'
 import { sanitizeApiKey } from '../utils/pathGuard'
 import { applyRegexRules, applyOutputRegexRules, truncateAtStop, collectStopStrings } from '../../src/utils/regex'
@@ -31,16 +32,18 @@ const log = createLogger('bridge-chat')
 export type SessionChangedNotifier = (sessionId: string, change: string) => void
 
 export class BridgeChatService {
-  private readonly hub: WsHub
+  private readonly events: MobileEventSink
   private readonly notifySessionChanged: SessionChangedNotifier
+  private readonly generations: GenerationRegistry
   /** 幂等键 -> 已处理的用户消息（防弱网重发双条，§4.3） */
   private readonly idempotency = new Map<string, Message>()
   /** 处理中的请求（防重复触发） */
   private readonly inFlight = new Set<string>()
 
-  constructor(hub: WsHub, notifySessionChanged: SessionChangedNotifier) {
-    this.hub = hub
+  constructor(events: MobileEventSink, notifySessionChanged: SessionChangedNotifier, generations = new GenerationRegistry()) {
+    this.events = events
     this.notifySessionChanged = notifySessionChanged
+    this.generations = generations
   }
 
   /** 清空幂等缓存（重启/内存压力时可调用） */
@@ -105,17 +108,16 @@ export class BridgeChatService {
       params.requestId = requestId
 
       // AI 流式（复用主进程 AI 服务，chunk 经 WS 推送）
-      const controller = new AbortController()
-      activeChatControllers.set(requestId, controller)
+      const controller = this.generations.create(requestId)
       const chunks: string[] = []
       const aiMessageId = nanoid()
 
       const onChunk = (text: string) => {
         chunks.push(text)
-        this.hub.broadcast('ai:chunk', { requestId, sessionId, delta: text })
+        this.events.publish('ai:chunk', { requestId, sessionId, delta: text })
       }
       const onUsage = (usage: TokenUsageInfo) => {
-        this.hub.broadcast('ai:usage', { requestId, sessionId, ...usage })
+        this.events.publish('ai:usage', { requestId, sessionId, ...usage })
       }
 
       let fullContent: string
@@ -134,12 +136,12 @@ export class BridgeChatService {
           fullContent = chunks.join('')
         } else {
           const errMsg = sanitizeApiKey((err as Error).message)
-          this.hub.broadcast('ai:error', { requestId, sessionId, message: errMsg })
+          this.events.publish('ai:error', { requestId, sessionId, message: errMsg })
           log.warn('AI 生成失败', { error: errMsg })
           throw err
         }
       } finally {
-        activeChatControllers.delete(requestId)
+        this.generations.release(requestId)
       }
 
       // AI 消息落盘 + 推送 done（安卓端替换流式占位）
@@ -160,7 +162,7 @@ export class BridgeChatService {
         timestamp: Date.now(),
       }
       chatData.saveMessage(characterId, aiMessage)
-      this.hub.broadcast('ai:done', { requestId, sessionId, message: aiMessage })
+      this.events.publish('ai:done', { requestId, sessionId, message: aiMessage })
       this.notifySessionChanged(sessionId, 'message')
       // H-10 修复：幂等缓存保留 60s 幂等窗口后清理（含 base64 图片可达数 MB/条，长期不清理无界增长）
       setTimeout(() => { this.idempotency.delete(requestId) }, IDEMPOTENCY_TTL_MS)
@@ -205,8 +207,7 @@ export class BridgeChatService {
     const requestId = `regen-${Date.now()}-${nanoid(4)}`
     params.requestId = requestId
 
-    const controller = new AbortController()
-    activeChatControllers.set(requestId, controller)
+    const controller = this.generations.create(requestId)
     const chunks: string[] = []
     try {
       const full = await chatWithRetry(
@@ -227,7 +228,7 @@ export class BridgeChatService {
       this.notifySessionChanged(sessionId, 'message')
       return updated
     } finally {
-      activeChatControllers.delete(requestId)
+      this.generations.release(requestId)
     }
   }
 
@@ -247,9 +248,8 @@ export class BridgeChatService {
     const targetLang = settings.translationTargetLang || '中文'
     const provider = (profile.provider || 'openai') as ProviderType
 
-    const controller = new AbortController()
     const requestId = `translate-${messageId}-${Date.now()}`
-    activeChatControllers.set(requestId, controller)
+    const controller = this.generations.create(requestId)
     try {
       const translation = await chatWithRetry(
         getAdapter(provider),
@@ -280,7 +280,7 @@ export class BridgeChatService {
       this.notifySessionChanged(sessionId, 'message')
       return { messageId, translation }
     } finally {
-      activeChatControllers.delete(requestId)
+      this.generations.release(requestId)
     }
   }
 }

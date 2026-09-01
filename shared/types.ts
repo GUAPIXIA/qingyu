@@ -1,3 +1,5 @@
+import type { LorebookInsertionV2, LorebookRetrievalMode } from './lorebook/domain/v2'
+
 // ===================== 基础数据模型 =====================
 
 /** 角色卡（兼容 SillyTavern Character Card V2 简化版） */
@@ -35,7 +37,7 @@ export interface Character {
   defaultMemoryInterval?: number
   /** 创作者备注（隐藏元数据，导入导出保留） */
   creatorNotes?: string
-  /** 角色级作者注释（覆盖全局 settings.authorNote；未设置时使用全局） */
+  /** 角色级作者注释 */
   authorNote?: AuthorNoteConfig
   /** 角色卡版本号 */
   characterVersion?: string
@@ -175,6 +177,22 @@ export interface MemoryFactChange {
   patch?: Partial<Pick<MemoryFact, 'subject' | 'predicate' | 'value' | 'scope' | 'entityId' | 'importance' | 'confidence'>>
 }
 
+export interface LorebookTimedEffectState {
+  /** 条目内容与触发配置指纹；条目编辑后旧效果自动失效 */
+  hash: string
+  /** 激活时的会话消息数 */
+  start: number
+  /** 效果截止消息数（到达时失效） */
+  end: number
+  /** sticky 结束后创建的 cooldown 可在同一消息数立即生效 */
+  protected?: boolean
+}
+
+export interface LorebookTimedEffectsState {
+  sticky: Record<string, LorebookTimedEffectState>
+  cooldown: Record<string, LorebookTimedEffectState>
+}
+
 export interface ChatSession {
   id: string
   characterId: string
@@ -214,12 +232,42 @@ export interface ChatSession {
   personaId?: string | null
   /** 当前会话选中的世界书 ID 列表。undefined 表示未设置（回退到角色的 boundLorebookIds） */
   lorebookIds?: string[]
+  /** 最近 N 轮触发过的世界书条目 key（`${lbId}:${entryId}`），用于 recency 加权。环形缓冲 */
+  recentTriggeredIds?: string[][]
+  /** 世界书 sticky/cooldown 会话状态；按消息数推进 */
+  lorebookTimedEffects?: LorebookTimedEffectsState
+  /**
+   * 世界书超限压缩缓存（阶段三）：key = 被压缩条目 key + content hash
+   * （条目编辑后 key 变化，缓存天然失效）。仅保留少量条目（LRU 淘汰）。
+   */
+  lorebookCompressionCache?: Record<string, LorebookCompressionCacheEntry>
+}
+
+/** 世界书超限压缩缓存条目（会话持久化） */
+export interface LorebookCompressionCacheEntry {
+  /** AI 压缩产生的合并摘要（注入时替代被丢弃的条目集合） */
+  summary: string
+  /** 被压缩条目的定位 key 列表（`${lbId}:${entryId}`） */
+  entryKeys: string[]
+  /** 创建时间戳（旧缓存无 lastUsedAt 时的 LRU 回退依据） */
+  createdAt: number
+  /** 最近一次成功注入该缓存摘要的时间（LRU 淘汰依据；旧数据回退 createdAt）。 */
+  lastUsedAt?: number
 }
 
 /** 会话预览（含消息数和最后消息摘要） */
 export interface SessionPreview extends ChatSession {
   messageCount: number
   lastMessage: string
+}
+
+/** AI 生成触发词的来源元数据（阶段4 enrichment 管线；方案 7.5） */
+export interface LoreKeywordProvenance {
+  provider: string
+  model: string
+  generatedAt: number
+  /** localize = 英文条目中文化；enrich = 通用扩词（实体/别名/多语言） */
+  mode: 'localize' | 'enrich'
 }
 
 /** 世界书条目 */
@@ -230,6 +278,11 @@ export interface LoreEntry {
   position: 'before_char' | 'after_char' | 'at_depth' | 'at_end'
   /** at_depth 注入深度：0 = 对话末尾，1 = 倒数第二条消息之后，依此类推 */
   depth?: number
+  /**
+   * at_depth 条目注入时使用的消息角色（ST position=4 的 role）。
+   * undefined 时沿用现有注入行为（system 侧）；仅 at_depth 位置有意义。
+   */
+  role?: 'system' | 'user' | 'assistant'
   order: number
   probability: number // 0-100（运行时已有防御：导入/保存时 clamp，匹配时 Number.isFinite + clamp）
   enabled: boolean
@@ -237,6 +290,46 @@ export interface LoreEntry {
   useRegex?: boolean
   /** 正则表达式标志（如 'i' 表示不区分大小写） */
   regexFlags?: string
+  /** 可选过滤关键词（ST keysecondary / CC secondary_keys） */
+  secondaryKeywords?: string[]
+  /** 主关键词命中后的二级过滤逻辑 */
+  selectiveLogic?: 'and_any' | 'and_all' | 'not_any' | 'not_all'
+  /** 条目级大小写覆盖；undefined 使用项目默认（不区分大小写） */
+  caseSensitive?: boolean
+  /** 条目级整词覆盖；false 时允许子串匹配 */
+  matchWholeWords?: boolean
+  /** 该条目不能由其他世界书条目递归触发 */
+  excludeRecursion?: boolean
+  /** 该条目触发后，其内容不再继续触发其他条目 */
+  preventRecursion?: boolean
+  /** 条目级扫描消息数覆盖；0 表示初始轮仅允许递归内容触发 */
+  scanDepth?: number
+  /** 仅递归层可触发；数字表示最小递归层，true 等价于 1 */
+  delayUntilRecursion?: boolean | number
+  /** ST Inclusion Group；一个条目可属于多个互斥组 */
+  inclusionGroups?: string[]
+  /** 同组中优先按 order 选取，而非权重随机 */
+  inclusionGroupPrioritized?: boolean
+  /** 包含组随机仲裁权重 */
+  inclusionGroupWeight?: number
+  /** 包含组仲裁前按命中关键词数量筛选最高分条目 */
+  useGroupScoring?: boolean
+  /** 角色名称/标签过滤（include 或 exclude） */
+  characterFilter?: {
+    exclude: boolean
+    names: string[]
+    tags: string[]
+  }
+  /** 允许触发的生成类型；空或 undefined 表示全部 */
+  generationTriggers?: Array<'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'>
+  /** 激活后继续保持的消息数 */
+  sticky?: number
+  /** 激活（或 sticky 结束）后禁止再次激活的消息数 */
+  cooldown?: number
+  /** 至少达到该消息数后才允许激活 */
+  delay?: number
+  /** 忽略世界书 token 预算（仍受上下文总上限约束） */
+  ignoreBudget?: boolean
   /**
    * 匹配模式：keyword = 仅关键词/正则，semantic = 仅语义（向量），both = 两者都参与（默认）。
    * undefined 视为 both（兼容旧数据）。
@@ -244,6 +337,29 @@ export interface LoreEntry {
   matchMode?: 'keyword' | 'semantic' | 'both'
   /** AI 翻译结果（持久化，不替换原始 content） */
   translation?: string
+  /**
+   * 条目优先级：always = 无条件注入（跳过关键词/语义触发检查）；
+   * conditional = 命中时注入（默认）；detail = 命中时注入但仅使用预算剩余额度。
+   * undefined 视为 conditional（兼容旧数据）。
+   */
+  priority?: 'always' | 'conditional' | 'detail'
+  /** 条目摘要（可选）：预算紧张时优先用此替代全文（阶段三使用，当前仅持久化） */
+  summary?: string
+  /**
+   * AI 扩词来源记录（键为追加到 keywords 的触发词；阶段4 enrichment 管线）。
+   * 仅作追溯展示，不参与匹配逻辑；经 canonical foreign 命名空间往返保留。
+   */
+  keywordProvenance?: Record<string, LoreKeywordProvenance>
+  /**
+   * canonical 编译器附带的只读运行时信息。旧 UI 仍编辑 position/matchMode，
+   * 执行器优先使用这里的完整插入位置与检索语义，避免兼容视图折叠信息。
+   */
+  runtime?: {
+    insertion: LorebookInsertionV2
+    retrieval: LorebookRetrievalMode
+    adapterId?: string
+    title?: string
+  }
 }
 
 /** 世界书 */
@@ -254,6 +370,21 @@ export interface Lorebook {
   entries: LoreEntry[]
   enabled: boolean
   scanDepth: number // 扫描最近 N 条消息
+  /** 是否允许本书条目内容继续递归触发；undefined 维持旧行为（允许） */
+  recursiveScanning?: boolean
+  /**
+   * 书级 token 预算上限（Risu character_book / 外部格式导入携带）：
+   * 该书条目注入 token 总量不超过此值（评分降序保留，超限先尝试 summary 替代）。
+   * undefined 表示不受书级限制（仍受全局世界书预算约束）；ignoreBudget 条目不占此额度。
+   */
+  tokenBudget?: number
+  /** canonical 文档来源；仅供运行时诊断，不参与旧 UI 编辑。 */
+  runtime?: {
+    schemaVersion: number
+    revision?: number
+    adapterId?: string
+    formatVersion?: string
+  }
 }
 
 /** 预设 */
@@ -278,6 +409,15 @@ export interface Preset {
   exampleDialogMode?: 'always' | 'first_turn' | 'off'
   /** 预设级心理描写格式开关；undefined = 跟随全局设置 */
   enableThoughtFormat?: boolean
+}
+
+/** 预设 JSON 导入结果（包含兼容转换信息） */
+export interface PresetImportResult {
+  preset: Preset
+  /** qingyu = 项目原生格式；standard = 蛇形字段的通用/酒馆预设格式 */
+  sourceFormat: 'qingyu' | 'standard'
+  /** 源文件中当前运行时无法应用、因此未导入的字段 */
+  unsupportedFields: string[]
 }
 
 /** 群聊 */
@@ -381,6 +521,14 @@ export interface GroupSession {
   compressedSummary?: string | null
   /** 已压缩消息的时间范围 */
   compressedRange?: { startTs: number; endTs: number } | null
+  /** 当前群聊会话绑定的用户身份；null 表示不使用身份，undefined 为旧数据并回退默认身份 */
+  personaId?: string | null
+  /** 最近 N 轮触发过的世界书条目 key（`${lbId}:${entryId}`），用于 recency 加权。环形缓冲 */
+  recentTriggeredIds?: string[][]
+  /** 世界书 sticky/cooldown 群聊会话状态；按消息数推进 */
+  lorebookTimedEffects?: LorebookTimedEffectsState
+  /** 世界书超限压缩缓存（阶段三，同 ChatSession） */
+  lorebookCompressionCache?: Record<string, LorebookCompressionCacheEntry>
 }
 
 /** AI 后端提供商类型 */
@@ -489,10 +637,10 @@ export interface Settings {
   fontFamily?: string
   /** 自定义字体 ID（对应 font:list 返回的 id），null 表示使用内置字体 */
   customFontId?: string | null
-  /** 作者注释（全局级；角色可设置 authorNote 覆盖） */
-  authorNote?: AuthorNoteConfig
   /** 语义触发（向量 RAG）配置：世界书条目语义匹配 + 向量检索 */
   semanticTrigger?: SemanticTriggerConfig
+  /** 本地向量模型与后台索引策略。 */
+  localModels?: LocalModelPreferences
   /** 用户人设注入配置：与系统提示词的合并规则 */
   personaInjection?: PersonaInjectionConfig
   /** 上下文溢出压缩配置：历史被裁剪时异步压缩早期内容 */
@@ -521,8 +669,8 @@ export interface PersonaInjectionConfig {
 export interface SemanticTriggerConfig {
   /** 是否启用语义触发 */
   enabled: boolean
-  /** 嵌入服务提供商：openai = OpenAI 兼容 embeddings，ollama = Ollama /api/embed */
-  provider: 'openai' | 'ollama'
+  /** 嵌入服务提供商；local 由应用内已验证的本地 ONNX 模型提供。 */
+  provider: 'openai' | 'ollama' | 'local'
   baseUrl: string
   model: string
   apiKey: string
@@ -583,6 +731,14 @@ export interface ImageGenModelConfig {
   workflow?: string
   /** ComfyUI 调度器；默认 normal */
   scheduler?: string
+}
+
+export interface LocalModelPreferences {
+  retrievalMode: 'auto' | 'local' | 'remote' | 'lexical'
+  autoIndex: boolean
+  updatePolicy: 'notify' | 'download' | 'auto'
+  idleOnly: boolean
+  batchSize: number
 }
 
 /** 识图模型配置 */

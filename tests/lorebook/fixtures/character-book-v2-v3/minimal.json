@@ -1,0 +1,16 @@
+{
+  "name": "角色内嵌最小世界书",
+  "entries": [
+    {
+      "id": "capital",
+      "keys": ["王城"],
+      "content": "王城是帝国首都。",
+      "enabled": true,
+      "insertion_order": 100,
+      "position": "before_char",
+      "constant": false,
+      "use_regex": false
+    }
+  ]
+}
+

@@ -1,0 +1,18 @@
+{
+  "type": "risu",
+  "ver": 1,
+  "data": [
+    {
+      "key": "遗迹",
+      "secondkey": "",
+      "insertorder": 20,
+      "comment": "未来字段条目",
+      "content": "这座遗迹沉睡在沙漠深处。",
+      "mode": "normal",
+      "alwaysActive": false,
+      "selective": false,
+      "futureEntryTrigger": { "clamp": 2 }
+    }
+  ],
+  "futureBookOption": "keep"
+}

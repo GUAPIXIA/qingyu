@@ -17,14 +17,20 @@ import type { UpdateSourceResult, UpdaterState } from '../../../shared/ipc-api'
 const GITHUB_RELEASES_URL = 'https://github.com/GUAPIXIA/qingyu/releases'
 const QUARK_DOWNLOAD_URL = 'https://pan.quark.cn/s/a9853284d260'
 
-function SourceResult({
+function SourceCard({
   label,
   result,
   checking,
+  icon,
+  hint,
+  onOpen,
 }: {
   label: string
   result?: UpdateSourceResult
   checking: boolean
+  icon: React.ReactNode
+  hint: string
+  onOpen?: () => void
 }) {
   const statusText = checking && !result
     ? '获取中…'
@@ -33,12 +39,40 @@ function SourceResult({
       : result?.version
         ? `v${result.version}`
         : '暂无结果'
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/55 px-3 py-2">
-      <span className="text-xs text-tavern-text-muted">{label}</span>
-      <span className={result?.status === 'error' ? 'text-xs text-red-400' : 'text-xs font-medium text-tavern-text'}>
-        {statusText}
+  const interactive = Boolean(onOpen) && !checking
+  const content = (
+    <>
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-tavern-border-soft bg-tavern-bg-light text-tavern-text-soft">
+        {icon}
       </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center justify-between gap-3">
+          <span className="text-xs text-tavern-text-muted">{label}</span>
+          <span className={result?.status === 'error' ? 'text-xs text-red-400' : 'text-xs font-semibold text-tavern-text'}>
+            {statusText}
+          </span>
+        </span>
+        <span className="mt-0.5 block text-[11px] text-tavern-text-muted/80">
+          {interactive ? hint : result?.status === 'error' ? '版本获取失败' : '等待检查结果'}
+        </span>
+      </span>
+      {interactive && (
+        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-tavern-text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
+      )}
+    </>
+  )
+
+  return interactive ? (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex min-h-16 items-center gap-2.5 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/55 px-3 py-2 text-left transition-colors hover:border-tavern-accent/45 hover:bg-tavern-accent-soft/35"
+    >
+      {content}
+    </button>
+  ) : (
+    <div className="flex min-h-16 items-center gap-2.5 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/55 px-3 py-2">
+      {content}
     </div>
   )
 }
@@ -49,12 +83,6 @@ export function UpdaterSection() {
   const [currentVersion, setCurrentVersion] = useState('')
   const [linkError, setLinkError] = useState('')
 
-  useEffect(() => {
-    window.api.updater.getState().then(setState)
-    window.api.app.getVersion().then(setCurrentVersion)
-    return window.api.updater.onEvent(setState)
-  }, [])
-
   const handleCheck = useCallback(async () => {
     setBusy(true)
     setLinkError('')
@@ -64,6 +92,30 @@ export function UpdaterSection() {
       setBusy(false)
     }
   }, [])
+
+  useEffect(() => {
+    let active = true
+    const unsubscribe = window.api.updater.onEvent((nextState) => {
+      if (active) setState(nextState)
+    })
+
+    void Promise.all([
+      window.api.updater.getState(),
+      window.api.app.getVersion(),
+    ]).then(([snapshot, version]) => {
+      if (!active) return
+      setState(snapshot)
+      setCurrentVersion(version)
+      // 主进程状态在本次应用运行期间持续保存：仅 idle 代表本次启动尚未检查。
+      // 离开设置页再进入不会重复请求；应用重启后状态恢复 idle，会重新自动检查。
+      if (snapshot.status === 'idle') void handleCheck()
+    })
+
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [handleCheck])
 
   const handleDownload = useCallback(async () => {
     setBusy(true)
@@ -86,13 +138,10 @@ export function UpdaterSection() {
 
   const status = state?.status ?? 'idle'
   const checking = status === 'checking'
-  const serverAvailable = state?.server?.status === 'available'
   const githubAvailable = state?.github?.status === 'available'
   const showResults = checking || Boolean(state?.server || state?.github)
-  const showManualDownloads = Boolean(state?.hasAvailableUpdate)
-    && status !== 'downloading'
-    && status !== 'downloaded'
-    && (serverAvailable || githubAvailable)
+  const showDownloadLinks = !checking && Boolean(state?.server || state?.github)
+  const serverDownloadUrl = state?.server?.downloadUrl
 
   const action = status === 'downloaded' ? (
     <button
@@ -131,7 +180,7 @@ export function UpdaterSection() {
   )
 
   return (
-    <SectionCard title="软件更新" icon={<RefreshCw className="h-4 w-4" />}>
+    <SectionCard title="软件更新" icon={<RefreshCw className="h-4 w-4" />} storageKey="updater">
       <div className="mt-3 space-y-3">
         <div className="flex items-center justify-between gap-4">
           <p className="text-sm">当前版本 v{currentVersion || '...'}</p>
@@ -140,8 +189,22 @@ export function UpdaterSection() {
 
         {showResults && (
           <div className="grid gap-2 sm:grid-cols-2" aria-label="更新来源版本">
-            <SourceResult label="服务器最新版本" result={state?.server} checking={checking} />
-            <SourceResult label="GitHub 最新版本" result={state?.github} checking={checking} />
+            <SourceCard
+              label="服务器最新版本"
+              result={state?.server}
+              checking={checking}
+              icon={<Server className="h-4 w-4" aria-hidden />}
+              hint="国内线路 · 点击下载"
+              onOpen={serverDownloadUrl ? () => void handleOpenLink(serverDownloadUrl) : undefined}
+            />
+            <SourceCard
+              label="GitHub 最新版本"
+              result={state?.github}
+              checking={checking}
+              icon={<Github className="h-4 w-4" aria-hidden />}
+              hint="GitHub Releases · 点击下载"
+              onOpen={!checking ? () => void handleOpenLink(GITHUB_RELEASES_URL) : undefined}
+            />
           </div>
         )}
 
@@ -170,50 +233,9 @@ export function UpdaterSection() {
           </details>
         )}
 
-        {showManualDownloads && (
-          <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/65 p-3">
-            <div className="mb-2.5">
-              <p className="text-sm font-medium text-tavern-text">手动下载安装包</p>
-              <p className="mt-0.5 text-xs text-tavern-text-muted">已确认存在新版本，可选择对应发布渠道</p>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              {serverAvailable && state?.server?.downloadUrl && (
-                <button
-                  type="button"
-                  onClick={() => void handleOpenLink(state.server!.downloadUrl!)}
-                  className="group flex min-h-14 items-center gap-2.5 rounded-lg border border-tavern-accent/30 bg-tavern-accent-soft/45 px-3 py-2 text-left transition-colors hover:border-tavern-accent/60 hover:bg-tavern-accent-soft"
-                >
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-tavern-accent text-white shadow-sm">
-                    <Server className="h-4 w-4" aria-hidden />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-tavern-text">服务器下载</span>
-                    <span className="block text-[11px] text-tavern-text-muted">v{state.server.version} · 国内线路</span>
-                  </span>
-                  <ArrowUpRight className="h-3.5 w-3.5 text-tavern-text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
-                </button>
-              )}
-
-              {githubAvailable && (
-                <button
-                  type="button"
-                  onClick={() => void handleOpenLink(GITHUB_RELEASES_URL)}
-                  className="group flex min-h-14 items-center gap-2.5 rounded-lg border border-tavern-border bg-tavern-bg px-3 py-2 text-left transition-colors hover:border-tavern-text-muted hover:bg-tavern-bg-hover"
-                >
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-tavern-border bg-tavern-bg-light text-tavern-text">
-                    <Github className="h-4 w-4" aria-hidden />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-tavern-text">GitHub 下载</span>
-                    <span className="block text-[11px] text-tavern-text-muted">v{state?.github?.version} · Releases</span>
-                  </span>
-                  <ArrowUpRight className="h-3.5 w-3.5 text-tavern-text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
-                </button>
-              )}
-            </div>
-
-            <div className="mt-2.5 flex items-start gap-2 border-t border-tavern-border-soft pt-2.5 text-xs">
+        {showDownloadLinks && (
+          <div>
+            <div className="flex items-start gap-2 border-t border-tavern-border-soft pt-2.5 text-xs">
               <CloudDownload className="mt-0.5 h-3.5 w-3.5 shrink-0 text-tavern-text-muted" aria-hidden />
               <div className="min-w-0">
                 <span className="text-tavern-text-muted">夸克网盘备用下载（版本以网盘页面为准）：</span>

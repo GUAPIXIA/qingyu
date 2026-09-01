@@ -16,8 +16,9 @@ import {
   STREAM_IDLE_TIMEOUT_MS,
   DEFAULT_LOREBOOK_SCAN_DEPTH,
   SEMANTIC_SCAN_MAX_TOKENS,
+  resolveLorebookScanDepth,
 } from './chatConstants'
-import { friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
+import { buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
 import { resolveVisionModel } from '../utils/visionModel'
 import { memoryFactsToTexts } from '../utils/memory'
 import type { ChatState, StoreGet, StoreSet } from './chatTypes'
@@ -97,18 +98,18 @@ async function fetchSemanticLoreHits(get: StoreGet, set: StoreSet, character: Ch
   const settings = useSettingsStore.getState().settings
   const st = settings.semanticTrigger
   const clear = () => {
-    if (get()._semanticLoreHits.length > 0) set({ _semanticLoreHits: [] })
+    set({ _semanticLoreHits: [], _semanticLoreAvailable: false })
   }
   // 快速失败：未启用 / 未配置 / 无激活世界书
-  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return clear()
+  if (!st?.enabled || !st.model?.trim() || (st.provider !== 'local' && !st.baseUrl?.trim())) return clear()
   const lorebookIds = get().activeLorebookIds
   if (lorebookIds.length === 0) return clear()
 
   // 语义扫描范围：按 token 预算自适应（上限 4000 token，下限 scanDepth 条），大上下文下判断范围更广
-  const scanDepth = lorebookIds
-    .map(id => lorebookCache.get(id)?.scanDepth)
-    .filter((d): d is number => typeof d === 'number' && d > 0)
-    .reduce((max, d) => Math.max(max, d), DEFAULT_LOREBOOK_SCAN_DEPTH)
+  const scanDepth = resolveLorebookScanDepth(
+    lorebookIds.map(id => lorebookCache.get(id)?.scanDepth),
+    DEFAULT_LOREBOOK_SCAN_DEPTH,
+  )
   const activeModel = useSettingsStore.getState().getActiveProfile()?.model || settings.activeModel
   const scanText = (() => {
     const msgs = get().messages
@@ -126,10 +127,19 @@ async function fetchSemanticLoreHits(get: StoreGet, set: StoreSet, character: Ch
   if (!scanText.trim()) return clear()
 
   // 缓存：同一轮对话扫描文本不变时复用命中（省嵌入 API 调用）
-  const cacheKey = `lore|${lorebookIds.join(',')}|${scanText}|${st.model}`
+  const cacheKey = buildSemanticCacheKey({
+    scope: 'lore',
+    corpus: [...lorebookIds].sort().join(','),
+    query: scanText,
+    provider: st.provider,
+    baseUrl: st.baseUrl,
+    model: st.model,
+    threshold: st.threshold,
+    maxResults: st.maxResults,
+  })
   const cached = semanticCacheGet<BudgetLoreItem[]>(cacheKey)
   if (cached) {
-    set({ _semanticLoreHits: cached })
+    set({ _semanticLoreHits: cached, _semanticLoreAvailable: true })
     return
   }
 
@@ -151,8 +161,13 @@ async function fetchSemanticLoreHits(get: StoreGet, set: StoreSet, character: Ch
       order: h.order,
       position: h.position,
       depth: h.depth,
+      // 阶段二：保留相似度与条目定位键（统一评分 / recency 加权用）
+      score: h.score,
+      key: `${h.lbId}:${h.id}`,
+      // 阶段三：手写摘要（预算紧张时代替全文注入）
+      summary: h.summary?.trim() ? replaceVariables(h.summary, settings.userName, character.name) : undefined,
     }))
-    set({ _semanticLoreHits: items })
+    set({ _semanticLoreHits: items, _semanticLoreAvailable: true })
     semanticCacheSet(cacheKey, items)
     if (items.length > 0) {
       logInfo('fetchSemanticLoreHits', `语义命中 ${items.length} 条世界书条目`)
@@ -175,7 +190,7 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
     if (get()._semanticFactsHits.length > 0) set({ _semanticFactsHits: [] })
   }
   // 快速失败：未启用嵌入 / 无配置
-  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return clear()
+  if (!st?.enabled || !st.model?.trim() || (st.provider !== 'local' && !st.baseUrl?.trim())) return clear()
 
   const { sessions, currentSessionId } = get()
   const session = sessions.find((s) => s.id === currentSessionId)
@@ -190,7 +205,16 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
   if (!query.trim()) return clear()
 
   // 缓存：同一轮对话查询不变时复用（省嵌入 API 调用）
-  const cacheKey = `facts|${session.id}|${query}|${st.model}`
+  const cacheKey = buildSemanticCacheKey({
+    scope: 'facts',
+    corpus: `${session.id}:${session.memoryVersion ?? 0}:${session.factsVectorVersion ?? 0}`,
+    query,
+    provider: st.provider,
+    baseUrl: st.baseUrl,
+    model: st.model,
+    threshold: st.threshold,
+    maxResults: st.maxResults,
+  })
   const cached = semanticCacheGet<import('../../shared/ipc-api').FactSearchHit[]>(cacheKey)
   if (cached) {
     set({ _semanticFactsHits: cached })
@@ -247,7 +271,7 @@ export async function vectorizeSessionFacts(
   const factTexts = memoryFactsToTexts(facts)
   if (!factTexts.length) return
   const st = useSettingsStore.getState().settings.semanticTrigger
-  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return
+  if (!st?.enabled || !st.model?.trim() || (st.provider !== 'local' && !st.baseUrl?.trim())) return
   try {
     const vectors = await window.api.embedding.embedFacts({
       provider: st.provider,
@@ -432,6 +456,7 @@ export async function streamAIResponse(
     character: Character
     preset: Preset | null
     continuation?: boolean  // 续写模式：buildContext 注入续写指令并跳过 Assistant Prefix
+    generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
     inputText?: string   // 用户输入文本（用于字符统计），regenerate/continue 时为空
     onComplete: (fullContent: string) => Promise<void>
     onError?: (errMsg: string) => void
@@ -463,7 +488,10 @@ export async function streamAIResponse(
     stopStrings = collectStopStrings(regexRules)
   } catch { /* 忽略 */ }
 
-  const contextMessages = get().buildContext(character, preset, { continuation: opts.continuation })
+  const contextMessages = get().buildContext(character, preset, {
+    continuation: opts.continuation,
+    generationType: opts.generationType ?? (opts.continuation ? 'continue' : 'normal'),
+  })
 
   // Vision：上下文含图片且配置了激活识图模型 → 本轮使用识图模型连接（未填字段回退当前 Profile）
   const vision = resolveVisionModel(contextMessages)

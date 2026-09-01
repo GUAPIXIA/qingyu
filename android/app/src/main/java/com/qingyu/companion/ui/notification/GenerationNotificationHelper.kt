@@ -38,20 +38,23 @@ object GenerationNotificationHelper {
     }
 
     private fun canPost(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= 33) {
-            return ActivityCompat.checkSelfPermission(
+        // A-06：App 内「任务通知」开关关闭时渠道虽在也不再投递，保持与设置页一致
+        val systemOk = if (Build.VERSION.SDK_INT >= 33) {
+            ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS,
             ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
         }
-        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+        return canPostNotification(NotificationGate.appEnabled, systemOk)
     }
 
     private fun pendingIntentForSession(context: Context, sessionId: String?): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("openSessionId", sessionId)
-            putExtra("fromNotification", true)
+            putExtra(NotificationExtras.OPEN_SESSION_ID, sessionId)
+            putExtra(NotificationExtras.FROM_NOTIFICATION, true)
         }
         return PendingIntent.getActivity(
             context,

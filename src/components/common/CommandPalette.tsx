@@ -133,7 +133,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       { id: 'page-regex', label: '前往：正则', icon: Regex, group: '页面', action: () => navigate('/regex') },
       { id: 'page-quick-replies', label: '前往：快捷回复', icon: Zap, group: '页面', action: () => navigate('/quick-replies') },
       { id: 'page-personas', label: '前往：人设', icon: User, group: '页面', action: () => navigate('/personas') },
-      { id: 'page-api', label: '前往：API 设置', icon: Plug, group: '页面', action: () => navigate('/api') },
+      { id: 'page-api', label: '前往：模型', icon: Plug, group: '页面', action: () => navigate('/api') },
       { id: 'page-mcp', label: '前往：MCP 工具', icon: Cpu, group: '页面', action: () => navigate('/mcp') },
       { id: 'page-usage', label: '前往：用量统计', icon: Info, group: '页面', action: () => navigate('/usage') },
       { id: 'page-announcements', label: '前往：公告', icon: MessageCircle, group: '页面', action: () => navigate('/announcements') },

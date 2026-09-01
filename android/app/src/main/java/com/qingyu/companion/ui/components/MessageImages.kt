@@ -34,9 +34,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.qingyu.companion.R
 import java.util.Base64
 
 /**
@@ -170,7 +172,7 @@ private fun SingleImage(
                 .data(source.url)
                 .crossfade(true)
                 .build(),
-            contentDescription = "消息图片",
+            contentDescription = stringResource(R.string.cd_message_image),
             contentScale = ContentScale.Crop,
             modifier = modifier
                 .clip(RoundedCornerShape(8.dp))
@@ -184,7 +186,7 @@ private fun SingleImage(
             bitmap?.let {
                 Image(
                     bitmap = it.asImageBitmap(),
-                    contentDescription = "消息图片",
+                    contentDescription = stringResource(R.string.cd_message_image),
                     contentScale = ContentScale.Crop,
                     modifier = modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -199,7 +201,7 @@ private fun SingleImage(
                 .clip(RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text("图片", style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.msg_image), style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -219,7 +221,7 @@ fun ImageViewerDialog(
                 title = { Text("${pagerState.currentPage + 1} / ${images.size}") },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -235,7 +237,7 @@ fun ImageViewerDialog(
             when (source) {
                 is ImageSource.Url -> AsyncImage(
                     model = source.url,
-                    contentDescription = "大图",
+                    contentDescription = stringResource(R.string.cd_large_image),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -247,7 +249,7 @@ fun ImageViewerDialog(
                     bitmap?.let {
                         Image(
                             bitmap = it.asImageBitmap(),
-                            contentDescription = "大图",
+                            contentDescription = stringResource(R.string.cd_large_image),
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -255,7 +257,7 @@ fun ImageViewerDialog(
                 }
 
                 null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("无法加载图片")
+                    Text(stringResource(R.string.msg_image_load_failed))
                 }
             }
         }

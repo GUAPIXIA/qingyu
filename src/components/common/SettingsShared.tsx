@@ -2,23 +2,66 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
+const SETTINGS_SECTION_STATE_KEY = 'settings-section-open-state-v1'
+
+type SectionOpenState = Record<string, boolean>
+
+function readSectionOpenState(): SectionOpenState {
+  try {
+    const raw = localStorage.getItem(SETTINGS_SECTION_STATE_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return parsed as SectionOpenState
+  } catch {
+    return {}
+  }
+}
+
+function writeSectionOpenState(storageKey: string, open: boolean): void {
+  try {
+    const state = readSectionOpenState()
+    localStorage.setItem(SETTINGS_SECTION_STATE_KEY, JSON.stringify({ ...state, [storageKey]: open }))
+  } catch {
+    // localStorage 不可用时仍保留当前会话内的折叠交互。
+  }
+}
+
 /** 折叠卡片 */
 export function SectionCard({
   title,
   icon,
   defaultOpen = true,
+  storageKey,
   children,
 }: {
   title: string
   icon: React.ReactNode
   defaultOpen?: boolean
+  /** 稳定的设置分区标识；提供后会在本机保留展开/折叠状态。 */
+  storageKey?: string
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [open, setOpen] = useState(() => {
+    if (!storageKey) return defaultOpen
+    const persisted = readSectionOpenState()[storageKey]
+    return typeof persisted === 'boolean' ? persisted : defaultOpen
+  })
+
+  const toggleOpen = () => {
+    setOpen((current) => {
+      const next = !current
+      if (storageKey) writeSectionOpenState(storageKey, next)
+      return next
+    })
+  }
+
   return (
     <section className="card overflow-hidden">
       <button
-        onClick={() => setOpen((v) => !v)}
+        type="button"
+        aria-expanded={open}
+        onClick={toggleOpen}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-tavern-bg-hover transition-colors"
       >
         <div className="flex items-center gap-2">

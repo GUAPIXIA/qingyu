@@ -6,6 +6,7 @@
  */
 
 import { join } from 'node:path'
+import { existsSync, readdirSync } from 'node:fs'
 import { DIRS, readJson, writeJson, removeFile } from './storage'
 import { l2Normalize } from '../../src/utils/vector'
 import { createLogger } from './logger'
@@ -15,6 +16,10 @@ const log = createLogger('vectorStore')
 export interface VectorIndex {
   version: number
   model: string
+  provider?: 'openai' | 'ollama' | 'local'
+  modelId?: string
+  modelVersion?: string
+  dimensions?: number
   /** 条目 id → 归一化向量 */
   entries: Record<string, number[]>
   updatedAt: number
@@ -23,6 +28,13 @@ export interface VectorIndex {
 }
 
 const CURRENT_VERSION = 1
+
+export interface VectorSpace {
+  provider: 'openai' | 'ollama' | 'local'
+  model: string
+  modelId?: string
+  modelVersion?: string
+}
 
 /** 内存缓存，避免频繁磁盘读取（LRU 上限，防止无限增长） */
 const cache = new Map<string, VectorIndex>()
@@ -48,17 +60,35 @@ function cacheGet(key: string): VectorIndex | null {
   return v
 }
 
-function indexPath(lorebookId: string): string {
+function indexPath(lorebookId: string, space?: VectorSpace): string {
+  if (space?.provider === 'local' && space.modelId && space.modelVersion) {
+    return join(DIRS.embeddingIndexes(), space.modelId, space.modelVersion, `${lorebookId}.json`)
+  }
   return join(DIRS.vectors(), `${lorebookId}.json`)
 }
 
+function allIndexPaths(lorebookId: string): string[] {
+  const paths = [indexPath(lorebookId)]
+  const root = DIRS.embeddingIndexes()
+  if (!existsSync(root)) return paths
+  for (const model of readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+    const modelDir = join(root, model.name)
+    for (const version of readdirSync(modelDir, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+      const path = join(modelDir, version.name, `${lorebookId}.json`)
+      if (existsSync(path)) paths.push(path)
+    }
+  }
+  return paths
+}
+
 /** 读取向量索引（带内存缓存） */
-export function getVectorIndex(lorebookId: string): VectorIndex | null {
-  const cached = cacheGet(lorebookId)
+export function getVectorIndex(lorebookId: string, space?: VectorSpace): VectorIndex | null {
+  const path = indexPath(lorebookId, space)
+  const cached = cacheGet(path)
   if (cached) return cached
-  const index = readJson<VectorIndex>(indexPath(lorebookId))
+  const index = readJson<VectorIndex>(path)
   if (index && index.entries && typeof index.entries === 'object') {
-    cacheSet(lorebookId, index)
+    cacheSet(path, index)
     return index
   }
   return null
@@ -82,6 +112,7 @@ export function saveVectorIndex(
   lorebookId: string,
   model: string,
   vectors: Record<string, number[]>,
+  space?: VectorSpace,
 ): VectorIndex {
   const normalized: Record<string, number[]> = {}
   let dim: number | null = null
@@ -99,25 +130,32 @@ export function saveVectorIndex(
   const index: VectorIndex = {
     version: CURRENT_VERSION,
     model,
+    provider: space?.provider,
+    modelId: space?.modelId,
+    modelVersion: space?.modelVersion,
+    dimensions: dim ?? undefined,
     entries: normalized,
     updatedAt: Date.now(),
     stale: [],
   }
-  writeJson(indexPath(lorebookId), index)
-  cacheSet(lorebookId, index)
+  const path = indexPath(lorebookId, space)
+  writeJson(path, index)
+  cacheSet(path, index)
   return index
 }
 
 /** 删除向量索引（世界书删除时调用） */
 export function removeVectorIndex(lorebookId: string): void {
-  removeFile(indexPath(lorebookId))
-  cache.delete(lorebookId)
+  for (const path of allIndexPaths(lorebookId)) {
+    removeFile(path)
+    cache.delete(path)
+  }
   log.info('向量索引已删除', { lorebookId })
 }
 
 /** 统计索引中条目数量 */
-export function countIndexedEntries(lorebookId: string): number {
-  const index = getVectorIndex(lorebookId)
+export function countIndexedEntries(lorebookId: string, space?: VectorSpace): number {
+  const index = getVectorIndex(lorebookId, space)
   return index ? Object.keys(index.entries).length : 0
 }
 
@@ -127,31 +165,34 @@ export function countIndexedEntries(lorebookId: string): number {
  */
 export function markStaleEntries(lorebookId: string, changedIds: string[]): void {
   if (!changedIds || changedIds.length === 0) return
-  const index = getVectorIndex(lorebookId)
-  if (!index) return
-  const stale = new Set(index.stale ?? [])
-  for (const id of changedIds) {
-    if (id in index.entries) stale.add(id)
+  let maxStale = 0
+  for (const path of allIndexPaths(lorebookId)) {
+    const index = readJson<VectorIndex>(path)
+    if (!index?.entries) continue
+    const stale = new Set(index.stale ?? [])
+    for (const id of changedIds) if (id in index.entries) stale.add(id)
+    if (stale.size === 0) continue
+    const updated = { ...index, stale: [...stale], updatedAt: Date.now() }
+    writeJson(path, updated)
+    cacheSet(path, updated)
+    maxStale = Math.max(maxStale, stale.size)
   }
-  if (stale.size === 0) return
-  const updated = { ...index, stale: [...stale], updatedAt: Date.now() }
-  writeJson(indexPath(lorebookId), updated)
-  cacheSet(lorebookId, updated)
-  log.info('条目向量已标记过期', { lorebookId, count: stale.size })
+  if (maxStale) log.info('条目向量已标记过期', { lorebookId, count: maxStale })
 }
 
 /** 清空过期标记（重建索引后调用） */
-export function clearStaleEntries(lorebookId: string): void {
-  const index = getVectorIndex(lorebookId)
+export function clearStaleEntries(lorebookId: string, space?: VectorSpace): void {
+  const index = getVectorIndex(lorebookId, space)
   if (!index) return
   if (!index.stale || index.stale.length === 0) return
   const updated = { ...index, stale: [], updatedAt: Date.now() }
-  writeJson(indexPath(lorebookId), updated)
-  cacheSet(lorebookId, updated)
+  const path = indexPath(lorebookId, space)
+  writeJson(path, updated)
+  cacheSet(path, updated)
 }
 
 /** 统计过期条目数量 */
-export function countStaleEntries(lorebookId: string): number {
-  const index = getVectorIndex(lorebookId)
+export function countStaleEntries(lorebookId: string, space?: VectorSpace): number {
+  const index = getVectorIndex(lorebookId, space)
   return index ? (index.stale ?? []).length : 0
 }

@@ -1,0 +1,226 @@
+{
+  "id": "lorebook-runtime-01",
+  "description": "关键词、二级过滤、正则、常驻与多插入位置",
+  "input": {
+    "lorebooks": [
+      {
+        "id": "core",
+        "name": "核心设定",
+        "description": "",
+        "enabled": true,
+        "scanDepth": 4,
+        "entries": [
+          {
+            "id": "law",
+            "keywords": [],
+            "content": "魔法必须遵守等价交换。",
+            "position": "after_char",
+            "order": 50,
+            "probability": 100,
+            "enabled": true,
+            "priority": "always"
+          },
+          {
+            "id": "capital",
+            "keywords": [
+              "王城"
+            ],
+            "content": "王城是帝国首都。",
+            "position": "before_char",
+            "order": 100,
+            "probability": 100,
+            "enabled": true,
+            "matchMode": "keyword"
+          },
+          {
+            "id": "princess",
+            "keywords": [
+              "公主"
+            ],
+            "secondaryKeywords": [
+              "王城"
+            ],
+            "selectiveLogic": "and_any",
+            "content": "公主居住在王城。",
+            "position": "after_char",
+            "order": 200,
+            "probability": 100,
+            "enabled": true
+          },
+          {
+            "id": "floor",
+            "keywords": [
+              "第\\d+层"
+            ],
+            "content": "高塔每层都有守卫。",
+            "position": "at_depth",
+            "depth": 2,
+            "role": "user",
+            "order": 300,
+            "probability": 100,
+            "enabled": true,
+            "useRegex": true,
+            "regexFlags": "i"
+          },
+          {
+            "id": "disabled",
+            "keywords": [
+              "王城"
+            ],
+            "content": "禁用内容。",
+            "position": "at_end",
+            "order": 400,
+            "probability": 100,
+            "enabled": false
+          }
+        ]
+      }
+    ],
+    "scanText": "王城的公主抵达第7层。",
+    "scanMessages": [
+      "王城的公主抵达第7层。"
+    ],
+    "userName": "用户",
+    "charName": "角色",
+    "budget": 4096,
+    "model": "gpt-4o-mini",
+    "semanticEnabled": false,
+    "diagnosticsMode": "preview"
+  },
+  "expected": {
+    "beforeChar": [
+      "王城是帝国首都。"
+    ],
+    "afterChar": [
+      "魔法必须遵守等价交换。",
+      "公主居住在王城。"
+    ],
+    "atEnd": [],
+    "atDepth": [
+      {
+        "content": "高塔每层都有守卫。",
+        "order": 300,
+        "depth": 2,
+        "role": "user"
+      }
+    ],
+    "triggeredCount": 4,
+    "droppedCount": 0,
+    "alwaysDropped": 0,
+    "conditionalDropped": 0,
+    "detailDropped": 0,
+    "bookBudgetDropped": null,
+    "triggeredEntryKeys": [
+      "core:law",
+      "core:capital",
+      "core:princess",
+      "core:floor"
+    ],
+    "diagnostics": {
+      "summary": {
+        "activeBooks": 1,
+        "enabledEntries": 4,
+        "matchedEntries": 4,
+        "injectedEntries": 4,
+        "droppedEntries": 0,
+        "untriggeredEntries": 0,
+        "semanticDeadEntries": 0,
+        "bookBudgetDropped": 0,
+        "globalBudgetDropped": 0
+      },
+      "semantic": {
+        "enabled": false,
+        "candidateCount": 0
+      },
+      "entries": [
+        {
+          "key": "core:princess",
+          "outcome": "injected",
+          "stage": "injection",
+          "reason": null,
+          "activationSource": "keyword",
+          "position": "after_char",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": 0,
+          "matchedKeywords": [
+            {
+              "keyword": "公主",
+              "count": 1,
+              "channel": "primary"
+            },
+            {
+              "keyword": "王城",
+              "count": 1,
+              "channel": "secondary"
+            }
+          ],
+          "score": 0.624083,
+          "semanticScore": 0.097596,
+          "semanticSource": "approx"
+        },
+        {
+          "key": "core:capital",
+          "outcome": "injected",
+          "stage": "injection",
+          "reason": null,
+          "activationSource": "keyword",
+          "position": "before_char",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": 0,
+          "matchedKeywords": [
+            {
+              "keyword": "王城",
+              "count": 1,
+              "channel": "primary"
+            }
+          ],
+          "score": 0.59716,
+          "semanticScore": 0.070673,
+          "semanticSource": "approx"
+        },
+        {
+          "key": "core:floor",
+          "outcome": "injected",
+          "stage": "injection",
+          "reason": null,
+          "activationSource": "keyword",
+          "position": "at_depth",
+          "depth": 2,
+          "role": "user",
+          "priority": "conditional",
+          "recursionDepth": 0,
+          "matchedKeywords": [
+            {
+              "keyword": "第\\d+层",
+              "count": 1,
+              "channel": "primary"
+            }
+          ],
+          "score": 0.420236,
+          "semanticScore": 0,
+          "semanticSource": "none"
+        },
+        {
+          "key": "core:law",
+          "outcome": "injected",
+          "stage": "injection",
+          "reason": null,
+          "activationSource": "always",
+          "position": "after_char",
+          "depth": null,
+          "role": null,
+          "priority": "always",
+          "recursionDepth": 0,
+          "matchedKeywords": [],
+          "score": 0,
+          "semanticScore": 0,
+          "semanticSource": "none"
+        }
+      ]
+    }
+  }
+}

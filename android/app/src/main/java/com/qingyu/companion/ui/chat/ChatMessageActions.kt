@@ -1,121 +1,46 @@
 package com.qingyu.companion.ui.chat
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import coil.compose.AsyncImage
-import com.qingyu.companion.data.LocalAppContainer
+import com.qingyu.companion.R
 import com.qingyu.companion.model.Message
-import com.qingyu.companion.model.PendingMessage
-import com.qingyu.companion.model.QuickReply
 import com.qingyu.companion.model.Role
-import com.qingyu.companion.model.TimelineItem
-import com.qingyu.companion.model.buildTimeline
-import com.qingyu.companion.ui.components.AppBackground
-import com.qingyu.companion.ui.components.AvatarBubble
-import com.qingyu.companion.ui.components.ImageViewerDialog
-import com.qingyu.companion.ui.components.MarkdownText
-import com.qingyu.companion.ui.components.MessageImages
-import com.qingyu.companion.ui.components.QuickSettingsPanel
-import com.qingyu.companion.ui.components.extractThought
-import com.qingyu.companion.ui.components.resolveImageUrl
-import com.qingyu.companion.ui.components.stripThought
 import com.qingyu.companion.ui.theme.qyColors
-import com.qingyu.companion.ui.tts.TtsPlayer
-import com.qingyu.companion.utils.uriToCompressedBase64
 
 /** 状态胶囊（TTS 等轻提示）：软底胶囊 */
 @Composable
@@ -185,13 +110,13 @@ internal fun MessageActionDialog(
             ) {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                     Text(
-                        if (message.role == Role.user) "我" else "角色",
+                        if (message.role == Role.user) stringResource(R.string.chat_msg_me) else stringResource(R.string.chat_role_placeholder),
                         style = MaterialTheme.typography.labelSmall,
                         color = qy.accent,
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        message.content.replace(Regex("<[^>]+>"), "").trim().ifEmpty { "（空消息）" },
+                        message.content.replace(Regex("<[^>]+>"), "").trim().ifEmpty { stringResource(R.string.chat_msg_empty) },
                         style = MaterialTheme.typography.bodySmall,
                         color = qy.soft,
                         maxLines = 2,
@@ -202,25 +127,29 @@ internal fun MessageActionDialog(
             Spacer(Modifier.height(12.dp))
 
             // 动作行（44dp 行高，图标 + 文字）
-            ActionSheetRow(Icons.AutoMirrored.Filled.Reply, "引用回复", onReply)
-            ActionSheetRow(Icons.Filled.ContentCopy, "复制文本", onCopy)
-            if (onCopyMarkdown != null) ActionSheetRow(Icons.Filled.ContentCopy, "复制 Markdown", onCopyMarkdown)
-            if (onShare != null) ActionSheetRow(Icons.Filled.Share, "分享", onShare)
+            ActionSheetRow(Icons.AutoMirrored.Filled.Reply, stringResource(R.string.chat_action_reply), onReply)
+            ActionSheetRow(Icons.Filled.ContentCopy, stringResource(R.string.chat_action_copy), onCopy)
+            if (onCopyMarkdown != null) {
+                ActionSheetRow(Icons.Filled.ContentCopy, stringResource(R.string.chat_action_copy_markdown), onCopyMarkdown)
+            }
+            if (onShare != null) {
+                ActionSheetRow(Icons.Filled.Share, stringResource(R.string.chat_action_share), onShare)
+            }
             if (message.role == Role.user) {
-                ActionSheetRow(Icons.Filled.Edit, "编辑", onEdit)
+                ActionSheetRow(Icons.Filled.Edit, stringResource(R.string.chat_action_edit), onEdit)
             }
             if (message.role == Role.assistant) {
-                ActionSheetRow(Icons.Filled.Refresh, "重新生成", onRegenerate)
+                ActionSheetRow(Icons.Filled.Refresh, stringResource(R.string.chat_action_regenerate), onRegenerate)
             }
-            ActionSheetRow(Icons.Filled.Translate, "翻译", onTranslate)
-            ActionSheetRow(Icons.Filled.VolumeUp, "朗读", onSpeak)
-            ActionSheetRow(Icons.Filled.AccountTree, "创建分支", onBranch)
+            ActionSheetRow(Icons.Filled.Translate, stringResource(R.string.chat_action_translate), onTranslate)
+            ActionSheetRow(Icons.Filled.VolumeUp, stringResource(R.string.chat_action_speak), onSpeak)
+            ActionSheetRow(Icons.Filled.AccountTree, stringResource(R.string.chat_action_branch), onBranch)
 
             Spacer(Modifier.height(6.dp))
             HorizontalDivider(color = qy.lineSoft)
             Spacer(Modifier.height(6.dp))
             // 破坏性操作独立（低饱和红）
-            ActionSheetRow(Icons.Filled.Delete, "删除", onDelete, destructive = true)
+            ActionSheetRow(Icons.Filled.Delete, stringResource(R.string.chat_action_delete), onDelete, destructive = true)
         }
     }
 }

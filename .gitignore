@@ -50,6 +50,13 @@ coverage/
 # 审查临时产物
 lint*.json
 
+# QA / Playwright 运行日志
+output/
+.qa/
+
+# 开发环境本地语义模型（正式版存放在应用安装目录）
+/models/
+
 # AI 工具目录（本地工具数据，不入库）
 .qoder/
 .codebuddy/
@@ -74,3 +81,5 @@ local.properties
 .poc-tmp/
 .poc-tmp-src/
 piolium/
+relay-server/.env
+relay-server/dist/

@@ -1,23 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 网络安全分级（路线图 4.3）：
-     - base-config 默认禁止明文，符合远程安全模式（公网/自建中继强制 HTTPS/WSS）
-     - 局域网模式（同 Wi-Fi / Tailscale 10.x / ZeroTier 192.168.x / 100.64.x）通过 OkHttp 层 isPrivateHost 判断，
-       仍走 http/ws，但 Manifest 层已收口全局 cleartext，lint 不再报 usesCleartextTraffic=true
-     - 如需为特定私有网段放行明文，可在此追加 domain-config（当前 base-config 已满足 lint 收口要求） -->
+<!-- 网络安全分级（A-04/A-05 短期可用方案）：
+     - base-config 临时放行明文：Android 9+ 平台层此前直接拒绝私网 http，与
+       NetworkModule 对本地端点生成 http/ws 自相矛盾（P0 阻塞项）。
+       Network Security Config 无法用 CIDR 通配动态局域网 IP（10.0.0.0 不匹配 10.1.2.3），
+       对任意动态私网地址只能由 base cleartext 放行。
+     - 这只是平台层放行，不代表任意地址可明文连接：安全边界在应用层 EndpointPolicy
+       （network/connection/EndpointNormalizer + ConnectionEndpoint）强制执行——
+       仅明确判定为本地（私网 IPv4 / 100.64/10 / loopback / IPv6 ULA・link-local / .local）
+       允许 http/ws；公网域名与公网 IP 强制 https/wss，无法构造出明文端点；
+       重定向由 RedirectPolicyInterceptor 逐跳校验，拒绝降级与公网→本地跳转。
+     - 长期方案（阶段 D）：PC Bridge 局域网本机 TLS 证书 + QR v2 下发公钥指纹 +
+       配对时固定 pin（TLS_PINNED），届时重新收紧本文件为 base 禁明文 + pin 域。
+     - 保留 system trust anchors 用于公网/未来 TLS 校验。 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-    <!-- 局域网私网示例：如需显式放行，可取消注释（Android 9+ 需显式允许才可 http 访问 10/192.168/172.16/100.64） -->
-    <!--
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">10.0.0.0</domain>
-        <domain includeSubdomains="true">192.168.0.0</domain>
-        <domain includeSubdomains="true">100.64.0.0</domain>
-        <domain>localhost</domain>
-        <domain>127.0.0.1</domain>
-    </domain-config>
-    -->
 </network-security-config>

@@ -58,6 +58,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.ui.components.AppBackground
@@ -65,6 +66,7 @@ import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.MarkdownText
 import com.qingyu.companion.ui.components.resolveImageUrl
 import com.qingyu.companion.ui.theme.qyColors
+import androidx.compose.ui.res.stringResource
 import android.util.Log
 import java.util.Locale
 
@@ -125,7 +127,7 @@ internal fun CharacterCard(
                 )
                 val desc = character.translatedContent?.description ?: character.description
                 Text(
-                    desc.ifBlank { "（无简介）" },
+                    desc.ifBlank { stringResource(R.string.characters_no_description) },
                     style = MaterialTheme.typography.bodySmall,
                     color = qy.soft,
                     maxLines = 2,

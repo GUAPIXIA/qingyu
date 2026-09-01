@@ -1,0 +1,20 @@
+{
+  "spec": "lorebook_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "V3 最小世界书",
+    "entries": [
+      {
+        "id": 1,
+        "keys": ["遗迹"],
+        "content": "遗迹位于北方。",
+        "enabled": true,
+        "insertion_order": 90,
+        "position": "before_char",
+        "constant": false,
+        "use_regex": false
+      }
+    ]
+  }
+}
+

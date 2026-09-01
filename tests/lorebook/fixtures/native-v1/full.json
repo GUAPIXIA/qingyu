@@ -1,0 +1,47 @@
+{
+  "id": "native-full",
+  "name": "完整原生世界书",
+  "description": "覆盖轻语 native v1 已知字段",
+  "enabled": true,
+  "scanDepth": 8,
+  "recursiveScanning": false,
+  "tokenBudget": 2048,
+  "entries": [
+    {
+      "id": "entry-full",
+      "keywords": ["公主", "/王(城|都)/iu"],
+      "secondaryKeywords": ["帝国"],
+      "selectiveLogic": "and_any",
+      "content": "公主居住在王城。",
+      "summary": "王城公主设定",
+      "translation": "Princess lives in the capital.",
+      "position": "at_depth",
+      "depth": 2,
+      "role": "system",
+      "order": 42,
+      "probability": 85,
+      "enabled": true,
+      "useRegex": false,
+      "regexFlags": "iu",
+      "caseSensitive": false,
+      "matchWholeWords": false,
+      "excludeRecursion": true,
+      "preventRecursion": true,
+      "scanDepth": 3,
+      "delayUntilRecursion": 2,
+      "inclusionGroups": ["royal"],
+      "inclusionGroupPrioritized": true,
+      "inclusionGroupWeight": 150,
+      "useGroupScoring": true,
+      "characterFilter": { "exclude": false, "names": ["Alice"], "tags": ["royal"] },
+      "generationTriggers": ["normal", "continue"],
+      "sticky": 2,
+      "cooldown": 3,
+      "delay": 1,
+      "ignoreBudget": true,
+      "matchMode": "both",
+      "priority": "detail"
+    }
+  ]
+}
+

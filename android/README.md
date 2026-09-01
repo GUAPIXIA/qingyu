@@ -4,7 +4,7 @@ PC 端「轻语」的安卓伴侣端：只做远程连接与对话消费，不�
 
 ## 版本
 
-当前版本 **0.1.5**（build 6，配合 PC 0.11.28/0.12.0）。更新日志见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **0.3.0**（build 9，Android 独立版本）。更新日志见 [CHANGELOG.md](CHANGELOG.md)。
 
 - 版本号集中管理：`gradle/libs.versions.toml` `[versions]` 中的 `appVersionName` / `appVersionCode` 为唯一权威来源，`app/build.gradle.kts` 引用；发布新版本时仅需在该处递增，并同步更新 CHANGELOG.md。
 

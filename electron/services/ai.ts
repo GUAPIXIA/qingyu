@@ -11,8 +11,14 @@ import { openaiAdapter } from './adapters/openai'
 import { claudeAdapter } from './adapters/claude'
 import { geminiAdapter } from './adapters/gemini'
 import { ollamaAdapter } from './adapters/ollama'
+import type {
+  LorebookKeywordEnrichmentMode,
+  LorebookKeywordLocalizationEntry,
+  LorebookKeywordLocalizationSuggestion,
+} from '../../shared/ipc-api'
 
 const log = createLogger('ai')
+const LOREBOOK_LOCALIZATION_TIMEOUT_MS = 60 * 1000
 
 // ===================== 适配器注册表 =====================
 
@@ -58,6 +64,70 @@ export function getAdapter(provider: string): AIAdapter {
 // ===================== IPC 注册 =====================
 const activeRequests = new Map<string, AbortController>()
 
+const HAN_CHARACTER = /\p{Script=Han}/u
+const ALIAS_SPLITTER = /[,，、;；\n]+/
+const ANY_LETTER = /\p{L}/u
+
+/**
+ * 从模型输出中提取并清洗触发词。模型可能包裹 Markdown 代码块或 thought 标签，
+ * 因此解析层只信任请求中存在的条目 id，并拒绝过长和重复的别名。
+ * localize 模式仅接受含中文字符的别名；enrich 模式允许任意语言（多语言关键词），
+ * 但仍要求至少含一个字母（过滤纯数字/符号噪音）。
+ */
+export function parseLorebookKeywordSuggestions(
+  raw: string,
+  entries: LorebookKeywordLocalizationEntry[],
+  mode: LorebookKeywordEnrichmentMode = 'localize',
+): LorebookKeywordLocalizationSuggestion[] {
+  const cleaned = String(raw ?? '')
+    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/```(?:json)?/gi, '')
+    .replace(/```/g, '')
+    .trim()
+  const start = cleaned.indexOf('[')
+  const end = cleaned.lastIndexOf(']')
+  if (start < 0 || end < start) throw new Error('模型未返回有效的 JSON 数组')
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(cleaned.slice(start, end + 1))
+  } catch {
+    throw new Error('模型返回的触发词格式无法解析，请重试或更换模型')
+  }
+  if (!Array.isArray(parsed)) throw new Error('模型返回的触发词格式无效')
+
+  const sourceById = new Map(entries.map((entry) => [entry.id, entry]))
+  const result: LorebookKeywordLocalizationSuggestion[] = []
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') continue
+    const candidate = item as { id?: unknown; entryId?: unknown; aliases?: unknown }
+    const entryId = typeof candidate.entryId === 'string'
+      ? candidate.entryId
+      : typeof candidate.id === 'string' ? candidate.id : ''
+    const source = sourceById.get(entryId)
+    if (!source || !Array.isArray(candidate.aliases)) continue
+
+    const existing = new Set(source.keywords.map((keyword) => keyword.trim().toLocaleLowerCase()).filter(Boolean))
+    const aliases: string[] = []
+    for (const value of candidate.aliases) {
+      if (typeof value !== 'string') continue
+      for (const piece of value.split(ALIAS_SPLITTER)) {
+        const alias = piece.trim().replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '')
+        const normalized = alias.toLocaleLowerCase()
+        if (!alias || alias.length > 24 || existing.has(normalized)) continue
+        if (mode === 'localize' ? !HAN_CHARACTER.test(alias) : !ANY_LETTER.test(alias)) continue
+        existing.add(normalized)
+        aliases.push(alias)
+        if (aliases.length >= 8) break
+      }
+      if (aliases.length >= 8) break
+    }
+    if (aliases.length > 0) result.push({ entryId, aliases })
+  }
+  return result
+}
+
 /** 带重试的 chat 调用 */
 export async function chatWithRetry(
   adapter: AIAdapter,
@@ -66,6 +136,7 @@ export async function chatWithRetry(
   signal: AbortSignal,
   retryCount = DEFAULT_RETRY_COUNT,
   onUsage?: (usage: TokenUsageInfo) => void,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<string> {
   // H-05 修复：流式请求不重试，因为已发送的 chunks 无法撤回，重试会导致内容重复
   const effectiveRetry = params.stream ? 0 : retryCount
@@ -74,7 +145,7 @@ export async function chatWithRetry(
     if (signal.aborted) throw new Error('Aborted')
     try {
       // 加入超时（与用户 signal 合并）
-      const { signal: timeoutSignal, cleanup } = withTimeout(signal, DEFAULT_TIMEOUT_MS)
+      const { signal: timeoutSignal, cleanup } = withTimeout(signal, timeoutMs)
       try {
         return await adapter.chat(params, onChunk, timeoutSignal, onUsage)
       } finally {
@@ -215,6 +286,181 @@ export function registerAIIPC(ipcMain: IpcMain): void {
     if (controller) {
       controller.abort()
       activeRequests.delete(requestId)
+    }
+  })
+
+  // 世界书超限条目压缩（阶段三：非流式，invoke 直接返回完整摘要文本）
+  ipcMain.handle('ai:compressLorebook', async (
+    _event,
+    payload: {
+      contents: string[]
+      targetTokens: number
+      provider: ProviderType
+      apiKey: string
+      baseUrl: string
+      model: string
+    },
+  ) => {
+    const contents = (payload?.contents ?? []).filter((c) => typeof c === 'string' && c.trim())
+    if (contents.length === 0) throw new Error('参数无效：contents 为空')
+    const targetTokens = Math.max(32, Math.floor(payload.targetTokens) || 32)
+    const adapter = getAdapter(payload.provider)
+    const params: ChatParams = {
+      requestId: `lorebook-compress-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      messages: [
+        {
+          role: 'system',
+          content: `你是一个世界书条目压缩器。将用户提供的多条世界书设定条目压缩为一段简洁摘要，要求：
+1. 保留人名、地名、物品名、关键规则、因果关系
+2. 去除重复信息和冗余描述
+3. 输出尽量简短，不超过约 ${targetTokens} token
+4. 用中文输出，保持客观陈述语气，只输出摘要本身`,
+        },
+        { role: 'user', content: contents.map((c, i) => `[条目 ${i + 1}]\n${c}`).join('\n\n') },
+      ],
+      provider: payload.provider,
+      apiKey: payload.apiKey,
+      baseUrl: payload.baseUrl,
+      model: payload.model,
+      temperature: 0.3,
+      topP: 0.9,
+      // 直接约束生成上限；渲染层还会用本地 tokenizer 二次校验，超限结果不入缓存。
+      maxTokens: targetTokens,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      stream: false,
+    }
+    // 非流式请求（stream=false）可安全重试；失败抛错由渲染方降级为直接裁剪
+    return await chatWithRetry(adapter, params, () => {}, new AbortController().signal, DEFAULT_RETRY_COUNT)
+  })
+
+  // 关键词 enrichment 管线（阶段4，方案 7.5）：聊天模型离线扩词，运行时仍走本地关键词匹配。
+  // localize = 英文条目中文化（旧行为）；enrich = 通用扩词（实体/别名/同义表达/多语言）。
+  ipcMain.handle('ai:localizeLorebookKeywords', async (
+    _event,
+    payload: {
+      requestId: string
+      entries: LorebookKeywordLocalizationEntry[]
+      mode?: LorebookKeywordEnrichmentMode
+      provider: ProviderType
+      apiKey: string
+      baseUrl: string
+      model: string
+    },
+  ) => {
+    const mode: LorebookKeywordEnrichmentMode = payload?.mode === 'enrich' ? 'enrich' : 'localize'
+    const entries = (payload?.entries ?? [])
+      .filter((entry) => entry && typeof entry.id === 'string' && entry.id.trim())
+      .slice(0, 16)
+      .map((entry) => {
+        const keywords = Array.isArray(entry.keywords)
+          ? entry.keywords.filter((keyword): keyword is string => typeof keyword === 'string').slice(0, 20)
+          : []
+        return {
+          id: entry.id,
+          keywords,
+          // 有英文关键词时正文只作消歧上下文；无关键词才提供更长摘要。
+          // 大型世界书可显著减少每批输入和首次等待时间。
+          content: typeof entry.content === 'string'
+            ? entry.content.slice(0, keywords.length > 0 ? 320 : 800)
+            : '',
+        }
+      })
+    if (entries.length === 0) throw new Error('没有可处理的世界书条目')
+
+    const requestId = payload.requestId?.trim()
+      || `lorebook-keywords-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const controller = new AbortController()
+    activeRequests.get(requestId)?.abort()
+    activeRequests.set(requestId, controller)
+
+    const systemPrompt = mode === 'enrich'
+      ? `你是世界书关键词扩词助手。根据每个条目的正文与现有关键词，提取可补充的触发关键词：实体名、别名、称号、同义表达和跨语言说法（中文、英文、日文等均可）。
+要求：
+1. 每条生成 2-5 个简短触发词，优先专有名词与自然简称
+2. 避免“人”“地方”“设定”等宽泛词，避免单个汉字，避免完整句子
+3. 不重复该条目已有的关键词，不改写正文
+4. 条目不适合补充时 aliases 返回空数组
+5. 只输出严格 JSON 数组，不要 Markdown、解释或额外文字
+格式：[{"entryId":"原始 id","aliases":["关键词"]}]`
+      : `你是世界书触发词本地化助手。根据每个条目的英文关键词和正文，为中文角色扮演对话生成可用于精确关键词匹配的中文别名。
+要求：
+1. 每条生成 2-5 个简短中文触发词，优先专有名词、常用译名、音译、意译和自然简称
+2. 避免“人”“地方”“组织”等宽泛词，避免单个汉字，避免完整句子
+3. 不重复原关键词，不改写或翻译正文
+4. 条目不适合生成时 aliases 返回空数组
+5. 只输出严格 JSON 数组，不要 Markdown、解释或额外文字
+格式：[{"entryId":"原始 id","aliases":["中文词"]}]`
+
+    const params: ChatParams = {
+      requestId,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: JSON.stringify(entries) },
+      ],
+      provider: payload.provider,
+      apiKey: payload.apiKey,
+      baseUrl: payload.baseUrl,
+      model: payload.model,
+      temperature: 0.2,
+      topP: 0.9,
+      maxTokens: Math.min(2048, Math.max(384, entries.length * 140)),
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      stream: false,
+    }
+
+    const startedAt = Date.now()
+    log.info('世界书关键词扩词生成开始', {
+      requestId,
+      mode,
+      entryCount: entries.length,
+      provider: payload.provider,
+      model: payload.model,
+    })
+    try {
+      const raw = await chatWithRetry(
+        getAdapter(payload.provider),
+        params,
+        () => {},
+        controller.signal,
+        0,
+        undefined,
+        LOREBOOK_LOCALIZATION_TIMEOUT_MS,
+      )
+      const suggestions = parseLorebookKeywordSuggestions(raw, entries, mode)
+      // 方案 7.5：保存生成来源、模型和时间——随建议返回，由渲染层写入条目 keywordProvenance。
+      const source = {
+        provider: String(payload.provider ?? ''),
+        model: String(payload.model ?? ''),
+        generatedAt: Date.now(),
+        mode,
+      }
+      for (const suggestion of suggestions) suggestion.source = source
+      log.info('世界书关键词扩词生成完成', {
+        requestId,
+        mode,
+        entryCount: entries.length,
+        suggestionCount: suggestions.length,
+        durationMs: Date.now() - startedAt,
+      })
+      return { suggestions }
+    } catch (error) {
+      const errorName = error && typeof error === 'object' && 'name' in error
+        ? String((error as { name?: unknown }).name)
+        : ''
+      if (controller.signal.aborted) {
+        // 主动取消是正常控制流：在此收口，避免全局 IPC 包装器误记为异常。
+        log.info('世界书关键词扩词生成已取消', { requestId, mode })
+        return { suggestions: [], cancelled: true }
+      }
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorName === 'AbortError' || /timeout|timed out|aborted/i.test(errorMessage)) {
+        throw new Error('生成请求超时（60 秒），请检查模型连接或稍后重试')
+      }
+      throw error
+    } finally {
+      if (activeRequests.get(requestId) === controller) activeRequests.delete(requestId)
     }
   })
 

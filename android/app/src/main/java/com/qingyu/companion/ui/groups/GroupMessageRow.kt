@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -67,13 +68,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.GroupMessage
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.MarkdownText
 import com.qingyu.companion.ui.components.extractThought
-import com.qingyu.companion.ui.components.stripThought
+import com.qingyu.companion.ui.components.translatedMessageContent
 import com.qingyu.companion.ui.theme.qyColors
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -92,12 +94,16 @@ internal fun GroupMessageRow(
     onCopy: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onTranslate: (() -> Unit)? = null,
+    isTranslating: Boolean = false,
     onDelete: (() -> Unit)? = null,
 ) {
     val qy = qyColors()
     val isUser = message.isUser
     val name = speakerName(message.characterId)
-    val extraction = remember(message.content) { extractThought(message.content) }
+    val displayedContent = remember(message.content, message.translation) {
+        translatedMessageContent(message.content, message.translation)
+    }
+    val extraction = remember(displayedContent) { extractThought(displayedContent) }
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
@@ -143,7 +149,7 @@ internal fun GroupMessageRow(
                         )
                         Column(Modifier.padding(horizontal = 11.dp, vertical = 7.dp)) {
                             Text(
-                                "内心想法",
+                                stringResource(R.string.chat_inner_thought),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = qy.accent,
                             )
@@ -169,23 +175,21 @@ internal fun GroupMessageRow(
                         mentionNames = mentionNames,
                     )
                 }
-                // 翻译译文（斜体灰显）
-                message.translation?.let { raw ->
-                    val translation = stripThought(raw)
-                    if (translation.isNotEmpty()) {
-                        Spacer(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(qy.lineSoft),
+                if (isTranslating) {
+                    Row(
+                        modifier = Modifier.padding(top = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 1.5.dp,
+                            color = qy.accent,
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.width(6.dp))
                         Text(
-                            text = translation,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = qy.soft,
-                                fontStyle = FontStyle.Italic,
-                            ),
+                            stringResource(R.string.chat_action_translating),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = qy.accent,
                         )
                     }
                 }
@@ -200,10 +204,13 @@ internal fun GroupMessageRow(
                     modifier = Modifier.padding(start = 2.dp, top = 1.dp),
                     horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
-                    GroupActionChip("翻译", onTranslate)
-                    GroupActionChip("复制", onCopy)
-                    GroupActionChip("编辑", onEdit)
-                    GroupActionChip("删除", onDelete)
+                    GroupActionChip(
+                        stringResource(if (isTranslating) R.string.chat_action_translating else R.string.chat_action_translate),
+                        onTranslate.takeUnless { isTranslating },
+                    )
+                    GroupActionChip(stringResource(R.string.chat_action_copy), onCopy)
+                    GroupActionChip(stringResource(R.string.chat_action_edit), onEdit)
+                    GroupActionChip(stringResource(R.string.chat_action_delete), onDelete)
                 }
             }
         }

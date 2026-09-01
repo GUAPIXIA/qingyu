@@ -55,4 +55,46 @@ object SearchUtils {
         if (idx < text.length) result.add(text.substring(idx) to false)
         return result
     }
+
+    // ===================== E-05 聊天内搜索：匹配 id 列表 + 上一项/下一项导航 =====================
+
+    /** 单条消息是否命中查询（内容或译文，忽略大小写；空查询不命中） */
+    fun messageMatches(message: Message, query: String): Boolean {
+        val q = query.trim()
+        if (q.isEmpty()) return false
+        return message.content.contains(q, ignoreCase = true) ||
+            message.translation?.contains(q, ignoreCase = true) == true
+    }
+
+    /**
+     * 聊天内搜索：维护**匹配 messageId 列表**（不再只过滤时间线）。
+     * 顺序与输入一致（ChatScreen 传「底->上」时间线内的消息顺序，index 0 = 最新）。
+     * 空查询返回空列表。
+     */
+    fun matchingMessageIds(messages: List<Message>, query: String): List<String> =
+        if (query.trim().isEmpty()) {
+            emptyList()
+        } else {
+            messages.filter { messageMatches(it, query) }.map { it.id }
+        }
+
+    /**
+     * 上一项/下一项导航（纯函数）：
+     * 以 currentIndex 为当前匹配位置（不在列表中时按「最近的下一项」定位），
+     * 返回移动后应高亮的匹配下标；列表为空返回 null。
+     *
+     * @param matches 匹配 id 列表（顺序即展示顺序）
+     * @param currentIndex 当前高亮下标（可为 -1 / 越界）
+     * @param direction 1 = 下一项（更旧，视觉上方），-1 = 上一项（更新，视觉下方）
+     */
+    fun navigateMatch(
+        matches: List<String>,
+        currentIndex: Int,
+        direction: Int,
+    ): Int? {
+        if (matches.isEmpty()) return null
+        val size = matches.size
+        val base = currentIndex.takeIf { it in 0 until size } ?: return 0
+        return ((base + direction) % size + size) % size
+    }
 }

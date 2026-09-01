@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,8 +56,15 @@ fun AppTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (subtitle != null) 56.dp else 52.dp)
-            .padding(horizontal = 14.dp),
+            .statusBarsPadding()
+            .height(
+                when {
+                    subtitle != null -> 56.dp
+                    compact -> 48.dp
+                    else -> 52.dp
+                },
+            )
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (navigationIcon != null) {

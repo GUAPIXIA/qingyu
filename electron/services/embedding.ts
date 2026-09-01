@@ -1,7 +1,7 @@
 /**
  * 嵌入（Embedding）适配器
  *
- * 支持两种嵌入服务，协议均为标准 HTTP JSON，无原生依赖：
+ * 远程适配器支持两种 HTTP JSON 协议；local 由独立 worker 处理：
  * - openai：OpenAI 兼容 `/embeddings` 接口（OpenAI / DeepSeek / 硅基流动 / OneAPI 等）
  * - ollama：Ollama `/api/embed` 接口（本地免费，如 nomic-embed-text / bge-m3）
  */
@@ -11,7 +11,7 @@ import { createLogger } from './logger'
 
 const log = createLogger('embedding')
 
-export type EmbeddingProvider = 'openai' | 'ollama'
+export type EmbeddingProvider = 'openai' | 'ollama' | 'local'
 
 export interface EmbeddingConfig {
   provider: EmbeddingProvider
@@ -98,6 +98,7 @@ async function embedOllama(config: EmbeddingConfig, inputs: string[]): Promise<n
 /** 批量嵌入文本（自动分批 + 截断，任一批失败即抛错） */
 export async function embedTexts(config: EmbeddingConfig, texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return []
+  if (config.provider === 'local') throw new Error('local provider 必须通过本地模型 worker 调用')
   const clean = texts.map((t) => truncate(t ?? ''))
   const results: number[][] = []
   const embed = config.provider === 'ollama' ? embedOllama : embedOpenAI
@@ -131,8 +132,9 @@ export async function testEmbedding(config: EmbeddingConfig): Promise<{ ok: bool
 
 /** 检查配置是否可发起嵌入请求 */
 export function isEmbeddingConfigured(config: EmbeddingConfig): boolean {
-  if (!config?.baseUrl?.trim()) return false
   if (!config.model?.trim()) return false
+  if (config.provider === 'local') return /^[a-z0-9][a-z0-9._-]{1,63}@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(config.model)
+  if (!config?.baseUrl?.trim()) return false
   // OpenAI 兼容服务需要 apiKey；Ollama 不需要
   if (config.provider === 'openai' && !config.apiKey?.trim()) return false
   return true

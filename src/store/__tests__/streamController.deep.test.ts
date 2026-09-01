@@ -17,6 +17,7 @@ const mockRecord = vi.fn(async () => ({}))
 const mockListRegex = vi.fn(async () => [])
 const mockSemanticSearch = vi.fn(async () => [])
 const mockEmbedFacts = vi.fn(async () => [])
+const mockedSettingsState = vi.hoisted(() => ({ semanticTrigger: null as any }))
 
 Object.defineProperty(window, 'api', {
   value: {
@@ -96,9 +97,14 @@ vi.mock('../chatConstants', () => ({
   STREAM_IDLE_TIMEOUT_MS: 60_000,
   DEFAULT_LOREBOOK_SCAN_DEPTH: 10,
   SEMANTIC_SCAN_MAX_TOKENS: 4000,
+  resolveLorebookScanDepth: (depths: Array<number | undefined>, fallback = 10) => {
+    const valid = depths.filter((depth): depth is number => typeof depth === 'number' && depth > 0)
+    return valid.length ? Math.max(...valid) : fallback
+  },
 }))
 
 vi.mock('../chatUtils', () => ({
+  buildSemanticCacheKey: vi.fn(() => 'semantic-cache-key'),
   friendlyError: vi.fn((e: string) => e),
   semanticCacheGet: vi.fn(() => null),
   semanticCacheSet: vi.fn(),
@@ -121,7 +127,7 @@ vi.mock('../useSettingsStore', () => ({
       settings: {
         activeModel: 'gpt-4',
         userName: '用户',
-        semanticTrigger: null,
+        semanticTrigger: mockedSettingsState.semanticTrigger,
       },
       getActiveProfile: mockGetActiveProfile,
     })),
@@ -141,6 +147,8 @@ describe('streamController - 深度测试', () => {
     mockOnChunk.mockReturnValue(vi.fn())
     mockOnDone.mockReturnValue(vi.fn())
     mockOnError.mockReturnValue(vi.fn())
+    mockedSettingsState.semanticTrigger = null
+    mockSemanticSearch.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -195,6 +203,67 @@ describe('streamController - 深度测试', () => {
       })
 
       expect(mockChat).toHaveBeenCalled()
+    })
+
+    it('embeddings 请求失败时把本轮世界书语义可用状态记为 false', async () => {
+      mockedSettingsState.semanticTrigger = {
+        enabled: true,
+        provider: 'openai',
+        baseUrl: 'https://chat-only.example/v1',
+        model: 'chat-model-without-embeddings',
+        apiKey: '',
+        threshold: 0.3,
+        maxResults: 3,
+      }
+      mockSemanticSearch.mockRejectedValueOnce(new Error('404 embeddings not supported'))
+      const state: any = {
+        messages: [{ id: 'u1', content: '星陨峡谷' }],
+        sessions: [],
+        activeLorebookIds: ['lb1'],
+        buildContext: vi.fn(() => []),
+        currentSessionId: 'session-1',
+        _semanticLoreHits: [],
+        _semanticLoreAvailable: undefined,
+        _semanticFactsHits: [],
+      }
+      const set = vi.fn((partial: any) => {
+        Object.assign(state, typeof partial === 'function' ? partial(state) : partial)
+      })
+
+      await streamAIResponse(set as any, (() => state) as any, {
+        aiMessageId: 'msg-1',
+        character: mockCharacter,
+        preset: null,
+        onComplete: mockOnComplete,
+      })
+
+      expect(state._semanticLoreAvailable).toBe(false)
+      expect(state._semanticLoreHits).toEqual([])
+    })
+
+    it('本地模型不要求 baseUrl，仍会发起语义检索并标记通道可用', async () => {
+      mockedSettingsState.semanticTrigger = {
+        enabled: true,
+        provider: 'local',
+        baseUrl: '',
+        model: 'tiny-embedding@1.0.0',
+        apiKey: '',
+        threshold: 0.3,
+        maxResults: 3,
+      }
+      mockSemanticSearch.mockResolvedValueOnce([])
+      const state: any = {
+        messages: [{ id: 'u1', content: '星陨峡谷' }], sessions: [], activeLorebookIds: ['lb1'], buildContext: vi.fn(() => []),
+        currentSessionId: 'session-1', _semanticLoreHits: [], _semanticLoreAvailable: undefined, _semanticFactsHits: [],
+      }
+      const set = vi.fn((partial: any) => Object.assign(state, typeof partial === 'function' ? partial(state) : partial))
+
+      await streamAIResponse(set as any, (() => state) as any, {
+        aiMessageId: 'msg-1', character: mockCharacter, preset: null, onComplete: mockOnComplete,
+      })
+
+      expect(mockSemanticSearch).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ provider: 'local', baseUrl: '' }) }))
+      expect(state._semanticLoreAvailable).toBe(true)
     })
 
     it('流式完成后调用 onComplete', async () => {

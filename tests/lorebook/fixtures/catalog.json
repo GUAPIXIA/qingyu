@@ -1,0 +1,432 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-28",
+  "notes": "阶段 0 格式基线。spec-derived 表示依据公开规范构造；project-regression 表示依据轻语当前数据结构和既有回归用例整理；source-derived（阶段 6 P1 格式）表示依据上游实现源码（RisuAI lorebook.svelte.ts / database.svelte.ts、NovelAI 官方文档、Agnai 记忆书结构）构造。",
+  "fixtures": [
+    {
+      "id": "native-v1-minimal",
+      "path": "native-v1/minimal.json",
+      "format": "qingyu-native-v1",
+      "version": "0.16.x",
+      "kind": "minimal",
+      "provenance": "project-regression",
+      "source": "shared/types.ts",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "最小原生世界书"
+      }
+    },
+    {
+      "id": "native-v1-full",
+      "path": "native-v1/full.json",
+      "format": "qingyu-native-v1",
+      "version": "0.16.x",
+      "kind": "full",
+      "provenance": "project-regression",
+      "source": "shared/types.ts",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "完整原生世界书"
+      }
+    },
+    {
+      "id": "native-v1-invalid",
+      "path": "native-v1/invalid.json",
+      "format": "qingyu-native-v1",
+      "version": "0.16.x",
+      "kind": "invalid",
+      "provenance": "project-regression",
+      "source": "shared/types.ts",
+      "expected": {
+        "importable": true,
+        "nativeValid": false,
+        "entries": 1,
+        "name": "无效原生世界书",
+        "currentBehavior": "salvaged_by_normalizer"
+      }
+    },
+    {
+      "id": "native-v1-unknown-extensions",
+      "path": "native-v1/unknown-extensions.json",
+      "format": "qingyu-native-v1",
+      "version": "0.16.x",
+      "kind": "unknown_extensions",
+      "provenance": "project-regression",
+      "source": "shared/types.ts",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "带未来字段的原生世界书",
+        "unknownFieldPolicy": "currently_dropped"
+      }
+    },
+    {
+      "id": "sillytavern-minimal",
+      "path": "sillytavern-world-info/minimal.json",
+      "format": "sillytavern-world-info",
+      "version": "release-2026-07",
+      "kind": "minimal",
+      "provenance": "spec-derived",
+      "source": "https://docs.sillytavern.app/usage/core-concepts/worldinfo/",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "ST 最小世界书"
+      }
+    },
+    {
+      "id": "sillytavern-full",
+      "path": "sillytavern-world-info/full.json",
+      "format": "sillytavern-world-info",
+      "version": "release-2026-07",
+      "kind": "full",
+      "provenance": "spec-derived",
+      "source": "https://docs.sillytavern.app/usage/core-concepts/worldinfo/",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 2,
+        "name": "ST 完整世界书"
+      }
+    },
+    {
+      "id": "sillytavern-invalid",
+      "path": "sillytavern-world-info/invalid.json",
+      "format": "sillytavern-world-info",
+      "version": "release-2026-07",
+      "kind": "invalid",
+      "provenance": "spec-derived",
+      "source": "https://docs.sillytavern.app/usage/core-concepts/worldinfo/",
+      "expected": {
+        "importable": false,
+        "nativeValid": true,
+        "entries": 0,
+        "name": "ST 无效世界书"
+      }
+    },
+    {
+      "id": "sillytavern-unknown-extensions",
+      "path": "sillytavern-world-info/unknown-extensions.json",
+      "format": "sillytavern-world-info",
+      "version": "release-2026-07",
+      "kind": "unknown_extensions",
+      "provenance": "spec-derived",
+      "source": "https://docs.sillytavern.app/usage/core-concepts/worldinfo/",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "ST 未知扩展世界书",
+        "unknownFieldPolicy": "currently_dropped"
+      }
+    },
+    {
+      "id": "character-book-minimal",
+      "path": "character-book-v2-v3/minimal.json",
+      "format": "character-book-v2-v3",
+      "version": "2/3",
+      "kind": "minimal",
+      "provenance": "spec-derived",
+      "source": "https://github.com/malfoyslastname/character-card-spec-v2",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "角色内嵌最小世界书"
+      }
+    },
+    {
+      "id": "character-book-full",
+      "path": "character-book-v2-v3/full.json",
+      "format": "character-book-v2-v3",
+      "version": "2/3",
+      "kind": "full",
+      "provenance": "spec-derived",
+      "source": "https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 2,
+        "name": "角色内嵌完整世界书"
+      }
+    },
+    {
+      "id": "character-book-invalid",
+      "path": "character-book-v2-v3/invalid.json",
+      "format": "character-book-v2-v3",
+      "version": "2/3",
+      "kind": "invalid",
+      "provenance": "spec-derived",
+      "source": "https://github.com/malfoyslastname/character-card-spec-v2",
+      "expected": {
+        "importable": false,
+        "nativeValid": true,
+        "entries": 0,
+        "name": "角色卡无效世界书"
+      }
+    },
+    {
+      "id": "character-book-unknown-extensions",
+      "path": "character-book-v2-v3/unknown-extensions.json",
+      "format": "character-book-v2-v3",
+      "version": "2/3",
+      "kind": "unknown_extensions",
+      "provenance": "spec-derived",
+      "source": "https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "角色卡未知扩展世界书",
+        "unknownFieldPolicy": "currently_dropped"
+      }
+    },
+    {
+      "id": "lorebook-v3-minimal",
+      "path": "lorebook-v3/minimal.json",
+      "format": "lorebook-v3",
+      "version": "3.0",
+      "kind": "minimal",
+      "provenance": "spec-derived",
+      "source": "https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "V3 最小世界书"
+      }
+    },
+    {
+      "id": "lorebook-v3-full",
+      "path": "lorebook-v3/full.json",
+      "format": "lorebook-v3",
+      "version": "3.0",
+      "kind": "full",
+      "provenance": "spec-derived",
+      "source": "https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 2,
+        "name": "V3 完整世界书"
+      }
+    },
+    {
+      "id": "lorebook-v3-invalid",
+      "path": "lorebook-v3/invalid.json",
+      "format": "lorebook-v3",
+      "version": "3.0",
+      "kind": "invalid",
+      "provenance": "spec-derived",
+      "source": "https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md",
+      "expected": {
+        "importable": false,
+        "nativeValid": true,
+        "entries": 0,
+        "name": "V3 无效世界书"
+      }
+    },
+    {
+      "id": "lorebook-v3-unknown-extensions",
+      "path": "lorebook-v3/unknown-extensions.json",
+      "format": "lorebook-v3",
+      "version": "3.0",
+      "kind": "unknown_extensions",
+      "provenance": "spec-derived",
+      "source": "https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "V3 未知扩展世界书",
+        "unknownFieldPolicy": "currently_dropped"
+      }
+    },
+    {
+      "id": "risu-minimal",
+      "path": "risu/minimal.json",
+      "format": "risu-lorebook",
+      "version": "1",
+      "kind": "minimal",
+      "provenance": "source-derived",
+      "source": "https://github.com/kwaroran/RisuAI/blob/main/src/ts/process/lorebook.svelte.ts",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "Risu 最小世界书"
+      }
+    },
+    {
+      "id": "risu-full",
+      "path": "risu/full.json",
+      "format": "risu-lorebook",
+      "version": "1",
+      "kind": "full",
+      "provenance": "source-derived",
+      "source": "https://github.com/kwaroran/RisuAI/blob/main/src/ts/process/lorebook.svelte.ts",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 2,
+        "name": "Risu 完整世界书"
+      }
+    },
+    {
+      "id": "risu-invalid",
+      "path": "risu/invalid.json",
+      "format": "risu-lorebook",
+      "version": "1",
+      "kind": "invalid",
+      "provenance": "source-derived",
+      "source": "https://github.com/kwaroran/RisuAI/blob/main/src/ts/process/lorebook.svelte.ts",
+      "expected": {
+        "importable": false,
+        "nativeValid": true,
+        "entries": 0,
+        "name": "Risu 无效世界书"
+      }
+    },
+    {
+      "id": "risu-unknown-extensions",
+      "path": "risu/unknown-extensions.json",
+      "format": "risu-lorebook",
+      "version": "1",
+      "kind": "unknown_extensions",
+      "provenance": "source-derived",
+      "source": "https://github.com/kwaroran/RisuAI/blob/main/src/ts/process/lorebook.svelte.ts",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "Risu 未知扩展世界书"
+      }
+    },
+    {
+      "id": "novelai-minimal",
+      "path": "novelai/minimal.json",
+      "format": "novelai-lorebook",
+      "version": "4",
+      "kind": "minimal",
+      "provenance": "source-derived",
+      "source": "https://docs.novelai.net/en/text/lorebook/",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "NovelAI 最小世界书"
+      }
+    },
+    {
+      "id": "novelai-full",
+      "path": "novelai/full.json",
+      "format": "novelai-lorebook",
+      "version": "4",
+      "kind": "full",
+      "provenance": "source-derived",
+      "source": "https://docs.novelai.net/en/text/lorebook/",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 2,
+        "name": "NovelAI 完整世界书"
+      }
+    },
+    {
+      "id": "novelai-invalid",
+      "path": "novelai/invalid.json",
+      "format": "novelai-lorebook",
+      "version": "4",
+      "kind": "invalid",
+      "provenance": "source-derived",
+      "source": "https://docs.novelai.net/en/text/lorebook/",
+      "expected": {
+        "importable": false,
+        "nativeValid": true,
+        "entries": 0,
+        "name": "NovelAI 无效世界书"
+      }
+    },
+    {
+      "id": "novelai-unknown-extensions",
+      "path": "novelai/unknown-extensions.json",
+      "format": "novelai-lorebook",
+      "version": "4",
+      "kind": "unknown_extensions",
+      "provenance": "source-derived",
+      "source": "https://docs.novelai.net/en/text/lorebook/",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "NovelAI 未知扩展世界书"
+      }
+    },
+    {
+      "id": "agnai-minimal",
+      "path": "agnai/minimal.json",
+      "format": "agnai-memory-book",
+      "version": "1",
+      "kind": "minimal",
+      "provenance": "source-derived",
+      "source": "https://github.com/agnaistic/agnai (MemoryBook 结构，经 RisuAI convertExternalLorebook 交叉确认)",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "Agnai 最小记忆书"
+      }
+    },
+    {
+      "id": "agnai-full",
+      "path": "agnai/full.json",
+      "format": "agnai-memory-book",
+      "version": "1",
+      "kind": "full",
+      "provenance": "source-derived",
+      "source": "https://github.com/agnaistic/agnai (MemoryBook 结构，经 RisuAI convertExternalLorebook 交叉确认)",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 2,
+        "name": "Agnai 完整记忆书"
+      }
+    },
+    {
+      "id": "agnai-invalid",
+      "path": "agnai/invalid.json",
+      "format": "agnai-memory-book",
+      "version": "1",
+      "kind": "invalid",
+      "provenance": "source-derived",
+      "source": "https://github.com/agnaistic/agnai (MemoryBook 结构，经 RisuAI convertExternalLorebook 交叉确认)",
+      "expected": {
+        "importable": false,
+        "nativeValid": true,
+        "entries": 0,
+        "name": "Agnai 无效记忆书"
+      }
+    },
+    {
+      "id": "agnai-unknown-extensions",
+      "path": "agnai/unknown-extensions.json",
+      "format": "agnai-memory-book",
+      "version": "1",
+      "kind": "unknown_extensions",
+      "provenance": "source-derived",
+      "source": "https://github.com/agnaistic/agnai (MemoryBook 结构，经 RisuAI convertExternalLorebook 交叉确认)",
+      "expected": {
+        "importable": true,
+        "nativeValid": true,
+        "entries": 1,
+        "name": "Agnai 未知扩展记忆书"
+      }
+    }
+  ]
+}

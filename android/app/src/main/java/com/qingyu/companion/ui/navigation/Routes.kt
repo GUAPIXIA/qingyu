@@ -7,8 +7,21 @@ import android.net.Uri
  * 未配对时落在 pairing；配对后默认进 sessions。
  */
 object Routes {
+    /** 启动决策页（A-03）：只读本地快照分发，已配对用户直达会话，不再闪现配对页 */
+    const val STARTUP = "startup"
+
+    /**
+     * 主区容器（E-01 MainShell，§16.1 useMainShell）：内嵌 NavHost 承载
+     * SESSIONS / CHARACTERS / GROUPS 三栏切换；聊天详情、设置等仍为全屏路由。
+     * flag 关闭时回退旧路径：直接落 SESSIONS。
+     */
+    const val MAIN_SHELL = "main_shell"
+
     /** 扫码/手动输 IP 配对、多 PC 管理 */
     const val PAIRING = "pairing"
+
+    /** 有已配对连接但无有效 active（或需修复连接）时的设备选择页（A-03） */
+    const val CONNECTION_PICKER = "connection_picker"
 
     /** 会话列表（含连接状态栏入口） */
     const val SESSIONS = "sessions"

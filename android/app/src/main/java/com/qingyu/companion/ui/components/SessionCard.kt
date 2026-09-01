@@ -37,6 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.qingyu.companion.R
 import com.qingyu.companion.model.SessionPreview
 import com.qingyu.companion.ui.theme.qyColors
 import java.text.SimpleDateFormat
@@ -44,16 +46,32 @@ import java.util.Date
 import java.util.Locale
 
 /** 会话列表只展示用户实际可见的正文，包含被服务端截断的未闭合 thought。 */
-fun sessionPreviewText(lastMessage: String): String {
+fun sessionPreviewText(lastMessage: String, emptyFallback: String = "（无可见正文）"): String {
     val withoutClosedBlocks = stripThought(lastMessage)
     val withoutTruncatedBlock = normalizeThoughtTags(withoutClosedBlocks)
         .replace(Regex("""<thought(?:\s[^>]*)?>[\s\S]*$""", RegexOption.IGNORE_CASE), "")
         .trim()
-    return withoutTruncatedBlock.ifBlank { "（无可见正文）" }
+    return withoutTruncatedBlock.ifBlank { emptyFallback }
+}
+
+/** 全局会话页使用“角色名-对话名”；角色历史页保留简洁的对话名。 */
+fun sessionDisplayTitle(
+    sessionTitle: String,
+    characterName: String,
+    includeCharacterName: Boolean,
+    unnamedFallback: String = "未命名会话",
+): String {
+    val conversation = sessionTitle.trim().ifBlank { unnamedFallback }
+    val character = characterName.trim()
+    return if (includeCharacterName && character.isNotBlank()) {
+        "$character-$conversation"
+    } else {
+        conversation
+    }
 }
 
 /**
- * 会话列表行（方案 B）：44dp 圆头像 + 标题/预览 + 时间右对齐。
+ * 会话列表行（方案 B）：38dp 圆头像 + 标题/预览 + 时间右对齐。
  * 纯内容行，hover 由 Surface 按压反馈承担。
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -69,26 +87,31 @@ fun SessionCard(
     showCharacterName: Boolean = true,
 ) {
     val qy = qyColors()
-    val title = session.title.ifBlank { "未命名会话" }
+    val title = sessionDisplayTitle(
+        sessionTitle = session.title,
+        characterName = session.characterName,
+        includeCharacterName = showCharacterName,
+        unnamedFallback = stringResource(R.string.msg_unnamed_session),
+    )
     val avatarName = session.characterName.ifBlank { title }
     // lastMessage 由 PC 桥接层按消息 timestamp 计算，安卓端只负责展示最新摘要。
-    val latestMessage = sessionPreviewText(session.lastMessage)
+    val latestMessage = sessionPreviewText(session.lastMessage, stringResource(R.string.msg_preview_empty))
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         color = qy.card,
         border = BorderStroke(1.dp, qy.line),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 13.dp),
+                .padding(start = 10.dp, end = 6.dp, top = 9.dp, bottom = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AvatarBubble(name = avatarName, avatarUrl = avatarUrl, size = 44)
-            Spacer(Modifier.width(12.dp))
+            AvatarBubble(name = avatarName, avatarUrl = avatarUrl, size = 38)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -101,17 +124,8 @@ fun SessionCard(
                         modifier = Modifier.weight(1f, fill = false),
                     )
                 }
-                if (showCharacterName && session.characterName.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                }
-                val preview = buildString {
-                    if (showCharacterName && session.characterName.isNotBlank()) {
-                        append(session.characterName)
-                        append(" · ")
-                    }
-                    append(latestMessage)
-                }
-                Spacer(Modifier.height(2.dp))
+                val preview = latestMessage
+                Spacer(Modifier.height(1.dp))
                 Text(
                     preview,
                     style = MaterialTheme.typography.bodySmall,
@@ -120,7 +134,7 @@ fun SessionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
                 formatSessionTime(session.updatedAt),
                 style = MaterialTheme.typography.labelSmall,
@@ -130,13 +144,13 @@ fun SessionCard(
             Spacer(Modifier.width(2.dp))
             IconButton(
                 onClick = onDelete,
-                modifier = Modifier.size(30.dp),
+                modifier = Modifier.size(28.dp),
             ) {
                 Icon(
                     Icons.Outlined.DeleteOutline,
-                    contentDescription = "删除",
+                    contentDescription = stringResource(R.string.cd_delete),
                     tint = qy.muted.copy(alpha = 0.55f),
-                    modifier = Modifier.size(17.dp),
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }

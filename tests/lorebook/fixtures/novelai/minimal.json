@@ -1,0 +1,20 @@
+{
+  "lorebookVersion": 4,
+  "entries": [
+    {
+      "text": "主角是一位流浪的剑客。",
+      "keys": ["主角"],
+      "displayName": "主角",
+      "enabled": true,
+      "forceActivation": false,
+      "vectorized": false,
+      "caseSensitive": false,
+      "priority": 10,
+      "id": 101,
+      "comment": "主角条目",
+      "useProbability": true,
+      "probability": 100,
+      "searchRange": 1000
+    }
+  ]
+}

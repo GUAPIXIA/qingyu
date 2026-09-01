@@ -17,10 +17,12 @@ import {
   Volume2,
   Image,
   EyeIcon,
+  Brain,
 } from 'lucide-react'
 import { TTSModelsSection } from '../components/api/TTSModelsSection'
 import { ImageGenModelsSection } from '../components/api/ImageGenModelsSection'
 import { VisionModelsSection } from '../components/api/VisionModelsSection'
+import { SemanticRetrievalSection } from './settings/SemanticRetrievalSection'
 
 /**
  * 协议类型：只保留真实通信协议。
@@ -51,6 +53,7 @@ const TABS = [
   { key: 'tts', label: 'TTS', icon: Volume2 },
   { key: 'image', label: '生图', icon: Image },
   { key: 'vision', label: '识图', icon: EyeIcon },
+  { key: 'semantic', label: '语义检索', icon: Brain },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -85,6 +88,7 @@ function formatContextLength(n: number): string {
 export function ApiPage() {
   const {
     settings,
+    updateSettings,
     addProfile,
     updateProfile,
     deleteProfile,
@@ -101,6 +105,8 @@ export function ApiPage() {
   const [testResult, setTestResult] = useState<
     { success: boolean; models?: string[]; error?: string } | null
   >(null)
+  const [embedTestBusy, setEmbedTestBusy] = useState(false)
+  const [embedTestResult, setEmbedTestResult] = useState<{ ok: boolean; text: string } | null>(null)
 
   // 编辑表单临时状态
   const [editForm, setEditForm] = useState<ConnectionProfile>({
@@ -179,6 +185,41 @@ export function ApiPage() {
     }
   }
 
+  /** 测试语义检索当前使用的本地或远程向量来源。 */
+  const handleEmbedTest = async () => {
+    const trigger = settings.semanticTrigger
+    if (!trigger) return
+    let effective = trigger
+    if (trigger.provider !== 'local' && trigger.profileId) {
+      const profile = settings.connectionProfiles.find((item) => item.id === trigger.profileId)
+      if (profile) {
+        effective = {
+          ...trigger,
+          provider: profile.provider === 'ollama' ? 'ollama' : 'openai',
+          baseUrl: profile.baseUrl,
+          apiKey: profile.apiKey ?? '',
+        }
+      }
+    }
+    setEmbedTestBusy(true)
+    setEmbedTestResult(null)
+    try {
+      const result = await window.api.embedding.test({
+        provider: effective.provider,
+        baseUrl: effective.baseUrl,
+        model: effective.model,
+        apiKey: effective.apiKey ?? '',
+      })
+      setEmbedTestResult(result.ok
+        ? { ok: true, text: `连接成功，向量维度 ${result.dim}` }
+        : { ok: false, text: result.error || '连接失败' })
+    } catch (error) {
+      setEmbedTestResult({ ok: false, text: error instanceof Error ? error.message : '连接失败' })
+    } finally {
+      setEmbedTestBusy(false)
+    }
+  }
+
   const applyPreset = (key: PresetKey) => {
     const preset = QUICK_PRESETS[key]
     setEditForm((f) => ({
@@ -234,7 +275,7 @@ export function ApiPage() {
       <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
         <div className="flex items-center gap-2">
           <Plug className="w-5 h-5 text-tavern-accent" />
-          <h1 className="font-display text-lg font-bold">API 设置</h1>
+          <h1 className="font-display text-lg font-bold">模型</h1>
         </div>
         {/* 当前活跃状态 */}
         <div className="flex items-center gap-2 text-xs">
@@ -253,7 +294,7 @@ export function ApiPage() {
       </header>
 
       {/* Tab 导航 */}
-      <div className="flex px-4 pt-2 gap-1 border-b border-tavern-border-soft bg-tavern-bg-soft">
+      <div className="flex overflow-x-auto px-4 pt-2 gap-1 border-b border-tavern-border-soft bg-tavern-bg-soft">
         {TABS.map((t) => {
           const Icon = t.icon
           return (
@@ -301,6 +342,17 @@ export function ApiPage() {
               <EyeIcon className="w-4 h-4 text-tavern-accent" />识图模型
             </h3>
             <VisionModelsSection />
+          </div>
+        )}
+        {tab === 'semantic' && (
+          <div className="mx-auto max-w-5xl">
+            <SemanticRetrievalSection
+              settings={settings}
+              updateSettings={updateSettings}
+              embedTestBusy={embedTestBusy}
+              embedTestResult={embedTestResult}
+              handleEmbedTest={handleEmbedTest}
+            />
           </div>
         )}
       </div>

@@ -12,11 +12,12 @@
  * - 规模兜底：世界书数量/单文件大小超限时直接跳过匹配，防极端大库卡顿。
  */
 
-import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
+import { readdirSync, statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { DIRS } from './storage'
 import { createLogger } from './logger'
 import type { Character, Lorebook } from '../../shared/types'
+import { readLorebookView } from './lorebookDocumentStore'
 
 const log = createLogger('lorebook-matcher')
 
@@ -97,7 +98,8 @@ export function suggestLorebooks(character: Character, limit = SUGGEST_LIMIT): L
       const size = statSync(filePath).size
       if (size > MAX_LOREBOOK_SIZE) continue
 
-      const lb = JSON.parse(readFileSync(filePath, 'utf-8')) as Lorebook
+      const lb: Lorebook | null = readLorebookView(filePath)
+      if (!lb) continue
       if (!lb.enabled || !lb.id || !Array.isArray(lb.entries)) continue
 
       // 世界书侧：名称（强信号）与描述/关键词（弱信号）分开建袋

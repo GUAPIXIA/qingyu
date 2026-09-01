@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "revision": "ab583ea04d3eefd3378f51494c96025282a170ef5f423fef972fd899992aa264",
+  "updatedAt": 1788000000000,
+  "values": {
+    "userName": "轻语用户",
+    "userDescription": "来自 Android 伴侣端的契约测试示例",
+    "userPersona": "一位喜欢轻语的用户",
+    "activePresetId": "builtin-default",
+    "activeModel": "gpt-4o",
+    "translationTargetLang": "中文",
+    "streamOutput": true,
+    "autoScroll": true,
+    "showTokenCount": false,
+    "htmlRendering": false,
+    "imageGenAutoEnabled": false,
+    "imageGenSize": "1024x1024",
+    "exampleDialogMode": "always",
+    "lorebookRatio": 0.3,
+    "autoTitle": true
+  },
+  "capabilities": ["settings_snapshot_v2", "settings_events_v1", "pairing_qr_v2"]
+}

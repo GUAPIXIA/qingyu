@@ -240,6 +240,13 @@ export function isPairingCodeValid(code: string): boolean {
   return !!entry && !entry.used && entry.expiresAt >= Date.now()
 }
 
+/** 配对码到期时间戳（ms）；未知/已消费返回 null（QR v2 expiresAt 字段用） */
+export function getPairingCodeExpiry(code: string): number | null {
+  const entry = pairingCodes.get(code)
+  if (!entry || entry.used) return null
+  return entry.expiresAt
+}
+
 /** 作废指定配对码（重新生成时清理旧码，防旧码仍可扫码） */
 export function revokePairingCode(code: string): void {
   pairingCodes.delete(code)

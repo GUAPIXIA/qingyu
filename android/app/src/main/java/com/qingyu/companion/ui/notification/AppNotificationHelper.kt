@@ -75,11 +75,14 @@ object AppNotificationHelper {
     }
 
     fun canPost(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= 33) {
-            return ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+        // A-06：App 内「任务通知」开关关闭时渠道虽在也不再投递，保持与设置页一致
+        val systemOk = if (Build.VERSION.SDK_INT >= 33) {
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED
+        } else {
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
         }
-        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+        return canPostNotification(NotificationGate.appEnabled, systemOk)
     }
 
     fun isDndActive(startHour: Int, endHour: Int, nowHour: Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)): Boolean {
@@ -107,8 +110,8 @@ object AppNotificationHelper {
     private fun pendingForSession(context: Context, sessionId: String?, extra: String? = null): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("openSessionId", sessionId)
-            putExtra("fromNotification", true)
+            putExtra(NotificationExtras.OPEN_SESSION_ID, sessionId)
+            putExtra(NotificationExtras.FROM_NOTIFICATION, true)
             if (extra != null) putExtra("notification_extra", extra)
         }
         return PendingIntent.getActivity(
@@ -122,7 +125,7 @@ object AppNotificationHelper {
     private fun pendingForPairing(context: Context): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("openPairing", true)
+            putExtra(NotificationExtras.OPEN_PAIRING, true)
         }
         return PendingIntent.getActivity(context, 2001, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }

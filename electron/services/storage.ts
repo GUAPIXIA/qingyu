@@ -19,6 +19,7 @@ export const DIRS = {
   chats: () => join(getDataDir(), 'chats'),
   lorebooks: () => join(getDataDir(), 'lorebooks'),
   vectors: () => join(getDataDir(), 'vectors'),
+  embeddingIndexes: () => join(app.getPath('userData'), 'indexes', 'embedding'),
   presets: () => join(getDataDir(), 'presets'),
   groups: () => join(getDataDir(), 'groups'),
   backups: () => join(getDataDir(), 'backups'),

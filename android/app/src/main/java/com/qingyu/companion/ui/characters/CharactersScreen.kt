@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,11 +59,19 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
+import com.qingyu.companion.ui.components.LoadState
 import com.qingyu.companion.ui.components.MarkdownText
+import com.qingyu.companion.ui.components.QyEmptyState
+import com.qingyu.companion.ui.components.QyErrorBanner
+import com.qingyu.companion.ui.components.QyOfflineBanner
+import com.qingyu.companion.ui.components.QySkeletonList
+import com.qingyu.companion.ui.components.rememberSkeletonVisible
 import com.qingyu.companion.ui.components.resolveImageUrl
 import com.qingyu.companion.ui.theme.qyColors
 import android.util.Log
@@ -72,6 +81,9 @@ import java.util.Locale
 /**
  * 角色页：双列网格卡（封面 + 名称 + 简介），点击进入详情弹窗
  * （完整设定 + 历史对话 / 设为当前）。
+ * E-02：页面状态统一由 [CharactersViewModel.loadState]（LoadState 五态）驱动，
+ * 渲染走 ui/components/AsyncStates.kt 的 Qy 组件（骨架/空态/离线/错误）；
+ * 搜索、排序、详情弹窗、切换当前角色等交互保持不变。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +98,8 @@ fun CharactersScreen(
         initializer { CharactersViewModel(container.repository) }
     })
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val loadState by vm.loadState.collectAsStateWithLifecycle()
+    val skeletonVisible = rememberSkeletonVisible(loadState is LoadState.Loading)
     val activeConnection by container.connectionManager.activeFlow.collectAsStateWithLifecycle()
     var detailCharacter by remember { mutableStateOf<Character?>(null) }
     // 搜索与排序
@@ -114,12 +128,12 @@ fun CharactersScreen(
         containerColor = Color.Transparent,
         topBar = {
             AppTopBar(
-                title = "角色",
+                title = stringResource(R.string.characters_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.cd_back),
                             tint = qy.text,
                         )
                     }
@@ -144,7 +158,7 @@ fun CharactersScreen(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("搜索角色或标签…") },
+                        placeholder = { Text(stringResource(R.string.msg_search_hint)) },
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         leadingIcon = {
@@ -161,13 +175,18 @@ fun CharactersScreen(
                         onClick = { sortBy = if (sortBy == "name") "updated" else "name" },
                         shape = RoundedCornerShape(50),
                         color = qy.bg2,
+                        modifier = Modifier.minimumInteractiveComponentSize(),
                     ) {
                         Row(
                             Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                if (sortBy == "name") "按名称" else "按最近",
+                                if (sortBy == "name") {
+                                    stringResource(R.string.characters_sort_by_name)
+                                } else {
+                                    stringResource(R.string.characters_sort_by_recent)
+                                },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = qy.soft,
                             )
@@ -186,41 +205,76 @@ fun CharactersScreen(
                         .fillMaxSize()
                         .weight(1f),
                 ) {
-                    when {
-                        ui.loading && ui.characters.isEmpty() ->
-                            CircularProgressIndicator(Modifier.align(Alignment.Center), color = qy.accent)
-
-                        ui.characters.isEmpty() -> Text(
-                            ui.error ?: "暂无角色",
-                            modifier = Modifier.align(Alignment.Center),
-                            color = qy.soft,
-                        )
-
-                        filteredCharacters.isEmpty() -> Text(
-                            "没有匹配的角色",
-                            modifier = Modifier.align(Alignment.Center),
-                            color = qy.soft,
-                        )
-
-                        else -> LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            items(filteredCharacters, key = { it.id }) { character ->
-                                CharacterCard(
-                                    character = character,
-                                    avatarUrl = resolveImageUrl(character.avatarUrl, activeConnection),
-                                    onClick = { detailCharacter = character },
+                    // E-02：五态分发（Loading 骨架 / Empty 空态 / Offline 横幅+缓存 / Error 横幅+重试 / Content 网格）
+                    when (val st = loadState) {
+                        is LoadState.Loading -> {
+                            if (skeletonVisible) {
+                                QySkeletonList(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    rows = 4,
                                 )
+                            }
+                        }
+
+                        is LoadState.Empty -> {
+                            QyEmptyState(
+                                title = stringResource(R.string.characters_empty),
+                                actionLabel = stringResource(R.string.action_retry),
+                                onAction = vm::refresh,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
+                        is LoadState.Error -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                QyErrorBanner(
+                                    message = st.error.userMessage(),
+                                    retryable = st.retryable,
+                                    onRetry = vm::refresh,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                            }
+                        }
+
+                        is LoadState.Offline -> {
+                            Column(Modifier.fillMaxSize()) {
+                                QyOfflineBanner(
+                                    onRetry = vm::refresh,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                )
+                                CharacterGrid(filteredCharacters, activeConnection) { character ->
+                                    detailCharacter = character
+                                }
+                            }
+                        }
+
+                        is LoadState.Content -> {
+                            if (filteredCharacters.isEmpty()) {
+                                QyEmptyState(
+                                    title = stringResource(R.string.characters_search_empty),
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                CharacterGrid(filteredCharacters, activeConnection) { character ->
+                                    detailCharacter = character
+                                }
                             }
                         }
                     }
                 }
-                // 信息提示条（网格底部）
-                ui.info?.let { info ->
+                // 动作失败横幅（切换/新建失败：动作级错误，不参与页面 LoadState 投影）
+                ui.actionError?.let { err ->
+                    QyErrorBanner(
+                        message = err.userMessage(),
+                        onRetry = null,
+                        retryable = false,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
+                // 信息提示条（切换成功等，网格底部）
+                ui.infoResId?.let { infoRes ->
                     Surface(
                         color = qy.accentSoft,
                         shape = RoundedCornerShape(14.dp),
@@ -229,7 +283,7 @@ fun CharactersScreen(
                             .padding(16.dp),
                     ) {
                         Text(
-                            info,
+                            stringResource(infoRes, ui.infoResArg ?: ""),
                             style = MaterialTheme.typography.bodyMedium,
                             color = qy.accent,
                             textAlign = TextAlign.Center,
@@ -253,6 +307,32 @@ fun CharactersScreen(
             onActivate = { vm.activate(character.id, character.name) },
             onStartChat = { vm.startChat(character.id) { sessionId -> onOpenChat(sessionId, character.id) } },
         )
+    }
+}
+
+/**
+ * 角色网格渲染（Content / Offline 共用）：双列网格卡，点击进入详情弹窗。
+ */
+@Composable
+private fun CharacterGrid(
+    characters: List<Character>,
+    activeConnection: com.qingyu.companion.model.ServerConnection?,
+    onOpenDetail: (Character) -> Unit,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(characters, key = { it.id }) { character ->
+            CharacterCard(
+                character = character,
+                avatarUrl = resolveImageUrl(character.avatarUrl, activeConnection),
+                onClick = { onOpenDetail(character) },
+            )
+        }
     }
 }
 

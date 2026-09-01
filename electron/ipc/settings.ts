@@ -4,15 +4,26 @@ import { readdirSync, existsSync, writeFileSync, readFileSync, mkdirSync, statSy
 import { DIRS, writeJson, readJson, withFileLock } from '../services/storage'
 import { getDefaultSettings } from '../../shared/defaults'
 import { saveCredential, getCredential } from '../services/safeStorage'
+import { emitSettingsChanged } from '../services/settingsChangeBus'
+import { computeRevision, diffMobileSafeFields, toMobileSafeSettings } from '../bridge/settingsSync'
 import { createLogger } from '../services/logger'
 import { safeHandle } from '../utils/safeHandle'
 import { safeId } from '../utils/pathGuard'
 import type { Settings } from '../../shared/types'
 import { createBackupV2, restoreBackupV2 } from '../services/backup'
+import { readLorebookView, saveLorebookDocumentInput } from '../services/lorebookDocumentStore'
 
 const log = createLogger('settings')
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
+
+/**
+ * 主进程内部读取设置快照（不做 safeStorage 回填，只用于非敏感字段）。
+ * 需要 apiKey 的路径请走 settings:get IPC。
+ */
+export function readSettingsFromDisk(): Settings {
+  return readJson<Settings>(SETTINGS_FILE(), 'settings') ?? getDefaultSettings()
+}
 
 /** 备份文件大小上限：V1 100MB，V2 2GB（zip 压缩后，含媒体可能数 GB） */
 const MAX_BACKUP_SIZE_V1 = 100 * 1024 * 1024
@@ -64,7 +75,7 @@ export function restoreSecrets(settings: Settings): void {
 export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 读取设置
   safeHandle(ipcMain, 'settings:get', async () => {
-    const settings = readJson<Settings>(SETTINGS_FILE(), 'settings') ?? getDefaultSettings()
+    const settings = readSettingsFromDisk()
     // H1 修复：回填 safeStorage 中的加密凭据（settings.json 不再落明文 apiKey）
     restoreSecrets(settings)
     return settings
@@ -75,8 +86,20 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     // H1 修复：保存前剥离 apiKey 到 safeStorage（settings.json 不落明文）
     stripSecrets(settings, true)
     // BUG-20 修复：写操作经 per-file 锁串行化，避免多个保存请求并发时相互覆盖
+    // 阶段 C（C-04）：锁内读旧值，写成功后对移动端安全子集做 diff 并发设置变更事件
+    //（BridgeService 订阅 -> WS settings:updated；source='pc'）。
+    // 防回环：安卓 PATCH 走桥接层自身写路径、不经此 IPC，不会在此二次广播。
     await withFileLock(SETTINGS_FILE(), () => {
+      const before = readSettingsFromDisk()
       writeJson(SETTINGS_FILE(), settings, 'settings')
+      const changedFields = diffMobileSafeFields(before, settings)
+      if (changedFields.length > 0) {
+        emitSettingsChanged({
+          revision: computeRevision(toMobileSafeSettings(settings)),
+          changedFields,
+          source: 'pc',
+        })
+      }
     })
     log.info('设置已保存', { activeProfileId: settings.activeProfileId || '(none)', theme: settings.theme })
   })
@@ -116,7 +139,10 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
       }
       const loreDir = DIRS.lorebooks()
       if (existsSync(loreDir)) {
-        backup.lorebooks = readdirSync(loreDir).filter((f: string) => f.endsWith('.json')).map((f: string) => readJson(join(loreDir, f)))
+        backup.lorebooks = readdirSync(loreDir)
+          .filter((f: string) => f.endsWith('.json'))
+          .map((f: string) => readLorebookView(join(loreDir, f)))
+          .filter(Boolean)
       }
       const presetDir = DIRS.presets()
       if (existsSync(presetDir)) {
@@ -184,7 +210,9 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     }
     if (lorebooks.length > 0) {
       mkdirSync(DIRS.lorebooks(), { recursive: true })
-      for (const { id, item } of lorebooks) writeJson(join(DIRS.lorebooks(), `${id}.json`), item)
+      for (const { id, item } of lorebooks) {
+        saveLorebookDocumentInput(join(DIRS.lorebooks(), `${id}.json`), item)
+      }
     }
     if (presets.length > 0) {
       mkdirSync(DIRS.presets(), { recursive: true })

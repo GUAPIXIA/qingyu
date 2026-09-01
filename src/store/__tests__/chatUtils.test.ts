@@ -1,11 +1,11 @@
 /**
- * chatUtils 单元测试（friendlyError 错误映射）
+ * chatUtils 单元测试（friendlyError 错误映射 / 世界书超限压缩）
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { Character } from '../../../shared/types'
 import { useSettingsStore } from '../useSettingsStore'
-import { applyDefaultMemory, friendlyError } from '../chatUtils'
+import { applyDefaultMemory, buildSemanticCacheKey, compressLorebookOverflow, friendlyError } from '../chatUtils'
 
 const character = {
   id: 'char-1',
@@ -65,5 +65,89 @@ describe('friendlyError', () => {
 
   it('空错误返回未知错误', () => {
     expect(friendlyError('')).toBe('未知错误')
+  })
+})
+
+describe('compressLorebookOverflow（阶段三：世界书超限压缩）', () => {
+  const request = {
+    key: 'k1', entryKeys: ['lb1:e1'], contents: ['条目内容'], targetTokens: 200,
+    placement: { position: 'before_char' as const },
+  }
+  const conn = { provider: 'openai', apiKey: 'sk-test', baseUrl: 'https://api.test', model: 'gpt-4o' }
+
+  beforeEach(() => {
+    vi.mocked(window.api.ai.compressLorebook).mockReset()
+    vi.mocked(window.api.ai.compressLorebook).mockResolvedValue('')
+  })
+
+  it('成功时去除思考标签并返回缓存条目', async () => {
+    vi.mocked(window.api.ai.compressLorebook).mockResolvedValueOnce('<thought>推理过程</thought>合并摘要')
+    const res = await compressLorebookOverflow(request, conn)
+    expect(res).not.toBeNull()
+    expect(res!.key).toBe('k1')
+    expect(res!.entry.summary).toBe('合并摘要')
+    expect(res!.entry.entryKeys).toEqual(['lb1:e1'])
+    expect(res!.entry.createdAt).toBeGreaterThan(0)
+  })
+
+  it('AI 调用失败时静默降级返回 null（不抛错）', async () => {
+    vi.mocked(window.api.ai.compressLorebook).mockRejectedValueOnce(new Error('API 不可用'))
+    const res = await compressLorebookOverflow(request, conn)
+    expect(res).toBeNull()
+  })
+
+  it('空结果 / 纯思考标签结果视为失败返回 null', async () => {
+    vi.mocked(window.api.ai.compressLorebook).mockResolvedValueOnce('   ')
+    expect(await compressLorebookOverflow(request, conn)).toBeNull()
+    vi.mocked(window.api.ai.compressLorebook).mockResolvedValueOnce('<thought>只有思考</thought>')
+    expect(await compressLorebookOverflow(request, conn)).toBeNull()
+  })
+
+  it('压缩目标过小时跳过调用（直接裁剪，不浪费 AI 调用）', async () => {
+    const res = await compressLorebookOverflow({ ...request, targetTokens: 10 }, conn)
+    expect(res).toBeNull()
+    expect(window.api.ai.compressLorebook).not.toHaveBeenCalled()
+  })
+
+  it('AI 返回超过目标 token 时拒绝写入缓存', async () => {
+    vi.mocked(window.api.ai.compressLorebook).mockResolvedValueOnce('超'.repeat(500))
+    const res = await compressLorebookOverflow({ ...request, targetTokens: 32 }, conn)
+    expect(res).toBeNull()
+  })
+
+  it('并发的相同压缩请求只调用一次 AI', async () => {
+    let resolve!: (value: string) => void
+    vi.mocked(window.api.ai.compressLorebook).mockImplementationOnce(() => new Promise((done) => { resolve = done }))
+    const first = compressLorebookOverflow(request, conn)
+    const second = compressLorebookOverflow(request, conn)
+    expect(window.api.ai.compressLorebook).toHaveBeenCalledTimes(1)
+    resolve('合并摘要')
+    expect(await first).toEqual(await second)
+  })
+})
+
+describe('buildSemanticCacheKey', () => {
+  const base = {
+    scope: 'lore' as const,
+    corpus: 'lb-1',
+    query: '最近消息',
+    provider: 'openai',
+    baseUrl: 'https://api.example/v1/',
+    model: 'embed-v1',
+    threshold: 0.3,
+    maxResults: 3,
+  }
+
+  it('规范化地址，并让会影响结果的配置参与缓存键', () => {
+    expect(buildSemanticCacheKey(base)).toBe(buildSemanticCacheKey({ ...base, baseUrl: 'https://api.example/v1' }))
+    for (const changed of [
+      { provider: 'ollama' },
+      { baseUrl: 'http://localhost:11434' },
+      { model: 'embed-v2' },
+      { threshold: 0.6 },
+      { maxResults: 8 },
+    ]) {
+      expect(buildSemanticCacheKey({ ...base, ...changed })).not.toBe(buildSemanticCacheKey(base))
+    }
   })
 })

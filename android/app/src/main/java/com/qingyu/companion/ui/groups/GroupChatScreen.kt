@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -68,13 +69,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.GroupMessage
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.MarkdownText
 import com.qingyu.companion.ui.components.extractThought
-import com.qingyu.companion.ui.components.stripThought
+import com.qingyu.companion.ui.components.translatedMessageContent
 import com.qingyu.companion.ui.theme.qyColors
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -124,7 +126,7 @@ fun GroupChatScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.cd_back),
                             tint = qy.soft,
                         )
                     }
@@ -144,7 +146,7 @@ fun GroupChatScreen(
                             CircularProgressIndicator(Modifier.align(Alignment.Center), color = qy.accent)
 
                         ui.messages.isEmpty() -> Text(
-                            "暂无消息，说点什么吧",
+                            stringResource(R.string.group_chat_empty),
                             modifier = Modifier.align(Alignment.Center),
                             color = qy.soft,
                         )
@@ -161,13 +163,18 @@ fun GroupChatScreen(
                                     mentionNames = memberNames.values.toList(),
                                     onLongPress = { menuMessage = message },
                                     onCopy = {
-                                        clipboard.setText(AnnotatedString(message.content))
+                                        clipboard.setText(
+                                            AnnotatedString(
+                                                translatedMessageContent(message.content, message.translation)
+                                            )
+                                        )
                                     },
                                     onEdit = {
                                         editingMessage = message
                                         editText = message.content
                                     },
                                     onTranslate = { vm.translate(message.id) },
+                                    isTranslating = message.id in ui.translatingMessageIds,
                                     onDelete = { deleteTarget = message },
                                 )
                             }
@@ -188,7 +195,7 @@ fun GroupChatScreen(
                         )
                         if (it.contains("重试")) {
                             TextButton(onClick = vm::retryAiReply, enabled = !ui.generating) {
-                                Text("重试 AI", color = qy.accent)
+                                Text(stringResource(R.string.group_chat_retry_ai), color = qy.accent)
                             }
                         }
                     }
@@ -200,7 +207,7 @@ fun GroupChatScreen(
                     ) {
                         CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = qy.accent)
                         Spacer(Modifier.width(6.dp))
-                        Text("AI 回复生成中…", color = qy.soft, style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.msg_ai_generating), color = qy.soft, style = MaterialTheme.typography.bodySmall)
                     }
                 }
 
@@ -233,7 +240,7 @@ fun GroupChatScreen(
                                 Box {
                                     if (input.isEmpty()) {
                                         Text(
-                                            "发言…（AI 群聊回复待二期）",
+                                            stringResource(R.string.group_chat_input_hint),
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = qy.muted,
                                         )
@@ -256,7 +263,7 @@ fun GroupChatScreen(
                                 } else {
                                     Icon(
                                         Icons.AutoMirrored.Filled.Send,
-                                        contentDescription = "发送",
+                                        contentDescription = stringResource(R.string.cd_send),
                                         modifier = Modifier.size(16.dp),
                                     )
                                 }
@@ -302,7 +309,7 @@ fun GroupChatScreen(
         AlertDialog(
             onDismissRequest = { editingMessage = null },
             containerColor = qy.card,
-            title = { Text("编辑消息", color = qy.text) },
+            title = { Text(stringResource(R.string.title_edit_message), color = qy.text) },
             text = {
                 OutlinedTextField(
                     value = editText,
@@ -325,10 +332,10 @@ fun GroupChatScreen(
                         editingMessage = null
                     },
                     enabled = editText.isNotBlank(),
-                ) { Text("保存", color = qy.accent) }
+                ) { Text(stringResource(R.string.action_save), color = qy.accent) }
             },
             dismissButton = {
-                TextButton(onClick = { editingMessage = null }) { Text("取消", color = qy.soft) }
+                TextButton(onClick = { editingMessage = null }) { Text(stringResource(R.string.action_cancel), color = qy.soft) }
             },
         )
     }
@@ -338,16 +345,16 @@ fun GroupChatScreen(
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
             containerColor = qy.card,
-            title = { Text("删除消息", color = qy.text) },
-            text = { Text("确定删除这条消息？此操作会同步删除 PC 端数据。", color = qy.soft) },
+            title = { Text(stringResource(R.string.title_delete_message), color = qy.text) },
+            text = { Text(stringResource(R.string.group_msg_delete_confirm), color = qy.soft) },
             confirmButton = {
                 TextButton(onClick = {
                     vm.deleteMessage(message.id)
                     deleteTarget = null
-                }) { Text("删除", color = qy.danger) }
+                }) { Text(stringResource(R.string.action_delete), color = qy.danger) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("取消", color = qy.soft) }
+                TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.action_cancel), color = qy.soft) }
             },
         )
     }

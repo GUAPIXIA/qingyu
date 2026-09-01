@@ -1,0 +1,19 @@
+{
+  "id": "native-minimal",
+  "name": "最小原生世界书",
+  "description": "",
+  "enabled": true,
+  "scanDepth": 4,
+  "entries": [
+    {
+      "id": "entry-1",
+      "keywords": ["王城"],
+      "content": "王城是帝国首都。",
+      "position": "before_char",
+      "order": 100,
+      "probability": 100,
+      "enabled": true
+    }
+  ]
+}
+

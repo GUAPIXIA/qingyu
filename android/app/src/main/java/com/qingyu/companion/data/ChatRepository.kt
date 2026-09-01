@@ -15,11 +15,18 @@ import kotlinx.coroutines.flow.StateFlow
  * 数据仓库：UI 唯一数据入口。
  * 策略：在线走 REST + WS 推送增量更新；离线回退 Room 只读缓存。
  * 发消息带 requestId 幂等键（防弱网重发双条，方案 §4.3）。
+ *
+ * F-06：发送/重试/取消统一经 data/send/ 的 UseCase 进入本接口；
+ * ViewModel 只投影状态，不拼网络逻辑。
  */
 interface ChatRepository {
 
-    /** WS 事件流（chunk/done/error/sessionUpdated），供 ViewModel 驱动流式与增量刷新 */
-    val events: SharedFlow<CompanionEvent>
+    /**
+     * 事件流（chunk/done/error/sessionUpdated/task 事件），供 ViewModel 驱动流式与增量刷新。
+     * F-01 起包含两路来源：WS 帧 + Repository 本地注入（v2 task 轮询流式/对账刷新通知），
+     * 故类型为 [kotlinx.coroutines.flow.Flow]（热流，无 replay 语义与原先一致）。
+     */
+    val events: kotlinx.coroutines.flow.Flow<CompanionEvent>
 
     /** 连接状态，供连接状态栏展示 */
     val connectionState: StateFlow<WsClient.State>
@@ -209,18 +216,64 @@ interface ChatRepository {
 
     suspend fun listCachedMessages(sessionId: String): List<Message>
 
-    /** 观察发件箱（P1-4.1 B1-2）：sessionId -> PendingMessage 列表，App 重启后可恢复 */
+    /** 观察发件箱（P1-4.1 B1-2）：sessionId -> PendingMessage 列表，App 重启后可恢复。
+     *  F-04：仅返回归属当前活跃 PC 的行（切 PC 隔离，旧 PC 队列暂停展示与发送）。 */
     fun observeOutbox(sessionId: String): kotlinx.coroutines.flow.Flow<List<com.qingyu.companion.model.PendingMessage>> = kotlinx.coroutines.flow.flowOf(emptyList())
 
-    /** 恢复未完成发件箱（App 启动/重连时调用） */
+    /** 恢复未完成发件箱（App 启动/重连时调用；F-06 恢复矩阵见 OnlineChatRepository） */
     suspend fun restoreOutbox() {}
 
     /** 清理已完成的发件箱 */
     suspend fun clearCompletedOutbox(sessionId: String) {}
+
+    /** Relay 离线队列完成回执；按原 commandId 合并，不创建第二条 Outbox。 */
+    suspend fun completeRelayCommand(commandId: String, resultStatus: Int, message: com.qingyu.companion.model.Message?) {}
+    suspend fun expireRelayCommand(commandId: String) {}
+
+    // ---------- 阶段 F（事件一致性与可靠发送）----------
+
+    /**
+     * F-03：对账刷新——REST 重拉该会话消息并落缓存，成功后经 [events] 注入
+     * SessionUpdated(sessionId, "message") 驱动已打开的聊天页刷新。失败返回 false。
+     */
+    suspend fun refreshSession(sessionId: String): Boolean = false
+
+    /**
+     * F-04：legacy 行归属修复（应用启动一次性）：deviceId='legacy' 且仍在排队的行
+     * 回填为当前活跃 PC；无活跃连接保持 legacy 并置位 [pendingLegacyOutbox]。
+     * 返回采纳的行数。
+     */
+    suspend fun repairLegacyOutbox(): Int = 0
+
+    /**
+     * F-04：是否存在无法确定归属（legacy）的旧待处理消息。
+     * UI 据此提示"旧版本待发送消息，需要选择目标 PC"；此类消息绝不自动发送。
+     */
+    val pendingLegacyOutbox: StateFlow<Boolean>
+        get() = _defaultFalseStateFlow
+
+    /**
+     * F-01：连接建立后按能力发送 task:subscribe（缓存会话列表 + 该 PC 的 task cursor）。
+     * capabilities 未含 task_events_v2 时不订阅（完全走 v1 ai:* 链路）并返回 false。
+     */
+    suspend fun subscribeTaskEvents(): Boolean = false
+
+    /** F-06：读取单条发件箱行（重试/取消用）；仅限归属当前活跃设备的行，不存在返回 null。 */
+    suspend fun outboxEntry(requestId: String): com.qingyu.companion.model.PendingMessage? = null
+
+    /** F-06：仅重试 AI 生成（不重发用户消息；v2 有 taskId 走 /tasks/:id/retry，否则转 awaiting_ai 或 failed_generation 兜底）。 */
+    suspend fun retryGeneration(requestId: String): Message = throw UnsupportedOperationException("当前仓库不支持生成重试")
+
+    /** F-06：取消——queued/sending 本地置 cancelled；已有 taskId 的 v2 任务同时请求 PC 取消。返回是否生效。 */
+    suspend fun cancelOutbox(requestId: String): Boolean = false
 
     /** 仅清本地缓存（保留连接配置，方案 §6.9） */
     suspend fun clearLocalCache()
 
     /** "退出时清除"：清缓存 + 移除连接 */
     suspend fun wipeLocalData()
+}
+
+private val _defaultFalseStateFlow: StateFlow<Boolean> by lazy {
+    kotlinx.coroutines.flow.MutableStateFlow(false)
 }

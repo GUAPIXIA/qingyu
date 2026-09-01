@@ -14,6 +14,7 @@ import { buildTaskRouter } from './taskRoutes'
 import { attachTaskWsAdapter } from './taskWsAdapter'
 import { BridgeChatService, type SessionChangedNotifier } from './chatService'
 import { createLogger } from '../services/logger'
+import { BridgeRuntime } from './runtime/bridgeRuntime'
 
 const log = createLogger('bridge-server')
 
@@ -34,16 +35,21 @@ export class BridgeServer {
   private httpServer: Server | null = null
   private hub: WsHub
   private chatService: BridgeChatService
+  private runtime: BridgeRuntime
+  private detachLanSink: (() => void) | null = null
 
   constructor(
     notifySessionChanged: SessionChangedNotifier,
     onPairRequest: (requestId: string, deviceName: string) => void = () => {},
+    sharedRuntime?: BridgeRuntime,
   ) {
-    this.hub = new WsHub()
-    this.chatService = new BridgeChatService(this.hub, notifySessionChanged)
+    this.runtime = sharedRuntime ?? new BridgeRuntime(notifySessionChanged)
+    this.hub = new WsHub(this.runtime.generations)
+    this.detachLanSink = this.runtime.events.add(this.hub)
+    this.chatService = this.runtime.chatService
     this.app = express()
     this.app.use(express.json({ limit: '10mb' }))
-    this.app.use('/api/v1', buildBridgeRouter(this.hub, this.chatService, notifySessionChanged, onPairRequest))
+    this.app.use('/api/v1', buildBridgeRouter(this.hub, this.chatService, notifySessionChanged, onPairRequest, this.runtime.facade))
     this.app.use('/api/v2', requireAuth, buildTaskRouter())
     // H1 修复：/static 媒体路由此前挂在认证路由之外，任何 LAN 主机可无认证读取聊天图片/
     // 角色素材。先挂 originGuard（阻断浏览器跨站 fetch 盗读，PC/安卓原生加载不受影响）；
@@ -110,6 +116,8 @@ export class BridgeServer {
     this.hub.close()
     this.httpServer?.close()
     this.httpServer = null
+    this.detachLanSink?.()
+    this.detachLanSink = null
     log.info('桥接服务已停止')
   }
 }

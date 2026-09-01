@@ -25,7 +25,9 @@ import type {
   UpdaterState,
   SessionSyncAPI,
   BridgeAPI,
+  RelayAPI,
 } from '../shared/ipc-api'
+import type { LocalModelAPI } from '../shared/localModels'
 
 // ---- AI 调用 ----
 const aiApi: AIAPI = {
@@ -35,6 +37,8 @@ const aiApi: AIAPI = {
   listModels: (provider, baseUrl, apiKey) => ipcRenderer.invoke('ai:listModels', provider, baseUrl, apiKey),
   countTokens: (text, model) => ipcRenderer.invoke('ai:countTokens', text, model),
   countMessagesTokens: (messages, model) => ipcRenderer.invoke('ai:countMessagesTokens', messages, model),
+  compressLorebook: (payload) => ipcRenderer.invoke('ai:compressLorebook', payload),
+  localizeLorebookKeywords: (payload) => ipcRenderer.invoke('ai:localizeLorebookKeywords', payload),
   onChunk: (callback) => {
     const handler = (_e: unknown, data: { requestId: string; text: string }) => callback(data)
     ipcRenderer.on(IPC_EVENTS.aiChunk, handler)
@@ -92,6 +96,7 @@ const bridgeApi: BridgeAPI = {
   setConfig: (partial) => ipcRenderer.invoke('bridge:config', partial),
   pairingInfo: () => ipcRenderer.invoke('bridge:pairingInfo'),
   regeneratePairing: () => ipcRenderer.invoke('bridge:pairingInfo', true),
+  pairingQrPayload: (mode) => ipcRenderer.invoke('bridge:pairingQrPayload', mode),
   listDevices: () => ipcRenderer.invoke('bridge:listDevices'),
   revokeDevice: (deviceId) => ipcRenderer.invoke('bridge:revokeDevice', deviceId),
   approvePair: (requestId) => ipcRenderer.invoke('bridge:approvePair', requestId),
@@ -102,6 +107,21 @@ const bridgeApi: BridgeAPI = {
     return () => ipcRenderer.removeListener('bridge:pairRequest', handler)
   },
   wipeAll: () => ipcRenderer.invoke('bridge:wipeAll'),
+}
+
+const relayApi: RelayAPI = {
+  status: () => ipcRenderer.invoke('relay:status'),
+  enable: (baseUrl) => ipcRenderer.invoke('relay:enable', baseUrl),
+  disable: () => ipcRenderer.invoke('relay:disable'),
+  retry: () => ipcRenderer.invoke('relay:retry'),
+  createPairTicket: () => ipcRenderer.invoke('relay:createPairTicket'),
+  listDevices: () => ipcRenderer.invoke('relay:listDevices'),
+  revokeDevice: (deviceId) => ipcRenderer.invoke('relay:revokeDevice', deviceId),
+  approvePair: (requestId) => ipcRenderer.invoke('relay:approvePair', requestId),
+  rejectPair: (requestId) => ipcRenderer.invoke('relay:rejectPair', requestId),
+  clearCache: () => ipcRenderer.invoke('relay:clearCache'),
+  onStatusChanged: (callback) => { const handler = (_e: unknown, status: Parameters<typeof callback>[0]) => callback(status); ipcRenderer.on('relay:statusChanged', handler); return () => ipcRenderer.removeListener('relay:statusChanged', handler) },
+  onPairRequest: (callback) => { const handler = (_e: unknown, request: Parameters<typeof callback>[0]) => callback(request); ipcRenderer.on('relay:pairRequest', handler); return () => ipcRenderer.removeListener('relay:pairRequest', handler) },
 }
 
 // ---- 角色卡 ----
@@ -156,20 +176,52 @@ const settingsApi: SettingsAPI = {
 // ---- 世界书 ----
 const lorebookApi: LorebookAPI = {
   list: () => ipcRenderer.invoke('lorebook:list'),
-  save: (lorebook) => ipcRenderer.invoke('lorebook:save', lorebook),
+  save: (lorebook, expectedRevision) => ipcRenderer.invoke('lorebook:save', lorebook, expectedRevision),
   delete: (id) => ipcRenderer.invoke('lorebook:delete', id),
   importJson: () => ipcRenderer.invoke('lorebook:importJson'),
+  importJsonDetailed: (options) => ipcRenderer.invoke('lorebook:importJsonDetailed', options),
+  exportJson: (id, adapterId) => ipcRenderer.invoke('lorebook:exportJson', id, adapterId),
+  openMappingSource: () => ipcRenderer.invoke('lorebook:openMappingSource'),
+  importWithTemplate: (sourceId, template) => ipcRenderer.invoke('lorebook:importWithTemplate', sourceId, template),
+  healthCheck: () => ipcRenderer.invoke('lorebook:healthCheck'),
+  listMappingTemplates: () => ipcRenderer.invoke('lorebook:listMappingTemplates'),
+  saveMappingTemplate: (template) => ipcRenderer.invoke('lorebook:saveMappingTemplate', template),
+  deleteMappingTemplate: (id) => ipcRenderer.invoke('lorebook:deleteMappingTemplate', id),
 }
 
 // ---- 语义触发（向量 RAG）----
 const embeddingApi: EmbeddingAPI = {
   test: (config) => ipcRenderer.invoke('embedding:test', config),
   indexLorebook: (lorebookId, config) => ipcRenderer.invoke('embedding:indexLorebook', lorebookId, config),
-  indexStatus: (lorebookIds) => ipcRenderer.invoke('embedding:indexStatus', lorebookIds),
+  indexStatus: (lorebookIds, config) => ipcRenderer.invoke('embedding:indexStatus', lorebookIds, config),
   removeIndex: (lorebookId) => ipcRenderer.invoke('embedding:removeIndex', lorebookId),
   semanticSearch: (payload) => ipcRenderer.invoke('embedding:semanticSearch', payload),
   embedFacts: (config, texts) => ipcRenderer.invoke('embedding:embedFacts', config, texts),
   searchFacts: (payload) => ipcRenderer.invoke('embedding:searchFacts', payload),
+}
+
+const localModelApi: LocalModelAPI = {
+  catalog: () => ipcRenderer.invoke('localModel:catalog'),
+  installed: () => ipcRenderer.invoke('localModel:installed'),
+  tasks: () => ipcRenderer.invoke('localModel:tasks'),
+  install: (modelId, version) => ipcRenderer.invoke('localModel:install', modelId, version),
+  importPackage: () => ipcRenderer.invoke('localModel:importPackage'),
+  pause: (taskId) => ipcRenderer.invoke('localModel:pause', taskId),
+  resume: (taskId) => ipcRenderer.invoke('localModel:resume', taskId),
+  cancel: (taskId) => ipcRenderer.invoke('localModel:cancel', taskId),
+  test: (modelId, version) => ipcRenderer.invoke('localModel:test', modelId, version),
+  activate: (modelId, version) => ipcRenderer.invoke('localModel:activate', modelId, version),
+  rollback: (modelId) => ipcRenderer.invoke('localModel:rollback', modelId),
+  uninstallImpact: (modelId, version) => ipcRenderer.invoke('localModel:uninstallImpact', modelId, version),
+  uninstall: (request) => ipcRenderer.invoke('localModel:uninstall', request),
+  storageUsage: () => ipcRenderer.invoke('localModel:storageUsage'),
+  cleanup: () => ipcRenderer.invoke('localModel:cleanup'),
+  rebuildIndexes: () => ipcRenderer.invoke('localModel:rebuildIndexes'),
+  onProgress: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on('localModel:progress', handler)
+    return () => ipcRenderer.removeListener('localModel:progress', handler)
+  },
 }
 
 // ---- 快捷回复 ----
@@ -324,6 +376,7 @@ contextBridge.exposeInMainWorld('api', {
   settings: settingsApi,
   lorebook: lorebookApi,
   embedding: embeddingApi,
+  localModel: localModelApi,
   quickReply: quickReplyApi,
   preset: presetApi,
   tts: ttsApi,
@@ -340,6 +393,7 @@ contextBridge.exposeInMainWorld('api', {
   group: groupApi,
   sessionSync: sessionSyncApi,
   bridge: bridgeApi,
+  relay: relayApi,
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkVersion: () => ipcRenderer.invoke('app:checkVersion'),

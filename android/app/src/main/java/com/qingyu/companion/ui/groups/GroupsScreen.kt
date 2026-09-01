@@ -32,32 +32,40 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.qingyu.companion.data.CompanionError
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.data.userMessage
-import com.qingyu.companion.model.Character
-import com.qingyu.companion.model.GroupChat
 import com.qingyu.companion.model.GroupSession
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.AvatarBubble
-import com.qingyu.companion.data.userMessage
+import com.qingyu.companion.ui.components.LoadState
+import com.qingyu.companion.ui.components.QyEmptyState
+import com.qingyu.companion.ui.components.QyErrorBanner
+import com.qingyu.companion.ui.components.QyOfflineBanner
+import com.qingyu.companion.ui.components.QySkeletonList
+import com.qingyu.companion.ui.components.rememberSkeletonVisible
 import com.qingyu.companion.ui.theme.qyColors
-import kotlinx.coroutines.launch
 
 /**
  * 群聊列表页（阶段二：群列表 → 群会话列表）。
+ * E-02：页面状态统一由 [GroupsViewModel.loadState]（LoadState 五态）驱动，
+ * 渲染走 ui/components/AsyncStates.kt 的 Qy 组件（骨架/空态/离线/错误）；
+ * 群会话子列表加载用骨架屏，新建群聊等交互保持不变。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,52 +75,30 @@ fun GroupsScreen(
 ) {
     val qy = qyColors()
     val container = LocalAppContainer.current
-    val repository = container.repository
-    val scope = rememberCoroutineScope()
-    var groups by remember { mutableStateOf<List<GroupChat>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var selectedGroup by remember { mutableStateOf<GroupChat?>(null) }
-    var groupSessions by remember { mutableStateOf<List<GroupSession>>(emptyList()) }
-    var sessionsLoading by remember { mutableStateOf(false) }
-    var memberNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    // 新建群聊状态
+    val vm: GroupsViewModel = viewModel(factory = viewModelFactory {
+        initializer { GroupsViewModel(container.repository) }
+    })
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val loadState by vm.loadState.collectAsStateWithLifecycle()
+    val skeletonVisible = rememberSkeletonVisible(loadState is LoadState.Loading)
+    val selectedGroup = remember(ui.selectedGroupId, ui.groups) {
+        ui.groups.firstOrNull { it.id == ui.selectedGroupId }
+    }
+    // 新建群聊对话框：名称与选中成员（纯 UI 输入态）
     var showCreate by remember { mutableStateOf(false) }
     var newGroupName by remember { mutableStateOf("") }
-    var allCharacters by remember { mutableStateOf<List<Character>>(emptyList()) }
     var selectedMemberIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var creating by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        runCatching { repository.listGroups() }
-            .onSuccess { groups = it; loading = false }
-            .onFailure { e ->
-                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "加载群聊失败"
-                error = msg; loading = false
-            }
-    }
-
-    // 选中群后加载会话与成员名
-    LaunchedEffect(selectedGroup?.id) {
-        val g = selectedGroup ?: return@LaunchedEffect
-        sessionsLoading = true
-        runCatching { repository.listGroupSessions(g.id) }
-            .onSuccess { groupSessions = it }
-        runCatching { repository.listCharacters() }
-            .onSuccess { chars -> memberNames = chars.associate { c -> c.id to c.name } }
-        sessionsLoading = false
-    }
 
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
             AppTopBar(
-                title = if (selectedGroup == null) "群聊" else selectedGroup!!.name,
+                title = selectedGroup?.name ?: stringResource(R.string.groups_title),
                 navigationIcon = {
-                    IconButton(onClick = { if (selectedGroup == null) onBack() else selectedGroup = null }) {
+                    IconButton(onClick = { if (selectedGroup == null) onBack() else vm.backToGroups() }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.cd_back),
                             tint = qy.soft,
                         )
                     }
@@ -123,12 +109,9 @@ fun GroupsScreen(
                             showCreate = true
                             newGroupName = ""
                             selectedMemberIds = emptySet()
-                            scope.launch {
-                                runCatching { repository.listCharacters() }
-                                    .onSuccess { allCharacters = it }
-                            }
+                            vm.prepareCreateDialog()
                         }) {
-                            Text("新建", style = MaterialTheme.typography.labelLarge, color = qy.accent)
+                            Text(stringResource(R.string.groups_create_action), style = MaterialTheme.typography.labelLarge, color = qy.accent)
                         }
                     }
                 },
@@ -142,128 +125,77 @@ fun GroupsScreen(
                     .padding(padding),
             ) {
                 when {
-                    loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = qy.accent)
-
-                    selectedGroup != null -> {
-                        // 群会话列表
-                        if (sessionsLoading) {
-                            CircularProgressIndicator(Modifier.align(Alignment.Center), color = qy.accent)
-                        } else if (groupSessions.isEmpty()) {
-                            Text(
-                                "暂无群聊会话",
-                                modifier = Modifier.align(Alignment.Center),
-                                color = qy.soft,
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                items(groupSessions, key = { it.id }) { session ->
-                                    // 方案 B：bg2 圆角 14 行 + accentSoft 胶囊
-                                    Surface(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                onOpenGroupChat(
-                                                    selectedGroup!!.id,
-                                                    selectedGroup!!.name,
-                                                    session.id,
-                                                )
-                                            },
-                                        shape = RoundedCornerShape(14.dp),
-                                        color = qy.bg2,
-                                    ) {
-                                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                                            Text(
-                                                session.title,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = qy.text,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Spacer(Modifier.height(6.dp))
-                                            Surface(
-                                                shape = RoundedCornerShape(50),
-                                                color = qy.accentSoft,
-                                            ) {
-                                                Text(
-                                                    "${session.messageCount} 条消息",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = qy.accent,
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                    // E-02：群列表层五态分发（Loading 骨架 / Empty 空态 / Offline 横幅+缓存 / Error 横幅+重试 / Content 列表）
+                    selectedGroup == null -> when (val st = loadState) {
+                        is LoadState.Loading -> {
+                            if (skeletonVisible) {
+                                QySkeletonList(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    rows = 4,
+                                )
                             }
+                        }
+
+                        is LoadState.Empty -> {
+                            QyEmptyState(
+                                title = stringResource(R.string.groups_empty),
+                                actionLabel = stringResource(R.string.action_retry),
+                                onAction = vm::refresh,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+
+                        is LoadState.Error -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                QyErrorBanner(
+                                    message = st.error.userMessage(),
+                                    retryable = st.retryable,
+                                    onRetry = vm::refresh,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                            }
+                        }
+
+                        is LoadState.Offline -> {
+                            Column(Modifier.fillMaxSize()) {
+                                QyOfflineBanner(
+                                    onRetry = vm::refresh,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                )
+                                GroupList(st.cached, onOpenGroup = vm::openGroup)
+                            }
+                        }
+
+                        is LoadState.Content -> {
+                            GroupList(st.data, onOpenGroup = vm::openGroup)
                         }
                     }
 
-                    error != null -> Text(
-                        error!!,
-                        modifier = Modifier.align(Alignment.Center),
-                        color = qy.danger,
-                    )
-
-                    groups.isEmpty() -> Text(
-                        "暂无群聊，请在 PC 端创建",
-                        modifier = Modifier.align(Alignment.Center),
-                        color = qy.soft,
-                    )
-
+                    // 群会话列表层
                     else -> {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            items(groups, key = { it.id }) { group ->
-                                // 方案 B：bg2 圆角 14 行 + accentSoft 胶囊
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            selectedGroup = group
-                                        },
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = qy.bg2,
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        AvatarBubble(name = group.name, size = 44)
-                                        Column(
-                                            Modifier
-                                                .weight(1f)
-                                                .padding(start = 12.dp)
-                                        ) {
-                                            Text(
-                                                group.name,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = qy.text,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Spacer(Modifier.height(6.dp))
-                                            Surface(
-                                                shape = RoundedCornerShape(50),
-                                                color = qy.accentSoft,
-                                            ) {
-                                                Text(
-                                                    "${group.memberIds.size} 位成员",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = qy.accent,
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        if (ui.sessionsLoading) {
+                            QySkeletonList(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                rows = 3,
+                            )
+                        } else if (ui.groupSessions.isEmpty()) {
+                            QyEmptyState(
+                                title = stringResource(R.string.groups_sessions_empty),
+                                actionLabel = stringResource(R.string.action_retry),
+                                onAction = { vm.openGroup(selectedGroup.id) },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            GroupSessionList(
+                                sessions = ui.groupSessions,
+                                onOpenSession = { session ->
+                                    onOpenGroupChat(selectedGroup.id, selectedGroup.name, session.id)
+                                },
+                            )
                         }
                     }
                 }
@@ -274,15 +206,20 @@ fun GroupsScreen(
     // 新建群聊对话框
     if (showCreate) {
         AlertDialog(
-            onDismissRequest = { if (!creating) showCreate = false },
+            onDismissRequest = {
+                if (!ui.creating) {
+                    showCreate = false
+                    vm.clearActionError()
+                }
+            },
             containerColor = qy.card,
-            title = { Text("新建群聊", color = qy.text) },
+            title = { Text(stringResource(R.string.title_new_group), color = qy.text) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = newGroupName,
                         onValueChange = { newGroupName = it.take(30) },
-                        label = { Text("群聊名称（可空）") },
+                        label = { Text(stringResource(R.string.title_group_name_empty)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -295,19 +232,19 @@ fun GroupsScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "选择成员（至少 1 个）",
+                        stringResource(R.string.groups_select_members),
                         style = MaterialTheme.typography.labelMedium,
                         color = qy.soft,
                     )
-                    if (allCharacters.isEmpty()) {
+                    if (ui.allCharacters.isEmpty()) {
                         Text(
-                            "暂无角色",
+                            stringResource(R.string.characters_empty),
                             style = MaterialTheme.typography.bodySmall,
                             color = qy.soft,
                         )
                     } else {
                         LazyColumn(Modifier.heightIn(max = 240.dp)) {
-                            items(allCharacters, key = { it.id }) { c ->
+                            items(ui.allCharacters, key = { it.id }) { c ->
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
@@ -338,39 +275,145 @@ fun GroupsScreen(
                             }
                         }
                     }
+                    // 创建失败（动作级错误，不参与页面 LoadState 投影）
+                    ui.actionError?.let { err ->
+                        Spacer(Modifier.height(8.dp))
+                        QyErrorBanner(
+                            message = err.userMessage(),
+                            onRetry = null,
+                            retryable = false,
+                        )
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (creating || selectedMemberIds.isEmpty()) return@TextButton
-                        creating = true
-                        scope.launch {
-                            runCatching { repository.createGroup(newGroupName.ifBlank { null }, selectedMemberIds.toList()) }
-                                .onSuccess {
-                                    showCreate = false
-                                    creating = false
-                                    runCatching { repository.listGroups() }.onSuccess { groups = it }
-                                }
-                                .onFailure { e ->
-                                    creating = false
-                                    val msg = if (e is CompanionError) e.userMessage() else e.message ?: "创建失败"
-                                    error = msg
-                                }
+                        if (ui.creating || selectedMemberIds.isEmpty()) return@TextButton
+                        vm.createGroup(newGroupName.ifBlank { null }, selectedMemberIds.toList()) {
+                            showCreate = false
                         }
                     },
-                    enabled = selectedMemberIds.isNotEmpty() && !creating,
+                    enabled = selectedMemberIds.isNotEmpty() && !ui.creating,
                 ) {
-                    if (creating) {
+                    if (ui.creating) {
                         CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = qy.accent)
                     } else {
-                        Text("创建", color = qy.accent)
+                        Text(stringResource(R.string.action_create), color = qy.accent)
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { if (!creating) showCreate = false }) { Text("取消", color = qy.soft) }
+                TextButton(onClick = {
+                    if (!ui.creating) {
+                        showCreate = false
+                        vm.clearActionError()
+                    }
+                }) { Text(stringResource(R.string.action_cancel), color = qy.soft) }
             },
         )
+    }
+}
+
+/**
+ * 群列表渲染（Content / Offline 共用）：方案 B bg2 圆角 14 行 + accentSoft 胶囊。
+ */
+@Composable
+private fun GroupList(groups: List<com.qingyu.companion.model.GroupChat>, onOpenGroup: (String) -> Unit) {
+    val qy = qyColors()
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(groups, key = { it.id }) { group ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenGroup(group.id) },
+                shape = RoundedCornerShape(14.dp),
+                color = qy.bg2,
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AvatarBubble(name = group.name, size = 44)
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .padding(start = 12.dp)
+                    ) {
+                        Text(
+                            group.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = qy.text,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = qy.accentSoft,
+                        ) {
+                            Text(
+                                stringResource(R.string.groups_member_count, group.memberIds.size),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = qy.accent,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 群会话列表渲染：点击进入群聊会话。
+ */
+@Composable
+private fun GroupSessionList(
+    sessions: List<GroupSession>,
+    onOpenSession: (GroupSession) -> Unit,
+) {
+    val qy = qyColors()
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(sessions, key = { it.id }) { session ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenSession(session) },
+                shape = RoundedCornerShape(14.dp),
+                color = qy.bg2,
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        session.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = qy.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = qy.accentSoft,
+                    ) {
+                        Text(
+                            stringResource(R.string.groups_message_count, session.messageCount),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = qy.accent,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }

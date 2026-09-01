@@ -38,13 +38,19 @@ export interface ActiveProfile {
   useInstructTemplate?: boolean
 }
 
-/** 语义检索命中的世界书条目（P0-2；主进程暂无语义检索，恒为空数组） */
+/** 语义检索命中的世界书条目（由主进程向量检索返回） */
 export interface SemanticLoreHit {
   content: string
   order: number
   position: 'before_char' | 'after_char' | 'at_depth' | 'at_end'
   /** at_depth 注入深度（默认 0 = 对话末尾） */
   depth?: number
+  /** 语义相似度（余弦 0-1，阶段二A 起参与统一评分排序；旧缓存可能缺失） */
+  score?: number
+  /** 条目定位键 `${lbId}:${entryId}`（阶段二B recency 加权用；旧缓存可能缺失） */
+  key?: string
+  summary?: string
+  priority?: 'always' | 'conditional' | 'detail'
 }
 
 /** 上下文组装所需的会话域数据快照（对齐 buildChatContext 的 get() 依赖） */
@@ -57,6 +63,8 @@ export interface ContextChatSnapshot {
   semanticFactsHits: Array<FactSearchHit | string>
   /** P0-2 语义检索命中（世界书条目） */
   semanticLoreHits: SemanticLoreHit[]
+  /** 最近一次世界书向量检索是否真正执行成功；undefined 表示尚未探测。 */
+  semanticLoreAvailable?: boolean
 }
 
 /** 上下文组装所需的设置域数据 */

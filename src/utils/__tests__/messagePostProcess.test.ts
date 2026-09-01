@@ -51,6 +51,38 @@ describe('extractThought', () => {
     expect(result.isFallback).toBe(false)
   })
 
+  it('treats text before an orphan closing tag as thought content', () => {
+    const result = extractThought('先分析上下文\n</thought>\n最终回复')
+    expect(result.thought).toBe('先分析上下文')
+    expect(result.content).toBe('最终回复')
+    expect(result.content).not.toContain('</thought>')
+    expect(result.isFallback).toBe(false)
+  })
+
+  it('collects reasoning leaked before an extra closing tag', () => {
+    const result = extractThought('<thought>第一段推理</thought>继续推理</thought>正文')
+    expect(result.thought).toBe('第一段推理\n\n继续推理')
+    expect(result.content).toBe('正文')
+  })
+
+  it('handles an unclosed thought block', () => {
+    const result = extractThought('正文前缀<thought>尚未闭合的推理')
+    expect(result.thought).toBe('尚未闭合的推理')
+    expect(result.content).toBe('正文前缀')
+  })
+
+  it('handles escaped and whitespace-padded thought tags', () => {
+    const result = extractThought('隐藏推理\\</ thought >可见正文')
+    expect(result.thought).toBe('隐藏推理')
+    expect(result.content).toBe('可见正文')
+  })
+
+  it('handles thought tags with attributes', () => {
+    const result = extractThought('<thinking class="reasoning">分析</thinking>答案')
+    expect(result.thought).toBe('分析')
+    expect(result.content).toBe('答案')
+  })
+
   it('trims whitespace around thought content', () => {
     const result = extractThought('<thought>  spaced thought  </thought>content')
     expect(result.thought).toBe('spaced thought')
@@ -101,6 +133,10 @@ describe('stripThoughtTags', () => {
   it('handles case-insensitive tags', () => {
     expect(stripThoughtTags('<THOUGHT>upper</THOUGHT>content')).toBe('uppercontent')
   })
+
+  it('removes malformed tag variants while preserving their text', () => {
+    expect(stripThoughtTags('thinking\\</ thought >answer')).toBe('thinkinganswer')
+  })
 })
 
 describe('stripThought', () => {
@@ -137,6 +173,14 @@ describe('stripThought', () => {
   it('is case-insensitive', () => {
     const result = stripThought('<THOUGHT>upper</THOUGHT>content')
     expect(result).toBe('content')
+  })
+
+  it('removes thought content separated by an orphan closing tag', () => {
+    expect(stripThought('hidden</thought>visible')).toBe('visible')
+  })
+
+  it('removes an unclosed thought block', () => {
+    expect(stripThought('visible<thought>hidden')).toBe('visible')
   })
 })
 

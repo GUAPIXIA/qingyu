@@ -3,8 +3,8 @@ package com.qingyu.companion.ui.sessions
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,20 +18,22 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,29 +54,41 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.model.SessionPreview
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.AvatarBubble
-import com.qingyu.companion.ui.components.ConnectionStatusBar
-import androidx.compose.material.icons.filled.Search
+import com.qingyu.companion.ui.components.LoadState
+import com.qingyu.companion.ui.components.QyConnectionChip
+import com.qingyu.companion.ui.components.QyEmptyState
+import com.qingyu.companion.ui.components.QyErrorBanner
+import com.qingyu.companion.ui.components.QyOfflineBanner
+import com.qingyu.companion.ui.components.QySkeletonList
 import com.qingyu.companion.ui.components.SessionCard
+import com.qingyu.companion.ui.components.rememberSkeletonVisible
 import com.qingyu.companion.ui.components.resolveImageUrl
 import com.qingyu.companion.ui.theme.qyColors
 import com.qingyu.companion.utils.SearchUtils
 
 
 /**
- * 会话列表页（方案 B）：顶栏「轻语」+ 右上角设置，列表行 + 50dp 圆角 FAB。
+ * 会话列表页（方案 B）：顶栏「轻语」+ 右上角设置，紧凑列表行 + 48dp 圆角 FAB。
+ * E-02：页面状态统一由 [SessionsViewModel.loadState]（LoadState 五态）驱动，
+ * 渲染走 ui/components/AsyncStates.kt 的 Qy 组件（骨架/空态/离线/错误）；
+ * 搜索、排序、删除、重命名、新建对话等交互保持不变。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +98,7 @@ fun SessionsScreen(
     onOpenPairing: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenGroups: () -> Unit,
+    showSectionShortcuts: Boolean = true,
 ) {
     val qy = qyColors()
     val container = LocalAppContainer.current
@@ -90,6 +106,11 @@ fun SessionsScreen(
         initializer { SessionsViewModel(container.repository) }
     })
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val loadState by vm.loadState.collectAsStateWithLifecycle()
+    // E-02：连接胶囊消费阶段 B ConnectionState（含重连倒计时/需修复文案）
+    val connectionState by container.connectionManager.connectionState.collectAsStateWithLifecycle()
+    // E-02：骨架屏最短展示 300ms 防抖（快速加载不闪烁）
+    val skeletonVisible = rememberSkeletonVisible(loadState is LoadState.Loading)
     var pendingDelete by remember { mutableStateOf<SessionPreview?>(null) }
     var renamingSession by remember { mutableStateOf<SessionPreview?>(null) }
     var searchQuery by remember { mutableStateOf("") }
@@ -125,51 +146,89 @@ fun SessionsScreen(
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         floatingActionButton = {
-            // 方案 B FAB：50dp · 圆角 16 · 暖金底
+            // 紧凑 FAB：48dp 仍满足主要触控目标，减轻列表上方的视觉重量。
             Surface(
                 onClick = { showNewChat = true },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = qy.accent,
                 contentColor = qy.onAccent,
-                shadowElevation = 6.dp,
-                modifier = Modifier.size(50.dp),
+                shadowElevation = 4.dp,
+                modifier = Modifier.size(48.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.Filled.Add,
-                        contentDescription = "新建对话",
-                        modifier = Modifier.size(22.dp),
+                        contentDescription = stringResource(R.string.cd_new_session),
+                        modifier = Modifier.size(21.dp),
                     )
                 }
             }
         },
         topBar = {
-            AppTopBar(
-                title = "轻语",
-                navigationIcon = null,
-                compact = true,
-                actions = {
-                    // 次级入口：群聊 / 角色 / 刷新，设置贴最右（方案 B：右上角＝设置）
-                    IconButton(onClick = onOpenGroups) {
-                        Icon(
-                            Icons.Outlined.Group,
-                            contentDescription = "群聊",
-                            tint = qy.soft,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    IconButton(onClick = onOpenCharacters) {
-                        Icon(
-                            Icons.Outlined.Person,
-                            contentDescription = "角色",
-                            tint = qy.soft,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
+            if (showSectionShortcuts) {
+                AppTopBar(
+                    title = stringResource(R.string.shell_home_title),
+                    navigationIcon = null,
+                    compact = true,
+                    actions = {
+                        // 无底栏的旧回退导航仍保留栏目入口，避免角色/群聊不可达。
+                        IconButton(onClick = onOpenGroups) {
+                            Icon(
+                                Icons.Outlined.Group,
+                                contentDescription = stringResource(R.string.cd_group),
+                                tint = qy.soft,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        IconButton(onClick = onOpenCharacters) {
+                            Icon(
+                                Icons.Outlined.Person,
+                                contentDescription = stringResource(R.string.cd_character),
+                                tint = qy.soft,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        IconButton(onClick = vm::refresh) {
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = stringResource(R.string.cd_refresh),
+                                tint = qy.soft,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(
+                                Icons.Filled.Settings,
+                                contentDescription = stringResource(R.string.cd_settings),
+                                tint = qy.soft,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    },
+                )
+            } else {
+                // 主 Shell 已有角色/群聊底栏：标题、状态、排序和必要操作合并成单行。
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .height(48.dp)
+                        .padding(start = 12.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.shell_home_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = qy.text,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QyConnectionChip(state = connectionState, onTap = onOpenPairing)
+                    SessionsSortChip(sortMode = ui.sortMode, onToggle = vm::toggleSort)
                     IconButton(onClick = vm::refresh) {
                         Icon(
                             Icons.Filled.Refresh,
-                            contentDescription = "刷新",
+                            contentDescription = stringResource(R.string.cd_refresh),
                             tint = qy.soft,
                             modifier = Modifier.size(18.dp),
                         )
@@ -177,13 +236,13 @@ fun SessionsScreen(
                     IconButton(onClick = onOpenSettings) {
                         Icon(
                             Icons.Filled.Settings,
-                            contentDescription = "设置",
+                            contentDescription = stringResource(R.string.cd_settings),
                             tint = qy.soft,
                             modifier = Modifier.size(20.dp),
                         )
                     }
-                },
-            )
+                }
+            }
         },
     ) { padding ->
         AppBackground {
@@ -192,36 +251,17 @@ fun SessionsScreen(
                     .fillMaxSize()
                     .padding(padding),
             ) {
-                // 顶部工具条：连接状态（左）+ 排序（右，胶囊样式）
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ConnectionStatusBar(state = ui.connection, onTap = onOpenPairing)
-                    Spacer(Modifier.weight(1f))
-                    Surface(
-                        onClick = vm::toggleSort,
-                        shape = RoundedCornerShape(50),
-                        color = qy.accentSoft,
+                if (showSectionShortcuts) {
+                    // 无底栏回退路径仍使用独立工具行，给四个顶部入口留足宽度。
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                if (ui.sortMode == "name") "按角色名" else "按最近",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = qy.accent,
-                            )
-                            Icon(
-                                Icons.Filled.KeyboardArrowDown,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = qy.accent.copy(alpha = 0.7f),
-                            )
-                        }
+                        QyConnectionChip(state = connectionState, onTap = onOpenPairing)
+                        Spacer(Modifier.weight(1f))
+                        SessionsSortChip(sortMode = ui.sortMode, onToggle = vm::toggleSort)
                     }
                 }
 
@@ -240,7 +280,7 @@ fun SessionsScreen(
                             .clickable(onClick = onOpenPairing),
                     ) {
                         Text(
-                            "连接令牌已失效（PC 端可能已吊销此设备），点击重新配对",
+                            stringResource(R.string.sessions_token_invalid_banner),
                             style = MaterialTheme.typography.bodySmall,
                             color = qy.danger,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -249,63 +289,82 @@ fun SessionsScreen(
                 }
 
                 // 搜索框（端侧会话搜索，不走网络）
-                OutlinedTextField(
+                CompactSearchField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("搜索会话…", color = qy.muted) },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = qy.muted, modifier = Modifier.size(18.dp)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = qy.accent, unfocusedBorderColor = qy.line, focusedContainerColor = qy.bg2),
                 )
                 val filteredSessions = remember(ui.sessions, searchQuery) { SearchUtils.filterSessions(ui.sessions, searchQuery) }
                 Box(Modifier.fillMaxSize()) {
-                    when {
-                        ui.loading && ui.sessions.isEmpty() -> {
-                            CircularProgressIndicator(
-                                Modifier.align(Alignment.Center),
-                                color = qy.accent,
+                    // E-02：五态分发（Loading 骨架 / Empty 空态 / Offline 横幅+缓存 / Error 横幅+重试 / Content 列表）
+                    when (val st = loadState) {
+                        is LoadState.Loading -> {
+                            if (skeletonVisible) {
+                                QySkeletonList(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    rows = 6,
+                                )
+                            }
+                        }
+
+                        is LoadState.Empty -> {
+                            QyEmptyState(
+                                title = stringResource(R.string.sessions_empty_title),
+                                description = stringResource(
+                                    if (ui.offline) R.string.sessions_empty_desc_offline
+                                    else R.string.sessions_empty_desc_online
+                                ),
+                                leading = { SessionsEmptyBadge() },
+                                actionLabel = stringResource(R.string.action_retry),
+                                onAction = vm::refresh,
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
 
-                        ui.sessions.isEmpty() -> {
-                            EmptyState(offline = ui.offline)
+                        is LoadState.Error -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                QyErrorBanner(
+                                    message = st.error.userMessage(),
+                                    retryable = st.retryable,
+                                    onRetry = vm::refresh,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                            }
                         }
 
-                        filteredSessions.isEmpty() && searchQuery.isNotBlank() -> {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("无匹配会话", color = qy.muted)
+                        is LoadState.Offline -> {
+                            Column(Modifier.fillMaxSize()) {
+                                QyOfflineBanner(
+                                    onRetry = vm::refresh,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                )
+                                SessionListArea(
+                                    sessions = filteredSessions,
+                                    searchActive = searchQuery.isNotBlank(),
+                                    avatarMap = avatarMap,
+                                    onOpenChat = onOpenChat,
+                                    onRename = { session ->
+                                        renamingSession = session
+                                        renameText = session.title
+                                    },
+                                    onDelete = { session -> pendingDelete = session },
+                                )
                             }
                         }
-                        else -> {
-                            Column(Modifier.fillMaxSize()) {
-                                if (ui.offline) {
-                                    Text(
-                                        "离线模式：显示本地缓存（只读）",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = qy.warn,
-                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                                    )
-                                }
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                                ) {
-                                    items(filteredSessions, key = { "${it.characterId}:${it.id}" }) { session ->
-                                        SessionCard(
-                                            session = session,
-                                            avatarUrl = avatarMap[session.characterId],
-                                            onClick = { onOpenChat(session.id, session.characterId) },
-                                            onLongClick = {
-                                                renamingSession = session
-                                                renameText = session.title
-                                            },
-                                            onDelete = { pendingDelete = session },
-                                        )
-                                    }
-                                }
-                            }
+
+                        is LoadState.Content -> {
+                            SessionListArea(
+                                sessions = filteredSessions,
+                                searchActive = searchQuery.isNotBlank(),
+                                avatarMap = avatarMap,
+                                onOpenChat = onOpenChat,
+                                onRename = { session ->
+                                    renamingSession = session
+                                    renameText = session.title
+                                },
+                                onDelete = { session -> pendingDelete = session },
+                            )
                         }
                     }
                 }
@@ -318,11 +377,11 @@ fun SessionsScreen(
         AlertDialog(
             onDismissRequest = { if (!creatingSession) showNewChat = false },
             containerColor = qy.card,
-            title = { Text("新建对话", color = qy.text) },
+            title = { Text(stringResource(R.string.title_new_session), color = qy.text) },
             text = {
                 if (newChatCharacters.isEmpty()) {
                     Text(
-                        "暂无角色，请先在 PC 端创建角色",
+                        stringResource(R.string.sessions_new_chat_no_characters),
                         style = MaterialTheme.typography.bodyMedium,
                         color = qy.soft,
                     )
@@ -374,7 +433,7 @@ fun SessionsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { if (!creatingSession) showNewChat = false }) {
-                    Text("取消", color = qy.soft)
+                    Text(stringResource(R.string.action_cancel), color = qy.soft)
                 }
             },
         )
@@ -386,11 +445,11 @@ fun SessionsScreen(
         AlertDialog(
             onDismissRequest = { if (!creatingSession) greetingPickCharacter = null },
             containerColor = qy.card,
-            title = { Text("首条消息", color = qy.text) },
+            title = { Text(stringResource(R.string.title_first_message), color = qy.text) },
             text = {
                 Column {
                     Text(
-                        "为「${character.name}」选择一个开场白开始对话",
+                        stringResource(R.string.sessions_greeting_pick_desc, character.name),
                         style = MaterialTheme.typography.bodyMedium,
                         color = qy.soft,
                     )
@@ -431,11 +490,20 @@ fun SessionsScreen(
                             }
                         }
                     },
-                ) { Text(if (selectedGreeting != null) "开始对话" else "跳过", color = qy.accent) }
+                ) {
+                    Text(
+                        if (selectedGreeting != null) {
+                            stringResource(R.string.action_start_chat)
+                        } else {
+                            stringResource(R.string.sessions_greeting_skip)
+                        },
+                        color = qy.accent,
+                    )
+                }
             },
             dismissButton = {
                 TextButton(onClick = { if (!creatingSession) greetingPickCharacter = null }) {
-                    Text("取消", color = qy.soft)
+                    Text(stringResource(R.string.action_cancel), color = qy.soft)
                 }
             },
         )
@@ -445,10 +513,13 @@ fun SessionsScreen(
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             containerColor = qy.card,
-            title = { Text("删除会话", color = qy.text) },
+            title = { Text(stringResource(R.string.sessions_delete_title), color = qy.text) },
             text = {
                 Text(
-                    "确定删除「${session.title.ifBlank { "未命名会话" }}」？此操作会同步删除 PC 端数据。",
+                    stringResource(
+                        R.string.msg_delete_session_confirm,
+                        session.title.ifBlank { stringResource(R.string.msg_unnamed_session) },
+                    ),
                     color = qy.soft,
                 )
             },
@@ -456,10 +527,10 @@ fun SessionsScreen(
                 TextButton(onClick = {
                     vm.delete(session)
                     pendingDelete = null
-                }) { Text("删除", color = qy.danger) }
+                }) { Text(stringResource(R.string.action_delete), color = qy.danger) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消", color = qy.soft) }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.action_cancel), color = qy.soft) }
             },
         )
     }
@@ -468,12 +539,12 @@ fun SessionsScreen(
         AlertDialog(
             onDismissRequest = { renamingSession = null },
             containerColor = qy.card,
-            title = { Text("重命名会话", color = qy.text) },
+            title = { Text(stringResource(R.string.title_rename_session), color = qy.text) },
             text = {
                 OutlinedTextField(
                     value = renameText,
                     onValueChange = { renameText = it },
-                    label = { Text("标题") },
+                    label = { Text(stringResource(R.string.msg_rename_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -489,13 +560,139 @@ fun SessionsScreen(
                 TextButton(onClick = {
                     vm.rename(session.id, renameText)
                     renamingSession = null
-                }) { Text("保存", color = qy.accent) }
+                }) { Text(stringResource(R.string.action_save), color = qy.accent) }
             },
             dismissButton = {
-                TextButton(onClick = { renamingSession = null }) { Text("取消", color = qy.soft) }
+                TextButton(onClick = { renamingSession = null }) { Text(stringResource(R.string.action_cancel), color = qy.soft) }
             },
         )
     }
 }
 
-/** 空状态：极简字标 + 引导文案（方案 B：仅保留必要元素） */
+@Composable
+private fun SessionsSortChip(
+    sortMode: String,
+    onToggle: () -> Unit,
+) {
+    val qy = qyColors()
+    Surface(
+        onClick = onToggle,
+        shape = RoundedCornerShape(50),
+        color = qy.accentSoft,
+        modifier = Modifier.minimumInteractiveComponentSize(),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                if (sortMode == "name") {
+                    stringResource(R.string.sessions_sort_by_name)
+                } else {
+                    stringResource(R.string.sessions_sort_by_recent)
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = qy.accent,
+            )
+            Icon(
+                Icons.Filled.KeyboardArrowDown,
+                contentDescription = null,
+                modifier = Modifier.size(13.dp),
+                tint = qy.accent.copy(alpha = 0.7f),
+            )
+        }
+    }
+}
+
+/** 48dp 紧凑搜索框：避开 Material OutlinedTextField 的 56dp 内部最小高度与文字裁切。 */
+@Composable
+private fun CompactSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    val qy = qyColors()
+    val searchHint = stringResource(R.string.sessions_search_hint)
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = qy.bg2,
+        border = BorderStroke(1.dp, qy.line),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .height(48.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.Search,
+                contentDescription = null,
+                tint = qy.muted,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (value.isEmpty()) {
+                    Text(
+                        searchHint,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = qy.muted,
+                    )
+                }
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = qy.text),
+                    cursorBrush = SolidColor(qy.accent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = searchHint },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 会话列表渲染（Content / Offline 共用）：搜索无结果 → 空态；否则列表。
+ * 长按重命名、删除、点击进入会话等交互保持不变。
+ */
+@Composable
+private fun SessionListArea(
+    sessions: List<SessionPreview>,
+    searchActive: Boolean,
+    avatarMap: Map<String, String>,
+    onOpenChat: (sessionId: String, characterId: String) -> Unit,
+    onRename: (SessionPreview) -> Unit,
+    onDelete: (SessionPreview) -> Unit,
+) {
+    if (searchActive && sessions.isEmpty()) {
+        QyEmptyState(
+            title = stringResource(R.string.sessions_search_empty),
+            modifier = Modifier.fillMaxSize(),
+        )
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        items(sessions, key = { "${it.characterId}:${it.id}" }) { session ->
+            SessionCard(
+                session = session,
+                avatarUrl = avatarMap[session.characterId],
+                onClick = { onOpenChat(session.id, session.characterId) },
+                onLongClick = { onRename(session) },
+                onDelete = { onDelete(session) },
+            )
+        }
+    }
+}

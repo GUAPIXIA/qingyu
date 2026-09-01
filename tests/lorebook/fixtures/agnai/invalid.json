@@ -1,0 +1,7 @@
+{
+  "name": "Agnai 无效记忆书",
+  "entries": [
+    { "name": "正常条目", "entry": "内容。", "keywords": ["关键词"], "priority": 1, "enabled": true, "id": "agn-301" },
+    "不是对象的条目"
+  ]
+}

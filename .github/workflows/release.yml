@@ -59,3 +59,82 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm exec electron-builder --win nsis --publish always
+
+  # Android 伴侣端 release（阶段 G-04/G-05）：
+  # 与 PC release job 并行（release 触发时同时构建两端产物）。
+  # 正式签名密钥只存在于 CI secret；无密钥时该 job 失败（禁止无签名发布）。
+  # 产物：APK + SHA-256 校验和，均上传为 release artifact。
+  android-release:
+    name: Build Android release APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Version consistency gate (A-01)
+        run: node scripts/version.mjs status
+
+      - name: Unit tests (JVM)
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --console=plain --no-daemon
+
+      # 签名密钥经环境变量注入 app/build.gradle.kts 的 signingConfig；
+      # 缺少任一变量时回退 debug 签名并打 warning——因此必须显式断言密钥已配置，
+      # 防止"无声降级为 debug 签名发布"。
+      - name: Verify release signing key configured
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_PATH" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || \
+             [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "::error::缺少 ANDROID_KEYSTORE_* 签名密钥 secrets，禁止无签名发布"
+            exit 1
+          fi
+          echo "Release signing key configured"
+
+      - name: Assemble release APK (minified + signed)
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --console=plain --no-daemon
+
+      - name: Generate SHA-256 checksum
+        working-directory: android/app/build/outputs/apk/release
+        run: |
+          sha256sum app-release.apk > app-release.apk.sha256
+          cat app-release.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingyu-android-release
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/app-release.apk.sha256
+          if-no-files-found: error

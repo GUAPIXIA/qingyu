@@ -1,0 +1,170 @@
+{
+  "id": "lorebook-runtime-03",
+  "description": "语义候选与关键词候选合并并保留真实相似度来源",
+  "input": {
+    "lorebooks": [
+      {
+        "id": "space",
+        "name": "星港设定",
+        "description": "",
+        "enabled": true,
+        "scanDepth": 4,
+        "entries": [
+          {
+            "id": "customs",
+            "keywords": [],
+            "content": "星港入境需要提交航行许可。",
+            "position": "after_char",
+            "order": 10,
+            "probability": 100,
+            "enabled": true,
+            "matchMode": "semantic"
+          },
+          {
+            "id": "dock",
+            "keywords": [
+              "星港"
+            ],
+            "content": "三号泊位负责民用飞船。",
+            "position": "before_char",
+            "order": 20,
+            "probability": 100,
+            "enabled": true,
+            "matchMode": "both"
+          },
+          {
+            "id": "moon",
+            "keywords": [
+              "月面"
+            ],
+            "content": "月面基地处于封锁状态。",
+            "position": "at_end",
+            "order": 30,
+            "probability": 100,
+            "enabled": true,
+            "matchMode": "both"
+          }
+        ]
+      }
+    ],
+    "scanText": "我们准备前往星港办理入境。",
+    "scanMessages": [
+      "我们准备前往星港办理入境。"
+    ],
+    "userName": "用户",
+    "charName": "角色",
+    "budget": 4096,
+    "model": "gpt-4o-mini",
+    "semanticEnabled": true,
+    "semanticItems": [
+      {
+        "key": "space:customs",
+        "content": "星港入境需要提交航行许可。",
+        "position": "after_char",
+        "order": 10,
+        "score": 0.88
+      },
+      {
+        "key": "space:dock",
+        "content": "三号泊位负责民用飞船。",
+        "position": "before_char",
+        "order": 20,
+        "score": 0.72
+      }
+    ],
+    "diagnosticsMode": "preview"
+  },
+  "expected": {
+    "beforeChar": [
+      "三号泊位负责民用飞船。"
+    ],
+    "afterChar": [
+      "星港入境需要提交航行许可。"
+    ],
+    "atEnd": [],
+    "atDepth": [],
+    "triggeredCount": 2,
+    "droppedCount": 0,
+    "alwaysDropped": 0,
+    "conditionalDropped": 0,
+    "detailDropped": 0,
+    "bookBudgetDropped": null,
+    "triggeredEntryKeys": [
+      "space:customs",
+      "space:dock"
+    ],
+    "diagnostics": {
+      "summary": {
+        "activeBooks": 1,
+        "enabledEntries": 3,
+        "matchedEntries": 2,
+        "injectedEntries": 2,
+        "droppedEntries": 0,
+        "untriggeredEntries": 1,
+        "semanticDeadEntries": 0,
+        "bookBudgetDropped": 0,
+        "globalBudgetDropped": 0
+      },
+      "semantic": {
+        "enabled": true,
+        "candidateCount": 2
+      },
+      "entries": [
+        {
+          "key": "space:dock",
+          "outcome": "injected",
+          "stage": "injection",
+          "reason": null,
+          "activationSource": "keyword",
+          "position": "before_char",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": 0,
+          "matchedKeywords": [
+            {
+              "keyword": "星港",
+              "count": 1,
+              "channel": "primary"
+            }
+          ],
+          "score": 0.668954,
+          "semanticScore": 0.72,
+          "semanticSource": "real"
+        },
+        {
+          "key": "space:customs",
+          "outcome": "injected",
+          "stage": "injection",
+          "reason": null,
+          "activationSource": "vector",
+          "position": "after_char",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": 0,
+          "matchedKeywords": [],
+          "score": 0.257692,
+          "semanticScore": 0.88,
+          "semanticSource": "real"
+        },
+        {
+          "key": "space:moon",
+          "outcome": "not_triggered",
+          "stage": "matching",
+          "reason": "primary_miss",
+          "activationSource": null,
+          "position": "at_end",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": 1,
+          "matchedKeywords": [],
+          "score": null,
+          "semanticScore": null,
+          "semanticSource": "none"
+        }
+      ]
+    }
+  }
+}

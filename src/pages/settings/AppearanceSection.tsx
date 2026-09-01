@@ -22,7 +22,7 @@ const MAX_MESSAGE_WIDTH = 1600
 export function AppearanceSection(props: AppearanceSectionProps) {
   const { settings, updateSettings, customFonts, fontUploading, fontError, handleUploadFont, handleApplyCustomFont, handleDeleteFont } = props
   return (
-        <SectionCard title="外观设置" icon={<Palette className="w-4 h-4" />}>
+        <SectionCard title="外观设置" icon={<Palette className="w-4 h-4" />} storageKey="appearance">
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 左列 */}
             <div className="space-y-5">

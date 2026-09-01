@@ -1,0 +1,199 @@
+{
+  "id": "lorebook-runtime-04",
+  "description": "角色/生成类型过滤与书级预算裁剪",
+  "input": {
+    "lorebooks": [
+      {
+        "id": "filtered",
+        "name": "过滤与预算",
+        "description": "",
+        "enabled": true,
+        "scanDepth": 4,
+        "tokenBudget": 12,
+        "entries": [
+          {
+            "id": "allowed",
+            "keywords": [
+              "宴会"
+            ],
+            "content": "宴会在王宫大厅举行。",
+            "position": "before_char",
+            "order": 10,
+            "probability": 100,
+            "enabled": true
+          },
+          {
+            "id": "long",
+            "keywords": [
+              "宴会"
+            ],
+            "content": "参加宴会的所有来宾必须依次提交姓名、家族、爵位、封地和邀请函编号。",
+            "position": "after_char",
+            "order": 20,
+            "probability": 100,
+            "enabled": true
+          },
+          {
+            "id": "wrong-char",
+            "keywords": [
+              "宴会"
+            ],
+            "content": "仅 Bob 可见。",
+            "position": "at_end",
+            "order": 30,
+            "probability": 100,
+            "enabled": true,
+            "characterFilter": {
+              "exclude": false,
+              "names": [
+                "Bob"
+              ],
+              "tags": []
+            }
+          },
+          {
+            "id": "wrong-trigger",
+            "keywords": [
+              "宴会"
+            ],
+            "content": "仅 continue 时可见。",
+            "position": "at_end",
+            "order": 40,
+            "probability": 100,
+            "enabled": true,
+            "generationTriggers": [
+              "continue"
+            ]
+          }
+        ]
+      }
+    ],
+    "scanText": "Alice 抵达宴会。",
+    "scanMessages": [
+      "Alice 抵达宴会。"
+    ],
+    "userName": "用户",
+    "charName": "Alice",
+    "characterNames": [
+      "Alice"
+    ],
+    "generationType": "normal",
+    "budget": 4096,
+    "model": "gpt-4o-mini",
+    "semanticEnabled": false,
+    "diagnosticsMode": "preview"
+  },
+  "expected": {
+    "beforeChar": [
+      "宴会在王宫大厅举行。"
+    ],
+    "afterChar": [],
+    "atEnd": [],
+    "atDepth": [],
+    "triggeredCount": 2,
+    "droppedCount": 1,
+    "alwaysDropped": 0,
+    "conditionalDropped": 0,
+    "detailDropped": 0,
+    "bookBudgetDropped": 1,
+    "triggeredEntryKeys": [
+      "filtered:allowed",
+      "filtered:long"
+    ],
+    "diagnostics": {
+      "summary": {
+        "activeBooks": 1,
+        "enabledEntries": 4,
+        "matchedEntries": 2,
+        "injectedEntries": 1,
+        "droppedEntries": 1,
+        "untriggeredEntries": 2,
+        "semanticDeadEntries": 0,
+        "bookBudgetDropped": 1,
+        "globalBudgetDropped": 0
+      },
+      "semantic": {
+        "enabled": false,
+        "candidateCount": 0
+      },
+      "entries": [
+        {
+          "key": "filtered:allowed",
+          "outcome": "injected",
+          "stage": "injection",
+          "reason": null,
+          "activationSource": "keyword",
+          "position": "before_char",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": 0,
+          "matchedKeywords": [
+            {
+              "keyword": "宴会",
+              "count": 1,
+              "channel": "primary"
+            }
+          ],
+          "score": 0.59716,
+          "semanticScore": 0.099167,
+          "semanticSource": "approx"
+        },
+        {
+          "key": "filtered:long",
+          "outcome": "dropped",
+          "stage": "book_budget",
+          "reason": "book_budget",
+          "activationSource": "keyword",
+          "position": "after_char",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": 0,
+          "matchedKeywords": [
+            {
+              "keyword": "宴会",
+              "count": 1,
+              "channel": "primary"
+            }
+          ],
+          "score": 0.543313,
+          "semanticScore": 0.082069,
+          "semanticSource": "approx"
+        },
+        {
+          "key": "filtered:wrong-char",
+          "outcome": "not_triggered",
+          "stage": "eligibility",
+          "reason": "character_filter",
+          "activationSource": null,
+          "position": "at_end",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": null,
+          "matchedKeywords": [],
+          "score": null,
+          "semanticScore": null,
+          "semanticSource": "none"
+        },
+        {
+          "key": "filtered:wrong-trigger",
+          "outcome": "not_triggered",
+          "stage": "eligibility",
+          "reason": "generation_filter",
+          "activationSource": null,
+          "position": "at_end",
+          "depth": null,
+          "role": null,
+          "priority": "conditional",
+          "recursionDepth": null,
+          "matchedKeywords": [],
+          "score": null,
+          "semanticScore": null,
+          "semanticSource": "none"
+        }
+      ]
+    }
+  }
+}

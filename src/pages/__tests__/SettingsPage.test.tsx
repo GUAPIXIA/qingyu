@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, waitFor, act, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { SettingsPage } from '../SettingsPage'
@@ -6,6 +6,12 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 
 describe('SettingsPage 冒烟测试', () => {
+  afterEach(() => {
+    const timer = useSettingsStore.getState()._saveTimer
+    if (timer) clearTimeout(timer)
+    act(() => useSettingsStore.setState({ _saveTimer: null }))
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -37,15 +43,16 @@ describe('SettingsPage 冒烟测试', () => {
     expect(getByText('设置')).toBeTruthy()
   })
 
-  it('渲染 API 设置与数据管理区块', async () => {
+  it('渲染模型与数据管理区块', async () => {
     const { findByText } = render(
       <MemoryRouter>
         <SettingsPage />
       </MemoryRouter>
     )
     // S2-D 后左侧目录与 SectionCard 标题分别有对应入口
-    expect(await findByText('API 设置')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '模型' })).toBeTruthy()
     expect(await findByText('导出备份')).toBeTruthy()
+    expect(screen.queryByText('作者注释')).toBeNull()
   })
 
   it('将软件更新放在设置目录和内容区最上方', async () => {
@@ -75,6 +82,24 @@ describe('SettingsPage 冒烟测试', () => {
     } finally {
       Element.prototype.scrollIntoView = originalScrollIntoView
     }
+  })
+
+  it('将语义检索与用户人设配置移出设置页', async () => {
+    render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+    await act(async () => {})
+
+    const nav = screen.getByRole('navigation', { name: '设置分区' })
+    const labels = [...nav.querySelectorAll('button')].map((button) => button.textContent?.trim())
+    expect(labels).not.toContain('语义检索')
+    expect(labels).not.toContain('本地模型')
+    expect(labels).not.toContain('语义')
+    expect(labels).not.toContain('用户人设')
+    expect(screen.queryByText('用户人设注入')).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: '检索策略' })).toBeNull()
   })
 
   it('点击导出备份调用 window.api.settings.exportBackup', async () => {

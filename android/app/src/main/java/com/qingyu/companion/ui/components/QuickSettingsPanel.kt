@@ -43,8 +43,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.LorebookDto
 import com.qingyu.companion.model.PresetDto
@@ -58,6 +60,7 @@ import kotlinx.coroutines.launch
  * - 世界书选择：勾选当前会话激活的世界书，保存后写会话（PATCH /sessions/:id/lorebooks）；
  * - 预设切换：点击即切换全局 activePresetId（PATCH /sessions/:id/preset）。
  * 数据来自 GET /settings、/lorebooks、/presets、会话级端点。
+ * 全部文案走 strings.xml（qs_*）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +82,13 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
     var memory by remember { mutableStateOf<com.qingyu.companion.model.MemoryDto?>(null) }
     var translationLang by remember { mutableStateOf("") }
 
+    // 错误回退文案（composable 上下文取好，供协程 lambda 使用）
+    val loadFailedLabel = stringResource(R.string.qs_load_failed)
+    val saveFailedLabel = stringResource(R.string.qs_save_failed)
+    val switchFailedLabel = stringResource(R.string.qs_switch_failed)
+    val adjustFailedLabel = stringResource(R.string.qs_adjust_failed)
+    val summarizeFailedLabel = stringResource(R.string.qs_summarize_failed)
+
     LaunchedEffect(Unit) {
         runCatching {
             val lb = container.repository.listLorebooks()
@@ -96,7 +106,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
             translationLang = settings.translationTargetLang
         }
             .onSuccess { loading = false }
-            .onFailure { error = it.message ?: "加载失败" }
+            .onFailure { error = it.message ?: loadFailedLabel }
     }
 
     // 模型列表单独拉取（依赖 PC 端 API 连接，可能失败或较慢）
@@ -122,7 +132,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
         ) {
             // 标题区（居中）
             Text(
-                "对话设置",
+                stringResource(R.string.qs_title),
                 style = MaterialTheme.typography.titleLarge,
                 color = qy.text,
                 modifier = Modifier.fillMaxWidth(),
@@ -130,7 +140,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                "设置会同步到 PC 端，下次对话生效",
+                stringResource(R.string.qs_subtitle),
                 style = MaterialTheme.typography.labelSmall,
                 color = qy.muted,
                 modifier = Modifier.fillMaxWidth(),
@@ -155,7 +165,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            error ?: "加载失败",
+                            error ?: loadFailedLabel,
                             color = qy.danger,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -169,7 +179,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     ) {
                         Text(
-                            "关闭",
+                            stringResource(R.string.qs_close),
                             style = MaterialTheme.typography.bodySmall,
                             color = qy.soft,
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 7.dp),
@@ -179,9 +189,9 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
 
                 else -> {
                     // ---- 世界书 ----
-                    PanelSection("世界书") {
+                    PanelSection(stringResource(R.string.qs_section_lorebook)) {
                         if (lorebooks.isEmpty()) {
-                            EmptyHint("暂无世界书")
+                            EmptyHint(stringResource(R.string.qs_lorebook_empty))
                         } else {
                             LazyColumn(
                                 Modifier.heightIn(max = 200.dp),
@@ -193,7 +203,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                         checked = checked,
                                         title = lb.name,
                                         subtitle = lb.description.takeIf { it.isNotBlank() },
-                                        trailing = "${lb.entryCount}条",
+                                        trailing = stringResource(R.string.qs_lorebook_count_fmt, lb.entryCount),
                                         onToggle = {
                                             activeLorebookIds =
                                                 if (checked) activeLorebookIds - lb.id else activeLorebookIds + lb.id
@@ -215,7 +225,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                                 delay(1500)
                                                 savedFlash = false
                                             }
-                                            .onFailure { error = it.message ?: "保存失败" }
+                                            .onFailure { error = it.message ?: saveFailedLabel }
                                         saving = false
                                     }
                                 },
@@ -236,7 +246,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                         )
                                     } else {
                                         Text(
-                                            if (savedFlash) "已保存 ✓" else "保存世界书",
+                                            stringResource(if (savedFlash) R.string.qs_lorebook_saved else R.string.qs_lorebook_save),
                                             style = MaterialTheme.typography.bodySmall,
                                         )
                                     }
@@ -246,9 +256,9 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                     }
 
                     // ---- 预设 ----
-                    PanelSection("预设") {
+                    PanelSection(stringResource(R.string.qs_section_preset)) {
                         if (presets.isEmpty()) {
-                            EmptyHint("暂无预设")
+                            EmptyHint(stringResource(R.string.qs_preset_empty))
                         } else {
                             LazyColumn(
                                 Modifier.heightIn(max = 250.dp),
@@ -260,14 +270,14 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                         activePresetId = p.id
                                         scope.launch {
                                             runCatching { container.repository.setSessionPreset(sessionId, p.id) }
-                                                .onFailure { error = it.message ?: "切换失败" }
+                                                .onFailure { error = it.message ?: switchFailedLabel }
                                         }
                                         Unit
                                     }
                                     SelectRow(
                                         selected = selected,
                                         title = p.name,
-                                        subtitle = "温度 ${p.temperature} · TopP ${p.topP} · ${p.maxTokens} tokens",
+                                        subtitle = stringResource(R.string.qs_preset_params_fmt, p.temperature, p.topP, p.maxTokens),
                                         onClick = apply,
                                     )
                                 }
@@ -276,7 +286,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                     }
 
                     // ---- 模型 ----
-                    PanelSection("模型") {
+                    PanelSection(stringResource(R.string.qs_section_model)) {
                         when {
                             modelsLoading -> Box(
                                 Modifier
@@ -287,10 +297,10 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = qy.accent)
                             }
 
-                            models.isEmpty() -> EmptyHint("模型列表加载失败（请确认 PC 端已配置 API 连接）")
+                            models.isEmpty() -> EmptyHint(stringResource(R.string.qs_model_empty_fmt))
 
                             else -> {
-                                ValueRow("当前模型", activeModel.ifBlank { "未设置" })
+                                ValueRow(stringResource(R.string.settings_pc_active_model), activeModel.ifBlank { stringResource(R.string.qs_model_unset) })
                                 Spacer(Modifier.height(6.dp))
                                 LazyColumn(
                                     Modifier.heightIn(max = 210.dp),
@@ -302,7 +312,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                             activeModel = model
                                             scope.launch {
                                                 runCatching { container.repository.updateSettings(mapOf("activeModel" to model)) }
-                                                    .onFailure { error = it.message ?: "切换失败" }
+                                                    .onFailure { error = it.message ?: switchFailedLabel }
                                             }
                                             Unit
                                         }
@@ -318,11 +328,11 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                     }
 
                     // ---- 采样参数（对齐 PC 端：温度/TopP 只读展示，MaxToken 可调） ----
-                    PanelSection("采样参数") {
+                    PanelSection(stringResource(R.string.qs_section_sampling)) {
                         val activePresetObj = presets.firstOrNull { it.id == activePresetId }
                         if (activePresetObj != null) {
-                            ValueRow("当前预设", activePresetObj.name)
-                            ValueRow("温度 / TopP", "${activePresetObj.temperature} / ${activePresetObj.topP}")
+                            ValueRow(stringResource(R.string.qs_current_preset), activePresetObj.name)
+                            ValueRow(stringResource(R.string.qs_temp_top_p), "${activePresetObj.temperature} / ${activePresetObj.topP}")
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf(512, 1024, 2048, 4096).forEach { n ->
@@ -341,7 +351,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                                         }
                                                         presets = container.repository.listPresets()
                                                     }
-                                                        .onFailure { error = it.message ?: "调整失败" }
+                                                        .onFailure { error = it.message ?: adjustFailedLabel }
                                                 }
                                             }
                                         },
@@ -367,23 +377,23 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                 }
                             }
                         } else {
-                            EmptyHint("未激活预设（使用默认参数）")
+                            EmptyHint(stringResource(R.string.qs_sampling_none))
                         }
                     }
 
                     // ---- 长记忆 ----
-                    PanelSection("长记忆") {
+                    PanelSection(stringResource(R.string.qs_section_memory)) {
                         val mem = memory
                         when {
-                            mem == null -> EmptyHint("加载中…")
+                            mem == null -> EmptyHint(stringResource(R.string.qs_memory_loading))
 
                             else -> {
                                 // 启用开关（卡片行）
                                 CardRow {
                                     Column(Modifier.weight(1f)) {
-                                        Text("启用长记忆", style = MaterialTheme.typography.bodyLarge, color = qy.text)
+                                        Text(stringResource(R.string.msg_enable_long_memory), style = MaterialTheme.typography.bodyLarge, color = qy.text)
                                         Text(
-                                            "定期总结对话形成长期记忆",
+                                            stringResource(R.string.qs_memory_enable_desc),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = qy.muted,
                                         )
@@ -394,7 +404,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                             memory = mem.copy(memoryEnabled = c)
                                             scope.launch {
                                                 runCatching { container.repository.patchSessionMemory(sessionId, memoryEnabled = c, characterId = characterId) }
-                                                    .onFailure { error = it.message ?: "保存失败" }
+                                                    .onFailure { error = it.message ?: saveFailedLabel }
                                             }
                                         },
                                         colors = SwitchDefaults.colors(
@@ -409,20 +419,23 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                 // 模式选择（卡片行）
                                 CardRow(verticalPadding = 10) {
                                     Text(
-                                        "模式",
+                                        stringResource(R.string.qs_memory_mode),
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = qy.text,
                                         modifier = Modifier.weight(1f),
                                     )
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        listOf("manual" to "手动", "auto" to "自动").forEach { (mode, label) ->
+                                        listOf(
+                                            "manual" to stringResource(R.string.qs_memory_mode_manual),
+                                            "auto" to stringResource(R.string.qs_memory_mode_auto),
+                                        ).forEach { (mode, label) ->
                                             val selected = mem.memoryMode == mode
                                             Surface(
                                                 onClick = {
                                                     memory = mem.copy(memoryMode = mode)
                                                     scope.launch {
                                                         runCatching { container.repository.patchSessionMemory(sessionId, memoryMode = mode, characterId = characterId) }
-                                                            .onFailure { error = it.message ?: "保存失败" }
+                                                            .onFailure { error = it.message ?: saveFailedLabel }
                                                     }
                                                 },
                                                 shape = RoundedCornerShape(50),
@@ -448,7 +461,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                     Spacer(Modifier.height(6.dp))
                                     CardRow(verticalPadding = 10) {
                                         Text(
-                                            "自动总结间隔",
+                                            stringResource(R.string.qs_memory_interval),
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = qy.text,
                                         )
@@ -469,7 +482,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                             ),
                                         )
                                         Text(
-                                            "条消息",
+                                            stringResource(R.string.qs_memory_interval_msgs),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = qy.muted,
                                             modifier = Modifier.padding(horizontal = 6.dp),
@@ -481,14 +494,14 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                                 memory = mem.copy(autoMemoryInterval = n)
                                                 scope.launch {
                                                     runCatching { container.repository.patchSessionMemory(sessionId, autoMemoryInterval = n, characterId = characterId) }
-                                                        .onFailure { error = it.message ?: "保存失败" }
+                                                        .onFailure { error = it.message ?: saveFailedLabel }
                                                 }
                                             },
                                             shape = RoundedCornerShape(50),
                                             color = qy.accentSoft,
                                         ) {
                                             Text(
-                                                "保存",
+                                                stringResource(R.string.qs_save),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = qy.accent,
                                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
@@ -506,14 +519,14 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                                     .onSuccess { (summary, facts) ->
                                                         memory = mem.copy(memory = summary, memoryFacts = facts)
                                                     }
-                                                    .onFailure { error = it.message ?: "总结失败" }
+                                                    .onFailure { error = it.message ?: summarizeFailedLabel }
                                             }
                                         },
                                         shape = RoundedCornerShape(50),
                                         color = qy.accentSoft,
                                     ) {
                                         Text(
-                                            "立即总结",
+                                            stringResource(R.string.qs_memory_summarize_now),
                                             style = MaterialTheme.typography.labelMedium,
                                             color = qy.accent,
                                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
@@ -521,7 +534,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                     }
                                     Spacer(Modifier.weight(1f))
                                     Text(
-                                        "消息 ${mem.messageCount} 条",
+                                        stringResource(R.string.qs_memory_message_count_fmt, mem.messageCount),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = qy.muted,
                                     )
@@ -531,7 +544,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                     Spacer(Modifier.height(6.dp))
                                     InfoCard {
                                         Text(
-                                            "当前摘要",
+                                            stringResource(R.string.qs_memory_summary),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = qy.accent,
                                         )
@@ -549,7 +562,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                     Spacer(Modifier.height(6.dp))
                                     InfoCard {
                                         Text(
-                                            "关键事实",
+                                            stringResource(R.string.qs_memory_facts),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = qy.accent,
                                         )
@@ -569,15 +582,16 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                     }
 
                     // ---- 翻译 ----
-                    PanelSection("翻译") {
+                    PanelSection(stringResource(R.string.qs_section_translate)) {
                         CardRow(verticalPadding = 10) {
                             Text(
-                                "目标语言",
+                                stringResource(R.string.qs_translate_target),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = qy.text,
                             )
                             Spacer(Modifier.width(10.dp))
-                            var langText by remember(translationLang) { mutableStateOf(translationLang.ifBlank { "中文" }) }
+                            val translateLangDefault = stringResource(R.string.qs_translate_lang_default)
+                            var langText by remember(translationLang) { mutableStateOf(translationLang.ifBlank { translateLangDefault }) }
                             OutlinedTextField(
                                 value = langText,
                                 onValueChange = { langText = it.take(12) },
@@ -599,7 +613,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                         translationLang = lang
                                         scope.launch {
                                             runCatching { container.repository.updateSettings(mapOf("translationTargetLang" to lang)) }
-                                                .onFailure { error = it.message ?: "保存失败" }
+                                                .onFailure { error = it.message ?: saveFailedLabel }
                                         }
                                     }
                                 },
@@ -608,7 +622,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                 modifier = Modifier.padding(start = 8.dp),
                             ) {
                                 Text(
-                                    "保存",
+                                    stringResource(R.string.qs_save),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = qy.accent,
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
@@ -616,7 +630,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                             }
                         }
                         Text(
-                            "例：中文 / 英语 / 日语…（翻译消息时使用）",
+                            stringResource(R.string.settings_pc_translation_lang_hint),
                             style = MaterialTheme.typography.labelSmall,
                             color = qy.muted,
                             modifier = Modifier.padding(start = 6.dp, top = 4.dp),
@@ -627,5 +641,3 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
         }
     }
 }
-
-/** 分区：cap 小标题 + 内容，区距统一 16dp */

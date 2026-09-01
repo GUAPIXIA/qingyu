@@ -1,8 +1,16 @@
-import type { Character, Preset } from '../../shared/types'
+import type { Character, LorebookTimedEffectsState, Preset } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
-import { lorebookCache, triggerLorebooks, mergeSemanticHits } from '../utils/lorebook'
+import { usePersonaStore } from './usePersonaStore'
+import {
+  lorebookCache,
+  executeLorebookRuntime,
+  type BudgetLoreItem,
+  type LorebookCompressionRequest,
+  type LorebookDiagnostics,
+} from '../utils/lorebook'
 import type { DepthLoreItem } from '../utils/lorebook'
+import { emptyLorebookRenderPlan, type LorebookRenderPlan } from '../utils/lorebookRenderer'
 import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
@@ -10,11 +18,22 @@ import { convertMessages } from '../utils/promptConverters'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { fitLayeredMemoryBudget, formatMemoryFacts } from '../utils/memory'
 import { expandMacros, buildMacroContext } from '../utils/macros'
-import { logInfo } from '../lib/logger'
-import { DEFAULT_LOREBOOK_RATIO, TOKEN_BUDGET_SAFETY, DEFAULT_RESERVED_OUTPUT } from './chatConstants'
+import { logInfo, logWarn } from '../lib/logger'
+import { DEFAULT_LOREBOOK_RATIO, DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFETY, DEFAULT_RESERVED_OUTPUT, resolveLorebookScanDepth } from './chatConstants'
 import { markPendingGroupCompression } from './groupStreamController'
 import { cropHistory, applyDepthInserts, type DepthInsertItem } from './contextShared'
 import type { GroupStoreGet } from './groupChatTypes'
+
+/** 群聊上下文组装结果：消息 + 本轮世界书触发键 / 超限压缩请求（调用方写回 store） */
+export interface GroupContextBuildResult {
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+  lorebookTriggeredIds?: string[]
+  /** 世界书超限压缩请求（阶段三：调用方异步 AI 压缩后写入会话缓存） */
+  lorebookCompressions?: LorebookCompressionRequest[]
+  lorebookCompressionCacheHitKeys?: string[]
+  lorebookTimedEffects?: LorebookTimedEffectsState
+  lorebookDiagnostics?: LorebookDiagnostics
+}
 
 /**
  * 构建群聊发送给 AI 的完整上下文。
@@ -24,15 +43,32 @@ export function buildGroupChatContext(
   get: GroupStoreGet,
   targetCharId?: string,
   preset?: Preset | null,
-): { role: 'system' | 'user' | 'assistant'; content: string }[] {
+  opts?: { trackUsage?: boolean; lorebookDiagnosticsMode?: 'live' | 'preview' },
+): GroupContextBuildResult {
   const state = get()
   const group = state.currentGroup
-  if (!group) return []
+  if (!group) return { messages: [] }
 
   const charStore = useCharacterStore.getState()
   const settingsStore = useSettingsStore.getState()
   const settings = settingsStore.settings
-  const userName = settings.userName || '用户'
+  const { sessions, currentSessionId } = get()
+  const currentSession = sessions.find(s => s.id === currentSessionId)
+  const sessionPersonaId = currentSession?.personaId === undefined
+    ? settings.defaultPersonaId
+    : currentSession.personaId
+  const sessionPersona = sessionPersonaId
+    ? usePersonaStore.getState().getPersona(sessionPersonaId)
+    : undefined
+  const canUseGlobalPersonaFields = !!sessionPersonaId && settings.activePersonaId === sessionPersonaId
+  const userName = (
+    sessionPersona?.name
+    ?? (canUseGlobalPersonaFields ? settings.userName : '')
+  ) || '用户'
+  const userDescription = sessionPersona?.description
+    ?? (canUseGlobalPersonaFields ? settings.userDescription : '')
+  const userPersona = sessionPersona?.persona
+    ?? (canUseGlobalPersonaFields ? settings.userPersona : '')
   const members = group.memberIds
     .map(id => charStore.characters.find(c => c.id === id))
     .filter(Boolean) as Character[]
@@ -81,8 +117,6 @@ export function buildGroupChatContext(
   )
 
   // 分层长期记忆：当前状态优先，其次相关事实，最后是时间线。
-  const { sessions, currentSessionId } = get()
-  const currentSession = sessions.find(s => s.id === currentSessionId)
   if (currentSession?.memoryEnabled) {
     const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
     // P0-2：语义检索命中时仅注入相关事实，否则全量；透传语义分
@@ -127,6 +161,14 @@ export function buildGroupChatContext(
   let lorebookAfter = ''
   let lorebookAtEnd = ''
   let atDepthItems: DepthLoreItem[] = []
+  // 本轮触发的世界书条目 key（阶段二B recency 窗口更新用）
+  let lorebookTriggeredIds: string[] | undefined
+  // 世界书超限压缩请求（阶段三）
+  let lorebookCompressions: LorebookCompressionRequest[] | undefined
+  let lorebookCompressionCacheHitKeys: string[] | undefined
+  let lorebookTimedEffects: LorebookTimedEffectsState | undefined
+  let lorebookDiagnostics: LorebookDiagnostics | undefined
+  let lorebookRenderPlan: LorebookRenderPlan = emptyLorebookRenderPlan()
 
   // 收集所有世界书 ID（群聊级 + 角色绑定）
   const allLorebookIds = new Set<string>(group.lorebookIds)
@@ -137,65 +179,114 @@ export function buildGroupChatContext(
   })
 
   if (allLorebookIds.size > 0) {
-    // 可配置扫描深度
-    const scanDepth = [...allLorebookIds]
-      .map(id => lorebookCache.get(id)?.scanDepth)
-      .filter((d): d is number => typeof d === 'number' && d > 0)
-      .reduce((max, d) => Math.max(max, d), 10)
+    // 可配置扫描深度（H-16 同款修复：reduce 初始值误用固定值 10 会等价于 max(配置, 10)，
+    // 用户调小配置（如 2/4）被静默抬回；先收集有效配置，空才回退默认）
+    const scanDepth = resolveLorebookScanDepth(
+      [...allLorebookIds].flatMap((id) => {
+        const lorebook = lorebookCache.get(id)
+        return lorebook ? [lorebook.scanDepth, ...lorebook.entries.map((entry) => entry.scanDepth)] : []
+      }),
+      DEFAULT_LOREBOOK_SCAN_DEPTH,
+    )
 
     // 扫描文本包含角色名前缀，使以角色名为关键词的世界书条目也能被触发
-    const scanText = state.messages.slice(-scanDepth).map(m => {
+    const scanMessages = (scanDepth === 0 ? [] : state.messages.slice(-scanDepth)).map(m => {
       if (m.characterId === '__user__') return m.content
       const c = members.find(mc => mc.id === m.characterId)
       return `【${c?.name || '未知角色'}】${m.content}`
-    }).join(' ')
+    })
+    const scanText = scanMessages.join(' ')
 
     const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
     const lorebookBudget = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
 
-    const result = mergeSemanticHits(
-      triggerLorebooks({
-        lorebooks: lorebookCache.getAll([...allLorebookIds]),
-        scanText,
-        userName,
-        charName: charNameForVars,
-        budget: lorebookBudget,
-        model,
-      }),
-      get()._semanticLoreHits,
-      lorebookBudget,
+    const result = executeLorebookRuntime({
+      lorebooks: lorebookCache.getAll([...allLorebookIds]),
+      scanText,
+      scanMessages,
+      userName,
+      charName: charNameForVars,
+      characterNames: members.map((member) => member.name),
+      characterTags: members.flatMap((member) => member.tags ?? []),
+      generationType: 'normal',
+      messageCount: state.messages.length,
+      timedEffects: currentSession?.lorebookTimedEffects,
+      budget: lorebookBudget,
       model,
-    )
+      semanticItems: get()._semanticLoreHits as BudgetLoreItem[],
+      // 语义触发不可用时对仅语义条目告警（含未启用 / 未配置两种情况；
+      // 本轮已有语义命中时视为可用，避免误告警）
+      semanticEnabled: get()._semanticLoreAvailable ?? ((get()._semanticLoreHits as BudgetLoreItem[]).length > 0 || !!(
+        settings.semanticTrigger?.enabled
+        && settings.semanticTrigger.model?.trim()
+        && (settings.semanticTrigger.provider === 'local' || settings.semanticTrigger.baseUrl?.trim())
+      )),
+      // 阶段二B：受控实体词表补充（成员名 + tags；条目 keywords 与 charName 在工具内始终参与）
+      entityVocabulary: [...members.map(m => m.name), ...members.flatMap(m => m.tags ?? [])],
+      recentTriggeredIds: currentSession?.recentTriggeredIds,
+      // 阶段三：超限压缩缓存（命中时以缓存摘要替代被丢弃条目集合）
+      compressionCache: currentSession?.lorebookCompressionCache,
+      diagnosticsMode: opts?.lorebookDiagnosticsMode,
+    })
+    lorebookTriggeredIds = result.triggeredEntryKeys
+    lorebookCompressions = result.compressionRequests
+    lorebookCompressionCacheHitKeys = result.compressionCacheHitKeys
+    lorebookTimedEffects = result.timedEffects
+    lorebookDiagnostics = result.diagnostics
+    lorebookRenderPlan = result.renderPlan
 
-    if (result.droppedCount > 0) {
-      logInfo('buildGroupContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（预算 ${lorebookBudget} tokens）`)
+    if (opts?.lorebookDiagnosticsMode !== 'preview' && result.droppedCount > 0) {
+      logInfo('buildGroupContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（常驻 ${result.alwaysDropped ?? 0} / 条件 ${result.conditionalDropped ?? 0} / 细节 ${result.detailDropped ?? 0}，预算 ${lorebookBudget} tokens）`)
+    }
+    if (opts?.lorebookDiagnosticsMode !== 'preview' && (result.alwaysDropped ?? 0) > 0) {
+      logWarn('buildGroupContext', `常驻世界书条目超出预算硬上限（40%），${result.alwaysDropped} 条被截断：请精简常驻内容或调高世界书预算比例`)
+    }
+    if (opts?.lorebookDiagnosticsMode !== 'preview' && (result.bookBudgetDropped ?? 0) > 0) {
+      logInfo('buildGroupContext', `世界书书级 tokenBudget 超限：${result.bookBudgetDropped} 条被丢弃（激活世界书自带预算上限）`)
     }
 
-    if (result.beforeChar.length > 0) {
-      lorebookBefore = result.beforeChar.join('\n') + '\n'
+    if (lorebookRenderPlan.beforeCharacter.length > 0) {
+      lorebookBefore = lorebookRenderPlan.beforeCharacter.join('\n') + '\n'
     }
-    if (result.afterChar.length > 0) {
-      lorebookAfter = result.afterChar.join('\n')
+    if (lorebookRenderPlan.afterCharacter.length > 0) {
+      lorebookAfter = lorebookRenderPlan.afterCharacter.join('\n')
     }
-    if (result.atEnd.length > 0) {
-      lorebookAtEnd = '\n\n' + result.atEnd.join('\n')
+    if (lorebookRenderPlan.promptEnd.length > 0) {
+      lorebookAtEnd = '\n\n' + lorebookRenderPlan.promptEnd.join('\n')
     }
-    if (result.atDepth.length > 0) {
-      atDepthItems = result.atDepth
+    if (lorebookRenderPlan.chat.length > 0) {
+      atDepthItems = lorebookRenderPlan.chat
     }
   }
 
   // 完整角色设定（mention/polling 时为目标角色；free 时为所有角色）
   if (group.chatMode === 'free') {
     systemContent += '\n\n' + lorebookBefore + '以下是所有角色的完整设定：\n'
+    const hasExampleAnchors = lorebookRenderPlan.beforeExamples.length > 0
+      || lorebookRenderPlan.afterExamples.length > 0
     members.forEach(m => {
       systemContent += `\n--- ${m.name} ---\n`
       if (m.description) systemContent += `描述：${replaceVariables(m.description, userName, m.name)}\n`
       if (m.personality) systemContent += `性格：${replaceVariables(m.personality, userName, m.name)}\n`
       if (m.scenario) systemContent += `场景：${replaceVariables(m.scenario, userName, m.name)}\n`
       if (m.systemPrompt) systemContent += `\n${replaceVariables(m.systemPrompt, userName, m.name)}\n`
-      if (m.exampleDialog) systemContent += `\n对话示例：\n${replaceVariables(m.exampleDialog, userName, m.name)}\n`
+      if (!hasExampleAnchors && m.exampleDialog) {
+        systemContent += `\n对话示例：\n${replaceVariables(m.exampleDialog, userName, m.name)}\n`
+      }
     })
+    if (hasExampleAnchors) {
+      if (lorebookRenderPlan.beforeExamples.length > 0) {
+        systemContent += '\n' + lorebookRenderPlan.beforeExamples.join('\n') + '\n'
+      }
+      members.forEach((member) => {
+        if (member.exampleDialog) {
+          systemContent += `\n对话示例（${member.name}）：\n${replaceVariables(member.exampleDialog, userName, member.name)}\n`
+        }
+      })
+      if (lorebookRenderPlan.afterExamples.length > 0) {
+        systemContent += '\n' + lorebookRenderPlan.afterExamples.join('\n') + '\n'
+      }
+    }
     if (lorebookAfter) systemContent += '\n' + lorebookAfter
   } else if (targetCharId) {
     const target = members.find(m => m.id === targetCharId)
@@ -205,7 +296,13 @@ export function buildGroupChatContext(
       if (target.personality) systemContent += `性格：${replaceVariables(target.personality, userName, target.name)}\n`
       if (target.scenario) systemContent += `场景：${replaceVariables(target.scenario, userName, target.name)}\n`
       if (target.systemPrompt) systemContent += `\n${replaceVariables(target.systemPrompt, userName, target.name)}\n`
+      if (lorebookRenderPlan.beforeExamples.length > 0) {
+        systemContent += '\n' + lorebookRenderPlan.beforeExamples.join('\n') + '\n'
+      }
       if (target.exampleDialog) systemContent += `\n对话示例：\n${replaceVariables(target.exampleDialog, userName, target.name)}\n`
+      if (lorebookRenderPlan.afterExamples.length > 0) {
+        systemContent += '\n' + lorebookRenderPlan.afterExamples.join('\n') + '\n'
+      }
       if (lorebookAfter) systemContent += '\n' + lorebookAfter
     }
   }
@@ -216,11 +313,11 @@ export function buildGroupChatContext(
   let personaText = ''
   if (personaInjection.enabled) {
     personaText += `用户名：${userName}\n`
-    if (personaInjection.includeDescription !== false && settings.userDescription) {
-      personaText += `描述：${replaceVariables(settings.userDescription, userName, charNameForVars)}\n`
+    if (personaInjection.includeDescription !== false && userDescription) {
+      personaText += `描述：${replaceVariables(userDescription, userName, charNameForVars)}\n`
     }
-    if (personaInjection.includePersona !== false && settings.userPersona) {
-      personaText += `性格：${replaceVariables(settings.userPersona, userName, charNameForVars)}\n`
+    if (personaInjection.includePersona !== false && userPersona) {
+      personaText += `性格：${replaceVariables(userPersona, userName, charNameForVars)}\n`
     }
     if (personaText && personaInjection.position === 'system') {
       systemContent += '\n【用户人设】\n' + personaText
@@ -257,11 +354,8 @@ export function buildGroupChatContext(
   if (postHistoryText) {
     usedTokens += estimateTokens(postHistoryText, model)
   }
-  // 预留作者注释（middle/bottom 在历史段内注入）
-  const anConfig = settings.authorNote
-  if (anConfig?.enabled && anConfig.text?.trim() && anConfig.position !== 'top') {
-    usedTokens += estimateTokens(replaceVariables(anConfig.text.trim(), userName, charNameForVars), model)
-  }
+  usedTokens += [...lorebookRenderPlan.chat, ...lorebookRenderPlan.authorsNoteBottom]
+    .reduce((sum, item) => sum + estimateTokens(typeof item === 'string' ? item : item.content, model), 0)
   // 图片 token 预算：群聊用户消息的图片按固定估算值计入
   const historyImageTokens = state.messages.reduce(
     (s, m) => s + (m.characterId === '__user__' ? estimateImageTokens(m.images?.length ?? 0) : 0),
@@ -286,7 +380,7 @@ export function buildGroupChatContext(
       && droppedEndTs <= currentSession.compressedRange.endTs
     if (currentSession.compressedSummary && covered) {
       compressedSummaryInjected = currentSession.compressedSummary
-    } else if (droppedTokens >= (compression.minDropTokens ?? 2000)) {
+    } else if (opts?.trackUsage !== false && droppedTokens >= (compression.minDropTokens ?? 2000)) {
       markPendingGroupCompression({
         groupId: group.id,
         sessionId: get().currentSessionId ?? '',
@@ -317,26 +411,13 @@ export function buildGroupChatContext(
     })) },
   ]
 
+  for (const content of lorebookRenderPlan.authorsNoteTop) {
+    context.push({ role: 'system', content, keepSeparate: true })
+  }
+
   // 用户人设 separate 模式：独立 system 消息
   if (personaText && personaInjection.position === 'separate') {
     context.push({ role: 'system', content: '【用户人设】\n' + personaText, keepSeparate: true })
-  }
-
-  // ===== 作者注释（Author's Note，群聊仅全局级，anConfig 已在预算预留处声明）=====
-  let anText = ''
-  if (anConfig?.enabled && anConfig.text?.trim()) {
-    anText = expandMacros(replaceVariables(anConfig.text.trim(), userName, charNameForVars), buildMacroContext(state.messages.map((m) => ({
-      role: (m.characterId === '__user__' || m.characterId === '__free__') ? 'user' as const : 'assistant' as const,
-      content: m.content,
-    })), {
-      userName,
-      charName: charNameForVars,
-      groupName: group.name,
-    }))
-  }
-  // top：紧跟系统提示注入（keepSeparate：避免被 merge 合并进系统提示）
-  if (anText && anConfig!.position === 'top') {
-    context.push({ role: 'system', content: anText, keepSeparate: true })
   }
 
   const historyContext: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = []
@@ -372,17 +453,17 @@ export function buildGroupChatContext(
     }
   })
 
-  // at_depth 世界书 + 作者注释（middle/bottom）统一按深度注入历史消息段（共享工具）
+  // at_depth 世界书按深度注入历史消息段（共享工具）
   const depthInserts: DepthInsertItem[] =
-    atDepthItems.map((i) => ({ content: i.content, depth: i.depth, order: i.order }))
-  if (anText && anConfig!.position !== 'top') {
-    const anDepth = anConfig!.position === 'middle' ? Math.max(0, anConfig!.depth) : 0
-    depthInserts.push({ content: anText, depth: anDepth, order: -1 })
-  }
+    atDepthItems.map((i) => ({ content: i.content, depth: i.depth, order: i.order, role: i.role }))
+  lorebookRenderPlan.authorsNoteBottom.forEach((content, index) => {
+    depthInserts.push({ content, depth: 0, order: -2_000 + index })
+  })
   const depthInjected = applyDepthInserts(
     historyContext,
     depthInserts,
     (content) => ({ role: 'system' as const, content, keepSeparate: true }),
+    (content, role) => ({ role: (role ?? 'system') as 'system', content, keepSeparate: true }),
   )
 
   // 后历史指令（mention/polling 模式注入目标角色，free 模式注入所有成员，复用预计算结果）
@@ -409,5 +490,13 @@ export function buildGroupChatContext(
     userName,
   })
 
-  return processedContext
+  void opts
+  return {
+    messages: processedContext,
+    lorebookTriggeredIds,
+    lorebookCompressions,
+    lorebookCompressionCacheHitKeys,
+    lorebookTimedEffects,
+    lorebookDiagnostics,
+  }
 }

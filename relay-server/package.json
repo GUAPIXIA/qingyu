@@ -1,0 +1,30 @@
+{
+  "name": "@qingyu/relay-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "migrate": "tsx src/db/migrate.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run --config vitest.config.ts",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.2.0",
+    "fastify": "^5.5.0",
+    "ioredis": "^5.7.0",
+    "jose": "^6.1.0",
+    "pg": "^8.16.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "@types/pg": "^8.15.5",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.5",
+    "typescript": "~5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

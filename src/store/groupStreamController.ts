@@ -12,10 +12,11 @@ import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { applyOutputRegexRules, truncateAtStop, collectStopStrings, findStopIndex } from '../utils/regex'
 import { logError, logInfo, logWarn } from '../lib/logger'
 import { safeSave } from '../lib/safeOps'
-import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS } from './chatConstants'
-import { friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
+import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS, DEFAULT_LOREBOOK_SCAN_DEPTH, resolveLorebookScanDepth } from './chatConstants'
+import { buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
 import { resolveVisionModel } from '../utils/visionModel'
 import { memoryFactsToTexts } from '../utils/memory'
+import { normalizeThoughtTags } from '../utils/messagePostProcess'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 
 // ====================== 流式状态管理（模块级） ======================
@@ -75,6 +76,11 @@ export function clearPollingTimer() {
   }
 }
 
+/** 群聊回复与单聊保持一致：规范化思考标签，但保留思考块供消息气泡折叠展示。 */
+export function preserveGroupReplyContent(content: string): string {
+  return normalizeThoughtTags(content).trim()
+}
+
 /** 对文本应用 output 正则规则（两阶段：text + markdown，与单聊一致——增量共享 applyOutputRegexRules） */
 
 async function flushStream(set: GroupStoreSet) {
@@ -96,9 +102,9 @@ async function fetchGroupSemanticLoreHits(get: GroupStoreGet, set: GroupStoreSet
   const settings = useSettingsStore.getState().settings
   const st = settings.semanticTrigger
   const clear = () => {
-    if (get()._semanticLoreHits.length > 0) set({ _semanticLoreHits: [] })
+    set({ _semanticLoreHits: [], _semanticLoreAvailable: false })
   }
-  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return clear()
+  if (!st?.enabled || !st.model?.trim() || (st.provider !== 'local' && !st.baseUrl?.trim())) return clear()
 
   // 群聊级 + 角色绑定世界书
   const charStore = useCharacterStore.getState()
@@ -110,10 +116,10 @@ async function fetchGroupSemanticLoreHits(get: GroupStoreGet, set: GroupStoreSet
   const lorebookIds = [...allLorebookIds]
   if (lorebookIds.length === 0) return clear()
 
-  const scanDepth = lorebookIds
-    .map(id => lorebookCache.get(id)?.scanDepth)
-    .filter((d): d is number => typeof d === 'number' && d > 0)
-    .reduce((max, d) => Math.max(max, d), 10)
+  const scanDepth = resolveLorebookScanDepth(
+    lorebookIds.map(id => lorebookCache.get(id)?.scanDepth),
+    DEFAULT_LOREBOOK_SCAN_DEPTH,
+  )
   // 语义扫描范围：按 token 预算自适应（上限 4000 token，下限 scanDepth 条）
   const activeModel = useSettingsStore.getState().getActiveProfile()?.model || settings.activeModel
   const scanText = (() => {
@@ -135,10 +141,19 @@ async function fetchGroupSemanticLoreHits(get: GroupStoreGet, set: GroupStoreSet
   if (!scanText.trim()) return clear()
 
   // 缓存：同一轮对话扫描文本不变时复用命中（省嵌入 API 调用）
-  const cacheKey = `glore|${lorebookIds.join(',')}|${scanText}|${st.model}`
+  const cacheKey = buildSemanticCacheKey({
+    scope: 'group-lore',
+    corpus: [...lorebookIds].sort().join(','),
+    query: scanText,
+    provider: st.provider,
+    baseUrl: st.baseUrl,
+    model: st.model,
+    threshold: st.threshold,
+    maxResults: st.maxResults,
+  })
   const cached = semanticCacheGet<BudgetLoreItem[]>(cacheKey)
   if (cached) {
-    set({ _semanticLoreHits: cached })
+    set({ _semanticLoreHits: cached, _semanticLoreAvailable: true })
     return
   }
 
@@ -160,8 +175,13 @@ async function fetchGroupSemanticLoreHits(get: GroupStoreGet, set: GroupStoreSet
       order: h.order,
       position: h.position,
       depth: h.depth,
+      // 阶段二：保留相似度与条目定位键（统一评分 / recency 加权用）
+      score: h.score,
+      key: `${h.lbId}:${h.id}`,
+      // 阶段三：手写摘要（预算紧张时代代替全文注入）
+      summary: h.summary?.trim() ? replaceVariables(h.summary, settings.userName, charName || '角色') : undefined,
     }))
-    set({ _semanticLoreHits: items })
+    set({ _semanticLoreHits: items, _semanticLoreAvailable: true })
     semanticCacheSet(cacheKey, items)
     if (items.length > 0) {
       logInfo('fetchGroupSemanticLoreHits', `语义命中 ${items.length} 条世界书条目`)
@@ -181,7 +201,7 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
   const clear = () => {
     if (get()._semanticFactsHits.length > 0) set({ _semanticFactsHits: [] })
   }
-  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return clear()
+  if (!st?.enabled || !st.model?.trim() || (st.provider !== 'local' && !st.baseUrl?.trim())) return clear()
 
   const { sessions, currentSessionId } = get()
   const session = sessions.find((s) => s.id === currentSessionId)
@@ -195,7 +215,16 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
   if (!query.trim()) return clear()
 
   // 缓存：同一轮对话查询不变时复用（省嵌入 API 调用）
-  const cacheKey = `gfacts|${session.id}|${query}|${st.model}`
+  const cacheKey = buildSemanticCacheKey({
+    scope: 'group-facts',
+    corpus: `${session.id}:${session.memoryVersion ?? 0}:${session.factsVectorVersion ?? 0}`,
+    query,
+    provider: st.provider,
+    baseUrl: st.baseUrl,
+    model: st.model,
+    threshold: st.threshold,
+    maxResults: st.maxResults,
+  })
   const cached = semanticCacheGet<import('../../shared/ipc-api').FactSearchHit[]>(cacheKey)
   if (cached) {
     set({ _semanticFactsHits: cached })
@@ -238,7 +267,7 @@ export async function vectorizeGroupSessionFacts(
   const factTexts = memoryFactsToTexts(facts)
   if (!factTexts.length) return
   const st = useSettingsStore.getState().settings.semanticTrigger
-  if (!st?.enabled || !st.baseUrl?.trim() || !st.model?.trim()) return
+  if (!st?.enabled || !st.model?.trim() || (st.provider !== 'local' && !st.baseUrl?.trim())) return
   try {
     const vectors = await window.api.embedding.embedFacts({
       provider: st.provider,
@@ -438,7 +467,7 @@ export async function streamGroupAI(
       const partialContent = activeStream?.accumulated ?? ''
       cleanupActiveStream()
       window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
-      const clean = partialContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const clean = preserveGroupReplyContent(partialContent)
       if (clean) {
         set((s: GroupChatState) => ({
           messages: s.messages.map((m: GroupMessage) =>
@@ -471,8 +500,7 @@ export async function streamGroupAI(
 
     cleanupActiveStream()
 
-    // 剥离 thought
-    const clean = finalContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+    const clean = preserveGroupReplyContent(finalContent)
 
     // 应用正则规则 + 停止字符串截断
     const processed = regexRules.length > 0
@@ -577,7 +605,7 @@ export async function streamGroupAI(
       const partialContent = activeStream?.accumulated ?? ''
       cleanupActiveStream()
       window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
-      const clean = partialContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const clean = preserveGroupReplyContent(partialContent)
       if (clean) {
         // 有部分内容，保留并标记超时
         set((s: GroupChatState) => ({
@@ -733,7 +761,7 @@ export async function streamGroupAIFree(
       const partialContent = activeStream?.accumulated ?? ''
       cleanupActiveStream()
       window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
-      const clean = partialContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const clean = preserveGroupReplyContent(partialContent)
       if (clean) {
         set((s: GroupChatState) => ({
           messages: s.messages.map((m: GroupMessage) =>
@@ -765,7 +793,7 @@ export async function streamGroupAIFree(
     const finalContent = activeStream.accumulated
     cleanupActiveStream()
 
-    const clean = finalContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+    const clean = preserveGroupReplyContent(finalContent)
     // 应用正则规则 + 停止字符串截断
     const processed = regexRules.length > 0
       ? truncateAtStop(applyOutputRegexRules(clean, regexRules), collectStopStrings(regexRules)).text
@@ -815,7 +843,7 @@ export async function streamGroupAIFree(
       const partialContent = activeStream?.accumulated ?? ''
       cleanupActiveStream()
       window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
-      const clean = partialContent.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const clean = preserveGroupReplyContent(partialContent)
       if (clean) {
         set((s: GroupChatState) => ({
           messages: s.messages.map((m: GroupMessage) =>

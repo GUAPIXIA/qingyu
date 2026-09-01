@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import android.content.Intent
 import android.net.Uri
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.ui.theme.qyColors
 import kotlinx.coroutines.delay
@@ -464,7 +466,7 @@ private fun CodeBlockCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    block.language.ifBlank { "code" },
+                    block.language.ifBlank { stringResource(R.string.markdown_code_placeholder) },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -480,7 +482,7 @@ private fun CodeBlockCard(
                     },
                 ) {
                     Text(
-                        if (copied) "已复制 ✓" else "复制",
+                        stringResource(if (copied) R.string.markdown_copied else R.string.markdown_copy),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -533,7 +535,7 @@ private fun ImageBlock(rawUrl: String) {
     val url = resolveImageUrl(rawUrl, connection) ?: rawUrl
     AsyncImage(
         model = url,
-        contentDescription = "图片",
+        contentDescription = stringResource(R.string.cd_image),
         contentScale = ContentScale.FillWidth,
         modifier = Modifier
             .fillMaxWidth()

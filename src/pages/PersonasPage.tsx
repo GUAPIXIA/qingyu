@@ -8,6 +8,7 @@ import { UserCircle, Plus, Trash2, Pencil, Star, Search, Download, Upload } from
 import type { Persona } from '../../shared/types'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
+import { PersonaInjectionSection } from './personas/PersonaInjectionSection'
 
 export function PersonasPage() {
   const { settings, updateSettings } = useSettingsStore()
@@ -176,22 +177,25 @@ export function PersonasPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {/* 移动端搜索 */}
-        <div className="sm:hidden mb-3 flex items-center gap-2 bg-tavern-bg rounded-lg px-3 py-2 border border-tavern-border-soft">
-          <Search className="w-4 h-4 text-tavern-text-muted" aria-hidden />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索身份..." className="flex-1 bg-transparent outline-none text-sm" aria-label="搜索身份" />
-        </div>
-        {filtered.length === 0 && personas.length > 0 ? (
-          <div className="text-center py-10 text-sm text-tavern-text-muted">无匹配身份</div>
-        ) : personas.length === 0 ? (
-          <EmptyState
-            icon={<UserCircle className="w-8 h-8" />}
-            title="暂无用户身份"
-            description="创建多个身份，在不同场景下切换你的角色设定"
-          />
-        ) : (
-          <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {filtered.map((p) => (
+        <div className="mx-auto max-w-3xl space-y-4">
+          <PersonaInjectionSection settings={settings} updateSettings={updateSettings} />
+
+          {/* 移动端搜索 */}
+          <div className="sm:hidden flex items-center gap-2 bg-tavern-bg rounded-lg px-3 py-2 border border-tavern-border-soft">
+            <Search className="w-4 h-4 text-tavern-text-muted" aria-hidden />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索身份..." className="flex-1 bg-transparent outline-none text-sm" aria-label="搜索身份" />
+          </div>
+          {filtered.length === 0 && personas.length > 0 ? (
+            <div className="text-center py-10 text-sm text-tavern-text-muted">无匹配身份</div>
+          ) : personas.length === 0 ? (
+            <EmptyState
+              icon={<UserCircle className="w-8 h-8" />}
+              title="暂无用户身份"
+              description="创建多个身份，在不同场景下切换你的角色设定"
+            />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {filtered.map((p) => (
                 <div
                   key={p.id}
                   className="card p-4 cursor-pointer transition-all hover:border-tavern-accent/50"
@@ -258,9 +262,10 @@ export function PersonasPage() {
                     </div>
                   </div>
                 </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 编辑 Modal */}

@@ -1,0 +1,7 @@
+{
+  "name": "Agnai 未知扩展记忆书",
+  "entries": [
+    { "name": "未来字段条目", "entry": "这座遗迹沉睡在沙漠深处。", "keywords": ["遗迹"], "priority": 5, "enabled": true, "id": "agn-401", "futureEntryWeight": 3 }
+  ],
+  "futureBookKind": "manual"
+}

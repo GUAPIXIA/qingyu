@@ -98,6 +98,19 @@ describe('MessageBubble', () => {
       expect(container.querySelector('.bubble-user')).toBeTruthy()
     })
 
+    it('用户短消息保持紧凑，消息宽度设置仅控制最大宽度', () => {
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, messageWidth: 480 },
+      }))
+      const { container } = render(
+        <MessageBubble message={createMessage({ role: 'user', content: 'hi' })} character={createCharacter()} isLast={false} />
+      )
+
+      expect(container.querySelector('.bubble-user')?.classList.contains('w-fit')).toBe(true)
+      expect(container.querySelector('.bubble-user')?.classList.contains('w-full')).toBe(false)
+      expect((container.querySelector('.mx-auto.flex') as HTMLElement)?.style.maxWidth).toBe('480px')
+    })
+
     it('系统消息不渲染对话正文', () => {
       const { queryByText } = render(
         <MessageBubble message={createMessage({ role: 'system', content: '生成结果' })} character={createCharacter()} isLast={false} />

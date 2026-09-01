@@ -108,4 +108,35 @@ describe('chatWithRetry', () => {
     ).rejects.toThrow('503')
     expect(adapter.chat).toHaveBeenCalledTimes(2) // 初始 + 1 次重试
   })
+
+  it('支持为批处理请求设置独立的短超时', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = {
+        chat: vi.fn((_params, _onChunk, signal: AbortSignal) => new Promise<string>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
+          }, { once: true })
+        })),
+        listModels: vi.fn(),
+        testConnection: vi.fn(),
+      }
+      const pending = chatWithRetry(
+        adapter,
+        makeParams(),
+        vi.fn(),
+        new AbortController().signal,
+        0,
+        undefined,
+        60,
+      )
+      const assertion = expect(pending).rejects.toThrow('timeout')
+
+      await vi.advanceTimersByTimeAsync(60)
+      await assertion
+      expect(adapter.chat).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

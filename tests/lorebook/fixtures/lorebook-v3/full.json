@@ -1,0 +1,37 @@
+{
+  "spec": "lorebook_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "V3 完整世界书",
+    "description": "lorebook_v3 包装与 character_book 字段基线",
+    "scan_depth": 8,
+    "token_budget": 2048,
+    "recursive_scanning": true,
+    "entries": [
+      {
+        "id": 7,
+        "keys": ["遗迹"],
+        "secondary_keys": ["北方"],
+        "content": "遗迹位于北方。",
+        "enabled": true,
+        "insertion_order": 90,
+        "position": "before_char",
+        "constant": true,
+        "use_regex": false,
+        "selective": true,
+        "extensions": { "probability": 90, "use_probability": true }
+      },
+      {
+        "id": 8,
+        "keys": ["守门人"],
+        "content": "守门人持有钥匙。",
+        "enabled": false,
+        "insertion_order": 80,
+        "position": "after_char",
+        "constant": false,
+        "use_regex": false
+      }
+    ]
+  }
+}
+

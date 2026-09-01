@@ -26,17 +26,6 @@ interface GroupChatMessageProps {
   onReply?: () => void
 }
 
-const ROLE_COLORS = [
-  'border-l-amber-500 bg-amber-500/5',
-  'border-l-emerald-500 bg-emerald-500/5',
-  'border-l-blue-500 bg-blue-500/5',
-  'border-l-purple-500 bg-purple-500/5',
-  'border-l-rose-500 bg-rose-500/5',
-  'border-l-cyan-500 bg-cyan-500/5',
-  'border-l-orange-500 bg-orange-500/5',
-  'border-l-pink-500 bg-pink-500/5',
-]
-
 import { MarkdownImage } from '../common/MarkdownImage'
 import { MarkdownLink } from '../common/MarkdownLink'
 import { remarkAudio } from '../../utils/remark-audio'
@@ -57,13 +46,13 @@ function MarkdownAudio({ src }: { src?: string }) {
 
 const markdownComponents = { img: MarkdownImage, a: MarkdownLink, audio: MarkdownAudio }
 
-export const GroupChatMessage = React.memo(function GroupChatMessage({ message, memberIndex, isStreamingMessage, repliedMessage, bubbleOpacity, onDelete, onEdit, onRegenerate, onTranslate, onReply }: GroupChatMessageProps) {
+export const GroupChatMessage = React.memo(function GroupChatMessage({ message, isStreamingMessage, repliedMessage, bubbleOpacity, onDelete, onEdit, onRegenerate, onTranslate, onReply }: GroupChatMessageProps) {
   // P-6 修复：字段级选择器订阅
   const characters = useCharacterStore((s) => s.characters)
   const settings = useSettingsStore((s) => s.settings)
   const getPersona = usePersonaStore((s) => s.getPersona)
   const persona = getPersona(settings.activePersonaId)
-  const [showThought, setShowThought] = useState(false)
+  const [showThought, setShowThought] = useState(settings.autoExpandThought ?? false)
   const [isEditing, setIsEditing] = useState(false)
   const [editDraft, setEditDraft] = useState('')
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
@@ -73,8 +62,6 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
   const isStreaming = isStreamingMessage ?? false
 
   const character = characters.find(c => c.id === message.characterId)
-  const colorIdx = memberIndex ?? 0
-  const borderColor = ROLE_COLORS[colorIdx % ROLE_COLORS.length]
 
   // 提取 thought 块并剥离（统一处理 <thought> 和 <thinking> 标签）
   const { thought: thoughtContent, content: mainContent, isFallback: isThoughtFallback } = extractThought(message.content || '')
@@ -168,13 +155,13 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
           {/* 气泡本体 */}
           <div className={cn(
             'msg-bubble max-w-full px-5 py-3.5 text-sm leading-relaxed break-words relative group/bubble',
+            isUser && 'w-fit',
             settings.bubbleStyle === 'round' && 'rounded-2xl',
             settings.bubbleStyle === 'standard' && 'rounded-lg',
             settings.bubbleStyle === 'sharp' && 'rounded-sm',
             isUser
-              ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50'
-              : cn('border-l-[3px] rounded-bl-sm shadow-sm',
-                   borderColor, 'text-tavern-text',
+              ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
+              : cn('bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100',
                    isStreaming && 'border-dashed')
           )}
           style={!isUser ? { backgroundColor: `color-mix(in srgb, var(--tavern-bg-card) ${(bubbleOpacity ?? 1) * 100}%, transparent)` } : undefined}
@@ -218,15 +205,18 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
             <>
               {/* Thought 折叠区（回退显示时不重复展示） */}
               {thoughtContent && !isThoughtFallback && (
-                <div className="mb-1.5">
+                <div className="mb-2 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft px-3 py-2">
                   <button
                     onClick={() => setShowThought(!showThought)}
-                    className="text-[10px] text-tavern-text-muted hover:text-tavern-accent transition-colors italic"
+                    aria-expanded={showThought}
+                    aria-label={showThought ? '收起思考内容' : '展开思考内容'}
+                    className="text-xs text-tavern-text-muted flex items-center gap-1 hover:text-tavern-text-soft"
                   >
-                    {showThought ? '收起心理描写 ▲' : '展开心理描写 ▼'}
+                    <span>💭 内心想法</span>
+                    <span>{showThought ? '▼' : '▶'}</span>
                   </button>
                   {showThought && (
-                    <div className="mt-1 px-2.5 py-1.5 rounded-lg bg-tavern-bg-soft/60 border border-tavern-border-soft/50 text-xs text-tavern-text-muted italic leading-relaxed">
+                    <div className="mt-1.5 text-sm italic text-tavern-text-muted select-text whitespace-pre-wrap">
                       {thoughtContent}
                     </div>
                   )}
@@ -336,6 +326,9 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
           )}
         </div>
         </div>
+
+        {/* 对侧占位：预留头像宽度，使左右气泡对齐在同一中间列 */}
+        <div className="w-10 shrink-0" aria-hidden="true" />
       </div>
     </div>
   )

@@ -1,6 +1,5 @@
 package com.qingyu.companion.ui.sessions
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,15 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,21 +34,33 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
+import com.qingyu.companion.data.userMessage
 import com.qingyu.companion.model.SessionPreview
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.AvatarBubble
+import com.qingyu.companion.ui.components.LoadState
+import com.qingyu.companion.ui.components.QyEmptyState
+import com.qingyu.companion.ui.components.QyErrorBanner
+import com.qingyu.companion.ui.components.QyOfflineBanner
+import com.qingyu.companion.ui.components.QySkeletonList
 import com.qingyu.companion.ui.components.SessionCard
+import com.qingyu.companion.ui.components.rememberSkeletonVisible
 import com.qingyu.companion.ui.components.resolveImageUrl
 import com.qingyu.companion.ui.theme.qyColors
 
 /**
  * 角色历史会话页：某角色的全部历史对话。
+ * E-02：复用 [SessionsViewModel.loadState]（LoadState 五态），
+ * 渲染走 ui/components/AsyncStates.kt 的 Qy 组件（骨架/空态/离线/错误）；
+ * 删除、重命名等交互保持不变。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +79,8 @@ fun CharacterSessionsScreen(
         },
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val loadState by vm.loadState.collectAsStateWithLifecycle()
+    val skeletonVisible = rememberSkeletonVisible(loadState is LoadState.Loading)
     var pendingDelete by remember { mutableStateOf<SessionPreview?>(null) }
     var renamingSession by remember { mutableStateOf<SessionPreview?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -93,7 +103,7 @@ fun CharacterSessionsScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.cd_back),
                             tint = qy.text,
                         )
                     }
@@ -122,11 +132,11 @@ fun CharacterSessionsScreen(
                         AvatarBubble(name = characterName, avatarUrl = avatarUrl, size = 40)
                         Column(Modifier.padding(start = 12.dp)) {
                             Text(
-                                "历史对话",
+                                stringResource(R.string.sessions_history_title),
                                 style = MaterialTheme.typography.titleMedium,
                             )
                             Text(
-                                "${ui.sessions.size} 个会话",
+                                stringResource(R.string.sessions_history_count, ui.sessions.size),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = qy.soft,
                             )
@@ -135,40 +145,69 @@ fun CharacterSessionsScreen(
                 }
 
                 Box(Modifier.fillMaxSize()) {
-                    when {
-                        ui.loading && ui.sessions.isEmpty() -> {
-                            CircularProgressIndicator(Modifier.align(Alignment.Center), color = qy.accent)
+                    // E-02：五态分发（Loading 骨架 / Empty 空态 / Offline 横幅+缓存 / Error 横幅+重试 / Content 列表）
+                    when (val st = loadState) {
+                        is LoadState.Loading -> {
+                            if (skeletonVisible) {
+                                QySkeletonList(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    rows = 4,
+                                )
+                            }
                         }
 
-                        ui.sessions.isEmpty() -> {
-                            Text(
-                                "暂无与该角色的历史对话",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = qy.soft,
-                                modifier = Modifier.align(Alignment.Center),
+                        is LoadState.Empty -> {
+                            QyEmptyState(
+                                title = stringResource(R.string.sessions_character_empty),
+                                actionLabel = stringResource(R.string.action_retry),
+                                onAction = vm::refresh,
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
 
-                        else -> {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                items(ui.sessions, key = { "${it.characterId}:${it.id}" }) { session ->
-                                    SessionCard(
-                                        session = session,
-                                        avatarUrl = avatarUrl,
-                                        showCharacterName = false,
-                                        onClick = { onOpenChat(session.id, session.characterId) },
-                                        onLongClick = {
-                                            renamingSession = session
-                                            renameText = session.title
-                                        },
-                                        onDelete = { pendingDelete = session },
-                                    )
-                                }
+                        is LoadState.Error -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                QyErrorBanner(
+                                    message = st.error.userMessage(),
+                                    retryable = st.retryable,
+                                    onRetry = vm::refresh,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
                             }
+                        }
+
+                        is LoadState.Offline -> {
+                            Column(Modifier.fillMaxSize()) {
+                                QyOfflineBanner(
+                                    onRetry = vm::refresh,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                )
+                                SessionListArea(
+                                    sessions = st.cached,
+                                    avatarUrl = avatarUrl,
+                                    onOpenChat = onOpenChat,
+                                    onRename = { session ->
+                                        renamingSession = session
+                                        renameText = session.title
+                                    },
+                                    onDelete = { session -> pendingDelete = session },
+                                )
+                            }
+                        }
+
+                        is LoadState.Content -> {
+                            SessionListArea(
+                                sessions = st.data,
+                                avatarUrl = avatarUrl,
+                                onOpenChat = onOpenChat,
+                                onRename = { session ->
+                                    renamingSession = session
+                                    renameText = session.title
+                                },
+                                onDelete = { session -> pendingDelete = session },
+                            )
                         }
                     }
                 }
@@ -180,16 +219,23 @@ fun CharacterSessionsScreen(
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             containerColor = qy.card,
-            title = { Text("删除会话") },
-            text = { Text("确定删除「${session.title.ifBlank { "未命名会话" }}」？此操作会同步删除 PC 端数据。") },
+            title = { Text(stringResource(R.string.sessions_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.msg_delete_session_confirm,
+                        session.title.ifBlank { stringResource(R.string.msg_unnamed_session) },
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     vm.delete(session)
                     pendingDelete = null
-                }) { Text("删除", color = qy.danger) }
+                }) { Text(stringResource(R.string.action_delete), color = qy.danger) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -198,12 +244,12 @@ fun CharacterSessionsScreen(
         AlertDialog(
             onDismissRequest = { renamingSession = null },
             containerColor = qy.card,
-            title = { Text("重命名会话") },
+            title = { Text(stringResource(R.string.title_rename_session)) },
             text = {
                 OutlinedTextField(
                     value = renameText,
                     onValueChange = { renameText = it },
-                    label = { Text("标题") },
+                    label = { Text(stringResource(R.string.msg_rename_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -215,11 +261,40 @@ fun CharacterSessionsScreen(
                 TextButton(onClick = {
                     vm.rename(session.id, renameText)
                     renamingSession = null
-                }) { Text("保存") }
+                }) { Text(stringResource(R.string.action_save)) }
             },
             dismissButton = {
-                TextButton(onClick = { renamingSession = null }) { Text("取消") }
+                TextButton(onClick = { renamingSession = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
+    }
+}
+
+/**
+ * 角色历史会话列表渲染（Content / Offline 共用）。
+ */
+@Composable
+private fun SessionListArea(
+    sessions: List<SessionPreview>,
+    avatarUrl: String?,
+    onOpenChat: (sessionId: String, characterId: String) -> Unit,
+    onRename: (SessionPreview) -> Unit,
+    onDelete: (SessionPreview) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(sessions, key = { "${it.characterId}:${it.id}" }) { session ->
+            SessionCard(
+                session = session,
+                avatarUrl = avatarUrl,
+                showCharacterName = false,
+                onClick = { onOpenChat(session.id, session.characterId) },
+                onLongClick = { onRename(session) },
+                onDelete = { onDelete(session) },
+            )
+        }
     }
 }

@@ -28,6 +28,7 @@ class GroupChatViewModel(
         val loading: Boolean = false,
         val sending: Boolean = false,
         val generating: Boolean = false,
+        val translatingMessageIds: Set<String> = emptySet(),
         val error: String? = null,
     )
 
@@ -198,26 +199,26 @@ class GroupChatViewModel(
 
     /** 翻译群聊消息（AI 翻译，成功后写入 translation 并刷新） */
     fun translate(messageId: String) {
+        if (messageId in _ui.value.translatingMessageIds) return
+        _ui.update { it.copy(translatingMessageIds = it.translatingMessageIds + messageId, error = null) }
         viewModelScope.launch {
-            _ui.update { it.copy(error = null) }
-            runCatching { repository.groupTranslate(groupId, sessionId, messageId) }
-                .onSuccess { translation ->
-                    if (translation.isNullOrBlank()) {
-                        _ui.update { it.copy(error = "翻译结果为空，请重试") }
-                    } else {
-                        _ui.update { st ->
-                            st.copy(
-                                messages = st.messages.map { m ->
-                                    if (m.id == messageId) m.copy(translation = translation) else m
-                                },
-                            )
-                        }
-                    }
+            try {
+                val translation = repository.groupTranslate(groupId, sessionId, messageId)
+                if (translation.isNullOrBlank()) throw IllegalStateException("翻译结果为空，请重试")
+                _ui.update { st ->
+                    st.copy(
+                        messages = st.messages.map { m ->
+                            if (m.id == messageId) m.copy(translation = translation) else m
+                        },
+                    )
                 }
-                .onFailure { e ->
-                    val msg = if (e is CompanionError) e.userMessage() else e.message ?: "翻译失败"
-                    _ui.update { it.copy(error = msg) }
-                }
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                val msg = if (e is CompanionError) e.userMessage() else e.message ?: "翻译失败"
+                _ui.update { it.copy(error = msg) }
+            } finally {
+                _ui.update { it.copy(translatingMessageIds = it.translatingMessageIds - messageId) }
+            }
         }
     }
 }

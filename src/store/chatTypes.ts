@@ -1,5 +1,6 @@
 import type { Message, Character, Preset, Lorebook, RegexRule, SessionPreview, ChatSession, MemoryFactRecord } from '../../shared/types'
-import type { BudgetLoreItem } from '../utils/lorebook'
+import type { BudgetLoreItem, LorebookDiagnostics } from '../utils/lorebook'
+import type { BuildResult } from '../context/contextBuilder'
 import type { FactSearchHit } from '../../shared/ipc-api'
 
 /** 上下文消息（buildContext 的中间产物，最终经 convertMessages 转为 provider 格式） */
@@ -63,7 +64,16 @@ export interface ChatState {
   /** 保存世界书绑定到角色（作为新会话的默认值），仅在角色编辑器或用户明确操作时调用 */
   saveLorebookBinding: (characterId: string, ids: string[]) => Promise<void>
   applyRegex: (text: string, scope: 'input' | 'output', rules: RegexRule[]) => string
-  buildContext: (character: Character, preset: Preset | null, opts?: { continuation?: boolean; trackUsage?: boolean }) => ContextMessage[]
+  buildContext: (character: Character, preset: Preset | null, opts?: {
+    continuation?: boolean
+    trackUsage?: boolean
+    generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
+    lorebookDiagnosticsMode?: 'live' | 'preview'
+  }) => ContextMessage[]
+  buildContextReport: (character: Character, preset: Preset | null, opts?: {
+    continuation?: boolean
+    generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
+  }) => BuildResult
   /** 启动 AI 翻译（全局状态，页面切换不中断） */
   translateMessage: (messageId: string, content: string) => void
   /** 切换翻译显示 */
@@ -83,10 +93,15 @@ export interface ChatState {
   syncLorebooksFromCurrentSession: (character: Character) => void
   /** 语义触发（向量 RAG）命中条目缓存：发送消息时预取，buildContext 合并注入（不持久化） */
   _semanticLoreHits: BudgetLoreItem[]
+  /** 最近一次世界书向量检索是否成功；用于区分“零命中”与“服务不可用”。 */
+  _semanticLoreAvailable: boolean | undefined
   /** 记忆事实语义检索命中缓存：仅注入相关事实（不持久化） */
   _semanticFactsHits: Array<FactSearchHit | string>
   /** 上次上下文构建的用量（P1-3 预警用，不持久化） */
   lastContextUsage: { used: number; max: number } | null
+  /** 上一轮真实发送的世界书触发轨迹（仅内存）。 */
+  lastLorebookDiagnostics: LorebookDiagnostics | null
+  lastLorebookDiagnosticsSessionId: string | null
 }
 
 /** zustand store 的 set/get 类型（供拆分出的模块级函数使用） */

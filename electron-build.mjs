@@ -28,6 +28,12 @@ await Promise.all([
     entryPoints: ['electron/preload.ts'],
     outfile: 'dist-electron/preload.cjs',
   }),
+  build({
+    ...sharedConfig,
+    entryPoints: ['electron/workers/localEmbeddingWorker.ts'],
+    outfile: 'dist-electron/localEmbeddingWorker.cjs',
+    external: ['electron', '@huggingface/transformers'],
+  }),
 ])
 
 console.log('✓ Electron 编译完成')

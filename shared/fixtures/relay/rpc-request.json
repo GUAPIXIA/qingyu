@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "type": "rpc:request",
+  "id": "00000000-0000-4000-8000-000000000010",
+  "sentAt": 1788172800000,
+  "payload": {
+    "commandId": "00000000-0000-4000-8000-000000000011",
+    "sourceDeviceId": "00000000-0000-4000-8000-000000000002",
+    "method": "POST",
+    "path": "/api/v1/sessions/session-1/messages",
+    "query": {},
+    "headers": { "content-type": "application/json" },
+    "body": { "requestId": "command-1", "content": "hello" },
+    "deadlineAt": 1788172860000
+  }
+}

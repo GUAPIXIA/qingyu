@@ -73,6 +73,26 @@ describe('GroupChatMessage', () => {
       // 用户名首字母
       expect(container.textContent).toContain('T')
     })
+
+    it('用户对白匹配使用与单聊相同的 bubble-user 样式入口', () => {
+      const msg = createMessage({ characterId: '__user__', content: '"匹配出的对白"' })
+      const { container } = render(<GroupChatMessage message={msg} />)
+
+      expect(container.querySelector('.dialogue-inline')).toBeTruthy()
+      expect(container.querySelector('.msg-bubble')?.classList.contains('bubble-user')).toBe(true)
+    })
+
+    it('用户短消息保持紧凑，消息宽度设置仅控制最大宽度', () => {
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, messageWidth: 480 },
+      }))
+      const msg = createMessage({ characterId: '__user__', content: '短消息' })
+      const { container } = render(<GroupChatMessage message={msg} />)
+
+      expect(container.querySelector('.bubble-user')?.classList.contains('w-fit')).toBe(true)
+      expect(container.querySelector('.bubble-user')?.classList.contains('w-full')).toBe(false)
+      expect((container.querySelector('.mx-auto.flex') as HTMLElement)?.style.maxWidth).toBe('480px')
+    })
   })
 
   describe('AI character message rendering', () => {
@@ -97,6 +117,59 @@ describe('GroupChatMessage', () => {
       const msg = createMessage({ characterId: 'non-existent', content: 'Hello' })
       const { container } = render(<GroupChatMessage message={msg} memberIndex={0} />)
       expect(container.textContent).toContain('未知')
+    })
+
+    it('角色气泡表面使用与单聊相同的中性卡片样式', () => {
+      const char = createCharacter({ id: 'char-1', name: 'Alice' })
+      useCharacterStore.setState({ characters: [char] })
+      const { container } = render(<GroupChatMessage message={createMessage()} memberIndex={0} />)
+      const bubble = container.querySelector('.msg-bubble')
+
+      expect(bubble?.classList.contains('bg-tavern-bg-card')).toBe(true)
+      expect(bubble?.classList.contains('border-tavern-border')).toBe(true)
+      expect(bubble?.classList.contains('text-slate-900')).toBe(true)
+      expect(bubble?.classList.contains('border-l-[3px]')).toBe(false)
+    })
+
+    it('可展开显示模型思考内容且正文保持可见', () => {
+      const char = createCharacter({ id: 'char-1', name: 'Alice' })
+      useCharacterStore.setState({ characters: [char] })
+      const msg = createMessage({ content: '<thought>先检查前文线索</thought>\n这是最终回复' })
+      const { container } = render(<GroupChatMessage message={msg} memberIndex={0} />)
+
+      expect(container.textContent).toContain('这是最终回复')
+      expect(container.textContent).toContain('💭 内心想法')
+      expect(container.textContent).not.toContain('先检查前文线索')
+      fireEvent.click(container.querySelector('[aria-label="展开思考内容"]') as HTMLButtonElement)
+      expect(container.textContent).toContain('先检查前文线索')
+    })
+
+    it('孤立的 thought 结束标签不会把思考内容泄漏到正文', () => {
+      const char = createCharacter({ id: 'char-1', name: 'Alice' })
+      useCharacterStore.setState({ characters: [char] })
+      const msg = createMessage({ content: '先分析系统提示和上下文\n</thought>\n这是最终回复' })
+      const { container } = render(<GroupChatMessage message={msg} memberIndex={0} />)
+
+      expect(container.textContent).toContain('这是最终回复')
+      expect(container.textContent).not.toContain('先分析系统提示和上下文')
+      expect(container.textContent).not.toContain('</thought>')
+
+      fireEvent.click(container.querySelector('[aria-label="展开思考内容"]') as HTMLButtonElement)
+      expect(container.textContent).toContain('先分析系统提示和上下文')
+    })
+
+    it('遵循自动展开思考内容设置', () => {
+      const char = createCharacter({ id: 'char-1', name: 'Alice' })
+      useCharacterStore.setState({ characters: [char] })
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, autoExpandThought: true },
+      }))
+
+      const msg = createMessage({ content: '<thought>自动显示这段思考</thought>\n正文' })
+      const { container } = render(<GroupChatMessage message={msg} memberIndex={0} />)
+
+      expect(container.textContent).toContain('自动显示这段思考')
+      expect(container.querySelector('[aria-label="收起思考内容"]')).toBeTruthy()
     })
   })
 

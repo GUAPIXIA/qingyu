@@ -1,0 +1,14 @@
+{
+  "name": "ST 最小世界书",
+  "entries": {
+    "0": {
+      "uid": 0,
+      "key": ["王城"],
+      "content": "王城是帝国首都。",
+      "position": 0,
+      "order": 100,
+      "disable": false
+    }
+  }
+}
+

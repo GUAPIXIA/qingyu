@@ -1,0 +1,31 @@
+{
+  "type": "risu",
+  "ver": 1,
+  "data": [
+    {
+      "id": "r1",
+      "key": "星陨峡谷, 流星",
+      "secondkey": "夜晚",
+      "insertorder": 5,
+      "comment": "多重条件条目",
+      "content": "星陨峡谷每逢秋夜会出现流星雨。",
+      "mode": "multiple",
+      "alwaysActive": false,
+      "selective": true,
+      "activationPercent": 80,
+      "useRegex": false,
+      "extentions": { "risu_case_sensitive": true }
+    },
+    {
+      "id": "r2",
+      "key": "世界设定",
+      "secondkey": "",
+      "insertorder": -10,
+      "comment": "常驻设定",
+      "content": "这是一个魔法与蒸汽并存的大陆。",
+      "mode": "constant",
+      "alwaysActive": true,
+      "selective": false
+    }
+  ]
+}

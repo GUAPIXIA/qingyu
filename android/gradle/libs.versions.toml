@@ -1,8 +1,8 @@
 # 版本目录：安卓伴侣端依赖与应用版本统一管理
 [versions]
 # ---- 应用版本（唯一权威来源，app/build.gradle.kts 引用；发布时在此递增）----
-appVersionName = "0.1.5"
-appVersionCode = "6"
+appVersionName = "0.3.0"
+appVersionCode = "9"
 
 agp = "8.5.2"
 kotlin = "2.0.20"
@@ -27,6 +27,8 @@ biometric = "1.1.0"
 junit = "4.13.2"
 androidxTestExt = "1.2.1"
 espresso = "3.6.1"
+benchmark = "1.2.4"
+uiautomator = "2.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -65,10 +67,16 @@ zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embe
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
+androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmark" }
+androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+android-test = { id = "com.android.test", version.ref = "agp" }
+androidx-benchmark = { id = "androidx.benchmark", version.ref = "benchmark" }
+androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }

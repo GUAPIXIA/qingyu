@@ -132,6 +132,26 @@ describe('ChatPage 冒烟测试', () => {
     expect(await findByText('你好，我是 Alice 的消息内容')).toBeTruthy()
   })
 
+  it('消息滚动列跟随消息宽度设置，不受固定 780px 上限限制', async () => {
+    setupStores(true, makeCharacter())
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, messageWidth: 1024 },
+    }))
+    useChatStore.setState({
+      messages: [{
+        id: 'm-wide', sessionId: 's-wide', characterId: 'char-1', role: 'assistant',
+        content: '宽屏消息', images: [], isEditing: false, timestamp: Date.now(),
+      }],
+      currentSessionId: 's-wide',
+    })
+
+    renderPage()
+
+    expect(await screen.findByTestId('chat-message-scroll-column')).toHaveStyle({
+      maxWidth: '1056px',
+    })
+  })
+
   it('启用角色封面背景时通过角色资源协议加载已落盘的封面', async () => {
     const character = makeCharacter({
       cover: '',

@@ -1,13 +1,16 @@
 /**
- * 世界书条目编辑表单（P-8 从 LorebookPage 拆分）
+ * 世界书条目编辑弹窗（P-8 从 LorebookPage 拆分）
  */
-import { Pencil, Loader2, Languages, X } from 'lucide-react'
-import type { LoreEntry } from '../../../shared/types'
-import { POSITION_LABELS, MATCH_MODE_LABELS } from './lorebookConstants'
+import { Loader2, Languages, X } from 'lucide-react'
+import type { Lorebook, LoreEntry } from '../../../shared/types'
+import { Modal } from '../../components/common/Modal'
+import { POSITION_LABELS, MATCH_MODE_LABELS, PRIORITY_LABELS } from './lorebookConstants'
 import { Toggle } from './lorebookComponents'
+import { LorebookEntryTriggerTester } from './LorebookEntryTriggerTester'
 
 interface LorebookEntryEditorProps {
   editingEntry: LoreEntry
+  lorebook: Lorebook
   isNew: boolean
   setEditingEntry: (entry: LoreEntry) => void
   translatingField: { key: string; text: string } | null
@@ -20,6 +23,7 @@ interface LorebookEntryEditorProps {
 
 export function LorebookEntryEditor({
   editingEntry,
+  lorebook,
   isNew,
   setEditingEntry,
   translatingField,
@@ -30,23 +34,26 @@ export function LorebookEntryEditor({
   onCancel,
 }: LorebookEntryEditorProps) {
   return (
-    <div className="border-t border-tavern-border-soft bg-tavern-bg-soft p-4 space-y-3 shrink-0 max-h-[55%] overflow-y-auto">
-      <div className="flex items-center justify-between">
-        <h3 className="font-medium text-sm text-tavern-text flex items-center gap-1.5">
-          <Pencil className="w-3.5 h-3.5" />
-          {isNew ? '新建条目' : '编辑条目'}
-        </h3>
-        <div className="flex items-center gap-2">
-          <button className="btn-ghost" onClick={onCancel}>
+    <Modal
+      open
+      onClose={onCancel}
+      title={isNew ? '新建世界书条目' : '编辑世界书条目'}
+      width="custom"
+      widthClassName="max-w-5xl"
+      contentClassName="bg-tavern-bg-soft/35"
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onCancel}>
             取消
           </button>
           <button className="btn-primary" onClick={onSave}>
             保存条目
           </button>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="lg:col-span-2">
           <label className="label">关键词（逗号分隔）</label>
           <input
             className="input"
@@ -63,7 +70,7 @@ export function LorebookEntryEditor({
             }
           />
         </div>
-        <div className="col-span-2">
+        <div className="lg:col-span-2">
           <label className="label">内容</label>
           <div className="flex gap-1.5 items-start">
             <textarea
@@ -118,6 +125,23 @@ export function LorebookEntryEditor({
             </div>
           )}
         </div>
+        <div className="lg:col-span-2">
+          <label className="label">摘要（可选）</label>
+          <textarea
+            className="textarea h-16"
+            placeholder="预算紧张时以此代替全文注入..."
+            value={editingEntry.summary ?? ''}
+            onChange={(e) =>
+              setEditingEntry({
+                ...editingEntry,
+                summary: e.target.value.trim() ? e.target.value : undefined,
+              })
+            }
+          />
+          <p className="text-xs text-tavern-text-muted mt-1">
+            世界书预算不足时，优先用这段摘要代替全文注入，避免条目被直接丢弃；留空则由 AI 压缩兜底。
+          </p>
+        </div>
         <div>
           <label className="label">插入位置</label>
           <select
@@ -137,6 +161,30 @@ export function LorebookEntryEditor({
           </select>
         </div>
         <div>
+          <label className="label">优先级</label>
+          <select
+            className="select"
+            value={editingEntry.priority ?? 'conditional'}
+            onChange={(e) =>
+              setEditingEntry({
+                ...editingEntry,
+                priority: e.target.value as NonNullable<LoreEntry['priority']>,
+              })
+            }
+          >
+            <option value="always">{PRIORITY_LABELS.always}（无条件注入）</option>
+            <option value="conditional">{PRIORITY_LABELS.conditional}（命中时注入）</option>
+            <option value="detail">{PRIORITY_LABELS.detail}（仅用剩余预算）</option>
+          </select>
+          <p className="text-xs text-tavern-text-muted mt-1">
+            {editingEntry.priority === 'always'
+              ? '常驻条目无需关键词即每轮注入；内容仍会参与其他条目的递归触发。'
+              : editingEntry.priority === 'detail'
+                ? '细节条目在常驻与条件条目装满预算后，仅用剩余额度注入。'
+                : '关键词或语义命中时注入（默认，与其他条目共享预算）。'}
+          </p>
+        </div>
+        <div>
           <label className="label">匹配模式</label>
           <select
             className="select"
@@ -154,7 +202,7 @@ export function LorebookEntryEditor({
           </select>
           <p className="text-xs text-tavern-text-muted mt-1">
             {editingEntry.matchMode === 'semantic'
-              ? '仅通过语义相似度触发：不依赖关键词，但需要先生成索引并启用「设置 → 语义触发」。'
+              ? '仅通过语义相似度触发：不依赖关键词，但需要先生成索引并在「模型 → 语义检索」中配置向量来源。'
               : editingEntry.matchMode === 'both'
                 ? '关键词命中或语义相似（"猫娘"可触发含"猫咪"的条目）均可触发。'
                 : '仅按关键词/正则匹配触发。'}
@@ -191,7 +239,7 @@ export function LorebookEntryEditor({
             }
           />
         </div>
-        <div className="col-span-2">
+        <div className="lg:col-span-2">
           <label className="label">触发概率：{editingEntry.probability}%</label>
           <input
             type="range"
@@ -207,14 +255,15 @@ export function LorebookEntryEditor({
             className="w-full accent-tavern-accent"
           />
         </div>
-        <div className="col-span-2 flex items-center gap-2">
+        <div className="flex items-center gap-2 lg:col-span-2">
           <span className="text-sm text-tavern-text-soft">启用此条目</span>
           <Toggle
             checked={editingEntry.enabled}
             onChange={(v) => setEditingEntry({ ...editingEntry, enabled: v })}
           />
         </div>
+        <LorebookEntryTriggerTester lorebook={lorebook} entry={editingEntry} />
       </div>
-    </div>
+    </Modal>
   )
 }

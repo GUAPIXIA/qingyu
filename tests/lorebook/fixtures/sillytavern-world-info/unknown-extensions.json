@@ -1,0 +1,19 @@
+{
+  "name": "ST 未知扩展世界书",
+  "futureBookOption": { "enabled": true },
+  "entries": {
+    "1": {
+      "uid": 1,
+      "key": ["扩展"],
+      "content": "未知扩展测试。",
+      "position": 0,
+      "order": 1,
+      "disable": false,
+      "extensions": {
+        "future_trigger": "vNext",
+        "outlet_name": "custom-outlet"
+      }
+    }
+  }
+}
+

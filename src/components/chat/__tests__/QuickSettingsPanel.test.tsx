@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { getDefaultSettings } from '../../../../shared/defaults'
-import type { Character, Message } from '../../../../shared/types'
+import type { Character, GroupChat, Message } from '../../../../shared/types'
 import { useCharacterStore } from '../../../store/useCharacterStore'
 import { useChatStore } from '../../../store/useChatStore'
 import { useSettingsStore } from '../../../store/useSettingsStore'
@@ -28,6 +28,12 @@ describe('QuickSettingsPanel', () => {
       loaded: true,
       _saveTimer: null,
     })
+  })
+
+  afterEach(() => {
+    const timer = useSettingsStore.getState()._saveTimer
+    if (timer) clearTimeout(timer)
+    useSettingsStore.setState({ _saveTimer: null })
   })
 
   it('集中提供原更多菜单中的全部对话操作', async () => {
@@ -113,5 +119,68 @@ describe('QuickSettingsPanel', () => {
       expect(button.className).toContain('w-7')
       expect(button.className).toContain('rounded-lg')
     }
+  })
+
+  it('显示世界书瀑布预算预览', async () => {
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        activeProfileId: 'profile-1',
+        lorebookRatio: 0.3,
+        connectionProfiles: [{
+          id: 'profile-1', name: '测试连接', provider: 'openai', apiKey: 'sk-test',
+          baseUrl: 'https://api.example.com/v1', model: 'model-a', maxContext: 8192,
+        }],
+      },
+    }))
+    render(
+      <QuickSettingsPanel
+        open
+        onClose={vi.fn()}
+        messages={[]}
+        onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()}
+        onExport={vi.fn()}
+        onClearConfirm={vi.fn()}
+      />,
+    )
+    await act(async () => {})
+    expect(screen.getByText('预算预览')).toBeTruthy()
+    expect(screen.getByText(/常驻上限 40%/)).toBeTruthy()
+    expect(screen.getByText(/常驻\+条件累计 90%/)).toBeTruthy()
+  })
+
+  it('群聊模式提供与单聊一致的快捷设置并保存群聊级预设', async () => {
+    const group: GroupChat = {
+      id: 'g1', name: '夜谈会', memberIds: ['char-1'], currentSpeakerIndex: 0,
+      autoMode: false, chatMode: 'polling', maxRounds: 1, speakerInterval: 2000,
+      lorebookIds: [], presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+    }
+    const onSaveGroup = vi.fn()
+    vi.mocked(window.api.preset.list).mockResolvedValueOnce([{
+      id: 'preset-1', name: '群像叙事', description: '', systemPrompt: '', jailbreak: '', temperature: 0.8,
+      topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0,
+      maxContext: 8192, isBuiltin: false,
+    }])
+
+    render(
+      <QuickSettingsPanel
+        open
+        group={group}
+        onSaveGroup={onSaveGroup}
+        onClose={vi.fn()}
+        messages={[]}
+        onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()}
+        onExport={vi.fn()}
+        onClearConfirm={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText('群聊快捷设置')).toBeTruthy()
+    expect(screen.getByText('接力设置')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /@点名/ })).toBeNull()
+    fireEvent.change(screen.getByLabelText('群聊预设'), { target: { value: 'preset-1' } })
+    expect(onSaveGroup).toHaveBeenCalledWith(expect.objectContaining({ presetId: 'preset-1' }))
   })
 })

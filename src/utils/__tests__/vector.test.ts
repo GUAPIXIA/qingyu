@@ -21,6 +21,16 @@ describe('cosineSimilarity', () => {
   it('零向量返回 0', () => {
     expect(cosineSimilarity([0, 0], [1, 1])).toBe(0)
   })
+
+  it('空数组返回 0', () => {
+    expect(cosineSimilarity([], [])).toBe(0)
+    expect(cosineSimilarity([], [1, 2])).toBe(0)
+  })
+
+  it('含 NaN / Infinity 的向量不抛异常（NaN 按 IEEE 语义自然传播）', () => {
+    expect(() => cosineSimilarity([NaN, 1], [1, 0])).not.toThrow()
+    expect(() => cosineSimilarity([Infinity, 1], [1, 0])).not.toThrow()
+  })
 })
 
 describe('l2Normalize', () => {
@@ -80,9 +90,28 @@ describe('topKSimilar', () => {
     expect(topKSimilar([1, 0], [], 3)).toEqual([])
   })
 
+  it('空查询向量返回空数组', () => {
+    expect(topKSimilar([], items, 3)).toEqual([])
+  })
+
   it('维度不匹配的条目被跳过', () => {
     const mixed = [{ id: 'x', vector: [1, 0, 0, 0] }, { id: 'y', vector: [1, 0] }]
     const hits = topKSimilar([1, 0], mixed, 10)
     expect(hits.map((h) => h.id)).toEqual(['y'])
+  })
+
+  it('k 为 0 或负数时返回空数组（不抛异常）', () => {
+    expect(topKSimilar([1, 0], items, 0)).toEqual([])
+    expect(topKSimilar([1, 0], items, -3)).toEqual([])
+  })
+
+  it('未归一化输入与归一化输入排序一致（函数内部自动归一化）', () => {
+    const scaled = [
+      { id: 'a', vector: [100, 0] },   // 与 [1,0] 同方向
+      { id: 'b', vector: [0, 50] },    // 与 [0,1] 同方向
+    ]
+    const hits = topKSimilar([1, 0], scaled, 2)
+    expect(hits.map((h) => h.id)).toEqual(['a', 'b'])
+    expect(hits[0].score).toBeCloseTo(1)
   })
 })

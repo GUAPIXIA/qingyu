@@ -11,6 +11,20 @@ vi.mock('../storage', () => ({
   },
 }))
 
+// matcher 只关心兼容 Lorebook 视图；持久化格式迁移由 document store 自身测试覆盖。
+vi.mock('../lorebookDocumentStore', async () => {
+  const fs = await import('node:fs')
+  return {
+    readLorebookView: (path: string) => {
+      try {
+        return JSON.parse(fs.readFileSync(path, 'utf-8') as string)
+      } catch {
+        return null
+      }
+    },
+  }
+})
+
 // 用真实的临时目录模拟世界书库
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()

@@ -1,0 +1,36 @@
+{
+  "lorebookVersion": 4,
+  "entryDisplay": 0,
+  "entries": [
+    {
+      "text": "星陨峡谷每逢秋夜会出现流星雨。",
+      "keys": ["星陨峡谷"],
+      "secondKey": "峡谷",
+      "displayName": "星陨峡谷",
+      "enabled": true,
+      "forceActivation": false,
+      "vectorized": true,
+      "caseSensitive": false,
+      "priority": 3,
+      "id": 201,
+      "comment": "星陨峡谷",
+      "category": "地点",
+      "useProbability": true,
+      "probability": 65,
+      "searchRange": 1000
+    },
+    {
+      "text": "这是一个魔法与蒸汽并存的大陆。",
+      "keys": ["世界设定"],
+      "enabled": true,
+      "forceActivation": true,
+      "vectorized": false,
+      "caseSensitive": true,
+      "priority": 1,
+      "id": 202,
+      "comment": "常驻设定",
+      "useProbability": true,
+      "probability": 100
+    }
+  ]
+}

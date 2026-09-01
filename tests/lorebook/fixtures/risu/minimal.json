@@ -1,0 +1,16 @@
+{
+  "type": "risu",
+  "ver": 1,
+  "data": [
+    {
+      "key": "主角",
+      "secondkey": "",
+      "insertorder": 100,
+      "comment": "主角条目",
+      "content": "主角是一位流浪的剑客，随身带着一把旧刀。",
+      "mode": "normal",
+      "alwaysActive": false,
+      "selective": false
+    }
+  ]
+}

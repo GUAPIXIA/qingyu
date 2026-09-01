@@ -5,7 +5,6 @@ import { getDefaultSettings } from '../utils/defaults'
 import { cn } from '../lib/utils'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { BehaviorSection } from './settings/BehaviorSection'
-import { SemanticSection } from './settings/SemanticSection'
 import { PhoneConnectionSection } from './settings/PhoneConnectionSection'
 import { UpdaterSection } from './settings/UpdaterSection'
 import { SectionCard } from '../components/common/SettingsShared'
@@ -22,7 +21,6 @@ import {
   Palette,
   Sliders,
   Smartphone,
-  Brain,
   Check,
   RefreshCw,
 } from 'lucide-react'
@@ -38,9 +36,6 @@ export function SettingsPage() {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved')
   const [fontUploading, setFontUploading] = useState(false)
   const [fontError, setFontError] = useState<string | null>(null)
-  /** 语义触发：测试连接状态 */
-  const [embedTestBusy, setEmbedTestBusy] = useState(false)
-  const [embedTestResult, setEmbedTestResult] = useState<{ ok: boolean; text: string } | null>(null)
 
   // 加载自定义字体列表
   const loadCustomFonts = useCallback(async () => {
@@ -115,35 +110,6 @@ export function SettingsPage() {
     updateSettings({ fontFamily: font.name, customFontId: font.id })
   }
 
-  /** 测试嵌入服务连接（若关联档案则实时解析其最新地址/密钥） */
-  const handleEmbedTest = async () => {
-    const st = settings.semanticTrigger
-    if (!st) return
-    // 若关联了档案，实时取档案最新值，避免档案改动后语义配置滞后
-    let effective = st
-    if (st.profileId) {
-      const p = settings.connectionProfiles.find((x) => x.id === st.profileId)
-      if (p) effective = { ...st, provider: p.provider === 'ollama' ? 'ollama' : 'openai', baseUrl: p.baseUrl, apiKey: p.apiKey ?? '' }
-    }
-    setEmbedTestBusy(true)
-    setEmbedTestResult(null)
-    try {
-      const result = await window.api.embedding.test({
-        provider: effective.provider,
-        baseUrl: effective.baseUrl,
-        model: effective.model,
-        apiKey: effective.apiKey ?? '',
-      })
-      setEmbedTestResult(result.ok
-        ? { ok: true, text: `连接成功，向量维度 ${result.dim}` }
-        : { ok: false, text: result.error || '连接失败' })
-    } catch (e) {
-      setEmbedTestResult({ ok: false, text: (e as Error).message })
-    } finally {
-      setEmbedTestBusy(false)
-    }
-  }
-
   /** 导出备份 - S1 Backup V2：zip + manifest，带计数与大小 */
   const handleExport = async () => {
     setBusy('export')
@@ -191,11 +157,10 @@ export function SettingsPage() {
 
   const sections = [
     { id: 'updater', label: '软件更新', icon: RefreshCw },
-    { id: 'api', label: 'API', icon: Plug },
+    { id: 'api', label: '模型', icon: Plug },
     { id: 'appearance', label: '外观', icon: Palette },
     { id: 'behavior', label: '行为', icon: Sliders },
     { id: 'phone', label: '手机连接', icon: Smartphone },
-    { id: 'semantic', label: '语义', icon: Brain },
     { id: 'network', label: '网络', icon: Globe },
     { id: 'data', label: '数据管理', icon: Database },
   ] as const
@@ -249,17 +214,17 @@ export function SettingsPage() {
         <UpdaterSection />
         </div>
         <div id="settings-api">
-        <SectionCard title="API 设置" icon={<Plug className="w-4 h-4" />} defaultOpen={false}>
+        <SectionCard title="模型" icon={<Plug className="w-4 h-4" />} defaultOpen={false} storageKey="api">
           <div className="mt-3">
             <p className="text-sm text-tavern-text-muted mb-3">
-              管理对话 API 连接、TTS 语音合成、文本生图和识图模型配置
+              管理对话连接、TTS、文本生图、识图以及语义检索模型
             </p>
             <button
               onClick={() => navigate('/api')}
               className="btn-secondary inline-flex items-center gap-1.5 text-sm"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              打开 API 设置
+              打开模型
             </button>
           </div>
         </SectionCard>
@@ -282,17 +247,8 @@ export function SettingsPage() {
         <div id="settings-phone">
         <PhoneConnectionSection />
         </div>
-        <div id="settings-semantic">
-        <SemanticSection
-          settings={settings}
-          updateSettings={updateSettings}
-          embedTestBusy={embedTestBusy}
-          embedTestResult={embedTestResult}
-          handleEmbedTest={handleEmbedTest}
-        />
-        </div>
         <div id="settings-network">
-        <SectionCard title="网络" icon={<Globe className="w-4 h-4" />}>
+        <SectionCard title="网络" icon={<Globe className="w-4 h-4" />} storageKey="network">
           <div className="mt-3 space-y-3">
             <div>
               <p className="text-sm mb-1.5">封面下载代理</p>
@@ -314,7 +270,7 @@ export function SettingsPage() {
         </SectionCard>
         </div>
         <div id="settings-data">
-        <SectionCard title="数据管理" icon={<Database className="w-4 h-4" />}>
+        <SectionCard title="数据管理" icon={<Database className="w-4 h-4" />} storageKey="data">
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button onClick={handleExport} disabled={busy !== null} className="btn-secondary">
               {busy === 'export' ? (

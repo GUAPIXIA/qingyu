@@ -1,6 +1,8 @@
 package com.qingyu.companion.network
 
 import com.qingyu.companion.model.ServerConnection
+import com.qingyu.companion.network.connection.ConnectionState
+import com.qingyu.companion.network.connection.FailureReason
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -11,6 +13,10 @@ import kotlinx.coroutines.flow.StateFlow
  * - 切换当前活跃连接时重建 Retrofit/WS 实例
  * - 暴露连接状态供 UI 状态栏与断线重连提示
  * - 重连时校验 fingerprint（防中间人，方案 §6.8）
+ *
+ * B-01 迁移期：实现体已委托 [com.qingyu.companion.network.connection.ConnectionCoordinator]，
+ * 本接口的连接决策类成员（[connectionState]/[retryNow]/[markAwaitingApproval]）
+ * 带默认空实现，保证既有 fake/旧实现不破坏编译；调用方无需一次性修改。
  */
 interface ConnectionManager {
 
@@ -22,6 +28,13 @@ interface ConnectionManager {
 
     /** 令牌失效事件（401，PC 端吊销/过期）：UI 提示重新配对（方案 §6.2） */
     val tokenInvalidated: SharedFlow<Unit>
+
+    /**
+     * 连接全生命周期状态（B-01）：UI 只消费此流，不再自行拼接网络错误。
+     * 旧实现/测试替身未接入 coordinator 时为 [ConnectionState.Idle]。
+     */
+    val connectionState: StateFlow<ConnectionState>
+        get() = _idleConnectionState
 
     /** 启动时从持久化恢复上次连接并自动建链 */
     suspend fun restore()
@@ -48,15 +61,25 @@ interface ConnectionManager {
     /** 匿名 API（配对前 serverInfo/pair 使用） */
     fun anonApi(connection: ServerConnection): QingyuApi
 
+    /** 用户手动重试（B-06：重置退避后立即重新竞速探测）；旧实现默认无操作 */
+    fun retryNow() { }
+
+    /** 配对请求挂起 PC 人工确认（B-01 AwaitingApproval）；旧实现默认无操作 */
+    fun markAwaitingApproval(serverName: String, expiresAt: Long) { }
+
     sealed interface CompatibilityResult {
         data object Compatible : CompatibilityResult
 
-        /** PC 不可达（桥接未开/网络不通），与版本不兼容区分开 */
-        data object Unreachable : CompatibilityResult
+        /** PC 不可达（桥接未开/网络不通），保留失败分类供 UI 给出可操作建议。 */
+        data class Unreachable(val reason: FailureReason) : CompatibilityResult
 
         /** 需要升级哪一侧 */
         data class UpgradeRequired(val side: Side) : CompatibilityResult
 
         enum class Side { ANDROID, PC }
     }
+}
+
+private val _idleConnectionState: StateFlow<ConnectionState> by lazy {
+    kotlinx.coroutines.flow.MutableStateFlow<ConnectionState>(ConnectionState.Idle)
 }

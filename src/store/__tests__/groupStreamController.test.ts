@@ -7,6 +7,7 @@ import {
   clearPollingTimer,
   getActiveStream,
   markPendingGroupCompression,
+  preserveGroupReplyContent,
 } from '../groupStreamController'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
@@ -43,6 +44,14 @@ function setup() {
   ;(window.api.group as any).saveMessagesBatch = vi.fn().mockResolvedValue(undefined)
   ;(window.api.group as any).save = vi.fn().mockResolvedValue(undefined)
 }
+
+describe('群聊思考内容保留', () => {
+  it('完成回复时保留 thought，并归一化 thinking 标签', () => {
+    expect(preserveGroupReplyContent('  <thinking>先分析上下文</thinking>\n最终回复  ')).toBe(
+      '<thought>先分析上下文</thought>\n最终回复',
+    )
+  })
+})
 
 describe('splitAndSaveMessages 群聊自由发言拆分', () => {
   beforeEach(() => {

@@ -11,8 +11,15 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-test' },
 }))
 
-import { getAdapter, registerAIIPC, registerAdapter, unregisterAdapter } from '../ai'
+import {
+  getAdapter,
+  parseLorebookKeywordSuggestions,
+  registerAIIPC,
+  registerAdapter,
+  unregisterAdapter,
+} from '../ai'
 import type { ChatParams } from '../../../shared/types'
+import type { LorebookKeywordLocalizationResult } from '../../../shared/ipc-api'
 
 // ===================== 工具函数 =====================
 
@@ -572,6 +579,122 @@ describe('registerAIIPC 连接通道', () => {
 
     expect(result).toMatchObject({ success: false })
     expect((result as { error: string }).error).toContain('ECONNREFUSED')
+  })
+
+  it('ai:localizeLorebookKeywords 使用聊天模型返回已校验的中文别名', async () => {
+    const registered = registerIpc()
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{
+        message: {
+          content: '```json\n[{"entryId":"palace","aliases":["王宫","皇宫","royal palace"]}]\n```',
+        },
+      }],
+    }))
+
+    const handler = registered.get('ai:localizeLorebookKeywords')!
+    const result = await handler({}, {
+      requestId: 'localize-1',
+      entries: [{ id: 'palace', keywords: ['royal palace'], content: 'The royal palace of the kingdom.' }],
+      provider: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-4o',
+    }) as unknown as LorebookKeywordLocalizationResult
+
+    // localize 模式过滤非中文别名，并附带生成来源元数据（阶段4 enrichment 管线）
+    expect(result.suggestions).toMatchObject([{ entryId: 'palace', aliases: ['王宫', '皇宫'] }])
+    expect(result.suggestions[0].source).toMatchObject({ provider: 'openai', model: 'gpt-4o', mode: 'localize' })
+    expect(typeof result.suggestions[0].source!.generatedAt).toBe('number')
+  })
+
+  it('ai:localizeLorebookKeywords enrich 模式允许多语言关键词并标注 enrich 来源', async () => {
+    const registered = registerIpc()
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{
+        message: {
+          content: '[{"entryId":"shrine","aliases":["星陨神社","Starfall Shrine","星降り神社","123"]}]',
+        },
+      }],
+    }))
+
+    const handler = registered.get('ai:localizeLorebookKeywords')!
+    const result = await handler({}, {
+      requestId: 'enrich-1',
+      mode: 'enrich',
+      entries: [{ id: 'shrine', keywords: ['shrine'], content: '北境的古老神社与陨星传说。' }],
+      provider: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-4o',
+    }) as unknown as LorebookKeywordLocalizationResult
+
+    // enrich 模式接受中文/英文/日文等多语言关键词，仍过滤纯数字等无字母噪音
+    expect(result.suggestions).toMatchObject([{
+      entryId: 'shrine',
+      aliases: ['星陨神社', 'Starfall Shrine', '星降り神社'],
+    }])
+    expect(result.suggestions[0].source).toMatchObject({ provider: 'openai', model: 'gpt-4o', mode: 'enrich' })
+  })
+
+  it('ai:localizeLorebookKeywords 主动取消时返回 cancelled，不把 AbortError 传给 IPC', async () => {
+    const registered = registerIpc()
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => {
+        reject(new DOMException('This operation was aborted', 'AbortError'))
+      }, { once: true })
+    }))
+
+    const localize = registered.get('ai:localizeLorebookKeywords')!
+    const cancel = registered.get('ai:cancel')!
+    const pending = localize({}, {
+      requestId: 'localize-cancel',
+      entries: [{ id: 'palace', keywords: ['royal palace'], content: 'The royal palace.' }],
+      provider: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-4o',
+    })
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await cancel({}, 'localize-cancel')
+
+    await expect(pending).resolves.toEqual({ suggestions: [], cancelled: true })
+  })
+
+  it('ai:localizeLorebookKeywords 非用户取消的 AbortError 仍作为真实错误抛出', async () => {
+    const registered = registerIpc()
+    fetchMock.mockRejectedValue(new DOMException('upstream timeout', 'AbortError'))
+
+    const localize = registered.get('ai:localizeLorebookKeywords')!
+    await expect(localize({}, {
+      requestId: 'localize-timeout',
+      entries: [{ id: 'palace', keywords: ['royal palace'], content: 'The royal palace.' }],
+      provider: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-4o',
+    })).rejects.toThrow('超时（60 秒）')
+  })
+})
+
+describe('parseLorebookKeywordSuggestions', () => {
+  const entries = [{ id: 'e1', keywords: ['Kingdom', '王国'], content: 'The northern kingdom.' }]
+
+  it('剥离思考与代码块，并过滤重复、非中文、未知条目和过长别名', () => {
+    const raw = `<thought>分析</thought>\n\`\`\`json
+      [
+        {"entryId":"e1","aliases":["王国","北方王国, 北境王国","kingdom","这是一个非常非常非常非常非常非常非常长的中文完整句子"]},
+        {"entryId":"missing","aliases":["不存在"]}
+      ]
+    \`\`\``
+
+    expect(parseLorebookKeywordSuggestions(raw, entries)).toEqual([
+      { entryId: 'e1', aliases: ['北方王国', '北境王国'] },
+    ])
+  })
+
+  it('模型未返回 JSON 数组时给出明确错误', () => {
+    expect(() => parseLorebookKeywordSuggestions('王宫、皇宫', entries)).toThrow('JSON 数组')
   })
 })
 

@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -68,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.GroupMessage
 import com.qingyu.companion.ui.components.AppBackground
@@ -125,13 +127,13 @@ internal fun GroupMessageActionSheet(
             ) {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                     Text(
-                        if (message.isUser) "我" else speaker,
+                        if (message.isUser) stringResource(R.string.chat_msg_me) else speaker,
                         style = MaterialTheme.typography.labelSmall,
                         color = qy.accent,
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        stripThought(message.content).ifEmpty { "（空消息）" },
+                        stripThought(message.content).ifEmpty { stringResource(R.string.chat_msg_empty) },
                         style = MaterialTheme.typography.bodySmall,
                         color = qy.soft,
                         maxLines = 2,
@@ -142,15 +144,15 @@ internal fun GroupMessageActionSheet(
             Spacer(Modifier.height(12.dp))
 
             // 动作行（44dp 行高，图标 + 文字）
-            GroupActionRow(Icons.Filled.Edit, "编辑", onEdit)
-            GroupActionRow(Icons.Filled.Translate, "翻译", onTranslate)
-            GroupActionRow(Icons.Filled.VolumeUp, "朗读", onSpeak)
+            GroupActionRow(Icons.Filled.Edit, stringResource(R.string.chat_action_edit), onEdit)
+            GroupActionRow(Icons.Filled.Translate, stringResource(R.string.chat_action_translate), onTranslate)
+            GroupActionRow(Icons.Filled.VolumeUp, stringResource(R.string.chat_action_speak), onSpeak)
 
             Spacer(Modifier.height(6.dp))
             HorizontalDivider(color = qy.lineSoft)
             Spacer(Modifier.height(6.dp))
             // 破坏性操作独立（低饱和红）
-            GroupActionRow(Icons.Filled.Delete, "删除", onDelete, destructive = true)
+            GroupActionRow(Icons.Filled.Delete, stringResource(R.string.chat_action_delete), onDelete, destructive = true)
         }
     }
 }

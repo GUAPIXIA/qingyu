@@ -1,9 +1,9 @@
 import type { IpcMain, Dialog } from 'electron'
-import { join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { DIRS, writeJson, listJsonFilesAsync, removeFile } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Preset } from '../../shared/types'
-import { normalizePreset } from '../../shared/preset'
+import { normalizeImportedPreset, normalizePreset } from '../../shared/preset'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
 
@@ -293,12 +293,21 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
     })
     if (result.canceled || result.filePaths.length === 0) return null
     const fs = await import('node:fs')
-    const raw = fs.readFileSync(result.filePaths[0], 'utf-8')
+    const sourcePath = result.filePaths[0]
+    const raw = fs.readFileSync(sourcePath, 'utf-8')
     const parsed = JSON.parse(raw) as Record<string, unknown>
-    const preset = normalizePreset({ ...parsed, id: nanoid(), isBuiltin: false })
-    writeJson(join(DIRS.presets(), `${preset.id}.json`), preset)
-    log.info('预设已导入', { id: preset.id, name: preset.name })
-    return preset
+    const imported = normalizeImportedPreset(parsed, {
+      id: nanoid(),
+      fallbackName: basename(sourcePath, extname(sourcePath)),
+    })
+    writeJson(join(DIRS.presets(), `${imported.preset.id}.json`), imported.preset)
+    log.info('预设已导入', {
+      id: imported.preset.id,
+      name: imported.preset.name,
+      sourceFormat: imported.sourceFormat,
+      unsupportedFields: imported.unsupportedFields,
+    })
+    return imported
   })
 
   // 导出单个预设到 JSON

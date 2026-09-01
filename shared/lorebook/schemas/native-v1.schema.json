@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qingyu.app/schemas/lorebook/native-v1.schema.json",
+  "title": "QingYu Native Lorebook v1",
+  "description": "轻语 0.16.x 持久化世界书基线。未知字段允许存在，用于前向兼容。",
+  "type": "object",
+  "required": ["id", "name", "description", "entries", "enabled", "scanDepth"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "scanDepth": { "type": "integer", "minimum": 0 },
+    "recursiveScanning": { "type": "boolean" },
+    "tokenBudget": { "type": "integer", "minimum": 0 },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "entry": {
+      "type": "object",
+      "required": ["id", "keywords", "content", "position", "order", "probability", "enabled"],
+      "properties": {
+        "id": { "type": "string" },
+        "keywords": { "$ref": "#/$defs/stringArray" },
+        "content": { "type": "string" },
+        "position": { "enum": ["before_char", "after_char", "at_depth", "at_end"] },
+        "depth": { "type": "integer", "minimum": 0 },
+        "role": { "enum": ["system", "user", "assistant"] },
+        "order": { "type": "number" },
+        "probability": { "type": "number", "minimum": 0, "maximum": 100 },
+        "enabled": { "type": "boolean" },
+        "useRegex": { "type": "boolean" },
+        "regexFlags": { "type": "string" },
+        "secondaryKeywords": { "$ref": "#/$defs/stringArray" },
+        "selectiveLogic": { "enum": ["and_any", "and_all", "not_any", "not_all"] },
+        "caseSensitive": { "type": "boolean" },
+        "matchWholeWords": { "type": "boolean" },
+        "excludeRecursion": { "type": "boolean" },
+        "preventRecursion": { "type": "boolean" },
+        "scanDepth": { "type": "integer", "minimum": 0 },
+        "delayUntilRecursion": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "integer", "minimum": 1 }
+          ]
+        },
+        "inclusionGroups": { "$ref": "#/$defs/stringArray" },
+        "inclusionGroupPrioritized": { "type": "boolean" },
+        "inclusionGroupWeight": { "type": "number", "minimum": 0 },
+        "useGroupScoring": { "type": "boolean" },
+        "characterFilter": {
+          "type": "object",
+          "required": ["exclude", "names", "tags"],
+          "properties": {
+            "exclude": { "type": "boolean" },
+            "names": { "$ref": "#/$defs/stringArray" },
+            "tags": { "$ref": "#/$defs/stringArray" }
+          },
+          "additionalProperties": true
+        },
+        "generationTriggers": {
+          "type": "array",
+          "items": { "enum": ["normal", "continue", "impersonate", "swipe", "regenerate", "quiet"] }
+        },
+        "sticky": { "type": "integer", "minimum": 0 },
+        "cooldown": { "type": "integer", "minimum": 0 },
+        "delay": { "type": "integer", "minimum": 0 },
+        "ignoreBudget": { "type": "boolean" },
+        "matchMode": { "enum": ["keyword", "semantic", "both"] },
+        "translation": { "type": "string" },
+        "priority": { "enum": ["always", "conditional", "detail"] },
+        "summary": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

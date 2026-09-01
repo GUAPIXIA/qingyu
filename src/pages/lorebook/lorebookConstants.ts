@@ -15,3 +15,10 @@ export const MATCH_MODE_LABELS: Record<NonNullable<LoreEntry['matchMode']>, stri
   semantic: '语义（向量）',
   both: '关键词 + 语义',
 }
+
+/** 条目优先级标签（undefined 视为 conditional，调用方需回退） */
+export const PRIORITY_LABELS: Record<NonNullable<LoreEntry['priority']>, string> = {
+  always: '常驻',
+  conditional: '条件',
+  detail: '细节',
+}

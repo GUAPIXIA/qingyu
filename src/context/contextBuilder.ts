@@ -13,7 +13,7 @@
  * 引用替换为 data 字段），仅 markPendingCompression 改为返回待处理项。
  */
 
-import type { ChatParams, Character, Settings } from '../../shared/types'
+import type { ChatParams, Character, LorebookTimedEffectsState, Settings } from '../../shared/types'
 import type { ContextBuildData, SemanticLoreHit } from '../../shared/contextTypes'
 import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
@@ -22,12 +22,18 @@ import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
 import { fitLayeredMemoryBudget, formatMemoryFacts } from '../utils/memory'
 import { expandMacros, buildMacroContext } from '../utils/macros'
-import { triggerLorebooks, mergeSemanticHits, type BudgetLoreItem } from '../utils/lorebook'
-import { logInfo } from '../lib/logger'
+import {
+  executeLorebookRuntime,
+  type LorebookCompressionRequest,
+  type LorebookDiagnostics,
+} from '../utils/lorebook'
+import { emptyLorebookRenderPlan, type LorebookRenderPlan } from '../utils/lorebookRenderer'
+import { logInfo, logWarn } from '../lib/logger'
 import {
   DEFAULT_LOREBOOK_SCAN_DEPTH,
   DEFAULT_LOREBOOK_RATIO,
   DEFAULT_RESERVED_OUTPUT,
+  resolveLorebookScanDepth,
   TOKEN_BUDGET_SAFETY,
 } from '../store/chatConstants'
 import { cropHistory, applyDepthInserts, type DepthInsertItem } from '../store/contextShared'
@@ -36,6 +42,8 @@ import type { ContextMessage } from '../store/chatTypes'
 /** 组装选项（对齐原 buildChatContext 的 opts） */
 export interface BuildOptions {
   continuation?: boolean
+  generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
+  lorebookDiagnosticsMode?: 'live' | 'preview'
 }
 
 /** 待异步执行的上下文压缩任务（原 markPendingCompression 的入参） */
@@ -47,11 +55,18 @@ export interface PendingCompression {
   droppedEndTs: number
 }
 
-/** 组装结果：消息 + 用量记录 + 可选压缩任务（均由调用方写回 store） */
+/** 组装结果：消息 + 用量记录 + 可选压缩任务 + 世界书触发键/压缩请求（均由调用方写回 store） */
 export interface BuildResult {
   messages: ContextMessage[]
   lastContextUsage: { used: number; max: number }
   pendingCompression?: PendingCompression
+  /** 本轮触发的世界书条目 key（阶段二B recency 窗口更新用） */
+  lorebookTriggeredIds?: string[]
+  /** 世界书超限压缩请求（阶段三：调用方异步 AI 压缩后写入会话缓存） */
+  lorebookCompressions?: LorebookCompressionRequest[]
+  lorebookCompressionCacheHitKeys?: string[]
+  lorebookTimedEffects?: LorebookTimedEffectsState
+  lorebookDiagnostics?: LorebookDiagnostics
 }
 
 /**
@@ -169,59 +184,98 @@ export function buildContextMessagesFromData(
   // 世界书注入（支持多个世界书合并 + 递归扫描 + at_depth 深度注入）
   const lorebookIds = data.chat.activeLorebookIds
   // at_depth 条目：历史消息构建后按深度插入（初始为空）
-  let atDepthItems: { content: string; depth: number; order: number }[] = []
+  let atDepthItems: { content: string; depth: number; order: number; role?: 'system' | 'user' | 'assistant' }[] = []
+  // 本轮触发的世界书条目 key（recency 窗口更新用）
+  let lorebookTriggeredIds: string[] | undefined
+  // 世界书超限压缩请求（阶段三）
+  let lorebookCompressions: LorebookCompressionRequest[] | undefined
+  let lorebookCompressionCacheHitKeys: string[] | undefined
+  let lorebookTimedEffects: LorebookTimedEffectsState | undefined
+  let lorebookDiagnostics: LorebookDiagnostics | undefined
+  let lorebookRenderPlan: LorebookRenderPlan = emptyLorebookRenderPlan()
   if (lorebookIds.length > 0) {
     // 修复 #28: 扫描深度可配置（取激活世界书中的最大值，无配置时用默认）
     // H-16 修复：reduce 初始值此前误用 DEFAULT（10），等价于 max(配置, 10)，
     // 用户调小配置（如 2/4）被静默抬回 10，条目过度触发。先收集配置值、空才回退默认。
-    const depths = lorebookIds
-      .map(id => data.lorebooks.find((lb) => lb.id === id)?.scanDepth)
-      .filter((d): d is number => typeof d === 'number' && d > 0)
-    const scanDepth = depths.length > 0
-      ? depths.reduce((max, d) => Math.max(max, d), 0)
-      : DEFAULT_LOREBOOK_SCAN_DEPTH
+    const scanDepth = resolveLorebookScanDepth(
+      lorebookIds.flatMap((id) => {
+        const lorebook = data.lorebooks.find((candidate) => candidate.id === id)
+        return lorebook ? [lorebook.scanDepth, ...lorebook.entries.map((entry) => entry.scanDepth)] : []
+      }),
+      DEFAULT_LOREBOOK_SCAN_DEPTH,
+    )
 
-    const scanText = messages.slice(-scanDepth).map((m) => m.content).join(' ')
+    const scanMessages = (scanDepth === 0 ? [] : messages.slice(-scanDepth)).map((m) => m.content)
+    const scanText = scanMessages.join(' ')
 
     const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
     const lorebookBudget = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
 
-    // data.lorebooks 为激活世界书全量（书级/条目级 enabled 由 triggerLorebooks 内部过滤，
-    // 与迁移前 lorebookCache.getAll 语义一致）；语义命中为 BudgetLoreItem 形状
-    const result = mergeSemanticHits(
-      triggerLorebooks({
-        lorebooks: data.lorebooks,
-        scanText,
-        userName,
-        charName: character.name,
-        budget: lorebookBudget,
-        model,
-      }),
-      data.chat.semanticLoreHits as unknown as BudgetLoreItem[],
-      lorebookBudget,
+    // data.lorebooks 为激活世界书全量（书级/条目级 enabled 由统一执行器内部过滤）；
+    // 语义命中为 BudgetLoreItem 形状（携带 score/key 参与统一评分）
+    const result = executeLorebookRuntime({
+      lorebooks: data.lorebooks,
+      scanText,
+      scanMessages,
+      userName,
+      charName: character.name,
+      characterNames: [character.name, charNameForVars],
+      characterTags: character.tags,
+      generationType: opts?.generationType ?? (opts?.continuation ? 'continue' : 'normal'),
+      messageCount: messages.length,
+      timedEffects: currentSession?.lorebookTimedEffects,
+      budget: lorebookBudget,
       model,
-    )
+      semanticItems: data.chat.semanticLoreHits,
+      // 语义触发不可用时对仅语义条目告警（含未启用 / 未配置两种情况；
+      // 本轮已有语义命中时视为可用，避免误告警）
+      semanticEnabled: data.chat.semanticLoreAvailable ?? (data.chat.semanticLoreHits.length > 0 || !!(
+        settings.semanticTrigger?.enabled
+        && settings.semanticTrigger.model?.trim()
+        && (settings.semanticTrigger.provider === 'local' || settings.semanticTrigger.baseUrl?.trim())
+      )),
+      // 阶段二B：受控实体词表补充（角色 tags；条目 keywords 与 charName 在工具内始终参与）
+      entityVocabulary: character.tags,
+      recentTriggeredIds: currentSession?.recentTriggeredIds,
+      // 阶段三：超限压缩缓存（命中时以缓存摘要替代被丢弃条目集合）
+      compressionCache: currentSession?.lorebookCompressionCache,
+      diagnosticsMode: opts?.lorebookDiagnosticsMode,
+    })
 
-    if (result.droppedCount > 0) {
-      logInfo('buildContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（预算 ${lorebookBudget} tokens）`)
+    if (opts?.lorebookDiagnosticsMode !== 'preview' && result.droppedCount > 0) {
+      logInfo('buildContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（常驻 ${result.alwaysDropped ?? 0} / 条件 ${result.conditionalDropped ?? 0} / 细节 ${result.detailDropped ?? 0}，预算 ${lorebookBudget} tokens）`)
+    }
+    if (opts?.lorebookDiagnosticsMode !== 'preview' && (result.alwaysDropped ?? 0) > 0) {
+      logWarn('buildContext', `常驻世界书条目超出预算硬上限（40%），${result.alwaysDropped} 条被截断：请精简常驻内容或调高世界书预算比例`)
+    }
+    if (opts?.lorebookDiagnosticsMode !== 'preview' && (result.bookBudgetDropped ?? 0) > 0) {
+      logInfo('buildContext', `世界书书级 tokenBudget 超限：${result.bookBudgetDropped} 条被丢弃（激活世界书自带预算上限）`)
     }
 
-    // before_char: 排列在 charDesc 之前
-    if (result.beforeChar.length > 0) {
-      charDesc = result.beforeChar.join('\n') + '\n' + charDesc
+    lorebookRenderPlan = result.renderPlan
+    // before_character: 排列在 charDesc 之前
+    if (lorebookRenderPlan.beforeCharacter.length > 0) {
+      charDesc = lorebookRenderPlan.beforeCharacter.join('\n') + '\n' + charDesc
     }
-    // after_char: 排列在 charDesc 之后
-    if (result.afterChar.length > 0) {
-      charDesc = charDesc + result.afterChar.join('\n')
+    // after_character: 排列在 charDesc 之后
+    if (lorebookRenderPlan.afterCharacter.length > 0) {
+      charDesc = charDesc + lorebookRenderPlan.afterCharacter.join('\n')
     }
-    // at_end: 追加到 systemContent 末尾
-    if (result.atEnd.length > 0) {
-      systemContent += '\n\n' + result.atEnd.join('\n')
+    // prompt_end（含 outlet/custom 的显式 fallback）：追加到 systemContent 末尾
+    if (lorebookRenderPlan.promptEnd.length > 0) {
+      systemContent += '\n\n' + lorebookRenderPlan.promptEnd.join('\n')
     }
-    // at_depth: 延迟到历史消息构建后注入
-    if (result.atDepth.length > 0) {
-      atDepthItems = result.atDepth
+    // chat depth: 延迟到历史消息构建后注入
+    if (lorebookRenderPlan.chat.length > 0) {
+      atDepthItems = lorebookRenderPlan.chat
     }
+    // 阶段二B：透出本轮触发键，调用方更新会话 recency 窗口
+    lorebookTriggeredIds = result.triggeredEntryKeys
+    // 阶段三：透出超限压缩请求，调用方异步 AI 压缩
+    lorebookCompressions = result.compressionRequests
+    lorebookCompressionCacheHitKeys = result.compressionCacheHitKeys
+    lorebookTimedEffects = result.timedEffects
+    lorebookDiagnostics = result.diagnostics
   }
 
   if (charDesc) systemContent += '\n\n【角色设定】\n' + charDesc
@@ -236,14 +290,18 @@ export function buildContextMessagesFromData(
 
   context.push({ role: 'system', content: systemContent })
 
+  for (const content of lorebookRenderPlan.authorsNoteTop) {
+    context.push({ role: 'system', content, keepSeparate: true })
+  }
+
   // 用户人设 separate 模式：独立 system 消息（keepSeparate 避免被合并进相邻消息）
   if (personaText && personaInjection.position === 'separate') {
     context.push({ role: 'system', content: '【用户人设】\n' + personaText, keepSeparate: true })
   }
 
   // ===== 作者注释（Author's Note）=====
-  // 角色级优先，回退全局；enabled 且文本非空才注入
-  const anConfig = character.authorNote ?? settings.authorNote
+  // 作者注释属于角色卡；enabled 且文本非空才注入
+  const anConfig = character.authorNote
   let anText = ''
   if (anConfig?.enabled && anConfig.text?.trim()) {
     anText = expandMacros(replaceVariables(anConfig.text.trim(), userName, charNameForVars), macroCtx)
@@ -267,8 +325,14 @@ export function buildContextMessagesFromData(
     : ''
 
   // 如果示例位置是 after_system（默认），在这里插入
-  if (exampleDialogPosition === 'after_system' && exampleDialogContent) {
-    context.push({ role: 'system', content: exampleDialogContent })
+  if (exampleDialogPosition === 'after_system') {
+    for (const content of lorebookRenderPlan.beforeExamples) {
+      context.push({ role: 'system', content, keepSeparate: true })
+    }
+    if (exampleDialogContent) context.push({ role: 'system', content: exampleDialogContent })
+    for (const content of lorebookRenderPlan.afterExamples) {
+      context.push({ role: 'system', content, keepSeparate: true })
+    }
   }
 
   // ===== 历史消息 =====
@@ -287,6 +351,9 @@ export function buildContextMessagesFromData(
   if (exampleDialogPosition === 'after_history' && exampleDialogContent) {
     usedTokens += estimateTokens(exampleDialogContent, model)
   }
+  // chat depth 与 authors_note_bottom 尚未加入 context，裁剪历史前先预留。
+  usedTokens += [...lorebookRenderPlan.chat, ...lorebookRenderPlan.authorsNoteBottom]
+    .reduce((sum, item) => sum + estimateTokens(typeof item === 'string' ? item : item.content, model), 0)
 
   // 按 token 预算裁剪历史消息（共享工具，含被裁剪范围记录）
   const historyImageTokens = messages.reduce(
@@ -351,7 +418,10 @@ export function buildContextMessagesFromData(
 
   // at_depth 世界书 + 作者注释（middle/bottom）统一按深度注入历史消息段（共享工具）
   const depthInserts: DepthInsertItem[] =
-    atDepthItems.map((i) => ({ content: i.content, depth: i.depth, order: i.order }))
+    atDepthItems.map((i) => ({ content: i.content, depth: i.depth, order: i.order, role: i.role }))
+  lorebookRenderPlan.authorsNoteBottom.forEach((content, index) => {
+    depthInserts.push({ content, depth: 0, order: -2_000 + index })
+  })
   if (anText && anConfig!.position !== 'top') {
     // bottom = 末尾（depth 0）；middle = 按配置深度；同深度下 AN 排在世界书前
     const anDepth = anConfig!.position === 'middle' ? Math.max(0, anConfig!.depth) : 0
@@ -361,13 +431,24 @@ export function buildContextMessagesFromData(
     historySegment,
     depthInserts,
     (content) => ({ role: 'system' as const, content, keepSeparate: true }),
+    (content, role) => ({
+      role: (role ?? 'system') as 'system' | 'user' | 'assistant',
+      content,
+      keepSeparate: true,
+    }),
   )
 
   context.push(...depthInjected)
 
   // 如果示例位置是 after_history，在这里插入
-  if (exampleDialogPosition === 'after_history' && exampleDialogContent) {
-    context.push({ role: 'system', content: exampleDialogContent })
+  if (exampleDialogPosition === 'after_history') {
+    for (const content of lorebookRenderPlan.beforeExamples) {
+      context.push({ role: 'system', content, keepSeparate: true })
+    }
+    if (exampleDialogContent) context.push({ role: 'system', content: exampleDialogContent })
+    for (const content of lorebookRenderPlan.afterExamples) {
+      context.push({ role: 'system', content, keepSeparate: true })
+    }
   }
 
   // 修复 #27: postHistoryInstructions 应该放在历史消息之后（Author's Note 位置）
@@ -415,6 +496,11 @@ export function buildContextMessagesFromData(
     messages: processedContext,
     lastContextUsage: { used: usedTokens, max: budgetBase },
     pendingCompression,
+    lorebookTriggeredIds,
+    lorebookCompressions,
+    lorebookCompressionCacheHitKeys,
+    lorebookTimedEffects,
+    lorebookDiagnostics,
   }
 }
 

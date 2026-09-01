@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "scheme": "qingyu-pair",
+  "serverId": "contract-server-uuid-0001",
+  "displayName": "轻语-契约测试机",
+  "apiVersion": 1,
+  "capabilities": ["settings_snapshot_v2", "settings_events_v1", "pairing_qr_v2", "task_events_v2"],
+  "pairingCode": "contract-pairing-code-001",
+  "expiresAt": 1788300000000,
+  "endpoints": [
+    { "host": "192.168.1.8", "port": 8321, "security": "LOCAL_CLEARTEXT" },
+    { "host": "fe80::1", "port": 8321, "security": "LOCAL_CLEARTEXT" }
+  ],
+  "certificatePin": null
+}

@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.15.1-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.17.0-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -15,17 +15,12 @@
 
 ---
 
-## 📦 仓库结构
+## 📝 更新日志
 
-本仓库包含三个协同发布的子项目：
-
-| 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
-|--------|------|----------|------|------|
-| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.15.1 |
-| **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.1.5 (build 6) |
-| **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |
-
-> `android/` 与 `server/` 已纳入本仓库统一管理；本地 `.env`、数据库与构建产物仍不纳入版本控制。
+- 主应用：[CHANGELOG.md](./CHANGELOG.md)
+- 安卓伴侣端：[android/CHANGELOG.md](./android/CHANGELOG.md)
+- 公告服务端：[server/CHANGELOG.md](./server/CHANGELOG.md)
+- 发布操作：[docs/规范/项目更新与上传规范.md](./docs/规范/项目更新与上传规范.md)
 
 ---
 
@@ -46,6 +41,21 @@
 | ![浅色主页面](png/浅色主页面.png) | ![浅色角色卡页面](png/浅色角色卡页面.png) |
 | **设置页面** | **关于页面** |
 | ![浅色设置页面](png/浅色设置页面.png) | ![浅色关于页面](png/浅色关于页面.png) |
+
+---
+
+## 📦 仓库结构
+
+本仓库包含三个协同发布的子项目：
+
+| 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
+|--------|------|----------|------|------|
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.17.0 |
+| **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.3.0 (build 9) |
+| **Relay 服务** | `relay-server/` | 同一仓库 | HTTPS/WSS 中转、离线缓存与短时消息队列 | v0.1.0 |
+| **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |
+
+> `android/` 与 `server/` 已纳入本仓库统一管理；本地 `.env`、数据库与构建产物仍不纳入版本控制。
 
 ---
 
@@ -79,7 +89,7 @@
 
 ### 📚 世界书（Lorebook）
 - **关键词动态触发** — 检测到关键词时自动注入角色背景设定，支持正则匹配
-- **语义触发（向量 RAG）** — 按语义相似度触发条目（如"猫娘"可触发含"猫咪"的条目），支持 OpenAI 兼容 / Ollama 嵌入服务
+- **语义触发（向量 RAG）** — 按语义相似度触发条目（如"猫娘"可触发含"猫咪"的条目），支持 OpenAI 兼容 / Ollama 嵌入服务，也可按需下载安装本地 CPU 向量模型
 - **语义索引管理** — 条目内容修改后自动标记过期，重新生成索引即可更新
 - **条目管理** — 选择性启用、权重排序、递归扫描深度控制
 - 深度注入 / 双层级（全局+角色内嵌）已支持，LLM 匹配规划中
@@ -98,9 +108,10 @@
 
 ### 🔄 软件更新（v0.15.0+）
 - **双源检查** — 并行读取官方服务器与 GitHub Releases 的 `latest.yml`，分别显示两个来源的最新版本
+- **会话内自动检查** — 每次启动程序后首次进入设置页自动检查，重复进入不再请求，仍可手动重新检查
 - **GitHub 自动更新** — 支持下载进度、增量更新和重启安装
 - **服务器手动下载** — GitHub 访问不便时可使用官方服务器安装包
-- **按需展示** — 未发现新版本时隐藏手动下载安装区域
+- **下载入口常驻** — 完成检查后始终显示服务器、GitHub 与夸克下载入口，允许重新安装当前版本
 - **发布自动化** — 推送 `v*` Tag 后由 GitHub Actions 完成检查、构建和 Release 发布
 
 ### 🎨 主题与外观
@@ -179,9 +190,10 @@ docker compose up -d          # 或 npm install && npm start
 
 ### 发布与上传
 
-- [项目更新与上传规范](./docs/项目更新与上传规范.md) — 面向管理员的版本号、GitHub Release、服务器上传、公告后台维护与回滚流程
-- [在线更新方案与使用指南](./docs/在线更新方案与使用指南.md) — 双源检查、自动更新和服务端镜像的技术说明
-- [项目推送与版本管理规范](./docs/项目推送与版本管理规范.md) — 分支、提交、Tag 与多端版本管理约定
+- [项目更新与上传规范](./docs/规范/项目更新与上传规范.md) — 面向管理员的版本号、GitHub Release、服务器上传、公告后台维护与回滚流程
+- [在线更新方案与使用指南](./docs/规范/在线更新方案与使用指南.md) — 双源检查、自动更新和服务端镜像的技术说明
+- [项目推送与版本管理规范](./docs/规范/项目推送与版本管理规范.md) — 分支、提交、Tag 与多端版本管理约定
+- 全部文档索引：[docs/README.md](./docs/README.md)
 
 ---
 
@@ -238,15 +250,6 @@ qingyu/
 | `Enter` | 发送消息 |
 | `Shift + Enter` | 换行 |
 | `Esc` | 关闭弹窗 / 停止生成 |
-
----
-
-## 📝 更新日志
-
-- 主应用：[CHANGELOG.md](./CHANGELOG.md)
-- 安卓伴侣端：[android/CHANGELOG.md](./android/CHANGELOG.md)
-- 公告服务端：[server/CHANGELOG.md](./server/CHANGELOG.md)
-- 发布操作：[docs/项目更新与上传规范.md](./docs/项目更新与上传规范.md)
 
 ---
 

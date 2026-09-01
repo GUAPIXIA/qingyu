@@ -68,6 +68,7 @@ export async function regenerateChatMessage(
     aiMessageId: messageId,
     character,
     preset,
+    generationType: 'regenerate',
     onComplete: async (fullContent) => {
       // M-18 修复：空回复/手动中止——移除占位消息（regenerate 路径）
       if (!fullContent) {
@@ -207,6 +208,7 @@ export async function continueChatMessage(
     character,
     preset,
     continuation: true,
+    generationType: 'continue',
     onComplete: async (newContent) => {
       const processed = await cleanContinuation(newContent)
       if (!finalizeContinuation(processed)) {

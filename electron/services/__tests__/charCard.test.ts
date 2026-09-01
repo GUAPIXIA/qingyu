@@ -13,7 +13,8 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-char-card-test' },
 }))
 
-import { importCardFrontendExtensions } from '../charCard'
+import { importCardFrontendExtensions, importCharacterFromJson } from '../charCard'
+import { readLorebookView } from '../lorebookDocumentStore'
 import type { Character } from '../../../shared/types'
 
 const TEST_DATA_DIR = '/tmp/qingyu-char-card-test/data'
@@ -157,5 +158,56 @@ describe('importCardFrontendExtensions', () => {
     }))
     expect(r.regexCount).toBe(1)
     expect(readRegexRules()).toHaveLength(1)
+  })
+})
+
+describe('角色卡内嵌世界书归一化', () => {
+  it('CCv2 character_book 与独立世界书共用标准字段映射', async () => {
+    mkdirSync(TEST_DATA_DIR, { recursive: true })
+    const cardPath = join(TEST_DATA_DIR, 'embedded-card.json')
+    writeFileSync(cardPath, JSON.stringify({
+      spec: 'chara_card_v2',
+      spec_version: '2.0',
+      data: {
+        name: '内嵌书角色',
+        description: '角色描述',
+        first_mes: '你好',
+        tags: [],
+        character_book: {
+          name: '标准内嵌书',
+          scan_depth: 5,
+          entries: [{
+            id: 'entry-1',
+            keys: ['王城'],
+            content: '王城设定',
+            enabled: true,
+            insertion_order: 88,
+            position: 'after_char',
+            constant: true,
+          }],
+        },
+      },
+    }), 'utf-8')
+
+    const character = await importCharacterFromJson(cardPath)
+    const lorebookPath = join(TEST_DATA_DIR, 'lorebooks', `${character.lorebookId}.json`)
+    const persisted = JSON.parse(readFileSync(lorebookPath, 'utf-8'))
+    const lorebook = readLorebookView(lorebookPath)
+
+    expect(persisted).toMatchObject({
+      schema: 'qingyu_lorebook',
+      schemaVersion: 2,
+      revision: 1,
+      defaults: { scanDepth: 5 },
+      source: { adapterId: 'character-card.character-book', formatVersion: '2/3' },
+    })
+    expect(lorebook).toMatchObject({ name: '标准内嵌书', scanDepth: 5 })
+    expect(lorebook?.entries[0]).toMatchObject({
+      id: 'entry-1',
+      keywords: ['王城'],
+      order: 88,
+      position: 'after_char',
+      priority: 'always',
+    })
   })
 })

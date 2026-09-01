@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.text.HtmlCompat
 import coil.compose.AsyncImage
+import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 
 /**
@@ -118,7 +120,7 @@ fun HtmlText(
             imageUrls.forEach { url ->
                 AsyncImage(
                     model = url,
-                    contentDescription = "图片",
+                    contentDescription = stringResource(R.string.cd_image),
                     contentScale = ContentScale.FillWidth,
                     modifier = Modifier
                         .fillMaxWidth()

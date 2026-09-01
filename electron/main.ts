@@ -7,6 +7,7 @@ import { registerChatTaskIPC } from './ipc/chatTasks'
 import { registerSettingsIPC } from './ipc/settings'
 import { registerLorebookIPC } from './ipc/lorebook'
 import { registerEmbeddingIPC } from './ipc/embedding'
+import { registerLocalModelIPC } from './ipc/localModels'
 import { registerQuickReplyIPC } from './ipc/quickReply'
 import { registerPresetIPC } from './ipc/preset'
 import { registerAIIPC } from './services/ai'
@@ -21,6 +22,7 @@ import { registerGroupIPC } from './ipc/group'
 import { registerAnnouncementIPC } from './ipc/announcement'
 import { registerUpdaterIPC } from './services/updater'
 import { registerBridgeIPC, bridgeService } from './bridge'
+import { registerRelayIPC, relayService } from './relay/relayService'
 import { IPC_EVENTS } from '../shared/ipc-channels'
 import { mcpManager } from './mcp/manager'
 import { ensureDataDir, DIRS } from './services/storage'
@@ -195,6 +197,7 @@ app.whenReady().then(async () => {
     () => registerSettingsIPC(ipcMain, dialog),
     () => registerLorebookIPC(ipcMain, dialog),
     () => registerEmbeddingIPC(ipcMain),
+    () => registerLocalModelIPC(ipcMain, dialog, app, () => BrowserWindow.getAllWindows()),
     () => registerQuickReplyIPC(ipcMain, dialog),
     () => registerPresetIPC(ipcMain, dialog),
     () => registerAIIPC(ipcMain),
@@ -209,6 +212,7 @@ app.whenReady().then(async () => {
     () => registerAnnouncementIPC(ipcMain),
     () => registerUpdaterIPC(ipcMain),
     () => registerBridgeIPC(ipcMain),
+    () => registerRelayIPC(ipcMain),
   ]
   for (const register of ipcRegistrars) {
     register()
@@ -253,6 +257,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     logger.warn('桥接层自动恢复跳过', { error: (err as Error).message })
   }
+  relayService.restore().catch((err) => logger.warn('Relay 自动恢复跳过', { error: (err as Error).message }))
 
   // 日志 IPC（level 运行时校验，防止渲染进程传入任意方法名）
   const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error'])
@@ -290,7 +295,7 @@ app.on('before-quit', async (event) => {
   killTTS()
   try {
     await Promise.race([
-      mcpManager.shutdownAll(),
+      Promise.all([mcpManager.shutdownAll(), relayService.shutdown()]),
       new Promise((_, reject) => setTimeout(() => reject(new Error('shutdown timeout')), 3000)),
     ])
   } catch {
