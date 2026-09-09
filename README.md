@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.17.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.17.1-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -26,21 +26,13 @@
 
 ## 📸 程序截图
 
-### 🌙 深色主题
+以下截图来自 v0.17.0 桌面端实际运行界面。
 
-| 对话页面 | 对话预设 |
+| 模型管理 | 角色创建 |
 |:---:|:---:|
-| ![对话页面](png/对话页面.png) | ![对话预设](png/对话预设.png) |
-| **角色卡页面** | **设置页面** |
-| ![角色卡页面](png/角色卡页面.png) | ![设置页面](png/设置页面.png) |
-
-### ☀️ 浅色主题
-
-| 主页面 | 角色卡页面 |
-|:---:|:---:|
-| ![浅色主页面](png/浅色主页面.png) | ![浅色角色卡页面](png/浅色角色卡页面.png) |
-| **设置页面** | **关于页面** |
-| ![浅色设置页面](png/浅色设置页面.png) | ![浅色关于页面](png/浅色关于页面.png) |
+| ![模型管理](png/模型管理.png) | ![AI 辅助角色创建](png/角色创建.png) |
+| **设置中心** | **帮助中心** |
+| ![设置中心与外观设置](png/设置中心.png) | ![帮助中心与新手入门](png/帮助中心.png) |
 
 ---
 
@@ -50,7 +42,7 @@
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
-| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.17.0 |
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.17.1 |
 | **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.3.0 (build 9) |
 | **Relay 服务** | `relay-server/` | 同一仓库 | HTTPS/WSS 中转、离线缓存与短时消息队列 | v0.1.0 |
 | **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |

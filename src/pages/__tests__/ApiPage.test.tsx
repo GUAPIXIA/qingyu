@@ -29,4 +29,24 @@ describe('模型页面', () => {
     expect(await screen.findByRole('heading', { name: '语义检索' })).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: '检索策略' })).toBeTruthy()
   })
+
+  it('添加连接未填写名称时点击保存会显示校验提示', () => {
+    render(<ApiPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: '添加连接' }))
+    const saveButton = screen.getByRole('button', { name: '保存' })
+
+    expect(saveButton).not.toBeDisabled()
+    fireEvent.click(saveButton)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('请填写连接名称')
+    expect(window.api.settings.save).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByPlaceholderText('连接名称（如：我的DeepSeek）'), {
+      target: { value: '测试连接' },
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(saveButton)
+    expect(useSettingsStore.getState().settings.connectionProfiles[0].name).toBe('测试连接')
+  })
 })

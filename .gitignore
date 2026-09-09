@@ -44,6 +44,18 @@ spec_*.json
 
 # Environment files (contain secrets)
 .env
+
+# Local workspace files retained beside the repository root
+/服务器备忘.md
+/token.txt
+/conn_pb.bin
+/a.txt
+/.pi-team/
+/合并前备份-20260820/
+/狐神抚.json
+/模拟器环境-备忘录.md
+/启动开发.bat.lnk
+
 # 测试覆盖率报告
 coverage/
 

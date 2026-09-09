@@ -142,7 +142,9 @@ describe('契约 fixture：pairing_qr_v2.json（PC 半边）', () => {
   const raw = readFixture('pairing_qr_v2.json')
 
   it('可被共享 parsePairingQr 解析为 v2 且字段齐全', () => {
-    const parsed = parsePairingQr(raw)
+    const fixture = JSON.parse(raw) as PairingQrPayloadV2
+    const fixtureNow = fixture.expiresAt - 1
+    const parsed = parsePairingQr(raw, fixtureNow)
     expect(parsed.kind).toBe('v2')
     if (parsed.kind !== 'v2') return
     const p = parsed.payload
@@ -153,7 +155,7 @@ describe('契约 fixture：pairing_qr_v2.json（PC 半边）', () => {
     expect(p.apiVersion).toBe(1)
     expect(p.capabilities).toEqual(expect.arrayContaining(['settings_snapshot_v2', 'task_events_v2']))
     expect(p.pairingCode).toBe('contract-pairing-code-001')
-    expect(p.expiresAt).toBeGreaterThan(Date.now())
+    expect(p.expiresAt).toBeGreaterThan(fixtureNow)
     expect(p.endpoints.length).toBeGreaterThanOrEqual(1)
     expect(p.endpoints[0]).toMatchObject({ host: '192.168.1.8', port: 8321, security: 'LOCAL_CLEARTEXT' })
     expect(p.certificatePin).toBeNull()

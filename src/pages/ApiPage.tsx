@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { PROVIDER_INFO, isConnectionConfigured } from '../utils/defaults'
 import { cn } from '../lib/utils'
@@ -101,12 +101,14 @@ export function ApiPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [showKey, setShowKey] = useState(false)
   const [contextRawInput, setContextRawInput] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<
     { success: boolean; models?: string[]; error?: string } | null
   >(null)
   const [embedTestBusy, setEmbedTestBusy] = useState(false)
   const [embedTestResult, setEmbedTestResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
 
   // 编辑表单临时状态
   const [editForm, setEditForm] = useState<ConnectionProfile>({
@@ -127,6 +129,7 @@ export function ApiPage() {
     setContextRawInput('')
     setShowKey(false)
     setTestResult(null)
+    setNameError(null)
     setEditingId(null)
   }
 
@@ -137,6 +140,7 @@ export function ApiPage() {
     setShowAdd(false)
     setShowKey(false)
     setTestResult(null)
+    setNameError(null)
   }
 
   const openAdd = () => {
@@ -145,16 +149,21 @@ export function ApiPage() {
   }
 
   const handleSave = () => {
-    if (!editForm.name.trim()) return
-    // 在保存前同步上下文长度（用户可能未触发 blur 直接点了保存）
-    if (contextRawInput.trim()) {
-      const maxCtx = parseContextInput(contextRawInput)
-      editForm.maxContext = maxCtx
+    const name = editForm.name.trim()
+    if (!name) {
+      setNameError('请填写连接名称')
+      nameInputRef.current?.focus()
+      return
     }
+    // 在保存前同步上下文长度（用户可能未触发 blur 直接点了保存）
+    const maxContext = contextRawInput.trim()
+      ? parseContextInput(contextRawInput)
+      : editForm.maxContext
+    const profile = { ...editForm, name, maxContext }
     if (editingId) {
-      updateProfile(editingId, editForm)
+      updateProfile(editingId, profile)
     } else {
-      addProfile(editForm)
+      addProfile(profile)
       setShowAdd(false)
     }
     resetForm()
@@ -231,6 +240,7 @@ export function ApiPage() {
       // 模型为空时自动填入预设推荐模型（如 OpenCode Go → glm-5.2）
       model: f.model.trim() ? f.model : (preset.model ?? ''),
     }))
+    setNameError(null)
     setTestResult(null)
   }
 
@@ -444,14 +454,28 @@ export function ApiPage() {
                 {editingId === p.id && (
                   <div className="px-4 pb-4 pt-1 border-t border-tavern-border-soft">
                     <div className="space-y-3 mt-3">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          className="input text-sm flex-1"
-                          value={editForm.name}
-                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                          placeholder="连接名称（如：我的DeepSeek）"
-                        />
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1">
+                          <input
+                            ref={nameInputRef}
+                            type="text"
+                            className={cn('input text-sm', nameError && 'border-tavern-danger focus:border-tavern-danger')}
+                            value={editForm.name}
+                            onChange={(e) => {
+                              const name = e.target.value
+                              setEditForm((f) => ({ ...f, name }))
+                              if (name.trim()) setNameError(null)
+                            }}
+                            placeholder="连接名称（如：我的DeepSeek）"
+                            aria-invalid={Boolean(nameError)}
+                            aria-describedby={nameError ? 'connection-name-error' : undefined}
+                          />
+                          {nameError && (
+                            <p id="connection-name-error" role="alert" className="mt-1 text-xs text-tavern-danger">
+                              {nameError}
+                            </p>
+                          )}
+                        </div>
                         <button
                           onClick={() => handleDelete(p.id)}
                           className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-danger/10 transition-colors shrink-0"
@@ -638,14 +662,28 @@ export function ApiPage() {
 
                 <div className="px-4 pb-4 pt-1">
                   <div className="space-y-3 mt-3">
-                    <input
-                      type="text"
-                      className="input text-sm"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                      placeholder="连接名称（如：我的DeepSeek）"
-                      autoFocus
-                    />
+                    <div>
+                      <input
+                        ref={nameInputRef}
+                        type="text"
+                        className={cn('input text-sm', nameError && 'border-tavern-danger focus:border-tavern-danger')}
+                        value={editForm.name}
+                        onChange={(e) => {
+                          const name = e.target.value
+                          setEditForm((f) => ({ ...f, name }))
+                          if (name.trim()) setNameError(null)
+                        }}
+                        placeholder="连接名称（如：我的DeepSeek）"
+                        aria-invalid={Boolean(nameError)}
+                        aria-describedby={nameError ? 'connection-name-error' : undefined}
+                        autoFocus
+                      />
+                      {nameError && (
+                        <p id="connection-name-error" role="alert" className="mt-1 text-xs text-tavern-danger">
+                          {nameError}
+                        </p>
+                      )}
+                    </div>
 
                     <div>
                       <label className="label">协议类型</label>
@@ -768,7 +806,6 @@ export function ApiPage() {
                       </button>
                       <button
                         onClick={handleSave}
-                        disabled={!editForm.name.trim()}
                         title={!editForm.name.trim() ? '请先填写连接名称' : '保存连接'}
                         className="btn-primary text-xs"
                       >

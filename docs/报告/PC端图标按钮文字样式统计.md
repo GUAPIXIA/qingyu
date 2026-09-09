@@ -1,7 +1,7 @@
 # PC 端图标按钮文字样式统计
 
 > 统计日期：2026-08-27
-> 范围：`酒馆/src` 下 React 前端（PC 端）所有含图标的按钮（icon-only 按钮 + 图标+文字按钮）
+> 范围：`src` 下 React 前端（PC 端）所有含图标的按钮（icon-only 按钮 + 图标+文字按钮）
 > 技术栈：Tailwind CSS 原子类 + CSS 变量主题 + `lucide-react` 图标库（无统一的 Icon 组件，全部内联使用）
 
 ---
