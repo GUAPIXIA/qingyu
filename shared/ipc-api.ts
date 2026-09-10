@@ -394,6 +394,105 @@ export interface LocalComfyWorkflow {
   modifiedAt: number
 }
 
+/** 工作流用途判定，用于决定能否作为普通文生图配置保存。 */
+export type ComfyWorkflowKind = 'text-to-image' | 'image-to-image' | 'video' | 'unknown'
+
+/** 分析过程中的可提示问题；不阻断分析，但会影响 compatible。 */
+export type ComfyWorkflowWarningCode =
+  | 'no-output'
+  | 'no-prompt'
+  | 'ambiguous-prompt'
+  | 'ambiguous-output'
+  | 'unknown-node'
+  | 'missing-model'
+  | 'requires-image-input'
+  | 'video-workflow'
+  | 'multi-stage'
+  | 'unreachable-nodes'
+
+export interface ComfyWorkflowWarning {
+  code: ComfyWorkflowWarningCode
+  message: string
+  nodeIds?: string[]
+}
+
+/** 提示词与输出节点的角色绑定；存在多个候选时由 ambiguous-prompt / ambiguous-output 警告标记歧义。 */
+export interface ComfyWorkflowBinding {
+  role: 'positive' | 'negative' | 'output'
+  nodeId: string
+  inputName?: string
+  title?: string
+}
+
+/** 单个可调参数；id 即运行时覆盖表的键（`节点ID.输入名`）。 */
+export interface ComfyWorkflowParameter {
+  id: string
+  nodeId: string
+  inputName: string
+  label: string
+  type: 'number' | 'select' | 'text' | 'boolean' | 'size'
+  /** 工作流当前值；size 类型为 `${width}x${height}` 字符串。 */
+  workflowValue: unknown
+  /** size 类型的第二个输入名（height）；运行时覆盖需同时写入 width 与 height。 */
+  pairedInputName?: string
+  pairedWorkflowValue?: unknown
+  options?: unknown[]
+  min?: number
+  max?: number
+  step?: number
+  required: boolean
+  /** 归入高级设置折叠区，默认不展示（如随机种子）。 */
+  advanced?: boolean
+}
+
+/** 参数分组：输出尺寸、各采样阶段、模型侧可调项，以及未识别的自定义节点参数。 */
+export interface ComfyWorkflowParameterGroup {
+  id: string
+  nodeId: string
+  classType: string
+  title: string
+  stage: 'output' | 'sampling' | 'model' | 'custom'
+  parameters: ComfyWorkflowParameter[]
+}
+
+/** 模型依赖条目，按 `节点ID + 模型名输入` 建立，避免把同节点的非模型输入误判为模型名。 */
+export interface ComfyWorkflowDependency {
+  nodeId: string
+  inputName: string
+  classType: string
+  label: string
+  /** 工作流当前引用的模型文件名。 */
+  value: string
+  /** 该 Loader 提供的输出能力，如 MODEL / CLIP / VAE。 */
+  provides: string[]
+  /** 引用该输出的下游节点，用于把共享依赖归并为一条。 */
+  usedBy: Array<{ nodeId: string; inputName: string }>
+  /** 来自 /object_info 的可用文件列表；缺失时表示无法校验。 */
+  options?: string[]
+  /** 仅在能取得 options 时给出：当前 value 是否在可用列表中。 */
+  available?: boolean
+}
+
+export interface ComfyWorkflowAnalysis {
+  kind: ComfyWorkflowKind
+  nodeCount: number
+  compatible: boolean
+  promptBindings: ComfyWorkflowBinding[]
+  outputBindings: ComfyWorkflowBinding[]
+  parameterGroups: ComfyWorkflowParameterGroup[]
+  dependencies: ComfyWorkflowDependency[]
+  warnings: ComfyWorkflowWarning[]
+}
+
+export interface ComfyWorkflowMeta {
+  sourceName?: string
+  sourcePath?: string
+  nodeCount: number
+  converted: boolean
+  hash: string
+  analyzerVersion: number
+}
+
 export interface ComfyWorkflowImportResult {
   success: boolean
   canceled?: boolean
@@ -411,6 +510,9 @@ export interface ComfyWorkflowImportResult {
     model?: string
     negativePrompt?: string
   }
+  analysis?: ComfyWorkflowAnalysis
+  workflowMeta?: ComfyWorkflowMeta
+  objectInfo?: Record<string, unknown>
 }
 
 export interface ImageGenAPI {
