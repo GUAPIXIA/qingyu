@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import type { ImageGenModelConfig } from '../../../shared/types'
+import type { ComfyWorkflowImportResult, LocalComfyWorkflow } from '../../../shared/ipc-api'
 import {
   Image, Plus, Trash2, Check, Eye, EyeOff,
-  Circle, ChevronUp, ChevronDown, Loader2,
+  Circle, ChevronUp, ChevronDown, Loader2, FolderOpen, RefreshCw, FileJson2,
 } from 'lucide-react'
 
 /** 提供商选项 */
@@ -38,7 +39,12 @@ const COMFY_SAMPLERS = [
   'euler', 'euler_ancestral', 'heun', 'lms',
   'dpm_2', 'dpm_2_ancestral', 'dpm_fast', 'dpm_adaptive',
   'dpmpp_2s_ancestral', 'dpmpp_sde', 'dpmpp_2m',
-  'ddim', 'uni_pc',
+  'ddim', 'uni_pc', 'res_multistep',
+]
+
+const COMFY_SCHEDULERS = [
+  'normal', 'simple', 'karras', 'exponential', 'sgm_uniform',
+  'ddim_uniform', 'beta', 'linear_quadratic', 'kl_optimal',
 ]
 
 const IMAGE_QUALITIES = [
@@ -94,17 +100,49 @@ export function ImageGenModelsSection() {
   const [form, setForm] = useState<ImageGenModelConfig>(emptyForm())
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [localWorkflows, setLocalWorkflows] = useState<LocalComfyWorkflow[]>([])
+  const [selectedWorkflowPath, setSelectedWorkflowPath] = useState('')
+  const [loadingWorkflows, setLoadingWorkflows] = useState(false)
+  const [importingWorkflow, setImportingWorkflow] = useState(false)
+  const [workflowMessage, setWorkflowMessage] = useState<{ success: boolean; text: string } | null>(null)
 
   const models = [...settings.imageGenModels].sort((a, b) => a.order - b.order)
 
   const isSdWebui = form.provider === 'sd-webui'
   const isComfyUi = form.provider === 'comfyui'
   const usesDiffusionSettings = isSdWebui || isComfyUi
-  const sizeOptions = usesDiffusionSettings ? SD_SIZES : OPENAI_SIZES
+  const standardSizes = usesDiffusionSettings ? SD_SIZES : OPENAI_SIZES
+  const sizeOptions = standardSizes.includes(form.size) ? standardSizes : [form.size, ...standardSizes]
+  const comfySamplers = form.sampler && !COMFY_SAMPLERS.includes(form.sampler)
+    ? [form.sampler, ...COMFY_SAMPLERS]
+    : COMFY_SAMPLERS
+  const comfySchedulers = form.scheduler && !COMFY_SCHEDULERS.includes(form.scheduler)
+    ? [form.scheduler, ...COMFY_SCHEDULERS]
+    : COMFY_SCHEDULERS
+
+  const loadLocalWorkflows = async () => {
+    setLoadingWorkflows(true)
+    try {
+      const result = await window.api.imageGen.listLocalComfyWorkflows()
+      const workflows = result.workflows ?? []
+      setLocalWorkflows(workflows)
+      setSelectedWorkflowPath((current) => current || workflows[0]?.path || '')
+      if (!result.success) setWorkflowMessage({ success: false, text: result.error ?? '读取本地工作流失败' })
+    } catch (error) {
+      setWorkflowMessage({ success: false, text: error instanceof Error ? error.message : String(error) })
+    } finally {
+      setLoadingWorkflows(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isComfyUi) void loadLocalWorkflows()
+  }, [isComfyUi])
 
   const resetForm = () => {
     setForm(emptyForm())
     setShowKey(false)
+    setWorkflowMessage(null)
   }
 
   const openEdit = (m: ImageGenModelConfig) => {
@@ -136,9 +174,47 @@ export function ImageGenModelsSection() {
         sampler: defaults.sampler,
         scheduler: defaults.scheduler,
         workflow: defaults.workflow,
+        workflowName: undefined,
       }
     })
     setTestResult(null)
+  }
+
+  const applyImportedWorkflow = (result: ComfyWorkflowImportResult) => {
+    if (!result.success || !result.workflow) {
+      if (!result.canceled) setWorkflowMessage({ success: false, text: result.error ?? '导入工作流失败' })
+      return
+    }
+    const inferred = result.settings ?? {}
+    setForm((current) => ({
+      ...current,
+      workflow: result.workflow,
+      workflowName: result.sourceName,
+      size: inferred.size ?? current.size,
+      steps: inferred.steps ?? current.steps,
+      cfgScale: inferred.cfgScale ?? current.cfgScale,
+      sampler: inferred.sampler ?? current.sampler,
+      scheduler: inferred.scheduler ?? current.scheduler,
+      model: inferred.model ?? current.model,
+      negativePrompt: inferred.negativePrompt ?? current.negativePrompt,
+      name: current.name || result.sourceName || current.name,
+    }))
+    setWorkflowMessage({
+      success: true,
+      text: `已读取 ${result.sourceName ?? '工作流'} · ${result.nodeCount ?? 0} 个节点${result.converted ? ' · 已转换为 API 格式' : ''}`,
+    })
+  }
+
+  const handleImportWorkflow = async (path?: string) => {
+    setImportingWorkflow(true)
+    setWorkflowMessage(null)
+    try {
+      applyImportedWorkflow(await window.api.imageGen.importLocalComfyWorkflow(path))
+    } catch (error) {
+      setWorkflowMessage({ success: false, text: error instanceof Error ? error.message : String(error) })
+    } finally {
+      setImportingWorkflow(false)
+    }
   }
 
   /** 测试连接 */
@@ -365,26 +441,118 @@ export function ImageGenModelsSection() {
               value={form.sampler ?? (isComfyUi ? 'euler' : 'Euler a')}
               onChange={(e) => setForm((f) => ({ ...f, sampler: e.target.value }))}
             >
-              {(isComfyUi ? COMFY_SAMPLERS : SD_SAMPLERS).map((s) => (
+              {(isComfyUi ? comfySamplers : SD_SAMPLERS).map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
           </div>
 
           {isComfyUi && (
-            <div>
-              <label className="label">API 工作流 JSON（可选）</label>
-              <textarea
-                className="textarea text-xs font-mono min-h-36"
-                value={form.workflow ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, workflow: e.target.value }))}
-                placeholder="粘贴 ComfyUI 导出的 API 格式工作流；留空使用基础文生图工作流"
-                spellCheck={false}
-              />
-              <p className="text-xs text-tavern-text-muted mt-1 leading-relaxed">
-                支持 {'{{prompt}}'}、{'{{negative_prompt}}'}、{'{{width}}'}、{'{{height}}'}、{'{{seed}}'}、{'{{steps}}'}、{'{{cfg}}'}、{'{{sampler}}'}、{'{{scheduler}}'} 和 {'{{checkpoint}}'} 占位符。
-              </p>
-            </div>
+            <>
+              <div>
+                <label className="label">调度器</label>
+                <select
+                  className="input text-sm"
+                  value={form.scheduler ?? 'normal'}
+                  onChange={(e) => setForm((f) => ({ ...f, scheduler: e.target.value }))}
+                >
+                  {comfySchedulers.map((scheduler) => (
+                    <option key={scheduler} value={scheduler}>{scheduler}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-tavern-text">
+                      <FileJson2 className="w-3.5 h-3.5 text-tavern-accent" />
+                      ComfyUI Desktop 工作流
+                    </div>
+                    <p className="text-[11px] text-tavern-text-muted mt-1">
+                      自动读取 Desktop 安装目录，并将画布工作流转换为可执行格式。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void loadLocalWorkflows()}
+                    disabled={loadingWorkflows}
+                    title="重新扫描"
+                    className="p-1.5 rounded-md text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5', loadingWorkflows && 'animate-spin')} />
+                  </button>
+                </div>
+
+                {localWorkflows.length > 0 ? (
+                  <div className="flex gap-2">
+                    <select
+                      className="input text-xs min-w-0 flex-1"
+                      value={selectedWorkflowPath}
+                      onChange={(e) => setSelectedWorkflowPath(e.target.value)}
+                    >
+                      {localWorkflows.map((workflow) => (
+                        <option key={workflow.path} value={workflow.path}>
+                          {workflow.name} · {workflow.installation}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void handleImportWorkflow(selectedWorkflowPath)}
+                      disabled={!selectedWorkflowPath || importingWorkflow}
+                      className="btn-primary shrink-0 text-xs"
+                    >
+                      {importingWorkflow ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileJson2 className="w-3.5 h-3.5" />}
+                      读取
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-tavern-text-muted">
+                    {loadingWorkflows ? '正在扫描本机安装…' : '未检测到 Desktop 工作流，可手动选择文件。'}
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void handleImportWorkflow()}
+                  disabled={importingWorkflow}
+                  className="inline-flex items-center gap-1.5 text-xs text-tavern-text-soft hover:text-tavern-accent transition-colors"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  选择其他 JSON
+                </button>
+
+                {(workflowMessage || form.workflowName) && (
+                  <div className={cn(
+                    'text-xs rounded-lg px-2.5 py-2 border',
+                    workflowMessage?.success !== false
+                      ? 'border-tavern-success/25 bg-tavern-success/10 text-tavern-success'
+                      : 'border-tavern-danger/25 bg-tavern-danger/10 text-tavern-danger',
+                  )}>
+                    {workflowMessage?.text ?? `已载入 ${form.workflowName}`}
+                  </div>
+                )}
+              </div>
+
+              <details className="group">
+                <summary className="cursor-pointer text-xs text-tavern-text-muted hover:text-tavern-text select-none">
+                  高级：查看或粘贴 API 工作流 JSON
+                </summary>
+                <div className="mt-2">
+                  <textarea
+                    className="textarea text-xs font-mono min-h-36"
+                    value={form.workflow ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, workflow: e.target.value, workflowName: undefined }))}
+                    placeholder="也可以直接粘贴 ComfyUI 导出的 API 格式工作流"
+                    spellCheck={false}
+                  />
+                  <p className="text-xs text-tavern-text-muted mt-1 leading-relaxed">
+                    支持 {'{{prompt}}'}、{'{{negative_prompt}}'}、{'{{width}}'}、{'{{height}}'}、{'{{seed}}'}、{'{{steps}}'}、{'{{cfg}}'}、{'{{sampler}}'}、{'{{scheduler}}'} 和 {'{{checkpoint}}'} 占位符。
+                  </p>
+                </div>
+              </details>
+            </>
           )}
         </>
       )}

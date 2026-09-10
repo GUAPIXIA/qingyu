@@ -204,6 +204,8 @@ function customComfyWorkflow(
 
   // 对核心节点做自动映射；自定义节点可继续使用上面的占位符。
   const textNodes: Array<[string, ComfyNode]> = []
+  const positiveTextNodeIds = new Set<string>()
+  const negativeTextNodeIds = new Set<string>()
   for (const [nodeId, node] of Object.entries(workflow)) {
     if (!node || typeof node !== 'object' || !node.inputs || typeof node.class_type !== 'string') {
       throw new Error(`ComfyUI 工作流节点 ${nodeId} 格式无效，请导出 API 格式工作流`)
@@ -216,6 +218,10 @@ function customComfyWorkflow(
       node.inputs.height = height
     }
     if (node.class_type === 'KSampler' || node.class_type === 'KSamplerAdvanced') {
+      const positive = node.inputs.positive
+      const negative = node.inputs.negative
+      if (Array.isArray(positive) && typeof positive[0] === 'string') positiveTextNodeIds.add(positive[0])
+      if (Array.isArray(negative) && typeof negative[0] === 'string') negativeTextNodeIds.add(negative[0])
       if ('seed' in node.inputs || node.class_type === 'KSampler') node.inputs.seed = seed
       if ('noise_seed' in node.inputs) node.inputs.noise_seed = seed
       if ('steps' in node.inputs) node.inputs.steps = config.steps ?? 20
@@ -231,10 +237,10 @@ function customComfyWorkflow(
   let hasNegativeNode = false
   for (const [nodeId, node] of textNodes) {
     const label = `${nodeId} ${node._meta?.title ?? ''}`.toLowerCase()
-    if (label.includes('negative')) {
+    if (negativeTextNodeIds.has(nodeId) || label.includes('negative')) {
       node.inputs.text = negativePrompt
       hasNegativeNode = true
-    } else if (label.includes('positive')) {
+    } else if (positiveTextNodeIds.has(nodeId) || label.includes('positive')) {
       node.inputs.text = prompt
       hasPositiveNode = true
     } else {

@@ -41,8 +41,15 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
     switchPersona: vi.fn().mockResolvedValue(true),
     toggleLorebook: vi.fn().mockResolvedValue(true),
     getTokenUsage: vi.fn().mockReturnValue({ total: 1234, max: 8192 }),
-    callAiHelper: vi.fn().mockResolvedValue('1girl, red dress, sunlight'),
+    callAiHelper: vi.fn().mockResolvedValue('<prompt>1girl, red dress, sunlight</prompt>'),
     getRecentMessages: vi.fn().mockReturnValue([]),
+    getActiveImageGen: vi.fn().mockReturnValue({
+      name: 'SD', provider: 'sd-webui', model: 'anime', baseUrl: '', size: '512x512', quality: 'standard',
+      workflowName: undefined, workflow: undefined,
+    }),
+    beginImageGeneration: vi.fn().mockReturnValue('job-1'),
+    updateImageGeneration: vi.fn(),
+    finishImageGeneration: vi.fn(),
     userName: '用户',
     ...overrides,
   } as unknown as CommandContext
@@ -302,6 +309,8 @@ describe('imagine 命令', () => {
     await findCommand('imagine')!.execute(['a cat'], ctx)
     expect(window.api.imageGen.generate).toHaveBeenCalledWith('a cat', undefined)
     expect(ctx.addImageMessage).toHaveBeenCalledWith(['data:image/png;base64,x'], 'a cat')
+    expect(ctx.beginImageGeneration).toHaveBeenCalledWith('generating')
+    expect(ctx.finishImageGeneration).toHaveBeenCalledWith('job-1')
   })
 
   it('--mode face 时使用竖图尺寸', async () => {
@@ -328,6 +337,36 @@ describe('imagine 命令', () => {
     expect(ctx.callAiHelper).toHaveBeenCalled()
     expect(ctx.notify).toHaveBeenCalledWith(expect.stringContaining('提示词: 1girl'))
     expect(ctx.addImageMessage).toHaveBeenCalledWith(['data:image/png;base64,x'], '1girl, red dress, sunlight')
+  })
+
+  it('Z-Image 工作流自动使用自然语言提示词协议', async () => {
+    const ctx = makeCtx({
+      getActiveImageGen: vi.fn().mockReturnValue({
+        name: 'comfy', provider: 'comfyui', model: '', baseUrl: 'http://127.0.0.1:8000',
+        size: '1080x1920', quality: 'standard', workflowName: 'image_z_image_turbo', workflow: '{}',
+      }),
+      callAiHelper: vi.fn().mockResolvedValue('<prompt>A cinematic moonlit room with two figures by the window.</prompt>'),
+    })
+    await findCommand('imagine')!.execute([], ctx)
+    const [systemPrompt] = (ctx.callAiHelper as any).mock.calls[0]
+    expect(systemPrompt).toContain('自然语言')
+    expect(systemPrompt).toContain('<prompt>')
+    expect(systemPrompt).not.toContain('best quality, masterpiece')
+    expect(window.api.imageGen.generate).toHaveBeenCalledWith(
+      'A cinematic moonlit room with two figures by the window.', undefined,
+    )
+  })
+
+  it('AI 返回分析文本时自动重试一次，仍无效则不调用生图', async () => {
+    const callAiHelper = vi.fn()
+      .mockResolvedValueOnce('We need answer as image prompt generator.')
+      .mockResolvedValueOnce('Need final only.')
+    const ctx = makeCtx({ callAiHelper })
+    await findCommand('imagine')!.execute([], ctx)
+    expect(callAiHelper).toHaveBeenCalledTimes(2)
+    expect(window.api.imageGen.generate).not.toHaveBeenCalled()
+    expect(ctx.notify).toHaveBeenCalledWith('提示词生成失败，请重试')
+    expect(ctx.finishImageGeneration).toHaveBeenCalledWith('job-1')
   })
   it('AI 提示词为空时提示失败', async () => {
     const ctx = makeCtx({ callAiHelper: vi.fn().mockResolvedValue('   ') })

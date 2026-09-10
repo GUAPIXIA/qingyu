@@ -1,6 +1,7 @@
 import type { IpcMain } from 'electron'
 import { createLogger } from '../services/logger'
 import { generateImage, testImageGenConnection, type ImageGenOptions } from '../services/imageGen'
+import { importLocalComfyWorkflow, listLocalComfyWorkflows } from '../services/comfyWorkflow'
 import { readJson, DIRS } from '../services/storage'
 import { join } from 'node:path'
 import { sanitizeApiKey } from '../utils/pathGuard'
@@ -119,5 +120,18 @@ export function registerImageGenIPC(ipcMain: IpcMain): void {
   ipcMain.handle('imageGen:testConnection', async (_e, config: { provider: string; baseUrl: string; apiKey: string }) => {
     log.info('测试连接', { provider: config.provider, baseUrl: config.baseUrl })
     return testImageGenConnection(config)
+  })
+
+  ipcMain.handle('imageGen:listLocalComfyWorkflows', async () => {
+    try {
+      return { success: true, workflows: await listLocalComfyWorkflows() }
+    } catch (err) {
+      log.error('读取 ComfyUI Desktop 工作流失败', { error: err instanceof Error ? err.message : String(err) })
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('imageGen:importLocalComfyWorkflow', async (_e, path?: string) => {
+    return importLocalComfyWorkflow(path)
   })
 }

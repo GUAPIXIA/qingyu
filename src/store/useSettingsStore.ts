@@ -32,6 +32,8 @@ export interface ActiveImageGenProfile {
   baseUrl: string
   size: string
   quality: string
+  workflowName?: string
+  workflow?: string
 }
 
 interface SettingsState {
@@ -453,6 +455,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       baseUrl: m.baseUrl,
       size: m.size,
       quality: m.quality,
+      workflowName: m.workflowName,
+      workflow: m.workflow,
     }
   },
 

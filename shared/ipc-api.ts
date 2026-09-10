@@ -387,6 +387,32 @@ export interface ImageGenTestResult {
   error?: string
 }
 
+export interface LocalComfyWorkflow {
+  path: string
+  name: string
+  installation: string
+  modifiedAt: number
+}
+
+export interface ComfyWorkflowImportResult {
+  success: boolean
+  canceled?: boolean
+  error?: string
+  sourceName?: string
+  workflow?: string
+  nodeCount?: number
+  converted?: boolean
+  settings?: {
+    size?: string
+    steps?: number
+    cfgScale?: number
+    sampler?: string
+    scheduler?: string
+    model?: string
+    negativePrompt?: string
+  }
+}
+
 export interface ImageGenAPI {
   generate(prompt: string, options?: {
     negativePrompt?: string
@@ -398,6 +424,8 @@ export interface ImageGenAPI {
     baseUrl: string
     apiKey: string
   }): Promise<ImageGenTestResult>
+  listLocalComfyWorkflows(): Promise<{ success: boolean; workflows?: LocalComfyWorkflow[]; error?: string }>
+  importLocalComfyWorkflow(path?: string): Promise<ComfyWorkflowImportResult>
 }
 
 // ===================== 正则表达式接口 =====================

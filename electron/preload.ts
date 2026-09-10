@@ -261,6 +261,8 @@ const ttsApi: TTSAPI = {
 const imageGenApi: ImageGenAPI = {
   generate: (prompt, options) => ipcRenderer.invoke('imageGen:generate', prompt, options),
   testConnection: (config) => ipcRenderer.invoke('imageGen:testConnection', config),
+  listLocalComfyWorkflows: () => ipcRenderer.invoke('imageGen:listLocalComfyWorkflows'),
+  importLocalComfyWorkflow: (path) => ipcRenderer.invoke('imageGen:importLocalComfyWorkflow', path),
 }
 
 // ---- 文件 ----

@@ -13,7 +13,7 @@ describe('ImageGenModelsSection', () => {
     })
   })
 
-  it('提供 ComfyUI 配置入口和 API 工作流字段', () => {
+  it('提供 ComfyUI Desktop 工作流入口和高级 JSON 字段', () => {
     render(<ImageGenModelsSection />)
 
     fireEvent.click(screen.getByRole('button', { name: '添加生图模型' }))
@@ -21,7 +21,8 @@ describe('ImageGenModelsSection', () => {
 
     expect(screen.getByDisplayValue('http://127.0.0.1:8188')).toBeTruthy()
     expect(screen.getByText('Checkpoint 文件名')).toBeTruthy()
-    expect(screen.getByText('API 工作流 JSON（可选）')).toBeTruthy()
+    expect(screen.getByText('ComfyUI Desktop 工作流')).toBeTruthy()
+    fireEvent.click(screen.getByText('高级：查看或粘贴 API 工作流 JSON'))
     expect(screen.getByPlaceholderText(/粘贴 ComfyUI 导出的 API 格式工作流/)).toBeTruthy()
   })
 })
