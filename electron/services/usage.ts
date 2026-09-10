@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
 import type { UsageRecord } from '../../shared/types'
+import { getUsageDayKey } from '../../shared/usageDate'
 
 const log = createLogger('usage')
 
@@ -118,7 +119,7 @@ export interface AggregatedUsage {
 }
 
 /** 按维度聚合用量，返回数组按 totalChars 降序 */
-export function aggregateUsage(records: UsageRecord[], groupBy: UsageGroupBy): AggregatedUsage[] {
+export function aggregateUsage(records: UsageRecord[], groupBy: UsageGroupBy, timeZone?: string): AggregatedUsage[] {
   const map = new Map<string, AggregatedUsage>()
   for (const r of records) {
     let key: string
@@ -133,7 +134,7 @@ export function aggregateUsage(records: UsageRecord[], groupBy: UsageGroupBy): A
         key = r.model
         break
       case 'day':
-        key = new Date(r.timestamp).toISOString().slice(0, 10)
+        key = getUsageDayKey(r.timestamp, timeZone)
         break
       default:
         key = 'unknown'
@@ -155,8 +156,10 @@ export function aggregateUsage(records: UsageRecord[], groupBy: UsageGroupBy): A
     agg.count += 1
   }
   const result = Array.from(map.values())
-  // 按 totalChars 降序
-  result.sort((a, b) => b.totalChars - a.totalChars)
+  // 日视图按日期倒序供表格展示；其他维度按用量降序。
+  result.sort(groupBy === 'day'
+    ? (a, b) => b.key.localeCompare(a.key)
+    : (a, b) => b.totalChars - a.totalChars)
   return result
 }
 

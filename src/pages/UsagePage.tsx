@@ -2,11 +2,15 @@ import { useState, useEffect, useCallback } from 'react'
 import { BarChart3, Trash2, Download, Hash, Type } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { formatCharCount } from '../utils/charCounter'
+import { resolveUsageTimeZone, startOfUsageDay } from '../../shared/usageDate'
+import { useSettingsStore } from '../store/useSettingsStore'
 
 type GroupBy = 'character' | 'session' | 'day' | 'model'
 type TimeRange = 'today' | '7d' | '30d' | 'all'
 
 export function UsagePage() {
+  const configuredTimeZone = useSettingsStore((state) => state.settings.timezone)
+  const timeZone = resolveUsageTimeZone(configuredTimeZone)
   const [summary, setSummary] = useState<{ totalInput: number; totalOutput: number; totalChars: number; count: number } | null>(null)
   const [records, setRecords] = useState<Array<{ key: string; inputChars: number; outputChars: number; totalChars: number; count: number }>>([])
   const [groupBy, setGroupBy] = useState<GroupBy>('character')
@@ -21,16 +25,16 @@ export function UsagePage() {
     setLoadError(null)
     const now = Date.now()
     const ranges: Record<TimeRange, number | undefined> = {
-      today: now - 24 * 60 * 60 * 1000,
-      '7d': now - 7 * 24 * 60 * 60 * 1000,
-      '30d': now - 30 * 24 * 60 * 60 * 1000,
+      today: startOfUsageDay(now, timeZone),
+      '7d': startOfUsageDay(now, timeZone, -6),
+      '30d': startOfUsageDay(now, timeZone, -29),
       all: undefined,
     }
     const startTs = ranges[timeRange]
     const filter = startTs ? { startTs } : {}
     const [summaryR, recordsR] = await Promise.allSettled([
       window.api.usage.summary(filter),
-      window.api.usage.aggregate(filter, groupBy),
+      window.api.usage.aggregate(filter, groupBy, timeZone),
     ])
     if (summaryR.status === 'fulfilled') setSummary(summaryR.value)
     if (recordsR.status === 'fulfilled') setRecords(recordsR.value)
@@ -62,7 +66,7 @@ export function UsagePage() {
       }
     }
     setKeyNameMap(nameMap)
-  }, [groupBy, timeRange])
+  }, [groupBy, timeRange, timeZone])
 
   useEffect(() => {
     loadData()
@@ -190,24 +194,45 @@ export function UsagePage() {
         {/* 日趋势图表 */}
         {dailyData.length > 0 && (
           <div className="bg-tavern-bg-soft rounded-xl p-4 border border-tavern-border-soft mb-6">
-            <div className="text-sm font-medium mb-3">每日字符用量趋势</div>
-            <div className="flex items-end gap-1" style={{ height: '120px' }}>
-              {dailyData.map((d, i) => {
-                const height = maxDailyChars > 0 ? (d.totalChars / maxDailyChars) * 100 : 0
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${d.key}: ${formatCharCount(d.totalChars)} 字符`}>
-                    <div className="w-full flex flex-col justify-end" style={{ height: '100px' }}>
-                      <div
-                        className="w-full rounded-t bg-tavern-accent/70 hover:bg-tavern-accent transition-colors min-h-[2px]"
-                        style={{ height: `${Math.max(height, 2)}%` }}
-                      />
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="text-sm font-medium">每日字符用量趋势</div>
+              <span className="rounded-full border border-tavern-border-soft bg-tavern-bg px-2 py-1 text-[10px] font-medium text-tavern-text-soft">
+                峰值 {formatCharCount(maxDailyChars)}
+              </span>
+            </div>
+            <div className="relative">
+              <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex h-[100px] flex-col justify-between py-px">
+                {[0, 1, 2].map((line) => (
+                  <span key={line} className="block border-t border-tavern-border-soft/70 dark:border-tavern-border/60" />
+                ))}
+              </div>
+              <div className="relative flex items-end gap-1" style={{ height: '122px' }}>
+                {dailyData.map((d) => {
+                  const height = maxDailyChars > 0 ? (d.totalChars / maxDailyChars) * 100 : 0
+                  return (
+                    <div
+                      key={d.key}
+                      className="group flex min-w-0 flex-1 flex-col items-center gap-1"
+                      title={`${d.key}: ${formatCharCount(d.totalChars)} 字符`}
+                    >
+                      <div className="flex h-[100px] w-full flex-col justify-end">
+                        <div
+                          data-usage-bar
+                          className="group/bar relative min-h-[4px] w-full rounded-t bg-tavern-accent/85 shadow-sm transition-[height,background-color] hover:bg-tavern-accent-hover dark:bg-tavern-accent"
+                          style={{ height: `${Math.max(height, 4)}%` }}
+                        >
+                          <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-tavern-border bg-tavern-bg-card px-2 py-1 text-[10px] font-medium text-tavern-text opacity-0 shadow-lg transition-opacity group-hover/bar:opacity-100">
+                            {formatCharCount(d.totalChars)} 字符
+                          </span>
+                        </div>
+                      </div>
+                      <span className="w-full truncate text-center text-[11px] font-medium text-tavern-text-muted dark:text-tavern-text-soft">
+                        {d.key.slice(5)}
+                      </span>
                     </div>
-                    <span className="text-[10px] text-tavern-text-muted truncate w-full text-center">
-                      {d.key.slice(5)}
-                    </span>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}

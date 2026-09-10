@@ -37,9 +37,9 @@ export function registerUsageIPC(ipcMain: IpcMain): void {
   })
 
   // 按维度聚合用量
-  ipcMain.handle('usage:aggregate', async (_e, filter: UsageFilter, groupBy: UsageGroupBy) => {
+  ipcMain.handle('usage:aggregate', async (_e, filter: UsageFilter, groupBy: UsageGroupBy, timeZone?: string) => {
     const records = queryUsage(filter ?? {})
-    return aggregateUsage(records, groupBy)
+    return aggregateUsage(records, groupBy, timeZone)
   })
 
   // 全局汇总

@@ -474,7 +474,7 @@ export interface LogAPI {
 export interface UsageAPI {
   record(record: Omit<UsageRecord, 'id'>): Promise<UsageRecord>
   query(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }): Promise<UsageRecord[]>
-  aggregate(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }, groupBy: 'character' | 'session' | 'day' | 'model'): Promise<AggregatedUsage[]>
+  aggregate(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }, groupBy: 'character' | 'session' | 'day' | 'model', timeZone?: string): Promise<AggregatedUsage[]>
   summary(filter?: { startTs?: number; endTs?: number }): Promise<UsageSummary>
   clear(): Promise<void>
 }

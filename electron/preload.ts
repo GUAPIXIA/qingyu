@@ -306,7 +306,7 @@ const logApi: LogAPI = {
 const usageApi: UsageAPI = {
   record: (record) => ipcRenderer.invoke('usage:record', record),
   query: (filter) => ipcRenderer.invoke('usage:query', filter),
-  aggregate: (filter, groupBy) => ipcRenderer.invoke('usage:aggregate', filter, groupBy),
+  aggregate: (filter, groupBy, timeZone) => ipcRenderer.invoke('usage:aggregate', filter, groupBy, timeZone),
   summary: (filter) => ipcRenderer.invoke('usage:summary', filter),
   clear: () => ipcRenderer.invoke('usage:clear'),
 }
