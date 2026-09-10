@@ -1,4 +1,4 @@
-import type { Character, Preset, Lorebook } from '../../../shared/types'
+import type { Character, Preset, Lorebook, ChatParams } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
@@ -18,12 +18,18 @@ export interface CommandContextDeps {
   /** 输入框上方短暂通知 */
   showNotification: (msg: string) => void
   /** 静默调用 AI 辅助（hook 侧闭包，包装了 profile/preset 解析；接收对象参数） */
-  callAiHelper: (opts: { systemPrompt: string; userContent: string; temperature?: number; maxTokens?: number }) => Promise<string>
+  callAiHelper: (opts: {
+    messages: ChatParams['messages']
+    temperature?: number
+    maxTokens?: number
+    reasoningMode?: ChatParams['reasoningMode']
+  }) => Promise<string>
 }
 
 export function createCommandContext(deps: CommandContextDeps): CommandContext {
   const { character, loadActivePresetLorebook, showNotification, callAiHelper: runAiHelper } = deps
   const chatStore = useChatStore.getState()
+  const originSessionId = chatStore.currentSessionId
   const settings = useSettingsStore.getState().settings
   const { characters, selectCharacter } = useCharacterStore.getState()
 
@@ -34,7 +40,7 @@ export function createCommandContext(deps: CommandContextDeps): CommandContext {
       await chatStore.sendMessage(content, imgs, character, preset, lorebooks)
     },
     addImageMessage: async (imgs, content) => {
-      await chatStore.addStandaloneMessage(content ?? '', imgs, character, 'system')
+      await chatStore.addStandaloneMessage(content ?? '', imgs, character, 'system', originSessionId ?? undefined)
     },
     clearChat: async () => {
       await chatStore.clearChat(character.id)
@@ -84,6 +90,17 @@ export function createCommandContext(deps: CommandContextDeps): CommandContext {
       await chatStore.swipeMessage(lastAssistant.id, direction, character)
     },
     notify: showNotification,
+    getActiveImageGen: () => useSettingsStore.getState().getActiveImageGen(),
+    beginImageGeneration: (stage) => {
+      if (!originSessionId) return null
+      return useChatStore.getState().beginImageGeneration(character.id, originSessionId, stage)?.id ?? null
+    },
+    updateImageGeneration: (id, stage) => {
+      useChatStore.getState().updateImageGeneration(id, stage)
+    },
+    finishImageGeneration: (id) => {
+      useChatStore.getState().finishImageGeneration(id)
+    },
     switchCharacter: async (nameOrId) => {
       const target = characters.find(c => c.id === nameOrId || c.name === nameOrId)
       if (target) {
@@ -161,10 +178,13 @@ export function createCommandContext(deps: CommandContextDeps): CommandContext {
     },
     callAiHelper: async (systemPrompt, userContent, options) => {
       return runAiHelper({
-        systemPrompt,
-        userContent,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
         temperature: options?.temperature,
         maxTokens: options?.maxTokens,
+        reasoningMode: options?.reasoningMode,
       })
     },
     getRecentMessages: (count) => {

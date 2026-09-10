@@ -7,12 +7,14 @@ import { isConnectionConfigured } from '../../utils/defaults'
 import { getDisplayName } from '../../utils/variables'
 import { expandMacros, buildMacroContext } from '../../utils/macros'
 import { getEffectiveQuickReplies } from '../../utils/quickReply'
-import type { Character, Preset, Lorebook, QuickReply, QuickReplyStore, Message } from '../../../shared/types'
+import type { Character, Preset, Lorebook, QuickReply, QuickReplyStore, Message, ChatParams, MessageGenerationKind } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
 import { registerBuiltinCommands } from '../../commands/builtin'
-import { callAiHelper as callAiHelperCore, ensureUserPerspective, buildContinueContext } from './aiInputHelper'
+import { callAiHelper as callAiHelperCore, parseContinueResult, buildContinueContext } from './aiInputHelper'
 import { createCommandContext } from './commandContext'
+import { resolveNarrativeMode } from '../../../shared/narrativeMode'
+import { resolveContinueIntensity, resolveContinueLength, CONTINUE_INTENSITY_PARAMS, CONTINUE_LENGTH_PARAMS } from '../../../shared/continueIntensity'
 
 // 初始化内置命令（只执行一次）
 let commandsInitialized = false
@@ -75,7 +77,7 @@ export function useChatInputState(
   // P-6 修复：字段级选择器订阅——此前无选择器订阅整个 store，
   // 流式 flush（50ms 一次）时输入框整体重渲染
   const currentSessionId = useChatStore((s) => s.currentSessionId)
-  const [text, setText] = useState(() => {
+  const [text, setTextState] = useState(() => {
     // 启动时恢复草稿
     try {
       return localStorage.getItem(draftKey(character.id, currentSessionId)) ?? ''
@@ -83,6 +85,17 @@ export function useChatInputState(
       return ''
     }
   })
+  const draftGenerationKindRef = useRef<MessageGenerationKind>('manual')
+  /** 用户键入或外部填充都重新视为手动草稿。 */
+  const setText = (value: string) => {
+    draftGenerationKindRef.current = 'manual'
+    setTextState(value)
+  }
+  /** AI 输入续写保留来源，直到用户再次编辑或发送。 */
+  const setContinuedText = (value: string) => {
+    draftGenerationKindRef.current = 'input_continue'
+    setTextState(value)
+  }
   const [images, setImages] = useState<string[]>([])
   const [isAiProcessing, setIsAiProcessing] = useState(false)
   const [originalText, setOriginalText] = useState<string | null>(null)
@@ -302,6 +315,7 @@ export function useChatInputState(
     // 普通消息发送
     const content = text.trim()
     const imgs = [...images]
+    const generationKind = draftGenerationKindRef.current
     setText('')
     setImages([])
     setOriginalText(null)
@@ -310,7 +324,7 @@ export function useChatInputState(
     const [preset, lorebooks] = await loadActivePresetLorebook()
     const replyId = replyTo?.id ?? undefined
     onCancelReply?.()
-    await sendMessage(content, imgs, character, preset, lorebooks, replyId)
+    await sendMessage(content, imgs, character, preset, lorebooks, replyId, generationKind)
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -383,11 +397,11 @@ export function useChatInputState(
    * @returns AI 生成的完整文本
    */
   const callAiHelper = async (opts: {
-    systemPrompt: string
-    userContent: string
+    messages: ChatParams['messages']
     temperature?: number
     maxTokens?: number
     onChunk?: (delta: string, full: string) => void
+    reasoningMode?: ChatParams['reasoningMode']
   }): Promise<string> => {
     const p = getActiveProfile()
     if (!p) throw new Error('未配置 API 连接')
@@ -412,30 +426,50 @@ export function useChatInputState(
       const hasInput = originalInput.trim().length > 0
       const userName = settings.userName || '用户'
       const charName = getDisplayName(character)
+      const narrativeMode = resolveNarrativeMode(
+        store.sessions.find((session) => session.id === store.currentSessionId)?.narrativeMode,
+      )
+      // 剧情转折强度与最终内容长度是两个独立的全局设置。
+      const intensity = resolveContinueIntensity(settings.continueIntensity)
+      const length = resolveContinueLength(settings.continueLength)
+      const intensityParams = CONTINUE_INTENSITY_PARAMS[intensity]
+      const lengthParams = CONTINUE_LENGTH_PARAMS[length]
 
       // 续写上下文与后处理逻辑抽取至 aiInputHelper.ts
       const contextMessages = buildContinueContext({
-        character, userName, charName, recentMessages, originalInput, hasInput,
+        character, userName, charName, recentMessages, originalInput, hasInput, narrativeMode, intensity, length,
       })
 
-      const result = await callAiHelper({
-        systemPrompt: contextMessages[0].content,
-        userContent: contextMessages[contextMessages.length - 1].content,
-        temperature: 0.7,
-        maxTokens: 300,
-        onChunk: (_delta, full) => {
-          setText(hasInput ? originalInput + ensureUserPerspective(full, userName, charName) : ensureUserPerspective(full, userName, charName))
-        },
+      const requestContinuation = (messages: ChatParams['messages'], temperature: number) => callAiHelper({
+        messages,
+        temperature,
+        // 输出预算只由长度档位控制，避免提高转折强度时被动拉长正文。
+        maxTokens: lengthParams.maxTokens,
+        reasoningMode: 'disabled',
       })
-      const cleaned = ensureUserPerspective(result, userName, charName)
+
+      let rawResult = await requestContinuation(contextMessages, intensityParams.temperature)
+      let cleaned = parseContinueResult(rawResult, userName, charName, narrativeMode)
+      if (!cleaned) {
+        const retryMessages = contextMessages.map((message, index) => index === 0
+          ? {
+              ...message,
+              content: `${message.content}\n\n上一次输出格式无效。不要分析、解释或复述规则；只返回一组包含简体中文正文的 <continuation>...</continuation>。`,
+            }
+          : message)
+        rawResult = await requestContinuation(retryMessages, Math.min(intensityParams.temperature, 0.3))
+        cleaned = parseContinueResult(rawResult, userName, charName, narrativeMode)
+      }
       if (cleaned) {
-        setText(hasInput ? originalInput + cleaned : cleaned)
+        setContinuedText(hasInput ? originalInput + cleaned : cleaned)
       } else {
         setText(originalInput)
+        showNotification('续写未返回有效的中文正文，请重试或更换模型')
       }
     } catch (err) {
       logError('ChatInput:continue', err)
       setText(originalInput)
+      showNotification(`续写失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setIsAiProcessing(false)
     }
@@ -449,15 +483,16 @@ export function useChatInputState(
 
     try {
       const result = await callAiHelper({
-        systemPrompt: '你是一个文字润色助手。请润色以下文本，修正语法、改善表达、使其更加流畅自然，但保持原意和语气不变。只输出润色后的文本，不要添加任何解释或额外内容。',
-        userContent: text,
+        messages: [
+          { role: 'system', content: '你是一个文字润色助手。请润色以下文本，修正语法、改善表达、使其更加流畅自然，但保持原意和语气不变。只输出润色后的文本，不要添加任何解释或额外内容。' },
+          { role: 'user', content: text },
+        ],
         temperature: 0.3,
         maxTokens: 800,
-        onChunk: (_delta, full) => {
-          setText(full)
-        },
+        reasoningMode: 'disabled',
       })
-      if (!result) setText(originalText ?? '')
+      if (result) setText(result)
+      else setText(originalText ?? '')
     } catch (err) {
       logError('ChatInput:polish', err)
       setText(originalText!)

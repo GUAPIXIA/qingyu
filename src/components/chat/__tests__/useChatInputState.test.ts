@@ -108,7 +108,7 @@ describe('useChatInputState', () => {
       await result.current.handleSend()
     })
     expect(useChatStore.getState().sendMessage).toHaveBeenCalledWith(
-      '你好世界', [], expect.objectContaining({ id: 'char-1' }), null, [], undefined
+      '你好世界', [], expect.objectContaining({ id: 'char-1' }), null, [], undefined, 'manual'
     )
     expect(result.current.text).toBe('')
   })
@@ -133,7 +133,7 @@ describe('useChatInputState', () => {
       await result.current.handleSend()
     })
     expect(useChatStore.getState().sendMessage).toHaveBeenCalledWith(
-      '回复内容', [], expect.anything(), null, [], 'reply-1'
+      '回复内容', [], expect.anything(), null, [], 'reply-1', 'manual'
     )
     expect(onCancelReply).toHaveBeenCalled()
   })
@@ -164,5 +164,57 @@ describe('useChatInputState', () => {
       await result.current.handleSend()
     })
     expect(useChatStore.getState().sendMessage).not.toHaveBeenCalled()
+  })
+
+  function mockAiHelperResponses(responses: string[]) {
+    let onChunk: ((data: { requestId: string; text: string }) => void) | undefined
+    let onDone: ((requestId: string) => void) | undefined
+    vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
+      onChunk = callback
+      return vi.fn()
+    })
+    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
+      onDone = callback
+      return vi.fn()
+    })
+    vi.mocked(window.api.ai.onError).mockImplementation(() => vi.fn())
+    vi.mocked(window.api.ai.chat).mockImplementation(async (params) => {
+      const response = responses.shift() ?? ''
+      queueMicrotask(() => {
+        onChunk?.({ requestId: params.requestId, text: response })
+        onDone?.(params.requestId)
+      })
+    })
+  }
+
+  it('续写遇到英文分析时自动重试，只将中文标签正文写入输入框', async () => {
+    mockAiHelperResponses([
+      'We need continue the story. Need final only.',
+      '<continuation>门外忽然传来急促的敲门声，走廊里的灯随之闪烁起来。</continuation>',
+    ])
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+    act(() => result.current.setText('夜已经很深。'))
+
+    await act(async () => {
+      await result.current.handleAiContinue()
+    })
+
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(window.api.ai.chat).mock.calls[0][0].reasoningMode).toBe('disabled')
+    expect(result.current.text).toBe('夜已经很深。门外忽然传来急促的敲门声，走廊里的灯随之闪烁起来。')
+    expect(result.current.text).not.toContain('We need')
+  })
+
+  it('续写重试后仍无有效中文时恢复原输入', async () => {
+    mockAiHelperResponses(['Need final only.', '<continuation>Return a third-person paragraph.</continuation>'])
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+    act(() => result.current.setText('保留这段原文。'))
+
+    await act(async () => {
+      await result.current.handleAiContinue()
+    })
+
+    expect(result.current.text).toBe('保留这段原文。')
+    expect(result.current.notification).toContain('有效的中文正文')
   })
 })

@@ -59,6 +59,31 @@ const PROFILE: ConnectionProfile = {
   maxContext: 8192,
 }
 
+type AiChunkHandler = Parameters<typeof window.api.ai.onChunk>[0]
+type AiDoneHandler = Parameters<typeof window.api.ai.onDone>[0]
+type AiErrorHandler = Parameters<typeof window.api.ai.onError>[0]
+
+function captureAiHelperCallbacks() {
+  const handlers: {
+    chunk?: AiChunkHandler
+    done?: AiDoneHandler
+    error?: AiErrorHandler
+  } = {}
+  vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
+    handlers.chunk = callback
+    return vi.fn()
+  })
+  vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
+    handlers.done = callback
+    return vi.fn()
+  })
+  vi.mocked(window.api.ai.onError).mockImplementation((callback) => {
+    handlers.error = callback
+    return vi.fn()
+  })
+  return handlers
+}
+
 function setupStores(connected = true) {
   useCharacterStore.setState({ characters: [createCharacter()] })
   useSettingsStore.setState({
@@ -131,7 +156,7 @@ describe('ChatInput', () => {
       fireEvent.click(sendBtn)
       await waitFor(() => {
         expect(useChatStore.getState().sendMessage).toHaveBeenCalledWith(
-          '你好', [], expect.objectContaining({ id: 'char-1' }), null, [], undefined
+          '你好', [], expect.objectContaining({ id: 'char-1' }), null, [], undefined, 'manual'
         )
       })
     })
@@ -224,8 +249,137 @@ describe('ChatInput', () => {
     })
 
     it('续写按钮始终显示', async () => {
-      const { getByTitle } = await renderChatInput(<ChatInput character={createCharacter()} />)
+      const { getByTitle, getByLabelText } = await renderChatInput(<ChatInput character={createCharacter()} />)
       expect(getByTitle('AI 根据上下文续写输入文字')).toBeTruthy()
+      expect(getByTitle('AI 根据上下文续写输入文字')).toHaveClass('h-[30px]')
+      expect(getByLabelText('续写设置')).toHaveClass('h-[30px]')
+    })
+
+    it('全局叙事续写保留完整输出预算，回填输入框后可由用户发送', async () => {
+      const handlers = captureAiHelperCallbacks()
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', narrativeMode: 'omniscient' } as never],
+        messages: [createMessage({ role: 'assistant', content: '守卫封锁了通往港口的道路。' })],
+      })
+      const sendMessage = useChatStore.getState().sendMessage
+      const { getByTitle, getByPlaceholderText } = await renderChatInput(<ChatInput character={createCharacter()} />)
+
+      fireEvent.click(getByTitle('AI 根据上下文续写输入文字'))
+      await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
+
+      const params = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
+      expect(params?.maxTokens).toBe(1024)
+      expect(params?.messages[0].content).toContain('剧情推进助手')
+
+      const continuation = '就在封锁收紧时，城外忽然响起警钟，一封加急密令迫使守卫重新部署。'
+      await act(async () => {
+        handlers.chunk?.({ requestId: params!.requestId, text: `<continuation>${continuation}</continuation>` })
+        handlers.done?.(params!.requestId)
+      })
+      await waitFor(() => expect((getByPlaceholderText(/输入消息/) as HTMLTextAreaElement).value).toBe(continuation))
+
+      fireEvent.click(getByTitle('发送'))
+      await waitFor(() => {
+        expect(sendMessage).toHaveBeenCalledWith(
+          continuation, [], expect.objectContaining({ id: 'char-1' }), null, [], undefined, 'input_continue',
+        )
+      })
+    })
+
+    it('续写结果为空时在输入框上方显示可见反馈', async () => {
+      const handlers = captureAiHelperCallbacks()
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', narrativeMode: 'omniscient' } as never],
+      })
+      const { getByTitle, findByText } = await renderChatInput(<ChatInput character={createCharacter()} />)
+
+      fireEvent.click(getByTitle('AI 根据上下文续写输入文字'))
+      await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0].requestId
+
+      await act(async () => {
+        handlers.done?.(requestId!)
+      })
+
+      await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(2))
+      const retryRequestId = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0].requestId
+      await act(async () => {
+        handlers.done?.(retryRequestId!)
+      })
+
+      expect(await findByText('续写未返回有效的中文正文，请重试或更换模型')).toBeTruthy()
+    })
+
+    it('代入模式连续输出角色视角内容时不回填输入框', async () => {
+      const handlers = captureAiHelperCallbacks()
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', narrativeMode: 'immersive' } as never],
+      })
+      const { getByTitle, getByPlaceholderText, findByText } = await renderChatInput(
+        <ChatInput character={createCharacter()} />,
+      )
+
+      fireEvent.click(getByTitle('AI 根据上下文续写输入文字'))
+      await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
+      const params = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
+
+      await act(async () => {
+        handlers.chunk?.({ requestId: params!.requestId, text: '<continuation>Alice：你好呀，很高兴见到你。</continuation>' })
+        handlers.done?.(params!.requestId)
+      })
+
+      await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(2))
+      const retryParams = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
+      await act(async () => {
+        handlers.chunk?.({ requestId: retryParams!.requestId, text: '<continuation>Alice：你好呀，很高兴见到你。</continuation>' })
+        handlers.done?.(retryParams!.requestId)
+      })
+
+      expect(await findByText('续写未返回有效的中文正文，请重试或更换模型')).toBeTruthy()
+      // 输入框恢复原状，不回填角色台词
+      expect((getByPlaceholderText(/输入消息/) as HTMLTextAreaElement).value).toBe('')
+    })
+
+    it('剧情转折强度与内容长度分别改变温度、输出预算和提示词', async () => {
+      const handlers = captureAiHelperCallbacks()
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, continueIntensity: 'bold', continueLength: 'extended' },
+      }))
+      const { getByTitle } = await renderChatInput(<ChatInput character={createCharacter()} />)
+
+      fireEvent.click(getByTitle('AI 根据上下文续写输入文字'))
+      await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
+      const params = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
+      expect(params?.temperature).toBe(0.85)
+      expect(params?.maxTokens).toBe(2048)
+      expect(params?.messages[0].content).toContain('重大转折、场景变化或新的冲突方向')
+      expect(params?.messages[0].content).toContain('可写多个自然段')
+      await act(async () => {
+        handlers.chunk?.({ requestId: params!.requestId, text: '<continuation>远处的警钟骤然响起。</continuation>' })
+        handlers.done?.(params!.requestId)
+      })
+    })
+
+    it('续写设置弹出面板：两个滑块与档位按钮分别写入全局设置', async () => {
+      const { getByLabelText, getByRole } = await renderChatInput(<ChatInput character={createCharacter()} />)
+
+      fireEvent.click(getByLabelText('续写设置'))
+      const lengthSlider = getByLabelText('最终输入框内容长度') as HTMLInputElement
+      const intensitySlider = getByLabelText('剧情转折强度') as HTMLInputElement
+      expect(lengthSlider.value).toBe('1') // 默认 standard 档
+      expect(intensitySlider.value).toBe('2') // 默认 active 档
+
+      fireEvent.change(lengthSlider, { target: { value: '0' } })
+      expect(useSettingsStore.getState().settings.continueLength).toBe('brief')
+
+      fireEvent.change(intensitySlider, { target: { value: '0' } })
+      expect(useSettingsStore.getState().settings.continueIntensity).toBe('subtle')
+
+      fireEvent.click(getByRole('button', { name: '长篇' }))
+      expect(useSettingsStore.getState().settings.continueLength).toBe('extended')
+
+      fireEvent.click(getByRole('button', { name: '强烈转折' }))
+      expect(useSettingsStore.getState().settings.continueIntensity).toBe('bold')
     })
   })
 })

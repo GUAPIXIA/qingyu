@@ -12,6 +12,7 @@ export const openaiAdapter: AIAdapter = {
     // Vision：带图片的消息转换为 content 数组格式（无图片消息保持字符串，兼容非视觉服务）
     const messages = toOpenAIContent(params.messages)
 
+    const lowerModel = model.toLowerCase()
     const body: Record<string, unknown> = {
       model,
       messages,
@@ -23,6 +24,12 @@ export const openaiAdapter: AIAdapter = {
       stream,
     }
 
+    // DeepSeek V4 默认可能进入高强度思考。续写、润色、生图提示词等辅助请求
+    // 只需要最终正文，显式关闭思考可避免推理内容占满输出预算或泄漏到业务结果。
+    if (params.reasoningMode === 'disabled' && lowerModel.includes('deepseek-v4')) {
+      body.thinking = { type: 'disabled' }
+    }
+
     // C-03 修复：传递工具定义给 API
     if (params.tools && params.tools.length > 0) {
       body.tools = params.tools
@@ -30,7 +37,6 @@ export const openaiAdapter: AIAdapter = {
     }
 
     // L-01 修复：推理模型支持 — 用词边界正则避免误匹配（如 gpt-3.5-turbo-1106 含 "o1"）
-    const lowerModel = model.toLowerCase()
     if (/\bo[134](?:-mini)?\b/.test(lowerModel) || lowerModel.includes('deepseek-r1')) {
       // OpenAI o 系列不支持 temperature/top_p 等参数
       delete body.temperature
@@ -52,7 +58,7 @@ export const openaiAdapter: AIAdapter = {
       body.stream_options = { include_usage: true }
     }
 
-    const response = await fetch(url, {
+    const sendRequest = () => fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -62,6 +68,22 @@ export const openaiAdapter: AIAdapter = {
       signal,
     })
 
+    let response = await sendRequest()
+    if (!response.ok) {
+      const errText = await response.text()
+      // 聚合代理未必透传 DeepSeek 的 thinking 扩展参数。仅当 400 明确指出
+      // thinking 不受支持时去掉该字段重试，避免吞掉其他真实请求错误。
+      const thinkingUnsupported = response.status === 400
+        && body.thinking !== undefined
+        && /thinking/i.test(errText)
+      if (thinkingUnsupported) {
+        delete body.thinking
+        response = await sendRequest()
+      } else {
+        throw new Error(`OpenAI API 错误 ${response.status}: ${sanitizeApiKey(errText)}${imageErrorHint(params.messages)}`)
+      }
+    }
+
     if (!response.ok) {
       const errText = await response.text()
       throw new Error(`OpenAI API 错误 ${response.status}: ${sanitizeApiKey(errText)}${imageErrorHint(params.messages)}`)
@@ -70,14 +92,15 @@ export const openaiAdapter: AIAdapter = {
     if (!stream) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data: any = await response.json()
-      const content = data.choices?.[0]?.message?.content ?? ''
-      // 处理推理模型的 reasoning_content（DeepSeek-R1 等）
-      const reasoning = data.choices?.[0]?.message?.reasoning_content
+      const choice = data.choices?.[0]
+      const content = choice?.message?.content ?? ''
+      // 处理推理模型思考内容：DeepSeek 系为 reasoning_content，OpenRouter 统一字段为 reasoning
+      const reasoning = choice?.message?.reasoning_content
+        ?? (typeof choice?.message?.reasoning === 'string' ? choice.message.reasoning : undefined)
       let fullContent = reasoning ? `<thought>${reasoning}</thought>\n\n${content}` : content
       // B-05 修复：归一化内容中可能含有的 <thinking> 标签
       fullContent = normalizeThoughtTags(fullContent)
-      onChunk(fullContent)
-      // 解析 usage
+      // 解析 usage（即使正文为空也记录，保留 token 消耗统计）
       if (onUsage && data.usage) {
         onUsage({
           promptTokens: data.usage.prompt_tokens ?? 0,
@@ -86,10 +109,21 @@ export const openaiAdapter: AIAdapter = {
         })
       }
       // C-03 修复：检测 tool_calls 并附加标记供 toolLoop 解析
-      const toolCalls = data.choices?.[0]?.message?.tool_calls
+      const toolCalls = choice?.message?.tool_calls
       if (toolCalls && toolCalls.length > 0) {
+        onChunk(fullContent)
         return fullContent + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']'
       }
+      if (!fullContent.trim()) {
+        // 上游 200 但消息体为空（审核拦截 / 思考未透出 / 上游异常）：
+        // 此前被静默当作成功，表现为“请求完成却是空内容”，现在显式报错。
+        throw new Error(
+          choice?.finish_reason === 'content_filter'
+            ? '模型响应被上游内容审核拦截（content_filter），请调整对话内容或更换模型'
+            : '模型未返回任何内容，请重试或检查模型是否可用',
+        )
+      }
+      onChunk(fullContent)
       return fullContent
     }
 
@@ -100,6 +134,11 @@ export const openaiAdapter: AIAdapter = {
     let fullText = ''
     let buffer = ''
     let pendingReasoning = ''
+    // 流级观测：上游常把错误/审核结果塞进 SSE 事件体而不是 HTTP 状态码，
+    // 此前被静默忽略，表现为“请求完成但内容全空”（长记忆/续写无内容）。
+    const STREAM_ERROR_FLAG = '__openaiStreamError'
+    let sawAnyDelta = false
+    let finishReason: string | null = null
     // C-03 修复：收集流式 tool_calls delta
     // BUG-14 修复：key 不再默认 0——index 缺失时优先用 id 关联，再退化为自增键，避免互相覆盖
     const streamedToolCalls = new Map<string, { id: string; type: string; function: { name: string; arguments: string } }>()
@@ -110,6 +149,15 @@ export const openaiAdapter: AIAdapter = {
       const data = rawData.trim()
       if (!data || data === '[DONE]') return
       const handleParsed = (parsed: ReturnType<typeof JSON.parse>) => {
+        // 流内错误事件（OpenRouter 等代理会把上游错误作为 data 事件下发）：必须透出
+        if (parsed && typeof parsed === 'object' && parsed.error) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw: any = parsed.error
+          const msg = typeof raw === 'string' ? raw : (raw?.message || JSON.stringify(raw))
+          const err = new Error(`模型流式返回错误：${msg}`) as Error & Record<string, unknown>
+          err[STREAM_ERROR_FLAG] = true
+          throw err
+        }
         // 解析 usage（最后 chunk）
         if (parsed.usage && onUsage) {
           onUsage({
@@ -118,19 +166,25 @@ export const openaiAdapter: AIAdapter = {
             totalTokens: parsed.usage.total_tokens ?? 0,
           })
         }
-        const delta = parsed.choices?.[0]?.delta
+        const choice = parsed.choices?.[0]
+        if (choice?.finish_reason) finishReason = choice.finish_reason
+        const delta = choice?.delta
         if (!delta) return
 
-        // 处理推理内容（DeepSeek-R1, Qwen-QwQ 等）
-        if (delta.reasoning_content) {
+        // 处理推理内容：DeepSeek-R1 / Qwen-QwQ 为 reasoning_content，OpenRouter 统一字段为 reasoning
+        const reasoningDelta = delta.reasoning_content
+          ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
+        if (reasoningDelta) {
+          sawAnyDelta = true
           if (!pendingReasoning) {
             pendingReasoning = '<thought>'
           }
-          pendingReasoning += delta.reasoning_content
+          pendingReasoning += reasoningDelta
         }
 
         // 正常内容
         if (delta.content) {
+          sawAnyDelta = true
           // 如果之前有推理内容未闭合，先闭合
           if (pendingReasoning) {
             pendingReasoning += '</thought>\n\n'
@@ -169,9 +223,15 @@ export const openaiAdapter: AIAdapter = {
       }
       try {
         handleParsed(JSON.parse(data))
-      } catch {
+      } catch (err) {
+        // 流内错误必须中止整个解析；其余解析失败才走逐行回退
+        if ((err as Error & Record<string, unknown>)?.[STREAM_ERROR_FLAG]) throw err
         for (const line of data.split('\n')) {
-          try { handleParsed(JSON.parse(line)) } catch { /* 忽略解析错误（可能是注释行或心跳） */ }
+          try { handleParsed(JSON.parse(line)) }
+          catch (inner) {
+            if ((inner as Error & Record<string, unknown>)?.[STREAM_ERROR_FLAG]) throw inner
+            /* 忽略解析错误（可能是注释行或心跳） */
+          }
         }
       }
     }
@@ -209,6 +269,16 @@ export const openaiAdapter: AIAdapter = {
       try { reader.releaseLock() } catch { /* ignore */ }
     }
 
+    // 零输出防御：流正常结束但没有任何 content/推理增量（流内错误已在上方抛出，
+    // 剩下的是审核拦截、上游异常提前终止等）。此前按“成功但空内容”静默返回，
+    // 长记忆/续写表现为“完成却无内容”，现在转为明确错误供上层展示真实原因。
+    if (!sawAnyDelta && streamedToolCalls.size === 0) {
+      throw new Error(
+        finishReason === 'content_filter'
+          ? '模型响应被上游内容审核拦截（content_filter），请调整对话内容或更换模型'
+          : '模型未返回任何内容，请重试或检查模型是否可用',
+      )
+    }
     // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
     if (streamedToolCalls.size > 0) {
       const toolCallsArray = Array.from(streamedToolCalls.values())

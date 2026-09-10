@@ -2,6 +2,9 @@
  * 斜杠命令注册中心
  */
 import type { Character } from '../../shared/types'
+import type { ChatParams } from '../../shared/types'
+import type { ActiveImageGenProfile } from '../store/useSettingsStore'
+import type { ImageGenerationStage } from '../store/chatTypes'
 
 /** 命令执行上下文：暴露 store 方法和当前角色给命令 */
 export interface CommandContext {
@@ -24,6 +27,12 @@ export interface CommandContext {
   swipeMessage: (direction: number) => Promise<void>
   /** 显示提示信息（在输入框上方短暂显示） */
   notify: (msg: string) => void
+  /** 当前激活生图配置的安全摘要。 */
+  getActiveImageGen: () => ActiveImageGenProfile | null
+  /** 开始当前会话的临时生图任务；已有任务或无会话时返回 null。 */
+  beginImageGeneration: (stage: ImageGenerationStage) => string | null
+  updateImageGeneration: (id: string, stage: ImageGenerationStage) => void
+  finishImageGeneration: (id: string) => void
   /** 切换角色 */
   switchCharacter: (nameOrId: string) => Promise<boolean>
   /** 切换预设 */
@@ -35,7 +44,11 @@ export interface CommandContext {
   /** 获取当前 Token 用量 */
   getTokenUsage: () => { total: number; max: number }
   /** 静默调用 AI（不显示在对话中），返回完整响应 */
-  callAiHelper: (systemPrompt: string, userContent: string, options?: { temperature?: number; maxTokens?: number }) => Promise<string>
+  callAiHelper: (systemPrompt: string, userContent: string, options?: {
+    temperature?: number
+    maxTokens?: number
+    reasoningMode?: ChatParams['reasoningMode']
+  }) => Promise<string>
   /** 获取最近 N 条对话消息（含角色名） */
   getRecentMessages: (count: number) => { role: 'user' | 'assistant'; content: string; name: string }[]
   /** 当前用户名 */

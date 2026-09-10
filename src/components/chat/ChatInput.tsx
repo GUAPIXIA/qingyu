@@ -1,6 +1,9 @@
-import { Send, Square, ImagePlus, X, Sparkles, Loader2, Undo2, Wand2, Reply } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Send, Square, ImagePlus, X, Sparkles, Loader2, Undo2, Wand2, Reply, SlidersHorizontal, AlignLeft, Zap } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useChatInputState } from './useChatInputState'
+import { useSettingsStore } from '../../store/useSettingsStore'
+import { CONTINUE_INTENSITY_OPTIONS, CONTINUE_LENGTH_OPTIONS, resolveContinueIntensity, resolveContinueLength } from '../../../shared/continueIntensity'
 import type { Character, Message } from '../../../shared/types'
 
 interface ChatInputProps {
@@ -9,6 +12,108 @@ interface ChatInputProps {
   /** 引用回复：被引用消息（P1-5） */
   replyTo?: Message | null
   onCancelReply?: () => void
+}
+
+interface ContinueSliderOption<T extends string> {
+  value: T
+  label: string
+  description: string
+}
+
+function ContinueSliderControl<T extends string>({
+  title,
+  icon,
+  ariaLabel,
+  options,
+  value,
+  onChange,
+}: {
+  title: string
+  icon: ReactNode
+  ariaLabel: string
+  options: ReadonlyArray<ContinueSliderOption<T>>
+  value: T
+  onChange: (value: T) => void
+}) {
+  const index = Math.max(options.findIndex((option) => option.value === value), 0)
+  const ratio = index / Math.max(options.length - 1, 1)
+  const activeOption = options[index] ?? options[0]
+  const progress = `${ratio * 100}%`
+  const thumbPosition = `calc(7px + (100% - 14px) * ${ratio})`
+
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold text-tavern-text">
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-tavern-accent-soft text-tavern-accent">
+            {icon}
+          </span>
+          <span>{title}</span>
+        </div>
+        <span className="shrink-0 rounded-full border border-tavern-accent/20 bg-tavern-accent-soft px-2 py-0.5 text-[10px] font-semibold text-tavern-accent">
+          {activeOption?.label}
+        </span>
+      </div>
+
+      <div className="mt-2.5 px-1">
+        <div className="group relative h-[18px]">
+          <span className="pointer-events-none absolute inset-x-[7px] top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-tavern-bg-hover" aria-hidden>
+            <span
+              className="block h-full rounded-full bg-tavern-accent transition-[width] duration-200"
+              style={{ width: progress }}
+            />
+          </span>
+          <span
+            className="pointer-events-none absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-tavern-accent-soft opacity-0 transition-opacity group-focus-within:opacity-100"
+            style={{ left: thumbPosition }}
+            aria-hidden
+          />
+          <span
+            className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-tavern-accent shadow-[0_0_0_3px_var(--tavern-bg-card),0_0_0_4px_var(--color-accent),0_3px_8px_rgba(26,22,37,0.24)] transition-[left,transform] duration-200 group-hover:scale-110"
+            style={{ left: thumbPosition }}
+            aria-hidden
+          />
+          <input
+            type="range"
+            min={0}
+            max={options.length - 1}
+            step={1}
+            value={index}
+            onChange={(event) => {
+              const option = options[Number(event.target.value)]
+              if (option) onChange(option.value)
+            }}
+            className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+            aria-label={ariaLabel}
+            aria-valuetext={activeOption?.label}
+          />
+        </div>
+      </div>
+
+      <div className="mt-1.5 grid grid-cols-4 gap-1">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={option.value === value}
+            className={cn(
+              'rounded-lg px-1 py-1.5 text-[10px] whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/40',
+              option.value === value
+                ? 'bg-tavern-accent-soft text-tavern-accent font-semibold'
+                : 'text-tavern-text-soft/70 hover:bg-tavern-bg-soft hover:text-tavern-text',
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="mt-1.5 min-h-[17px] px-1 text-[10px] leading-[1.55] text-tavern-text-muted">
+        {activeOption?.description}
+      </p>
+    </section>
+  )
 }
 
 /**
@@ -23,6 +128,13 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
     runQuickReply, handleSend, handleKeyDown, handleImageSelect, removeImage,
     handleAiContinue, handleAiPolish, settings,
   } = useChatInputState(character, replyTo, onCancelReply)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const [continueMenuOpen, setContinueMenuOpen] = useState(false)
+  const continueLength = resolveContinueLength(settings.continueLength)
+  const continueIntensity = resolveContinueIntensity(settings.continueIntensity)
+  const lengthOption = CONTINUE_LENGTH_OPTIONS.find((option) => option.value === continueLength) ?? CONTINUE_LENGTH_OPTIONS[1]
+  const intensityIndex = CONTINUE_INTENSITY_OPTIONS.findIndex((o) => o.value === continueIntensity)
+  const intensityOption = CONTINUE_INTENSITY_OPTIONS[intensityIndex] ?? CONTINUE_INTENSITY_OPTIONS[2]
 
   return (
     <div className="border-t border-tavern-border-soft bg-tavern-bg-soft px-4 py-3">
@@ -227,24 +339,87 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
         {/* AI 辅助按钮 */}
         {!isStreaming && (
           <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={handleAiContinue}
-              disabled={isAiProcessing}
-              className={cn(
-                'px-2.5 py-1.5 rounded-lg text-xs border transition-colors flex items-center gap-1',
-                isAiProcessing
-                  ? 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted cursor-not-allowed'
-                  : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:text-tavern-accent hover:border-tavern-accent'
+            <div className="relative flex items-center">
+              <button
+                onClick={handleAiContinue}
+                disabled={isAiProcessing}
+                className={cn(
+                  'h-[30px] px-2.5 rounded-l-lg border border-r-0 text-xs transition-colors flex items-center gap-1',
+                  isAiProcessing
+                    ? 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted cursor-not-allowed'
+                    : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:text-tavern-accent hover:border-tavern-accent hover:border-r-0'
+                )}
+                title="AI 根据上下文续写输入文字"
+              >
+                {isAiProcessing ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3" />
+                )}
+                续写
+              </button>
+              <button
+                onClick={() => setContinueMenuOpen((v) => !v)}
+                disabled={isAiProcessing}
+                aria-label="续写设置"
+                aria-expanded={continueMenuOpen}
+                aria-controls="continue-settings-menu"
+                className={cn(
+                  'relative z-50 h-[30px] px-1.5 rounded-r-lg border text-xs transition-all inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/40',
+                  continueMenuOpen
+                    ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent shadow-sm'
+                    : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted hover:text-tavern-accent hover:border-tavern-accent',
+                )}
+                title={`续写设置：${lengthOption.label} · ${intensityOption.label}`}
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+              </button>
+
+              {continueMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setContinueMenuOpen(false)} />
+                  <div
+                    id="continue-settings-menu"
+                    role="dialog"
+                    aria-label="续写设置"
+                    className="absolute bottom-full right-0 z-50 mb-3 w-80 rounded-2xl border border-tavern-border-soft bg-tavern-bg-card p-4 shadow-[0_18px_48px_rgba(26,22,37,0.18),0_3px_12px_rgba(26,22,37,0.08)] animate-fade-in"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="absolute -bottom-1.5 right-2.5 h-3 w-3 rotate-45 border-b border-r border-tavern-border-soft bg-tavern-bg-card" aria-hidden />
+
+                    <div className="flex items-center gap-2.5">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-tavern-accent-soft text-tavern-accent">
+                        <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+                      </span>
+                      <div>
+                        <p className="text-xs font-semibold text-tavern-text">续写设置</p>
+                        <p className="mt-0.5 text-[10px] text-tavern-text-soft/70">篇幅与剧情变化分别控制</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3.5 rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/45 p-3">
+                      <ContinueSliderControl
+                        title="最终输入框内容长度"
+                        icon={<AlignLeft className="h-3.5 w-3.5" aria-hidden />}
+                        ariaLabel="最终输入框内容长度"
+                        options={CONTINUE_LENGTH_OPTIONS}
+                        value={continueLength}
+                        onChange={(value) => updateSettings({ continueLength: value })}
+                      />
+                      <div className="my-3 border-t border-tavern-border-soft" />
+                      <ContinueSliderControl
+                        title="剧情转折强度"
+                        icon={<Zap className="h-3.5 w-3.5" aria-hidden />}
+                        ariaLabel="剧情转折强度"
+                        options={CONTINUE_INTENSITY_OPTIONS}
+                        value={continueIntensity}
+                        onChange={(value) => updateSettings({ continueIntensity: value })}
+                      />
+                    </div>
+                  </div>
+                </>
               )}
-              title="AI 根据上下文续写输入文字"
-            >
-              {isAiProcessing ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <Sparkles className="w-3 h-3" />
-              )}
-              续写
-            </button>
+            </div>
             {text.trim().length > 0 && (
               <button
                 onClick={handleAiPolish}

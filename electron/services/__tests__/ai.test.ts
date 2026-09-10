@@ -172,6 +172,71 @@ describe('OpenAI 适配器', () => {
     expect(onChunk).toHaveBeenCalledWith('正文')
   })
 
+  it('流式：OpenRouter 统一字段 delta.reasoning 同样收进 thought 块', async () => {
+    const params = makeParams({ stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{"reasoning":"思考中"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"正文"}}]}\n\n',
+      'data: [DONE]\n',
+    ]))
+    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+    expect(result).toBe('<thought>思考中</thought>\n\n正文')
+  })
+
+  it('流式：SSE 流内 error 事件透出为异常，而不是静默空内容', async () => {
+    const params = makeParams({ stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{"content":"半句"}}]}\n\n',
+      'data: {"error":{"message":"upstream blocked"}}\n\n',
+    ]))
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('模型流式返回错误：upstream blocked')
+  })
+
+  it('流式：整个流零输出时抛错（此前表现为“成功但内容为空”）', async () => {
+    const params = makeParams({ stream: true })
+    fetchMock.mockResolvedValue(streamResponse(['data: [DONE]\n']))
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('模型未返回任何内容')
+  })
+
+  it('流式：finish_reason 为 content_filter 且无正文时报审核拦截', async () => {
+    const params = makeParams({ stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"content_filter"}]}\n\n',
+      'data: [DONE]\n',
+    ]))
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('content_filter')
+  })
+
+  it('非流式：OpenRouter 统一字段 reasoning 包进 thought，正文优先', async () => {
+    const params = makeParams({ stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: '正文', reasoning: '思考过程' }, finish_reason: 'stop' }],
+    }))
+    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+    expect(result).toBe('<thought>思考过程</thought>\n\n正文')
+  })
+
+  it('非流式：正文与思考均为空时显式报错', async () => {
+    const params = makeParams({ stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: '' }, finish_reason: 'stop' }],
+    }))
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('模型未返回任何内容')
+  })
+
+  it('非流式：finish_reason 为 content_filter 时报审核拦截', async () => {
+    const params = makeParams({ stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: '' }, finish_reason: 'content_filter' }],
+    }))
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('content_filter')
+  })
+
   it('流式：收集 tool_calls delta 并附加标记', async () => {
     const params = makeParams({ stream: true })
     // 用 JSON.stringify 构造事件，避免手写转义错误
@@ -218,6 +283,36 @@ describe('OpenAI 适配器', () => {
     expect(body.top_p).toBeUndefined()
     expect(body.frequency_penalty).toBeUndefined()
     expect(body.reasoning_effort).toBe('medium')
+  })
+
+  it('DeepSeek V4 辅助请求关闭 thinking', async () => {
+    const params = makeParams({
+      stream: false,
+      model: 'deepseek/deepseek-v4-flash',
+      reasoningMode: 'disabled',
+    })
+    fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'ok' } }] }))
+
+    await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.thinking).toEqual({ type: 'disabled' })
+  })
+
+  it('服务不支持 thinking 参数时移除参数透明重试一次', async () => {
+    const params = makeParams({
+      stream: false,
+      model: 'deepseek/deepseek-v4-flash',
+      reasoningMode: 'disabled',
+    })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'unknown parameter: thinking' } }, 400))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: 'ok' } }] }))
+
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)).resolves.toBe('ok')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).thinking).toEqual({ type: 'disabled' })
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).thinking).toBeUndefined()
   })
 
   it('OpenCode Go kimi-k3：采样参数强制修正（temperature=1 / top_p=0.95）', async () => {
