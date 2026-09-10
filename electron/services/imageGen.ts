@@ -8,7 +8,12 @@
  */
 
 import { createLogger } from './logger'
-import type { ImageGenModelConfig } from '../../shared/types'
+import type {
+  ComfyImageGenConfig,
+  ImageGenModelConfig,
+  OpenAiImageGenConfig,
+  SdWebUiImageGenConfig,
+} from '../../shared/types'
 
 const log = createLogger('imageGen')
 
@@ -42,7 +47,7 @@ export async function generateImage(
   log.info('生图请求', {
     provider: config.provider,
     prompt: cleanedPrompt.substring(0, 80),
-    size: options?.size ?? config.size,
+    size: options?.size,
   })
 
   try {
@@ -54,7 +59,7 @@ export async function generateImage(
       case 'openai':
         return await openaiGenerate(config, cleanedPrompt, options)
       default:
-        return { success: false, error: `不支持的 provider: ${config.provider}` }
+        return { success: false, error: `不支持的 provider: ${(config as { provider: string }).provider}` }
     }
   } catch (err) {
     log.error('生图失败', { provider: config.provider, error: err instanceof Error ? err.message : String(err) })
@@ -83,7 +88,7 @@ interface ComfyHistoryEntry {
   outputs?: Record<string, { images?: ComfyOutputImage[] }>
 }
 
-function comfyHeaders(config: ImageGenModelConfig, json = false): Record<string, string> {
+function comfyHeaders(config: ComfyImageGenConfig, json = false): Record<string, string> {
   const headers: Record<string, string> = {}
   if (json) headers['Content-Type'] = 'application/json'
   const apiKey = config.apiKey?.trim()
@@ -96,13 +101,14 @@ function comfyHeaders(config: ImageGenModelConfig, json = false): Record<string,
 }
 
 function defaultComfyWorkflow(
-  config: ImageGenModelConfig,
+  config: ComfyImageGenConfig,
   prompt: string,
   negativePrompt: string,
   width: number,
   height: number,
 ): ComfyWorkflow {
-  if (!config.model.trim()) {
+  const checkpoint = config.model?.trim()
+  if (!checkpoint) {
     throw new Error('ComfyUI 内置工作流需要填写模型文件名，或提供自定义 API 工作流 JSON')
   }
 
@@ -111,10 +117,10 @@ function defaultComfyWorkflow(
       class_type: 'KSampler',
       inputs: {
         seed: Math.floor(Math.random() * 0x7fffffff),
-        steps: config.steps ?? 20,
-        cfg: config.cfgScale ?? 7,
-        sampler_name: config.sampler || 'euler',
-        scheduler: config.scheduler || 'normal',
+        steps: 20,
+        cfg: 7,
+        sampler_name: 'euler',
+        scheduler: 'normal',
         denoise: 1,
         model: ['4', 0],
         positive: ['6', 0],
@@ -124,7 +130,7 @@ function defaultComfyWorkflow(
     },
     '4': {
       class_type: 'CheckpointLoaderSimple',
-      inputs: { ckpt_name: config.model },
+      inputs: { ckpt_name: checkpoint },
     },
     '5': {
       class_type: 'EmptyLatentImage',
@@ -167,8 +173,74 @@ function replaceWorkflowPlaceholders(value: unknown, replacements: Record<string
   )
 }
 
+/** 判断输入值是否为 `["节点ID", 槽位]` 形式的引用。 */
+function isNodeReference(value: unknown): value is [string, number] {
+  return Array.isArray(value) && value.length >= 2 && typeof value[0] === 'string'
+}
+
+/** 从输出节点反向遍历，得到参与最终产出的节点集合。 */
+function reachableNodeIds(workflow: ComfyWorkflow, outputIds: string[]): Set<string> {
+  const reachable = new Set<string>()
+  const stack = [...outputIds]
+  while (stack.length > 0) {
+    const nodeId = stack.pop()
+    if (!nodeId || reachable.has(nodeId)) continue
+    const node = workflow[nodeId]
+    if (!node) continue
+    reachable.add(nodeId)
+    for (const value of Object.values(node.inputs)) {
+      if (isNodeReference(value) && !reachable.has(value[0])) stack.push(value[0])
+    }
+  }
+  return reachable
+}
+
+const SAMPLER_CLASS_TYPES = new Set(['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'])
+const IMAGE_OUTPUT_CLASS_TYPES = new Set(['SaveImage', 'PreviewImage'])
+
+/**
+ * 找出可达输出的第一个采样阶段。
+ *
+ * 多阶段工作流（基础生成 → 精修 → 放大）中，只有基础阶段接收随机种子，
+ * 后续阶段继承前一阶段结果。判据是「latent 输入不引用另一个采样器」，
+ * 即链条的入口阶段。找不到时返回 null，调用方退回随机化全部阶段。
+ */
+function firstReachableSamplerId(workflow: ComfyWorkflow): string | null {
+  const outputIds = Object.keys(workflow).filter((id) => IMAGE_OUTPUT_CLASS_TYPES.has(workflow[id].class_type))
+  if (outputIds.length === 0) return null
+  const reachable = reachableNodeIds(workflow, outputIds)
+  for (const nodeId of Object.keys(workflow)) {
+    if (!reachable.has(nodeId) || !SAMPLER_CLASS_TYPES.has(workflow[nodeId].class_type)) continue
+    const inputs = workflow[nodeId].inputs
+    const upstreamIsSampler = ['latent_image', 'samples', 'latent'].some((inputName) => {
+      const value = inputs[inputName]
+      return isNodeReference(value) && SAMPLER_CLASS_TYPES.has(workflow[value[0]]?.class_type ?? '')
+    })
+    if (!upstreamIsSampler) return nodeId
+  }
+  return null
+}
+
+/**
+ * 应用用户保存的节点级覆盖。
+ *
+ * 键格式为 `节点ID.输入名`（如 `57:3.steps`），节点 ID 可能含 `:`，
+ * 故按最后一个 `.` 切分。只写目标节点的目标输入，不影响其他节点。
+ */
+function applyWorkflowOverrides(workflow: ComfyWorkflow, overrides: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(overrides)) {
+    const separator = key.lastIndexOf('.')
+    if (separator <= 0) continue
+    const nodeId = key.slice(0, separator)
+    const inputName = key.slice(separator + 1)
+    const node = workflow[nodeId]
+    if (!node) continue
+    node.inputs[inputName] = value
+  }
+}
+
 function customComfyWorkflow(
-  config: ImageGenModelConfig,
+  config: ComfyImageGenConfig,
   prompt: string,
   negativePrompt: string,
   width: number,
@@ -187,66 +259,86 @@ function customComfyWorkflow(
     throw new Error('ComfyUI 工作流必须是“API 格式”的节点对象')
   }
 
+  // 深拷贝快照，避免修改调用方持有的配置对象。
+  const copied = JSON.parse(JSON.stringify(rawWorkflow)) as ComfyWorkflow
+  for (const [nodeId, node] of Object.entries(copied)) {
+    if (!node || typeof node !== 'object' || !node.inputs || typeof node.class_type !== 'string') {
+      throw new Error(`ComfyUI 工作流节点 ${nodeId} 格式无效，请导出 API 格式工作流`)
+    }
+  }
+
+  // 占位符机制保留，用于兼容用户在自定义节点里手写的 `{{prompt}}` 等标记；
+  // 它不是主要通道，普通节点由下方的绑定与覆盖处理。
   const seed = Math.floor(Math.random() * 0x7fffffff)
-  const replacements: Record<string, unknown> = {
+  const workflow = replaceWorkflowPlaceholders(copied, {
     '{{prompt}}': prompt,
     '{{negative_prompt}}': negativePrompt,
     '{{width}}': width,
     '{{height}}': height,
     '{{seed}}': seed,
-    '{{steps}}': config.steps ?? 20,
-    '{{cfg}}': config.cfgScale ?? 7,
-    '{{sampler}}': config.sampler || 'euler',
-    '{{scheduler}}': config.scheduler || 'normal',
-    '{{checkpoint}}': config.model,
-  }
-  const workflow = replaceWorkflowPlaceholders(rawWorkflow, replacements) as ComfyWorkflow
+  }) as ComfyWorkflow
 
-  // 对核心节点做自动映射；自定义节点可继续使用上面的占位符。
-  const textNodes: Array<[string, ComfyNode]> = []
-  const positiveTextNodeIds = new Set<string>()
-  const negativeTextNodeIds = new Set<string>()
-  for (const [nodeId, node] of Object.entries(workflow)) {
-    if (!node || typeof node !== 'object' || !node.inputs || typeof node.class_type !== 'string') {
-      throw new Error(`ComfyUI 工作流节点 ${nodeId} 格式无效，请导出 API 格式工作流`)
-    }
-    if (node.class_type === 'CheckpointLoaderSimple' && config.model.trim()) {
-      node.inputs.ckpt_name = config.model
-    }
-    if (node.class_type === 'EmptyLatentImage' || node.class_type === 'EmptySD3LatentImage') {
-      node.inputs.width = width
-      node.inputs.height = height
-    }
-    if (node.class_type === 'KSampler' || node.class_type === 'KSamplerAdvanced') {
-      const positive = node.inputs.positive
-      const negative = node.inputs.negative
-      if (Array.isArray(positive) && typeof positive[0] === 'string') positiveTextNodeIds.add(positive[0])
-      if (Array.isArray(negative) && typeof negative[0] === 'string') negativeTextNodeIds.add(negative[0])
-      if ('seed' in node.inputs || node.class_type === 'KSampler') node.inputs.seed = seed
-      if ('noise_seed' in node.inputs) node.inputs.noise_seed = seed
-      if ('steps' in node.inputs) node.inputs.steps = config.steps ?? 20
-      if ('cfg' in node.inputs) node.inputs.cfg = config.cfgScale ?? 7
-      if ('sampler_name' in node.inputs) node.inputs.sampler_name = config.sampler || 'euler'
-      if ('scheduler' in node.inputs) node.inputs.scheduler = config.scheduler || 'normal'
-    }
-    if (node.class_type === 'CLIPTextEncode') textNodes.push([nodeId, node])
-  }
+  // 提示词只写入选定入口；bindings 仅保存自动识别无法唯一确定的场景。
+  const textNodes: Array<[string, ComfyNode]> = Object.entries(workflow)
+    .filter(([, node]) => node.class_type === 'CLIPTextEncode')
+  const positiveBound = config.bindings?.positivePromptNodeIds ?? []
+  const negativeBound = config.bindings?.negativePromptNodeIds ?? []
 
-  const unmatchedTextNodes: Array<[string, ComfyNode]> = []
   let hasPositiveNode = false
   let hasNegativeNode = false
+  const unmatchedTextNodes: Array<[string, ComfyNode]> = []
   for (const [nodeId, node] of textNodes) {
-    const label = `${nodeId} ${node._meta?.title ?? ''}`.toLowerCase()
-    if (negativeTextNodeIds.has(nodeId) || label.includes('negative')) {
-      node.inputs.text = negativePrompt
-      hasNegativeNode = true
-    } else if (positiveTextNodeIds.has(nodeId) || label.includes('positive')) {
+    if (positiveBound.includes(nodeId)) {
       node.inputs.text = prompt
       hasPositiveNode = true
+    } else if (negativeBound.includes(nodeId)) {
+      node.inputs.text = negativePrompt
+      hasNegativeNode = true
     } else {
       unmatchedTextNodes.push([nodeId, node])
     }
   }
+
+  // 无绑定（未产生歧义）时沿用自动识别：采样器引用优先，标题其次。
+  if (positiveBound.length === 0 && negativeBound.length === 0) {
+    const negativeTextNodeIds = new Set<string>()
+    const positiveTextNodeIds = new Set<string>()
+    for (const node of Object.values(workflow)) {
+      if (!SAMPLER_CLASS_TYPES.has(node.class_type)) continue
+      const positive = node.inputs.positive
+      const negative = node.inputs.negative
+      if (isNodeReference(positive)) positiveTextNodeIds.add(positive[0])
+      if (isNodeReference(negative)) negativeTextNodeIds.add(negative[0])
+    }
+    for (const [nodeId, node] of unmatchedTextNodes) {
+      const label = `${nodeId} ${node._meta?.title ?? ''}`.toLowerCase()
+      if (negativeTextNodeIds.has(nodeId) || label.includes('negative')) {
+        node.inputs.text = negativePrompt
+        hasNegativeNode = true
+      } else if (positiveTextNodeIds.has(nodeId) || label.includes('positive')) {
+        node.inputs.text = prompt
+        hasPositiveNode = true
+      }
+    }
+  } else {
+    // 已绑定部分入口时，剩余未绑定节点按标题兜底，避免提示词留空。
+    const remaining: Array<[string, ComfyNode]> = []
+    for (const [nodeId, node] of unmatchedTextNodes) {
+      const label = `${nodeId} ${node._meta?.title ?? ''}`.toLowerCase()
+      if (!hasNegativeNode && label.includes('negative')) {
+        node.inputs.text = negativePrompt
+        hasNegativeNode = true
+      } else if (!hasPositiveNode && label.includes('positive')) {
+        node.inputs.text = prompt
+        hasPositiveNode = true
+      } else {
+        remaining.push([nodeId, node])
+      }
+    }
+    unmatchedTextNodes.length = 0
+    unmatchedTextNodes.push(...remaining)
+  }
+
   if (!hasPositiveNode && unmatchedTextNodes[0]) {
     unmatchedTextNodes.shift()![1].inputs.text = prompt
   }
@@ -254,23 +346,37 @@ function customComfyWorkflow(
     unmatchedTextNodes.shift()![1].inputs.text = negativePrompt
   }
 
+  // 只随机化可达输出的第一个采样阶段，后续阶段继承其种子。
+  // 未显式指定种子覆盖时，随机化结果生效。
+  const seedStageId = firstReachableSamplerId(workflow)
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    if (!SAMPLER_CLASS_TYPES.has(node.class_type)) continue
+    if (seedStageId !== null && nodeId !== seedStageId) continue
+    if ('seed' in node.inputs) node.inputs.seed = seed
+    if ('noise_seed' in node.inputs) node.inputs.noise_seed = seed
+  }
+
+  // 用户显式保存的覆盖最后应用，优先级高于随机化。
+  if (config.overrides) applyWorkflowOverrides(workflow, config.overrides)
+
   return workflow
 }
 
 function buildComfyWorkflow(
-  config: ImageGenModelConfig,
+  config: ComfyImageGenConfig,
   prompt: string,
   options?: ImageGenOptions,
 ): ComfyWorkflow {
-  const [width, height] = parseSize(options?.size || config.size || '512x512')
-  const negativePrompt = options?.negativePrompt || config.negativePrompt || ''
+  const negativePrompt = options?.negativePrompt || ''
+  // 尺寸只作为占位符与内置工作流的初值；自定义工作流的尺寸由 overrides 控制。
+  const [width, height] = parseSize(options?.size || '512x512')
   return config.workflow?.trim()
     ? customComfyWorkflow(config, prompt, negativePrompt, width, height)
     : defaultComfyWorkflow(config, prompt, negativePrompt, width, height)
 }
 
 async function comfyuiGenerate(
-  config: ImageGenModelConfig,
+  config: ComfyImageGenConfig,
   prompt: string,
   options?: ImageGenOptions,
 ): Promise<ImageGenResult> {
@@ -398,7 +504,7 @@ function sanitizeOpenAiPrompt(str: string): string {
 // ===================== SD WebUI (Automatic1111) 适配器 =====================
 
 async function sdWebuiGenerate(
-  config: ImageGenModelConfig,
+  config: SdWebUiImageGenConfig,
   prompt: string,
   options?: ImageGenOptions,
 ): Promise<ImageGenResult> {
@@ -450,7 +556,7 @@ async function sdWebuiGenerate(
 // ===================== OpenAI DALL-E 适配器 =====================
 
 async function openaiGenerate(
-  config: ImageGenModelConfig,
+  config: OpenAiImageGenConfig,
   prompt: string,
   options?: ImageGenOptions,
 ): Promise<ImageGenResult> {

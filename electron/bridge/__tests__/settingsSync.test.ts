@@ -28,7 +28,7 @@ function makeSettings(): Settings {
     activeModel: 'gpt-4o',
     activePresetId: 'builtin-default',
     ttsModels: [{ id: 't1', name: 'T', provider: 'edge', model: 'x', apiKey: 'tts-secret', order: 0, voice: 'v', baseUrl: '', proxy: '', enabled: true }],
-    imageGenModels: [{ id: 'g1', name: 'G', provider: 'sd', model: 'm', apiKey: 'img-secret', order: 0, baseUrl: '', size: '', steps: 20, cfgScale: 7, negativePrompt: '', quality: 'standard', enabled: true }],
+    imageGenModels: [{ id: 'g1', name: 'G', provider: 'sd-webui', model: 'm', apiKey: 'img-secret', order: 0, baseUrl: '', size: '512x512', steps: 20, cfgScale: 7, negativePrompt: '', enabled: true }],
     visionModels: [{ id: 'v1', name: 'V', provider: 'openai', model: 'gpt-4o-mini', apiKey: 'vision-secret', enabled: true, order: 0 }],
     providers: {
       ...s.providers,

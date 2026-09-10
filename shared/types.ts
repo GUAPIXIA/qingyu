@@ -762,29 +762,80 @@ export interface TTSModelConfig {
   order: number
 }
 
-/** 生图模型配置 */
-export interface ImageGenModelConfig {
+/** 生图提供商 */
+export type ImageGenProvider = 'openai' | 'sd-webui' | 'comfyui'
+
+/** 生图配置的公共字段 */
+export interface ImageGenModelBase {
   id: string
   name: string
-  provider: string          // 'openai' | 'sd-webui' | 'comfyui'
-  model: string
   apiKey: string
   baseUrl: string
-  size: string
-  quality: string           // OpenAI DALL-E 用
   enabled: boolean
   order: number
-  // SD WebUI 特有参数（provider === 'sd-webui' 时使用）
+}
+
+/** OpenAI DALL-E 配置 */
+export interface OpenAiImageGenConfig extends ImageGenModelBase {
+  provider: 'openai'
+  model: string
+  size: string
+  quality: string
+}
+
+/** SD WebUI (A1111) 配置 */
+export interface SdWebUiImageGenConfig extends ImageGenModelBase {
+  provider: 'sd-webui'
+  model: string
+  size: string
   negativePrompt?: string
-  steps?: number            // 默认 20
-  cfgScale?: number         // 默认 7
-  sampler?: string          // 如 'Euler a'
-  /** ComfyUI API 格式工作流 JSON；留空时使用内置基础文生图工作流 */
-  workflow?: string
-  /** 导入的 ComfyUI Desktop 工作流名称，仅用于界面展示 */
+  steps?: number
+  cfgScale?: number
+  sampler?: string
+}
+
+/**
+ * ComfyUI 配置。
+ *
+ * 以工作流快照为唯一事实来源：参数只通过 `overrides` 按节点精确覆盖，
+ * 不再保存 SD WebUI 风格的通用字段。
+ */
+export interface ComfyImageGenConfig extends ImageGenModelBase {
+  provider: 'comfyui'
+  /** 可执行工作流快照；原文件移动或删除后仍可运行 */
+  workflow: string
+  workflowMeta?: ComfyWorkflowMeta
+  /** 仅在自动识别无法唯一确定时保存用户选择 */
+  bindings?: ComfyWorkflowBindings
+  /** 节点级覆盖，键为 `节点ID.输入名`，例如 `57:3.steps` */
+  overrides?: Record<string, unknown>
+  /**
+   * @deprecated 仅供内置基础工作流回退使用。
+   * 阶段四迁移会把内置工作流物化为真实快照，届时移除本字段。
+   */
+  model?: string
+  /** @deprecated 导入工作流时的来源名称，仅用于界面展示 */
   workflowName?: string
-  /** ComfyUI 调度器；默认 normal */
-  scheduler?: string
+}
+
+/** 生图模型配置；按 provider 判别 */
+export type ImageGenModelConfig = OpenAiImageGenConfig | SdWebUiImageGenConfig | ComfyImageGenConfig
+
+/** 工作流来源元信息，用于展示来源并检测文件更新 */
+export interface ComfyWorkflowMeta {
+  sourceName?: string
+  sourcePath?: string
+  nodeCount: number
+  converted: boolean
+  hash: string
+  analyzerVersion: number
+}
+
+/** 提示词与输出节点的角色绑定；只保存自动识别无法唯一确定的项 */
+export interface ComfyWorkflowBindings {
+  positivePromptNodeIds: string[]
+  negativePromptNodeIds?: string[]
+  outputNodeIds: string[]
 }
 
 export interface LocalModelPreferences {

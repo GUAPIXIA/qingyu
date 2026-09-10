@@ -27,7 +27,9 @@ import type {
   UsageSummary,
   CustomFont,
   QuickReply,
+  ComfyWorkflowMeta,
 } from './types'
+export type { ComfyWorkflowMeta } from './types'
 import type { LocalModelAPI } from './localModels'
 import type {
   LorebookCompatibilityReport,
@@ -482,15 +484,6 @@ export interface ComfyWorkflowAnalysis {
   parameterGroups: ComfyWorkflowParameterGroup[]
   dependencies: ComfyWorkflowDependency[]
   warnings: ComfyWorkflowWarning[]
-}
-
-export interface ComfyWorkflowMeta {
-  sourceName?: string
-  sourcePath?: string
-  nodeCount: number
-  converted: boolean
-  hash: string
-  analyzerVersion: number
 }
 
 export interface ComfyWorkflowImportResult {

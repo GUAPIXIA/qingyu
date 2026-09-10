@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
-import type { ImageGenModelConfig } from '../../../shared/types'
+import type { ImageGenModelConfig, ImageGenProvider } from '../../../shared/types'
 import type { ComfyWorkflowImportResult, LocalComfyWorkflow } from '../../../shared/ipc-api'
 import {
   Image, Plus, Trash2, Check, Eye, EyeOff,
@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 
 /** 提供商选项 */
-const PROVIDERS = [
+const PROVIDERS: Array<{ value: ImageGenProvider; label: string }> = [
   { value: 'openai', label: 'OpenAI DALL-E' },
   { value: 'sd-webui', label: 'SD WebUI (A1111)' },
   { value: 'comfyui', label: 'ComfyUI' },
@@ -34,37 +34,18 @@ const SD_SAMPLERS = [
   'DDIM', 'PLMS', 'UniPC',
 ]
 
-/** ComfyUI 原生 KSampler 采样器名称 */
-const COMFY_SAMPLERS = [
-  'euler', 'euler_ancestral', 'heun', 'lms',
-  'dpm_2', 'dpm_2_ancestral', 'dpm_fast', 'dpm_adaptive',
-  'dpmpp_2s_ancestral', 'dpmpp_sde', 'dpmpp_2m',
-  'ddim', 'uni_pc', 'res_multistep',
-]
-
-const COMFY_SCHEDULERS = [
-  'normal', 'simple', 'karras', 'exponential', 'sgm_uniform',
-  'ddim_uniform', 'beta', 'linear_quadratic', 'kl_optimal',
-]
-
 const IMAGE_QUALITIES = [
   { value: 'standard', label: '标准' },
   { value: 'hd', label: 'HD 高清' },
 ]
 
 /** 根据 provider 返回空表单默认值 */
-function emptyForm(provider: string = 'openai'): ImageGenModelConfig {
+function emptyForm(provider: ImageGenProvider = 'openai'): ImageGenModelConfig {
   if (provider === 'comfyui') {
     return {
       id: '', name: '', provider: 'comfyui',
-      model: '', apiKey: '', baseUrl: 'http://127.0.0.1:8188',
-      size: '512x512', quality: 'standard',
+      apiKey: '', baseUrl: 'http://127.0.0.1:8188',
       enabled: true, order: 0,
-      negativePrompt: '',
-      steps: 20,
-      cfgScale: 7,
-      sampler: 'euler',
-      scheduler: 'normal',
       workflow: '',
     }
   }
@@ -72,7 +53,7 @@ function emptyForm(provider: string = 'openai'): ImageGenModelConfig {
     return {
       id: '', name: '', provider: 'sd-webui',
       model: '', apiKey: '', baseUrl: 'http://127.0.0.1:7860',
-      size: '512x512', quality: 'standard',
+      size: '512x512',
       enabled: true, order: 0,
       negativePrompt: '',
       steps: 20,
@@ -110,15 +91,15 @@ export function ImageGenModelsSection() {
 
   const isSdWebui = form.provider === 'sd-webui'
   const isComfyUi = form.provider === 'comfyui'
-  const usesDiffusionSettings = isSdWebui || isComfyUi
-  const standardSizes = usesDiffusionSettings ? SD_SIZES : OPENAI_SIZES
-  const sizeOptions = standardSizes.includes(form.size) ? standardSizes : [form.size, ...standardSizes]
-  const comfySamplers = form.sampler && !COMFY_SAMPLERS.includes(form.sampler)
-    ? [form.sampler, ...COMFY_SAMPLERS]
-    : COMFY_SAMPLERS
-  const comfySchedulers = form.scheduler && !COMFY_SCHEDULERS.includes(form.scheduler)
-    ? [form.scheduler, ...COMFY_SCHEDULERS]
-    : COMFY_SCHEDULERS
+  const isOpenAi = form.provider === 'openai'
+  // OpenAI 与 SD WebUI 共用尺寸字段；ComfyUI 的尺寸由工作流节点决定。
+  const formSize = isOpenAi || isSdWebui ? form.size : ''
+  const formSampler = isSdWebui ? form.sampler ?? '' : ''
+  const standardSizes = isOpenAi ? OPENAI_SIZES : SD_SIZES
+  const sizeOptions = standardSizes.includes(formSize) ? standardSizes : [formSize, ...standardSizes]
+  const sdSamplers = formSampler && !SD_SAMPLERS.includes(formSampler)
+    ? [formSampler, ...SD_SAMPLERS]
+    : SD_SAMPLERS
 
   const loadLocalWorkflows = async () => {
     setLoadingWorkflows(true)
@@ -161,23 +142,22 @@ export function ImageGenModelsSection() {
   }
 
   /** 切换 provider 时重置相关默认值 */
-  const handleProviderChange = (provider: string) => {
+  const handleProviderChange = (provider: ImageGenProvider) => {
     setForm((f) => {
       const defaults = emptyForm(provider)
+      // 保留用户已填写的标识与连接信息，其余按新 provider 重置。
       return {
-        ...f,
-        provider,
+        ...defaults,
+        id: f.id,
+        name: f.name,
+        apiKey: f.apiKey,
         baseUrl: defaults.baseUrl,
-        size: defaults.size,
-        steps: defaults.steps,
-        cfgScale: defaults.cfgScale,
-        sampler: defaults.sampler,
-        scheduler: defaults.scheduler,
-        workflow: defaults.workflow,
-        workflowName: undefined,
+        enabled: f.enabled,
+        order: f.order,
       }
     })
     setTestResult(null)
+    setWorkflowMessage(null)
   }
 
   const applyImportedWorkflow = (result: ComfyWorkflowImportResult) => {
@@ -185,20 +165,29 @@ export function ImageGenModelsSection() {
       if (!result.canceled) setWorkflowMessage({ success: false, text: result.error ?? '导入工作流失败' })
       return
     }
-    const inferred = result.settings ?? {}
-    setForm((current) => ({
-      ...current,
-      workflow: result.workflow,
-      workflowName: result.sourceName,
-      size: inferred.size ?? current.size,
-      steps: inferred.steps ?? current.steps,
-      cfgScale: inferred.cfgScale ?? current.cfgScale,
-      sampler: inferred.sampler ?? current.sampler,
-      scheduler: inferred.scheduler ?? current.scheduler,
-      model: inferred.model ?? current.model,
-      negativePrompt: inferred.negativePrompt ?? current.negativePrompt,
-      name: current.name || result.sourceName || current.name,
-    }))
+    const analysis = result.analysis
+    setForm((current) => {
+      if (current.provider !== 'comfyui') return current
+      const inferred = analysis?.promptBindings ?? []
+      const positiveIds = inferred.filter((b) => b.role === 'positive').map((b) => b.nodeId)
+      const negativeIds = inferred.filter((b) => b.role === 'negative').map((b) => b.nodeId)
+      const outputIds = analysis?.outputBindings.map((b) => b.nodeId) ?? []
+      // 只有存在歧义时才持久化绑定；唯一确定的入口由运行时自动识别。
+      const needsBindings = (analysis?.warnings ?? []).some(
+        (w) => w.code === 'ambiguous-prompt' || w.code === 'ambiguous-output',
+      )
+      return {
+        ...current,
+        workflow: result.workflow!,
+        workflowName: result.sourceName,
+        workflowMeta: result.workflowMeta,
+        overrides: {},
+        ...(needsBindings
+          ? { bindings: { positivePromptNodeIds: positiveIds, negativePromptNodeIds: negativeIds, outputNodeIds: outputIds } }
+          : { bindings: undefined }),
+        name: current.name || result.sourceName || current.name,
+      }
+    })
     setWorkflowMessage({
       success: true,
       text: `已读取 ${result.sourceName ?? '工作流'} · ${result.nodeCount ?? 0} 个节点${result.converted ? ' · 已转换为 API 格式' : ''}`,
@@ -339,47 +328,53 @@ export function ImageGenModelsSection() {
         </div>
       )}
 
-      {/* 模型名称 */}
-      <div>
-        <label className="label">{isComfyUi ? 'Checkpoint 文件名' : '模型名称'}</label>
-        <input
-          type="text"
-          className="input text-sm"
-          value={form.model}
-          onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-          placeholder={isComfyUi ? '例如 model.safetensors' : isSdWebui ? '（可选，如 v1-5-pruned）' : '例如 dall-e-3'}
-        />
-        {isComfyUi && (
-          <p className="text-xs text-tavern-text-muted mt-1">使用自定义工作流且模型已写入工作流时可留空</p>
-        )}
-      </div>
+      {/* 模型名称：ComfyUI 的模型由工作流节点决定，仅在无自定义工作流时保留内置回退 */}
+      {(!isComfyUi || !form.workflow) && (
+        <div>
+          <label className="label">{isComfyUi ? 'Checkpoint 文件名（内置工作流）' : '模型名称'}</label>
+          <input
+            type="text"
+            className="input text-sm"
+            value={form.model ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+            placeholder={isComfyUi ? '例如 model.safetensors' : isSdWebui ? '（可选，如 v1-5-pruned）' : '例如 dall-e-3'}
+          />
+          {isComfyUi && (
+            <p className="text-xs text-tavern-text-muted mt-1">
+              仅内置工作流使用；读取自定义工作流后，模型改由工作流内的 Loader 节点决定
+            </p>
+          )}
+        </div>
+      )}
 
-      {/* 尺寸 */}
-      <div>
-        <label className="label">图片尺寸（默认值，可在快捷面板覆盖）</label>
-        <select
-          className="input text-sm"
-          value={form.size}
-          onChange={(e) => setForm((f) => ({ ...f, size: e.target.value }))}
-        >
-          {sizeOptions.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </div>
+      {/* 尺寸：OpenAI 与 SD WebUI 使用固定字段；ComfyUI 由工作流 Latent 节点决定 */}
+      {!isComfyUi && (
+        <div>
+          <label className="label">图片尺寸（默认值，可在快捷面板覆盖）</label>
+          <select
+            className="input text-sm"
+            value={formSize}
+            onChange={(e) => setForm((f) => (f.provider === 'comfyui' ? f : { ...f, size: e.target.value }))}
+          >
+            {sizeOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* 质量（仅 OpenAI 显示） */}
-      {!usesDiffusionSettings && (
+      {isOpenAi && (
         <div>
           <label className="label">生成质量</label>
           <div className="flex flex-wrap gap-1.5 mt-1">
             {IMAGE_QUALITIES.map((q) => (
               <button
                 key={q.value}
-                onClick={() => setForm((f) => ({ ...f, quality: q.value }))}
+                onClick={() => setForm((f) => (f.provider === 'openai' ? { ...f, quality: q.value } : f))}
                 className={cn(
                   'px-2.5 py-1 rounded text-xs border transition-colors',
-                  form.quality === q.value
+                  form.provider === 'openai' && form.quality === q.value
                     ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
                     : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-soft hover:border-tavern-border'
                 )}
@@ -391,8 +386,8 @@ export function ImageGenModelsSection() {
         </div>
       )}
 
-      {/* SD WebUI / ComfyUI 扩散参数 */}
-      {usesDiffusionSettings && (
+      {/* SD WebUI 扩散参数：ComfyUI 的同类参数由工作流节点决定，见阶段三的动态参数区 */}
+      {isSdWebui && (
         <>
           {/* 负面提示词 */}
           <div>
@@ -401,7 +396,7 @@ export function ImageGenModelsSection() {
               className="input text-xs resize-none"
               rows={2}
               value={form.negativePrompt ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, negativePrompt: e.target.value }))}
+              onChange={(e) => setForm((f) => (f.provider === 'sd-webui' ? { ...f, negativePrompt: e.target.value } : f))}
               placeholder="如: lowres, bad anatomy, bad hands, text, error"
             />
           </div>
@@ -413,10 +408,12 @@ export function ImageGenModelsSection() {
               <input
                 type="number"
                 className="input text-sm"
-                value={form.steps ?? 20}
+                value={form.provider === 'sd-webui' ? form.steps ?? 20 : 20}
                 min={1}
                 max={150}
-                onChange={(e) => setForm((f) => ({ ...f, steps: parseInt(e.target.value) || 20 }))}
+                onChange={(e) => setForm((f) => (
+                  f.provider === 'sd-webui' ? { ...f, steps: parseInt(e.target.value) || 20 } : f
+                ))}
               />
             </div>
             <div>
@@ -424,11 +421,13 @@ export function ImageGenModelsSection() {
               <input
                 type="number"
                 className="input text-sm"
-                value={form.cfgScale ?? 7}
+                value={form.provider === 'sd-webui' ? form.cfgScale ?? 7 : 7}
                 min={1}
                 max={30}
                 step={0.5}
-                onChange={(e) => setForm((f) => ({ ...f, cfgScale: parseFloat(e.target.value) || 7 }))}
+                onChange={(e) => setForm((f) => (
+                  f.provider === 'sd-webui' ? { ...f, cfgScale: parseFloat(e.target.value) || 7 } : f
+                ))}
               />
             </div>
           </div>
@@ -438,30 +437,19 @@ export function ImageGenModelsSection() {
             <label className="label">采样器</label>
             <select
               className="input text-sm"
-              value={form.sampler ?? (isComfyUi ? 'euler' : 'Euler a')}
-              onChange={(e) => setForm((f) => ({ ...f, sampler: e.target.value }))}
+              value={formSampler || 'Euler a'}
+              onChange={(e) => setForm((f) => (f.provider === 'sd-webui' ? { ...f, sampler: e.target.value } : f))}
             >
-              {(isComfyUi ? comfySamplers : SD_SAMPLERS).map((s) => (
+              {sdSamplers.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
           </div>
+        </>
+      )}
 
-          {isComfyUi && (
-            <>
-              <div>
-                <label className="label">调度器</label>
-                <select
-                  className="input text-sm"
-                  value={form.scheduler ?? 'normal'}
-                  onChange={(e) => setForm((f) => ({ ...f, scheduler: e.target.value }))}
-                >
-                  {comfySchedulers.map((scheduler) => (
-                    <option key={scheduler} value={scheduler}>{scheduler}</option>
-                  ))}
-                </select>
-              </div>
-
+      {isComfyUi && (
+        <>
               <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -548,12 +536,11 @@ export function ImageGenModelsSection() {
                     spellCheck={false}
                   />
                   <p className="text-xs text-tavern-text-muted mt-1 leading-relaxed">
-                    支持 {'{{prompt}}'}、{'{{negative_prompt}}'}、{'{{width}}'}、{'{{height}}'}、{'{{seed}}'}、{'{{steps}}'}、{'{{cfg}}'}、{'{{sampler}}'}、{'{{scheduler}}'} 和 {'{{checkpoint}}'} 占位符。
+                    支持 {'{{prompt}}'}、{'{{negative_prompt}}'}、{'{{width}}'}、{'{{height}}'} 和 {'{{seed}}'} 占位符。
+                    其余参数（Steps、CFG、采样器等）请通过节点级覆盖修改，不再提供全局占位符。
                   </p>
                 </div>
               </details>
-            </>
-          )}
         </>
       )}
 
@@ -651,10 +638,12 @@ export function ImageGenModelsSection() {
                   <div className="text-sm font-medium text-tavern-text truncate">{m.name}</div>
                   <div className="text-xs text-tavern-text-muted">
                     {m.provider}
-                    {m.model ? ` · ${m.model}` : ''}
-                    {m.size ? ` · ${m.size}` : ''}
+                    {m.provider === 'comfyui'
+                      ? (m.workflowName ? ` · ${m.workflowName}` : ' · 内置工作流')
+                      : (m.model ? ` · ${m.model}` : '')}
+                    {m.provider !== 'comfyui' && m.size ? ` · ${m.size}` : ''}
                     {m.provider === 'openai' && m.quality ? ` · ${m.quality}` : ''}
-                    {(m.provider === 'sd-webui' || m.provider === 'comfyui') && m.steps ? ` · ${m.steps}步` : ''}
+                    {m.provider === 'sd-webui' && m.steps ? ` · ${m.steps}步` : ''}
                   </div>
                 </div>
 

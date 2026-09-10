@@ -89,8 +89,9 @@ export function registerImageGenIPC(ipcMain: IpcMain): void {
         return { success: false, error: '未配置启用的生图模型，请前往 设置 -> API -> 生图 配置' }
       }
 
-      // 尺寸优先级：options.size > settings.imageGenSize > config.size
-      const size = options?.size || settings.imageGenSize || config.size
+      // 尺寸只透传调用方显式指定的值；ComfyUI 的尺寸由工作流节点与 overrides 决定，
+      // 不再让全局 settings.imageGenSize 覆盖工作流。
+      const size = options?.size
 
       // SD WebUI：如果 prompt 包含中文，翻译为英文
       let finalPrompt = prompt

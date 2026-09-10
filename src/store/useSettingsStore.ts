@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Settings, ProviderType, ConnectionProfile, TTSModelConfig, ImageGenModelConfig, VisionModelConfig } from '../../shared/types'
+import type { Settings, ProviderType, ConnectionProfile, TTSModelConfig, ImageGenModelConfig, ImageGenProvider, VisionModelConfig } from '../../shared/types'
 import { getDefaultSettings } from '../utils/defaults'
 import { nanoid } from 'nanoid'
 import { logError } from '../lib/logger'
@@ -26,15 +26,19 @@ export interface ActiveTTSProfile {
 
 export interface ActiveImageGenProfile {
   name: string
-  provider: string
+  provider: ImageGenProvider
   model: string
   apiKey: string
   baseUrl: string
-  size: string
-  quality: string
+  size?: string
+  quality?: string
   workflowName?: string
   workflow?: string
 }
+
+/** 新增生图配置时的入参：在联合类型上做分配式 Omit，避免交叉成不可赋值类型。 */
+type DistributiveOmit<T, K extends keyof never> = T extends unknown ? Omit<T, K> : never
+export type ImageGenModelInput = DistributiveOmit<ImageGenModelConfig, 'id' | 'order'>
 
 interface SettingsState {
   settings: Settings
@@ -64,7 +68,7 @@ interface SettingsState {
   reorderTTSModels: (ids: string[]) => void
   // 生图模型管理
   getActiveImageGen: () => ActiveImageGenProfile | null
-  addImageGenModel: (model: Omit<ImageGenModelConfig, 'id' | 'order'>) => void
+  addImageGenModel: (model: ImageGenModelInput) => void
   updateImageGenModel: (id: string, patch: Partial<ImageGenModelConfig>) => void
   deleteImageGenModel: (id: string) => void
   setActiveImageGenModelId: (id: string) => void
@@ -447,16 +451,26 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (!settings.activeImageGenModelId) return null
     const m = settings.imageGenModels.find((t) => t.id === settings.activeImageGenModelId)
     if (!m) return null
-    return {
+    const base = {
       name: m.name,
       provider: m.provider,
-      model: m.model,
       apiKey: m.apiKey,
       baseUrl: m.baseUrl,
+    }
+    if (m.provider === 'comfyui') {
+      return {
+        ...base,
+        model: m.model ?? '',
+        workflowName: m.workflowName,
+        workflow: m.workflow,
+      }
+    }
+    return {
+      ...base,
+      model: m.model,
       size: m.size,
-      quality: m.quality,
-      workflowName: m.workflowName,
-      workflow: m.workflow,
+      // quality 仅 OpenAI 有；SD WebUI 走 undefined，读取方已有兜底。
+      quality: m.provider === 'openai' ? m.quality : undefined,
     }
   },
 
@@ -481,7 +495,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       settings: {
         ...state.settings,
         imageGenModels: state.settings.imageGenModels.map((m) =>
-          m.id === id ? { ...m, ...patch } : m
+          // 判别式保持不变；patch 由同 provider 的表单产生，合并后仍是合法分支。
+          m.id === id ? ({ ...m, ...patch } as ImageGenModelConfig) : m
         ),
       },
     }))

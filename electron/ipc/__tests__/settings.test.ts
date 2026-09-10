@@ -33,7 +33,7 @@ function makeSettings(): Settings {
       { id: 't1', name: 'T', provider: 'edge', model: 'x', apiKey: 'tts-key-222', order: 0, voice: 'v', baseUrl: '', proxy: '', enabled: true },
     ],
     imageGenModels: [
-      { id: 'g1', name: 'G', provider: 'sd', model: 'm', apiKey: 'img-key-333', order: 0, baseUrl: '', size: '', steps: 20, cfgScale: 7, negativePrompt: '', quality: 'standard', enabled: true },
+      { id: 'g1', name: 'G', provider: 'sd-webui', model: 'm', apiKey: 'img-key-333', order: 0, baseUrl: '', size: '512x512', steps: 20, cfgScale: 7, negativePrompt: '', enabled: true },
     ],
     visionModels: [
       { id: 'v1', name: 'V', provider: 'openai', model: 'gpt-4o-mini', apiKey: 'vision-key-444', enabled: true, order: 0 },
