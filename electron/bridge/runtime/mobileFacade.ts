@@ -12,6 +12,7 @@ import { findSessionByCharacterId, findSessionById, listAllSessions } from '../s
 import type { Message, Settings } from '../../../shared/types'
 import type { BridgeChatService } from '../chatService'
 import type { GenerationRegistry } from './generationRegistry'
+import { resolveMessageGenerationKind, resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
 
 export interface MobileRequestContext { requestId: string; sourceDeviceId?: string }
 export interface ListMessagesInput { sessionId: string; characterId?: string; limit?: number; beforeId?: string }
@@ -40,6 +41,9 @@ function messageDto(message: Message): Record<string, unknown> {
     timestamp: message.timestamp, translation: message.translation ?? null,
     swipes: message.swipes ?? null, swipeIndex: message.swipeIndex ?? null,
     replyToId: message.replyToId ?? null,
+    narrativeMode: message.narrativeMode ?? null,
+    speakerKind: resolveMessageSpeakerKind(message),
+    generationKind: resolveMessageGenerationKind(message.generationKind, message),
     usage: message.charUsage ? { promptTokens: 0, completionTokens: 0, totalTokens: 0 } : null,
   }
 }
@@ -73,6 +77,9 @@ export class DefaultMobileFacade implements MobileFacade {
       id: session.id, characterId: session.characterId, characterName: names.get(session.characterId) ?? '',
       title: session.title, createdAt: session.createdAt, updatedAt: session.updatedAt,
       personaId: session.personaId ?? null, messageCount: session.messageCount, lastMessage: session.lastMessage,
+      narrativeMode: session.narrativeMode ?? 'immersive',
+      gameMasterMode: session.gameMasterMode ?? false,
+      memoryCurrentState: session.memoryCurrentState ?? '',
     }))
   }
 

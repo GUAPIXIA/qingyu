@@ -130,6 +130,23 @@ describe('splitAndSaveMessages 群聊自由发言拆分', () => {
     expect(saved.content).toBe('（旁白）\n\n正文')
   })
 
+  it('全局叙事保留游戏判定标题并保存为单条旁白消息', async () => {
+    const set = vi.fn()
+    const get = () => ({ sessions: [{ id: 's1', narrativeMode: 'omniscient' }] })
+    const content = '风暴压境。\n\n【判定】潜行｜环境昏暗｜成功\n\n【可选行动】\n1. 进入北门'
+    await splitAndSaveMessages(set as any, get as any, makeGroup(), 's1', content, 3, 'ph-narrator')
+
+    expect(window.api.group.saveMessagesBatch).not.toHaveBeenCalled()
+    expect(window.api.group.saveMessage).toHaveBeenCalledWith('g1', 's1', expect.objectContaining({
+      id: 'ph-narrator',
+      characterId: 'c1',
+      narrativeMode: 'omniscient',
+      content,
+    }))
+    const state = set.mock.calls[0][0]({ messages: [{ id: 'ph-narrator', content: '' }] })
+    expect(state.messages[0].content).toBe(content)
+  })
+
   it('占位消息更新为空内容时使用 (无回复)', async () => {
     const set = vi.fn()
     await splitAndSaveMessages(set as any, (() => ({})) as any, makeGroup(), 's1', '', 1, 'ph-1')

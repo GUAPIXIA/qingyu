@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Wand2, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle, MessageSquare, ArrowDownToLine, Eye, Image as ImageIcon, Images, Download, Trash2, Users } from 'lucide-react'
+import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle, MessageSquare, ArrowDownToLine, Eye, Image as ImageIcon, Images, Download, Trash2, Users } from 'lucide-react'
 import type { Preset, Lorebook, GroupChat } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -27,11 +27,6 @@ interface QuickSettingsPanelProps {
   group?: GroupChat
   onSaveGroup?: (group: GroupChat) => void | Promise<void>
 }
-
-const IMAGE_GEN_SIZES = [
-  '512x512', '768x768', '1024x1024',
-  '512x768', '768x512',
-]
 
 const QUICK_BUTTON_ICON_CLASS = 'w-3.5 h-3.5 shrink-0'
 const QUICK_BUTTON_ICON_BADGE_CLASS = 'grid h-7 w-7 place-items-center rounded-lg border shrink-0'
@@ -805,52 +800,6 @@ export function QuickSettingsPanel({
             </div>
           </Section>
 
-          {/* ===== AI 生图 ===== */}
-          <Section icon={Wand2} title="AI 生图">
-            <div className="space-y-3">
-              <ToggleRow
-                checked={settings.imageGenAutoEnabled ?? false}
-                onChange={(v) => updateSettings({ imageGenAutoEnabled: v })}
-              >
-                自动生图（回复中 [image: ...] 标记）
-              </ToggleRow>
-
-              {(() => {
-                const imgProfile = useSettingsStore.getState().getActiveImageGen()
-                return imgProfile ? (
-                  <p className="text-xs text-tavern-text-muted truncate">
-                    模型: {imgProfile.name} ({imgProfile.provider})
-                  </p>
-                ) : (
-                  <p className="text-xs text-tavern-text-muted">
-                    未配置生图模型，前往 设置 -&gt; API -&gt; 生图
-                  </p>
-                )
-              })()}
-
-              {/* 尺寸选择按钮组 */}
-              <div>
-                <label className="text-xs text-tavern-text-muted shrink-0 block mb-1.5">尺寸</label>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {IMAGE_GEN_SIZES.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => updateSettings({ imageGenSize: s })}
-                      className={cn(
-                        'px-2 py-0.5 rounded text-xs border transition-colors',
-                        (settings.imageGenSize ?? '512x512') === s
-                          ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
-                          : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
-                      )}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Section>
-
           {/* ===== 显示选项 ===== */}
           <Section icon={Hash} title="显示">
             <div className="space-y-2">
@@ -882,6 +831,7 @@ export function QuickSettingsPanel({
                 </select>
                 {/* 示例对话作用提示：ⓘ 点击弹出 */}
                 <HintIcon
+                  align="right"
                   hint={
                     <>
                       <p>
@@ -1051,7 +1001,7 @@ function SliderRow({ label, value, min, max, step, disabled, hint }: {
 /** ⓘ 点击弹出提示（说明气泡）
  * 关闭机制：document 级点击监听（不依赖 fixed 遮罩，规避面板 transform 导致 fixed 定位失效的问题）
  */
-function HintIcon({ hint }: { hint: React.ReactNode }) {
+function HintIcon({ hint, align = 'left' }: { hint: React.ReactNode; align?: 'left' | 'right' }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
 
@@ -1077,7 +1027,10 @@ function HintIcon({ hint }: { hint: React.ReactNode }) {
         <Info className="w-3 h-3" />
       </QuickIconButton>
       {open && (
-        <div className="absolute left-0 top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-50 text-[10px] leading-relaxed text-tavern-text-muted">
+        <div className={cn(
+          'absolute top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-50 text-[10px] leading-relaxed text-tavern-text-muted',
+          align === 'right' ? 'right-0' : 'left-0',
+        )}>
           {hint}
         </div>
       )}

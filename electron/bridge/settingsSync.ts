@@ -15,6 +15,8 @@
  */
 import { createHash } from 'node:crypto'
 import type { Settings } from '../../shared/types'
+import type { NarrativeMode } from '../../shared/types'
+import { DEFAULT_OMNISCIENT_NARRATIVE_RULES, isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
 
 // ===================== 数据模型 =====================
 
@@ -35,6 +37,8 @@ export interface MobileSafeSettings {
   exampleDialogMode: 'always' | 'first_turn' | 'off'
   lorebookRatio: number
   autoTitle: boolean
+  defaultNarrativeMode: NarrativeMode
+  omniscientNarrativeRules: string
 }
 
 /** 快照端点能力声明（与 /server/info capabilities 对齐） */
@@ -119,6 +123,8 @@ export function toMobileSafeSettings(s: Settings): MobileSafeSettings {
     exampleDialogMode: s.exampleDialogMode ?? 'always',
     lorebookRatio: s.lorebookRatio ?? 0.3,
     autoTitle: s.autoTitle ?? true,
+    defaultNarrativeMode: resolveNarrativeMode(s.defaultNarrativeMode),
+    omniscientNarrativeRules: s.omniscientNarrativeRules?.trim() || DEFAULT_OMNISCIENT_NARRATIVE_RULES,
   }
 }
 
@@ -176,6 +182,13 @@ const FIELD_VALIDATORS: Record<
   htmlRendering: (v) => (typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, reason: 'invalid_type' }),
   imageGenAutoEnabled: (v) => (typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, reason: 'invalid_type' }),
   autoTitle: (v) => (typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, reason: 'invalid_type' }),
+  defaultNarrativeMode: (v) => (isNarrativeMode(v)
+    ? { ok: true, value: v } : { ok: false, reason: 'invalid_enum' }),
+  omniscientNarrativeRules: (v) => (!isPlainString(v)
+    ? { ok: false, reason: 'invalid_type' }
+    : !v.trim() ? { ok: false, reason: 'empty_value' }
+      : v.length > 50_000 ? { ok: false, reason: 'too_long' }
+        : { ok: true, value: v }),
   imageGenSize: (v) => (isPlainString(v) && /^\d{3,4}x\d{3,4}$/.test(v)
     ? { ok: true, value: v } : { ok: false, reason: 'invalid_format' }),
   exampleDialogMode: (v) => (v === 'always' || v === 'first_turn' || v === 'off'

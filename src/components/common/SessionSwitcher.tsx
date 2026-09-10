@@ -75,7 +75,7 @@ export function SessionSwitcher({
               title="切换对话"
             >
               <Layers className="w-3.5 h-3.5 text-tavern-text-muted" />
-              <span className="max-w-[100px] truncate">
+              <span className="session-switcher__label max-w-[100px] truncate">
                 {currentSession?.title ?? '对话'}
               </span>
               <ChevronDown className="w-3 h-3 text-tavern-text-muted" />

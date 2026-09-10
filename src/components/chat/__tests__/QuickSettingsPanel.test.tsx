@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { getDefaultSettings } from '../../../../shared/defaults'
 import type { Character, GroupChat, Message } from '../../../../shared/types'
 import { useCharacterStore } from '../../../store/useCharacterStore'
@@ -20,7 +20,17 @@ const imageMessage: Message = {
 
 describe('QuickSettingsPanel', () => {
   beforeEach(() => {
-    useChatStore.setState({ activePresetId: null, activeLorebookIds: [] })
+    useChatStore.setState({
+      activePresetId: null,
+      activeLorebookIds: [],
+      currentSessionId: 'session-1',
+      isStreaming: false,
+      sessions: [{
+        id: 'session-1', characterId: 'char-1', title: '测试会话', createdAt: 0, updatedAt: 0,
+        memoryEnabled: false, memoryMode: 'manual', autoMemoryInterval: 10, memory: '', memoryUpdatedAt: 0,
+        messageCount: 0, lastMessage: '', narrativeMode: 'immersive',
+      }],
+    })
     useCharacterStore.setState({ characters: [character], currentCharacter: character })
     useSettingsStore.setState({
       settings: getDefaultSettings(),
@@ -82,6 +92,64 @@ describe('QuickSettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看上下文' }))
     expect(onShowContextViewer).toHaveBeenCalledOnce()
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('不再重复显示已移至对话顶栏的叙事模式', async () => {
+    render(
+      <QuickSettingsPanel
+        open
+        onClose={vi.fn()}
+        messages={[imageMessage]}
+        onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()}
+        onExport={vi.fn()}
+        onClearConfirm={vi.fn()}
+      />,
+    )
+    await act(async () => {})
+
+    expect(screen.queryByRole('radiogroup', { name: '叙事模式' })).toBeNull()
+  })
+
+  it('不在快捷设置中显示自动生图和图片尺寸调节', async () => {
+    render(
+      <QuickSettingsPanel
+        open
+        onClose={vi.fn()}
+        messages={[]}
+        onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()}
+        onExport={vi.fn()}
+        onClearConfirm={vi.fn()}
+      />,
+    )
+    await act(async () => {})
+
+    expect(screen.queryByText('AI 生图')).toBeNull()
+    expect(screen.queryByRole('switch', { name: /自动生图/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: '512x512' })).toBeNull()
+  })
+
+  it('右侧对话示例说明向面板内侧展开，避免被窗口裁切', async () => {
+    render(
+      <QuickSettingsPanel
+        open
+        onClose={vi.fn()}
+        messages={[]}
+        onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()}
+        onExport={vi.fn()}
+        onClearConfirm={vi.fn()}
+      />,
+    )
+    await act(async () => {})
+
+    const row = screen.getByText('对话示例发送').parentElement
+    expect(row).toBeTruthy()
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: '查看说明' }))
+    const hint = screen.getByText(/角色卡「对话示例」会作为/).parentElement
+    expect(hint?.className).toContain('right-0')
+    expect(hint?.className).not.toContain('left-0')
   })
 
   it('统一关闭、刷新和连接测试按钮的图标容器样式', async () => {

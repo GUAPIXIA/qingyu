@@ -10,8 +10,9 @@ import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
 import { remarkRoleplay, remarkMentionHighlight } from '../../utils/remark-roleplay'
 import { extractThought } from '../../utils/messagePostProcess'
-import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2 } from 'lucide-react'
+import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
+import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
 
 interface GroupChatMessageProps {
   message: GroupMessage
@@ -59,6 +60,9 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
 
   const isUser = message.characterId === '__user__'
   const isFree = message.characterId === '__free__'
+  const speakerKind = resolveMessageSpeakerKind(message)
+  const isNarrator = speakerKind === 'narrator'
+  const isPersona = speakerKind === 'persona'
   const isStreaming = isStreamingMessage ?? false
 
   const character = characters.find(c => c.id === message.characterId)
@@ -68,7 +72,12 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
 
   // 翻译显示状态从 store 同步，而非本地 state
   const showTranslation = message._showTranslation ?? false
-  const displayContent = showTranslation && message.translation ? message.translation : mainContent
+  // 只有 thought、没有正文时也保留独立折叠区；避免回退文本绕过折叠状态永久显示。
+  const displayContent = showTranslation && message.translation
+    ? message.translation
+    : isThoughtFallback
+      ? ''
+      : mainContent
 
   // @提及高亮处理
   // BUG-09 修复：不再注入原始 HTML（原实现依赖 rehypeRaw，存在 XSS 风险），
@@ -114,11 +123,15 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
         {/* 头像 */}
         <div className={cn(
           'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
-          isUser
-            ? 'bg-gradient-to-br from-tavern-user/30 to-tavern-user/10 text-tavern-user ring-2 ring-tavern-user/20'
-            : 'bg-gradient-to-br from-tavern-assistant/30 to-tavern-assistant/10 text-tavern-assistant ring-2 ring-tavern-assistant/20'
+          isNarrator
+            ? 'bg-gradient-to-br from-slate-500/20 to-indigo-500/15 text-indigo-500 ring-2 ring-indigo-500/20 dark:text-indigo-300'
+            : isPersona
+              ? 'bg-gradient-to-br from-tavern-user/30 to-tavern-user/10 text-tavern-user ring-2 ring-tavern-user/20'
+              : 'bg-gradient-to-br from-tavern-assistant/30 to-tavern-assistant/10 text-tavern-assistant ring-2 ring-tavern-assistant/20'
         )}>
-          {isUser ? (
+          {isNarrator ? (
+            <Globe2 className="h-5 w-5" aria-label="旁白" />
+          ) : isPersona ? (
             persona?.avatar ? (
               <img src={persona.avatar} className="w-full h-full rounded-full object-cover" alt="" />
             ) : (
@@ -138,8 +151,13 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
           {/* 名字和时间 */}
           <div className={cn('flex items-center gap-2 mb-1 text-xs text-tavern-text-muted', isUser && 'flex-row-reverse')}>
             <span className="font-medium text-tavern-text-soft">
-              {isUser ? (settings.userName || '你') : getDisplayName(character) || '未知'}
+              {isNarrator ? '旁白' : isPersona ? (settings.userName || '你') : getDisplayName(character) || '未知'}
             </span>
+            {isNarrator && character && (
+              <span className="rounded-full border border-indigo-400/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-600 dark:text-indigo-300">
+                焦点 · {getDisplayName(character)}
+              </span>
+            )}
             {isStreaming && <span className="text-tavern-accent">生成中...</span>}
             <span>
               {new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
@@ -159,12 +177,14 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
             settings.bubbleStyle === 'round' && 'rounded-2xl',
             settings.bubbleStyle === 'standard' && 'rounded-lg',
             settings.bubbleStyle === 'sharp' && 'rounded-sm',
-            isUser
-              ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
-              : cn('bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100',
+            isNarrator
+              ? cn('border border-indigo-200/70 bg-gradient-to-bl from-slate-50 to-indigo-50/70 rounded-br-sm shadow-sm text-slate-900 dark:border-indigo-700/40 dark:from-slate-900/95 dark:to-indigo-950/55 dark:text-slate-100 bubble-narrator', isStreaming && 'border-dashed')
+              : isPersona
+                ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
+                : cn('bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100',
                    isStreaming && 'border-dashed')
           )}
-          style={!isUser ? { backgroundColor: `color-mix(in srgb, var(--tavern-bg-card) ${(bubbleOpacity ?? 1) * 100}%, transparent)` } : undefined}
+          style={!isUser && !isNarrator ? { backgroundColor: `color-mix(in srgb, var(--tavern-bg-card) ${(bubbleOpacity ?? 1) * 100}%, transparent)` } : undefined}
           >
           {/* 引用回复块 */}
           {repliedMessage && (
@@ -203,8 +223,8 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
             </div>
           ) : (
             <>
-              {/* Thought 折叠区（回退显示时不重复展示） */}
-              {thoughtContent && !isThoughtFallback && (
+              {/* Thought 折叠区：即使模型尚未生成正文，也应允许用户收起。 */}
+              {thoughtContent && (
                 <div className="mb-2 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft px-3 py-2">
                   <button
                     onClick={() => setShowThought(!showThought)}

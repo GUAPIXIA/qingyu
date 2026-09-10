@@ -2,6 +2,26 @@ import type { LorebookInsertionV2, LorebookRetrievalMode } from './lorebook/doma
 
 // ===================== 基础数据模型 =====================
 
+/** AI 在故事中的身份、视角与叙事控制范围。 */
+export type NarrativeMode = 'immersive' | 'omniscient'
+
+/** 输入续写的剧情转折强度：控制推进幅度与采样创造性（见 shared/continueIntensity.ts）。 */
+export type ContinueIntensity = 'subtle' | 'steady' | 'active' | 'bold'
+
+/** 输入续写的最终内容长度：控制篇幅指令与输出 token 上限。 */
+export type ContinueLength = 'brief' | 'standard' | 'detailed' | 'extended'
+
+/** 消息在界面中的叙事身份；与 API role / 群聊 characterId 的消息方向解耦。 */
+export type MessageSpeakerKind = 'persona' | 'narrator' | 'character' | 'system'
+
+/** 消息内容的生成来源；用于续写、重生成与跨端协议追踪。 */
+export type MessageGenerationKind =
+  | 'manual'
+  | 'input_continue'
+  | 'assistant_reply'
+  | 'regenerate'
+  | 'message_continue'
+
 /** 角色卡（兼容 SillyTavern Character Card V2 简化版） */
 export interface Character {
   id: string
@@ -35,6 +55,8 @@ export interface Character {
   defaultMemoryEnabled?: boolean
   defaultMemoryMode?: 'manual' | 'auto'
   defaultMemoryInterval?: number
+  /** 新建会话的默认叙事模式；undefined 表示跟随全局设置。 */
+  defaultNarrativeMode?: NarrativeMode
   /** 创作者备注（隐藏元数据，导入导出保留） */
   creatorNotes?: string
   /** 角色级作者注释 */
@@ -95,6 +117,12 @@ export interface Message {
   replyToId?: string
   /** 本次 AI 回复的字符用量（仅 assistant 消息） */
   charUsage?: MessageCharUsage
+  /** 创建或生成本条消息时使用的叙事模式快照；用于历史显示与生成连续性。 */
+  narrativeMode?: NarrativeMode
+  /** 界面显示身份快照；旧消息缺失时由 role + narrativeMode 安全推导。 */
+  speakerKind?: MessageSpeakerKind
+  /** 本条内容的生成来源。 */
+  generationKind?: MessageGenerationKind
 }
 
 /** 单条消息的字符统计 */
@@ -232,6 +260,10 @@ export interface ChatSession {
   personaId?: string | null
   /** 当前会话选中的世界书 ID 列表。undefined 表示未设置（回退到角色的 boundLorebookIds） */
   lorebookIds?: string[]
+  /** 当前会话的叙事模式；旧会话缺省时按 immersive 运行。 */
+  narrativeMode?: NarrativeMode
+  /** 全局叙事下启用游戏主持式判定与行动选项；默认关闭。 */
+  gameMasterMode?: boolean
   /** 最近 N 轮触发过的世界书条目 key（`${lbId}:${entryId}`），用于 recency 加权。环形缓冲 */
   recentTriggeredIds?: string[][]
   /** 世界书 sticky/cooldown 会话状态；按消息数推进 */
@@ -428,6 +460,8 @@ export interface GroupChat {
   currentSpeakerIndex: number
   autoMode: boolean
   chatMode: 'mention' | 'polling' | 'free'
+  /** 新建群聊会话的默认叙事模式；undefined 表示跟随全局默认值 */
+  defaultNarrativeMode?: NarrativeMode
   maxRounds: number
   speakerInterval: number
   lorebookIds: string[]
@@ -471,6 +505,12 @@ export interface GroupMessage {
   status?: 'sending' | 'sent'
   /** @提及的角色 ID 列表 */
   mentionedCharacterIds?: string[]
+  /** 创建或生成本条消息时使用的叙事模式快照；用于历史显示与生成连续性。 */
+  narrativeMode?: NarrativeMode
+  /** 界面显示身份快照；旧消息缺失时由 characterId + narrativeMode 安全推导。 */
+  speakerKind?: MessageSpeakerKind
+  /** 本条内容的生成来源。 */
+  generationKind?: MessageGenerationKind
 }
 
 /** 自定义字体信息 */
@@ -491,6 +531,10 @@ export interface GroupSession {
   messageCount: number
   createdAt: number
   updatedAt: number
+  /** 当前群聊会话实际使用的叙事模式；旧会话缺失时固定回退 immersive */
+  narrativeMode?: NarrativeMode
+  /** 全局叙事下启用游戏主持式判定与行动选项；默认关闭。 */
+  gameMasterMode?: boolean
   /** 是否启用长期记忆/对话摘要 */
   memoryEnabled?: boolean
   /** 记忆模式：manual 手动 / auto 自动 */
@@ -585,6 +629,14 @@ export interface Settings {
   autoScroll: boolean
   /** 新建对话时默认启用长记忆；仅影响后续创建的单聊和群聊 */
   defaultMemoryEnabled?: boolean
+  /** 新建单聊的默认叙事模式；已有会话不受影响。 */
+  defaultNarrativeMode?: NarrativeMode
+  /** 输入框 AI 续写的剧情转折强度（全局，默认 active） */
+  continueIntensity?: ContinueIntensity
+  /** 输入框 AI 续写的最终内容长度（全局，默认 standard） */
+  continueLength?: ContinueLength
+  /** 全局叙事模式的自定义规则模板；支持 {{user}} / {{char}}，空值时使用内置规则。 */
+  omniscientNarrativeRules?: string
   // TTS 多模型配置
   ttsEnabled: boolean
   ttsModels: TTSModelConfig[]
@@ -729,6 +781,8 @@ export interface ImageGenModelConfig {
   sampler?: string          // 如 'Euler a'
   /** ComfyUI API 格式工作流 JSON；留空时使用内置基础文生图工作流 */
   workflow?: string
+  /** 导入的 ComfyUI Desktop 工作流名称，仅用于界面展示 */
+  workflowName?: string
   /** ComfyUI 调度器；默认 normal */
   scheduler?: string
 }
@@ -838,6 +892,8 @@ export interface ChatParams {
   frequencyPenalty: number
   presencePenalty: number
   stream: boolean
+  /** 辅助型请求可关闭推理；不支持该能力的适配器忽略此字段。 */
+  reasoningMode?: 'default' | 'disabled'
   /** 可选的 instruct 模板（本次调用的消息包装格式） */
   instructTemplate?: InstructTemplateConfig
   /** 工具定义（OpenAI Function Calling 格式） */

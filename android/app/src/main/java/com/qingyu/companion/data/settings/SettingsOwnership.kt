@@ -42,6 +42,8 @@ object SettingsOwnership {
         "exampleDialogMode",
         "lorebookRatio",
         "autoTitle",
+        "defaultNarrativeMode",
+        "omniscientNarrativeRules",
     )
 
     /**
@@ -93,6 +95,8 @@ fun settingsFieldValue(dto: SettingsDto, key: String): Any? = when (key) {
     "exampleDialogMode" -> dto.exampleDialogMode
     "lorebookRatio" -> dto.lorebookRatio
     "autoTitle" -> dto.autoTitle
+    "defaultNarrativeMode" -> dto.defaultNarrativeMode
+    "omniscientNarrativeRules" -> dto.omniscientNarrativeRules
     else -> null
 }
 

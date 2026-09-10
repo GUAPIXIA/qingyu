@@ -1,3 +1,5 @@
+import type { MessageGenerationKind } from '../types'
+
 /**
  * V12-02 共享契约：ChatCommand（实施方案 §6）
  *
@@ -25,6 +27,7 @@ export type ChatCommand =
       content: string
       images?: string[]
       replyToId?: string
+      generationKind?: MessageGenerationKind
       client: ClientRef
     }
   | {
@@ -68,6 +71,10 @@ export function validateChatCommand(cmd: ChatCommand): string | null {
   }
   if (cmd.type === 'send' && !(cmd.content ?? '').trim() && !(cmd.images ?? []).length) {
     return 'INVALID_COMMAND: content/images'
+  }
+  if (cmd.type === 'send' && cmd.generationKind !== undefined
+    && cmd.generationKind !== 'manual' && cmd.generationKind !== 'input_continue') {
+    return 'INVALID_COMMAND: generationKind'
   }
   if (cmd.type === 'regenerate' && !isValidRequestId((cmd as { messageId: string }).messageId)) {
     return 'INVALID_COMMAND: messageId'

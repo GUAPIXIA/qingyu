@@ -5,11 +5,15 @@
  */
 import type { TaskSnapshot, TaskEventEnvelope } from '../../shared/chat-core/events'
 import type { ChatCommand } from '../../shared/chat-core/commands'
+import type { MessageGenerationKind, MessageSpeakerKind, NarrativeMode } from '../../shared/types'
 
 export interface MessageRef {
   id: string
   sessionId: string
   characterId: string
+  narrativeMode?: NarrativeMode
+  speakerKind?: MessageSpeakerKind
+  generationKind?: MessageGenerationKind
 }
 
 export interface PersistUserMessage {
@@ -20,6 +24,9 @@ export interface PersistUserMessage {
   images?: string[]
   replyToId?: string
   requestId: string
+  narrativeMode?: NarrativeMode
+  speakerKind: MessageSpeakerKind
+  generationKind: MessageGenerationKind
 }
 
 export interface PersistAssistantMessage {
@@ -30,6 +37,9 @@ export interface PersistAssistantMessage {
   images?: string[]
   requestId: string
   generationTaskId: string
+  narrativeMode?: NarrativeMode
+  speakerKind: MessageSpeakerKind
+  generationKind: MessageGenerationKind
 }
 
 export interface MessagePort {
@@ -39,7 +49,7 @@ export interface MessagePort {
   appendUserMessage(input: PersistUserMessage): Promise<{ id: string }>
   commitAssistantMessage(input: PersistAssistantMessage): Promise<{ id: string }>
   updateAssistantMessage(messageId: string, patch: { content: string }): Promise<void>
-  appendSwipedCandidate(messageId: string, content: string): Promise<{ id: string; content: string; swipes: string[]; swipeIndex: number }>
+  appendSwipedCandidate(messageId: string, content: string, generationKind?: MessageGenerationKind): Promise<{ id: string; content: string; swipes: string[]; swipeIndex: number }>
 }
 
 export interface BuildContextInput {

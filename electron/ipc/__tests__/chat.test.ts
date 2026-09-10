@@ -26,6 +26,16 @@ afterEach(() => {
 })
 
 describe('computeMessageMetaCached', () => {
+  it('消息写入边界补齐身份字段并对非法值安全回退', () => {
+    chatData.saveMessage('char-001', {
+      id: 'identity-1', sessionId: 's1', characterId: 'char-001', role: 'user',
+      content: '推动剧情', images: [], isEditing: false, timestamp: 1,
+      narrativeMode: 'omniscient', speakerKind: 'invalid', generationKind: 'invalid',
+    } as never)
+    const saved = readMessages('char-001', 's1')[0]
+    expect(saved).toMatchObject({ speakerKind: 'narrator', generationKind: 'manual' })
+  })
+
   it('文件不存在返回空统计', () => {
     expect(computeMessageMetaCached('char-001', 'missing')).toEqual({ count: 0, lastMessage: '' })
   })
@@ -78,6 +88,30 @@ describe('computeMessageMetaCached', () => {
 })
 
 describe('会话派生记忆清理', () => {
+  it('新会话固化角色叙事模式默认值，并拒绝非法模式更新', async () => {
+    const dataDir = '/tmp/qingyu-chat-test/data'
+    mkdirSync(join(dataDir, 'config'), { recursive: true })
+    mkdirSync(join(dataDir, 'characters'), { recursive: true })
+    writeFileSync(join(dataDir, 'config', 'settings.json'), JSON.stringify({ defaultNarrativeMode: 'omniscient' }))
+    writeFileSync(join(dataDir, 'characters', 'char-001.json'), JSON.stringify({ defaultNarrativeMode: 'immersive' }))
+
+    const session = await chatData.createSession('char-001', '叙事模式测试')
+    expect(session.narrativeMode).toBe('immersive')
+
+    writeFileSync(join(dataDir, 'characters', 'char-001.json'), JSON.stringify({}))
+    const globalSession = await chatData.createSession('char-001', '全局默认测试')
+    expect(globalSession.narrativeMode).toBe('omniscient')
+
+    await expect(chatData.updateSession('char-001', session.id, {
+      narrativeMode: 'invalid',
+    } as never)).rejects.toThrow('narrativeMode')
+    await expect(chatData.updateSession('char-001', session.id, {
+      gameMasterMode: 'yes',
+    } as never)).rejects.toThrow('gameMasterMode')
+    const persisted = (await chatData.listSessions('char-001')).find((item) => item.id === session.id)
+    expect(persisted?.narrativeMode).toBe('immersive')
+  })
+
   it('条件更新会话时拒绝过期的记忆版本，避免旧摘要覆盖新事实', async () => {
     const session = await chatData.createSession('char-001', '并发记忆测试')
     const first = await chatData.updateSessionIfMemoryVersion('char-001', session.id, 0, {

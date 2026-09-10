@@ -18,6 +18,7 @@ import { resolveVisionModel } from '../utils/visionModel'
 import { memoryFactsToTexts } from '../utils/memory'
 import { normalizeThoughtTags } from '../utils/messagePostProcess'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
+import { resolveNarrativeMode } from '../../shared/narrativeMode'
 
 // ====================== 流式状态管理（模块级） ======================
 
@@ -380,6 +381,7 @@ export async function streamGroupAI(
 
   // BUG-08 修复：异步加载期间用户可能已切换群聊/会话，先校验一次
   if (!isGroupContextCurrent(get, group, sessionId)) return
+  const narrativeMode = resolveNarrativeMode(get().sessions?.find((session) => session.id === sessionId)?.narrativeMode)
 
   // 加载预设（群聊预设优先，回退到角色绑定预设）
   let preset = null
@@ -429,6 +431,9 @@ export async function streamGroupAI(
     images: [],
     timestamp: Date.now(),
     round,
+    narrativeMode,
+    speakerKind: 'character',
+    generationKind: 'assistant_reply',
   }
   set((s: GroupChatState) => ({
     messages: [...s.messages, placeholder],
@@ -477,7 +482,7 @@ export async function streamGroupAI(
         }))
         window.api.group.saveMessage(group.id, sessionId, {
           id: msgId, groupId: group.id, characterId: speaker.id,
-          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round,
+          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round, narrativeMode,
         }).catch((e) => logError('GroupChatStore:saveMessage', e))
       } else {
         set((s: GroupChatState) => ({
@@ -525,6 +530,7 @@ export async function streamGroupAI(
       images: [],
       timestamp: Date.now(),
       round,
+      narrativeMode,
     }), '消息保存')
 
     // 字符用量统计
@@ -587,6 +593,7 @@ export async function streamGroupAI(
       images: [],
       timestamp: Date.now(),
       round,
+      narrativeMode,
     }), '错误消息保存')
 
     // NEW-M12 修复：错误时也调用 onComplete，保证 polling 轮询链/自动记忆检查继续推进
@@ -616,7 +623,7 @@ export async function streamGroupAI(
         }))
         window.api.group.saveMessage(group.id, sessionId, {
           id: msgId, groupId: group.id, characterId: speaker.id,
-          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round,
+          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round, narrativeMode,
         }).catch((e) => logError('GroupChatStore:saveMessage', e))
       } else {
         // 无内容，移除占位消息
@@ -674,6 +681,7 @@ export async function streamGroupAIFree(
 
   // BUG-08 修复：异步加载期间用户可能已切换群聊/会话，先校验一次
   if (!isGroupContextCurrent(get, group, sessionId)) return
+  const narrativeMode = resolveNarrativeMode(get().sessions?.find((session) => session.id === sessionId)?.narrativeMode)
 
   // 加载预设
   let preset = null
@@ -715,20 +723,27 @@ export async function streamGroupAIFree(
 
   const requestId = nanoid()
   const msgId = nanoid()
+  // 全局叙事的自由发言保留为单条实际成员回应，避免【判定】/【可选行动】被角色分段器误识别。
+  const freeMessageCharacterId = narrativeMode === 'omniscient'
+    ? (group.memberIds[0] ?? '__narrator__')
+    : '__free__'
 
   const placeholder: GroupMessage = {
     id: msgId,
     groupId: group.id,
-    characterId: '__free__',
+    characterId: freeMessageCharacterId,
     content: '',
     images: [],
     timestamp: Date.now(),
     round,
+    narrativeMode,
+    speakerKind: 'character',
+    generationKind: 'assistant_reply',
   }
   set((s: GroupChatState) => ({
     messages: [...s.messages, placeholder],
     isStreaming: true,
-    currentStreamingCharId: '__free__',
+    currentStreamingCharId: freeMessageCharacterId,
     error: null,
   }))
 
@@ -770,8 +785,8 @@ export async function streamGroupAIFree(
           isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
         window.api.group.saveMessage(group.id, sessionId, {
-          id: msgId, groupId: group.id, characterId: '__free__',
-          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round,
+          id: msgId, groupId: group.id, characterId: freeMessageCharacterId,
+          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round, narrativeMode,
         }).catch((e) => logError('GroupChatStore:saveMessage', e))
       } else {
         set((s: GroupChatState) => ({
@@ -831,8 +846,8 @@ export async function streamGroupAIFree(
     }))
     // 持久化错误消息
     window.api.group.saveMessage(group.id, sessionId, {
-      id: msgId, groupId: group.id, characterId: '__free__',
-      content: errContent, images: [], timestamp: Date.now(), round,
+      id: msgId, groupId: group.id, characterId: freeMessageCharacterId,
+      content: errContent, images: [], timestamp: Date.now(), round, narrativeMode,
     }).catch((e) => logError('GroupChatStore:saveMessage', e))
   })
 
@@ -852,8 +867,8 @@ export async function streamGroupAIFree(
           isStreaming: false, currentStreamingCharId: null, error: '请求超时',
         }))
         window.api.group.saveMessage(group.id, sessionId, {
-          id: msgId, groupId: group.id, characterId: '__free__',
-          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round,
+          id: msgId, groupId: group.id, characterId: freeMessageCharacterId,
+          content: clean + '\n\n⚠️ 请求超时', images: [], timestamp: Date.now(), round, narrativeMode,
         }).catch((e) => logError('GroupChatStore:saveMessage', e))
       } else {
         set((s: GroupChatState) => ({
@@ -905,10 +920,34 @@ export async function splitAndSaveMessages(
   round: number,
   placeholderId: string,
 ) {
+  const narrativeMode = resolveNarrativeMode(get().sessions?.find((session) => session.id === sessionId)?.narrativeMode)
   const charStore = useCharacterStore.getState()
   const members = group.memberIds
     .map(id => charStore.characters.find(c => c.id === id))
     .filter(Boolean) as Character[]
+
+  if (narrativeMode === 'omniscient') {
+    const focusCharacterId = members[0]?.id ?? '__narrator__'
+    const narratorMessage: GroupMessage = {
+      id: placeholderId,
+      groupId: group.id,
+      characterId: focusCharacterId,
+      content: content || '(无回复)',
+      images: [],
+      timestamp: Date.now(),
+      round,
+      narrativeMode,
+      speakerKind: 'character',
+      generationKind: 'assistant_reply',
+    }
+    await window.api.group.saveMessage(group.id, sessionId, narratorMessage)
+    set((state: GroupChatState) => ({
+      messages: state.messages.map((message: GroupMessage) => message.id === placeholderId ? narratorMessage : message),
+      isStreaming: false,
+      currentStreamingCharId: null,
+    }))
+    return
+  }
 
   // 按 【角色名】 拆分
   const pattern = /【(.+?)】/g
@@ -963,6 +1002,9 @@ export async function splitAndSaveMessages(
         images: [],
         timestamp: Date.now(),
         round,
+        narrativeMode,
+        speakerKind: 'character',
+        generationKind: 'assistant_reply',
       }).catch((e) => logError('GroupChatStore:saveMessage', e))
     }
     return
@@ -992,6 +1034,9 @@ export async function splitAndSaveMessages(
             images: [],
             timestamp: Date.now(),
             round,
+            narrativeMode,
+            speakerKind: 'character',
+            generationKind: 'assistant_reply',
           }
           newMessages.push(gm)
         }
@@ -1007,6 +1052,9 @@ export async function splitAndSaveMessages(
       images: [],
       timestamp: Date.now(),
       round,
+      narrativeMode,
+      speakerKind: 'character',
+      generationKind: 'assistant_reply',
     }
     newMessages.push(gm)
   }

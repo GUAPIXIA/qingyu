@@ -1,4 +1,4 @@
-import type { GroupChat, GroupMessage, GroupSession, Preset, MemoryFactRecord } from '../../shared/types'
+import type { GroupChat, GroupMessage, GroupSession, Preset, MemoryFactRecord, NarrativeMode } from '../../shared/types'
 import type { BudgetLoreItem, LorebookDiagnostics } from '../utils/lorebook'
 import type { GroupContextBuildResult } from './groupChatContext'
 import type { FactSearchHit } from '../../shared/ipc-api'
@@ -13,6 +13,10 @@ export interface GroupChatState {
   isStreaming: boolean
   currentStreamingCharId: string | null
   error: string | null
+  /** 正在执行长记忆总结的会话键（`${groupId}:${sessionId}`），无任务时为 null */
+  summarizingMemoryKey: string | null
+  /** 最近一次长记忆总结的失败原因（key 标记归属会话，避免跨会话串提示） */
+  memorySummaryError: { key: string; message: string } | null
 
   loadGroups: () => Promise<void>
   setCurrentGroup: (group: GroupChat) => void
@@ -26,6 +30,9 @@ export interface GroupChatState {
   deleteSession: (groupId: string, sessionId: string) => Promise<void>
   renameSession: (groupId: string, sessionId: string, title: string) => Promise<void>
   setSessionPersona: (personaId: string | null) => Promise<void>
+  setSessionNarrativeMode: (mode: NarrativeMode) => Promise<void>
+  /** 更新当前群聊会话的世界状态或游戏主持设置。 */
+  updateNarrativeSession: (patch: Pick<GroupSession, 'memoryCurrentState' | 'gameMasterMode'>) => Promise<void>
 
   loadMessages: (groupId: string, sessionId: string) => Promise<void>
   sendMessage: (content: string, images: string[], targetCharId?: string, replyToId?: string | null) => Promise<void>

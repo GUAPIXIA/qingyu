@@ -31,10 +31,44 @@ import {
   Sparkles,
   X,
   AlertTriangle,
+  Image as ImageIcon,
+  Loader2,
 } from 'lucide-react'
+import type { ImageGenerationStage } from '../store/chatTypes'
 
 /** 长对话摘要引导提示的消息数阈值 */
 const MEMORY_HINT_THRESHOLD = 40
+
+function ImageGenerationPlaceholder({ stage }: { stage: ImageGenerationStage }) {
+  const label = stage === 'prompting'
+    ? '正在分析场景并生成提示词'
+    : 'ComfyUI 正在生成图片'
+  return (
+    <div className="px-4 pb-4 pt-1 animate-fade-in-up">
+      <div
+        role="status"
+        aria-label={label}
+        aria-live="polite"
+        className="mx-auto flex max-w-sm items-center gap-3 rounded-2xl border border-tavern-accent/25 bg-tavern-bg-card/90 p-3 shadow-[0_12px_34px_rgba(24,20,38,0.12)] backdrop-blur"
+      >
+        <div className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl border border-tavern-border-soft bg-tavern-bg-soft">
+          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-tavern-accent/5 via-transparent to-tavern-accent/15" />
+          <ImageIcon className="relative h-5 w-5 text-tavern-accent/65" aria-hidden />
+          <Loader2 className="absolute bottom-1.5 right-1.5 h-3.5 w-3.5 animate-spin text-tavern-accent" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-tavern-accent shadow-[0_0_0_4px_rgba(180,126,74,0.12)]" />
+            <p className="text-sm font-medium text-tavern-text">{label}</p>
+          </div>
+          <p className="mt-1 text-xs text-tavern-text-muted">
+            {stage === 'prompting' ? '正在整理人物、场景与构图信息…' : '本地工作流处理中，完成后会在这里显示…'}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function ChatPage() {
   const navigate = useNavigate()
@@ -44,6 +78,7 @@ export function ChatPage() {
   const sessions = useChatStore((s) => s.sessions)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const currentSessionId = useChatStore((s) => s.currentSessionId)
+  const pendingImageGenerations = useChatStore((s) => s.pendingImageGenerations)
   const activeLorebookIds = useChatStore((s) => s.activeLorebookIds)
   const loadMessages = useChatStore((s) => s.loadMessages)
   const clearChat = useChatStore((s) => s.clearChat)
@@ -76,6 +111,12 @@ export function ChatPage() {
 
   const activeProfile = getActiveProfile()
   const isConnected = isConnectionConfigured(activeProfile)
+  const currentImageGeneration = useMemo(() => {
+    if (!currentCharacter || !currentSessionId) return null
+    return Object.values(pendingImageGenerations).find(
+      (job) => job.characterId === currentCharacter.id && job.sessionId === currentSessionId,
+    ) ?? null
+  }, [pendingImageGenerations, currentCharacter, currentSessionId])
 
   // 长对话且未开启长记忆时，引导开启自动摘要（节省 token + 保持主题连贯）
   const currentChatSession = sessions.find(s => s.id === currentSessionId)
@@ -106,6 +147,12 @@ export function ChatPage() {
         pct: Math.min(999, Math.round((lastContextUsage.used / lastContextUsage.max) * 100)),
       }
     : null
+
+  const summarizingMemoryKey = useChatStore((s) => s.summarizingMemoryKey)
+  const isMemorySummarizing = Boolean(
+    currentCharacter && currentSessionId
+    && summarizingMemoryKey === `${currentCharacter.id}:${currentSessionId}`
+  )
 
   const handleSummarizeFromWarning = async () => {
     if (!currentCharacter) return
@@ -509,9 +556,11 @@ export function ChatPage() {
           </span>
           <button
             onClick={handleSummarizeFromWarning}
-            className="px-2 py-0.5 rounded font-medium text-tavern-accent hover:bg-tavern-accent/10 transition-colors shrink-0"
+            disabled={isMemorySummarizing}
+            aria-busy={isMemorySummarizing || undefined}
+            className="px-2 py-0.5 rounded font-medium text-tavern-accent hover:bg-tavern-accent/10 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            立即总结
+            {isMemorySummarizing ? '正在总结…' : '立即总结'}
           </button>
           <button
             onClick={() => useChatStore.getState().clearChat(currentCharacter!.id)}
@@ -534,7 +583,7 @@ export function ChatPage() {
           className="w-full h-full flex flex-col"
           style={{ maxWidth: `${(settings.messageWidth ?? 768) + 32}px` }}
         >
-        {messages.length === 0 ? (
+        {messages.length === 0 && !currentImageGeneration ? (
           <EmptyState
             className="h-full"
             icon={<MessageSquare className="w-8 h-8" />}
@@ -563,7 +612,12 @@ export function ChatPage() {
               )
             }}
             components={{
-              Footer: () => <div ref={messagesEndRef} className="h-4" />,
+              Footer: () => (
+                <>
+                  {currentImageGeneration && <ImageGenerationPlaceholder stage={currentImageGeneration.stage} />}
+                  <div ref={messagesEndRef} className="h-4" />
+                </>
+              ),
             }}
           />
         )}

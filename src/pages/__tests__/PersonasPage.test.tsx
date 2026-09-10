@@ -52,4 +52,18 @@ describe('PersonasPage', () => {
     fireEvent.click(toggle)
     expect(useSettingsStore.getState().settings.personaInjection?.enabled).toBe(false)
   })
+
+  it('在身份页面编辑并恢复全局叙事规则', async () => {
+    render(<PersonasPage />)
+
+    const editor = await screen.findByRole('textbox', { name: '全局叙事规则' })
+    expect(editor).toBeTruthy()
+    fireEvent.change(editor, { target: { value: '{{user}}只观察，由{{char}}推进世界。' } })
+    expect(useSettingsStore.getState().settings.omniscientNarrativeRules).toBe('{{user}}只观察，由{{char}}推进世界。')
+    expect(screen.getByText('自定义规则')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复默认规则' }))
+    expect(useSettingsStore.getState().settings.omniscientNarrativeRules).toBeUndefined()
+    expect(screen.getByText('内置规则')).toBeTruthy()
+  })
 })

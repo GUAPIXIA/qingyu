@@ -80,6 +80,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
     var activeModel by remember { mutableStateOf("") }
     var modelsLoading by remember { mutableStateOf(false) }
     var memory by remember { mutableStateOf<com.qingyu.companion.model.MemoryDto?>(null) }
+    var summarizingMemory by remember { mutableStateOf(false) }
     var translationLang by remember { mutableStateOf("") }
 
     // 错误回退文案（composable 上下文取好，供协程 lambda 使用）
@@ -88,6 +89,7 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
     val switchFailedLabel = stringResource(R.string.qs_switch_failed)
     val adjustFailedLabel = stringResource(R.string.qs_adjust_failed)
     val summarizeFailedLabel = stringResource(R.string.qs_summarize_failed)
+    val summarizeLoadingLabel = stringResource(R.string.qs_memory_summarizing)
 
     LaunchedEffect(Unit) {
         runCatching {
@@ -513,24 +515,39 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                 // 立即总结（卡片行）
                                 CardRow(verticalPadding = 10) {
                                     Surface(
+                                        enabled = !summarizingMemory,
                                         onClick = {
+                                            summarizingMemory = true
                                             scope.launch {
                                                 runCatching { container.repository.summarizeMemory(sessionId, characterId) }
                                                     .onSuccess { (summary, facts) ->
                                                         memory = mem.copy(memory = summary, memoryFacts = facts)
                                                     }
                                                     .onFailure { error = it.message ?: summarizeFailedLabel }
+                                                summarizingMemory = false
                                             }
                                         },
                                         shape = RoundedCornerShape(50),
                                         color = qy.accentSoft,
                                     ) {
-                                        Text(
-                                            stringResource(R.string.qs_memory_summarize_now),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = qy.accent,
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
                                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
-                                        )
+                                        ) {
+                                            if (summarizingMemory) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(11.dp),
+                                                    strokeWidth = 1.5.dp,
+                                                    color = qy.accent,
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                            }
+                                            Text(
+                                                if (summarizingMemory) summarizeLoadingLabel else stringResource(R.string.qs_memory_summarize_now),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = qy.accent,
+                                            )
+                                        }
                                     }
                                     Spacer(Modifier.weight(1f))
                                     Text(

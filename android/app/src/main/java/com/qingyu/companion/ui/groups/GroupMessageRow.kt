@@ -71,6 +71,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.model.GroupMessage
+import com.qingyu.companion.model.MessageIdentity
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.MarkdownText
@@ -100,6 +101,11 @@ internal fun GroupMessageRow(
     val qy = qyColors()
     val isUser = message.isUser
     val name = speakerName(message.characterId)
+    val speakerKind = MessageIdentity.resolveSpeakerKind(
+        message.speakerKind, characterId = message.characterId, narrativeMode = message.narrativeMode,
+    )
+    val isNarrator = speakerKind == MessageIdentity.NARRATOR
+    val isPersona = speakerKind == MessageIdentity.PERSONA
     val displayedContent = remember(message.content, message.translation) {
         translatedMessageContent(message.content, message.translation)
     }
@@ -108,9 +114,9 @@ internal fun GroupMessageRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
-        if (!isUser) {
+        if (isNarrator || !isPersona) {
             Text(
-                name,
+                if (isNarrator) stringResource(R.string.chat_narrator) else name,
                 style = MaterialTheme.typography.labelSmall,
                 color = qy.muted,
                 fontWeight = FontWeight.Medium,
@@ -118,9 +124,17 @@ internal fun GroupMessageRow(
             )
         }
         Surface(
-            color = if (isUser) qy.meBubble else qy.aiBubble,
+            color = when {
+                isNarrator -> qy.accentSoft
+                isPersona -> qy.meBubble
+                else -> qy.aiBubble
+            },
             shape = GroupBubbleShape(isUser),
-            border = if (isUser) BorderStroke(1.dp, qy.line) else null,
+            border = when {
+                isNarrator -> BorderStroke(1.dp, qy.accent.copy(alpha = 0.35f))
+                isPersona -> BorderStroke(1.dp, qy.line)
+                else -> null
+            },
             modifier = Modifier
                 .widthIn(max = 300.dp)
                 .combinedClickable(onClick = {}, onLongClick = onLongPress),

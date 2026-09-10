@@ -8,6 +8,7 @@
  */
 import { create } from 'zustand'
 import type { TaskSnapshot, TaskEventEnvelope } from '../../shared/chat-core/events'
+import type { MessageGenerationKind } from '../../shared/types'
 
 export interface ChatTaskState {
   activeTask: TaskSnapshot | null
@@ -27,7 +28,7 @@ export const useChatTaskStore = create<ChatTaskState>(() => ({
 }))
 
 /** 提交 send 命令（渲染层仅负责输入，执行在主进程） */
-export async function submitChatTask(sessionId: string, content: string, characterId?: string): Promise<TaskSnapshot> {
+export async function submitChatTask(sessionId: string, content: string, characterId?: string, generationKind: MessageGenerationKind = 'manual'): Promise<TaskSnapshot> {
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const command = {
     type: 'send' as const,
@@ -35,6 +36,7 @@ export async function submitChatTask(sessionId: string, content: string, charact
     sessionId,
     characterId,
     content,
+    generationKind,
     client: { kind: 'desktop' as const, clientId: 'desktop', protocolVersion: 2 as const },
   }
   const res = await (window as unknown as { api: { chatTask: { start: (c: unknown) => Promise<{ taskId: string }> } } }).api.chatTask.start(command)

@@ -53,6 +53,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.qingyu.companion.R
 import com.qingyu.companion.model.Message
+import com.qingyu.companion.model.MessageIdentity
 import com.qingyu.companion.model.PendingMessage
 import com.qingyu.companion.model.Role
 import com.qingyu.companion.ui.components.MarkdownText
@@ -254,6 +255,11 @@ internal fun MessageBubble(
     val qy = qyColors()
     val isUser = message.role == Role.user
     val isSystem = message.role == Role.system
+    val speakerKind = MessageIdentity.resolveSpeakerKind(
+        message.speakerKind, message.role, message.characterId, message.narrativeMode,
+    )
+    val isNarrator = speakerKind == MessageIdentity.NARRATOR
+    val isPersona = speakerKind == MessageIdentity.PERSONA
     val displayedContent = remember(message.content, message.translation) {
         translatedMessageContent(message.content, message.translation)
     }
@@ -300,18 +306,33 @@ internal fun MessageBubble(
             modifier = Modifier.widthIn(max = bubbleMax),
         ) {
             // 角色名标签（cap 11sp 弱文字）
-            if (!isUser && !isSystem) {
+            if (isNarrator || (!isUser && !isSystem) || (isUser && !isPersona)) {
                 Text(
-                    characterName.ifBlank { stringResource(R.string.chat_role_placeholder) },
+                    if (isNarrator) {
+                        stringResource(
+                            R.string.chat_narrator_focus,
+                            characterName.ifBlank { stringResource(R.string.chat_role_placeholder) },
+                        )
+                    } else {
+                        characterName.ifBlank { stringResource(R.string.chat_role_placeholder) }
+                    },
                     style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
                     color = qy.muted,
                     modifier = Modifier.padding(start = 4.dp, bottom = 2.dp),
                 )
             }
             Surface(
-                color = if (isUser) qy.meBubble else qy.aiBubble,
+                color = when {
+                    isNarrator -> qy.accentSoft
+                    isPersona -> qy.meBubble
+                    else -> qy.aiBubble
+                },
                 shape = BubbleShape(isUser),
-                border = if (isUser) BorderStroke(1.dp, qy.line) else null,
+                border = when {
+                    isNarrator -> BorderStroke(1.dp, qy.accent.copy(alpha = 0.35f))
+                    isPersona -> BorderStroke(1.dp, qy.line)
+                    else -> null
+                },
                 modifier = Modifier
                     .combinedClickable(onClick = {}, onLongClick = onLongPress),
             ) {

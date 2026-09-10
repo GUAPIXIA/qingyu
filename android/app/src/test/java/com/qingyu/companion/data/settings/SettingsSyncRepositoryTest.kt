@@ -291,6 +291,23 @@ class SettingsSyncRepositoryTest {
     }
 
     @Test
+    fun `叙事设置属于 PC 同步白名单`() {
+        val patch = buildSettingsPatch(
+            mapOf(
+                "defaultNarrativeMode" to "omniscient",
+                "omniscientNarrativeRules" to "{{user}}观察，由{{char}}推进。",
+            ),
+        )
+        assertEquals(setOf("defaultNarrativeMode", "omniscientNarrativeRules"), patch.keys)
+        val dto = SettingsDto(
+            defaultNarrativeMode = "omniscient",
+            omniscientNarrativeRules = "全局规则",
+        )
+        assertEquals("omniscient", settingsFieldValue(dto, "defaultNarrativeMode"))
+        assertEquals("全局规则", settingsFieldValue(dto, "omniscientNarrativeRules"))
+    }
+
+    @Test
     fun `debounce 合并纯函数 同字段后值覆盖`() {
         val merged = mergeSettingsChanges(
             SettingsChange(mapOf("lorebookRatio" to 0.2, "streamOutput" to true)),

@@ -120,6 +120,9 @@ export class ChatOrchestrator {
             images: command.images ?? [],
             replyToId: command.replyToId,
             requestId: command.requestId,
+            narrativeMode: session.narrativeMode,
+            speakerKind: session.narrativeMode === 'omniscient' ? 'narrator' : 'persona',
+            generationKind: command.generationKind ?? 'manual',
           })
           userMessageId = um.id
         } else {
@@ -253,6 +256,9 @@ export class ChatOrchestrator {
               content: finalText,
               requestId: command.requestId + '-cancel',
               generationTaskId: taskId,
+              narrativeMode: session.narrativeMode,
+              speakerKind: 'character',
+              generationKind: command.type === 'continue' ? 'message_continue' : 'assistant_reply',
             })
             updateTask(taskId, (s) => ({ ...s, assistantMessageId: assistantId, accumulatedText: finalText, updatedAt: Date.now() }))
           }
@@ -337,7 +343,7 @@ export class ChatOrchestrator {
           transitionTask(taskId, 'failed', { error: createDomainError('INVALID_MODEL_RESPONSE', '空回复') })
           throw createDomainError('INVALID_MODEL_RESPONSE', '空回复')
         }
-        const res = await this.deps.messagePort.appendSwipedCandidate(targetId, finalText)
+        const res = await this.deps.messagePort.appendSwipedCandidate(targetId, finalText, 'regenerate')
         updateTask(taskId, (s) => ({ ...s, assistantMessageId: res.id, accumulatedText: finalText, updatedAt: Date.now() }))
       } else {
         const assistantId = nanoid()
@@ -348,6 +354,9 @@ export class ChatOrchestrator {
           content: finalText,
           requestId: command.requestId,
           generationTaskId: taskId,
+          narrativeMode: session.narrativeMode,
+          speakerKind: 'character',
+          generationKind: command.type === 'continue' ? 'message_continue' : 'assistant_reply',
         })
         updateTask(taskId, (s) => ({ ...s, assistantMessageId: assistantId, accumulatedText: finalText, updatedAt: Date.now() }))
       }

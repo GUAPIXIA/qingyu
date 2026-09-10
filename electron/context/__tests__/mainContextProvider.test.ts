@@ -190,11 +190,15 @@ describe('ContextDataWriter 双端写入一致性', () => {
     // 写入路径与渲染层 window.api.chat.saveMessage 的底层实现完全一致（appendMessage）
     mainContextWriter.saveMessage(CHARACTER_ID, message)
 
-    // 磁盘 JSONL：最后一行应等于消息的 JSON 序列化（无多余字段）
+    // 磁盘 JSONL：最后一行保留原消息，并由统一边界补齐身份快照
     const filePath = join(DIRS.chats(), CHARACTER_ID, `${session.id}.jsonl`)
     expect(existsSync(filePath)).toBe(true)
     const lines = readFileSync(filePath, 'utf-8').trim().split('\n')
-    expect(JSON.parse(lines[lines.length - 1])).toEqual(message)
+    expect(JSON.parse(lines[lines.length - 1])).toEqual({
+      ...message,
+      speakerKind: 'character',
+      generationKind: 'assistant_reply',
+    })
 
     // 读回：与 IPC handler 同一 readMessages 路径
     const readBack = chatData.readMessages(CHARACTER_ID, session.id)

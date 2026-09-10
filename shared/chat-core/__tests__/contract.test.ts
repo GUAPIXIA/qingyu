@@ -14,6 +14,10 @@ describe('ChatCommand 校验', () => {
     client: { kind: 'desktop', clientId: 'c1', protocolVersion: 2 },
   }
   it('合法 send 通过', () => expect(validateChatCommand(base)).toBeNull())
+  it('send 仅接受我方输入来源', () => {
+    expect(validateChatCommand({ ...base, generationKind: 'input_continue' })).toBeNull()
+    expect(validateChatCommand({ ...base, generationKind: 'regenerate' })).toBe('INVALID_COMMAND: generationKind')
+  })
   it('空 requestId 失败', () => expect(validateChatCommand({ ...base, requestId: '' } as ChatCommand)).not.toBeNull())
   it('regenerate 缺 messageId 失败', () => {
     const cmd = { type: 'regenerate', requestId: 'r2', sessionId: 's1', messageId: '', client: base.client } as ChatCommand

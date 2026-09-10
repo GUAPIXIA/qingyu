@@ -1,0 +1,76 @@
+{
+  "singleMessages": [
+    {
+      "id": "msg-persona-1",
+      "sessionId": "session-contract-1",
+      "characterId": "character-contract-1",
+      "role": "user",
+      "content": "我推开门。",
+      "images": [],
+      "timestamp": 1788000001000,
+      "narrativeMode": "immersive",
+      "speakerKind": "persona",
+      "generationKind": "manual"
+    },
+    {
+      "id": "msg-narrator-1",
+      "sessionId": "session-contract-1",
+      "characterId": "character-contract-1",
+      "role": "user",
+      "content": "门外忽然传来急促的马蹄声。",
+      "images": [],
+      "timestamp": 1788000002000,
+      "narrativeMode": "omniscient",
+      "speakerKind": "narrator",
+      "generationKind": "input_continue"
+    },
+    {
+      "id": "msg-character-1",
+      "sessionId": "session-contract-1",
+      "characterId": "character-contract-1",
+      "role": "assistant",
+      "content": "她抬头望向窗外。",
+      "images": [],
+      "timestamp": 1788000003000,
+      "narrativeMode": "omniscient",
+      "speakerKind": "character",
+      "generationKind": "assistant_reply"
+    },
+    {
+      "id": "msg-legacy-1",
+      "sessionId": "session-contract-1",
+      "characterId": "character-contract-1",
+      "role": "user",
+      "content": "旧版全局叙事消息。",
+      "images": [],
+      "timestamp": 1788000004000,
+      "narrativeMode": "omniscient"
+    }
+  ],
+  "groupMessages": [
+    {
+      "id": "group-narrator-1",
+      "groupId": "group-contract-1",
+      "characterId": "__user__",
+      "content": "远处的钟楼敲响了午夜。",
+      "images": [],
+      "timestamp": 1788000005000,
+      "round": 1,
+      "narrativeMode": "omniscient",
+      "speakerKind": "narrator",
+      "generationKind": "manual"
+    },
+    {
+      "id": "group-character-1",
+      "groupId": "group-contract-1",
+      "characterId": "character-contract-1",
+      "content": "我们得立刻离开这里。",
+      "images": [],
+      "timestamp": 1788000006000,
+      "round": 1,
+      "narrativeMode": "omniscient",
+      "speakerKind": "character",
+      "generationKind": "assistant_reply"
+    }
+  ]
+}

@@ -28,7 +28,12 @@ const WATCHED: WatchedAction[] = [
   { key: 'editMessage', change: 'message' },
   { key: 'deleteMessage', change: 'message' },
   { key: 'swipeMessage', change: 'swiped' },
-  { key: 'addStandaloneMessage', change: 'message' },
+  {
+    key: 'addStandaloneMessage',
+    change: 'message',
+    // addStandaloneMessage(content, images, character, role, sessionId)
+    sessionIdOf: ((...args: never[]) => args[4] as string | undefined),
+  },
   { key: 'clearChat', change: 'message' },
   {
     key: 'renameSession',

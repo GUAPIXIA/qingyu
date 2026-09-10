@@ -205,6 +205,71 @@ function makeData(overrides: Partial<ContextBuildData> = {}): ContextBuildData {
 // ===== 快照测试 =====
 
 describe('buildContextMessagesFromData 防漂移快照', () => {
+  it('按会话值注入全局叙事规则并报告实际模式', () => {
+    const baseChat = makeChat()
+    const result = buildContextMessagesFromData(makeData({
+      chat: makeChat({
+        sessions: [{ ...baseChat.sessions[0], narrativeMode: 'omniscient' }],
+      }),
+    }))
+
+    expect(result.narrativeMode).toBe('omniscient')
+    expect(result.messages[0].content).toContain('【叙事模式：全局叙事】')
+    expect(result.messages[0].content).toContain('位于故事外部的第三人称旁白、导演和世界运行者')
+    expect(result.messages[0].content).toContain('【第三人称旁白：硬性输出约束】')
+    expect(result.messages[0].content).toContain('不得写成角色第一人称内心独白')
+    expect(result.messages[0].content).toContain('不要为了展示全知视角而一次泄露所有人物')
+    expect(result.messages[0].content).not.toContain('【叙事模式：代入式角色扮演】')
+  })
+
+  it('全局叙事模式使用身份页保存的自定义规则', () => {
+    const baseChat = makeChat()
+    const result = buildContextMessagesFromData(makeData({
+      chat: makeChat({
+        sessions: [{ ...baseChat.sessions[0], narrativeMode: 'omniscient' }],
+      }),
+      settings: {
+        settings: makeSettings({
+          omniscientNarrativeRules: '{{user}}作为观察者，由{{char}}统筹世界演化。',
+        }),
+        profile: null,
+      },
+    }))
+
+    expect(result.messages[0].content).toContain('用户小明作为观察者，由艾琳统筹世界演化。')
+    expect(result.messages[0].content).not.toContain('故事旁白、导演和世界运行者')
+    expect(result.messages[0].content).toContain('正文主体必须使用第三人称叙事')
+  })
+
+  it('全局叙事可按会话开启游戏主持格式', () => {
+    const baseChat = makeChat()
+    const enabled = buildContextMessagesFromData(makeData({
+      chat: makeChat({
+        sessions: [{ ...baseChat.sessions[0], narrativeMode: 'omniscient', gameMasterMode: true }],
+      }),
+    }))
+    expect(enabled.messages[0].content).toContain('【呈现方式：游戏主持】')
+    expect(enabled.messages[0].content).toContain('【可选行动】')
+
+    const immersive = buildContextMessagesFromData(makeData({
+      chat: makeChat({
+        sessions: [{ ...baseChat.sessions[0], narrativeMode: 'immersive', gameMasterMode: true }],
+      }),
+    }))
+    expect(immersive.messages[0].content).not.toContain('【呈现方式：游戏主持】')
+  })
+
+  it('旧会话缺少模式字段时固定回退代入模式，不受后来默认值影响', () => {
+    const result = buildContextMessagesFromData(makeData({
+      character: makeCharacter({ defaultNarrativeMode: 'omniscient' }),
+      settings: { settings: makeSettings({ defaultNarrativeMode: 'omniscient' }), profile: null },
+    }))
+
+    expect(result.narrativeMode).toBe('immersive')
+    expect(result.messages[0].content).toContain('【叙事模式：代入式角色扮演】')
+    expect(result.messages[0].content).not.toContain('【叙事模式：全局叙事】')
+  })
+
   it('预设可覆盖全局心理描写格式', () => {
     const disabled = buildContextMessagesFromData(makeData({
       preset: makePreset({ enableThoughtFormat: false }),
@@ -405,7 +470,7 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
     })
     const result = buildContextMessagesFromData(data)
     const systemText = result.messages[0].content
-    expect(systemText).toContain('你是一个角色扮演助手')
+    expect(systemText).toContain('你是一个沉浸式互动叙事助手')
     expect(result.lastContextUsage.max).toBeGreaterThan(0)
   })
 
@@ -423,6 +488,19 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
     expect(last.content).toContain('继续写作')
     // 无空 assistant prefix
     expect(result.messages.some((m) => m.role === 'assistant' && m.content === '')).toBe(false)
+  })
+
+  it('续写可按目标消息覆盖当前会话模式，保持原叙事身份', () => {
+    const data = makeData()
+    data.chat.sessions[0].narrativeMode = 'immersive'
+
+    const result = buildContextMessagesFromData(data, {
+      continuation: true,
+      narrativeMode: 'omniscient',
+    })
+
+    expect(result.narrativeMode).toBe('omniscient')
+    expect(result.messages[0].content).toContain('【叙事模式：全局叙事】')
   })
 
   it('长历史触发上下文裁剪（不产生压缩任务但裁剪生效）', () => {

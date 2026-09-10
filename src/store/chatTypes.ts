@@ -1,7 +1,18 @@
-import type { Message, Character, Preset, Lorebook, RegexRule, SessionPreview, ChatSession, MemoryFactRecord } from '../../shared/types'
+import type { Message, Character, Preset, Lorebook, RegexRule, SessionPreview, ChatSession, MemoryFactRecord, NarrativeMode, MessageGenerationKind } from '../../shared/types'
 import type { BudgetLoreItem, LorebookDiagnostics } from '../utils/lorebook'
 import type { BuildResult } from '../context/contextBuilder'
 import type { FactSearchHit } from '../../shared/ipc-api'
+
+export type ImageGenerationStage = 'prompting' | 'generating'
+
+/** 仅存在于渲染进程内的生图任务，不写入会话文件。 */
+export interface ImageGenerationJob {
+  id: string
+  characterId: string
+  sessionId: string
+  stage: ImageGenerationStage
+  startedAt: number
+}
 
 /** 上下文消息（buildContext 的中间产物，最终经 convertMessages 转为 provider 格式） */
 export type ContextMessage = {
@@ -20,6 +31,11 @@ export interface ChatState {
   isStreaming: boolean
   currentRequestId: string | null
   error: string | null
+  pendingImageGenerations: Record<string, ImageGenerationJob>
+  /** 正在执行长记忆总结的会话键（`${characterId}:${sessionId}`），无任务时为 null */
+  summarizingMemoryKey: string | null
+  /** 最近一次长记忆总结的失败原因（key 标记归属会话，避免跨会话串提示） */
+  memorySummaryError: { key: string; message: string } | null
   activePresetId: string | null
   /** 已激活的世界书 ID 列表（支持多选） */
   activeLorebookIds: string[]
@@ -44,9 +60,13 @@ export interface ChatState {
     totalChars: number; durationStr: string
   } | null>
   loadMessages: (character: Character) => Promise<void>
-  sendMessage: (content: string, images: string[], character: Character, preset: Preset | null, lorebooks: Lorebook[], replyToId?: string) => Promise<void>
+  sendMessage: (content: string, images: string[], character: Character, preset: Preset | null, lorebooks: Lorebook[], replyToId?: string, generationKind?: MessageGenerationKind) => Promise<void>
   /** 添加独立消息（不触发 AI 回复，用于生图等） */
-  addStandaloneMessage: (content: string, images: string[], character: Character, role?: 'user' | 'assistant' | 'system') => Promise<void>
+  addStandaloneMessage: (content: string, images: string[], character: Character, role?: 'user' | 'assistant' | 'system', sessionId?: string) => Promise<void>
+  /** 同一角色会话只允许一个生图任务；冲突时返回 null。 */
+  beginImageGeneration: (characterId: string, sessionId: string, stage: ImageGenerationStage) => ImageGenerationJob | null
+  updateImageGeneration: (id: string, stage: ImageGenerationStage) => void
+  finishImageGeneration: (id: string) => void
   stopStreaming: () => void
   regenerateMessage: (messageId: string, character: Character, preset: Preset | null, lorebooks: Lorebook[]) => Promise<void>
   /** 切换消息的 Swipe 候选 */
@@ -66,6 +86,7 @@ export interface ChatState {
   applyRegex: (text: string, scope: 'input' | 'output', rules: RegexRule[]) => string
   buildContext: (character: Character, preset: Preset | null, opts?: {
     continuation?: boolean
+    narrativeMode?: NarrativeMode
     trackUsage?: boolean
     generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
     lorebookDiagnosticsMode?: 'live' | 'preview'

@@ -43,9 +43,17 @@ describe('messagePort coverage', () => {
     const session = await chatData.createSession('char-mp2', 'mp-test2')
     const msgId = 'msg-req-hit'
     // 直接用 messagePort 写入，再查找
-    await chatMessagePort.appendUserMessage({ id: msgId, sessionId: session.id, characterId: 'char-mp2', content: 'hello', requestId: 'req-hit-1' })
+    await chatMessagePort.appendUserMessage({
+      id: msgId,
+      sessionId: session.id,
+      characterId: 'char-mp2',
+      content: 'hello',
+      requestId: 'req-hit-1',
+      narrativeMode: 'omniscient',
+    })
     const found = await chatMessagePort.findByRequestId(session.id, 'req-hit-1')
     expect(found?.id).toBe(msgId)
+    expect(chatData.readMessages('char-mp2', session.id).find((message) => message.id === msgId)?.narrativeMode).toBe('omniscient')
     expect(await chatMessagePort.findByRequestId(session.id, 'not-hit')).toBeNull()
   })
 

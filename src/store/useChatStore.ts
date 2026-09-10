@@ -21,6 +21,8 @@ import { maybeRunAutoMemorySummary, runMemorySummary } from './memoryManager'
 import { regenerateChatMessage, continueChatMessage, swipeChatMessage } from './chatGeneration'
 import { sessionEventReporter } from './sessionEventReporter'
 import type { ChatState } from './chatTypes'
+import { resolveNarrativeMode } from '../../shared/narrativeMode'
+import { resolveMessageSpeakerKind } from '../../shared/messageIdentity'
 
 export type { ChatState }
 export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) => ({
@@ -30,6 +32,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   isStreaming: false,
   currentRequestId: null,
   error: null,
+  pendingImageGenerations: {},
+  summarizingMemoryKey: null,
+  memorySummaryError: null,
   activePresetId: null,
   activeLorebookIds: [],
   _semanticLoreHits: [],
@@ -144,6 +149,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       images: [],
       isEditing: false,
       timestamp: Date.now(),
+      narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === sid)?.narrativeMode),
+      speakerKind: 'character',
+      generationKind: 'assistant_reply',
     }
     await window.api.chat.saveMessage(firstMsg)
     set((s) => ({ messages: [...s.messages, firstMsg] }))
@@ -386,6 +394,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
           images: [],
           isEditing: false,
           timestamp: Date.now(),
+          narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === sessionId)?.narrativeMode),
+          speakerKind: 'character',
+          generationKind: 'assistant_reply',
         }
         await window.api.chat.saveMessage(firstMsg)
         // N25 修复：若加载期间用户已发送消息（messages 非空），不覆盖用户消息
@@ -400,42 +411,87 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     set({ messages: [] })
   },
 
-  addStandaloneMessage: async (content, images, character, role = 'assistant') => {
-    const currentSid = get().currentSessionId
-    if (!currentSid) return
+  addStandaloneMessage: async (content, images, character, role = 'assistant', sessionId) => {
+    const targetSid = sessionId ?? get().currentSessionId
+    if (!targetSid) return
 
+    const narrativeMode = resolveNarrativeMode(get().sessions.find((session) => session.id === targetSid)?.narrativeMode)
     const msg: Message = {
       id: nanoid(),
-      sessionId: currentSid,
+      sessionId: targetSid,
       characterId: character.id,
       role,
       content,
       images,
       isEditing: false,
       timestamp: Date.now(),
+      ...(role !== 'system' ? { narrativeMode } : {}),
+      speakerKind: resolveMessageSpeakerKind({ role, characterId: character.id, narrativeMode }),
+      generationKind: role === 'assistant' ? 'assistant_reply' : 'manual',
     }
-    set((state) => ({ messages: [...state.messages, msg] }))
+    // 后台生图期间用户可能切换角色或会话：消息始终落盘到发起会话，
+    // 只有目标仍在当前视图时才追加到可见消息数组。
+    const visibleCharacterId = useCharacterStore.getState().currentCharacter?.id
+    if (get().currentSessionId === targetSid && (!visibleCharacterId || visibleCharacterId === character.id)) {
+      set((state) => ({ messages: [...state.messages, msg] }))
+    }
     await window.api.chat.saveMessage(msg)
   },
 
-  sendMessage: async (content, images, character, preset, _lorebooks, replyToId) => {
+  beginImageGeneration: (characterId, sessionId, stage) => {
+    const state = get()
+    const duplicate = Object.values(state.pendingImageGenerations).some(
+      (job) => job.characterId === characterId && job.sessionId === sessionId,
+    )
+    if (duplicate) return null
+    const job = { id: nanoid(), characterId, sessionId, stage, startedAt: Date.now() }
+    set((current) => ({
+      pendingImageGenerations: { ...current.pendingImageGenerations, [job.id]: job },
+    }))
+    return job
+  },
+
+  updateImageGeneration: (id, stage) => {
+    set((state) => {
+      const current = state.pendingImageGenerations[id]
+      if (!current) return state
+      return {
+        pendingImageGenerations: {
+          ...state.pendingImageGenerations,
+          [id]: { ...current, stage },
+        },
+      }
+    })
+  },
+
+  finishImageGeneration: (id) => {
+    set((state) => {
+      if (!state.pendingImageGenerations[id]) return state
+      const next = { ...state.pendingImageGenerations }
+      delete next[id]
+      return { pendingImageGenerations: next }
+    })
+  },
+
+  sendMessage: async (content, images, character, preset, _lorebooks, replyToId, generationKind = 'manual') => {
     // V12-11: flag 隔离，新链路走 Orchestrator（带流式占位）
     try {
       const { useChatTaskStore } = await import('./chatTaskStore')
       if (useChatTaskStore.getState().chatEngineV2 && (window as unknown as { api?: { chatTask?: unknown } }).api?.chatTask) {
         const curSid = get().currentSessionId
         if (curSid) {
+          const narrativeMode = resolveNarrativeMode(get().sessions.find((session) => session.id === curSid)?.narrativeMode)
           // 乐观消息仅落屏，不落盘（由 Orchestrator 按 requestId 幂等落盘，避免双写）
           const userMsgId = nanoid()
-          const userMsg = { id: userMsgId, sessionId: curSid, characterId: character.id, role: 'user' as const, content, images: images ?? [], isEditing: false, timestamp: Date.now(), replyToId: replyToId ?? undefined }
+          const userMsg = { id: userMsgId, sessionId: curSid, characterId: character.id, role: 'user' as const, content, images: images ?? [], isEditing: false, timestamp: Date.now(), replyToId: replyToId ?? undefined, narrativeMode, speakerKind: resolveMessageSpeakerKind({ role: 'user', narrativeMode }), generationKind }
           set((s) => ({ messages: [...s.messages, userMsg] }))
           // 创建 AI 占位
           const aiMsgId = nanoid()
-          const aiPlaceholder = { id: aiMsgId, sessionId: curSid, characterId: character.id, role: 'assistant' as const, content: '', images: [], isEditing: false, timestamp: Date.now() }
+          const aiPlaceholder = { id: aiMsgId, sessionId: curSid, characterId: character.id, role: 'assistant' as const, content: '', images: [], isEditing: false, timestamp: Date.now(), narrativeMode, speakerKind: 'character' as const, generationKind: 'assistant_reply' as const }
           set((s) => ({ messages: [...s.messages, aiPlaceholder], isStreaming: true }))
           // 提交任务并订阅流式事件
           const { submitChatTask, subscribeTaskEvents } = await import('./chatTaskStore')
-          const task = await submitChatTask(curSid, content, character.id)
+          const task = await submitChatTask(curSid, content, character.id, generationKind)
           // 关联占位与任务，便于后续更新
           const unsub = subscribeTaskEvents(task.taskId, (delta) => {
             set((s) => {
@@ -457,6 +513,11 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
                 // 终态后重载消息文件，确保与落盘一致
                 const msgs = await window.api.chat.listMessages(character.id, curSid)
                 set({ messages: msgs as unknown as typeof get extends () => infer T ? T extends { messages: infer M } ? M : never : never })
+                // V2 链路自动长记忆：对齐旧链路 sendMessage 完成后的挂接；仅在生成成功时检查
+                // 间隔阈值，消息已按落盘内容重载，游标统计基于持久化 id。
+                if (snap.state === 'completed' && get().currentSessionId === curSid) {
+                  maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
+                }
               }
             } catch { /* ignore */ }
           }, 1000)
@@ -516,6 +577,12 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       isEditing: false,
       timestamp: Date.now(),
       replyToId: replyToId ?? undefined,
+      narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === currentSid)?.narrativeMode),
+      speakerKind: resolveMessageSpeakerKind({
+        role: 'user',
+        narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === currentSid)?.narrativeMode),
+      }),
+      generationKind,
     }
     set((state) => ({ messages: [...state.messages, userMessage], error: null }))
     await window.api.chat.saveMessage(userMessage)
@@ -539,6 +606,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       images: [],
       isEditing: false,
       timestamp: Date.now(),
+      narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === currentSid)?.narrativeMode),
+      speakerKind: 'character',
+      generationKind: 'assistant_reply',
     }
     set((state) => ({
       messages: [...state.messages, aiMessage],

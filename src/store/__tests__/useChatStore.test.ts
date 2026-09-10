@@ -62,6 +62,7 @@ function resetStores() {
     isStreaming: false,
     currentRequestId: null,
     error: null,
+    pendingImageGenerations: {},
     activePresetId: null,
     activeLorebookIds: [],
     _semanticLoreHits: [],
@@ -77,7 +78,7 @@ function resetStores() {
     _saveTimer: null,
   })
   usePersonaStore.setState({ personas: [], loaded: true })
-  useCharacterStore.setState({ characters: [] })
+  useCharacterStore.setState({ characters: [], currentCharacter: null })
   vi.clearAllMocks()
 }
 
@@ -110,6 +111,32 @@ describe('useChatStore', () => {
       useChatStore.setState({ messages: [makeMessage()] })
       useChatStore.getState().clearMessages()
       expect(useChatStore.getState().messages).toEqual([])
+    })
+  })
+
+  describe('临时生图任务', () => {
+    it('同一会话去重并支持阶段更新与清理', () => {
+      const first = useChatStore.getState().beginImageGeneration('c1', 's1', 'prompting')
+      expect(first).toMatchObject({ characterId: 'c1', sessionId: 's1', stage: 'prompting' })
+      expect(useChatStore.getState().beginImageGeneration('c1', 's1', 'generating')).toBeNull()
+
+      useChatStore.getState().updateImageGeneration(first!.id, 'generating')
+      expect(useChatStore.getState().pendingImageGenerations[first!.id].stage).toBe('generating')
+      useChatStore.getState().finishImageGeneration(first!.id)
+      expect(useChatStore.getState().pendingImageGenerations).toEqual({})
+    })
+
+    it('后台完成时保存到发起会话，不追加到当前其他会话', async () => {
+      const character = makeCharacter()
+      useCharacterStore.setState({ characters: [character], currentCharacter: character })
+      useChatStore.setState({ currentSessionId: 's2', messages: [] })
+
+      await useChatStore.getState().addStandaloneMessage('prompt', ['image'], character, 'system', 's1')
+
+      expect(useChatStore.getState().messages).toEqual([])
+      expect(vi.mocked(window.api.chat.saveMessage).mock.calls.at(-1)?.[0]).toMatchObject({
+        sessionId: 's1', characterId: 'c1', content: 'prompt', images: ['image'],
+      })
     })
   })
 
@@ -476,6 +503,23 @@ describe('P-7 本地会话元数据 patch / 配置加载收敛', () => {
     const sess = s.sessions.find(x => x.id === 's1')!
     expect(sess.messageCount).toBe(1)
     expect(sess.lastMessage).toContain('你好')
+  })
+
+  it('全局叙事下保存我方独立消息时固化叙事模式', async () => {
+    useChatStore.setState({
+      sessions: [makeSession({ narrativeMode: 'omniscient' }), makeSession({ id: 's2' })],
+      currentSessionId: 's1',
+    })
+
+    await useChatStore.getState().addStandaloneMessage('局势突然发生变化。', [], makeCharacter(), 'user')
+
+    const saved = vi.mocked(window.api.chat.saveMessage).mock.calls.at(-1)?.[0]
+    expect(saved).toMatchObject({
+      role: 'user', narrativeMode: 'omniscient', speakerKind: 'narrator', generationKind: 'manual',
+    })
+    expect(useChatStore.getState().messages.at(-1)).toMatchObject({
+      role: 'user', narrativeMode: 'omniscient', speakerKind: 'narrator', generationKind: 'manual',
+    })
   })
 
   it('getActiveChatConfig 返回激活预设，世界书过滤 enabled', async () => {

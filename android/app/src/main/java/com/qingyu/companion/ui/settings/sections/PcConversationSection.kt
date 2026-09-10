@@ -149,6 +149,33 @@ private fun PcSettingsContent(vm: SettingsViewModel, ui: SettingsViewModel.UiSta
         onRetry = vm::retrySync,
         onSave = { vm.commitPcField("translationTargetLang", it) },
     )
+    val narrativeMode = (ui.pendingChanges["defaultNarrativeMode"] as? String)
+        ?: settings.defaultNarrativeMode
+    PcChoiceFieldRow(
+        title = stringResource(R.string.settings_pc_narrative_mode),
+        displayValue = if (narrativeMode == "omniscient") {
+            stringResource(R.string.settings_pc_narrative_mode_omniscient)
+        } else {
+            stringResource(R.string.settings_pc_narrative_mode_immersive)
+        },
+        options = listOf(
+            stringResource(R.string.settings_pc_narrative_mode_immersive) to "immersive",
+            stringResource(R.string.settings_pc_narrative_mode_omniscient) to "omniscient",
+        ),
+        selectedKey = narrativeMode,
+        fieldState = stateFor("defaultNarrativeMode"),
+        failureDetail = reasonFor("defaultNarrativeMode"),
+        onRetry = vm::retrySync,
+        onSelect = { vm.commitPcField("defaultNarrativeMode", it) },
+    )
+    PcNarrativeRulesRow(
+        snapshotValue = settings.omniscientNarrativeRules,
+        pending = ui.pendingChanges["omniscientNarrativeRules"] as? String,
+        fieldState = stateFor("omniscientNarrativeRules"),
+        failureDetail = reasonFor("omniscientNarrativeRules"),
+        onRetry = vm::retrySync,
+        onSave = { vm.commitPcField("omniscientNarrativeRules", it) },
+    )
     val models = ui.pcModels
     if (ui.pcListsLoading) {
         Text(
@@ -479,6 +506,60 @@ private fun PcTranslationLangRow(
             color = qy.muted,
             modifier = Modifier.padding(top = 4.dp),
         )
+    }
+}
+
+@Composable
+private fun PcNarrativeRulesRow(
+    snapshotValue: String,
+    pending: String?,
+    fieldState: FieldSyncState,
+    failureDetail: String? = null,
+    onRetry: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    val qy = qyColors()
+    var text by remember(snapshotValue, pending) { mutableStateOf(pending ?: snapshotValue) }
+    Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.settings_pc_narrative_rules),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = qy.text,
+                )
+                Text(
+                    stringResource(R.string.settings_pc_narrative_rules_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = qy.soft,
+                )
+            }
+            SyncStateIndicator(fieldState, failureDetail = failureDetail, onRetry = onRetry)
+        }
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it.take(50_000) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 4,
+            maxLines = 8,
+            textStyle = MaterialTheme.typography.bodySmall.copy(color = qy.text),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = qy.accent,
+                unfocusedBorderColor = qy.line,
+                focusedContainerColor = qy.bg,
+                unfocusedContainerColor = qy.bg,
+                cursorColor = qy.accent,
+            ),
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(
+                enabled = text.trim().isNotEmpty() && text != snapshotValue,
+                onClick = { onSave(text) },
+            ) {
+                Text(stringResource(R.string.action_save), color = qy.accent)
+            }
+        }
     }
 }
 

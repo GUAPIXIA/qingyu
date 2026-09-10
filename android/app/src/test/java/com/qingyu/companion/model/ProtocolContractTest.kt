@@ -1,6 +1,7 @@
 package com.qingyu.companion.model
 
 import com.qingyu.companion.network.NetworkModule
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
@@ -9,6 +10,12 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+@Serializable
+private data class MessageIdentityFixture(
+    val singleMessages: List<Message> = emptyList(),
+    val groupMessages: List<GroupMessage> = emptyList(),
+)
 
 /**
  * G-05 契约测试（Android 半边）：双向共享 fixture。
@@ -44,7 +51,7 @@ class ProtocolContractTest {
     fun `settings snapshot fixture 解码为 SettingsSnapshotDto`() {
         val dto = json.decodeFromString(SettingsSnapshotDto.serializer(), fixture("settings_snapshot.json"))
         assertEquals(2, dto.schemaVersion)
-        assertEquals("ab583ea04d3eefd3378f51494c96025282a170ef5f423fef972fd899992aa264", dto.revision)
+        assertEquals("612f09d3960076a09105b60db75dd852ccb69cee83f0948a7adce25a76eb8e57", dto.revision)
         assertEquals(1_788_000_000_000L, dto.updatedAt)
         assertEquals("轻语用户", dto.values.userName)
         assertEquals("gpt-4o", dto.values.activeModel)
@@ -68,7 +75,7 @@ class ProtocolContractTest {
         assertFalse(raw.contains("messageWidth"))
         assertFalse(raw.contains("messageSpacing"))
         assertFalse(raw.contains("providers"))
-        // values 键集与 Android 侧 SettingsDto 的安全子集一致（15 字段白名单）
+        // values 键集与 Android 侧 SettingsDto 的安全子集一致
         val dto = json.decodeFromString(SettingsSnapshotDto.serializer(), raw)
         val keys = json.parseToJsonElement(raw).jsonObject["values"]!!.jsonObject.keys
         assertEquals(
@@ -76,7 +83,7 @@ class ProtocolContractTest {
                 "userName", "userDescription", "userPersona", "activePresetId", "activeModel",
                 "translationTargetLang", "streamOutput", "autoScroll", "showTokenCount",
                 "htmlRendering", "imageGenAutoEnabled", "imageGenSize", "exampleDialogMode",
-                "lorebookRatio", "autoTitle",
+                "lorebookRatio", "autoTitle", "defaultNarrativeMode", "omniscientNarrativeRules",
             ),
             keys,
         )
@@ -178,5 +185,35 @@ class ProtocolContractTest {
         // 原 fixture 中的 chunk 语义不受影响
         val full = json.decodeFromString(TaskEventEnvelopeDto.serializer(), raw)
         assertTrue(full.isChunkLike)
+    }
+
+    // ===================== message_identity.json =====================
+
+    @Test
+    fun `message identity fixture 单聊与群聊字段可跨端解码`() {
+        val dto = json.decodeFromString(MessageIdentityFixture.serializer(), fixture("message_identity.json"))
+        assertEquals(4, dto.singleMessages.size)
+        assertEquals("narrator", dto.singleMessages[1].speakerKind)
+        assertEquals("input_continue", dto.singleMessages[1].generationKind)
+        assertEquals("character", dto.singleMessages[2].speakerKind)
+        assertEquals("assistant_reply", dto.groupMessages[1].generationKind)
+    }
+
+    @Test
+    fun `message identity 旧字段与非法字段使用一致回退规则`() {
+        val dto = json.decodeFromString(MessageIdentityFixture.serializer(), fixture("message_identity.json"))
+        val legacy = dto.singleMessages[3]
+        assertEquals(
+            MessageIdentity.NARRATOR,
+            MessageIdentity.resolveSpeakerKind(legacy.speakerKind, legacy.role, legacy.characterId, legacy.narrativeMode),
+        )
+        assertEquals(
+            MessageIdentity.CHARACTER,
+            MessageIdentity.resolveSpeakerKind("future_unknown", Role.assistant, "c1", "omniscient"),
+        )
+        assertEquals(
+            MessageIdentity.NARRATOR,
+            MessageIdentity.resolveSpeakerKind("future_unknown", characterId = "__user__", narrativeMode = "omniscient"),
+        )
     }
 }

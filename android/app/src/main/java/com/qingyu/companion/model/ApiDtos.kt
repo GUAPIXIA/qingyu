@@ -104,6 +104,8 @@ data class SettingsDto(
     val exampleDialogMode: String = "always",
     val lorebookRatio: Double = 0.3,
     val autoTitle: Boolean = true,
+    val defaultNarrativeMode: String = "immersive",
+    val omniscientNarrativeRules: String = "",
     val themeColor: String = "amber",
     val fontSize: String = "comfortable",
     val bubbleStyle: String = "round",
@@ -325,6 +327,10 @@ data class GroupSessionDto(
     val messageCount: Int = 0,
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
+    val narrativeMode: String = "immersive",
+    val gameMasterMode: Boolean = false,
+    val memoryCurrentState: String = "",
+    val personaId: String? = null,
 )
 
 /** PATCH /api/v1/groups/:id/sessions/:sid/messages/:mid 请求（编辑群聊消息） */

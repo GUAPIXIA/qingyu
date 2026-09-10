@@ -23,6 +23,7 @@ import {
 import { buildGroupChatContext, type GroupContextBuildResult } from './groupChatContext'
 import { runGroupMemorySummary } from './groupMemoryManager'
 import type { GroupChatState } from './groupChatTypes'
+import { resolveNarrativeMode } from '../../shared/narrativeMode'
 
 /** 群聊身份以会话为作用域；旧会话没有字段时才回退全局默认身份。 */
 function syncGroupPersonaToSettings(session?: GroupSession): void {
@@ -63,6 +64,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   isStreaming: false,
   currentStreamingCharId: null,
   error: null,
+  summarizingMemoryKey: null,
+  memorySummaryError: null,
   _semanticLoreHits: [],
   _semanticLoreAvailable: undefined,
   _semanticFactsHits: [],
@@ -168,6 +171,28 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       sessions: state.sessions.map((item) => item.id === currentSessionId ? updatedSession! : item),
     }))
     syncGroupPersonaToSettings(updatedSession)
+  },
+
+  setSessionNarrativeMode: async (narrativeMode) => {
+    const { currentGroup, currentSessionId } = get()
+    if (!currentGroup || !currentSessionId || get().isStreaming) return
+    await window.api.group.updateSession(currentGroup.id, currentSessionId, { narrativeMode })
+    set((state) => ({
+      sessions: state.sessions.map((session) => session.id === currentSessionId
+        ? { ...session, narrativeMode, updatedAt: Date.now() }
+        : session),
+    }))
+  },
+
+  updateNarrativeSession: async (patch) => {
+    const { currentGroup, currentSessionId } = get()
+    if (!currentGroup || !currentSessionId || get().isStreaming) return
+    await window.api.group.updateSession(currentGroup.id, currentSessionId, patch)
+    set((state) => ({
+      sessions: state.sessions.map((session) => session.id === currentSessionId
+        ? { ...session, ...patch, updatedAt: Date.now() }
+        : session),
+    }))
   },
 
   // ---- 消息 ----
@@ -494,6 +519,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       }
     }
 
+    const narrativeMode = resolveNarrativeMode(get().sessions.find((session) => session.id === currentSessionId)?.narrativeMode)
     const userMsg: GroupMessage = {
       id: nanoid(),
       groupId: currentGroup.id,
@@ -505,6 +531,9 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       replyToId: replyToId ?? null,
       status: 'sending',
       mentionedCharacterIds: mentionedCharacterIds.length > 0 ? mentionedCharacterIds : undefined,
+      narrativeMode,
+      speakerKind: narrativeMode === 'omniscient' ? 'narrator' : 'persona',
+      generationKind: 'manual',
     }
     set(s => ({ messages: [...s.messages, userMsg], error: null }))
     await window.api.group.saveMessage(currentGroup.id, currentSessionId, userMsg)
@@ -648,6 +677,9 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       images: [],
       timestamp: Date.now(),
       round: currentRound,
+      narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === currentSessionId)?.narrativeMode),
+      speakerKind: 'character',
+      generationKind: 'assistant_reply',
     }
     set(s => ({ messages: [...s.messages, msg] }))
     await window.api.group.saveMessage(currentGroup.id, currentSessionId, msg)

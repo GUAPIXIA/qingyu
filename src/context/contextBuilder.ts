@@ -13,8 +13,9 @@
  * 引用替换为 data 字段），仅 markPendingCompression 改为返回待处理项。
  */
 
-import type { ChatParams, Character, LorebookTimedEffectsState, Settings } from '../../shared/types'
+import type { ChatParams, Character, LorebookTimedEffectsState, NarrativeMode, Settings } from '../../shared/types'
 import type { ContextBuildData, SemanticLoreHit } from '../../shared/contextTypes'
+import { buildGameMasterPrompt, buildNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
@@ -42,6 +43,8 @@ import type { ContextMessage } from '../store/chatTypes'
 /** 组装选项（对齐原 buildChatContext 的 opts） */
 export interface BuildOptions {
   continuation?: boolean
+  /** 续写既有消息时使用该消息记录的模式，避免会话切换后改变叙事身份。 */
+  narrativeMode?: NarrativeMode
   generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
   lorebookDiagnosticsMode?: 'live' | 'preview'
 }
@@ -59,6 +62,8 @@ export interface PendingCompression {
 export interface BuildResult {
   messages: ContextMessage[]
   lastContextUsage: { used: number; max: number }
+  /** 本次上下文实际采用的叙事模式，供调试界面展示。 */
+  narrativeMode: NarrativeMode
   pendingCompression?: PendingCompression
   /** 本轮触发的世界书条目 key（阶段二B recency 窗口更新用） */
   lorebookTriggeredIds?: string[]
@@ -88,11 +93,19 @@ export function buildContextMessagesFromData(
     (m) => (m.content || (m.images && m.images.length > 0)) && m.role !== 'system',
   )
   const context: ContextMessage[] = []
+  const { sessions, currentSessionId } = data.chat
+  const currentSession = sessions.find(s => s.id === currentSessionId)
+  // 旧会话缺少字段时固定按 immersive 运行，避免后来修改默认值导致旧故事静默换模式。
+  // 无当前会话的预览/测试场景才使用角色与全局默认值。
+  const sessionNarrativeMode = currentSession
+    ? resolveNarrativeMode(currentSession.narrativeMode)
+    : resolveNarrativeMode(character.defaultNarrativeMode, settings.defaultNarrativeMode)
+  const narrativeMode = resolveNarrativeMode(opts?.narrativeMode, sessionNarrativeMode)
 
   // ===== System Prompt 构建 =====
   const charNameForVars = character.translatedContent?.name || character.name
   let systemContent = replaceVariables(
-    character.systemPrompt || preset?.systemPrompt || '你是一个角色扮演助手。请根据角色设定进行沉浸式对话，保持角色性格的一致性。',
+    character.systemPrompt || preset?.systemPrompt || '你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。',
     userName,
     charNameForVars,
   )
@@ -101,6 +114,16 @@ export function buildContextMessagesFromData(
   if (preset?.jailbreak && preset.jailbreak.trim()) {
     systemContent += '\n\n' + replaceVariables(preset.jailbreak, userName, charNameForVars)
   }
+
+  // 叙事模式是独立于角色卡和预设的最终行为约束，确保自定义预设也能正确切换。
+  systemContent += '\n\n' + buildNarrativeModePrompt(
+    narrativeMode,
+    userName,
+    charNameForVars,
+    settings.omniscientNarrativeRules,
+  )
+  const gameMasterPrompt = buildGameMasterPrompt(narrativeMode, currentSession?.gameMasterMode)
+  if (gameMasterPrompt) systemContent += '\n\n' + gameMasterPrompt
 
   // 用户人设注入（可配置：开关 / 位置 / 字段，对齐 ST 的 persona placement）
   const personaInjection = settings.personaInjection
@@ -122,7 +145,9 @@ export function buildContextMessagesFromData(
   // 心理描写输出格式（修复 #33）：改为可配置，默认开启
   const enableThoughtFormat = preset?.enableThoughtFormat ?? (settings.enableThoughtFormat !== false)
   if (enableThoughtFormat) {
-    systemContent += '\n\n【输出格式要求】\n请先在 <thought>...</thought> 标签内输出角色的内心想法和心理活动，然后再输出角色的实际对话和行动。两部分必须分开。'
+    systemContent += narrativeMode === 'omniscient'
+      ? '\n\n【输出格式要求】\n如需呈现心理活动，请只选择当前焦点人物，并以第三人称概述放在 <thought>...</thought> 标签内；不得写成角色第一人称内心独白。不要为了展示全知视角而一次泄露所有人物的隐私想法。标签外继续以第三人称旁白输出实际叙事。'
+      : '\n\n【输出格式要求】\n请先在 <thought>...</thought> 标签内输出角色的内心想法和心理活动，然后再输出角色的实际对话和行动。两部分必须分开。'
   }
 
   // ===== Token 预算框架 =====
@@ -137,8 +162,6 @@ export function buildContextMessagesFromData(
   )
 
   // 分层长记忆注入：当前状态优先，其次相关事实，最后是时间线。
-  const { sessions, currentSessionId } = data.chat
-  const currentSession = sessions.find(s => s.id === currentSessionId)
   if (currentSession?.memoryEnabled) {
     const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
     // P0-2：语义检索命中时仅注入相关事实，否则全量；透传语义分到预算层
@@ -495,6 +518,7 @@ export function buildContextMessagesFromData(
   return {
     messages: processedContext,
     lastContextUsage: { used: usedTokens, max: budgetBase },
+    narrativeMode,
     pendingCompression,
     lorebookTriggeredIds,
     lorebookCompressions,

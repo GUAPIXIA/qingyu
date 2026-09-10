@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ChevronDown, Star, UserCircle } from 'lucide-react'
+import { ChevronDown, Globe2, Star, UserCircle } from 'lucide-react'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { resolveNarrativeMode } from '../../../shared/narrativeMode'
 import { cn } from '../../lib/utils'
 import { Dropdown } from '../common/Dropdown'
 
@@ -23,6 +24,8 @@ export function GroupPersonaSwitcher() {
     : currentSession.personaId
   const currentPersona = getPersona(effectivePersonaId)
   const currentLabel = currentPersona?.name ?? '不使用身份'
+  // 全局叙事下我方以“旁白”身份参与，切换器显示旁白标识而非所选身份
+  const isOmniscient = resolveNarrativeMode(currentSession?.narrativeMode) === 'omniscient'
 
   const switchPersona = async (personaId: string | null) => {
     if (!currentSessionId || saving) return
@@ -43,23 +46,26 @@ export function GroupPersonaSwitcher() {
       trigger={
         <button
           type="button"
-          aria-label={`当前身份：${currentLabel}，点击切换`}
+          aria-label={isOmniscient ? `旁白（身份：${currentLabel}），点击切换` : `当前身份：${currentLabel}，点击切换`}
           disabled={!currentSessionId || saving}
-          className="group/persona flex min-w-0 items-center gap-2 rounded-xl border border-tavern-border-soft bg-tavern-bg px-2.5 py-1.5 text-left transition-all hover:border-tavern-accent/40 hover:bg-tavern-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm transition-colors hover:bg-tavern-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span className="relative grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-tavern-accent-soft text-tavern-accent ring-1 ring-tavern-accent/20">
-            {currentPersona?.avatar ? (
+          <span className={cn(
+            'grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-full',
+            isOmniscient
+              ? 'text-indigo-500 dark:text-indigo-300'
+              : 'text-tavern-text-muted',
+          )}>
+            {isOmniscient ? (
+              <Globe2 className="h-4 w-4" aria-label="旁白" />
+            ) : currentPersona?.avatar ? (
               <img src={currentPersona.avatar} alt="" className="h-full w-full object-cover" />
             ) : (
               <UserCircle className="h-4 w-4" />
             )}
-            <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border border-tavern-bg bg-tavern-success" />
           </span>
-          <span className="min-w-0">
-            <span className="block text-[10px] leading-none text-tavern-text-muted">我的身份</span>
-            <span className="mt-1 block max-w-24 truncate text-xs font-medium text-tavern-text-soft">{currentLabel}</span>
-          </span>
-          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-tavern-text-muted transition-transform', open && 'rotate-180')} />
+          <span className="group-chat-header__persona-label max-w-20 truncate text-tavern-text-soft">{isOmniscient ? '旁白' : currentLabel}</span>
+          <ChevronDown className={cn('h-3 w-3 shrink-0 text-tavern-text-muted transition-transform', open && 'rotate-180')} />
         </button>
       }
     >

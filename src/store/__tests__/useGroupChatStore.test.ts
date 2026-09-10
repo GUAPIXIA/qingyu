@@ -69,6 +69,7 @@ describe('useGroupChatStore', () => {
       expect(typeof state.clearChat).toBe('function')
       expect(typeof state.clearMessages).toBe('function')
       expect(typeof state.buildGroupContext).toBe('function')
+      expect(typeof state.setSessionNarrativeMode).toBe('function')
     })
   })
 
@@ -140,6 +141,59 @@ describe('useGroupChatStore', () => {
         userDescription: '记者',
         userPersona: '直率好奇',
       }))
+    })
+  })
+
+  describe('setSessionNarrativeMode', () => {
+    it('持久化当前群聊会话模式并更新本地快照', async () => {
+      useGroupChatStore.setState({
+        currentGroup: { id: 'g1' } as GroupChat,
+        currentSessionId: 's1',
+        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'immersive' } as never],
+        isStreaming: false,
+      })
+
+      await useGroupChatStore.getState().setSessionNarrativeMode('omniscient')
+
+      expect(window.api.group.updateSession).toHaveBeenCalledWith('g1', 's1', { narrativeMode: 'omniscient' })
+      expect(useGroupChatStore.getState().sessions[0].narrativeMode).toBe('omniscient')
+    })
+
+    it('生成中不允许切换', async () => {
+      useGroupChatStore.setState({
+        currentGroup: { id: 'g1' } as GroupChat,
+        currentSessionId: 's1',
+        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'immersive' } as never],
+        isStreaming: true,
+      })
+      await useGroupChatStore.getState().setSessionNarrativeMode('omniscient')
+      expect(window.api.group.updateSession).not.toHaveBeenCalled()
+      expect(useGroupChatStore.getState().sessions[0].narrativeMode).toBe('immersive')
+    })
+  })
+
+  describe('updateNarrativeSession', () => {
+    it('持久化世界状态和游戏主持开关', async () => {
+      useGroupChatStore.setState({
+        currentGroup: { id: 'g1' } as GroupChat,
+        currentSessionId: 's1',
+        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'omniscient' } as never],
+        isStreaming: false,
+      })
+
+      await useGroupChatStore.getState().updateNarrativeSession({
+        memoryCurrentState: '北境风暴逼近',
+        gameMasterMode: true,
+      })
+
+      expect(window.api.group.updateSession).toHaveBeenCalledWith('g1', 's1', {
+        memoryCurrentState: '北境风暴逼近',
+        gameMasterMode: true,
+      })
+      expect(useGroupChatStore.getState().sessions[0]).toMatchObject({
+        memoryCurrentState: '北境风暴逼近',
+        gameMasterMode: true,
+      })
     })
   })
 
@@ -333,6 +387,68 @@ describe('useGroupChatStore', () => {
       expect(joined).toContain('描述：馆长')
       expect(joined).toContain('性格：温和克制')
       expect(joined).not.toContain('用户「旧身份」')
+    })
+
+    it('群聊全局叙事把发言人视为焦点而非视角边界', () => {
+      const member: Character = {
+        id: 'c1', name: '艾琳', avatar: '', description: '', personality: '', scenario: '',
+        firstMessage: '', exampleDialog: '', tags: [], lorebookId: null,
+        creator: '', createdAt: 0, updatedAt: 0, alternateGreetings: [],
+      }
+      useCharacterStore.setState({ characters: [member] })
+      useGroupChatStore.setState({
+        currentGroup: {
+          id: 'g1', name: '群像', memberIds: ['c1'], currentSpeakerIndex: 0,
+          autoMode: false, chatMode: 'polling', maxRounds: 1, speakerInterval: 2000,
+          lorebookIds: [], presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+        },
+        currentSessionId: 's1',
+        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'omniscient' } as never],
+        messages: [],
+      })
+
+      const report = useGroupChatStore.getState().buildGroupContextReport('c1')
+      const joined = report.messages.map((item) => item.content).join('\n')
+      expect(report.narrativeMode).toBe('omniscient')
+      expect(joined).toContain('发言调度仅指定剧情焦点「艾琳」')
+      expect(joined).toContain('异地事件或世界变化')
+    })
+
+    it('群聊全局叙事可启用游戏主持格式', () => {
+      useGroupChatStore.setState({
+        currentGroup: {
+          id: 'g1', name: '战役', memberIds: [], currentSpeakerIndex: 0,
+          autoMode: false, chatMode: 'free', maxRounds: 1, speakerInterval: 2000,
+          lorebookIds: [], presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+        },
+        currentSessionId: 's1',
+        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'omniscient', gameMasterMode: true } as never],
+        messages: [],
+      })
+      const joined = useGroupChatStore.getState().buildGroupContextReport().messages.map((item) => item.content).join('\n')
+      expect(joined).toContain('【呈现方式：游戏主持】')
+      expect(joined).toContain('【判定】')
+    })
+
+    it('旧群聊会话缺少模式时固定回退代入模式', () => {
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, defaultNarrativeMode: 'omniscient' },
+      }))
+      useGroupChatStore.setState({
+        currentGroup: {
+          id: 'g1', name: '旧群聊', memberIds: [], currentSpeakerIndex: 0,
+          autoMode: false, chatMode: 'free', defaultNarrativeMode: 'omniscient',
+          maxRounds: 1, speakerInterval: 2000, lorebookIds: [], presetId: null,
+          systemPrompt: '', createdAt: 0, updatedAt: 0,
+        },
+        currentSessionId: 'legacy',
+        sessions: [{ id: 'legacy', groupId: 'g1' } as never],
+        messages: [],
+      })
+
+      const report = useGroupChatStore.getState().buildGroupContextReport()
+      expect(report.narrativeMode).toBe('immersive')
+      expect(report.messages.map((item) => item.content).join('\n')).toContain('每名角色只依据自己可感知')
     })
 
     it('只读上下文预览不推进 recency 或持久化会话', () => {
@@ -540,6 +656,22 @@ describe('useGroupChatStore', () => {
       const savedUserMsg = saveMsg.mock.calls[0][2] as GroupMessage
       expect(savedUserMsg.characterId).toBe('__user__')
       expect(savedUserMsg.mentionedCharacterIds).toEqual(['c1'])
+    })
+
+    it('全局叙事下保存我方消息时固化叙事模式', async () => {
+      setupMentionGroup()
+      useGroupChatStore.setState({
+        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'omniscient' } as never],
+      })
+
+      await useGroupChatStore.getState().sendMessage('城外的警钟突然响起。', [], 'missing-character')
+
+      const savedUserMsg = vi.mocked(window.api.group.saveMessage).mock.calls[0][2] as GroupMessage
+      expect(savedUserMsg.characterId).toBe('__user__')
+      expect(savedUserMsg.narrativeMode).toBe('omniscient')
+      expect(savedUserMsg.speakerKind).toBe('narrator')
+      expect(savedUserMsg.generationKind).toBe('manual')
+      expect(useGroupChatStore.getState().messages[0].narrativeMode).toBe('omniscient')
     })
 
     it('无 @ 消息不记录 mentionedCharacterIds', async () => {

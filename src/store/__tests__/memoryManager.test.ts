@@ -273,6 +273,53 @@ describe('runMemorySummary 长记忆摘要', () => {
     expect(window.api.chat.updateMemory).not.toHaveBeenCalled()
   })
 
+  it('推理模型只返回思考块时给出可见失败反馈，不静默跳过', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const set = vi.fn()
+    const p = runMemorySummary((() => setupChatStoreState()) as any, set, makeCharacter())
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '<thought>用户要求总结对话。我需要先梳理剧情……（思考过程耗尽了输出预算）</thought>' })
+    callbacks.onDone!(requestId)
+
+    const result = await p
+    expect(result).toBeNull()
+    expect(window.api.chat.updateSessionIfMemoryVersion).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.stringContaining('未产出可解析内容'),
+    }))
+  })
+
+  it('为思考模型预留 4096 输出预算（此前 2048 会被思考吃光导致正文为空）', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const p = runMemorySummary((() => setupChatStoreState()) as any, vi.fn(), makeCharacter())
+    expect((callbacks.chatParams as any).maxTokens).toBe(4096)
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+    await p
+  })
+
+  it('模型只输出【当前状态】时保留旧时间线，仍提交状态与游标', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const p = runMemorySummary((() => setupChatStoreState()) as any, vi.fn(), makeCharacter())
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '【当前状态】卧室僵持中，Aiko急于接电话。\n【事实提案】\n```json\n[]\n```' })
+    callbacks.onDone!(requestId)
+
+    const result = await p
+    // 部分成功：返回当前状态文本供调用方判定“总结完成”
+    expect(result).toBe('卧室僵持中，Aiko急于接电话。')
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
+      memory: '之前的摘要',
+      memoryCurrentState: '卧室僵持中，Aiko急于接电话。',
+      memoryLastMessageId: 'm5',
+      memoryVersion: 1,
+    }))
+  })
+
   it('onError 流程：设置错误并返回 null', async () => {
     setupSettings()
     const callbacks = captureStreamCallbacks()
@@ -293,7 +340,7 @@ describe('runMemorySummary 长记忆摘要', () => {
     const set = vi.fn()
     const result = await runMemorySummary((() => setupChatStoreState()) as any, set, makeCharacter())
     expect(result).toBeNull()
-    expect(set).toHaveBeenCalledWith({ error: '长记忆总结请求失败' })
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ error: '长记忆总结请求失败' }))
   })
 
   it('提交时版本已变化则丢弃旧摘要并返回 null', async () => {

@@ -18,4 +18,10 @@ data class SessionPreview(
     val messageCount: Int,
     /** 对话中按时间排序的最后一条消息摘要（由 PC 桥接层生成） */
     val lastMessage: String,
+    /** 当前会话实际叙事模式。 */
+    val narrativeMode: String = "immersive",
+    /** 全局叙事下是否启用游戏主持格式。 */
+    val gameMasterMode: Boolean = false,
+    /** 旁白维护的当前世界局势。 */
+    val memoryCurrentState: String = "",
 )

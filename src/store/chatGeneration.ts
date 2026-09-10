@@ -11,6 +11,8 @@ import { streamAIResponse } from './streamController'
 import type { ChatState } from './chatTypes'
 import { maybeRunAutoMemorySummary } from './memoryManager'
 import { invalidateDerivedMemory } from './chatUtils'
+import { resolveNarrativeMode } from '../../shared/narrativeMode'
+import { resolveMessageSpeakerKind } from '../../shared/messageIdentity'
 
 type SetFn = (partial: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>)) => void
 type GetFn = () => ChatState
@@ -56,6 +58,12 @@ export async function regenerateChatMessage(
     swipes: [...swipes, ''],
     swipeIndex: newSwipeIndex,
     content: '',
+    narrativeMode: resolveNarrativeMode(
+      targetMsg.narrativeMode,
+      get().sessions.find((session) => session.id === targetMsg.sessionId)?.narrativeMode,
+    ),
+    speakerKind: resolveMessageSpeakerKind(targetMsg),
+    generationKind: 'regenerate',
   }
   set((state) => ({
     messages: state.messages.map((m) => (m.id === messageId ? updatedMsg : m)),
@@ -145,6 +153,12 @@ export async function continueChatMessage(
   // 确保是最后一条消息
   if (idx !== messages.length - 1) return
 
+  // 续写必须延续目标消息的叙事身份；仅旧消息缺少记录时才回退当前会话模式。
+  const continuationNarrativeMode = resolveNarrativeMode(
+    targetMsg.narrativeMode,
+    get().sessions.find((session) => session.id === targetMsg.sessionId)?.narrativeMode,
+  )
+
   // 创建新的 AI 消息气泡（不复用原消息）
   const newMsgId = nanoid()
   const newMessage: Message = {
@@ -156,6 +170,9 @@ export async function continueChatMessage(
     images: [],
     isEditing: false,
     timestamp: Date.now(),
+    narrativeMode: continuationNarrativeMode,
+    speakerKind: resolveMessageSpeakerKind(targetMsg),
+    generationKind: 'message_continue',
   }
 
   set((state) => ({
@@ -208,6 +225,7 @@ export async function continueChatMessage(
     character,
     preset,
     continuation: true,
+    narrativeMode: continuationNarrativeMode,
     generationType: 'continue',
     onComplete: async (newContent) => {
       const processed = await cleanContinuation(newContent)

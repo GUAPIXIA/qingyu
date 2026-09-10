@@ -71,6 +71,19 @@ describe('revision 稳定性', () => {
     expect(computeRevision(a)).not.toBe(computeRevision(b))
   })
 
+  it('叙事默认值与全局规则进入移动端安全快照', () => {
+    const snapshot = buildSettingsSnapshot({
+      ...makeSettings(),
+      defaultNarrativeMode: 'omniscient',
+      omniscientNarrativeRules: '{{user}}观察，由{{char}}推进。',
+    })
+    expect(snapshot.values.defaultNarrativeMode).toBe('omniscient')
+    expect(snapshot.values.omniscientNarrativeRules).toBe('{{user}}观察，由{{char}}推进。')
+    expect(diffMobileSafeFields(makeSettings(), {
+      ...makeSettings(), defaultNarrativeMode: 'omniscient',
+    })).toContain('defaultNarrativeMode')
+  })
+
   it('revision 为 64 位十六进制 sha256', () => {
     expect(computeRevision(toMobileSafeSettings(makeSettings()))).toMatch(/^[0-9a-f]{64}$/)
   })
@@ -158,5 +171,18 @@ describe('validateSettingsPatch（类型 + 范围验证表）', () => {
     const fields = result.rejected.map((r) => r.field)
     expect(fields).toEqual(expect.arrayContaining(['apiKey', 'connectionProfiles', 'fontSize', 'themeColor']))
     expect(result.rejected.every((r) => r.reason === 'field_not_allowed')).toBe(true)
+  })
+
+  it('叙事设置严格校验枚举与规则文本', () => {
+    const accepted = validateSettingsPatch({
+      defaultNarrativeMode: 'omniscient',
+      omniscientNarrativeRules: '{{user}}观察世界。',
+    }, EMPTY_CTX)
+    expect(accepted.accepted).toEqual({
+      defaultNarrativeMode: 'omniscient',
+      omniscientNarrativeRules: '{{user}}观察世界。',
+    })
+    expect(validateSettingsPatch({ defaultNarrativeMode: 'invalid' }, EMPTY_CTX).rejected[0].reason).toBe('invalid_enum')
+    expect(validateSettingsPatch({ omniscientNarrativeRules: '   ' }, EMPTY_CTX).rejected[0].reason).toBe('empty_value')
   })
 })

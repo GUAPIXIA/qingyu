@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "revision": "ab583ea04d3eefd3378f51494c96025282a170ef5f423fef972fd899992aa264",
+  "revision": "612f09d3960076a09105b60db75dd852ccb69cee83f0948a7adce25a76eb8e57",
   "updatedAt": 1788000000000,
   "values": {
     "userName": "轻语用户",
@@ -17,7 +17,9 @@
     "imageGenSize": "1024x1024",
     "exampleDialogMode": "always",
     "lorebookRatio": 0.3,
-    "autoTitle": true
+    "autoTitle": true,
+    "defaultNarrativeMode": "immersive",
+    "omniscientNarrativeRules": "{{user}}作为观察者，由{{char}}统筹世界。"
   },
   "capabilities": ["settings_snapshot_v2", "settings_events_v1", "pairing_qr_v2"]
 }

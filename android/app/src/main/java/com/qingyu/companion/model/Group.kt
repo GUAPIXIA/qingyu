@@ -13,6 +13,8 @@ data class GroupChat(
     val name: String,
     val memberIds: List<String> = emptyList(),
     val chatMode: String = "free",
+    /** 新会话默认叙事模式；null 表示跟随 PC 全局默认值。 */
+    val defaultNarrativeMode: String? = null,
     val autoMode: Boolean = false,
     val maxRounds: Int = 0,
     val createdAt: Long = 0,
@@ -28,6 +30,10 @@ data class GroupSession(
     val messageCount: Int = 0,
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
+    val narrativeMode: String = "immersive",
+    val gameMasterMode: Boolean = false,
+    val memoryCurrentState: String = "",
+    val personaId: String? = null,
 )
 
 /** 群聊消息 */
@@ -44,6 +50,9 @@ data class GroupMessage(
     val replyToId: String? = null,
     /** 提及的角色 ID 列表 */
     val mentionedCharacterIds: List<String> = emptyList(),
+    val narrativeMode: String? = null,
+    val speakerKind: String? = null,
+    val generationKind: String? = null,
 ) {
     /** 是否用户消息 */
     val isUser: Boolean get() = characterId == "__user__"

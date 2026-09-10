@@ -91,6 +91,43 @@ describe('MessageBubble', () => {
       expect(getByText('Alice')).toBeTruthy()
     })
 
+    it('全局叙事的我方消息显示右侧旁白身份和中性气泡', () => {
+      const { container, getByText, queryByText } = render(
+        <MessageBubble message={createMessage({ role: 'user', narrativeMode: 'omniscient' })} character={createCharacter({ name: 'Alice' })} isLast={false} />
+      )
+      expect(getByText('旁白')).toBeTruthy()
+      expect(getByText('推动焦点 · Alice')).toBeTruthy()
+      expect(queryByText('TestUser')).toBeNull()
+      expect(container.querySelector('.bubble-narrator')).toBeTruthy()
+      expect(container.querySelector('.bubble-user')).toBeNull()
+      expect(container.querySelector('.mx-auto.flex')?.classList.contains('flex-row-reverse')).toBe(true)
+    })
+
+    it('全局叙事的对方回复仍显示角色身份和角色气泡', () => {
+      const { container, getByText, queryByText } = render(
+        <MessageBubble message={createMessage({ role: 'assistant', narrativeMode: 'omniscient' })} character={createCharacter({ name: 'Alice' })} isLast={false} />
+      )
+      expect(getByText('Alice')).toBeTruthy()
+      expect(queryByText('旁白')).toBeNull()
+      expect(queryByText('推动焦点 · Alice')).toBeNull()
+      expect(container.querySelector('.bubble-narrator')).toBeNull()
+    })
+
+    it('显式 speakerKind 优先于旧版叙事模式推导', () => {
+      const { container, getByText, queryByText } = render(
+        <MessageBubble
+          message={createMessage({ role: 'user', narrativeMode: 'omniscient', speakerKind: 'character' })}
+          character={createCharacter({ name: 'Alice' })}
+          isLast={false}
+        />,
+      )
+      expect(getByText('Alice')).toBeTruthy()
+      expect(queryByText('旁白')).toBeNull()
+      expect(container.querySelector('.bubble-narrator')).toBeNull()
+      expect(container.querySelector('.bubble-user')).toBeNull()
+      expect(container.querySelector('.mx-auto.flex')?.classList.contains('flex-row-reverse')).toBe(true)
+    })
+
     it('用户消息使用用户侧气泡样式', () => {
       const { container } = render(
         <MessageBubble message={createMessage({ role: 'user', content: 'hi' })} character={createCharacter()} isLast={false} />
@@ -189,6 +226,18 @@ describe('MessageBubble', () => {
         <MessageBubble message={msg} character={createCharacter()} isLast={false} />
       )
       expect(queryByText('图片描述')).toBeNull()
+    })
+
+    it('保存了提示词的系统图片仍使用紧凑纯图片布局', () => {
+      const msg = createMessage({
+        role: 'system',
+        content: 'A cinematic portrait prompt',
+        images: ['data:image/png;base64,AAAA'],
+      })
+      const { container } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+      expect(container.querySelector('[data-image-only="true"]')).toBeTruthy()
     })
   })
 

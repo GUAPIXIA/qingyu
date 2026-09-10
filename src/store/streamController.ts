@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import type { Character, Preset, ChatParams, MemoryFactRecord } from '../../shared/types'
+import type { Character, Preset, ChatParams, MemoryFactRecord, NarrativeMode } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { estimateTokens } from '../utils/tokenCounter'
 import { countChars } from '../utils/charCounter'
@@ -456,6 +456,7 @@ export async function streamAIResponse(
     character: Character
     preset: Preset | null
     continuation?: boolean  // 续写模式：buildContext 注入续写指令并跳过 Assistant Prefix
+    narrativeMode?: NarrativeMode  // 续写时继承目标消息的叙事身份
     generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
     inputText?: string   // 用户输入文本（用于字符统计），regenerate/continue 时为空
     onComplete: (fullContent: string) => Promise<void>
@@ -490,6 +491,7 @@ export async function streamAIResponse(
 
   const contextMessages = get().buildContext(character, preset, {
     continuation: opts.continuation,
+    narrativeMode: opts.narrativeMode,
     generationType: opts.generationType ?? (opts.continuation ? 'continue' : 'normal'),
   })
 

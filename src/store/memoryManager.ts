@@ -33,8 +33,16 @@ export async function runMemorySummary(
   const summaryKey = `${character.id}:${currentSessionId}`
   if (activeMemorySummaries.has(summaryKey)) return null
 
+  /** 失败统一上报：store error 为旧通道，memorySummaryError 携带会话 key 供面板精确展示 */
+  const reportSummaryFailure = (message: string) => {
+    set({ error: message, memorySummaryError: { key: summaryKey, message } })
+  }
+
   const profile = useSettingsStore.getState().getActiveProfile()
-  if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) return null
+  if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
+    reportSummaryFailure('未配置可用的 API 连接，无法进行长记忆总结')
+    return null
+  }
 
   const settings = useSettingsStore.getState().settings
   const userName = settings.userName || '用户'
@@ -48,10 +56,13 @@ export async function runMemorySummary(
     `${character.name}\n${userName}\n${session.memoryCurrentState || '无'}\n${previousMemory}\n${previousFactsText}`,
     model,
   ) + 900
+  // 思考模型（deepseek-v4 等）会先烧掉大量思考 token 再输出正文：2048 时正文还没开始就被
+  // 截断（日志表现为整段 <thought>、正文为空）。为输出预留 4096，思考与正文都能完成。
+  const MEMORY_SUMMARY_OUTPUT_TOKENS = 4096
   const summaryInputBudget = resolveMemorySummaryInputBudget(
     profile.maxContext || getDefaultMaxContext(model),
     promptOverheadTokens,
-    2048,
+    MEMORY_SUMMARY_OUTPUT_TOKENS,
   )
   const formatMessage = (message: typeof meaningfulMessages[number]) =>
     `${message.role === 'user' ? userName : character.name}: ${message.content}`
@@ -63,7 +74,10 @@ export async function runMemorySummary(
     { tokenBudget: summaryInputBudget },
   )
   // 最少消息数只针对尚未处理的增量内容；已总结的 overlap 不应重复计数。
-  if (summaryWindow.pending.length < MEMORY_SUMMARY_MIN || summaryWindow.selected.length === 0) return null
+  if (summaryWindow.pending.length < MEMORY_SUMMARY_MIN || summaryWindow.selected.length === 0) {
+    reportSummaryFailure('没有需要总结的新消息：游标之后的未总结内容不足')
+    return null
+  }
   const processedThroughMessageId = summaryWindow.processedThroughMessageId
   const baseMemoryVersion = session.memoryVersion ?? 0
   const nextMemoryVersion = baseMemoryVersion + 1
@@ -93,12 +107,16 @@ export async function runMemorySummary(
     : undefined
 
   activeMemorySummaries.add(summaryKey)
+  // 开始新一轮总结：清除该会话的旧失败提示
+  set({ summarizingMemoryKey: summaryKey, memorySummaryError: null })
   return new Promise((resolve) => {
     let cleanedUp = false
     const cleanup = () => {
       if (cleanedUp) return
       cleanedUp = true
       activeMemorySummaries.delete(summaryKey)
+      // 仅当标记仍属于本任务时清除，避免误清其他会话刚发起的总结
+      set((s) => (s.summarizingMemoryKey === summaryKey ? { summarizingMemoryKey: null } : {}))
       unbindChunk(); unbindDone(); unbindError()
     }
     const unbindChunk = window.api.ai.onChunk((data) => {
@@ -108,7 +126,21 @@ export async function runMemorySummary(
     const unbindDone = window.api.ai.onDone(async (doneId) => {
       if (doneId !== requestId || cleanedUp) return
       const parsed = parseMemoryResult(result)
-      if (parsed.summary) {
+      if (!parsed.summary && !parsed.currentState) {
+        // 推理模型可能把输出预算全部耗在思考上（剥离 thought 后为空），或整段格式不符。
+        // 此前这里静默返回 null，UI 表现为“总结完成后长记忆没有任何内容”。
+        logWarn('memory', `长记忆总结未产出可解析内容（会话 ${currentSessionId}，请求 ${requestId}，raw=${result.length} 字符，含 thought 标签=${/<\s*\/?\s*(thought|thinking)\b/i.test(result)}）`)
+        reportSummaryFailure('长记忆总结未产出可解析内容（模型可能只返回了思考过程或格式不符），请重试')
+        cleanup()
+        resolve(null)
+        return
+      }
+      if (parsed.summary || parsed.currentState) {
+        if (!parsed.summary) {
+          // 只有【当前状态】没有【时间线】：保留旧时间线，仍然提交状态与事实，
+          // 避免一次成功的总结被整次丢弃。
+          logWarn('memory', `长记忆总结缺少【时间线】，保留旧时间线仅更新当前状态/事实（会话 ${currentSessionId}）`)
+        }
         try {
           // 摘要、事实、游标与版本一次写入，避免部分成功留下不一致快照。
           const hasFactsSection = result.includes('【事实】')
@@ -159,7 +191,7 @@ export async function runMemorySummary(
             logWarn('memory', `结构化事实提案解析失败，已保留旧事实（会话 ${currentSessionId}，失败 ${failureCount} 次，重试版本 ${retryAfterVersion}）`)
           }
           const commit = await window.api.chat.updateSessionIfMemoryVersion(character.id, currentSessionId, baseMemoryVersion, {
-            memory: parsed.summary,
+            memory: parsed.summary || session.memory || '',
             memoryCurrentState: hasCurrentStateSection ? parsed.currentState : (session.memoryCurrentState ?? ''),
             memoryFacts: facts,
             ...((shouldAttemptFactProposal && hasFactProposalsSection && parsed.factProposals) || (hasFactChangesSection && parsed.factChanges) ? { memoryFactHistory } : {}),
@@ -171,7 +203,7 @@ export async function runMemorySummary(
             memoryVersion: nextMemoryVersion,
           })
           if (!commit.applied) {
-            set({ error: '长记忆已被其他操作更新，本次旧摘要未写入。请重试总结。' })
+            reportSummaryFailure('长记忆已被其他操作更新，本次旧摘要未写入。请重试总结。')
             if (get().currentSessionId === currentSessionId) {
               const refreshedSessions = await window.api.chat.listSessions(character.id)
               set({ sessions: refreshedSessions })
@@ -180,6 +212,8 @@ export async function runMemorySummary(
             resolve(null)
             return
           }
+          // 成功提交：清除本会话的总结失败提示
+          set({ memorySummaryError: null })
           // P0-2：事实向量化（异步，供语义检索注入）；版本不匹配时上下文会自动回退。
           if (facts.length > 0) vectorizeSessionFacts(character.id, currentSessionId, facts, nextMemoryVersion)
           // NEW-M11：摘要写入归属发起时会话（数据正确）；仅当用户仍停留在同一会话时刷新 UI，
@@ -189,14 +223,15 @@ export async function runMemorySummary(
             set({ sessions: refreshedSessions })
           }
         } catch (error) {
-          set({ error: `长记忆保存失败：${friendlyError(error instanceof Error ? error.message : String(error))}` })
+          reportSummaryFailure(`长记忆保存失败：${friendlyError(error instanceof Error ? error.message : String(error))}`)
           cleanup()
           resolve(null)
           return
         }
       }
       cleanup()
-      resolve(parsed.summary || null)
+      // 仅更新当前状态的部分提交也视为一次成功的总结（返回非空文本供 UI 反馈）
+      resolve(parsed.summary || parsed.currentState || null)
     })
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
@@ -204,7 +239,7 @@ export async function runMemorySummary(
       errored = true
       errMsg = friendlyError(data.error)
       // 错误反馈到 store，UI 可见
-      set({ error: `长记忆总结失败：${errMsg}` })
+      reportSummaryFailure(`长记忆总结失败：${errMsg}`)
       resolve(null)
     })
 
@@ -252,7 +287,7 @@ ${previousFactsText}
       model,
       temperature: 0.3,
       topP: 0.9,
-      maxTokens: 2048,
+      maxTokens: MEMORY_SUMMARY_OUTPUT_TOKENS,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: true,
@@ -260,7 +295,7 @@ ${previousFactsText}
     }).catch(() => {
       cleanup()
       if (!errored) {
-        set({ error: '长记忆总结请求失败' })
+        reportSummaryFailure('长记忆总结请求失败')
       }
       resolve(null)
     })

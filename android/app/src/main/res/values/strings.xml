@@ -74,6 +74,11 @@
     <string name="settings_pc_show_token_count_desc">气泡下方显示本次生成 token 数</string>
     <string name="settings_pc_lorebook_ratio">世界书注入比例</string>
     <string name="settings_pc_lorebook_ratio_desc">上下文预算中分配给世界书的比例（%1$d%%）</string>
+    <string name="settings_pc_narrative_mode">新对话默认叙事模式</string>
+    <string name="settings_pc_narrative_mode_immersive">代入式角色扮演</string>
+    <string name="settings_pc_narrative_mode_omniscient">全局叙事</string>
+    <string name="settings_pc_narrative_rules">全局叙事规则</string>
+    <string name="settings_pc_narrative_rules_desc">同步到当前 PC；支持 {{user}} 与 {{char}} 变量</string>
     <string name="settings_pc_lists_error">模型/预设列表加载失败：%1$s</string>
     <string name="settings_pc_preset">预设</string>
     <string name="settings_pc_preset_default">默认</string>
@@ -343,6 +348,8 @@
     <string name="chat_cd_remove_image_fmt">移除第 %1$d 张图片</string>
     <!-- 消息气泡与操作（MessageBubble / PendingBubble / StreamingBubble / 消息动作面板） -->
     <string name="chat_role_placeholder">角色</string>
+    <string name="chat_narrator_focus">旁白 · 焦点 %1$s</string>
+    <string name="chat_narrator">旁白</string>
     <string name="chat_default_title">对话</string>
     <string name="chat_you">你</string>
     <string name="chat_other">对方</string>
@@ -424,6 +431,7 @@
     <string name="qs_memory_interval">自动总结间隔</string>
     <string name="qs_memory_interval_msgs">条消息</string>
     <string name="qs_memory_summarize_now">立即总结</string>
+    <string name="qs_memory_summarizing">总结中…</string>
     <string name="qs_memory_message_count_fmt">消息 %1$d 条</string>
     <string name="qs_memory_summary">当前摘要</string>
     <string name="qs_memory_facts">关键事实</string>

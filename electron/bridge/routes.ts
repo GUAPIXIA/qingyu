@@ -51,7 +51,6 @@ import { stripThought } from '../../src/utils/messagePostProcess'
 import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../../src/utils/memory'
 import { buildMemorySummaryWindow } from '../../src/utils/memoryWindow'
 import { MEMORY_SUMMARY_MIN } from '../../src/store/chatConstants'
-import { replaceVariables as replaceVars } from '../utils/variables'
 import { getDefaultSettings } from '../../shared/defaults'
 import { normalizePreset } from '../../shared/preset'
 import { nanoid } from 'nanoid'
@@ -78,9 +77,13 @@ import { sanitizeApiKey } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
 import { countTokens } from '../services/tokenizer'
 import type { Request, Response, NextFunction } from 'express'
-import type { Message, Settings, Preset, ChatParams, ProviderType, GroupChat, MemoryFactRecord } from '../../shared/types'
+import type { Message, Settings, Preset, ChatParams, ProviderType, GroupChat, MemoryFactRecord, Persona } from '../../shared/types'
+import type { NarrativeMode } from '../../shared/types'
+import { DEFAULT_OMNISCIENT_NARRATIVE_RULES, isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
+import { resolveMessageGenerationKind, resolveMessageSpeakerKind } from '../../shared/messageIdentity'
 import { DefaultMobileFacade, type MobileFacade } from './runtime/mobileFacade'
 import { GenerationRegistry } from './runtime/generationRegistry'
+import { buildGroupContextForBridge } from './groupContext'
 
 const log = createLogger('bridge-routes')
 
@@ -259,6 +262,8 @@ export function buildBridgeRouter(
       exampleDialogMode: s.exampleDialogMode ?? 'always',
       lorebookRatio: s.lorebookRatio ?? 0.3,
       autoTitle: s.autoTitle ?? true,
+      defaultNarrativeMode: resolveNarrativeMode(s.defaultNarrativeMode),
+      omniscientNarrativeRules: s.omniscientNarrativeRules?.trim() || DEFAULT_OMNISCIENT_NARRATIVE_RULES,
       themeColor: s.themeColor,
       fontSize: s.fontSize,
       bubbleStyle: s.bubbleStyle,
@@ -283,6 +288,7 @@ export function buildBridgeRouter(
     'htmlRendering', 'imageGenAutoEnabled', 'imageGenSize', 'exampleDialogMode',
     'lorebookRatio', 'autoTitle', 'themeColor', 'fontSize', 'bubbleStyle',
     'messageSpacing', 'messageWidth', 'activeModel', 'activePresetId',
+    'defaultNarrativeMode', 'omniscientNarrativeRules',
   ])
 
   router.patch('/settings', (req, res) => {
@@ -292,6 +298,8 @@ export function buildBridgeRouter(
       const body = (req.body ?? {}) as Record<string, unknown>
       for (const key of Object.keys(body)) {
         if (!SETTINGS_WRITE_FIELDS.has(key)) continue
+        if (key === 'defaultNarrativeMode' && !isNarrativeMode(body[key])) continue
+        if (key === 'omniscientNarrativeRules' && typeof body[key] !== 'string') continue
         ;(settings as unknown as Record<string, unknown>)[key] = body[key]
       }
       writeJson(file, settings, 'settings')
@@ -609,6 +617,9 @@ export function buildBridgeRouter(
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
         personaId: session.personaId ?? null,
+        narrativeMode: resolveNarrativeMode(session.narrativeMode),
+        gameMasterMode: session.gameMasterMode ?? false,
+        memoryCurrentState: session.memoryCurrentState ?? '',
         messageCount: firstMessageContent ? 1 : 0,
         lastMessage: firstMessageContent.slice(0, 50),
       })
@@ -653,6 +664,11 @@ export function buildBridgeRouter(
         session.personaId,
         session.lorebookIds,
       )
+      await chatData.updateSession(session.characterId, branch.id, {
+        narrativeMode: resolveNarrativeMode(session.narrativeMode),
+        gameMasterMode: session.gameMasterMode ?? false,
+        memoryCurrentState: session.memoryCurrentState ?? '',
+      })
       const copied = sourceMessages.slice(0, branchIndex + 1)
       const idMap = new Map(copied.map((message) => [message.id, nanoid()]))
       for (const message of copied) {
@@ -671,6 +687,9 @@ export function buildBridgeRouter(
         title: branch.title,
         createdAt: branch.createdAt,
         updatedAt: branch.updatedAt,
+        narrativeMode: resolveNarrativeMode(session.narrativeMode),
+        gameMasterMode: session.gameMasterMode ?? false,
+        memoryCurrentState: session.memoryCurrentState ?? '',
         messageCount: copied.length,
         lastMessage: copied.at(-1)?.content.slice(0, 50) ?? '',
       })
@@ -709,18 +728,34 @@ export function buildBridgeRouter(
   router.patch('/sessions/:sessionId', async (req, res) => {
     try {
       const sessionId = safeId(req.params.sessionId)
-      const { title } = (req.body ?? {}) as { title?: string }
-      if (!title || !title.trim()) {
-        res.status(400).json({ error: '缺少标题' })
+      const { title, narrativeMode, gameMasterMode, memoryCurrentState } = (req.body ?? {}) as {
+        title?: string
+        narrativeMode?: NarrativeMode
+        gameMasterMode?: boolean
+        memoryCurrentState?: string
+      }
+      if (title === undefined && narrativeMode === undefined && gameMasterMode === undefined && memoryCurrentState === undefined) {
+        res.status(400).json({ error: '缺少可更新字段' })
         return
       }
+      if (title !== undefined && !title.trim()) { res.status(400).json({ error: '缺少标题' }); return }
+      if (narrativeMode !== undefined && !isNarrativeMode(narrativeMode)) { res.status(400).json({ error: 'narrativeMode 无效' }); return }
+      if (gameMasterMode !== undefined && typeof gameMasterMode !== 'boolean') { res.status(400).json({ error: 'gameMasterMode 无效' }); return }
+      if (memoryCurrentState !== undefined && typeof memoryCurrentState !== 'string') { res.status(400).json({ error: 'memoryCurrentState 无效' }); return }
       const session = await findSessionById(sessionId)
       if (!session) {
         res.status(404).json({ error: '会话不存在' })
         return
       }
-      await chatData.renameSession(session.characterId, sessionId, title.trim())
-      notifySessionChanged(sessionId, 'title')
+      if (title !== undefined) await chatData.renameSession(session.characterId, sessionId, title.trim())
+      if (narrativeMode !== undefined || gameMasterMode !== undefined || memoryCurrentState !== undefined) {
+        await chatData.updateSession(session.characterId, sessionId, {
+          ...(narrativeMode !== undefined ? { narrativeMode } : {}),
+          ...(gameMasterMode !== undefined ? { gameMasterMode } : {}),
+          ...(memoryCurrentState !== undefined ? { memoryCurrentState: memoryCurrentState.slice(0, 6000) } : {}),
+        })
+      }
+      notifySessionChanged(sessionId, title !== undefined ? 'title' : 'narrative')
       res.json({ ok: true })
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
@@ -1280,6 +1315,7 @@ export function buildBridgeRouter(
         name: g.name,
         memberIds: g.memberIds,
         chatMode: g.chatMode,
+        defaultNarrativeMode: g.defaultNarrativeMode ?? null,
         autoMode: g.autoMode,
         maxRounds: g.maxRounds,
         createdAt: g.createdAt,
@@ -1293,9 +1329,17 @@ export function buildBridgeRouter(
   /** 新建群聊（POST /groups；memberIds 至少 1 个角色） */
   router.post('/groups', async (req, res) => {
     try {
-      const { name, memberIds } = (req.body ?? {}) as { name?: string; memberIds?: string[] }
+      const { name, memberIds, defaultNarrativeMode } = (req.body ?? {}) as {
+        name?: string
+        memberIds?: string[]
+        defaultNarrativeMode?: NarrativeMode
+      }
       if (!Array.isArray(memberIds) || memberIds.length === 0 || memberIds.some((id) => typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id))) {
         res.status(400).json({ error: 'memberIds 必须为角色 id 数组且至少 1 个' })
+        return
+      }
+      if (defaultNarrativeMode !== undefined && !isNarrativeMode(defaultNarrativeMode)) {
+        res.status(400).json({ error: 'defaultNarrativeMode 无效' })
         return
       }
       const now = Date.now()
@@ -1306,6 +1350,7 @@ export function buildBridgeRouter(
         currentSpeakerIndex: 0,
         autoMode: true,
         chatMode: 'polling',
+        defaultNarrativeMode,
         maxRounds: 4,
         speakerInterval: 10,
         lorebookIds: [],
@@ -1327,7 +1372,7 @@ export function buildBridgeRouter(
       const groupId = safeId(req.params.groupId)
       const group = groupData.listGroups().find((g) => g.id === groupId)
       if (!group) { res.status(404).json({ error: '群聊不存在' }); return }
-      const { name, chatMode, autoMode, maxRounds, speakerInterval, themeColor, bubbleOpacity, systemPrompt } = (req.body ?? {}) as {
+      const { name, chatMode, autoMode, maxRounds, speakerInterval, themeColor, bubbleOpacity, systemPrompt, defaultNarrativeMode } = (req.body ?? {}) as {
         name?: string
         chatMode?: 'mention' | 'polling' | 'free'
         autoMode?: boolean
@@ -1336,10 +1381,19 @@ export function buildBridgeRouter(
         themeColor?: string
         bubbleOpacity?: number
         systemPrompt?: string
+        defaultNarrativeMode?: NarrativeMode | null
       }
       const updated: GroupChat = { ...group }
       if (typeof name === 'string' && name.trim()) updated.name = name.trim()
       if (chatMode === 'mention' || chatMode === 'polling' || chatMode === 'free') updated.chatMode = chatMode
+      if (defaultNarrativeMode === null) delete updated.defaultNarrativeMode
+      else if (defaultNarrativeMode !== undefined) {
+        if (!isNarrativeMode(defaultNarrativeMode)) {
+          res.status(400).json({ error: 'defaultNarrativeMode 无效' })
+          return
+        }
+        updated.defaultNarrativeMode = defaultNarrativeMode
+      }
       if (typeof autoMode === 'boolean') updated.autoMode = autoMode
       if (typeof maxRounds === 'number') updated.maxRounds = maxRounds
       if (typeof speakerInterval === 'number') updated.speakerInterval = speakerInterval
@@ -1393,6 +1447,10 @@ export function buildBridgeRouter(
         messageCount: s.messageCount,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
+        narrativeMode: resolveNarrativeMode(s.narrativeMode),
+        gameMasterMode: s.gameMasterMode ?? false,
+        memoryCurrentState: s.memoryCurrentState ?? '',
+        personaId: s.personaId ?? null,
       })))
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
@@ -1416,6 +1474,9 @@ export function buildBridgeRouter(
         round: m.round,
         translation: m.translation ?? null,
         replyToId: m.replyToId ?? null,
+        narrativeMode: m.narrativeMode ?? null,
+        speakerKind: resolveMessageSpeakerKind(m),
+        generationKind: resolveMessageGenerationKind(m.generationKind, m),
       })))
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
@@ -1439,6 +1500,9 @@ export function buildBridgeRouter(
         res.status(400).json({ error: '缺少 content' })
         return
       }
+      const groupSession = (await groupData.listSessions(groupId)).find((item) => item.id === sessionId)
+      if (!groupSession) { res.status(404).json({ error: '群聊会话不存在' }); return }
+      const narrativeMode = resolveNarrativeMode(groupSession.narrativeMode)
       const message = {
         id: requestId && typeof requestId === 'string' && requestId.length > 0
           ? safeId(requestId)
@@ -1452,6 +1516,9 @@ export function buildBridgeRouter(
         mentionedCharacterIds: Array.isArray(mentionedCharacterIds)
           ? mentionedCharacterIds
           : undefined,
+        narrativeMode,
+        speakerKind: narrativeMode === 'omniscient' ? 'narrator' as const : 'persona' as const,
+        generationKind: 'manual' as const,
       }
       groupData.appendMessage(groupId, sessionId, message)
       notifySessionChanged(sessionId, 'message')
@@ -1477,21 +1544,38 @@ export function buildBridgeRouter(
         messageCount: 0,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
+        narrativeMode: resolveNarrativeMode(session.narrativeMode),
+        gameMasterMode: session.gameMasterMode ?? false,
+        memoryCurrentState: session.memoryCurrentState ?? '',
+        personaId: session.personaId ?? null,
       })
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
     }
   })
 
-  /** 重命名群聊会话（PATCH /groups/:groupId/sessions/:sessionId） */
+  /** 更新群聊会话（标题/叙事模式） */
   router.patch('/groups/:groupId/sessions/:sessionId', async (req, res) => {
     try {
       const groupId = safeId(req.params.groupId)
       const sessionId = safeId(req.params.sessionId)
-      const { title } = (req.body ?? {}) as { title?: string }
-      if (!title || !title.trim()) { res.status(400).json({ error: '缺少标题' }); return }
-      await groupData.renameSession(groupId, sessionId, title.trim())
-      notifySessionChanged(sessionId, 'title')
+      const { title, narrativeMode, gameMasterMode, memoryCurrentState } = (req.body ?? {}) as { title?: string; narrativeMode?: NarrativeMode; gameMasterMode?: boolean; memoryCurrentState?: string }
+      if (title === undefined && narrativeMode === undefined && gameMasterMode === undefined && memoryCurrentState === undefined) {
+        res.status(400).json({ error: '缺少可更新字段' }); return
+      }
+      if (title !== undefined && !title.trim()) { res.status(400).json({ error: '缺少标题' }); return }
+      if (narrativeMode !== undefined && !isNarrativeMode(narrativeMode)) {
+        res.status(400).json({ error: 'narrativeMode 无效' }); return
+      }
+      if (gameMasterMode !== undefined && typeof gameMasterMode !== 'boolean') { res.status(400).json({ error: 'gameMasterMode 无效' }); return }
+      if (memoryCurrentState !== undefined && typeof memoryCurrentState !== 'string') { res.status(400).json({ error: 'memoryCurrentState 无效' }); return }
+      await groupData.updateSession(groupId, sessionId, {
+        ...(title !== undefined ? { title: title.trim() } : {}),
+        ...(narrativeMode !== undefined ? { narrativeMode } : {}),
+        ...(gameMasterMode !== undefined ? { gameMasterMode } : {}),
+        ...(memoryCurrentState !== undefined ? { memoryCurrentState: memoryCurrentState.slice(0, 6000) } : {}),
+      })
+      notifySessionChanged(sessionId, title !== undefined ? 'title' : 'narrative')
       res.json({ ok: true })
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
@@ -1531,57 +1615,6 @@ export function buildBridgeRouter(
     }
   })
 
-  /** 群聊上下文构建（桥接层简化版，对齐 buildGroupChatContext 核心：Overview + 模式规则 + 角色设定 + 历史） */
-  function buildGroupContextForBridge(
-    group: { name: string; chatMode: 'mention' | 'polling' | 'free'; systemPrompt?: string },
-    members: Array<{ id: string; name: string; description?: string; personality?: string; scenario?: string; systemPrompt?: string }>,
-    messages: Array<{ characterId: string; content: string }>,
-    speaker: { id: string; name: string } | null,
-    userName: string,
-  ): { systemContent: string; history: { role: 'user' | 'assistant'; content: string }[] } {
-    const targetName = speaker?.name || members.map((m) => m.name).join('、')
-    let systemContent = `你正在参与一个群聊「${group.name}」。本群聊中共有 ${members.length} 个角色参与对话：\n`
-    members.forEach((m, i) => {
-      const desc = m.description ? ' - ' + m.description.slice(0, 80) : ''
-      systemContent += `${i + 1}. 【${m.name}】${desc}\n`
-    })
-    systemContent += `\n用户「${userName}」也在群聊中。\n`
-
-    switch (group.chatMode) {
-      case 'mention':
-        systemContent += '\n【对话规则】用户通过 @角色名 指定回复对象。只有被点名的角色才需要回复。回复时请以该角色的第一人称视角发言，不要替其他角色说话。\n'
-        break
-      case 'polling':
-        systemContent += '\n【对话规则】当前采用自动轮询模式。每次只轮到一位角色发言。请以该角色的第一人称视角回复，不要替其他角色或用户发言。\n'
-        break
-      default:
-        systemContent += '\n【对话规则】自由模式。请以角色的身份自然地参与对话。\n'
-    }
-
-    if (group.systemPrompt) {
-      systemContent += '\n' + replaceVars(group.systemPrompt, userName, targetName) + '\n'
-    }
-
-    if (speaker) {
-      const t = members.find((m) => m.id === speaker.id)
-      systemContent += `\n\n【当前发言角色：${speaker.name}】\n`
-      if (t?.description) systemContent += `描述：${replaceVars(t.description, userName, speaker.name)}\n`
-      if (t?.personality) systemContent += `性格：${replaceVars(t.personality, userName, speaker.name)}\n`
-      if (t?.scenario) systemContent += `场景：${replaceVars(t.scenario, userName, speaker.name)}\n`
-      if (t?.systemPrompt) systemContent += `\n${replaceVars(t.systemPrompt, userName, speaker.name)}\n`
-    }
-
-    // 历史消息（最近 30 条，角色名标注）
-    const history = messages.slice(-30).map((m) => {
-      const role = m.characterId === '__user__' ? 'user' as const : 'assistant' as const
-      const name = m.characterId === '__user__'
-        ? userName
-        : (members.find((mm) => mm.id === m.characterId)?.name ?? '未知角色')
-      return { role, content: `【${name}】${m.content}` }
-    })
-    return { systemContent, history }
-  }
-
   /** 群聊 AI 回复（对齐渲染层 streamGroupAI：构建上下文 -> AI 生成 -> 落盘） */
   router.post('/groups/:groupId/sessions/:sessionId/ai-reply', async (req, res) => {
     try {
@@ -1598,9 +1631,21 @@ export function buildBridgeRouter(
       restoreSecrets(settings)
       const profile = settings.connectionProfiles?.find((p) => p.id === settings.activeProfileId)
       if (!profile) { res.status(400).json({ error: '未配置 API 连接' }); return }
-      const userName = settings.userName || '用户'
 
       const messages = groupData.readMessages(groupId, sessionId)
+      const groupSession = (await groupData.listSessions(groupId)).find((item) => item.id === sessionId)
+      if (!groupSession) { res.status(404).json({ error: '群聊会话不存在' }); return }
+      const narrativeMode = resolveNarrativeMode(groupSession.narrativeMode)
+      const effectivePersonaId = groupSession.personaId === undefined
+        ? settings.defaultPersonaId
+        : groupSession.personaId
+      const personas = readJson<Persona[]>(join(DIRS.config(), 'personas.json')) ?? []
+      const sessionPersona = effectivePersonaId
+        ? personas.find((persona) => persona.id === effectivePersonaId)
+        : undefined
+      const userName = sessionPersona?.name
+        || (effectivePersonaId && settings.activePersonaId === effectivePersonaId ? settings.userName : '')
+        || '用户'
       const round = messages.reduce((mx, m) => Math.max(mx, m.round ?? 0), 0) + 1
 
       // 发言人：指定优先，否则按轮次轮转
@@ -1610,13 +1655,16 @@ export function buildBridgeRouter(
       }
       if (!speaker) { res.status(500).json({ error: '发言人选择失败' }); return }
 
-      const { systemContent, history } = buildGroupContextForBridge(
+      const { systemContent, history } = buildGroupContextForBridge({
         group,
         members,
         messages,
         speaker,
         userName,
-      )
+        narrativeMode,
+        gameMasterMode: groupSession.gameMasterMode,
+        omniscientNarrativeRules: settings.omniscientNarrativeRules,
+      })
 
       const params: ChatParams = {
         requestId: `group-ai-${Date.now()}-${nanoid(4)}`,
@@ -1647,6 +1695,9 @@ export function buildBridgeRouter(
         images: [],
         timestamp: Date.now(),
         round,
+        narrativeMode,
+        speakerKind: 'character' as const,
+        generationKind: 'assistant_reply' as const,
       }
       groupData.appendMessage(groupId, sessionId, aiMsg)
       notifySessionChanged(sessionId, 'message')
@@ -1737,6 +1788,9 @@ export function toApiMessage(message: Message): Record<string, unknown> {
     swipes: message.swipes ?? null,
     swipeIndex: message.swipeIndex ?? null,
     replyToId: message.replyToId ?? null,
+    narrativeMode: message.narrativeMode ?? null,
+    speakerKind: resolveMessageSpeakerKind(message),
+    generationKind: resolveMessageGenerationKind(message.generationKind, message),
     usage: message.charUsage
       ? {
           promptTokens: 0,

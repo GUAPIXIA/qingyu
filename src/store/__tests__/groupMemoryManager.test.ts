@@ -157,12 +157,45 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
       memoryLastMessageId: 'm5',
       memoryVersion: 1,
     })
-    // 本地 sessions 更新
-    const sessions = set.mock.calls[0][0].sessions as typeof makeState extends never ? never : { id: string }[]
+    // 本地 sessions 更新（set 可能先收到 summarizingMemoryKey 等标记，按载荷查找携带 sessions 的调用）
+    const sessions = set.mock.calls.map((c: any[]) => c[0]?.sessions).find(Boolean) as { id: string }[]
     const updated = sessions.find((s: { id: string }) => s.id === 's1') as any
     expect(updated.memory).toBe('他们在森林重逢')
     expect(updated.memoryFacts).toEqual(['目的地雪山'])
     expect(updated.memoryUpdatedAt).toBeGreaterThan(0)
+  })
+
+  it('推理模型只返回思考块时给出可见失败反馈，不静默跳过', async () => {
+    const callbacks = captureStreamCallbacks()
+    const set = vi.fn()
+    const p = runGroupMemorySummary((() => makeState()) as any, set)
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '<thought>先梳理一下群聊剧情……思考占满了输出预算。</thought>' })
+    callbacks.onDone!(requestId)
+
+    await p
+    expect(window.api.group.updateSessionIfMemoryVersion).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.stringContaining('未产出可解析内容'),
+    }))
+  })
+
+  it('模型只输出【当前状态】时保留旧时间线，仍提交状态与游标', async () => {
+    const callbacks = captureStreamCallbacks()
+    const p = runGroupMemorySummary((() => makeState()) as any, vi.fn())
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '【当前状态】众人围着篝火争论明天的路线。\n【事实提案】\n```json\n[]\n```' })
+    callbacks.onDone!(requestId)
+
+    await p
+    expect(window.api.group.updateSessionIfMemoryVersion).toHaveBeenCalledWith('g1', 's1', 0, expect.objectContaining({
+      memory: '旧摘要',
+      memoryCurrentState: '众人围着篝火争论明天的路线。',
+      memoryLastMessageId: 'm5',
+      memoryVersion: 1,
+    }))
   })
 
   it('系统提示包含群名、成员名与之前的事实', async () => {
@@ -181,6 +214,8 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
 
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
+    // 思考模型需要更大的输出预算（2048），避免正文被思考吃光
+    expect((callbacks.chatParams as any).maxTokens).toBe(2048)
   })
 
   it('群聊仅总结游标之后的消息，并将游标推进到增量末尾', async () => {

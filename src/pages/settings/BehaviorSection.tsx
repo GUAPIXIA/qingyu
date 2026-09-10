@@ -1,7 +1,8 @@
 import { Sliders } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Toggle, SectionCard } from '../../components/common/SettingsShared'
-import type { Settings } from '../../../shared/types'
+import type { NarrativeMode, Settings } from '../../../shared/types'
+import { NARRATIVE_MODE_OPTIONS, resolveNarrativeMode } from '../../../shared/narrativeMode'
 
 interface BehaviorSectionProps {
   settings: Settings
@@ -49,6 +50,37 @@ export function BehaviorSection(props: BehaviorSectionProps) {
                 checked={settings.defaultMemoryEnabled ?? false}
                 onChange={(v) => updateSettings({ defaultMemoryEnabled: v })}
               />
+            </div>
+
+            <div className="space-y-2 py-1">
+              <div>
+                <p className="text-sm">新对话默认叙事模式</p>
+                <p className="text-xs text-tavern-text-muted">只影响之后创建的单聊；已有会话保留各自模式</p>
+              </div>
+              <div className="grid max-w-lg grid-cols-2 gap-2" role="radiogroup" aria-label="新对话默认叙事模式">
+                {NARRATIVE_MODE_OPTIONS.map((option) => {
+                  const selected = resolveNarrativeMode(settings.defaultNarrativeMode) === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={option.label}
+                      onClick={() => updateSettings({ defaultNarrativeMode: option.value as NarrativeMode })}
+                      className={cn(
+                        'rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/50',
+                        selected
+                          ? 'border-tavern-accent/60 bg-tavern-accent-soft text-tavern-accent'
+                          : 'border-tavern-border-soft bg-tavern-bg-soft/60 text-tavern-text-soft hover:border-tavern-border',
+                      )}
+                    >
+                      <span className="block text-xs font-semibold">{option.shortLabel}</span>
+                      <span className="mt-1 block text-[10px] leading-relaxed text-tavern-text-muted">{option.description}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <div className="flex items-center justify-between py-1">

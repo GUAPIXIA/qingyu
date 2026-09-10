@@ -9,6 +9,7 @@ import { vectorizeGroupSessionFacts } from './groupStreamController'
 import { logWarn } from '../lib/logger'
 import type { GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { nanoid } from 'nanoid'
+import { getNarrativeMemoryGuidance, resolveNarrativeMode } from '../../shared/narrativeMode'
 
 const activeGroupMemorySummaries = new Set<string>()
 
@@ -35,12 +36,17 @@ export async function runGroupMemorySummary(get: GroupStoreGet, set: GroupStoreS
   if (!currentSession?.memoryEnabled) return
   const summaryKey = `${currentGroup.id}:${currentSessionId}`
   if (activeGroupMemorySummaries.has(summaryKey)) return
+  /** 失败统一上报：memorySummaryError 携带会话 key 供面板精确展示 */
+  const reportSummaryFailure = (message: string) => {
+    set({ error: message, memorySummaryError: { key: summaryKey, message } })
+  }
   const prevMemory = currentSession?.memory || ''
   const prevFacts = currentSession?.memoryFacts ?? []
   const prevFactsText = formatMemoryFacts(prevFacts) || '无'
   const baseMemoryVersion = currentSession.memoryVersion ?? 0
   const nextMemoryVersion = baseMemoryVersion + 1
   const shouldAttemptFactProposal = nextMemoryVersion >= (currentSession.memoryFactRetryAfterVersion ?? 0)
+  const narrativeMemoryGuidance = getNarrativeMemoryGuidance(resolveNarrativeMode(currentSession.narrativeMode))
 
   const formatMessage = (message: typeof messages[number]) => {
     const char = members.find(c => c.id === message.characterId)
@@ -53,10 +59,12 @@ export async function runGroupMemorySummary(get: GroupStoreGet, set: GroupStoreS
     `${currentGroup.name}\n${memberNames}\n${currentSession.memoryCurrentState || '无'}\n${prevMemory}\n${prevFactsText}`,
     profile.model,
   ) + 800
+  // 为思考模型预留输出预算：正文 + 思考 token，1024 会被思考吃光导致整次总结无正文
+  const GROUP_MEMORY_OUTPUT_TOKENS = 2048
   const summaryInputBudget = resolveMemorySummaryInputBudget(
     profile.maxContext || getDefaultMaxContext(profile.model),
     promptOverheadTokens,
-    1024,
+    GROUP_MEMORY_OUTPUT_TOKENS,
   )
   const summaryWindow = buildMemorySummaryWindow(
     messages.filter((message) => message.content.trim()),
@@ -65,7 +73,10 @@ export async function runGroupMemorySummary(get: GroupStoreGet, set: GroupStoreS
     (text) => estimateTokens(text, profile.model),
     { tokenBudget: summaryInputBudget },
   )
-  if (summaryWindow.pending.length < MEMORY_SUMMARY_MIN || summaryWindow.selected.length === 0) return
+  if (summaryWindow.pending.length < MEMORY_SUMMARY_MIN || summaryWindow.selected.length === 0) {
+    reportSummaryFailure('没有需要总结的新消息：游标之后的未总结内容不足')
+    return
+  }
 
   const systemPrompt = `你是一个对话摘要助手。请根据以下群聊「${currentGroup.name}」的最近对话（成员：${memberNames}），更新当前状态、长期时间线并抽取关键事实。
 
@@ -82,6 +93,7 @@ ${shouldAttemptFactProposal ? `【事实提案】
 \`\`\`` : '本次结构化事实更新正在退避；不要输出【事实提案】。'}
 
 要求：
+- ${narrativeMemoryGuidance}
 - 事实必须是持久有效的信息（人名、身份、地点、目标、约定、关系等），不要写临时情绪。
 - 只输出语义事实提案，绝对不要输出事实 ID、action、patch 或完整事实列表。changeType 用 set 表示新增/更新，clear 表示失效。
 - 服务端负责规范化群聊范围和角色身份；没有事实变更时输出空数组 []。
@@ -103,6 +115,8 @@ ${shouldAttemptFactProposal ? `【事实提案】
   const processedThroughMessageId = summaryWindow.processedThroughMessageId
 
   activeGroupMemorySummaries.add(summaryKey)
+  // 开始新一轮总结：清除旧失败提示
+  set({ summarizingMemoryKey: summaryKey, memorySummaryError: null })
   const requestId = `group-memory-${nanoid()}`
   let result = ''
 
@@ -113,6 +127,8 @@ ${shouldAttemptFactProposal ? `【事实提案】
       settled = true
       unbindChunk(); unbindDone(); unbindError()
       activeGroupMemorySummaries.delete(summaryKey)
+      // 仅当标记仍属于本任务时清除，避免误清其他会话刚发起的总结
+      set((s) => (s.summarizingMemoryKey === summaryKey ? { summarizingMemoryKey: null } : {}))
       resolve()
     }
 
@@ -124,9 +140,16 @@ ${shouldAttemptFactProposal ? `【事实提案】
     const unbindDone = window.api.ai.onDone(async (doneId) => {
       if (doneId !== requestId || settled) return
       const parsed = parseMemoryResult(result || '')
-      if (!parsed.summary) {
+      if (!parsed.summary && !parsed.currentState) {
+        // 与单聊一致：未解析出可写入内容（含仅思考块回复）时显式反馈，避免“总结完成却无内容”的静默失败
+        logWarn('group-memory', `长记忆总结未产出可解析内容（会话 ${currentSessionId}，请求 ${requestId}，raw=${result.length} 字符，含 thought 标签=${/<\s*\/?\s*(thought|thinking)\b/i.test(result)}）`)
+        reportSummaryFailure('群聊长记忆总结未产出可解析内容（模型可能只返回了思考过程或格式不符），请重试')
         finish()
         return
+      }
+      if (!parsed.summary) {
+        // 只有【当前状态】没有【时间线】：保留旧时间线，仍然提交状态与事实
+        logWarn('group-memory', `长记忆总结缺少【时间线】，保留旧时间线仅更新当前状态/事实（会话 ${currentSessionId}）`)
       }
       try {
         const hasFactsSection = result.includes('【事实】')
@@ -177,7 +200,7 @@ ${shouldAttemptFactProposal ? `【事实提案】
         }
         const memoryUpdatedAt = Date.now()
         const patch = {
-          memory: parsed.summary,
+          memory: parsed.summary || currentSession.memory || '',
           memoryCurrentState: hasCurrentStateSection ? parsed.currentState : (currentSession.memoryCurrentState ?? ''),
           memoryFacts: facts,
           ...((shouldAttemptFactProposal && hasFactProposalsSection && parsed.factProposals) || (hasFactChangesSection && parsed.factChanges) ? { memoryFactHistory } : {}),
@@ -190,24 +213,26 @@ ${shouldAttemptFactProposal ? `【事实提案】
         }
         const commit = await window.api.group.updateSessionIfMemoryVersion(currentGroup.id, currentSessionId, baseMemoryVersion, patch)
         if (!commit.applied) {
-          set({ error: '群聊长记忆已被其他操作更新，本次旧摘要未写入。请重试总结。' })
+          reportSummaryFailure('群聊长记忆已被其他操作更新，本次旧摘要未写入。请重试总结。')
           finish()
           return
         }
+        // 成功提交：清除本会话的总结失败提示
+        set({ memorySummaryError: null })
         if (facts.length > 0) vectorizeGroupSessionFacts(currentGroup.id, currentSessionId, facts, nextMemoryVersion)
         const latest = get()
         if (latest.currentGroup?.id === currentGroup.id && latest.currentSessionId === currentSessionId) {
           set({ sessions: latest.sessions.map((session) => session.id === currentSessionId ? { ...session, ...patch } : session) })
         }
       } catch (error) {
-        set({ error: `群聊长记忆保存失败：${error instanceof Error ? error.message : String(error)}` })
+        reportSummaryFailure(`群聊长记忆保存失败：${error instanceof Error ? error.message : String(error)}`)
       }
       finish()
     })
 
     const unbindError = window.api.ai.onError((data: { requestId: string; error?: string }) => {
       if (data.requestId !== requestId || settled) return
-      set({ error: `群聊长记忆总结失败：${data.error || '未知错误'}` })
+      reportSummaryFailure(`群聊长记忆总结失败：${data.error || '未知错误'}`)
       finish()
     })
 
@@ -223,12 +248,12 @@ ${shouldAttemptFactProposal ? `【事实提案】
       model: profile.model,
       temperature: 0.3,
       topP: 1,
-      maxTokens: 1024,
+      maxTokens: GROUP_MEMORY_OUTPUT_TOKENS,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
     }).catch((error) => {
-      if (!settled) set({ error: `群聊长记忆总结请求失败：${error instanceof Error ? error.message : String(error)}` })
+      if (!settled) reportSummaryFailure(`群聊长记忆总结请求失败：${error instanceof Error ? error.message : String(error)}`)
       finish()
     })
   })

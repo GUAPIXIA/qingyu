@@ -33,6 +33,12 @@ data class Message(
     val replyToId: String? = null,
     /** 本次 AI 回复的 token 用量（仅 assistant，来自 ai:usage 事件） */
     val usage: MessageUsage? = null,
+    /** 生成本条回复时使用的叙事模式。 */
+    val narrativeMode: String? = null,
+    /** 界面显示身份；旧消息缺失或值未知时由 MessageIdentity 推导。 */
+    val speakerKind: String? = null,
+    /** manual/input_continue/assistant_reply/regenerate/message_continue。 */
+    val generationKind: String? = null,
 )
 
 @Serializable

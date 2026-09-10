@@ -11,7 +11,7 @@ export const chatMessagePort: MessagePort = {
     const { findSessionById, findSessionByCharacterId } = await import('../bridge/sessionsIndex')
     const s = characterId ? await findSessionByCharacterId(characterId, sessionId) : await findSessionById(sessionId)
     if (!s) return null
-    return { id: s.id, sessionId: s.id, characterId: s.characterId }
+    return { id: s.id, sessionId: s.id, characterId: s.characterId, narrativeMode: s.narrativeMode }
   },
 
   async findByRequestId(sessionId, requestId) {
@@ -37,6 +37,9 @@ export const chatMessagePort: MessagePort = {
       timestamp: Date.now(),
       replyToId: input.replyToId,
       requestId: input.requestId,
+      narrativeMode: input.narrativeMode,
+      speakerKind: input.speakerKind,
+      generationKind: input.generationKind,
     } as unknown as Parameters<typeof chatData.saveMessage>[1])
     return { id: input.id }
   },
@@ -53,6 +56,9 @@ export const chatMessagePort: MessagePort = {
       timestamp: Date.now(),
       generationTaskId: input.generationTaskId,
       requestId: input.requestId,
+      narrativeMode: input.narrativeMode,
+      speakerKind: input.speakerKind,
+      generationKind: input.generationKind,
     } as unknown as Parameters<typeof chatData.saveMessage>[1])
     return { id: input.id }
   },
@@ -73,7 +79,7 @@ export const chatMessagePort: MessagePort = {
     return { id: m.id, role: m.role, content: m.content, swipes: (m as unknown as { swipes?: string[] }).swipes, swipeIndex: (m as unknown as { swipeIndex?: number }).swipeIndex }
   },
 
-  async appendSwipedCandidate(messageId, content) {
+  async appendSwipedCandidate(messageId, content, generationKind = 'regenerate') {
     const { listAllSessions } = await import('../bridge/sessionsIndex')
     const all = await listAllSessions()
     for (const s of all) {
@@ -82,7 +88,7 @@ export const chatMessagePort: MessagePort = {
       if (target) {
         const swipes = (target as unknown as { swipes?: string[] }).swipes ?? [target.content]
         const nextSwipes = [...swipes, content]
-        const updated = { ...target, swipes: nextSwipes, swipeIndex: nextSwipes.length - 1, content }
+        const updated = { ...target, swipes: nextSwipes, swipeIndex: nextSwipes.length - 1, content, generationKind }
         chatData.saveMessage(s.characterId, updated as unknown as Parameters<typeof chatData.saveMessage>[1])
         return { id: messageId, content, swipes: nextSwipes, swipeIndex: nextSwipes.length - 1 }
       }

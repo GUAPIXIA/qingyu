@@ -5,11 +5,13 @@ import { DIRS, readJson, writeJson, withFileLock } from '../services/storage'
 import { escapeMarkdownContent } from '../utils/markdown'
 import { getDefaultSettings } from '../../shared/defaults'
 import { createLogger } from '../services/logger'
-import type { Message, ChatSession, SessionPreview } from '../../shared/types'
+import type { Message, ChatSession, SessionPreview, Character, NarrativeMode } from '../../shared/types'
 import type { Settings } from '../../shared/types'
+import { isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
 import { safeHandle } from '../utils/safeHandle'
+import { withMessageIdentity } from '../../shared/messageIdentity'
 
 const log = createLogger('chat')
 
@@ -35,6 +37,8 @@ const UPDATE_SESSION_FIELDS = new Set([
   'titleGenerated',
   'lorebookIds',
   'personaId',
+  'narrativeMode',
+  'gameMasterMode',
   'recentTriggeredIds',
   'lorebookCompressionCache',
 ])
@@ -44,6 +48,34 @@ const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 function getDefaultPersonaId(): string | null {
   const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
   return settings.defaultPersonaId ?? null
+}
+
+/** 新会话固化角色默认值；角色无配置时回退全局，再回退 immersive。 */
+function getDefaultNarrativeMode(characterId: string): NarrativeMode {
+  const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
+  const character = readJson<Character>(join(DIRS.characters(), `${characterId}.json`), 'characters')
+  return resolveNarrativeMode(character?.defaultNarrativeMode, settings.defaultNarrativeMode)
+}
+
+/** 新建会话的默认长记忆配置：角色卡已启用时优先角色参数，否则回退全局设置（对齐渲染层 applyDefaultMemory） */
+function getDefaultMemoryConfig(characterId: string): {
+  memoryEnabled: boolean
+  memoryMode: 'manual' | 'auto'
+  autoMemoryInterval: number
+} {
+  const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
+  const character = readJson<Character>(join(DIRS.characters(), `${characterId}.json`), 'characters')
+  if (character?.defaultMemoryEnabled === true) {
+    return {
+      memoryEnabled: true,
+      memoryMode: character.defaultMemoryMode ?? 'auto',
+      autoMemoryInterval: character.defaultMemoryInterval ?? 10,
+    }
+  }
+  if (settings.defaultMemoryEnabled) {
+    return { memoryEnabled: true, memoryMode: 'auto', autoMemoryInterval: 10 }
+  }
+  return { memoryEnabled: false, memoryMode: 'manual', autoMemoryInterval: 10 }
 }
 
 function getChatDir(characterId: string): string {
@@ -93,6 +125,12 @@ function cleanSessionUpdates(updates: Partial<ChatSession>): Partial<ChatSession
     const value = (updates as Record<string, unknown>)[key]
     if (key === 'title' && typeof value === 'string' && value.length > 200) {
       throw new Error('标题长度不能超过 200 字符')
+    }
+    if (key === 'narrativeMode' && !isNarrativeMode(value)) {
+      throw new Error('参数无效：narrativeMode')
+    }
+    if (key === 'gameMasterMode' && typeof value !== 'boolean') {
+      throw new Error('参数无效：gameMasterMode')
     }
     ;(clean as Record<string, unknown>)[key] = value
   }
@@ -525,12 +563,11 @@ function createDefaultSession(characterId: string): ChatSession {
     title: '默认对话',
     createdAt: now,
     updatedAt: now,
-    memoryEnabled: false,
-    memoryMode: 'manual',
-    autoMemoryInterval: 10,
+    ...getDefaultMemoryConfig(characterId),
     memory: '',
     memoryUpdatedAt: 0,
     personaId: getDefaultPersonaId(),
+    narrativeMode: getDefaultNarrativeMode(characterId),
   }
 }
 
@@ -578,13 +615,12 @@ export function registerChatIPC(ipcMain: IpcMain): void {
         title: title || `新对话 ${sessions.length + 1}`,
         createdAt: now,
         updatedAt: now,
-        memoryEnabled: false,
-        memoryMode: 'manual',
-        autoMemoryInterval: 10,
+        ...getDefaultMemoryConfig(characterId),
         memory: '',
         memoryUpdatedAt: 0,
         personaId: effectivePersonaId,
         lorebookIds,
+        narrativeMode: getDefaultNarrativeMode(characterId),
       }
       sessions.push(session)
       saveSessions(characterId, sessions)
@@ -634,16 +670,8 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       throw new Error('参数无效：updates 必须为对象')
     }
-    // 字段白名单：仅允许更新常规会话字段，防止注入 id/characterId 等关键字段破坏数据
-    const clean: Partial<ChatSession> = {}
-    for (const key of Object.keys(updates)) {
-      if (!UPDATE_SESSION_FIELDS.has(key)) continue
-      const value = (updates as Record<string, unknown>)[key]
-      if (key === 'title' && typeof value === 'string' && value.length > 200) {
-        throw new Error('标题长度不能超过 200 字符')
-      }
-      ;(clean as Record<string, unknown>)[key] = value
-    }
+    // 字段白名单与值校验统一走共享清洗函数。
+    const clean = cleanSessionUpdates(updates)
     return withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId)
       const idx = sessions.findIndex(s => s.id === sessionId)
@@ -692,8 +720,9 @@ export function registerChatIPC(ipcMain: IpcMain): void {
 
     // L-05 修复：updateMessage 返回是否为新消息，消除重复读取
     // BUG-10 修复：消息文件写入与删除等操作通过 per-file 锁串行化
+    const normalizedMessage = withMessageIdentity(message)
     await withSessionFileLock(message.characterId, sid, () => {
-      updateMessage(message.characterId, sid, message)
+      updateMessage(message.characterId, sid, normalizedMessage)
     })
 
     // 增量更新 session 的 updatedAt（只重写 sessions.json，不重读 messages）
@@ -959,7 +988,7 @@ export const chatData = {
 
   /** 追加/覆盖单条消息（与渲染层 saveMessage 同一落盘路径） */
   saveMessage: (characterId: string, message: Message): void => {
-    appendMessage(characterId, message.sessionId, message)
+    appendMessage(characterId, message.sessionId, withMessageIdentity(message))
   },
 
   /** 删除单条消息（与 IPC handler 相同的读-改-写锁路径） */
@@ -1022,13 +1051,12 @@ export const chatData = {
         title: title || `新对话 ${sessions.length + 1}`,
         createdAt: now,
         updatedAt: now,
-        memoryEnabled: false,
-        memoryMode: 'manual',
-        autoMemoryInterval: 10,
+        ...getDefaultMemoryConfig(characterId),
         memory: '',
         memoryUpdatedAt: 0,
         personaId: effectivePersonaId,
         lorebookIds,
+        narrativeMode: getDefaultNarrativeMode(characterId),
       }
       sessions.push(session)
       saveSessions(characterId, sessions)
@@ -1100,11 +1128,7 @@ export const chatData = {
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       throw new Error('参数无效：updates 必须为对象')
     }
-    const clean: Partial<ChatSession> = {}
-    for (const key of Object.keys(updates)) {
-      if (!UPDATE_SESSION_FIELDS.has(key)) continue
-      ;(clean as Record<string, unknown>)[key] = (updates as Record<string, unknown>)[key]
-    }
+    const clean = cleanSessionUpdates(updates)
     return withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId)
       const idx = sessions.findIndex((s) => s.id === sessionId)

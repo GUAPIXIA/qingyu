@@ -6,6 +6,7 @@ import {
   Clock3,
   Database,
   History,
+  Loader2,
   MessageSquareText,
   Pencil,
   Play,
@@ -40,8 +41,13 @@ interface MemoryPanelProps {
   onToggleMemory: (enabled: boolean) => void
   onSetMemoryMode: (mode: 'manual' | 'auto', interval: number) => void
   onUpdateMemoryFacts: (facts: MemoryFactRecord[]) => void | Promise<void>
-  onTriggerSummary: () => void
+  /** 返回本次总结产出的摘要文本；显式 null 表示未产出可写入内容（调用方据此给出反馈） */
+  onTriggerSummary: () => void | Promise<string | null>
+  /** 最近一次总结的失败原因（store 通道，按会话 key 过滤后传入）；总结按钮下方的可见反馈 */
+  summaryError?: string | null
   isStreaming: boolean
+  /** 长记忆总结进行中：按钮显示加载态并禁用 */
+  isSummarizing?: boolean
   memoryStats: { totalMessages: number; totalChars: number; durationStr: string } | null
 }
 
@@ -61,7 +67,9 @@ export function MemoryPanel({
   onSetMemoryMode,
   onUpdateMemoryFacts,
   onTriggerSummary,
+  summaryError = null,
   isStreaming,
+  isSummarizing = false,
   memoryStats,
 }: MemoryPanelProps) {
   const currentSession = sessions.find(s => s.id === currentSessionId)
@@ -341,12 +349,19 @@ export function MemoryPanel({
               <button
                 type="button"
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-tavern-accent px-3 py-2.5 text-xs font-medium text-white shadow-sm transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45"
-                onClick={onTriggerSummary}
-                disabled={!hasSession || !memoryEnabled || isStreaming}
+                onClick={() => { void onTriggerSummary() }}
+                disabled={!hasSession || !memoryEnabled || isStreaming || isSummarizing}
+                aria-busy={isSummarizing || undefined}
               >
-                <Play className="h-3.5 w-3.5 fill-current" />
-                {isStreaming ? '回复完成后可总结' : '立即总结当前对话'}
+                {isSummarizing
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Play className="h-3.5 w-3.5 fill-current" />}
+                {isSummarizing ? '正在总结…' : isStreaming ? '回复完成后可总结' : '立即总结当前对话'}
               </button>
+
+              {summaryError && (
+                <p role="alert" className="mt-2 text-[11px] text-tavern-danger">{summaryError}</p>
+              )}
 
               {memoryStats && (
                 <section aria-label="对话统计" className="mt-4 grid grid-cols-3 divide-x divide-tavern-border-soft rounded-xl border border-tavern-border-soft py-2.5">

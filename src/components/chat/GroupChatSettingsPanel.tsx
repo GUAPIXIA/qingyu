@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText, Download, Palette } from 'lucide-react'
+import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText, Download, Palette, Globe2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
 import { charAssetUrl } from '../../utils/asset'
 import type { GroupChat, Character, Lorebook, Preset } from '../../../shared/types'
+import { NARRATIVE_MODE_OPTIONS } from '../../../shared/narrativeMode'
 
 interface GroupChatSettingsPanelProps {
   group: GroupChat
@@ -200,6 +201,32 @@ export function GroupChatSettingsPanel({
                 )
               })}
             </div>
+          </div>
+
+          {/* 新会话叙事模式默认值；与上方发言调度模式相互独立 */}
+          <div>
+            <label className="label">
+              <span className="inline-flex items-center gap-1.5">
+                <Globe2 className="h-3.5 w-3.5" />新会话叙事模式
+              </span>
+            </label>
+            <select
+              aria-label="群聊新会话叙事模式"
+              value={group.defaultNarrativeMode ?? ''}
+              onChange={(event) => onSave({
+                ...group,
+                defaultNarrativeMode: (event.target.value || undefined) as GroupChat['defaultNarrativeMode'],
+              })}
+              className="mt-1 w-full rounded-lg border border-tavern-border-soft bg-tavern-bg px-2.5 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
+            >
+              <option value="">跟随全局默认</option>
+              {NARRATIVE_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] leading-relaxed text-tavern-text-muted">
+              仅用于之后创建的会话；当前会话请在聊天顶栏切换。发言调度仍由“对话模式”决定。
+            </p>
           </div>
 
           {/* polling 模式配置 */}

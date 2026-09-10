@@ -12,9 +12,14 @@ import type { Character, ConnectionProfile } from '../../../shared/types'
 
 // jsdom 无布局测量，Virtuoso 虚拟列表不会渲染 itemContent；mock 为普通列表
 vi.mock('react-virtuoso', () => {
-  const Virtuoso = (props: { data: unknown[]; itemContent: (i: number, item: unknown) => React.ReactNode }, _ref: React.ForwardedRef<HTMLDivElement>) => (
-    <div>{props.data.map((item, i) => props.itemContent(i, item))}</div>
-  )
+  const Virtuoso = (props: {
+    data: unknown[]
+    itemContent: (i: number, item: unknown) => React.ReactNode
+    components?: { Footer?: React.ComponentType }
+  }, _ref: React.ForwardedRef<HTMLDivElement>) => {
+    const Footer = props.components?.Footer
+    return <div>{props.data.map((item, i) => props.itemContent(i, item))}{Footer ? <Footer /> : null}</div>
+  }
   return { Virtuoso: React.forwardRef(Virtuoso) }
 })
 
@@ -61,6 +66,7 @@ function setupStores(connected: boolean, character: Character | null) {
     translatingMessages: {},
     showTranslationIds: new Set(),
     lastContextUsage: null,
+    pendingImageGenerations: {},
   })
 }
 
@@ -130,6 +136,18 @@ describe('ChatPage 冒烟测试', () => {
     })
     const { findByText } = renderPage()
     expect(await findByText('你好，我是 Alice 的消息内容')).toBeTruthy()
+  })
+
+  it('当前会话生图时在消息列表底部持续显示占位卡', async () => {
+    setupStores(true, makeCharacter())
+    useChatStore.setState({
+      currentSessionId: 's1',
+      pendingImageGenerations: {
+        'job-1': { id: 'job-1', characterId: 'char-1', sessionId: 's1', stage: 'generating', startedAt: 1 },
+      },
+    } as any)
+    renderPage()
+    expect(await screen.findByRole('status', { name: 'ComfyUI 正在生成图片' })).toBeTruthy()
   })
 
   it('消息滚动列跟随消息宽度设置，不受固定 780px 上限限制', async () => {

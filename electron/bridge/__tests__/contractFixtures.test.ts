@@ -28,6 +28,8 @@ import {
 } from '../settingsSync'
 import { parsePairingQr, type PairingQrPayloadV2 } from '../../../shared/pairingQr'
 import type { TaskEventEnvelope } from '../../../shared/chat-core/events'
+import type { GroupMessage, Message } from '../../../shared/types'
+import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
 
 // vitest 以 repo 根为 cwd；fixture 单处权威 = repo 根 shared/fixtures/
 const FIXTURE_DIR = join(process.cwd(), 'shared/fixtures')
@@ -41,7 +43,7 @@ const EXPECTED_WHITELIST = [
   'activeModel', 'activePresetId', 'autoScroll', 'autoTitle', 'exampleDialogMode',
   'htmlRendering', 'imageGenAutoEnabled', 'imageGenSize', 'lorebookRatio',
   'showTokenCount', 'streamOutput', 'translationTargetLang', 'userDescription',
-  'userName', 'userPersona',
+  'userName', 'userPersona', 'defaultNarrativeMode', 'omniscientNarrativeRules',
 ]
 
 // 注意：'token' 不能作为整串子串断言——白名单合法字段 showTokenCount 含该子串；
@@ -204,5 +206,38 @@ describe('契约 fixture：task_event_envelope.json（PC 半边）', () => {
 
   it('不含敏感字段', () => {
     expect(JSON.stringify(envelope)).not.toContain('token')
+  })
+})
+
+describe('契约 fixture：message_identity.json（PC 半边）', () => {
+  const fixture = JSON.parse(readFixture('message_identity.json')) as {
+    singleMessages: Message[]
+    groupMessages: GroupMessage[]
+  }
+
+  it('单聊与群聊显式快照字段一致', () => {
+    expect(fixture.singleMessages.map((message) => [message.speakerKind, message.generationKind])).toEqual([
+      ['persona', 'manual'],
+      ['narrator', 'input_continue'],
+      ['character', 'assistant_reply'],
+      [undefined, undefined],
+    ])
+    expect(fixture.groupMessages.map((message) => [message.speakerKind, message.generationKind])).toEqual([
+      ['narrator', 'manual'],
+      ['character', 'assistant_reply'],
+    ])
+  })
+
+  it('旧版缺字段消息仍按全局叙事用户方向回退为旁白', () => {
+    expect(resolveMessageSpeakerKind(fixture.singleMessages[3])).toBe('narrator')
+    expect(resolveMessageSpeakerKind(fixture.singleMessages[2])).toBe('character')
+  })
+
+  it('Android fixture 副本与共享权威文件完全一致', () => {
+    const androidCopy = readFileSync(
+      join(process.cwd(), 'android/app/src/test/resources/fixtures/message_identity.json'),
+      'utf-8',
+    )
+    expect(androidCopy).toBe(readFixture('message_identity.json'))
   })
 })

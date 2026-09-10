@@ -9,6 +9,7 @@ import type { Persona } from '../../shared/types'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { PersonaInjectionSection } from './personas/PersonaInjectionSection'
+import { GlobalNarrativeRulesSection } from './personas/GlobalNarrativeRulesSection'
 
 export function PersonasPage() {
   const { settings, updateSettings } = useSettingsStore()
@@ -179,6 +180,7 @@ export function PersonasPage() {
       <div className="flex-1 overflow-y-auto p-4">
         <div className="mx-auto max-w-3xl space-y-4">
           <PersonaInjectionSection settings={settings} updateSettings={updateSettings} />
+          <GlobalNarrativeRulesSection settings={settings} updateSettings={updateSettings} />
 
           {/* 移动端搜索 */}
           <div className="sm:hidden flex items-center gap-2 bg-tavern-bg rounded-lg px-3 py-2 border border-tavern-border-soft">

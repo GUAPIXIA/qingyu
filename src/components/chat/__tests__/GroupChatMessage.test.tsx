@@ -59,6 +59,34 @@ describe('GroupChatMessage', () => {
     vi.clearAllMocks()
   })
 
+  it('全局叙事的对方消息仍显示实际成员身份', () => {
+    useCharacterStore.setState({ characters: [createCharacter()] })
+    const { container, getByText, queryByText } = render(<GroupChatMessage message={createMessage({ narrativeMode: 'omniscient' })} />)
+    expect(getByText('Alice')).toBeTruthy()
+    expect(queryByText('旁白')).toBeNull()
+    expect(container.querySelector('.bubble-narrator')).toBeNull()
+  })
+
+  it('全局叙事的我方消息显示右侧旁白身份和中性气泡', () => {
+    const { container, getByText, queryByText } = render(
+      <GroupChatMessage message={createMessage({ characterId: '__user__', narrativeMode: 'omniscient' })} />,
+    )
+    expect(getByText('旁白')).toBeTruthy()
+    expect(queryByText('TestUser')).toBeNull()
+    expect(container.querySelector('.bubble-narrator')).toBeTruthy()
+    expect(container.querySelector('.bubble-user')).toBeNull()
+    expect(container.querySelector('.mx-auto.flex')?.classList.contains('flex-row-reverse')).toBe(true)
+  })
+
+  it('显式 speakerKind 覆盖旧版模式推导但不改变消息方向', () => {
+    const { container, queryByText } = render(
+      <GroupChatMessage message={createMessage({ characterId: '__user__', narrativeMode: 'omniscient', speakerKind: 'persona' })} />,
+    )
+    expect(queryByText('旁白')).toBeNull()
+    expect(container.querySelector('.bubble-user')).toBeTruthy()
+    expect(container.querySelector('.mx-auto.flex')?.classList.contains('flex-row-reverse')).toBe(true)
+  })
+
   describe('user message rendering', () => {
     it('renders user message with correct content', () => {
       const msg = createMessage({ characterId: '__user__', content: 'Hello from user' })
@@ -170,6 +198,26 @@ describe('GroupChatMessage', () => {
 
       expect(container.textContent).toContain('自动显示这段思考')
       expect(container.querySelector('[aria-label="收起思考内容"]')).toBeTruthy()
+    })
+
+    it('只有内心想法而没有正文时仍可收起', () => {
+      const char = createCharacter({ id: 'char-1', name: 'Alice' })
+      useCharacterStore.setState({ characters: [char] })
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, autoExpandThought: true },
+      }))
+
+      const msg = createMessage({ content: '<thought>尚未生成正文的内心想法</thought>' })
+      const { container } = render(<GroupChatMessage message={msg} memberIndex={0} />)
+
+      const collapseButton = container.querySelector('[aria-label="收起思考内容"]') as HTMLButtonElement
+      expect(collapseButton).toBeTruthy()
+      expect(container.textContent).toContain('尚未生成正文的内心想法')
+
+      fireEvent.click(collapseButton)
+
+      expect(container.querySelector('[aria-label="展开思考内容"]')).toBeTruthy()
+      expect(container.textContent).not.toContain('尚未生成正文的内心想法')
     })
   })
 

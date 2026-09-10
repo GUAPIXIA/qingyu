@@ -8,6 +8,8 @@ import type { GroupChat, GroupMessage, GroupSession, Settings } from '../../shar
 import { getDefaultSettings } from '../../shared/defaults'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
+import { isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
+import { withMessageIdentity } from '../../shared/messageIdentity'
 
 const log = createLogger('group')
 
@@ -32,6 +34,8 @@ const GROUP_UPDATE_SESSION_FIELDS = new Set([
   'compressedSummary',
   'compressedRange',
   'personaId',
+  'narrativeMode',
+  'gameMasterMode',
   'recentTriggeredIds',
   'lorebookCompressionCache',
 ])
@@ -41,6 +45,30 @@ const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 function getDefaultPersonaId(): string | null {
   const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
   return settings.defaultPersonaId ?? null
+}
+
+function getDefaultGroupNarrativeMode(groupId: string) {
+  const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
+  const group = loadGroups().find((item) => item.id === groupId)
+  return resolveNarrativeMode(group?.defaultNarrativeMode, settings.defaultNarrativeMode)
+}
+
+/** 新建群聊会话的默认长记忆配置：回退全局设置，开启时默认自动总结（对齐渲染层 applyDefaultGroupMemory） */
+function getDefaultGroupMemoryConfig(): {
+  memoryEnabled: boolean
+  memoryMode: 'manual' | 'auto'
+  autoMemoryInterval: number
+} {
+  const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
+  return settings.defaultMemoryEnabled
+    ? { memoryEnabled: true, memoryMode: 'auto', autoMemoryInterval: 10 }
+    : { memoryEnabled: false, memoryMode: 'manual', autoMemoryInterval: 10 }
+}
+
+function validateGroupNarrativeMode(group: GroupChat): void {
+  if (group.defaultNarrativeMode !== undefined && !isNarrativeMode(group.defaultNarrativeMode)) {
+    throw new Error('参数无效：defaultNarrativeMode')
+  }
 }
 
 // ===================== 路径工具 =====================
@@ -112,6 +140,12 @@ function cleanGroupSessionUpdates(updates: Record<string, unknown>): Record<stri
     const value = updates[key]
     if (key === 'title' && typeof value === 'string' && value.length > 200) {
       throw new Error('标题长度不能超过 200 字符')
+    }
+    if (key === 'narrativeMode' && !isNarrativeMode(value)) {
+      throw new Error('参数无效：narrativeMode')
+    }
+    if (key === 'gameMasterMode' && typeof value !== 'boolean') {
+      throw new Error('参数无效：gameMasterMode')
     }
     clean[key] = value
   }
@@ -210,6 +244,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
 
   ipcMain.handle('group:save', async (_e, group: GroupChat) => {
     safeId(group.id)
+    validateGroupNarrativeMode(group)
     group.updatedAt = Date.now()
     await withIndexLock(() => {
       const groups = loadGroups()
@@ -255,12 +290,11 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
           messageCount: 0,
           createdAt: now,
           updatedAt: now,
-          memoryEnabled: false,
-          memoryMode: 'manual',
-          autoMemoryInterval: 10,
+          ...getDefaultGroupMemoryConfig(),
           memory: '',
           memoryUpdatedAt: 0,
           personaId: getDefaultPersonaId(),
+          narrativeMode: getDefaultGroupNarrativeMode(groupId),
         }
         sessions.push(defaultSession)
         saveSessions(groupId, sessions)
@@ -285,12 +319,11 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         messageCount: 0,
         createdAt: now,
         updatedAt: now,
-        memoryEnabled: false,
-        memoryMode: 'manual',
-        autoMemoryInterval: 10,
+        ...getDefaultGroupMemoryConfig(),
         memory: '',
         memoryUpdatedAt: 0,
         personaId: getDefaultPersonaId(),
+        narrativeMode: getDefaultGroupNarrativeMode(groupId),
       }
       sessions.push(session)
       saveSessions(groupId, sessions)
@@ -346,13 +379,14 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     safeId(groupId)
     safeId(sessionId)
     // 读-改-写整体持锁，避免全量重写覆盖并发追加/删除的消息
+    const normalizedMessage = withMessageIdentity(msg)
     await withSessionFileLock(groupId, sessionId, () => {
       const messages = readMessages(groupId, sessionId)
       const existing = messages.find(m => m.id === msg.id)
       if (existing) {
-        updateMessage(groupId, sessionId, msg)
+        updateMessage(groupId, sessionId, normalizedMessage)
       } else {
-        appendMessage(groupId, sessionId, msg)
+        appendMessage(groupId, sessionId, normalizedMessage)
       }
     })
 
@@ -384,9 +418,9 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         if (existingIds.has(msg.id)) {
           // 已存在则原位更新
           const idx = messages.findIndex(m => m.id === msg.id)
-          messages[idx] = msg
+          messages[idx] = withMessageIdentity(msg)
         } else {
-          messages.push(msg)
+          messages.push(withMessageIdentity(msg))
           existingIds.add(msg.id)
         }
       }
@@ -534,19 +568,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   ipcMain.handle('group:updateSession', async (_e, groupId: string, sessionId: string, updates: Record<string, unknown>) => {
     safeId(groupId)
     safeId(sessionId)
-    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
-      throw new Error('参数无效：updates 必须为对象')
-    }
-    // 字段白名单：仅允许更新常规会话字段，防止注入 id/groupId 等关键字段
-    const clean: Record<string, unknown> = {}
-    for (const key of Object.keys(updates)) {
-      if (!GROUP_UPDATE_SESSION_FIELDS.has(key)) continue
-      const value = updates[key]
-      if (key === 'title' && typeof value === 'string' && value.length > 200) {
-        throw new Error('标题长度不能超过 200 字符')
-      }
-      clean[key] = value
-    }
+    const clean = cleanGroupSessionUpdates(updates)
     return withSessionsLock(groupId, () => {
       const sessions = loadSessions(groupId)
       const session = sessions.find(s => s.id === sessionId)
@@ -601,12 +623,11 @@ export const groupData = {
           messageCount: 0,
           createdAt: now,
           updatedAt: now,
-          memoryEnabled: false,
-          memoryMode: 'manual',
-          autoMemoryInterval: 10,
+          ...getDefaultGroupMemoryConfig(),
           memory: '',
           memoryUpdatedAt: 0,
           personaId: getDefaultPersonaId(),
+          narrativeMode: getDefaultGroupNarrativeMode(groupId),
         }
         sessions.push(defaultSession)
         saveSessions(groupId, sessions)
@@ -624,11 +645,11 @@ export const groupData = {
 
   /** 追加一条群聊消息（用户发言落盘，与渲染层同一 JSONL 路径） */
   appendMessage: (groupId: string, sessionId: string, message: GroupMessage): void =>
-    appendMessage(groupId, sessionId, message),
+    appendMessage(groupId, sessionId, withMessageIdentity(message)),
 
   /** 覆盖式写回（编辑/删除） */
   updateMessage: (groupId: string, sessionId: string, message: GroupMessage): void =>
-    updateMessage(groupId, sessionId, message),
+    updateMessage(groupId, sessionId, withMessageIdentity(message)),
 
   /** 删除单条消息 */
   deleteMessage: async (groupId: string, sessionId: string, messageId: string): Promise<void> => {
@@ -654,12 +675,11 @@ export const groupData = {
         messageCount: 0,
         createdAt: now,
         updatedAt: now,
-        memoryEnabled: false,
-        memoryMode: 'manual',
-        autoMemoryInterval: 10,
+        ...getDefaultGroupMemoryConfig(),
         memory: '',
         memoryUpdatedAt: 0,
         personaId: getDefaultPersonaId(),
+        narrativeMode: getDefaultGroupNarrativeMode(groupId),
       }
       sessions.push(session)
       saveSessions(groupId, sessions)
@@ -685,9 +705,25 @@ export const groupData = {
   /** 仅当磁盘中的 memoryVersion 仍等于 expectedVersion 时应用更新。 */
   updateSessionIfMemoryVersion,
 
+  /** 通用群聊会话字段更新（桥接层与 IPC 共用白名单及叙事模式校验）。 */
+  updateSession: async (groupId: string, sessionId: string, updates: Record<string, unknown>): Promise<void> => {
+    safeId(groupId)
+    safeId(sessionId)
+    const clean = cleanGroupSessionUpdates(updates)
+    await withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId)
+      const session = sessions.find((item) => item.id === sessionId)
+      if (!session) throw new Error('会话不存在')
+      Object.assign(session, clean)
+      session.updatedAt = Date.now()
+      saveSessions(groupId, sessions)
+    })
+  },
+
   /** 保存/新增群聊（与 IPC handler group:save 同一路径） */
   saveGroup: async (group: GroupChat): Promise<void> => {
     safeId(group.id)
+    validateGroupNarrativeMode(group)
     group.updatedAt = Date.now()
     await withIndexLock(() => {
       const groups = loadGroups()

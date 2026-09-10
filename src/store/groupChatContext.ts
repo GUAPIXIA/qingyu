@@ -23,10 +23,14 @@ import { DEFAULT_LOREBOOK_RATIO, DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFET
 import { markPendingGroupCompression } from './groupStreamController'
 import { cropHistory, applyDepthInserts, type DepthInsertItem } from './contextShared'
 import type { GroupStoreGet } from './groupChatTypes'
+import type { NarrativeMode } from '../../shared/types'
+import { buildGameMasterPrompt, buildGroupNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
 
 /** 群聊上下文组装结果：消息 + 本轮世界书触发键 / 超限压缩请求（调用方写回 store） */
 export interface GroupContextBuildResult {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+  /** 本次上下文实际采用的叙事模式，供调试界面与跨端测试确认。 */
+  narrativeMode: NarrativeMode
   lorebookTriggeredIds?: string[]
   /** 世界书超限压缩请求（阶段三：调用方异步 AI 压缩后写入会话缓存） */
   lorebookCompressions?: LorebookCompressionRequest[]
@@ -47,7 +51,7 @@ export function buildGroupChatContext(
 ): GroupContextBuildResult {
   const state = get()
   const group = state.currentGroup
-  if (!group) return { messages: [] }
+  if (!group) return { messages: [], narrativeMode: 'immersive' }
 
   const charStore = useCharacterStore.getState()
   const settingsStore = useSettingsStore.getState()
@@ -76,6 +80,10 @@ export function buildGroupChatContext(
   // 变量替换用的 charName（mention/polling 为目标角色名，free 为成员列表）
   const targetChar = targetCharId ? members.find(m => m.id === targetCharId) : undefined
   const charNameForVars = targetChar?.name || members.map(m => m.name).join('、')
+  // 已存在但缺少字段的旧会话固定按 immersive 运行；只有无会话预览才解析群聊/全局默认。
+  const narrativeMode = currentSession
+    ? resolveNarrativeMode(currentSession.narrativeMode)
+    : resolveNarrativeMode(group.defaultNarrativeMode, settings.defaultNarrativeMode)
 
   let systemContent = ''
 
@@ -337,6 +345,18 @@ export function buildGroupChatContext(
     systemContent += '\n\n' + replaceVariables(preset.jailbreak, userName, charNameForVars)
   }
 
+  // 最终行为约束：与 chatMode 正交，并在桌面端与桥接端复用同一共享构建函数。
+  const narrativePrompt = buildGroupNarrativeModePrompt(
+    narrativeMode,
+    userName,
+    charNameForVars || '当前角色',
+    group.chatMode,
+    settings.omniscientNarrativeRules,
+  )
+  systemContent += '\n\n' + narrativePrompt
+  const gameMasterPrompt = buildGameMasterPrompt(narrativeMode, currentSession?.gameMasterMode)
+  if (gameMasterPrompt) systemContent += '\n\n' + gameMasterPrompt
+
   // ===== 历史消息（Token 预算裁剪）=====
   let usedTokens = estimateTokens(systemContent, model)
 
@@ -493,6 +513,7 @@ export function buildGroupChatContext(
   void opts
   return {
     messages: processedContext,
+    narrativeMode,
     lorebookTriggeredIds,
     lorebookCompressions,
     lorebookCompressionCacheHitKeys,

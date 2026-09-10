@@ -196,4 +196,18 @@ describe('SettingsPage 冒烟测试', () => {
     fireEvent.click(toggle)
     expect(useSettingsStore.getState().settings.defaultMemoryEnabled).toBe(true)
   })
+
+  it('可设置新建对话默认叙事模式', async () => {
+    render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+    await act(async () => {})
+
+    const omniscient = screen.getByRole('radio', { name: '全局叙事' })
+    expect(omniscient.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(omniscient)
+    expect(useSettingsStore.getState().settings.defaultNarrativeMode).toBe('omniscient')
+  })
 })

@@ -185,6 +185,10 @@ describe('桥接路由集成', () => {
       const page1 = await (await fetch(`${base}/sessions/${session.id}/messages?limit=5`, { headers })).json()
       expect(page1.messages).toHaveLength(5)
       expect(page1.messages[0].content).toBe('消息14')
+      expect(page1.messages[0]).toMatchObject({
+        speakerKind: 'persona',
+        generationKind: 'manual',
+      })
       expect(page1.nextCursor).not.toBeNull()
 
       // 第二页（beforeId 游标续拉）

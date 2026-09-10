@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { charAssetUrl } from '../../utils/asset'
-import { Check, X, User, Bot, ChevronLeft, ChevronRight, Image as ImageIcon, ChevronsDown, RefreshCw, Reply, Loader2, Languages } from 'lucide-react'
+import { Check, X, User, Bot, ChevronLeft, ChevronRight, Image as ImageIcon, ChevronsDown, RefreshCw, Reply, Loader2, Languages, Globe2 } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -15,6 +15,7 @@ import { countChars, formatCharCount } from '../../utils/charCounter'
 import { remarkRoleplay } from '../../utils/remark-roleplay'
 import { extractThought, stripThought } from '../../utils/messagePostProcess'
 import { getDisplayName } from '../../utils/variables'
+import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
 
 interface MessageBubbleProps {
   message: Message
@@ -98,6 +99,10 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   }, [message.content])
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
+  const speakerKind = resolveMessageSpeakerKind(message)
+  const isNarrator = speakerKind === 'narrator'
+  const isPersona = speakerKind === 'persona'
+  const isDisplaySystem = speakerKind === 'system'
   const isStreamingThis = isStreaming && isLast && !isUser
 
   // 决定显示的文本
@@ -112,7 +117,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   }, [showTranslation, transState?.content, message.translation, originalDisplay])
 
   // B-05：纯图片消息，气泡不应撑满整行
-  const hasOnlyImages = message.images?.length > 0 && !displayContent && !(thought && !isSystem)
+  const hasOnlyImages = message.images?.length > 0
+    && (isSystem || (!displayContent && !thought))
 
   useEffect(() => {
     if (editing && textareaRef.current) {
@@ -167,7 +173,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   if (isSystem && hasOnlyImages) {
     return (
       <>
-        <div className={cn('px-4', shouldAnimate && 'animate-fade-in-up')} style={{ marginBottom: `${settings.messageSpacing}px` }}>
+        <div
+          data-image-only="true"
+          className={cn('px-4', shouldAnimate && 'animate-fade-in-up')}
+          style={{ marginBottom: `${settings.messageSpacing}px` }}
+        >
           <div className="flex justify-center">
             <div className="flex flex-wrap gap-2 justify-center">
               {message.images.map((img, i) => (
@@ -216,20 +226,24 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
         <div
           className={cn(
             'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
-            isUser
-              ? 'bg-gradient-to-br from-tavern-user/30 to-tavern-user/10 text-tavern-user ring-2 ring-tavern-user/20'
-              : isSystem
+            isNarrator
+              ? 'bg-gradient-to-br from-slate-500/20 to-indigo-500/15 text-indigo-500 ring-2 ring-indigo-500/20 dark:text-indigo-300'
+              : isPersona
+                ? 'bg-gradient-to-br from-tavern-user/30 to-tavern-user/10 text-tavern-user ring-2 ring-tavern-user/20'
+                : isDisplaySystem
                 ? 'bg-gradient-to-br from-tavern-accent/30 to-tavern-accent/10 text-tavern-accent ring-2 ring-tavern-accent/20'
                 : 'bg-gradient-to-br from-tavern-assistant/30 to-tavern-assistant/10 text-tavern-assistant ring-2 ring-tavern-assistant/20'
           )}
         >
-          {isUser ? (
+          {isNarrator ? (
+            <Globe2 className="w-5 h-5" aria-label="旁白" />
+          ) : isPersona ? (
             persona?.avatar && !avatarError ? (
               <img src={persona.avatar} alt="" className="w-full h-full rounded-full object-cover" onError={() => setAvatarError(true)} />
             ) : (
               <User className="w-5 h-5" />
             )
-          ) : isSystem ? (
+          ) : isDisplaySystem ? (
             <ImageIcon className="w-5 h-5" />
           ) : !avatarError && character ? (
             <img src={character.avatar || charAssetUrl(character.id, 'avatar', character.updatedAt)} alt="" className="w-full h-full rounded-full object-cover" onError={() => setAvatarError(true)} />
@@ -243,8 +257,13 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           {/* 名字和时间 */}
           <div className={cn('flex items-center gap-2 mb-1 text-xs text-tavern-text-muted', isUser && 'flex-row-reverse')}>
             <span className="font-medium text-tavern-text-soft">
-              {isUser ? settings.userName : isSystem ? '系统' : getDisplayName(character) || 'AI'}
+              {isNarrator ? '旁白' : isPersona ? settings.userName : isDisplaySystem ? '系统' : getDisplayName(character) || 'AI'}
             </span>
+            {isNarrator && character && (
+              <span className="rounded-full border border-indigo-400/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-600 dark:text-indigo-300">
+                推动焦点 · {getDisplayName(character)}
+              </span>
+            )}
             <span>{formatTime(message.timestamp)}</span>
             {settings.showTokenCount && message.content && (
               <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-muted/70 text-[10px]" title={message.charUsage ? `输入: ${message.charUsage.inputChars} 字符 · 输出: ${message.charUsage.outputChars} 字符` : ''}>
@@ -292,9 +311,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
               settings.bubbleStyle === 'round' && 'rounded-2xl',
               settings.bubbleStyle === 'standard' && 'rounded-lg',
               settings.bubbleStyle === 'sharp' && 'rounded-sm',
-              isUser
-                ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
-                : 'bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100'
+              isNarrator
+                ? 'border border-indigo-200/70 bg-gradient-to-bl from-slate-50 to-indigo-50/70 rounded-br-sm shadow-sm text-slate-900 dark:border-indigo-700/40 dark:from-slate-900/95 dark:to-indigo-950/55 dark:text-slate-100 bubble-narrator'
+                : isPersona
+                  ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
+                  : 'bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100'
             )}
           >
             {/* 引用回复：被引用消息摘要（P1-5） */}

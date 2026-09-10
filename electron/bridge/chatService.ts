@@ -22,6 +22,7 @@ import { sanitizeApiKey } from '../utils/pathGuard'
 import { applyRegexRules, applyOutputRegexRules, truncateAtStop, collectStopStrings } from '../../src/utils/regex'
 import { createLogger } from '../services/logger'
 import type { Message, ProviderType } from '../../shared/types'
+import { resolveNarrativeMode } from '../../shared/narrativeMode'
 
 // H-10 修复：幂等缓存 TTL（覆盖安卓端断线重发窗口后清理，避免无界内存增长）
 const IDEMPOTENCY_TTL_MS = 60_000
@@ -74,6 +75,7 @@ export class BridgeChatService {
       const session = await findSessionById(sessionId)
       if (!session) throw new Error('会话不存在')
       const characterId = session.characterId
+      const sessionNarrativeMode = resolveNarrativeMode(session.narrativeMode)
 
       const data = await mainContextProvider.fetchBuildData(characterId, sessionId)
       if (!data.character) throw new Error(`角色不存在：${characterId}`)
@@ -95,6 +97,9 @@ export class BridgeChatService {
         isEditing: false,
         timestamp: Date.now(),
         replyToId: replyToId ?? undefined,
+        narrativeMode: sessionNarrativeMode,
+        speakerKind: sessionNarrativeMode === 'omniscient' ? 'narrator' : 'persona',
+        generationKind: 'manual',
       }
       chatData.saveMessage(characterId, userMessage)
       this.idempotency.set(requestId, userMessage)
@@ -103,7 +108,7 @@ export class BridgeChatService {
       // CR-2 修复：落盘后再取快照——此前用落盘前的旧快照构建上下文，
       // AI 看不到本条用户消息（对上一轮作答）。saveMessage 后重新读取消息文件。
       const freshData = await mainContextProvider.fetchBuildData(characterId, sessionId)
-      const { messages } = buildContextMessagesFromData(freshData)
+      const { messages, narrativeMode } = buildContextMessagesFromData(freshData)
       const params = buildChatParamsFromData(freshData, messages)
       params.requestId = requestId
 
@@ -160,6 +165,9 @@ export class BridgeChatService {
         images: [],
         isEditing: false,
         timestamp: Date.now(),
+        narrativeMode,
+        speakerKind: 'character',
+        generationKind: 'assistant_reply',
       }
       chatData.saveMessage(characterId, aiMessage)
       this.events.publish('ai:done', { requestId, sessionId, message: aiMessage })
@@ -202,7 +210,7 @@ export class BridgeChatService {
   private async regenerate(characterId: string, sessionId: string, target: Message): Promise<Message> {
     const data = await mainContextProvider.fetchBuildData(characterId, sessionId)
     if (!data.character) throw new Error(`角色不存在：${characterId}`)
-    const { messages } = buildContextMessagesFromData(data)
+    const { messages, narrativeMode } = buildContextMessagesFromData(data)
     const params = buildChatParamsFromData(data, messages)
     const requestId = `regen-${Date.now()}-${nanoid(4)}`
     params.requestId = requestId
@@ -223,6 +231,9 @@ export class BridgeChatService {
         swipes: [...swipes, full],
         swipeIndex: swipes.length,
         content: full,
+        narrativeMode,
+        speakerKind: 'character',
+        generationKind: 'regenerate',
       }
       chatData.saveMessage(characterId, updated)
       this.notifySessionChanged(sessionId, 'message')

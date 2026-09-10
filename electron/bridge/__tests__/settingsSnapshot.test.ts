@@ -342,9 +342,9 @@ describe('移动安全子集与快照一致性', () => {
     expect(Object.keys(snapshot.values).sort()).toEqual(expectedKeys)
     // 显式钉死白名单，防止无意加入敏感字段
     expect(expectedKeys).toEqual([
-      'activeModel', 'activePresetId', 'autoScroll', 'autoTitle', 'exampleDialogMode',
+      'activeModel', 'activePresetId', 'autoScroll', 'autoTitle', 'defaultNarrativeMode', 'exampleDialogMode',
       'htmlRendering', 'imageGenAutoEnabled', 'imageGenSize', 'lorebookRatio',
-      'showTokenCount', 'streamOutput', 'translationTargetLang', 'userDescription',
+      'omniscientNarrativeRules', 'showTokenCount', 'streamOutput', 'translationTargetLang', 'userDescription',
       'userName', 'userPersona',
     ])
   })

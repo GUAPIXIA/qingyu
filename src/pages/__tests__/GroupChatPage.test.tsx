@@ -102,6 +102,8 @@ describe('GroupChatPage', () => {
 
     expect(screen.getAllByRole('button', { name: /群聊(?:快捷设置|管理)/ })).toHaveLength(1)
     expect(screen.getByRole('button', { name: '群聊快捷设置' })).toBeTruthy()
+    expect(screen.getByTestId('group-chat-header')).toHaveClass('h-14', 'bg-tavern-bg-soft', 'px-4')
+    expect(screen.getByRole('button', { name: '重命名群聊' })).toBeTruthy()
   })
 
   it('进入已有消息的群聊时从最后一条消息开始显示', () => {

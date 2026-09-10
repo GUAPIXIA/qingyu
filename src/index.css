@@ -520,3 +520,34 @@ body {
   font-weight: 600;
   color: var(--tavern-text-soft);
 }
+
+/* 群聊主区域会同时受应用侧栏和群聊列表挤压，按顶栏自身宽度有序收缩。 */
+.group-chat-header {
+  container-name: group-chat-header;
+  container-type: inline-size;
+}
+
+@container group-chat-header (max-width: 740px) {
+  .group-chat-header__token {
+    display: none !important;
+  }
+}
+
+@container group-chat-header (max-width: 650px) {
+  .group-chat-header__identity-copy,
+  .group-chat-header__persona-label {
+    display: none;
+  }
+}
+
+@container group-chat-header (max-width: 620px) {
+  .group-chat-header__secondary-action {
+    display: none;
+  }
+}
+
+@container group-chat-header (max-width: 560px) {
+  .group-chat-header .session-switcher__label {
+    display: none;
+  }
+}

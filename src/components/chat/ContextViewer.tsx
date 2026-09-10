@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, BookOpen, MessagesSquare, Settings, User } from 'lucide-react'
+import { Bot, BookOpen, Globe2, MessagesSquare, Settings, User, UserRound } from 'lucide-react'
 import type { Character, Preset } from '../../../shared/types'
+import { getNarrativeModeLabel } from '../../../shared/narrativeMode'
 import { useChatStore } from '../../store/useChatStore'
 import { countChars, formatCharCount } from '../../utils/charCounter'
 import { cn } from '../../lib/utils'
@@ -70,6 +71,20 @@ export function ContextViewer({ open, onClose, character, preset }: ContextViewe
 
         {tab === 'messages' ? (
           <>
+            {report && (
+              <div className="flex items-center gap-3 rounded-xl border border-tavern-accent/20 bg-tavern-accent-soft/60 px-3 py-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-tavern-accent/20 bg-tavern-bg-card text-tavern-accent">
+                  {report.narrativeMode === 'omniscient'
+                    ? <Globe2 className="h-4 w-4" />
+                    : <UserRound className="h-4 w-4" />}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-tavern-text-muted">当前叙事模式</p>
+                  <p className="text-sm font-semibold text-tavern-accent">{getNarrativeModeLabel(report.narrativeMode)}</p>
+                </div>
+                <span className="ml-auto text-[10px] text-tavern-text-muted">已注入系统上下文</span>
+              </div>
+            )}
             <div className="flex items-center justify-between rounded-lg border border-tavern-border-soft bg-tavern-bg-soft p-3">
               <div className="text-sm text-tavern-text-soft">共 {context.length} 条消息</div>
               <div className="flex items-center gap-3 text-sm">

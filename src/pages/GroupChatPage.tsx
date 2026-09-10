@@ -16,13 +16,17 @@ import { NewGroupModal } from './group/NewGroupModal'
 import { SessionSwitcher } from '../components/common/SessionSwitcher'
 import { GroupChatSettingsPanel } from '../components/chat/GroupChatSettingsPanel'
 import { GroupPersonaSwitcher } from '../components/chat/GroupPersonaSwitcher'
+import { GroupNarrativeModeSwitcher } from '../components/chat/GroupNarrativeModeSwitcher'
 import { QuickSettingsPanel } from '../components/chat/QuickSettingsPanel'
 import { MemoryPanel } from '../components/chat/MemoryPanel'
+import { WorldStatePanel } from '../components/chat/WorldStatePanel'
+import { TokenUsage } from '../components/chat/TokenUsage'
 import { LorebookDebugPanel } from '../components/chat/LorebookDebugPanel'
 import { cn } from '../lib/utils'
 import { downloadFile } from '../utils/download'
 import type { LorebookDiagnostics } from '../utils/lorebook'
-import type { GroupChat, GroupMessage, Lorebook, Preset } from '../../shared/types'
+import type { GroupChat, GroupMessage, Lorebook, NarrativeMode, Preset } from '../../shared/types'
+import { getNarrativeModeLabel, resolveNarrativeMode } from '../../shared/narrativeMode'
 import {
   Plus,
   Trash2,
@@ -35,6 +39,8 @@ import {
   PanelLeftOpen,
   Sliders,
   BookOpen,
+  Globe2,
+  UserRound,
 } from 'lucide-react'
 
 export function GroupChatPage() {
@@ -63,6 +69,9 @@ export function GroupChatPage() {
   const setMemoryMode = useGroupChatStore((s) => s.setMemoryMode)
   const updateMemoryFacts = useGroupChatStore((s) => s.updateMemoryFacts)
   const triggerMemorySummary = useGroupChatStore((s) => s.triggerMemorySummary)
+  const summarizingMemoryKey = useGroupChatStore((s) => s.summarizingMemoryKey)
+  const memorySummaryError = useGroupChatStore((s) => s.memorySummaryError)
+  const updateNarrativeSession = useGroupChatStore((s) => s.updateNarrativeSession)
   const liveLorebookDiagnostics = useGroupChatStore((s) => s.lastLorebookDiagnostics)
   const liveDiagnosticsSessionId = useGroupChatStore((s) => s.lastLorebookDiagnosticsSessionId)
   const loadPersonas = usePersonaStore((s) => s.loadPersonas)
@@ -95,16 +104,24 @@ export function GroupChatPage() {
   const [showContextViewer, setShowContextViewer] = useState(false)
   const [contextContent, setContextContent] = useState<{ role: string; content: string }[]>([])
   const [contextLorebookDiagnostics, setContextLorebookDiagnostics] = useState<LorebookDiagnostics | null>(null)
+  const [contextNarrativeMode, setContextNarrativeMode] = useState<NarrativeMode>('immersive')
   const [contextViewerTab, setContextViewerTab] = useState<'messages' | 'lorebook'>('messages')
   const [showGreetingPicker, setShowGreetingPicker] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [replyToMessage, setReplyToMessage] = useState<GroupMessage | null>(null)
   const [showMemoryPanel, setShowMemoryPanel] = useState(false)
+  const [showWorldStatePanel, setShowWorldStatePanel] = useState(false)
   const [memoryInterval, setMemoryInterval] = useState(10)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
   const [memberSearch, setMemberSearch] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const currentSession = sessions.find((session) => session.id === currentSessionId)
+  const narrativeMode = resolveNarrativeMode(currentSession?.narrativeMode)
+  const totalChars = useMemo(
+    () => messages.reduce((sum, message) => sum + (message.charUsage?.totalChars ?? 0), 0),
+    [messages],
+  )
 
   // 初始加载
   useEffect(() => {
@@ -400,135 +417,159 @@ export function GroupChatPage() {
           <>
             {/* ---- 顶栏 ---- */}
             <header
-              className="flex items-center justify-between gap-3 px-4 h-16 border-b border-tavern-border-soft bg-tavern-bg-soft/95 backdrop-blur shrink-0 relative z-30"
-              style={currentGroup?.themeColor ? { borderBottomColor: currentGroup.themeColor, borderBottomWidth: '2px' } : undefined}
+              data-testid="group-chat-header"
+              className="group-chat-header relative z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-tavern-border-soft bg-tavern-bg-soft px-4"
+              style={currentGroup?.themeColor ? { borderBottomColor: currentGroup.themeColor } : undefined}
             >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-3">
                 {sidebarCollapsed && (
                   <button
                     onClick={() => setSidebarCollapsed(false)}
-                    className="btn-ghost p-1 rounded-lg hover:bg-tavern-bg-hover text-tavern-text-muted shrink-0"
+                    className="shrink-0 rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
                     title="展开群聊列表"
                   >
                     <PanelLeftOpen className="w-4 h-4" />
                   </button>
                 )}
                 {editingName ? (
-                  <div className="flex items-center gap-1">
+                  <div className="flex min-w-0 items-center gap-1 px-2 py-1">
                     <input
                       value={nameDraft}
                       onChange={e => setNameDraft(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleRename()}
-                      className="w-32 bg-tavern-bg border border-tavern-border rounded px-2 py-0.5 text-sm text-tavern-text outline-none focus:border-tavern-accent"
+                      className="w-40 rounded-lg border border-tavern-border bg-tavern-bg px-2 py-1 text-sm text-tavern-text outline-none focus:border-tavern-accent"
                       autoFocus
                       onBlur={handleRename}
                     />
-                    <button onClick={handleRename} className="p-1 text-tavern-accent">
-                      <Check className="w-3.5 h-3.5" />
+                    <button onClick={handleRename} className="rounded-lg p-1.5 text-tavern-accent hover:bg-tavern-accent-soft" title="保存群聊名称">
+                      <Check className="h-4 w-4" />
                     </button>
                   </div>
                 ) : (
-                  <>
-                    <h2 className="font-display text-sm font-bold text-tavern-text truncate">{currentGroup.name}</h2>
-                    <button onClick={startEditName} className="p-1 text-tavern-text-muted hover:text-tavern-text">
-                      <Edit2 className="w-3 h-3" />
+                  <div className="group/title flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-tavern-bg-hover">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-tavern-assistant/20 text-tavern-assistant">
+                      <Users className="h-4 w-4" />
+                    </span>
+                    <div className="group-chat-header__identity-copy min-w-0 text-left">
+                      <h2 className="max-w-32 truncate text-sm font-medium text-tavern-text">{currentGroup.name}</h2>
+                      <p className="text-xs text-tavern-text-muted">
+                        {isStreaming ? '生成中...' : `${currentGroup.memberIds.length} 位成员`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={startEditName}
+                      className="group-chat-header__identity-copy rounded p-1 text-tavern-text-muted opacity-70 transition-colors hover:bg-tavern-bg hover:text-tavern-text group-hover/title:opacity-100"
+                      aria-label="重命名群聊"
+                      title="重命名群聊"
+                    >
+                      <Edit2 className="h-3 w-3" />
                     </button>
-                  </>
+                  </div>
                 )}
 
-                <span className="mx-0.5 h-7 w-px shrink-0 bg-tavern-border-soft" aria-hidden />
+                <span className="select-none text-tavern-border-soft" aria-hidden>|</span>
                 <GroupPersonaSwitcher />
+                <GroupNarrativeModeSwitcher isStreaming={isStreaming} />
+                {narrativeMode === 'omniscient' && (
+                  <WorldStatePanel
+                    open={showWorldStatePanel}
+                    onToggle={() => {
+                      setShowMemoryPanel(false)
+                      setShowWorldStatePanel((value) => !value)
+                    }}
+                    session={currentSession}
+                    onSaveWorldState={(value) => updateNarrativeSession({ memoryCurrentState: value })}
+                    onSetGameMasterMode={(enabled) => updateNarrativeSession({ gameMasterMode: enabled })}
+                    isStreaming={isStreaming}
+                  />
+                )}
 
                 {/* ---- 会话管理 ---- */}
                 <SessionSwitcher
                   sessions={sessions}
                   currentSessionId={currentSessionId}
-                  variant="group"
                   onSwitch={(id) => switchSession(currentGroup.id, id)}
                   onRename={(id, title) => renameSession(currentGroup.id, id, title)}
                   onDelete={(id) => deleteSession(currentGroup.id, id)}
                   onCreate={() => createSession(currentGroup.id)}
+                  extra={<>
+                    <button
+                      onClick={() => createSession(currentGroup.id)}
+                      className="rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
+                      title="新建会话"
+                      aria-label="新建会话"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                    {currentSessionId && (
+                      <MemoryPanel
+                        open={showMemoryPanel}
+                        onToggle={() => {
+                          setShowWorldStatePanel(false)
+                          if (!showMemoryPanel) {
+                            setMemoryInterval(currentSession?.autoMemoryInterval ?? 10)
+                          }
+                          setShowMemoryPanel(!showMemoryPanel)
+                        }}
+                        sessions={sessions}
+                        currentSessionId={currentSessionId}
+                        currentCharacterId={currentGroup.id}
+                        memoryInterval={memoryInterval}
+                        onMemoryIntervalChange={setMemoryInterval}
+                        onToggleMemory={(enabled) => toggleMemory(currentGroup.id, currentSessionId, enabled)}
+                        onSetMemoryMode={(mode, interval) => setMemoryMode(currentGroup.id, currentSessionId, mode, interval)}
+                        onUpdateMemoryFacts={(facts) => updateMemoryFacts(currentGroup.id, currentSessionId, facts)}
+                        onTriggerSummary={() => {
+                          triggerMemorySummary()
+                        }}
+                        summaryError={memorySummaryError?.key === `${currentGroup.id}:${currentSessionId}`
+                          ? memorySummaryError.message
+                          : null}
+                        isSummarizing={summarizingMemoryKey === `${currentGroup.id}:${currentSessionId}`}
+                        isStreaming={isStreaming}
+                        memoryStats={messages.length > 0 ? {
+                          totalMessages: messages.length,
+                          totalChars: messages.reduce((sum, message) => sum + (message.content?.length ?? 0), 0),
+                          durationStr: messages.length > 1
+                            ? (() => {
+                                const ms = messages[messages.length - 1].timestamp - messages[0].timestamp
+                                const hours = Math.floor(ms / 3600000)
+                                const mins = Math.floor((ms % 3600000) / 60000)
+                                return hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`
+                              })()
+                            : '不足1分钟',
+                        } : null}
+                      />
+                    )}
+                  </>}
                 />
               </div>
 
-              <div className="flex items-center gap-1">
-                {/* 字符总量 */}
-                {(() => {
-                  const totalChars = messages.reduce((sum, m) => sum + (m.charUsage?.totalChars ?? 0), 0)
-                  if (totalChars > 0) {
-                    return (
-                      <span className="text-[10px] text-tavern-text-muted px-1.5 py-0.5 rounded bg-tavern-bg-hover">
-                        {totalChars} 字符
-                      </span>
-                    )
-                  }
-                  return null
-                })()}
-
-                {/* 长记忆 */}
-                {currentSessionId && (
-                  <MemoryPanel
-                    open={showMemoryPanel}
-                    onToggle={() => {
-                      if (!showMemoryPanel && currentSessionId) {
-                        const curS = sessions.find(s => s.id === currentSessionId)
-                        setMemoryInterval(curS?.autoMemoryInterval ?? 10)
-                      }
-                      setShowMemoryPanel(!showMemoryPanel)
-                    }}
-                    sessions={sessions}
-                    currentSessionId={currentSessionId}
-                    currentCharacterId={currentGroup?.id ?? null}
-                    memoryInterval={memoryInterval}
-                    onMemoryIntervalChange={setMemoryInterval}
-                    onToggleMemory={(enabled) => {
-                      if (currentGroup && currentSessionId) toggleMemory(currentGroup.id, currentSessionId, enabled)
-                    }}
-                    onSetMemoryMode={(mode, interval) => {
-                      if (currentGroup && currentSessionId) setMemoryMode(currentGroup.id, currentSessionId, mode, interval)
-                    }}
-                    onUpdateMemoryFacts={(facts) => {
-                      if (!currentGroup || !currentSessionId) return Promise.resolve()
-                      return updateMemoryFacts(currentGroup.id, currentSessionId, facts)
-                    }}
-                    onTriggerSummary={() => {
-                      triggerMemorySummary()
-                    }}
-                    isStreaming={isStreaming}
-                    memoryStats={messages.length > 0 ? {
-                      totalMessages: messages.length,
-                      totalChars: messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0),
-                      durationStr: messages.length > 1
-                        ? (() => {
-                            const ms = messages[messages.length - 1].timestamp - messages[0].timestamp
-                            const hours = Math.floor(ms / 3600000)
-                            const mins = Math.floor((ms % 3600000) / 60000)
-                            return hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`
-                          })()
-                        : '不足1分钟',
-                    } : null}
-                  />
-                )}
+              <div className="flex shrink-0 items-center gap-1">
+                <span className="group-chat-header__token mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
 
                 <button
                   onClick={() => {
                     const report = useGroupChatStore.getState().buildGroupContextReport()
                     setContextContent(report.messages)
+                    setContextNarrativeMode(report.narrativeMode)
                     setContextLorebookDiagnostics(report.lorebookDiagnostics ?? null)
                     setContextViewerTab('messages')
                     setShowContextViewer(true)
                   }}
-                  className="btn-ghost p-1.5 text-xs text-tavern-text-muted hover:text-tavern-text"
+                  className="group-chat-header__secondary-action rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
                   title="查看上下文"
+                  aria-label="查看上下文"
                 >
-                  <Eye className="w-3.5 h-3.5" />
+                  <Eye className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setShowClearConfirm(true)}
-                  className="btn-ghost p-1.5 text-xs text-tavern-text-muted hover:text-tavern-danger"
+                  className="group-chat-header__secondary-action rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-danger"
                   title="清空聊天"
+                  aria-label="清空聊天"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
@@ -546,7 +587,7 @@ export function GroupChatPage() {
                   )}
                   title="快捷设置"
                 >
-                  <Sliders className="w-4 h-4" />
+                  <Sliders className="h-5 w-5" />
                 </button>
               </div>
             </header>
@@ -717,7 +758,21 @@ export function GroupChatPage() {
               <BookOpen className="h-3.5 w-3.5" />世界书触发
             </button>
           </div>
-          {contextViewerTab === 'messages' ? contextContent.map((item, i) => (
+          {contextViewerTab === 'messages' ? (
+            <>
+              <div className="flex items-center gap-3 rounded-xl border border-tavern-accent/20 bg-tavern-accent-soft/60 px-3 py-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-tavern-accent/20 bg-tavern-bg-card text-tavern-accent">
+                  {contextNarrativeMode === 'omniscient'
+                    ? <Globe2 className="h-4 w-4" />
+                    : <UserRound className="h-4 w-4" />}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-tavern-text-muted">当前叙事模式</p>
+                  <p className="text-sm font-semibold text-tavern-accent">{getNarrativeModeLabel(contextNarrativeMode)}</p>
+                </div>
+                <span className="ml-auto text-[10px] text-tavern-text-muted">已注入群聊上下文</span>
+              </div>
+              {contextContent.map((item, i) => (
               <div key={i} className="space-y-1">
                 <span className={cn(
                   'text-[10px] font-medium px-1.5 py-0.5 rounded',
@@ -731,7 +786,9 @@ export function GroupChatPage() {
                   {item.content}
                 </pre>
               </div>
-            )) : (
+              ))}
+            </>
+          ) : (
               <LorebookDebugPanel
                 live={liveDiagnosticsSessionId === currentSessionId ? liveLorebookDiagnostics : null}
                 preview={contextLorebookDiagnostics}

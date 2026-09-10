@@ -1,4 +1,4 @@
-import type { Character, Preset } from '../../shared/types'
+import type { Character, NarrativeMode, Preset } from '../../shared/types'
 import { buildContextMessagesFromData, type BuildResult } from '../context/contextBuilder'
 import { syncBuildData } from '../context/rendererContextProvider'
 import { markPendingCompression } from './streamController'
@@ -27,6 +27,7 @@ export function buildChatContext(
   preset: Preset | null,
   opts?: {
     continuation?: boolean
+    narrativeMode?: NarrativeMode
     trackUsage?: boolean
     generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
     lorebookDiagnosticsMode?: 'live' | 'preview'

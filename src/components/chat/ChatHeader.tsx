@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, Sliders, Users, UserCircle, Plus, Star } from 'lucide-react'
+import { ChevronDown, Sliders, Users, UserCircle, Plus, Star, Globe2 } from 'lucide-react'
 import { useChatStore } from '../../store/useChatStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { charAssetUrl } from '../../utils/asset'
@@ -12,8 +12,11 @@ import { CharacterAvatar } from '../character/CharacterAvatar'
 import { getDisplayName } from '../../utils/variables'
 import { MemoryPanel } from './MemoryPanel'
 import { TokenUsage } from './TokenUsage'
+import { NarrativeModeSwitcher } from './NarrativeModeSwitcher'
+import { WorldStatePanel } from './WorldStatePanel'
 import { cn } from '../../lib/utils'
 import type { Character } from '../../../shared/types'
+import { resolveNarrativeMode } from '../../../shared/narrativeMode'
 
 interface ChatHeaderProps {
   currentCharacter: Character
@@ -42,7 +45,10 @@ export function ChatHeader({
   const toggleMemory = useChatStore((s) => s.toggleMemory)
   const setMemoryMode = useChatStore((s) => s.setMemoryMode)
   const updateMemoryFacts = useChatStore((s) => s.updateMemoryFacts)
+  const updateSessionField = useChatStore((s) => s.updateSessionField)
   const triggerMemorySummary = useChatStore((s) => s.triggerMemorySummary)
+  const summarizingMemoryKey = useChatStore((s) => s.summarizingMemoryKey)
+  const memorySummaryError = useChatStore((s) => s.memorySummaryError)
   const getStats = useChatStore((s) => s.getStats)
   const characters = useCharacterStore((s) => s.characters)
   const selectCharacter = useCharacterStore((s) => s.selectCharacter)
@@ -54,8 +60,11 @@ export function ChatHeader({
   const [showCharMenu, setShowCharMenu] = useState(false)
   const [showPersonaMenu, setShowPersonaMenu] = useState(false)
   const [showMemoryPanel, setShowMemoryPanel] = useState(false)
+  const [showWorldStatePanel, setShowWorldStatePanel] = useState(false)
   const [memoryStats, setMemoryStats] = useState<{ totalMessages: number; totalChars: number; durationStr: string } | null>(null)
   const [memoryInterval, setMemoryInterval] = useState(10)
+  const currentSession = sessions.find((session) => session.id === currentSessionId)
+  const narrativeMode = resolveNarrativeMode(currentSession?.narrativeMode)
 
   // 切换当前会话的身份
   const handleSwitchPersona = async (personaId: string | null) => {
@@ -165,9 +174,16 @@ export function ChatHeader({
           trigger={
             <button
               className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-tavern-bg-hover transition-colors text-sm"
-              title="切换身份"
+              title={narrativeMode === 'omniscient' ? `旁白（身份：${(() => {
+                const s = sessions.find(s => s.id === currentSessionId)
+                return getPersona(s?.personaId)?.name ?? '未使用身份'
+              })()}）` : '切换身份'}
             >
               {(() => {
+                // 全局叙事下我方以“旁白”身份参与，头部显示旁白标识而非所选身份
+                if (narrativeMode === 'omniscient') {
+                  return <Globe2 className="w-4 h-4 text-indigo-500 dark:text-indigo-300" aria-label="旁白" />
+                }
                 const session = sessions.find(s => s.id === currentSessionId)
                 const persona = getPersona(session?.personaId)
                 if (persona?.avatar) {
@@ -177,6 +193,7 @@ export function ChatHeader({
               })()}
               <span className="max-w-[80px] truncate text-tavern-text-soft">
                 {(() => {
+                  if (narrativeMode === 'omniscient') return '旁白'
                   const s = sessions.find(s => s.id === currentSessionId)
                   const p = getPersona(s?.personaId)
                   return p?.name ?? '身份'
@@ -230,6 +247,32 @@ export function ChatHeader({
           })()}
         </Dropdown>
 
+        {/* 会话级叙事模式：紧邻身份切换，便于在对话中即时调整视角 */}
+        <NarrativeModeSwitcher
+          characterId={currentCharacter.id}
+          isStreaming={isStreaming}
+        />
+
+        {narrativeMode === 'omniscient' && (
+          <WorldStatePanel
+            open={showWorldStatePanel}
+            onToggle={() => {
+              setShowMemoryPanel(false)
+              setShowWorldStatePanel((value) => !value)
+            }}
+            session={currentSession}
+            onSaveWorldState={(value) => {
+              if (!currentSessionId) return Promise.resolve()
+              return updateSessionField(currentCharacter.id, currentSessionId, 'memoryCurrentState', value)
+            }}
+            onSetGameMasterMode={(enabled) => {
+              if (!currentSessionId) return Promise.resolve()
+              return updateSessionField(currentCharacter.id, currentSessionId, 'gameMasterMode', enabled)
+            }}
+            isStreaming={isStreaming}
+          />
+        )}
+
         {/* 会话切换器 + 长记忆按钮 */}
         <SessionSwitcher
           sessions={sessions}
@@ -252,6 +295,7 @@ export function ChatHeader({
             <MemoryPanel
               open={showMemoryPanel}
               onToggle={async () => {
+                setShowWorldStatePanel(false)
                 if (!showMemoryPanel && currentCharacter && currentSessionId) {
                   const stats = await getStats(currentCharacter.id, currentSessionId)
                   if (stats) setMemoryStats(stats)
@@ -275,9 +319,18 @@ export function ChatHeader({
                 if (!currentCharacter || !currentSessionId) return Promise.resolve()
                 return updateMemoryFacts(currentCharacter.id, currentSessionId, facts)
               }}
-              onTriggerSummary={() => {
-                if (currentCharacter) triggerMemorySummary(currentCharacter)
-              }}
+              onTriggerSummary={() =>
+                (currentCharacter ? triggerMemorySummary(currentCharacter) : Promise.resolve(null))
+              }
+              summaryError={memorySummaryError
+                && currentCharacter && currentSessionId
+                && memorySummaryError.key === `${currentCharacter.id}:${currentSessionId}`
+                ? memorySummaryError.message
+                : null}
+              isSummarizing={Boolean(
+                currentCharacter && currentSessionId
+                && summarizingMemoryKey === `${currentCharacter.id}:${currentSessionId}`
+              )}
               isStreaming={isStreaming}
               memoryStats={memoryStats}
             />

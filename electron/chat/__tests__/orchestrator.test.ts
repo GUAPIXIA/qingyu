@@ -93,6 +93,30 @@ describe('Orchestrator', () => {
     expect(snap.assistantMessageId).toBeTruthy()
   })
 
+  it('send 将会话叙事模式固化到我方消息', async () => {
+    const mp = makeMessagePort()
+    mp.findSession = async (sessionId) => ({
+      id: sessionId,
+      sessionId,
+      characterId: 'char-1',
+      narrativeMode: 'omniscient',
+    })
+    const appendUserMessage = vi.spyOn(mp, 'appendUserMessage')
+    const orch = new ChatOrchestrator({
+      messagePort: mp,
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'success', chunks: ['response'] }),
+    })
+
+    await orch.handle(cmd({ requestId: 'req-narrator', sessionId: 'sess-narrator' }))
+
+    expect(appendUserMessage).toHaveBeenCalledWith(expect.objectContaining({
+      narrativeMode: 'omniscient',
+      speakerKind: 'narrator',
+      generationKind: 'manual',
+    }))
+  })
+
   it('持久幂等：同 requestId 返回同一任务', async () => {
     const mp = makeMessagePort()
     const orch = new ChatOrchestrator({

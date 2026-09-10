@@ -1,5 +1,6 @@
 import { X, Languages, Loader2 } from 'lucide-react'
 import type { Character } from '../../../../shared/types'
+import { NARRATIVE_MODE_OPTIONS } from '../../../../shared/narrativeMode'
 import type { TaAutoSize, TranslateProps, EditorSectionProps } from './types'
 
 interface AdvancedSectionProps extends EditorSectionProps, TranslateProps {
@@ -80,6 +81,24 @@ export function AdvancedSection(props: AdvancedSectionProps) {
             placeholder="为这个角色设定专属的系统提示词，留空则使用预设中的系统提示词"
           />
           <p className="text-xs text-tavern-text-muted mt-1">留空则使用预设中的系统提示词</p>
+        </div>
+
+        <div className="field-card">
+          <label className="label" htmlFor="character-default-narrative-mode">默认叙事模式</label>
+          <select
+            id="character-default-narrative-mode"
+            className="input text-sm"
+            value={form.defaultNarrativeMode ?? ''}
+            onChange={(event) => update({
+              defaultNarrativeMode: (event.target.value || undefined) as Character['defaultNarrativeMode'],
+            })}
+          >
+            <option value="">跟随全局设置</option>
+            {NARRATIVE_MODE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-tavern-text-muted">只影响使用此角色新建的会话，已有会话不会改变</p>
         </div>
 
         {/* 分组：对话开场 */}
