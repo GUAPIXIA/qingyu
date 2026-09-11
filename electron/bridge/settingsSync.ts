@@ -33,7 +33,6 @@ export interface MobileSafeSettings {
   showTokenCount: boolean
   htmlRendering: boolean
   imageGenAutoEnabled: boolean
-  imageGenSize: string
   exampleDialogMode: 'always' | 'first_turn' | 'off'
   lorebookRatio: number
   autoTitle: boolean
@@ -48,8 +47,17 @@ export const SETTINGS_SNAPSHOT_CAPABILITIES = [
   'pairing_qr_v2',
 ] as const
 
+/**
+ * 快照 schemaVersion。
+ *
+ * v3：安全子集移除 `imageGenSize`（改用工作流节点级覆盖）。
+ * 端点协议本身未变，故 capability 仍为 `settings_snapshot_v2`，
+ * 旧版 Android 继续走快照路径，缺失字段由其 DTO 默认值兜底。
+ */
+export const SETTINGS_SNAPSHOT_SCHEMA_VERSION = 3
+
 export interface SettingsSnapshot {
-  schemaVersion: 2
+  schemaVersion: 3
   revision: string
   updatedAt: number
   values: MobileSafeSettings
@@ -119,7 +127,6 @@ export function toMobileSafeSettings(s: Settings): MobileSafeSettings {
     showTokenCount: s.showTokenCount,
     htmlRendering: s.htmlRendering,
     imageGenAutoEnabled: s.imageGenAutoEnabled ?? false,
-    imageGenSize: s.imageGenSize ?? '1024x1024',
     exampleDialogMode: s.exampleDialogMode ?? 'always',
     lorebookRatio: s.lorebookRatio ?? 0.3,
     autoTitle: s.autoTitle ?? true,
@@ -132,7 +139,7 @@ export function toMobileSafeSettings(s: Settings): MobileSafeSettings {
 export function buildSettingsSnapshot(settings: Settings, now = Date.now()): SettingsSnapshot {
   const values = toMobileSafeSettings(settings)
   return {
-    schemaVersion: 2,
+    schemaVersion: SETTINGS_SNAPSHOT_SCHEMA_VERSION,
     revision: computeRevision(values),
     updatedAt: now,
     values,
@@ -189,8 +196,6 @@ const FIELD_VALIDATORS: Record<
     : !v.trim() ? { ok: false, reason: 'empty_value' }
       : v.length > 50_000 ? { ok: false, reason: 'too_long' }
         : { ok: true, value: v }),
-  imageGenSize: (v) => (isPlainString(v) && /^\d{3,4}x\d{3,4}$/.test(v)
-    ? { ok: true, value: v } : { ok: false, reason: 'invalid_format' }),
   exampleDialogMode: (v) => (v === 'always' || v === 'first_turn' || v === 'off'
     ? { ok: true, value: v } : { ok: false, reason: 'invalid_enum' }),
   // 0~1

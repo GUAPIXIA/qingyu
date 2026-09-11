@@ -48,7 +48,7 @@ function settingsFile(): string {
 function writeSettings(s: Settings): void {
   mkdirSync(DIRS.config(), { recursive: true })
   // 带 schemaVersion：避免 readJson('settings') 触发迁移回写导致文件字节漂移
-  writeFileSync(settingsFile(), JSON.stringify({ ...s, schemaVersion: 1 }))
+  writeFileSync(settingsFile(), JSON.stringify({ ...s, schemaVersion: 2 }))
 }
 
 function readSettings(): Settings {
@@ -113,13 +113,13 @@ afterEach(() => {
 })
 
 describe('GET /settings/snapshot', () => {
-  it('返回 schemaVersion=2 快照：revision/updatedAt/values/capabilities，且无敏感字段', async () => {
+  it('返回 schemaVersion=3 快照：revision/updatedAt/values/capabilities，且无敏感字段', async () => {
     const ctx = await startServer()
     try {
       const res = await fetch(`${ctx.base}/settings/snapshot`, { headers: ctx.headers })
       expect(res.status).toBe(200)
       const body = await res.json()
-      expect(body.schemaVersion).toBe(2)
+      expect(body.schemaVersion).toBe(3)
       expect(body.revision).toMatch(/^[0-9a-f]{64}$/)
       expect(typeof body.updatedAt).toBe('number')
       expect(body.capabilities).toContain('settings_snapshot_v2')
@@ -343,7 +343,7 @@ describe('移动安全子集与快照一致性', () => {
     // 显式钉死白名单，防止无意加入敏感字段
     expect(expectedKeys).toEqual([
       'activeModel', 'activePresetId', 'autoScroll', 'autoTitle', 'defaultNarrativeMode', 'exampleDialogMode',
-      'htmlRendering', 'imageGenAutoEnabled', 'imageGenSize', 'lorebookRatio',
+      'htmlRendering', 'imageGenAutoEnabled', 'lorebookRatio',
       'omniscientNarrativeRules', 'showTokenCount', 'streamOutput', 'translationTargetLang', 'userDescription',
       'userName', 'userPersona',
     ])

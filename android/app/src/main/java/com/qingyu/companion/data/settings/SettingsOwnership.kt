@@ -22,6 +22,9 @@ import kotlinx.serialization.json.encodeToJsonElement
  * v2 可同步字段集与 PC electron/bridge/settingsSync.ts 的 MobileSafeSettings 对齐：
  * PC 显示偏好（fontSize/themeColor/bubbleStyle/messageWidth/messageSpacing）与
  * authorNote 已移出安全子集（快照里即使出现也仅容忍解码，不参与 PATCH）。
+ *
+ * v3：`imageGenSize` 随 ComfyUI 尺寸改为工作流节点级覆盖而移出可同步集（PC 侧
+ * 已不再下发该字段，PATCH 会被判 field_not_allowed）；DTO 仍保留该字段用于解码旧快照。
  */
 object SettingsOwnership {
 
@@ -38,7 +41,6 @@ object SettingsOwnership {
         "showTokenCount",
         "htmlRendering",
         "imageGenAutoEnabled",
-        "imageGenSize",
         "exampleDialogMode",
         "lorebookRatio",
         "autoTitle",
@@ -91,7 +93,7 @@ fun settingsFieldValue(dto: SettingsDto, key: String): Any? = when (key) {
     "showTokenCount" -> dto.showTokenCount
     "htmlRendering" -> dto.htmlRendering
     "imageGenAutoEnabled" -> dto.imageGenAutoEnabled
-    "imageGenSize" -> dto.imageGenSize
+    // imageGenSize 已退出可同步集（v3），不再出现在冲突面板字段中，故不提供取值分支。
     "exampleDialogMode" -> dto.exampleDialogMode
     "lorebookRatio" -> dto.lorebookRatio
     "autoTitle" -> dto.autoTitle

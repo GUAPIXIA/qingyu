@@ -50,8 +50,8 @@ class ProtocolContractTest {
     @Test
     fun `settings snapshot fixture 解码为 SettingsSnapshotDto`() {
         val dto = json.decodeFromString(SettingsSnapshotDto.serializer(), fixture("settings_snapshot.json"))
-        assertEquals(2, dto.schemaVersion)
-        assertEquals("612f09d3960076a09105b60db75dd852ccb69cee83f0948a7adce25a76eb8e57", dto.revision)
+        assertEquals(3, dto.schemaVersion)
+        assertEquals("f106f67ab23123a7424c66c206284d22f1a7bd5c5b929dcde57265dcd49c83c5", dto.revision)
         assertEquals(1_788_000_000_000L, dto.updatedAt)
         assertEquals("轻语用户", dto.values.userName)
         assertEquals("gpt-4o", dto.values.activeModel)
@@ -82,7 +82,7 @@ class ProtocolContractTest {
             setOf(
                 "userName", "userDescription", "userPersona", "activePresetId", "activeModel",
                 "translationTargetLang", "streamOutput", "autoScroll", "showTokenCount",
-                "htmlRendering", "imageGenAutoEnabled", "imageGenSize", "exampleDialogMode",
+                "htmlRendering", "imageGenAutoEnabled", "exampleDialogMode",
                 "lorebookRatio", "autoTitle", "defaultNarrativeMode", "omniscientNarrativeRules",
             ),
             keys,

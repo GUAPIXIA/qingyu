@@ -258,7 +258,6 @@ export function buildBridgeRouter(
       showTokenCount: s.showTokenCount,
       htmlRendering: s.htmlRendering,
       imageGenAutoEnabled: s.imageGenAutoEnabled ?? false,
-      imageGenSize: s.imageGenSize ?? '1024x1024',
       exampleDialogMode: s.exampleDialogMode ?? 'always',
       lorebookRatio: s.lorebookRatio ?? 0.3,
       autoTitle: s.autoTitle ?? true,
@@ -285,7 +284,7 @@ export function buildBridgeRouter(
   const SETTINGS_WRITE_FIELDS = new Set([
     'userName', 'userDescription', 'userPersona',
     'translationTargetLang', 'streamOutput', 'autoScroll', 'showTokenCount',
-    'htmlRendering', 'imageGenAutoEnabled', 'imageGenSize', 'exampleDialogMode',
+    'htmlRendering', 'imageGenAutoEnabled', 'exampleDialogMode',
     'lorebookRatio', 'autoTitle', 'themeColor', 'fontSize', 'bubbleStyle',
     'messageSpacing', 'messageWidth', 'activeModel', 'activePresetId',
     'defaultNarrativeMode', 'omniscientNarrativeRules',

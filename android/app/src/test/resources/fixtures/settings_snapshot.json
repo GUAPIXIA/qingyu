@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 2,
-  "revision": "612f09d3960076a09105b60db75dd852ccb69cee83f0948a7adce25a76eb8e57",
+  "schemaVersion": 3,
+  "revision": "f106f67ab23123a7424c66c206284d22f1a7bd5c5b929dcde57265dcd49c83c5",
   "updatedAt": 1788000000000,
   "values": {
     "userName": "轻语用户",
@@ -14,7 +14,6 @@
     "showTokenCount": false,
     "htmlRendering": false,
     "imageGenAutoEnabled": false,
-    "imageGenSize": "1024x1024",
     "exampleDialogMode": "always",
     "lorebookRatio": 0.3,
     "autoTitle": true,

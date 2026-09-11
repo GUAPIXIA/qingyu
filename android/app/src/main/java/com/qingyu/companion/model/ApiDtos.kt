@@ -100,6 +100,12 @@ data class SettingsDto(
     val showTokenCount: Boolean = false,
     val htmlRendering: Boolean = false,
     val imageGenAutoEnabled: Boolean = false,
+    /**
+     * 已废弃：PC 端快照 schemaVersion 3 起不再下发该字段（尺寸改由 ComfyUI 工作流
+     * 节点级覆盖承载）。保留字段与默认值仅用于解码旧版 PC 快照，不参与 PATCH。
+     * 待移动端统一发版后随契约一并移除。
+     */
+    @Deprecated("PC 端已不再下发；尺寸改用工作流节点级覆盖，请勿读写该字段")
     val imageGenSize: String = "1024x1024",
     val exampleDialogMode: String = "always",
     val lorebookRatio: Double = 0.3,

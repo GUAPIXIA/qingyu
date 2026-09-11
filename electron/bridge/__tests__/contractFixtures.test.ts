@@ -41,7 +41,7 @@ function readFixture(name: string): string {
 /** 白名单钉死：出现新字段必须显式评审，防止无意引入敏感/PC-only 字段 */
 const EXPECTED_WHITELIST = [
   'activeModel', 'activePresetId', 'autoScroll', 'autoTitle', 'exampleDialogMode',
-  'htmlRendering', 'imageGenAutoEnabled', 'imageGenSize', 'lorebookRatio',
+  'htmlRendering', 'imageGenAutoEnabled', 'lorebookRatio',
   'showTokenCount', 'streamOutput', 'translationTargetLang', 'userDescription',
   'userName', 'userPersona', 'defaultNarrativeMode', 'omniscientNarrativeRules',
 ]
@@ -58,7 +58,7 @@ describe('契约 fixture：settings_snapshot.json（PC 半边）', () => {
   const snapshot = JSON.parse(readFixture('settings_snapshot.json')) as SettingsSnapshot
 
   it('结构：schemaVersion/revision/updatedAt/values/capabilities 齐全且 revision 内容寻址', () => {
-    expect(snapshot.schemaVersion).toBe(2)
+    expect(snapshot.schemaVersion).toBe(3)
     expect(snapshot.revision).toMatch(/^[0-9a-f]{64}$/)
     expect(typeof snapshot.updatedAt).toBe('number')
     expect(snapshot.values).toBeTruthy()
@@ -92,6 +92,14 @@ describe('契约 fixture：settings_snapshot.json（PC 半边）', () => {
     expect(built.revision).toBe(snapshot.revision)
     expect(built.capabilities).toEqual(SETTINGS_SNAPSHOT_CAPABILITIES)
     expect(built.updatedAt).toBe(snapshot.updatedAt)
+  })
+
+  it('Android fixture 副本与共享权威文件完全一致', () => {
+    const androidCopy = readFileSync(
+      join(process.cwd(), 'android/app/src/test/resources/fixtures/settings_snapshot.json'),
+      'utf-8',
+    )
+    expect(androidCopy).toBe(readFixture('settings_snapshot.json'))
   })
 })
 

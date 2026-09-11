@@ -13,12 +13,13 @@
 
 import { getDefaultSettings } from '../../shared/defaults'
 import type { Settings } from '../../shared/types'
+import { normalizeComfyWorkflow, analyzeComfyWorkflow } from './comfyWorkflow'
 
 export type DataDomain = 'settings' | 'characters' | 'lorebooks' | 'sessions'
 
 /** 各数据域当前最新版本号 */
 const LATEST_VERSION: Record<DataDomain, number> = {
-  settings: 1,
+  settings: 2,
   characters: 1,
   lorebooks: 1,
   sessions: 2,
@@ -37,6 +38,11 @@ const MIGRATIONS: Record<DataDomain, Migration[]> = {
       from: 0,
       to: 1,
       run: migrateSettingsV0ToV1,
+    },
+    {
+      from: 1,
+      to: 2,
+      run: migrateSettingsV1ToV2,
     },
   ],
   characters: [],
@@ -82,6 +88,67 @@ function migrateSettingsV0ToV1(data: unknown): unknown {
     merged[key] = raw[key as keyof Settings] === undefined ? defValue : raw[key as keyof Settings]
   }
   return merged
+}
+
+/**
+ * settings v1 → v2：移除全局 `imageGenSize`，把旧值转换为工作流尺寸节点的覆盖。
+ *
+ * ComfyUI 配置改为「工作流即事实来源」后，尺寸不再由全局字段决定，
+ * 而应写入目标工作流尺寸节点的 `overrides`。
+ *
+ * 处理规则：
+ * 1. 只有 `provider === 'comfyui'` 且带自定义工作流的配置才需要转换。
+ * 2. 尺寸节点唯一时写入 `overrides`；不唯一时不自动应用（避免猜错节点）。
+ * 3. 内置工作流（workflow 为空）不转换——其尺寸由内置模板决定。
+ * 4. 无论是否转换成功，都删除全局字段。
+ *
+ * 幂等：已无 `imageGenSize` 且 overrides 已就位时结果不变。
+ * 不发起网络请求：仅做本地结构分析。
+ */
+function migrateSettingsV1ToV2(data: unknown): unknown {
+  const raw = { ...(data as Record<string, unknown>) }
+  const legacySize = raw.imageGenSize
+  delete raw.imageGenSize
+
+  if (typeof legacySize !== 'string' || !/^\d{3,4}x\d{3,4}$/.test(legacySize)) return raw
+  const [width, height] = legacySize.split('x').map(Number)
+
+  const models = raw.imageGenModels
+  if (!Array.isArray(models)) return raw
+
+  raw.imageGenModels = models.map((item) => {
+    if (!item || typeof item !== 'object') return item
+    const model = { ...(item as Record<string, unknown>) }
+    if (model.provider !== 'comfyui') return model
+
+    const workflowJson = typeof model.workflow === 'string' ? model.workflow.trim() : ''
+    if (!workflowJson) return model
+
+    try {
+      const parsed = JSON.parse(workflowJson) as unknown
+      const { workflow } = normalizeComfyWorkflow(parsed)
+      const analysis = analyzeComfyWorkflow(workflow)
+      // 尺寸节点必须唯一，否则无法判断该覆盖哪一个，交给用户在界面确认。
+      const sizeParams = analysis.parameterGroups
+        .flatMap((group) => group.parameters)
+        .filter((param) => param.type === 'size')
+      if (sizeParams.length !== 1) return model
+
+      const target = sizeParams[0]
+      const overrides = { ...((model.overrides as Record<string, unknown> | undefined) ?? {}) }
+      overrides[target.id] = width
+      if (target.pairedInputName) {
+        overrides[`${target.nodeId}.${target.pairedInputName}`] = height
+      }
+      model.overrides = overrides
+      return model
+    } catch {
+      // 工作流无法解析时保留配置原样，仅丢失全局尺寸。
+      return model
+    }
+  })
+
+  return raw
 }
 
 /** 获取某数据域的当前版本号（写入时使用） */

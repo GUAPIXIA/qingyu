@@ -114,7 +114,7 @@ describe('MobileSafeSettings 白名单（敏感字段排除）', () => {
     expect(json).not.toContain('bubbleStyle')
     expect(json).not.toContain('messageWidth')
     expect(json).not.toContain('messageSpacing')
-    expect(snapshot.schemaVersion).toBe(2)
+    expect(snapshot.schemaVersion).toBe(3)
     expect(snapshot.capabilities).toContain('settings_snapshot_v2')
   })
 

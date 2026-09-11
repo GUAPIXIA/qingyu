@@ -646,8 +646,6 @@ export interface Settings {
   activeImageGenModelId: string | null
   /** 是否启用 AI 自动生图（AI 回复中包含 [image: ...] 标记时自动生成） */
   imageGenAutoEnabled?: boolean
-  /** 当前选择的生图尺寸（运行时可切换，覆盖模型配置中的默认值） */
-  imageGenSize?: string
   // 识图多模型配置
   visionModels: VisionModelConfig[]
   activeVisionModelId: string | null

@@ -12,10 +12,10 @@ import kotlinx.serialization.json.JsonObject
  * - 409 body：{ error: "settings_conflict", current: SettingsSnapshot }。
  */
 
-/** GET /api/v1/settings/snapshot 响应（schemaVersion 恒为 2） */
+/** GET /api/v1/settings/snapshot 响应（schemaVersion 解码默认值；当前 PC 为 3） */
 @Serializable
 data class SettingsSnapshotDto(
-    val schemaVersion: Int = 2,
+    val schemaVersion: Int = 3,
     val revision: String = "",
     val updatedAt: Long = 0,
     val values: SettingsDto = SettingsDto(),
@@ -36,7 +36,7 @@ data class SettingsPatchRequestDto(
 /** PATCH /api/v1/settings/snapshot 成功响应（快照 + 字段应用结果） */
 @Serializable
 data class SettingsPatchResponseDto(
-    val schemaVersion: Int = 2,
+    val schemaVersion: Int = 3,
     val revision: String = "",
     val updatedAt: Long = 0,
     val values: SettingsDto = SettingsDto(),

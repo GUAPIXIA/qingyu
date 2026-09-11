@@ -1,9 +1,11 @@
 package com.qingyu.companion.model
 
+import com.qingyu.companion.data.settings.SettingsOwnership
 import com.qingyu.companion.network.NetworkModule
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -56,6 +58,21 @@ class SettingsSyncSerializationTest {
         """.trimIndent()
         val dto = json.decodeFromString(SettingsSnapshotDto.serializer(), raw)
         assertEquals("m", dto.values.activeModel)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `旧版 v2 快照含 imageGenSize 仍可解码（PC v3 起不再下发）`() {
+        val raw = """
+            { "schemaVersion": 2, "revision": "legacy", "updatedAt": 1,
+              "values": { "activeModel": "m", "imageGenSize": "768x1344" }, "capabilities": [] }
+        """.trimIndent()
+        val dto = json.decodeFromString(SettingsSnapshotDto.serializer(), raw)
+        assertEquals("m", dto.values.activeModel)
+        // 字段保留仅为解码旧快照，默认值不变
+        assertEquals("768x1344", dto.values.imageGenSize)
+        // 已退出同步白名单：不会进入 PATCH 增量
+        assertFalse("imageGenSize" in SettingsOwnership.SYNCABLE_FIELDS)
     }
 
     @Test
