@@ -142,7 +142,7 @@ cd android
 ./gradlew testDebugUnitTest    # 运行单元测试
 ```
 
-> 完整方案见 `docs/安卓伴侣端方案.md`（位于仓库 docs 目录）。
+> 完整方案见 [安卓端优化实施进展报告](./docs/报告/安卓端优化实施进展报告-2026-08-29.md)（阶段 A—G 已全部收口），文档索引见 [docs/README.md](./docs/README.md)。
 
 ---
 

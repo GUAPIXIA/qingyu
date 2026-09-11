@@ -1,7 +1,7 @@
 # ComfyUI 生图配置优化实施计划
 
 > 上游方案：[ComfyUI 生图配置优化方案](./ComfyUI生图配置优化方案.md)
-> 状态：待实施
+> 状态：已实施（2026-09-11）；阶段一至阶段五全部交付
 > 基线：PC 端 `electron/services/imageGen.ts`、`electron/services/comfyWorkflow.ts` 现状
 
 ## 1. 计划范围
