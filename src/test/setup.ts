@@ -77,6 +77,14 @@ const mockApi: Partial<ExposedAPI> = {
     selectImage: vi.fn().mockResolvedValue(null),
     readImageAsBase64: vi.fn().mockResolvedValue(''),
   } as any,
+  imageGen: {
+    generate: vi.fn().mockResolvedValue({ success: false, error: 'not mocked' }),
+    testConnection: vi.fn().mockResolvedValue({ success: false, error: 'not mocked' }),
+    listLocalComfyWorkflows: vi.fn().mockResolvedValue({ success: true, workflows: [] }),
+    importLocalComfyWorkflow: vi.fn().mockResolvedValue({ success: false, canceled: true }),
+    analyzeComfyWorkflow: vi.fn().mockResolvedValue({ success: false, error: 'not mocked' }),
+    fetchObjectInfo: vi.fn().mockResolvedValue({ success: false, error: 'not mocked' }),
+  } as any,
   font: {
     selectFont: vi.fn().mockResolvedValue(null),
     saveFont: vi.fn().mockResolvedValue({ id: 'test-font', name: 'TestFont', fileName: 'test-font.ttf', format: 'ttf', size: 1024, createdAt: 0 }),

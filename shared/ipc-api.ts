@@ -508,6 +508,20 @@ export interface ComfyWorkflowImportResult {
   objectInfo?: Record<string, unknown>
 }
 
+/** 分析已有工作流 JSON 的结果；用于编辑配置时重建动态参数。 */
+export interface ComfyWorkflowAnalysisResult {
+  success: boolean
+  analysis?: ComfyWorkflowAnalysis
+  error?: string
+}
+
+/** 拉取 /object_info 的结果；失败时调用侧按 JS 类型降级渲染，不阻塞编辑。 */
+export interface ComfyObjectInfoResult {
+  success: boolean
+  objectInfo?: Record<string, unknown>
+  error?: string
+}
+
 export interface ImageGenAPI {
   generate(prompt: string, options?: {
     negativePrompt?: string
@@ -521,6 +535,8 @@ export interface ImageGenAPI {
   }): Promise<ImageGenTestResult>
   listLocalComfyWorkflows(): Promise<{ success: boolean; workflows?: LocalComfyWorkflow[]; error?: string }>
   importLocalComfyWorkflow(path?: string): Promise<ComfyWorkflowImportResult>
+  analyzeComfyWorkflow(workflow: string, objectInfo?: Record<string, unknown>): Promise<ComfyWorkflowAnalysisResult>
+  fetchObjectInfo(baseUrl: string, apiKey?: string): Promise<ComfyObjectInfoResult>
 }
 
 // ===================== 正则表达式接口 =====================

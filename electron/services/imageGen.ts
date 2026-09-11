@@ -625,6 +625,41 @@ export interface TestConnectionResult {
 }
 
 /**
+ * 拉取 ComfyUI 的 /object_info（节点定义）。
+ *
+ * 用于取参数类型、范围与选项，并校验节点类型与模型文件是否可用。
+ * 失败不是错误路径：调用侧按 JS 类型降级渲染，不阻塞配置编辑。
+ */
+export async function fetchComfyObjectInfo(
+  baseUrl: string,
+  apiKey?: string,
+): Promise<{ success: boolean; objectInfo?: Record<string, unknown>; error?: string }> {
+  const url = `${baseUrl.replace(/\/$/, '')}/object_info`
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (apiKey?.trim()) {
+      headers.Authorization = `Bearer ${apiKey.trim()}`
+      headers['X-API-Key'] = apiKey.trim()
+    }
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}: ${response.statusText}` }
+    }
+    const data = await response.json()
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return { success: false, error: '/object_info 返回格式异常' }
+    }
+    return { success: true, objectInfo: data as Record<string, unknown> }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
  * 测试生图后端连接
  *
  * SD WebUI: GET /sdapi/v1/options 检查是否响应

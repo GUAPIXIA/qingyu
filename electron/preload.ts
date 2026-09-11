@@ -263,6 +263,8 @@ const imageGenApi: ImageGenAPI = {
   testConnection: (config) => ipcRenderer.invoke('imageGen:testConnection', config),
   listLocalComfyWorkflows: () => ipcRenderer.invoke('imageGen:listLocalComfyWorkflows'),
   importLocalComfyWorkflow: (path) => ipcRenderer.invoke('imageGen:importLocalComfyWorkflow', path),
+  analyzeComfyWorkflow: (workflow, objectInfo) => ipcRenderer.invoke('imageGen:analyzeComfyWorkflow', workflow, objectInfo),
+  fetchObjectInfo: (baseUrl, apiKey) => ipcRenderer.invoke('imageGen:fetchObjectInfo', baseUrl, apiKey),
 }
 
 // ---- 文件 ----

@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import type { ImageGenModelConfig, ImageGenProvider } from '../../../shared/types'
-import type { ComfyWorkflowImportResult, LocalComfyWorkflow } from '../../../shared/ipc-api'
+import type {
+  ComfyWorkflowAnalysis,
+  ComfyWorkflowImportResult,
+  ComfyWorkflowParameter,
+  LocalComfyWorkflow,
+} from '../../../shared/ipc-api'
 import {
   Image, Plus, Trash2, Check, Eye, EyeOff,
   Circle, ChevronUp, ChevronDown, Loader2, FolderOpen, RefreshCw, FileJson2,
+  AlertTriangle, RotateCcw, Box,
 } from 'lucide-react'
 
 /** 提供商选项 */
@@ -86,12 +92,16 @@ export function ImageGenModelsSection() {
   const [loadingWorkflows, setLoadingWorkflows] = useState(false)
   const [importingWorkflow, setImportingWorkflow] = useState(false)
   const [workflowMessage, setWorkflowMessage] = useState<{ success: boolean; text: string } | null>(null)
+  const [analysis, setAnalysis] = useState<ComfyWorkflowAnalysis | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
 
   const models = [...settings.imageGenModels].sort((a, b) => a.order - b.order)
 
   const isSdWebui = form.provider === 'sd-webui'
   const isComfyUi = form.provider === 'comfyui'
   const isOpenAi = form.provider === 'openai'
+  // 联合类型收窄：ComfyUI 专属字段（workflow / overrides 等）只在 comfyui 分支存在。
+  const comfyForm = form.provider === 'comfyui' ? form : null
   // OpenAI 与 SD WebUI 共用尺寸字段；ComfyUI 的尺寸由工作流节点决定。
   const formSize = isOpenAi || isSdWebui ? form.size : ''
   const formSampler = isSdWebui ? form.sampler ?? '' : ''
@@ -166,6 +176,7 @@ export function ImageGenModelsSection() {
       return
     }
     const analysis = result.analysis
+    setAnalysis(result.analysis ?? null)
     setForm((current) => {
       if (current.provider !== 'comfyui') return current
       const inferred = analysis?.promptBindings ?? []
@@ -198,13 +209,482 @@ export function ImageGenModelsSection() {
     setImportingWorkflow(true)
     setWorkflowMessage(null)
     try {
-      applyImportedWorkflow(await window.api.imageGen.importLocalComfyWorkflow(path))
+      const result = await window.api.imageGen.importLocalComfyWorkflow(path)
+      applyImportedWorkflow(result)
+      // 主进程分析拿不到 /object_info，这里补一次带节点定义的分析，
+      // 否则模型依赖的可用性校验不会发生。
+      if (result.success && result.workflow) {
+        await runAnalysis(result.workflow, form.baseUrl, form.apiKey)
+      }
     } catch (error) {
       setWorkflowMessage({ success: false, text: error instanceof Error ? error.message : String(error) })
     } finally {
       setImportingWorkflow(false)
     }
   }
+
+  /**
+   * 重建动态参数。
+   *
+   * `/object_info` 只用于补全控件类型、范围、选项与模型可用性校验；
+   * 服务不可达时按 JS 类型降级渲染，不阻塞编辑。
+   */
+  const runAnalysis = async (workflowJson: string, baseUrl: string, apiKey: string) => {
+    if (!workflowJson.trim()) {
+      setAnalysis(null)
+      return
+    }
+    setAnalyzing(true)
+    try {
+      let objectInfo: Record<string, unknown> | undefined
+      try {
+        const info = await window.api.imageGen.fetchObjectInfo(baseUrl, apiKey)
+        if (info.success) objectInfo = info.objectInfo
+      } catch {
+        // 降级：没有节点定义也能按工作流原值渲染。
+      }
+      const result = await window.api.imageGen.analyzeComfyWorkflow(workflowJson, objectInfo)
+      if (result.success && result.analysis) {
+        setAnalysis(result.analysis)
+      } else {
+        setAnalysis(null)
+        setWorkflowMessage({ success: false, text: result.error ?? '分析工作流失败' })
+      }
+    } catch (error) {
+      setAnalysis(null)
+      setWorkflowMessage({ success: false, text: error instanceof Error ? error.message : String(error) })
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  /** 打开已有 ComfyUI 配置或粘贴 JSON 后，重建参数区。 */
+  useEffect(() => {
+    if (!isComfyUi || !comfyForm?.workflow?.trim()) {
+      setAnalysis(null)
+      return
+    }
+    void runAnalysis(comfyForm.workflow, comfyForm.baseUrl, comfyForm.apiKey)
+    // 仅在真正打开一个配置时重建；表单内其他字段变化不触发网络请求。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComfyUi, editingId, showAdd])
+
+  /** 写入单参数覆盖；尺寸类型需同时覆盖配对的 height。 */
+  const setOverride = (param: ComfyWorkflowParameter, value: unknown) => {
+    setForm((f) => {
+      if (f.provider !== 'comfyui') return f
+      const overrides = { ...(f.overrides ?? {}) }
+      overrides[param.id] = value
+      if (param.type === 'size' && param.pairedInputName) {
+        const [width, height] = String(value).split('x')
+        const w = Number(width)
+        const h = Number(height)
+        if (Number.isFinite(w) && Number.isFinite(h)) {
+          overrides[param.id] = w
+          overrides[`${param.nodeId}.${param.pairedInputName}`] = h
+        }
+      }
+      return { ...f, overrides }
+    })
+  }
+
+  /** 撤销单参数覆盖，回到工作流原值。尺寸类型同时清除配对项。 */
+  const resetOverride = (param: ComfyWorkflowParameter) => {
+    setForm((f) => {
+      if (f.provider !== 'comfyui' || !f.overrides) return f
+      const overrides = { ...f.overrides }
+      delete overrides[param.id]
+      if (param.type === 'size' && param.pairedInputName) {
+        delete overrides[`${param.nodeId}.${param.pairedInputName}`]
+      }
+      return { ...f, overrides: Object.keys(overrides).length > 0 ? overrides : undefined }
+    })
+  }
+
+  const resetAllOverrides = () => setForm((f) => (
+    f.provider === 'comfyui' ? { ...f, overrides: undefined } : f
+  ))
+
+  /** 当前显示值：有覆盖用覆盖值，否则用工作流原值。 */
+  const paramValue = (param: ComfyWorkflowParameter): unknown => {
+    if (form.provider !== 'comfyui') return param.workflowValue
+    const overridden = form.overrides?.[param.id]
+    return overridden !== undefined ? overridden : param.workflowValue
+  }
+
+  const isOverridden = (param: ComfyWorkflowParameter): boolean => (
+    form.provider === 'comfyui' && form.overrides?.[param.id] !== undefined
+  )
+
+  const overrideCount = form.provider === 'comfyui' && form.overrides
+    ? Object.keys(form.overrides).length
+    : 0
+
+  /** 单个动态参数控件；覆盖过的项显示「已改」标记与还原按钮。 */
+  const renderParameter = (param: ComfyWorkflowParameter) => {
+    const value = paramValue(param)
+    const overridden = isOverridden(param)
+    const numberValue = typeof value === 'number' ? value : Number(value)
+
+    let control: JSX.Element
+    if (param.type === 'size') {
+      // 尺寸在快照中是 width/height 两个输入，覆盖时需成对写入。
+      const stored = String(param.workflowValue ?? '').split('x')
+      const storedWidth = Number(stored[0])
+      const storedHeight = Number(stored[1])
+      const overrides = form.provider === 'comfyui' ? form.overrides : undefined
+      const heightKey = `${param.nodeId}.${param.pairedInputName ?? 'height'}`
+      const rawWidth = overrides?.[param.id]
+      const rawHeight = overrides?.[heightKey]
+      const width = typeof rawWidth === 'number' ? rawWidth : storedWidth
+      const height = typeof rawHeight === 'number' ? rawHeight : storedHeight
+
+      const commit = (nextWidth: number, nextHeight: number) => {
+        setForm((f) => {
+          if (f.provider !== 'comfyui') return f
+          const next = { ...(f.overrides ?? {}) }
+          next[param.id] = nextWidth
+          next[heightKey] = nextHeight
+          return { ...f, overrides: next }
+        })
+      }
+
+      control = (
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            className="input text-xs w-20"
+            aria-label={`${param.label} 宽`}
+            value={Number.isFinite(width) ? width : ''}
+            min={param.min}
+            max={param.max}
+            step={param.step ?? 8}
+            onChange={(e) => {
+              const next = Number(e.target.value)
+              if (Number.isFinite(next)) commit(next, height)
+            }}
+          />
+          <span className="text-xs text-tavern-text-muted">×</span>
+          <input
+            type="number"
+            className="input text-xs w-20"
+            aria-label={`${param.label} 高`}
+            value={Number.isFinite(height) ? height : ''}
+            min={param.min}
+            max={param.max}
+            step={param.step ?? 8}
+            onChange={(e) => {
+              const next = Number(e.target.value)
+              if (Number.isFinite(next)) commit(width, next)
+            }}
+          />
+        </div>
+      )
+    } else if (param.type === 'select') {
+      const options = (param.options ?? []).filter((o): o is string => typeof o === 'string')
+      const current = String(value)
+      const list = options.includes(current) || !current ? options : [current, ...options]
+      control = (
+        <select
+          className="input text-xs"
+          value={current}
+          onChange={(e) => setOverride(param, e.target.value)}
+        >
+          {list.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      )
+    } else if (param.type === 'boolean') {
+      control = (
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={value === true}
+          onChange={(e) => setOverride(param, e.target.checked)}
+        />
+      )
+    } else if (param.type === 'number') {
+      control = (
+        <input
+          type="number"
+          className="input text-xs"
+          value={Number.isFinite(numberValue) ? numberValue : ''}
+          min={param.min}
+          max={param.max}
+          step={param.step ?? 1}
+          onChange={(e) => {
+            const next = Number(e.target.value)
+            if (Number.isFinite(next)) setOverride(param, next)
+          }}
+        />
+      )
+    } else {
+      control = (
+        <input
+          type="text"
+          className="input text-xs"
+          value={String(value ?? '')}
+          onChange={(e) => setOverride(param, e.target.value)}
+        />
+      )
+    }
+
+    return (
+      <div key={param.id} className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-tavern-text-soft truncate">{param.label}</span>
+            {overridden && (
+              <span className="text-[10px] px-1 rounded bg-tavern-accent-soft text-tavern-accent shrink-0">已改</span>
+            )}
+          </div>
+          <div className="text-[10px] text-tavern-text-muted font-mono truncate">{param.id}</div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {control}
+          {overridden && (
+            <button
+              type="button"
+              onClick={() => resetOverride(param)}
+              title="恢复工作流原值"
+              className="p-1 rounded text-tavern-text-muted hover:text-tavern-accent"
+            >
+              <RotateCcw className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  /** 按节点分组的动态参数区；无有效工作流时不渲染。 */
+  const renderDynamicParameters = () => {
+    if (!analysis) return null
+    const groups = analysis.parameterGroups.filter(
+      (group) => group.parameters.some((param) => !param.advanced),
+    )
+    const advancedGroups = analysis.parameterGroups.filter(
+      (group) => group.parameters.some((param) => param.advanced),
+    )
+    if (groups.length === 0 && advancedGroups.length === 0) return null
+
+    return (
+      <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-tavern-text">
+            <Box className="w-3.5 h-3.5 text-tavern-accent" />
+            工作流参数
+            {overrideCount > 0 && (
+              <span className="text-[10px] px-1.5 rounded bg-tavern-accent-soft text-tavern-accent">
+                {overrideCount} 项已覆盖
+              </span>
+            )}
+          </div>
+          {overrideCount > 0 && (
+            <button
+              type="button"
+              onClick={resetAllOverrides}
+              className="text-[11px] text-tavern-text-muted hover:text-tavern-accent"
+            >
+              全部还原
+            </button>
+          )}
+        </div>
+
+        {groups.map((group) => (
+          <div key={group.id} className="space-y-1.5">
+            <div className="text-[11px] text-tavern-text-muted">
+              {group.title}
+              <span className="ml-1.5 text-tavern-text-muted/70">{group.classType}</span>
+            </div>
+            {group.parameters.filter((p) => !p.advanced).map(renderParameter)}
+          </div>
+        ))}
+
+        {advancedGroups.length > 0 && (
+          <details className="group">
+            <summary className="cursor-pointer text-[11px] text-tavern-text-muted hover:text-tavern-text select-none">
+              高级参数（种子等）
+            </summary>
+            <div className="mt-2 space-y-3">
+              {advancedGroups.map((group) => (
+                <div key={group.id} className="space-y-1.5">
+                  <div className="text-[11px] text-tavern-text-muted">{group.title}</div>
+                  {group.parameters.filter((p) => p.advanced).map(renderParameter)}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+    )
+  }
+
+  /** 模型依赖卡：列出 Loader 引用的模型文件，并在 /object_info 可用时校验存在性。 */
+  const renderDependencies = () => {
+    if (!analysis || analysis.dependencies.length === 0) return null
+    return (
+      <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-2">
+        <div className="text-xs font-medium text-tavern-text">模型依赖</div>
+        {analysis.dependencies.map((dep) => (
+          <div key={`${dep.nodeId}.${dep.inputName}`} className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] text-tavern-text-muted">{dep.label}</div>
+              <div className="text-xs text-tavern-text-soft font-mono truncate">{dep.value}</div>
+            </div>
+            {dep.available === false ? (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-tavern-danger/10 text-tavern-danger shrink-0">
+                未找到
+              </span>
+            ) : dep.available === true ? (
+              <Check className="w-3 h-3 text-tavern-success shrink-0" />
+            ) : (
+              <span className="text-[10px] text-tavern-text-muted shrink-0">未校验</span>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  /** 工作流检查卡：展示分析警告与可用性结论。 */
+  const renderWorkflowCheck = () => {
+    if (!analysis) return null
+    const kindLabel: Record<ComfyWorkflowAnalysis['kind'], string> = {
+      'text-to-image': '文生图',
+      'image-to-image': '图生图',
+      video: '视频',
+      unknown: '未知类型',
+    }
+    return (
+      <div className={cn(
+        'rounded-xl border p-3 space-y-2',
+        analysis.compatible
+          ? 'border-tavern-success/25 bg-tavern-success/5'
+          : 'border-tavern-warning/30 bg-tavern-warning/5',
+      )}>
+        <div className="flex items-center gap-1.5 text-xs font-medium">
+          {analysis.compatible
+            ? <Check className="w-3.5 h-3.5 text-tavern-success" />
+            : <AlertTriangle className="w-3.5 h-3.5 text-tavern-warning" />}
+          <span className={analysis.compatible ? 'text-tavern-success' : 'text-tavern-warning'}>
+            {analysis.compatible ? '工作流可用' : '工作流需要确认'}
+          </span>
+          <span className="text-tavern-text-muted font-normal">
+            {kindLabel[analysis.kind]} · {analysis.nodeCount} 节点
+          </span>
+        </div>
+        {analysis.warnings.length > 0 && (
+          <ul className="space-y-1">
+            {analysis.warnings.map((warning) => (
+              <li key={warning.code} className="text-[11px] text-tavern-text-muted flex gap-1.5">
+                <span className="text-tavern-text-muted/60">•</span>
+                <span>{warning.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  /** ComfyUI 工作流选择与读取；位于表单首位，切换下拉即读取。 */
+  const renderComfyWorkflowPicker = () => (
+    <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-tavern-text">
+            <FileJson2 className="w-3.5 h-3.5 text-tavern-accent" />
+            ComfyUI Desktop 工作流
+          </div>
+          <p className="text-[11px] text-tavern-text-muted mt-1">
+            工作流是参数的唯一来源。自动读取 Desktop 安装目录并转换为可执行格式。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadLocalWorkflows()}
+          disabled={loadingWorkflows}
+          title="重新扫描"
+          className="p-1.5 rounded-md text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft disabled:opacity-50"
+        >
+          <RefreshCw className={cn('w-3.5 h-3.5', loadingWorkflows && 'animate-spin')} />
+        </button>
+      </div>
+
+      {localWorkflows.length > 0 ? (
+        <select
+          className="input text-xs"
+          value={selectedWorkflowPath}
+          onChange={(e) => {
+            setSelectedWorkflowPath(e.target.value)
+            // 切换即读取，去掉额外的确认按钮。
+            if (e.target.value) void handleImportWorkflow(e.target.value)
+          }}
+        >
+          {localWorkflows.map((workflow) => (
+            <option key={workflow.path} value={workflow.path}>
+              {workflow.name} · {workflow.installation}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <p className="text-xs text-tavern-text-muted">
+          {loadingWorkflows ? '正在扫描本机安装…' : '未检测到 Desktop 工作流，可手动选择文件。'}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => void handleImportWorkflow()}
+        disabled={importingWorkflow}
+        className="inline-flex items-center gap-1.5 text-xs text-tavern-text-soft hover:text-tavern-accent transition-colors"
+      >
+        <FolderOpen className="w-3.5 h-3.5" />
+        选择其他 JSON
+      </button>
+
+      {importingWorkflow && (
+        <div className="text-xs text-tavern-text-muted flex items-center gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />正在读取并分析…
+        </div>
+      )}
+
+      {(workflowMessage || comfyForm?.workflowName) && (
+        <div className={cn(
+          'text-xs rounded-lg px-2.5 py-2 border',
+          workflowMessage?.success !== false
+            ? 'border-tavern-success/25 bg-tavern-success/10 text-tavern-success'
+            : 'border-tavern-danger/25 bg-tavern-danger/10 text-tavern-danger',
+        )}>
+          {workflowMessage?.text ?? `已载入 ${comfyForm?.workflowName}`}
+        </div>
+      )}
+    </div>
+  )
+
+  /** 高级区：原始 JSON，默认折叠。 */
+  const renderAdvancedJson = () => (
+    <details className="group">
+      <summary className="cursor-pointer text-xs text-tavern-text-muted hover:text-tavern-text select-none">
+        高级：查看或粘贴 API 工作流 JSON
+      </summary>
+      <div className="mt-2">
+        <textarea
+          className="textarea text-xs font-mono min-h-36"
+          value={comfyForm?.workflow ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, workflow: e.target.value, workflowName: undefined }))}
+          placeholder="也可以直接粘贴 ComfyUI 导出的 API 格式工作流"
+          spellCheck={false}
+        />
+        <p className="text-xs text-tavern-text-muted mt-1 leading-relaxed">
+          支持 {'{{prompt}}'}、{'{{negative_prompt}}'}、{'{{width}}'}、{'{{height}}'} 和 {'{{seed}}'} 占位符。
+          其余参数（Steps、CFG、采样器等）请通过节点级覆盖修改，不再提供全局占位符。
+        </p>
+      </div>
+    </details>
+  )
 
   /** 测试连接 */
   const handleTestConnection = async () => {
@@ -230,6 +710,8 @@ export function ImageGenModelsSection() {
 
   const handleSave = () => {
     if (!form.name.trim()) return
+    // ComfyUI 必须已有可执行工作流；否则保存后无法生图。
+    if (form.provider === 'comfyui' && !form.workflow?.trim()) return
     if (editingId) {
       updateImageGenModel(editingId, form)
       setEditingId(null)
@@ -328,8 +810,24 @@ export function ImageGenModelsSection() {
         </div>
       )}
 
+      {/* ComfyUI：工作流选择器位于参数之前，因为工作流是参数的唯一来源 */}
+      {isComfyUi && (
+        <>
+          {renderComfyWorkflowPicker()}
+          {analyzing && (
+            <div className="text-xs text-tavern-text-muted flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />正在分析工作流…
+            </div>
+          )}
+          {renderWorkflowCheck()}
+          {renderDynamicParameters()}
+          {renderDependencies()}
+          {renderAdvancedJson()}
+        </>
+      )}
+
       {/* 模型名称：ComfyUI 的模型由工作流节点决定，仅在无自定义工作流时保留内置回退 */}
-      {(!isComfyUi || !form.workflow) && (
+      {(!isComfyUi || !comfyForm?.workflow) && (
         <div>
           <label className="label">{isComfyUi ? 'Checkpoint 文件名（内置工作流）' : '模型名称'}</label>
           <input
@@ -448,105 +946,14 @@ export function ImageGenModelsSection() {
         </>
       )}
 
-      {isComfyUi && (
-        <>
-              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-2.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-tavern-text">
-                      <FileJson2 className="w-3.5 h-3.5 text-tavern-accent" />
-                      ComfyUI Desktop 工作流
-                    </div>
-                    <p className="text-[11px] text-tavern-text-muted mt-1">
-                      自动读取 Desktop 安装目录，并将画布工作流转换为可执行格式。
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void loadLocalWorkflows()}
-                    disabled={loadingWorkflows}
-                    title="重新扫描"
-                    className="p-1.5 rounded-md text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent-soft disabled:opacity-50"
-                  >
-                    <RefreshCw className={cn('w-3.5 h-3.5', loadingWorkflows && 'animate-spin')} />
-                  </button>
-                </div>
-
-                {localWorkflows.length > 0 ? (
-                  <div className="flex gap-2">
-                    <select
-                      className="input text-xs min-w-0 flex-1"
-                      value={selectedWorkflowPath}
-                      onChange={(e) => setSelectedWorkflowPath(e.target.value)}
-                    >
-                      {localWorkflows.map((workflow) => (
-                        <option key={workflow.path} value={workflow.path}>
-                          {workflow.name} · {workflow.installation}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => void handleImportWorkflow(selectedWorkflowPath)}
-                      disabled={!selectedWorkflowPath || importingWorkflow}
-                      className="btn-primary shrink-0 text-xs"
-                    >
-                      {importingWorkflow ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileJson2 className="w-3.5 h-3.5" />}
-                      读取
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-tavern-text-muted">
-                    {loadingWorkflows ? '正在扫描本机安装…' : '未检测到 Desktop 工作流，可手动选择文件。'}
-                  </p>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => void handleImportWorkflow()}
-                  disabled={importingWorkflow}
-                  className="inline-flex items-center gap-1.5 text-xs text-tavern-text-soft hover:text-tavern-accent transition-colors"
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  选择其他 JSON
-                </button>
-
-                {(workflowMessage || form.workflowName) && (
-                  <div className={cn(
-                    'text-xs rounded-lg px-2.5 py-2 border',
-                    workflowMessage?.success !== false
-                      ? 'border-tavern-success/25 bg-tavern-success/10 text-tavern-success'
-                      : 'border-tavern-danger/25 bg-tavern-danger/10 text-tavern-danger',
-                  )}>
-                    {workflowMessage?.text ?? `已载入 ${form.workflowName}`}
-                  </div>
-                )}
-              </div>
-
-              <details className="group">
-                <summary className="cursor-pointer text-xs text-tavern-text-muted hover:text-tavern-text select-none">
-                  高级：查看或粘贴 API 工作流 JSON
-                </summary>
-                <div className="mt-2">
-                  <textarea
-                    className="textarea text-xs font-mono min-h-36"
-                    value={form.workflow ?? ''}
-                    onChange={(e) => setForm((f) => ({ ...f, workflow: e.target.value, workflowName: undefined }))}
-                    placeholder="也可以直接粘贴 ComfyUI 导出的 API 格式工作流"
-                    spellCheck={false}
-                  />
-                  <p className="text-xs text-tavern-text-muted mt-1 leading-relaxed">
-                    支持 {'{{prompt}}'}、{'{{negative_prompt}}'}、{'{{width}}'}、{'{{height}}'} 和 {'{{seed}}'} 占位符。
-                    其余参数（Steps、CFG、采样器等）请通过节点级覆盖修改，不再提供全局占位符。
-                  </p>
-                </div>
-              </details>
-        </>
-      )}
-
       {/* 操作按钮 */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={handleSave} disabled={!form.name.trim()} className="btn-primary text-xs">
+        <button
+          onClick={handleSave}
+          disabled={!form.name.trim() || (isComfyUi && !comfyForm?.workflow?.trim())}
+          title={isComfyUi && !comfyForm?.workflow?.trim() ? '请先选择或粘贴工作流' : undefined}
+          className="btn-primary text-xs"
+        >
           <Check className="w-3.5 h-3.5" />保存
         </button>
         <button

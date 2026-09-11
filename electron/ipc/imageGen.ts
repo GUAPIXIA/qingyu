@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { createLogger } from '../services/logger'
-import { generateImage, testImageGenConnection, type ImageGenOptions } from '../services/imageGen'
-import { importLocalComfyWorkflow, listLocalComfyWorkflows } from '../services/comfyWorkflow'
+import { generateImage, testImageGenConnection, fetchComfyObjectInfo, type ImageGenOptions } from '../services/imageGen'
+import { analyzeComfyWorkflow, importLocalComfyWorkflow, listLocalComfyWorkflows, normalizeComfyWorkflow } from '../services/comfyWorkflow'
 import { readJson, DIRS } from '../services/storage'
 import { join } from 'node:path'
 import { sanitizeApiKey } from '../utils/pathGuard'
@@ -134,5 +134,19 @@ export function registerImageGenIPC(ipcMain: IpcMain): void {
 
   ipcMain.handle('imageGen:importLocalComfyWorkflow', async (_e, path?: string) => {
     return importLocalComfyWorkflow(path)
+  })
+
+  ipcMain.handle('imageGen:analyzeComfyWorkflow', async (_e, workflow: string, objectInfo?: Record<string, unknown>) => {
+    try {
+      const parsed = JSON.parse(workflow) as unknown
+      const normalized = normalizeComfyWorkflow(parsed)
+      return { success: true, analysis: analyzeComfyWorkflow(normalized.workflow, objectInfo) }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('imageGen:fetchObjectInfo', async (_e, baseUrl: string, apiKey?: string) => {
+    return fetchComfyObjectInfo(baseUrl, apiKey)
   })
 }
