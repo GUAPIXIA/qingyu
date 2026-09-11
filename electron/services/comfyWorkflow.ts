@@ -373,6 +373,13 @@ const IMAGE_INPUT_NODES = new Set(['LoadImage', 'LoadImageMask', 'LoadImageOutpu
 const LATENT_SIZE_NODES = new Set(['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyLatentImagePresets'])
 const SAMPLER_NODES = new Set(['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'])
 const TEXT_ENCODE_NODES = new Set(['CLIPTextEncode', 'CLIPTextEncodeSDXL', 'BNK_CLIPTextEncodeAdvanced'])
+/**
+ * 条件链上的「屏障」节点：其输出不再携带上游文本的语义，回溯到此终止。
+ *
+ * ConditioningZeroOut 会把条件整体清零（Z-Image 等工作流用它充当空负面条件），
+ * 若继续向上回溯，会把被复用的正面文本节点误判成负面入口。
+ */
+const CONDITIONING_BARRIER_NODES = new Set(['ConditioningZeroOut'])
 const NEGATIVE_NODE_HINTS = ['negative', 'neg', '负面', '反向']
 
 /** 采样阶段的参数白名单：只暴露可安全覆盖的项，避免把 latent_image 等连接写坏。 */
@@ -436,6 +443,7 @@ function hasNegativeTitleHint(node: ApiNode): boolean {
  *
  * 采样器的 positive / negative 指向的可能不是文本节点本身，
  * 而是 ConditioningCombine、ConditioningSetArea 等中间节点，需逐级向下展开。
+ * 遇到 CONDITIONING_BARRIER_NODES 时停止，因为其输出已不含上游文本语义。
  */
 function collectPromptNodes(
   workflow: ApiWorkflow,
@@ -455,6 +463,7 @@ function collectPromptNodes(
     }
     const node = workflow[nodeId]
     if (!node) continue
+    if (CONDITIONING_BARRIER_NODES.has(node.class_type)) continue
     for (const value of Object.values(node.inputs)) {
       const referenced = referenceNodeId(value)
       if (referenced && !visited.has(referenced)) stack.push(referenced)

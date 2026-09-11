@@ -116,6 +116,31 @@ function buildZImageWorkflow(): ApiWorkflow {
   }
 }
 
+/**
+ * 复刻 image_z_image_turbo 的真实拓扑：负面条件走 ConditioningZeroOut
+ * 复用同一个正面文本节点。这类结构的正面入口曾被误判为空。
+ */
+function buildZeroOutNegativeWorkflow(): ApiWorkflow {
+  return {
+    '1': { class_type: 'UNETLoader', inputs: { unet_name: 'z_image_turbo_bf16.safetensors', weight_dtype: 'default' } },
+    '2': { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen_3_4b.safetensors', type: 'qwen_image' } },
+    '3': { class_type: 'VAELoader', inputs: { vae_name: 'ae.safetensors' } },
+    '27': { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['2', 0] } },
+    '33': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['27', 0] } },
+    '11': { class_type: 'ModelSamplingAuraFlow', inputs: { shift: 3, model: ['1', 0] } },
+    '13': { class_type: 'EmptySD3LatentImage', inputs: { width: 1080, height: 1920, batch_size: 1 } },
+    '7': {
+      class_type: 'KSampler',
+      inputs: {
+        seed: 0, steps: 8, cfg: 1, sampler_name: 'res_multistep', scheduler: 'simple', denoise: 1,
+        model: ['11', 0], positive: ['27', 0], negative: ['33', 0], latent_image: ['13', 0],
+      },
+    },
+    '8': { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['3', 0] } },
+    '9': { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: 'Qingyu' } },
+  }
+}
+
 describe('normalizeComfyWorkflow', () => {
   it('API 格式工作流可以直接导入，不做画布转换', () => {
     const api = {
@@ -309,6 +334,21 @@ describe('analyzeComfyWorkflow 提示词与输出绑定', () => {
     expect(analysis.promptBindings.filter((item) => item.role === 'positive').map((item) => item.nodeId)).toEqual(['4'])
     expect(analysis.warnings.map((item) => item.code)).not.toContain('no-prompt')
     expect(analysis.warnings.map((item) => item.code)).not.toContain('ambiguous-prompt')
+  })
+
+  it('负面走 ConditioningZeroOut 复用正面文本节点时，仍识别出正面入口', () => {
+    // 真实 image_z_image_turbo 的拓扑：negative 接 ConditioningZeroOut，
+    // 而它引用的正是 positive 用的那个文本节点。回溯不得穿过 ZeroOut。
+    const analysis = analyzeComfyWorkflow(buildZeroOutNegativeWorkflow())
+
+    expect(analysis.kind).toBe('text-to-image')
+    expect(analysis.compatible).toBe(true)
+    expect(analysis.promptBindings.filter((item) => item.role === 'positive').map((item) => item.nodeId))
+      .toEqual(['27'])
+    // ZeroOut 已清零，其上游文本不应被当作负面入口。
+    expect(analysis.promptBindings.filter((item) => item.role === 'negative')).toHaveLength(0)
+    expect(analysis.warnings.map((item) => item.code)).not.toContain('no-prompt')
+    expect(analysis.warnings).toHaveLength(0)
   })
 
   it('多个输出节点时标记 ambiguous-output', () => {
