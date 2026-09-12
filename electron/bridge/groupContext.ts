@@ -1,5 +1,5 @@
 import type { NarrativeMode } from '../../shared/types'
-import { buildGameMasterPrompt, buildGroupNarrativeModePrompt } from '../../shared/narrativeMode'
+import { buildGroupNarrativeModePrompt } from '../../shared/narrativeMode'
 import { replaceVariables } from '../utils/variables'
 
 export interface BridgeGroupContextInput {
@@ -16,7 +16,6 @@ export interface BridgeGroupContextInput {
   speaker: { id: string; name: string } | null
   userName: string
   narrativeMode: NarrativeMode
-  gameMasterMode?: boolean
   omniscientNarrativeRules?: string
 }
 
@@ -25,7 +24,7 @@ export function buildGroupContextForBridge(input: BridgeGroupContextInput): {
   systemContent: string
   history: { role: 'user' | 'assistant'; content: string }[]
 } {
-  const { group, members, messages, speaker, userName, narrativeMode, gameMasterMode, omniscientNarrativeRules } = input
+  const { group, members, messages, speaker, userName, narrativeMode, omniscientNarrativeRules } = input
   const targetName = speaker?.name || members.map((member) => member.name).join('、')
   let systemContent = `你正在参与一个群聊「${group.name}」。本群聊中共有 ${members.length} 个角色参与对话：\n`
   members.forEach((member, index) => {
@@ -65,8 +64,6 @@ export function buildGroupContextForBridge(input: BridgeGroupContextInput): {
     group.chatMode,
     omniscientNarrativeRules,
   )
-  const gameMasterPrompt = buildGameMasterPrompt(narrativeMode, gameMasterMode)
-  if (gameMasterPrompt) systemContent += '\n\n' + gameMasterPrompt
 
   const history = messages.slice(-30).map((message) => {
     const role = message.characterId === '__user__' ? 'user' as const : 'assistant' as const

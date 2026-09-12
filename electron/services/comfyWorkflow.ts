@@ -976,6 +976,9 @@ export async function importLocalComfyWorkflow(filePath?: string): Promise<Impor
     const nodeCount = Object.keys(workflow).length
     const analysis = analyzeComfyWorkflow(workflow)
     if (analysis.kind === 'video') throw new Error('当前生图配置不支持视频工作流')
+    if (analysis.kind === 'image-to-image') {
+      throw new Error('当前生图配置不支持图生图工作流（需要提供输入图片），请选择纯文生图工作流')
+    }
     if (analysis.outputBindings.length === 0) {
       throw new Error('当前生图配置仅支持包含 SaveImage 或 PreviewImage 的图片工作流')
     }

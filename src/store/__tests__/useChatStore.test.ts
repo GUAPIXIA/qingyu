@@ -404,6 +404,7 @@ describe('useChatStore', () => {
       useChatStore.getState().translateMessage('m1', 'Hello world')
 
       const chatCall = vi.mocked(window.api.ai.chat).mock.calls[0] as any
+      expect(chatCall[0].reasoningMode).toBe('disabled')
       const requestId = chatCall[0].requestId
       chunkCb({ requestId, text: '你好' })
       chunkCb({ requestId, text: '世界' })
@@ -442,6 +443,7 @@ describe('useChatStore', () => {
 
       const chatCall = vi.mocked(window.api.ai.chat).mock.calls[0] as any
       const requestId = chatCall[0].requestId
+      expect(chatCall[0].maxTokens).toBeGreaterThanOrEqual(4096)
       // 模拟推理模型只输出思考内容，正文为空
       chunkCb({ requestId, text: '<thought>我来翻译这段内容……</thought>' })
       doneCb(requestId)
@@ -587,5 +589,78 @@ describe('P-7 本地会话元数据 patch / 配置加载收敛', () => {
     expect(window.api.chat.saveMessage).toHaveBeenCalledTimes(1)
     // 元数据已本地 patch（messageCount 1）
     expect(s.sessions.find(x => x.id === 'new-s')?.messageCount).toBe(1)
+  })
+})
+
+describe('用户发送后清空上一轮方向（store 集成）', () => {
+  const DIRECTIONS = [
+    { id: 'safe', label: '追问原因', content: '先不与守卫冲突，试着追问封锁的原因。', tendency: 'safe' as const },
+    { id: 'explore', label: '寻找入口', content: '暂时离开正门，沿外围查看是否存在无人值守的通道。', tendency: 'explore' as const },
+    { id: 'risky', label: '直接闯关', content: '趁守卫注意力被分散时尝试突破封锁，承担暴露的风险。', tendency: 'risky' as const },
+  ]
+
+  beforeEach(() => {
+    resetStores()
+    useSettingsStore.setState({
+      settings: {
+        ...getDefaultSettings(),
+        userName: '林舟',
+        activeProfileId: 'p1',
+        connectionProfiles: [{
+          id: 'p1', name: '测试', provider: 'openai', apiKey: 'sk-test',
+          baseUrl: 'https://api.example.com', model: 'test-model',
+        }] as never,
+      },
+      credentials: {}, loaded: true, _saveTimer: null,
+    })
+  })
+
+  it('sendMessage 后本会话方向被清空并落盘（旧链路）', async () => {
+    const { useChatTaskStore } = await import('../chatTaskStore')
+    useChatTaskStore.setState({ chatEngineV2: false })
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sessions: [{ id: 's1', characterId: 'c1', dialogueDirectionsEnabled: true } as never],
+      messages: [
+        makeMessage({ id: 'a1', role: 'assistant', content: '港口已经封锁。', dialogueDirections: [...DIRECTIONS] }),
+      ],
+    })
+
+    await useChatStore.getState().sendMessage('我压低声音问', [], makeCharacter(), null, [])
+
+    const first = useChatStore.getState().messages[0] as { dialogueDirections?: unknown }
+    expect(first.dialogueDirections).toBeUndefined()
+    const saved = vi.mocked(window.api.chat.saveMessage).mock.calls.map((c) => c[0] as { id: string; dialogueDirections?: unknown })
+    expect(saved.some((m) => m.id === 'a1' && m.dialogueDirections === undefined)).toBe(true)
+  })
+
+  it('用户以独立消息发言（addStandaloneMessage role=user）时同样清空', async () => {
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sessions: [{ id: 's1', characterId: 'c1' } as never],
+      messages: [
+        makeMessage({ id: 'a1', role: 'assistant', content: '港口已经封锁。', dialogueDirections: [...DIRECTIONS] }),
+      ],
+    })
+
+    await useChatStore.getState().addStandaloneMessage('我不等你了', [], makeCharacter(), 'user')
+
+    const first = useChatStore.getState().messages[0] as { dialogueDirections?: unknown }
+    expect(first.dialogueDirections).toBeUndefined()
+  })
+
+  it('AI 独立消息（role=assistant）不清空方向', async () => {
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sessions: [{ id: 's1', characterId: 'c1' } as never],
+      messages: [
+        makeMessage({ id: 'a1', role: 'assistant', content: '港口已经封锁。', dialogueDirections: [...DIRECTIONS] }),
+      ],
+    })
+
+    await useChatStore.getState().addStandaloneMessage('系统插话', [], makeCharacter(), 'assistant')
+
+    const first = useChatStore.getState().messages[0] as { dialogueDirections?: unknown }
+    expect(first.dialogueDirections).toHaveLength(3)
   })
 })

@@ -53,6 +53,8 @@ export interface CommandContext {
   getRecentMessages: (count: number) => { role: 'user' | 'assistant'; content: string; name: string }[]
   /** 当前用户名 */
   userName: string
+  /** 当前会话绑定的我方角色资料，仅供弱化轮廓或第一人称构图参考。 */
+  userProfile?: { name: string; description?: string; persona?: string }
 }
 
 export interface CommandArgDef {

@@ -410,4 +410,85 @@ describe('GroupChatMessage', () => {
       expect(container.textContent).not.toContain('Should not show')
     })
   })
+
+  describe('下一步方向卡片', () => {
+    const directions = [
+      { id: 'safe', label: '追问封锁原因', content: '先不与守卫冲突，试着追问港口突然封锁的原因。', tendency: 'safe' as const },
+      { id: 'explore', label: '寻找其他入口', content: '暂时离开正门，沿港口外围查看是否存在无人值守的通道。', tendency: 'explore' as const },
+      { id: 'risky', label: '冒险直接闯关', content: '趁守卫注意力被分散时尝试突破封锁，承担立即暴露的风险。', tendency: 'risky' as const },
+    ]
+
+    beforeEach(() => {
+      useCharacterStore.setState({ characters: [createCharacter()] })
+    })
+
+    it('开启且消息带方向时渲染卡片，点选回填群聊草稿', async () => {
+      const { registerDraftBridge } = await import('../draftBridge')
+      let draft = ''
+      const setDraft = vi.fn((value: string) => { draft = value })
+      registerDraftBridge('group', { getText: () => draft, setDraft })
+
+      const { getByRole } = render(
+        <GroupChatMessage message={createMessage({ dialogueDirections: directions })} isLast dialogueDirectionsEnabled />,
+      )
+
+      fireEvent.click(getByRole('button', { name: /寻找其他入口/ }))
+      expect(setDraft).toHaveBeenCalledWith(directions[1].content)
+      registerDraftBridge('group', null)
+    })
+
+    it('会话未开启方向时不渲染卡片', () => {
+      const { queryByText } = render(
+        <GroupChatMessage message={createMessage({ dialogueDirections: directions })} isLast dialogueDirectionsEnabled={false} />,
+      )
+      expect(queryByText('选择下一步方向')).toBeNull()
+    })
+
+    it('用户消息与流式消息不渲染卡片', () => {
+      const { queryByText } = render(
+        <GroupChatMessage
+          message={createMessage({ characterId: '__user__', dialogueDirections: directions })}
+          isLast
+          dialogueDirectionsEnabled
+        />,
+      )
+      expect(queryByText('选择下一步方向')).toBeNull()
+
+      const streaming = render(
+        <GroupChatMessage
+          message={createMessage({ dialogueDirections: directions })}
+          isLast
+          isStreamingMessage
+          dialogueDirectionsEnabled
+        />,
+      )
+      expect(streaming.queryByText('选择下一步方向')).toBeNull()
+    })
+
+    it('仅最新一条显示换一批', () => {
+      const last = render(
+        <GroupChatMessage
+          message={createMessage({ dialogueDirections: directions })}
+          isLast
+          dialogueDirectionsEnabled
+          onRegenerateDirections={() => {}}
+        />,
+      )
+      expect(last.getByRole('button', { name: /换一批/ })).toBeTruthy()
+      last.unmount()
+    })
+
+    it('历史消息保留方向展示但不提供换一批', () => {
+      const history = render(
+        <GroupChatMessage
+          message={createMessage({ id: 'msg-2', dialogueDirections: directions })}
+          isLast={false}
+          dialogueDirectionsEnabled
+          onRegenerateDirections={() => {}}
+        />,
+      )
+      expect(history.getByText('选择下一步方向')).toBeTruthy()
+      expect(history.queryByRole('button', { name: /换一批/ })).toBeNull()
+    })
+  })
 })

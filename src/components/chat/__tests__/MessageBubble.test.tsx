@@ -239,6 +239,94 @@ describe('MessageBubble', () => {
       )
       expect(container.querySelector('[data-image-only="true"]')).toBeTruthy()
     })
+
+    it('右键生成图片可查看生图提示词', () => {
+      const msg = createMessage({
+        role: 'system',
+        content: 'cinematic portrait, warm rim light',
+        images: ['data:image/png;base64,AAAA'],
+      })
+      const { getByRole, getByText } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+
+      fireEvent.contextMenu(getByRole('img', { name: '生成图片 1' }), { clientX: 120, clientY: 80 })
+      fireEvent.click(getByRole('menuitem', { name: '查看生图提示词' }))
+
+      expect(getByRole('dialog', { name: '生图提示词' })).toBeTruthy()
+      expect(getByText('cinematic portrait, warm rim light')).toBeTruthy()
+    })
+
+    it('右键重新生成时只替换当前图片', async () => {
+      const updateMessageImages = vi.fn().mockResolvedValue(undefined)
+      useChatStore.setState({ updateMessageImages } as any)
+      vi.mocked(window.api.imageGen.generate).mockResolvedValueOnce({
+        success: true,
+        images: ['data:image/png;base64,NEW'],
+      })
+      const msg = createMessage({
+        role: 'system',
+        content: 'cinematic portrait, warm rim light',
+        images: ['data:image/png;base64,AAAA', 'data:image/png;base64,BBBB'],
+      })
+      const { getAllByRole, getByRole } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+
+      fireEvent.contextMenu(getAllByRole('img')[0], { clientX: 120, clientY: 80 })
+      fireEvent.click(getByRole('menuitem', { name: '重新生成图片' }))
+
+      expect(window.api.imageGen.generate).toHaveBeenCalledWith('cinematic portrait, warm rim light')
+      await waitFor(() => {
+        expect(updateMessageImages).toHaveBeenCalledWith('msg-1', [
+          'data:image/png;base64,NEW',
+          'data:image/png;base64,BBBB',
+        ])
+      })
+    })
+
+    it('右键删除多图消息中的单张图片并保留消息', async () => {
+      const updateMessageImages = vi.fn().mockResolvedValue(undefined)
+      const deleteMessage = vi.fn().mockResolvedValue(undefined)
+      useChatStore.setState({ updateMessageImages, deleteMessage } as any)
+      const msg = createMessage({
+        role: 'system',
+        content: 'a cat',
+        images: ['data:image/png;base64,AAAA', 'data:image/png;base64,BBBB'],
+      })
+      const { getAllByRole, getByRole } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+
+      fireEvent.contextMenu(getAllByRole('img')[0], { clientX: 120, clientY: 80 })
+      fireEvent.click(getByRole('menuitem', { name: '删除图片' }))
+
+      await waitFor(() => {
+        expect(updateMessageImages).toHaveBeenCalledWith('msg-1', ['data:image/png;base64,BBBB'])
+      })
+      expect(deleteMessage).not.toHaveBeenCalled()
+    })
+
+    it('右键删除最后一张生成图片时删除整条消息', async () => {
+      const deleteMessage = vi.fn().mockResolvedValue(undefined)
+      useChatStore.setState({ deleteMessage } as any)
+      const character = createCharacter()
+      const msg = createMessage({
+        role: 'system',
+        content: 'a cat',
+        images: ['data:image/png;base64,AAAA'],
+      })
+      const { getByRole } = render(
+        <MessageBubble message={msg} character={character} isLast={false} />
+      )
+
+      fireEvent.contextMenu(getByRole('img', { name: '生成图片 1' }), { clientX: 120, clientY: 80 })
+      fireEvent.click(getByRole('menuitem', { name: '删除图片' }))
+
+      await waitFor(() => {
+        expect(deleteMessage).toHaveBeenCalledWith('msg-1', character)
+      })
+    })
   })
 
   describe('操作栏', () => {
@@ -364,6 +452,69 @@ describe('MessageBubble', () => {
       )
       expect(getByText('你好世界')).toBeTruthy()
       expect(queryByText('Hello world')).toBeNull()
+    })
+  })
+
+  describe('下一步方向卡片', () => {
+    const directions = [
+      { id: 'safe', label: '追问封锁原因', content: '先不与守卫冲突，试着追问港口突然封锁的原因。', tendency: 'safe' as const },
+      { id: 'explore', label: '寻找其他入口', content: '暂时离开正门，沿港口外围查看是否存在无人值守的通道。', tendency: 'explore' as const },
+      { id: 'risky', label: '冒险直接闯关', content: '趁守卫注意力被分散时尝试突破封锁，承担立即暴露的风险。', tendency: 'risky' as const },
+    ]
+
+    it('会话开启且消息带方向时渲染卡片，点选回填输入框草稿', async () => {
+      const { registerDraftBridge } = await import('../draftBridge')
+      let draft = ''
+      const setDraft = vi.fn((value: string) => { draft = value })
+      registerDraftBridge('single', { getText: () => draft, setDraft })
+
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', dialogueDirectionsEnabled: true } as never],
+        currentSessionId: 's1',
+      })
+      const { getByRole } = render(
+        <MessageBubble
+          message={createMessage({ dialogueDirections: directions })}
+          character={createCharacter()}
+          isLast
+        />,
+      )
+
+      fireEvent.click(getByRole('button', { name: /追问封锁原因/ }))
+      expect(setDraft).toHaveBeenCalledWith(directions[0].content)
+      expect(draft).toBe(directions[0].content)
+      registerDraftBridge('single', null)
+    })
+
+    it('会话未开启方向时不渲染卡片', () => {
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', dialogueDirectionsEnabled: false } as never],
+        currentSessionId: 's1',
+      })
+      const { queryByText } = render(
+        <MessageBubble
+          message={createMessage({ dialogueDirections: directions })}
+          character={createCharacter()}
+          isLast
+        />,
+      )
+      expect(queryByText('选择下一步方向')).toBeNull()
+    })
+
+    it('流式生成中不渲染卡片', () => {
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', dialogueDirectionsEnabled: true } as never],
+        currentSessionId: 's1',
+        isStreaming: true,
+      })
+      const { queryByText } = render(
+        <MessageBubble
+          message={createMessage({ dialogueDirections: directions })}
+          character={createCharacter()}
+          isLast
+        />,
+      )
+      expect(queryByText('选择下一步方向')).toBeNull()
     })
   })
 })

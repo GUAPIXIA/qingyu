@@ -15,7 +15,7 @@
 
 import type { ChatParams, Character, LorebookTimedEffectsState, NarrativeMode, Settings } from '../../shared/types'
 import type { ContextBuildData, SemanticLoreHit } from '../../shared/contextTypes'
-import { buildGameMasterPrompt, buildNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
+import { buildNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
@@ -122,8 +122,6 @@ export function buildContextMessagesFromData(
     charNameForVars,
     settings.omniscientNarrativeRules,
   )
-  const gameMasterPrompt = buildGameMasterPrompt(narrativeMode, currentSession?.gameMasterMode)
-  if (gameMasterPrompt) systemContent += '\n\n' + gameMasterPrompt
 
   // 用户人设注入（可配置：开关 / 位置 / 字段，对齐 ST 的 persona placement）
   const personaInjection = settings.personaInjection
@@ -146,8 +144,8 @@ export function buildContextMessagesFromData(
   const enableThoughtFormat = preset?.enableThoughtFormat ?? (settings.enableThoughtFormat !== false)
   if (enableThoughtFormat) {
     systemContent += narrativeMode === 'omniscient'
-      ? '\n\n【输出格式要求】\n如需呈现心理活动，请只选择当前焦点人物，并以第三人称概述放在 <thought>...</thought> 标签内；不得写成角色第一人称内心独白。不要为了展示全知视角而一次泄露所有人物的隐私想法。标签外继续以第三人称旁白输出实际叙事。'
-      : '\n\n【输出格式要求】\n请先在 <thought>...</thought> 标签内输出角色的内心想法和心理活动，然后再输出角色的实际对话和行动。两部分必须分开。'
+      ? '\n\n【输出格式要求】\n如需呈现当前焦点人物的内心活动，请用第三人称概述放在一组 <thought>...</thought> 标签内，保持简短且不超过 3 句；不得写成角色第一人称内心独白，也不得包含写作计划、规则分析、上下文复述或正文草稿。不要为了展示全知视角而一次泄露所有人物的隐私想法。完整的实际叙事必须放在标签外。'
+      : '\n\n【输出格式要求】\n如需呈现角色内心活动，请放在一组 <thought>...</thought> 标签内，保持简短且不超过 3 句；不得包含写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外；没有必要时可省略 <thought>。'
   }
 
   // ===== Token 预算框架 =====

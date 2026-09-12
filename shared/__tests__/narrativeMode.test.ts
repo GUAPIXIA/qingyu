@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildNarrativeModePrompt,
-  buildGameMasterPrompt,
   buildGroupNarrativeModePrompt,
   getNarrativeMemoryGuidance,
   isNarrativeMode,
@@ -71,13 +70,11 @@ describe('narrativeMode', () => {
     expect(getNarrativeMemoryGuidance('omniscient')).toContain('全局因果链')
   })
 
-  it('游戏主持格式只在全局叙事且显式开启时注入', () => {
-    expect(buildGameMasterPrompt('immersive', true)).toBe('')
-    expect(buildGameMasterPrompt('omniscient', false)).toBe('')
-    const prompt = buildGameMasterPrompt('omniscient', true)
-    expect(prompt).toContain('【呈现方式：游戏主持】')
-    expect(prompt).toContain('【判定】目标｜依据｜结果')
-    expect(prompt).toContain('【可选行动】')
-    expect(prompt).toContain('不虚构掷骰点数')
+  it('主回复不再注入游戏主持判定与行动选项格式', () => {
+    const omniscient = buildNarrativeModePrompt('omniscient', '林舟', '艾莉丝')
+    expect(omniscient).not.toContain('【可选行动】')
+    expect(omniscient).not.toContain('【判定】')
+    const immersive = buildNarrativeModePrompt('immersive', '林舟', '艾莉丝')
+    expect(immersive).not.toContain('游戏主持')
   })
 })

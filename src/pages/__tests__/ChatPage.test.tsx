@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { ChatPage } from '../ChatPage'
+import { ChatPage, ImageGenerationPlaceholder } from '../ChatPage'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
@@ -148,6 +148,17 @@ describe('ChatPage 冒烟测试', () => {
     } as any)
     renderPage()
     expect(await screen.findByRole('status', { name: 'ComfyUI 正在生成图片' })).toBeTruthy()
+  })
+
+  it('生图加载圈显示在卡片右侧，而不是叠在左侧图片图标上', async () => {
+    render(<ImageGenerationPlaceholder stage="prompting" />)
+
+    const status = await screen.findByRole('status', { name: '正在分析场景并生成提示词' })
+    const icon = screen.getByTestId('image-generation-icon')
+    const loader = screen.getByTestId('image-generation-loader')
+    expect(status.lastElementChild).toBe(loader)
+    expect(icon.contains(loader)).toBe(false)
+    expect(loader).toHaveClass('ml-auto', 'shrink-0')
   })
 
   it('消息滚动列跟随消息宽度设置，不受固定 780px 上限限制', async () => {

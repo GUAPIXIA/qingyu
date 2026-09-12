@@ -135,8 +135,9 @@ describe('ImageGenModelsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ComfyUI' }))
 
     expect(screen.getByDisplayValue('http://127.0.0.1:8188')).toBeTruthy()
-    // 模型名仅用于内置工作流回退，标签已相应限定。
-    expect(screen.getByText('Checkpoint 文件名（内置工作流）')).toBeTruthy()
+    // ComfyUI 的模型由工作流内 Loader 节点决定，不再显示 Checkpoint 输入框。
+    expect(screen.queryByText('Checkpoint 文件名（内置工作流）')).toBeNull()
+    expect(screen.queryByText('模型名称')).toBeNull()
     expect(screen.getByText('ComfyUI Desktop 工作流')).toBeTruthy()
     fireEvent.click(screen.getByText('高级：查看或粘贴 API 工作流 JSON'))
     expect(screen.getByPlaceholderText(/粘贴 ComfyUI 导出的 API 格式工作流/)).toBeTruthy()

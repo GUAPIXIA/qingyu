@@ -2,17 +2,39 @@ import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import type { ComfyImageGenConfig } from '../../../shared/types'
 import { generateImage, testImageGenConnection } from '../imageGen'
 
-/** 内置基础工作流配置：workflow 为空串时走内置工作流，需要 model 作为 Checkpoint。 */
+/**
+ * 基础文生图工作流（节点编号沿用原内置模板，便于断言）。
+ *
+ * 内置工作流回退已移除，ComfyUI 配置必须携带工作流快照。
+ */
+function baseWorkflow(): Record<string, { class_type: string; inputs: Record<string, unknown> }> {
+  return {
+    '3': {
+      class_type: 'KSampler',
+      inputs: {
+        seed: 1, steps: 20, cfg: 7, sampler_name: 'euler', scheduler: 'normal', denoise: 1,
+        model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0],
+      },
+    },
+    '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+    '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512, batch_size: 1 } },
+    '6': { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['4', 1] } },
+    '7': { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['4', 1] } },
+    '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },
+    '9': { class_type: 'SaveImage', inputs: { filename_prefix: 'Qingyu', images: ['8', 0] } },
+  }
+}
+
+/** 基础 ComfyUI 配置：工作流为唯一事实来源。 */
 const config: ComfyImageGenConfig = {
   id: 'comfy-1',
   name: '本地 ComfyUI',
   provider: 'comfyui',
-  model: 'model.safetensors',
   apiKey: '',
   baseUrl: 'http://127.0.0.1:8188/',
   enabled: true,
   order: 0,
-  workflow: '',
+  workflow: JSON.stringify(baseWorkflow()),
 }
 
 /** 提交给 /prompt 的请求体中的节点对象。 */
@@ -71,7 +93,8 @@ describe('ComfyUI image generation adapter', () => {
     const queued = submittedWorkflow(fetchMock)
     expect(queued['6'].inputs.text).toBe('a quiet tavern')
     expect(queued['7'].inputs.text).toBe('low quality')
-    expect(queued['5'].inputs).toMatchObject({ width: 512, height: 768 })
+    // 工作流是唯一事实来源：options.size 不再改写 Latent 节点，尺寸由 overrides 控制。
+    expect(queued['5'].inputs).toMatchObject({ width: 512, height: 512 })
     expect(fetchMock.mock.calls[1][0]).toBe('http://127.0.0.1:8188/history/prompt-1')
     expect(String(fetchMock.mock.calls[2][0])).toContain('/view?')
   })
@@ -188,6 +211,26 @@ describe('ComfyUI 工作流即事实来源', () => {
     })
   })
 
+  it('负面条件由 ConditioningZeroOut 派生时不得清空正面提示词', async () => {
+    const workflow = zImageWorkflow()
+    delete workflow['5']
+    workflow['10'] = {
+      class_type: 'ConditioningZeroOut',
+      inputs: { conditioning: ['4', 0] },
+    }
+    workflow['7'].inputs.negative = ['10', 0]
+    const fetchMock = mockSuccessfulRun('prompt-zero-out', '9')
+
+    await generateImage(
+      zImageConfig({ workflow: JSON.stringify(workflow) }),
+      'full-body portrait, silver hair, black dress',
+      {},
+    )
+    const queued = submittedWorkflow(fetchMock)
+
+    expect(queued['4'].inputs.text).toBe('full-body portrait, silver hair, black dress')
+  })
+
   it('单参数覆盖只改变目标节点，其余节点与快照一致', async () => {
     const fetchMock = mockSuccessfulRun('prompt-b', '9')
     const baseline = stripSeeds(zImageWorkflow())
@@ -293,27 +336,48 @@ describe('ComfyUI 工作流即事实来源', () => {
     expect(queued['5'].inputs.text).toBe('bound negative')
   })
 
-  it('内置工作流仍使用默认参数且不依赖已移除的扁平字段', async () => {
-    const fetchMock = mockSuccessfulRun('prompt-h', '9')
-
-    await generateImage(config, 'p', { size: '640x960', negativePrompt: 'n' })
-    const queued = submittedWorkflow(fetchMock)
-
-    expect(queued['4'].inputs.ckpt_name).toBe('model.safetensors')
-    expect(queued['3'].inputs).toMatchObject({
-      steps: 20, cfg: 7, sampler_name: 'euler', scheduler: 'normal',
-    })
-    expect(queued['5'].inputs).toMatchObject({ width: 640, height: 960 })
-  })
-
-  it('内置工作流缺少模型文件名时拒绝提交', async () => {
+  it('未配置工作流时拒绝提交，并给出可读错误', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
 
-    const result = await generateImage({ ...config, model: '' }, 'p', {})
+    const result = await generateImage({ ...config, workflow: '' }, 'p', {})
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('模型文件名')
+    expect(result.error).toContain('未配置工作流')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('输出节点绑定：只收集选定节点的图片', async () => {
+    // 两个输出节点，用户仅选定 '9'
+    const twoOutputs = {
+      ...baseWorkflow(),
+      '10': { class_type: 'SaveImage', inputs: { filename_prefix: 'Extra', images: ['8', 0] } },
+    }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ prompt_id: 'p-sel', number: 1 }), { status: 200 }),
+    ).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        'p-sel': {
+          status: { completed: true, status_str: 'success' },
+          outputs: {
+            '9': { images: [{ filename: 'picked.png', subfolder: '', type: 'output' }] },
+            '10': { images: [{ filename: 'ignored.png', subfolder: '', type: 'output' }] },
+          },
+        },
+      }), { status: 200 }),
+    ).mockResolvedValueOnce(
+      new Response(Uint8Array.from([7]), { status: 200, headers: { 'Content-Type': 'image/png' } }),
+    )
+
+    const result = await generateImage(
+      { ...config, workflow: JSON.stringify(twoOutputs), bindings: { positivePromptNodeIds: ['6'], outputNodeIds: ['9'] } },
+      'p',
+    )
+
+    expect(result.success).toBe(true)
+    // 只下载了选定节点的图片
+    const viewUrl = String(fetchMock.mock.calls[2][0])
+    expect(viewUrl).toContain('picked.png')
+    expect(viewUrl).not.toContain('ignored.png')
   })
 
   it('工作流 JSON 无效时给出可读错误且不发起请求', async () => {

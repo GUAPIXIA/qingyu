@@ -141,6 +141,8 @@ export interface CharacterAPI {
   bindLorebook(characterId: string, lorebookId: string | null): Promise<void>
   exportPng(id: string): Promise<void>
   exportJson(id: string): Promise<void>
+  /** 将角色封面导出为独立图片文件；无封面时返回 ok:false */
+  exportCover(id: string): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
   reloadAvatar(characterId: string, url: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }>
   onImportProgress(callback: (data: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' }) => void): () => void
 }

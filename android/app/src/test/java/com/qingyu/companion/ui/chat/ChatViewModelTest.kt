@@ -4,6 +4,7 @@ import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.Message
+import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.MessagePage
 import com.qingyu.companion.model.QuickReply
 import com.qingyu.companion.model.QuickReplyAction
@@ -564,6 +565,9 @@ private class FakeChatRepository : ChatRepository {
 
     override suspend fun translate(sessionId: String, messageId: String): TranslateResponse =
         onTranslate?.invoke(sessionId, messageId) ?: TranslateResponse(messageId, "")
+
+        override suspend fun regenerateDirections(sessionId: String, messageId: String): List<DialogueDirection> =
+        emptyList()
 
     override suspend fun swipe(sessionId: String, messageId: String, direction: Int): Message =
         onSwipe?.invoke(sessionId, messageId, direction) ?: throw UnsupportedOperationException()

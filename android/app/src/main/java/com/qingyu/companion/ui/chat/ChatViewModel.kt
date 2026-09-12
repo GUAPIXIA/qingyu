@@ -87,6 +87,8 @@ class ChatViewModel(
         val characterAvatarUrl: String? = null,
         /** 角色封面（对话背景用；无封面时回退头像） */
         val characterCoverUrl: String? = null,
+        /** 会话是否开启“下一步方向”；旧响应缺省 false。 */
+        val dialogueDirectionsEnabled: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -168,7 +170,7 @@ class ChatViewModel(
                     resolvedCharacterId = session.characterId.takeIf { it.isNotBlank() }
                     val character = repository.listCharacters()
                         .firstOrNull { it.id == session.characterId }
-                    session.title to character
+                    Triple(session.title, character, session.dialogueDirectionsEnabled)
                 } else {
                     null
                 }
@@ -180,6 +182,7 @@ class ChatViewModel(
                             characterName = pair.second?.name ?: "",
                             characterAvatarUrl = pair.second?.avatarUrl,
                             characterCoverUrl = pair.second?.coverUrl ?: pair.second?.avatarUrl,
+                            dialogueDirectionsEnabled = pair.third,
                         )
                     }
                 }
@@ -543,6 +546,34 @@ class ChatViewModel(
                 it.copy(streaming = nextStreaming)
             }
             if (streamingAccumulated.isEmpty()) generationTracker?.onStopped(sessionId)
+        }
+    }
+
+    /** 方向生成失败的可见反馈（按消息 ID；仅本地）。 */
+    private val DIRECTIONS_FAILED = "方向生成失败，请稍后重试"
+
+    private val _directionsError = MutableStateFlow<Map<String, String>>(emptyMap())
+    val directionsError: StateFlow<Map<String, String>> = _directionsError.asStateFlow()
+
+    /** “换一批”：重新生成指定消息的方向；失败时在该消息下给出提示。 */
+    fun regenerateDirections(messageId: String) {
+        viewModelScope.launch {
+            _directionsError.update { it - messageId }
+            runCatching { repository.regenerateDirections(sessionId, messageId) }
+                .onSuccess { directions ->
+                    if (directions.isEmpty()) {
+                        _directionsError.update { it + (messageId to DIRECTIONS_FAILED) }
+                    } else {
+                        _ui.update { st ->
+                            st.copy(
+                                messages = st.messages.map { message ->
+                                    if (message.id == messageId) message.copy(dialogueDirections = directions) else message
+                                },
+                            )
+                        }
+                    }
+                }
+                .onFailure { _directionsError.update { it + (messageId to DIRECTIONS_FAILED) } }
         }
     }
 

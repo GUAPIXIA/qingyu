@@ -27,6 +27,7 @@ import { downloadFile } from '../utils/download'
 import type { LorebookDiagnostics } from '../utils/lorebook'
 import type { GroupChat, GroupMessage, Lorebook, NarrativeMode, Preset } from '../../shared/types'
 import { getNarrativeModeLabel, resolveNarrativeMode } from '../../shared/narrativeMode'
+import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
 import {
   Plus,
   Trash2,
@@ -72,10 +73,12 @@ export function GroupChatPage() {
   const summarizingMemoryKey = useGroupChatStore((s) => s.summarizingMemoryKey)
   const memorySummaryError = useGroupChatStore((s) => s.memorySummaryError)
   const updateNarrativeSession = useGroupChatStore((s) => s.updateNarrativeSession)
+  const setDialogueDirections = useGroupChatStore((s) => s.setDialogueDirections)
   const liveLorebookDiagnostics = useGroupChatStore((s) => s.lastLorebookDiagnostics)
   const liveDiagnosticsSessionId = useGroupChatStore((s) => s.lastLorebookDiagnosticsSessionId)
   const loadPersonas = usePersonaStore((s) => s.loadPersonas)
   const messageWidth = useSettingsStore((s) => s.settings.messageWidth ?? 768)
+  const settings = useSettingsStore((s) => s.settings)
 
   // P-6 修复：引用回复查找 O(n)→O(1)——构建 id→message 索引，仅在 messages 变化时重建
   const messageMap = useMemo(() => {
@@ -117,6 +120,29 @@ export function GroupChatPage() {
   const [memberSearch, setMemberSearch] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const currentSession = sessions.find((session) => session.id === currentSessionId)
+  const dialogueDirectionsEnabled = resolveDialogueDirectionsEnabled(currentSession)
+  /** 方向生成失败的可见反馈，按消息 ID 记录（仅本地，不持久化）。 */
+  const [directionsError, setDirectionsError] = useState<Record<string, string | null>>({})
+
+  /** “换一批”：为指定消息重新生成方向，失败时在该消息下给出提示。 */
+  const handleRegenerateDirections = async (message: GroupMessage) => {
+    const character = characters.find((item) => item.id === message.characterId)
+    if (!character) return
+    setDirectionsError((prev) => ({ ...prev, [message.id]: null }))
+    const { generateGroupDialogueDirections } = await import('../store/dialogueDirectionRunner')
+    const result = await generateGroupDialogueDirections(
+      useGroupChatStore.setState,
+      useGroupChatStore.getState,
+      {
+        messageId: message.id,
+        character,
+        userName: settings.userName || '用户',
+      },
+    )
+    if (result.length === 0) {
+      setDirectionsError((prev) => ({ ...prev, [message.id]: '方向生成失败，请稍后重试' }))
+    }
+  }
   const narrativeMode = resolveNarrativeMode(currentSession?.narrativeMode)
   const totalChars = useMemo(
     () => messages.reduce((sum, message) => sum + (message.charUsage?.totalChars ?? 0), 0),
@@ -479,7 +505,6 @@ export function GroupChatPage() {
                     }}
                     session={currentSession}
                     onSaveWorldState={(value) => updateNarrativeSession({ memoryCurrentState: value })}
-                    onSetGameMasterMode={(enabled) => updateNarrativeSession({ gameMasterMode: enabled })}
                     isStreaming={isStreaming}
                   />
                 )}
@@ -655,6 +680,14 @@ export function GroupChatPage() {
                           onTranslate={
                             !isStreaming ? () => translateMessage(m.id) : undefined
                           }
+                          isLast={index === messages.length - 1}
+                          dialogueDirectionsEnabled={dialogueDirectionsEnabled}
+                          directionsError={directionsError[m.id] ?? null}
+                          onRegenerateDirections={
+                            isAiMsg && !isStreaming
+                              ? () => handleRegenerateDirections(m)
+                              : undefined
+                          }
                         />
                       )
                     }}
@@ -707,6 +740,8 @@ export function GroupChatPage() {
           onShowBgPanel={() => { void openSettings() }}
           onExport={handleExport}
           onClearConfirm={() => setShowClearConfirm(true)}
+          dialogueDirectionsEnabled={dialogueDirectionsEnabled}
+          onSetDialogueDirections={(enabled) => setDialogueDirections(enabled)}
         />
       )}
 

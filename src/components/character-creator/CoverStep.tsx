@@ -25,7 +25,8 @@ export function CoverStep() {
   const activeImageGenId = useSettingsStore((s) => s.settings.activeImageGenModelId)
   const imageGenModels = useSettingsStore((s) => s.settings.imageGenModels)
   const activeImageGen = useMemo(
-    () => imageGenModels.find((m) => m.id === activeImageGenId) ?? null,
+    // 与 getActiveImageGen 同语义：未启用的配置不算可用生图模型。
+    () => imageGenModels.find((m) => m.id === activeImageGenId && m.enabled) ?? null,
     [activeImageGenId, imageGenModels],
   )
   const fileRef = useRef<HTMLInputElement>(null)
@@ -264,7 +265,8 @@ export function CoverStep() {
                     <select
                       value={store.coverSize}
                       onChange={(e) => store.setCoverSize(e.target.value)}
-                      className="input"
+                      disabled={activeImageGen?.provider === 'openai'}
+                      className="input disabled:opacity-60"
                     >
                       {COVER_SIZES.map((s) => (
                         <option key={s} value={s}>
@@ -272,6 +274,11 @@ export function CoverStep() {
                         </option>
                       ))}
                     </select>
+                    {activeImageGen?.provider === 'openai' && (
+                      <p className="text-[11px] text-tavern-text-muted mt-1">
+                        DALL-E 仅支持固定尺寸，将生成 1024×1024 后自动裁为 3:4 封面
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="label mb-1.5">负面提示词（SD WebUI 专用）</label>

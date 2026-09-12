@@ -84,6 +84,16 @@ import { resolveMessageGenerationKind, resolveMessageSpeakerKind } from '../../s
 import { DefaultMobileFacade, type MobileFacade } from './runtime/mobileFacade'
 import { GenerationRegistry } from './runtime/generationRegistry'
 import { buildGroupContextForBridge } from './groupContext'
+import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+
+/** 会话 DTO 的方向开关字段：新字段 + 兼容期镜像旧字段，旧客户端也能正确显示与切换。 */
+function dialogueDirectionFields(session?: Parameters<typeof resolveDialogueDirectionsEnabled>[0]): {
+  dialogueDirectionsEnabled: boolean
+  gameMasterMode: boolean
+} {
+  const enabled = resolveDialogueDirectionsEnabled(session)
+  return { dialogueDirectionsEnabled: enabled, gameMasterMode: enabled }
+}
 
 const log = createLogger('bridge-routes')
 
@@ -257,7 +267,6 @@ export function buildBridgeRouter(
       autoScroll: s.autoScroll,
       showTokenCount: s.showTokenCount,
       htmlRendering: s.htmlRendering,
-      imageGenAutoEnabled: s.imageGenAutoEnabled ?? false,
       exampleDialogMode: s.exampleDialogMode ?? 'always',
       lorebookRatio: s.lorebookRatio ?? 0.3,
       autoTitle: s.autoTitle ?? true,
@@ -284,7 +293,7 @@ export function buildBridgeRouter(
   const SETTINGS_WRITE_FIELDS = new Set([
     'userName', 'userDescription', 'userPersona',
     'translationTargetLang', 'streamOutput', 'autoScroll', 'showTokenCount',
-    'htmlRendering', 'imageGenAutoEnabled', 'exampleDialogMode',
+    'htmlRendering', 'exampleDialogMode',
     'lorebookRatio', 'autoTitle', 'themeColor', 'fontSize', 'bubbleStyle',
     'messageSpacing', 'messageWidth', 'activeModel', 'activePresetId',
     'defaultNarrativeMode', 'omniscientNarrativeRules',
@@ -617,7 +626,7 @@ export function buildBridgeRouter(
         updatedAt: session.updatedAt,
         personaId: session.personaId ?? null,
         narrativeMode: resolveNarrativeMode(session.narrativeMode),
-        gameMasterMode: session.gameMasterMode ?? false,
+        dialogueDirectionsEnabled: resolveDialogueDirectionsEnabled(session),
         memoryCurrentState: session.memoryCurrentState ?? '',
         messageCount: firstMessageContent ? 1 : 0,
         lastMessage: firstMessageContent.slice(0, 50),
@@ -665,7 +674,7 @@ export function buildBridgeRouter(
       )
       await chatData.updateSession(session.characterId, branch.id, {
         narrativeMode: resolveNarrativeMode(session.narrativeMode),
-        gameMasterMode: session.gameMasterMode ?? false,
+        dialogueDirectionsEnabled: resolveDialogueDirectionsEnabled(session),
         memoryCurrentState: session.memoryCurrentState ?? '',
       })
       const copied = sourceMessages.slice(0, branchIndex + 1)
@@ -687,7 +696,7 @@ export function buildBridgeRouter(
         createdAt: branch.createdAt,
         updatedAt: branch.updatedAt,
         narrativeMode: resolveNarrativeMode(session.narrativeMode),
-        gameMasterMode: session.gameMasterMode ?? false,
+        dialogueDirectionsEnabled: resolveDialogueDirectionsEnabled(session),
         memoryCurrentState: session.memoryCurrentState ?? '',
         messageCount: copied.length,
         lastMessage: copied.at(-1)?.content.slice(0, 50) ?? '',
@@ -727,19 +736,22 @@ export function buildBridgeRouter(
   router.patch('/sessions/:sessionId', async (req, res) => {
     try {
       const sessionId = safeId(req.params.sessionId)
-      const { title, narrativeMode, gameMasterMode, memoryCurrentState } = (req.body ?? {}) as {
+      const { title, narrativeMode, dialogueDirectionsEnabled, gameMasterMode, memoryCurrentState } = (req.body ?? {}) as {
         title?: string
         narrativeMode?: NarrativeMode
+        dialogueDirectionsEnabled?: boolean
+        /** 兼容期：旧客户端仍发送 gameMasterMode，映射到新字段。 */
         gameMasterMode?: boolean
         memoryCurrentState?: string
       }
-      if (title === undefined && narrativeMode === undefined && gameMasterMode === undefined && memoryCurrentState === undefined) {
+      const directionsEnabled = dialogueDirectionsEnabled ?? gameMasterMode
+      if (title === undefined && narrativeMode === undefined && directionsEnabled === undefined && memoryCurrentState === undefined) {
         res.status(400).json({ error: '缺少可更新字段' })
         return
       }
       if (title !== undefined && !title.trim()) { res.status(400).json({ error: '缺少标题' }); return }
       if (narrativeMode !== undefined && !isNarrativeMode(narrativeMode)) { res.status(400).json({ error: 'narrativeMode 无效' }); return }
-      if (gameMasterMode !== undefined && typeof gameMasterMode !== 'boolean') { res.status(400).json({ error: 'gameMasterMode 无效' }); return }
+      if (directionsEnabled !== undefined && typeof directionsEnabled !== 'boolean') { res.status(400).json({ error: 'dialogueDirectionsEnabled 无效' }); return }
       if (memoryCurrentState !== undefined && typeof memoryCurrentState !== 'string') { res.status(400).json({ error: 'memoryCurrentState 无效' }); return }
       const session = await findSessionById(sessionId)
       if (!session) {
@@ -747,10 +759,10 @@ export function buildBridgeRouter(
         return
       }
       if (title !== undefined) await chatData.renameSession(session.characterId, sessionId, title.trim())
-      if (narrativeMode !== undefined || gameMasterMode !== undefined || memoryCurrentState !== undefined) {
+      if (narrativeMode !== undefined || directionsEnabled !== undefined || memoryCurrentState !== undefined) {
         await chatData.updateSession(session.characterId, sessionId, {
           ...(narrativeMode !== undefined ? { narrativeMode } : {}),
-          ...(gameMasterMode !== undefined ? { gameMasterMode } : {}),
+          ...(directionsEnabled !== undefined ? { dialogueDirectionsEnabled: directionsEnabled } : {}),
           ...(memoryCurrentState !== undefined ? { memoryCurrentState: memoryCurrentState.slice(0, 6000) } : {}),
         })
       }
@@ -1163,6 +1175,19 @@ export function buildBridgeRouter(
     }
   })
 
+  /** 重新生成指定消息的“下一步方向”（安卓端“换一批”） */
+  router.post('/sessions/:sessionId/messages/:messageId/directions', async (req, res) => {
+    try {
+      const sessionId = safeId(req.params.sessionId)
+      const messageId = safeId(req.params.messageId)
+      const session = await resolveSession(req, sessionId)
+      if (!session) { res.status(404).json({ error: '会话不存在' }); return }
+      res.json(await facade.regenerateDirections({ sessionId, messageId }))
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message })
+    }
+  })
+
   router.post('/sessions/:sessionId/translate', async (req, res) => {
     try {
       const sessionId = safeId(req.params.sessionId)
@@ -1447,8 +1472,7 @@ export function buildBridgeRouter(
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
         narrativeMode: resolveNarrativeMode(s.narrativeMode),
-        gameMasterMode: s.gameMasterMode ?? false,
-        memoryCurrentState: s.memoryCurrentState ?? '',
+        ...dialogueDirectionFields(s),
         personaId: s.personaId ?? null,
       })))
     } catch (e) {
@@ -1476,6 +1500,7 @@ export function buildBridgeRouter(
         narrativeMode: m.narrativeMode ?? null,
         speakerKind: resolveMessageSpeakerKind(m),
         generationKind: resolveMessageGenerationKind(m.generationKind, m),
+        dialogueDirections: m.dialogueDirections ?? null,
       })))
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
@@ -1544,8 +1569,7 @@ export function buildBridgeRouter(
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
         narrativeMode: resolveNarrativeMode(session.narrativeMode),
-        gameMasterMode: session.gameMasterMode ?? false,
-        memoryCurrentState: session.memoryCurrentState ?? '',
+        ...dialogueDirectionFields(session),
         personaId: session.personaId ?? null,
       })
     } catch (e) {
@@ -1558,20 +1582,28 @@ export function buildBridgeRouter(
     try {
       const groupId = safeId(req.params.groupId)
       const sessionId = safeId(req.params.sessionId)
-      const { title, narrativeMode, gameMasterMode, memoryCurrentState } = (req.body ?? {}) as { title?: string; narrativeMode?: NarrativeMode; gameMasterMode?: boolean; memoryCurrentState?: string }
-      if (title === undefined && narrativeMode === undefined && gameMasterMode === undefined && memoryCurrentState === undefined) {
+      const { title, narrativeMode, dialogueDirectionsEnabled, gameMasterMode, memoryCurrentState } = (req.body ?? {}) as {
+        title?: string
+        narrativeMode?: NarrativeMode
+        dialogueDirectionsEnabled?: boolean
+        /** 兼容期：旧客户端仍发送 gameMasterMode，映射到新字段。 */
+        gameMasterMode?: boolean
+        memoryCurrentState?: string
+      }
+      const directionsEnabled = dialogueDirectionsEnabled ?? gameMasterMode
+      if (title === undefined && narrativeMode === undefined && directionsEnabled === undefined && memoryCurrentState === undefined) {
         res.status(400).json({ error: '缺少可更新字段' }); return
       }
       if (title !== undefined && !title.trim()) { res.status(400).json({ error: '缺少标题' }); return }
       if (narrativeMode !== undefined && !isNarrativeMode(narrativeMode)) {
         res.status(400).json({ error: 'narrativeMode 无效' }); return
       }
-      if (gameMasterMode !== undefined && typeof gameMasterMode !== 'boolean') { res.status(400).json({ error: 'gameMasterMode 无效' }); return }
+      if (directionsEnabled !== undefined && typeof directionsEnabled !== 'boolean') { res.status(400).json({ error: 'dialogueDirectionsEnabled 无效' }); return }
       if (memoryCurrentState !== undefined && typeof memoryCurrentState !== 'string') { res.status(400).json({ error: 'memoryCurrentState 无效' }); return }
       await groupData.updateSession(groupId, sessionId, {
         ...(title !== undefined ? { title: title.trim() } : {}),
         ...(narrativeMode !== undefined ? { narrativeMode } : {}),
-        ...(gameMasterMode !== undefined ? { gameMasterMode } : {}),
+        ...(directionsEnabled !== undefined ? { dialogueDirectionsEnabled: directionsEnabled } : {}),
         ...(memoryCurrentState !== undefined ? { memoryCurrentState: memoryCurrentState.slice(0, 6000) } : {}),
       })
       notifySessionChanged(sessionId, title !== undefined ? 'title' : 'narrative')
@@ -1661,7 +1693,6 @@ export function buildBridgeRouter(
         speaker,
         userName,
         narrativeMode,
-        gameMasterMode: groupSession.gameMasterMode,
         omniscientNarrativeRules: settings.omniscientNarrativeRules,
       })
 

@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { getDefaultSettings } from '../../../../shared/defaults'
 import type { Character } from '../../../../shared/types'
 import { useSettingsStore } from '../../../store/useSettingsStore'
+import { useCharacterStore } from '../../../store/useCharacterStore'
 import { CharacterCard } from '../CharacterCard'
 
 const character: Character = {
@@ -36,5 +37,25 @@ describe('CharacterCard', () => {
     expect(chatButton.textContent).toBe('')
     fireEvent.click(chatButton)
     expect(onChat).toHaveBeenCalledWith(character)
+  })
+
+  it('更多菜单可导出封面图片，调用 exportCover', () => {
+    const exportCover = vi.fn()
+    useCharacterStore.setState({ exportCover })
+
+    render(
+      <CharacterCard
+        character={character}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onChat={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /导出/ }))
+    fireEvent.click(screen.getByRole('button', { name: '封面图片' }))
+
+    expect(exportCover).toHaveBeenCalledWith(character.id)
   })
 })

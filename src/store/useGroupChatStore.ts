@@ -22,8 +22,15 @@ import {
 } from './groupStreamController'
 import { buildGroupChatContext, type GroupContextBuildResult } from './groupChatContext'
 import { runGroupMemorySummary } from './groupMemoryManager'
-import type { GroupChatState } from './groupChatTypes'
+import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
+import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import {
+  generateGroupDialogueDirections,
+  cancelDialogueDirectionRequests,
+  refreshGroupDialogueDirections,
+  clearGroupDialogueDirections,
+} from './dialogueDirectionRunner'
 
 /** 群聊身份以会话为作用域；旧会话没有字段时才回退全局默认身份。 */
 function syncGroupPersonaToSettings(session?: GroupSession): void {
@@ -51,6 +58,33 @@ function syncGroupPersonaToSettings(session?: GroupSession): void {
     userName: '用户',
     userDescription: '',
     userPersona: '',
+  })
+}
+
+/**
+ * 群聊已轮到用户时，若会话开启“下一步方向”，为最后一条有效角色回复异步补齐方向。
+ * 中间轮次（自动接力仍在继续）不生成，避免每个中间回复都产生无效选项（方案 §4.4）。
+ */
+function maybeGenerateGroupDirections(set: GroupStoreSet, get: GroupStoreGet): void {
+  const state = get()
+  const { currentGroup, currentSessionId } = state
+  if (!currentGroup || !currentSessionId || state.isStreaming) return
+  const session = state.sessions.find((item: GroupSession) => item.id === currentSessionId)
+  if (!resolveDialogueDirectionsEnabled(session)) return
+
+  const last = [...state.messages].reverse().find(
+    (message) => message.characterId !== '__user__'
+      && message.characterId !== '__free__'
+      && !!message.content?.trim(),
+  )
+  if (!last) return
+  const speaker = useCharacterStore.getState().characters.find((character) => character.id === last.characterId)
+  if (!speaker) return
+
+  void generateGroupDialogueDirections(set, get, {
+    messageId: last.id,
+    character: speaker,
+    userName: useSettingsStore.getState().settings.userName || '用户',
   })
 }
 
@@ -135,6 +169,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   switchSession: async (groupId, sessionId) => {
     clearPollingTimer()
     cleanupActiveStream()
+    // 会话切换：取消尚未完成的方向请求，避免结果写入其他会话的消息
+    cancelDialogueDirectionRequests()
     set({ currentSessionId: sessionId, isStreaming: false, currentStreamingCharId: null })
     syncGroupPersonaToSettings(get().sessions.find((item) => item.id === sessionId))
     await get().loadMessages(groupId, sessionId)
@@ -176,10 +212,26 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   setSessionNarrativeMode: async (narrativeMode) => {
     const { currentGroup, currentSessionId } = get()
     if (!currentGroup || !currentSessionId || get().isStreaming) return
+    const previousMode = get().sessions.find((session) => session.id === currentSessionId)?.narrativeMode
     await window.api.group.updateSession(currentGroup.id, currentSessionId, { narrativeMode })
     set((state) => ({
       sessions: state.sessions.map((session) => session.id === currentSessionId
         ? { ...session, narrativeMode, updatedAt: Date.now() }
+        : session),
+    }))
+    // 叙事模式改变：方向是“下一步”的前瞻建议，需按新模式刷新（仅最新一条且已有方向时）
+    if (resolveNarrativeMode(previousMode) !== resolveNarrativeMode(narrativeMode)) {
+      void refreshGroupDialogueDirections(set, get)
+    }
+  },
+
+  setDialogueDirections: async (enabled) => {
+    const { currentGroup, currentSessionId } = get()
+    if (!currentGroup || !currentSessionId) return
+    await window.api.group.updateSession(currentGroup.id, currentSessionId, { dialogueDirectionsEnabled: enabled })
+    set((state) => ({
+      sessions: state.sessions.map((session) => session.id === currentSessionId
+        ? { ...session, dialogueDirectionsEnabled: enabled, updatedAt: Date.now() }
         : session),
     }))
   },
@@ -234,6 +286,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     if (invalidated) {
       set((s) => ({ sessions: s.sessions.map(ss => ss.id === invalidated.sessionId ? { ...ss, ...invalidated.patch } : ss) as never }))
     }
+    // 消息被删除：取消该消息在途的方向请求
+    cancelDialogueDirectionRequests([messageId])
     await window.api.group.deleteMessage(groupId, sessionId, messageId)
     set(s => ({
       messages: s.messages.filter(m => m.id !== messageId),
@@ -247,10 +301,14 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     if (invalidated) {
       set((s) => ({ sessions: s.sessions.map(ss => ss.id === invalidated.sessionId ? { ...ss, ...invalidated.patch } : ss) as never }))
     }
+    // 正文被编辑：旧方向不再对应当前内容，立即失效并取消在途请求
+    cancelDialogueDirectionRequests([messageId])
     await window.api.group.editMessage(groupId, sessionId, messageId, content)
     set(s => ({
       messages: s.messages.map(m =>
-        m.id === messageId ? { ...m, content, translation: undefined, _showTranslation: false } : m
+        m.id === messageId
+          ? { ...m, content, translation: undefined, _showTranslation: false, dialogueDirections: undefined, dialogueDirectionsGeneratedAt: undefined }
+          : m
       ),
     }))
   },
@@ -272,6 +330,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     if (!speaker) return
 
     // 删除旧 AI 回复
+    // 消息被删除：取消该消息在途的方向请求
+    cancelDialogueDirectionRequests([messageId])
     await window.api.group.deleteMessage(currentGroup.id, currentSessionId, messageId)
     // 先从 UI 移除（无论上下文是否变化）
     set(s => ({
@@ -286,10 +346,12 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     }
 
     // 重新生成
-    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, targetMsg.round, () => {
-      if (currentGroup.chatMode === 'polling' && currentGroup.autoMode) {
-        checkPollingContinue(set, get, currentGroup)
-      }
+    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, targetMsg.round, async () => {
+      // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
+      const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
+        ? await checkPollingContinue(set, get, currentGroup)
+        : false
+      if (!scheduled) maybeGenerateGroupDirections(set, get)
       checkAutoMemory(get)
     })
   },
@@ -383,7 +445,9 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     }
     armTranslateTimeout()
 
-    const targetLang = useSettingsStore.getState().settings.translationTargetLang || '中文'
+    const settings = useSettingsStore.getState().settings
+    const targetLang = settings.translationTargetLang || '中文'
+    const model = settings.activeModel || profile.model
     window.api.ai.chat({
       requestId,
       messages: [
@@ -393,13 +457,14 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       provider: profile.provider,
       apiKey: profile.apiKey,
       baseUrl: profile.baseUrl,
-      model: profile.model,
+      model,
       temperature: 0.3,
       topP: 1,
-      maxTokens: translationMaxTokens(msg.content),
+      maxTokens: translationMaxTokens(msg.content, model),
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
+      reasoningMode: 'disabled',
     }).catch(() => {
       clearTranslateTimeout()
       unbindChunk(); unbindDone(); unbindError()
@@ -489,6 +554,9 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       set({ error: '请先在设置中配置 API 连接' })
       return
     }
+
+    // 用户已发送：上一轮的方向作废，与用户消息同帧移除
+    void clearGroupDialogueDirections(set, get, currentGroup.id, currentSessionId)
 
     // 1. 用户消息
     const currentRound = state.messages.length > 0
@@ -588,13 +656,15 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       // 多次 await（含语义检索网络往返）之后，窗口期再次回车会并发第二个流
       // （覆盖模块级 activeStream，首流占位消息永久残留）。
       set({ isStreaming: true })
-      await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, userMsg.round, () => {
+      await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, userMsg.round, async () => {
         // AI 回复完成后，更新用户消息状态
         markUserMsgSent(userMsg.id)
-        // onComplete: polling 模式下自动下一轮
-        if (currentGroup.chatMode === 'polling' && currentGroup.autoMode) {
-          checkPollingContinue(set, get, currentGroup)
-        }
+        // onComplete: polling 模式下自动下一轮；未排定下一轮即已轮到用户
+        // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
+        const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
+          ? await checkPollingContinue(set, get, currentGroup)
+          : false
+        if (!scheduled) maybeGenerateGroupDirections(set, get)
         // 自动记忆检查
         checkAutoMemory(get)
       })
@@ -604,6 +674,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       set({ isStreaming: true })
       await streamGroupAIFree(set, get, currentGroup, currentSessionId, userMsg.round)
       markUserMsgSent(userMsg.id)
+      // free 模式一次返回多角色回复，完成后即轮到用户
+      maybeGenerateGroupDirections(set, get)
       // 自动记忆检查
       checkAutoMemory(get)
     }
@@ -625,8 +697,10 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       ? Math.max(...state.messages.map(m => m.round), 0) + 1
       : 1
 
-    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, () => {
-      checkPollingContinue(set, get, currentGroup)
+    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, async () => {
+      // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
+      const scheduled = await checkPollingContinue(set, get, currentGroup)
+      if (!scheduled) maybeGenerateGroupDirections(set, get)
       checkAutoMemory(get)
     })
   },
@@ -654,8 +728,9 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       ? Math.max(...state.messages.map((message) => message.round), 0) + 1
       : 1
 
-    // 即时接话是一次性的人工触发：只做记忆检查，不调用 checkPollingContinue。
+    // 即时接话是一次性的人工触发：只做记忆检查，不调用 checkPollingContinue；完成后即轮到用户。
     await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, () => {
+      maybeGenerateGroupDirections(set, get)
       checkAutoMemory(get)
     })
   },

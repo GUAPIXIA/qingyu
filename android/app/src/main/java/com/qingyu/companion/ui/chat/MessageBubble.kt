@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.R
 import com.qingyu.companion.model.Message
 import com.qingyu.companion.model.MessageIdentity
@@ -251,6 +252,18 @@ internal fun MessageBubble(
     spacingMultiplier: Float = 1f,
     /** 搜索高亮（E-05）：非空时正文/引用/翻译命中区间高亮 */
     searchQuery: String = "",
+    /** 会话已开启“下一步方向”；关闭时不渲染卡片。 */
+    dialogueDirectionsEnabled: Boolean = false,
+    /** 是否为最新一条消息；仅最新一条允许“换一批”。 */
+    isLast: Boolean = false,
+    /** 当前草稿（判断点选是否需要覆盖确认）。 */
+    currentDraft: () -> String = { "" },
+    /** 点选方向：只回填输入框，不自动发送。 */
+    onSelectDirection: ((DialogueDirection) -> Unit)? = null,
+    /** “换一批”。 */
+    onRegenerateDirections: (() -> Unit)? = null,
+    /** 方向生成失败的可见反馈。 */
+    directionsError: String? = null,
 ) {
     val qy = qyColors()
     val isUser = message.role == Role.user
@@ -499,6 +512,29 @@ internal fun MessageBubble(
 
             if (!isUser) {
                 SwipeControl(message = message, onSwipe = onSwipe)
+            }
+
+            // 下一步方向：气泡外的独立交互，仅等待用户输入时展示
+            val directions = message.dialogueDirections
+            if (dialogueDirectionsEnabled && !isUser && !isSystem && extraction.content.isNotBlank()) {
+                if (directions != null && directions.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    DialogueDirectionCard(
+                        directions = directions,
+                        canRegenerate = isLast && onRegenerateDirections != null,
+                        onSelect = { onSelectDirection?.invoke(it) },
+                        currentDraft = currentDraft,
+                        onRegenerate = onRegenerateDirections,
+                        error = directionsError,
+                    )
+                } else if (isLast && directionsError != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        directionsError,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = qy.danger,
+                    )
+                }
             }
         }
     }

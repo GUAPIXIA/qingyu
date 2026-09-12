@@ -173,7 +173,7 @@ describe('useGroupChatStore', () => {
   })
 
   describe('updateNarrativeSession', () => {
-    it('持久化世界状态和游戏主持开关', async () => {
+    it('持久化世界状态', async () => {
       useGroupChatStore.setState({
         currentGroup: { id: 'g1' } as GroupChat,
         currentSessionId: 's1',
@@ -183,16 +183,13 @@ describe('useGroupChatStore', () => {
 
       await useGroupChatStore.getState().updateNarrativeSession({
         memoryCurrentState: '北境风暴逼近',
-        gameMasterMode: true,
       })
 
       expect(window.api.group.updateSession).toHaveBeenCalledWith('g1', 's1', {
         memoryCurrentState: '北境风暴逼近',
-        gameMasterMode: true,
       })
       expect(useGroupChatStore.getState().sessions[0]).toMatchObject({
         memoryCurrentState: '北境风暴逼近',
-        gameMasterMode: true,
       })
     })
   })
@@ -206,6 +203,37 @@ describe('useGroupChatStore', () => {
       useGroupChatStore.getState().clearMessages()
       expect(useGroupChatStore.getState().messages).toEqual([])
       expect(useGroupChatStore.getState().error).toBeNull()
+    })
+  })
+
+  describe('translateMessage', () => {
+    it('关闭推理输出，避免思考内容耗尽翻译正文预算', async () => {
+      useSettingsStore.setState({
+        settings: {
+          ...getDefaultSettings(),
+          activeProfileId: 'p1',
+          activeModel: 'deepseek-v4-flash',
+          connectionProfiles: [{
+            id: 'p1', name: 'test', provider: 'openai' as const,
+            baseUrl: 'https://api.example.com/v1', model: 'deepseek-v4-flash', apiKey: 'sk-test', maxContext: 8192,
+          }],
+        },
+      })
+      useGroupChatStore.setState({
+        currentGroup: { id: 'g1' } as GroupChat,
+        currentSessionId: 's1',
+        messages: [{
+          id: 'm1', groupId: 'g1', characterId: 'c1', content: 'Hello world',
+          images: [], timestamp: 0, round: 1,
+        } as GroupMessage],
+      })
+
+      await useGroupChatStore.getState().translateMessage('m1')
+
+      expect(window.api.ai.chat).toHaveBeenCalledWith(expect.objectContaining({
+        reasoningMode: 'disabled',
+        maxTokens: 4096,
+      }))
     })
   })
 
@@ -414,7 +442,7 @@ describe('useGroupChatStore', () => {
       expect(joined).toContain('异地事件或世界变化')
     })
 
-    it('群聊全局叙事可启用游戏主持格式', () => {
+    it('群聊主回复不再注入游戏主持判定与选项格式', () => {
       useGroupChatStore.setState({
         currentGroup: {
           id: 'g1', name: '战役', memberIds: [], currentSpeakerIndex: 0,
@@ -422,12 +450,13 @@ describe('useGroupChatStore', () => {
           lorebookIds: [], presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
         },
         currentSessionId: 's1',
-        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'omniscient', gameMasterMode: true } as never],
+        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'omniscient', dialogueDirectionsEnabled: true } as never],
         messages: [],
       })
       const joined = useGroupChatStore.getState().buildGroupContextReport().messages.map((item) => item.content).join('\n')
-      expect(joined).toContain('【呈现方式：游戏主持】')
-      expect(joined).toContain('【判定】')
+      expect(joined).not.toContain('【呈现方式：游戏主持】')
+      expect(joined).not.toContain('【判定】')
+      expect(joined).not.toContain('【可选行动】')
     })
 
     it('旧群聊会话缺少模式时固定回退代入模式', () => {

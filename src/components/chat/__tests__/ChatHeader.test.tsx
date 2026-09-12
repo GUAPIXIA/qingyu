@@ -98,6 +98,36 @@ describe('ChatHeader', () => {
     expect(screen.getByRole('status').textContent).toContain('已切换为全局叙事')
   })
 
+  it('顶部工具栏在深色背景使用清晰的次要文字色和不透明控件底色', () => {
+    useChatStore.setState({
+      sessions: [{
+        id: 'session-1', characterId: character.id, title: '新对话 3', createdAt: 0, updatedAt: 0,
+        memoryEnabled: false, memoryMode: 'manual', autoMemoryInterval: 10, memory: '', memoryUpdatedAt: 0,
+        messageCount: 0, lastMessage: '', narrativeMode: 'immersive',
+      }],
+      currentSessionId: 'session-1',
+    })
+
+    render(
+      <MemoryRouter>
+        <ChatHeader
+          currentCharacter={character}
+          isStreaming={false}
+          totalChars={0}
+          showQuickSettings={false}
+          onShowQuickSettings={vi.fn()}
+          onCreateSession={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('radiogroup', { name: '叙事模式' }).className).toContain('bg-tavern-bg-card')
+    expect(screen.getByRole('radio', { name: '全局叙事' }).className).toContain('text-tavern-text-soft')
+    expect(screen.getByTitle('切换对话').className).toContain('text-tavern-text-soft')
+    expect(screen.getByTitle('新建会话').className).toContain('text-tavern-text-soft')
+    expect(screen.getByRole('button', { name: '长记忆设置' }).className).toContain('text-tavern-text-soft')
+  })
+
   it('全局叙事下身份切换器显示旁白标识而非所选身份', () => {
     useChatStore.setState({
       sessions: [{

@@ -29,7 +29,7 @@ describe('bridge group narrative context', () => {
     expect(result.history).toEqual([{ role: 'user', content: '【林舟】继续调查' }])
   })
 
-  it('桥接群聊同步注入游戏主持格式', () => {
+  it('桥接群聊不再注入游戏主持判定与行动选项', () => {
     const result = buildGroupContextForBridge({
       group,
       members,
@@ -37,9 +37,8 @@ describe('bridge group narrative context', () => {
       speaker: members[0],
       userName: '林舟',
       narrativeMode: 'omniscient',
-      gameMasterMode: true,
     })
-    expect(result.systemContent).toContain('【呈现方式：游戏主持】')
-    expect(result.systemContent).toContain('【可选行动】')
+    expect(result.systemContent).not.toContain('【呈现方式：游戏主持】')
+    expect(result.systemContent).not.toContain('【可选行动】')
   })
 })

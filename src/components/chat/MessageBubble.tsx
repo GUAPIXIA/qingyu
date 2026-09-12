@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { charAssetUrl } from '../../utils/asset'
-import { Check, X, User, Bot, ChevronLeft, ChevronRight, Image as ImageIcon, ChevronsDown, RefreshCw, Reply, Loader2, Languages, Globe2 } from 'lucide-react'
+import { Check, X, User, Bot, ChevronLeft, ChevronRight, Image as ImageIcon, ChevronsDown, RefreshCw, Reply, Loader2, Languages, Globe2, FileText, Trash2 } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -30,7 +30,12 @@ interface MessageBubbleProps {
 import { MarkdownImage } from '../common/MarkdownImage'
 import { MarkdownLink } from '../common/MarkdownLink'
 import { MessageActionBar } from './MessageActionBar'
+import { DialogueDirectionCard } from './DialogueDirectionCard'
+import { shouldShowDialogueDirections } from './dialogueDirectionView'
+import { generateSingleDialogueDirections } from '../../store/dialogueDirectionRunner'
+import { resolveDialogueDirectionsEnabled } from '../../../shared/dialogueDirections'
 import { remarkAudio } from '../../utils/remark-audio'
+import { Modal } from '../common/Modal'
 
 /** 消息内嵌 <audio> 播放器（对齐安卓端：外部音频 URL，白名单 http/https） */
 function MarkdownAudio({ src }: { src?: string }) {
@@ -72,10 +77,15 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
   const [avatarError, setAvatarError] = useState(false)
   const [zoomImage, setZoomImage] = useState<string | null>(null)
+  const [imageContextMenu, setImageContextMenu] = useState<{ x: number; y: number; imageIndex: number } | null>(null)
+  const [showImagePrompt, setShowImagePrompt] = useState(false)
+  const [regeneratingImageIndex, setRegeneratingImageIndex] = useState<number | null>(null)
   const [continuing, setContinuing] = useState(false)
   /** OpenAI/Edge TTS 音频播放器（渲染进程播放 mp3） */
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const editMessage = useChatStore(s => s.editMessage)
+  const deleteMessage = useChatStore(s => s.deleteMessage)
+  const updateMessageImages = useChatStore(s => s.updateMessageImages)
   const continueMessage = useChatStore(s => s.continueMessage)
   const swipeMessage = useChatStore(s => s.swipeMessage)
   const isStreaming = useChatStore(s => s.isStreaming)
@@ -83,7 +93,13 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const showTranslationIds = useChatStore(s => s.showTranslationIds)
   // P-6 修复：字段级选择器订阅（此前无选择器，settings 任何变化都重渲染全部气泡）
   const settings = useSettingsStore((s) => s.settings)
+  const sessions = useChatStore(s => s.sessions)
+  const currentSessionId = useChatStore(s => s.currentSessionId)
   const [thoughtExpanded, setThoughtExpanded] = useState(settings.autoExpandThought ?? false)
+  const [directionError, setDirectionError] = useState<string | null>(null)
+  const dialogueDirectionsEnabled = resolveDialogueDirectionsEnabled(
+    sessions.find((session) => session.id === (message.sessionId || currentSessionId)),
+  )
   const getPersona = usePersonaStore((s) => s.getPersona)
   const persona = getPersona(settings.activePersonaId)
 
@@ -128,6 +144,22 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
     }
   }, [editing])
 
+  useEffect(() => {
+    if (!imageContextMenu) return
+    const closeMenu = () => setImageContextMenu(null)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenu()
+    }
+    window.addEventListener('resize', closeMenu)
+    window.addEventListener('scroll', closeMenu, true)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('resize', closeMenu)
+      window.removeEventListener('scroll', closeMenu, true)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [imageContextMenu])
+
   const handleSaveEdit = async () => {
     if (character) {
       await editMessage(message.id, editContent, character)
@@ -139,6 +171,57 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
     const target = e.target as HTMLElement
     if (target.tagName === 'IMG' && (target as HTMLImageElement).src) {
       setZoomImage((target as HTMLImageElement).src)
+    }
+  }
+
+  const handleGeneratedImageContextMenu = (event: React.MouseEvent, imageIndex: number) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const menuWidth = 208
+    const menuHeight = 136
+    const edgeGap = 8
+    setImageContextMenu({
+      x: Math.max(edgeGap, Math.min(event.clientX, window.innerWidth - menuWidth - edgeGap)),
+      y: Math.max(edgeGap, Math.min(event.clientY, window.innerHeight - menuHeight - edgeGap)),
+      imageIndex,
+    })
+  }
+
+  const handleDeleteGeneratedImage = async (imageIndex: number) => {
+    setImageContextMenu(null)
+    if (!character) return
+    if (message.images.length <= 1) {
+      await deleteMessage(message.id, character)
+      return
+    }
+    await updateMessageImages(message.id, message.images.filter((_, index) => index !== imageIndex))
+  }
+
+  const handleRegenerateGeneratedImage = async (imageIndex: number) => {
+    setImageContextMenu(null)
+    if (regeneratingImageIndex !== null) return
+    const prompt = message.content.trim()
+    if (!prompt) {
+      useChatStore.setState({ error: '无法重新生图：这张图片没有保存生图提示词' })
+      return
+    }
+
+    setRegeneratingImageIndex(imageIndex)
+    try {
+      const result = await window.api.imageGen.generate(prompt)
+      if (!result.success || !result.images?.length) {
+        useChatStore.setState({ error: `重新生图失败: ${result.error || '未知错误'}` })
+        return
+      }
+      const regeneratedImage = result.images[0]
+      await updateMessageImages(
+        message.id,
+        message.images.map((image, index) => index === imageIndex ? regeneratedImage : image),
+      )
+    } catch (error) {
+      useChatStore.setState({ error: `重新生图失败: ${error instanceof Error ? error.message : String(error)}` })
+    } finally {
+      setRegeneratingImageIndex(null)
     }
   }
 
@@ -192,14 +275,28 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                     <span>加载失败</span>
                   </button>
                 ) : (
-                  <img
-                    key={i}
-                    src={img}
-                    alt=""
-                    className="max-w-48 max-h-48 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => setZoomImage(img)}
-                    onError={() => setImgErrors((prev) => new Set(prev).add(i))}
-                  />
+                  <div key={i} className="relative overflow-hidden rounded-lg">
+                    <img
+                      src={img}
+                      alt={`生成图片 ${i + 1}`}
+                      className={cn(
+                        'max-w-48 max-h-48 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity',
+                        regeneratingImageIndex === i && 'opacity-50',
+                      )}
+                      onClick={() => regeneratingImageIndex === null && setZoomImage(img)}
+                      onContextMenu={(event) => handleGeneratedImageContextMenu(event, i)}
+                      onError={() => setImgErrors((prev) => new Set(prev).add(i))}
+                    />
+                    {regeneratingImageIndex === i && (
+                      <div
+                        role="status"
+                        aria-label={`正在重新生成图片 ${i + 1}`}
+                        className="absolute inset-0 flex items-center justify-center bg-black/25 backdrop-blur-[1px]"
+                      >
+                        <Loader2 className="h-6 w-6 animate-spin text-white drop-shadow" />
+                      </div>
+                    )}
+                  </div>
                 )
               ))}
             </div>
@@ -212,6 +309,56 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             <button className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors" onClick={(e) => { e.stopPropagation(); setZoomImage(null) }}><X className="w-6 h-6" /></button>
           </div>
         )}
+        {imageContextMenu && (
+          <>
+            <div className="fixed inset-0 z-[109]" aria-hidden onClick={() => setImageContextMenu(null)} />
+            <div
+              role="menu"
+              aria-label="生成图片操作"
+              className="fixed z-[110] w-52 overflow-hidden rounded-xl border border-tavern-border bg-tavern-bg-card/95 p-1.5 shadow-2xl backdrop-blur-md animate-fade-in"
+              style={{ left: imageContextMenu.x, top: imageContextMenu.y }}
+            >
+              <button
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-tavern-text transition-colors hover:bg-tavern-bg-hover focus-visible:bg-tavern-bg-hover focus-visible:outline-none"
+                onClick={() => {
+                  setImageContextMenu(null)
+                  setShowImagePrompt(true)
+                }}
+              >
+                <FileText className="h-4 w-4 text-tavern-accent" />
+                查看生图提示词
+              </button>
+              <button
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-tavern-text transition-colors hover:bg-tavern-bg-hover focus-visible:bg-tavern-bg-hover focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => handleRegenerateGeneratedImage(imageContextMenu.imageIndex)}
+                disabled={regeneratingImageIndex !== null || !message.content.trim()}
+                title={!message.content.trim() ? '这张图片没有保存生图提示词' : undefined}
+              >
+                <RefreshCw className="h-4 w-4 text-tavern-accent" />
+                重新生成图片
+              </button>
+              <div className="mx-2 border-t border-tavern-border-soft" />
+              <button
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-tavern-danger transition-colors hover:bg-tavern-danger/10 focus-visible:bg-tavern-danger/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => handleDeleteGeneratedImage(imageContextMenu.imageIndex)}
+                disabled={!character}
+              >
+                <Trash2 className="h-4 w-4" />
+                删除图片
+              </button>
+            </div>
+          </>
+        )}
+        <Modal open={showImagePrompt} onClose={() => setShowImagePrompt(false)} title="生图提示词" width="lg">
+          <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft px-4 py-3">
+            <p className="select-text whitespace-pre-wrap break-words font-mono text-sm leading-6 text-tavern-text">
+              {message.content.trim() || '此图片未保存生图提示词'}
+            </p>
+          </div>
+        </Modal>
         {/* 操作栏 */}
         <MessageActionBar bare message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); setEditing(true) }} />
       </>
@@ -420,6 +567,31 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
 
           {/* 操作栏 */}
           <MessageActionBar message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); setEditing(true) }} />
+
+          {/* 下一步方向：气泡外的独立交互，仅最新一条 AI 回复且等待用户时展示 */}
+          {shouldShowDialogueDirections({
+            message,
+            character,
+            isStreaming,
+            isSystem,
+            enabled: dialogueDirectionsEnabled,
+          }) && message.dialogueDirections && (
+            <DialogueDirectionCard
+              directions={message.dialogueDirections}
+              canRegenerate={isLast && !isStreaming}
+              error={directionError}
+              onRegenerate={async () => {
+                if (!character) return
+                setDirectionError(null)
+                const result = await generateSingleDialogueDirections(
+                  useChatStore.setState,
+                  useChatStore.getState,
+                  { messageId: message.id, character },
+                )
+                if (result.length === 0) setDirectionError('方向生成失败，请稍后重试')
+              }}
+            />
+          )}
 
           {/* 继续续写按钮 — 始终可见，仅最后一条 assistant 消息 */}
           {isLast && !isUser && !isSystem && !isStreaming && character && (

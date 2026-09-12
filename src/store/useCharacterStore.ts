@@ -73,6 +73,7 @@ interface CharacterState {
   } | null>
   exportPng: (id: string) => Promise<void>
   exportJson: (id: string) => Promise<void>
+  exportCover: (id: string) => Promise<void>
   /** 绑定/忽略导入时推荐的世界书（null = 忽略） */
   bindSuggestedLorebook: (lorebookId: string | null) => Promise<void>
 }
@@ -340,6 +341,14 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
 
   exportJson: async (id) => {
     await window.api.character.exportJson(id)
+  },
+
+  exportCover: async (id) => {
+    const result = await window.api.character.exportCover(id)
+    if (result && !result.ok && !result.canceled) {
+      set({ importError: result.error || '封面导出失败' })
+      setTimeout(() => set({ importError: null }), 5000)
+    }
   },
 
   bindSuggestedLorebook: async (lorebookId) => {

@@ -26,6 +26,9 @@ interface QuickSettingsPanelProps {
   /** 传入时切换为群聊模式，复用单聊快捷设置并写回群聊级预设/世界书/节奏。 */
   group?: GroupChat
   onSaveGroup?: (group: GroupChat) => void | Promise<void>
+  /** 会话级“下一步方向”开关（单聊/群聊由页面注入当前值与 setter）。 */
+  dialogueDirectionsEnabled?: boolean
+  onSetDialogueDirections?: (enabled: boolean) => void | Promise<void>
 }
 
 const QUICK_BUTTON_ICON_CLASS = 'w-3.5 h-3.5 shrink-0'
@@ -41,6 +44,8 @@ export function QuickSettingsPanel({
   onClearConfirm,
   group,
   onSaveGroup,
+  dialogueDirectionsEnabled,
+  onSetDialogueDirections,
 }: QuickSettingsPanelProps) {
   // P-6 修复：字段级选择器订阅
   const chatActivePresetId = useChatStore((s) => s.activePresetId)
@@ -317,9 +322,9 @@ export function QuickSettingsPanel({
                       <button
                         key={`${image.slice(0, 32)}-${index}`}
                         type="button"
-                        aria-label={`复制生图 ${index + 1}`}
-                        title="点击复制图片"
-                        onClick={() => navigator.clipboard.writeText(image).catch(() => useChatStore.setState({ error: '复制图片失败：无法访问剪贴板' }))}
+                        aria-label={`复制生图数据 ${index + 1}`}
+                        title="复制图片数据（base64）"
+                        onClick={() => navigator.clipboard.writeText(image).catch(() => useChatStore.setState({ error: '复制图片数据失败：无法访问剪贴板' }))}
                         className="aspect-square rounded-lg overflow-hidden bg-tavern-bg-hover border border-transparent hover:border-tavern-accent hover:shadow-sm transition-all"
                       >
                         <img src={image} className="w-full h-full object-cover" alt="" />
@@ -327,6 +332,25 @@ export function QuickSettingsPanel({
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          </Section>
+
+          {/* ===== 对话交互 ===== */}
+          <Section icon={Sparkles} title="对话交互">
+            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-tavern-text-soft">下一步方向</p>
+                  <p className="mt-0.5 text-[10px] leading-relaxed text-tavern-text-muted">
+                    AI 回复后生成 3 个可选方向，点选后只回填输入框
+                  </p>
+                </div>
+                <ToggleSwitch
+                  label="下一步方向"
+                  checked={!!dialogueDirectionsEnabled}
+                  onChange={(value) => void onSetDialogueDirections?.(value)}
+                />
               </div>
             </div>
           </Section>

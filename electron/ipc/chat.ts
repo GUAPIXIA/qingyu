@@ -12,6 +12,7 @@ import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
 import { safeHandle } from '../utils/safeHandle'
 import { withMessageIdentity } from '../../shared/messageIdentity'
+import { replaceFileWithRetry } from '../services/filePersistence'
 
 const log = createLogger('chat')
 
@@ -38,6 +39,7 @@ const UPDATE_SESSION_FIELDS = new Set([
   'lorebookIds',
   'personaId',
   'narrativeMode',
+  'dialogueDirectionsEnabled',
   'gameMasterMode',
   'recentTriggeredIds',
   'lorebookCompressionCache',
@@ -131,6 +133,9 @@ function cleanSessionUpdates(updates: Partial<ChatSession>): Partial<ChatSession
     }
     if (key === 'gameMasterMode' && typeof value !== 'boolean') {
       throw new Error('参数无效：gameMasterMode')
+    }
+    if (key === 'dialogueDirectionsEnabled' && typeof value !== 'boolean') {
+      throw new Error('参数无效：dialogueDirectionsEnabled')
     }
     ;(clean as Record<string, unknown>)[key] = value
   }
@@ -331,10 +336,12 @@ function writeMessages(characterId: string, sessionId: string, messages: Message
   const tmpPath = filePath + '.tmp'
   writeFileSync(tmpPath, content ? content + '\n' : '', 'utf-8')
   try {
-    renameSync(tmpPath, filePath)
-  } catch (err) {
+    const replacement = replaceFileWithRetry(tmpPath, filePath)
+    if (replacement === 'copied') {
+      log.warn('消息文件被占用，已回退为覆盖写入', { characterId, sessionId })
+    }
+  } finally {
     try { unlinkSync(tmpPath) } catch { /* ignore */ }
-    throw err
   }
 }
 

@@ -660,6 +660,9 @@ export async function streamAIResponse(
     presencePenalty: preset?.presencePenalty ?? 0,
     stream: settings.streamOutput,
     instructTemplate,
+    // DeepSeek V4 的推理通道会与角色心理描写重复，并挤占最终正文预算。
+    // 主对话只保留模型最终 content；若聚合端忽略关闭参数，适配器仍会丢弃 reasoning_content。
+    reasoningMode: effectiveModel.toLowerCase().includes('deepseek-v4') ? 'disabled' : undefined,
   }
 
   try {

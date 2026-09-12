@@ -13,6 +13,26 @@ import { maybeRunAutoMemorySummary } from './memoryManager'
 import { invalidateDerivedMemory } from './chatUtils'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveMessageSpeakerKind } from '../../shared/messageIdentity'
+import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import { generateSingleDialogueDirections, cancelDialogueDirectionRequests } from './dialogueDirectionRunner'
+
+/** 从消息上移除方向字段（正文被替换时必须失效）。 */
+function withoutDirections<T extends Message>(message: T): T {
+  if (!message.dialogueDirections && !message.dialogueDirectionsGeneratedAt) return message
+  const next = { ...message }
+  delete next.dialogueDirections
+  delete next.dialogueDirectionsGeneratedAt
+  return next
+}
+
+/** 生成完成后按会话开关异步补齐方向（不阻塞、失败静默）。 */
+function maybeGenerateDirections(set: SetFn, get: GetFn, messageId: string, character: Character): void {
+  const message = get().messages.find((item) => item.id === messageId)
+  if (!message) return
+  const session = get().sessions.find((item) => item.id === message.sessionId)
+  if (!resolveDialogueDirectionsEnabled(session)) return
+  void generateSingleDialogueDirections(set, get, { messageId, character })
+}
 
 type SetFn = (partial: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>)) => void
 type GetFn = () => ChatState
@@ -52,9 +72,12 @@ export async function regenerateChatMessage(
   const swipes = targetMsg.swipes ?? [targetMsg.content]
   const newSwipeIndex = swipes.length
 
+  // 正文即将被替换：旧方向失效并取消在途请求
+  cancelDialogueDirectionRequests([messageId])
+
   // 在 UI 中先插入一个空候选，让用户看到正在生成
   const updatedMsg: Message = {
-    ...targetMsg,
+    ...withoutDirections(targetMsg),
     swipes: [...swipes, ''],
     swipeIndex: newSwipeIndex,
     content: '',
@@ -110,6 +133,7 @@ export async function regenerateChatMessage(
       }))
       window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
 
+      maybeGenerateDirections(set, get, messageId, character)
       maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
     },
     onError: (errMsg) => {
@@ -234,6 +258,7 @@ export async function continueChatMessage(
         return
       }
 
+      maybeGenerateDirections(set, get, newMsgId, character)
       maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
     },
     onError: (errMsg) => {
@@ -266,8 +291,10 @@ export async function swipeChatMessage(
   if (!msg?.swipes || msg.swipes.length < 2) return
   const curIdx = msg.swipeIndex ?? 0
   const newIdx = (curIdx + direction + msg.swipes.length) % msg.swipes.length
+  // 正文切换到另一候选：旧方向失效并取消在途请求
+  cancelDialogueDirectionRequests([messageId])
   const updatedMsg: Message = {
-    ...msg,
+    ...withoutDirections(msg),
     swipeIndex: newIdx,
     content: msg.swipes[newIdx],
   }
@@ -281,4 +308,5 @@ export async function swipeChatMessage(
   }
   set((s) => ({ messages: s.messages.map(m => m.id === messageId ? updatedMsg : m) }))
   await window.api.chat.saveMessage(updatedMsg)
+  maybeGenerateDirections(set, get, messageId, character)
 }

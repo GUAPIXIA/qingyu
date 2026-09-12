@@ -41,7 +41,7 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
     switchPersona: vi.fn().mockResolvedValue(true),
     toggleLorebook: vi.fn().mockResolvedValue(true),
     getTokenUsage: vi.fn().mockReturnValue({ total: 1234, max: 8192 }),
-    callAiHelper: vi.fn().mockResolvedValue('<prompt>1girl, red dress, sunlight</prompt>'),
+    callAiHelper: vi.fn().mockResolvedValue('<prompt>best quality, masterpiece, highres, 1girl, silver hair, blue eyes, focused gaze, parted lips, leaning forward, right hand gripping a railing, left hand at her chest, rumpled red dress, rain-soaked balcony, moonlight</prompt>'),
     getRecentMessages: vi.fn().mockReturnValue([]),
     getActiveImageGen: vi.fn().mockReturnValue({
       name: 'SD', provider: 'sd-webui', model: 'anime', baseUrl: '', size: '512x512', quality: 'standard',
@@ -51,6 +51,7 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
     updateImageGeneration: vi.fn(),
     finishImageGeneration: vi.fn(),
     userName: '用户',
+    userProfile: { name: '用户', description: '', persona: '' },
     ...overrides,
   } as unknown as CommandContext
   return ctx
@@ -325,6 +326,26 @@ describe('imagine 命令', () => {
     expect(window.api.imageGen.generate).toHaveBeenCalledWith('room', { size: '768x512' })
   })
 
+  it('ComfyUI 的所有生图模式均沿用工作流默认尺寸', async () => {
+    const ctx = makeCtx({
+      getActiveImageGen: vi.fn().mockReturnValue({
+        name: 'ComfyUI', provider: 'comfyui', model: '', baseUrl: 'http://127.0.0.1:8188',
+        workflowName: 'image_z_image_turbo', workflow: '{}',
+      }),
+    })
+    const command = findCommand('imagine')!
+
+    await command.execute(['scene'], ctx)
+    await command.execute(['--mode', 'character', 'character'], ctx)
+    await command.execute(['--mode', 'face', 'face'], ctx)
+    await command.execute(['--mode', 'background', 'background'], ctx)
+
+    expect(window.api.imageGen.generate).toHaveBeenNthCalledWith(1, 'scene', undefined)
+    expect(window.api.imageGen.generate).toHaveBeenNthCalledWith(2, 'character', undefined)
+    expect(window.api.imageGen.generate).toHaveBeenNthCalledWith(3, 'face', undefined)
+    expect(window.api.imageGen.generate).toHaveBeenNthCalledWith(4, 'background', undefined)
+  })
+
   it('非法 mode 回退默认 now', async () => {
     const ctx = makeCtx()
     await findCommand('imagine')!.execute(['--mode', 'invalid', 'x'], ctx)
@@ -335,8 +356,21 @@ describe('imagine 命令', () => {
     const ctx = makeCtx()
     await findCommand('imagine')!.execute([], ctx)
     expect(ctx.callAiHelper).toHaveBeenCalled()
-    expect(ctx.notify).toHaveBeenCalledWith(expect.stringContaining('提示词: 1girl'))
-    expect(ctx.addImageMessage).toHaveBeenCalledWith(['data:image/png;base64,x'], '1girl, red dress, sunlight')
+    expect(ctx.notify).toHaveBeenCalledWith(expect.stringContaining('提示词: best quality'))
+    expect(ctx.addImageMessage).toHaveBeenCalledWith(
+      ['data:image/png;base64,x'],
+      'best quality, masterpiece, highres, 1girl, silver hair, blue eyes, focused gaze, parted lips, leaning forward, right hand gripping a railing, left hand at her chest, rumpled red dress, rain-soaked balcony, moonlight',
+    )
+  })
+
+  it('兼容模型未按 XML 标签返回的有效纯提示词', async () => {
+    const plainPrompt = 'best quality, masterpiece, highres, 1girl, silver hair, blue eyes, worried gaze, parted lips, standing sideways, right hand touching the window, left hand holding her coat, rumpled black coat, rain-soaked room, cinematic lighting'
+    const ctx = makeCtx({ callAiHelper: vi.fn().mockResolvedValue(plainPrompt) })
+
+    await findCommand('imagine')!.execute([], ctx)
+
+    expect(window.api.imageGen.generate).toHaveBeenCalledWith(plainPrompt, undefined)
+    expect(ctx.addImageMessage).toHaveBeenCalledWith(['data:image/png;base64,x'], plainPrompt)
   })
 
   it('Z-Image 工作流自动使用自然语言提示词协议', async () => {
@@ -345,7 +379,7 @@ describe('imagine 命令', () => {
         name: 'comfy', provider: 'comfyui', model: '', baseUrl: 'http://127.0.0.1:8000',
         size: '1080x1920', quality: 'standard', workflowName: 'image_z_image_turbo', workflow: '{}',
       }),
-      callAiHelper: vi.fn().mockResolvedValue('<prompt>A cinematic moonlit room with two figures by the window.</prompt>'),
+      callAiHelper: vi.fn().mockResolvedValue('<prompt>A cinematic moonlit room frames one woman beside a rain-streaked window, her wary eyes fixed toward the unseen viewer. She leans forward with tense shoulders, one hand gripping the wooden sill while the other gathers her rumpled velvet sleeve. Cool blue light traces her silver hair and anxious expression, while warm candlelight reveals the worn fabric, drifting dust, and deep shadows behind her.</prompt>'),
     })
     await findCommand('imagine')!.execute([], ctx)
     const [systemPrompt] = (ctx.callAiHelper as any).mock.calls[0]
@@ -353,7 +387,7 @@ describe('imagine 命令', () => {
     expect(systemPrompt).toContain('<prompt>')
     expect(systemPrompt).not.toContain('best quality, masterpiece')
     expect(window.api.imageGen.generate).toHaveBeenCalledWith(
-      'A cinematic moonlit room with two figures by the window.', undefined,
+      'A cinematic moonlit room frames one woman beside a rain-streaked window, her wary eyes fixed toward the unseen viewer. She leans forward with tense shoulders, one hand gripping the wooden sill while the other gathers her rumpled velvet sleeve. Cool blue light traces her silver hair and anxious expression, while warm candlelight reveals the worn fabric, drifting dust, and deep shadows behind her.', undefined,
     )
   })
 
@@ -368,6 +402,20 @@ describe('imagine 命令', () => {
     expect(ctx.notify).toHaveBeenCalledWith('提示词生成失败，请重试')
     expect(ctx.finishImageGeneration).toHaveBeenCalledWith('job-1')
   })
+
+  it('提示词过于简略时自动重写一次，不把低质量结果直接用于生图', async () => {
+    const detailedPrompt = 'best quality, masterpiece, highres, 1girl, silver hair, blue eyes, tense gaze, parted lips, leaning forward, right hand gripping a railing, left hand at her chest, rumpled red dress, rain-soaked balcony, moonlight'
+    const callAiHelper = vi.fn()
+      .mockResolvedValueOnce('<prompt>1girl, smiling</prompt>')
+      .mockResolvedValueOnce(`<prompt>${detailedPrompt}</prompt>`)
+    const ctx = makeCtx({ callAiHelper })
+
+    await findCommand('imagine')!.execute([], ctx)
+
+    expect(callAiHelper).toHaveBeenCalledTimes(2)
+    expect(window.api.imageGen.generate).toHaveBeenCalledWith(detailedPrompt, undefined)
+  })
+
   it('AI 提示词为空时提示失败', async () => {
     const ctx = makeCtx({ callAiHelper: vi.fn().mockResolvedValue('   ') })
     await findCommand('imagine')!.execute([], ctx)
@@ -400,5 +448,73 @@ describe('imagine 命令', () => {
     const [, userContent] = (ctx.callAiHelper as any).mock.calls[0]
     expect(userContent).toContain('用户: 我们在森林里')
     expect(userContent).toContain('Alice: 风很大')
+    expect(userContent).toContain('以下对话按时间从旧到新排列')
+    expect(userContent).toContain('最后发生的地点、服装、动作和情绪')
+    const [systemPrompt] = (ctx.callAiHelper as any).mock.calls[0]
+    expect(systemPrompt).toContain('最新对话是当前场景的最高优先级事实来源')
+    expect(systemPrompt).toContain('眼神方向')
+    expect(systemPrompt).toContain('双手')
+    expect(systemPrompt).toContain('服装状态')
+    expect(systemPrompt).toContain('我方角色完全不出现在画面中')
+  })
+
+  it('角色明确配置族裔时，将其作为稳定身份锚点强制写入提示词要求', async () => {
+    const character = makeCharacter() as Character & { ethnicity?: string }
+    character.ethnicity = 'Japanese, East Asian'
+    const ctx = makeCtx({ character })
+
+    await findCommand('imagine')!.execute([], ctx)
+
+    const [systemPrompt] = (ctx.callAiHelper as any).mock.calls[0]
+    expect(systemPrompt).toContain('明确族裔/人种: Japanese, East Asian')
+    expect(systemPrompt).toContain('必须在英文提示词的主体开头明确写出')
+    expect(systemPrompt).toContain('不得仅用角色姓名暗示，也不得改写成含糊的 Asian')
+  })
+
+  it('角色未配置族裔时禁止根据姓名自行猜测', async () => {
+    const ctx = makeCtx({ character: makeCharacter({ name: 'Aiko' }) })
+
+    await findCommand('imagine')!.execute([], ctx)
+
+    const [systemPrompt] = (ctx.callAiHelper as any).mock.calls[0]
+    expect(systemPrompt).toContain('未提供明确族裔/人种，不得根据姓名、语言或地点猜测')
+  })
+
+  it('互动构图可把我方限制为虚焦轮廓，对方仍是唯一清晰主体', async () => {
+    const subjectPrompt = 'best quality, masterpiece, highres, one woman, silver hair, blue eyes, wary gaze toward camera, lips slightly parted, tense shoulders, right hand gripping chair, left hand smoothing rumpled black coat, warm side lighting, shallow depth of field, {{SELF_COMPOSITION}}'
+    const ctx = makeCtx({
+      userName: 'TestUser',
+      userProfile: { name: 'TestUser', description: '黑色短发，身穿风衣', persona: '冷静' },
+      callAiHelper: vi.fn().mockResolvedValue(`<prompt>${subjectPrompt}</prompt>`),
+    })
+
+    await findCommand('imagine')!.execute(['--mode', 'interaction', '--self', 'silhouette'], ctx)
+
+    const [systemPrompt, userContent] = (ctx.callAiHelper as any).mock.calls[0]
+    expect(systemPrompt).toContain('{{SELF_COMPOSITION}}')
+    expect(systemPrompt).toContain('唯一清晰主体')
+    expect(userContent).toContain('对方角色: Alice')
+    expect(userContent).toContain('我方角色: TestUser')
+    const generatedPrompt = vi.mocked(window.api.imageGen.generate).mock.calls[0][0]
+    expect(generatedPrompt).not.toContain('{{SELF_COMPOSITION}}')
+    expect(generatedPrompt).toContain('cropped featureless dark shoulder-edge shape')
+    expect(generatedPrompt).not.toContain('semi-transparent silhouette')
+  })
+
+  it('仅轮廓模式拒绝会生成第二个完整人物的自由描述并自动重写', async () => {
+    const badPrompt = 'A tall woman in a living room, turning toward the camera with a teasing smile, her right hand raised, fitted black dress, warm side lighting. At the right edge, a blurred low-contrast semi-transparent silhouette of a seated figure, faceless and out of focus.'
+    const goodPrompt = 'A tall woman in a living room, turning toward the camera with a teasing smile, eyes narrowed, lips parted, right hand raised near her shoulder, left hand resting on the sofa, fitted black dress with soft folds, warm side lighting, shallow depth of field, {{SELF_COMPOSITION}}'
+    const callAiHelper = vi.fn()
+      .mockResolvedValueOnce(`<prompt>${badPrompt}</prompt>`)
+      .mockResolvedValueOnce(`<prompt>${goodPrompt}</prompt>`)
+    const ctx = makeCtx({ callAiHelper })
+
+    await findCommand('imagine')!.execute(['--mode', 'full', '--self', 'silhouette'], ctx)
+
+    expect(callAiHelper).toHaveBeenCalledTimes(2)
+    const generatedPrompt = vi.mocked(window.api.imageGen.generate).mock.calls[0][0]
+    expect(generatedPrompt).toContain('cropped featureless dark shoulder-edge shape')
+    expect(generatedPrompt).not.toContain('seated figure')
+    expect(generatedPrompt).not.toContain('semi-transparent')
   })
 })

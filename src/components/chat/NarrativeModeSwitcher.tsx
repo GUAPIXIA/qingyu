@@ -54,7 +54,7 @@ export function NarrativeModeSwitcher({ characterId, isStreaming }: NarrativeMod
       <div
         role="radiogroup"
         aria-label="叙事模式"
-        className="flex items-center gap-0.5 rounded-lg border border-tavern-border-soft bg-tavern-bg/70 p-0.5"
+        className="flex items-center gap-0.5 rounded-lg border border-tavern-border bg-tavern-bg-card p-0.5 shadow-sm"
       >
         {NARRATIVE_MODE_OPTIONS.map((option) => {
           const selected = option.value === activeMode
@@ -76,8 +76,8 @@ export function NarrativeModeSwitcher({ characterId, isStreaming }: NarrativeMod
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/50',
                 'disabled:cursor-not-allowed disabled:opacity-50',
                 selected
-                  ? 'bg-tavern-accent-soft text-tavern-accent shadow-sm'
-                  : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text-soft',
+                  ? 'bg-tavern-accent-soft text-tavern-accent shadow-sm ring-1 ring-inset ring-tavern-accent/35'
+                  : 'text-tavern-text-soft hover:bg-tavern-bg-hover hover:text-tavern-text',
               )}
             >
               <Icon className={cn('h-3.5 w-3.5 shrink-0', savingMode === option.value && 'animate-pulse')} />

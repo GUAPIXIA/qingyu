@@ -314,6 +314,27 @@ describe('streamAIResponse 流式控制', () => {
     await promise
   })
 
+  it('DeepSeek V4 主对话关闭推理通道，把输出额度留给最终正文', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings,
+        activeModel: 'deepseek/deepseek-v4.1-flash',
+      },
+    })
+
+    const callbacks = captureStreamCallbacks()
+    const promise = streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset: null,
+      onComplete: vi.fn().mockResolvedValue(undefined),
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect((callbacks.chatParams as any).reasoningMode).toBe('disabled')
+    await promise
+  })
+
   it('空闲超时：60s 无新 chunk 中止请求并报错', async () => {
     const callbacks = captureStreamCallbacks()
     const onError = vi.fn()

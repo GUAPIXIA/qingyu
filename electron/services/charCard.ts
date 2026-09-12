@@ -76,15 +76,21 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
   const parsedTop = parsed as Record<string, any>
   const now = Date.now()
 
+  // 图片候选字段：data 包裹优先，其次裸卡顶层。
+  // 覆盖 cover/thumbnail/portrait 等社区卡常见字段，下载与「重新加载封面」共用同一来源。
+  const imageUrlCandidate = (
+    data.cover ?? data.avatar ?? data.image ?? data.image_url ??
+    data.thumbnail ?? data.portrait ??
+    parsedTop.cover ?? parsedTop.avatar ?? parsedTop.image ?? parsedTop.image_url ??
+    parsedTop.thumbnail ?? parsedTop.portrait ??
+    null
+  ) as unknown
+
   // 确定头像来源：优先级 传入参数 > JSON 中的图片字段
   let finalAvatar = avatarBase64 ?? ''
   if (!finalAvatar) {
     // 检查 JSON 中的图片字段
-    const imageUrl =
-      data.cover ?? data.avatar ?? data.image ?? data.image_url ??
-      data.thumbnail ?? data.portrait ??
-      parsedTop.cover ?? parsedTop.avatar ?? parsedTop.image ?? parsedTop.image_url ??
-      null
+    const imageUrl = imageUrlCandidate
 
     if (imageUrl) {
       if (typeof imageUrl === 'string') {
@@ -140,10 +146,9 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
     }
   }
 
-  // 记录原始图片 URL（用于重新加载封面）
-  const rawImageUrl = (!finalAvatar)
-    ? (data.avatar ?? data.image ?? data.image_url ?? '')
-    : ''
+  // 记录原始图片 URL（用于重新加载封面）：与上面下载共用同一候选字段，
+  // 避免仅识别 avatar/image 而漏掉 cover/thumbnail/portrait，导致重加载按钮不出现。
+  const rawImageUrl = (!finalAvatar) ? imageUrlCandidate : ''
   const importImageUrl = (typeof rawImageUrl === 'string' && !rawImageUrl.startsWith('data:')
     && (rawImageUrl.startsWith('http://') || rawImageUrl.startsWith('https://')))
     ? rawImageUrl : undefined
@@ -285,6 +290,34 @@ export function exportCharacterToJson(character: Character, savePath: string): v
     },
   }
   writeFileSync(savePath, JSON.stringify(data, null, 2), 'utf-8')
+}
+
+/** 从 data URL 解析图片二进制（非 data URL 或解码失败返回 null） */
+function decodeImageDataUrl(dataUrl: string | undefined): Buffer | null {
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) return null
+  const commaIdx = dataUrl.indexOf(',')
+  if (commaIdx < 0) return null
+  try {
+    const buffer = Buffer.from(dataUrl.slice(commaIdx + 1), 'base64')
+    return buffer.length > 0 ? buffer : null
+  } catch {
+    return null
+  }
+}
+
+/** 解析封面的文件扩展名（无法解析时返回 null） */
+export function getCoverExtension(character: Character): string | null {
+  const buffer = decodeImageDataUrl(character.cover || character.avatar)
+  if (!buffer) return null
+  const ext = detectMimeType(buffer).split('/')[1]
+  return ext === 'jpeg' ? 'jpg' : ext
+}
+
+/** 导出角色封面为独立图片文件 */
+export function exportCharacterCover(character: Character, savePath: string): void {
+  const buffer = decodeImageDataUrl(character.cover || character.avatar)
+  if (!buffer) throw new Error('该角色没有可导出的封面图片')
+  writeFileSync(savePath, buffer)
 }
 
 /** 保存角色头像（自动检测 MIME 类型） */

@@ -62,7 +62,7 @@ export function SessionSwitcher({
 
   return (
     <div className="flex items-center gap-1">
-      {isChat && <span className="text-tavern-border-soft select-none">|</span>}
+      {isChat && <span className="mx-1 h-4 w-px bg-tavern-border" aria-hidden="true" />}
 
       <Dropdown
         open={showMenu}
@@ -71,14 +71,14 @@ export function SessionSwitcher({
         trigger={
           isChat ? (
             <button
-              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-tavern-bg-hover transition-colors text-sm text-tavern-text-soft"
+              className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-tavern-text-soft transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
               title="切换对话"
             >
-              <Layers className="w-3.5 h-3.5 text-tavern-text-muted" />
+              <Layers className="h-3.5 w-3.5 text-tavern-text-soft" />
               <span className="session-switcher__label max-w-[100px] truncate">
                 {currentSession?.title ?? '对话'}
               </span>
-              <ChevronDown className="w-3 h-3 text-tavern-text-muted" />
+              <ChevronDown className="h-3 w-3 text-tavern-text-soft" />
             </button>
           ) : (
             <button className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-tavern-bg-hover text-tavern-text-muted hover:text-tavern-text transition-colors">

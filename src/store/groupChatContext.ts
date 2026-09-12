@@ -24,7 +24,7 @@ import { markPendingGroupCompression } from './groupStreamController'
 import { cropHistory, applyDepthInserts, type DepthInsertItem } from './contextShared'
 import type { GroupStoreGet } from './groupChatTypes'
 import type { NarrativeMode } from '../../shared/types'
-import { buildGameMasterPrompt, buildGroupNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
+import { buildGroupNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
 
 /** 群聊上下文组装结果：消息 + 本轮世界书触发键 / 超限压缩请求（调用方写回 store） */
 export interface GroupContextBuildResult {
@@ -354,8 +354,6 @@ export function buildGroupChatContext(
     settings.omniscientNarrativeRules,
   )
   systemContent += '\n\n' + narrativePrompt
-  const gameMasterPrompt = buildGameMasterPrompt(narrativeMode, currentSession?.gameMasterMode)
-  if (gameMasterPrompt) systemContent += '\n\n' + gameMasterPrompt
 
   // ===== 历史消息（Token 预算裁剪）=====
   let usedTokens = estimateTokens(systemContent, model)

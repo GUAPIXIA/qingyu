@@ -1,6 +1,6 @@
 /**
  * character IPC 处理器单元测试
- * 覆盖：list / get / save / delete / bindLorebook / exportPng / exportJson
+ * 覆盖：list / get / save / delete / bindLorebook / exportPng / exportJson / exportCover
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -11,6 +11,8 @@ const mockSaveCharacter = vi.fn()
 const mockDeleteCharacter = vi.fn()
 const mockExportCharacterToPng = vi.fn()
 const mockExportCharacterToJson = vi.fn()
+const mockExportCharacterCover = vi.fn()
+const mockGetCoverExtension = vi.fn()
 const mockWithFileLock = vi.fn((_path: string, fn: () => unknown) => fn())
 const mockExistsSync = vi.fn(() => true)
 const mockSafeId = vi.fn()
@@ -30,6 +32,8 @@ vi.mock('../../services/charCard', () => ({
   deleteCharacter: mockDeleteCharacter,
   exportCharacterToPng: mockExportCharacterToPng,
   exportCharacterToJson: mockExportCharacterToJson,
+  exportCharacterCover: mockExportCharacterCover,
+  getCoverExtension: mockGetCoverExtension,
   importCharacterFromPng: vi.fn(),
   importCharacterFromJson: vi.fn(),
   importCardFrontendExtensions: vi.fn(),
@@ -80,6 +84,7 @@ const mockCharacter = {
 // ===== 测试 =====
 describe('character IPC', () => {
   let handlers: Record<string, (...args: unknown[]) => unknown>
+  let mockDialog: { showSaveDialog: ReturnType<typeof vi.fn> }
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -95,7 +100,7 @@ describe('character IPC', () => {
         handlers[channel] = handler
       }),
     }
-    const mockDialog = {}
+    mockDialog = { showSaveDialog: vi.fn() }
 
     // 动态导入以触发 handler 注册
     const mod = await import('../character')
@@ -165,6 +170,57 @@ describe('character IPC', () => {
       await expect(
         handlers['character:exportPng'](null, 'nonexistent')
       ).rejects.toThrow('角色不存在')
+    })
+  })
+
+  describe('character:exportCover', () => {
+    it('角色不存在时抛异常', async () => {
+      mockGetCharacter.mockReturnValue(null)
+      await expect(
+        handlers['character:exportCover'](null, 'nonexistent')
+      ).rejects.toThrow('角色不存在')
+    })
+
+    it('无封面时返回 ok:false 且不弹保存框', async () => {
+      mockGetCoverExtension.mockReturnValue(null)
+      const result = await handlers['character:exportCover'](null, 'test-char-001')
+      expect(result).toEqual({ ok: false, error: '该角色没有可导出的封面图片' })
+      expect(mockDialog.showSaveDialog).not.toHaveBeenCalled()
+      expect(mockExportCharacterCover).not.toHaveBeenCalled()
+    })
+
+    it('按封面真实格式作为默认文件名导出', async () => {
+      mockGetCoverExtension.mockReturnValue('jpg')
+      mockDialog.showSaveDialog.mockResolvedValue({ canceled: false, filePath: '/tmp/out.jpg' })
+
+      const result = await handlers['character:exportCover'](null, 'test-char-001')
+
+      expect(mockDialog.showSaveDialog).toHaveBeenCalledWith(expect.objectContaining({
+        defaultPath: `${mockCharacter.name}-封面.jpg`,
+        filters: [{ name: 'JPG 图片', extensions: ['jpg'] }],
+      }))
+      expect(mockExportCharacterCover).toHaveBeenCalledWith(mockCharacter, '/tmp/out.jpg')
+      expect(result).toEqual({ ok: true })
+    })
+
+    it('用户取消时返回 canceled 且不写文件', async () => {
+      mockGetCoverExtension.mockReturnValue('png')
+      mockDialog.showSaveDialog.mockResolvedValue({ canceled: true })
+
+      const result = await handlers['character:exportCover'](null, 'test-char-001')
+
+      expect(mockExportCharacterCover).not.toHaveBeenCalled()
+      expect(result).toEqual({ ok: false, canceled: true })
+    })
+
+    it('底层写入抛错时返回 ok:false 而不是 reject', async () => {
+      mockGetCoverExtension.mockReturnValue('png')
+      mockDialog.showSaveDialog.mockResolvedValue({ canceled: false, filePath: '/tmp/out.png' })
+      mockExportCharacterCover.mockImplementation(() => { throw new Error('磁盘只读') })
+
+      const result = await handlers['character:exportCover'](null, 'test-char-001')
+
+      expect(result).toEqual({ ok: false, error: '磁盘只读' })
     })
   })
 })

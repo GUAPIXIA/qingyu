@@ -123,6 +123,16 @@ describe('OpenAI 适配器', () => {
     expect(result).toBe('<thought>思考过程</thought>\n\n回答')
   })
 
+  it('非流式：已关闭推理时即使上游仍返回 reasoning_content 也只保留正文', async () => {
+    const params = makeParams({ stream: false, model: 'deepseek/deepseek-v4.1-flash', reasoningMode: 'disabled' })
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: '最终正文', reasoning_content: '内部写作计划' } }],
+    }))
+
+    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+    expect(result).toBe('最终正文')
+  })
+
   it('非流式：tool_calls 附加 [TOOL_CALL] 标记', async () => {
     const params = makeParams({ stream: false })
     fetchMock.mockResolvedValue(jsonResponse({
@@ -170,6 +180,21 @@ describe('OpenAI 适配器', () => {
     // 推理内容作为完整块一次性输出
     expect(onChunk).toHaveBeenCalledWith('<thought>思考完毕</thought>\n\n')
     expect(onChunk).toHaveBeenCalledWith('正文')
+  })
+
+  it('流式：已关闭推理时忽略上游泄漏的 reasoning_content', async () => {
+    const params = makeParams({ stream: true, model: 'deepseek/deepseek-v4.1-flash', reasoningMode: 'disabled' })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{"reasoning_content":"内部写作计划"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"最终正文"}}]}\n\n',
+      'data: [DONE]\n',
+    ]))
+
+    const onChunk = vi.fn()
+    const result = await getAdapter('openai').chat(params, onChunk, new AbortController().signal)
+    expect(result).toBe('最终正文')
+    expect(onChunk).toHaveBeenCalledTimes(1)
+    expect(onChunk).toHaveBeenCalledWith('最终正文')
   })
 
   it('流式：OpenRouter 统一字段 delta.reasoning 同样收进 thought 块', async () => {

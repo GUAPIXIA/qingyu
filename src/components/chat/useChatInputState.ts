@@ -11,10 +11,25 @@ import type { Character, Preset, Lorebook, QuickReply, QuickReplyStore, Message,
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
 import { registerBuiltinCommands } from '../../commands/builtin'
-import { callAiHelper as callAiHelperCore, parseContinueResult, buildContinueContext } from './aiInputHelper'
+import {
+  callAiHelper as callAiHelperCore,
+  parseContinueResult,
+  buildContinueContext,
+  evaluateContinueLength,
+  isAcceptableAfterLengthRepair,
+  buildLengthRepairInstruction,
+  classifyContinueFailure,
+  isCompleteSentence,
+} from './aiInputHelper'
 import { createCommandContext } from './commandContext'
+import { registerDraftBridge } from './draftBridge'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
-import { resolveContinueIntensity, resolveContinueLength, CONTINUE_INTENSITY_PARAMS, CONTINUE_LENGTH_PARAMS } from '../../../shared/continueIntensity'
+import {
+  resolveContinueIntensity,
+  resolveContinueLength,
+  CONTINUE_INTENSITY_PARAMS,
+  CONTINUE_REQUEST_MAX_TOKENS,
+} from '../../../shared/continueIntensity'
 
 // 初始化内置命令（只执行一次）
 let commandsInitialized = false
@@ -119,6 +134,10 @@ export function useChatInputState(
 
   const activeProfile = getActiveProfile()
   const isConnected = isConnectionConfigured(activeProfile)
+
+  // 草稿桥读取最新文本：用 ref 镜像避免注册表持有过期的闭包值
+  const textRef = useRef(text)
+  useEffect(() => { textRef.current = text }, [text])
 
   // 快捷回复按钮：角色/会话切换时刷新
   useEffect(() => {
@@ -275,6 +294,16 @@ export function useChatInputState(
     }
   }, [text])
 
+  // 方向卡片 → 输入框草稿桥：卡片在消息列表内渲染，通过模块级注册表写入草稿
+  useEffect(() => {
+    registerDraftBridge('single', {
+      getText: () => textRef.current,
+      setDraft: (value) => setText(value),
+    })
+    return () => registerDraftBridge('single', null)
+    // 桥只依赖 textRef；setText 每次渲染都是新引用，无需列入依赖
+  }, [])
+
   // H-09 修复：组件卸载时取消所有活跃的 AI 辅助请求并清理 IPC 监听器
   useEffect(() => {
     const ref = activeRequestIdsRef
@@ -415,6 +444,22 @@ export function useChatInputState(
     })
   }
 
+  /**
+   * 解析失败时的用户提示。
+   * 实测常见成因是推理内容吃光输出预算（聚合端点忽略“关闭思考”），
+   * 因此“没有正文”多与模型/端点有关，而不是档位设置——建议重试或换模型。
+   */
+  const continueFailureMessage = (raw: string): string => {
+    switch (classifyContinueFailure(raw)) {
+      case 'empty':
+        return '模型本次没有返回正文（推理可能占满了输出），请重试或更换模型'
+      case 'truncated':
+        return '续写没有写完，请重试或更换模型'
+      default:
+        return '续写未返回有效的中文正文，请重试或更换模型'
+    }
+  }
+
   /** AI 续写 */
   const handleAiContinue = async () => {
     if (isAiProcessing) return
@@ -429,11 +474,10 @@ export function useChatInputState(
       const narrativeMode = resolveNarrativeMode(
         store.sessions.find((session) => session.id === store.currentSessionId)?.narrativeMode,
       )
-      // 剧情转折强度与最终内容长度是两个独立的全局设置。
+      // 剧情变化与续写长度是两个独立的全局设置。
       const intensity = resolveContinueIntensity(settings.continueIntensity)
       const length = resolveContinueLength(settings.continueLength)
       const intensityParams = CONTINUE_INTENSITY_PARAMS[intensity]
-      const lengthParams = CONTINUE_LENGTH_PARAMS[length]
 
       // 续写上下文与后处理逻辑抽取至 aiInputHelper.ts
       const contextMessages = buildContinueContext({
@@ -443,28 +487,62 @@ export function useChatInputState(
       const requestContinuation = (messages: ChatParams['messages'], temperature: number) => callAiHelper({
         messages,
         temperature,
-        // 输出预算只由长度档位控制，避免提高转折强度时被动拉长正文。
-        maxTokens: lengthParams.maxTokens,
+        // 输出上限只是失控兜底，不参与长度控制：长度由提示词的字数指令 + 生成后校验负责。
+        // 按档位配紧预算会让合规输出在闭标签前被切断，解析拿不到完整标签对。
+        maxTokens: CONTINUE_REQUEST_MAX_TOKENS,
         reasoningMode: 'disabled',
       })
+
+      /** 在 system 提示词后追加一段指令并重发（格式重试与长度修复共用）。 */
+      const requestWithSystemNote = (note: string, temperature: number) => requestContinuation(
+        contextMessages.map((message, index) => index === 0
+          ? { ...message, content: `${message.content}\n\n${note}` }
+          : message),
+        temperature,
+      )
 
       let rawResult = await requestContinuation(contextMessages, intensityParams.temperature)
       let cleaned = parseContinueResult(rawResult, userName, charName, narrativeMode)
       if (!cleaned) {
-        const retryMessages = contextMessages.map((message, index) => index === 0
-          ? {
-              ...message,
-              content: `${message.content}\n\n上一次输出格式无效。不要分析、解释或复述规则；只返回一组包含简体中文正文的 <continuation>...</continuation>。`,
-            }
-          : message)
-        rawResult = await requestContinuation(retryMessages, Math.min(intensityParams.temperature, 0.3))
+        // 格式无效重试：与长度修复分开计数，避免两类重试串成多次请求
+        rawResult = await requestWithSystemNote(
+          '上一次输出格式无效。不要分析、解释或复述规则；只返回一组包含简体中文正文的 <continuation>...</continuation>。',
+          Math.min(intensityParams.temperature, 0.3),
+        )
         cleaned = parseContinueResult(rawResult, userName, charName, narrativeMode)
       }
+
       if (cleaned) {
+        const verdict = evaluateContinueLength(cleaned, length)
+        if (verdict.action === 'trim' && verdict.trimmedText) {
+          cleaned = verdict.trimmedText
+        } else if (verdict.action === 'supplement' || verdict.action === 'compress') {
+          // 越界或疑似截断：最多修复一次，修复后仅接受轻微越界
+          const repairNote = buildLengthRepairInstruction(verdict.action, length, {
+            chars: verdict.chars,
+            truncated: verdict.truncated,
+          })
+          const repaired = parseContinueResult(
+            await requestWithSystemNote(repairNote, intensityParams.temperature),
+            userName, charName, narrativeMode,
+          )
+          if (repaired && isAcceptableAfterLengthRepair(repaired, length)) {
+            cleaned = repaired
+          } else {
+            setText(originalInput)
+            // 仍以不完整句结尾时，实质是“没写完”而非长度档位问题，提示要指向症结
+            showNotification(
+              !repaired || !isCompleteSentence(repaired)
+                ? '续写没有写完，请重试或更换模型'
+                : '续写长度未落在目标区间，已保留原输入；可更换档位或模型重试',
+            )
+            return
+          }
+        }
         setContinuedText(hasInput ? originalInput + cleaned : cleaned)
       } else {
         setText(originalInput)
-        showNotification('续写未返回有效的中文正文，请重试或更换模型')
+        showNotification(continueFailureMessage(rawResult))
       }
     } catch (err) {
       logError('ChatInput:continue', err)

@@ -5,6 +5,7 @@ import com.qingyu.companion.data.CompanionError
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.Message
+import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.MessagePage
 import com.qingyu.companion.model.SessionPreview
 import com.qingyu.companion.network.WsClient
@@ -99,7 +100,10 @@ class ChatViewModelErrorTest {
         override suspend fun stopGeneration(requestId: String) {}
         override suspend fun swipe(sessionId: String, messageId: String, direction: Int) = throw NotImplementedError()
         override suspend fun translate(sessionId: String, messageId: String) = throw NotImplementedError()
-        override suspend fun listCharacters() = emptyList<Character>()
+            override suspend fun regenerateDirections(sessionId: String, messageId: String): List<DialogueDirection> =
+        emptyList()
+
+    override suspend fun listCharacters() = emptyList<Character>()
         override suspend fun activateCharacter(characterId: String) = throw NotImplementedError()
         override suspend fun listQuickReplies(characterId: String?) = com.qingyu.companion.model.QuickReplyListResponse(emptyList(), emptyMap())
         override suspend fun executeQuickReply(id: String): Boolean {

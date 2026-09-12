@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Database, Globe2, ListChecks, Save, X } from 'lucide-react'
+import { Database, Globe2, Save, X } from 'lucide-react'
 import type { MemoryFact, MemoryFactRecord } from '../../../shared/types'
 import { cn } from '../../lib/utils'
 import { isMemoryFact, memoryFactToText } from '../../utils/memory'
@@ -9,7 +9,6 @@ interface WorldStateSession {
   memoryEnabled?: boolean
   memoryCurrentState?: string
   memoryFacts?: MemoryFactRecord[]
-  gameMasterMode?: boolean
 }
 
 interface WorldStatePanelProps {
@@ -17,7 +16,6 @@ interface WorldStatePanelProps {
   onToggle: () => void
   session?: WorldStateSession
   onSaveWorldState: (value: string) => void | Promise<void>
-  onSetGameMasterMode: (enabled: boolean) => void | Promise<void>
   isStreaming: boolean
 }
 
@@ -27,13 +25,11 @@ export function WorldStatePanel({
   onToggle,
   session,
   onSaveWorldState,
-  onSetGameMasterMode,
   isStreaming,
 }: WorldStatePanelProps) {
   const [draft, setDraft] = useState(session?.memoryCurrentState ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const gameMasterMode = session?.gameMasterMode ?? false
 
   useEffect(() => {
     setDraft(session?.memoryCurrentState ?? '')
@@ -75,16 +71,15 @@ export function WorldStatePanel({
         aria-haspopup="dialog"
         aria-expanded={open}
         className={cn(
-          'relative flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors',
+          'relative flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/50',
           open || draft
-            ? 'border-tavern-accent/30 bg-tavern-accent-soft text-tavern-accent'
-            : 'border-tavern-border-soft bg-tavern-bg-card/70 text-tavern-text-muted hover:border-tavern-accent/30 hover:text-tavern-accent',
+            ? 'border-transparent bg-tavern-accent-soft text-tavern-accent'
+            : 'border-tavern-border bg-tavern-bg-card text-tavern-text-soft hover:border-tavern-accent/50 hover:bg-tavern-bg-hover hover:text-tavern-accent',
         )}
-        title="世界状态与游戏主持设置"
+        title="世界状态"
       >
         <Globe2 className="h-3.5 w-3.5" />
         <span className="hidden xl:inline">世界状态</span>
-        {gameMasterMode && <span className="h-1.5 w-1.5 rounded-full bg-tavern-accent" aria-label="游戏主持已开启" />}
       </button>
 
       {open && (
@@ -141,28 +136,6 @@ export function WorldStatePanel({
                   {saving ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Save className="h-3.5 w-3.5" />}
                   {saving ? '保存中…' : '保存世界状态'}
                 </button>
-              </section>
-
-              <section className="mt-4 rounded-xl border border-tavern-border-soft bg-tavern-bg/50 p-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="flex items-center gap-1.5 font-medium text-tavern-text"><ListChecks className="h-3.5 w-3.5 text-tavern-accent" />游戏主持格式</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-tavern-text-muted">需要判定时显示依据与结果，并在决策点给出行动选项</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-label="游戏主持格式"
-                    aria-checked={gameMasterMode}
-                    disabled={!session || isStreaming}
-                    onClick={() => void onSetGameMasterMode(!gameMasterMode)}
-                    className={cn('relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-40', gameMasterMode ? 'bg-tavern-accent' : 'bg-tavern-bg-hover')}
-                  >
-                    <span className={cn('inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-tavern-accent shadow-sm transition-transform', gameMasterMode ? 'translate-x-5' : 'translate-x-0.5')}>
-                      {gameMasterMode && <Check className="h-3 w-3" />}
-                    </span>
-                  </button>
-                </div>
               </section>
 
               <section className="mt-4">

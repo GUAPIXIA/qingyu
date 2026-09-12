@@ -2,8 +2,7 @@ import type { IpcMain } from 'electron'
 import { createLogger } from '../services/logger'
 import { generateImage, testImageGenConnection, fetchComfyObjectInfo, type ImageGenOptions } from '../services/imageGen'
 import { analyzeComfyWorkflow, importLocalComfyWorkflow, listLocalComfyWorkflows, normalizeComfyWorkflow } from '../services/comfyWorkflow'
-import { readJson, DIRS } from '../services/storage'
-import { join } from 'node:path'
+import { readSettingsFromDisk, restoreSecrets } from './settings'
 import { sanitizeApiKey } from '../utils/pathGuard'
 import type { Settings, ConnectionProfile } from '../../shared/types'
 
@@ -75,11 +74,10 @@ async function translatePromptToEnglish(prompt: string, settings: Settings): Pro
 export function registerImageGenIPC(ipcMain: IpcMain): void {
   ipcMain.handle('imageGen:generate', async (_e, prompt: string, options?: ImageGenOptions) => {
     try {
-      // 从 settings.json 读取完整配置
-      const settings = readJson<Settings>(join(DIRS.config(), 'settings.json'))
-      if (!settings) {
-        return { success: false, error: '设置读取失败' }
-      }
+      // H1 修复后 settings.json 不落明文 apiKey，必须经 restoreSecrets 从 safeStorage
+      // 回填 imageGenModels[].apiKey，否则 OpenAI 与带鉴权的反代恒定 401。
+      const settings = readSettingsFromDisk()
+      restoreSecrets(settings)
 
       // 找到当前激活的生图模型
       const config = settings.imageGenModels?.find(

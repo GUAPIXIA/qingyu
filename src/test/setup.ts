@@ -25,6 +25,9 @@ const mockApi: Partial<ExposedAPI> = {
     get: vi.fn().mockResolvedValue(null),
     save: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
+    exportPng: vi.fn().mockResolvedValue(undefined),
+    exportJson: vi.fn().mockResolvedValue(undefined),
+    exportCover: vi.fn().mockResolvedValue({ ok: true }),
   } as any,
   chat: {
     listSessions: vi.fn().mockResolvedValue([]),

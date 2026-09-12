@@ -1,6 +1,15 @@
 import type { ChatParams, ProviderType, Preset, Character, Message, NarrativeMode, ContinueIntensity, ContinueLength } from '../../../shared/types'
 import { stripThought } from '../../utils/messagePostProcess'
-import { resolveContinueIntensity, resolveContinueLength } from '../../../shared/continueIntensity'
+import {
+  CONTINUE_LENGTH_PARAMS,
+  CONTINUE_LENGTH_TOLERANCE,
+  resolveContinueIntensity,
+  resolveContinueLength,
+} from '../../../shared/continueIntensity'
+import { countVisibleCharacters, isCompleteSentence, trimToSentenceBoundary } from '../../../shared/textMetrics'
+
+/** 续写是否以完整句收尾（供调用方区分“没写完”与“长度越界”）。 */
+export { isCompleteSentence } from '../../../shared/textMetrics'
 
 /**
  * ChatInput 的 AI 辅助逻辑（续写 / 润色）抽取模块。
@@ -80,16 +89,169 @@ function isChineseContinuation(text: string): boolean {
   return hanCount >= 2 && hanCount * 2 >= latinCount
 }
 
-/** 提取并校验可安全写回输入框的续写正文。 */
+/**
+ * 无标签回退路径的更严判据。
+ *
+ * 标签内正文已遵守协议，容忍“中文正文 + 少量英文专名”（2:1）；
+ * 无标签时无法区分“正文”与“英文分析里夹了一句中文”，因此要求中文字符不少于
+ * 英文字符，挡住 "Need final only. 应该继续推进剧情。" 这类混合输出。
+ */
+function isPredominantlyChinese(text: string): boolean {
+  const hanCount = (text.match(/[\u3400-\u9fff]/g) || []).length
+  const latinCount = (text.match(/[A-Za-z]/g) || []).length
+  return hanCount >= 4 && hanCount >= latinCount
+}
+
+/**
+ * 剥离模型写在正文前的元说明（如“以下是续写：”“好的，我来补写：”）。
+ * 只认“短、含元词、以冒号结尾”的整行，避免误删正文（对白里也可能以“好的”开头）。
+ */
+function stripContinuationPreamble(text: string): string {
+  const match = text.match(/^[^\n。！？]{0,24}?(?:续写|补写|正文|内容|如下|接着写)[^\n。！？]{0,12}[：:]\s*\n?/)
+  return match ? text.slice(match[0].length).trim() : text
+}
+
+/** 去掉可能残留的标签字面量（截断或未包裹时会出现）。 */
+function stripTagLiterals(text: string, tag: string): string {
+  return text.replace(new RegExp(`<\\s*/?\\s*${tag}\\s*>`, 'gi'), '').trim()
+}
+
+/**
+ * 提取并校验可安全写回输入框的续写正文。
+ *
+ * 标签是“信封”而非正确性前提：实测聚合端点常忽略 `thinking: disabled`，
+ * 推理内容既占用输出预算、又让模型忘记加标签，但产出的正文本身完全可用。
+ * 因此完整标签对优先，缺失时回退到标签内未闭合内容或全文，经元说明剥离后使用；
+ * 长度与完整性由 `evaluateContinueLength` 继续把关（截断会走补足修复）。
+ */
 export function parseContinueResult(
   raw: string,
   userName: string,
   charName: string,
   narrativeMode: NarrativeMode,
 ): string {
-  const tagged = extractTaggedResult(raw, 'continuation')
-  if (!tagged || !isChineseContinuation(tagged)) return ''
-  return normalizeContinueOutput(tagged, userName, charName, narrativeMode)
+  const content = stripThought(raw || '')
+  if (!content) return ''
+
+  const tagged = extractTaggedResult(content, 'continuation')
+  let candidate: string
+  let fromTag: boolean
+  if (tagged) {
+    candidate = tagged
+    fromTag = true
+  } else {
+    // 未闭合（被切断）时取开标签之后的部分；完全没有标签则用全文
+    const openMatch = content.match(/<\s*continuation\s*>([\s\S]*)$/i)
+    candidate = stripContinuationPreamble(stripTagLiterals(openMatch ? openMatch[1] : content, 'continuation'))
+    fromTag = false
+  }
+
+  // 标签外内容需更严的中文占比判据，避免把“英文分析 + 中文尾巴”当成正文
+  const accepted = fromTag ? isChineseContinuation(candidate) : isPredominantlyChinese(candidate)
+  if (!accepted) return ''
+  const normalized = normalizeContinueOutput(candidate, userName, charName, narrativeMode)
+  return normalized && isChineseContinuation(normalized) ? normalized : ''
+}
+
+/** 续写解析失败的归因；用于给出可操作的提示，而不是笼统的“无效正文”。 */
+export type ContinueFailureKind = 'truncated' | 'invalid-content' | 'empty'
+
+/**
+ * 归因续写为何无法使用（2026-09-11 实机实测后修订）：
+ * - empty：思考内容之外没有正文——实测聚合端点忽略 `thinking: disabled`，
+ *   推理会吃光输出预算，这是“没有正文”的最常见成因；
+ * - truncated：写了但没写完（含未闭合标签）；
+ * - invalid-content：有内容但不是可用的中文正文（如只回了英文分析）。
+ */
+export function classifyContinueFailure(raw: string): ContinueFailureKind {
+  const content = stripThought(raw || '')
+  if (!content.trim()) return 'empty'
+  const hasOpen = /<\s*continuation\s*>/i.test(content)
+  const hasClose = /<\s*\/\s*continuation\s*>/i.test(content)
+  if (hasOpen && !hasClose) return 'truncated'
+  return 'invalid-content'
+}
+
+/**
+ * 解析失败是否值得再试一次格式。
+ * 未加标签已由 parseContinueResult 回退接受，因此走到这里只剩“确实拿不到中文正文”
+ * 或“内容不完整”，重试一次即可；长度修复由 evaluateContinueLength 另行触发。
+ */
+export function shouldRetryContinueFormat(raw: string): boolean {
+  const kind = classifyContinueFailure(raw)
+  return kind !== 'empty'
+}
+
+/** 长度校验结论：接受的两种形态（原样 / 句边界收束）与两种修复方向。 */
+export type ContinueLengthAction = 'accept' | 'trim' | 'supplement' | 'compress'
+
+export interface ContinueLengthEvaluation {
+  /** 本次新增内容的可见字符数 */
+  chars: number
+  /** 是否以完整句收尾；不完整即视为被 maxTokens 截断 */
+  truncated: boolean
+  action: ContinueLengthAction
+  /** action === 'trim' 时的收束结果（已落在目标区间内） */
+  trimmedText?: string
+}
+
+/**
+ * 生成后长度校验（方案 §6.5）。
+ * 判定顺序：明显超长 → 上限 100%–120% 句边界收束 → 截断 → 明显偏短 → 容忍下限 → 接受。
+ * 超长优先于截断：对已经超出上限的正文要求“补足”只会更长，应先压缩。
+ * “语义完整”用句末标点判定，不额外调用模型。
+ */
+export function evaluateContinueLength(text: string, length: ContinueLength): ContinueLengthEvaluation {
+  const { minChars, maxChars } = CONTINUE_LENGTH_PARAMS[length]
+  const chars = countVisibleCharacters(text)
+  const truncated = !isCompleteSentence(text)
+
+  if (chars > maxChars * CONTINUE_LENGTH_TOLERANCE.repairCeilingRatio) {
+    return { chars, truncated, action: 'compress' }
+  }
+  if (chars > maxChars) {
+    const trimmedText = trimToSentenceBoundary(text, { minChars, maxChars })
+    if (trimmedText) return { chars, truncated, action: 'trim', trimmedText }
+    return { chars, truncated, action: 'compress' }
+  }
+
+  // 被 maxTokens 截断的正文即使字数达标也要补足，不能把半截正文写回输入框
+  if (truncated) return { chars, truncated, action: 'supplement' }
+  if (chars < minChars * CONTINUE_LENGTH_TOLERANCE.acceptLowerRatio) {
+    return { chars, truncated, action: 'supplement' }
+  }
+  return { chars, truncated, action: 'accept' }
+}
+
+/**
+ * 修复一次后的宽容判定：仍属轻微越界且句意完整时接受，明显越界返回 false
+ * （调用方应保留用户原输入并给出可见反馈）。
+ */
+export function isAcceptableAfterLengthRepair(text: string, length: ContinueLength): boolean {
+  const { minChars, maxChars } = CONTINUE_LENGTH_PARAMS[length]
+  if (!isCompleteSentence(text)) return false
+  const chars = countVisibleCharacters(text)
+  return chars >= minChars * CONTINUE_LENGTH_TOLERANCE.softLowerRatio
+    && chars <= maxChars * CONTINUE_LENGTH_TOLERANCE.softUpperRatio
+}
+
+/**
+ * 长度修复指令：追加到 system 提示词后重新请求一次。
+ * 只约束字数与收尾方式——输出上限是统一的失控兜底，不在这里复述具体 token 数。
+ */
+export function buildLengthRepairInstruction(
+  mode: 'supplement' | 'compress',
+  length: ContinueLength,
+  opts: { chars: number; truncated: boolean },
+): string {
+  const { minChars, maxChars } = CONTINUE_LENGTH_PARAMS[length]
+  if (mode === 'compress') {
+    return `上一次输出约 ${opts.chars} 个可见字符，超出本次目标 ${minChars}–${maxChars} 字。请压缩重写：保留关键信息与因果，删去重复、铺陈与次要细节，必须在目标区间内以完整句收尾。`
+  }
+  const truncatedNote = opts.truncated
+    ? '上一次输出未能写完就中断了。'
+    : `上一次输出约 ${opts.chars} 个可见字符，低于本次目标 ${minChars}–${maxChars} 字。`
+  return `${truncatedNote}请补足到目标区间（${minChars}–${maxChars} 个可见字符），以完整句收尾；不要复述已有内容，也不要增加无关支线。`
 }
 
 /**
@@ -123,19 +285,20 @@ function immersiveScopeClause(intensity: ContinueIntensity): string {
   }
 }
 
-/** 最终输入框内容的独立篇幅目标；不参与剧情转折判断。 */
+/**
+ * 本次新增内容的篇幅目标；长度控制的唯一手段，不参与剧情转折判断。
+ * 语义是“续写新增的部分”，不是“合并原文后的最终输入框内容”——
+ * 原文已经很长时，靠追加无法让最终内容变短（方案 §6.1）。
+ */
 function continueLengthClause(length: ContinueLength, hasInput: boolean): string {
-  const target = hasInput ? '以续写合并后的最终输入框内容为目标' : '以生成后的最终输入框内容为目标'
-  switch (length) {
-    case 'brief':
-      return `- ${target}，保持精简，通常为一至两句；若原文已达到目标，只补必要收尾`
-    case 'detailed':
-      return `- ${target}，充分补充动作、氛围与因果，可写两到三个自然段`
-    case 'extended':
-      return `- ${target}，允许完整展开细节与过程，可写多个自然段`
-    default:
-      return `- ${target}，形成一个信息完整、节奏自然的短段落`
-  }
+  const { minChars, maxChars, structure } = CONTINUE_LENGTH_PARAMS[length]
+  const lead = hasInput
+    ? '本次只输出直接接在原文之后的新内容，不要复述原文'
+    : '本次只输出用户接下来要说的新内容'
+  return `- 篇幅由本指令控制：${lead}，写 ${minChars}–${maxChars} 个可见中文字符，${structure}
+- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限
+- 必须在完整句处结束，不要为了凑字数重复信息
+- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线`
 }
 
 /** 构造续写的 systemPrompt（用户视角续写助手） */

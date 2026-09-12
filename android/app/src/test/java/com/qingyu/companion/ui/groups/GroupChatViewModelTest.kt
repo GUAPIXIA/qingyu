@@ -2,6 +2,7 @@ package com.qingyu.companion.ui.groups
 
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.model.CompanionEvent
+import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.GroupMessage
 import com.qingyu.companion.network.WsClient
 import kotlinx.coroutines.Dispatchers
@@ -267,6 +268,9 @@ private class FakeGroupRepository : ChatRepository {
     override suspend fun editMessage(sessionId: String, messageId: String, content: String) = throw UnsupportedOperationException()
     override suspend fun deleteMessage(sessionId: String, messageId: String) = throw UnsupportedOperationException()
     override suspend fun translate(sessionId: String, messageId: String) = throw UnsupportedOperationException()
+        override suspend fun regenerateDirections(sessionId: String, messageId: String): List<DialogueDirection> =
+        emptyList()
+
     override suspend fun swipe(sessionId: String, messageId: String, direction: Int) = throw UnsupportedOperationException()
     override suspend fun stopGeneration(requestId: String) = throw UnsupportedOperationException()
     override suspend fun activateCharacter(characterId: String) = throw UnsupportedOperationException()

@@ -108,6 +108,9 @@ describe('会话派生记忆清理', () => {
     await expect(chatData.updateSession('char-001', session.id, {
       gameMasterMode: 'yes',
     } as never)).rejects.toThrow('gameMasterMode')
+    await expect(chatData.updateSession('char-001', session.id, {
+      dialogueDirectionsEnabled: 'yes',
+    } as never)).rejects.toThrow('dialogueDirectionsEnabled')
     const persisted = (await chatData.listSessions('char-001')).find((item) => item.id === session.id)
     expect(persisted?.narrativeMode).toBe('immersive')
   })

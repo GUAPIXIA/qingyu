@@ -1,6 +1,8 @@
 package com.qingyu.companion.network
 
+import com.qingyu.companion.model.Message
 import com.qingyu.companion.model.MessagePage
+import com.qingyu.companion.model.DirectionsResponse
 import com.qingyu.companion.model.PairRequest
 import com.qingyu.companion.model.PairResponse
 import com.qingyu.companion.model.QuickReplyListResponse
@@ -228,6 +230,13 @@ interface QingyuApi {
         @Query("messageId") messageId: String,
         @Query("direction") direction: Int,
     ): com.qingyu.companion.model.Message
+
+    /** 重新生成指定消息的“下一步方向”（安卓端“换一批”） */
+    @POST("api/v1/sessions/{sessionId}/messages/{messageId}/directions")
+    suspend fun regenerateDirections(
+        @Path("sessionId") sessionId: String,
+        @Path("messageId") messageId: String,
+    ): DirectionsResponse
 
     /** 触发 PC 侧翻译（阶段二） */
     @POST("api/v1/sessions/{sessionId}/translate")

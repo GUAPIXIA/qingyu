@@ -3,6 +3,7 @@ package com.qingyu.companion.ui.chat
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.Message
+import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.Role
 import com.qingyu.companion.network.WsClient
 import kotlinx.coroutines.Dispatchers
@@ -112,6 +113,9 @@ private class FakeFlushRepository : ChatRepository {
     override suspend fun editMessage(sessionId: String, messageId: String, content: String) = Message(messageId, sessionId, "c1", Role.assistant, content, timestamp = 0)
     override suspend fun deleteMessage(sessionId: String, messageId: String) = Unit
     override suspend fun translate(sessionId: String, messageId: String) = com.qingyu.companion.model.TranslateResponse(messageId, "")
+        override suspend fun regenerateDirections(sessionId: String, messageId: String): List<DialogueDirection> =
+        emptyList()
+
     override suspend fun swipe(sessionId: String, messageId: String, direction: Int) = Message(messageId, sessionId, "c1", Role.assistant, "swipe", timestamp = 0)
     override suspend fun listSessions() = emptyList<com.qingyu.companion.model.SessionPreview>()
     override suspend fun listCharacters() = emptyList<com.qingyu.companion.model.Character>()

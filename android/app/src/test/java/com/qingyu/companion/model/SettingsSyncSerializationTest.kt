@@ -1,11 +1,13 @@
 package com.qingyu.companion.model
 
 import com.qingyu.companion.data.settings.SettingsOwnership
+import com.qingyu.companion.data.settings.settingsFieldValue
 import com.qingyu.companion.network.NetworkModule
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -73,6 +75,21 @@ class SettingsSyncSerializationTest {
         assertEquals("768x1344", dto.values.imageGenSize)
         // 已退出同步白名单：不会进入 PATCH 增量
         assertFalse("imageGenSize" in SettingsOwnership.SYNCABLE_FIELDS)
+    }
+
+    @Test
+    fun `自动生图字段已随 v4 整体下线`() {
+        // 移出同步白名单：旧 Android PATCH 该字段会被判 field_not_allowed
+        assertFalse("imageGenAutoEnabled" in SettingsOwnership.SYNCABLE_FIELDS)
+        // 冲突面板取值分支已移除
+        assertNull(settingsFieldValue(SettingsDto(), "imageGenAutoEnabled"))
+        // 旧 PC 快照携带该字段时由 ignoreUnknownKeys 容错，解码不抛
+        val raw = """
+            { "schemaVersion": 3, "revision": "legacy", "updatedAt": 1,
+              "values": { "activeModel": "m", "imageGenAutoEnabled": true }, "capabilities": [] }
+        """.trimIndent()
+        val dto = json.decodeFromString(SettingsSnapshotDto.serializer(), raw)
+        assertEquals("m", dto.values.activeModel)
     }
 
     @Test

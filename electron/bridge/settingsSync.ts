@@ -32,7 +32,6 @@ export interface MobileSafeSettings {
   autoScroll: boolean
   showTokenCount: boolean
   htmlRendering: boolean
-  imageGenAutoEnabled: boolean
   exampleDialogMode: 'always' | 'first_turn' | 'off'
   lorebookRatio: number
   autoTitle: boolean
@@ -51,13 +50,14 @@ export const SETTINGS_SNAPSHOT_CAPABILITIES = [
  * 快照 schemaVersion。
  *
  * v3：安全子集移除 `imageGenSize`（改用工作流节点级覆盖）。
+ * v4：安全子集移除 `imageGenAutoEnabled`（自动生图功能整体下线）。
  * 端点协议本身未变，故 capability 仍为 `settings_snapshot_v2`，
  * 旧版 Android 继续走快照路径，缺失字段由其 DTO 默认值兜底。
  */
-export const SETTINGS_SNAPSHOT_SCHEMA_VERSION = 3
+export const SETTINGS_SNAPSHOT_SCHEMA_VERSION = 4
 
 export interface SettingsSnapshot {
-  schemaVersion: 3
+  schemaVersion: 4
   revision: string
   updatedAt: number
   values: MobileSafeSettings
@@ -126,7 +126,6 @@ export function toMobileSafeSettings(s: Settings): MobileSafeSettings {
     autoScroll: s.autoScroll,
     showTokenCount: s.showTokenCount,
     htmlRendering: s.htmlRendering,
-    imageGenAutoEnabled: s.imageGenAutoEnabled ?? false,
     exampleDialogMode: s.exampleDialogMode ?? 'always',
     lorebookRatio: s.lorebookRatio ?? 0.3,
     autoTitle: s.autoTitle ?? true,
@@ -187,7 +186,6 @@ const FIELD_VALIDATORS: Record<
   showTokenCount: (v) => (typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, reason: 'invalid_type' }),
   autoScroll: (v) => (typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, reason: 'invalid_type' }),
   htmlRendering: (v) => (typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, reason: 'invalid_type' }),
-  imageGenAutoEnabled: (v) => (typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, reason: 'invalid_type' }),
   autoTitle: (v) => (typeof v === 'boolean' ? { ok: true, value: v } : { ok: false, reason: 'invalid_type' }),
   defaultNarrativeMode: (v) => (isNarrativeMode(v)
     ? { ok: true, value: v } : { ok: false, reason: 'invalid_enum' }),

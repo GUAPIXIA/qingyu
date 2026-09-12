@@ -3,6 +3,7 @@ import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { downloadFile } from '../../utils/download'
+import { stripThought } from '../../utils/messagePostProcess'
 import type { CommandContext } from '../../commands/registry'
 
 /**
@@ -189,7 +190,11 @@ export function createCommandContext(deps: CommandContextDeps): CommandContext {
     },
     getRecentMessages: (count) => {
       return chatStore.messages
-        .filter(m => m.content && m.content.trim())
+        // 生图场景只取用户与角色真正看得见的对话：排除保存提示词的 system 图片消息，
+        // 同时剥离模型内部 thought，避免旧提示词或推理文字挤占最新场景。
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({ ...m, content: stripThought(m.content || '').trim() }))
+        .filter((m) => m.content)
         .slice(-count)
         .map(m => ({
           role: m.role as 'user' | 'assistant',
@@ -198,5 +203,10 @@ export function createCommandContext(deps: CommandContextDeps): CommandContext {
         }))
     },
     userName: settings.userName || '用户',
+    userProfile: {
+      name: settings.userName || '用户',
+      description: settings.userDescription || '',
+      persona: settings.userPersona || '',
+    },
   }
 }

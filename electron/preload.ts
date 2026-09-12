@@ -135,6 +135,7 @@ const characterApi: CharacterAPI = {  list: () => ipcRenderer.invoke('character:
   bindLorebook: (characterId, lorebookId) => ipcRenderer.invoke('character:bindLorebook', characterId, lorebookId),
   exportPng: (id) => ipcRenderer.invoke('character:exportPng', id),
   exportJson: (id) => ipcRenderer.invoke('character:exportJson', id),
+  exportCover: (id) => ipcRenderer.invoke('character:exportCover', id),
   reloadAvatar: (characterId, url) => ipcRenderer.invoke('character:reloadAvatar', characterId, url),
   onImportProgress: (callback) => {
     const handler = (_e: unknown, data: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' }) => callback(data)

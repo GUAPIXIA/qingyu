@@ -21,11 +21,11 @@ const PROVIDERS: Array<{ value: ImageGenProvider; label: string }> = [
   { value: 'comfyui', label: 'ComfyUI' },
 ]
 
-/** OpenAI DALL-E 尺寸选项 */
-const OPENAI_SIZES = [
-  '1024x1024', '1792x1024', '1024x1792',
-  '512x512', '256x256',
-]
+/** OpenAI DALL-E 3 尺寸选项（服务端仅接受这三种） */
+const DALLE3_SIZES = ['1024x1024', '1792x1024', '1024x1792']
+
+/** DALL-E 2 尺寸选项（仅正方形；旧模型兼容） */
+const DALLE2_SIZES = ['256x256', '512x512', '1024x1024']
 
 /** SD WebUI 尺寸选项 */
 const SD_SIZES = [
@@ -105,7 +105,9 @@ export function ImageGenModelsSection() {
   // OpenAI 与 SD WebUI 共用尺寸字段；ComfyUI 的尺寸由工作流节点决定。
   const formSize = isOpenAi || isSdWebui ? form.size : ''
   const formSampler = isSdWebui ? form.sampler ?? '' : ''
-  const standardSizes = isOpenAi ? OPENAI_SIZES : SD_SIZES
+  // OpenAI 按模型名区分尺寸集合：dall-e-2 用正方形，其余（dall-e-3 等）用标准三档。
+  const openAiSizes = form.provider === 'openai' && /dall-e-2/i.test(form.model ?? '') ? DALLE2_SIZES : DALLE3_SIZES
+  const standardSizes = isOpenAi ? openAiSizes : SD_SIZES
   const sizeOptions = standardSizes.includes(formSize) ? standardSizes : [formSize, ...standardSizes]
   const sdSamplers = formSampler && !SD_SAMPLERS.includes(formSampler)
     ? [formSampler, ...SD_SAMPLERS]
@@ -826,22 +828,17 @@ export function ImageGenModelsSection() {
         </>
       )}
 
-      {/* 模型名称：ComfyUI 的模型由工作流节点决定，仅在无自定义工作流时保留内置回退 */}
-      {(!isComfyUi || !comfyForm?.workflow) && (
+      {/* 模型名称：ComfyUI 的模型由工作流内的 Loader 节点决定，故不显示该输入框 */}
+      {!isComfyUi && (
         <div>
-          <label className="label">{isComfyUi ? 'Checkpoint 文件名（内置工作流）' : '模型名称'}</label>
+          <label className="label">模型名称</label>
           <input
             type="text"
             className="input text-sm"
             value={form.model ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-            placeholder={isComfyUi ? '例如 model.safetensors' : isSdWebui ? '（可选，如 v1-5-pruned）' : '例如 dall-e-3'}
+            placeholder={isSdWebui ? '（可选，如 v1-5-pruned）' : '例如 dall-e-3'}
           />
-          {isComfyUi && (
-            <p className="text-xs text-tavern-text-muted mt-1">
-              仅内置工作流使用；读取自定义工作流后，模型改由工作流内的 Loader 节点决定
-            </p>
-          )}
         </div>
       )}
 
@@ -1046,7 +1043,7 @@ export function ImageGenModelsSection() {
                   <div className="text-xs text-tavern-text-muted">
                     {m.provider}
                     {m.provider === 'comfyui'
-                      ? (m.workflowName ? ` · ${m.workflowName}` : ' · 内置工作流')
+                      ? (m.workflowName ? ` · ${m.workflowName}` : '')
                       : (m.model ? ` · ${m.model}` : '')}
                     {m.provider !== 'comfyui' && m.size ? ` · ${m.size}` : ''}
                     {m.provider === 'openai' && m.quality ? ` · ${m.quality}` : ''}

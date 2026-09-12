@@ -13,6 +13,7 @@ import { extractThought } from '../../utils/messagePostProcess'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
+import { DialogueDirectionCard } from './DialogueDirectionCard'
 
 interface GroupChatMessageProps {
   message: GroupMessage
@@ -25,6 +26,14 @@ interface GroupChatMessageProps {
   onRegenerate?: () => void
   onTranslate?: () => void
   onReply?: () => void
+  /** 是否为最新一条消息；仅最新一条允许换一批。 */
+  isLast?: boolean
+  /** 会话已开启“下一步方向”；关闭时不渲染卡片。 */
+  dialogueDirectionsEnabled?: boolean
+  /** 触发“换一批”。 */
+  onRegenerateDirections?: () => void | Promise<void>
+  /** 方向生成失败的可见反馈。 */
+  directionsError?: string | null
 }
 
 import { MarkdownImage } from '../common/MarkdownImage'
@@ -47,7 +56,21 @@ function MarkdownAudio({ src }: { src?: string }) {
 
 const markdownComponents = { img: MarkdownImage, a: MarkdownLink, audio: MarkdownAudio }
 
-export const GroupChatMessage = React.memo(function GroupChatMessage({ message, isStreamingMessage, repliedMessage, bubbleOpacity, onDelete, onEdit, onRegenerate, onTranslate, onReply }: GroupChatMessageProps) {
+export const GroupChatMessage = React.memo(function GroupChatMessage({
+  message,
+  isStreamingMessage,
+  repliedMessage,
+  bubbleOpacity,
+  onDelete,
+  onEdit,
+  onRegenerate,
+  onTranslate,
+  onReply,
+  isLast,
+  dialogueDirectionsEnabled,
+  onRegenerateDirections,
+  directionsError,
+}: GroupChatMessageProps) {
   // P-6 修复：字段级选择器订阅
   const characters = useCharacterStore((s) => s.characters)
   const settings = useSettingsStore((s) => s.settings)
@@ -344,6 +367,23 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({ message, 
               )}
             </div>
           )}
+
+          {/* 下一步方向：气泡外的独立交互，仅等待用户输入时展示 */}
+          {dialogueDirectionsEnabled
+            && !isStreaming
+            && !isUser
+            && !isFree
+            && !!mainContent
+            && (message.dialogueDirections?.length ?? 0) > 0
+            && message.dialogueDirections && (
+              <DialogueDirectionCard
+                directions={message.dialogueDirections}
+                canRegenerate={!!isLast && !!onRegenerateDirections}
+                onRegenerate={() => onRegenerateDirections?.()}
+                error={directionsError}
+                scope="group"
+              />
+            )}
         </div>
         </div>
 

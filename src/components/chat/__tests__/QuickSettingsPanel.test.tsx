@@ -67,7 +67,7 @@ describe('QuickSettingsPanel', () => {
     expect(screen.getByText('生图历史')).toBeTruthy()
     expect(screen.getByRole('button', { name: '导出对话' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '清空对话' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '复制生图 1' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '复制生图数据 1' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('switch', { name: '自动滚动' }))
     expect(useSettingsStore.getState().settings.autoScroll).toBe(false)

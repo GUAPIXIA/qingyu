@@ -5,10 +5,10 @@ import type { LorebookInsertionV2, LorebookRetrievalMode } from './lorebook/doma
 /** AI 在故事中的身份、视角与叙事控制范围。 */
 export type NarrativeMode = 'immersive' | 'omniscient'
 
-/** 输入续写的剧情转折强度：控制推进幅度与采样创造性（见 shared/continueIntensity.ts）。 */
+/** 输入续写的剧情变化档位：控制推进幅度与采样创造性（见 shared/continueIntensity.ts）。 */
 export type ContinueIntensity = 'subtle' | 'steady' | 'active' | 'bold'
 
-/** 输入续写的最终内容长度：控制篇幅指令与输出 token 上限。 */
+/** 输入续写的本次新增内容长度：控制字数区间、篇幅指令与输出 token 上限。 */
 export type ContinueLength = 'brief' | 'standard' | 'detailed' | 'extended'
 
 /** 消息在界面中的叙事身份；与 API role / 群聊 characterId 的消息方向解耦。 */
@@ -21,6 +21,19 @@ export type MessageGenerationKind =
   | 'assistant_reply'
   | 'regenerate'
   | 'message_continue'
+
+/** 对话方向倾向：稳妥推进 / 探索信息 / 冒险变化（生成器的多样性约束，不直接显示在界面）。 */
+export type DialogueTendency = 'safe' | 'explore' | 'risky'
+
+/** AI 回复后由独立辅助请求生成的“下一步方向”选项，展示在气泡之外。 */
+export interface DialogueDirection {
+  id: string
+  /** 方向短标签（6–14 个可见字符） */
+  label: string
+  /** 点选后回填输入框的可发送文本（15–60 个可见字符） */
+  content: string
+  tendency: DialogueTendency
+}
 
 /** 角色卡（兼容 SillyTavern Character Card V2 简化版） */
 export interface Character {
@@ -123,6 +136,10 @@ export interface Message {
   speakerKind?: MessageSpeakerKind
   /** 本条内容的生成来源。 */
   generationKind?: MessageGenerationKind
+  /** AI 回复后生成的下一步方向；随消息持久化，正文被替换时必须失效。 */
+  dialogueDirections?: DialogueDirection[]
+  /** 方向生成时间戳；用于区分“未生成”与“生成失败后不重试”。 */
+  dialogueDirectionsGeneratedAt?: number
 }
 
 /** 单条消息的字符统计 */
@@ -262,8 +279,13 @@ export interface ChatSession {
   lorebookIds?: string[]
   /** 当前会话的叙事模式；旧会话缺省时按 immersive 运行。 */
   narrativeMode?: NarrativeMode
-  /** 全局叙事下启用游戏主持式判定与行动选项；默认关闭。 */
+  /**
+   * 会话级“下一步方向”开关：AI 回复后异步生成 3 个可点选方向。
+   * @deprecated 使用 dialogueDirectionsEnabled
+   */
   gameMasterMode?: boolean
+  /** 会话级“下一步方向”开关：AI 回复后异步生成 3 个可点选方向。默认关闭。 */
+  dialogueDirectionsEnabled?: boolean
   /** 最近 N 轮触发过的世界书条目 key（`${lbId}:${entryId}`），用于 recency 加权。环形缓冲 */
   recentTriggeredIds?: string[][]
   /** 世界书 sticky/cooldown 会话状态；按消息数推进 */
@@ -511,6 +533,10 @@ export interface GroupMessage {
   speakerKind?: MessageSpeakerKind
   /** 本条内容的生成来源。 */
   generationKind?: MessageGenerationKind
+  /** AI 回复后生成的下一步方向；随消息持久化，正文被替换时必须失效。 */
+  dialogueDirections?: DialogueDirection[]
+  /** 方向生成时间戳；用于区分“未生成”与“生成失败后不重试”。 */
+  dialogueDirectionsGeneratedAt?: number
 }
 
 /** 自定义字体信息 */
@@ -531,10 +557,12 @@ export interface GroupSession {
   messageCount: number
   createdAt: number
   updatedAt: number
-  /** 当前群聊会话实际使用的叙事模式；旧会话缺失时固定回退 immersive */
+  /** 群聊会话实际使用的叙事模式；旧会话缺失时固定回退 immersive */
   narrativeMode?: NarrativeMode
-  /** 全局叙事下启用游戏主持式判定与行动选项；默认关闭。 */
+  /** @deprecated 使用 dialogueDirectionsEnabled */
   gameMasterMode?: boolean
+  /** 会话级“下一步方向”开关：AI 回复后异步生成 3 个可点选方向。默认关闭。 */
+  dialogueDirectionsEnabled?: boolean
   /** 是否启用长期记忆/对话摘要 */
   memoryEnabled?: boolean
   /** 记忆模式：manual 手动 / auto 自动 */
@@ -631,9 +659,9 @@ export interface Settings {
   defaultMemoryEnabled?: boolean
   /** 新建单聊的默认叙事模式；已有会话不受影响。 */
   defaultNarrativeMode?: NarrativeMode
-  /** 输入框 AI 续写的剧情转折强度（全局，默认 active） */
+  /** 输入框 AI 续写的剧情变化档位（全局，默认 active） */
   continueIntensity?: ContinueIntensity
-  /** 输入框 AI 续写的最终内容长度（全局，默认 standard） */
+  /** 输入框 AI 续写的本次新增内容长度（全局，默认 standard） */
   continueLength?: ContinueLength
   /** 全局叙事模式的自定义规则模板；支持 {{user}} / {{char}}，空值时使用内置规则。 */
   omniscientNarrativeRules?: string
@@ -644,8 +672,6 @@ export interface Settings {
   // 生图多模型配置
   imageGenModels: ImageGenModelConfig[]
   activeImageGenModelId: string | null
-  /** 是否启用 AI 自动生图（AI 回复中包含 [image: ...] 标记时自动生成） */
-  imageGenAutoEnabled?: boolean
   // 识图多模型配置
   visionModels: VisionModelConfig[]
   activeVisionModelId: string | null
@@ -807,11 +833,6 @@ export interface ComfyImageGenConfig extends ImageGenModelBase {
   bindings?: ComfyWorkflowBindings
   /** 节点级覆盖，键为 `节点ID.输入名`，例如 `57:3.steps` */
   overrides?: Record<string, unknown>
-  /**
-   * @deprecated 仅供内置基础工作流回退使用。
-   * 阶段四迁移会把内置工作流物化为真实快照，届时移除本字段。
-   */
-  model?: string
   /** @deprecated 导入工作流时的来源名称，仅用于界面展示 */
   workflowName?: string
 }

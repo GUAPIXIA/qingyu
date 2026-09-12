@@ -566,9 +566,12 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
     }
     set({ isGeneratingCover: true, error: null })
     try {
+      // DALL-E 3 只接受标准尺寸，封面固定出 1024×1024 正方形，再由 cropCoverTo34 裁成 3:4。
+      // 其余 provider（sd-webui / comfyui）沿用用户选择的 3:4 尺寸。
+      const size = gen.provider === 'openai' ? '1024x1024' : coverSize
       const result = await window.api.imageGen.generate(coverPrompt, {
         negativePrompt,
-        size: coverSize,
+        size,
       })
       if (!result.success || !result.images?.length) {
         set({ error: result.error || '生图失败，请重试' })

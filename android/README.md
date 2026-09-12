@@ -50,7 +50,7 @@ app/src/main/java/com/qingyu/companion/
 ## 待办（阶段二剩余 / 阶段三）
 
 - 群聊（PC 桥接层已实现 58 路由 `electron/bridge/routes.ts:1191-1630`，含建群/加人/会话/消息/TTS，安卓端待联调）
-- 生图指令触发即已透传（任何文本按用户消息发送，PC 侧解析 `/imagine`）；图片结果展示已就绪
+- 生图指令**暂未支持**：任何文本按普通用户消息发送，PC 主进程只做对话生成，不解析 `/imagine`（命令解析目前仅在 PC 渲染进程，见 `src/components/chat/useChatInputState.ts`）；图片结果的展示能力已就绪
 - **阶段三已落地**：用量统计只读页（`/api/v1/usage/summary`）、公告同步页（`/api/v1/announcements`）、内网穿透指引（`docs/内网穿透指引.md`）；消息推送与自建中继方案见 `docs/阶段三方案.md`（设计稿，待评审）
 
 > 已归档：早期 `docs/安卓端功能缺失分析.md` 中快捷设置/长记忆/AI续写/润色/清空对话等“缺失”项已在 `v0.1.2-v0.1.5` 落地，详见 CHANGELOG 0.1.2/0.1.3/0.1.5。

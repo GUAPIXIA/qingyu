@@ -95,8 +95,11 @@ export const openaiAdapter: AIAdapter = {
       const choice = data.choices?.[0]
       const content = choice?.message?.content ?? ''
       // 处理推理模型思考内容：DeepSeek 系为 reasoning_content，OpenRouter 统一字段为 reasoning
-      const reasoning = choice?.message?.reasoning_content
-        ?? (typeof choice?.message?.reasoning === 'string' ? choice.message.reasoning : undefined)
+      // 调用方明确关闭推理时，即使聚合端忽略 thinking 参数仍不把内部规划混入业务正文。
+      const reasoning = params.reasoningMode === 'disabled'
+        ? undefined
+        : choice?.message?.reasoning_content
+          ?? (typeof choice?.message?.reasoning === 'string' ? choice.message.reasoning : undefined)
       let fullContent = reasoning ? `<thought>${reasoning}</thought>\n\n${content}` : content
       // B-05 修复：归一化内容中可能含有的 <thinking> 标签
       fullContent = normalizeThoughtTags(fullContent)
@@ -172,8 +175,10 @@ export const openaiAdapter: AIAdapter = {
         if (!delta) return
 
         // 处理推理内容：DeepSeek-R1 / Qwen-QwQ 为 reasoning_content，OpenRouter 统一字段为 reasoning
-        const reasoningDelta = delta.reasoning_content
-          ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
+        const reasoningDelta = params.reasoningMode === 'disabled'
+          ? undefined
+          : delta.reasoning_content
+            ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
         if (reasoningDelta) {
           sawAnyDelta = true
           if (!pendingReasoning) {

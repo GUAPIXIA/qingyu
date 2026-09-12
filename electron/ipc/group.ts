@@ -35,6 +35,7 @@ const GROUP_UPDATE_SESSION_FIELDS = new Set([
   'compressedRange',
   'personaId',
   'narrativeMode',
+  'dialogueDirectionsEnabled',
   'gameMasterMode',
   'recentTriggeredIds',
   'lorebookCompressionCache',
@@ -146,6 +147,9 @@ function cleanGroupSessionUpdates(updates: Record<string, unknown>): Record<stri
     }
     if (key === 'gameMasterMode' && typeof value !== 'boolean') {
       throw new Error('参数无效：gameMasterMode')
+    }
+    if (key === 'dialogueDirectionsEnabled' && typeof value !== 'boolean') {
+      throw new Error('参数无效：dialogueDirectionsEnabled')
     }
     clean[key] = value
   }

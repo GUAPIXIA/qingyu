@@ -22,6 +22,13 @@ import { regenerateChatMessage, continueChatMessage, swipeChatMessage } from './
 import { sessionEventReporter } from './sessionEventReporter'
 import type { ChatState } from './chatTypes'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
+import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import {
+  generateSingleDialogueDirections,
+  cancelDialogueDirectionRequests,
+  refreshSingleDialogueDirections,
+  clearSessionDialogueDirections,
+} from './dialogueDirectionRunner'
 import { resolveMessageSpeakerKind } from '../../shared/messageIdentity'
 
 export type { ChatState }
@@ -116,12 +123,19 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   },
 
   updateSessionField: async (characterId, sessionId, field, value) => {
+    const previousMode = get().sessions.find((sess) => sess.id === sessionId)?.narrativeMode
     await window.api.chat.updateSession(characterId, sessionId, { [field]: value })
     set((s) => ({
       sessions: s.sessions.map(sess =>
         sess.id === sessionId ? { ...sess, [field]: value } as SessionPreview : sess
       ),
     }))
+    // 叙事模式改变：方向是“下一步”的前瞻建议，需按新模式刷新（仅最新一条且已有方向时）
+    if (field === 'narrativeMode'
+      && resolveNarrativeMode(previousMode) !== resolveNarrativeMode(value)) {
+      const character = useCharacterStore.getState().characters.find((item) => item.id === characterId)
+      if (character) void refreshSingleDialogueDirections(set, get, { character })
+    }
   },
 
   /** P-7 修复：本地 patch 会话元数据，避免高频全量 listSessions
@@ -193,6 +207,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     if (get().isStreaming) {
       get().stopStreaming()
     }
+    // 会话切换：取消尚未完成的方向请求，避免结果写入其他会话的消息
+    cancelDialogueDirectionRequests()
     set({ currentSessionId: sessionId })
     // 持久化当前会话 ID
     useSettingsStore.getState().updateSettings({ activeSessionId: sessionId })
@@ -415,6 +431,11 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     const targetSid = sessionId ?? get().currentSessionId
     if (!targetSid) return
 
+    // 用户以独立消息形式发言（如不触发 AI 的快捷回复）：上一轮方向同样作废
+    if (role === 'user' && get().currentSessionId === targetSid) {
+      void clearSessionDialogueDirections(set, get, targetSid)
+    }
+
     const narrativeMode = resolveNarrativeMode(get().sessions.find((session) => session.id === targetSid)?.narrativeMode)
     const msg: Message = {
       id: nanoid(),
@@ -480,6 +501,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       if (useChatTaskStore.getState().chatEngineV2 && (window as unknown as { api?: { chatTask?: unknown } }).api?.chatTask) {
         const curSid = get().currentSessionId
         if (curSid) {
+          // 用户已发送：上一轮的方向作废，与用户消息同帧移除
+          void clearSessionDialogueDirections(set, get, curSid)
           const narrativeMode = resolveNarrativeMode(get().sessions.find((session) => session.id === curSid)?.narrativeMode)
           // 乐观消息仅落屏，不落盘（由 Orchestrator 按 requestId 幂等落盘，避免双写）
           const userMsgId = nanoid()
@@ -516,6 +539,16 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
                 // V2 链路自动长记忆：对齐旧链路 sendMessage 完成后的挂接；仅在生成成功时检查
                 // 间隔阈值，消息已按落盘内容重载，游标统计基于持久化 id。
                 if (snap.state === 'completed' && get().currentSessionId === curSid) {
+                  // “下一步方向”：落盘后按持久化 id 取最后一条有效 AI 回复生成，失败静默降级。
+                  const session = get().sessions.find((item) => item.id === curSid)
+                  if (resolveDialogueDirectionsEnabled(session)) {
+                    const lastReply = [...get().messages].reverse().find(
+                      (message) => message.role === 'assistant' && !!message.content?.trim(),
+                    )
+                    if (lastReply) {
+                      void generateSingleDialogueDirections(set, get, { messageId: lastReply.id, character })
+                    }
+                  }
                   maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
                 }
               }
@@ -549,6 +582,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       set({ sessions, currentSessionId: session.id })
       currentSid = session.id
     }
+
+    // 用户已发送：上一轮的方向作废，与用户消息同帧移除
+    void clearSessionDialogueDirections(set, get, currentSid)
 
     // 加载正则规则并对输入应用
     let processedContent = content
@@ -650,41 +686,14 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
         }))
         window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
 
+        // “下一步方向”：主回复落盘后异步生成，失败静默降级，不影响正文。
+        const session = get().sessions.find((item) => item.id === finalMsg.sessionId)
+        if (resolveDialogueDirectionsEnabled(session)) {
+          void generateSingleDialogueDirections(set, get, { messageId: aiMessageId, character })
+        }
+
         // 自动长记忆：成功提交后才推进消息游标；失败会保留重试机会。
         maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
-
-        // AI 自动生图：解析 [image: prompt] 标记
-        const autoImgEnabled = useSettingsStore.getState().settings.imageGenAutoEnabled
-        if (autoImgEnabled) {
-          const imageRegex = /\[image:\s*([^\]]+)\]/gi
-          const imagePrompts: string[] = []
-          let imgMatch
-          while ((imgMatch = imageRegex.exec(finalContent)) !== null) {
-            imagePrompts.push(imgMatch[1].trim())
-          }
-          if (imagePrompts.length > 0) {
-            const generatedImages: string[] = []
-            for (const p of imagePrompts) {
-              try {
-                const result = await window.api.imageGen.generate(p)
-                if (result.success && result.images) {
-                  generatedImages.push(...result.images)
-                }
-              } catch { /* 忽略单张失败 */ }
-            }
-            if (generatedImages.length > 0) {
-              set((s) => ({
-                messages: s.messages.map((m) =>
-                  m.id === aiMessageId
-                    ? { ...m, images: [...m.images, ...generatedImages] }
-                    : m
-                ),
-              }))
-              const updatedMsg = get().messages.find((m) => m.id === aiMessageId)
-              if (updatedMsg) await window.api.chat.saveMessage(updatedMsg)
-            }
-          }
-        }
       },
       onError: (errMsg) => {
         // 错误时把错误信息写入占位消息（如果内容为空）
@@ -743,7 +752,11 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     const msg = state.messages.find((m) => m.id === messageId)
     if (!msg) return
 
-    const updatedMsg = { ...msg, content: newContent }
+    // 正文被编辑：旧方向不再对应当前内容，立即失效并取消在途请求
+    cancelDialogueDirectionRequests([messageId])
+    const updatedMsg: typeof msg = { ...msg, content: newContent }
+    delete (updatedMsg as Message).dialogueDirections
+    delete (updatedMsg as Message).dialogueDirectionsGeneratedAt
     // 先更新本地状态
     set((s) => ({
       messages: s.messages.map((m) => (m.id === messageId ? updatedMsg : m)),
@@ -767,6 +780,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     // NEW-1 修复：await 前捕获 sessionId——invalidateCompression 执行期间
     // 用户可能已切换会话，避免删除操作作用于错误会话
     const sessionId = get().currentSessionId ?? undefined
+    // 消息被删除：取消该消息在途的方向请求
+    cancelDialogueDirectionRequests([messageId])
     // 阶段五检查点：仅当删除发生在游标前才失效
     const invalidated = await invalidateDerivedMemory(get, character, messageId)
     if (invalidated) get().patchLocalSession(invalidated.sessionId, invalidated.patch)
@@ -902,6 +917,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     }
     const settings = useSettingsStore.getState().settings
     const targetLang = settings.translationTargetLang || '中文'
+    const model = settings.activeModel || profile.model
     window.api.ai.chat({
       requestId,
       messages: [
@@ -911,13 +927,16 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       provider: profile.provider,
       apiKey: profile.apiKey,
       baseUrl: profile.baseUrl,
-      model: settings.activeModel || profile.model,
+      model,
       temperature: 0.3,
       topP: 0.9,
-      maxTokens: translationMaxTokens(content),
+      maxTokens: translationMaxTokens(content, model),
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: true,
+      // 翻译只需要最终文本。关闭推理可避免模型把输出额度耗在 reasoning 中，
+      // reasoning 被界面剥离后留下“翻译结果为空”。
+      reasoningMode: 'disabled',
     }).catch(() => {
       acc.dispose()
       unbindChunk(); unbindDone(); unbindError()

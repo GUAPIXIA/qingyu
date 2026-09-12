@@ -13,6 +13,7 @@ import type { Message, Settings } from '../../../shared/types'
 import type { BridgeChatService } from '../chatService'
 import type { GenerationRegistry } from './generationRegistry'
 import { resolveMessageGenerationKind, resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
+import { resolveDialogueDirectionsEnabled } from '../../../shared/dialogueDirections'
 
 export interface MobileRequestContext { requestId: string; sourceDeviceId?: string }
 export interface ListMessagesInput { sessionId: string; characterId?: string; limit?: number; beforeId?: string }
@@ -27,6 +28,8 @@ export interface MobileFacade {
   listMessages(input: ListMessagesInput): Promise<{ messages: Record<string, unknown>[]; nextCursor: string | null }>
   sendMessage(input: SendMessageInput, context: MobileRequestContext): Promise<Record<string, unknown>>
   swipe(input: SwipeInput, context: MobileRequestContext): Promise<Record<string, unknown>>
+  /** 重新生成指定消息的“下一步方向”（安卓端“换一批”）。 */
+  regenerateDirections(input: { sessionId: string; messageId: string }): Promise<Record<string, unknown>>
   translate(input: TranslateInput, context: MobileRequestContext): Promise<{ messageId: string; translation: string }>
   settingsSnapshot(): Promise<ReturnType<typeof buildSettingsSnapshot>>
   stop(requestId: string, context: MobileRequestContext): Promise<void>
@@ -44,6 +47,7 @@ function messageDto(message: Message): Record<string, unknown> {
     narrativeMode: message.narrativeMode ?? null,
     speakerKind: resolveMessageSpeakerKind(message),
     generationKind: resolveMessageGenerationKind(message.generationKind, message),
+    dialogueDirections: message.dialogueDirections ?? null,
     usage: message.charUsage ? { promptTokens: 0, completionTokens: 0, totalTokens: 0 } : null,
   }
 }
@@ -78,7 +82,7 @@ export class DefaultMobileFacade implements MobileFacade {
       title: session.title, createdAt: session.createdAt, updatedAt: session.updatedAt,
       personaId: session.personaId ?? null, messageCount: session.messageCount, lastMessage: session.lastMessage,
       narrativeMode: session.narrativeMode ?? 'immersive',
-      gameMasterMode: session.gameMasterMode ?? false,
+      dialogueDirectionsEnabled: resolveDialogueDirectionsEnabled(session),
       memoryCurrentState: session.memoryCurrentState ?? '',
     }))
   }
@@ -104,6 +108,11 @@ export class DefaultMobileFacade implements MobileFacade {
 
   async swipe(input: SwipeInput) {
     return messageDto(await this.chatService.swipe(input.sessionId, input.messageId, input.direction))
+  }
+
+  async regenerateDirections(input: { sessionId: string; messageId: string }) {
+    const directions = await this.chatService.regenerateDirections(input.sessionId, input.messageId)
+    return { directions }
   }
 
   async translate(input: TranslateInput) {

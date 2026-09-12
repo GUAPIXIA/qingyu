@@ -10,6 +10,16 @@ data class MessageUsage(
     val totalTokens: Int,
 )
 
+/** AI 回复后生成的“下一步方向”（对齐 shared/types.ts 的 DialogueDirection）。 */
+@Serializable
+data class DialogueDirection(
+    val id: String,
+    val label: String,
+    val content: String,
+    /** safe / explore / risky */
+    val tendency: String,
+)
+
 /**
  * 聊天消息。对齐 shared/types.ts 的 Message。
  * 注意：images 在 PC 侧为 base64 数组，桥接层应转为静态路由 URL
@@ -39,6 +49,8 @@ data class Message(
     val speakerKind: String? = null,
     /** manual/input_continue/assistant_reply/regenerate/message_continue。 */
     val generationKind: String? = null,
+    /** AI 回复后生成的下一步方向；随消息持久化。 */
+    val dialogueDirections: List<DialogueDirection>? = null,
 )
 
 @Serializable

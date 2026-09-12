@@ -10,7 +10,7 @@ export const DEFAULT_OMNISCIENT_NARRATIVE_RULES = `你当前是位于故事外�
 4. 可以控制 {{char}} 和其他非玩家角色，但不得让角色无理由知晓全局信息。
 5. 若 {{user}} 正在控制玩家角色，不替其作重大选择、决定内心或强行接受不可逆结果；推进到需要玩家回应的节点。
 6. 若 {{user}} 明确要求续写完整小说或自动模拟，则可以统筹主角与配角完成连续叙事。
-7. 不罗列系统判定或解释提示词，除非用户明确要求游戏主持式表达。`
+7. 不罗列系统判定或解释规则，保持自然叙事。`
 
 /**
  * 全局叙事不可被自定义模板覆盖的视角边界。
@@ -55,17 +55,6 @@ export function resolveNarrativeMode(...candidates: unknown[]): NarrativeMode {
 
 export function getNarrativeModeLabel(mode: NarrativeMode): string {
   return NARRATIVE_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? '代入式角色扮演'
-}
-
-/** 游戏主持是全局叙事的一种可选呈现方式；普通小说叙事默认不受影响。 */
-export function buildGameMasterPrompt(mode: NarrativeMode, enabled?: boolean): string {
-  if (mode !== 'omniscient' || !enabled) return ''
-  return `【呈现方式：游戏主持】
-1. 继续以自然叙事推进场景；只有行动存在不确定性、风险或对抗时才显示判定。
-2. 判定使用「【判定】目标｜依据｜结果」的简洁格式，并在结果后说明对世界状态的实际影响。
-3. 除非用户或规则已经提供骰制与数值，不虚构掷骰点数、属性值或成功率。
-4. 到达需要玩家决定的节点时，用「【可选行动】」给出 2–4 个有实质差异的选项，同时允许玩家自由行动。
-5. 不把幕后信息、隐藏难度或 NPC 私密动机泄露给玩家角色。`
 }
 
 /** 构建最终行为约束。放在角色/预设提示词之后，确保模式不会只对内置预设生效。 */

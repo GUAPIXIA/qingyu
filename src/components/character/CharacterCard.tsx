@@ -67,6 +67,7 @@ const SIZE_CONFIG = {
 function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, viewMode = 'grid', cardSize = 'md' }: CharacterCardProps) {
   const exportPng = useCharacterStore(s => s.exportPng)
   const exportJson = useCharacterStore(s => s.exportJson)
+  const exportCover = useCharacterStore(s => s.exportCover)
   const togglePin = useCharacterStore(s => s.togglePin)
   const patchCharacter = useCharacterStore(s => s.patchCharacter)
   const blurStrength = useSettingsStore(s => s.settings.coverBlurStrength ?? 8)
@@ -256,6 +257,7 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
                 <div className="mx-2 mb-1 bg-tavern-bg-hover/50 rounded p-1 space-y-1">
                   <button onClick={(e) => { e.stopPropagation(); exportPng(character.id); setShowCardMenu(false); setShowMenu(false) }} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5">PNG</button>
                   <button onClick={(e) => { e.stopPropagation(); exportJson(character.id); setShowCardMenu(false); setShowMenu(false) }} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5">JSON</button>
+                  <button onClick={(e) => { e.stopPropagation(); exportCover(character.id); setShowCardMenu(false); setShowMenu(false) }} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5">封面图片</button>
                 </div>
               )}
               <div className="border-t border-tavern-border-soft my-1" />

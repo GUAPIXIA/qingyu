@@ -3,6 +3,7 @@ package com.qingyu.companion.data
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.Message
+import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.MessagePage
 import com.qingyu.companion.model.QuickReplyListResponse
 import com.qingyu.companion.model.SessionPreview
@@ -133,6 +134,9 @@ interface ChatRepository {
 
     /** swipe 切换候选回复（阶段二）；direction <0 上一候选、>0 下一候选 */
     suspend fun swipe(sessionId: String, messageId: String, direction: Int): Message
+
+    /** 重新生成指定消息的“下一步方向”（“换一批”）；失败返回空列表。 */
+    suspend fun regenerateDirections(sessionId: String, messageId: String): List<DialogueDirection>
 
     /** 触发 PC 侧翻译（阶段二），返回译文与目标消息 ID */
     suspend fun translate(sessionId: String, messageId: String): TranslateResponse

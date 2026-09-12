@@ -166,7 +166,7 @@ export function ChatHeader({
         </Dropdown>
 
         {/* 身份切换器 */}
-        <span className="text-tavern-border-soft select-none">|</span>
+        <span className="mx-1 h-4 w-px bg-tavern-border" aria-hidden="true" />
         <Dropdown
           open={showPersonaMenu}
           onOpenChange={setShowPersonaMenu}
@@ -265,10 +265,6 @@ export function ChatHeader({
               if (!currentSessionId) return Promise.resolve()
               return updateSessionField(currentCharacter.id, currentSessionId, 'memoryCurrentState', value)
             }}
-            onSetGameMasterMode={(enabled) => {
-              if (!currentSessionId) return Promise.resolve()
-              return updateSessionField(currentCharacter.id, currentSessionId, 'gameMasterMode', enabled)
-            }}
             isStreaming={isStreaming}
           />
         )}
@@ -287,7 +283,7 @@ export function ChatHeader({
             {/* 新建会话按钮（Chat 风格） */}
             <button
               onClick={() => onCreateSession()}
-              className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
+              className="rounded-lg p-2 text-tavern-text-soft transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
               title="新建会话"
             >
               <Plus className="w-4 h-4" />

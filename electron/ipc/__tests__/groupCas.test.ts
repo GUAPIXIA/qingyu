@@ -87,6 +87,9 @@ describe('groupData memory version CAS', () => {
     await expect(groupData.updateSession('group-invalid-mode', session.id, {
       gameMasterMode: 'yes',
     })).rejects.toThrow('gameMasterMode')
+    await expect(groupData.updateSession('group-invalid-mode', session.id, {
+      dialogueDirectionsEnabled: 'yes',
+    })).rejects.toThrow('dialogueDirectionsEnabled')
     await expect(groupData.saveGroup({
       id: 'group-invalid-mode', name: '非法', memberIds: [], currentSpeakerIndex: 0,
       autoMode: false, chatMode: 'polling', defaultNarrativeMode: 'invalid',

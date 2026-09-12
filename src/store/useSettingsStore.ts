@@ -449,7 +449,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   getActiveImageGen: () => {
     const { settings } = get()
     if (!settings.activeImageGenModelId) return null
-    const m = settings.imageGenModels.find((t) => t.id === settings.activeImageGenModelId)
+    // 与 IPC 侧（imageGen:generate）保持同一语义：未启用的配置视为无可用生图模型。
+    const m = settings.imageGenModels.find(
+      (t) => t.id === settings.activeImageGenModelId && t.enabled,
+    )
     if (!m) return null
     const base = {
       name: m.name,
@@ -460,7 +463,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (m.provider === 'comfyui') {
       return {
         ...base,
-        model: m.model ?? '',
+        // ComfyUI 的模型由工作流内 Loader 节点决定，此处无模型名概念。
+        model: '',
         workflowName: m.workflowName,
         workflow: m.workflow,
       }

@@ -99,7 +99,7 @@ function migrateSettingsV0ToV1(data: unknown): unknown {
  * 处理规则：
  * 1. 只有 `provider === 'comfyui'` 且带自定义工作流的配置才需要转换。
  * 2. 尺寸节点唯一时写入 `overrides`；不唯一时不自动应用（避免猜错节点）。
- * 3. 内置工作流（workflow 为空）不转换——其尺寸由内置模板决定。
+ * 3. 无工作流快照（workflow 为空）的配置不转换。
  * 4. 无论是否转换成功，都删除全局字段。
  *
  * 幂等：已无 `imageGenSize` 且 overrides 已就位时结果不变。

@@ -31,6 +31,9 @@ data class GroupSession(
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
     val narrativeMode: String = "immersive",
+    /** 会话级“下一步方向”开关：AI 回复后生成 3 个可选方向。 */
+    val dialogueDirectionsEnabled: Boolean = false,
+    /** @deprecated 兼容期镜像字段，使用 dialogueDirectionsEnabled。 */
     val gameMasterMode: Boolean = false,
     val memoryCurrentState: String = "",
     val personaId: String? = null,
@@ -53,6 +56,8 @@ data class GroupMessage(
     val narrativeMode: String? = null,
     val speakerKind: String? = null,
     val generationKind: String? = null,
+    /** AI 回复后生成的下一步方向；随消息持久化。 */
+    val dialogueDirections: List<DialogueDirection>? = null,
 ) {
     /** 是否用户消息 */
     val isUser: Boolean get() = characterId == "__user__"

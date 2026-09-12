@@ -7,6 +7,10 @@ import {
   extractTaggedResult,
   buildContinueSystemPrompt,
   buildContinueContext,
+  evaluateContinueLength,
+  isAcceptableAfterLengthRepair,
+  buildLengthRepairInstruction,
+  classifyContinueFailure,
 } from '../aiInputHelper'
 import type { Character, Message } from '../../../../shared/types'
 
@@ -289,17 +293,29 @@ describe('续写强度档位', () => {
     expect(fallback.at(-1)?.content).toContain('自然完整的剧情推动')
   })
 
-  it('内容长度独立控制最终输入框篇幅，不改变剧情转折指令', () => {
+  it('续写长度按“本次新增内容”的字数区间描述，不改变剧情推进指令', () => {
     const brief = buildContinueSystemPrompt('小明', 'Alice', true, 'omniscient', 'active', 'brief')
     const extended = buildContinueSystemPrompt('小明', 'Alice', true, 'omniscient', 'active', 'extended')
 
-    expect(brief).toContain('最终输入框内容为目标，保持精简，通常为一至两句')
-    expect(extended).toContain('最终输入框内容为目标，允许完整展开细节与过程，可写多个自然段')
+    expect(brief).toContain('写 20–60 个可见中文字符，1–2 句')
+    expect(extended).toContain('写 500–900 个可见中文字符，形成 4–6 个自然段')
+    expect(brief).toContain('本次只输出直接接在原文之后的新内容，不要复述原文')
+    expect(brief).toContain('必须在完整句处结束')
+    // 长度不再表述为“最终输入框内容”，也不再出现无上限描述
+    expect(brief).not.toContain('最终输入框内容')
+    expect(extended).not.toContain('可写多个自然段')
+    // 长度档位不改变剧情推进指令
     expect(brief).toContain('事件、压力、线索、阻碍或转折')
     expect(extended).toContain('事件、压力、线索、阻碍或转折')
   })
 
-  it('buildContinueContext 透传内容长度并对非法值回退适中档', () => {
+  it('空输入时同样以新增内容为目标', () => {
+    const empty = buildContinueSystemPrompt('小明', 'Alice', false, 'immersive', 'active', 'standard')
+    expect(empty).toContain('本次只输出用户接下来要说的新内容')
+    expect(empty).toContain('写 80–180 个可见中文字符')
+  })
+
+  it('buildContinueContext 透传内容长度并对非法值回退默认档', () => {
     const base = {
       character: createCharacter(),
       userName: '小明',
@@ -309,9 +325,152 @@ describe('续写强度档位', () => {
       hasInput: true,
     }
     expect(buildContinueContext({ ...base, length: 'detailed' })[0].content)
-      .toContain('可写两到三个自然段')
+      .toContain('写 220–420 个可见中文字符')
     expect(buildContinueContext({ ...base, length: 'invalid' as never })[0].content)
-      .toContain('信息完整、节奏自然的短段落')
+      .toContain('写 80–180 个可见中文字符')
+  })
+})
+
+describe('parseContinueResult 标签回退', () => {
+  it('完整标签对优先，取标签内正文', () => {
+    expect(parseContinueResult('<continuation>港口已经封锁。</continuation>', '大本', '艾莉丝', 'immersive'))
+      .toBe('港口已经封锁。')
+  })
+
+  it('缺标签但有可用中文正文时接受（实测聚合端点常忘记加标签）', () => {
+    expect(parseContinueResult('我压低声音问：“三号仓的灯刚才亮过，对不对？”', '大本', '艾莉丝', 'immersive'))
+      .toBe('我压低声音问：“三号仓的灯刚才亮过，对不对？”')
+  })
+
+  it('未闭合标签时取开标签之后的内容', () => {
+    expect(parseContinueResult('<continuation>港口已经封锁，守卫正在', '大本', '艾莉丝', 'immersive'))
+      .toBe('港口已经封锁，守卫正在')
+  })
+
+  it('剥离写在正文前的元说明', () => {
+    const withPreamble = '以下是续写：' + String.fromCharCode(10) + '我压低声音问：“货船什么时候走的？”'
+    expect(parseContinueResult(withPreamble, '大本', '艾莉丝', 'immersive'))
+      .toBe('我压低声音问：“货船什么时候走的？”')
+  })
+
+  it('只有思考内容时仍判为空', () => {
+    expect(parseContinueResult('<thought>让我想想怎么续写。</thought>', '大本', '艾莉丝', 'immersive')).toBe('')
+  })
+
+  it('纯英文分析不接受', () => {
+    expect(parseContinueResult('We need continue the story.', '大本', '艾莉丝', 'immersive')).toBe('')
+  })
+
+  it('代入模式下以角色名开头的正文仍被拒绝', () => {
+    expect(parseContinueResult('艾莉丝：你好呀。', '大本', '艾莉丝', 'immersive')).toBe('')
+  })
+})
+
+describe('classifyContinueFailure', () => {
+  it('有开标签缺闭标签判为被截断（预算不足的典型表现）', () => {
+    expect(classifyContinueFailure('<continuation>港口已经封锁，任何人都不能通过，守卫正在'))
+      .toBe('truncated')
+  })
+
+  it('思考内容去掉后为空判为 empty', () => {
+    expect(classifyContinueFailure('<thought>让我想想怎么续写。</thought>')).toBe('empty')
+    expect(classifyContinueFailure('')).toBe('empty')
+  })
+
+  it('有内容但不是可用中文正文时判为 invalid-content', () => {
+    expect(classifyContinueFailure('We need continue the story.')).toBe('invalid-content')
+    expect(classifyContinueFailure('<continuation>Return a paragraph.</continuation>')).toBe('invalid-content')
+  })
+
+  it('缺标签但内容是中文时不算失败（解析层已回退接受）', () => {
+    expect(classifyContinueFailure('港口已经封锁，任何人都不能通过。')).toBe('invalid-content')
+  })
+})
+
+describe('evaluateContinueLength', () => {
+  /** 生成 n 个可见字符的完整句中文文本（每句 2 字符，句末带句号）。 */
+  function completeText(n: number): string {
+    const sentences = Math.ceil(n / 2)
+    return '甲。'.repeat(sentences)
+  }
+
+  it('落在区间内直接接受', () => {
+    const text = completeText(100)
+    const verdict = evaluateContinueLength(text, 'standard')
+    expect(verdict.action).toBe('accept')
+    expect(verdict.truncated).toBe(false)
+    expect(verdict.chars).toBe(100)
+  })
+
+  it('结尾不完整时优先按截断补足，即使字数已达标', () => {
+    const verdict = evaluateContinueLength('港口已经封锁，任何人都不能通过，守卫还在', 'brief')
+    expect(verdict.action).toBe('supplement')
+    expect(verdict.truncated).toBe(true)
+  })
+
+  it('低于下限 80% 时补足', () => {
+    // 短句档下限 20 → 80% 为 16
+    expect(evaluateContinueLength(completeText(14), 'brief').action).toBe('supplement')
+  })
+
+  it('达到下限 80% 且句意完整时容忍接受', () => {
+    const verdict = evaluateContinueLength(completeText(18), 'brief')
+    expect(verdict.action).toBe('accept')
+    expect(verdict.chars).toBeGreaterThanOrEqual(16)
+  })
+
+  it('超出上限但在 120% 以内且存在句边界时收束', () => {
+    // 小段档上限 180 → 120% 为 216
+    const verdict = evaluateContinueLength(completeText(200), 'standard')
+    expect(verdict.action).toBe('trim')
+    expect(verdict.trimmedText).toBeDefined()
+    expect(verdict.chars).toBeGreaterThanOrEqual(80)
+  })
+
+  it('明显超长时压缩', () => {
+    expect(evaluateContinueLength(completeText(400), 'standard').action).toBe('compress')
+  })
+
+  it('超长且无句边界时压缩', () => {
+    expect(evaluateContinueLength('甲'.repeat(200), 'standard').action).toBe('compress')
+  })
+})
+
+describe('isAcceptableAfterLengthRepair', () => {
+  it('轻微越界且句意完整时接受', () => {
+    expect(isAcceptableAfterLengthRepair('甲。'.repeat(60), 'standard')).toBe(true) // 120 字
+    expect(isAcceptableAfterLengthRepair('甲。'.repeat(45), 'standard')).toBe(true) // 90 字
+  })
+
+  it('结尾不完整一律不接受', () => {
+    expect(isAcceptableAfterLengthRepair('甲。'.repeat(50) + '未完成', 'standard')).toBe(false)
+  })
+
+  it('明显越界不接受', () => {
+    expect(isAcceptableAfterLengthRepair('甲。'.repeat(10), 'standard')).toBe(false) // 20 字，低于 60% 下限
+    expect(isAcceptableAfterLengthRepair('甲。'.repeat(200), 'standard')).toBe(false) // 400 字，超出 150% 上限
+  })
+})
+
+describe('buildLengthRepairInstruction', () => {
+  it('补足指令包含目标区间与 token 预算提示', () => {
+    const note = buildLengthRepairInstruction('supplement', 'standard', { chars: 30, truncated: false })
+    expect(note).toContain('80–180')
+    expect(note).toContain('30 个可见字符')
+    expect(note).toContain('不要复述已有内容')
+  })
+
+  it('截断场景提示输出未写完，且不复述具体 token 预算', () => {
+    const note = buildLengthRepairInstruction('supplement', 'brief', { chars: 40, truncated: true })
+    expect(note).toContain('未能写完就中断')
+    expect(note).not.toContain('token')
+  })
+
+  it('压缩指令要求保留关键信息并落在区间内', () => {
+    const note = buildLengthRepairInstruction('compress', 'detailed', { chars: 500, truncated: false })
+    expect(note).toContain('220–420')
+    expect(note).toContain('保留关键信息')
+    expect(note).toContain('完整句收尾')
   })
 })
 

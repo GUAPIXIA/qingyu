@@ -14,32 +14,52 @@ interface ChatInputProps {
   onCancelReply?: () => void
 }
 
-interface ContinueSliderOption<T extends string> {
+type ImageSelfMode = 'hidden' | 'silhouette' | 'translucent' | 'pov'
+
+const IMAGE_SCENE_OPTIONS = [
+  { value: 'moment', label: '剧情瞬间', desc: '还原最新动作与情绪' },
+  { value: 'closeup', label: '对方近景', desc: '神态、视线与手势' },
+  { value: 'full', label: '对方全身', desc: '姿势、动作与穿着' },
+  { value: 'interaction', label: '互动构图', desc: '对方清晰，我方弱化' },
+  { value: 'background', label: '环境空镜', desc: '只表现地点与氛围' },
+] as const
+
+const IMAGE_SELF_OPTIONS: ReadonlyArray<{
+  value: ImageSelfMode
+  label: string
+  desc: string
+}> = [
+  { value: 'hidden', label: '不出现', desc: '只画对方' },
+  { value: 'silhouette', label: '仅轮廓', desc: '前景虚焦' },
+  { value: 'translucent', label: '半透明', desc: '边缘陪衬' },
+  { value: 'pov', label: '第一人称', desc: '最多露手' },
+]
+
+interface ContinueOption<T extends string> {
   value: T
   label: string
   description: string
 }
 
-function ContinueSliderControl<T extends string>({
+/**
+ * 续写控制项：四个离散档位，只用分段按钮。
+ * 隐藏滑块与档位按钮表达同一组离散值，保留滑块只会多出一层不可见热区与重复的
+ * 键盘/读屏路径（方案 §6.3），因此这里不再渲染 input[type=range]。
+ */
+function ContinueTierControl<T extends string>({
   title,
   icon,
-  ariaLabel,
   options,
   value,
   onChange,
 }: {
   title: string
   icon: ReactNode
-  ariaLabel: string
-  options: ReadonlyArray<ContinueSliderOption<T>>
+  options: ReadonlyArray<ContinueOption<T>>
   value: T
   onChange: (value: T) => void
 }) {
-  const index = Math.max(options.findIndex((option) => option.value === value), 0)
-  const ratio = index / Math.max(options.length - 1, 1)
-  const activeOption = options[index] ?? options[0]
-  const progress = `${ratio * 100}%`
-  const thumbPosition = `calc(7px + (100% - 14px) * ${ratio})`
+  const activeOption = options.find((option) => option.value === value) ?? options[0]
 
   return (
     <section>
@@ -55,42 +75,7 @@ function ContinueSliderControl<T extends string>({
         </span>
       </div>
 
-      <div className="mt-2.5 px-1">
-        <div className="group relative h-[18px]">
-          <span className="pointer-events-none absolute inset-x-[7px] top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-tavern-bg-hover" aria-hidden>
-            <span
-              className="block h-full rounded-full bg-tavern-accent transition-[width] duration-200"
-              style={{ width: progress }}
-            />
-          </span>
-          <span
-            className="pointer-events-none absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-tavern-accent-soft opacity-0 transition-opacity group-focus-within:opacity-100"
-            style={{ left: thumbPosition }}
-            aria-hidden
-          />
-          <span
-            className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-tavern-accent shadow-[0_0_0_3px_var(--tavern-bg-card),0_0_0_4px_var(--color-accent),0_3px_8px_rgba(26,22,37,0.24)] transition-[left,transform] duration-200 group-hover:scale-110"
-            style={{ left: thumbPosition }}
-            aria-hidden
-          />
-          <input
-            type="range"
-            min={0}
-            max={options.length - 1}
-            step={1}
-            value={index}
-            onChange={(event) => {
-              const option = options[Number(event.target.value)]
-              if (option) onChange(option.value)
-            }}
-            className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
-            aria-label={ariaLabel}
-            aria-valuetext={activeOption?.label}
-          />
-        </div>
-      </div>
-
-      <div className="mt-1.5 grid grid-cols-4 gap-1">
+      <div className="mt-2.5 grid grid-cols-4 gap-1">
         {options.map((option) => (
           <button
             key={option.value}
@@ -130,6 +115,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
   } = useChatInputState(character, replyTo, onCancelReply)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const [continueMenuOpen, setContinueMenuOpen] = useState(false)
+  const [imageSelfMode, setImageSelfMode] = useState<ImageSelfMode>('hidden')
   const continueLength = resolveContinueLength(settings.continueLength)
   const continueIntensity = resolveContinueIntensity(settings.continueIntensity)
   const lengthOption = CONTINUE_LENGTH_OPTIONS.find((option) => option.value === continueLength) ?? CONTINUE_LENGTH_OPTIONS[1]
@@ -243,27 +229,100 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
           {imageMenuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setImageMenuOpen(false)} />
-              <div className="absolute bottom-full left-0 mb-2 w-48 rounded-lg border border-tavern-border bg-tavern-bg-soft shadow-lg z-50 overflow-hidden">
-                {[
-                  { label: '当前场景', desc: '自动分析对话上下文', cmd: '/imagine' },
-                  { label: '角色肖像', desc: '角色全身外观', cmd: '/imagine --mode character' },
-                  { label: '面部特写', desc: '角色面部细节', cmd: '/imagine --mode face' },
-                  { label: '场景背景', desc: '当前场景环境', cmd: '/imagine --mode background' },
-                  { label: '自定义描述...', desc: '手动输入提示词', cmd: '/imagine ' },
-                ].map((item) => (
+              <div
+                className="absolute bottom-full left-0 z-50 mb-2 w-[21rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-tavern-border bg-tavern-bg-card shadow-2xl shadow-black/25"
+                role="dialog"
+                aria-label="生图构图设置"
+              >
+                <div className="flex items-center justify-between border-b border-tavern-border-soft bg-tavern-bg-soft px-3.5 py-2.5">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-tavern-text">
+                      <Wand2 className="h-3.5 w-3.5 text-tavern-accent" />
+                      镜头设计
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-tavern-text-muted">对方始终是画面主体</p>
+                  </div>
+                  <span className="rounded-full bg-tavern-accent-soft px-2 py-0.5 text-[9px] font-semibold tracking-wide text-tavern-accent">
+                    SCENE
+                  </span>
+                </div>
+
+                <div className="space-y-3 p-3">
+                  <section>
+                    <div className="mb-1.5 flex items-center justify-between px-0.5">
+                      <span className="text-[10px] font-semibold tracking-wide text-tavern-text-soft">画面重点</span>
+                      <span className="text-[9px] text-tavern-text-muted">选择后填入输入框</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {IMAGE_SCENE_OPTIONS.map((item, index) => (
+                        <button
+                          key={item.value}
+                          type="button"
+                          className={cn(
+                            'group rounded-xl border border-tavern-border-soft bg-tavern-bg-soft px-2.5 py-2 text-left transition-all hover:-translate-y-px hover:border-tavern-accent/55 hover:bg-tavern-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/40',
+                            index === IMAGE_SCENE_OPTIONS.length - 1 && 'col-span-2',
+                          )}
+                          onClick={() => {
+                            const selectedSelf = item.value === 'background' ? 'hidden' : imageSelfMode
+                            setText(`/imagine --mode ${item.value} --self ${selectedSelf}`)
+                            setImageMenuOpen(false)
+                            setTimeout(() => textareaRef.current?.focus(), 0)
+                          }}
+                        >
+                          <span className="block text-[11px] font-semibold text-tavern-text group-hover:text-tavern-accent">{item.label}</span>
+                          <span className="mt-0.5 block text-[9px] leading-4 text-tavern-text-muted">{item.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft p-2">
+                    <div className="mb-1.5 flex items-center justify-between px-0.5">
+                      <span className="text-[10px] font-semibold tracking-wide text-tavern-text-soft">我方入镜</span>
+                      <span className="text-[9px] text-tavern-text-muted">默认不出现</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {IMAGE_SELF_OPTIONS.map((item) => (
+                        <button
+                          key={item.value}
+                          type="button"
+                          aria-label={item.label}
+                          aria-pressed={imageSelfMode === item.value}
+                          onClick={() => setImageSelfMode(item.value)}
+                          className={cn(
+                            'rounded-lg px-1 py-1.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/40',
+                            imageSelfMode === item.value
+                              ? 'bg-tavern-accent-soft text-tavern-accent'
+                              : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text',
+                          )}
+                        >
+                          <span className="block text-[10px] font-semibold">{item.label}</span>
+                          <span className="mt-0.5 block text-[8px] opacity-70">{item.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
                   <button
-                    key={item.label}
-                    className="w-full px-3 py-2 text-left hover:bg-tavern-bg-hover transition-colors border-b border-tavern-border-soft last:border-0"
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-xl border border-dashed border-tavern-border px-3 py-2 text-left transition-colors hover:border-tavern-accent/60 hover:bg-tavern-accent-soft"
                     onClick={() => {
-                      setText(item.cmd)
+                      const command = '/imagine '
+                      setText(command)
                       setImageMenuOpen(false)
-                      setTimeout(() => textareaRef.current?.focus(), 0)
+                      // 等 React 把受控值写入 textarea 后再聚焦并移动选区；仅 focus
+                      // 会保留上一次的光标位置，导致用户从命令开头开始输入。
+                      requestAnimationFrame(() => {
+                        const input = textareaRef.current
+                        input?.focus()
+                        input?.setSelectionRange(command.length, command.length)
+                      })
                     }}
                   >
-                    <div className="text-sm text-tavern-text">{item.label}</div>
-                    <div className="text-[11px] text-tavern-text-muted">{item.desc}</div>
+                    <span className="text-[11px] font-semibold text-tavern-text">自定义描述</span>
+                    <span className="text-[9px] text-tavern-text-muted">直接输入自己的提示词 →</span>
                   </button>
-                ))}
+                </div>
               </div>
             </>
           )}
@@ -398,19 +457,17 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
                     </div>
 
                     <div className="mt-3.5 rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/45 p-3">
-                      <ContinueSliderControl
-                        title="最终输入框内容长度"
+                      <ContinueTierControl
+                        title="本次续写长度"
                         icon={<AlignLeft className="h-3.5 w-3.5" aria-hidden />}
-                        ariaLabel="最终输入框内容长度"
                         options={CONTINUE_LENGTH_OPTIONS}
                         value={continueLength}
                         onChange={(value) => updateSettings({ continueLength: value })}
                       />
                       <div className="my-3 border-t border-tavern-border-soft" />
-                      <ContinueSliderControl
-                        title="剧情转折强度"
+                      <ContinueTierControl
+                        title="剧情变化"
                         icon={<Zap className="h-3.5 w-3.5" aria-hidden />}
-                        ariaLabel="剧情转折强度"
                         options={CONTINUE_INTENSITY_OPTIONS}
                         value={continueIntensity}
                         onChange={(value) => updateSettings({ continueIntensity: value })}

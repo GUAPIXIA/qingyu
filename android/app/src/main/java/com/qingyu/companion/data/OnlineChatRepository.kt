@@ -10,6 +10,7 @@ import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.ConnectionMode
 import com.qingyu.companion.model.CreateTaskRequest
 import com.qingyu.companion.model.Message
+import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.MessagePage
 import com.qingyu.companion.model.MessageUsage
 import com.qingyu.companion.model.QuickReplyListResponse
@@ -773,6 +774,10 @@ class OnlineChatRepository(
         val message = api().swipe(sessionId, messageId, direction)
         messageDao.upsertAll(listOf(message.toCache()))
         message
+    } catch (e: Exception) { throw e.toCompanionError() }
+
+    override suspend fun regenerateDirections(sessionId: String, messageId: String): List<DialogueDirection> = try {
+        api().regenerateDirections(sessionId, messageId).directions
     } catch (e: Exception) { throw e.toCompanionError() }
 
     override suspend fun translate(sessionId: String, messageId: String): TranslateResponse = try { api().translate(sessionId, messageId) } catch (e: Exception) { throw e.toCompanionError() }

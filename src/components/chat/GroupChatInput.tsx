@@ -4,6 +4,7 @@ import { useGroupChatStore } from '../../store/useGroupChatStore'
 import { cn } from '../../lib/utils'
 import { charAssetUrl } from '../../utils/asset'
 import { ChevronDown, Image as ImageIcon, LoaderCircle, Play, Reply, Send, Square, X as XIcon } from 'lucide-react'
+import { registerDraftBridge } from './draftBridge'
 import type { GroupChat, GroupMessage } from '../../../shared/types'
 
 interface GroupChatInputProps {
@@ -27,6 +28,9 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
   const [selectedImages, setSelectedImages] = useState<string[]>([])
   const [triggeringCharId, setTriggeringCharId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // 方向卡片读取最新草稿：用 ref 镜像避免桥持有过期的闭包值
+  const contentRef = useRef(content)
+  useEffect(() => { contentRef.current = content }, [content])
 
   const characters = useCharacterStore((state) => state.characters)
   const sendMessage = useGroupChatStore((state) => state.sendMessage)
@@ -49,6 +53,23 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
     if (targetStillPresent) return
     setTargetCharId(firstMemberId)
   }, [firstMemberId, memberKey, targetStillPresent])
+
+  // 方向卡片 → 输入框草稿桥（与单聊各自独立作用域）
+  useEffect(() => {
+    registerDraftBridge('group', {
+      getText: () => contentRef.current,
+      setDraft: (value) => {
+        setContent(value)
+        requestAnimationFrame(() => {
+          const el = textareaRef.current
+          if (!el) return
+          el.style.height = 'auto'
+          el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+        })
+      },
+    })
+    return () => registerDraftBridge('group', null)
+  }, [])
 
   useEffect(() => {
     if (group.chatMode !== 'mention') {

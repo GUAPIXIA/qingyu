@@ -100,63 +100,6 @@ function comfyHeaders(config: ComfyImageGenConfig, json = false): Record<string,
   return headers
 }
 
-function defaultComfyWorkflow(
-  config: ComfyImageGenConfig,
-  prompt: string,
-  negativePrompt: string,
-  width: number,
-  height: number,
-): ComfyWorkflow {
-  const checkpoint = config.model?.trim()
-  if (!checkpoint) {
-    throw new Error('ComfyUI 内置工作流需要填写模型文件名，或提供自定义 API 工作流 JSON')
-  }
-
-  return {
-    '3': {
-      class_type: 'KSampler',
-      inputs: {
-        seed: Math.floor(Math.random() * 0x7fffffff),
-        steps: 20,
-        cfg: 7,
-        sampler_name: 'euler',
-        scheduler: 'normal',
-        denoise: 1,
-        model: ['4', 0],
-        positive: ['6', 0],
-        negative: ['7', 0],
-        latent_image: ['5', 0],
-      },
-    },
-    '4': {
-      class_type: 'CheckpointLoaderSimple',
-      inputs: { ckpt_name: checkpoint },
-    },
-    '5': {
-      class_type: 'EmptyLatentImage',
-      inputs: { width, height, batch_size: 1 },
-    },
-    '6': {
-      class_type: 'CLIPTextEncode',
-      inputs: { text: prompt, clip: ['4', 1] },
-      _meta: { title: 'Positive Prompt' },
-    },
-    '7': {
-      class_type: 'CLIPTextEncode',
-      inputs: { text: negativePrompt, clip: ['4', 1] },
-      _meta: { title: 'Negative Prompt' },
-    },
-    '8': {
-      class_type: 'VAEDecode',
-      inputs: { samples: ['3', 0], vae: ['4', 2] },
-    },
-    '9': {
-      class_type: 'SaveImage',
-      inputs: { filename_prefix: 'Qingyu', images: ['8', 0] },
-    },
-  }
-}
-
 function replaceWorkflowPlaceholders(value: unknown, replacements: Record<string, unknown>): unknown {
   if (Array.isArray(value)) return value.map((item) => replaceWorkflowPlaceholders(item, replacements))
   if (value && typeof value === 'object') {
@@ -310,6 +253,7 @@ function customComfyWorkflow(
       if (isNodeReference(positive)) positiveTextNodeIds.add(positive[0])
       if (isNodeReference(negative)) negativeTextNodeIds.add(negative[0])
     }
+    const remaining: Array<[string, ComfyNode]> = []
     for (const [nodeId, node] of unmatchedTextNodes) {
       const label = `${nodeId} ${node._meta?.title ?? ''}`.toLowerCase()
       if (negativeTextNodeIds.has(nodeId) || label.includes('negative')) {
@@ -318,8 +262,14 @@ function customComfyWorkflow(
       } else if (positiveTextNodeIds.has(nodeId) || label.includes('positive')) {
         node.inputs.text = prompt
         hasPositiveNode = true
+      } else {
+        remaining.push([nodeId, node])
       }
     }
+    // 已识别并写入的正向节点不能继续参与负向兜底。尤其是
+    // ConditioningZeroOut 复用正向 conditioning 的工作流，本身没有负面文本节点。
+    unmatchedTextNodes.length = 0
+    unmatchedTextNodes.push(...remaining)
   } else {
     // 已绑定部分入口时，剩余未绑定节点按标题兜底，避免提示词留空。
     const remaining: Array<[string, ComfyNode]> = []
@@ -367,12 +317,14 @@ function buildComfyWorkflow(
   prompt: string,
   options?: ImageGenOptions,
 ): ComfyWorkflow {
+  // 工作流是 ComfyUI 配置的唯一事实来源，不再提供内置工作流回退。
+  if (!config.workflow?.trim()) {
+    throw new Error('ComfyUI 未配置工作流，请在 设置 -> API -> 生图 中选择或粘贴 API 格式工作流')
+  }
   const negativePrompt = options?.negativePrompt || ''
-  // 尺寸只作为占位符与内置工作流的初值；自定义工作流的尺寸由 overrides 控制。
+  // 尺寸只作为占位符初值；实际尺寸由 overrides 控制。
   const [width, height] = parseSize(options?.size || '512x512')
-  return config.workflow?.trim()
-    ? customComfyWorkflow(config, prompt, negativePrompt, width, height)
-    : defaultComfyWorkflow(config, prompt, negativePrompt, width, height)
+  return customComfyWorkflow(config, prompt, negativePrompt, width, height)
 }
 
 async function comfyuiGenerate(
@@ -421,8 +373,16 @@ async function comfyuiGenerate(
       throw new Error('ComfyUI 工作流执行失败，请检查节点和模型配置')
     }
     if (entry?.outputs) {
-      outputImages = Object.values(entry.outputs).flatMap((output) => output.images ?? [])
+      // 用户在存在歧义时选定的输出节点优先：只收集其图片，其余输出忽略。
+      const selected = config.bindings?.outputNodeIds ?? []
+      const source = selected.length > 0
+        ? Object.entries(entry.outputs).filter(([nodeId]) => selected.includes(nodeId))
+        : Object.entries(entry.outputs)
+      outputImages = source.flatMap(([, output]) => output.images ?? [])
       if (outputImages.length > 0) break
+      if (selected.length > 0 && entry?.status?.completed) {
+        throw new Error(`ComfyUI 选定的输出节点（${selected.join(', ')}）未产生图片，请在工作流配置中重新选择`)
+      }
     }
     if (entry?.status?.completed) {
       throw new Error('ComfyUI 工作流已完成，但没有 SaveImage/PreviewImage 输出')
@@ -466,9 +426,9 @@ function parseSize(size: string): [number, number] {
  *
  * SD 模型使用逗号分隔的标签（如 "1girl, red dress, outdoor"），
  * 需要：
- * 1. 移除引号（含中文引号）
+ * 1. 移除引号（直角双引号 + 左右弯引号）
  * 2. 换行替换为逗号
- * 3. NFD 规范化
+ * 3. NFC 规范化（保持字符完整）
  * 4. 移除非 SD 语法字符（保留 a-zA-Z0-9 及 .,:_(){}<>[]/'|#- 和中文）
  * 5. 按逗号分割、trim、过滤空值、重新 join
  */
@@ -476,12 +436,15 @@ function sanitizeSdPrompt(str: string): string {
   if (!str) return str
   let s = str
     .replaceAll('"', '')
-    .replaceAll('"', '')
-    .replaceAll('"', '')
+    .replaceAll('\u201c', '')
+    .replaceAll('\u201d', '')
     .replaceAll('\n', ', ')
-  s = s.normalize('NFD')
-  // 保留：字母数字、SD 语法符号、中文 CJK 字符
-  s = s.replace(/[^a-zA-Z0-9.,:_(){}<>[\]/\-'|#\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af\s]+/g, ' ')
+  // 用 NFC 而非 NFD：NFD 会把 é 拆成 e + 组合附加符，随后被白名单正则剥掉，
+  // 造成拉丁语系提示词失真（CJK 不受影响）。
+  s = s.normalize('NFC')
+  // 保留：字母数字、SD 语法符号、中文 CJK、日文假名、韩文，以及拉丁扩展字符
+  // （\u00c0-\u024f，使 café / naïve 等带重音词在 NFC 下完整保留）。
+  s = s.replace(/[^a-zA-Z0-9.,:_(){}<>[\]/\-'|#\u00c0-\u024f\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af\s]+/g, ' ')
   s = s.split(',').map((x) => x.trim()).filter((x) => x).join(', ')
   return s
 }
@@ -495,8 +458,8 @@ function sanitizeOpenAiPrompt(str: string): string {
   if (!str) return str
   return str
     .replaceAll('"', '')
-    .replaceAll('"', '')
-    .replaceAll('"', '')
+    .replaceAll('\u201c', '')
+    .replaceAll('\u201d', '')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -555,6 +518,32 @@ async function sdWebuiGenerate(
 
 // ===================== OpenAI DALL-E 适配器 =====================
 
+/** DALL-E 3 仅接受这三种尺寸；DALL-E 2 接受另外一组。 */
+const DALLE3_SIZES = ['1024x1024', '1792x1024', '1024x1792']
+const DALLE2_SIZES = ['256x256', '512x512', '1024x1024']
+
+/**
+ * 把任意尺寸字符串归一化为该模型可接受的合法尺寸。
+ *
+ * 调用方（/imagine 的模式尺寸、角色封面的 3:4 预设）使用竖版等非标准尺寸，
+ * 直接透传会被 DALL-E 拒绝（400）。这里按宽高取向映射到最接近的合法值，
+ * 保留竖/横意图而非一律退化为正方形。
+ */
+function normalizeOpenAiSize(raw: string, model: string): string {
+  const allowed = /dall-e-2/i.test(model) ? DALLE2_SIZES : DALLE3_SIZES
+  const size = raw.trim()
+  if (allowed.includes(size)) return size
+
+  const [width, height] = parseSize(size)
+  if (/dall-e-2/i.test(model)) {
+    // DALL-E 2 只有正方形规格，非正方形一律取其中间档位。
+    return width === height && DALLE2_SIZES.includes(`${width}x${height}`) ? `${width}x${height}` : '512x512'
+  }
+  if (height > width) return '1024x1792'
+  if (width > height) return '1792x1024'
+  return '1024x1024'
+}
+
 async function openaiGenerate(
   config: OpenAiImageGenConfig,
   prompt: string,
@@ -563,11 +552,18 @@ async function openaiGenerate(
   const baseUrl = config.baseUrl.replace(/\/$/, '')
   const url = `${baseUrl}/images/generations`
 
+  const model = config.model || 'dall-e-3'
+  const requestedSize = options?.size || config.size || '1024x1024'
+  const size = normalizeOpenAiSize(requestedSize, model)
+  if (size !== requestedSize) {
+    log.warn('OpenAI 尺寸不在合法集合内，已归一化', { model, requested: requestedSize, applied: size })
+  }
+
   const body = {
-    model: config.model || 'dall-e-3',
+    model,
     prompt,
     n: 1,
-    size: options?.size || config.size || '1024x1024',
+    size,
     quality: options?.quality || config.quality || 'standard',
     response_format: 'b64_json',
   }

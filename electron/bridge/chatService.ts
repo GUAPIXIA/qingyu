@@ -10,6 +10,7 @@
  * （input 变换 + output 两阶段 text/markdown + stopStrings 截断，§7 0b 遗留项已补齐）。
  */
 import { nanoid } from 'nanoid'
+import { join } from 'node:path'
 import { chatData } from '../ipc/chat'
 import { getAdapter, chatWithRetry } from '../services/ai'
 import type { TokenUsageInfo } from '../services/adapters/types'
@@ -23,6 +24,14 @@ import { applyRegexRules, applyOutputRegexRules, truncateAtStop, collectStopStri
 import { createLogger } from '../services/logger'
 import type { Message, ProviderType } from '../../shared/types'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
+import { translationMaxTokens } from '../../src/store/chatConstants'
+import { generateBridgeDirections } from './dialogueDirections'
+import { readJson } from '../services/storage'
+import { DIRS } from '../services/storage'
+import { getDefaultSettings } from '../../shared/defaults'
+import { restoreSecrets } from '../ipc/settings'
+import { getCharacter } from '../services/charCard'
+import type { DialogueDirection, Settings } from '../../shared/types'
 
 // H-10 修复：幂等缓存 TTL（覆盖安卓端断线重发窗口后清理，避免无界内存增长）
 const IDEMPOTENCY_TTL_MS = 60_000
@@ -45,6 +54,51 @@ export class BridgeChatService {
     this.events = events
     this.notifySessionChanged = notifySessionChanged
     this.generations = generations
+  }
+
+  /**
+   * 为已落盘的 AI 消息补齐“下一步方向”（会话未开启时内部直接返回）。
+   * 供 sendMessage 自动触发与安卓端“换一批”复用。
+   */
+  private async generateDirectionsFor(
+    sessionId: string,
+    messageId: string,
+    characterName: string,
+    characterId: string,
+  ): Promise<void> {
+    const settings = readJson<Settings>(join(DIRS.config(), 'settings.json'), 'settings') ?? getDefaultSettings()
+    restoreSecrets(settings)
+    const profile = settings.connectionProfiles?.find((p) => p.id === settings.activeProfileId)
+    if (!profile) return
+    const directions = await generateBridgeDirections({
+      sessionId,
+      messageId,
+      characterName,
+      userName: settings.userName || '用户',
+      profile: {
+        provider: profile.provider,
+        apiKey: profile.apiKey,
+        baseUrl: profile.baseUrl,
+        model: settings.activeModel || profile.model,
+      },
+    })
+    if (directions.length > 0) {
+      void characterId
+      this.notifySessionChanged(sessionId, 'message')
+    }
+  }
+
+  /** 安卓端“换一批”：重新生成指定消息的方向并落盘，返回最新方向。 */
+  async regenerateDirections(sessionId: string, messageId: string): Promise<DialogueDirection[]> {
+    const session = await findSessionById(sessionId)
+    if (!session) throw new Error('会话不存在')
+    const messages = chatData.readMessages(session.characterId, sessionId)
+    const target = messages.find((m) => m.id === messageId)
+    if (!target || target.role !== 'assistant') throw new Error('目标消息不存在')
+    const character = getCharacter(session.characterId)
+    await this.generateDirectionsFor(sessionId, messageId, character?.name ?? '', session.characterId)
+    const updated = chatData.readMessages(session.characterId, sessionId).find((m) => m.id === messageId)
+    return updated?.dialogueDirections ?? []
   }
 
   /** 清空幂等缓存（重启/内存压力时可调用） */
@@ -172,6 +226,9 @@ export class BridgeChatService {
       chatData.saveMessage(characterId, aiMessage)
       this.events.publish('ai:done', { requestId, sessionId, message: aiMessage })
       this.notifySessionChanged(sessionId, 'message')
+      // “下一步方向”：回复落盘后异步补齐，不阻塞 done 推送；失败静默降级。
+      // 仅传入连接参数，模块内部按会话开关与消息有效性自行判断。
+      void this.generateDirectionsFor(sessionId, aiMessage.id, data.character.name, characterId)
       // H-10 修复：幂等缓存保留 60s 幂等窗口后清理（含 base64 图片可达数 MB/条，长期不清理无界增长）
       setTimeout(() => { this.idempotency.delete(requestId) }, IDEMPOTENCY_TTL_MS)
       return userMessage
@@ -258,6 +315,7 @@ export class BridgeChatService {
     if (!profile) throw new Error('未配置 API 连接')
     const targetLang = settings.translationTargetLang || '中文'
     const provider = (profile.provider || 'openai') as ProviderType
+    const model = settings.activeModel || profile.model
 
     const requestId = `translate-${messageId}-${Date.now()}`
     const controller = this.generations.create(requestId)
@@ -273,13 +331,14 @@ export class BridgeChatService {
           provider,
           apiKey: profile.apiKey,
           baseUrl: profile.baseUrl,
-          model: settings.activeModel || profile.model,
+          model,
           temperature: 0.3,
           topP: 0.9,
-          maxTokens: Math.max(256, Math.min(target.content.length, 4000)),
+          maxTokens: translationMaxTokens(target.content, model),
           frequencyPenalty: 0,
           presencePenalty: 0,
           stream: true,
+          reasoningMode: 'disabled',
         },
         () => {},
         controller.signal,

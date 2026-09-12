@@ -13,13 +13,21 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-char-card-test' },
 }))
 
-import { importCardFrontendExtensions, importCharacterFromJson } from '../charCard'
+// 封面下载 mock：测试环境不发起真实网络请求
+const { mockDownloadImageAsBase64 } = vi.hoisted(() => ({
+  mockDownloadImageAsBase64: vi.fn(),
+}))
+vi.mock('../charCardDownload', () => ({
+  downloadImageAsBase64: mockDownloadImageAsBase64,
+}))
+
+import { importCardFrontendExtensions, importCharacterFromJson, exportCharacterCover, getCoverExtension } from '../charCard'
 import { readLorebookView } from '../lorebookDocumentStore'
 import type { Character } from '../../../shared/types'
 
 const TEST_DATA_DIR = '/tmp/qingyu-char-card-test/data'
 
-function makeCharacter(extensions: Record<string, unknown> | undefined): Character {
+function makeCharacter(extensions: Record<string, unknown> | undefined, overrides: Partial<Character> = {}): Character {
   return {
     id: 'char-1',
     name: '测试角色',
@@ -36,6 +44,7 @@ function makeCharacter(extensions: Record<string, unknown> | undefined): Charact
     createdAt: 0,
     updatedAt: 0,
     extensions,
+    ...overrides,
   }
 }
 
@@ -53,6 +62,8 @@ function readQuickReplyStore() {
 
 beforeEach(() => {
   rmSync(TEST_DATA_DIR, { recursive: true, force: true })
+  mockDownloadImageAsBase64.mockReset()
+  mockDownloadImageAsBase64.mockResolvedValue({ success: false, error: '测试环境不下载', code: 'NETWORK_ERROR' })
 })
 
 describe('importCardFrontendExtensions', () => {
@@ -209,5 +220,88 @@ describe('角色卡内嵌世界书归一化', () => {
       position: 'after_char',
       priority: 'always',
     })
+  })
+})
+
+describe('封面原始 URL 提取（重加载按钮触发条件）', () => {
+  async function importCard(data: Record<string, unknown>) {
+    mkdirSync(TEST_DATA_DIR, { recursive: true })
+    const cardPath = join(TEST_DATA_DIR, 'card.json')
+    writeFileSync(cardPath, JSON.stringify({ spec: 'chara_card_v2', spec_version: '2.0', data }), 'utf-8')
+    return importCharacterFromJson(cardPath)
+  }
+
+  it.each(['cover', 'thumbnail', 'portrait', 'avatar', 'image', 'image_url'])(
+    '下载失败时 %s 字段仍记录 _importImageUrl（按钮可见）',
+    async (field) => {
+      const character = await importCard({ name: '角色', first_mes: '你好', [field]: 'https://example.com/a.png' })
+      expect(mockDownloadImageAsBase64).toHaveBeenCalledWith('https://example.com/a.png', undefined)
+      expect(character._importImageUrl).toBe('https://example.com/a.png')
+      expect(character.avatar).toBe('')
+    },
+  )
+
+  it('裸卡顶层 thumbnail 字段也被识别', async () => {
+    mkdirSync(TEST_DATA_DIR, { recursive: true })
+    const cardPath = join(TEST_DATA_DIR, 'bare.json')
+    writeFileSync(cardPath, JSON.stringify({ name: '裸卡', first_mes: '你好', thumbnail: 'https://example.com/t.png' }), 'utf-8')
+    const character = await importCharacterFromJson(cardPath)
+    expect(character._importImageUrl).toBe('https://example.com/t.png')
+  })
+
+  it('下载成功后不再保留原始 URL（无需重加载）', async () => {
+    mockDownloadImageAsBase64.mockResolvedValue({ success: true, data: 'data:image/png;base64,AAAA' })
+    const character = await importCard({ name: '角色', first_mes: '你好', cover: 'https://example.com/a.png' })
+    expect(character.avatar).toBe('data:image/png;base64,AAAA')
+    expect(character._importImageUrl).toBeUndefined()
+  })
+
+  it('非 http(s) 来源（相对路径/内联）不产生 _importImageUrl', async () => {
+    const character = await importCard({ name: '角色', first_mes: '你好', cover: 'covers/a.png' })
+    expect(character._importImageUrl).toBeUndefined()
+    expect(mockDownloadImageAsBase64).not.toHaveBeenCalled()
+  })
+})
+
+describe('封面导出图片', () => {
+  const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+  it('getCoverExtension 识别 png / jpg 格式', () => {
+    expect(getCoverExtension(makeCharacter(undefined, { cover: `data:image/png;base64,${PNG_1PX}` }))).toBe('png')
+    // JPEG：FF D8 FF 魔数
+    expect(getCoverExtension(makeCharacter(undefined, { cover: 'data:image/jpeg;base64,/9j/4A==' }))).toBe('jpg')
+  })
+
+  it('无封面时返回 null', () => {
+    expect(getCoverExtension(makeCharacter(undefined, { cover: '' }))).toBeNull()
+  })
+
+  it('导出 cover 优先于 avatar', () => {
+    mkdirSync(TEST_DATA_DIR, { recursive: true })
+    const outPath = join(TEST_DATA_DIR, 'cover.png')
+    const character = makeCharacter(undefined, {
+      avatar: 'data:image/png;base64,AAAA',
+      cover: `data:image/png;base64,${PNG_1PX}`,
+    })
+
+    exportCharacterCover(character, outPath)
+
+    expect(readFileSync(outPath).toString('base64')).toBe(PNG_1PX)
+  })
+
+  it('cover 缺失时回退到 avatar', () => {
+    mkdirSync(TEST_DATA_DIR, { recursive: true })
+    const outPath = join(TEST_DATA_DIR, 'avatar.png')
+    const character = makeCharacter(undefined, { avatar: `data:image/png;base64,${PNG_1PX}` })
+
+    exportCharacterCover(character, outPath)
+
+    expect(readFileSync(outPath).toString('base64')).toBe(PNG_1PX)
+  })
+
+  it('无图片时抛错，不写出空文件', () => {
+    const outPath = join(TEST_DATA_DIR, 'empty.png')
+    expect(() => exportCharacterCover(makeCharacter(undefined), outPath)).toThrow('没有可导出的封面图片')
+    expect(existsSync(outPath)).toBe(false)
   })
 })

@@ -9,6 +9,8 @@ import {
   importCardFrontendExtensions,
   exportCharacterToPng,
   exportCharacterToJson,
+  exportCharacterCover,
+  getCoverExtension,
   saveCharacter,
   listCharacters,
   getCharacter,
@@ -207,6 +209,30 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
     if (result.canceled || !result.filePath) return
     exportCharacterToJson(character, result.filePath)
     log.info('角色已导出 (JSON)', { id, name: character.name, path: result.filePath })
+  })
+
+  // 导出封面图片
+  ipcMain.handle('character:exportCover', async (_e, id: string) => {
+    safeId(id)
+    const character = getCharacter(id)
+    if (!character) throw new Error('角色不存在')
+    const ext = getCoverExtension(character)
+    if (!ext) return { ok: false, error: '该角色没有可导出的封面图片' }
+    const result = await dialog.showSaveDialog({
+      title: '导出封面图片',
+      defaultPath: `${character.name}-封面.${ext}`,
+      filters: [{ name: `${ext.toUpperCase()} 图片`, extensions: [ext] }],
+    })
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    try {
+      exportCharacterCover(character, result.filePath)
+    } catch (e) {
+      const error = (e as Error).message
+      log.warn('角色封面导出失败', { id, error })
+      return { ok: false, error }
+    }
+    log.info('角色封面已导出', { id, name: character.name, path: result.filePath })
+    return { ok: true }
   })
 
   // 批量导入

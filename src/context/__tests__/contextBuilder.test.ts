@@ -241,19 +241,20 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
     expect(result.messages[0].content).toContain('正文主体必须使用第三人称叙事')
   })
 
-  it('全局叙事可按会话开启游戏主持格式', () => {
+  it('主回复不再注入游戏主持判定与选项格式', () => {
     const baseChat = makeChat()
     const enabled = buildContextMessagesFromData(makeData({
       chat: makeChat({
-        sessions: [{ ...baseChat.sessions[0], narrativeMode: 'omniscient', gameMasterMode: true }],
+        sessions: [{ ...baseChat.sessions[0], narrativeMode: 'omniscient', dialogueDirectionsEnabled: true }],
       }),
     }))
-    expect(enabled.messages[0].content).toContain('【呈现方式：游戏主持】')
-    expect(enabled.messages[0].content).toContain('【可选行动】')
+    expect(enabled.messages[0].content).not.toContain('【呈现方式：游戏主持】')
+    expect(enabled.messages[0].content).not.toContain('【可选行动】')
+    expect(enabled.messages[0].content).not.toContain('【判定】')
 
     const immersive = buildContextMessagesFromData(makeData({
       chat: makeChat({
-        sessions: [{ ...baseChat.sessions[0], narrativeMode: 'immersive', gameMasterMode: true }],
+        sessions: [{ ...baseChat.sessions[0], narrativeMode: 'immersive', dialogueDirectionsEnabled: true }],
       }),
     }))
     expect(immersive.messages[0].content).not.toContain('【呈现方式：游戏主持】')
@@ -281,6 +282,15 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
       settings: { settings: makeSettings({ enableThoughtFormat: false }), profile: null },
     }))
     expect(enabled.messages[0].content).toContain('<thought>')
+  })
+
+  it('心理描写格式保持简短且禁止混入模型写作计划', () => {
+    const result = buildContextMessagesFromData(makeData())
+    const systemText = result.messages[0].content
+
+    expect(systemText).toContain('如需呈现角色内心活动')
+    expect(systemText).toContain('不超过 3 句')
+    expect(systemText).toContain('不得包含写作计划、规则分析、上下文复述或正文草稿')
   })
 
   it('基础场景：人设注入 + 世界书 before_char + 示例对话 + AN + 记忆摘要', () => {

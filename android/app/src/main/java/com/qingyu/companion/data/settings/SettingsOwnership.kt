@@ -25,6 +25,8 @@ import kotlinx.serialization.json.encodeToJsonElement
  *
  * v3：`imageGenSize` 随 ComfyUI 尺寸改为工作流节点级覆盖而移出可同步集（PC 侧
  * 已不再下发该字段，PATCH 会被判 field_not_allowed）；DTO 仍保留该字段用于解码旧快照。
+ * v4：`imageGenAutoEnabled` 随自动生图功能整体下线而移出安全子集；DTO 已同步移除该字段，
+ * 旧 PC 快照若携带则由 ignoreUnknownKeys 忽略。
  */
 object SettingsOwnership {
 
@@ -40,7 +42,6 @@ object SettingsOwnership {
         "autoScroll",
         "showTokenCount",
         "htmlRendering",
-        "imageGenAutoEnabled",
         "exampleDialogMode",
         "lorebookRatio",
         "autoTitle",
@@ -92,7 +93,7 @@ fun settingsFieldValue(dto: SettingsDto, key: String): Any? = when (key) {
     "autoScroll" -> dto.autoScroll
     "showTokenCount" -> dto.showTokenCount
     "htmlRendering" -> dto.htmlRendering
-    "imageGenAutoEnabled" -> dto.imageGenAutoEnabled
+    // imageGenAutoEnabled 已随自动生图下线移除（v4），不再出现在冲突面板字段中。
     // imageGenSize 已退出可同步集（v3），不再出现在冲突面板字段中，故不提供取值分支。
     "exampleDialogMode" -> dto.exampleDialogMode
     "lorebookRatio" -> dto.lorebookRatio

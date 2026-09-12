@@ -1092,22 +1092,26 @@ export function checkAutoMemory(get: GroupStoreGet) {
 }
 
 /** 检查 polling 模式下是否需要继续下一轮 */
-export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGet, _group: GroupChat) {
+/**
+ * 轮询续接检查。
+ * @returns 已排定下一轮接力返回 true；已到轮数上限、无下一发言者或越界返回 false（轮到用户）。
+ */
+export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGet, _group: GroupChat): Promise<boolean> {
   const state = get()
   // 使用最新的 currentGroup，避免闭包中过期引用
   const group = state.currentGroup
-  if (!group) return
+  if (!group) return false
 
   const pollingMsgs = state.messages.filter((m) => m.characterId !== '__user__' && m.characterId !== '__free__')
   const rounds = new Set(pollingMsgs.map((m) => m.round))
-  if (rounds.size >= group.maxRounds) return
+  if (rounds.size >= group.maxRounds) return false
 
   // 找下一个发言者
   const lastCharMsg = [...state.messages].reverse().find((m) => m.characterId !== '__user__' && m.characterId !== '__free__')
-  if (!lastCharMsg) return
+  if (!lastCharMsg) return false
 
   const currentIdx = group.memberIds.indexOf(lastCharMsg.characterId)
-  if (currentIdx < 0) return
+  if (currentIdx < 0) return false
   const nextIdx = (currentIdx + 1) % group.memberIds.length
   const nextCharId = group.memberIds[nextIdx]
 
@@ -1136,4 +1140,5 @@ export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGe
     }, Math.max(500, group.speakerInterval || 2000))
   }
   scheduleNextPoll()
+  return true
 }

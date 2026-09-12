@@ -31,8 +31,10 @@ export interface GroupChatState {
   renameSession: (groupId: string, sessionId: string, title: string) => Promise<void>
   setSessionPersona: (personaId: string | null) => Promise<void>
   setSessionNarrativeMode: (mode: NarrativeMode) => Promise<void>
-  /** 更新当前群聊会话的世界状态或游戏主持设置。 */
-  updateNarrativeSession: (patch: Pick<GroupSession, 'memoryCurrentState' | 'gameMasterMode'>) => Promise<void>
+  /** 更新当前群聊会话的世界状态。 */
+  updateNarrativeSession: (patch: Pick<GroupSession, 'memoryCurrentState'>) => Promise<void>
+  /** 会话级“下一步方向”开关（流式期间也允许切换，只影响下一次完成的回复）。 */
+  setDialogueDirections: (enabled: boolean) => Promise<void>
 
   loadMessages: (groupId: string, sessionId: string) => Promise<void>
   sendMessage: (content: string, images: string[], targetCharId?: string, replyToId?: string | null) => Promise<void>

@@ -208,6 +208,55 @@ describe('ChatInput', () => {
     })
   })
 
+  describe('AI 生图菜单', () => {
+    it('按画面重点和我方入镜方式组织选项', async () => {
+      const { getByTitle, getByText } = await renderChatInput(<ChatInput character={createCharacter()} />)
+
+      fireEvent.click(getByTitle('AI 生图'))
+
+      expect(getByText('画面重点')).toBeTruthy()
+      expect(getByText('我方入镜')).toBeTruthy()
+      expect(getByText('剧情瞬间')).toBeTruthy()
+      expect(getByText('对方近景')).toBeTruthy()
+      expect(getByText('对方全身')).toBeTruthy()
+      expect(getByText('互动构图')).toBeTruthy()
+      expect(getByText('环境空镜')).toBeTruthy()
+      expect(getByText('不出现')).toBeTruthy()
+      expect(getByText('仅轮廓')).toBeTruthy()
+      expect(getByText('半透明')).toBeTruthy()
+      expect(getByText('第一人称')).toBeTruthy()
+    })
+
+    it('把所选构图与入镜方式写入生图命令', async () => {
+      const { getByTitle, getByRole, getByDisplayValue } = await renderChatInput(<ChatInput character={createCharacter()} />)
+
+      fireEvent.click(getByTitle('AI 生图'))
+      fireEvent.click(getByRole('button', { name: '仅轮廓' }))
+      fireEvent.click(getByRole('button', { name: /互动构图/ }))
+
+      expect(getByDisplayValue('/imagine --mode interaction --self silhouette')).toBeTruthy()
+    })
+
+    it('点击自定义描述后把焦点和光标放到命令末尾', async () => {
+      const { getByTitle, getByRole, getByPlaceholderText } = await renderChatInput(<ChatInput character={createCharacter()} />)
+      const input = getByPlaceholderText(/输入消息/) as HTMLTextAreaElement
+      input.focus()
+      input.setSelectionRange(0, 0)
+      const selectionSpy = vi.spyOn(input, 'setSelectionRange')
+
+      fireEvent.click(getByTitle('AI 生图'))
+      fireEvent.click(getByRole('button', { name: /自定义描述/ }))
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(input)
+        expect(input.value).toBe('/imagine ')
+        expect(input.selectionStart).toBe(input.value.length)
+        expect(input.selectionEnd).toBe(input.value.length)
+        expect(selectionSpy).toHaveBeenCalledWith(input.value.length, input.value.length)
+      })
+    })
+  })
+
   describe('快捷回复', () => {
     it('渲染快捷回复按钮', async () => {
       ;(window.api as any).quickReply.listAll = vi.fn().mockResolvedValue({
@@ -268,10 +317,11 @@ describe('ChatInput', () => {
       await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
 
       const params = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
-      expect(params?.maxTokens).toBe(1024)
+      expect(params?.maxTokens).toBe(8192) // 统一失控兜底上限
       expect(params?.messages[0].content).toContain('剧情推进助手')
 
-      const continuation = '就在封锁收紧时，城外忽然响起警钟，一封加急密令迫使守卫重新部署。'
+      // 落在默认「小段」档（80–180 字）内，避免触发长度补足修复
+      const continuation = '就在封锁收紧时，城外忽然响起警钟，一封加急密令迫使守卫重新部署。艾莉丝皱着眉望向港口的方向，低声说码头西侧的旧闸门或许还留着一条水路，只要能在换岗前赶到，就有机会在不惊动任何人的情况下离开这座城。'
       await act(async () => {
         handlers.chunk?.({ requestId: params!.requestId, text: `<continuation>${continuation}</continuation>` })
         handlers.done?.(params!.requestId)
@@ -307,7 +357,8 @@ describe('ChatInput', () => {
         handlers.done?.(retryRequestId!)
       })
 
-      expect(await findByText('续写未返回有效的中文正文，请重试或更换模型')).toBeTruthy()
+      // 模型只返回思考内容、没有正文时归因为“没有返回正文”
+      expect(await findByText(/没有返回正文|未返回有效的中文正文/)).toBeTruthy()
     })
 
     it('代入模式连续输出角色视角内容时不回填输入框', async () => {
@@ -340,7 +391,7 @@ describe('ChatInput', () => {
       expect((getByPlaceholderText(/输入消息/) as HTMLTextAreaElement).value).toBe('')
     })
 
-    it('剧情转折强度与内容长度分别改变温度、输出预算和提示词', async () => {
+    it('剧情变化与续写长度分别改变温度、输出预算和提示词', async () => {
       const handlers = captureAiHelperCallbacks()
       useSettingsStore.setState((s) => ({
         settings: { ...s.settings, continueIntensity: 'bold', continueLength: 'extended' },
@@ -350,36 +401,45 @@ describe('ChatInput', () => {
       fireEvent.click(getByTitle('AI 根据上下文续写输入文字'))
       await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
       const params = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
-      expect(params?.temperature).toBe(0.85)
-      expect(params?.maxTokens).toBe(2048)
+      expect(params?.temperature).toBe(0.75)
+      expect(params?.maxTokens).toBe(8192) // 统一失控兜底上限，不随档位变化
       expect(params?.messages[0].content).toContain('重大转折、场景变化或新的冲突方向')
-      expect(params?.messages[0].content).toContain('可写多个自然段')
+      expect(params?.messages[0].content).toContain('写 500–900 个可见中文字符')
       await act(async () => {
         handlers.chunk?.({ requestId: params!.requestId, text: '<continuation>远处的警钟骤然响起。</continuation>' })
         handlers.done?.(params!.requestId)
       })
     })
 
-    it('续写设置弹出面板：两个滑块与档位按钮分别写入全局设置', async () => {
-      const { getByLabelText, getByRole } = await renderChatInput(<ChatInput character={createCharacter()} />)
+    it('续写设置弹出面板：纯分段按钮写入全局设置，不再渲染隐形滑块', async () => {
+      const { getByLabelText, getByRole, getByText, queryAllByRole } = await renderChatInput(
+        <ChatInput character={createCharacter()} />,
+      )
 
       fireEvent.click(getByLabelText('续写设置'))
-      const lengthSlider = getByLabelText('最终输入框内容长度') as HTMLInputElement
-      const intensitySlider = getByLabelText('剧情转折强度') as HTMLInputElement
-      expect(lengthSlider.value).toBe('1') // 默认 standard 档
-      expect(intensitySlider.value).toBe('2') // 默认 active 档
+      // 离散档位只保留按钮：弹出面板内不应出现滑块
+      expect(queryAllByRole('slider')).toHaveLength(0)
+      expect(getByText('本次续写长度')).toBeTruthy()
+      expect(getByText('剧情变化')).toBeTruthy()
 
-      fireEvent.change(lengthSlider, { target: { value: '0' } })
+      fireEvent.click(getByRole('button', { name: '短句' }))
       expect(useSettingsStore.getState().settings.continueLength).toBe('brief')
 
-      fireEvent.change(intensitySlider, { target: { value: '0' } })
+      fireEvent.click(getByRole('button', { name: '延续' }))
       expect(useSettingsStore.getState().settings.continueIntensity).toBe('subtle')
 
       fireEvent.click(getByRole('button', { name: '长篇' }))
       expect(useSettingsStore.getState().settings.continueLength).toBe('extended')
 
-      fireEvent.click(getByRole('button', { name: '强烈转折' }))
+      fireEvent.click(getByRole('button', { name: '剧变' }))
       expect(useSettingsStore.getState().settings.continueIntensity).toBe('bold')
+    })
+
+    it('显示当前档位的新增字数区间', async () => {
+      useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'detailed' } }))
+      const { getByLabelText, getByText } = await renderChatInput(<ChatInput character={createCharacter()} />)
+      fireEvent.click(getByLabelText('续写设置'))
+      expect(getByText('预计新增 220–420 字 · 2–3 个自然段')).toBeTruthy()
     })
   })
 })

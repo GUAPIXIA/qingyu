@@ -20,7 +20,9 @@ data class SessionPreview(
     val lastMessage: String,
     /** 当前会话实际叙事模式。 */
     val narrativeMode: String = "immersive",
-    /** 全局叙事下是否启用游戏主持格式。 */
+    /** 会话级“下一步方向”开关：AI 回复后生成 3 个可选方向。 */
+    val dialogueDirectionsEnabled: Boolean = false,
+    /** @deprecated 兼容期镜像字段，使用 dialogueDirectionsEnabled。 */
     val gameMasterMode: Boolean = false,
     /** 旁白维护的当前世界局势。 */
     val memoryCurrentState: String = "",

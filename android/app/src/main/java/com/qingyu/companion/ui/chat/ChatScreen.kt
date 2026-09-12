@@ -168,6 +168,9 @@ fun ChatScreen(
     // 搜索与分享
     var showSearch by remember { mutableStateOf(false) }
     val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
+    val directionsError by vm.directionsError.collectAsStateWithLifecycle()
+    // 会话开启“下一步方向”时才渲染卡片；开关来自 PC 会话字段（旧端缺省 false）
+    val dialogueDirectionsEnabled = ui.dialogueDirectionsEnabled
     // 附件菜单（E-04）
     var showAttachments by remember { mutableStateOf(false) }
     // E-05 搜索导航：当前高亮匹配下标（底->上时间线顺序）
@@ -358,6 +361,17 @@ fun ChatScreen(
                                     isTranslating = item.message.id in ui.translatingMessageIds,
                                     onDelete = { vm.deleteMessage(item.message.id) },
                                     searchQuery = searchQuery,
+                                    dialogueDirectionsEnabled = dialogueDirectionsEnabled,
+                                    isLast = item.message.id == ui.messages.lastOrNull()?.id,
+                                    currentDraft = { input },
+                                    onSelectDirection = { direction -> vm.onInputChange(direction.content) },
+                                    onRegenerateDirections =
+                                        if (item.message.id == ui.messages.lastOrNull()?.id) {
+                                            { vm.regenerateDirections(item.message.id) }
+                                        } else {
+                                            null
+                                        },
+                                    directionsError = directionsError[item.message.id],
                                 )
                             }
 
