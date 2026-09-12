@@ -91,6 +91,8 @@
 
 `defaultComfyWorkflow`（第 98—152 行）继续用于没有自定义工作流的内置工作流，它的 `config.steps ?? 20` 等默认值属于合法默认值，不在删除范围内。
 
+> **后续变更（已实施）**：该判断已被推翻——`defaultComfyWorkflow` 作为**不可达分支**（保存时要求 workflow 非空）已整体移除，ComfyUI 现在只支持工作流快照，deprecated 的 `model` 字段与对应 UI 输入框同步删除。详见[生图链路问题审查报告](../报告/生图链路问题审查报告-2026-09-11.md)第四节与第 7.1 节。
+
 ### 3.4 配置界面
 
 改造 `src/components/api/ImageGenModelsSection.tsx`：

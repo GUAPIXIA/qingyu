@@ -343,6 +343,7 @@ interface WorkflowParameter {
 3. 移动端 DTO 保留字段并标注废弃，默认值不变；待移动端发版后再统一移除。
 4. 三方契约测试的白名单断言必须与本次变更同步修改，不能只改 PC 端实现。
 5. `imageGenAutoEnabled` 属于行为开关，继续保留在契约中。
+   > **后续变更（已实施）**：自动生图功能已整体下线，该字段随后续版本从 `Settings`、PC 安全子集、Android DTO 及三方契约测试中**一并移除**，快照 `schemaVersion` 递增为 4。详见[移除自动生图方案](./移除自动生图方案.md)。本节其余结论不受影响。
 
 若本次只删 PC 端而不同步契约测试，`contractFixtures.test.ts` 与 `ProtocolContractTest.kt` 会直接失败。实施顺序应为：先更新契约与测试，再删除运行时优先级。
 
