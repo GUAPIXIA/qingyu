@@ -590,9 +590,9 @@ describe('MessageBubble', () => {
       expect(getByText(/你还没睡/)).toBeTruthy()
       expect(getByText(/嗯。/)).toBeTruthy()
       // 说话人标签与对白文本分列渲染（复用 dialogue-block 视觉样式）
-      expect(container.querySelector('em.dialogue-speaker')?.textContent).toBe('苏晚')
-      expect(container.querySelector('p.dialogue-block')).toBeTruthy()
-      expect(container.querySelector('p.action-block')).toBeTruthy()
+      expect(container.querySelector('.dialogue-speaker')?.textContent).toBe('苏晚')
+      expect(container.querySelector('.dialogue-block')).toBeTruthy()
+      expect(container.querySelector('.action-block')).toBeTruthy()
       // 星号被剥离，不作为文本出现
       expect(getByText(/环顾四周的陈设/).textContent).not.toContain('*')
     })

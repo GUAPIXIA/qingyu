@@ -103,7 +103,8 @@ describe('GroupChatMessage', () => {
     })
 
     it('用户对白匹配使用与单聊相同的 bubble-user 样式入口', () => {
-      const msg = createMessage({ characterId: '__user__', content: '"匹配出的对白"' })
+      // 行内对白（旁白混写）→ dialogue-inline；纯对白 → dialogue-block（与单聊一致）
+      const msg = createMessage({ characterId: '__user__', content: '她说 "匹配出的对白" 然后离开' })
       const { container } = render(<GroupChatMessage message={msg} />)
 
       expect(container.querySelector('.dialogue-inline')).toBeTruthy()

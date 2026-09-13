@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PC 对话渲染视觉夹具</title>
+  <style>
+    :root {
+      --bg: #f6f4ef;
+      --ink: #1c1917;
+      --muted: #78716c;
+      --card: #ffffff;
+      --border: #e7e5e4;
+      --accent: #b45309;
+      --dialogue-label: #b45309;
+      --dialogue-text: #292524;
+      --action-text: #57534e;
+    }
+    :root.dark {
+      --bg: #0c0a09;
+      --ink: #f5f5f4;
+      --muted: #a8a29e;
+      --card: #1c1917;
+      --border: #292524;
+      --accent: #fbbf24;
+      --dialogue-label: #fbbf24;
+      --dialogue-text: #e7e5e4;
+      --action-text: #a8a29e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .toolbar label { font-size: 12px; color: var(--muted); }
+    .chat { max-width: 768px; margin: 0 auto; padding: 16px; }
+    .msg { display: flex; gap: 12px; margin-bottom: 16px; }
+    .msg.user { flex-direction: row-reverse; }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: #d6d3d1; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; color: #44403c;
+    }
+    :root.dark .avatar { background: #44403c; color: #e7e5e4; }
+    .bubble {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px 12px 12px 4px;
+      padding: 14px 18px;
+      max-width: 100%;
+      min-width: 0;
+    }
+    .msg.user .bubble {
+      border-radius: 12px 12px 4px 12px;
+      background: #fef3c7;
+      border-color: #fcd34d;
+      color: #78350f;
+    }
+    :root.dark .msg.user .bubble {
+      background: #451a03;
+      border-color: #92400e;
+      color: #fef3c7;
+    }
+    .meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .markdown-body p { margin: 0 0 0.5rem; }
+    .markdown-body .dialogue-block,
+    .markdown-body span.dialogue-block {
+      display: flex;
+      flex-direction: column;
+      margin: 0.5rem 0;
+      padding-left: 0.75rem;
+      border-left: 2px solid color-mix(in srgb, var(--dialogue-label) 45%, transparent);
+    }
+    .markdown-body .dialogue-block.is-incomplete { border-left-style: dashed; }
+    .markdown-body span.dialogue-block + span.dialogue-block,
+    .markdown-body p.dialogue-block + p.dialogue-block { margin-top: 0.25rem; }
+    .dialogue-speaker {
+      font-size: 12px; font-weight: 600; color: var(--dialogue-label);
+      display: flex; align-items: center; gap: 5px; margin-bottom: 2px;
+    }
+    .dialogue-speaker::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--dialogue-label);
+    }
+    .dialogue-text { line-height: 1.85; }
+    .dialogue-inline { color: var(--dialogue-text); }
+    .action-block { color: var(--action-text); margin: 0.5rem 0; }
+    .thought { color: var(--muted); font-style: italic; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+    .section { margin: 24px 0 8px; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="themeToggle" type="button">切换深色</button>
+    <button id="narrowToggle" type="button">900×600 模拟</button>
+    <label><input type="checkbox" id="streamIncomplete" /> 流式未闭合</label>
+    <span id="sizeLabel"></span>
+  </div>
+  <div class="chat" id="chat"></div>
+
+  <!-- 与生产一致的解析器（构建产物内联或由测试注入） -->
+  <script type="module">
+    // 视觉夹具：直接内联 parseRoleplayBlocks 的浏览器子集（与 src/utils/roleplayBlocks.ts 同规则）
+    // 测试 runner 会优先注入完整实现；此处为独立预览兜底。
+
+    const QUOTE_PAIRS = [['“','”'],['「','」'],['『','』'],['"','"']]
+    const OPEN = '“「『"\''
+    const CLOSE = '”」』"\''
+    const SPEAKER_QUOTE = new RegExp(`^([^${OPEN}${CLOSE}：:\\s，。！？、；,.!?;'"()（）【】〔〕—…·\\-]{1,8})[：:]\\s*([${OPEN}][\\s\\S]*)$`)
+    const NARRATION_PREFIX = /[她他它您我谁的了着是在推说道问答笑喊叫哼吼念讲走站坐打握摇抬皱眨顿望听看感摆挥耸抿咬飘]/
+    const PURE_QUOTE = new RegExp(`^[${OPEN}][\\s\\S]*[${CLOSE}]$`)
+    const LEADING = new RegExp(`^[${OPEN}][\\s\\S]*$`)
+    const ACTION_LINE = /^\*(.+)\*$/s
+    const CONTAINS = /[“”「」『』"']/
+
+    function trimLine(line) {
+      return line.replace(/^[\\s\\u3000]+|[\\s\\u3000]+$/g, '')
+    }
+    function classifyOpenQuote(text) {
+      if (!text) return { endsWithClose: false, hasInnerClose: false }
+      for (const [open, close] of QUOTE_PAIRS) {
+        if (text[0] !== open) continue
+        if (text.length >= 2 && text.endsWith(close)) return { endsWithClose: true, hasInnerClose: true }
+        return { endsWithClose: false, hasInnerClose: text.slice(1).includes(close) }
+      }
+      return { endsWithClose: false, hasInnerClose: false }
+    }
+    function matchSpeakerDialogue(line) {
+      const m = line.match(SPEAKER_QUOTE)
+      if (!m) return null
+      const speaker = trimLine(m[1] || '')
+      if (!speaker || NARRATION_PREFIX.test(speaker)) return null
+      const dialogue = m[2] || ''
+      if (![...OPEN].includes(dialogue[0])) return null
+      const q = classifyOpenQuote(dialogue)
+      if (q.endsWithClose) return { speaker, dialogue, complete: true }
+      if (q.hasInnerClose) return null
+      return { speaker, dialogue, complete: false }
+    }
+    function isPureDialogueLine(line) {
+      if (PURE_QUOTE.test(line)) return true
+      if (LEADING.test(line) && [...OPEN].includes(line[0]) && !line.includes(':') && !line.includes('：')) {
+        const q = classifyOpenQuote(line)
+        if (!q.endsWithClose && q.hasInnerClose) return false
+        return true
+      }
+      return false
+    }
+    function classifyLine(raw) {
+      const line = trimLine(raw)
+      if (!line) return { kind: 'narration', text: '' }
+      const action = line.match(ACTION_LINE)
+      if (action) return { kind: 'narration', text: trimLine(action[1]) }
+      const sp = matchSpeakerDialogue(line)
+      if (sp) {
+        const b = { kind: 'dialogue', text: sp.dialogue, speaker: sp.speaker }
+        if (!sp.complete) b.complete = false
+        return b
+      }
+      if (isPureDialogueLine(line)) {
+        const b = { kind: 'dialogue', text: line }
+        if (!classifyOpenQuote(line).endsWithClose) b.complete = false
+        return b
+      }
+      if (CONTAINS.test(line)) return { kind: 'mixed', text: line }
+      return { kind: 'narration', text: line }
+    }
+    function parseRoleplayBlocks(content, phase = 'final') {
+      if (!content) return []
+      const blocks = []
+      const thoughtRe = /<thought>([\\s\\S]*?)<\\/thought>\\s*/gi
+      let lastIndex = 0
+      const append = (text) => {
+        if (!text) return
+        for (const paragraph of text.split(/\\n\\s*\\n/)) {
+          let lastN = null
+          for (const rawLine of paragraph.split(/\\n/)) {
+            const line = trimLine(rawLine)
+            if (!line) continue
+            const block = classifyLine(line, phase)
+            const prev = blocks[blocks.length - 1]
+            if (block.kind === 'narration' && prev && prev.kind === 'narration' && prev === lastN) {
+              prev.text += '\\n' + block.text
+            } else {
+              blocks.push(block)
+              if (block.kind === 'narration') lastN = block
+            }
+          }
+        }
+      }
+      for (const match of content.matchAll(thoughtRe)) {
+        append(content.slice(lastIndex, match.index))
+        const inner = trimLine(match[1] || '')
+        if (inner) blocks.push({ kind: 'thought', text: inner })
+        lastIndex = (match.index || 0) + match[0].length
+      }
+      append(content.slice(lastIndex))
+      return blocks.filter((b) => !(b.kind === 'narration' && !b.text))
+    }
+    function stripOuterQuotes(text) {
+      const t = text.trim()
+      for (const [open, close] of QUOTE_PAIRS) {
+        if (t.startsWith(open) && t.endsWith(close) && t.length >= 2) return t.slice(1, -1)
+      }
+      return text
+    }
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+    }
+    // 极简行内 markdown（不启用 rehypeRaw）
+    function inlineMd(text) {
+      let t = escapeHtml(text)
+      t = t.replace(/\\[([^\\]]+)\\]\\((https?:[^)\\s]+)\\)/g, '<a href="$2" rel="noreferrer noopener" target="_blank">$1</a>')
+      t = t.replace(/`([^`]+)`/g, '<code>$1</code>')
+      t = t.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')
+      t = t.replace(/(?<!\\*)\\*([^*]+)\\*(?!\\*)/g, '<em>$1</em>')
+      t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>')
+      return t
+    }
+
+    function renderBlocks(content, { streaming = false } = {}) {
+      const blocks = parseRoleplayBlocks(content, streaming ? 'streaming' : 'final')
+      if (!blocks.length) return '<div class="markdown-body"><p>（空消息）</p></div>'
+      const parts = blocks.map((block) => {
+        if (block.kind === 'dialogue') {
+          const incomplete = block.complete === false
+          const body = incomplete ? block.text : stripOuterQuotes(block.text)
+          const speaker = block.speaker ? `<span class="dialogue-speaker">${escapeHtml(block.speaker)}</span>` : ''
+          return `<span class="dialogue-block${incomplete ? ' is-incomplete is-streaming' : ''}" data-block-kind="dialogue">${speaker}<span class="dialogue-text">${inlineMd(body)}</span></span>`
+        }
+        if (block.kind === 'thought') {
+          return `<div class="thought">💭 ${escapeHtml(block.text)}</div>`
+        }
+        if (block.kind === 'narration') {
+          return `<p class="action-block">${inlineMd(block.text)}</p>`
+        }
+        return `<p class="mixed">${inlineMd(block.text)}</p>`
+      }).join('')
+      return `<div class="markdown-body roleplay-blocks" data-roleplay-blocks="true"><div class="space-y-2">${parts}</div></div>`
+    }
+
+    const cases = [
+      {
+        id: 'standard-zh',
+        title: '标准中文对白',
+        role: 'assistant',
+        content: '苏晚：“我回来了。”\\n\\n她把湿伞靠在门边，没有看你。\\n\\n“……你淋透了。进来吧，别站在走廊上滴水。”',
+        mode: 'blocks',
+      },
+      {
+        id: 'quotes-all',
+        title: '四类引号',
+        role: 'assistant',
+        content: '苏晚：“弯引号。”\\n苏晚：「直角引号。」\\n苏晚：『双直角。』\\n苏晚:"ASCII 引号。"',
+        mode: 'blocks',
+      },
+      {
+        id: 'ascii-and-double-corner',
+        title: 'ASCII 与 『』',
+        role: 'assistant',
+        content: '苏晚:"Hello there."\\n\\n『序章 · 雨夜』',
+        mode: 'blocks',
+      },
+      {
+        id: 'long-dialogue',
+        title: '长对白',
+        role: 'assistant',
+        content: '苏晚：“我不知道该从哪一句说起。雨下了整夜，巷口的路灯一盏一盏灭掉，像有人沿着街把开关一个个按下。我数到第七盏的时候，你敲了门。”',
+        mode: 'blocks',
+      },
+      {
+        id: 'long-narration',
+        title: '长旁白',
+        role: 'assistant',
+        content: '她站在窗前没有开灯。玻璃上映出半张脸，以及窗外被雨打散的霓虹。桌上的茶凉了，杯沿留着一圈浅褐色的印子。远处有夜班公交报站的声音，闷闷的，像从水底传来。',
+        mode: 'blocks',
+      },
+      {
+        id: 'inline-md',
+        title: '行内 Markdown',
+        role: 'assistant',
+        content: '这是**粗体**与 `code()` 与 [链接](https://example.com) 的混排。\\n\\n还有 ~~删除线~~ 与 *斜体动作*。',
+        mode: 'blocks',
+      },
+      {
+        id: 'thought',
+        title: '思考内容',
+        role: 'assistant',
+        content: '<thought>他浑身是水，先别问为什么来。</thought>\\n\\n苏晚没有回头，右手还攥着栏杆，指节发白。',
+        mode: 'blocks',
+      },
+      {
+        id: 'stream-partial',
+        title: '流式未闭合',
+        role: 'assistant',
+        content: '苏晚：“我回来了',
+        mode: 'blocks',
+        streaming: true,
+      },
+      {
+        id: 'stream-closed',
+        title: '流式闭合后',
+        role: 'assistant',
+        content: '苏晚：“我回来了。”',
+        mode: 'blocks',
+        streaming: true,
+      },
+      {
+        id: 'legacy-md',
+        title: '历史 Markdown 消息',
+        role: 'assistant',
+        content: '苏晚：“我知道。”\\n紫色外星人再次回击，交叉双臂。\\n尤诺娃：“选我！”',
+        mode: 'markdown',
+      },
+      {
+        id: 'opener',
+        title: '开场白（markdown）',
+        role: 'assistant',
+        content: '（她把湿伞靠在门边，没有看你）“……你淋透了。进来吧，别站在走廊上滴水。”\\n\\n- 备选开场 A\\n- 备选开场 B',
+        mode: 'markdown',
+      },
+      {
+        id: 'user-msg',
+        title: '用户消息',
+        role: 'user',
+        content: '外面雨太大了，先把窗关上吧。',
+        mode: 'blocks',
+      },
+      {
+        id: 'group',
+        title: '群聊（同解析器）',
+        role: 'group',
+        content: '苏晚：“书库漏雨。”\\n\\n*她把外套挂好*\\n\\n江离：「别吵。」',
+        mode: 'blocks',
+      },
+    ]
+
+    function renderAll() {
+      const chat = document.getElementById('chat')
+      const streamOn = document.getElementById('streamIncomplete').checked
+      chat.innerHTML = cases.map((c) => {
+        const streaming = c.streaming !== undefined ? c.streaming : streamOn
+        const body = c.mode === 'markdown'
+          ? `<div class="markdown-body"><pre style="white-space:pre-wrap;font:inherit;margin:0">${escapeHtml(c.content)}</pre></div>`
+          : renderBlocks(c.content, { streaming })
+        const user = c.role === 'user' ? ' user' : ''
+        return `
+          <div class="section" data-case="${c.id}">${c.title}</div>
+          <div class="msg${user}">
+            <div class="avatar">${c.role === 'user' ? '你' : '苏'}</div>
+            <div>
+              <div class="meta">${c.role === 'user' ? '你' : c.role === 'group' ? '群聊' : '苏晚'}</div>
+              <div class="bubble">${body}</div>
+            </div>
+          </div>`
+      }).join('')
+
+      // 几何断言钩子
+      const root = document.documentElement
+      const overflow = root.scrollWidth > root.clientWidth + 1
+      window.__dialogRenderMetrics = {
+        horizontalOverflow: overflow,
+        scrollWidth: root.scrollWidth,
+        clientWidth: root.clientWidth,
+        dialogueBlocks: chat.querySelectorAll('.dialogue-block').length,
+        incomplete: chat.querySelectorAll('.is-incomplete').length,
+        scriptTags: chat.querySelectorAll('script').length,
+      }
+    }
+
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark')
+      renderAll()
+    })
+    document.getElementById('narrowToggle').addEventListener('click', () => {
+      document.body.style.maxWidth = document.body.style.maxWidth ? '' : '900px'
+      document.body.style.minHeight = document.body.style.minHeight ? '' : '600px'
+      document.body.style.margin = document.body.style.margin ? '' : '0 auto'
+      renderAll()
+    })
+    document.getElementById('streamIncomplete').addEventListener('change', renderAll)
+    document.getElementById('sizeLabel').textContent = `${window.innerWidth}×${window.innerHeight}`
+    window.addEventListener('resize', () => {
+      document.getElementById('sizeLabel').textContent = `${window.innerWidth}×${window.innerHeight}`
+      renderAll()
+    })
+    renderAll()
+    window.__dialogRenderReady = true
+  </script>
+</body>
+</html>
