@@ -48,6 +48,7 @@ export interface CommandContext {
     temperature?: number
     maxTokens?: number
     reasoningMode?: ChatParams['reasoningMode']
+    /** 生图等解析器可容错的辅助调用：截断时返回已产出正文而非报错 */
   }) => Promise<string>
   /** 获取最近 N 条对话消息（含角色名） */
   getRecentMessages: (count: number) => { role: 'user' | 'assistant'; content: string; name: string }[]

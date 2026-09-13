@@ -12,7 +12,7 @@ const mockApi: Partial<ExposedAPI> = {
     testConnection: vi.fn().mockResolvedValue({ success: true }),
     listModels: vi.fn().mockResolvedValue({ success: true, models: [] }),
     onChunk: vi.fn().mockReturnValue(() => {}),
-    onDone: vi.fn().mockReturnValue(() => {}),
+    onComplete: vi.fn().mockReturnValue(() => {}),
     onError: vi.fn().mockReturnValue(() => {}),
     onUsage: vi.fn().mockReturnValue(() => {}),
     countTokens: vi.fn().mockResolvedValue(0),
@@ -172,10 +172,12 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
   })
 }
 
-// Mock nanoid
-vi.mock('nanoid', () => ({
-  nanoid: vi.fn().mockReturnValue('mock-id'),
-}))
+// Mock nanoid：自增序列，避免固定值导致同测试内多条消息/会话 ID 冲突
+// （冲突会触发生产代码的 ID 冲突告警，淹没真实告警；需要固定值时用例自行 mockReturnValueOnce）
+vi.mock('nanoid', () => {
+  let counter = 0
+  return { nanoid: vi.fn(() => `mock-id-${++counter}`) }
+})
 
 // ---- 全局错误捕获（测试环境终端输出）----
 // 未捕获的错误会在此收集，afterEach 时检查并使测试失败

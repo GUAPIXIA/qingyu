@@ -126,6 +126,9 @@ ${character.personality ? `性格参考（仅用于推断合理神态，不可�
 除姓名外不提供外貌资料，避免生图模型把我方误画成第二个完整人物。`
 }
 
+/** tags 风格的标准质量前缀（R3：模型漏写时确定性补齐）。 */
+const TAGS_QUALITY_PREFIX = 'best quality, masterpiece, highres'
+
 /**
  * 我方构图不交给文本模型自由发挥：模型只决定占位位置，程序插入经过约束的固定片段。
  * 这样“仅轮廓”不会再次被扩写成 seated figure / semi-transparent silhouette。
@@ -136,8 +139,13 @@ function finalizeImagePrompt(
   selfMode: SelfMode,
   style: PromptStyle,
 ): string {
-  if (mode === 'background' || selfMode === 'hidden') return prompt
-  const placeholderCount = prompt.split(SELF_COMPOSITION_PLACEHOLDER).length - 1
+  // R3：tags 风格结果未以质量前缀开头时自动补齐（此前只在评测里告警，不修改）
+  let normalized = prompt
+  if (style === 'tags' && !/^best quality\b/i.test(normalized.trim())) {
+    normalized = `${TAGS_QUALITY_PREFIX}, ${normalized.trim()}`
+  }
+  if (mode === 'background' || selfMode === 'hidden') return normalized
+  const placeholderCount = normalized.split(SELF_COMPOSITION_PLACEHOLDER).length - 1
   if (placeholderCount !== 1) return ''
 
   const naturalGuards: Record<Exclude<SelfMode, 'hidden'>, string> = {
@@ -151,13 +159,27 @@ function finalizeImagePrompt(
     pov: 'first-person viewpoint, main character solo focus, no viewer face, no viewer body, optional cropped hand at bottom edge only, unobstructed subject',
   }
   const guard = style === 'natural' ? naturalGuards[selfMode] : tagGuards[selfMode]
-  return prompt.replace(SELF_COMPOSITION_PLACEHOLDER, guard)
+  return normalized.replace(SELF_COMPOSITION_PLACEHOLDER, guard)
 }
+
+/** 元信息开头（锚定行首，R3）：模型把分析/自我纠错过程当成了提示词。
+ *  注意不得改成全局匹配——anatomically correct 等是常见绘画标签。 */
+const META_INFO_PREFIX_RE = new RegExp(
+  "^(?:we need|need final|let['’]s|let me|i['’]ll|i will|i would|should we|the user|i need|analysis\\b"
+  + '|okay,?\\s+(?:we|the task)|sorry\\b|wait[\\s,]|actually\\b|correct(?:ion)?\\b|rewrite\\b|redo\\b)',
+  'i',
+)
+
+/** 残缺或多余的尖括号标记（<prompt>、<prong> 等，R3）：不属于最终提示词。 */
+const ANGLE_TAG_RE = /<\s*\/?\s*[a-z][a-z0-9_-]*\s*>/i
 
 function isUsableImagePrompt(raw: string, style: PromptStyle): boolean {
   const value = raw.trim()
-  if (value.length < 8
-    || /^(?:we need|need final|let['’]s|should we|the user|i need|analysis\b|okay,?\s+(?:we|the task))/i.test(value)) {
+  if (value.length < 8 || META_INFO_PREFIX_RE.test(value)) {
+    return false
+  }
+  // <prong> 这类残缺标签会原样进入生图模型，一律拒绝
+  if (ANGLE_TAG_RE.test(value)) {
     return false
   }
 
@@ -168,6 +190,23 @@ function isUsableImagePrompt(raw: string, style: PromptStyle): boolean {
   }
   const englishWords = value.match(/[A-Za-z][A-Za-z'-]*/g)?.length ?? 0
   return value.length >= 120 && englishWords >= 20
+}
+
+/**
+ * 取有效段（R3）：多行候选中模型常在最终提示词前输出自述/纠错行
+ * （"tag. Let me correct."）。从首个像结果的行为止截取，丢弃其前的内容；
+ * 截取到的行若以残缺尖括号片段开头（如 `<prong>best quality, …`）则剥掉，
+ * 否则会被 isUsableImagePrompt 的尖括号规则拒掉，实测样本无法恢复。
+ */
+function extractResultSegment(plain: string, style: PromptStyle): string {
+  const lines = plain.split(/\r?\n/)
+  const isResultLine = style === 'tags'
+    ? (line: string) => /best quality|masterpiece|highres/i.test(line)
+    : (line: string) => (line.match(/[A-Za-z][A-Za-z'-]*/g)?.length ?? 0) >= 12
+  const startIndex = lines.findIndex((line) => isResultLine(line.trim()))
+  if (startIndex < 0) return plain
+  const segment = lines.slice(startIndex).join('\n').trim()
+  return segment.replace(/^(?:<\s*\/?\s*[a-z][a-z0-9_-]*\s*>\s*)+/i, '').trim()
 }
 
 /**
@@ -191,6 +230,7 @@ function parseImagePromptResult(raw: string, style: PromptStyle): string {
     '',
   ).trim()
 
+  plain = extractResultSegment(plain, style)
   return isUsableImagePrompt(plain, style) ? plain : ''
 }
 
@@ -241,8 +281,10 @@ export const imagineCommand: CommandDef = {
             : `${systemPrompt}\n\nThe previous response was invalid. Return only one <prompt>...</prompt> result with no analysis or commentary.`
           const raw = await ctx.callAiHelper(attemptPrompt, userContent, {
             temperature: attempt === 0 ? 0.5 : 0.2,
-            maxTokens: style === 'natural' ? 1200 : 900,
+            // R1-B：实测推理峰值 ≈1200 token，为正文留 2 倍余量
+            maxTokens: style === 'natural' ? 2560 : 2048,
             reasoningMode: 'disabled',
+            // R1-A：撞上限时返回已产出正文，由 parseImagePromptResult 兜底解析
           })
           const candidate = parseImagePromptResult(raw, style)
           if (candidate) finalPrompt = finalizeImagePrompt(candidate, mode, selfMode, style)

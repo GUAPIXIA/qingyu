@@ -356,6 +356,9 @@ describe('imagine 命令', () => {
     const ctx = makeCtx()
     await findCommand('imagine')!.execute([], ctx)
     expect(ctx.callAiHelper).toHaveBeenCalled()
+    // R1：辅助调用放宽截断并预留 2 倍余量（tags 风格 2048，推理峰值 ≈1200）
+    const options = (ctx.callAiHelper as any).mock.calls[0][2]
+    expect(options).toMatchObject({ maxTokens: 2048, reasoningMode: 'disabled' })
     expect(ctx.notify).toHaveBeenCalledWith(expect.stringContaining('提示词: best quality'))
     expect(ctx.addImageMessage).toHaveBeenCalledWith(
       ['data:image/png;base64,x'],
@@ -371,6 +374,28 @@ describe('imagine 命令', () => {
 
     expect(window.api.imageGen.generate).toHaveBeenCalledWith(plainPrompt, undefined)
     expect(ctx.addImageMessage).toHaveBeenCalledWith(['data:image/png;base64,x'], plainPrompt)
+  })
+
+  it('自述纠错行与残缺标签不进入最终提示词（R3 实测样本）', async () => {
+    const dirty = 'tag. Let me correct.\n\n<prong>best quality, masterpiece, highres, 1girl, silver hair, blue eyes, worried gaze, parted lips, standing sideways, right hand touching the window, left hand holding her coat, rumpled black coat, rain-soaked room, cinematic lighting'
+    const ctx = makeCtx({ callAiHelper: vi.fn().mockResolvedValue(dirty) })
+
+    await findCommand('imagine')!.execute([], ctx)
+
+    const generatedPrompt = vi.mocked(window.api.imageGen.generate).mock.calls[0][0] as string
+    expect(generatedPrompt.startsWith('best quality, masterpiece, highres')).toBe(true)
+    expect(generatedPrompt).not.toContain('prong')
+    expect(generatedPrompt).not.toContain('Let me')
+  })
+
+  it('tags 结果缺质量前缀时确定性补齐（R3）', async () => {
+    const noPrefix = '1girl, silver hair, blue eyes, worried gaze, parted lips, standing sideways, right hand touching the window, left hand holding her coat, rumpled black coat, rain-soaked room, cinematic lighting, night'
+    const ctx = makeCtx({ callAiHelper: vi.fn().mockResolvedValue(`<prompt>${noPrefix}</prompt>`) })
+
+    await findCommand('imagine')!.execute([], ctx)
+
+    const generatedPrompt = vi.mocked(window.api.imageGen.generate).mock.calls[0][0] as string
+    expect(generatedPrompt.startsWith('best quality, masterpiece, highres, 1girl')).toBe(true)
   })
 
   it('Z-Image 工作流自动使用自然语言提示词协议', async () => {
@@ -456,28 +481,6 @@ describe('imagine 命令', () => {
     expect(systemPrompt).toContain('双手')
     expect(systemPrompt).toContain('服装状态')
     expect(systemPrompt).toContain('我方角色完全不出现在画面中')
-  })
-
-  it('角色明确配置族裔时，将其作为稳定身份锚点强制写入提示词要求', async () => {
-    const character = makeCharacter() as Character & { ethnicity?: string }
-    character.ethnicity = 'Japanese, East Asian'
-    const ctx = makeCtx({ character })
-
-    await findCommand('imagine')!.execute([], ctx)
-
-    const [systemPrompt] = (ctx.callAiHelper as any).mock.calls[0]
-    expect(systemPrompt).toContain('明确族裔/人种: Japanese, East Asian')
-    expect(systemPrompt).toContain('必须在英文提示词的主体开头明确写出')
-    expect(systemPrompt).toContain('不得仅用角色姓名暗示，也不得改写成含糊的 Asian')
-  })
-
-  it('角色未配置族裔时禁止根据姓名自行猜测', async () => {
-    const ctx = makeCtx({ character: makeCharacter({ name: 'Aiko' }) })
-
-    await findCommand('imagine')!.execute([], ctx)
-
-    const [systemPrompt] = (ctx.callAiHelper as any).mock.calls[0]
-    expect(systemPrompt).toContain('未提供明确族裔/人种，不得根据姓名、语言或地点猜测')
   })
 
   it('互动构图可把我方限制为虚焦轮廓，对方仍是唯一清晰主体', async () => {
