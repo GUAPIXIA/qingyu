@@ -37,7 +37,8 @@ export function saveCredential(provider: string, key: string): void {
 export function getCredential(provider: string): string | null {
   const data = readCredentialAll()
   const value = data[provider]
-  if (!value) return null
+  // readCredentialAll 已过滤非字符串；这里再兜一层，保证任何畸形数据都不会让 settings:get 整体失败
+  if (typeof value !== 'string' || value.length === 0) return null
 
   if (value.startsWith('plain:')) {
     // 警告：该凭据以明文存储（加密不可用时回退，或旧版本数据），应尽快重新保存以启用加密
@@ -63,11 +64,25 @@ function getCredentialPath(): string {
   return join(DIRS.config(), 'credentials.json')
 }
 
+/**
+ * 读取整个凭据文件，**只接受字符串值**。
+ *
+ * 2026-09-13 数据事故的根因之一：凭据文件里被混入过设置对象（含 `semanticTrigger` 等嵌套对象），
+ * 于是 `restoreSecrets` 里 `getCredential('semanticTrigger')` 拿到对象、`value.startsWith` 抛
+ * TypeError，`settings:get` 整体失败，渲染层随后把默认设置落盘，连接档案被覆盖丢失。
+ * 过滤非字符串既消除该崩溃面，也让下一次写入自动清理污染键。
+ */
 function readCredentialAll(): Record<string, string> {
   const path = getCredentialPath()
   if (!existsSync(path)) return {}
   try {
-    return JSON.parse(readFileSync(path, 'utf-8'))
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf-8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const out: Record<string, string> = {}
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'string') out[key] = value
+    }
+    return out
   } catch {
     return {}
   }

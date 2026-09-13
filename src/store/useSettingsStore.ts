@@ -49,6 +49,14 @@ interface SettingsState {
   saveStatus: 'idle' | 'saving' | 'saved' | 'error'
   /** 落盘失败原因（saveStatus === 'error' 时有值） */
   saveError: string | null
+  /**
+   * 初始设置**加载失败**（IPC 抛错/磁盘损坏）。
+   *
+   * 2026-09-13 数据事故：`settings:get` 因凭据文件污染抛错后，本 store 停留在默认值，
+   * 随后任意一次保存把默认设置落盘，**覆盖了用户的连接档案**。因此加载失败时置位本标记，
+   * 并在保存入口拒绝写盘：宁可本次会话只读，也不拿默认值覆盖用户数据。
+   */
+  loadFailed: boolean
   loadSettings: () => Promise<void>
   saveSettings: () => Promise<void>
   /** 立即刷新待保存的设置到磁盘（绕过防抖） */
@@ -92,9 +100,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   _saveTimer: null,
   saveStatus: 'idle',
   saveError: null,
+  loadFailed: false,
 
   loadSettings: async () => {
-    const settings = await window.api.settings.get()
+    let settings: Settings
+    try {
+      settings = await window.api.settings.get()
+    } catch (err) {
+      // 关键安全行为（2026-09-13 事故修复）：加载失败时**绝不**沿用默认值继续并落盘。
+      // 不设置 loaded（页面按未就绪/错误态处理），并置 loadFailed 让保存入口直接拒绝写盘。
+      const message = err instanceof Error ? err.message : String(err)
+      logError('SettingsStore:load', err)
+      set({ loadFailed: true, loaded: false, saveStatus: 'error', saveError: `设置加载失败：${message}` })
+      return
+    }
 
     // 加载旧版凭据
     const credentials: Record<string, string> = {}
@@ -221,10 +240,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       delete cleaned.authorNote
     }
 
-    set({ settings, credentials, loaded: true, saveStatus: 'idle', saveError: null })
+    set({ settings, credentials, loaded: true, saveStatus: 'idle', saveError: null, loadFailed: false })
   },
 
   saveSettings: async () => {
+    // 加载失败后禁止写盘：当前 settings 只是默认值，落盘会覆盖用户真实配置
+    if (get().loadFailed) {
+      logError('SettingsStore:save', new Error('设置未成功加载，已阻止写盘以避免覆盖用户数据'))
+      set({ saveStatus: 'error', saveError: '设置未成功加载，已阻止写盘；请检查凭据/设置文件后重启应用' })
+      return
+    }
     set({ saveStatus: 'saving', saveError: null })
     try {
       // 以当前 state 为准：防抖窗口内的多次修改只落最后一份

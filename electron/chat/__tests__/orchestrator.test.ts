@@ -2,7 +2,8 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { rmSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { join, relative } from 'node:path'
 
 const TEST_ROOT = '/tmp/qingyu-orchestrator-test'
 vi.mock('electron', () => ({ app: { getPath: () => TEST_ROOT } }))
@@ -52,7 +53,7 @@ function makeContextPort(): ContextPort {
         messages: [{ role: 'user', content: 'hi' }],
         fingerprint: 'fp-1',
         requestMaxTokens: 2048,
-        model: { provider: 'openai', model: 'gpt-4o-mini' },
+        model: { provider: 'openai', model: 'gpt-4o-mini', profileId: 'p1', apiKey: 'sk-secret-must-not-leak', baseUrl: 'https://api.example.com/v1' },
       }
     },
   }
@@ -92,6 +93,34 @@ describe('Orchestrator', () => {
     expect(snap.state).toBe('completed')
     expect(snap.accumulatedText).toBe('hello world')
     expect(snap.assistantMessageId).toBeTruthy()
+  })
+
+  // 2026-09-13 修复：任务快照落盘（data/tasks）与 task:started 事件外发都不得携带凭据
+  it('任务快照与事件记录落盘均不携带 apiKey/baseUrl', async () => {
+    const mp = makeMessagePort()
+    const orch = new ChatOrchestrator({
+      messagePort: mp,
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'success', chunks: ['ok'] }),
+    })
+
+    const snap = await orch.handle(cmd({ requestId: 'req-secret', sessionId: 'sess-secret' }))
+
+    expect(snap.model).toEqual({ provider: 'openai', model: 'gpt-4o-mini', profileId: 'p1' })
+    // 端到端：扫描该次任务落盘的全部文件（任务快照 + 事件日志）
+    const leaked: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) { walk(full); continue }
+        const text = readFileSync(full, 'utf-8')
+        if (text.includes('sk-secret-must-not-leak') || text.includes('api.example.com')) {
+          leaked.push(relative(TEST_ROOT, full))
+        }
+      }
+    }
+    if (existsSync(TEST_ROOT)) walk(TEST_ROOT)
+    expect(leaked).toEqual([])
   })
 
   it('send 将会话叙事模式固化到我方消息', async () => {

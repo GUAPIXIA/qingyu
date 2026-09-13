@@ -16,6 +16,7 @@ import { createDomainError, type DomainError } from '../../shared/chat-core/erro
 import { createTask, findByRequestId as findTaskByRequestId, getTaskSnapshot, updateTask, appendEvent } from './taskStore'
 import { transitionTask, acquireSessionOrThrow, releaseSession } from './taskManager'
 import type { MessagePort, ContextPort, ModelPort } from './ports'
+import { toPublicModelDescriptor } from './ports'
 import { authorizeTool } from './toolGate'
 
 export interface OrchestratorDeps {
@@ -152,7 +153,9 @@ export class ChatOrchestrator {
       const buildContent = (command as { content?: string }).content ?? ''
       const ctx = await this.deps.contextPort.build({ sessionId, characterId, content: buildContent })
       transitionTask(taskId, 'streaming')
-      updateTask(taskId, (s) => ({ ...s, model: ctx.model, contextFingerprint: ctx.fingerprint, updatedAt: Date.now() }))
+      // 落盘/外发一律用剥离凭据的描述（apiKey 只留在进程内，供 modelPort 调用）
+      const publicModel = toPublicModelDescriptor(ctx.model)
+      updateTask(taskId, (s) => ({ ...s, model: publicModel, contextFingerprint: ctx.fingerprint, updatedAt: Date.now() }))
 
       appendEvent({
         protocolVersion: 2,
@@ -163,7 +166,7 @@ export class ChatOrchestrator {
         sequence: getTaskSnapshot(taskId)!.lastSequence + 1,
         type: 'task:started',
         timestamp: Date.now(),
-        payload: { model: ctx.model },
+        payload: { model: publicModel },
       })
       updateTask(taskId, (s) => ({ ...s, lastSequence: s.lastSequence + 1, startedAt: s.startedAt ?? Date.now(), updatedAt: Date.now() }))
 

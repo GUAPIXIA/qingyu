@@ -29,6 +29,7 @@ describe('useSettingsStore', () => {
       _saveTimer: null,
       saveStatus: 'idle',
       saveError: null,
+      loadFailed: false,
     })
     // 确保 window.api.settings.save 返回 Promise
     vi.mocked(window.api.settings.save).mockResolvedValue(undefined)
@@ -43,7 +44,6 @@ describe('useSettingsStore', () => {
     it('has loaded: false initially', () => {
       expect(useSettingsStore.getState().loaded).toBe(false)
     })
-
     it('has default settings', () => {
       const { settings } = useSettingsStore.getState()
       expect(settings.theme).toBe('dark')
@@ -357,6 +357,52 @@ describe('useSettingsStore', () => {
       const { settings } = useSettingsStore.getState()
       expect(settings.fontFamily).toBe('system')
       expect(settings.customFontId).toBeNull()
+    })
+  })
+
+  // 2026-09-13 数据事故回归：settings:get 抛错时，渲染层曾停留在默认值并继续自动落盘，
+  // 把用户的连接档案整段覆盖。加载失败后必须拒绝一切写盘。
+  describe('加载失败保护（不得用默认值覆盖用户设置）', () => {
+    it('loadSettings 失败 → loadFailed 置位、loaded 保持 false、saveSettings 不落盘', async () => {
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+      vi.mocked(window.api.settings.get).mockRejectedValueOnce(
+        new TypeError('value.startsWith is not a function'),
+      )
+
+      await useSettingsStore.getState().loadSettings()
+
+      const state = useSettingsStore.getState()
+      expect(state.loadFailed).toBe(true)
+      expect(state.loaded).toBe(false)
+      expect(state.saveError).toContain('设置加载失败')
+
+      await state.saveSettings()
+      expect(saveSpy).not.toHaveBeenCalled()
+      expect(useSettingsStore.getState().saveStatus).toBe('error')
+    })
+
+    it('加载失败后 updateSettings 的防抖保存同样被拒绝', async () => {
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+      vi.mocked(window.api.settings.get).mockRejectedValueOnce(new Error('settings:get failed'))
+
+      await useSettingsStore.getState().loadSettings()
+      useSettingsStore.getState().updateSettings({ theme: 'light' })
+      await new Promise((resolve) => setTimeout(resolve, 350))
+
+      expect(saveSpy).not.toHaveBeenCalled()
+    })
+
+    it('加载成功后 loadFailed 归位，保存恢复正常', async () => {
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+      vi.mocked(window.api.settings.get).mockResolvedValueOnce(getDefaultSettings())
+
+      await useSettingsStore.getState().loadSettings()
+      expect(useSettingsStore.getState().loadFailed).toBe(false)
+      await useSettingsStore.getState().saveSettings()
+      expect(saveSpy).toHaveBeenCalledTimes(1)
     })
   })
 })

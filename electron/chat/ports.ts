@@ -64,7 +64,25 @@ export interface PreparedContext {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   fingerprint: string
   requestMaxTokens: number
+  /** 进程内使用（含 apiKey）；落盘/外发前必须经 {@link toPublicModelDescriptor} 剥离 */
   model: { provider: string; model: string; profileId?: string; apiKey?: string; baseUrl?: string }
+}
+
+/**
+ * 任务记录与事件外发用的模型描述：**必须剥离 apiKey 与完整 baseUrl**。
+ *
+ * 2026-09-13 修复：任务快照会写入 `data/tasks` 下的 `task-*.json`，`task:started` 事件还会经 WS
+ * 下发给桥接客户端——此前两处都直接透传 `ctx.model`，等于把明文 API Key 落盘（实测 84 个任务
+ * 记录含明文 key）并广播给已配对设备。这里统一收窄为 `TaskSnapshot.model` 的形状。
+ */
+export function toPublicModelDescriptor(
+  model: PreparedContext['model'],
+): { provider: string; model: string; profileId?: string } {
+  return {
+    provider: model.provider,
+    model: model.model,
+    ...(model.profileId ? { profileId: model.profileId } : {}),
+  }
 }
 
 export interface ContextPort {

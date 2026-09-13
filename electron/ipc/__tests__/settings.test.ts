@@ -3,7 +3,7 @@
  * 验证:settings.json 不落明文 apiKey——保存前剥离到 safeStorage,读取时回填,导出仅删除。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { unlinkSync, existsSync } from 'node:fs'
+import { unlinkSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 // mock electron:safeStorage 加密可用 + userData 隔离到临时目录
@@ -99,6 +99,35 @@ describe('restoreSecrets', () => {
     const s = makeSettings()
     // 不剥离,直接回填——明文保留
     restoreSecrets(s)
+    expect(s.connectionProfiles[0].apiKey).toBe('sk-test-111')
+  })
+
+  // 2026-09-13 数据事故回归：凭据文件被混入设置对象（含 semanticTrigger 等嵌套对象）时，
+  // 旧实现 `value.startsWith` 抛 TypeError → settings:get 整体失败 → 渲染层把默认设置落盘 → 连接档案丢失。
+  it('凭据文件混入非字符串值时：不抛错、正常键仍可读、settings:get 不会整体失败', () => {
+    const path = join('/tmp/qingyu-settings-test/data/config', 'credentials.json')
+    writeFileSync(path, JSON.stringify({
+      // 正常凭据（saved 时经 base64 落盘；测试替身的 decryptString 就是 utf-8 还原）
+      'profile-p1': Buffer.from('sk-test-111', 'utf-8').toString('base64'),
+      // 污染：设置对象被写进凭据文件
+      semanticTrigger: { enabled: true, apiKey: '' },
+      providers: { openai: { type: 'openai' } },
+      fontSizeCustom: 0,
+      connectionProfiles: [],
+      activeProfileId: null,
+    }, null, 2), 'utf-8')
+
+    expect(() => getCredential('semanticTrigger')).not.toThrow()
+    expect(getCredential('semanticTrigger')).toBeNull()
+    expect(getCredential('providers')).toBeNull()
+    expect(getCredential('fontSizeCustom')).toBeNull()
+    expect(getCredential('profile-p1')).toBe('sk-test-111')
+
+    // restoreSecrets 整体不应抛错（settings:get 的调用路径）
+    const s = makeSettings()
+    s.connectionProfiles.forEach((p) => { p.apiKey = '' })
+    s.semanticTrigger = { ...(s.semanticTrigger ?? {}), enabled: true, apiKey: '' } as never
+    expect(() => restoreSecrets(s)).not.toThrow()
     expect(s.connectionProfiles[0].apiKey).toBe('sk-test-111')
   })
 })
