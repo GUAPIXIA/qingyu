@@ -85,6 +85,8 @@ interface CaseResult {
 interface CliOptions {
   baseUrl: string
   model: string
+  /** 活跃 profile 的 provider（openai / anthropic 等），不得按模型名猜测 */
+  provider: string
   apiKey: string
   batches: BatchName[]
   judge: boolean
@@ -340,10 +342,10 @@ function makeBuildData(opts: {
 }): ContextBuildData {
   const profile: ActiveProfile = {
     name: 'eval-profile',
-    provider: 'openai',
+    provider: globalEvalProvider,
     apiKey: 'INJECTED-BY-SCRIPT',
-    baseUrl: 'https://api.commandcode.ai/provider/v1',
-    model: 'deepseek/deepseek-v4.1-flash',
+    baseUrl: globalEvalBaseUrl,
+    model: globalEvalModel,
     maxContext: 1_000_000,
   }
   return {
@@ -362,6 +364,11 @@ function makeBuildData(opts: {
     regexRules: [],
   }
 }
+
+// 由 CLI / 安全包装脚本注入的活跃 profile 元数据（不含密钥）
+let globalEvalProvider = 'openai'
+let globalEvalBaseUrl = 'https://api.commandcode.ai/provider/v1'
+let globalEvalModel = 'deepseek/deepseek-v4.1-flash'
 
 // ===================== 模型调用 =====================
 
@@ -425,11 +432,18 @@ function isEmptyResponseError(err: unknown): boolean {
 }
 
 /**
- * 按模型名选择适配器：Claude 系列在多数网关只接受 Anthropic Messages 形状
- * （`/v1/messages`），其余模型走 OpenAI 兼容形状。与应用按 provider 路由等价。
+ * 按 **provider** 选择适配器（与应用正式调用链一致），禁止按模型名猜测。
+ * 不支持的 provider 明确报错，不静默退回 OpenAI。
  */
-function adapterForModel(model: string) {
-  return model.toLowerCase().includes('claude') ? claudeAdapter : openaiAdapter
+function adapterForProvider(provider: string) {
+  const p = provider.toLowerCase()
+  if (p === 'claude' || p === 'anthropic') return claudeAdapter
+  if (p === 'openai' || p === 'openai-compatible' || p === 'openrouter' || p === 'deepseek' || p === 'custom') {
+    return openaiAdapter
+  }
+  throw new Error(
+    `评测器不支持当前 provider=${provider}；请先在适配器层实现该 provider，禁止静默退回 OpenAI。`,
+  )
 }
 
 function createModelCaller(options: CliOptions) {
@@ -453,7 +467,7 @@ function createModelCaller(options: CliOptions) {
         { role: 'system', content: systemContent },
         { role: 'user', content: input.userPrompt },
       ],
-      provider: 'openai',
+      provider: options.provider as ChatParams['provider'],
       apiKey: options.apiKey,
       baseUrl: options.baseUrl,
       model: options.model,
@@ -474,8 +488,8 @@ function createModelCaller(options: CliOptions) {
       const timer = setTimeout(() => controller.abort(new Error('timeout')), 5 * 60 * 1000)
       try {
         // 阶段3契约：适配器返回 AICompletion（正文 + finishReason + usage）
-        // 按模型名选适配器：Claude 系列需要 Anthropic Messages 形状（/messages），其余走 OpenAI 形状
-        const completion = await adapterForModel(options.model).chat(params, () => {}, controller.signal)
+        // 按 provider 选适配器（与应用一致），禁止按模型名猜测
+        const completion = await adapterForProvider(options.provider).chat(params, () => {}, controller.signal)
         return {
           text: completion.text,
           finishReason: completion.finishReason,
@@ -1198,7 +1212,7 @@ async function runStreamCase(options: CliOptions, testCase: StreamCase): Promise
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        provider: 'openai',
+        provider: options.provider as ChatParams['provider'],
         apiKey: options.apiKey,
         baseUrl: options.baseUrl,
         model: options.model,
@@ -2744,9 +2758,28 @@ function parseArgs(argv: string[]): CliOptions {
     throw new Error('缺少密钥：请用 --key-file <path> 或设置 GENERATION_EVAL_API_KEY')
   }
 
+  const provider = get('provider', process.env.GENERATION_EVAL_PROVIDER || '')!
+  if (!provider && needsKey && !argv.includes('--report-only') && !argv.includes('--judge-only')) {
+    throw new Error(
+      '缺少 --provider：必须由活跃 profile 注入（GENERATION_EVAL_PROVIDER），禁止按模型名猜测 provider',
+    )
+  }
+  const baseUrl = get('base-url', process.env.GENERATION_EVAL_BASE_URL || '')!
+  const model = get('model', process.env.GENERATION_EVAL_MODEL || '')!
+  if (!model && needsKey && !argv.includes('--report-only') && !argv.includes('--judge-only')) {
+    throw new Error('缺少 --model：必须由活跃 profile 注入（GENERATION_EVAL_MODEL）')
+  }
+  if (!baseUrl && needsKey && !argv.includes('--report-only') && !argv.includes('--judge-only')) {
+    throw new Error('缺少 --base-url：必须由活跃 profile 注入（GENERATION_EVAL_BASE_URL）')
+  }
+  globalEvalProvider = provider || 'openai'
+  globalEvalBaseUrl = baseUrl || 'https://api.commandcode.ai/provider/v1'
+  globalEvalModel = model || 'deepseek/deepseek-v4.1-flash'
+
   return {
-    baseUrl: get('base-url', process.env.GENERATION_EVAL_BASE_URL || 'https://api.commandcode.ai/provider/v1')!,
-    model: get('model', process.env.GENERATION_EVAL_MODEL || 'deepseek/deepseek-v4.1-flash')!,
+    baseUrl: globalEvalBaseUrl,
+    model: globalEvalModel,
+    provider: globalEvalProvider,
     apiKey,
     batches,
     judge: (get('judge', 'on') || 'on') !== 'off',
@@ -2785,7 +2818,7 @@ function renderReport(options: CliOptions, results: CaseResult[]): string {
   const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
   lines.push(`# 生成效果评测报告（分批）`)
   lines.push('')
-  lines.push(`> 生成日期：${now} | 模型：\`${options.model}\` | 端点：\`${options.baseUrl}\``)
+  lines.push(`> 生成日期：${now} | provider：\`${options.provider}\` | 模型：\`${options.model}\` | 端点：\`${options.baseUrl}\``)
   lines.push(`> 批次：${[...new Set(results.map((r) => r.batch))].join('、')} | 用例数：${results.length} | 评审：${options.judge ? '同模型自评审' : '关闭'}`)
   lines.push('')
 

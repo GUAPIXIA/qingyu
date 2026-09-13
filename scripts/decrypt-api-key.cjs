@@ -1,5 +1,5 @@
 /**
- * 开发辅助：从应用数据目录解出「当前活跃连接配置」的 API Key，写入指定文件（不打印明文）。
+ * 开发辅助：从应用数据目录解出「当前活跃连接配置」的 API Key，写入指定文件（不打印明文、不打印任何片段）。
  *
  * 用途：给 scripts/evaluate-generation.ts 之类的实机评测脚本提供 --key-file，
  * 避免把密钥写进 shell 历史或仓库。
@@ -12,6 +12,8 @@
  * 而该密钥**绑定在应用自己的 userData 目录**（Local State 文件）上。
  * 因此这里必须先把 userData 指到应用数据目录，再调用 safeStorage 解密，
  * 否则会因换了一把 key 而报 "Error while decrypting the ciphertext"。不做任何自研密码学处理。
+ *
+ * 安全：stdout 不得出现密钥明文或前缀片段；仅报告写入成功与字节长度（长度本身非密钥材料）。
  */
 const { app, safeStorage } = require('electron')
 const { readFileSync, writeFileSync } = require('node:fs')
@@ -46,6 +48,7 @@ app.whenReady().then(() => {
   }
   const key = safeStorage.decryptString(Buffer.from(encrypted, 'base64'))
   writeFileSync(outFile, key, 'utf-8')
-  console.log(`已写入 ${outFile}（len=${key.length}，前缀 ${key.slice(0, 3)}***）`)
+  // 不打印任何密钥片段（含前三位）
+  console.log(`已写入密钥文件（len=${key.length}）`)
   app.exit(0)
 })
