@@ -26,14 +26,13 @@ import {
 } from 'lucide-react'
 
 export function SettingsPage() {
-  const { settings, updateSettings } = useSettingsStore()
+  const { settings, updateSettings, saveStatus, saveError, saveSettings } = useSettingsStore()
   const navigate = useNavigate()
   const { hash } = useLocation()
   const [busy, setBusy] = useState<'export' | 'import' | null>(null)
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([])
   const [activeSection, setActiveSection] = useState<string>('updater')
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved')
   const [fontUploading, setFontUploading] = useState(false)
   const [fontError, setFontError] = useState<string | null>(null)
 
@@ -60,14 +59,7 @@ export function SettingsPage() {
     return () => cancelAnimationFrame(frame)
   }, [hash])
 
-  // S2-D：监听设置变化显示保存状态（防抖 300ms）
-  useEffect(() => {
-    // 首次 loaded 时不显示 saving
-    if (!useSettingsStore.getState().loaded) return
-    setSaveStatus('saving')
-    const t = setTimeout(() => setSaveStatus('saved'), 500)
-    return () => clearTimeout(t)
-  }, [settings])
+  // S2-D / P1-02：保存状态由 store 的真实落盘 Promise 结果驱动（不再用固定 500ms 计时器假成功）
 
   /** 上传字体文件 */
   const handleUploadFont = async () => {
@@ -177,10 +169,36 @@ export function SettingsPage() {
         <div className="flex items-center gap-2">
           <SettingsIcon className="w-5 h-5 text-tavern-accent" />
           <h1 className="font-display text-lg font-bold">设置</h1>
-          <span className={cn('ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full', saveStatus === 'saving' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300')}>
-            {saveStatus === 'saving' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-            {saveStatus === 'saving' ? '保存中...' : '已保存'}
-          </span>
+          {saveStatus === 'saving' && (
+            <span className="ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              保存中...
+            </span>
+          )}
+          {saveStatus === 'saved' && (
+            <span className="ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+              <Check className="w-3 h-3" />
+              已保存
+            </span>
+          )}
+          {saveStatus === 'error' && (
+            <>
+              <span
+                className="ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-tavern-danger/10 text-tavern-danger"
+                title={saveError ?? undefined}
+              >
+                保存失败{saveError ? `：${saveError}` : ''}
+              </span>
+              <button
+                onClick={() => { void saveSettings() }}
+                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-tavern-border-soft text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
+                title="重新保存设置"
+              >
+                <RefreshCw className="w-3 h-3" />
+                重试
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -316,7 +334,8 @@ export function SettingsPage() {
           )}
           <div className="mt-2 space-y-1 text-xs text-tavern-text-muted">
             <p>Backup V2（zip）：包含 设置、角色（含头像/封面）、世界书、预设、身份、正则、快捷回复、MCP、用量、全部聊天记录与群聊。</p>
-            <p>未包含：API Key / 凭据、设备配对信息、向量索引（可重建）。旧版 JSON 备份仍可导入。</p>
+            <p>导入为合并式恢复：同名文件覆盖，备份中未包含的本地文件保留；写入前先完成整包校验，失败会回滚本次写入。</p>
+            <p>未包含：API Key / 凭据、MCP 环境变量敏感值（KEY/TOKEN/SECRET/PASSWORD，导出时置空）、设备配对信息、向量索引（可重建）。旧版 JSON 备份仍可导入。</p>
           </div>
         </SectionCard>
         </div>

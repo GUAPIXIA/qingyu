@@ -78,4 +78,20 @@ export default tseslint.config(
       'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // B1 门禁：electron 生产代码（主进程/Bridge）不得反向 import src（渲染层）。
+    // 共享实现统一放 shared/chat-core；electron 测试内的 src 引用（如
+    // bridge/__tests__/sessionSync.link.test.ts 动态导入渲染层事件上报器）
+    // 属跨进程链路联调用例，不在本门禁范围内。
+    files: ['electron/**/*.{ts,tsx}'],
+    ignores: ['electron/**/__tests__/**', 'electron/**/*.test.ts', 'electron/**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['src/*', 'src/**', '**/src/*', '**/src/**'],
+          message: 'electron 生产代码不得 import src（B1 反向依赖下沉）：请引用 shared/chat-core 下的共享实现，或先把该实现下沉到 shared。',
+        }],
+      }],
+    },
+  },
 )

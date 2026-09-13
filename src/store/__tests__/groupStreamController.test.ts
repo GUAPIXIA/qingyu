@@ -8,9 +8,12 @@ import {
   getActiveStream,
   markPendingGroupCompression,
   preserveGroupReplyContent,
+  streamGroupAI,
+  streamGroupAIFree,
 } from '../groupStreamController'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
+import { STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { GroupChat, GroupMessage, Character } from '../../../shared/types'
 
@@ -45,10 +48,10 @@ function setup() {
   ;(window.api.group as any).save = vi.fn().mockResolvedValue(undefined)
 }
 
-describe('群聊思考内容保留', () => {
-  it('完成回复时保留 thought，并归一化 thinking 标签', () => {
-    expect(preserveGroupReplyContent('  <thinking>先分析上下文</thinking>\n最终回复  ')).toBe(
-      '<thought>先分析上下文</thought>\n最终回复',
+describe('群聊角色内心内容保留', () => {
+  it('完成回复时保留角色 thought，并丢弃供应商 thinking', () => {
+    expect(preserveGroupReplyContent('  <thinking>先分析上下文</thinking>\n<thought>我得保持冷静。</thought>\n最终回复  ')).toBe(
+      '<thought>我得保持冷静。</thought>\n最终回复',
     )
   })
 })
@@ -153,6 +156,190 @@ describe('splitAndSaveMessages 群聊自由发言拆分', () => {
     const state = set.mock.calls[0][0]({ messages: [{ id: 'ph-1' }] })
     const msg = state.messages.find((m: GroupMessage) => m.id === 'ph-1')
     expect(msg.content).toBe('(无回复)')
+  })
+})
+
+describe('群聊超时统一收尾（S2）', () => {
+  beforeEach(() => {
+    setup()
+    // 群聊流式需要可用的连接档案（否则 getActiveProfile 为 null，直接返回）
+    useSettingsStore.setState({
+      settings: {
+        ...getDefaultSettings(),
+        userName: '用户',
+        activeProfileId: 'p1',
+        connectionProfiles: [{
+          id: 'p1', name: '测试', provider: 'openai',
+          baseUrl: 'https://api.example.com', apiKey: 'sk-test', model: 'gpt-4o', maxContext: 8192,
+        }],
+      } as any,
+      credentials: {}, loaded: true, _saveTimer: null,
+    })
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    ;(window.api.group as any).saveMessage = vi.fn().mockResolvedValue(undefined)
+    ;(window.api.ai as any).chat = vi.fn().mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    cleanupActiveStream()
+    clearPollingTimer()
+    vi.useRealTimers()
+  })
+
+  /** 构造可被 set 更新的最小 store 形状（handleGroupStreamTimeout 需要 messages） */
+  function makeGroupGet(group: GroupChat, sessionId: string) {
+    let state: any = {
+      currentGroup: group,
+      currentSessionId: sessionId,
+      sessions: [{ id: sessionId, narrativeMode: 'immersive' }],
+      messages: [],
+      _semanticLoreHits: [],
+      _semanticFactsHits: [],
+      ensureLorebooksLoaded: vi.fn(async () => {}),
+      buildGroupContext: vi.fn(() => [{ role: 'user', content: '你好' }]),
+    }
+    const set = vi.fn((updater: any) => {
+      const patch = typeof updater === 'function' ? updater(state) : updater
+      state = { ...state, ...patch }
+    })
+    return { get: () => state, set, read: () => state }
+  }
+
+  function captureCallbacks() {
+    const callbacks: { onChunk?: any; onComplete?: any; onError?: any } = {}
+    ;(window.api.ai as any).onChunk = vi.fn((cb: any) => { callbacks.onChunk = cb; return () => {} })
+    ;(window.api.ai as any).onComplete = vi.fn((cb: any) => { callbacks.onComplete = cb; return () => {} })
+    ;(window.api.ai as any).onError = vi.fn((cb: any) => { callbacks.onError = cb; return () => {} })
+    return callbacks
+  }
+
+  /** 启动一次群聊生成并让 chunk 续期超时触发（收到半句后卡死） */
+  async function startThenTimeout(mode: 'mention' | 'polling' | 'free', partial: string) {
+    const group = makeGroup({ chatMode: mode === 'free' ? 'free' : mode })
+    const { get, set, read } = makeGroupGet(group, 's1')
+    const callbacks = captureCallbacks()
+
+    if (mode === 'free') {
+      await streamGroupAIFree(set as any, get as any, group, 's1', 1)
+    } else {
+      await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    }
+
+    if (partial) {
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      callbacks.onChunk!({ requestId, text: partial })
+    }
+    // 推进到空闲超时：初始 timeout 与 chunk 续期 timeout 都必须走同一处理器
+    await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MS + 1)
+    await vi.advanceTimersByTimeAsync(0)
+    return { group, set, read }
+  }
+
+  it.each(['mention', 'polling', 'free'] as const)(
+    '%s：收到半句后超时，正文停在稳定句界且错误不进入正文',
+    async (mode) => {
+      const { read } = await startThenTimeout(mode, '她推开门，走进房间。然后她伸手拿')
+
+      const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+      expect(saved.content).toBe('她推开门，走进房间。')
+      expect(saved.content).not.toContain('超时')
+      // 阶段7 行为矩阵：idle timeout + 稳定正文 → generationError 走「已保留完整部分」
+      expect(saved.generationError).toBe('请求超时，已保留完整部分')
+      expect(saved.generationNotice).toBeUndefined()
+
+      const placeholder = read().messages.find((m: GroupMessage) => m.id === saved.id)
+      expect(placeholder?.content).toBe('她推开门，走进房间。')
+      expect(placeholder?.generationError).toBe('请求超时，已保留完整部分')
+      // 中断保留的正文与正常完成一致走语义分块，避免概率性丢失对话样式
+      expect(saved.contentRenderMode).toBe('blocks')
+      expect(placeholder?.contentRenderMode).toBe('blocks')
+      expect(read().isStreaming).toBe(false)
+    },
+  )
+
+  it('超时且没有任何稳定边界时不落盘半句，改为移除占位消息', async () => {
+    const { read } = await startThenTimeout('mention', '她推开门走进房间然后她伸手拿')
+
+    expect(window.api.group.saveMessage).not.toHaveBeenCalled()
+    expect(read().messages.find((m: GroupMessage) => m.content.includes('她推开门'))).toBeUndefined()
+    expect(read().error).toBe('请求超时')
+  })
+
+  it('未收到任何 chunk 的最初超时同样不落盘错误文案', async () => {
+    await startThenTimeout('free', '')
+
+    // 空正文：不发生保存，错误只进 state
+    expect(window.api.group.saveMessage).not.toHaveBeenCalled()
+  })
+
+  it('超时正文同样经过 output 正则，且只执行一次', async () => {
+    // 增量替换规则：执行一次得 '她A A。'，执行两次得 '她A A A A。'
+    ;(window.api.regex as any) = {
+      list: vi.fn().mockResolvedValue([{
+        id: 'r-add', name: '加空格', enabled: true, scope: 'output',
+        pattern: 'A', replacement: 'A A', flags: 'g',
+      }]),
+    }
+    const { read } = await startThenTimeout('polling', '她A。')
+
+    const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+    expect(saved.content).toBe('她A A。')
+    expect(read().messages.find((m: GroupMessage) => m.id === saved.id)?.generationError).toBe('请求超时，已保留完整部分')
+  })
+
+  it('阶段7：普通 ai:error（点名）收口——半截正文收束到稳定句界，generationError 与正文分离落盘', async () => {
+    const group = makeGroup({ chatMode: 'mention' })
+    const { get, set, read } = makeGroupGet(group, 's1')
+    const callbacks = captureCallbacks()
+    await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+    callbacks.onChunk!({ requestId, text: '她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。然后她伸手拿' })
+    callbacks.onError!({ requestId, error: 'socket hang up' })
+    await vi.advanceTimersByTimeAsync(10)
+
+    const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+    expect(saved.content).toBe('她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。')
+    expect(saved.generationError).toBe('生成中断，已保留完整部分')
+    expect(saved.content).not.toContain('hang up')
+    expect(read().isStreaming).toBe(false)
+    expect(read().messages.find((m: GroupMessage) => m.id === saved.id)?.content)
+      .toBe('她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。')
+  })
+
+  it('阶段7：ai:error 无正文 → 移除占位消息，不落盘错误文案（不创建空 AI 消息）', async () => {
+    const group = makeGroup({ chatMode: 'mention' })
+    const { get, set, read } = makeGroupGet(group, 's1')
+    const callbacks = captureCallbacks()
+    await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+    callbacks.onError!({ requestId, error: 'API 返回 500' })
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(window.api.group.saveMessage).not.toHaveBeenCalled()
+    expect(read().messages).toHaveLength(0)
+    expect(read().isStreaming).toBe(false)
+  })
+
+  it('阶段7：timeout 收口后到达的迟到 chunk/done/error 被忽略，不二次落盘', async () => {
+    const group = makeGroup({ chatMode: 'polling' })
+    const { get, set } = makeGroupGet(group, 's1')
+    const callbacks = captureCallbacks()
+    await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+    callbacks.onChunk!({ requestId, text: '她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。然后她伸手拿' })
+    await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MS + 1)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(vi.mocked(window.api.group.saveMessage).mock.calls).toHaveLength(1)
+
+    // 迟到事件：不得覆盖超时收口结果或二次落盘
+    callbacks.onChunk!({ requestId, text: '迟到的尾巴。' })
+    callbacks.onComplete!({ requestId, finishReason: 'stop' })
+    callbacks.onError!({ requestId, error: 'late failure' })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(vi.mocked(window.api.group.saveMessage).mock.calls).toHaveLength(1)
+    const saved = vi.mocked(window.api.group.saveMessage).mock.calls[0][2] as GroupMessage
+    expect(saved.content).toBe('她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。')
   })
 })
 

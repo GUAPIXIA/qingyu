@@ -1,6 +1,7 @@
 import type { Character, MemoryFactRecord } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
+import { resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../utils/memory'
 import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../utils/memoryWindow'
@@ -59,8 +60,12 @@ export async function runGroupMemorySummary(get: GroupStoreGet, set: GroupStoreS
     `${currentGroup.name}\n${memberNames}\n${currentSession.memoryCurrentState || '无'}\n${prevMemory}\n${prevFactsText}`,
     profile.model,
   ) + 800
-  // 为思考模型预留输出预算：正文 + 思考 token，1024 会被思考吃光导致整次总结无正文
-  const GROUP_MEMORY_OUTPUT_TOKENS = 2048
+  // S3：与单聊同一策略——输出预算接入模型能力档案（正文约 2500 字 + 推理余量），
+  // 不再固定 2048（推理端点上思考会吃光预算导致事实提案缺失）
+  const GROUP_MEMORY_OUTPUT_TOKENS = resolveRequestBudget({
+    model: profile.model,
+    hardMaxChars: 2500,
+  }).requestMaxTokens
   const summaryInputBudget = resolveMemorySummaryInputBudget(
     profile.maxContext || getDefaultMaxContext(profile.model),
     promptOverheadTokens,
@@ -137,7 +142,8 @@ ${shouldAttemptFactProposal ? `【事实提案】
       result += data.text
     })
 
-    const unbindDone = window.api.ai.onDone(async (doneId) => {
+    const unbindDone = window.api.ai.onComplete(async (payload) => {
+      const { requestId: doneId, finishReason } = payload
       if (doneId !== requestId || settled) return
       const parsed = parseMemoryResult(result || '')
       if (!parsed.summary && !parsed.currentState) {
@@ -146,6 +152,11 @@ ${shouldAttemptFactProposal ? `【事实提案】
         reportSummaryFailure('群聊长记忆总结未产出可解析内容（模型可能只返回了思考过程或格式不符），请重试')
         finish()
         return
+      }
+      // S3：截断时显式区分"摘要已保存、事实未更新"
+      if (finishReason === 'length' && shouldAttemptFactProposal
+        && result.includes('【事实提案】') && !parsed.factProposals) {
+        logWarn('group-memory', `群聊长记忆摘要已保存，但事实提案 JSON 被输出上限截断未更新（会话 ${currentSessionId}，finishReason=length）`)
       }
       if (!parsed.summary) {
         // 只有【当前状态】没有【时间线】：保留旧时间线，仍然提交状态与事实
@@ -252,6 +263,8 @@ ${shouldAttemptFactProposal ? `【事实提案】
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
+      // 阶段7（§7.2/§7.3）：与单聊同一 memory 档案；独立 taskType，不混入主对话篇幅统计
+      observability: { source: 'aux', taskType: 'memory', sessionId: currentSession?.id },
     }).catch((error) => {
       if (!settled) reportSummaryFailure(`群聊长记忆总结请求失败：${error instanceof Error ? error.message : String(error)}`)
       finish()

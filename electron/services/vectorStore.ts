@@ -8,7 +8,7 @@
 import { join } from 'node:path'
 import { existsSync, readdirSync } from 'node:fs'
 import { DIRS, readJson, writeJson, removeFile } from './storage'
-import { l2Normalize } from '../../src/utils/vector'
+import { l2Normalize } from '../../shared/chat-core/vector'
 import { createLogger } from './logger'
 
 const log = createLogger('vectorStore')

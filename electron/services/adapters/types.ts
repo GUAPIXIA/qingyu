@@ -1,10 +1,5 @@
-import type { ChatParams } from '../../../shared/types'
-
-/** B-05 修复：归一化思考标签，将 <thinking> 转为 <thought>（兼容部分模型原生的 thinking 标签） */
-export function normalizeThoughtTags(text: string): string {
-  if (!text) return text
-  return text.replace(/<thinking([\s>])/gi, '<thought$1').replace(/<\/thinking>/gi, '</thought>')
-}
+import type { AICompletion, ChatParams } from '../../../shared/types'
+export { createVendorThinkingStreamFilter, stripVendorThinking } from '../../../shared/thoughtMarkup'
 
 /** 默认请求超时时间（毫秒）- 5 分钟 */
 export const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
@@ -21,12 +16,17 @@ const RETRYABLE_REGEXES = [...RETRYABLE_STATUS].map(
 )
 
 export interface AIAdapter {
+  /**
+   * 阶段3契约：返回结构化完成结果（正文 + finishReason + usage）。
+   * length 是完成状态不再抛错；content_filter / 无正文 / 协议错误仍抛错。
+   * 网络中断的正文保留由 chatWithRetry 统一降级处理。
+   */
   chat(
     params: ChatParams,
     onChunk: (text: string) => void,
     signal: AbortSignal,
-    onUsage?: (usage: { promptTokens: number; completionTokens: number; totalTokens: number }) => void,
-  ): Promise<string>
+    onUsage?: (usage: TokenUsageInfo) => void,
+  ): Promise<AICompletion>
   listModels(baseUrl: string, apiKey: string): Promise<string[]>
   testConnection(baseUrl: string, apiKey: string): Promise<boolean>
 }
@@ -36,6 +36,29 @@ export interface TokenUsageInfo {
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  /** 推理 token 计数；上游未提供时缺省（观测层记 unknown，不填 0） */
+  reasoningTokens?: number
+}
+
+/** 推理 token 吃满输出额度且没有留下正文空间时给用户的可操作提示。 */
+export const REASONING_BUDGET_EXHAUSTED_MESSAGE =
+  '推理已占满模型输出硬上限，未留下正文空间。请提高“模型输出硬上限”，或设为 0 使用自动预算。'
+
+/**
+ * OpenAI 兼容接口的 completion_tokens 通常包含 reasoning_tokens。
+ * 只在 length + 实际用量接近请求上限 + 推理占比极高时归因，
+ * 避免把审核、上游空包或普通长度截断误报成推理挤占。
+ */
+export function isReasoningBudgetExhausted(input: {
+  finishReason?: string | null
+  maxTokens: number
+  completionTokens?: number
+  reasoningTokens?: number
+}): boolean {
+  const { finishReason, maxTokens, completionTokens, reasoningTokens } = input
+  if (finishReason !== 'length' || maxTokens <= 0) return false
+  if (completionTokens === undefined || reasoningTokens === undefined || completionTokens <= 0) return false
+  return completionTokens >= maxTokens * 0.95 && reasoningTokens >= completionTokens * 0.95
 }
 
 // ===================== 工具函数 =====================

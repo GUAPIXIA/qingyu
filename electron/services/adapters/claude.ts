@@ -2,7 +2,8 @@ import type { AIAdapter } from './types'
 
 /** Claude API 版本号，更新时只需改此处 */
 const ANTHROPIC_API_VERSION = '2023-06-01'
-import { normalizeThoughtTags } from './types'
+import { createVendorThinkingStreamFilter, stripVendorThinking } from './types'
+import { normalizeFinishReason } from '../../../shared/generationObservation'
 import { sanitizeApiKey } from '../../utils/pathGuard'
 import { toClaudeContent, imageErrorHint } from './vision'
 
@@ -55,7 +56,8 @@ export const claudeAdapter: AIAdapter = {
 
     // Claude 3.7 / Claude 4 扩展思考支持
     const lowerModel = model.toLowerCase()
-    if ((lowerModel.includes('claude-3-7') || lowerModel.includes('claude-4') ||
+    if (params.reasoningMode !== 'disabled' &&
+        (lowerModel.includes('claude-3-7') || lowerModel.includes('claude-4') ||
          lowerModel.includes('claude-3.7')) && !lowerModel.includes('haiku')) {
       // H-2 修复：Anthropic 要求 max_tokens > budget_tokens。
       // 默认 maxTokens=1024 时预算会被钳到 0（等效禁用），避免 400；
@@ -91,15 +93,14 @@ export const claudeAdapter: AIAdapter = {
     if (!stream) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data: any = await response.json()
-      // Claude 返回 content 数组，可能有 thinking / text / tool_use 三种类型
+      // Claude 返回 content 数组，可能有 thinking / text / tool_use 三种类型。
+      // thinking 是供应商推理，不属于角色的 <thought> 心理描写，必须丢弃。
       const parts = data.content ?? []
-      let thinking = ''
       let text = ''
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawToolCalls: any[] = []
       for (const part of parts) {
-        if (part.type === 'thinking') thinking += part.thinking
-        else if (part.type === 'text') text += part.text
+        if (part.type === 'text') text += part.text
         else if (part.type === 'tool_use') {
           rawToolCalls.push({
             id: part.id,
@@ -108,20 +109,28 @@ export const claudeAdapter: AIAdapter = {
           })
         }
       }
-      const content = thinking ? `<thought>${thinking}</thought>\n\n${text}` : text
+      const content = stripVendorThinking(text)
       onChunk(content)
-      if (onUsage && data.usage) {
-        onUsage({
-          promptTokens: data.usage.input_tokens ?? 0,
-          completionTokens: data.usage.output_tokens ?? 0,
-          totalTokens: (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
-        })
+      const usage = data.usage
+        ? {
+            promptTokens: data.usage.input_tokens ?? 0,
+            completionTokens: data.usage.output_tokens ?? 0,
+          }
+        : undefined
+      if (usage && onUsage) {
+        onUsage({ ...usage, totalTokens: usage.promptTokens + usage.completionTokens })
       }
+      // 阶段3契约：stop_reason（end_turn/max_tokens/tool_use/refusal）随 AICompletion 返回
+      const finishReason = normalizeFinishReason(data.stop_reason)
       // C-03 修复：如有 tool_use，附加标记供 toolLoop 解析
       if (rawToolCalls.length > 0) {
-        return normalizeThoughtTags(content) + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']'
+        return {
+          text: content + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']',
+          finishReason: 'tool_calls',
+          usage,
+        }
       }
-      return normalizeThoughtTags(content)
+      return { text: content, finishReason, usage }
     }
 
     const reader = response.body?.getReader()
@@ -129,9 +138,10 @@ export const claudeAdapter: AIAdapter = {
     const decoder = new TextDecoder()
     let fullText = ''
     let buffer = ''
-    let pendingThought = ''
+    const visibleTextFilter = createVendorThinkingStreamFilter()
     let claudeInputTokens = 0
     let claudeOutputTokens = 0
+    let streamStopReason: string | null = null
     // C-03 修复：收集流式 tool_use delta
     const streamedToolCalls = new Map<number, { id: string; type: string; function: { name: string; arguments: string } }>()
 
@@ -145,11 +155,9 @@ export const claudeAdapter: AIAdapter = {
         if (parsed.type === 'message_start' && parsed.message?.usage) {
           claudeInputTokens = parsed.message.usage.input_tokens ?? 0
         }
-        // thinking / tool_use 块开始
+        // thinking 块是供应商内部推理，忽略；tool_use 块照常收集。
         else if (parsed.type === 'content_block_start') {
-          if (parsed.content_block?.type === 'thinking') {
-            pendingThought = '<thought>'
-          } else if (parsed.content_block?.type === 'tool_use') {
+          if (parsed.content_block?.type === 'tool_use') {
             const idx = parsed.index ?? 0
             streamedToolCalls.set(idx, {
               id: parsed.content_block.id || '',
@@ -158,20 +166,15 @@ export const claudeAdapter: AIAdapter = {
             })
           }
         } else if (parsed.type === 'content_block_delta') {
-          // thinking delta
-          if (parsed.delta?.type === 'thinking_delta' && parsed.delta.thinking) {
-            pendingThought += parsed.delta.thinking
-          }
-          // 文本 delta
-          else if (parsed.delta?.type === 'text_delta' && parsed.delta.text) {
-            if (pendingThought) {
-              pendingThought += '</thought>\n\n'
-              fullText += pendingThought
-              onChunk(pendingThought)
-              pendingThought = ''
+          // thinking_delta 是供应商内部推理，不能进入角色消息。
+          if (parsed.delta?.type === 'thinking_delta') {
+            // intentionally ignored
+          } else if (parsed.delta?.type === 'text_delta' && parsed.delta.text) {
+            const visible = visibleTextFilter.push(parsed.delta.text)
+            if (visible) {
+              fullText += visible
+              onChunk(visible)
             }
-            fullText += parsed.delta.text
-            onChunk(parsed.delta.text)
           }
           // C-03 修复：tool_use input_json delta
           else if (parsed.delta?.type === 'input_json_delta' && parsed.delta.partial_json) {
@@ -179,15 +182,11 @@ export const claudeAdapter: AIAdapter = {
             const existing = streamedToolCalls.get(idx)
             if (existing) existing.function.arguments += parsed.delta.partial_json
           }
-        } else if (parsed.type === 'content_block_stop' && pendingThought) {
-          pendingThought += '</thought>\n\n'
-          fullText += pendingThought
-          onChunk(pendingThought)
-          pendingThought = ''
         }
-        // message_delta 事件含 output_tokens，是最后一个事件
+        // message_delta 事件含 output_tokens 与 stop_reason，是最后一个事件
         else if (parsed.type === 'message_delta' && parsed.usage) {
           claudeOutputTokens = parsed.usage.output_tokens ?? 0
+          if (parsed.delta?.stop_reason) streamStopReason = parsed.delta.stop_reason
           if (onUsage) {
             onUsage({
               promptTokens: claudeInputTokens,
@@ -228,21 +227,29 @@ export const claudeAdapter: AIAdapter = {
         processClaudeEvent(dataLines.map(l => l.trim().slice(5).trim()).join('\n'))
       }
     }
-    // 处理剩余 pending
-    if (pendingThought) {
-      pendingThought += '</thought>\n\n'
-      fullText += pendingThought
-      onChunk(pendingThought)
+    const trailingVisible = visibleTextFilter.flush()
+    if (trailingVisible) {
+      fullText += trailingVisible
+      onChunk(trailingVisible)
     }
     } finally {
       try { reader.releaseLock() } catch { /* ignore */ }
     }
+    // 阶段3契约：stop_reason 随 AICompletion 返回
+    const finishReason = normalizeFinishReason(streamStopReason)
+    const usage = claudeOutputTokens > 0 || claudeInputTokens > 0
+      ? { promptTokens: claudeInputTokens, completionTokens: claudeOutputTokens }
+      : undefined
     // C-03 修复：如有 tool_use，附加标记供 toolLoop 解析
     if (streamedToolCalls.size > 0) {
       const toolCallsArray = Array.from(streamedToolCalls.values())
-      return normalizeThoughtTags(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+      return {
+        text: stripVendorThinking(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']',
+        finishReason: 'tool_calls',
+        usage,
+      }
     }
-    return normalizeThoughtTags(fullText)
+    return { text: stripVendorThinking(fullText), finishReason, usage }
   },
 
   async listModels(baseUrl, apiKey) {

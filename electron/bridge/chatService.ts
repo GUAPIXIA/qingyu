@@ -15,23 +15,31 @@ import { chatData } from '../ipc/chat'
 import { getAdapter, chatWithRetry } from '../services/ai'
 import type { TokenUsageInfo } from '../services/adapters/types'
 import { mainContextProvider } from '../context/mainContextProvider'
-import { buildContextMessagesFromData, buildChatParamsFromData } from '../../src/context/contextBuilder'
+import { buildContextMessagesFromData, buildChatParamsFromData } from '../../shared/chat-core/contextBuilder'
 import type { MobileEventSink } from './runtime/mobileEventBus'
 import { GenerationRegistry } from './runtime/generationRegistry'
 import { findSessionById } from './sessionsIndex'
 import { sanitizeApiKey } from '../utils/pathGuard'
-import { applyRegexRules, applyOutputRegexRules, truncateAtStop, collectStopStrings } from '../../src/utils/regex'
+import { applyRegexRules } from '../../shared/chat-core/regex'
 import { createLogger } from '../services/logger'
-import type { Message, ProviderType } from '../../shared/types'
+import type { AICompletion, Character, ChatParams, Message, ProviderType, RegexRule } from '../../shared/types'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
-import { translationMaxTokens } from '../../src/store/chatConstants'
+import { translationMaxTokens } from '../../shared/chat-core/chatConstants'
 import { generateBridgeDirections } from './dialogueDirections'
+import { groupData } from '../ipc/group'
+import { buildMessageTranslationSystemPrompt } from '../../shared/translationPrompt'
 import { readJson } from '../services/storage'
 import { DIRS } from '../services/storage'
 import { getDefaultSettings } from '../../shared/defaults'
 import { restoreSecrets } from '../ipc/settings'
 import { getCharacter } from '../services/charCard'
 import type { DialogueDirection, Settings } from '../../shared/types'
+import { trimContinuationOverlap } from '../../shared/chat-core/messagePostProcess'
+import { mergeTailRepair, type FinalizedAssistantOutput } from '../../shared/assistantOutputFinalizer'
+import { formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { finalizeGenerationTerminalResult } from '../../shared/chat-core/generatedReplyPipeline'
+import { finalizeNoticeFields } from '../../shared/generationNotice'
+import { terminationCauseFromFinishReason } from '../../shared/generationTermination'
 
 // H-10 修复：幂等缓存 TTL（覆盖安卓端断线重发窗口后清理，避免无界内存增长）
 const IDEMPOTENCY_TTL_MS = 60_000
@@ -162,14 +170,23 @@ export class BridgeChatService {
       // CR-2 修复：落盘后再取快照——此前用落盘前的旧快照构建上下文，
       // AI 看不到本条用户消息（对上一轮作答）。saveMessage 后重新读取消息文件。
       const freshData = await mainContextProvider.fetchBuildData(characterId, sessionId)
-      const { messages, narrativeMode } = buildContextMessagesFromData(freshData)
-      const params = buildChatParamsFromData(freshData, messages)
+      const built = buildContextMessagesFromData(freshData)
+      const { messages, narrativeMode } = built
+      const budgetRisk = formatRequestBudgetRisk(built.requestBudget)
+      if (budgetRisk) {
+        log.warn(`拒绝高风险输出预算 | requestId=${requestId} | ${budgetRisk}`)
+        throw new Error(budgetRisk)
+      }
+      const params = buildChatParamsFromData(freshData, messages, { requestMaxTokens: built.requestMaxTokens })
       params.requestId = requestId
+      if (params.observability) params.observability.generationType = 'normal'
 
       // AI 流式（复用主进程 AI 服务，chunk 经 WS 推送）
       const controller = this.generations.create(requestId)
       const chunks: string[] = []
       const aiMessageId = nanoid()
+      // 阶段6灰度：legacy 管线正文原样落盘（管线内跳过收尾器/补尾，不标记语义分块）
+      const legacyPipeline = (freshData.settings.settings.generationPipeline ?? 'unified') === 'legacy'
 
       const onChunk = (text: string) => {
         chunks.push(text)
@@ -180,8 +197,10 @@ export class BridgeChatService {
       }
 
       let fullContent: string
+      let finishReason: AICompletion['finishReason'] = 'unknown'
       try {
-        fullContent = await chatWithRetry(
+        // 阶段3契约：chatWithRetry 返回 AICompletion（网络中断但有正文时也返回部分正文）
+        const completion = await chatWithRetry(
           getAdapter(params.provider),
           params,
           onChunk,
@@ -189,12 +208,50 @@ export class BridgeChatService {
           0, // 流式不重试（与渲染层一致：已发送的 chunks 无法撤回）
           onUsage,
         )
+        fullContent = completion.text
+        finishReason = completion.finishReason
       } catch (err) {
         if (controller.signal.aborted) {
           // 客户端停止：保留已生成部分，落盘并推送 done
           fullContent = chunks.join('')
+          finishReason = 'cancelled'
         } else {
+          // 阶段7：Bridge partial error 接入同一终止收口——
+          // 已流出的半截正文必须先经统一最终处理管线，稳定正文才允许落盘；
+          // 错误只进 generationError（矩阵 transport_error），不拼进正文。
           const errMsg = sanitizeApiKey((err as Error).message)
+          const partialText = chunks.join('')
+          if (partialText.trim()) {
+            const result = await finalizeGenerationTerminalResult({
+              terminalResult: { rawText: partialText, finishReason: 'unknown', terminationCause: 'transport_error', errorMessage: errMsg },
+              regexRules: data.regexRules,
+              characterName: data.character.translatedContent?.name || data.character.name,
+              legacy: legacyPipeline,
+            })
+            if (result.persistable && result.content) {
+              const partialMessage: Message = {
+                id: aiMessageId,
+                sessionId,
+                characterId,
+                role: 'assistant',
+                content: result.content,
+                images: [],
+                isEditing: false,
+                timestamp: Date.now(),
+                narrativeMode,
+                speakerKind: 'character',
+                generationKind: 'assistant_reply',
+                ...(legacyPipeline ? {} : { contentRenderMode: 'blocks' as const }),
+                ...result.noticeFields,
+              }
+              chatData.saveMessage(characterId, partialMessage)
+              // 安卓端以 ai:done 替换流式占位；generationError 字段承载中断提示
+              this.events.publish('ai:done', { requestId, sessionId, message: partialMessage, finishReason: 'network_error' })
+              this.notifySessionChanged(sessionId, 'message')
+              log.warn('AI 生成中断（已保留稳定正文）', { error: errMsg })
+              return userMessage
+            }
+          }
           this.events.publish('ai:error', { requestId, sessionId, message: errMsg })
           log.warn('AI 生成失败', { error: errMsg })
           throw err
@@ -204,27 +261,40 @@ export class BridgeChatService {
       }
 
       // AI 消息落盘 + 推送 done（安卓端替换流式占位）
-      // 正则管线（对齐渲染层 onComplete 的 output 变换：output 两阶段 text/markdown + 停止字符串截断）
-      let finalContent = fullContent
-      if (data.regexRules.length > 0) {
-        finalContent = applyOutputRegexRules(fullContent, data.regexRules)
-        finalContent = truncateAtStop(finalContent, collectStopStrings(data.regexRules)).text
+      // S1/阶段7：正则、停止字符串、收尾器与终止协调统一在 finalizeBridgeReply 内执行（只执行一次）
+      const finalizedReply = await this.finalizeBridgeReply({
+        rawText: fullContent,
+        finishReason,
+        character: data.character,
+        params,
+        regexRules: data.regexRules,
+        legacy: legacyPipeline,
+      })
+      if (!finalizedReply.content) {
+        // 矩阵末行：任意异常且无可用正文 → 不创建空 AI 消息，明确错误与重试入口
+        const errMsg = finalizedReply.noticeFields.generationError || '模型未返回可用内容，请重试'
+        this.events.publish('ai:error', { requestId, sessionId, message: errMsg })
+        throw new Error(errMsg)
       }
       const aiMessage: Message = {
         id: aiMessageId,
         sessionId,
         characterId,
         role: 'assistant',
-        content: finalContent,
+        content: finalizedReply.content,
         images: [],
         isEditing: false,
         timestamp: Date.now(),
         narrativeMode,
         speakerKind: 'character',
         generationKind: 'assistant_reply',
+        // 阶段5：新内容使用语义分块渲染；legacy 不标记
+        ...(legacyPipeline ? {} : { contentRenderMode: 'blocks' as const }),
+        // S6：收尾提示/失败原因随消息下发（Android 与 PC 同义展示）
+        ...finalizedReply.noticeFields,
       }
       chatData.saveMessage(characterId, aiMessage)
-      this.events.publish('ai:done', { requestId, sessionId, message: aiMessage })
+      this.events.publish('ai:done', { requestId, sessionId, message: aiMessage, finishReason: finalizedReply.finishReason })
       this.notifySessionChanged(sessionId, 'message')
       // “下一步方向”：回复落盘后异步补齐，不阻塞 done 推送；失败静默降级。
       // 仅传入连接参数，模块内部按会话开关与消息有效性自行判断。
@@ -263,34 +333,156 @@ export class BridgeChatService {
     return updated
   }
 
+  /**
+   * 阶段4/7：Bridge 与桌面端共用同一条终止协调入口与收尾管线（方案 §4.2/§7.4——一个 shared 入口）。
+   * 顺序固定为：推理残留清理 → output 正则 → 停止字符串 → 收尾器 → 至多一次短补尾
+   * （补尾只在 provider_length 且稳定正文不足时由协调入口发起）。
+   * 正则只在管线内执行一次，调用方不得在管线外重复应用。
+   */
+  private async finalizeBridgeReply(input: {
+    rawText: string
+    finishReason: AICompletion['finishReason']
+    character: Character
+    params: ChatParams
+    regexRules: RegexRule[]
+    legacy: boolean
+  }): Promise<{
+    content: string
+    finishReason: AICompletion['finishReason']
+    noticeFields: { generationNotice?: string; generationError?: string }
+  }> {
+    const terminationCause = terminationCauseFromFinishReason(input.finishReason)
+    const charName = input.character.translatedContent?.name || input.character.name
+    const result = await finalizeGenerationTerminalResult({
+      terminalResult: { rawText: input.rawText, finishReason: input.finishReason, terminationCause },
+      regexRules: input.regexRules,
+      characterName: charName,
+      legacy: input.legacy,
+      runTailRepair: (finalized) => this.attemptBridgeTailRepair({
+        finalized,
+        character: input.character,
+        params: input.params,
+        charName,
+      }),
+    })
+    if (!result.persistable || !result.content) {
+      return { content: '', finishReason: input.finishReason, noticeFields: result.noticeFields }
+    }
+    // S6：收尾状态随消息落盘，Android 与 PC 展示同义提示；
+    // 异常类提示（协调入口生成）优先于收尾器轻提示，两者互斥不同时出现
+    const coordinatorHasPrompt = Object.keys(result.noticeFields).length > 0
+    const noticeFields = coordinatorHasPrompt
+      ? result.noticeFields
+      : (input.legacy ? {} : finalizeNoticeFields({
+          finishReason: input.finishReason,
+          notice: result.notice,
+          repairFailed: result.repairFailed,
+        }))
+    return { content: result.content, finishReason: input.finishReason, noticeFields }
+  }
+
+  /** 一次短补尾：独立非流式请求，正文预算 ~200 字 + 模型推理余量；失败返回 null 保留稳定前缀 */
+  private async attemptBridgeTailRepair(input: {
+    finalized: FinalizedAssistantOutput
+    character: Character
+    params: ChatParams
+    charName: string
+  }): Promise<string | null> {
+    if (!input.finalized.repairContext) return null
+    try {
+      const budget = resolveRequestBudget({ model: input.params.model, hardMaxChars: 200 })
+      const repairCompletion = await chatWithRetry(
+        getAdapter(input.params.provider),
+        {
+          ...input.params,
+          requestId: `bridge-repair-${nanoid(4)}`,
+          messages: [
+            {
+              role: 'system',
+              content: '请只补完下面这条回复的最后一句，并在 30–100 个汉字内自然结束本轮。不要复述已有内容，不新增事件、人物、地点或第二轮对白，不写标题或说明。只输出需要接在末尾的新文字。',
+            },
+            { role: 'user', content: `【角色】${input.charName}\n【已生成的回复结尾】\n${input.finalized.repairContext}` },
+          ],
+          maxTokens: budget.requestMaxTokens,
+          stream: false,
+          tools: undefined,
+          toolChoice: undefined,
+          observability: {
+            source: 'bridge',
+            generationType: 'quiet',
+            characterId: input.character.id,
+            sessionId: input.params.observability?.sessionId,
+          },
+        },
+        () => {},
+        new AbortController().signal,
+        0,
+      )
+      // 合并与复检统一走 shared mergeTailRepair（与渲染层同一入口）
+      const merged = mergeTailRepair({
+        finalized: input.finalized,
+        repairText: repairCompletion.text,
+        trimOverlap: trimContinuationOverlap,
+        finishReason: 'stop',
+      })
+      return merged.notice === 'tail_repaired' && merged.content ? merged.content : null
+    } catch {
+      // 补尾失败：保留稳定前缀（方案 §5.2 步骤 9）
+      return null
+    }
+  }
+
   /** 重新生成：组装上下文 -> AI 生成 -> 追加 swipes 候选并落盘 */
   private async regenerate(characterId: string, sessionId: string, target: Message): Promise<Message> {
     const data = await mainContextProvider.fetchBuildData(characterId, sessionId)
     if (!data.character) throw new Error(`角色不存在：${characterId}`)
-    const { messages, narrativeMode } = buildContextMessagesFromData(data)
-    const params = buildChatParamsFromData(data, messages)
+    const built = buildContextMessagesFromData(data)
+    const { messages, narrativeMode } = built
+    const budgetRisk = formatRequestBudgetRisk(built.requestBudget)
+    if (budgetRisk) throw new Error(budgetRisk)
+    const params = buildChatParamsFromData(data, messages, { requestMaxTokens: built.requestMaxTokens })
     const requestId = `regen-${Date.now()}-${nanoid(4)}`
     params.requestId = requestId
+    if (params.observability) params.observability.generationType = 'regenerate'
 
     const controller = this.generations.create(requestId)
     const chunks: string[] = []
     try {
-      const full = await chatWithRetry(
+      const regenCompletion = await chatWithRetry(
         getAdapter(params.provider),
         params,
         (text) => { chunks.push(text) },
         controller.signal,
         0,
       )
+      // 阶段4/S1：统一收尾管线（与桌面端同顺序）；阶段6灰度 legacy 正文原样落盘
+      const legacyPipeline = (data.settings.settings.generationPipeline ?? 'unified') === 'legacy'
+      const finalizedReply = await this.finalizeBridgeReply({
+        rawText: regenCompletion.text,
+        finishReason: regenCompletion.finishReason,
+        character: data.character,
+        params,
+        regexRules: data.regexRules,
+        legacy: legacyPipeline,
+      })
+      const finalContent = finalizedReply.content
+      if (!finalContent) {
+        // 矩阵末行：无可用正文不追加快照候选（不创建空 AI 内容）
+        throw new Error(finalizedReply.noticeFields.generationError || '模型未返回可用内容，请重试')
+      }
       const swipes = target.swipes ?? [target.content]
       const updated: Message = {
         ...target,
-        swipes: [...swipes, full],
+        swipes: [...swipes, finalContent],
         swipeIndex: swipes.length,
-        content: full,
+        content: finalContent,
         narrativeMode,
         speakerKind: 'character',
         generationKind: 'regenerate',
+        // 阶段5：新内容使用语义分块渲染；legacy 不标记
+        ...(legacyPipeline ? {} : { contentRenderMode: 'blocks' as const }),
+        // S6：收尾提示/失败原因随候选下发（与 PC regenerate 一致）
+        ...finalizedReply.noticeFields,
       }
       chatData.saveMessage(characterId, updated)
       this.notifySessionChanged(sessionId, 'message')
@@ -320,12 +512,12 @@ export class BridgeChatService {
     const requestId = `translate-${messageId}-${Date.now()}`
     const controller = this.generations.create(requestId)
     try {
-      const translation = await chatWithRetry(
+      const translationCompletion = await chatWithRetry(
         getAdapter(provider),
         {
           requestId,
           messages: [
-            { role: 'system', content: `你是一个翻译助手。请将以下文本翻译成${targetLang}。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。` },
+            { role: 'system', content: buildMessageTranslationSystemPrompt(targetLang) },
             { role: 'user', content: target.content },
           ],
           provider,
@@ -345,9 +537,63 @@ export class BridgeChatService {
         0,
       )
       // 落盘 translation（渲染层 saveMessage 语义：同 id 覆盖）
+      const translation = translationCompletion.text
       const updated: Message = { ...target, translation }
       chatData.saveMessage(characterId, updated)
       this.notifySessionChanged(sessionId, 'message')
+      return { messageId, translation }
+    } finally {
+      this.generations.release(requestId)
+    }
+  }
+
+  /**
+   * 群聊消息翻译：与单聊 translate 同一实现口径（动态预算、可取消、推理隔离），
+   * 落盘走 groupData（同 id 覆盖式写回，对齐群聊渲染层语义）。
+   * 原 routes 内联旧实现（硬编码预算 + 不可取消）已并入此处。
+   */
+  async translateGroup(groupId: string, sessionId: string, messageId: string): Promise<{ messageId: string; translation: string }> {
+    const messages = groupData.readMessages(groupId, sessionId)
+    const target = messages.find((m) => m.id === messageId)
+    if (!target) throw new Error('目标消息不存在')
+
+    const settings = readJson<Settings>(join(DIRS.config(), 'settings.json'), 'settings') ?? getDefaultSettings()
+    restoreSecrets(settings)
+    const profile = settings.connectionProfiles?.find((p) => p.id === settings.activeProfileId)
+    if (!profile) throw new Error('未配置 API 连接')
+    const targetLang = settings.translationTargetLang || '中文'
+    const provider = (profile.provider || 'openai') as ProviderType
+    const model = settings.activeModel || profile.model
+
+    const requestId = `translate-${messageId}-${Date.now()}`
+    const controller = this.generations.create(requestId)
+    try {
+      const translationCompletion = await chatWithRetry(
+        getAdapter(provider),
+        {
+          requestId,
+          messages: [
+            { role: 'system', content: buildMessageTranslationSystemPrompt(targetLang) },
+            { role: 'user', content: target.content },
+          ],
+          provider,
+          apiKey: profile.apiKey,
+          baseUrl: profile.baseUrl,
+          model,
+          temperature: 0.3,
+          topP: 0.9,
+          maxTokens: translationMaxTokens(target.content, model),
+          frequencyPenalty: 0,
+          presencePenalty: 0,
+          stream: true,
+          reasoningMode: 'disabled',
+        },
+        () => {},
+        controller.signal,
+        0,
+      )
+      const translation = translationCompletion.text
+      groupData.updateMessage(groupId, sessionId, { ...target, translation })
       return { messageId, translation }
     } finally {
       this.generations.release(requestId)

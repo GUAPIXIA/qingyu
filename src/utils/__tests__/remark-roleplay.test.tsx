@@ -23,12 +23,35 @@ describe('remarkRoleplay 端到端渲染验证（标准 mdast 节点，无 rehyp
     expect(el?.textContent).toBe('"hello"')
   })
 
-  it('带说话人 Alice: "Hi" 渲染为 strong.dialogue-block', () => {
-    const c = renderMd('Alice: "Hi there"')
+  it('整段「角色：“对白”」渲染为 strong.dialogue-block 并剥外层引号', () => {
+    const c = renderMd('苏晚：“我知道。”')
     const block = c.querySelector('strong.dialogue-block')
     expect(block).toBeTruthy()
-    expect(block?.querySelector('em.dialogue-speaker')?.textContent).toBe('Alice')
-    expect(block?.querySelector('em.dialogue-text')?.textContent).toBe('Hi there')
+    expect(block?.querySelector('em.dialogue-speaker')?.textContent).toBe('苏晚')
+    expect(block?.querySelector('em.dialogue-text')?.textContent).toBe('我知道。')
+  })
+
+  it('整段纯引号对白渲染为匿名 dialogue-block（无说话人行）', () => {
+    const c = renderMd('“我知道。”')
+    const block = c.querySelector('strong.dialogue-block')
+    expect(block).toBeTruthy()
+    expect(block?.querySelector('em.dialogue-speaker')).toBeNull()
+    expect(block?.querySelector('em.dialogue-text')?.textContent).toBe('我知道。')
+  })
+
+  it('叙述式前缀不拆说话人块（与 blocks 路径 mixed 语义一致）', () => {
+    const c = renderMd('她轻声说道：“别怕。”')
+    expect(c.querySelector('strong.dialogue-block')).toBeNull()
+    expect(c.querySelector('em.dialogue-inline')).toBeTruthy()
+  })
+
+  it('多行段落逐行分类：对白行成块，叙述行保持正文', () => {
+    const c = renderMd('美洛拉：“真够傻的。”\n紫色外星人再次回击，交叉双臂。\n尤诺娃：“选我！”')
+    const blocks = c.querySelectorAll('strong.dialogue-block')
+    expect(blocks.length).toBe(2)
+    expect(blocks[0].querySelector('em.dialogue-speaker')?.textContent).toBe('美洛拉')
+    expect(blocks[1].querySelector('em.dialogue-speaker')?.textContent).toBe('尤诺娃')
+    expect(c.textContent).toContain('紫色外星人再次回击')
   })
 
   it('整段动作 *walks away* 渲染为 p.action-block', () => {

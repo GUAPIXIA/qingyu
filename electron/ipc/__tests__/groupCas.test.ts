@@ -85,11 +85,12 @@ describe('groupData memory version CAS', () => {
       narrativeMode: 'invalid',
     })).rejects.toThrow('narrativeMode')
     await expect(groupData.updateSession('group-invalid-mode', session.id, {
-      gameMasterMode: 'yes',
-    })).rejects.toThrow('gameMasterMode')
-    await expect(groupData.updateSession('group-invalid-mode', session.id, {
       dialogueDirectionsEnabled: 'yes',
     })).rejects.toThrow('dialogueDirectionsEnabled')
+    // gameMasterMode 死写路径已从白名单下线：旧字段写入被静默忽略
+    await groupData.updateSession('group-invalid-mode', session.id, { gameMasterMode: true })
+    const afterLegacy = (await groupData.listSessions('group-invalid-mode')).find((item) => item.id === session.id)
+    expect(afterLegacy?.gameMasterMode).toBeUndefined()
     await expect(groupData.saveGroup({
       id: 'group-invalid-mode', name: '非法', memberIds: [], currentSpeakerIndex: 0,
       autoMode: false, chatMode: 'polling', defaultNarrativeMode: 'invalid',

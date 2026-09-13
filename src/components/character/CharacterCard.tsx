@@ -1,4 +1,5 @@
 import type { Character } from '../../../shared/types'
+import { stripAllThinking } from '../../../shared/thoughtMarkup'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { translationMaxTokens } from '../../store/chatConstants'
@@ -97,10 +98,10 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
           if (data.requestId !== requestId) return
           collected += data.text
         })
-        const unbindDone = window.api.ai.onDone((doneId) => {
-          if (doneId !== requestId) return
+        const unbindDone = window.api.ai.onComplete((payload) => {
+          if (payload.requestId !== requestId) return
           unbindChunk(); unbindDone(); unbindError()
-          const cleaned = collected.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+          const cleaned = stripAllThinking(collected)
           resolve(cleaned || text)
         })
         const unbindError = window.api.ai.onError((data) => {

@@ -22,7 +22,6 @@ import { buildContextMessagesFromData, buildChatParamsFromData } from '../contex
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
   return {
-    activeProvider: 'openai',
     providers: {} as Settings['providers'],
     connectionProfiles: [
       {
@@ -217,8 +216,9 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
     expect(result.messages[0].content).toContain('【叙事模式：全局叙事】')
     expect(result.messages[0].content).toContain('位于故事外部的第三人称旁白、导演和世界运行者')
     expect(result.messages[0].content).toContain('【第三人称旁白：硬性输出约束】')
-    expect(result.messages[0].content).toContain('不得写成角色第一人称内心独白')
-    expect(result.messages[0].content).toContain('不要为了展示全知视角而一次泄露所有人物')
+    // 全局叙事也必须点名焦点角色，否则 thought 无法锁定第一人称主体
+    expect(result.messages[0].content).toContain('当前焦点角色「艾琳」的第一人称内心独白')
+    expect(result.messages[0].content).toContain('不要一次泄露所有人物')
     expect(result.messages[0].content).not.toContain('【叙事模式：代入式角色扮演】')
   })
 
@@ -288,9 +288,69 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
     const result = buildContextMessagesFromData(makeData())
     const systemText = result.messages[0].content
 
-    expect(systemText).toContain('如需呈现角色内心活动')
+    expect(systemText).toContain('每轮必须输出且只输出一组')
+    expect(systemText).toContain('当前回应角色的第一人称')
     expect(systemText).toContain('不超过 3 句')
-    expect(systemText).toContain('不得包含写作计划、规则分析、上下文复述或正文草稿')
+    expect(systemText).toContain('不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿')
+  })
+
+  it('全局叙事正文保持第三人称，但 thought 是焦点角色第一人称内心独白', () => {
+    const base = makeChat()
+    const result = buildContextMessagesFromData(makeData({
+      chat: makeChat({
+        sessions: [{ ...base.sessions[0], narrativeMode: 'omniscient' }],
+      }),
+    }))
+    const systemText = result.messages[0].content
+
+    expect(systemText).toContain('正文仍保持第三人称叙事')
+    expect(systemText).toContain('当前焦点角色「艾琳」的第一人称内心独白')
+    expect(systemText).toContain('必须切换到 「艾琳」 自己的“我”来思考')
+    expect(systemText).not.toContain('不得写成角色第一人称内心独白')
+    // 同一条完整 system prompt 里，旁白护栏必须窄口径豁免 <thought>，
+    // 否则护栏"以本约束为准"的优先级条款会反过来压制第一人称契约
+    expect(systemText).toContain('【第三人称旁白：硬性输出约束】')
+    expect(systemText).toContain('或 <thought>...</thought> 块内的角色内心独白')
+    expect(systemText).not.toContain('不能成为回答的叙述视角')
+  })
+
+  it('在历史消息之后注入本轮回应范围与正文结构（阶段二语义停止规则）', () => {
+    const data = makeData({ preset: makePreset({ responseLengthHint: 'balanced' }) })
+    const result = buildContextMessagesFromData(data)
+    const formatIndex = result.messages.findIndex((message) => message.content.includes('【本轮回应范围】'))
+    const lastHistoryIndex = result.messages.reduce(
+      (lastIndex, message, index) => message.content.includes('那栋大楼看起来安全') ? index : lastIndex,
+      -1,
+    )
+    const formatText = result.messages[formatIndex]?.content ?? ''
+
+    expect(formatIndex).toBeGreaterThan(lastHistoryIndex)
+    // 一个互动回合的语义停止规则
+    expect(formatText).toContain('只完成一个自然互动回合')
+    expect(formatText).toContain('最多推进一个主要事件、信息或情绪变化')
+    expect(formatText).toContain('不要连续代写下一轮')
+    expect(formatText).toContain('接近篇幅上限时停止引入新信息')
+    // 连续性约束（C1）：不得与最近对话矛盾或重复
+    expect(formatText).toContain('不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复')
+    expect(formatText).toContain('新引入的信息要能从当前场景自然推出')
+    // 篇幅来自 ResponsePolicy（balanced：120–360）
+    expect(formatText).toContain('120–360 个可见字符')
+    // 正文结构：无固定段落数、无强制对白、无星号协议
+    expect(formatText).toContain('【正文结构】')
+    expect(formatText).toContain('短回应可以只有一个段落')
+    expect(formatText).toContain('不要为了排版重复角色名')
+    expect(formatText).not.toContain('2–6 个短段落')
+    expect(formatText).not.toContain('星号')
+    expect(formatText).not.toContain('对白段落')
+    expect(formatText).not.toContain('【正文排版协议】')
+  })
+
+  it('展开篇幅的回应范围允许推进两个主要事件', () => {
+    const data = makeData({ preset: makePreset({ responseLengthHint: 'detailed' }) })
+    const result = buildContextMessagesFromData(data)
+    const formatText = result.messages.find((message) => message.content.includes('【本轮回应范围】'))?.content ?? ''
+    expect(formatText).toContain('最多推进两个主要事件、信息或情绪变化')
+    expect(formatText).toContain('300–700 个可见字符')
   })
 
   it('基础场景：人设注入 + 世界书 before_char + 示例对话 + AN + 记忆摘要', () => {
@@ -551,20 +611,233 @@ describe('两端一致性（同一 contextBuilder 入口）', () => {
   it('buildChatParamsFromData 从快照组装参数（无预设兜底）', () => {
     const data = makeData()
     const result = buildContextMessagesFromData(data)
-    const params = buildChatParamsFromData(data, result.messages)
+    const params = buildChatParamsFromData(data, result.messages, { requestMaxTokens: result.requestMaxTokens })
     expect(params.provider).toBe('openai')
     expect(params.model).toBe('gpt-4o-mini')
     expect(params.temperature).toBe(0.9)
-    expect(params.maxTokens).toBe(1024)
     expect(params.stream).toBe(true)
     expect(params.messages).toEqual(result.messages)
   })
 
-  it('无预设时参数回落默认值', () => {
+  it('无预设时参数回落默认值（篇幅策略 auto，无用户硬上限）', () => {
     const data = makeData({ preset: null })
     const result = buildContextMessagesFromData(data)
-    const params = buildChatParamsFromData(data, result.messages)
+    const params = buildChatParamsFromData(data, result.messages, { requestMaxTokens: result.requestMaxTokens })
     expect(params.temperature).toBe(0.8)
-    expect(params.maxTokens).toBe(1024)
+    expect(params.maxTokens).toBe(result.requestMaxTokens)
+    expect(params.maxTokens).toBeGreaterThan(0)
+    expect(params.maxTokens).toBeLessThanOrEqual(8192)
+  })
+
+  it('上下文输出预留与请求 max_tokens 来自同一次计算（阶段一验收）', () => {
+    const data = makeData()
+    const result = buildContextMessagesFromData(data)
+    // 预算明细与请求上限同源
+    expect(result.requestMaxTokens).toBe(result.requestBudget.requestMaxTokens)
+    expect(result.requestBudget.bodyReserve).toBeGreaterThan(0)
+    // 上下文预算框架使用同一预留值：budgetBase = max((maxContext − reserved) × 0.95, 25% maxContext)
+    const maxContext = 16384
+    const expectedBase = Math.max(
+      Math.floor((maxContext - result.requestMaxTokens) * 0.95),
+      Math.floor(maxContext * 0.25),
+    )
+    expect(result.lastContextUsage.max).toBe(expectedBase)
+  })
+
+  it('篇幅提示驱动请求预算：balanced 正文预算 + 协议余量（普通模型）', () => {
+    const data = makeData({
+      preset: makePreset({ responseLengthHint: 'balanced', maxTokens: 8192 }),
+    })
+    const result = buildContextMessagesFromData(data)
+    // bodyReserve = ceil(600 × 1.25) + 96 = 846；gpt-4o-mini 无推理 → 协议余量 192
+    expect(result.requestBudget.bodyReserve).toBe(846)
+    expect(result.requestBudget.reasoningReserve).toBe(192)
+    expect(result.requestMaxTokens).toBe(1038)
+    expect(result.responsePolicy.mode).toBe('balanced')
+    expect(result.responsePolicy.source).toBe('preset')
+  })
+
+  it('DeepSeek V4 动态预算：正文预算 + 推理余量，不再固定 8192', () => {
+    const data = makeData({
+      preset: makePreset({ responseLengthHint: 'balanced', maxTokens: 8192 }),
+      settings: {
+        settings: makeSettings({ activeModel: 'deepseek/deepseek-v4.1-flash' }),
+        profile: {
+          name: '测试连接',
+          provider: 'openai',
+          apiKey: 'sk-test',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'deepseek/deepseek-v4.1-flash',
+          maxContext: 16384,
+          useInstructTemplate: false,
+        },
+      },
+    })
+    const result = buildContextMessagesFromData(data)
+    expect(result.requestBudget.reasoningReserve).toBeGreaterThanOrEqual(3072)
+    expect(result.requestMaxTokens).toBe(result.requestBudget.bodyReserve + result.requestBudget.reasoningReserve)
+    expect(result.requestMaxTokens).toBeLessThan(8192)
+    const params = buildChatParamsFromData(data, result.messages, { requestMaxTokens: result.requestMaxTokens })
+    expect(params.maxTokens).toBe(result.requestMaxTokens)
+  })
+
+  it('阶段6灰度：legacy 管线回退预设 maxTokens 直用并标记旧链路', () => {
+    const data = makeData({
+      preset: makePreset({ maxTokens: 1024, responseLengthHint: 'balanced' }),
+      settings: {
+        settings: makeSettings({
+          activeModel: 'deepseek/deepseek-v4.1-flash',
+          generationPipeline: 'legacy',
+        }),
+        profile: null,
+      },
+    })
+    const result = buildContextMessagesFromData(data)
+    expect(result.pipelineLegacy).toBe(true)
+    // 旧链路预算：预设 maxTokens 直用（不恢复 8192 下限，也不走动态预算）
+    expect(result.requestMaxTokens).toBe(1024)
+    // 提示词回退：旧排版协议
+    expect(result.messages.some((m) => m.content.includes('【正文排版协议】'))).toBe(true)
+    expect(result.messages.some((m) => m.content.includes('【本轮回应范围】'))).toBe(false)
+  })
+
+  it('阶段6灰度：unified 缺省不注入旧排版协议', () => {
+    const data = makeData({ preset: makePreset({ responseLengthHint: 'balanced' }) })
+    const result = buildContextMessagesFromData(data)
+    expect(result.pipelineLegacy).toBe(false)
+    expect(result.messages.some((m) => m.content.includes('【正文排版协议】'))).toBe(false)
+  })
+
+  it('用户硬上限（preset.maxTokens）始终生效，不静默放大', () => {
+    const data = makeData({
+      preset: makePreset({ responseLengthHint: 'balanced', maxTokens: 1024 }),
+      settings: {
+        settings: makeSettings({ activeModel: 'deepseek/deepseek-v4.1-flash' }),
+        profile: {
+          name: '测试连接',
+          provider: 'openai',
+          apiKey: 'sk-test',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'deepseek/deepseek-v4.1-flash',
+          maxContext: 16384,
+          useInstructTemplate: false,
+        },
+      },
+    })
+    const result = buildContextMessagesFromData(data)
+    expect(result.requestMaxTokens).toBe(1024)
+    // 推理余量被硬上限挤占 → 请求预算给出风险提示
+    expect(result.requestBudget.riskNotice).toBe('user_cap_below_reasoning_reserve')
+  })
+
+  it('preset.maxTokens=0 表示自动，推理共享模型获得完整动态预算', () => {
+    const data = makeData({
+      preset: makePreset({ responseLengthHint: 'balanced', maxTokens: 0 }),
+      settings: {
+        settings: makeSettings({ activeModel: 'deepseek/deepseek-v4.1-flash' }),
+        profile: {
+          name: '测试连接',
+          provider: 'openai',
+          apiKey: 'sk-test',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'deepseek/deepseek-v4.1-flash',
+          maxContext: 16384,
+          useInstructTemplate: false,
+        },
+      },
+    })
+    const result = buildContextMessagesFromData(data)
+    expect(result.requestMaxTokens).toBe(result.requestBudget.bodyReserve + result.requestBudget.reasoningReserve)
+    expect(result.requestMaxTokens).toBeGreaterThan(3072)
+    expect(result.requestBudget.riskNotice).toBeUndefined()
+  })
+})
+
+describe('S5 用户篇幅意图与场景系数', () => {
+  it('“一句话回答”优先于会话的“展开”设置，并同步改变请求预算', () => {
+    const base = makeData({
+      chat: makeChat({
+        messages: [
+          makeMessage({ id: 'm1', role: 'user', content: '我们出发吧。', timestamp: 1000 }),
+          makeMessage({ id: 'm2', role: 'assistant', content: '好，我收拾一下。', timestamp: 2000 }),
+          makeMessage({ id: 'm3', role: 'user', content: '用一句话回答：我们现在去哪？', timestamp: 3000 }),
+        ],
+        sessions: [{
+          id: 's1', characterId: 'c1', title: '会话', messageCount: 3,
+          responseLengthMode: 'detailed', createdAt: 0, updatedAt: 0,
+        } as any],
+      }),
+    })
+    const result = buildContextMessagesFromData(base)
+    expect(result.responsePolicy.mode).toBe('brief')
+    expect(result.responsePolicy.source).toBe('user')
+    expect(result.responseIntent).toBe('brief')
+    // 上下文预留与实际请求仍来自同一次预算计算
+    const params = buildChatParamsFromData(base, result.messages, { requestMaxTokens: result.requestMaxTokens })
+    expect(params.maxTokens).toBe(result.requestMaxTokens)
+    expect(result.requestBudget.bodyReserve).toBe(Math.ceil(260 * 1.25) + 96)
+  })
+
+  it('普通内容不误触发意图，自动模式按场景系数调整', () => {
+    const ordinary = buildContextMessagesFromData(makeData({
+      chat: makeChat({
+        messages: [
+          makeMessage({ id: 'm1', role: 'user', content: '今天路上很安静。', timestamp: 1000 }),
+          makeMessage({ id: 'm2', role: 'assistant', content: '是啊，连风都停了。', timestamp: 2000 }),
+          makeMessage({ id: 'm3', role: 'user', content: '前面好像有人。', timestamp: 3000 }),
+        ],
+      }),
+    }))
+    expect(ordinary.responseIntent).toBeNull()
+    expect(ordinary.responsePolicy.mode).toBe('auto')
+    expect(ordinary.sceneFactor).toBe(1)
+
+    const openingData = makeData({
+      chat: makeChat({
+        messages: [makeMessage({ id: 'm1', role: 'user', content: '你好，请问这里是哪里？', timestamp: 1000 })],
+      }),
+    })
+    const opening = buildContextMessagesFromData(openingData)
+    // 首轮开场：无助手回复 → 放大系数
+    expect(opening.sceneFactor).toBe(1.15)
+    expect(buildChatParamsFromData(openingData, opening.messages, { requestMaxTokens: opening.requestMaxTokens })
+      .observability?.sceneFactor).toBe(1.15)
+  })
+
+  it('观测元数据记录意图，未识别时不下发该字段', () => {
+    const data = makeData({
+      chat: makeChat({
+        messages: [
+          makeMessage({ id: 'm1', role: 'user', content: '详细说说这里的历史。', timestamp: 1000 }),
+          makeMessage({ id: 'm2', role: 'assistant', content: '很久以前……', timestamp: 2000 }),
+        ],
+      }),
+    })
+    const result = buildContextMessagesFromData(data)
+    const params = buildChatParamsFromData(data, result.messages, { requestMaxTokens: result.requestMaxTokens })
+    expect(params.observability?.responseIntent).toBe('detailed')
+    expect(result.responsePolicy.mode).toBe('detailed')
+  })
+})
+
+describe('generationError 不进入上下文（R2）', () => {
+  it('历史构建只读 content，中断原因不混入消息序列', () => {
+    const chat = makeChat({
+      messages: [
+        makeMessage({ id: 'm1', role: 'user', content: '今天废土上有沙尘暴。', timestamp: 1000 }),
+        makeMessage({
+          id: 'm2',
+          role: 'assistant',
+          content: '是的，我们得找个避风处。',
+          timestamp: 2000,
+          generationError: '模型输出达到长度上限',
+        }),
+        makeMessage({ id: 'm3', role: 'user', content: '那栋大楼看起来安全。', timestamp: 3000 }),
+      ],
+    })
+    const result = buildContextMessagesFromData(makeData({ chat }))
+    const flattened = JSON.stringify(result.messages)
+    expect(flattened).toContain('是的，我们得找个避风处。')
+    expect(flattened).not.toContain('模型输出达到长度上限')
   })
 })

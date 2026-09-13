@@ -85,14 +85,14 @@ describe('chatWithTools 主循环', () => {
     adapterMock.chat.mockImplementation(async (_params, onChunk) => {
       onChunk('你')
       onChunk('好')
-      return '你好'
+      return { text: '你好', finishReason: 'stop' }
     })
     const onChunk = vi.fn()
     const onToolCall = vi.fn()
 
     const result = await chatWithTools(makeParams(), onChunk, onToolCall, vi.fn())
 
-    expect(result).toBe('你好')
+    expect(result.text).toBe('你好')
     expect(onChunk).toHaveBeenCalledWith('你')
     expect(onChunk).toHaveBeenCalledWith('好')
     expect(onToolCall).not.toHaveBeenCalled()
@@ -113,11 +113,11 @@ describe('chatWithTools 主循环', () => {
     adapterMock.chat
       .mockImplementationOnce(async (_params, onChunk) => {
         onChunk('让我查一下')
-        return '让我查一下[TOOL_CALL:[{"id":"tc-1","function":{"name":"search","arguments":"{\\"q\\":\\"天气\\"}"}}]]'
+        return { text: '让我查一下[TOOL_CALL:[{"id":"tc-1","function":{"name":"search","arguments":"{\\"q\\":\\"天气\\"}"}}]]', finishReason: 'tool_calls' }
       })
       .mockImplementationOnce(async (_params, onChunk) => {
         onChunk('查询结果如下')
-        return '查询结果如下'
+        return { text: '查询结果如下', finishReason: 'stop' }
       })
 
     const onToolCall = vi.fn()
@@ -126,7 +126,7 @@ describe('chatWithTools 主循环', () => {
 
     const result = await chatWithTools(makeParams(), onChunk, onToolCall, onToolResult)
 
-    expect(result).toBe('查询结果如下')
+    expect(result.text).toBe('查询结果如下')
     // 工具调用通知
     expect(onToolCall).toHaveBeenCalledWith({ id: 'tc-1', name: 'search', args: { q: '天气' } })
     expect(onToolResult).toHaveBeenCalledWith({ id: 'tc-1', content: '搜索结果123', isError: false })
@@ -145,13 +145,13 @@ describe('chatWithTools 主循环', () => {
     mcpMock.findToolServer.mockReturnValue(undefined)
 
     adapterMock.chat
-      .mockImplementationOnce(async () => '[TOOL_CALL:[{"id":"tc-1","function":{"name":"ghost","arguments":"{}"}}]]')
-      .mockImplementationOnce(async () => '最终回答')
+      .mockImplementationOnce(async () => ({ text: '[TOOL_CALL:[{"id":"tc-1","function":{"name":"ghost","arguments":"{}"}}]]', finishReason: 'tool_calls' }))
+      .mockImplementationOnce(async () => ({ text: '最终回答', finishReason: 'stop' }))
 
     const onToolResult = vi.fn()
     const result = await chatWithTools(makeParams(), vi.fn(), vi.fn(), onToolResult)
 
-    expect(result).toBe('最终回答')
+    expect(result.text).toBe('最终回答')
     expect(onToolResult).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'tc-1', isError: true }),
     )

@@ -360,6 +360,37 @@ describe('GroupChatMessage', () => {
       const highlightElements = container.querySelectorAll('.mention-highlight')
       expect(highlightElements).toHaveLength(0)
     })
+
+    it('S7：语义分块（blocks）路径同样高亮 @提及', () => {
+      const char = createCharacter({ id: 'char-2', name: 'Bob' })
+      useCharacterStore.setState({ characters: [char] })
+      const msg = createMessage({
+        characterId: 'char-1',
+        content: '“@Bob 你来了。”\n\n她朝门口看了一眼。',
+        contentRenderMode: 'blocks',
+        mentionedCharacterIds: ['char-2'],
+      })
+      const { container } = render(<GroupChatMessage message={msg} />)
+      const highlightElements = container.querySelectorAll('.mention-highlight')
+      expect(highlightElements).toHaveLength(1)
+      expect(highlightElements[0].textContent).toBe('@Bob')
+      // 正文其余部分完整保留
+      expect(container.textContent).toContain('她朝门口看了一眼。')
+    })
+
+    it('S7：长名优先匹配，避免被更短的名字抢先', () => {
+      const long = createCharacter({ id: 'char-3', name: '千夏' })
+      const short = createCharacter({ id: 'char-4', name: '千' })
+      useCharacterStore.setState({ characters: [long, short] })
+      const msg = createMessage({
+        characterId: 'char-1',
+        content: '“@千夏 也一起。”',
+        contentRenderMode: 'blocks',
+        mentionedCharacterIds: ['char-4', 'char-3'],
+      })
+      const { container } = render(<GroupChatMessage message={msg} />)
+      expect(container.querySelector('.mention-highlight')?.textContent).toBe('@千夏')
+    })
   })
 
   describe('action buttons', () => {

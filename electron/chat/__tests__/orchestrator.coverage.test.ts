@@ -28,7 +28,7 @@ function mp(): MessagePort & { store: Map<string, unknown> } {
   } as unknown as MessagePort & { store: Map<string, unknown> }
 }
 function ctx(): ContextPort {
-  return { async build() { return { messages: [{ role: 'user', content: 'hi' }], fingerprint: 'fp', model: { provider: 'openai', model: 'gpt-4o-mini' } } } }
+  return { async build() { return { messages: [{ role: 'user', content: 'hi' }], fingerprint: 'fp', requestMaxTokens: 2048, model: { provider: 'openai', model: 'gpt-4o-mini' } } } }
 }
 function cmd(o: Partial<ChatCommand> = {}): ChatCommand {
   return { type: 'send', requestId: 'req-' + Math.random().toString(36).slice(2,6), sessionId: 's1', characterId: 'c1', content: 'hello', client: { kind: 'desktop', clientId: 'c1', protocolVersion: 2 }, ...o } as ChatCommand

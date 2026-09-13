@@ -106,13 +106,13 @@ describe('会话派生记忆清理', () => {
       narrativeMode: 'invalid',
     } as never)).rejects.toThrow('narrativeMode')
     await expect(chatData.updateSession('char-001', session.id, {
-      gameMasterMode: 'yes',
-    } as never)).rejects.toThrow('gameMasterMode')
-    await expect(chatData.updateSession('char-001', session.id, {
       dialogueDirectionsEnabled: 'yes',
     } as never)).rejects.toThrow('dialogueDirectionsEnabled')
+    // gameMasterMode 死写路径已从白名单下线：旧字段写入被静默忽略，不再污染会话数据
+    await chatData.updateSession('char-001', session.id, { gameMasterMode: true } as never)
     const persisted = (await chatData.listSessions('char-001')).find((item) => item.id === session.id)
     expect(persisted?.narrativeMode).toBe('immersive')
+    expect((persisted as { gameMasterMode?: unknown } | undefined)?.gameMasterMode).toBeUndefined()
   })
 
   it('条件更新会话时拒绝过期的记忆版本，避免旧摘要覆盖新事实', async () => {
@@ -215,6 +215,34 @@ describe('readMessages 读取缓存', () => {
     const msgs = readMessages('char-cache', 's1')
     expect(msgs).toHaveLength(1)
     expect(msgs[0].content).toBe('新内容')
+  })
+
+  it('读取同一消息的多个落盘版本时不误报 ID 冲突', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    writeFileSync(
+      SESSION_FILE,
+      JSON.stringify(msg('a', '生成中的内容', 1000)) + '\n'
+        + JSON.stringify(msg('a', '生成完成后的内容', 1000)) + '\n',
+    )
+
+    const messages = readMessages('char-cache', 's1', true)
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0].content).toBe('生成完成后的内容')
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('同一 ID 对应不同消息身份时仍报告真实冲突', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    writeFileSync(
+      SESSION_FILE,
+      JSON.stringify(msg('a', '用户消息', 1000)) + '\n'
+        + JSON.stringify({ ...msg('a', '助手消息', 1001), role: 'assistant' }) + '\n',
+    )
+
+    readMessages('char-cache', 's1', true)
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('消息 ID 冲突'))
   })
 
   it('不同会话缓存互不影响', () => {

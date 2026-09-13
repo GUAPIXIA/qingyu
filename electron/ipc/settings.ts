@@ -6,6 +6,7 @@ import { getDefaultSettings } from '../../shared/defaults'
 import { saveCredential, getCredential } from '../services/safeStorage'
 import { emitSettingsChanged } from '../services/settingsChangeBus'
 import { computeRevision, diffMobileSafeFields, toMobileSafeSettings } from '../bridge/settingsSync'
+import { setMigrationCredentialAccess } from '../services/migration'
 import { createLogger } from '../services/logger'
 import { safeHandle } from '../utils/safeHandle'
 import { safeId } from '../utils/pathGuard'
@@ -16,6 +17,10 @@ import { readLorebookView, saveLorebookDocumentInput } from '../services/loreboo
 const log = createLogger('settings')
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
+
+// B2：settings v2→v3 迁移链需要读写旧 provider 凭据，这里注入 safeStorage 实现。
+// 在模块加载时注册，保证任何 settings 读取（含 readJson 触发的迁移）之前已就绪。
+setMigrationCredentialAccess({ get: getCredential, save: saveCredential })
 
 /**
  * 主进程内部读取设置快照（不做 safeStorage 回填，只用于非敏感字段）。
@@ -43,6 +48,11 @@ const SECRET_COLLECTIONS: Array<{ get: SecretListGetter; prefix: string }> = [
   { get: (s) => s.visionModels, prefix: 'vision' },
 ]
 
+/** 单例结构中的敏感字段（非数组集合）：P0-B 纳入 semanticTrigger.apiKey */
+const SECRET_SINGLETONS: Array<{ get: (s: Settings) => { apiKey?: string } | undefined; key: string }> = [
+  { get: (s) => s.semanticTrigger, key: 'semanticTrigger' },
+]
+
 /**
  * 保存前剥离 apiKey：提取到 safeStorage 后从 settings 对象删除。
  * @param persist 是否将明文 key 写入 safeStorage（保存/导入为 true；导出备份为 false，仅删除）
@@ -58,6 +68,14 @@ export function stripSecrets(settings: Settings, persist: boolean): void {
       delete item.apiKey
     }
   }
+  for (const { get, key } of SECRET_SINGLETONS) {
+    const item = get(settings)
+    if (!item) continue
+    if (typeof item.apiKey === 'string' && item.apiKey.length > 0) {
+      if (persist) saveCredential(key, item.apiKey)
+    }
+    delete (item as Record<string, unknown>).apiKey
+  }
 }
 
 /** 读取后回填 safeStorage 中的凭据（无加密凭据时保留 settings 中旧明文兼容） */
@@ -69,6 +87,12 @@ export function restoreSecrets(settings: Settings): void {
         if (key) item.apiKey = key
       }
     }
+  }
+  for (const { get, key } of SECRET_SINGLETONS) {
+    const item = get(settings)
+    if (!item || item.apiKey) continue
+    const value = getCredential(key)
+    if (value) item.apiKey = value
   }
 }
 

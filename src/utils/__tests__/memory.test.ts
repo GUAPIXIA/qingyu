@@ -5,7 +5,6 @@ import {
   applyFactProposals,
   formatMemoryFacts,
   fitLayeredMemoryBudget,
-  fitMemoryBudget,
   MAX_MEMORY_FACTS,
   memoryFactToText,
   parseMemoryResult,
@@ -131,6 +130,22 @@ describe('parseMemoryResult', () => {
       subject: '林夏', predicate: '与用户的关系', value: '恋人', changeType: 'set', scope: 'session',
     }])
   })
+
+  it('clear 提案允许 value 为空或缺省', () => {
+    const parsed = parseMemoryResult('【事实提案】\n```json\n[{"subject":"林夏","predicate":"所在地","value":"","changeType":"clear"},{"subject":"林夏","predicate":"持有物品","changeType":"clear"}]\n```')
+    expect(parsed.factProposals).toEqual([
+      { subject: '林夏', predicate: '所在地', value: '', changeType: 'clear' },
+      { subject: '林夏', predicate: '持有物品', value: '', changeType: 'clear' },
+    ])
+  })
+
+  it('事实提案逐条容错，坏条目不再拖垮同组有效提案', () => {
+    const parsed = parseMemoryResult('【事实提案】\n```json\n[{"subject":"林夏","predicate":"所在地","value":"旧矿坑","changeType":"set"},{"subject":"","predicate":"身份","value":"向导","changeType":"set"},{"subject":"林夏","predicate":"持有物品","value":"","changeType":"clear"}]\n```')
+    expect(parsed.factProposals).toEqual([
+      { subject: '林夏', predicate: '所在地', value: '旧矿坑', changeType: 'set' },
+      { subject: '林夏', predicate: '持有物品', value: '', changeType: 'clear' },
+    ])
+  })
 })
 
 describe('formatMemoryFacts', () => {
@@ -236,40 +251,6 @@ describe('applyFactProposals', () => {
     }], 'm2', 100)
     expect(result.facts).toEqual([])
     expect(result.history).toEqual([expect.objectContaining({ status: 'inactive', value: '钥匙' })])
-  })
-})
-
-describe('fitMemoryBudget', () => {
-  it('预算充足时保留全部内容', () => {
-    const r = fitMemoryBudget('简短摘要', ['事实A', '事实B'], 1000, mockEstimate)
-    expect(r.summary).toBe('简短摘要')
-    expect(r.facts).toEqual(['事实A', '事实B'])
-  })
-
-  it('预算紧张时按序丢弃超预算事实', () => {
-    // 预算 100：摘要 '摘' ≈ 1 token，剩余 99；事实1 约 91 token 保留，剩余 8；事实2 超限被丢弃
-    const r = fitMemoryBudget('摘', ['甲'.repeat(100), '乙'.repeat(50)], 100, mockEstimate)
-    expect(r.summary).toBe('摘')
-    expect(r.facts).toEqual(['甲'.repeat(100)])
-  })
-
-  it('摘要超预算时从尾部截断', () => {
-    const longSummary = '甲'.repeat(200) // 约 180 token
-    const r = fitMemoryBudget(longSummary, [], 100, mockEstimate)
-    expect(r.summary.length).toBeLessThan(200)
-    expect(mockEstimate(r.summary)).toBeLessThanOrEqual(70) // 60% 预算 + 截断余量
-  })
-
-  it('空摘要和空事实返回空', () => {
-    const r = fitMemoryBudget('', [], 100, mockEstimate)
-    expect(r.summary).toBe('')
-    expect(r.facts).toEqual([])
-  })
-
-  it('事实按序 break：首条超限则停止（不跳过后面的短事实）', () => {
-    // 预算 60：摘要 1 token，剩余 59；事实1 约 91 token 超限 → 直接 break，后面的短事实也不保留
-    const r = fitMemoryBudget('摘', ['甲'.repeat(100), '短事实'], 60, mockEstimate)
-    expect(r.facts).toEqual([])
   })
 })
 

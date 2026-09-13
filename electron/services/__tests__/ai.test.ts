@@ -108,19 +108,22 @@ describe('OpenAI 适配器', () => {
     const onUsage = vi.fn()
     const result = await getAdapter('openai').chat(params, onChunk, new AbortController().signal, onUsage)
 
-    expect(result).toBe('你好，世界')
+    expect(result.text).toBe('你好，世界')
     expect(onChunk).toHaveBeenCalledWith('你好，世界')
     expect(onUsage).toHaveBeenCalledWith({ promptTokens: 10, completionTokens: 5, totalTokens: 15 })
   })
 
-  it('非流式：reasoning_content 包装为 thought 标签', async () => {
+  it('非流式：reasoning_content 是供应商推理，不进入角色 thought 或正文', async () => {
     const params = makeParams({ stream: false, model: 'deepseek-r1' })
     fetchMock.mockResolvedValue(jsonResponse({
       choices: [{ message: { content: '回答', reasoning_content: '思考过程' } }],
     }))
 
-    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
-    expect(result).toBe('<thought>思考过程</thought>\n\n回答')
+    const onChunk = vi.fn()
+    const result = await getAdapter('openai').chat(params, onChunk, new AbortController().signal)
+    expect(result.text).toBe('回答')
+    expect(onChunk).toHaveBeenCalledTimes(1)
+    expect(onChunk).toHaveBeenCalledWith('回答')
   })
 
   it('非流式：已关闭推理时即使上游仍返回 reasoning_content 也只保留正文', async () => {
@@ -130,7 +133,7 @@ describe('OpenAI 适配器', () => {
     }))
 
     const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
-    expect(result).toBe('最终正文')
+    expect(result.text).toBe('最终正文')
   })
 
   it('非流式：tool_calls 附加 [TOOL_CALL] 标记', async () => {
@@ -145,8 +148,8 @@ describe('OpenAI 适配器', () => {
     }))
 
     const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
-    expect(result).toContain('[TOOL_CALL:')
-    expect(result).toContain('get_weather')
+    expect(result.text).toContain('[TOOL_CALL:')
+    expect(result.text).toContain('get_weather')
   })
 
   it('流式：SSE 分块解析，支持跨 chunk 的 data 行', async () => {
@@ -160,11 +163,11 @@ describe('OpenAI 适配器', () => {
     const onChunk = vi.fn()
     const result = await getAdapter('openai').chat(params, onChunk, new AbortController().signal)
 
-    expect(result).toBe('你好')
+    expect(result.text).toBe('你好')
     expect(onChunk.mock.calls.flat()).toEqual(['你', '好'])
   })
 
-  it('流式：reasoning_content 先收集后闭合', async () => {
+  it('流式：reasoning_content 不进入角色 thought 或流式 chunk', async () => {
     const params = makeParams({ stream: true })
     fetchMock.mockResolvedValue(streamResponse([
       'data: {"choices":[{"delta":{"reasoning_content":"思考"}}]}\n\n',
@@ -176,9 +179,8 @@ describe('OpenAI 适配器', () => {
     const onChunk = vi.fn()
     const result = await getAdapter('openai').chat(params, onChunk, new AbortController().signal)
 
-    expect(result).toBe('<thought>思考完毕</thought>\n\n正文')
-    // 推理内容作为完整块一次性输出
-    expect(onChunk).toHaveBeenCalledWith('<thought>思考完毕</thought>\n\n')
+    expect(result.text).toBe('正文')
+    expect(onChunk).toHaveBeenCalledTimes(1)
     expect(onChunk).toHaveBeenCalledWith('正文')
   })
 
@@ -192,20 +194,22 @@ describe('OpenAI 适配器', () => {
 
     const onChunk = vi.fn()
     const result = await getAdapter('openai').chat(params, onChunk, new AbortController().signal)
-    expect(result).toBe('最终正文')
+    expect(result.text).toBe('最终正文')
     expect(onChunk).toHaveBeenCalledTimes(1)
     expect(onChunk).toHaveBeenCalledWith('最终正文')
   })
 
-  it('流式：OpenRouter 统一字段 delta.reasoning 同样收进 thought 块', async () => {
+  it('流式：OpenRouter 的 delta.reasoning 同样不进入角色 thought', async () => {
     const params = makeParams({ stream: true })
     fetchMock.mockResolvedValue(streamResponse([
       'data: {"choices":[{"delta":{"reasoning":"思考中"}}]}\n\n',
       'data: {"choices":[{"delta":{"content":"正文"}}]}\n\n',
       'data: [DONE]\n',
     ]))
-    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
-    expect(result).toBe('<thought>思考中</thought>\n\n正文')
+    const onChunk = vi.fn()
+    const result = await getAdapter('openai').chat(params, onChunk, new AbortController().signal)
+    expect(result.text).toBe('正文')
+    expect(onChunk).toHaveBeenCalledTimes(1)
   })
 
   it('流式：SSE 流内 error 事件透出为异常，而不是静默空内容', async () => {
@@ -235,13 +239,25 @@ describe('OpenAI 适配器', () => {
       .rejects.toThrow('content_filter')
   })
 
-  it('非流式：OpenRouter 统一字段 reasoning 包进 thought，正文优先', async () => {
+  it('流式：finish_reason 为 length 时返回结构化完成（阶段3，不再抛错）', async () => {
+    const params = makeParams({ stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{"content":"半截正文"}}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]))
+    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+    expect(result.finishReason).toBe('length')
+    expect(result.text).toBe('半截正文')
+  })
+
+  it('非流式：OpenRouter 统一字段 reasoning 不进入角色 thought', async () => {
     const params = makeParams({ stream: false })
     fetchMock.mockResolvedValue(jsonResponse({
       choices: [{ message: { content: '正文', reasoning: '思考过程' }, finish_reason: 'stop' }],
     }))
     const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
-    expect(result).toBe('<thought>思考过程</thought>\n\n正文')
+    expect(result.text).toBe('正文')
   })
 
   it('非流式：正文与思考均为空时显式报错', async () => {
@@ -253,6 +269,25 @@ describe('OpenAI 适配器', () => {
       .rejects.toThrow('模型未返回任何内容')
   })
 
+  it('非流式：推理吃满用户硬上限时返回可操作的专用错误', async () => {
+    const params = makeParams({
+      stream: false,
+      model: 'deepseek/deepseek-v4-pro',
+      maxTokens: 1024,
+    })
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: '' }, finish_reason: 'length' }],
+      usage: {
+        prompt_tokens: 1200,
+        completion_tokens: 1024,
+        total_tokens: 2224,
+        completion_tokens_details: { reasoning_tokens: 1024 },
+      },
+    }))
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('推理已占满模型输出硬上限')
+  })
+
   it('非流式：finish_reason 为 content_filter 时报审核拦截', async () => {
     const params = makeParams({ stream: false })
     fetchMock.mockResolvedValue(jsonResponse({
@@ -260,6 +295,77 @@ describe('OpenAI 适配器', () => {
     }))
     await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
       .rejects.toThrow('content_filter')
+  })
+
+  it('非流式：finish_reason 为 length 时返回结构化完成（阶段3，不再抛错）', async () => {
+    const params = makeParams({ stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: '半截正文' }, finish_reason: 'length' }],
+      usage: { prompt_tokens: 10, completion_tokens: 16, total_tokens: 26 },
+    }))
+    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+    expect(result.finishReason).toBe('length')
+    expect(result.text).toBe('半截正文')
+    expect(result.usage?.completionTokens).toBe(16)
+  })
+
+  it('流式：allowTruncatedOutput 与缺省行为一致（length 完成返回正文）', async () => {
+    const params = makeParams({ stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{"content":"半截正文"}}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n',
+      'data: [DONE]\n',
+    ]))
+    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+    expect(result.finishReason).toBe('length')
+    expect(result.text).toBe('半截正文')
+  })
+
+  it('非流式：allowTruncatedOutput 置 true 但正文为空时仍报错', async () => {
+    const params = makeParams({ stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: '' }, finish_reason: 'length' }],
+    }))
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('模型未返回任何内容')
+  })
+
+  it('流式：allowTruncatedOutput 置 true 时 length 截断返回已产出正文', async () => {
+    const params = makeParams({ stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{"content":"半截正文"}}]}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n',
+      'data: [DONE]\n',
+    ]))
+    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+    expect(result.text).toBe('半截正文')
+  })
+
+  it('流式：allowTruncatedOutput 置 true 但零输出时仍报错', async () => {
+    const params = makeParams({ stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n',
+      'data: [DONE]\n',
+    ]))
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
+      .rejects.toThrow('模型未返回任何内容')
+  })
+
+  it('流式：缺省参数下流出 tool_calls 且 length 截断仍抛错（主对话行为不变）', async () => {
+    const params = makeParams({ stream: true })
+    const e1 = 'data: ' + JSON.stringify({
+      choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'get_', arguments: '{"ci' } }] } }],
+    }) + '\n\n'
+    const e2 = 'data: ' + JSON.stringify({
+      choices: [{
+        delta: { tool_calls: [{ index: 0, function: { arguments: 'ty":"北京"}' } }] },
+        finish_reason: 'length',
+      }],
+    }) + '\n\n'
+    fetchMock.mockResolvedValue(streamResponse([e1 + e2 + 'data: [DONE]\n']))
+    const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
+    expect(result.finishReason).toBe('tool_calls')
+    expect(result.text).toContain('[TOOL_CALL:')
   })
 
   it('流式：收集 tool_calls delta 并附加标记', async () => {
@@ -274,11 +380,11 @@ describe('OpenAI 适配器', () => {
     fetchMock.mockResolvedValue(streamResponse([e1 + e2 + 'data: [DONE]\n']))
 
     const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
-    expect(result).toContain('[TOOL_CALL:')
-    expect(result).toContain('get_')
-    expect(result).toContain('北京')
+    expect(result.text).toContain('[TOOL_CALL:')
+    expect(result.text).toContain('get_')
+    expect(result.text).toContain('北京')
     // 合并后的 arguments 应为完整 JSON
-    const toolCallJson = result.match(/\[TOOL_CALL:(.*)\]/)?.[1]
+    const toolCallJson = result.text.match(/\[TOOL_CALL:(.*)\]/)?.[1]
     expect(toolCallJson).toBeDefined()
     const calls = JSON.parse(toolCallJson!)
     expect(calls[0].function.arguments).toBe('{"city":"北京"}')
@@ -334,7 +440,7 @@ describe('OpenAI 适配器', () => {
       .mockResolvedValueOnce(jsonResponse({ error: { message: 'unknown parameter: thinking' } }, 400))
       .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: 'ok' } }] }))
 
-    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)).resolves.toBe('ok')
+    await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)).resolves.toMatchObject({ text: 'ok' })
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).thinking).toEqual({ type: 'disabled' })
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).thinking).toBeUndefined()
@@ -431,7 +537,7 @@ describe('Claude 适配器', () => {
     expect(body.tool_choice).toEqual({ type: 'any' })
   })
 
-  it('非流式：thinking / text / tool_use 混合解析', async () => {
+  it('非流式：thinking 不进入角色 thought，text / tool_use 正常解析', async () => {
     const params = makeParams({ provider: 'claude', stream: false })
     fetchMock.mockResolvedValue(jsonResponse({
       content: [
@@ -445,9 +551,11 @@ describe('Claude 适配器', () => {
     const onUsage = vi.fn()
     const result = await getAdapter('claude').chat(params, vi.fn(), new AbortController().signal, onUsage)
 
-    expect(result).toContain('<thought>推理中</thought>\n\n最终回答')
-    expect(result).toContain('[TOOL_CALL:')
-    expect(result).toContain('get_weather')
+    expect(result.text).toContain('最终回答')
+    expect(result.text).not.toContain('推理中')
+    expect(result.text).not.toContain('<thought>')
+    expect(result.text).toContain('[TOOL_CALL:')
+    expect(result.text).toContain('get_weather')
     expect(onUsage).toHaveBeenCalledWith({ promptTokens: 10, completionTokens: 5, totalTokens: 15 })
   })
 
@@ -463,6 +571,22 @@ describe('Claude 适配器', () => {
     expect(body.temperature).toBe(0.7)
   })
 
+  it('流式：thinking_delta 不进入角色消息或 chunk', async () => {
+    const params = makeParams({ provider: 'claude', stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}\n\n',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"内部推理"}}\n\n',
+      'data: {"type":"content_block_stop","index":0}\n\n',
+      'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"角色正文"}}\n\n',
+    ]))
+    const onChunk = vi.fn()
+
+    const result = await getAdapter('claude').chat(params, onChunk, new AbortController().signal)
+
+    expect(result.text).toBe('角色正文')
+    expect(onChunk.mock.calls.flat()).toEqual(['角色正文'])
+  })
+
   it('Claude 3.7+ maxTokens 充足时启用 thinking 且移除 top_p', async () => {
     const params = makeParams({ provider: 'claude', model: 'claude-3-7-sonnet', maxTokens: 4096, stream: false })
     fetchMock.mockResolvedValue(jsonResponse({ content: [{ type: 'text', text: 'hi' }] }))
@@ -475,6 +599,24 @@ describe('Claude 适配器', () => {
     expect(body.temperature).toBe(1)
     // H-2 修复：thinking 模式下 top_p 与 temperature=1 冲突触发 400，必须移除
     expect(body.top_p).toBeUndefined()
+  })
+
+  it('Claude 3.7+ 显式关闭推理时不启用 thinking', async () => {
+    const params = makeParams({
+      provider: 'claude',
+      model: 'claude-3-7-sonnet',
+      maxTokens: 4096,
+      stream: false,
+      reasoningMode: 'disabled',
+    })
+    fetchMock.mockResolvedValue(jsonResponse({ content: [{ type: 'text', text: 'hi' }] }))
+
+    await getAdapter('claude').chat(params, vi.fn(), new AbortController().signal)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.thinking).toBeUndefined()
+    expect(body.temperature).toBe(0.7)
+    expect(body.top_p).toBe(1)
   })
 })
 
@@ -518,8 +660,38 @@ describe('Gemini 适配器', () => {
     }))
 
     const result = await getAdapter('gemini').chat(params, vi.fn(), new AbortController().signal)
-    expect(result).toContain('[TOOL_CALL:')
-    expect(result).toContain('get_weather')
+    expect(result.text).toContain('[TOOL_CALL:')
+    expect(result.text).toContain('get_weather')
+  })
+
+  it('非流式：thought=true 的模型推理 part 不进入角色消息', async () => {
+    const params = makeParams({ provider: 'gemini', stream: false })
+    fetchMock.mockResolvedValue(jsonResponse({
+      candidates: [{ content: { parts: [
+        { text: '内部推理', thought: true },
+        { text: '角色正文' },
+      ] } }],
+    }))
+    const onChunk = vi.fn()
+
+    const result = await getAdapter('gemini').chat(params, onChunk, new AbortController().signal)
+
+    expect(result.text).toBe('角色正文')
+    expect(onChunk.mock.calls.flat()).toEqual(['角色正文'])
+  })
+
+  it('流式：thought=true 的 part 不进入角色消息或 chunk', async () => {
+    const params = makeParams({ provider: 'gemini', stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      'data: {"candidates":[{"content":{"parts":[{"text":"内部推理","thought":true}]}}]}\n\n',
+      'data: {"candidates":[{"content":{"parts":[{"text":"角色正文"}]},"finishReason":"STOP"}]}\n\n',
+    ]))
+    const onChunk = vi.fn()
+
+    const result = await getAdapter('gemini').chat(params, onChunk, new AbortController().signal)
+
+    expect(result.text).toBe('角色正文')
+    expect(onChunk.mock.calls.flat()).toEqual(['角色正文'])
   })
 })
 
@@ -551,9 +723,23 @@ describe('Ollama 适配器', () => {
     const onUsage = vi.fn()
     const result = await getAdapter('ollama').chat(params, onChunk, new AbortController().signal, onUsage)
 
-    expect(result).toBe('你好')
+    expect(result.text).toBe('你好')
     expect(onChunk.mock.calls.flat()).toEqual(['你', '好'])
     expect(onUsage).toHaveBeenCalledWith({ promptTokens: 8, completionTokens: 3, totalTokens: 11 })
+  })
+
+  it('流式：跨 chunk 的 thinking 标签及内容不进入角色消息', async () => {
+    const params = makeParams({ provider: 'ollama', stream: true })
+    fetchMock.mockResolvedValue(streamResponse([
+      '{"message":{"content":"开场<thi"}}\n{"message":{"content":"nking>内部推"}}\n',
+      '{"message":{"content":"理</thinking>正文"}}\n{"done":true}\n',
+    ], 'application/x-ndjson'))
+    const onChunk = vi.fn()
+
+    const result = await getAdapter('ollama').chat(params, onChunk, new AbortController().signal)
+
+    expect(result.text).toBe('开场正文')
+    expect(onChunk.mock.calls.flat()).toEqual(['开场', '正文'])
   })
 
   it('非 2xx 响应抛出带响应体的错误', async () => {
@@ -856,7 +1042,7 @@ describe('Ollama Instruct 模板模式（/api/generate）', () => {
     expect(body.messages).toBeUndefined() // 不使用 messages 数组
     expect(body.options.stop).toEqual(['<|im_end|>', '<|im_start|>'])
 
-    expect(result).toBe('你好呀')
+    expect(result.text).toBe('你好呀')
     expect(onChunk).toHaveBeenCalledWith('你好呀')
     expect(onUsage).toHaveBeenCalledWith({ promptTokens: 8, completionTokens: 3, totalTokens: 11 })
   })
@@ -882,7 +1068,7 @@ describe('Ollama Instruct 模板模式（/api/generate）', () => {
     const onUsage = vi.fn()
     const result = await getAdapter('ollama').chat(params, onChunk, new AbortController().signal, onUsage)
 
-    expect(result).toBe('你好')
+    expect(result.text).toBe('你好')
     expect(onChunk.mock.calls.flat()).toEqual(['你', '好'])
     expect(onUsage).toHaveBeenCalledWith({ promptTokens: 5, completionTokens: 2, totalTokens: 7 })
   })

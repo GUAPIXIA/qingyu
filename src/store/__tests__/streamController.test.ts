@@ -5,7 +5,7 @@ import { usePersonaStore } from '../usePersonaStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { streamAIResponse, cleanupActiveStream } from '../streamController'
 import { STREAM_THROTTLE_MS, STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
-import type { Character, Message, ConnectionProfile } from '../../../shared/types'
+import type { Character, Message, ConnectionProfile, Preset } from '../../../shared/types'
 
 function createCharacter(overrides: Partial<Character> = {}): Character {
   return {
@@ -37,20 +37,20 @@ const PROFILE: ConnectionProfile = {
   maxContext: 8192,
 }
 
-/** 捕获 ai.onChunk/onDone/onError 注册的回调，供测试手动触发 */
+/** 捕获 ai.onChunk/onComplete/onError 注册的回调，供测试手动触发 */
 function captureStreamCallbacks() {
   const callbacks: {
     onChunk?: (data: { requestId: string; text: string }) => void
-    onDone?: (requestId: string) => void
+    onComplete?: (payload: { requestId: string; finishReason?: string }) => void
     onError?: (data: { requestId: string; error: string }) => void
-    chatParams?: { requestId: string }
+    chatParams?: { requestId: string; maxTokens?: number }
   } = {}
   ;(window.api.ai as any).onChunk = vi.fn().mockImplementation((cb) => {
     callbacks.onChunk = cb
     return () => {}
   })
-  ;(window.api.ai as any).onDone = vi.fn().mockImplementation((cb) => {
-    callbacks.onDone = cb
+  ;(window.api.ai as any).onComplete = vi.fn().mockImplementation((cb) => {
+    callbacks.onComplete = cb
     return () => {}
   })
   ;(window.api.ai as any).onError = vi.fn().mockImplementation((cb) => {
@@ -140,7 +140,7 @@ describe('streamAIResponse 流式控制', () => {
     await promise
   })
 
-  it('onDone 完成流程：内容更新、isStreaming 复位、onComplete 调用', async () => {
+  it('onComplete 完成流程：内容更新、isStreaming 复位、onComplete 回调（阶段3结构化完成）', async () => {
     const callbacks = captureStreamCallbacks()
     const onComplete = vi.fn().mockResolvedValue(undefined)
 
@@ -153,17 +153,142 @@ describe('streamAIResponse 流式控制', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     const requestId = callbacks.chatParams!.requestId
-    callbacks.onChunk!({ requestId, text: '最终答案' })
+    callbacks.onChunk!({ requestId, text: '最终答案。' })
     await vi.advanceTimersByTimeAsync(STREAM_THROTTLE_MS + 10)
-    callbacks.onDone!(requestId)
+    callbacks.onComplete!({ requestId, finishReason: 'stop' })
+    // 收尾为异步流程（finalizer + onComplete 回调）
+    await vi.advanceTimersByTimeAsync(10)
 
     const msg = useChatStore.getState().messages.find(m => m.id === 'ai-msg-1')
-    expect(msg?.content).toBe('最终答案')
+    expect(msg?.content).toBe('最终答案。')
     expect(useChatStore.getState().isStreaming).toBe(false)
-    expect(onComplete).toHaveBeenCalledWith('最终答案')
+    expect(onComplete).toHaveBeenCalledWith('最终答案。', expect.objectContaining({ finishReason: 'stop' }))
     // usage 记录被写入
     expect(window.api.usage.record).toHaveBeenCalled()
 
+    await promise
+  })
+
+  it('阶段3：截断流（length + 半句）收尾回退到完整句，不落盘半句', async () => {
+    const callbacks = captureStreamCallbacks()
+    const onComplete = vi.fn().mockResolvedValue(undefined)
+
+    const promise = streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset: null,
+      onComplete,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '她推开门，走进房间，环顾四周陌生的陈设与积灰的家具。然后她伸手拿' })
+    await vi.advanceTimersByTimeAsync(STREAM_THROTTLE_MS + 10)
+    callbacks.onComplete!({ requestId, finishReason: 'length' })
+    await vi.advanceTimersByTimeAsync(10)
+
+    // 收尾器回退到最后一个完整句：onComplete 收到收束后的正文与元数据，
+    // 悬空半句不再传给落盘管线（测试内消息内容保留流式 flush 的原始值）
+    expect(onComplete).toHaveBeenCalledWith(
+      '她推开门，走进房间，环顾四周陌生的陈设与积灰的家具。',
+      expect.objectContaining({ finishReason: 'length', notice: 'trimmed_to_boundary' }),
+    )
+    expect(onComplete).not.toHaveBeenCalledWith(
+      expect.stringContaining('然后她伸手拿'),
+      expect.anything(),
+    )
+    await promise
+  })
+
+  it('阶段6灰度：legacy 管线跳过收尾器（截断正文原样透传，不回退）', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings,
+        generationPipeline: 'legacy',
+      },
+    })
+    const callbacks = captureStreamCallbacks()
+    const onComplete = vi.fn().mockResolvedValue(undefined)
+
+    const promise = streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset: null,
+      onComplete,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const requestId = callbacks.chatParams!.requestId
+    // legacy：请求 maxTokens 回退为预设/默认值（此处无预设 → 1024），而非动态预算
+    expect(callbacks.chatParams!.maxTokens).toBe(1024)
+
+    callbacks.onChunk!({ requestId, text: '她推开门，走进房间，环顾四周陌生的陈设与积灰的家具。然后她伸手拿' })
+    await vi.advanceTimersByTimeAsync(STREAM_THROTTLE_MS + 10)
+    callbacks.onComplete!({ requestId, finishReason: 'length' })
+    await vi.advanceTimersByTimeAsync(10)
+
+    // 旧链路：不进收尾器，正文原样透传（半句保留由旧行为负责），无收尾提示
+    expect(onComplete).toHaveBeenCalledWith(
+      '她推开门，走进房间，环顾四周陌生的陈设与积灰的家具。然后她伸手拿',
+      expect.objectContaining({ finishReason: 'length', legacy: true }),
+    )
+    await promise
+  })
+
+  it('推理共享模型的危险低硬上限在发送前拦截，不浪费一次空响应请求', async () => {
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        activeModel: 'deepseek-v4-flash',
+        connectionProfiles: [{ ...PROFILE, model: 'deepseek-v4-flash' }],
+      },
+    }))
+    captureStreamCallbacks()
+    const onError = vi.fn()
+    const preset: Preset = {
+      id: 'low-cap', name: '低上限', description: '', systemPrompt: '', jailbreak: '',
+      maxContext: 0, temperature: 0.8, topP: 0.95, maxTokens: 1024,
+      frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false,
+      responseLengthHint: 'balanced',
+    }
+
+    await streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset,
+      onComplete: vi.fn(),
+      onError,
+    })
+
+    expect(window.api.ai.chat).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('设为 0 使用自动预算'))
+    expect(useChatStore.getState().error).toContain('低于该推理模型稳定输出正文')
+  })
+
+  it('阶段3：用户停止（cancelled）保留已流式内容', async () => {
+    const callbacks = captureStreamCallbacks()
+    const onComplete = vi.fn().mockResolvedValue(undefined)
+
+    const promise = streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1',
+      character: createCharacter(),
+      preset: null,
+      onComplete,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '用户停止前看到的内' })
+    await vi.advanceTimersByTimeAsync(STREAM_THROTTLE_MS + 10)
+    callbacks.onComplete!({ requestId, finishReason: 'cancelled' })
+    await vi.advanceTimersByTimeAsync(10)
+
+    const msg = useChatStore.getState().messages.find(m => m.id === 'ai-msg-1')
+    expect(msg?.content).toBe('用户停止前看到的内')
+    expect(onComplete).toHaveBeenCalledWith(
+      '用户停止前看到的内',
+      expect.objectContaining({ finishReason: 'cancelled', stopped: true }),
+    )
     await promise
   })
 
@@ -182,6 +307,8 @@ describe('streamAIResponse 流式控制', () => {
 
     const requestId = callbacks.chatParams!.requestId
     callbacks.onError!({ requestId, error: 'API 返回 500' })
+    // 阶段7：错误收口是异步的（半截正文先进统一管线）
+    await vi.advanceTimersByTimeAsync(10)
 
     expect(useChatStore.getState().isStreaming).toBe(false)
     expect(useChatStore.getState().error).toBeTruthy()
@@ -314,7 +441,7 @@ describe('streamAIResponse 流式控制', () => {
     await promise
   })
 
-  it('DeepSeek V4 主对话关闭推理通道，把输出额度留给最终正文', async () => {
+  it('DeepSeek V4 主对话关闭推理通道，且请求预算保留推理余量（不再固定 8192）', async () => {
     useSettingsStore.setState({
       settings: {
         ...useSettingsStore.getState().settings,
@@ -331,7 +458,11 @@ describe('streamAIResponse 流式控制', () => {
     })
     await vi.advanceTimersByTimeAsync(0)
 
-    expect((callbacks.chatParams as any).reasoningMode).toBe('disabled')
+    const params = (callbacks.chatParams as any)
+    expect(params.reasoningMode).toBe('disabled')
+    // 阶段一：请求预算 = 正文预算 + 推理余量（≥3072），由模型能力档案动态计算
+    expect(params.maxTokens).toBeGreaterThan(3072)
+    expect(params.maxTokens).toBeLessThanOrEqual(8192)
     await promise
   })
 
@@ -356,7 +487,8 @@ describe('streamAIResponse 流式控制', () => {
     expect(window.api.ai.cancelChat).toHaveBeenCalled()
     expect(useChatStore.getState().isStreaming).toBe(false)
     expect(useChatStore.getState().error).toBe('请求超时')
-    expect(onError).toHaveBeenCalledWith('请求超时')
+    // 阶段7：正文过短无稳定边界 → 不落盘半句（terminal 缺省），提示走 onError 第二参数扩展位
+    expect(onError).toHaveBeenCalledWith('请求超时', undefined)
 
     await promise
   })

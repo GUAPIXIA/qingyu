@@ -4,7 +4,7 @@
  * 当 AI 返回 tool_calls 时，自动调用对应工具并将结果回传给 AI
  * C-03 修复：适配器现在通过 [TOOL_CALL:json] 标记返回 tool_calls
  */
-import type { ChatParams } from '../../shared/types'
+import type { AICompletion, ChatParams } from '../../shared/types'
 import { mcpManager } from '../mcp/manager'
 import { getAdapter } from './ai'
 import { createLogger } from './logger'
@@ -46,7 +46,7 @@ export async function chatWithTools(
   onToolResult: (result: { id: string; content: string; isError: boolean }) => void,
   onUsage?: (usage: { promptTokens: number; completionTokens: number; totalTokens: number }) => void,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<AICompletion> {
   const adapter = getAdapter(params.provider)
   const tools = mcpManager.getAllTools()
 
@@ -65,6 +65,7 @@ export async function chatWithTools(
   // BUG-02 修复：fullText 只在最后一轮累积——每轮开始时重置，
   // 避免中间轮次的 assistant 文本（如“让我查一下...”）被拼进最终结果
   let fullText = ''
+  let lastCompletion: AICompletion | undefined
 
   // BUG-12 修复：无外部 signal 时创建可追踪的 AbortController，
   // 保留引用以便中止时取消循环
@@ -100,9 +101,9 @@ export async function chatWithTools(
     }
 
     // 调用适配器（R4：120s 总超时，超时中止内部请求并报错）
-    let result: string
+    let completion: AICompletion
     try {
-      result = await callToolWithTimeout(
+      completion = await callToolWithTimeout(
         () => adapter.chat(roundParams, toolCallsAdapter, internalSignal, onUsage),
         AI_REQUEST_TIMEOUT_MS,
       )
@@ -112,6 +113,8 @@ export async function chatWithTools(
       }
       throw err
     }
+    lastCompletion = completion
+    const result = completion.text
 
     // 中止检查：取消后不再继续下一轮
     if (effectiveSignal.aborted) throw new Error('Aborted')
@@ -120,7 +123,7 @@ export async function chatWithTools(
     const toolCallMatch = result.match(/\[TOOL_CALL:(.*)\]\s*$/)
     if (!toolCallMatch) {
       // 没有工具调用，结束循环
-      return fullText || result
+      return { text: fullText || result, finishReason: completion.finishReason, usage: completion.usage }
     }
 
     // 解析 tool_calls
@@ -129,7 +132,7 @@ export async function chatWithTools(
       const toolCallsData = JSON.parse(toolCallMatch[1])
       toolCalls = Array.isArray(toolCallsData) ? toolCallsData : [toolCallsData]
     } catch {
-      return fullText || result
+      return { text: fullText || result, finishReason: completion.finishReason, usage: completion.usage }
     }
 
     // 将 assistant 的 tool_calls 加入 messages
@@ -201,5 +204,5 @@ export async function chatWithTools(
   }
 
   log.warn(`工具调用循环达到上限 ${MAX_TOOL_ROUNDS}`)
-  return fullText
+  return { text: fullText, finishReason: lastCompletion?.finishReason ?? 'unknown', usage: lastCompletion?.usage }
 }

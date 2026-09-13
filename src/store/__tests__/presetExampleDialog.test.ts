@@ -55,7 +55,7 @@ function setup(messages: Message[], globalMode: 'always' | 'first_turn' | 'off')
 }
 
 function build(preset: Preset) {
-  return useChatStore.getState().buildContext(makeCharacter(), preset)
+  return useChatStore.getState().buildContext(makeCharacter(), preset).messages
 }
 
 describe('buildContext 预设级示例对话模式', () => {

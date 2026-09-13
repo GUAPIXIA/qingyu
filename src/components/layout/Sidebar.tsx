@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useUIStore } from '../../store/useUIStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -77,12 +77,25 @@ export function Sidebar() {
     return init
   })
   const toggleGroup = (id: string) => {
+    // P1-04：展开（而非折叠）时把该分组滚入可视区，
+    // 避免多组展开后新展开的条目被推到滚动区之外
+    if (collapsedGroups[id]) setExpandScrollTarget(id)
     setCollapsedGroups(prev => {
       const next = { ...prev, [id]: !prev[id] }
       try { localStorage.setItem('sidebar-groups-collapsed', JSON.stringify(next)) } catch { /* ignore */ }
       return next
     })
   }
+
+  const navRef = useRef<HTMLElement>(null)
+  const [expandScrollTarget, setExpandScrollTarget] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!expandScrollTarget) return
+    const group = navRef.current?.querySelector<HTMLElement>(`[data-nav-group="${expandScrollTarget}"]`)
+    group?.scrollIntoView?.({ block: 'nearest' })
+    setExpandScrollTarget(null)
+  }, [expandScrollTarget, collapsedGroups])
 
   // 路由切换时展开当前页面所在分组，避免当前项被折叠隐藏。
   useEffect(() => {
@@ -178,8 +191,8 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* 导航 - S2-A 分组 */}
-      <nav className="flex-1 overflow-y-auto py-2.5 px-2.5 space-y-1.5">
+      {/* 导航 - S2-A 分组；P1-04：min-h-0 保证 flex 列内可收缩滚动，底部状态区始终可达 */}
+      <nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto py-2.5 px-2.5 space-y-1.5">
         {sidebarCollapsed ? (
           // 收起态：平铺图标，无分组
           <div className="space-y-0.5">
@@ -213,7 +226,7 @@ export function Sidebar() {
           navGroups.map(group => {
             const collapsed = collapsedGroups[group.id] ?? !group.defaultOpen
             return (
-              <div key={group.id} className="space-y-0.5">
+              <div key={group.id} data-nav-group={group.id} className="space-y-0.5">
                 <button
                   onClick={() => toggleGroup(group.id)}
                   aria-expanded={!collapsed}

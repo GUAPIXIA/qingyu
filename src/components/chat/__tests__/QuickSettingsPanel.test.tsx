@@ -65,6 +65,8 @@ describe('QuickSettingsPanel', () => {
     expect(screen.getByRole('button', { name: '查看上下文' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '聊天背景' })).toBeTruthy()
     expect(screen.getByText('生图历史')).toBeTruthy()
+    expect(screen.getByText('AI 回复后生成 3 个可选方向')).toBeTruthy()
+    expect(screen.queryByText(/点选后只回填输入框/)).toBeNull()
     expect(screen.getByRole('button', { name: '导出对话' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '清空对话' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '复制生图数据 1' })).toBeTruthy()
@@ -216,6 +218,41 @@ describe('QuickSettingsPanel', () => {
     expect(screen.getByText('预算预览')).toBeTruthy()
     expect(screen.getByText(/常驻上限 40%/)).toBeTruthy()
     expect(screen.getByText(/常驻\+条件累计 90%/)).toBeTruthy()
+
+    const radiogroup = screen.getByRole('radiogroup', { name: 'Token 预算占比' })
+    expect(within(radiogroup).getByRole('radio', { name: '30%' }).getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(within(radiogroup).getByRole('radio', { name: '50%' }))
+    expect(useSettingsStore.getState().settings.lorebookRatio).toBe(0.5)
+  })
+
+  it('低硬上限遇到推理共享模型时显示风险，并提供自动预算入口', async () => {
+    useChatStore.setState({ activePresetId: 'preset-low' })
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        activeProfileId: 'profile-1',
+        activeModel: 'deepseek-v4-flash',
+        connectionProfiles: [{
+          id: 'profile-1', name: '测试连接', provider: 'openai', apiKey: 'sk-test',
+          baseUrl: 'https://api.example.com/v1', model: 'deepseek-v4-flash', maxContext: 8192,
+        }],
+      },
+    }))
+    vi.mocked(window.api.preset.list).mockResolvedValueOnce([{
+      id: 'preset-low', name: '低上限', description: '', systemPrompt: '', jailbreak: '',
+      temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0,
+      presencePenalty: 0, maxContext: 0, isBuiltin: false, responseLengthHint: 'balanced',
+    }])
+
+    render(
+      <QuickSettingsPanel
+        open onClose={vi.fn()} messages={[]} onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()} onExport={vi.fn()} onClearConfirm={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText(/低于该推理模型稳定输出正文/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '自动' })).toBeTruthy()
   })
 
   it('群聊模式提供与单聊一致的快捷设置并保存群聊级预设', async () => {

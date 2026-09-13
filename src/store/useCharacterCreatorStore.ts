@@ -15,6 +15,7 @@ import { cropAvatar, cropCoverTo34, downscaleImage } from '../utils/avatarCrop'
 import { buildCoverPrompt } from '../utils/charPrompt'
 import type { Character } from '../../shared/types'
 import type { ChatParams } from '../../shared/types'
+import { stripAllThinking } from '../../shared/thoughtMarkup'
 
 export const DRAFT_KEY = 'character-creator-draft'
 
@@ -119,9 +120,7 @@ export function buildGreetingPrompt(index: number, draft: Character, userInput?:
 /** 清理单字段 AI 输出：剥离思考块（<thought>/<thinking> 等）与元语言引导句，tags 支持 JSON 数组 */
 export function cleanFieldOutput(text: string, field?: GenerateField): string {
   if (!text) return ''
-  let out = text
-    .replace(/<thought>[\s\S]*?<\/thought>/gi, '') // 主进程包裹的推理内容（DeepSeek-R1 等）
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '') // 兜底：模型直接输出的 thinking 标签
+  let out = stripAllThinking(text)
     .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '') // 兜底：reasoning 标签
     .trim()
   // 剥离元语言引导句："好的，这是为你生成的内容：xxx"（要求到冒号才剥，避免误伤以"好的"开头的角色内容）
@@ -185,11 +184,7 @@ function extractPartialFields(text: string): Partial<Character> {
 export function parseExpandResult(text: string): Partial<Character> | null {
   if (!text) return null
   // 剥离代码块标记 + 推理内容块（<thought> 内可能含 { } 干扰 JSON 边界定位）
-  const cleaned = text
-    .replace(/```(?:json)?/gi, '')
-    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-    .trim()
+  const cleaned = stripAllThinking(text.replace(/```(?:json)?/gi, ''))
   const first = cleaned.indexOf('{')
   const last = cleaned.lastIndexOf('}')
   if (first === -1 || last === -1 || last <= first) {
@@ -294,8 +289,8 @@ function runAIChat(
     fullText += data.text
     callbacks.onChunk?.(fullText)
   })
-  const unbindDone = window.api.ai.onDone((doneId) => {
-    if (doneId !== requestId) return
+  const unbindDone = window.api.ai.onComplete((payload) => {
+    if (payload.requestId !== requestId) return
     finished = true
     unbindChunk()
     unbindDone()

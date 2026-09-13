@@ -3,6 +3,7 @@ import { runMemorySummary } from '../memoryManager'
 import { useSettingsStore } from '../useSettingsStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { MEMORY_SUMMARY_MIN } from '../chatConstants'
+import { resolveRequestBudget } from '../../../shared/modelOutputProfile'
 import type { Character, Message, ConnectionProfile, MemoryFact } from '../../../shared/types'
 
 function makeCharacter(overrides: Partial<Character> = {}): Character {
@@ -37,10 +38,12 @@ function makeMessages(count: number): Message[] {
   }))
 }
 
-/** 捕获 ai.onChunk/onDone/onError 注册的回调，供测试手动触发 */
+/** 捕获 ai.onChunk/onComplete/onError 注册的回调，供测试手动触发 */
 function captureStreamCallbacks() {
   const callbacks: {
     onChunk?: (data: { requestId: string; text: string }) => void
+    onComplete?: (payload: { requestId: string; finishReason?: string }) => void
+    /** 测试简写：以 finishReason='stop' 触发一次正常完成 */
     onDone?: (requestId: string) => void
     onError?: (data: { requestId: string; error: string }) => void
     chatParams?: { requestId: string }
@@ -49,10 +52,11 @@ function captureStreamCallbacks() {
     callbacks.onChunk = cb
     return () => {}
   })
-  ;(window.api.ai as any).onDone = vi.fn().mockImplementation((cb) => {
-    callbacks.onDone = cb
+  ;(window.api.ai as any).onComplete = vi.fn().mockImplementation((cb) => {
+    callbacks.onComplete = cb
     return () => {}
   })
+  callbacks.onDone = (requestId: string) => callbacks.onComplete?.({ requestId, finishReason: 'stop' })
   ;(window.api.ai as any).onError = vi.fn().mockImplementation((cb) => {
     callbacks.onError = cb
     return () => {}
@@ -291,13 +295,52 @@ describe('runMemorySummary 长记忆摘要', () => {
     }))
   })
 
-  it('为思考模型预留 4096 输出预算（此前 2048 会被思考吃光导致正文为空）', async () => {
+  it('S3：长记忆输出预算接入模型能力档案，不再固定 6144/8192', async () => {
     setupSettings()
     const callbacks = captureStreamCallbacks()
     const p = runMemorySummary((() => setupChatStoreState()) as any, vi.fn(), makeCharacter())
-    expect((callbacks.chatParams as any).maxTokens).toBe(4096)
+    // 非推理模型：正文预算（2500 字硬保护线） + 协议余量，请求上限低于通用安全上限 8192
+    const expected = resolveRequestBudget({ model: 'gpt-4o', hardMaxChars: 2500 })
+    expect(expected.reasoningReserve).toBe(192)
+    expect((callbacks.chatParams as any).maxTokens).toBe(expected.requestMaxTokens)
+    expect((callbacks.chatParams as any).maxTokens).toBeLessThan(8192)
+    // R1-A：撞上限时返回已产出正文，由 parseMemoryResult 容错缺段
+    // 阶段3/6：length 不再抛错，allowTruncatedOutput 字段已从契约移除
+    expect((callbacks.chatParams as any).allowTruncatedOutput).toBeUndefined()
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
+  })
+
+  it('S3：推理共享预算模型按档案获得独立推理余量', async () => {
+    setupSettings()
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, activeModel: 'deepseek-v4' },
+    }))
+    const callbacks = captureStreamCallbacks()
+    const p = runMemorySummary((() => setupChatStoreState()) as any, vi.fn(), makeCharacter())
+    const expected = resolveRequestBudget({ model: 'deepseek-v4', hardMaxChars: 2500 })
+    expect(expected.reasoningReserve).toBe(3072)
+    expect((callbacks.chatParams as any).model).toBe('deepseek-v4')
+    expect((callbacks.chatParams as any).maxTokens).toBe(expected.requestMaxTokens)
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+    await p
+  })
+
+  it('S3：finishReason=length 且事实提案被截断时仍保存摘要', async () => {
+    setupSettings()
+    const callbacks = captureStreamCallbacks()
+    const p = runMemorySummary((() => setupChatStoreState()) as any, vi.fn(), makeCharacter())
+
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({ requestId, text: '【时间线】他们抵达山脚。\n【事实提案】\n```json\n[{"subject":"艾' })
+    callbacks.onComplete!({ requestId, finishReason: 'length' })
+
+    await p
+    // 摘要与游标照常提交，事实提案部分保持旧值（不静默当作完整成功，另有日志区分）
+    expect(window.api.chat.updateSessionIfMemoryVersion).toHaveBeenCalledWith('char-1', 's1', 0, expect.objectContaining({
+      memory: '他们抵达山脚。',
+      memoryLastMessageId: 'm5',
+    }))
   })
 
   it('模型只输出【当前状态】时保留旧时间线，仍提交状态与游标', async () => {
@@ -369,6 +412,11 @@ describe('runMemorySummary 长记忆摘要', () => {
     expect(systemMsg.content).toContain('Alice')
     expect(systemMsg.content).toContain('之前的摘要')
     expect(systemMsg.content).toContain('1. 旧事实')
+    expect(systemMsg.content).toContain('“之前的当前状态”是过期快照')
+    expect(systemMsg.content).toContain('只把【待总结的新对话】中首次确立或明确改变的内容作为本轮新增事件')
+    expect(systemMsg.content).toContain('【已总结内容，仅作衔接】不得再次当作新事件')
+    expect(systemMsg.content).toContain('准确保留行动发起者、承诺者、受托者和对象')
+    expect(systemMsg.content).toContain('以新信息为准并删除冲突旧表述')
     const userMsg = messages[1]
     expect(userMsg.role).toBe('user')
     expect(userMsg.content).toContain('TestUser')

@@ -1,6 +1,7 @@
 import type { AIAdapter } from './types'
-import { normalizeThoughtTags } from './types'
-import { applyInstructTemplate } from '../../../src/utils/chatTemplates'
+import { createVendorThinkingStreamFilter, stripVendorThinking } from './types'
+import { normalizeFinishReason } from '../../../shared/generationObservation'
+import { applyInstructTemplate } from '../../../shared/chat-core/chatTemplates'
 import { toOllamaMessages, collectImages, imageErrorHint } from './vision'
 
 /** NEW-L5：按排序后的键序列化对象，保证同内容不同键序产生相同 key */
@@ -58,16 +59,17 @@ export const ollamaAdapter: AIAdapter = {
       if (!stream) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any = await response.json()
-        const content = data.response ?? ''
+        const content = stripVendorThinking(data.response ?? '')
         onChunk(content)
-        if (onUsage) {
-          onUsage({
-            promptTokens: data.prompt_eval_count ?? 0,
-            completionTokens: data.eval_count ?? 0,
-            totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
-          })
+        const usage = {
+          promptTokens: data.prompt_eval_count ?? 0,
+          completionTokens: data.eval_count ?? 0,
         }
-        return normalizeThoughtTags(content)
+        if (onUsage) {
+          onUsage({ ...usage, totalTokens: usage.promptTokens + usage.completionTokens })
+        }
+        // 阶段3契约：done_reason（stop/length）随 AICompletion 返回
+        return { text: stripVendorThinking(content), finishReason: normalizeFinishReason(data.done_reason), usage }
       }
 
       // 流式：/api/generate 返回 ndjson，每行 { response, done }
@@ -76,6 +78,8 @@ export const ollamaAdapter: AIAdapter = {
       const decoder = new TextDecoder()
       let fullText = ''
       let buffer = ''
+      const visibleTextFilter = createVendorThinkingStreamFilter()
+      let streamDoneReason: string | null = null
       try {
         while (true) {
           const { done, value } = await reader.read()
@@ -89,25 +93,36 @@ export const ollamaAdapter: AIAdapter = {
               const parsed = JSON.parse(line)
               const delta = parsed.response ?? ''
               if (delta) {
-                fullText += delta
-                onChunk(delta)
+                const visible = visibleTextFilter.push(delta)
+                if (visible) {
+                  fullText += visible
+                  onChunk(visible)
+                }
               }
-              if (parsed.done && parsed.eval_count !== undefined && onUsage) {
-                onUsage({
-                  promptTokens: parsed.prompt_eval_count ?? 0,
-                  completionTokens: parsed.eval_count ?? 0,
-                  totalTokens: (parsed.prompt_eval_count ?? 0) + (parsed.eval_count ?? 0),
-                })
+              if (parsed.done) {
+                if (parsed.done_reason) streamDoneReason = parsed.done_reason
+                if (parsed.eval_count !== undefined && onUsage) {
+                  onUsage({
+                    promptTokens: parsed.prompt_eval_count ?? 0,
+                    completionTokens: parsed.eval_count ?? 0,
+                    totalTokens: (parsed.prompt_eval_count ?? 0) + (parsed.eval_count ?? 0),
+                  })
+                }
               }
             } catch {
               // 忽略
             }
           }
         }
+        const trailingVisible = visibleTextFilter.flush()
+        if (trailingVisible) {
+          fullText += trailingVisible
+          onChunk(trailingVisible)
+        }
       } finally {
         try { reader.releaseLock() } catch { /* ignore */ }
       }
-      return normalizeThoughtTags(fullText)
+      return { text: stripVendorThinking(fullText), finishReason: normalizeFinishReason(streamDoneReason) }
     }
 
     const url = `${baseUrl.replace(/\/$/, '')}/api/chat`
@@ -151,21 +166,27 @@ export const ollamaAdapter: AIAdapter = {
     if (!stream) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data: any = await response.json()
-      const content = data.message?.content ?? ''
+      const content = stripVendorThinking(data.message?.content ?? '')
       onChunk(content)
-      if (onUsage) {
-        onUsage({
-          promptTokens: data.prompt_eval_count ?? 0,
-          completionTokens: data.eval_count ?? 0,
-          totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
-        })
+      const usage = {
+        promptTokens: data.prompt_eval_count ?? 0,
+        completionTokens: data.eval_count ?? 0,
       }
+      if (onUsage) {
+        onUsage({ ...usage, totalTokens: usage.promptTokens + usage.completionTokens })
+      }
+      // 阶段3契约：done_reason 随 AICompletion 返回
+      const finishReason = normalizeFinishReason(data.done_reason)
       // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
       const toolCalls = data.message?.tool_calls
       if (toolCalls && toolCalls.length > 0) {
-        return normalizeThoughtTags(content) + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']'
+        return {
+          text: stripVendorThinking(content) + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']',
+          finishReason: 'tool_calls',
+          usage,
+        }
       }
-      return normalizeThoughtTags(content)
+      return { text: stripVendorThinking(content), finishReason, usage }
     }
 
     const reader = response.body?.getReader()
@@ -173,6 +194,8 @@ export const ollamaAdapter: AIAdapter = {
     const decoder = new TextDecoder()
     let fullText = ''
     let buffer = ''
+    const visibleTextFilter = createVendorThinkingStreamFilter()
+    let streamDoneReason: string | null = null
     // C-03 修复：收集流式 tool_calls
     // BUG-27 修复：去重累积而非覆盖——流式分片时可能重复发送完整列表，
     // 也可能增量发送新增调用，覆盖会丢失中间分片
@@ -193,8 +216,11 @@ export const ollamaAdapter: AIAdapter = {
           const parsed = JSON.parse(line)
           const delta = parsed.message?.content ?? ''
           if (delta) {
-            fullText += delta
-            onChunk(delta)
+            const visible = visibleTextFilter.push(delta)
+            if (visible) {
+              fullText += visible
+              onChunk(visible)
+            }
           }
           // C-03 修复：收集 tool_calls（去重累积，兼容分片/重复发送）
           if (parsed.message?.tool_calls) {
@@ -211,26 +237,39 @@ export const ollamaAdapter: AIAdapter = {
             }
           }
           // 最后一条消息（done: true）含统计信息
-          if (parsed.done && parsed.eval_count !== undefined && onUsage) {
-            onUsage({
-              promptTokens: parsed.prompt_eval_count ?? 0,
-              completionTokens: parsed.eval_count ?? 0,
-              totalTokens: (parsed.prompt_eval_count ?? 0) + (parsed.eval_count ?? 0),
-            })
+          if (parsed.done) {
+            if (parsed.done_reason) streamDoneReason = parsed.done_reason
+            if (parsed.eval_count !== undefined && onUsage) {
+              onUsage({
+                promptTokens: parsed.prompt_eval_count ?? 0,
+                completionTokens: parsed.eval_count ?? 0,
+                totalTokens: (parsed.prompt_eval_count ?? 0) + (parsed.eval_count ?? 0),
+              })
+            }
           }
         } catch {
           // 忽略
         }
       }
     }
+    const trailingVisible = visibleTextFilter.flush()
+    if (trailingVisible) {
+      fullText += trailingVisible
+      onChunk(trailingVisible)
+    }
     } finally {
       try { reader.releaseLock() } catch { /* ignore */ }
     }
+    // 阶段3契约：done_reason 随 AICompletion 返回
+    const finishReason = normalizeFinishReason(streamDoneReason)
     // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
     if (streamedToolCalls.length > 0) {
-      return normalizeThoughtTags(fullText) + '[TOOL_CALL:' + JSON.stringify(streamedToolCalls) + ']'
+      return {
+        text: stripVendorThinking(fullText) + '[TOOL_CALL:' + JSON.stringify(streamedToolCalls) + ']',
+        finishReason: 'tool_calls',
+      }
     }
-    return normalizeThoughtTags(fullText)
+    return { text: stripVendorThinking(fullText), finishReason }
   },
 
   async listModels(baseUrl, _apiKey) {

@@ -1,5 +1,7 @@
 import type { AIAdapter } from './types'
-import { normalizeThoughtTags } from './types'
+import { createVendorThinkingStreamFilter, stripVendorThinking } from './types'
+import { normalizeFinishReason } from '../../../shared/generationObservation'
+import type { AICompletion } from '../../../shared/types'
 import { parseImageDataUrl, imageErrorHint } from './vision'
 
 export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, onUsage) {
@@ -77,7 +79,7 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawToolCalls: any[] = []
       for (const part of parts) {
-        if (part.text) text += part.text
+        if (part.text && part.thought !== true) text += part.text
         else if (part.functionCall) {
           rawToolCalls.push({
             id: `gemini-${nextGeminiCallId()}`,
@@ -86,19 +88,29 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
           })
         }
       }
+      text = stripVendorThinking(text)
       onChunk(text)
-      if (onUsage && data.usageMetadata) {
-        onUsage({
-          promptTokens: data.usageMetadata.promptTokenCount ?? 0,
-          completionTokens: data.usageMetadata.candidatesTokenCount ?? 0,
-          totalTokens: data.usageMetadata.totalTokenCount ?? 0,
-        })
+      const usage = data.usageMetadata
+        ? {
+            promptTokens: data.usageMetadata.promptTokenCount ?? 0,
+            completionTokens: data.usageMetadata.candidatesTokenCount ?? 0,
+            reasoningTokens: data.usageMetadata.thoughtsTokenCount as number | undefined,
+          }
+        : undefined
+      if (usage && onUsage) {
+        onUsage({ ...usage, totalTokens: data.usageMetadata.totalTokenCount ?? 0 })
       }
+      // 阶段3契约：STOP/MAX_TOKENS/SAFETY 等随 AICompletion 返回
+      const finishReason = normalizeFinishReason(data.candidates?.[0]?.finishReason)
       // C-03 修复：如有 functionCall，附加标记供 toolLoop 解析
       if (rawToolCalls.length > 0) {
-        return normalizeThoughtTags(text) + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']'
+        return {
+          text: stripVendorThinking(text) + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']',
+          finishReason: 'tool_calls',
+          usage,
+        }
       }
-      return normalizeThoughtTags(text)
+      return { text: stripVendorThinking(text), finishReason, usage }
     }
 
     // 修复 #38: 改进的 Gemini 流式解析
@@ -108,6 +120,15 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
     const decoder = new TextDecoder()
     let fullText = ''
     let buffer = ''
+    const visibleTextFilter = createVendorThinkingStreamFilter()
+    let streamFinishReason: string | null = null
+    let streamUsage: AICompletion['usage'] | undefined
+    const emitVisibleText = (text: string) => {
+      const visible = visibleTextFilter.push(text)
+      if (!visible) return
+      fullText += visible
+      onChunk(visible)
+    }
 
     // 优先按 SSE 格式解析（alt=sse 时）
     const isSSE = response.headers.get('content-type')?.includes('text/event-stream')
@@ -132,11 +153,11 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
             if (!data) continue
             try {
               const parsed = JSON.parse(data)
+              if (parsed.candidates?.[0]?.finishReason) streamFinishReason = parsed.candidates[0].finishReason
               const parts = parsed.candidates?.[0]?.content?.parts ?? []
               for (const part of parts) {
-                if (part.text) {
-                  fullText += part.text
-                  onChunk(part.text)
+                if (part.text && part.thought !== true) {
+                  emitVisibleText(part.text)
                 } else if (part.functionCall) {
                   const fn = part.functionCall
                   const idx = `gemini-fn-${nextGeminiCallId()}`
@@ -148,12 +169,14 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
                 }
               }
               // 解析 usage（每个 chunk 都可能含 usageMetadata，取最后一次）
-              if (parsed.usageMetadata && onUsage) {
-                onUsage({
+              if (parsed.usageMetadata) {
+                const usage = {
                   promptTokens: parsed.usageMetadata.promptTokenCount ?? 0,
                   completionTokens: parsed.usageMetadata.candidatesTokenCount ?? 0,
-                  totalTokens: parsed.usageMetadata.totalTokenCount ?? 0,
-                })
+                  reasoningTokens: parsed.usageMetadata.thoughtsTokenCount as number | undefined,
+                }
+                onUsage?.({ ...usage, totalTokens: parsed.usageMetadata.totalTokenCount ?? 0 })
+                streamUsage = usage
               }
             } catch { /* 忽略 */ }
           }
@@ -166,9 +189,8 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
         for (const obj of parseResult.objects) {
           const parts = obj.candidates?.[0]?.content?.parts ?? []
           for (const part of parts) {
-            if (part.text) {
-              fullText += part.text
-              onChunk(part.text)
+            if (part.text && part.thought !== true) {
+              emitVisibleText(part.text)
             } else if (part.functionCall) {
               const fn = part.functionCall
               const idx = `gemini-fn-${nextGeminiCallId()}`
@@ -179,13 +201,16 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
               })
             }
           }
+          if (obj.candidates?.[0]?.finishReason) streamFinishReason = obj.candidates[0].finishReason
           // 解析 usage（取最后一次）
-          if (obj.usageMetadata && onUsage) {
-            onUsage({
+          if (obj.usageMetadata) {
+            const usage = {
               promptTokens: obj.usageMetadata.promptTokenCount ?? 0,
               completionTokens: obj.usageMetadata.candidatesTokenCount ?? 0,
-              totalTokens: obj.usageMetadata.totalTokenCount ?? 0,
-            })
+              reasoningTokens: obj.usageMetadata.thoughtsTokenCount as number | undefined,
+            }
+            onUsage?.({ ...usage, totalTokens: obj.usageMetadata.totalTokenCount ?? 0 })
+            streamUsage = usage
           }
         }
       }
@@ -197,9 +222,8 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       for (const obj of parseResult.objects) {
         const parts = obj.candidates?.[0]?.content?.parts ?? []
         for (const part of parts) {
-          if (part.text) {
-            fullText += part.text
-            onChunk(part.text)
+          if (part.text && part.thought !== true) {
+            emitVisibleText(part.text)
           } else if (part.functionCall) {
             const fn = part.functionCall
             const idx = `gemini-fn-${nextGeminiCallId()}`
@@ -210,25 +234,39 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
             })
           }
         }
+        if (obj.candidates?.[0]?.finishReason) streamFinishReason = obj.candidates[0].finishReason
         // 解析 usage（取最后一次）
-        if (obj.usageMetadata && onUsage) {
-          onUsage({
+        if (obj.usageMetadata) {
+          const usage = {
             promptTokens: obj.usageMetadata.promptTokenCount ?? 0,
             completionTokens: obj.usageMetadata.candidatesTokenCount ?? 0,
-            totalTokens: obj.usageMetadata.totalTokenCount ?? 0,
-          })
+            reasoningTokens: obj.usageMetadata.thoughtsTokenCount as number | undefined,
+          }
+          onUsage?.({ ...usage, totalTokens: obj.usageMetadata.totalTokenCount ?? 0 })
+          streamUsage = usage
         }
       }
+    }
+    const trailingVisible = visibleTextFilter.flush()
+    if (trailingVisible) {
+      fullText += trailingVisible
+      onChunk(trailingVisible)
     }
     } finally {
       try { reader.releaseLock() } catch { /* ignore */ }
     }
+    // 阶段3契约：结束原因随 AICompletion 返回
+    const finishReason = normalizeFinishReason(streamFinishReason)
     // C-03 修复：如有 functionCall，附加标记供 toolLoop 解析
     if (geminiFnCalls.size > 0) {
       const toolCallsArray = Array.from(geminiFnCalls.values())
-      return normalizeThoughtTags(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+      return {
+        text: stripVendorThinking(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']',
+        finishReason: 'tool_calls',
+        usage: streamUsage,
+      }
     }
-    return normalizeThoughtTags(fullText)
+    return { text: stripVendorThinking(fullText), finishReason, usage: streamUsage }
   },
 
   async listModels(baseUrl, apiKey) {

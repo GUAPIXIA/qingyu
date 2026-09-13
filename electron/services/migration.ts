@@ -13,13 +13,17 @@
 
 import { getDefaultSettings } from '../../shared/defaults'
 import type { Settings } from '../../shared/types'
+import { nanoid } from 'nanoid'
 import { normalizeComfyWorkflow, analyzeComfyWorkflow } from './comfyWorkflow'
+import { createLogger } from './logger'
+
+const log = createLogger('migration')
 
 export type DataDomain = 'settings' | 'characters' | 'lorebooks' | 'sessions'
 
 /** 各数据域当前最新版本号 */
 const LATEST_VERSION: Record<DataDomain, number> = {
-  settings: 2,
+  settings: 3,
   characters: 1,
   lorebooks: 1,
   sessions: 2,
@@ -43,6 +47,11 @@ const MIGRATIONS: Record<DataDomain, Migration[]> = {
       from: 1,
       to: 2,
       run: migrateSettingsV1ToV2,
+    },
+    {
+      from: 2,
+      to: 3,
+      run: migrateSettingsV2ToV3,
     },
   ],
   characters: [],
@@ -79,15 +88,15 @@ function migrateSessionsObjectToArray(data: unknown): unknown {
   return data
 }
 
-/** 读取旧 settings 时补齐缺失的顶层字段默认值（旧版没有的字段用默认配置填充） */
+/** 读取旧 settings 时补齐缺失的顶层字段默认值（旧版没有的字段用默认配置填充）。
+ *  从 defaults 移出字段（如 activeProvider）后仍原样透传旧键——迁移不得丢数据。 */
 function migrateSettingsV0ToV1(data: unknown): unknown {
-  const raw = (data ?? {}) as Partial<Settings>
+  const raw = { ...(data ?? {}) } as Record<string, unknown>
   const defaults = getDefaultSettings()
-  const merged: Record<string, unknown> = {}
   for (const [key, defValue] of Object.entries(defaults)) {
-    merged[key] = raw[key as keyof Settings] === undefined ? defValue : raw[key as keyof Settings]
+    if (raw[key as keyof Settings] === undefined) raw[key as keyof Settings] = defValue
   }
-  return merged
+  return raw
 }
 
 /**
@@ -147,6 +156,172 @@ function migrateSettingsV1ToV2(data: unknown): unknown {
       return model
     }
   })
+
+  return raw
+}
+
+// ===================== 迁移链的凭据访问（settings v2 → v3） =====================
+
+/**
+ * settings v2→v3 的旧 provider → connectionProfiles 迁移需要读旧凭据、
+ * 并把新档案的凭据写回 safeStorage。这里用注入而非直接 import：
+ * safeStorage → storage → migration 会形成循环依赖。
+ * 主进程在 electron/ipc/settings.ts 加载时注册；未注册时该迁移推迟
+ * （抛错 → migrateData 返回 null → 下次读取重试），避免凭据丢失。
+ */
+export interface MigrationCredentialAccess {
+  get(provider: string): string | null
+  save(provider: string, key: string): void
+}
+
+let credentialAccess: MigrationCredentialAccess | null = null
+
+/** 注册/清除迁移链的凭据访问实现（传 null 恢复未注册态） */
+export function setMigrationCredentialAccess(access: MigrationCredentialAccess | null): void {
+  credentialAccess = access
+}
+
+/**
+ * settings v2 → v3：旧版单字段模型配置收敛（原渲染层启动探测迁移并链，B2）。
+ *
+ * 处理内容（与迁移前渲染层行为一致，幂等）：
+ * 1. connectionProfiles 为空且存在旧 providers 配置时，按旧凭据创建连接档案；
+ *    凭据迁到 safeStorage 的 `profile-<id>`，settings.json 不落明文（H1）；
+ * 2. ttsProvider/ttsVoice/ttsModel、imageGenModel、visionModel 单字段 → 模型数组；
+ * 3. 删除已废弃字段 ttsProvider / ttsVoice / ttsModel / visionModel / imageGenModel / authorNote；
+ * 4. 存量 TTS provider 'edge' 统一为 'system'。
+ *
+ * 幂等：迁移后的数据再次执行不改动任何字段（数组已存在、废弃字段已删除）。
+ */
+function migrateSettingsV2ToV3(data: unknown): unknown {
+  const raw = { ...(data as Record<string, unknown>) }
+
+  // 1) 旧 providers → connectionProfiles（凭据依赖 safeStorage；未注册访问时推迟整个迁移）
+  const providers = raw.providers
+  const profiles = Array.isArray(raw.connectionProfiles) ? raw.connectionProfiles : []
+  if (profiles.length === 0 && providers && typeof providers === 'object') {
+    if (!credentialAccess) {
+      throw new Error('settings v2→v3 迁移需要凭据访问：等待主进程注册后重试')
+    }
+    const defaultMaxContext: Record<string, number> = { openai: 131072, claude: 200000, gemini: 1048576, ollama: 8192 }
+    const names: Record<string, string> = { openai: 'OpenAI', claude: 'Claude', gemini: 'Gemini', ollama: 'Ollama' }
+    const nextProfiles: Array<Record<string, unknown>> = []
+    for (const provider of ['openai', 'claude', 'gemini', 'ollama']) {
+      const cfg = (providers as Record<string, unknown>)[provider]
+      if (!cfg || typeof cfg !== 'object') continue
+      const key = credentialAccess.get(provider) ?? ''
+      // 与迁移前渲染层一致：无凭据且非 ollama 的 provider 不建档案
+      if (!key && provider !== 'ollama') continue
+      const id = nanoid()
+      if (key) {
+        try {
+          credentialAccess.save(`profile-${id}`, key)
+        } catch (e) {
+          // 加密不可用时保留旧凭据（仍在 credentials.json 的 provider 名下），档案先建为空 key
+          log.warn('旧 provider 凭据迁移进 safeStorage 失败，档案将不含密钥', { provider, error: (e as Error).message })
+        }
+      }
+      nextProfiles.push({
+        id,
+        name: names[provider] ?? provider,
+        provider,
+        baseUrl: (cfg as { baseUrl?: unknown }).baseUrl ?? '',
+        model: (cfg as { model?: unknown }).model ?? '',
+        apiKey: '',
+        maxContext: defaultMaxContext[provider] ?? 8192,
+      })
+    }
+    if (nextProfiles.length > 0) {
+      raw.connectionProfiles = nextProfiles
+      if (!raw.activeProfileId) raw.activeProfileId = nextProfiles[0].id
+    }
+  }
+
+  const legacy = raw as {
+    ttsProvider?: unknown
+    ttsVoice?: unknown
+    ttsModel?: unknown
+    visionModel?: unknown
+    imageGenModel?: unknown
+  }
+
+  // 2) TTS 单字段 → 数组；存量 'edge' → 'system'
+  const ttsModels = raw.ttsModels
+  if (!Array.isArray(ttsModels) || ttsModels.length === 0) {
+    if (typeof legacy.ttsModel === 'string' || typeof legacy.ttsProvider === 'string') {
+      const id = nanoid()
+      raw.ttsModels = [{
+        id,
+        name: '默认 TTS',
+        // 旧值 edge 迁移为 system（3.2-A：系统语音引擎）
+        provider: legacy.ttsProvider === 'openai' ? 'openai' : 'system',
+        model: typeof legacy.ttsModel === 'string' ? legacy.ttsModel : 'tts-1',
+        voice: typeof legacy.ttsVoice === 'string' ? legacy.ttsVoice : '',
+        apiKey: '',
+        baseUrl: 'https://api.openai.com/v1',
+        enabled: true,
+        order: 0,
+      }]
+      raw.activeTTSModelId = id
+    } else {
+      raw.ttsModels = []
+    }
+  } else {
+    raw.ttsModels = ttsModels.map((model) =>
+      model && typeof model === 'object' && (model as { provider?: unknown }).provider === 'edge'
+        ? { ...(model as Record<string, unknown>), provider: 'system' }
+        : model,
+    )
+  }
+
+  // 3) 生图单字段 → 数组
+  const imageGenModels = raw.imageGenModels
+  if (!Array.isArray(imageGenModels) || imageGenModels.length === 0) {
+    if (typeof legacy.imageGenModel === 'string' && legacy.imageGenModel) {
+      const id = nanoid()
+      raw.imageGenModels = [{
+        id,
+        name: '默认生图',
+        provider: 'openai',
+        model: legacy.imageGenModel,
+        apiKey: '',
+        baseUrl: '',
+        size: '1024x1024',
+        quality: 'standard',
+        enabled: true,
+        order: 0,
+      }]
+      raw.activeImageGenModelId = id
+    } else {
+      raw.imageGenModels = []
+    }
+  }
+
+  // 4) 识图单字段 → 数组
+  const visionModels = raw.visionModels
+  if (!Array.isArray(visionModels) || visionModels.length === 0) {
+    if (typeof legacy.visionModel === 'string' && legacy.visionModel) {
+      const id = nanoid()
+      raw.visionModels = [{
+        id,
+        name: '默认识图',
+        model: legacy.visionModel,
+        enabled: true,
+        order: 0,
+      }]
+      raw.activeVisionModelId = id
+    } else {
+      raw.visionModels = []
+    }
+  }
+
+  // 5) 删除废弃字段
+  delete raw.ttsProvider
+  delete raw.ttsVoice
+  delete raw.ttsModel
+  delete raw.visionModel
+  delete raw.imageGenModel
+  delete raw.authorNote
 
   return raw
 }

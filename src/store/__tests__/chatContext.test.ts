@@ -144,7 +144,7 @@ describe('buildChatContext', () => {
 
   it('系统提示包含角色设定 / 人设 / 心理描写格式要求', () => {
     const char = makeChar()
-    const ctx = buildChatContext(makeGet(), vi.fn(), char, null)
+    const ctx = buildChatContext(makeGet(), vi.fn(), char, null).messages
     const system = ctx[0]
     expect(system.role).toBe('system')
     expect(system.content).toContain('【角色设定】')
@@ -159,7 +159,7 @@ describe('buildChatContext', () => {
     const updateSession = vi.mocked(window.api.chat.updateSession)
     const session = makeSession({ recentTriggeredIds: [['lb1:old']] })
     const get = makeGet({ sessions: [session], activeLorebookIds: [] })
-    buildChatContext(get, vi.fn(), makeChar(), null)
+    expect(buildChatContext(get, vi.fn(), makeChar(), null).messages).toBeDefined()
     expect(updateSession).toHaveBeenCalledWith('c1', 's1', expect.objectContaining({
       recentTriggeredIds: [['lb1:old'], []],
     }))
@@ -175,7 +175,7 @@ describe('buildChatContext', () => {
       sessions: [makeSession({ messageCount: 1 })],
       messages: [makeMsg({ content: '事件' })],
     })
-    buildChatContext(get, vi.fn(), makeChar(), null)
+    expect(buildChatContext(get, vi.fn(), makeChar(), null).messages).toBeDefined()
     expect(updateSession).toHaveBeenCalledWith('c1', 's1', expect.objectContaining({
       lorebookTimedEffects: {
         sticky: { 'lb1:e-lb1': expect.objectContaining({ start: 1, end: 4 }) },
@@ -192,7 +192,7 @@ describe('buildChatContext', () => {
       // 注：单字 CJK 关键词要求命中处前后均为标点/边界（防误触发设计），需独立出现
       messages: [makeMsg({ id: 'm1', role: 'assistant', content: '我家的宠物：猫。' })],
     })
-    const ctx = buildChatContext(get, vi.fn(), char, null)
+    const ctx = buildChatContext(get, vi.fn(), char, null).messages
     const system = ctx[0].content
     const lorePos = system.indexOf('猫娘是世界的瑰宝')
     const charTitlePos = system.indexOf('【角色设定】')
@@ -211,7 +211,7 @@ describe('buildChatContext', () => {
     })
     const set = vi.fn()
 
-    buildChatContext(get, set, makeChar(), null)
+    expect(buildChatContext(get, set, makeChar(), null).messages).toBeDefined()
 
     expect(set).toHaveBeenCalledWith(expect.objectContaining({
       lastLorebookDiagnosticsSessionId: 's1',
@@ -231,7 +231,7 @@ describe('buildChatContext', () => {
       sessions: [makeSession({ messageCount: 1 })],
       messages: [makeMsg({ content: '事件' })],
     })
-    const context = buildChatContext(get, vi.fn(), makeChar(), null)
+    const context = buildChatContext(get, vi.fn(), makeChar(), null).messages
     expect(context.map((item) => item.content).join('\n')).not.toContain('不应注入')
   })
 
@@ -245,7 +245,7 @@ describe('buildChatContext', () => {
         makeMsg({ id: 'm2', role: 'assistant', content: '真可爱', timestamp: 2000 }),
       ],
     })
-    const ctx = buildChatContext(get, vi.fn(), char, null)
+    const ctx = buildChatContext(get, vi.fn(), char, null).messages
     // depth 0 = 对话末尾：注入在最后一条历史消息之后
     const lastAssistantIdx = ctx.map(c => c.content).lastIndexOf('真可爱')
     expect(lastAssistantIdx).toBeGreaterThan(-1)
@@ -263,7 +263,7 @@ describe('buildChatContext', () => {
     const get = makeGet({ messages, sessions: [makeSession()] })
     const set = vi.fn()
     // maxContext 2000 → budgetBase ≈ max((2000-1024)*0.95, 500) = 927 tokens
-    const ctx = buildChatContext(get, set, char, { id: 'pr1', name: 'P', description: '', systemPrompt: '', jailbreak: '', maxContext: 2000, temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false })
+    const ctx = buildChatContext(get, set, char, { id: 'pr1', name: 'P', description: '', systemPrompt: '', jailbreak: '', maxContext: 2000, temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false }).messages
     // 保留的历史消息数应远小于 40
     const historyCount = ctx.filter(c => c.role === 'user' || c.role === 'assistant').length
     expect(historyCount).toBeLessThan(40)
@@ -284,10 +284,10 @@ describe('buildChatContext', () => {
       makeMsg({ id: `preview-${i}`, role: i % 2 === 0 ? 'user' : 'assistant', content: longText, timestamp: 1000 + i }),
     )
     const get = makeGet({ messages, sessions: [makeSession()] })
-    buildChatContext(get, vi.fn(), makeChar(), {
+    expect(buildChatContext(get, vi.fn(), makeChar(), {
       id: 'pr-preview', name: 'P', description: '', systemPrompt: '', jailbreak: '', maxContext: 2000,
       temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false,
-    }, { trackUsage: false })
+    }, { trackUsage: false }).messages).toBeDefined()
     expect(markPendingCompression).not.toHaveBeenCalled()
   })
 
@@ -303,7 +303,7 @@ describe('buildChatContext', () => {
       compressedRange: { startTs: 0, endTs: 999999 },
     })
     const get = makeGet({ messages, sessions: [session] })
-    const ctx = buildChatContext(get, vi.fn(), char, { id: 'pr1', name: 'P', description: '', systemPrompt: '', jailbreak: '', maxContext: 2000, temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false })
+    const ctx = buildChatContext(get, vi.fn(), char, { id: 'pr1', name: 'P', description: '', systemPrompt: '', jailbreak: '', maxContext: 2000, temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false }).messages
     const systemMsgs = ctx.filter(c => c.role === 'system').map(c => c.content).join('\n')
     expect(systemMsgs).toContain('【早期对话压缩摘要】')
     expect(systemMsgs).toContain('之前他们在图书馆相遇并讨论了古书。')
@@ -318,7 +318,7 @@ describe('buildChatContext', () => {
         makeMsg({ id: 'm2', role: 'assistant', content: '收到', images: ['data:image/png;base64,BBB'], timestamp: 2000 }),
       ],
     })
-    const ctx = buildChatContext(get, vi.fn(), char, null)
+    const ctx = buildChatContext(get, vi.fn(), char, null).messages
     const userMsg = ctx.find(c => c.role === 'user' && c.content === '看这张图')
     const assistantMsg = ctx.find(c => c.role === 'assistant' && c.content === '收到')
     expect(userMsg?.images).toEqual(['data:image/png;base64,AAA'])
@@ -333,7 +333,7 @@ describe('buildChatContext', () => {
         makeMsg({ id: 'm2', role: 'assistant', content: '你好呀', timestamp: 2000 }),
       ],
     })
-    const ctx = buildChatContext(get, vi.fn(), char, null, { continuation: true })
+    const ctx = buildChatContext(get, vi.fn(), char, null, { continuation: true }).messages
     expect(ctx.some(c => c.content.includes('请直接接续上一段内容的结尾继续写作'))).toBe(true)
     // 末尾不应是空 assistant 消息
     const last = ctx[ctx.length - 1]
@@ -343,7 +343,7 @@ describe('buildChatContext', () => {
   it('示例对话 after_system 模式注入', () => {
     const char = makeChar({ exampleDialog: '<START>\n{{user}}: 你好\n{{char}}: 晚上好' })
     setupSettings({ exampleDialogPosition: 'after_system', exampleDialogMode: 'always' })
-    const ctx = buildChatContext(makeGet(), vi.fn(), char, null)
+    const ctx = buildChatContext(makeGet(), vi.fn(), char, null).messages
     // 连续 system 消息会被 mergeConsecutiveMessages 合并进首条系统提示
     expect(ctx[0].role).toBe('system')
     expect(ctx[0].content).toContain('【对话示例】')
@@ -353,7 +353,7 @@ describe('buildChatContext', () => {
     const char = makeChar({
       authorNote: { enabled: true, text: '场景正在下雨', position: 'top', depth: 0 },
     })
-    const ctx = buildChatContext(makeGet(), vi.fn(), char, null)
+    const ctx = buildChatContext(makeGet(), vi.fn(), char, null).messages
     const anMsg = ctx.find(c => c.content === '场景正在下雨')
     expect(anMsg).toBeDefined()
     expect(anMsg!.keepSeparate).toBe(true)
@@ -367,7 +367,7 @@ describe('buildChatContext', () => {
       // 单字关键词要求边界：独立出现可命中
       messages: [makeMsg({ id: 'm1', role: 'user', content: '天气：雨。' })],
     })
-    const ctx = buildChatContext(get, vi.fn(), char, null)
+    const ctx = buildChatContext(get, vi.fn(), char, null).messages
     expect(ctx[0].content).toContain('雨夜规则')
   })
 
@@ -385,7 +385,7 @@ describe('buildChatContext', () => {
         { content: '低分语义条目', order: 1, position: 'before_char', score: 0.1, key: 'low:e-low' },
       ],
     })
-    const ctx = buildChatContext(get, vi.fn(), makeChar(), null, { trackUsage: false })
+    const ctx = buildChatContext(get, vi.fn(), makeChar(), null, { trackUsage: false }).messages
     const system = ctx[0].content
     expect(system.indexOf('高分语义条目')).toBeLessThan(system.indexOf('低分语义条目'))
   })

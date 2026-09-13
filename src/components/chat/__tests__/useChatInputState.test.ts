@@ -173,8 +173,8 @@ describe('useChatInputState', () => {
       onChunk = callback
       return vi.fn()
     })
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      onDone = callback
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      onDone = (requestId) => callback({ requestId, finishReason: 'stop' })
       return vi.fn()
     })
     vi.mocked(window.api.ai.onError).mockImplementation(() => vi.fn())

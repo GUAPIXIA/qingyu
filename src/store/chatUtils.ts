@@ -4,6 +4,8 @@ import { logWarn } from '../lib/logger'
 import { estimateTokens } from '../utils/tokenCounter'
 import type { LorebookCompressionRequest } from '../utils/lorebook'
 import type { Character, SessionPreview, LorebookCompressionCacheEntry, ProviderType } from '../../shared/types'
+import { stripAllThinking } from '../../shared/thoughtMarkup'
+import { resolveDefaultGroupMemoryConfig, resolveDefaultMemoryConfig } from '../../shared/defaultMemory'
 
 /** 防止会话加载竞态的请求计数器（模块级，跨调用共享） */
 export let loadRequestId = 0
@@ -60,27 +62,19 @@ export function syncPersonaToSettings(personaId?: string | null): void {
  */
 export async function applyDefaultMemory(character: Character | null | undefined, sessionId: string): Promise<void> {
   if (!character) return
-  const globalDefaultEnabled = useSettingsStore.getState().settings.defaultMemoryEnabled ?? false
-  const useCharacterDefaults = character.defaultMemoryEnabled === true
-  if (!useCharacterDefaults && !globalDefaultEnabled) return
+  const cfg = resolveDefaultMemoryConfig(useSettingsStore.getState().settings, character)
+  if (!cfg.memoryEnabled) return
   try {
-    await window.api.chat.updateSession(character.id, sessionId, {
-      memoryEnabled: true,
-      memoryMode: useCharacterDefaults ? (character.defaultMemoryMode ?? 'auto') : 'auto',
-      autoMemoryInterval: useCharacterDefaults ? (character.defaultMemoryInterval ?? 10) : 10,
-    })
+    await window.api.chat.updateSession(character.id, sessionId, { ...cfg })
   } catch { /* 忽略 */ }
 }
 
 /** 将全局默认长记忆配置应用到新建群聊。 */
 export async function applyDefaultGroupMemory(groupId: string, sessionId: string): Promise<void> {
-  if (!(useSettingsStore.getState().settings.defaultMemoryEnabled ?? false)) return
+  const cfg = resolveDefaultGroupMemoryConfig(useSettingsStore.getState().settings)
+  if (!cfg.memoryEnabled) return
   try {
-    await window.api.group.updateSession(groupId, sessionId, {
-      memoryEnabled: true,
-      memoryMode: 'auto',
-      autoMemoryInterval: 10,
-    })
+    await window.api.group.updateSession(groupId, sessionId, { ...cfg })
   } catch { /* 忽略 */ }
 }
 
@@ -257,7 +251,7 @@ export async function compressLorebookOverflow(
         model: conn.model,
       })
       // 去除思考标签与空白；空结果或超出目标均不写缓存，避免下一轮重复命中无效结果。
-      const summary = String(raw ?? '').replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const summary = stripAllThinking(String(raw ?? ''))
       if (!summary || estimateTokens(summary, conn.model) > request.targetTokens) return null
       const now = Date.now()
       return {

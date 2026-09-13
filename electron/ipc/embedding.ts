@@ -18,7 +18,7 @@ import { safeId } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
 import type { Lorebook, LoreEntry } from '../../shared/types'
 import type { VectorIndex, VectorSpace } from '../services/vectorStore'
-import { topKSimilar } from '../../src/utils/vector'
+import { topKSimilar } from '../../shared/chat-core/vector'
 import { getLocalModelManager } from './localModels'
 
 const log = createLogger('embedding-ipc')

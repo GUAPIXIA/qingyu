@@ -35,6 +35,7 @@ describe('ContextService', () => {
     expect(ctx.messages.length).toBeGreaterThan(0)
     expect(ctx.fingerprint).toMatch(/^[a-f0-9]{16}$/)
     expect(ctx.model.provider).toBe('openai')
+    expect(ctx.requestMaxTokens).toBeGreaterThan(1024)
   })
 
   it('角色不存在抛错', async () => {

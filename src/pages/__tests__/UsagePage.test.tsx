@@ -37,7 +37,7 @@ Object.defineProperty(window, 'api', {
       list: vi.fn(async () => []),
     },
     ai: {
-      onDone: vi.fn(() => vi.fn()),
+      onComplete: vi.fn(() => vi.fn()),
     },
   },
 })

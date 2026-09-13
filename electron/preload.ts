@@ -32,8 +32,7 @@ import type { LocalModelAPI } from '../shared/localModels'
 // ---- AI 调用 ----
 const aiApi: AIAPI = {
   chat: (params) => ipcRenderer.invoke('ai:chat', params),
-  cancelChat: (requestId) => ipcRenderer.invoke('ai:cancel', requestId),
-  testConnection: (config) => ipcRenderer.invoke('ai:testConnection', config),
+  cancelChat: (requestId, reason) => ipcRenderer.invoke('ai:cancel', requestId, reason),  testConnection: (config) => ipcRenderer.invoke('ai:testConnection', config),
   listModels: (provider, baseUrl, apiKey) => ipcRenderer.invoke('ai:listModels', provider, baseUrl, apiKey),
   countTokens: (text, model) => ipcRenderer.invoke('ai:countTokens', text, model),
   countMessagesTokens: (messages, model) => ipcRenderer.invoke('ai:countMessagesTokens', messages, model),
@@ -44,8 +43,9 @@ const aiApi: AIAPI = {
     ipcRenderer.on(IPC_EVENTS.aiChunk, handler)
     return () => ipcRenderer.removeListener(IPC_EVENTS.aiChunk, handler)
   },
-  onDone: (callback) => {
-    const handler = (_e: unknown, requestId: string) => callback(requestId)
+  onComplete: (callback) => {
+    // 阶段3：结构化完成事件（finishReason + usage）
+    const handler = (_e: unknown, data: { requestId: string; finishReason: import('../shared/types').AIFinishReason; usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number } }) => callback(data)
     ipcRenderer.on(IPC_EVENTS.aiDone, handler)
     return () => ipcRenderer.removeListener(IPC_EVENTS.aiDone, handler)
   },
@@ -179,7 +179,6 @@ const lorebookApi: LorebookAPI = {
   list: () => ipcRenderer.invoke('lorebook:list'),
   save: (lorebook, expectedRevision) => ipcRenderer.invoke('lorebook:save', lorebook, expectedRevision),
   delete: (id) => ipcRenderer.invoke('lorebook:delete', id),
-  importJson: () => ipcRenderer.invoke('lorebook:importJson'),
   importJsonDetailed: (options) => ipcRenderer.invoke('lorebook:importJsonDetailed', options),
   exportJson: (id, adapterId) => ipcRenderer.invoke('lorebook:exportJson', id, adapterId),
   openMappingSource: () => ipcRenderer.invoke('lorebook:openMappingSource'),

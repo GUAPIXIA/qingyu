@@ -202,7 +202,7 @@ export class ChatOrchestrator {
 
       try {
         modelResult = await this.deps.modelPort.stream(
-          { messages: ctx.messages, model: ctx.model.model, provider: ctx.model.provider, apiKey: ctx.model.apiKey, baseUrl: ctx.model.baseUrl },
+          { messages: ctx.messages, model: ctx.model.model, provider: ctx.model.provider, maxTokens: ctx.requestMaxTokens, apiKey: ctx.model.apiKey, baseUrl: ctx.model.baseUrl },
           {
             onChunk: (delta) => {
               accumulated += delta
@@ -259,6 +259,7 @@ export class ChatOrchestrator {
               narrativeMode: session.narrativeMode,
               speakerKind: 'character',
               generationKind: command.type === 'continue' ? 'message_continue' : 'assistant_reply',
+              contentRenderMode: 'blocks',
             })
             updateTask(taskId, (s) => ({ ...s, assistantMessageId: assistantId, accumulatedText: finalText, updatedAt: Date.now() }))
           }
@@ -357,6 +358,7 @@ export class ChatOrchestrator {
           narrativeMode: session.narrativeMode,
           speakerKind: 'character',
           generationKind: command.type === 'continue' ? 'message_continue' : 'assistant_reply',
+          contentRenderMode: 'blocks',
         })
         updateTask(taskId, (s) => ({ ...s, assistantMessageId: assistantId, accumulatedText: finalText, updatedAt: Date.now() }))
       }

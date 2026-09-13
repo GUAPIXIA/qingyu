@@ -8,6 +8,7 @@ import { createLogger } from '../services/logger'
 import type { Message, ChatSession, SessionPreview, Character, NarrativeMode } from '../../shared/types'
 import type { Settings } from '../../shared/types'
 import { isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
+import { DEFAULT_AUTO_MEMORY_INTERVAL, resolveDefaultMemoryConfig } from '../../shared/defaultMemory'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
 import { safeHandle } from '../utils/safeHandle'
@@ -40,7 +41,6 @@ const UPDATE_SESSION_FIELDS = new Set([
   'personaId',
   'narrativeMode',
   'dialogueDirectionsEnabled',
-  'gameMasterMode',
   'recentTriggeredIds',
   'lorebookCompressionCache',
 ])
@@ -59,25 +59,11 @@ function getDefaultNarrativeMode(characterId: string): NarrativeMode {
   return resolveNarrativeMode(character?.defaultNarrativeMode, settings.defaultNarrativeMode)
 }
 
-/** 新建会话的默认长记忆配置：角色卡已启用时优先角色参数，否则回退全局设置（对齐渲染层 applyDefaultMemory） */
-function getDefaultMemoryConfig(characterId: string): {
-  memoryEnabled: boolean
-  memoryMode: 'manual' | 'auto'
-  autoMemoryInterval: number
-} {
+/** 新建会话的默认长记忆配置：与渲染层 applyDefaultMemory 共用 shared/defaultMemory 唯一决策表 */
+function getDefaultMemoryConfig(characterId: string) {
   const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
   const character = readJson<Character>(join(DIRS.characters(), `${characterId}.json`), 'characters')
-  if (character?.defaultMemoryEnabled === true) {
-    return {
-      memoryEnabled: true,
-      memoryMode: character.defaultMemoryMode ?? 'auto',
-      autoMemoryInterval: character.defaultMemoryInterval ?? 10,
-    }
-  }
-  if (settings.defaultMemoryEnabled) {
-    return { memoryEnabled: true, memoryMode: 'auto', autoMemoryInterval: 10 }
-  }
-  return { memoryEnabled: false, memoryMode: 'manual', autoMemoryInterval: 10 }
+  return resolveDefaultMemoryConfig(settings, character)
 }
 
 function getChatDir(characterId: string): string {
@@ -130,9 +116,6 @@ function cleanSessionUpdates(updates: Partial<ChatSession>): Partial<ChatSession
     }
     if (key === 'narrativeMode' && !isNarrativeMode(value)) {
       throw new Error('参数无效：narrativeMode')
-    }
-    if (key === 'gameMasterMode' && typeof value !== 'boolean') {
-      throw new Error('参数无效：gameMasterMode')
     }
     if (key === 'dialogueDirectionsEnabled' && typeof value !== 'boolean') {
       throw new Error('参数无效：dialogueDirectionsEnabled')
@@ -260,6 +243,22 @@ export async function compactSessionFile(characterId: string, sessionId: string)
   })
 }
 
+/**
+ * 同 ID 的多行通常是消息更新产生的历史版本；只有不可变身份发生变化时，
+ * 才说明两个不同消息意外复用了同一个 ID。
+ */
+function hasConflictingMessageIdentity(previous: Message, next: Message): boolean {
+  if (previous.role !== next.role) return true
+  if (previous.characterId && next.characterId && previous.characterId !== next.characterId) return true
+  if (previous.sessionId && next.sessionId && previous.sessionId !== next.sessionId) return true
+  if (
+    Number.isFinite(previous.timestamp)
+    && Number.isFinite(next.timestamp)
+    && previous.timestamp !== next.timestamp
+  ) return true
+  return false
+}
+
 /** 读取指定 session 的消息（含数据完整性检查，结果走 LRU 缓存）。P-6 导出仅供测试。
  *  bypassCache=true：绕过缓存直接读盘（compact 锁内重读用），不读写缓存。 */
 export function readMessages(characterId: string, sessionId: string, bypassCache = false): Message[] {
@@ -276,9 +275,7 @@ export function readMessages(characterId: string, sessionId: string, bypassCache
   const content = readFileSync(filePath, 'utf-8')
   const lines = content.split('\n').filter((line) => line.trim())
   const msgMap = new Map<string, Message>()
-  const seenIds = new Set<string>()
   const corruptLines: number[] = []
-  const duplicateIds: string[] = []
 
   lines.forEach((line, idx) => {
     try {
@@ -293,11 +290,10 @@ export function readMessages(characterId: string, sessionId: string, bypassCache
         msg.swipes = [msg.content]
         msg.swipeIndex = 0
       }
-      if (seenIds.has(msg.id)) {
-        duplicateIds.push(msg.id)
-        log.warn('检测到重复消息 ID（后写入覆盖先写入）', { characterId, sessionId, msgId: msg.id })
+      const previous = msgMap.get(msg.id)
+      if (previous && hasConflictingMessageIdentity(previous, msg)) {
+        log.warn('检测到消息 ID 冲突（后写入覆盖先写入）', { characterId, sessionId, msgId: msg.id })
       }
-      seenIds.add(msg.id)
       msgMap.set(msg.id, msg)
     } catch {
       corruptLines.push(idx + 1)
@@ -546,7 +542,7 @@ function migrateOldData(characterId: string): string | null {
         updatedAt: now,
         memoryEnabled: false,
         memoryMode: 'manual',
-        autoMemoryInterval: 10,
+        autoMemoryInterval: DEFAULT_AUTO_MEMORY_INTERVAL,
         memory: '',
         memoryUpdatedAt: 0,
       })

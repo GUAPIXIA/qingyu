@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import type { Character, ProviderType } from '../../../shared/types'
+import { stripAllThinking } from '../../../shared/thoughtMarkup'
 import { Modal } from '../common/Modal'
 import { IdentitySection } from './editor/IdentitySection'
 import { AdvancedSection } from './editor/AdvancedSection'
@@ -322,10 +323,10 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         if (data.requestId !== requestId) return
         result += data.text
       })
-      const unbindDone = window.api.ai.onDone((doneId) => {
-        if (doneId !== requestId) return
+      const unbindDone = window.api.ai.onComplete((payload) => {
+        if (payload.requestId !== requestId) return
         cleanup()
-        const cleaned = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+        const cleaned = stripAllThinking(result)
         resolve(cleaned || text)
       })
       const unbindError = window.api.ai.onError((data) => {

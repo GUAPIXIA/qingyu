@@ -17,15 +17,15 @@ export class RealModelPort implements ModelPort {
       model: request.model,
       temperature: 0.8,
       topP: 0.95,
-      maxTokens: 1024,
+      maxTokens: request.maxTokens,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: true,
     }
-    // 委托给现有 AI 服务（内部已处理 provider 适配、重试、用量）
+    // 委托给现有 AI 服务（内部已处理 provider 适配、重试、用量；阶段3返回 AICompletion）
     let text = ''
     const onUsage = callbacks.onUsage
-    const result = await chatWithRetry(
+    const completion = await chatWithRetry(
       getAdapter(params.provider),
       params,
       (chunk) => {
@@ -36,6 +36,6 @@ export class RealModelPort implements ModelPort {
       1,
       onUsage as (u: { promptTokens: number; completionTokens: number; totalTokens: number }) => void,
     )
-    return { text: result ?? text }
+    return { text: completion.text || text }
   }
 }

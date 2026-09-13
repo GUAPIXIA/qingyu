@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { preprocessForTts } from '../ttsHandler'
-import { applyRegexRules, collectStopStrings, truncateAtStop } from '../../../src/utils/regex'
+import { applyRegexRules, collectStopStrings, truncateAtStop } from '../../../shared/chat-core/regex'
 import type { RegexRule } from '../../../shared/types'
 
 describe('TTS 朗读预处理（对齐渲染层 MessageActionBar）', () => {
@@ -16,9 +16,9 @@ describe('TTS 朗读预处理（对齐渲染层 MessageActionBar）', () => {
     expect(preprocessForTts('<thought>内心想法</thought>你好', true)).toBe('内心想法你好')
   })
 
-  it('thinking 标签归一化为 thought 后处理', () => {
+  it('供应商 thinking 无论是否朗读角色内心都不会进入语音', () => {
     expect(preprocessForTts('<thinking>内心</thinking>正文', false)).toBe('正文')
-    expect(preprocessForTts('<thinking>内心</thinking>正文', true)).toContain('内心')
+    expect(preprocessForTts('<thinking>模型推理</thinking>正文', true)).toBe('正文')
   })
 
   it('空内容返回空串', () => {

@@ -60,21 +60,20 @@ const PROFILE: ConnectionProfile = {
 }
 
 type AiChunkHandler = Parameters<typeof window.api.ai.onChunk>[0]
-type AiDoneHandler = Parameters<typeof window.api.ai.onDone>[0]
 type AiErrorHandler = Parameters<typeof window.api.ai.onError>[0]
 
 function captureAiHelperCallbacks() {
   const handlers: {
     chunk?: AiChunkHandler
-    done?: AiDoneHandler
+    done?: (requestId: string) => void
     error?: AiErrorHandler
   } = {}
   vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
     handlers.chunk = callback
     return vi.fn()
   })
-  vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-    handlers.done = callback
+  vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+    handlers.done = (requestId) => callback({ requestId, finishReason: 'stop' })
     return vi.fn()
   })
   vi.mocked(window.api.ai.onError).mockImplementation((callback) => {

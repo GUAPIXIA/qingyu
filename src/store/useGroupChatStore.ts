@@ -18,13 +18,15 @@ import {
 } from './chatUtils'
 import {
   streamGroupAI, streamGroupAIFree, checkPollingContinue, checkAutoMemory,
-  cleanupActiveStream, clearPollingTimer, getActiveStream,
+  cleanupActiveStream, clearPollingTimer, claimGroupUserStop, preserveGroupReplyContent,
 } from './groupStreamController'
+import { abortActiveTailRepair } from './streamController'
 import { buildGroupChatContext, type GroupContextBuildResult } from './groupChatContext'
 import { runGroupMemorySummary } from './groupMemoryManager'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import { stripAllThinking } from '../../shared/thoughtMarkup'
 import {
   generateGroupDialogueDirections,
   cancelDialogueDirectionRequests,
@@ -394,12 +396,12 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       armTranslateTimeout() // M-21：收到 chunk 续期空闲超时
     })
 
-    const unbindDone = window.api.ai.onDone((doneId) => {
-      if (doneId !== requestId) return
+    const unbindDone = window.api.ai.onComplete((payload) => {
+      if (payload.requestId !== requestId) return
       clearTranslateTimeout()
       unbindChunk(); unbindDone(); unbindError()
 
-      const finalResult = (result || '').replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim() || null
+      const finalResult = stripAllThinking(result || '') || null
       // 空结果（推理模型思考内容耗尽 maxTokens 等）：不标记显示译文，避免 UI 显示原文却残留已翻译状态
       set((s) => ({
         messages: s.messages.map((m: GroupMessage) =>
@@ -435,7 +437,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       clearTranslateTimeout()
       translateTimeout = setTimeout(() => {
         unbindChunk(); unbindDone(); unbindError()
-        window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
+        window.api.ai.cancelChat(requestId, 'user').catch((e) => logError('GroupChatStore:cancelChat', e))
         set((s) => ({
           messages: s.messages.map((m: GroupMessage) =>
             m.id === messageId ? { ...m, translation: null } : m
@@ -761,18 +763,22 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   stopStreaming: () => {
-    const stream = getActiveStream()
-    const requestId = stream?.requestId ?? ''
-    const msgId = stream?.msgId ?? ''
-    const accumulated = stream?.accumulated ?? ''
-    cleanupActiveStream()
+    // 阶段7：用户停止经终止状态机抢占（claimGroupUserStop），
+    // 同一 requestId 的迟到 chunk/done/timeout 全部被忽略，不会二次落盘。
+    const claimed = claimGroupUserStop()
     clearPollingTimer()
-    if (requestId) {
-      window.api.ai.cancelChat(requestId).catch((e) => logError('GroupChatStore:cancelChat', e))
+    if (claimed) {
+      window.api.ai.cancelChat(claimed.requestId, 'user').catch((e) => logError('GroupChatStore:cancelChat', e))
+    } else {
+      // 收尾管线补尾期间停止：立即取消补尾并保留稳定前缀（阶段7 §8.1）
+      abortActiveTailRepair()
     }
+    const msgId = claimed?.msgId ?? ''
+    const accumulated = claimed?.accumulated ?? ''
 
     const { currentGroup, currentSessionId, messages } = get()
-    const clean = accumulated.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+    // S2：保留用户看到的内容，停止提示走 generationNotice（不拼进正文）
+    const clean = preserveGroupReplyContent(accumulated)
 
     if (msgId && clean && currentGroup && currentSessionId) {
       // M-22 修复：流式消息可能已被删除（deleteMessage 无 isStreaming 防护）——
@@ -785,7 +791,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       // 有部分内容，持久化并保留
       const updatedMsg: GroupMessage = {
         ...existing,
-        content: clean + '\n\n⚠️ 已停止生成',
+        content: clean,
+        generationNotice: '已停止生成',
       }
       set((s) => ({
         messages: s.messages.map((m: GroupMessage) => m.id === msgId ? updatedMsg : m),

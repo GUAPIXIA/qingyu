@@ -1,4 +1,5 @@
-import type { Character, NarrativeMode, Preset } from '../../shared/types'
+import type { Character, NarrativeMode, Preset, ResponsePolicy } from '../../shared/types'
+import type { RequestBudget } from '../../shared/modelOutputProfile'
 import { buildContextMessagesFromData, type BuildResult } from '../context/contextBuilder'
 import { syncBuildData } from '../context/rendererContextProvider'
 import { markPendingCompression } from './streamController'
@@ -20,6 +21,23 @@ import type { ContextMessage, StoreGet, StoreSet } from './chatTypes'
  *
  * 行为与迁移前完全一致（防漂移快照测试锁定，src/context/__tests__/contextBuilder.test.ts）。
  */
+/** 组装结果：历史消息 + 本轮请求预算（上下文预留与请求共用的同一次计算） */
+export interface BuiltChatContext {
+  messages: ContextMessage[]
+  /** 本轮请求 max_tokens（来自 resolveChatRequestPlan，调用方不得二次推导） */
+  requestMaxTokens: number
+  /** 预算明细与风险标记，供发送入口在请求前校验。 */
+  requestBudget: RequestBudget
+  /** 本轮篇幅策略（阶段二提示注入复用） */
+  responsePolicy: ResponsePolicy
+  /** 阶段6灰度：本轮是否走旧链路 */
+  pipelineLegacy: boolean
+  /** S5：本轮识别出的用户篇幅要求（写入观测，便于核对误判） */
+  responseIntent: ResponsePolicy['mode'] | null
+  /** S5：自动模式场景系数（写入观测） */
+  sceneFactor: number
+}
+
 export function buildChatContext(
   get: StoreGet,
   set: StoreSet,
@@ -32,7 +50,7 @@ export function buildChatContext(
     generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
     lorebookDiagnosticsMode?: 'live' | 'preview'
   },
-): ContextMessage[] {
+): BuiltChatContext {
   const data = syncBuildData(character, preset)
   const result = buildContextMessagesFromData(data, {
     ...opts,
@@ -80,7 +98,15 @@ export function buildChatContext(
       }
     }
   }
-  return result.messages
+  return {
+    messages: result.messages,
+    requestMaxTokens: result.requestMaxTokens,
+    requestBudget: result.requestBudget,
+    responsePolicy: result.responsePolicy,
+    pipelineLegacy: result.pipelineLegacy,
+    responseIntent: result.responseIntent,
+    sceneFactor: result.sceneFactor,
+  }
 }
 
 /** 只读上下文报告：供调试面板模拟当前状态，不写 store、不推进定时效果。 */

@@ -9,11 +9,17 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-migration-test' },
 }))
 
-import { migrateData, currentSchemaVersion } from '../migration'
+import { migrateData, currentSchemaVersion, setMigrationCredentialAccess } from '../migration'
 import { readJson, writeJson, DIRS } from '../storage'
 import { mkdirSync, rmSync } from 'node:fs'
 
 describe('migration', () => {
+  beforeEach(() => {
+    // settings v2→v3 的旧 provider → profile 迁移需要凭据访问；
+    // 默认注册空实现（无旧凭据 → 只有 ollama 会建档案），用例可覆盖注册。
+    setMigrationCredentialAccess({ get: () => null, save: () => {} })
+  })
+
   describe('migrateData', () => {
     it('upgrades v0 settings by filling missing default fields', () => {
       // 模拟旧版 settings:缺大量新字段
@@ -24,7 +30,7 @@ describe('migration', () => {
       }
       const migrated = migrateData('settings', oldSettings) as Record<string, unknown>
       expect(migrated).not.toBeNull()
-      expect(migrated.schemaVersion).toBe(2)
+      expect(migrated.schemaVersion).toBe(3)
       // 旧字段保留
       expect(migrated.activeProvider).toBe('openai')
       expect(migrated.theme).toBe('dark')
@@ -37,7 +43,7 @@ describe('migration', () => {
     })
 
     it('returns null when already at latest version', () => {
-      expect(migrateData('settings', { schemaVersion: 2, theme: 'dark' })).toBeNull()
+      expect(migrateData('settings', { schemaVersion: 3, theme: 'dark' })).toBeNull()
     })
 
     it('returns null for non-object data', () => {
@@ -114,7 +120,7 @@ describe('migration', () => {
 
       expect(migrated).not.toBeNull()
       expect(migrated.imageGenSize).toBeUndefined()
-      expect(migrated.schemaVersion).toBe(2)
+      expect(migrated.schemaVersion).toBe(3)
       const models = migrated.imageGenModels as Array<Record<string, unknown>>
       expect(models[0].overrides).toEqual({ '2.width': 1024, '2.height': 2048 })
     })
@@ -187,6 +193,113 @@ describe('migration', () => {
     })
   })
 
+  describe('settings v2 → v3（旧单字段配置并链，B2）', () => {
+    /** 一份 v2 设置：无连接档案、有旧 providers 与单字段模型配置 */
+    function v2Settings(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        schemaVersion: 2,
+        theme: 'dark',
+        activeProfileId: null,
+        connectionProfiles: [],
+        providers: {
+          openai: { type: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+          claude: { type: 'claude', baseUrl: 'https://api.anthropic.com', model: 'claude-3-5-sonnet' },
+          gemini: { type: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com', model: 'gemini-1.5-flash' },
+          ollama: { type: 'ollama', baseUrl: 'http://localhost:11434', model: 'llama3.2' },
+        },
+        ttsProvider: 'edge',
+        ttsVoice: 'zh-CN-Xiaoxiao',
+        ttsModel: 'tts-1',
+        imageGenModel: 'dall-e-3',
+        visionModel: 'gpt-4o-vision',
+        authorNote: { enabled: true, text: '旧作者注释' },
+        semanticTrigger: { enabled: false },
+        ...overrides,
+      }
+    }
+
+    it('有旧凭据时按 providers 建档案，凭据进 safeStorage 且不落明文', () => {
+      const saved: Array<[string, string]> = []
+      setMigrationCredentialAccess({
+        get: (provider) => (provider === 'openai' ? 'sk-legacy-openai' : null),
+        save: (provider, key) => { saved.push([provider, key]) },
+      })
+
+      const migrated = migrateData('settings', v2Settings()) as Record<string, unknown>
+      expect(migrated).not.toBeNull()
+      expect(migrated.schemaVersion).toBe(3)
+
+      const profiles = migrated.connectionProfiles as Array<Record<string, unknown>>
+      // openai（有凭据）+ ollama（无凭据也建）两条；cli 缺失的 claude/gemini 不建
+      expect(profiles.map((p) => p.provider)).toEqual(['openai', 'ollama'])
+      expect(profiles[0].maxContext).toBe(131072)
+      expect(profiles[0].baseUrl).toBe('https://api.openai.com/v1')
+      // H1：settings 数据中不落明文密钥，凭据写到 safeStorage 的 profile-<id>
+      expect(profiles[0].apiKey).toBe('')
+      expect(saved).toHaveLength(1)
+      expect(saved[0][0]).toBe(`profile-${profiles[0].id}`)
+      expect(saved[0][1]).toBe('sk-legacy-openai')
+      // 首个档案补位 activeProfileId
+      expect(migrated.activeProfileId).toBe(profiles[0].id)
+    })
+
+    it('已有 activeProfileId 时不被覆盖', () => {
+      const migrated = migrateData('settings', v2Settings({ activeProfileId: 'keep-me' })) as Record<string, unknown>
+      expect(migrated.activeProfileId).toBe('keep-me')
+    })
+
+    it('单字段模型配置转为数组，废弃字段删除，edge 归一为 system', () => {
+      const migrated = migrateData('settings', v2Settings()) as Record<string, unknown>
+
+      const tts = migrated.ttsModels as Array<Record<string, unknown>>
+      expect(tts).toHaveLength(1)
+      expect(tts[0].provider).toBe('system')
+      expect(tts[0].voice).toBe('zh-CN-Xiaoxiao')
+      expect(migrated.activeTTSModelId).toBe(tts[0].id)
+
+      const imageGen = migrated.imageGenModels as Array<Record<string, unknown>>
+      expect(imageGen).toHaveLength(1)
+      expect(imageGen[0].model).toBe('dall-e-3')
+
+      const vision = migrated.visionModels as Array<Record<string, unknown>>
+      expect(vision).toHaveLength(1)
+      expect(vision[0].model).toBe('gpt-4o-vision')
+
+      for (const key of ['ttsProvider', 'ttsVoice', 'ttsModel', 'imageGenModel', 'visionModel', 'authorNote']) {
+        expect(migrated[key]).toBeUndefined()
+      }
+    })
+
+    it('已有模型数组时保留数组，仅归一 edge', () => {
+      const migrated = migrateData('settings', v2Settings({
+        ttsModels: [{ id: 't1', provider: 'edge', model: 'm', voice: 'v', apiKey: '', baseUrl: '', enabled: true, order: 0 }],
+        imageGenModels: [{ id: 'i1', provider: 'openai', model: 'keep' }],
+        visionModels: [{ id: 'v1', model: 'keep-vision', enabled: true, order: 0 }],
+      })) as Record<string, unknown>
+
+      expect((migrated.ttsModels as Array<Record<string, unknown>>)[0].provider).toBe('system')
+      expect((migrated.imageGenModels as Array<Record<string, unknown>>)[0].model).toBe('keep')
+      expect((migrated.visionModels as Array<Record<string, unknown>>)[0].model).toBe('keep-vision')
+      expect(migrated.activeImageGenModelId).toBeUndefined()
+    })
+
+    it('幂等：迁移结果再次迁移返回 null', () => {
+      const once = migrateData('settings', v2Settings())
+      expect(once).not.toBeNull()
+      expect(migrateData('settings', once)).toBeNull()
+    })
+
+    it('凭据访问未注册时推迟迁移（数据不丢，注册后可迁移）', () => {
+      setMigrationCredentialAccess(null)
+      expect(migrateData('settings', v2Settings())).toBeNull()
+
+      setMigrationCredentialAccess({ get: () => null, save: () => {} })
+      const migrated = migrateData('settings', v2Settings()) as Record<string, unknown>
+      expect(migrated).not.toBeNull()
+      expect(migrated.schemaVersion).toBe(3)
+    })
+  })
+
   describe('storage integration', () => {
     const file = () => join(DIRS.config(), 'settings.json')
     function join(...parts: string[]): string {
@@ -201,7 +314,7 @@ describe('migration', () => {
     it('writeJson attaches schemaVersion for the domain', () => {
       writeJson(file(), { theme: 'light' }, 'settings')
       const raw = readJson<{ schemaVersion?: number }>(file())
-      expect(raw?.schemaVersion).toBe(2)
+      expect(raw?.schemaVersion).toBe(3)
     })
 
     it('writeJson without domain does not attach schemaVersion', () => {
@@ -214,11 +327,11 @@ describe('migration', () => {
       // 写一份无版本号的旧数据
       writeJson(file(), { activeProvider: 'openai' })
       const migrated = readJson<Record<string, unknown>>(file(), 'settings')
-      expect(migrated?.schemaVersion).toBe(2)
+      expect(migrated?.schemaVersion).toBe(3)
       expect(migrated?.activeProvider).toBe('openai')
       // 回写后磁盘上已带版本号
       const again = readJson<Record<string, unknown>>(file(), 'settings')
-      expect(again?.schemaVersion).toBe(2)
+      expect(again?.schemaVersion).toBe(3)
     })
 
     it('writeJson with array data keeps it an array (regression: sessions corruption)', () => {
@@ -252,7 +365,7 @@ describe('migration', () => {
     })
 
     it('currentSchemaVersion returns expected values', () => {
-      expect(currentSchemaVersion('settings')).toBe(2)
+      expect(currentSchemaVersion('settings')).toBe(3)
       expect(currentSchemaVersion('characters')).toBe(1)
       expect(currentSchemaVersion('lorebooks')).toBe(1)
       expect(currentSchemaVersion('sessions')).toBe(2)

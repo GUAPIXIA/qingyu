@@ -59,7 +59,7 @@ function setup(memoryFacts: string[] | undefined, semanticFactsHits: string[]) {
 }
 
 function build() {
-  return useChatStore.getState().buildContext(makeCharacter(), null)
+  return useChatStore.getState().buildContext(makeCharacter(), null).messages
 }
 
 describe('buildContext 记忆事实注入', () => {

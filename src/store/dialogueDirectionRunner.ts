@@ -76,9 +76,15 @@ function callDirectionHelper(requestId: string, messages: ChatParams['messages']
       if (data.requestId !== requestId) return
       result += data.text
     })
-    const unbindDone = window.api.ai.onDone((doneId) => {
-      if (doneId !== requestId) return
+    const unbindDone = window.api.ai.onComplete((payload) => {
+      if (payload.requestId !== requestId) return
       cleanup()
+      // 阶段7（§7.3）：direction = background 档案，触顶输出按结构不完整处理
+      // （解析为空 → 由 requestDialogueDirections 做至多一次"只补结构"的短修复）
+      if (payload.finishReason === 'length') {
+        resolve('')
+        return
+      }
       resolve(stripThought(result))
     })
     const unbindError = window.api.ai.onError((data) => {
@@ -101,6 +107,8 @@ function callDirectionHelper(requestId: string, messages: ChatParams['messages']
       presencePenalty: 0,
       stream: false,
       reasoningMode: 'disabled',
+      // 阶段7（§7.3）：独立 taskType，不混入主对话篇幅统计
+      observability: { source: 'aux', taskType: 'direction' },
     } satisfies ChatParams).catch((err) => {
       cleanup()
       reject(err)

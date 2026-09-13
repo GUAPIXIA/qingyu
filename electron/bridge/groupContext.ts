@@ -1,6 +1,7 @@
 import type { NarrativeMode } from '../../shared/types'
 import { buildGroupNarrativeModePrompt } from '../../shared/narrativeMode'
-import { replaceVariables } from '../utils/variables'
+import { buildGroupRosterIntro, buildGroupTurnRulesPrompt } from '../../shared/groupChatPrompt'
+import { replaceVariables } from '../../shared/chat-core/variables'
 
 export interface BridgeGroupContextInput {
   group: { name: string; chatMode: 'mention' | 'polling' | 'free'; systemPrompt?: string }
@@ -26,23 +27,10 @@ export function buildGroupContextForBridge(input: BridgeGroupContextInput): {
 } {
   const { group, members, messages, speaker, userName, narrativeMode, omniscientNarrativeRules } = input
   const targetName = speaker?.name || members.map((member) => member.name).join('、')
-  let systemContent = `你正在参与一个群聊「${group.name}」。本群聊中共有 ${members.length} 个角色参与对话：\n`
-  members.forEach((member, index) => {
-    const desc = member.description ? ' - ' + member.description.slice(0, 80) : ''
-    systemContent += `${index + 1}. 【${member.name}】${desc}\n`
-  })
-  systemContent += `\n用户「${userName}」也在群聊中。\n`
+  let systemContent = buildGroupRosterIntro(group.name, members, userName)
 
-  switch (group.chatMode) {
-    case 'mention':
-      systemContent += '\n【对话规则】用户通过 @角色名 指定回复对象。只有被点名的角色才需要回复。回复时请以该角色的第一人称视角发言，不要替其他角色说话。\n'
-      break
-    case 'polling':
-      systemContent += '\n【对话规则】当前采用自动轮询模式。每次只轮到一位角色发言。请以该角色的第一人称视角回复，不要替其他角色或用户发言。\n'
-      break
-    default:
-      systemContent += '\n【对话规则】自由模式。请以角色的身份自然地参与对话。\n'
-  }
+  const turnRules = buildGroupTurnRulesPrompt(group.chatMode)
+  systemContent += turnRules || '\n【对话规则】自由模式。请以角色的身份自然地参与对话。\n'
 
   if (group.systemPrompt) {
     systemContent += '\n' + replaceVariables(group.systemPrompt, userName, targetName) + '\n'

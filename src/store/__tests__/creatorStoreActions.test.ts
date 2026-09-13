@@ -65,8 +65,8 @@ beforeEach(() => {
       chunkCb = null
     }
   })
-  ;(window.api.ai.onDone as unknown as ReturnType<typeof vi.fn>).mockImplementation((cb: (id: string) => void) => {
-    doneCb = cb
+  ;(window.api.ai.onComplete as unknown as ReturnType<typeof vi.fn>).mockImplementation((cb: (p: { requestId: string; finishReason?: string }) => void) => {
+    doneCb = (id) => cb({ requestId: id, finishReason: 'stop' })
     return () => {
       doneCb = null
     }

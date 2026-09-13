@@ -82,7 +82,7 @@ describe('buildContext 作者注释注入', () => {
     setupSettings()
     useChatStore.setState({ messages: makeMessages(2) })
 
-    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: false, text: 'AN内容', position: 'middle', depth: 1 }), null)
+    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: false, text: 'AN内容', position: 'middle', depth: 1 }), null).messages
     expect(ctx.filter(c => c.content === 'AN内容')).toHaveLength(0)
   })
 
@@ -90,7 +90,7 @@ describe('buildContext 作者注释注入', () => {
     setupSettings()
     useChatStore.setState({ messages: makeMessages(2) })
 
-    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: 'AN内容', position: 'top', depth: 1 }), null)
+    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: 'AN内容', position: 'top', depth: 1 }), null).messages
     expect(ctx[0].role).toBe('system')
     expect(ctx[1]).toMatchObject({ role: 'system', content: 'AN内容' })
   })
@@ -99,18 +99,19 @@ describe('buildContext 作者注释注入', () => {
     setupSettings()
     useChatStore.setState({ messages: makeMessages(2) })
 
-    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: 'AN内容', position: 'bottom', depth: 0 }), null)
+    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: 'AN内容', position: 'bottom', depth: 0 }), null).messages
     // 4 条历史 [u0,a0,u1,a1]，depth 0 → 插在 a1 之后（P-8 修复 off-by-one）
     const anIndex = ctx.findIndex(c => c.content === 'AN内容')
     expect(ctx[anIndex - 1].content).toBe('助手回复1')
-    expect(anIndex).toBe(ctx.length - 1)
+    // 正文结构约束必须在全部历史注入之后再次固定，因此 AN 后仍有该 system 消息。
+    expect(ctx[anIndex + 1].content).toContain('【正文结构】')
   })
 
   it('middle 位置 depth=1：AN 插在倒数第二条消息之后', () => {
     setupSettings()
     useChatStore.setState({ messages: makeMessages(3) })
 
-    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: 'AN内容', position: 'middle', depth: 1 }), null)
+    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: 'AN内容', position: 'middle', depth: 1 }), null).messages
     // 历史 6 条 [u0,a0,u1,a1,u2,a2]，depth=1 → 倒数第二条（u2）之后
     // 结果：u0,a0,u1,a1,u2,AN,a2
     const anIndex = ctx.findIndex(c => c.content === 'AN内容')
@@ -122,11 +123,11 @@ describe('buildContext 作者注释注入', () => {
     setupSettings()
     useChatStore.setState({ messages: makeMessages(2) })
 
-    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: 'AN内容', position: 'middle', depth: 0 }), null)
+    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: 'AN内容', position: 'middle', depth: 0 }), null).messages
     // 4 条历史，depth 0 → 插在最后一条（a1）之后（P-8 修复 off-by-one）
     const anIndex = ctx.findIndex(c => c.content === 'AN内容')
     expect(ctx[anIndex - 1].content).toBe('助手回复1')
-    expect(anIndex).toBe(ctx.length - 1)
+    expect(ctx[anIndex + 1].content).toContain('【正文结构】')
   })
 
   it('变量替换：{{char}} / {{user}}', () => {
@@ -136,7 +137,7 @@ describe('buildContext 作者注释注入', () => {
     }))
     useChatStore.setState({ messages: makeMessages(1) })
 
-    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: '{{char}}记住{{user}}的名字', position: 'top', depth: 1 }), null)
+    const ctx = useChatStore.getState().buildContext(makeCharacterWithAuthorNote({ enabled: true, text: '{{char}}记住{{user}}的名字', position: 'top', depth: 1 }), null).messages
     expect(ctx[1].content).toBe('爱丽丝记住小明的名字')
   })
 
@@ -144,7 +145,7 @@ describe('buildContext 作者注释注入', () => {
     setupSettings()
     useChatStore.setState({ messages: makeMessages(1) })
 
-    const ctx = useChatStore.getState().buildContext(makeCharacter(), null)
+    const ctx = useChatStore.getState().buildContext(makeCharacter(), null).messages
     expect(ctx.some(c => c.content === 'AN内容')).toBe(false)
   })
 
@@ -153,7 +154,7 @@ describe('buildContext 作者注释注入', () => {
     const char = makeCharacterWithAuthorNote({ enabled: false, text: '角色AN', position: 'top', depth: 1 })
     useChatStore.setState({ messages: makeMessages(1) })
 
-    const ctx = useChatStore.getState().buildContext(char, null)
+    const ctx = useChatStore.getState().buildContext(char, null).messages
     expect(ctx.filter(c => c.content === '角色AN')).toHaveLength(0)
   })
 })

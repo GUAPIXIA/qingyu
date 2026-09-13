@@ -19,19 +19,18 @@ import { safeId } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
 import type { Request, Response } from 'express'
 import type { Settings, TTSModelConfig } from '../../shared/types'
+import { stripAllThinking, stripVendorThinking } from '../../shared/thoughtMarkup'
 
 const log = createLogger('bridge-tts')
 
 /** 朗读前预处理（对齐渲染层 MessageActionBar 的 stripThought / stripThoughtTags） */
 export function preprocessForTts(content: string, includeThought: boolean): string {
   if (!content) return ''
-  const normalized = content
-    .replace(/<thinking([\s>])/gi, '<thought$1')
-    .replace(/<\/thinking>/gi, '</thought>')
   if (includeThought) {
-    return normalized.replace(/<\/?thought>/gi, '').trim()
+    // 朗读内心想法：只去标签、保留内容
+    return stripVendorThinking(content).replace(/<\/?thought>/gi, '').trim()
   }
-  return normalized.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+  return stripAllThinking(content)
 }
 
 /** 读取活跃 TTS 模型配置（对齐渲染层 getActiveTTSConfig） */

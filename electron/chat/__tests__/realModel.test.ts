@@ -13,6 +13,7 @@ vi.mock('../../services/ai', () => ({
 }))
 
 import { RealModelPort } from '../realModel'
+import { chatWithRetry } from '../../services/ai'
 
 describe('RealModelPort', () => {
   it('stream 委托 chatWithRetry 并回调 onChunk/onUsage', async () => {
@@ -20,7 +21,7 @@ describe('RealModelPort', () => {
     const chunks: string[] = []
     let usage: unknown = null
     const result = await port.stream(
-      { messages: [{ role: 'user', content: 'hi' }], model: 'gpt-4o-mini', provider: 'openai', apiKey: 'sk-x', baseUrl: 'https://api.openai.com/v1' },
+      { messages: [{ role: 'user', content: 'hi' }], model: 'gpt-4o-mini', provider: 'openai', maxTokens: 2048, apiKey: 'sk-x', baseUrl: 'https://api.openai.com/v1' },
       { onChunk: (d) => chunks.push(d), onUsage: (u) => (usage = u) },
       new AbortController().signal,
     )
@@ -32,10 +33,20 @@ describe('RealModelPort', () => {
   it('无 onUsage 回调仍可完成', async () => {
     const port = new RealModelPort()
     const result = await port.stream(
-      { messages: [{ role: 'user', content: 'hi' }], model: 'gpt-4o', provider: 'openai' },
+      { messages: [{ role: 'user', content: 'hi' }], model: 'gpt-4o', provider: 'openai', maxTokens: 2048 },
       { onChunk: () => {} },
       new AbortController().signal,
     )
     expect(result.text).toBeTruthy()
+  })
+
+  it('使用上下文规划的动态输出预算，不回退为 1024', async () => {
+    const port = new RealModelPort()
+    await port.stream(
+      { messages: [{ role: 'user', content: 'hi' }], model: 'deepseek-v4-pro', provider: 'openai', maxTokens: 4096 },
+      { onChunk: () => {} },
+      new AbortController().signal,
+    )
+    expect(vi.mocked(chatWithRetry).mock.calls.at(-1)?.[1]).toMatchObject({ maxTokens: 4096 })
   })
 })

@@ -3,6 +3,7 @@ import { runGroupMemorySummary } from '../groupMemoryManager'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
 import { getDefaultSettings } from '../../../shared/defaults'
+import { resolveRequestBudget } from '../../../shared/modelOutputProfile'
 import type { GroupChat, GroupMessage, Character, ConnectionProfile } from '../../../shared/types'
 
 function makeCharacter(id: string, name: string): Character {
@@ -39,6 +40,8 @@ const PROFILE: ConnectionProfile = {
 function captureStreamCallbacks() {
   const callbacks: {
     onChunk?: (data: { requestId: string; text: string }) => void
+    onComplete?: (payload: { requestId: string; finishReason?: string }) => void
+    /** 测试简写：以 finishReason='stop' 触发一次正常完成 */
     onDone?: (requestId: string) => void
     onError?: (data: { requestId: string; error: string }) => void
     chatParams?: { requestId: string }
@@ -47,10 +50,11 @@ function captureStreamCallbacks() {
     callbacks.onChunk = cb
     return () => {}
   })
-  ;(window.api.ai as any).onDone = vi.fn().mockImplementation((cb) => {
-    callbacks.onDone = cb
+  ;(window.api.ai as any).onComplete = vi.fn().mockImplementation((cb) => {
+    callbacks.onComplete = cb
     return () => {}
   })
+  callbacks.onDone = (requestId: string) => callbacks.onComplete?.({ requestId, finishReason: 'stop' })
   ;(window.api.ai as any).onError = vi.fn().mockImplementation((cb) => {
     callbacks.onError = cb
     return () => {}
@@ -214,8 +218,10 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
 
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
-    // 思考模型需要更大的输出预算（2048），避免正文被思考吃光
-    expect((callbacks.chatParams as any).maxTokens).toBe(2048)
+    // S3：输出预算接入模型能力档案（正文 2500 字 + 推理余量），不再固定 2048
+    const expected = resolveRequestBudget({ model: 'gpt-4o', hardMaxChars: 2500 })
+    expect(expected.reasoningReserve).toBe(192)
+    expect((callbacks.chatParams as any).maxTokens).toBe(expected.requestMaxTokens)
   })
 
   it('群聊仅总结游标之后的消息，并将游标推进到增量末尾', async () => {

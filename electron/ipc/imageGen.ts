@@ -5,6 +5,7 @@ import { analyzeComfyWorkflow, importLocalComfyWorkflow, listLocalComfyWorkflows
 import { readSettingsFromDisk, restoreSecrets } from './settings'
 import { sanitizeApiKey } from '../utils/pathGuard'
 import type { Settings, ConnectionProfile } from '../../shared/types'
+import { stripAllThinking } from '../../shared/thoughtMarkup'
 
 const log = createLogger('imageGenIPC')
 
@@ -68,7 +69,7 @@ async function translatePromptToEnglish(prompt: string, settings: Settings): Pro
     throw new Error('翻译 API 返回空结果')
   }
 
-  return translated.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+  return stripAllThinking(translated)
 }
 
 export function registerImageGenIPC(ipcMain: IpcMain): void {

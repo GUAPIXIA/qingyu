@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_LOREBOOK_SCAN_DEPTH, resolveLorebookScanDepth, translationMaxTokens } from '../chatConstants'
+import {
+  DEFAULT_LOREBOOK_SCAN_DEPTH,
+  resolveLorebookScanDepth,
+  translationMaxTokens,
+} from '../chatConstants'
 
 describe('resolveLorebookScanDepth', () => {
   it('显式配置允许低于默认扫描深度', () => {

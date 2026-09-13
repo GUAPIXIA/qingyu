@@ -47,6 +47,32 @@ describe('Sidebar', () => {
     expect(activeLink.className).not.toContain('bg-tavern-accent-soft')
   })
 
+  it('展开分组时把该分组滚入可视区，导航容器保持可收缩滚动（P1-04）', async () => {
+    const scrollIntoView = vi.fn()
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = scrollIntoView as never
+    try {
+      const { container } = render(
+        <MemoryRouter initialEntries={['/chat']}>
+          <Sidebar />
+        </MemoryRouter>,
+      )
+      await act(async () => {})
+
+      // 多组展开时导航必须能在 flex 列内收缩滚动，底部状态区才不会被推出视口
+      const nav = container.querySelector('nav')
+      expect(nav?.className).toContain('min-h-0')
+      expect(nav?.className).toContain('overflow-y-auto')
+
+      fireEvent.click(screen.getByRole('button', { name: '资源' }))
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+      const target = scrollIntoView.mock.instances[0] as HTMLElement | undefined
+      expect(target?.getAttribute('data-nav-group')).toBe('resource')
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('点击公告版本进入设置的软件更新区，不再打开 GitHub', async () => {
     ;(window.api.app as any).checkVersion = vi.fn().mockResolvedValue({
       version: '0.13.0',

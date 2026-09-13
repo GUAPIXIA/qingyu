@@ -9,7 +9,7 @@ import { nanoid } from 'nanoid'
 import { getAdapter, chatWithRetry } from '../services/ai'
 import { chatData } from '../ipc/chat'
 import { findSessionById } from './sessionsIndex'
-import { stripThought } from '../../src/utils/messagePostProcess'
+import { stripThought } from '../../shared/chat-core/messagePostProcess'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
 import {
@@ -79,8 +79,8 @@ export async function generateBridgeDirections(opts: {
     const userPrompt = buildDialogueDirectionUserPrompt(input)
     const call = async (messagesForCall: ChatParams['messages']): Promise<DialogueDirection[]> => {
       const params = buildDirectionParams(profile, messagesForCall)
-      const raw = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 0)
-      return parseDialogueDirections(stripThought(raw))
+      const completion = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 0)
+      return parseDialogueDirections(stripThought(completion.text))
     }
 
     let directions = await call([
@@ -134,5 +134,7 @@ function buildDirectionParams(
     presencePenalty: 0,
     stream: false,
     reasoningMode: 'disabled',
+    // 阶段7（§7.3）：独立 taskType，与渲染层方向请求同口径
+    observability: { source: 'aux', taskType: 'direction' },
   }
 }

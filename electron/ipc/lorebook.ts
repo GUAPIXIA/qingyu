@@ -90,9 +90,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return readFileSync(sourcePath, 'utf-8')
   }
 
-  const importJsonDetailed = async (
-    options?: LorebookImportOptions & { autoPickAmbiguous?: boolean },
-  ) => {
+  const importJsonDetailed = async (options?: LorebookImportOptions) => {
     let parsed: unknown
     let fileName = ''
     if (options?.pendingId) {
@@ -140,7 +138,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     const fallbackName = fileName.replace(/\.json$/i, '').trim() || '导入的世界书'
 
     // 方案 §6.1：多证据打分后，前两名分差过小时不静默猜测，返回候选让用户选择。
-    if (!options?.adapterId && !options?.autoPickAmbiguous) {
+    if (!options?.adapterId) {
       const candidates = lorebookAdapterRegistry.detect(parsed, fileMeta)
       const top = candidates[0]
       if (!top || top.detection.confidence < LOREBOOK_ADAPTER_MIN_CONFIDENCE) {
@@ -188,9 +186,6 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return { lorebook, detection: imported.detection, report: imported.report }
   }
   ipcMain.handle('lorebook:importJsonDetailed', (_e, options?: LorebookImportOptions) => importJsonDetailed(options))
-  // 保留旧 IPC 返回形状，避免已有 preload/API 调用方因阶段 2 破坏。
-  // 兼容通道保留旧的自动挑选行为（歧义时报告 ambiguous_format 警告）；UI 主路径走 importJsonDetailed。
-  ipcMain.handle('lorebook:importJson', async () => (await importJsonDetailed({ autoPickAmbiguous: true }))?.lorebook ?? null)
 
   // ===================== 阶段 6 P2：映射向导 =====================
   // 打开的导入源在主进程内存中短暂缓存（renderer 不接触文件路径），

@@ -315,6 +315,18 @@ describe('续写强度档位', () => {
     expect(empty).toContain('写 80–180 个可见中文字符')
   })
 
+  it('有输入时禁止重复原文末尾措辞，并要求从下一个必要的新词接续', () => {
+    const prompt = buildContinueSystemPrompt('小明', 'Alice', true, 'immersive', 'active', 'standard')
+    expect(prompt).toContain('不得重复原文末尾已经出现的词语、动作或句式')
+    expect(prompt).toContain('从完成原文所需的下一个新词或下一句直接写起')
+    expect(prompt).toContain('不得把尚未发生的动作写成已经完成')
+  })
+
+  it('代入模式无输入时优先处理最近未解决的悬念', () => {
+    const prompt = buildContinueSystemPrompt('小明', 'Alice', false, 'immersive', 'active', 'standard')
+    expect(prompt).toContain('优先回应最近一条尚未解决的问题、呼喊、威胁、承诺或悬念')
+  })
+
   it('buildContinueContext 透传内容长度并对非法值回退默认档', () => {
     const base = {
       character: createCharacter(),
@@ -482,8 +494,8 @@ describe('callAiHelper', () => {
       chunk = callback
       return vi.fn()
     })
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      done = callback
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      done = (requestId) => callback({ requestId, finishReason: 'stop' })
       return vi.fn()
     })
 
@@ -516,8 +528,8 @@ describe('callAiHelper', () => {
       chunk = callback
       return vi.fn()
     })
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      done = callback
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      done = (requestId) => callback({ requestId, finishReason: 'stop' })
       return vi.fn()
     })
 
@@ -538,8 +550,8 @@ describe('callAiHelper', () => {
 
   it('辅助请求可显式关闭推理模式', async () => {
     let done: ((requestId: string) => void) | undefined
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      done = callback
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      done = (requestId) => callback({ requestId, finishReason: 'stop' })
       return vi.fn()
     })
     const result = callAiHelper({

@@ -34,7 +34,7 @@ import { generatePairingCode, settlePair, signToken, registerDevice } from '../a
 import { getDefaultSettings } from '../../../shared/defaults'
 
 vi.mock('../../services/ai', () => ({
-  chatWithRetry: vi.fn().mockResolvedValue('【摘要】桥接端增量摘要\n【事实】\n1. 新事实'),
+  chatWithRetry: vi.fn().mockResolvedValue({ text: '【摘要】桥接端增量摘要\n【事实】\n1. 新事实', finishReason: 'stop' }),
   getAdapter: vi.fn().mockReturnValue({}),
 }))
 
@@ -59,7 +59,7 @@ function listen(app: express.Express): Promise<{ server: ReturnType<typeof creat
 
 beforeEach(() => {
   rmSync(TEST_ROOT, { recursive: true, force: true })
-  // 清理跨测试的消息读取缓存（nanoid mock 使 sessionId 恒为 mock-id，缓存会跨用例污染）
+  // 清理跨测试的消息读取缓存（缓存按 characterId 复用，不清理会跨用例污染）
   messagesCacheInvalidate(CHAR_ID)
   mkdirSync(DIRS.chats(), { recursive: true })
   mkdirSync(DIRS.characters(), { recursive: true })

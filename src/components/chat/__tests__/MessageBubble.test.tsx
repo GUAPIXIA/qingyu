@@ -338,6 +338,23 @@ describe('MessageBubble', () => {
       expect(getByText('保存')).toBeTruthy()
     })
 
+    it('保存后立即退出编辑态，不被后台记忆失效阻塞', async () => {
+      let finishEdit!: () => void
+      const editMessage = vi.fn(() => new Promise<void>((resolve) => { finishEdit = resolve }))
+      useChatStore.setState({ editMessage } as any)
+      const { getByTitle, getByText, queryByText } = render(
+        <MessageBubble message={createMessage()} character={createCharacter()} isLast={false} />
+      )
+
+      fireEvent.click(getByTitle('编辑'))
+      fireEvent.click(getByText('保存'))
+
+      expect(editMessage).toHaveBeenCalledWith('msg-1', 'Hello world', expect.anything())
+      expect(queryByText('保存')).toBeNull()
+      finishEdit()
+      await waitFor(() => expect(editMessage).toHaveBeenCalledTimes(1))
+    })
+
     it('复制按钮调用 clipboard API（BUG-31）', async () => {
       const msg = createMessage({ content: '要复制的内容' })
       const { getByTitle } = render(
@@ -515,6 +532,81 @@ describe('MessageBubble', () => {
         />,
       )
       expect(queryByText('选择下一步方向')).toBeNull()
+    })
+  })
+
+  describe('生成失败提示（generationError）', () => {
+    it('正文保留时在气泡下方渲染中断原因', () => {
+      const { getByText } = render(
+        <MessageBubble
+          message={createMessage({ content: '半截回复', generationError: '模型输出达到长度上限' })}
+          character={createCharacter()}
+          isLast={false}
+        />,
+      )
+      expect(getByText(/生成中断/)).toBeTruthy()
+      expect(getByText(/模型输出达到长度上限/)).toBeTruthy()
+    })
+
+    it('无 generationError 时不渲染提示行', () => {
+      const { queryByText } = render(
+        <MessageBubble message={createMessage()} character={createCharacter()} isLast={false} />,
+      )
+      expect(queryByText(/生成中断/)).toBeNull()
+    })
+
+    it('generationNotice 走中性提示行（与失败提示区分）', () => {
+      const { getByText, queryByText } = render(
+        <MessageBubble
+          message={createMessage({ content: '她推开门。', generationNotice: '内容已在完整句处收束' })}
+          character={createCharacter()}
+          isLast={false}
+        />,
+      )
+      expect(getByText(/内容已在完整句处收束/)).toBeTruthy()
+      expect(queryByText(/生成中断/)).toBeNull()
+    })
+  })
+
+  describe('语义分块渲染（阶段5，contentRenderMode=blocks）', () => {
+    it('对白/动作/混合段按语义块呈现，星号剥离且不重复说话人', () => {
+      const content = [
+        '她推开门，屋里很安静。',
+        '',
+        '*环顾四周的陈设*',
+        '',
+        '“你还没睡？”',
+        '苏晚：“嗯。”',
+      ].join('\n')
+      const { container, getByText } = render(
+        <MessageBubble
+          message={createMessage({ content, contentRenderMode: 'blocks' })}
+          character={createCharacter()}
+          isLast={false}
+        />,
+      )
+      expect(getByText(/她推开门，屋里很安静/)).toBeTruthy()
+      expect(getByText(/环顾四周的陈设/)).toBeTruthy()
+      expect(getByText(/你还没睡/)).toBeTruthy()
+      expect(getByText(/嗯。/)).toBeTruthy()
+      // 说话人标签与对白文本分列渲染（复用 dialogue-block 视觉样式）
+      expect(container.querySelector('em.dialogue-speaker')?.textContent).toBe('苏晚')
+      expect(container.querySelector('p.dialogue-block')).toBeTruthy()
+      expect(container.querySelector('p.action-block')).toBeTruthy()
+      // 星号被剥离，不作为文本出现
+      expect(getByText(/环顾四周的陈设/).textContent).not.toContain('*')
+    })
+
+    it('旧消息（无 contentRenderMode）继续走 Markdown 渲染', () => {
+      const { getByText } = render(
+        <MessageBubble
+          message={createMessage({ content: '*旧消息动作斜体*' })}
+          character={createCharacter()}
+          isLast={false}
+        />,
+      )
+      // Markdown 渲染下星号转为斜体强调，文本保留
+      expect(getByText(/旧消息动作斜体/)).toBeTruthy()
     })
   })
 })

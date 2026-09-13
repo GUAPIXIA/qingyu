@@ -385,6 +385,37 @@ describe('useGroupChatStore', () => {
       expect(Array.isArray(context)).toBe(true)
     })
 
+    it('群聊报告使用动态输出预算，maxTokens=0 不回退为 1024', () => {
+      useSettingsStore.setState((state) => ({
+        settings: {
+          ...state.settings,
+          activeProfileId: 'deepseek-profile',
+          activeModel: 'deepseek/deepseek-v4.1-flash',
+          connectionProfiles: [{
+            id: 'deepseek-profile', name: 'DeepSeek', provider: 'openai', apiKey: 'sk-test',
+            baseUrl: 'https://api.example.com/v1', model: 'deepseek/deepseek-v4.1-flash', maxContext: 16384,
+          }],
+        },
+      }))
+      useGroupChatStore.setState({
+        currentGroup: {
+          id: 'g1', name: 'Test Group', memberIds: [],
+          currentSpeakerIndex: 0, autoMode: false, chatMode: 'polling',
+          maxRounds: 1, speakerInterval: 2000, lorebookIds: [],
+          presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+        },
+        messages: [],
+      })
+      const preset = {
+        id: 'auto-budget', name: '自动预算', description: '', systemPrompt: '', jailbreak: '',
+        maxContext: 0, temperature: 0.8, topP: 0.95, maxTokens: 0,
+        frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false, responseLengthHint: 'balanced' as const,
+      }
+      const report = useGroupChatStore.getState().buildGroupContextReport(undefined, preset)
+      expect(report.requestMaxTokens).toBeGreaterThan(3072)
+      expect(report.requestBudget?.riskNotice).toBeUndefined()
+    })
+
     it('使用当前群聊会话绑定的身份构建上下文', () => {
       usePersonaStore.setState({
         personas: [{
@@ -440,6 +471,9 @@ describe('useGroupChatStore', () => {
       expect(report.narrativeMode).toBe('omniscient')
       expect(joined).toContain('发言调度仅指定剧情焦点「艾琳」')
       expect(joined).toContain('异地事件或世界变化')
+      expect(joined).toContain('正文仍保持第三人称叙事')
+      expect(joined).toContain('焦点角色「艾琳」的第一人称内心独白')
+      expect(joined).toContain('不得包含模型推理')
     })
 
     it('群聊主回复不再注入游戏主持判定与选项格式', () => {

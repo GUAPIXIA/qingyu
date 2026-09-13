@@ -45,12 +45,15 @@ interface SettingsState {
   credentials: Record<string, string>
   loaded: boolean
   _saveTimer: ReturnType<typeof setTimeout> | null
+  /** 最近一次设置落盘的真实状态（由 Promise 结果驱动，P1-02 修复“已保存”假成功） */
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error'
+  /** 落盘失败原因（saveStatus === 'error' 时有值） */
+  saveError: string | null
   loadSettings: () => Promise<void>
   saveSettings: () => Promise<void>
   /** 立即刷新待保存的设置到磁盘（绕过防抖） */
   flushSettings: () => void
   updateSettings: (partial: Partial<Settings>) => void
-  setActiveProvider: (provider: ProviderType) => void
   saveCredential: (provider: string, key: string) => Promise<void>
   getCredential: (provider: string) => Promise<string | null>
   // Profile 系统
@@ -87,6 +90,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   credentials: {},
   loaded: false,
   _saveTimer: null,
+  saveStatus: 'idle',
+  saveError: null,
 
   loadSettings: async () => {
     const settings = await window.api.settings.get()
@@ -98,7 +103,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (key) credentials[provider] = key
     }
 
-    // 旧数据迁移：如果 profiles 为空但有旧版 provider 配置，自动创建 profile
+    // 旧数据迁移：如果 profiles 为空但有旧版 provider 配置，自动创建 profile。
+    // B2：设置迁移已并链到主进程 MIGRATIONS.settings v2→v3，此处仅作兜底读取（不再写盘），
+    // 避免 renderer 与主进程两条迁移链并发写入。
     const profiles = settings.connectionProfiles || []
     if (profiles.length === 0 && settings.providers) {
       const defaultProviders: ProviderType[] = ['openai', 'claude', 'gemini', 'ollama']
@@ -125,7 +132,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings.activeProfileId = profiles[0].id
       }
       settings.connectionProfiles = profiles
-      await window.api.settings.save(settings)
     }
 
     // 旧 TTS/生图/识图 数据迁移：将单字段迁移为模型数组
@@ -202,7 +208,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       }
     }
 
-    // 清理旧字段，保存迁移结果
+    // 清理旧字段（B2：仅内存兜底，不再写盘；持久化由主进程 v2→v3 迁移负责）
     if (legacySettings.ttsProvider !== undefined || legacySettings.ttsVoice !== undefined ||
         legacySettings.ttsModel !== undefined || legacySettings.visionModel !== undefined ||
         legacySettings.imageGenModel !== undefined || legacySettings.authorNote !== undefined) {
@@ -213,17 +219,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       delete cleaned.visionModel
       delete cleaned.imageGenModel
       delete cleaned.authorNote
-      await window.api.settings.save(settings)
     }
 
-    set({ settings, credentials, loaded: true })
+    set({ settings, credentials, loaded: true, saveStatus: 'idle', saveError: null })
   },
 
   saveSettings: async () => {
+    set({ saveStatus: 'saving', saveError: null })
     try {
+      // 以当前 state 为准：防抖窗口内的多次修改只落最后一份
       await window.api.settings.save(get().settings)
+      set({ saveStatus: 'saved', saveError: null })
     } catch (err) {
       logError('SettingsStore:save', err)
+      set({
+        saveStatus: 'error',
+        saveError: err instanceof Error ? err.message : String(err),
+      })
     }
   },
 
@@ -234,7 +246,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       clearTimeout(self._saveTimer)
       set({ _saveTimer: null })
     }
-    window.api.settings.save(get().settings).catch((e) => logError('SettingsStore:flush', e))
+    void get().saveSettings()
   },
 
   updateSettings: (partial) => {
@@ -245,20 +257,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (self._saveTimer) clearTimeout(self._saveTimer)
     const timer = setTimeout(() => {
       set({ _saveTimer: null })
-      window.api.settings.save(get().settings).catch((e) => logError('SettingsStore:update', e))
+      void get().saveSettings()
     }, 300)
     set({ _saveTimer: timer })
-  },
-
-  setActiveProvider: (provider) => {
-    set((state) => ({
-      settings: {
-        ...state.settings,
-        activeProvider: provider,
-        activeModel: state.settings.providers[provider].model,
-      },
-    }))
-    void get().saveSettings()
   },
 
   saveCredential: async (provider, key) => {

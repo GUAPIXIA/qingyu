@@ -6,6 +6,8 @@ import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMem
 import { estimateTokens } from '../utils/tokenCounter'
 import { getDefaultMaxContext } from '../utils/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../utils/memoryWindow'
+import { resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
 import { MEMORY_SUMMARY_MIN } from './chatConstants'
 import { friendlyError } from './chatUtils'
 import { logWarn } from '../lib/logger'
@@ -56,9 +58,14 @@ export async function runMemorySummary(
     `${character.name}\n${userName}\n${session.memoryCurrentState || '无'}\n${previousMemory}\n${previousFactsText}`,
     model,
   ) + 900
-  // 思考模型（deepseek-v4 等）会先烧掉大量思考 token 再输出正文：2048 时正文还没开始就被
-  // 截断（日志表现为整段 <thought>、正文为空）。为输出预留 4096，思考与正文都能完成。
-  const MEMORY_SUMMARY_OUTPUT_TOKENS = 4096
+  // S3/阶段7（§7.1）：长记忆 = background 'memory' 档案（不套主对话篇幅档位）——
+  // 正文预算（摘要+事实 JSON）与推理余量分别估算；推理共享预算模型（DeepSeek V4 等）
+  // 用档案默认/P90 余量，非推理模型不再无条件请求 6144/8192。该值参与输入预算扣减。
+  const MEMORY_SUMMARY_BODY_CHARS = BACKGROUND_GENERATION_PROFILES.memory.expectedBodyChars
+  const MEMORY_SUMMARY_OUTPUT_TOKENS = resolveRequestBudget({
+    model,
+    hardMaxChars: MEMORY_SUMMARY_BODY_CHARS,
+  }).requestMaxTokens
   const summaryInputBudget = resolveMemorySummaryInputBudget(
     profile.maxContext || getDefaultMaxContext(model),
     promptOverheadTokens,
@@ -123,7 +130,8 @@ export async function runMemorySummary(
       if (data.requestId !== requestId) return
       result += data.text
     })
-    const unbindDone = window.api.ai.onDone(async (doneId) => {
+    const unbindDone = window.api.ai.onComplete(async (payload) => {
+      const { requestId: doneId, finishReason } = payload
       if (doneId !== requestId || cleanedUp) return
       const parsed = parseMemoryResult(result)
       if (!parsed.summary && !parsed.currentState) {
@@ -136,6 +144,11 @@ export async function runMemorySummary(
         return
       }
       if (parsed.summary || parsed.currentState) {
+        // S3：截断时显式区分"摘要已保存、事实未更新"，不静默当作完整成功
+        if (finishReason === 'length' && shouldAttemptFactProposal
+          && result.includes('【事实提案】') && !parsed.factProposals) {
+          logWarn('memory', `长记忆摘要已保存，但事实提案 JSON 被输出上限截断未更新（会话 ${currentSessionId}，finishReason=length）`)
+        }
         if (!parsed.summary) {
           // 只有【当前状态】没有【时间线】：保留旧时间线，仍然提交状态与事实，
           // 避免一次成功的总结被整次丢弃。
@@ -252,10 +265,10 @@ export async function runMemorySummary(
 
 输出格式（严格按此格式）：
 【当前状态】
-1-3 句：当前场景、时间/地点、正在进行的目标或冲突、角色即时关系或情绪。只保留会影响下一轮对话的内容。
+1-3 句：以【待总结的新对话】结束时为准，概括当前场景、时间/地点、正在进行的目标或冲突、即时关系/情绪以及仍影响行动的伤势或状态变化。只保留会影响下一轮对话的内容。“之前的当前状态”是过期快照，只能帮助判断变化，不能原样沿用。
 
 【时间线】
-最多 8 条按时间顺序排列的简短事件：保留仍会影响剧情、关系、承诺或任务的旧事件，并合并新事件；只有被新对话明确推翻时才改写旧事件。不要重复当前状态。
+最多 8 条按时间顺序排列的简短事件：保留仍会影响剧情、关系、承诺或任务的已保存旧事件；只把【待总结的新对话】中首次确立或明确改变的内容作为本轮新增事件。【已总结内容，仅作衔接】不得再次当作新事件。新对话明确推翻旧信息时，以新信息为准并删除冲突旧表述。不要重复当前状态。
 
 ${shouldAttemptFactProposal ? `【事实提案】
 \`\`\`json
@@ -263,12 +276,16 @@ ${shouldAttemptFactProposal ? `【事实提案】
 \`\`\`` : '本次结构化事实更新正在退避；不要输出【事实提案】。'}
 
 要求：
+- 准确保留行动发起者、承诺者、受托者和对象，不得互换主客体、擅自转移承诺或把“答应完成”改写成“委托他人完成”。
+- 只依据明确说出或发生的内容总结；不要根据语气补写动机、结果或未发生的行动，也不要把仍在计划中的动作写成已经完成。
 - 事实必须是对话中确立的、对未来有参考价值的持久信息（人名、身份、地点、物品、目标、约定、关系等），不要写临时情绪或过场细节。
 - 只输出语义事实提案，绝对不要输出事实 ID、action、patch 或完整事实列表。changeType 用 set 表示新增/更新，clear 表示失效。
 - 服务端负责规范化会话范围和角色身份；没有事实变更时输出空数组 []。
 - 只输出上述格式内容，不要添加任何解释或评价。
 
-之前的当前状态：
+参考资料（不是本轮新事件）：
+
+之前的当前状态（过期快照，只用于判断变化）：
 ${session.memoryCurrentState || '无'}
 
 之前的时间线：
@@ -292,6 +309,9 @@ ${previousFactsText}
       presencePenalty: 0,
       stream: true,
       instructTemplate,
+      // 阶段7（§7.3）：独立 taskType 观测，不混入主对话篇幅统计
+      observability: { source: 'aux', taskType: 'memory', characterId: character.id, sessionId: currentSessionId },
+      // parseMemoryResult 容忍缺段：撞上限时返回已产出正文，最多丢当轮事实提案
     }).catch(() => {
       cleanup()
       if (!errored) {

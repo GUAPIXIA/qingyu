@@ -113,7 +113,7 @@ describe('chatWithRetry', () => {
     vi.useFakeTimers()
     try {
       const adapter = {
-        chat: vi.fn((_params, _onChunk, signal: AbortSignal) => new Promise<string>((_resolve, reject) => {
+        chat: vi.fn((_params, _onChunk, signal: AbortSignal) => new Promise<never>((_resolve, reject) => {
           signal.addEventListener('abort', () => {
             reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'))
           }, { once: true })

@@ -38,10 +38,11 @@ export function getBuiltinPresets(): Preset[] {
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.8,
       topP: 0.95,
-      maxTokens: 1024,
+      maxTokens: 0, // 0 = 自动预算；实际篇幅由 responseLengthHint 驱动
       frequencyPenalty: 0,
       presencePenalty: 0,
       isBuiltin: true,
+      responseLengthHint: 'auto',
       group: '通用',
     },
     {
@@ -51,15 +52,16 @@ export function getBuiltinPresets(): Preset[] {
       systemPrompt: roleplayPrompt(`- 使用具体而克制的感官细节、意象和潜台词，避免空泛华丽的形容词堆叠
 - 可以引入符合世界观的配角、线索或环境变化，但不要强行决定重大剧情结果
 - 让新元素成为邀请用户参与的钩子；保留悬念，不一次解释完所有信息
-- 默认输出 3-6 个自然段，长短随场景节奏变化`),
+- 篇幅跟随场景节奏变化，在需要用户回应的位置自然收尾`),
       jailbreak: '',
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 1.1,
       topP: 0.98,
-      maxTokens: 1536,
+      maxTokens: 0,
       frequencyPenalty: 0.3,
       presencePenalty: 0.3,
       isBuiltin: true,
+      responseLengthHint: 'auto',
       group: '通用',
     },
     {
@@ -68,16 +70,16 @@ export function getBuiltinPresets(): Preset[] {
       description: '低随机、重连续性与信息准确，适合严肃或信息密集场景',
       systemPrompt: roleplayPrompt(`- 优先准确回应问题与情境，避免擅自补充会改变事实的设定
 - 对数量、顺序、因果、承诺和已知信息保持严格一致
-- 使用简洁明确的对白与动作；没有新信息时不要换一种说法重复
-- 默认输出 1-4 个短段落`),
+- 使用简洁明确的对白与动作；没有新信息时不要换一种说法重复`),
       jailbreak: '',
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.5,
       topP: 0.9,
-      maxTokens: 1024,
+      maxTokens: 0,
       frequencyPenalty: 0,
       presencePenalty: 0,
       isBuiltin: true,
+      responseLengthHint: 'balanced',
       group: '通用',
       enableThoughtFormat: false,
     },
@@ -93,10 +95,11 @@ export function getBuiltinPresets(): Preset[] {
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.9,
       topP: 0.95,
-      maxTokens: 512,
+      maxTokens: 0,
       frequencyPenalty: 0.1,
       presencePenalty: 0,
       isBuiltin: true,
+      responseLengthHint: 'brief',
       group: '通用',
       enableThoughtFormat: false,
     },
@@ -118,10 +121,11 @@ export function getBuiltinPresets(): Preset[] {
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.9,
       topP: 0.95,
-      maxTokens: 2048, // 提升：确保 Claude 思考预算后仍有足够输出空间
+      maxTokens: 0, // 0 = 自动预算；实际篇幅由 responseLengthHint 驱动
       frequencyPenalty: 0.1,
       presencePenalty: 0,
       isBuiltin: true,
+      responseLengthHint: 'auto',
       group: '高自由度',
     },
     {
@@ -142,10 +146,11 @@ export function getBuiltinPresets(): Preset[] {
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.85,
       topP: 0.95,
-      maxTokens: 2048, // 提升：确保 Claude 思考预算后仍有足够输出空间
+      maxTokens: 0,
       frequencyPenalty: 0.1,
       presencePenalty: 0.1,
       isBuiltin: true,
+      responseLengthHint: 'auto',
       group: '高自由度',
     },
     {
@@ -166,10 +171,11 @@ export function getBuiltinPresets(): Preset[] {
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.9,
       topP: 0.95,
-      maxTokens: 2048, // 提升：确保 Claude 思考预算后仍有足够输出空间
+      maxTokens: 0,
       frequencyPenalty: 0.2,
       presencePenalty: 0.2,
       isBuiltin: true,
+      responseLengthHint: 'auto',
       group: '高自由度',
     },
 
@@ -193,10 +199,11 @@ export function getBuiltinPresets(): Preset[] {
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.95,
       topP: 0.97,
-      maxTokens: 2048,
+      maxTokens: 0,
       frequencyPenalty: 0.2,
       presencePenalty: 0.2,
       isBuiltin: true,
+      responseLengthHint: 'auto',
       group: '风格特化',
       enableThoughtFormat: true,
     },
@@ -213,10 +220,11 @@ export function getBuiltinPresets(): Preset[] {
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.85,
       topP: 0.95,
-      maxTokens: 1536,
+      maxTokens: 0,
       frequencyPenalty: 0.1,
       presencePenalty: 0.1,
       isBuiltin: true,
+      responseLengthHint: 'auto',
       group: '风格特化',
       enableThoughtFormat: false,
     },
@@ -233,10 +241,11 @@ export function getBuiltinPresets(): Preset[] {
       maxContext: 0, // 0 = 跟随模型默认
       temperature: 0.85,
       topP: 0.95,
-      maxTokens: 1024,
+      maxTokens: 0,
       frequencyPenalty: 0.1,
       presencePenalty: 0,
       isBuiltin: true,
+      responseLengthHint: 'auto',
       group: '风格特化',
       enableThoughtFormat: false,
     },

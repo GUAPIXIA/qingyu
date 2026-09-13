@@ -81,7 +81,7 @@ export function UsagePage() {
       timer = setTimeout(() => loadData(), 200)
     }
     const unbindUsage = window.api.ai.onUsage?.(refresh)
-    const unbindDone = window.api.ai.onDone(refresh)
+    const unbindDone = window.api.ai.onComplete(() => refresh())
     return () => {
       if (timer) clearTimeout(timer)
       if (typeof unbindUsage === 'function') unbindUsage()

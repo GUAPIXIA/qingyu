@@ -6,7 +6,8 @@ import { usePersonaStore } from './usePersonaStore'
 import { useCharacterStore } from './useCharacterStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { replaceVariables } from '../utils/variables'
-import { applyRegexRules, applyOutputRegexRules, truncateAtStop, collectStopStrings } from '../utils/regex'
+import { applyRegexRules, applyOutputRegexRules } from '../utils/regex'
+import { normalizeRoleplayDialoguePrefixes } from '../utils/messagePostProcess'
 import { getEffectiveLorebookIds, lorebookCache } from '../utils/lorebook'
 import { logError } from '../lib/logger'
 import { translationMaxTokens } from './chatConstants'
@@ -14,7 +15,7 @@ import {
   friendlyError, syncPersonaToSettings, applyDefaultMemory,
   invalidateDerivedMemory, nextLoadRequestId, currentLoadRequestId,
 } from './chatUtils'
-import { streamAIResponse, cleanupActiveStream } from './streamController'
+import { streamAIResponse, cleanupActiveStream, finalizeNoticeFields, claimUserStop, abortActiveTailRepair } from './streamController'
 import { createChunkAccumulator } from './chunkAccumulator'
 import { buildChatContext, buildChatContextReport } from './chatContext'
 import { maybeRunAutoMemorySummary, runMemorySummary } from './memoryManager'
@@ -23,6 +24,8 @@ import { sessionEventReporter } from './sessionEventReporter'
 import type { ChatState } from './chatTypes'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import { stripAllThinking } from '../../shared/thoughtMarkup'
+import { buildMessageTranslationSystemPrompt } from '../../shared/translationPrompt'
 import {
   generateSingleDialogueDirections,
   cancelDialogueDirectionRequests,
@@ -508,9 +511,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
           const userMsgId = nanoid()
           const userMsg = { id: userMsgId, sessionId: curSid, characterId: character.id, role: 'user' as const, content, images: images ?? [], isEditing: false, timestamp: Date.now(), replyToId: replyToId ?? undefined, narrativeMode, speakerKind: resolveMessageSpeakerKind({ role: 'user', narrativeMode }), generationKind }
           set((s) => ({ messages: [...s.messages, userMsg] }))
-          // 创建 AI 占位
+          // 创建 AI 占位（流式期间也走语义分块样式）
           const aiMsgId = nanoid()
-          const aiPlaceholder = { id: aiMsgId, sessionId: curSid, characterId: character.id, role: 'assistant' as const, content: '', images: [], isEditing: false, timestamp: Date.now(), narrativeMode, speakerKind: 'character' as const, generationKind: 'assistant_reply' as const }
+          const aiPlaceholder = { id: aiMsgId, sessionId: curSid, characterId: character.id, role: 'assistant' as const, content: '', images: [], isEditing: false, timestamp: Date.now(), narrativeMode, speakerKind: 'character' as const, generationKind: 'assistant_reply' as const, contentRenderMode: 'blocks' as const }
           set((s) => ({ messages: [...s.messages, aiPlaceholder], isStreaming: true }))
           // 提交任务并订阅流式事件
           const { submitChatTask, subscribeTaskEvents } = await import('./chatTaskStore')
@@ -631,7 +634,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       return
     }
 
-    // 构建 AI 消息占位
+    // 构建 AI 消息占位（创建时即标记语义分块：流式期间与完成后样式一致）
     const aiMessageId = nanoid()
     const aiMessage: Message = {
       id: aiMessageId,
@@ -645,6 +648,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === currentSid)?.narrativeMode),
       speakerKind: 'character',
       generationKind: 'assistant_reply',
+      contentRenderMode: 'blocks',
     }
     set((state) => ({
       messages: [...state.messages, aiMessage],
@@ -657,29 +661,34 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       character,
       preset,
       inputText: processedContent,
-      onComplete: async (fullContent) => {
+      onComplete: async (fullContent, meta) => {
         // M-18 修复：空回复/手动中止——移除占位消息，避免 UI 残留空气泡且不落盘
         if (!fullContent) {
           set((state) => ({ messages: state.messages.filter((m) => m.id !== aiMessageId) }))
           return
         }
 
-        // 对 AI 输出应用正则规则
+        // S1：output 正则与停止字符串已由统一收尾管线执行（每条消息仅一次），
+        // 此处不再重复应用。
         let finalContent = fullContent
-        try {
-          const regexRules = await window.api.regex.list()
-          if (regexRules.length > 0) {
-            finalContent = get().applyRegex(fullContent, 'output', regexRules)
-            // 停止字符串：output 命中后终止生成并截断
-            finalContent = truncateAtStop(finalContent, collectStopStrings(regexRules)).text
-          }
-        } catch { /* 忽略 */ }
 
+        // 阶段6灰度：旧链路恢复说话人前缀补齐；新管线（阶段5）为语义分块渲染，不再补前缀
+        if (meta.legacy) {
+          finalContent = normalizeRoleplayDialoguePrefixes(
+            finalContent,
+            character.translatedContent?.name || character.name,
+            aiMessage.narrativeMode ?? 'immersive',
+          )
+        }
         // 更新 UI 中的消息内容
         const currentMsg = get().messages.find(m => m.id === aiMessageId) ?? aiMessage
         const finalMsg: Message = {
           ...currentMsg,
           content: finalContent,
+          // 阶段3：收尾状态——"已恢复"走中性提示（generationNotice），失败走 generationError
+          ...finalizeNoticeFields(meta),
+          // 阶段5：新内容使用语义分块渲染（渲染时即时分块，正文不受影响）；legacy 不标记
+          ...(meta.legacy ? {} : { contentRenderMode: 'blocks' as const }),
         }
         set((s) => ({
           messages: s.messages.map((m) => (m.id === aiMessageId ? finalMsg : m)),
@@ -695,25 +704,63 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
         // 自动长记忆：成功提交后才推进消息游标；失败会保留重试机会。
         maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
       },
-      onError: (errMsg) => {
-        // 错误时把错误信息写入占位消息（如果内容为空）
+      onError: (errMsg, terminal) => {
+        // 阶段7：错误文案绝不写进正文（旧「⚠️ 错误」落盘行为移除）。
+        // terminal.content = 经过统一收尾管线的稳定正文（方案 §4.1 矩阵）；
+        // 无可用正文时不保存 AI 消息，只保留 store.error 与重试入口。
         const state = get()
         const aiMsg = state.messages.find((m) => m.id === aiMessageId)
-        if (aiMsg && !aiMsg.content) {
-          const updatedMsg: Message = { ...aiMsg, content: `⚠️ ${errMsg}` }
-          window.api.chat.saveMessage(updatedMsg).catch((e) => logError('ChatStore:saveMessage', e))
-          set((s) => ({
-            messages: s.messages.map((m) => (m.id === aiMessageId ? updatedMsg : m)),
-          }))
+        if (!aiMsg) return
+        const updatedMsg: Message | null = terminal?.content
+          ? {
+              ...aiMsg,
+              content: terminal.content,
+              // 提示字段由统一协调入口生成（generationError 与正文分离）
+              ...(terminal.noticeFields.generationError ? { generationError: terminal.noticeFields.generationError } : {}),
+              ...(terminal.noticeFields.generationNotice ? { generationNotice: terminal.noticeFields.generationNotice } : {}),
+              // 阶段5：中断保留的正文与正常完成一致走语义分块；legacy 不标记
+              ...(terminal.legacy ? {} : { contentRenderMode: 'blocks' as const }),
+            }
+          : null
+        if (!updatedMsg) {
+          set((s) => ({ messages: s.messages.filter((m) => m.id !== aiMessageId) }))
+          return
         }
+        window.api.chat.saveMessage(updatedMsg).catch((e) => logError('ChatStore:saveMessage', e))
+        set((s) => ({
+          messages: s.messages.map((m) => (m.id === aiMessageId ? updatedMsg : m)),
+        }))
       },
     })
   },
 
   stopStreaming: () => {
-    const requestId = get().currentRequestId
-    if (requestId) {
-      window.api.ai.cancelChat(requestId).catch(() => { /* ignore */ })
+    // 阶段7：用户手动停止经终止状态机抢占（claimUserStop），
+    // 同一 requestId 的迟到 chunk/done/error 全部被忽略，不会二次落盘。
+    const stoppedStream = claimUserStop()
+    if (stoppedStream) {
+      window.api.ai.cancelChat(stoppedStream.requestId, 'user').catch(() => { /* ignore */ })
+      // 保留用户已经看到的正文并标记中性提示（矩阵 §4.1；accumulated 比节流后的 UI 更完整）
+      const msg = get().messages.find((m) => m.id === stoppedStream.aiMessageId)
+      const content = stoppedStream.content.trim() || (msg?.content ?? '')
+      if (msg && content) {
+        // 用户停止会抢先 latch，onComplete 不会再写 contentRenderMode；此处按管线补标记
+        const isLegacyPipeline = (useSettingsStore.getState().settings.generationPipeline ?? 'unified') === 'legacy'
+        const stopped: Message = {
+          ...msg,
+          content,
+          generationNotice: '已停止生成',
+          ...(isLegacyPipeline ? {} : { contentRenderMode: 'blocks' as const }),
+        }
+        set((s) => ({ messages: s.messages.map((m) => (m.id === stoppedStream.aiMessageId ? stopped : m)) }))
+        window.api.chat.saveMessage(stopped).catch(() => { /* ignore */ })
+      }
+    } else {
+      // 收尾管线补尾期间停止：立即取消补尾并保留稳定前缀（§8.1）
+      if (!abortActiveTailRepair()) {
+        const requestId = get().currentRequestId
+        if (requestId) window.api.ai.cancelChat(requestId, 'user').catch(() => { /* ignore */ })
+      }
     }
     // 兜底重置状态（防止 cancelChat IPC 失败导致卡住）
     cleanupActiveStream()
@@ -745,12 +792,14 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   },
 
   editMessage: async (messageId, newContent, character) => {
-    // 阶段五检查点：仅当编辑发生在游标前才失效
-    const invalidated = await invalidateDerivedMemory(get, character, messageId)
-    if (invalidated) get().patchLocalSession(invalidated.sessionId, invalidated.patch)
     const state = get()
     const msg = state.messages.find((m) => m.id === messageId)
     if (!msg) return
+    const sid = msg.sessionId || state.currentSessionId
+
+    // Start invalidation now so it captures the editing session, but do not let its
+    // IPC round-trip block the visible edit or the message save.
+    const invalidation = invalidateDerivedMemory(get, character, messageId)
 
     // 正文被编辑：旧方向不再对应当前内容，立即失效并取消在途请求
     cancelDialogueDirectionRequests([messageId])
@@ -764,7 +813,6 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     // 再保存到文件（updateMessage 会更新而非追加）
     await window.api.chat.saveMessage(updatedMsg)
     // P-7：本地 patch 会话元数据（不再全量 listSessions）
-    const sid = get().currentSessionId
     if (sid) {
       const msgs = get().messages
       const isLast = msgs.length > 0 && msgs[msgs.length - 1].id === messageId
@@ -774,6 +822,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
         updatedAt: Date.now(),
       })
     }
+    const invalidated = await invalidation
+    if (invalidated) get().patchLocalSession(invalidated.sessionId, invalidated.patch)
   },
 
   deleteMessage: async (messageId, character) => {
@@ -854,7 +904,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       },
       onIdleTimeout: () => {
         unbindChunk(); unbindDone(); unbindError()
-        window.api.ai.cancelChat(requestId).catch(() => {})
+        window.api.ai.cancelChat(requestId, 'timeout').catch(() => {})
         set((state) => ({
           translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译超时（30 秒无响应）' } },
         }))
@@ -866,12 +916,12 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       acc.append(data.text)
     })
 
-    const unbindDone = window.api.ai.onDone((doneId) => {
-      if (doneId !== requestId) return
+    const unbindDone = window.api.ai.onComplete((payload) => {
+      if (payload.requestId !== requestId) return
       unbindChunk(); unbindDone(); unbindError()
 
       // 先准备好 updated 对象（不在 set 回调中执行副作用）
-      const finalResult = acc.flushNow().replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const finalResult = stripAllThinking(acc.flushNow())
       // R4 修复：模型返回空结果（如推理模型思考内容耗尽 maxTokens 导致正文为空）时，
       // 不落库空译文、不自动切显示，改为错误提示，避免 UI 静默回退原文且下次仍重复翻译
       if (!finalResult) {
@@ -921,7 +971,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     window.api.ai.chat({
       requestId,
       messages: [
-        { role: 'system', content: `你是一个翻译助手。请将以下文本翻译成${targetLang}。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。` },
+        { role: 'system', content: buildMessageTranslationSystemPrompt(targetLang) },
         { role: 'user', content },
       ],
       provider: profile.provider,

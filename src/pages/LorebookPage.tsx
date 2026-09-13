@@ -28,6 +28,7 @@ import {
 import { useSettingsStore } from '../store/useSettingsStore'
 import { translationMaxTokens } from '../store/chatConstants'
 import type { Lorebook, LoreEntry } from '../../shared/types'
+import { stripAllThinking } from '../../shared/thoughtMarkup'
 import type {
   LorebookFormatChoicePending,
   LorebookImportResult,
@@ -390,19 +391,16 @@ export function LorebookPage() {
     const unbindChunk = window.api.ai.onChunk((data) => {
       if (data.requestId !== requestId) return
       result += data.text
-      setTranslateResult(result.replace(/<thought>[\s\S]*?<\/thought>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim())
+      setTranslateResult(stripAllThinking(result))
     })
-    const unbindDone = window.api.ai.onDone((doneId) => {
-      if (doneId !== requestId) return
+    const unbindDone = window.api.ai.onComplete((payload) => {
+      if (payload.requestId !== requestId) return
       cleanup()
       setTranslatingField(null)
       setTranslateResult(null)
       if (result.trim()) {
-        // 剥离 <thought> / <thinking> 标签，避免 AI 将思考过程混入翻译结果
-        const cleanResult = result
-          .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
-          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-          .trim()
+        // 剥离思考/推理标记，避免 AI 将思考过程混入翻译结果
+        const cleanResult = stripAllThinking(result)
         if (cleanResult) {
           onApply(cleanResult)
         } else {

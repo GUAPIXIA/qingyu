@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
@@ -13,7 +13,9 @@ import { useCharacterStore } from '../store/useCharacterStore'
 import { syncBuildData } from '../context/rendererContextProvider'
 import { buildChatParamsFromData, buildContextMessagesFromData } from '../context/contextBuilder'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
-import type { ChatParams, Message, Preset } from '../../shared/types'
+import { RESPONSE_LENGTH_LABELS, resolveResponsePolicy } from '../../shared/responsePolicy'
+import { formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import type { ChatParams, Message, Preset, ResponseLengthMode } from '../../shared/types'
 
 /** 模板名 → 展示标签 */
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -39,7 +41,7 @@ function createPreset(): Preset {
     maxContext: 0, // 0 = 跟随模型默认
     temperature: 0.8,
     topP: 0.95,
-    maxTokens: 1024,
+    maxTokens: 0, // 0 = 自动计算；正数 = 用户明确硬上限
     frequencyPenalty: 0,
     presencePenalty: 0,
     isBuiltin: false,
@@ -50,6 +52,7 @@ function createPreset(): Preset {
 }
 
 export function PresetsPage() {
+  const liveSettings = useSettingsStore((state) => state.settings)
   const [presets, setPresets] = useState<Preset[]>([])
   const [editingPreset, setEditingPreset] = useState<Preset | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -66,6 +69,23 @@ export function PresetsPage() {
   const [testOutput, setTestOutput] = useState('')
   const [testBusy, setTestBusy] = useState(false)
   const testRequestRef = useRef<string | null>(null)
+  const presetBudgetPreview = useMemo(() => {
+    if (!editingPreset) return null
+    const profile = liveSettings.connectionProfiles.find(
+      (item) => item.id === liveSettings.activeProfileId,
+    )
+    const model = liveSettings.activeModel || profile?.model || 'gpt-4o-mini'
+    const responsePolicy = resolveResponsePolicy({ presetHint: editingPreset.responseLengthHint })
+    const requestBudget = resolveRequestBudget({
+      model,
+      hardMaxChars: responsePolicy.hardMaxChars,
+      userHardCap: editingPreset.maxTokens,
+    })
+    return {
+      requestBudget,
+      riskMessage: formatRequestBudgetRisk(requestBudget),
+    }
+  }, [editingPreset, liveSettings.activeModel, liveSettings.activeProfileId, liveSettings.connectionProfiles])
 
   const loadPresets = () => {
     window.api.preset.list().then(setPresets)
@@ -147,8 +167,8 @@ export function PresetsPage() {
         // 默认非实时
       }
     })
-    const unbindDone = window.api.ai.onDone((doneId) => {
-      if (doneId !== opts.requestId) return
+    const unbindDone = window.api.ai.onComplete((payload) => {
+      if (payload.requestId !== opts.requestId) return
       cleanup()
       opts.onResult(result)
     })
@@ -243,6 +263,10 @@ TopP: <0-1>
       setTestOutput('⚠ 请先在“模型”页面配置连接')
       return
     }
+    if (presetBudgetPreview?.riskMessage) {
+      setTestOutput(`⚠ ${presetBudgetPreview.riskMessage}`)
+      return
+    }
     setTestBusy(true)
     setTestOutput('')
     const requestId = `preset-test-${Date.now()}`
@@ -259,7 +283,7 @@ TopP: <0-1>
       'temperature' | 'topP' | 'maxTokens' | 'frequencyPenalty' | 'presencePenalty' | 'instructTemplate'>> = {
       temperature: editingPreset.temperature,
       topP: editingPreset.topP,
-      maxTokens: editingPreset.maxTokens,
+      maxTokens: presetBudgetPreview?.requestBudget.requestMaxTokens ?? editingPreset.maxTokens,
       frequencyPenalty: editingPreset.frequencyPenalty,
       presencePenalty: editingPreset.presencePenalty,
     }
@@ -283,7 +307,17 @@ TopP: <0-1>
       }
       data.chat = { ...data.chat, messages: [...data.chat.messages, testMessage] }
       const built = buildContextMessagesFromData(data)
-      const params = buildChatParamsFromData(data, built.messages)
+      const budgetRisk = formatRequestBudgetRisk(built.requestBudget)
+      if (budgetRisk) {
+        setTestBusy(false)
+        setTestOutput(`⚠ ${budgetRisk}`)
+        return
+      }
+      const params = buildChatParamsFromData(data, built.messages, {
+        requestMaxTokens: built.requestMaxTokens,
+        // 预设测试生成按辅助调用记录观测，不进入主对话基线
+        source: 'aux',
+      })
       messages = params.messages
       effectiveParams = {
         temperature: params.temperature,
@@ -449,7 +483,7 @@ TopP: <0-1>
                               TopP {preset.topP}
                             </span>
                             <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                              Token {preset.maxTokens}
+                              篇幅 {RESPONSE_LENGTH_LABELS[preset.responseLengthHint ?? 'auto']}
                             </span>
                             <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
                               上下文 {preset.maxContext > 0 ? preset.maxContext : '跟随模型'}
@@ -672,14 +706,29 @@ TopP: <0-1>
                 />
               </div>
               <div>
-                <label className="label">最大 Token</label>
+                <label className="label">回复篇幅</label>
+                <select
+                  className="input"
+                  value={editingPreset.responseLengthHint ?? 'auto'}
+                  onChange={(e) => updateField('responseLengthHint', e.target.value as ResponseLengthMode)}
+                >
+                  {(Object.keys(RESPONSE_LENGTH_LABELS) as ResponseLengthMode[]).map((mode) => (
+                    <option key={mode} value={mode}>{RESPONSE_LENGTH_LABELS[mode]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">模型输出硬上限（Token，0 = 自动）</label>
                 <input
                   type="number"
-                  min={1}
+                  min={0}
                   className="input"
                   value={editingPreset.maxTokens}
-                  onChange={(e) => updateField('maxTokens', Number(e.target.value) || 1)}
+                  onChange={(e) => updateField('maxTokens', Math.max(0, Number(e.target.value) || 0))}
                 />
+                {presetBudgetPreview?.riskMessage && (
+                  <p className="mt-1 text-xs text-amber-500">{presetBudgetPreview.riskMessage}</p>
+                )}
               </div>
               <div>
                 <label className="label">上下文长度（0 = 跟随模型）</label>
@@ -753,7 +802,7 @@ TopP: <0-1>
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-tavern-text-muted">
-                      参数：温度 {editingPreset.temperature} · TopP {editingPreset.topP} · 最大 {editingPreset.maxTokens} tok
+                      参数：温度 {editingPreset.temperature} · TopP {editingPreset.topP} · 篇幅 {RESPONSE_LENGTH_LABELS[editingPreset.responseLengthHint ?? 'auto']} · 硬上限 {editingPreset.maxTokens} tok
                     </span>
                     <button
                       onClick={() => navigator.clipboard.writeText(testOutput)}

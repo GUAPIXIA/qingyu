@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -10,6 +10,8 @@ import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
 import { remarkRoleplay, remarkMentionHighlight } from '../../utils/remark-roleplay'
 import { extractThought } from '../../utils/messagePostProcess'
+import { buildRoleplayBlocks, stripOuterQuotes, splitQuoteSegments } from '../../utils/roleplayBlocks'
+import { splitMentionSegments } from '../../utils/mentionHighlight'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
@@ -90,7 +92,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
 
   const character = characters.find(c => c.id === message.characterId)
 
-  // 提取 thought 块并剥离（统一处理 <thought> 和 <thinking> 标签）
+  // 提取角色 <thought> 内心块；供应商 <think>/<thinking> 推理会在工具层先行丢弃。
   const { thought: thoughtContent, content: mainContent, isFallback: isThoughtFallback } = extractThought(message.content || '')
 
   // 翻译显示状态从 store 同步，而非本地 state
@@ -101,6 +103,11 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
     : isThoughtFallback
       ? ''
       : mainContent
+
+  // 阶段5：语义分块（仅 blocks 模式的新消息；旧消息走 Markdown 兼容渲染）
+  const semanticBlocks = message.contentRenderMode === 'blocks'
+    ? buildRoleplayBlocks(displayContent)
+    : null
 
   // @提及高亮处理
   // BUG-09 修复：不再注入原始 HTML（原实现依赖 rehypeRaw，存在 XSS 风险），
@@ -116,6 +123,16 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
     () => (mentionNames.length > 0 ? [[remarkMentionHighlight, mentionNames]] : []),
     [mentionNames]
   )
+
+  // S7：blocks 路径与 Markdown 路径共用同一提及识别（纯文本分段，不注入 HTML）
+  const renderWithMentions = useCallback((text: string) => {
+    if (mentionNames.length === 0) return text
+    const segments = splitMentionSegments(text, mentionNames)
+    if (!segments.some((segment) => segment.mention)) return text
+    return segments.map((segment, index) => segment.mention
+      ? <span key={index} className="mention-highlight">{segment.text}</span>
+      : <span key={index}>{segment.text}</span>)
+  }, [mentionNames])
 
   if (isFree) {
     return null
@@ -270,13 +287,49 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
               {/* BUG-09 修复：移除 rehypeRaw / allowDangerousHtml，防止消息内容中的原始 HTML 执行导致 XSS；
                   @提及高亮由 remarkMentionHighlight 插件在 AST 层完成 */}
               <div className="markdown-body">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkRoleplay, remarkAudio, ...mentionHighlightPlugins]}
-                  rehypePlugins={[rehypeHighlight]}
-                  components={markdownComponents}
-                >
-                  {displayContent || ''}
-                </ReactMarkdown>
+                {semanticBlocks ? (
+                  /* 阶段5：语义分块渲染——对白/叙述/混合段按 kind 呈现样式。
+                     复用 markdown 路径同一套 CSS class，避免 blocks 消息“无样式”。 */
+                  <div className="space-y-2">
+                    {semanticBlocks.map((block, index) => {
+                      if (block.kind === 'dialogue') {
+                        // 对白块：左竖线引用形态；匿名对白同样结构、无名字行；展示层剥外层引号
+                        return (
+                          <p key={index} className="dialogue-block whitespace-pre-wrap select-text">
+                            {block.speaker && <em className="dialogue-speaker">{block.speaker}</em>}
+                            <em className="dialogue-text">{renderWithMentions(stripOuterQuotes(block.text))}</em>
+                          </p>
+                        )
+                      }
+                      if (block.kind === 'narration') {
+                        // 叙述/动作：灰色弱化正文（不斜体、无底色）
+                        return (
+                          <p key={index} className="action-block whitespace-pre-wrap select-text">
+                            {renderWithMentions(block.text)}
+                          </p>
+                        )
+                      }
+                      // mixed：普通正文渲染，行内对白按引号段染色（与 remark 路径 dialogue-inline 一致）
+                      return (
+                        <p key={index} className="whitespace-pre-wrap select-text text-tavern-text">
+                          {splitQuoteSegments(block.text).map((seg, segIndex) => seg.quoted ? (
+                            <em key={segIndex} className="dialogue-inline">{renderWithMentions(seg.text)}</em>
+                          ) : (
+                            <React.Fragment key={segIndex}>{renderWithMentions(seg.text)}</React.Fragment>
+                          ))}
+                        </p>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkRoleplay, remarkAudio, ...mentionHighlightPlugins]}
+                    rehypePlugins={[rehypeHighlight]}
+                    components={markdownComponents}
+                  >
+                    {displayContent || ''}
+                  </ReactMarkdown>
+                )}
               </div>
 
               {/* 翻译切换 */}

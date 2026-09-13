@@ -11,6 +11,8 @@
  *   TopP: 0.95
  */
 
+import { stripAllThinking } from '../../shared/thoughtMarkup'
+
 export interface GeneratedPreset {
   systemPrompt: string
   jailbreak: string
@@ -20,10 +22,7 @@ export interface GeneratedPreset {
 
 /** 解析模型输出为预设字段 */
 export function parsePresetGeneration(text: string): GeneratedPreset {
-  const cleaned = (text ?? '')
-    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-    .trim()
+  const cleaned = stripAllThinking(text ?? '')
 
   const sysMatch = cleaned.match(/【SystemPrompt】([\s\S]*?)(?=【Jailbreak】|【参数建议】|$)/)
   const jbMatch = cleaned.match(/【Jailbreak】([\s\S]*?)(?=【SystemPrompt】|【参数建议】|$)/)

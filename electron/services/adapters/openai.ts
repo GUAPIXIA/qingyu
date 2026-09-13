@@ -1,5 +1,12 @@
 import type { AIAdapter } from './types'
-import { normalizeThoughtTags } from './types'
+import {
+  createVendorThinkingStreamFilter,
+  isReasoningBudgetExhausted,
+  REASONING_BUDGET_EXHAUSTED_MESSAGE,
+  stripVendorThinking,
+} from './types'
+import { normalizeFinishReason } from '../../../shared/generationObservation'
+import type { AICompletion } from '../../../shared/types'
 import { sanitizeApiKey } from '../../utils/pathGuard'
 import { toOpenAIContent, imageErrorHint } from './vision'
 
@@ -94,40 +101,51 @@ export const openaiAdapter: AIAdapter = {
       const data: any = await response.json()
       const choice = data.choices?.[0]
       const content = choice?.message?.content ?? ''
-      // 处理推理模型思考内容：DeepSeek 系为 reasoning_content，OpenRouter 统一字段为 reasoning
-      // 调用方明确关闭推理时，即使聚合端忽略 thinking 参数仍不把内部规划混入业务正文。
-      const reasoning = params.reasoningMode === 'disabled'
-        ? undefined
-        : choice?.message?.reasoning_content
-          ?? (typeof choice?.message?.reasoning === 'string' ? choice.message.reasoning : undefined)
-      let fullContent = reasoning ? `<thought>${reasoning}</thought>\n\n${content}` : content
-      // B-05 修复：归一化内容中可能含有的 <thinking> 标签
-      fullContent = normalizeThoughtTags(fullContent)
+      // reasoning_content / reasoning 是供应商推理，不是角色心理描写。
+      // 角色内心独白只能来自最终 content 中由提示词约定生成的 <thought> 块。
+      const fullContent = stripVendorThinking(content)
       // 解析 usage（即使正文为空也记录，保留 token 消耗统计）
       if (onUsage && data.usage) {
         onUsage({
           promptTokens: data.usage.prompt_tokens ?? 0,
           completionTokens: data.usage.completion_tokens ?? 0,
           totalTokens: data.usage.total_tokens ?? 0,
+          reasoningTokens: data.usage.completion_tokens_details?.reasoning_tokens,
         })
       }
+      // 阶段3契约：length 是完成状态，随 AICompletion 返回，不再抛错
+      const finishReason = normalizeFinishReason(choice?.finish_reason)
+      const usage = data.usage
+        ? {
+            promptTokens: data.usage.prompt_tokens ?? 0,
+            completionTokens: data.usage.completion_tokens ?? 0,
+            reasoningTokens: data.usage.completion_tokens_details?.reasoning_tokens,
+          }
+        : undefined
       // C-03 修复：检测 tool_calls 并附加标记供 toolLoop 解析
       const toolCalls = choice?.message?.tool_calls
       if (toolCalls && toolCalls.length > 0) {
         onChunk(fullContent)
-        return fullContent + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']'
+        return { text: fullContent + '[TOOL_CALL:' + JSON.stringify(toolCalls) + ']', finishReason: 'tool_calls', usage }
       }
       if (!fullContent.trim()) {
         // 上游 200 但消息体为空（审核拦截 / 思考未透出 / 上游异常）：
         // 此前被静默当作成功，表现为“请求完成却是空内容”，现在显式报错。
         throw new Error(
-          choice?.finish_reason === 'content_filter'
+          isReasoningBudgetExhausted({
+            finishReason: choice?.finish_reason,
+            maxTokens,
+            completionTokens: usage?.completionTokens,
+            reasoningTokens: usage?.reasoningTokens,
+          })
+            ? REASONING_BUDGET_EXHAUSTED_MESSAGE
+            : choice?.finish_reason === 'content_filter'
             ? '模型响应被上游内容审核拦截（content_filter），请调整对话内容或更换模型'
             : '模型未返回任何内容，请重试或检查模型是否可用',
         )
       }
       onChunk(fullContent)
-      return fullContent
+      return { text: fullContent, finishReason, usage }
     }
 
     // 流式解析（修复 SSE 分隔符：使用更稳健的行解析）
@@ -136,7 +154,8 @@ export const openaiAdapter: AIAdapter = {
     const decoder = new TextDecoder()
     let fullText = ''
     let buffer = ''
-    let pendingReasoning = ''
+    const visibleTextFilter = createVendorThinkingStreamFilter()
+    let streamUsage: AICompletion['usage'] | undefined
     // 流级观测：上游常把错误/审核结果塞进 SSE 事件体而不是 HTTP 状态码，
     // 此前被静默忽略，表现为“请求完成但内容全空”（长记忆/续写无内容）。
     const STREAM_ERROR_FLAG = '__openaiStreamError'
@@ -162,43 +181,30 @@ export const openaiAdapter: AIAdapter = {
           throw err
         }
         // 解析 usage（最后 chunk）
-        if (parsed.usage && onUsage) {
-          onUsage({
+        if (parsed.usage) {
+          const usage = {
             promptTokens: parsed.usage.prompt_tokens ?? 0,
             completionTokens: parsed.usage.completion_tokens ?? 0,
-            totalTokens: parsed.usage.total_tokens ?? 0,
-          })
+            reasoningTokens: parsed.usage.completion_tokens_details?.reasoning_tokens as number | undefined,
+          }
+          onUsage?.({ ...usage, totalTokens: parsed.usage.total_tokens ?? 0 })
+          streamUsage = usage
         }
         const choice = parsed.choices?.[0]
         if (choice?.finish_reason) finishReason = choice.finish_reason
         const delta = choice?.delta
         if (!delta) return
 
-        // 处理推理内容：DeepSeek-R1 / Qwen-QwQ 为 reasoning_content，OpenRouter 统一字段为 reasoning
-        const reasoningDelta = params.reasoningMode === 'disabled'
-          ? undefined
-          : delta.reasoning_content
-            ?? (typeof delta.reasoning === 'string' ? delta.reasoning : undefined)
-        if (reasoningDelta) {
-          sawAnyDelta = true
-          if (!pendingReasoning) {
-            pendingReasoning = '<thought>'
-          }
-          pendingReasoning += reasoningDelta
-        }
+        // reasoning_content / reasoning 仅供模型内部推理，禁止透传到正文或流式 UI。
 
         // 正常内容
         if (delta.content) {
           sawAnyDelta = true
-          // 如果之前有推理内容未闭合，先闭合
-          if (pendingReasoning) {
-            pendingReasoning += '</thought>\n\n'
-            fullText += pendingReasoning
-            onChunk(pendingReasoning)
-            pendingReasoning = ''
+          const visible = visibleTextFilter.push(delta.content)
+          if (visible) {
+            fullText += visible
+            onChunk(visible)
           }
-          fullText += delta.content
-          onChunk(delta.content)
         }
 
         // C-03 修复：收集流式 tool_calls delta
@@ -257,12 +263,6 @@ export const openaiAdapter: AIAdapter = {
       }
     }
 
-    // 处理流结束时仍 pending 的推理内容
-    if (pendingReasoning) {
-      pendingReasoning += '</thought>\n\n'
-      fullText += pendingReasoning
-      onChunk(pendingReasoning)
-    }
     // 处理剩余 buffer
     if (buffer.trim()) {
       const dataLines = buffer.split(/\r?\n/).filter(l => l.trim().startsWith('data:'))
@@ -270,26 +270,44 @@ export const openaiAdapter: AIAdapter = {
         processOpenAIEvent(dataLines.map(l => l.trim().slice(5).trim()).join('\n'))
       }
     }
+    const trailingVisible = visibleTextFilter.flush()
+    if (trailingVisible) {
+      fullText += trailingVisible
+      onChunk(trailingVisible)
+    }
     } finally {
       try { reader.releaseLock() } catch { /* ignore */ }
     }
 
+    // 阶段3契约：length 是完成状态，随 AICompletion 返回，不再抛错
+    const normalizedReason = normalizeFinishReason(finishReason)
+
     // 零输出防御：流正常结束但没有任何 content/推理增量（流内错误已在上方抛出，
     // 剩下的是审核拦截、上游异常提前终止等）。此前按“成功但空内容”静默返回，
     // 长记忆/续写表现为“完成却无内容”，现在转为明确错误供上层展示真实原因。
-    if (!sawAnyDelta && streamedToolCalls.size === 0) {
+    const sanitizedText = stripVendorThinking(fullText)
+    if ((!sawAnyDelta || !sanitizedText.trim()) && streamedToolCalls.size === 0) {
       throw new Error(
-        finishReason === 'content_filter'
+        isReasoningBudgetExhausted({
+          finishReason: normalizedReason,
+          maxTokens,
+          completionTokens: streamUsage?.completionTokens,
+          reasoningTokens: streamUsage?.reasoningTokens,
+        })
+          ? REASONING_BUDGET_EXHAUSTED_MESSAGE
+          : normalizedReason === 'content_filter'
           ? '模型响应被上游内容审核拦截（content_filter），请调整对话内容或更换模型'
           : '模型未返回任何内容，请重试或检查模型是否可用',
       )
     }
     // C-03 修复：如有 tool_calls，附加标记供 toolLoop 解析
+    let text = ''
     if (streamedToolCalls.size > 0) {
       const toolCallsArray = Array.from(streamedToolCalls.values())
-      return normalizeThoughtTags(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+      text = sanitizedText + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']'
+      return { text, finishReason: 'tool_calls', usage: streamUsage }
     }
-    return normalizeThoughtTags(fullText)
+    return { text: sanitizedText, finishReason: normalizedReason, usage: streamUsage }
   },
 
   async listModels(baseUrl, apiKey) {

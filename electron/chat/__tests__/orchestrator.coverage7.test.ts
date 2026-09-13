@@ -42,6 +42,7 @@ function ctx(): ContextPort {
       return {
         messages: [{ role: 'user', content: 'hi' }],
         fingerprint: 'fp',
+        requestMaxTokens: 2048,
         model: { provider: 'openai', model: 'gpt-4o-mini' },
       }
     },

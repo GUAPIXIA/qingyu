@@ -23,7 +23,7 @@ function mp(): MessagePort {
   } as unknown as MessagePort
 }
 function ctx(): ContextPort {
-  return { async build() { return { messages: [{ role: 'user', content: 'hi' }], fingerprint: 'fp', model: { provider: 'openai', model: 'deepseek-v4-flash' } } } }
+  return { async build() { return { messages: [{ role: 'user', content: 'hi' }], fingerprint: 'fp', requestMaxTokens: 4096, model: { provider: 'openai', model: 'deepseek-v4-flash' } } } }
 }
 beforeEach(() => { rmSync(TEST_ROOT, { recursive: true, force: true }); sessionLock.clear() })
 afterEach(() => { rmSync(TEST_ROOT, { recursive: true, force: true }); sessionLock.clear() })

@@ -115,7 +115,7 @@ function setup(overrides: {
 }
 
 function build() {
-  return useChatStore.getState().buildContext(makeCharacter(), smallPreset())
+  return useChatStore.getState().buildContext(makeCharacter(), smallPreset()).messages
 }
 
 describe('buildContext 上下文溢出压缩', () => {

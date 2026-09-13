@@ -14,6 +14,7 @@ import { formatTime } from '../../utils/format'
 import { countChars, formatCharCount } from '../../utils/charCounter'
 import { remarkRoleplay } from '../../utils/remark-roleplay'
 import { extractThought, stripThought } from '../../utils/messagePostProcess'
+import { buildRoleplayBlocks, stripOuterQuotes, splitQuoteSegments } from '../../utils/roleplayBlocks'
 import { getDisplayName } from '../../utils/variables'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
 
@@ -113,6 +114,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
     const { thought: t, content } = extractThought(message.content || '')
     return { thought: t, originalDisplay: content }
   }, [message.content])
+
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
   const speakerKind = resolveMessageSpeakerKind(message)
@@ -131,6 +133,13 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
     }
     return originalDisplay || ''
   }, [showTranslation, transState?.content, message.translation, originalDisplay])
+
+  // 阶段5：语义分块（仅 blocks 模式的新消息；旧消息走 Markdown 兼容渲染）。
+  // 译文展示时同样按译文分块。
+  const semanticBlocks = useMemo(
+    () => (message.contentRenderMode === 'blocks' ? buildRoleplayBlocks(displayContent) : null),
+    [message.contentRenderMode, displayContent],
+  )
 
   // B-05：纯图片消息，气泡不应撑满整行
   const hasOnlyImages = message.images?.length > 0
@@ -161,10 +170,16 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   }, [imageContextMenu])
 
   const handleSaveEdit = async () => {
-    if (character) {
-      await editMessage(message.id, editContent, character)
-    }
+    if (!character) return
+    // Visible feedback should not wait for background memory invalidation and persistence.
     setEditing(false)
+    try {
+      await editMessage(message.id, editContent, character)
+    } catch (error) {
+      // Reopen with the draft intact so the user can retry.
+      setEditing(true)
+      useChatStore.setState({ error: `保存编辑失败：${error instanceof Error ? error.message : String(error)}` })
+    }
   }
 
   const handleMarkdownClick = (e: React.MouseEvent) => {
@@ -535,6 +550,46 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             <div className={cn('markdown-body', isStreamingThis && 'typing-cursor')} onClick={handleMarkdownClick}>
               {/* BUG-09 修复：移除 rehypeRaw / allowDangerousHtml，防止消息内容中的原始 HTML（如 <script>、<img onerror>）执行导致 XSS */}
               <ErrorBoundary fallback={<pre className="text-xs text-tavern-danger whitespace-pre-wrap break-all">⚠️ 消息渲染异常</pre>}>
+              {semanticBlocks ? (
+                /* 阶段5：语义分块渲染——对白/叙述/混合段按 kind 呈现样式，不依赖模型手写星号与说话人前缀。
+                   复用 markdown 路径同一套 CSS class（dialogue-block / action-block），避免 blocks 消息“无样式”。 */
+                <div className="space-y-2">
+                  {semanticBlocks.map((block, index) => {
+                    if (block.kind === 'dialogue') {
+                      // 对白块：左竖线引用形态；匿名对白（模型未写名字）同样结构、无名字行；展示层剥外层引号
+                      return (
+                        <p key={index} className="dialogue-block whitespace-pre-wrap select-text">
+                          {block.speaker && <em className="dialogue-speaker">{block.speaker}</em>}
+                          <em className="dialogue-text">{stripOuterQuotes(block.text)}</em>
+                        </p>
+                      )
+                    }
+                    if (block.kind === 'narration') {
+                      // 叙述/动作：灰色弱化正文（不斜体、无底色）
+                      return (
+                        <p key={index} className="action-block whitespace-pre-wrap select-text">
+                          {block.text}
+                        </p>
+                      )
+                    }
+                    // mixed：普通正文渲染，行内对白按引号段染色（与 remark 路径 dialogue-inline 一致）
+                    return (
+                      <p key={index} className="whitespace-pre-wrap select-text text-tavern-text">
+                        {splitQuoteSegments(block.text).map((seg, segIndex) => seg.quoted ? (
+                          <em key={segIndex} className="dialogue-inline">{seg.text}</em>
+                        ) : (
+                          <React.Fragment key={segIndex}>{seg.text}</React.Fragment>
+                        ))}
+                      </p>
+                    )
+                  })}
+                  {!displayContent && (thought ? (
+                    <p className="text-tavern-text-muted">💭 内容已在"内心想法"中展开</p>
+                  ) : !isStreamingThis ? (
+                    <p className="text-tavern-text-muted">（空消息）</p>
+                  ) : null)}
+                </div>
+              ) : (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkRoleplay, remarkAudio]}
                 rehypePlugins={[rehypeHighlight]}
@@ -542,8 +597,21 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
               >
                 {displayContent || (isStreamingThis ? '' : (thought ? '💭 内容已在"内心想法"中展开' : '（空消息）'))}
               </ReactMarkdown>
+              )}
               </ErrorBoundary>
             </div>
+            )}
+            {/* 生成失败/截断提示：错误原因随消息持久化，正文保留不污染 */}
+            {!isStreamingThis && message.generationError && (
+              <div className="mt-2 text-xs text-tavern-danger">
+                ⚠️ 生成中断：{message.generationError}
+              </div>
+            )}
+            {/* 阶段3：非失败性收尾提示（已在完整句处收束/已自动补全/已停止），与失败提示区分 */}
+            {!isStreamingThis && !message.generationError && message.generationNotice && (
+              <div className="mt-2 text-xs text-tavern-text-muted/80">
+                ℹ️ {message.generationNotice}
+              </div>
             )}
             {/* 翻译状态指示 */}
             {isTranslating && !transState?.content && (

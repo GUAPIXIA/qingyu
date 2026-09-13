@@ -45,16 +45,18 @@ import { emitSettingsChanged } from '../services/settingsChangeBus'
 import { API_VERSION as PROTOCOL_API_VERSION } from './protocol'
 import { chatWithRetry, getAdapter } from '../services/ai'
 import { mainContextProvider } from '../context/mainContextProvider'
-import { buildContextMessagesFromData } from '../../src/context/contextBuilder'
-import { buildContinueContext, ensureUserPerspective } from '../../src/components/chat/aiInputHelper'
-import { stripThought } from '../../src/utils/messagePostProcess'
-import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../../src/utils/memory'
-import { buildMemorySummaryWindow } from '../../src/utils/memoryWindow'
-import { MEMORY_SUMMARY_MIN } from '../../src/store/chatConstants'
+import { buildContextMessagesFromData } from '../../shared/chat-core/contextBuilder'
+import { buildContinueContext, ensureUserPerspective } from '../../shared/chat-core/aiInputHelper'
+import { stripThought, trimContinuationSeam } from '../../shared/chat-core/messagePostProcess'
+import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../../shared/chat-core/memory'
+import { buildMemorySummaryWindow } from '../../shared/chat-core/memoryWindow'
+import { MEMORY_SUMMARY_MIN } from '../../shared/chat-core/chatConstants'
 import { getDefaultSettings } from '../../shared/defaults'
+import { stripAllThinking } from '../../shared/thoughtMarkup'
+import { DEFAULT_AUTO_MEMORY_INTERVAL } from '../../shared/defaultMemory'
 import { normalizePreset } from '../../shared/preset'
 import { nanoid } from 'nanoid'
-import { replaceVariables } from '../utils/variables'
+import { replaceVariables } from '../../shared/chat-core/variables'
 import {
   consumePairingCode,
   enqueuePendingPair,
@@ -925,16 +927,21 @@ export function buildBridgeRouter(
         stream: false,
       }
 
-      const full = await chatWithRetry(
+      const completion = await chatWithRetry(
         getAdapter(params.provider),
         params,
         () => {},
         new AbortController().signal,
         1,
       )
+      const full = completion.text
       // 续写需剥离角色视角（对齐渲染层 ensureUserPerspective）；两者都剥离 thought 块
       const cleaned = stripThought(full)
-      const result = type === 'continue' ? ensureUserPerspective(cleaned, userName, charName) : cleaned
+      let result = type === 'continue' ? ensureUserPerspective(cleaned, userName, charName) : cleaned
+      // S4：有输入时去掉复述的接缝（与渲染层 trimContinuationSeam 同一策略）
+      if (type === 'continue' && (content ?? '').trim()) {
+        result = trimContinuationSeam(content ?? '', result)
+      }
       res.json({ text: result })
     } catch (e) {
       res.status(500).json({ error: sanitizeApiKey((e as Error).message) })
@@ -951,7 +958,7 @@ export function buildBridgeRouter(
       res.json({
         memoryEnabled: session.memoryEnabled ?? false,
         memoryMode: session.memoryMode ?? 'manual',
-        autoMemoryInterval: session.autoMemoryInterval ?? 10,
+        autoMemoryInterval: session.autoMemoryInterval ?? DEFAULT_AUTO_MEMORY_INTERVAL,
         memory: session.memory ?? '',
         memoryCurrentState: session.memoryCurrentState ?? '',
         memoryFacts: session.memoryFacts ?? [],
@@ -1080,7 +1087,8 @@ export function buildBridgeRouter(
         stream: false,
       }
 
-      const full = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 1)
+      const completion = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 1)
+      const full = completion.text
       const parsed = parseMemoryResult(full)
       let responseFacts: MemoryFactRecord[] = parsed.facts
       if (parsed.summary) {
@@ -1714,8 +1722,9 @@ export function buildBridgeRouter(
         stream: false,
       }
 
-      const full = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 1)
-      const clean = full.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+      const completion = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 1)
+      const full = completion.text
+      const clean = stripAllThinking(full)
 
       const aiMsg = {
         id: nanoid(),
@@ -1737,50 +1746,18 @@ export function buildBridgeRouter(
     }
   })
 
-  /** 翻译群聊消息（POST /groups/:groupId/sessions/:sessionId/translate?messageId=xxx，对齐单聊 translate 的 prompt 与参数） */
+  /**
+   * 翻译群聊消息（POST /groups/:groupId/sessions/:sessionId/translate?messageId=xxx）。
+   * 与单聊 translate 共用 chatService 实现（同一 prompt、动态预算、可取消、推理隔离）；
+   * 旧版此处是内联复制（硬编码预算、不可取消），已并入 chatService.translateGroup。
+   */
   router.post('/groups/:groupId/sessions/:sessionId/translate', async (req, res) => {
     try {
       const groupId = safeId(req.params.groupId)
       const sessionId = safeId(req.params.sessionId)
       const messageId = typeof req.query.messageId === 'string' ? safeId(req.query.messageId) : undefined
       if (!messageId) { res.status(400).json({ error: '缺少 messageId' }); return }
-      const messages = groupData.readMessages(groupId, sessionId)
-      const target = messages.find((m) => m.id === messageId)
-      if (!target) { res.status(404).json({ error: '目标消息不存在' }); return }
-
-      const settings = readJson<Settings>(join(DIRS.config(), 'settings.json'), 'settings') ?? getDefaultSettings()
-      restoreSecrets(settings)
-      const profile = settings.connectionProfiles?.find((p) => p.id === settings.activeProfileId)
-      if (!profile) { res.status(400).json({ error: '未配置 API 连接' }); return }
-      const targetLang = settings.translationTargetLang || '中文'
-      const provider = (profile.provider || 'openai') as ProviderType
-
-      const translation = await chatWithRetry(
-        getAdapter(provider),
-        {
-          requestId: `translate-${messageId}-${Date.now()}`,
-          messages: [
-            { role: 'system', content: `你是一个翻译助手。请将以下文本翻译成${targetLang}。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。` },
-            { role: 'user', content: target.content },
-          ],
-          provider,
-          apiKey: profile.apiKey,
-          baseUrl: profile.baseUrl,
-          model: settings.activeModel || profile.model,
-          temperature: 0.3,
-          topP: 0.9,
-          maxTokens: Math.max(256, Math.min(target.content.length, 4000)),
-          frequencyPenalty: 0,
-          presencePenalty: 0,
-          stream: true,
-        },
-        () => {},
-        new AbortController().signal,
-        0,
-      )
-      // 落盘 translation（对齐群聊渲染层：同 id 覆盖式写回）
-      groupData.updateMessage(groupId, sessionId, { ...target, translation })
-      res.json({ messageId, translation })
+      res.json(await chatService.translateGroup(groupId, sessionId, messageId))
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
     }

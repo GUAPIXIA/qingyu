@@ -42,7 +42,7 @@ function setupSettings(personaInjection: PersonaInjectionConfig | undefined, per
 }
 
 function build() {
-  return useChatStore.getState().buildContext(makeCharacter(), null)
+  return useChatStore.getState().buildContext(makeCharacter(), null).messages
 }
 
 describe('buildContext 用户人设注入', () => {
@@ -64,7 +64,8 @@ describe('buildContext 用户人设注入', () => {
     expect(system).toContain('用户名：用户')
     expect(system).toContain('描述：测试用户描述')
     expect(system).toContain('性格：测试用户性格')
-    expect(context.length).toBe(1)
+    expect(context).toHaveLength(2)
+    expect(context[1].content).toContain('【正文结构】')
   })
 
   it('enabled=false 时不注入任何人设内容', () => {

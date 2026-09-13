@@ -4,15 +4,16 @@ import {
   stripThought,
   stripThoughtTags,
   mergeConsecutiveMessages,
-  normalizeThoughtTags,
+  stripVendorThinking,
+  normalizeRoleplayDialoguePrefixes,
   trimContinuationOverlap,
+  trimContinuationSeam,
 } from '../messagePostProcess'
 
 describe('extractThought', () => {
-  it('extracts content from <thought>...</thought> tags', () => {
+  it('removes vendor <thinking> blocks instead of exposing them as role thoughts', () => {
     const result = extractThought('<thinking>about it</thinking>The answer is 42')
-    // normalizeThoughtTags converts <thinking> to <thought>
-    expect(result.thought).toBe('about it')
+    expect(result.thought).toBeNull()
     expect(result.content).toBe('The answer is 42')
     expect(result.isFallback).toBe(false)
   })
@@ -31,9 +32,9 @@ describe('extractThought', () => {
     expect(result.isFallback).toBe(false)
   })
 
-  it('handles <thinking>...</thinking> tags (DeepSeek-R1 compatibility)', () => {
+  it('discards <thinking>...</thinking> provider reasoning', () => {
     const result = extractThought('<thinking>deep reasoning here</thinking>Final answer')
-    expect(result.thought).toBe('deep reasoning here')
+    expect(result.thought).toBeNull()
     expect(result.content).toBe('Final answer')
     expect(result.isFallback).toBe(false)
   })
@@ -45,9 +46,10 @@ describe('extractThought', () => {
     expect(result.isFallback).toBe(false)
   })
 
-  it('handles multiple <thinking> blocks', () => {
+  it('discards multiple <thinking> blocks', () => {
     const result = extractThought('<thinking>step1</thinking>text<thinking>step2</thinking>more')
-    expect(result.thought).toBe('step1\n\nstep2')
+    expect(result.thought).toBeNull()
+    expect(result.content).toBe('textmore')
     expect(result.isFallback).toBe(false)
   })
 
@@ -78,8 +80,8 @@ describe('extractThought', () => {
   })
 
   it('handles thought tags with attributes', () => {
-    const result = extractThought('<thinking class="reasoning">分析</thinking>答案')
-    expect(result.thought).toBe('分析')
+    const result = extractThought('<thought class="character-inner">我不能让他发现。</thought>答案')
+    expect(result.thought).toBe('我不能让他发现。')
     expect(result.content).toBe('答案')
   })
 
@@ -114,8 +116,8 @@ describe('stripThoughtTags', () => {
     expect(stripThoughtTags('<thought>thinking</thought>result')).toBe('thinkingresult')
   })
 
-  it('normalizes <thinking> to <thought> before stripping', () => {
-    expect(stripThoughtTags('<thinking>deep</thinking>answer')).toBe('deepanswer')
+  it('does not read vendor <thinking> content aloud', () => {
+    expect(stripThoughtTags('<thinking>deep</thinking>answer')).toBe('answer')
   })
 
   it('keeps plain text unchanged', () => {
@@ -184,27 +186,57 @@ describe('stripThought', () => {
   })
 })
 
-describe('normalizeThoughtTags', () => {
-  it('converts <thinking> to <thought>', () => {
-    expect(normalizeThoughtTags('<thinking>content</thinking>')).toBe(
-      '<thought>content</thought>',
-    )
+describe('stripVendorThinking', () => {
+  it('removes <thinking> and <think> blocks', () => {
+    expect(stripVendorThinking('<thinking>plan</thinking>answer<think>more planning</think>')).toBe('answer')
   })
 
-  it('converts <thinking> with attributes to <thought>', () => {
-    expect(normalizeThoughtTags('<thinking class="x">content</thinking>')).toBe(
-      '<thought class="x">content</thought>',
-    )
+  it('removes unclosed vendor thinking blocks', () => {
+    expect(stripVendorThinking('answer<thinking class="x">unfinished')).toBe('answer')
   })
 
   it('leaves <thought> tags unchanged', () => {
-    expect(normalizeThoughtTags('<thought>content</thought>')).toBe(
+    expect(stripVendorThinking('<thought>content</thought>')).toBe(
       '<thought>content</thought>',
     )
   })
 
   it('handles empty/falsy input', () => {
-    expect(normalizeThoughtTags('')).toBe('')
+    expect(stripVendorThinking('')).toBe('')
+  })
+})
+
+describe('normalizeRoleplayDialoguePrefixes', () => {
+  it('代入模式只给独占一行的裸对白补角色名前缀', () => {
+    const input = '<thought>“这里是内心引用。”</thought>\n\n*她收起断刃。*\n\n“你终于来了。”\n\n角色：“已有前缀。”'
+    expect(normalizeRoleplayDialoguePrefixes(input, '角色', 'immersive')).toBe(
+      '<thought>“这里是内心引用。”</thought>\n\n*她收起断刃。*\n\n角色：“你终于来了。”\n\n角色：“已有前缀。”',
+    )
+  })
+
+  it('全局叙事不自动猜测裸对白的说话人', () => {
+    const input = '“谁在那里？”\n\n远处没有回应。'
+    expect(normalizeRoleplayDialoguePrefixes(input, '角色', 'omniscient')).toBe(input)
+  })
+
+  it('混合叙述或动作星号里的引号保持原样', () => {
+    const input = '她只说了“等等”两个字。\n\n*“别动。”她按住门。*'
+    expect(normalizeRoleplayDialoguePrefixes(input, '角色', 'immersive')).toBe(input)
+  })
+
+  it('R4：行内已含角色名的引号行不重复补前缀', () => {
+    const input = '“我没应。”苏晚顿了顿，“喊了两声就没了。”'
+    expect(normalizeRoleplayDialoguePrefixes(input, '苏晚', 'immersive')).toBe(input)
+  })
+
+  it('R4：不含角色名的裸对白仍补前缀', () => {
+    expect(normalizeRoleplayDialoguePrefixes('“说。鞘哪来的。”', '林砚', 'immersive'))
+      .toBe('林砚：“说。鞘哪来的。”')
+  })
+
+  it('R4：单字角色名按子串匹配跳过，行为固化', () => {
+    const input = '“夜晚真安静。”'
+    expect(normalizeRoleplayDialoguePrefixes(input, '晚', 'immersive')).toBe(input)
   })
 })
 
@@ -363,6 +395,73 @@ describe('trimContinuationOverlap', () => {
   it('handles empty inputs', () => {
     expect(trimContinuationOverlap('', 'next')).toBe('next')
     expect(trimContinuationOverlap('prev', '')).toBe('')
+  })
+
+  it('minOverlap=4 时裁掉 4 字重叠（R5 实测复读样本）', () => {
+    const prev = '说起来，我今天其实'
+    const next = '今天其实去了趟老城区的旧货市场'
+    // 默认阈值 8 裁不掉“今天其实”（4 字）
+    expect(trimContinuationOverlap(prev, next)).toBe(next)
+    expect(trimContinuationOverlap(prev, next, 4)).toBe('去了趟老城区的旧货市场')
+  })
+
+  it('minOverlap=4 时低于 4 字的重叠不裁剪', () => {
+    const prev = '我去看看楼下的'
+    const next = '积水有没有漫上来'
+    expect(trimContinuationOverlap(prev, next, 4)).toBe(next)
+  })
+
+  it('不传参数时默认阈值仍为 8（自动补尾路径行为不变）', () => {
+    const prev = '她握紧剑柄'
+    const next = '剑柄上映出冷光'
+    // 重叠 2 字，低于默认 8 不剪
+    expect(trimContinuationOverlap(prev, next)).toBe(next)
+    expect(trimContinuationOverlap(prev, next, 8)).toBe(next)
+  })
+})
+
+describe('trimContinuationSeam 续写接缝策略（S4）', () => {
+  it('4 字复读直接去重（无边界也裁）', () => {
+    expect(trimContinuationSeam('他听见门外传来', '门外传来脚步声。')).toBe('脚步声。')
+  })
+
+  it('7 字复读去重', () => {
+    expect(trimContinuationSeam('走廊尽头那扇门后传来了', '那扇门后传来了低沉的声音。')).toBe('低沉的声音。')
+  })
+
+  it('8 字复读去重', () => {
+    expect(trimContinuationSeam('他听见身后传来一阵急促的脚步声', '一阵急促的脚步声停在门口。')).toBe('停在门口。')
+  })
+
+  it('3 字在标点边界处去重（完整短语重复）', () => {
+    expect(trimContinuationSeam('她停下脚步，楼下的', '楼下的灯亮着。')).toBe('灯亮着。')
+  })
+
+  it('3 字在词/句边界侧去重（next 侧紧随标点）', () => {
+    expect(trimContinuationSeam('他说“明天见', '明天见。”')).toBe('。”')
+  })
+
+  it('3 字夹在句中且无边界时不裁，避免误伤常见短语', () => {
+    const prev = '他站在楼下的'
+    const next = '楼下的灯亮着。'
+    // 重叠 3 字但前邻“在”、后邻“灯”，无词/标点边界 → 保留
+    expect(trimContinuationSeam(prev, next)).toBe(next)
+  })
+
+  it('“你的/他的”等 2 字短语不受影响（低于 3 字下限）', () => {
+    const prev = '这不是你的'
+    const next = '你的书在这里。'
+    expect(trimContinuationSeam(prev, next)).toBe(next)
+  })
+
+  it('无重叠与空输入保持不变', () => {
+    expect(trimContinuationSeam('她推开门。', '外面在下雨。')).toBe('外面在下雨。')
+    expect(trimContinuationSeam('', '续写内容')).toBe('续写内容')
+    expect(trimContinuationSeam('前文', '')).toBe('')
+  })
+
+  it('剪裁后清理首部空白', () => {
+    expect(trimContinuationSeam('她推开门', '推开门 走进房间。')).toBe('走进房间。')
   })
 })
 

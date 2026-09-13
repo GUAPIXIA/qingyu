@@ -20,6 +20,8 @@
 
 // ---- 环境检测 ----
 
+import { setChatCoreLogSink } from '../../shared/chat-core/logging'
+
 const mode = import.meta.env?.MODE ?? 'production'
 const isDev = mode === 'development'
 const isTest = mode === 'test'
@@ -180,3 +182,8 @@ export function clearCollectedLogs(): void {
 export function getCollectedErrors(): CollectedLog[] {
   return logCollector.filter((l) => l.level === 'error')
 }
+
+// ---- chat-core（shared）日志出口 ----
+// 下沉到 shared/chat-core 的模块经 sink 输出日志；这里用渲染层实现接管，
+// 保留终端输出、后端同步（window.api.log）与测试收集器行为。
+setChatCoreLogSink({ info: logInfo, warn: logWarn })

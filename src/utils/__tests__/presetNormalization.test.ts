@@ -8,7 +8,7 @@ describe('normalizePreset', () => {
       name: '旧预设',
       temperature: 0.8,
       topP: 0.95,
-      maxTokens: 1024,
+      maxTokens: 0,
       maxContext: 0,
       isBuiltin: false,
     })
@@ -28,11 +28,15 @@ describe('normalizePreset', () => {
     expect(preset).toMatchObject({
       temperature: 2,
       topP: 0.01,
-      maxTokens: 1,
+      maxTokens: 0,
       maxContext: 0,
       frequencyPenalty: -2,
       presencePenalty: 2,
     })
+  })
+
+  it('模型输出硬上限 0 表示自动并在保存/导入后保持', () => {
+    expect(normalizePreset({ id: 'auto', name: '自动预算', maxTokens: 0 }).maxTokens).toBe(0)
   })
 
   it('拒绝缺少 ID 或名称的数据', () => {

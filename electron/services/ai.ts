@@ -1,6 +1,7 @@
 import type { IpcMain, WebContents } from 'electron'
-import type { ChatParams, ProviderType } from '../../shared/types'
+import type { AICompletion, ChatParams, ProviderType } from '../../shared/types'
 import { IPC_EVENTS } from '../../shared/ipc-channels'
+import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { countTokens, countMessagesTokens } from './tokenizer'
 import { createLogger } from './logger'
 import { chatWithTools } from './toolLoop'
@@ -11,6 +12,16 @@ import { openaiAdapter } from './adapters/openai'
 import { claudeAdapter } from './adapters/claude'
 import { geminiAdapter } from './adapters/gemini'
 import { ollamaAdapter } from './adapters/ollama'
+import {
+  buildGenerationObservation,
+  classifyFailureOutcome,
+  type CancelReason,
+  type ObservationErrorKind,
+  type ObservationOutcome,
+  type ObservationFinishReason,
+} from '../../shared/generationObservation'
+import { observationTerminationCause } from '../../shared/generationTermination'
+import { recordGenerationObservation } from './generationObservation'
 import type {
   LorebookKeywordEnrichmentMode,
   LorebookKeywordLocalizationEntry,
@@ -64,6 +75,19 @@ export function getAdapter(provider: string): AIAdapter {
 // ===================== IPC 注册 =====================
 const activeRequests = new Map<string, AbortController>()
 
+/**
+ * 取消原因注册（阶段0观测）：区分用户手动停止 / 渲染层空闲看门狗超时 / 停止字符串命中。
+ * 桥接端直接 abort 自有 controller，不经过 ai:cancel —— 视为用户取消。
+ */
+const cancelReasons = new Map<string, CancelReason>()
+
+function registerCancelReason(requestId: string, reason: CancelReason): void {
+  cancelReasons.set(requestId, reason)
+  // 兜底清理：原因只在请求进行中有意义，超时后丢弃避免 Map 泄漏
+  const timer = setTimeout(() => cancelReasons.delete(requestId), 5 * 60_000)
+  timer.unref?.()
+}
+
 const HAN_CHARACTER = /\p{Script=Han}/u
 const ALIAS_SPLITTER = /[,，、;；\n]+/
 const ANY_LETTER = /\p{L}/u
@@ -79,9 +103,7 @@ export function parseLorebookKeywordSuggestions(
   entries: LorebookKeywordLocalizationEntry[],
   mode: LorebookKeywordEnrichmentMode = 'localize',
 ): LorebookKeywordLocalizationSuggestion[] {
-  const cleaned = String(raw ?? '')
-    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+  const cleaned = stripAllThinking(String(raw ?? ''))
     .replace(/```(?:json)?/gi, '')
     .replace(/```/g, '')
     .trim()
@@ -128,7 +150,14 @@ export function parseLorebookKeywordSuggestions(
   return result
 }
 
-/** 带重试的 chat 调用 */
+/**
+ * 带重试的 chat 调用（阶段0观测 + 阶段3结构化完成）。
+ *
+ * 返回 AICompletion（正文 + finishReason + usage）：
+ * - length 是完成状态，随完成结果返回；
+ * - 网络中断/超时但已产出正文时，降级为 finishReason='network_error' 的完成结果
+ *   （部分正文进入收尾器，不整条丢失）；完全无正文才按错误抛出。
+ */
 export async function chatWithRetry(
   adapter: AIAdapter,
   params: ChatParams,
@@ -137,48 +166,136 @@ export async function chatWithRetry(
   retryCount = DEFAULT_RETRY_COUNT,
   onUsage?: (usage: TokenUsageInfo) => void,
   timeoutMs = DEFAULT_TIMEOUT_MS,
-): Promise<string> {
+): Promise<AICompletion> {
+  const startedAt = Date.now()
+  // 阶段0观测捕获：结束原因 / usage / 累积文本（失败时保留已产出前缀，正文口径由组装层处理）
+  let capturedUsage: TokenUsageInfo | undefined
+  let capturedText = ''
+  let attempts = 0
+  const captureOnChunk = (text: string) => {
+    capturedText += text
+    onChunk(text)
+  }
+  const captureOnUsage = (usage: TokenUsageInfo) => {
+    capturedUsage = usage
+    onUsage?.(usage)
+  }
+
+  const writeObservation = (state: {
+    outcome: ObservationOutcome
+    finishReason: ObservationFinishReason
+    errorKind?: ObservationErrorKind
+  }): void => {
+    try {
+      recordGenerationObservation(buildGenerationObservation(params, {
+        startedAt,
+        finishedAt: Date.now(),
+        text: capturedText,
+        outcome: state.outcome,
+        finishReason: state.finishReason,
+        // 阶段7（§3.2/§9.1）：应用层终止原因与供应商 finishReason 分开记录
+        terminationCause: observationTerminationCause({
+          outcome: state.outcome,
+          finishReason: state.finishReason,
+          errorKind: state.errorKind,
+          cancelReason: cancelReasons.get(params.requestId),
+        }),
+        errorKind: state.errorKind,
+        completionTokens: capturedUsage?.completionTokens,
+        reasoningTokens: capturedUsage?.reasoningTokens,
+        attempts,
+      }))
+    } catch { /* 观测失败不影响主流程 */ }
+    cancelReasons.delete(params.requestId)
+  }
+
+  /** 网络中断/超时但已有正文：降级为结构化完成，正文交给收尾器（方案 §5.1） */
+  const degradeNetworkFailure = (err: unknown): AICompletion | null => {
+    if (!capturedText.trim()) return null
+    const classified = classifyFailureOutcome(err, {
+      signalAborted: signal.aborted,
+      cancelReason: cancelReasons.get(params.requestId),
+    })
+    if (classified.errorKind !== 'network' && classified.errorKind !== 'timeout') return null
+    return {
+      text: capturedText,
+      finishReason: 'network_error',
+      usage: capturedUsage
+        ? {
+            promptTokens: capturedUsage.promptTokens,
+            completionTokens: capturedUsage.completionTokens,
+            reasoningTokens: capturedUsage.reasoningTokens,
+          }
+        : undefined,
+    }
+  }
+
   // H-05 修复：流式请求不重试，因为已发送的 chunks 无法撤回，重试会导致内容重复
   const effectiveRetry = params.stream ? 0 : retryCount
   let lastError: unknown
-  for (let attempt = 0; attempt <= effectiveRetry; attempt++) {
-    if (signal.aborted) throw new Error('Aborted')
-    try {
-      // 加入超时（与用户 signal 合并）
-      const { signal: timeoutSignal, cleanup } = withTimeout(signal, timeoutMs)
+  try {
+    for (let attempt = 0; attempt <= effectiveRetry; attempt++) {
+      attempts = attempt + 1
+      if (signal.aborted) throw new Error('Aborted')
       try {
-        return await adapter.chat(params, onChunk, timeoutSignal, onUsage)
-      } finally {
-        // BUG-11：请求正常完成/异常退出时清理超时 timer
-        cleanup()
+        // 加入超时（与用户 signal 合并）
+        const { signal: timeoutSignal, cleanup } = withTimeout(signal, timeoutMs)
+        let completion: AICompletion
+        try {
+          completion = await adapter.chat(params, captureOnChunk, timeoutSignal, captureOnUsage)
+        } catch (err) {
+          // 阶段3：网络中断但已有正文 → 降级为完成结果（观测仍按 error 记录）
+          const degraded = degradeNetworkFailure(err)
+          if (degraded) {
+            writeObservation({ outcome: 'error', finishReason: 'network_error', errorKind: 'network' })
+            return degraded
+          }
+          throw err
+        } finally {
+          // BUG-11：请求正常完成/异常退出时清理超时 timer
+          cleanup()
+        }
+        // 成功：length 是完成状态（正文交给收尾器判定是否完整）
+        writeObservation({
+          outcome: completion.finishReason === 'length' ? 'truncated' : 'completed',
+          finishReason: completion.finishReason,
+        })
+        return completion
+      } catch (err) {
+        lastError = err
+        // 用户主动取消不重试
+        if (signal.aborted) throw err
+        const errName = (err as Error)?.name
+        if (errName === 'AbortError' && !signal.aborted) {
+          // 是超时 abort，可重试
+        }
+        // 不可重试的错误直接抛出
+        if (!isRetryableError(err)) throw err
+        // 最后一次尝试不再等待
+        if (attempt === effectiveRetry) throw err
+        // 指数退避：500ms, 1000ms, 2000ms...
+        const delay = 500 * Math.pow(2, attempt)
+        log.warn(`请求失败，${delay}ms 后重试 (${attempt + 1}/${effectiveRetry + 1})`, {
+          error: (err as Error).message,
+        })
+        // 修复：退避等待响应取消信号（用户取消后立即中止，不干等完整延迟）
+        if (signal.aborted) throw err
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, delay)
+          signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
+        })
+        if (signal.aborted) throw err
       }
-    } catch (err) {
-      lastError = err
-      // 用户主动取消不重试
-      if (signal.aborted) throw err
-      const errName = (err as Error)?.name
-      if (errName === 'AbortError' && !signal.aborted) {
-        // 是超时 abort，可重试
-      }
-      // 不可重试的错误直接抛出
-      if (!isRetryableError(err)) throw err
-      // 最后一次尝试不再等待
-      if (attempt === effectiveRetry) throw err
-      // 指数退避：500ms, 1000ms, 2000ms...
-      const delay = 500 * Math.pow(2, attempt)
-      log.warn(`请求失败，${delay}ms 后重试 (${attempt + 1}/${effectiveRetry + 1})`, {
-        error: (err as Error).message,
-      })
-      // 修复：退避等待响应取消信号（用户取消后立即中止，不干等完整延迟）
-      if (signal.aborted) throw err
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, delay)
-        signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
-      })
-      if (signal.aborted) throw err
     }
+    throw lastError
+  } catch (err) {
+    // 失败终局：区分用户停止 / 网络（含超时）/ 触顶 / 空输出 / 审核 / API 错误
+    writeObservation(classifyFailureOutcome(err, {
+      signalAborted: signal.aborted,
+      cancelReason: cancelReasons.get(params.requestId),
+    }))
+    throw err
   }
-  throw lastError
 }
 
 export function registerAIIPC(ipcMain: IpcMain): void {
@@ -223,8 +340,9 @@ export function registerAIIPC(ipcMain: IpcMain): void {
 
     try {
       // C-03 修复：有工具时使用 chatWithTools 循环，否则直接调用适配器
+      let completion: AICompletion
       if (params.tools && params.tools.length > 0) {
-        await chatWithTools(
+        completion = await chatWithTools(
           params,
           (text) => {
             if (!activeRequests.has(params.requestId)) return
@@ -243,7 +361,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
         )
       } else {
         const adapter = getAdapter(params.provider)
-        await chatWithRetry(
+        completion = await chatWithRetry(
           adapter,
           params,
           (text) => {
@@ -259,14 +377,19 @@ export function registerAIIPC(ipcMain: IpcMain): void {
           },
         )
       }
-      log.info('AI 请求完成', { requestId: params.requestId, provider: params.provider, model: params.model })
-      safeSend(webContents, IPC_EVENTS.aiDone, params.requestId)
+      log.info('AI 请求完成', { requestId: params.requestId, provider: params.provider, model: params.model, finishReason: completion.finishReason })
+      // 阶段3：ai:done 携带结构化完成元数据（finishReason + usage），length 不再走 ai:error
+      safeSend(webContents, IPC_EVENTS.aiDone, {
+        requestId: params.requestId,
+        finishReason: completion.finishReason,
+        usage: completion.usage,
+      })
     } catch (e) {
       const err = e as Error
       if (err.name === 'AbortError' || controller.signal.aborted) {
         log.info('AI 请求被取消', { requestId: params.requestId })
         // 被取消视为 done（前端会重置状态）
-        safeSend(webContents, IPC_EVENTS.aiDone, params.requestId)
+        safeSend(webContents, IPC_EVENTS.aiDone, { requestId: params.requestId, finishReason: 'cancelled' })
       } else {
         log.error('AI 请求失败', { requestId: params.requestId, provider: params.provider, model: params.model, error: err.message })
         safeSend(webContents, IPC_EVENTS.aiError, { requestId: params.requestId, error: err.message })
@@ -280,10 +403,11 @@ export function registerAIIPC(ipcMain: IpcMain): void {
     }
   })
 
-  // 取消请求
-  ipcMain.handle('ai:cancel', async (_event, requestId: string) => {
+  // 取消请求（阶段0观测：reason 区分用户停止 / 看门狗超时 / 停止字符串）
+  ipcMain.handle('ai:cancel', async (_event, requestId: string, reason?: CancelReason) => {
     const controller = activeRequests.get(requestId)
     if (controller) {
+      registerCancelReason(requestId, reason === 'timeout' || reason === 'stop_string' ? reason : 'user')
       controller.abort()
       activeRequests.delete(requestId)
     }
@@ -331,7 +455,8 @@ export function registerAIIPC(ipcMain: IpcMain): void {
       stream: false,
     }
     // 非流式请求（stream=false）可安全重试；失败抛错由渲染方降级为直接裁剪
-    return await chatWithRetry(adapter, params, () => {}, new AbortController().signal, DEFAULT_RETRY_COUNT)
+    const completion = await chatWithRetry(adapter, params, () => {}, new AbortController().signal, DEFAULT_RETRY_COUNT)
+    return completion.text
   })
 
   // 关键词 enrichment 管线（阶段4，方案 7.5）：聊天模型离线扩词，运行时仍走本地关键词匹配。
@@ -419,7 +544,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
       model: payload.model,
     })
     try {
-      const raw = await chatWithRetry(
+      const keywordCompletion = await chatWithRetry(
         getAdapter(payload.provider),
         params,
         () => {},
@@ -428,6 +553,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
         undefined,
         LOREBOOK_LOCALIZATION_TIMEOUT_MS,
       )
+      const raw = keywordCompletion.text
       const suggestions = parseLorebookKeywordSuggestions(raw, entries, mode)
       // 方案 7.5：保存生成来源、模型和时间——随建议返回，由渲染层写入条目 keywordProvenance。
       const source = {

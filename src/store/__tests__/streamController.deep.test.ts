@@ -7,7 +7,7 @@ import type { ActiveProfile } from '../../../shared/contextTypes'
 
 // ===== Mocks =====
 const mockOnChunk = vi.fn()
-const mockOnDone = vi.fn()
+const mockOnCompleteEvent = vi.fn()
 const mockOnError = vi.fn()
 const mockChat = vi.fn(async (_params: unknown) => undefined)
 const mockCancelChat = vi.fn(async () => ({}))
@@ -25,7 +25,7 @@ Object.defineProperty(window, 'api', {
       chat: mockChat,
       cancelChat: mockCancelChat,
       onChunk: mockOnChunk.mockReturnValue(vi.fn()),
-      onDone: mockOnDone.mockReturnValue(vi.fn()),
+      onComplete: mockOnCompleteEvent.mockReturnValue(vi.fn()),
       onError: mockOnError.mockReturnValue(vi.fn()),
     },
     chat: {
@@ -145,7 +145,7 @@ describe('streamController - 深度测试', () => {
 
     // 默认 mock 返回值
     mockOnChunk.mockReturnValue(vi.fn())
-    mockOnDone.mockReturnValue(vi.fn())
+    mockOnCompleteEvent.mockReturnValue(vi.fn())
     mockOnError.mockReturnValue(vi.fn())
     mockedSettingsState.semanticTrigger = null
     mockSemanticSearch.mockResolvedValue([])
@@ -170,7 +170,7 @@ describe('streamController - 深度测试', () => {
       mockGet.mockReturnValue({
         messages: [],
         sessions: [],
-        buildContext: vi.fn(() => []),
+        buildContext: vi.fn(() => ({ messages: [], requestMaxTokens: 1024, responsePolicy: { mode: 'auto', source: 'auto' } })),
         currentSessionId: 'session-1',
         _semanticLoreHits: [],
         _semanticFactsHits: [],
@@ -220,7 +220,7 @@ describe('streamController - 深度测试', () => {
         messages: [{ id: 'u1', content: '星陨峡谷' }],
         sessions: [],
         activeLorebookIds: ['lb1'],
-        buildContext: vi.fn(() => []),
+        buildContext: vi.fn(() => ({ messages: [], requestMaxTokens: 1024, responsePolicy: { mode: 'auto', source: 'auto' } })),
         currentSessionId: 'session-1',
         _semanticLoreHits: [],
         _semanticLoreAvailable: undefined,
@@ -253,7 +253,7 @@ describe('streamController - 深度测试', () => {
       }
       mockSemanticSearch.mockResolvedValueOnce([])
       const state: any = {
-        messages: [{ id: 'u1', content: '星陨峡谷' }], sessions: [], activeLorebookIds: ['lb1'], buildContext: vi.fn(() => []),
+        messages: [{ id: 'u1', content: '星陨峡谷' }], sessions: [], activeLorebookIds: ['lb1'], buildContext: vi.fn(() => ({ messages: [], requestMaxTokens: 1024, responsePolicy: { mode: 'auto', source: 'auto' } })),
         currentSessionId: 'session-1', _semanticLoreHits: [], _semanticLoreAvailable: undefined, _semanticFactsHits: [],
       }
       const set = vi.fn((partial: any) => Object.assign(state, typeof partial === 'function' ? partial(state) : partial))
@@ -272,11 +272,16 @@ describe('streamController - 深度测试', () => {
       // 简化 mockSet，返回空对象
       mockSet.mockReturnValue({})
 
-      // 捕获 onDone 回调并捕获 requestId
-      let doneCallback: ((requestId: string) => void) | undefined
+      // 阶段3：捕获 onComplete（结构化完成）回调并捕获 requestId
+      let doneCallback: ((payload: { requestId: string; finishReason?: string }) => void) | undefined
+      let chunkCallback: ((data: { requestId: string; text: string }) => void) | undefined
       let capturedRequestId: string
-      mockOnDone.mockImplementation((cb: (requestId: string) => void) => {
+      mockOnCompleteEvent.mockImplementation((cb: (payload: { requestId: string; finishReason?: string }) => void) => {
         doneCallback = cb
+        return vi.fn()
+      })
+      mockOnChunk.mockImplementation((cb: (data: { requestId: string; text: string }) => void) => {
+        chunkCallback = cb
         return vi.fn()
       })
 
@@ -293,8 +298,12 @@ describe('streamController - 深度测试', () => {
         onComplete: mockOnComplete,
       })
 
+      // 模拟流式产出（正文需完整句收尾，否则收尾器走补尾/错误分支）
+      chunkCallback?.({ requestId: capturedRequestId!, text: '她完成了任务。' })
       // 模拟流式完成（使用捕获的 requestId）
-      doneCallback?.(capturedRequestId!)
+      doneCallback?.({ requestId: capturedRequestId!, finishReason: 'stop' })
+      await Promise.resolve()
+      await Promise.resolve()
 
       expect(mockOnComplete).toHaveBeenCalled()
     })

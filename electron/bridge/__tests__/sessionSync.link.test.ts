@@ -25,9 +25,10 @@ vi.mock('../../ipc/announcement', () => ({
 }))
 
 vi.mock('../../services/ai', () => ({
+  // 阶段3契约：chatWithRetry 返回 AICompletion（text + finishReason），不是裸字符串
   chatWithRetry: vi.fn(async (_adapter: unknown, _params: unknown, onChunk?: (t: string) => void) => {
     if (onChunk) { onChunk('hello '); onChunk('world') }
-    return 'hello world'
+    return { text: 'hello world', finishReason: 'stop' }
   }),
   getAdapter: vi.fn().mockReturnValue({}),
 }))
@@ -236,7 +237,7 @@ describe('链路C: REST幂等 + 广播联动', () => {
     const { chatWithRetry } = await import('../../services/ai')
     vi.mocked(chatWithRetry).mockImplementation(async (_a: any, _p: any, _cb: any) => {
       await new Promise(r => setTimeout(r, 100))
-      return 'slow'
+      return { text: 'slow', finishReason: 'stop' }
     })
     const app = express()
     app.use(express.json())
@@ -257,7 +258,7 @@ describe('链路C: REST幂等 + 广播联动', () => {
       expect(m1.id).toBe(m2.id)
     } finally {
       server.close()
-      vi.mocked(chatWithRetry).mockResolvedValue('hello world')
+      vi.mocked(chatWithRetry).mockResolvedValue({ text: 'hello world', finishReason: 'stop' })
     }
   })
 })

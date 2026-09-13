@@ -27,6 +27,8 @@ describe('useSettingsStore', () => {
       credentials: {},
       loaded: false,
       _saveTimer: null,
+      saveStatus: 'idle',
+      saveError: null,
     })
     // 确保 window.api.settings.save 返回 Promise
     vi.mocked(window.api.settings.save).mockResolvedValue(undefined)
@@ -241,6 +243,103 @@ describe('useSettingsStore', () => {
       })
       useSettingsStore.getState().setActiveProfileId('non-existent')
       expect(useSettingsStore.getState().settings.activeProfileId).toBe('p1')
+    })
+  })
+
+  describe('loadSettings 旧数据兜底（B2：只读，不写盘）', () => {
+    it('旧单字段迁移到内存后不触发 settings.save（持久化由主进程迁移链负责）', async () => {
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+      vi.mocked(window.api.settings.get).mockResolvedValue({
+        ...getDefaultSettings(),
+        ttsProvider: 'edge',
+        ttsVoice: 'v1',
+        ttsModel: 'tts-1',
+        imageGenModel: 'dall-e-3',
+        visionModel: 'gpt-4o-vision',
+        authorNote: { enabled: true, text: '旧作者注释' },
+      } as never)
+
+      await useSettingsStore.getState().loadSettings()
+
+      const { settings } = useSettingsStore.getState()
+      expect(settings.ttsModels).toHaveLength(1)
+      expect(settings.ttsModels[0].provider).toBe('system')
+      // imageGenModels 是联合类型（comfyui 分支无 model 字段），此处断言迁移出的 openai 分支
+      expect((settings.imageGenModels[0] as { model?: string } | undefined)?.model).toBe('dall-e-3')
+      expect(settings.visionModels[0]?.model).toBe('gpt-4o-vision')
+      const legacy = settings as unknown as Record<string, unknown>
+      expect(legacy.ttsProvider).toBeUndefined()
+      expect(legacy.imageGenModel).toBeUndefined()
+      expect(legacy.authorNote).toBeUndefined()
+      expect(saveSpy).not.toHaveBeenCalled()
+      expect(useSettingsStore.getState().loaded).toBe(true)
+    })
+
+    it('旧 providers 配置在内存中兜底为连接档案，同样不写盘', async () => {
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+      vi.mocked(window.api.settings.get).mockResolvedValue({
+        ...getDefaultSettings(),
+        connectionProfiles: [],
+        activeProfileId: null,
+      } as never)
+
+      await useSettingsStore.getState().loadSettings()
+
+      const { settings } = useSettingsStore.getState()
+      // 默认 providers 含 ollama：兜底路径会为它建一条档案（与迁移前行为一致，仅内存）
+      expect(settings.connectionProfiles.length).toBeGreaterThan(0)
+      expect(settings.activeProfileId).toBe(settings.connectionProfiles[0].id)
+      expect(saveSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('saveStatus（P1-02：由真实落盘结果驱动）', () => {
+    it('成功 → saved；失败 → error 带原因；重试成功清除错误', async () => {
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+
+      saveSpy.mockResolvedValueOnce(undefined)
+      await useSettingsStore.getState().saveSettings()
+      expect(useSettingsStore.getState().saveStatus).toBe('saved')
+      expect(useSettingsStore.getState().saveError).toBeNull()
+
+      saveSpy.mockRejectedValueOnce(new Error('磁盘写入失败'))
+      await useSettingsStore.getState().saveSettings()
+      expect(useSettingsStore.getState().saveStatus).toBe('error')
+      expect(useSettingsStore.getState().saveError).toBe('磁盘写入失败')
+
+      saveSpy.mockResolvedValueOnce(undefined)
+      await useSettingsStore.getState().saveSettings()
+      expect(useSettingsStore.getState().saveStatus).toBe('saved')
+      expect(useSettingsStore.getState().saveError).toBeNull()
+    })
+
+    it('防抖路径落盘同样驱动状态', async () => {
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+      saveSpy.mockResolvedValue(undefined)
+
+      useSettingsStore.getState().updateSettings({ theme: 'light' })
+      expect(useSettingsStore.getState().saveStatus).toBe('idle')
+
+      await new Promise((resolve) => setTimeout(resolve, 350))
+      expect(useSettingsStore.getState().saveStatus).toBe('saved')
+    })
+
+    it('flushSettings 落盘失败时进入 error 状态', () => {
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+      saveSpy.mockRejectedValueOnce(new Error('flush failed'))
+
+      useSettingsStore.getState().updateSettings({ theme: 'light' })
+      useSettingsStore.getState().flushSettings()
+
+      return new Promise<void>((resolve) => setTimeout(resolve, 20)).then(() => {
+        expect(useSettingsStore.getState().saveStatus).toBe('error')
+        expect(useSettingsStore.getState().saveError).toBe('flush failed')
+      })
     })
   })
 

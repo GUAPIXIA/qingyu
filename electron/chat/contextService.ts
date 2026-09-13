@@ -6,7 +6,7 @@
  * 语义检索（向量 RAG）在本服务内完成，失败回退纯关键词（与 streamController 对齐）。
  */
 import { mainContextProvider } from '../context/mainContextProvider'
-import { buildContextMessagesFromData } from '../../src/context/contextBuilder'
+import { buildContextMessagesFromData } from '../../shared/chat-core/contextBuilder'
 import { createHash } from 'node:crypto'
 import type { ContextPort, BuildContextInput, PreparedContext } from './ports'
 
@@ -21,7 +21,7 @@ export const contextService: ContextPort = {
     const data = await mainContextProvider.fetchBuildData(input.characterId, input.sessionId)
     if (!data.character) throw new Error(`角色不存在: ${input.characterId}`)
 
-    const { messages } = buildContextMessagesFromData(data)
+    const { messages, requestMaxTokens } = buildContextMessagesFromData(data)
 
     const profile = data.settings.profile
     const model = {
@@ -35,6 +35,7 @@ export const contextService: ContextPort = {
     return {
       messages,
       fingerprint: fingerprintOf(messages),
+      requestMaxTokens,
       model,
     }
   },

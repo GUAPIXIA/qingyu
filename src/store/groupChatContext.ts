@@ -1,4 +1,5 @@
-import type { Character, LorebookTimedEffectsState, Preset } from '../../shared/types'
+import type { Character, LorebookTimedEffectsState, Preset, ResponsePolicy } from '../../shared/types'
+import type { RequestBudget } from '../../shared/modelOutputProfile'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { usePersonaStore } from './usePersonaStore'
@@ -19,18 +20,24 @@ import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { fitLayeredMemoryBudget, formatMemoryFacts } from '../utils/memory'
 import { expandMacros, buildMacroContext } from '../utils/macros'
 import { logInfo, logWarn } from '../lib/logger'
-import { DEFAULT_LOREBOOK_RATIO, DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFETY, DEFAULT_RESERVED_OUTPUT, resolveLorebookScanDepth } from './chatConstants'
+import { DEFAULT_LOREBOOK_RATIO, DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFETY, resolveLorebookScanDepth } from './chatConstants'
 import { markPendingGroupCompression } from './groupStreamController'
 import { cropHistory, applyDepthInserts, type DepthInsertItem } from './contextShared'
 import type { GroupStoreGet } from './groupChatTypes'
 import type { NarrativeMode } from '../../shared/types'
 import { buildGroupNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
+import { buildGroupRosterIntro, buildGroupTurnRulesPrompt } from '../../shared/groupChatPrompt'
+import { buildThoughtContractBody } from '../../shared/thoughtContract'
+import { resolveGroupRequestPlan } from './groupRequestPlan'
 
 /** 群聊上下文组装结果：消息 + 本轮世界书触发键 / 超限压缩请求（调用方写回 store） */
 export interface GroupContextBuildResult {
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
   /** 本次上下文实际采用的叙事模式，供调试界面与跨端测试确认。 */
   narrativeMode: NarrativeMode
+  responsePolicy: ResponsePolicy
+  requestBudget: RequestBudget
+  requestMaxTokens: number
   lorebookTriggeredIds?: string[]
   /** 世界书超限压缩请求（阶段三：调用方异步 AI 压缩后写入会话缓存） */
   lorebookCompressions?: LorebookCompressionRequest[]
@@ -51,11 +58,27 @@ export function buildGroupChatContext(
 ): GroupContextBuildResult {
   const state = get()
   const group = state.currentGroup
-  if (!group) return { messages: [], narrativeMode: 'immersive' }
-
-  const charStore = useCharacterStore.getState()
   const settingsStore = useSettingsStore.getState()
   const settings = settingsStore.settings
+  const profile = settingsStore.getActiveProfile()
+  const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
+  const requestPlan = resolveGroupRequestPlan({
+    model,
+    messages: state.messages,
+    preset,
+    pipelineLegacy: (settings.generationPipeline ?? 'unified') === 'legacy',
+  })
+  if (!group) {
+    return {
+      messages: [],
+      narrativeMode: 'immersive',
+      responsePolicy: requestPlan.responsePolicy,
+      requestBudget: requestPlan.requestBudget,
+      requestMaxTokens: requestPlan.requestMaxTokens,
+    }
+  }
+
+  const charStore = useCharacterStore.getState()
   const { sessions, currentSessionId } = get()
   const currentSession = sessions.find(s => s.id === currentSessionId)
   const sessionPersonaId = currentSession?.personaId === undefined
@@ -85,39 +108,22 @@ export function buildGroupChatContext(
     ? resolveNarrativeMode(currentSession.narrativeMode)
     : resolveNarrativeMode(group.defaultNarrativeMode, settings.defaultNarrativeMode)
 
-  let systemContent = ''
+  // 群聊 Overview + 模式指令（点名/轮询规则与桥接端共用 shared/groupChatPrompt，free 为桌面版规则）
+  let systemContent = buildGroupRosterIntro(group.name, members, userName)
 
-  // 群聊 Overview
-  systemContent += `你正在参与一个群聊「${group.name}」。本群聊中共有 ${members.length} 个角色参与对话：\n`
-  members.forEach((m, i) => {
-    const desc = m.description ? ' - ' + m.description.slice(0, 80) : ''
-    systemContent += `${i + 1}. 【${m.name}】${desc}\n`
-  })
-  systemContent += `\n用户「${userName}」也在群聊中。\n`
-
-  // 模式指令
-  switch (group.chatMode) {
-    case 'mention':
-      systemContent += '\n【对话规则】用户通过 @角色名 指定回复对象。只有被点名的角色才需要回复。回复时请以该角色的第一人称视角发言，不要替其他角色说话。\n'
-      break
-    case 'polling':
-      systemContent += '\n【对话规则】当前采用自动轮询模式。每次只轮到一位角色发言。请以该角色的第一人称视角回复，不要替其他角色或用户发言。\n'
-      break
-    case 'free':
-      systemContent += '\n【对话规则】你可以让多个角色参与对话。如果多个角色需要发言，请用「【角色名】」标注每段发言的发言人。\n'
-      break
-  }
+  const turnRules = buildGroupTurnRulesPrompt(group.chatMode)
+  systemContent += turnRules || '\n【对话规则】你可以让多个角色参与对话。如果多个角色需要发言，请用「【角色名】」标注每段发言的发言人。\n'
 
   // 心理描写格式
+  // 阶段7（§5.1）：与单聊共用同一 thought 契约来源；群聊思考主体始终绑定当前发言角色（speaker）
   if (settings.enableThoughtFormat !== false) {
-    systemContent += '\n【输出格式】如果需要描写角色内心活动或心理,请将心理描写放在 <thought>...</thought> 标签内。\n'
+    const focusName = targetChar ? `「${targetChar.translatedContent?.name || targetChar.name}」` : ''
+    systemContent += '\n【输出格式】' + buildThoughtContractBody({ narrativeMode, subjectName: focusName }) + '\n'
   }
 
   // ===== Token 预算框架（与单聊路径一致）=====
-  const profile = settingsStore.getActiveProfile()
-  const model = profile?.model || settings.activeModel || 'gpt-4o-mini'
   const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
-  const reservedOutput = preset?.maxTokens ?? DEFAULT_RESERVED_OUTPUT
+  const reservedOutput = requestPlan.requestMaxTokens
   // 下限保护：maxTokens 配置过大时至少保留 25% 上下文预算
   const budgetBase = Math.max(
     Math.floor((maxContext - reservedOutput) * TOKEN_BUDGET_SAFETY),
@@ -512,6 +518,9 @@ export function buildGroupChatContext(
   return {
     messages: processedContext,
     narrativeMode,
+    responsePolicy: requestPlan.responsePolicy,
+    requestBudget: requestPlan.requestBudget,
+    requestMaxTokens: requestPlan.requestMaxTokens,
     lorebookTriggeredIds,
     lorebookCompressions,
     lorebookCompressionCacheHitKeys,

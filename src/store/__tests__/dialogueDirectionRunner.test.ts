@@ -47,17 +47,18 @@ function makeStore(messages: Message[]) {
   return { set: set as unknown as Parameters<typeof generateSingleDialogueDirections>[0], get, raw: state }
 }
 
-function stubAiText(texts: string[]) {
+function stubAiText(texts: string[], finishReason: import('../../../shared/types').AIFinishReason = 'stop') {
   let index = 0
   let onChunkCb: ((data: { requestId: string; text: string }) => void) | undefined
-  let onDoneCb: ((requestId: string) => void) | undefined
+  let onCompleteCb: ((payload: import('../../../shared/ipc-api').AIDonePayload) => void) | undefined
   // 监听器在 chat() 之前注册，因此先捕获回调，由 chat 的实现驱动完成
   vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
     onChunkCb = callback
     return vi.fn()
   })
-  vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-    onDoneCb = callback
+  // 方向请求用 onComplete 获取 finishReason（触顶按结构不完整丢弃）
+  vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+    onCompleteCb = callback
     return vi.fn()
   })
   vi.mocked(window.api.ai.onError).mockReturnValue(vi.fn())
@@ -66,7 +67,7 @@ function stubAiText(texts: string[]) {
     index += 1
     queueMicrotask(() => {
       onChunkCb?.({ requestId: params.requestId, text: payload })
-      onDoneCb?.(params.requestId)
+      onCompleteCb?.({ requestId: params.requestId, finishReason })
     })
   })
 }
@@ -134,14 +135,14 @@ describe('dialogueDirectionRunner', () => {
 
   it('请求期间正文被替换时丢弃过期结果', async () => {
     let onChunkCb: ((data: { requestId: string; text: string }) => void) | undefined
-    let onDoneCb: ((requestId: string) => void) | undefined
+    let onCompleteCb: ((payload: import('../../../shared/ipc-api').AIDonePayload) => void) | undefined
     let requestId = ''
     vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
       onChunkCb = callback
       return vi.fn()
     })
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      onDoneCb = callback
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      onCompleteCb = callback
       return vi.fn()
     })
     vi.mocked(window.api.ai.onError).mockReturnValue(vi.fn())
@@ -155,7 +156,7 @@ describe('dialogueDirectionRunner', () => {
     // 模型返回了合法方向，但正文在请求期间被替换（重生成）
     onChunkCb?.({ requestId, text: `<directions>${JSON.stringify(DIRECTIONS)}</directions>` })
     raw.messages[1] = { ...raw.messages[1], content: '' }
-    onDoneCb?.(requestId)
+    onCompleteCb?.({ requestId, finishReason: 'stop' })
 
     await pending
     expect(raw.messages[1].dialogueDirections).toBeUndefined()
@@ -164,14 +165,14 @@ describe('dialogueDirectionRunner', () => {
 
   it('取消在途请求后不再写入结果', async () => {
     let onChunkCb: ((data: { requestId: string; text: string }) => void) | undefined
-    let onDoneCb: ((requestId: string) => void) | undefined
+    let onCompleteCb: ((payload: import('../../../shared/ipc-api').AIDonePayload) => void) | undefined
     let requestId = ''
     vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
       onChunkCb = callback
       return vi.fn()
     })
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      onDoneCb = callback
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      onCompleteCb = callback
       return vi.fn()
     })
     vi.mocked(window.api.ai.onError).mockReturnValue(vi.fn())
@@ -185,7 +186,7 @@ describe('dialogueDirectionRunner', () => {
     onChunkCb?.({ requestId, text: `<directions>${JSON.stringify(DIRECTIONS)}</directions>` })
     cancelDialogueDirectionRequests(['a1'])
     expect(window.api.ai.cancelChat).toHaveBeenCalledWith(requestId)
-    onDoneCb?.(requestId)
+    onCompleteCb?.({ requestId, finishReason: 'stop' })
 
     await pending
     expect(raw.messages[1].dialogueDirections).toBeUndefined()
@@ -271,12 +272,12 @@ describe('用户发送后清空上一轮方向', () => {
   })
 
   it('清空时取消在途方向请求，防止响应回写已清空的消息', async () => {
-    let onDoneCb: ((requestId: string) => void) | undefined
+    let onCompleteCb: ((payload: import('../../../shared/ipc-api').AIDonePayload) => void) | undefined
     const issued: string[] = []
     vi.mocked(window.api.ai.onChunk).mockImplementation(() => vi.fn())
     vi.mocked(window.api.ai.onError).mockReturnValue(vi.fn())
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      onDoneCb = callback
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      onCompleteCb = callback
       return vi.fn()
     })
     vi.mocked(window.api.ai.chat).mockImplementation(async (params) => { issued.push(params.requestId) })
@@ -291,7 +292,7 @@ describe('用户发送后清空上一轮方向', () => {
     await clearSessionDialogueDirections(set, get, 's1')
     expect(vi.mocked(window.api.ai.cancelChat).mock.calls.map((c) => c[0])).toContain(requestId)
 
-    onDoneCb?.(requestId)
+    onCompleteCb?.({ requestId, finishReason: 'stop' })
     await pending
     // 响应到达后不应把方向写回
     expect((raw.messages[0] as { dialogueDirections?: unknown }).dialogueDirections).toBeUndefined()
@@ -431,15 +432,15 @@ describe('切换叙事模式后刷新方向', () => {
     const { set, get } = makeRefreshStore({ enabled: true, hasDirections: true })
     // 按序配对监听器与请求：注册顺序与 chat() 调用顺序一致
     const chunkCallbacks: Array<(data: { requestId: string; text: string }) => void> = []
-    const doneCallbacks: Array<(requestId: string) => void> = []
+    const completeCallbacks: Array<(payload: import('../../../shared/ipc-api').AIDonePayload) => void> = []
     const issued: string[] = []
     vi.mocked(window.api.ai.onError).mockReturnValue(vi.fn())
     vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
       chunkCallbacks.push(callback)
       return vi.fn()
     })
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      doneCallbacks.push(callback)
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      completeCallbacks.push(callback)
       return vi.fn()
     })
     vi.mocked(window.api.ai.chat).mockImplementation(async (params) => { issued.push(params.requestId) })
@@ -448,7 +449,7 @@ describe('切换叙事模式后刷新方向', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
       const requestId = issued[index]
       chunkCallbacks[index]?.({ requestId, text: `<directions>${JSON.stringify(DIRECTIONS)}</directions>` })
-      doneCallbacks[index]?.(requestId)
+      completeCallbacks[index]?.({ requestId, finishReason: 'stop' })
     }
 
     // 先发起一次生成（在途），再触发刷新
@@ -535,14 +536,14 @@ describe('群聊方向生成', () => {
 
   it('取消后不再写入群聊方向', async () => {
     let onChunkCb: ((data: { requestId: string; text: string }) => void) | undefined
-    let onDoneCb: ((requestId: string) => void) | undefined
+    let onCompleteCb: ((payload: import('../../../shared/ipc-api').AIDonePayload) => void) | undefined
     let requestId = ''
     vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
       onChunkCb = callback
       return vi.fn()
     })
-    vi.mocked(window.api.ai.onDone).mockImplementation((callback) => {
-      onDoneCb = callback
+    vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+      onCompleteCb = callback
       return vi.fn()
     })
     vi.mocked(window.api.ai.onError).mockReturnValue(vi.fn())
@@ -558,7 +559,7 @@ describe('群聊方向生成', () => {
     await Promise.resolve()
     onChunkCb?.({ requestId, text: `<directions>${JSON.stringify(DIRECTIONS)}</directions>` })
     cancelDialogueDirectionRequests(['ga1'])
-    onDoneCb?.(requestId)
+    onCompleteCb?.({ requestId, finishReason: 'stop' })
 
     await pending
     expect((raw.messages[1] as { dialogueDirections?: unknown[] }).dialogueDirections).toBeUndefined()

@@ -306,7 +306,7 @@ describe('useChatStore', () => {
       })
       const char = makeCharacter()
 
-      const ctx = useChatStore.getState().buildContext(char, null)
+      const ctx = useChatStore.getState().buildContext(char, null).messages
       const system = ctx.find(m => m.role === 'system')
       const joined = system?.content ?? ''
 
@@ -336,7 +336,7 @@ describe('useChatStore', () => {
         scenario: '',
       })
 
-      const ctx = useChatStore.getState().buildContext(char, null)
+      const ctx = useChatStore.getState().buildContext(char, null).messages
       const system = ctx.find(m => m.role === 'system')
       expect(system?.content).toContain('你是测试角色。玩家叫冒险家。')
     })
@@ -347,7 +347,7 @@ describe('useChatStore', () => {
         sessions: [{ id: 's1', characterId: 'c1', title: 't', createdAt: 0, updatedAt: 0 } as SessionPreview],
         messages: [makeMessage()],
       })
-      const ctx = useChatStore.getState().buildContext(makeCharacter(), null, { continuation: true })
+      const ctx = useChatStore.getState().buildContext(makeCharacter(), null, { continuation: true }).messages
       expect(ctx.some(m => m.role === 'user' && m.content.includes('续写'))).toBe(true)
     })
 
@@ -357,7 +357,7 @@ describe('useChatStore', () => {
         sessions: [{ id: 's1', characterId: 'c1', title: 't', createdAt: 0, updatedAt: 0 } as SessionPreview],
         messages: [makeMessage()],
       })
-      useChatStore.getState().buildContext(makeCharacter(), null)
+      expect(useChatStore.getState().buildContext(makeCharacter(), null).messages).toBeDefined()
       const usage = useChatStore.getState().lastContextUsage
       expect(usage).not.toBeNull()
       expect(usage!.used).toBeGreaterThan(0)
@@ -381,7 +381,7 @@ describe('useChatStore', () => {
     it('翻译完成后自动把消息加入 showTranslationIds 并写入译文', async () => {
       let chunkCb: any, doneCb: any
       vi.mocked(window.api.ai.onChunk).mockImplementation((cb: any) => { chunkCb = cb; return () => {} })
-      vi.mocked(window.api.ai.onDone).mockImplementation((cb: any) => { doneCb = cb; return () => {} })
+      vi.mocked(window.api.ai.onComplete).mockImplementation((cb: any) => { doneCb = (id: string) => cb({ requestId: id, finishReason: 'stop' }); return () => {} })
 
       useSettingsStore.setState({
         settings: {
@@ -420,7 +420,7 @@ describe('useChatStore', () => {
     it('翻译结果为空时不落库空译文、不自动切显示，并提示错误', async () => {
       let chunkCb: any, doneCb: any
       vi.mocked(window.api.ai.onChunk).mockImplementation((cb: any) => { chunkCb = cb; return () => {} })
-      vi.mocked(window.api.ai.onDone).mockImplementation((cb: any) => { doneCb = cb; return () => {} })
+      vi.mocked(window.api.ai.onComplete).mockImplementation((cb: any) => { doneCb = (id: string) => cb({ requestId: id, finishReason: 'stop' }); return () => {} })
 
       useSettingsStore.setState({
         settings: {
@@ -557,6 +557,27 @@ describe('P-7 本地会话元数据 patch / 配置加载收敛', () => {
     expect(sess.lastMessage).toBe('编辑后的内容')
   })
 
+  it('editMessage 先更新与保存消息，不被长记忆失效请求阻塞', async () => {
+    const char = makeCharacter()
+    let releaseInvalidation!: (value: { applied: boolean; currentVersion: number }) => void
+    vi.mocked(window.api.chat.updateSessionIfMemoryVersion).mockImplementationOnce(
+      () => new Promise((resolve) => { releaseInvalidation = resolve }),
+    )
+    useChatStore.setState({
+      sessions: [makeSession({ memory: '旧摘要', memoryVersion: 2, memoryLastMessageId: 'm1' })],
+      messages: [makeMessage({ id: 'm1', role: 'assistant', content: '旧内容' })],
+    })
+
+    const editing = useChatStore.getState().editMessage('m1', '新内容', char)
+    await Promise.resolve()
+
+    expect(useChatStore.getState().messages[0].content).toBe('新内容')
+    expect(window.api.chat.saveMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 'm1', content: '新内容' }))
+
+    releaseInvalidation({ applied: true, currentVersion: 0 })
+    await editing
+  })
+
   it('renameSession 本地 patch，不再全量 listSessions', async () => {
     vi.mocked(window.api.chat.listSessions).mockClear()
     await useChatStore.getState().renameSession('c1', 's1', '新标题')
@@ -662,5 +683,149 @@ describe('用户发送后清空上一轮方向（store 集成）', () => {
 
     const first = useChatStore.getState().messages[0] as { dialogueDirections?: unknown }
     expect(first.dialogueDirections).toHaveLength(3)
+  })
+})
+
+describe('useChatStore 生成失败落盘（R2）', () => {
+  beforeEach(() => {
+    resetStores()
+    useSettingsStore.setState({
+      settings: {
+        ...getDefaultSettings(),
+        userName: '林舟',
+        activeProfileId: 'p1',
+        connectionProfiles: [{
+          id: 'p1', name: '测试', provider: 'openai', apiKey: 'sk-test',
+          baseUrl: 'https://api.example.com', model: 'test-model',
+        }] as never,
+      },
+      credentials: {}, loaded: true, _saveTimer: null,
+    })
+  })
+
+  function setupSession() {
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sessions: [{ id: 's1', characterId: 'c1' } as never],
+    })
+  }
+
+  it('有分片 + 错误：半截正文先经统一收尾管线，稳定正文与 generationError 分离落盘（阶段7 矩阵 transport_error）', async () => {
+    const { useChatTaskStore } = await import('../chatTaskStore')
+    useChatTaskStore.setState({ chatEngineV2: false })
+    setupSession()
+
+    let chunkCallback: ((data: { requestId: string; text: string }) => void) | undefined
+    let errorCallback: ((data: { requestId: string; error: string }) => void) | undefined
+    ;(window.api.ai.onChunk as any).mockImplementation((cb: typeof chunkCallback) => { chunkCallback = cb; return () => {} })
+    ;(window.api.ai.onError as any).mockImplementation((cb: typeof errorCallback) => { errorCallback = cb; return () => {} })
+    ;(window.api.ai.chat as any).mockImplementation(async (params: { requestId: string }) => {
+      chunkCallback?.({ requestId: params.requestId, text: '她推开门，走进房间。然后她伸手拿' })
+      errorCallback?.({ requestId: params.requestId, error: '模型输出达到长度上限' })
+    })
+
+    await useChatStore.getState().sendMessage('我压低声音问', [], makeCharacter(), null, [])
+    // 阶段7：异常收口是异步的（正文先进统一管线）
+    await new Promise((r) => setTimeout(r, 10))
+
+    const aiMsg = useChatStore.getState().messages.find((m) => m.role === 'assistant') as
+      | (Message & { generationError?: string })
+      | undefined
+    // 半句被收束到稳定句界（不再原样落盘）
+    expect(aiMsg?.content).toBe('她推开门，走进房间。')
+    // 用户提示按行为矩阵：transport error + 稳定正文
+    expect(aiMsg?.generationError).toBe('生成中断，已保留完整部分')
+
+    const savedAi = vi.mocked(window.api.chat.saveMessage).mock.calls
+      .map((c) => c[0] as Message & { generationError?: string })
+      .find((m) => m.id === aiMsg?.id)
+    expect(savedAi?.content).toBe('她推开门，走进房间。')
+    expect(savedAi?.generationError).toBe('生成中断，已保留完整部分')
+    // 错误文案不进入正文
+    expect(savedAi?.content).not.toContain('长度上限')
+    // 中断保留的正文与正常完成一致走语义分块，避免概率性丢失对话样式
+    expect(aiMsg?.contentRenderMode).toBe('blocks')
+    expect(savedAi?.contentRenderMode).toBe('blocks')
+  })
+
+  it('无分片 + 错误：不创建空 AI 消息、不落盘 ⚠️ 占位（阶段7 矩阵末行）', async () => {
+    const { useChatTaskStore } = await import('../chatTaskStore')
+    useChatTaskStore.setState({ chatEngineV2: false })
+    setupSession()
+    let errorCallback: ((data: { requestId: string; error: string }) => void) | undefined
+    ;(window.api.ai.onChunk as any).mockImplementation(() => () => {})
+    ;(window.api.ai.onError as any).mockImplementation((cb: typeof errorCallback) => { errorCallback = cb; return () => {} })
+    ;(window.api.ai.chat as any).mockImplementation(async (params: { requestId: string }) => {
+      errorCallback?.({ requestId: params.requestId, error: 'API 返回 500' })
+    })
+
+    await useChatStore.getState().sendMessage('我压低声音问', [], makeCharacter(), null, [])
+    await new Promise((r) => setTimeout(r, 10))
+
+    // 占位气泡被移除（不保存任何 AI 消息）
+    const aiMsg = useChatStore.getState().messages.find((m) => m.role === 'assistant')
+    expect(aiMsg).toBeUndefined()
+    const savedAssistant = vi.mocked(window.api.chat.saveMessage).mock.calls
+      .map((c) => c[0] as Message)
+      .find((m) => m.role === 'assistant')
+    expect(savedAssistant).toBeUndefined()
+    // 错误只进 store.error（界面重试入口）
+    expect(useChatStore.getState().error).toBeTruthy()
+  })
+
+  it('用户停止：抢先落盘的消息同样标记语义分块（unified 管线）', async () => {
+    const { streamAIResponse } = await import('../streamController')
+    const { useChatTaskStore } = await import('../chatTaskStore')
+    useChatTaskStore.setState({ chatEngineV2: false })
+    setupSession()
+
+    let chunkCallback: ((data: { requestId: string; text: string }) => void) | undefined
+    ;(window.api.ai.onChunk as any).mockImplementation((cb: typeof chunkCallback) => { chunkCallback = cb; return () => {} })
+    ;(window.api.ai.onError as any).mockImplementation(() => () => {})
+    ;(window.api.ai.onComplete as any).mockImplementation(() => () => {})
+    ;(window.api.ai.chat as any).mockImplementation(async (params: { requestId: string }) => {
+      chunkCallback?.({ requestId: params.requestId, text: '“先别动。”她低声说。' })
+      await new Promise(() => {})
+    })
+
+    useChatStore.setState({
+      messages: [{
+        id: 'ai-1',
+        sessionId: 's1',
+        characterId: 'c1',
+        role: 'assistant',
+        content: '',
+        images: [],
+        isEditing: false,
+        timestamp: Date.now(),
+      } as Message],
+      isStreaming: true,
+    })
+
+    const pending = streamAIResponse(
+      useChatStore.setState as never,
+      useChatStore.getState as never,
+      {
+        aiMessageId: 'ai-1',
+        character: makeCharacter(),
+        preset: null,
+        onComplete: async () => {},
+      },
+    )
+    await new Promise((r) => setTimeout(r, 10))
+
+    useChatStore.getState().stopStreaming()
+    await new Promise((r) => setTimeout(r, 10))
+
+    const aiMsg = useChatStore.getState().messages.find((m) => m.id === 'ai-1') as Message
+    expect(aiMsg?.content).toContain('先别动')
+    expect(aiMsg?.generationNotice).toBe('已停止生成')
+    // 停止抢先 latch 后 onComplete 不会再写 contentRenderMode，必须在 stop 路径补上
+    expect(aiMsg?.contentRenderMode).toBe('blocks')
+    const saved = vi.mocked(window.api.chat.saveMessage).mock.calls
+      .map((c) => c[0] as Message)
+      .find((m) => m.id === 'ai-1')
+    expect(saved?.contentRenderMode).toBe('blocks')
+    void pending
   })
 })

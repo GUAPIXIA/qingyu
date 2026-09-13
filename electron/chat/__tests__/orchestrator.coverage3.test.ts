@@ -24,7 +24,7 @@ function mp(over: Partial<MessagePort> = {}): MessagePort {
   } as unknown as MessagePort
 }
 function ctx(): ContextPort {
-  return { async build() { return { messages: [{ role: 'user', content: 'hi' }], fingerprint: 'fp', model: { provider: 'openai', model: 'gpt-4o-mini' } } } }
+  return { async build() { return { messages: [{ role: 'user', content: 'hi' }], fingerprint: 'fp', requestMaxTokens: 2048, model: { provider: 'openai', model: 'gpt-4o-mini' } } } }
 }
 beforeEach(() => { rmSync(TEST_ROOT, { recursive: true, force: true }); sessionLock.clear() })
 afterEach(() => { rmSync(TEST_ROOT, { recursive: true, force: true }); sessionLock.clear() })

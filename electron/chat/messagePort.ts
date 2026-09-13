@@ -59,6 +59,8 @@ export const chatMessagePort: MessagePort = {
       narrativeMode: input.narrativeMode,
       speakerKind: input.speakerKind,
       generationKind: input.generationKind,
+      // 阶段5：新内容使用语义分块渲染；legacy/缺省走 Markdown
+      ...(input.contentRenderMode ? { contentRenderMode: input.contentRenderMode } : {}),
     } as unknown as Parameters<typeof chatData.saveMessage>[1])
     return { id: input.id }
   },

@@ -19,7 +19,6 @@ import { buildContextMessagesFromData } from '../contextBuilder'
 
 function makeSettings(overrides: Partial<Settings> = {}): Settings {
   return {
-    activeProvider: 'openai',
     providers: {} as Settings['providers'],
     connectionProfiles: [
       {

@@ -9,6 +9,7 @@ import { getDefaultSettings } from '../../shared/defaults'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
 import { isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
+import { resolveDefaultGroupMemoryConfig } from '../../shared/defaultMemory'
 import { withMessageIdentity } from '../../shared/messageIdentity'
 
 const log = createLogger('group')
@@ -36,7 +37,6 @@ const GROUP_UPDATE_SESSION_FIELDS = new Set([
   'personaId',
   'narrativeMode',
   'dialogueDirectionsEnabled',
-  'gameMasterMode',
   'recentTriggeredIds',
   'lorebookCompressionCache',
 ])
@@ -54,16 +54,10 @@ function getDefaultGroupNarrativeMode(groupId: string) {
   return resolveNarrativeMode(group?.defaultNarrativeMode, settings.defaultNarrativeMode)
 }
 
-/** 新建群聊会话的默认长记忆配置：回退全局设置，开启时默认自动总结（对齐渲染层 applyDefaultGroupMemory） */
-function getDefaultGroupMemoryConfig(): {
-  memoryEnabled: boolean
-  memoryMode: 'manual' | 'auto'
-  autoMemoryInterval: number
-} {
+/** 新建群聊会话的默认长记忆配置：与渲染层 applyDefaultGroupMemory 共用 shared/defaultMemory 唯一决策表 */
+function getDefaultGroupMemoryConfig() {
   const settings = readJson<Settings>(SETTINGS_FILE()) ?? getDefaultSettings()
-  return settings.defaultMemoryEnabled
-    ? { memoryEnabled: true, memoryMode: 'auto', autoMemoryInterval: 10 }
-    : { memoryEnabled: false, memoryMode: 'manual', autoMemoryInterval: 10 }
+  return resolveDefaultGroupMemoryConfig(settings)
 }
 
 function validateGroupNarrativeMode(group: GroupChat): void {
@@ -144,9 +138,6 @@ function cleanGroupSessionUpdates(updates: Record<string, unknown>): Record<stri
     }
     if (key === 'narrativeMode' && !isNarrativeMode(value)) {
       throw new Error('参数无效：narrativeMode')
-    }
-    if (key === 'gameMasterMode' && typeof value !== 'boolean') {
-      throw new Error('参数无效：gameMasterMode')
     }
     if (key === 'dialogueDirectionsEnabled' && typeof value !== 'boolean') {
       throw new Error('参数无效：dialogueDirectionsEnabled')

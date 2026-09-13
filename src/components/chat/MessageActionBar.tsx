@@ -168,7 +168,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
       useChatStore.getState().toggleTranslation(message.id)
       return
     }
-    // 发起翻译（翻译完成后会在 onDone 中自动加入 showTranslationIds 显示译文）
+    // 发起翻译（翻译完成后会在 onComplete 中自动加入 showTranslationIds 显示译文）
     translateMessage(message.id, message.content)
   }
 

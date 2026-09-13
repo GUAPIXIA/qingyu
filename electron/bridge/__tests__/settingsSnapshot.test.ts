@@ -47,8 +47,9 @@ function settingsFile(): string {
 
 function writeSettings(s: Settings): void {
   mkdirSync(DIRS.config(), { recursive: true })
-  // 带 schemaVersion：避免 readJson('settings') 触发迁移回写导致文件字节漂移
-  writeFileSync(settingsFile(), JSON.stringify({ ...s, schemaVersion: 2 }))
+  // 带当前 schemaVersion：避免 readJson('settings') 触发迁移回写导致文件字节漂移
+  // （settings 最新版本见 electron/services/migration.ts 的 LATEST_VERSION）
+  writeFileSync(settingsFile(), JSON.stringify({ ...s, schemaVersion: 3 }))
 }
 
 function readSettings(): Settings {

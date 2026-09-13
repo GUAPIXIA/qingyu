@@ -40,6 +40,8 @@ export interface PersistAssistantMessage {
   narrativeMode?: NarrativeMode
   speakerKind: MessageSpeakerKind
   generationKind: MessageGenerationKind
+  /** 阶段5：语义分块渲染标记（unified 管线新正文） */
+  contentRenderMode?: 'markdown' | 'blocks'
 }
 
 export interface MessagePort {
@@ -61,6 +63,7 @@ export interface BuildContextInput {
 export interface PreparedContext {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   fingerprint: string
+  requestMaxTokens: number
   model: { provider: string; model: string; profileId?: string; apiKey?: string; baseUrl?: string }
 }
 
@@ -72,6 +75,7 @@ export interface ModelRequest {
   messages: PreparedContext['messages']
   model: string
   provider: string
+  maxTokens: number
   apiKey?: string
   baseUrl?: string
 }

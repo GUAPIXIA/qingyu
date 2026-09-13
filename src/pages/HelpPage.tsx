@@ -102,7 +102,7 @@ const features = [
   {
     icon: ScrollText,
     title: '心理描写展示',
-    desc: 'AI 回复中的 <thought> 标签内容会以独立的折叠区块展示，与角色对话内容明确区分，支持展开/收起。',
+    desc: '<thought> 只表示当前角色用“我”表达的内心独白，会以独立折叠区块展示；模型自身的推理不会显示。',
   },
   {
     icon: Palette,

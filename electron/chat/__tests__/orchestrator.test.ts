@@ -51,6 +51,7 @@ function makeContextPort(): ContextPort {
       return {
         messages: [{ role: 'user', content: 'hi' }],
         fingerprint: 'fp-1',
+        requestMaxTokens: 2048,
         model: { provider: 'openai', model: 'gpt-4o-mini' },
       }
     },
@@ -261,5 +262,32 @@ describe('Orchestrator', () => {
     const snap = await orch.handle(c)
     expect(snap.state).toBe('completed')
     expect(snap.accumulatedText).toBe('cont')
+  })
+
+  it('把上下文服务的动态输出预算传给模型端口', async () => {
+    const requests: Array<{ maxTokens?: number }> = []
+    const orch = new ChatOrchestrator({
+      messagePort: makeMessagePort(),
+      contextPort: {
+        async build() {
+          return {
+            messages: [{ role: 'user', content: 'hi' }],
+            fingerprint: 'fp-budget',
+            model: { provider: 'openai', model: 'deepseek-v4-pro' },
+            requestMaxTokens: 4096,
+          }
+        },
+      },
+      modelPort: {
+        async stream(request, callbacks) {
+          requests.push(request)
+          callbacks.onChunk('回复')
+          return { text: '回复' }
+        },
+      },
+    })
+
+    await orch.handle(cmd({ requestId: 'req-budget', sessionId: 'sess-budget' }))
+    expect(requests[0]?.maxTokens).toBe(4096)
   })
 })

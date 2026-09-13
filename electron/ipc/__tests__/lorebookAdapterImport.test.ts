@@ -29,7 +29,7 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
-describe('lorebook:importJson adapter integration', () => {
+describe('lorebook:importJsonDetailed adapter integration', () => {
   it('返回检测/兼容报告并直接写入 canonical v2', async () => {
     const source = join(root, 'sillytavern-world-info.json')
     const exportedPath = join(root, 'exported-world-info.json')
@@ -92,9 +92,5 @@ describe('lorebook:importJson adapter integration', () => {
     })
     expect(Object.values(exported.entries)[0]).toMatchObject({ position: 2 })
     expect(JSON.stringify(exported)).toContain('future_trigger')
-
-    const legacyResult = await handlers.get('lorebook:importJson')!({}) as Record<string, unknown>
-    expect(legacyResult).toMatchObject({ name: 'ST 导入测试' })
-    expect(legacyResult).not.toHaveProperty('report')
   })
 })

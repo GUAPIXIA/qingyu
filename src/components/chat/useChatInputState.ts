@@ -23,6 +23,7 @@ import {
 } from './aiInputHelper'
 import { createCommandContext } from './commandContext'
 import { registerDraftBridge } from './draftBridge'
+import { trimContinuationSeam } from '../../utils/messagePostProcess'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
 import {
   resolveContinueIntensity,
@@ -539,6 +540,9 @@ export function useChatInputState(
             return
           }
         }
+        // 提示词已禁止复读末尾，但模型仍会溢出；用确定性去重兜底（R5/S4）。
+        // 统一走续写接缝策略：4 字直接去重，3 字仅在边界/完整短语重复时去重。
+        if (hasInput) cleaned = trimContinuationSeam(originalInput, cleaned)
         setContinuedText(hasInput ? originalInput + cleaned : cleaned)
       } else {
         setText(originalInput)
