@@ -255,7 +255,7 @@ const PRESET_FIXTURE: Preset = {
   maxContext: 32000,
   temperature: 0.8,
   topP: 0.95,
-  maxTokens: 1024,
+  maxTokens: 0, // 0=自动预算：DeepSeek V4 类推理模型在 1024 硬上限下会把预算全花在推理上，正文为空（渲染评测需有正文）
   frequencyPenalty: 0,
   presencePenalty: 0,
   isBuiltin: false,
