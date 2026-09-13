@@ -362,6 +362,9 @@ function makeBuildData(opts: {
     settings: { settings: BASE_SETTINGS, profile },
     lorebooks: (opts.lorebooks ?? []) as never,
     regexRules: [],
+    // W1/§5.4 复测（G1 取证后）：--reasoning-samples 注入近期推理样本，
+    // 让预算走 P90 驱动的保守余量路径（不可信门控），用于 A/B 对照
+    ...(globalEvalReasoningSamples.length > 0 ? { reasoningSamples: [...globalEvalReasoningSamples] } : {}),
   }
 }
 
@@ -369,6 +372,8 @@ function makeBuildData(opts: {
 let globalEvalProvider = 'openai'
 let globalEvalBaseUrl = 'https://api.commandcode.ai/provider/v1'
 let globalEvalModel = 'deepseek/deepseek-v4.1-flash'
+/** W1/§5.4：`--reasoning-samples a,b,c` 注入的近期推理样本（缺省为空 = 静态档案余量） */
+let globalEvalReasoningSamples: number[] = []
 
 // ===================== 模型调用 =====================
 
@@ -378,23 +383,60 @@ const EVAL_MAX_TOKENS_FLOOR = 4096
 const transportLog: Array<{ index: number; url: string; request: string; status: number; response: string }> = []
 let transportSeq = 0
 let outDirForDebug = ''
+/** 流式响应的异步抓取（tee）：汇总前需要 await，否则读到半截 body */
+const pendingCaptures: Array<Promise<void>> = []
+
+/**
+ * 等待所有流式抓取结束。**阶段8 G1 取证必须在汇总 transport 前调用**：
+ * 流式请求不能像非流式那样先把整个 body 读干再返回，否则 AbortController 无法中断
+ * 已经缓冲完的响应流，"提前中止"这条路径会被评测器自己屏蔽（实测：推理越线 5498 >
+ * 阈值 3481 却未中止）。
+ */
+async function settleTransportCapture(): Promise<void> {
+  await Promise.all(pendingCaptures.splice(0))
+}
 
 function installHttpDebug(): void {
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await originalFetch(input, init)
-    const clone = response.clone()
-    let body = ''
-    try { body = await clone.text() } catch { /* 忽略 */ }
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    const entry = {
-      index: transportSeq++,
-      url,
-      request: typeof init?.body === 'string' ? init.body : String(init?.body ?? ''),
-      status: response.status,
-      response: body,
-    }
+    const requestBody = typeof init?.body === 'string' ? init.body : String(init?.body ?? '')
+    let streaming = false
+    try { streaming = (JSON.parse(requestBody) as { stream?: boolean })?.stream === true } catch { /* 非 JSON 体 */ }
+    const entry = { index: transportSeq++, url, request: requestBody, status: response.status, response: '' }
     transportLog.push(entry)
+
+    if (streaming && response.body) {
+      // 关键：边读边转发。tee 出的捕获流异步累积，客户端流立即可读，
+      // 提前中止才能中断它（否则 await clone().text() 会把整个流缓冲完）。
+      const [forClient, forCapture] = response.body.tee()
+      const capture = (async () => {
+        const reader = forCapture.getReader()
+        const decoder = new TextDecoder()
+        try {
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            entry.response += decoder.decode(value, { stream: true })
+          }
+        } catch { /* 内部中止/客户端取消时捕获流提前结束，属预期 */ }
+      })()
+      pendingCaptures.push(capture.then(() => {
+        if (outDirForDebug) {
+          try { appendFileSync(join(outDirForDebug, 'http-debug.jsonl'), JSON.stringify(entry) + '\n') } catch { /* 忽略 */ }
+        }
+      }))
+      return new Response(forClient, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      })
+    }
+
+    let body = ''
+    try { body = await response.clone().text() } catch { /* 忽略 */ }
+    entry.response = body
     if (outDirForDebug) {
       appendFileSync(join(outDirForDebug, 'http-debug.jsonl'), JSON.stringify(entry) + '\n')
     }
@@ -409,6 +451,52 @@ interface ModelCallResult {
   transport: TransportStat[]
 }
 
+/**
+ * SSE 响应体（`stream: true`）的数值摘要：解析每个 `data:` 事件的 usage / finish_reason / 正文长度。
+ * 阶段8 G1 取证需要流式调用的真实 reasoning 占比与结局，而 `JSON.parse` 对 SSE 一定失败
+ * （此前流式批次的 token 统计恒为 0，等于漏测）。
+ */
+function parseSseSummary(body: string): {
+  finishReason: string | null
+  promptTokens: number
+  completionTokens: number
+  reasoningTokens: number
+  contentChars: number
+} | null {
+  if (!body || !body.includes('data:')) return null
+  let finishReason: string | null = null
+  let promptTokens = 0
+  let completionTokens = 0
+  let reasoningTokens = 0
+  let contentChars = 0
+  let sawEvent = false
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+    const payload = trimmed.slice(5).trim()
+    if (!payload || payload === '[DONE]') continue
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(payload) as Record<string, unknown>
+    } catch {
+      continue
+    }
+    sawEvent = true
+    const usage = parsed.usage as { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } } | undefined
+    if (usage) {
+      promptTokens = usage.prompt_tokens ?? promptTokens
+      completionTokens = usage.completion_tokens ?? completionTokens
+      reasoningTokens = usage.completion_tokens_details?.reasoning_tokens ?? reasoningTokens
+    }
+    const choices = parsed.choices as Array<{ finish_reason?: string | null; delta?: { content?: string } }> | undefined
+    const choice = choices?.[0]
+    if (choice?.finish_reason) finishReason = choice.finish_reason
+    if (choice?.delta?.content) contentChars += String(choice.delta.content).length
+  }
+  if (!sawEvent) return null
+  return { finishReason, promptTokens, completionTokens, reasoningTokens, contentChars }
+}
+
 function summarizeTransport(entries: typeof transportLog): TransportStat[] {
   return entries.map((entry) => {
     let finishReason: string | null = null
@@ -416,15 +504,23 @@ function summarizeTransport(entries: typeof transportLog): TransportStat[] {
     let completionTokens = 0
     let reasoningTokens = 0
     let contentChars = 0
+    let parsedBody: Record<string, unknown> | null = null
     try {
-      const parsed = JSON.parse(entry.response)
-      const choice = parsed?.choices?.[0]
+      parsedBody = JSON.parse(entry.response) as Record<string, unknown>
+    } catch { /* SSE 或错误体：交给下面的解析 */ }
+    if (parsedBody && (parsedBody.choices || parsedBody.usage)) {
+      const choice = (parsedBody.choices as Array<{ finish_reason?: string | null; message?: { content?: string } }> | undefined)?.[0]
       finishReason = choice?.finish_reason ?? null
-      promptTokens = parsed?.usage?.prompt_tokens ?? 0
-      completionTokens = parsed?.usage?.completion_tokens ?? 0
-      reasoningTokens = parsed?.usage?.completion_tokens_details?.reasoning_tokens ?? 0
+      const usage = parsedBody.usage as { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } } | undefined
+      promptTokens = usage?.prompt_tokens ?? 0
+      completionTokens = usage?.completion_tokens ?? 0
+      reasoningTokens = usage?.completion_tokens_details?.reasoning_tokens ?? 0
       contentChars = (choice?.message?.content ?? '').length
-    } catch { /* SSE 或错误体 */ }
+    } else {
+      // 流式（SSE）或非 JSON 错误体
+      const sse = parseSseSummary(entry.response)
+      if (sse) ({ finishReason, promptTokens, completionTokens, reasoningTokens, contentChars } = sse)
+    }
     return { index: entry.index, status: entry.status, finishReason, promptTokens, completionTokens, reasoningTokens, contentChars }
   })
 }
@@ -460,6 +556,8 @@ function createModelCaller(options: CliOptions) {
     systemSuffix?: string
     /** 与 ChatParams.allowTruncatedOutput 对齐（生图/长记忆等可容错解析的辅助链路会开启） */
     allowTruncatedOutput?: boolean
+    /** W5：门控指令（与生产同口径）；缺省时适配器走旧分支 */
+    reasoningGate?: import('../shared/reasoningGate').ReasoningGateDirective
   }): Promise<ModelCallResult> {
     const systemContent = input.systemSuffix
       ? `${input.systemPrompt}\n\n${input.systemSuffix}`
@@ -467,6 +565,22 @@ function createModelCaller(options: CliOptions) {
     // 评测夹具 maxTokens=0 表示「无用户硬上限」；OpenAI 兼容端点要求 max_tokens>0。
     // 直传 0 会 400（Too small）。这里抬到与 stream 同口径的下限，供渲染冒烟使用。
     const requestMaxTokens = input.maxTokens > 0 ? input.maxTokens : EVAL_MAX_TOKENS_FLOOR
+    // 阶段8：默认门控按主对话档位策略（与生产 streamGroupAI/streamAIResponse 同口径）
+    const { resolveDefaultGateLevel, resolveReasoningGate } = await import('../shared/reasoningGate')
+    // 对照开关（归因用）：
+    // - GENERATION_EVAL_NO_GATE=1：不发门控指令（复现改造前路径；legacy reasoningMode 仍在）
+    // - GENERATION_EVAL_NO_THINKING_PARAM=1：连 legacy 的 reasoningMode:'disabled' 也不发，
+    //   用于验证"该端点是否根本关不掉推理"（真基线臂）
+    const omitThinkingParam = process.env.GENERATION_EVAL_NO_THINKING_PARAM === '1'
+    const defaultLevel = omitThinkingParam || process.env.GENERATION_EVAL_NO_GATE === '1'
+      ? undefined
+      : resolveDefaultGateLevel({ model: options.model, enabled: true })
+    const defaultGateDirective = defaultLevel
+      ? (() => {
+          const g = resolveReasoningGate({ model: options.model, requestedLevel: defaultLevel, enabled: true })
+          return { level: defaultLevel, knob: g.knob, tokens: g.gateTokens }
+        })()
+      : undefined
     const params: ChatParams = {
       requestId: `gen-eval-${input.label}`,
       messages: [
@@ -483,7 +597,11 @@ function createModelCaller(options: CliOptions) {
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
-      reasoningMode: 'disabled',
+      // legacy 关推理字段；真基线臂（NO_THINKING_PARAM=1）下完全不发，用于验证端点是否本就不接受关闭
+      ...(omitThinkingParam ? {} : { reasoningMode: 'disabled' as const }),
+      // W5：门控指令（与生产同口径）。默认按主对话档位策略下发（deepseek-v4 → off，
+      // 其余 → standard）；方向等用例可显式覆盖自己的档位。缺省时适配器走旧分支。
+      ...(input.reasoningGate ?? defaultGateDirective ? { reasoningGate: input.reasoningGate ?? defaultGateDirective } : {}),
       allowTruncatedOutput: input.allowTruncatedOutput,
     }
 
@@ -1200,12 +1318,26 @@ async function runStreamCase(options: CliOptions, testCase: StreamCase): Promise
   const systemPrompt = built.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n---\n\n')
   const userPrompt = built.messages.filter((m) => m.role !== 'system').map((m) => `${m.role}: ${m.content}`).join('\n')
 
+  // W5：流式用例的门控（与生产同口径；NO_GATE=1 时走旧路径对照）
+  const { resolveDefaultGateLevel, resolveReasoningGate } = await import('../shared/reasoningGate')
+  const omitThinkingParam = process.env.GENERATION_EVAL_NO_THINKING_PARAM === '1'
+  const streamGateLevel = omitThinkingParam || process.env.GENERATION_EVAL_NO_GATE === '1'
+    ? undefined
+    : resolveDefaultGateLevel({ model: options.model, enabled: true })
+  const streamGate = streamGateLevel
+    ? (() => {
+        const g = resolveReasoningGate({ model: options.model, requestedLevel: streamGateLevel, enabled: true })
+        return { level: streamGateLevel, knob: g.knob, tokens: g.gateTokens }
+      })()
+    : undefined
+
   const started = Date.now()
   const checks: Check[] = []
   const transport: TransportStat[] = []
   const deltas: string[] = []
   let finalText = ''
   let error: string | undefined
+  let earlyAbort = false
   // 流式用例的目的是验证推理隔离，不受预算吃满干扰：固定充裕预算
   // （夹具预设 maxTokens=1024 会作为用户硬上限，DeepSeek V4 类模型可能把 1024 全花在推理上导致空响应）
   const streamBudget = Math.max(params.maxTokens ?? 0, 4096)
@@ -1228,11 +1360,18 @@ async function runStreamCase(options: CliOptions, testCase: StreamCase): Promise
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: true,
-        reasoningMode: 'disabled',
+        ...(omitThinkingParam ? {} : { reasoningMode: 'disabled' as const }),
+        // W5：与生产同口径的门控（deepseek-v4 → off；可用 GENERATION_EVAL_NO_GATE=1 关闭对照）
+        ...(streamGate ? { reasoningGate: streamGate } : {}),
       },
       (text) => { deltas.push(text) },
+      // 适配器需要可中止 signal（提前中止依赖它）
+      new AbortController().signal,
     )
     finalText = completion.text
+    earlyAbort = completion.earlyAbort === true
+    // 流式抓取是异步 tee，汇总前必须等它读完
+    await settleTransportCapture()
     transport.push(...summarizeTransport(transportLog.slice(transportStart)))
   } catch (err) {
     error = err instanceof Error ? err.message : String(err)
@@ -1249,9 +1388,11 @@ async function runStreamCase(options: CliOptions, testCase: StreamCase): Promise
     checks.push(check('s10-pipeline-strip-noop', stripVendorThinking(finalText).trim() === finalText.trim(), '业务清理（stripVendorThinking）对结果无操作（无需剥离）'))
     checks.push(check('complete-ending', isCompleteChineseSentence(finalText), isCompleteChineseSentence(finalText) ? '结尾完整' : `结尾疑似被截断：「${finalText.trim().slice(-24)}」`))
     checks.push(check('stream-headroom', true, `固定预算 maxTokens=${streamBudget}（隔离推理吃满预算的干扰，仅验证推理隔离）`))
+    if (earlyAbort) checks.push(check('early-abort', true, '阶段8：应用层因推理越线提前中止（正文为空）'))
     addThoughtAndReasoningChecks(checks, { raw: finalText, narrativeMode, characterNames: [testCase.character.name] })
   } else {
-    checks.push(check('request', false, error))
+    // 阶段8：提前中止是结构化结局而非普通错误，单独记录以便核对
+    checks.push(check('request', false, error + (earlyAbort ? '（本次为提前中止：推理越线且正文为空）' : '')))
   }
 
   return {
@@ -1633,10 +1774,19 @@ async function runDirectionCase(options: CliOptions, callModel: CallModel, testC
     buildDialogueDirectionSystemPrompt,
     buildDialogueDirectionUserPrompt,
     parseDialogueDirections,
-    DIALOGUE_DIRECTION_MAX_TOKENS,
     DIALOGUE_DIRECTION_TEMPERATURE,
     DIALOGUE_DIRECTION_LIMITS,
   } = await import('../shared/dialogueDirections')
+  // W5：方向预算已收编到后台档案 + 统一预算 + off 门控（与生产同口径）
+  const { BACKGROUND_GENERATION_PROFILES } = await import('../shared/backgroundGeneration')
+  const { resolveRequestBudget } = await import('../shared/modelOutputProfile')
+  const { resolveReasoningGate } = await import('../shared/reasoningGate')
+  const directionGate = resolveReasoningGate({ model: options.model, requestedLevel: 'off', enabled: true })
+  const directionBudget = resolveRequestBudget({
+    model: options.model,
+    hardMaxChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
+    reasoningGate: directionGate,
+  }).requestMaxTokens
 
   const input = {
     userName: testCase.userName,
@@ -1663,7 +1813,8 @@ async function runDirectionCase(options: CliOptions, callModel: CallModel, testC
       systemPrompt,
       userPrompt,
       temperature: DIALOGUE_DIRECTION_TEMPERATURE,
-      maxTokens: DIALOGUE_DIRECTION_MAX_TOKENS,
+      maxTokens: directionBudget,
+      reasoningGate: { level: 'off', knob: directionGate.knob, tokens: directionGate.gateTokens },
       label: testCase.id,
     })
     raw = first.text
@@ -1677,7 +1828,8 @@ async function runDirectionCase(options: CliOptions, callModel: CallModel, testC
         systemPrompt: `${systemPrompt}\n\n上一次输出结构不合法。不要分析或解释，只返回一组 <directions>...</directions> 包裹的合法 JSON 数组。`,
         userPrompt,
         temperature: DIALOGUE_DIRECTION_TEMPERATURE,
-        maxTokens: DIALOGUE_DIRECTION_MAX_TOKENS,
+        maxTokens: directionBudget,
+        reasoningGate: { level: 'off', knob: directionGate.knob, tokens: directionGate.gateTokens },
         label: `${testCase.id}-retry`,
       })
       transport.push(...retry.transport)
@@ -1712,7 +1864,7 @@ async function runDirectionCase(options: CliOptions, callModel: CallModel, testC
       check(
         'budget-not-capped',
         last?.finishReason !== 'length',
-        `finish_reason=${last?.finishReason}，completion=${last?.completionTokens}（reasoning ${last?.reasoningTokens}），预算 ${DIALOGUE_DIRECTION_MAX_TOKENS}`,
+        `finish_reason=${last?.finishReason}，completion=${last?.completionTokens}（reasoning ${last?.reasoningTokens}），预算 ${directionBudget}`,
       ),
     )
   } else {
@@ -2432,8 +2584,24 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-direction-budget') {
-    const { DIALOGUE_DIRECTION_MAX_TOKENS } = await import('../shared/dialogueDirections')
-    checks.push(check('budget-1536', DIALOGUE_DIRECTION_MAX_TOKENS === 1536, `DIALOGUE_DIRECTION_MAX_TOKENS=${DIALOGUE_DIRECTION_MAX_TOKENS}`))
+    // W5：1536 直连已退出；预算由后台档案换算（正文预留 + 门控承诺/保守余量）
+    const { BACKGROUND_GENERATION_PROFILES } = await import('../shared/backgroundGeneration')
+    const { BODY_RESERVE_MULTIPLIER, BODY_RESERVE_OVERHEAD_TOKENS, resolveRequestBudget } = await import('../shared/modelOutputProfile')
+    const { resolveReasoningGate } = await import('../shared/reasoningGate')
+    const gate = resolveReasoningGate({ model: options.model, requestedLevel: 'off', enabled: true })
+    const budget = resolveRequestBudget({
+      model: options.model,
+      hardMaxChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
+      reasoningGate: gate,
+    })
+    const expectedBody = Math.ceil(
+      BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars * BODY_RESERVE_MULTIPLIER,
+    ) + BODY_RESERVE_OVERHEAD_TOKENS
+    checks.push(check(
+      'budget-from-profile',
+      budget.bodyReserve === expectedBody && budget.requestMaxTokens === expectedBody + budget.reasoningReserve,
+      `正文预留=${budget.bodyReserve}，推理预留=${budget.reasoningReserve}，请求上限=${budget.requestMaxTokens}（不再固定 1536）`,
+    ))
   }
 
   if (testCase.id === 'v-continue-continuity') {
@@ -2477,7 +2645,15 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
     }
     const legacy = resolveChatRequestPlan(legacyData as never)
     checks.push(check('legacy-flag-resolved', legacy.pipelineLegacy, 'legacy 标记已解析'))
-    checks.push(check('legacy-preset-maxTokens', legacy.requestMaxTokens === preset.maxTokens, `legacy 预算=${legacy.requestMaxTokens}（preset.maxTokens=${preset.maxTokens}）`))
+    // preset.maxTokens = 0 表示「自动」：legacy 路径同样不能直传 0（OpenAI 兼容端点会 400），
+    // 由 resolveUserHardCap(0)=null 落到 DEFAULT_RESERVED_OUTPUT 兜底。
+    const { DEFAULT_RESERVED_OUTPUT } = await import('../shared/chat-core/chatConstants')
+    const expectedLegacyBudget = preset.maxTokens > 0 ? preset.maxTokens : DEFAULT_RESERVED_OUTPUT
+    checks.push(check(
+      'legacy-preset-maxTokens',
+      legacy.requestMaxTokens === expectedLegacyBudget,
+      `legacy 预算=${legacy.requestMaxTokens}（preset.maxTokens=${preset.maxTokens}；0=自动→兜底 ${DEFAULT_RESERVED_OUTPUT}）`,
+    ))
     // legacy 提示词回退：旧排版协议可用且新提示词与其互斥
     checks.push(check('legacy-prompt-available', buildLegacyBodyFormatPrompt('苏晚').includes('正文排版协议'), '旧排版协议提示词保留（回退注入）'))
     checks.push(check('legacy-not-8192-floor', legacy.requestMaxTokens !== 8192 || preset.maxTokens === 8192, '旧固定 8192 下限不再恢复'))
@@ -2781,6 +2957,15 @@ function parseArgs(argv: string[]): CliOptions {
   globalEvalProvider = provider || 'openai'
   globalEvalBaseUrl = baseUrl || 'https://api.commandcode.ai/provider/v1'
   globalEvalModel = model || 'deepseek/deepseek-v4.1-flash'
+  // W1/§5.4 复测：逗号分隔的近期推理样本（仅影响预算，不影响请求参数以外的行为）。
+  // 注意：未传参数时 `''.split(',')` 会得到 [''] → Number('') === 0，
+  // 曾因此把空样本变成 `[0]` 并让推理余量塌到协议下限（max_tokens 520 → 6/6 空正文）。
+  globalEvalReasoningSamples = (get('reasoning-samples', '') || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0)
 
   return {
     baseUrl: globalEvalBaseUrl,
@@ -2966,6 +3151,13 @@ async function main(): Promise<void> {
       || options.only.includes(id)
       || options.only.some((only) => id.startsWith(`${only}-r`)))
 
+  /** --reps N：同一用例重复采样 N 次（第 2 次起 id 加 -rN 后缀），供概率型指标（G1）取样 */
+  const expandReps = <T extends { id: string; title: string }>(cases: T[], reps: number): T[] =>
+    reps > 1
+      ? Array.from({ length: reps }, (_, i) =>
+          cases.map((c) => (i === 0 ? c : { ...c, id: `${c.id}-r${i + 1}`, title: `${c.title}（第 ${i + 1} 次采样）` }))).flat()
+      : cases
+
   const runBatch = async <T extends { id: string; title: string }>(
     batch: BatchName,
     cases: T[],
@@ -3026,29 +3218,21 @@ async function main(): Promise<void> {
 
   if (options.batches.includes('dialogue')) {
     // --reps N：同一用例重复采样 N 次（稳定性/方差观察），第 2 次起 id 加 -rN 后缀
-    const baseCases = dialogueCases()
-    const expanded = options.reps > 1
-      ? Array.from({ length: options.reps }, (_, i) =>
-          baseCases.map((c) => (i === 0 ? c : { ...c, id: `${c.id}-r${i + 1}`, title: `${c.title}（第 ${i + 1} 次采样）` }))).flat()
-      : baseCases
-    await runBatch('dialogue', expanded, (c) => runDialogueCase(options, callModel, c))
+    await runBatch('dialogue', expandReps(dialogueCases(), options.reps), (c) => runDialogueCase(options, callModel, c))
   }
   if (options.batches.includes('group')) {
-    const baseCases = groupCases()
-    const expanded = options.reps > 1
-      ? Array.from({ length: options.reps }, (_, i) =>
-          baseCases.map((c) => (i === 0 ? c : { ...c, id: `${c.id}-r${i + 1}`, title: `${c.title}（第 ${i + 1} 次采样）` }))).flat()
-      : baseCases
-    await runBatch('group', expanded, (c) => runGroupCase(options, callModel, c))
+    await runBatch('group', expandReps(groupCases(), options.reps), (c) => runGroupCase(options, callModel, c))
   }
   if (options.batches.includes('stream')) {
-    await runBatch('stream', streamCases(), (c) => runStreamCase(options, c))
+    // 阶段8 G1：提前中止/推理挤占是概率事件，流式批次同样需要重复采样
+    await runBatch('stream', expandReps(streamCases(), options.reps), (c) => runStreamCase(options, c))
   }
   if (options.batches.includes('continue')) {
     await runBatch('continue', continueCases(), (c) => runContinueCase(options, callModel, c))
   }
   if (options.batches.includes('directions')) {
-    await runBatch('directions', directionCases(), (c) => runDirectionCase(options, callModel, c))
+    // 阶段8 G1：方向任务需要"最多 2 次物理调用"与空正文率的重复采样
+    await runBatch('directions', expandReps(directionCases(), options.reps), (c) => runDirectionCase(options, callModel, c))
   }
   if (options.batches.includes('imagine')) {
     await runBatch('imagine', imagineCases(), (c) => runImagineCase(options, callModel, c))

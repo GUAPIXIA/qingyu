@@ -48,7 +48,15 @@ app.whenReady().then(() => {
   }
   const key = safeStorage.decryptString(Buffer.from(encrypted, 'base64'))
   writeFileSync(outFile, key, 'utf-8')
+  // 校验已落盘，再退出（避免 app.exit 过早导致文件不可见）
+  const written = readFileSync(outFile, 'utf-8')
+  if (written !== key) {
+    console.error('密钥文件回读校验失败')
+    app.exit(4)
+    return
+  }
   // 不打印任何密钥片段（含前三位）
   console.log(`已写入密钥文件（len=${key.length}）`)
-  app.exit(0)
+  // 延迟退出，确保 IO 与文件系统元数据提交
+  setTimeout(() => app.exit(0), 50)
 })

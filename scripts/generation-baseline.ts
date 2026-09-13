@@ -24,6 +24,7 @@ import {
   percentile,
   rate,
 } from '../shared/generationBaseline'
+import { buildUsageProfiles } from '../shared/usageProfile'
 
 function parseArgs(): { file?: string; out?: string; days?: number } {
   const args = process.argv.slice(2)
@@ -43,8 +44,13 @@ function defaultObservationsPath(): string {
   const base = platform() === 'win32'
     ? process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming')
     : join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'))
-  // electron-builder productName = 轻语（userData 目录名）
-  return join(base, '轻语', 'data', 'diagnostics', 'generation-observations.jsonl')
+  // userData 目录名随打包配置变化：实测本机为 ascii 名 `qingyu`（decrypt-api-key.cjs 同口径），
+  // 而 electron-builder productName 为「轻语」。两者都试，存在哪个用哪个，避免脚本在本机报"文件不存在"。
+  const candidates = [
+    join(base, 'qingyu', 'data', 'diagnostics', 'generation-observations.jsonl'),
+    join(base, '轻语', 'data', 'diagnostics', 'generation-observations.jsonl'),
+  ]
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]
 }
 
 function parseJsonl(content: string): GenerationObservation[] {
@@ -183,6 +189,11 @@ function main(): void {
   lines.push(`- generationType 分布：${formatCountMap(genTypeMap)}`)
   lines.push(`- taskType 分布：${formatCountMap(taskTypeMap)}`)
   lines.push(`- attempts 分布：${formatCountMap(attemptsMap)}`)
+  // 阶段8（W5）：门控维度观测（缺省 = 未开启门控；earlyAbort = 推理提前中止次数；
+  // downgradeRetry = 降档恢复请求次数，归属原生成轮）
+  lines.push(`- 门控档位分布：${formatCountMap(countMap(main, (r) => r.gateLevel ?? '(未开启)'))}`)
+  lines.push(`- 提前中止（earlyAbort）：${main.filter((r) => r.earlyAbort === true).length}`)
+  lines.push(`- 降档恢复请求（downgradeRetry）：${main.filter((r) => r.downgradeRetry === true).length}`)
   lines.push('')
   lines.push('## 按 provider × model × task 分组')
   lines.push('')
@@ -193,6 +204,27 @@ function main(): void {
     lines.push('|---|---:|---:|---:|---:|---:|---:|')
     for (const g of groups) {
       lines.push(`| ${g.key} | ${g.valid} | ${g.total} | ${g.p50Chars ?? '—'} | ${g.p90Chars ?? '—'} | ${g.truncated} | ${g.reasoningFilled} |`)
+    }
+  }
+  lines.push('')
+  lines.push('## 按 provider × 端点 × model × task × gate 分组（W1 用量档案口径）')
+  lines.push('')
+  lines.push('- 端点 = 标准化地址的不可逆短哈希（不含凭据/query/fragment）；旧记录缺该字段时计「(无端点指纹)」')
+  lines.push('- gate = 观测记录的门控档位；缺省为「(default)」，gate 开启前后不得混合统计')
+  lines.push('- 每桶只保留有限样本聚合；样本不足 5 条标记低置信度，不参与决策')
+  const usageProfiles = buildUsageProfiles(records)
+  if (usageProfiles.size === 0) {
+    lines.push('- （无用量样本）')
+  } else {
+    lines.push('| provider/端点/model/task/gate | 样本 | 低置信 | reasoning P90 | 正文 P95 | 推理挤占率 | 完成 | 失败 | 参数拒绝 |')
+    lines.push('|---|---:|---|---:|---:|---:|---:|---:|---:|')
+    const rows = [...usageProfiles.entries()]
+      .sort((a, b) => b[1].sampleCount - a[1].sampleCount)
+      .slice(0, 20)
+    for (const [id, profile] of rows) {
+      const parsed = JSON.parse(id) as string[]
+      const label = `${parsed[0]}/${parsed[1] || '(无端点指纹)'}/${parsed[2]}/${parsed[3]}/${parsed[4]}`
+      lines.push(`| ${label} | ${profile.sampleCount} | ${profile.lowConfidence ? '是' : '否'} | ${profile.reasoningP90 ?? '—'} | ${profile.bodyVisibleCharsP95 ?? '—'} | ${(profile.reasoningFilledRate * 100).toFixed(1)}% | ${profile.counts.completed} | ${profile.counts.error} | ${profile.counts.knobRejected} |`)
     }
   }
   lines.push('')
