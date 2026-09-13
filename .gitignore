@@ -96,3 +96,13 @@ local.properties
 piolium/
 relay-server/.env
 relay-server/dist/
+
+# === 隐私/凭据防误提交（2026-09-13） ===
+# 应用运行时凭据与诊断（实际常落在 userData；仓库相对路径一并封死）
+data/
+**/credentials.json
+**/generation-observations.jsonl
+**/key-file.txt
+# 本地工具 / 会话基线（可能拷贝测试密钥字符串，不入库）
+.mimosa/
+
