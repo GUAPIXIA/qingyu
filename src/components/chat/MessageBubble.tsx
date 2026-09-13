@@ -1,7 +1,4 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
 import { charAssetUrl } from '../../utils/asset'
 import { Check, X, User, Bot, ChevronLeft, ChevronRight, Image as ImageIcon, ChevronsDown, RefreshCw, Reply, Loader2, Languages, Globe2, FileText, Trash2 } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
@@ -12,11 +9,10 @@ import { cn } from '../../lib/utils'
 import { ErrorBoundary } from '../common/ErrorBoundary'
 import { formatTime } from '../../utils/format'
 import { countChars, formatCharCount } from '../../utils/charCounter'
-import { remarkRoleplay } from '../../utils/remark-roleplay'
 import { extractThought, stripThought } from '../../utils/messagePostProcess'
-import { buildRoleplayBlocks, stripOuterQuotes, splitQuoteSegments } from '../../utils/roleplayBlocks'
 import { getDisplayName } from '../../utils/variables'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
+import { RoleplayContentRenderer } from './RoleplayContentRenderer'
 
 interface MessageBubbleProps {
   message: Message
@@ -28,31 +24,12 @@ interface MessageBubbleProps {
   onReply?: () => void
 }
 
-import { MarkdownImage } from '../common/MarkdownImage'
-import { MarkdownLink } from '../common/MarkdownLink'
 import { MessageActionBar } from './MessageActionBar'
 import { DialogueDirectionCard } from './DialogueDirectionCard'
 import { shouldShowDialogueDirections } from './dialogueDirectionView'
 import { generateSingleDialogueDirections } from '../../store/dialogueDirectionRunner'
 import { resolveDialogueDirectionsEnabled } from '../../../shared/dialogueDirections'
-import { remarkAudio } from '../../utils/remark-audio'
 import { Modal } from '../common/Modal'
-
-/** 消息内嵌 <audio> 播放器（对齐安卓端：外部音频 URL，白名单 http/https） */
-function MarkdownAudio({ src }: { src?: string }) {
-  if (!src) return null
-  return (
-    <audio
-      controls
-      loop
-      preload="none"
-      src={src}
-      style={{ width: '100%', maxWidth: 320, height: 44, margin: '4px 0' }}
-    />
-  )
-}
-
-const markdownComponents = { img: MarkdownImage, a: MarkdownLink, audio: MarkdownAudio }
 
 // B-05：已播放过入场动画的消息 ID，避免虚拟滚动时反复播放
 // BUG-18 修复：限制 Set 上限，超出时淘汰最早标记的 ID，避免长时间使用内存无限增长
@@ -90,23 +67,31 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const continueMessage = useChatStore(s => s.continueMessage)
   const swipeMessage = useChatStore(s => s.swipeMessage)
   const isStreaming = useChatStore(s => s.isStreaming)
-  const translatingMessages = useChatStore(s => s.translatingMessages)
-  const showTranslationIds = useChatStore(s => s.showTranslationIds)
-  // P-6 修复：字段级选择器订阅（此前无选择器，settings 任何变化都重渲染全部气泡）
-  const settings = useSettingsStore((s) => s.settings)
-  const sessions = useChatStore(s => s.sessions)
-  const currentSessionId = useChatStore(s => s.currentSessionId)
-  const [thoughtExpanded, setThoughtExpanded] = useState(settings.autoExpandThought ?? false)
+  // 字段级订阅：翻译状态只关注本条消息，避免其他消息翻译触发全列表重渲染
+  const transState = useChatStore(s => s.translatingMessages[message.id])
+  const showTranslation = useChatStore(s => s.showTranslationIds.has(message.id))
+  // 字段级选择器订阅（此前无选择器，settings 任何变化都重渲染全部气泡）
+  const autoExpandThought = useSettingsStore((s) => s.settings.autoExpandThought ?? false)
+  const showTokenCount = useSettingsStore((s) => s.settings.showTokenCount ?? false)
+  const bubbleStyle = useSettingsStore((s) => s.settings.bubbleStyle)
+  const messageSpacing = useSettingsStore((s) => s.settings.messageSpacing)
+  const messageWidth = useSettingsStore((s) => s.settings.messageWidth ?? 768)
+  const userName = useSettingsStore((s) => s.settings.userName)
+  const activePersonaId = useSettingsStore((s) => s.settings.activePersonaId)
+  // 仅订阅本会话的 directions 开关，而非整个 sessions 数组内容
+  const sessionDirections = useChatStore((s) => {
+    const sid = message.sessionId || s.currentSessionId
+    return s.sessions.find((session) => session.id === sid)?.dialogueDirectionsEnabled
+  })
+  const [thoughtExpanded, setThoughtExpanded] = useState(autoExpandThought)
   const [directionError, setDirectionError] = useState<string | null>(null)
-  const dialogueDirectionsEnabled = resolveDialogueDirectionsEnabled(
-    sessions.find((session) => session.id === (message.sessionId || currentSessionId)),
-  )
+  const dialogueDirectionsEnabled = resolveDialogueDirectionsEnabled({
+    dialogueDirectionsEnabled: sessionDirections,
+  })
   const getPersona = usePersonaStore((s) => s.getPersona)
-  const persona = getPersona(settings.activePersonaId)
+  const persona = getPersona(activePersonaId)
 
-  // 全局翻译状态
-  const transState = translatingMessages[message.id]
-  const showTranslation = showTranslationIds.has(message.id)
+  // 全局翻译状态（本条）
   const isTranslating = transState?.status === 'translating'
 
   // P-3 修复：用 useMemo 缓存 thought 解析，避免每次渲染都执行正则循环
@@ -133,13 +118,6 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
     }
     return originalDisplay || ''
   }, [showTranslation, transState?.content, message.translation, originalDisplay])
-
-  // 阶段5：语义分块（仅 blocks 模式的新消息；旧消息走 Markdown 兼容渲染）。
-  // 译文展示时同样按译文分块。
-  const semanticBlocks = useMemo(
-    () => (message.contentRenderMode === 'blocks' ? buildRoleplayBlocks(displayContent) : null),
-    [message.contentRenderMode, displayContent],
-  )
 
   // B-05：纯图片消息，气泡不应撑满整行
   const hasOnlyImages = message.images?.length > 0
@@ -179,13 +157,6 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
       // Reopen with the draft intact so the user can retry.
       setEditing(true)
       useChatStore.setState({ error: `保存编辑失败：${error instanceof Error ? error.message : String(error)}` })
-    }
-  }
-
-  const handleMarkdownClick = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement
-    if (target.tagName === 'IMG' && (target as HTMLImageElement).src) {
-      setZoomImage((target as HTMLImageElement).src)
     }
   }
 
@@ -243,7 +214,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   if (editing) {
     return (
       <div className="px-4 py-2 animate-fade-in">
-        <div className="mx-auto" style={{ maxWidth: `${settings.messageWidth ?? 768}px` }}>
+        <div className="mx-auto" style={{ maxWidth: `${messageWidth}px` }}>
           <textarea
             ref={textareaRef}
             value={editContent}
@@ -274,7 +245,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
         <div
           data-image-only="true"
           className={cn('px-4', shouldAnimate && 'animate-fade-in-up')}
-          style={{ marginBottom: `${settings.messageSpacing}px` }}
+          style={{ marginBottom: `${messageSpacing}px` }}
         >
           <div className="flex justify-center">
             <div className="flex flex-wrap gap-2 justify-center">
@@ -382,8 +353,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
 
   return (
     <>
-    <div className={cn('px-4 group', shouldAnimate && 'animate-fade-in-up')} style={{ marginBottom: `${settings.messageSpacing}px` }}>
-      <div className={cn('mx-auto flex gap-4', isUser && 'flex-row-reverse')} style={hasOnlyImages ? { maxWidth: `${settings.messageWidth ?? 768}px` } : { maxWidth: `${settings.messageWidth ?? 768}px`, width: '100%' }}>
+    <div className={cn('px-4 group', shouldAnimate && 'animate-fade-in-up')} style={{ marginBottom: `${messageSpacing}px` }}>
+      <div className={cn('mx-auto flex gap-4', isUser && 'flex-row-reverse')} style={hasOnlyImages ? { maxWidth: `${messageWidth}px` } : { maxWidth: `${messageWidth}px`, width: '100%' }}>
         {/* 头像 */}
         <div
           className={cn(
@@ -419,7 +390,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           {/* 名字和时间 */}
           <div className={cn('flex items-center gap-2 mb-1 text-xs text-tavern-text-muted', isUser && 'flex-row-reverse')}>
             <span className="font-medium text-tavern-text-soft">
-              {isNarrator ? '旁白' : isPersona ? settings.userName : isDisplaySystem ? '系统' : getDisplayName(character) || 'AI'}
+              {isNarrator ? '旁白' : isPersona ? userName : isDisplaySystem ? '系统' : getDisplayName(character) || 'AI'}
             </span>
             {isNarrator && character && (
               <span className="rounded-full border border-indigo-400/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-600 dark:text-indigo-300">
@@ -427,7 +398,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
               </span>
             )}
             <span>{formatTime(message.timestamp)}</span>
-            {settings.showTokenCount && message.content && (
+            {showTokenCount && message.content && (
               <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-muted/70 text-[10px]" title={message.charUsage ? `输入: ${message.charUsage.inputChars} 字符 · 输出: ${message.charUsage.outputChars} 字符` : ''}>
                 {message.charUsage ? formatCharCount(message.charUsage.totalChars) : formatCharCount(countChars(message.content).total)}
               </span>
@@ -470,9 +441,9 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
               'msg-bubble max-w-full',
               hasOnlyImages ? 'p-2' : 'px-5 py-3.5',
               isUser && !hasOnlyImages && 'w-fit',
-              settings.bubbleStyle === 'round' && 'rounded-2xl',
-              settings.bubbleStyle === 'standard' && 'rounded-lg',
-              settings.bubbleStyle === 'sharp' && 'rounded-sm',
+              bubbleStyle === 'round' && 'rounded-2xl',
+              bubbleStyle === 'standard' && 'rounded-lg',
+              bubbleStyle === 'sharp' && 'rounded-sm',
               isNarrator
                 ? 'border border-indigo-200/70 bg-gradient-to-bl from-slate-50 to-indigo-50/70 rounded-br-sm shadow-sm text-slate-900 dark:border-indigo-700/40 dark:from-slate-900/95 dark:to-indigo-950/55 dark:text-slate-100 bubble-narrator'
                 : isPersona
@@ -491,7 +462,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                 <Reply className="w-3 h-3 text-tavern-accent shrink-0 mt-0.5" />
                 <span className="min-w-0 flex-1 text-xs">
                   <span className="text-tavern-accent font-medium">
-                    {repliedMessage.role === 'user' ? (settings.userName || '用户') : repliedMessage.role === 'system' ? '系统' : (character?.name ?? '角色')}:
+                    {repliedMessage.role === 'user' ? (userName || '用户') : repliedMessage.role === 'system' ? '系统' : (character?.name ?? '角色')}:
                   </span>
                   <span className="text-tavern-text-muted ml-1 line-clamp-2">
                     {(repliedMessage.content || '').slice(0, 80)}
@@ -547,59 +518,31 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             )}
             {/* system 消息只显示图片，不渲染对话文本 */}
             {!isSystem && (
-            <div className={cn('markdown-body', isStreamingThis && 'typing-cursor')} onClick={handleMarkdownClick}>
-              {/* BUG-09 修复：移除 rehypeRaw / allowDangerousHtml，防止消息内容中的原始 HTML（如 <script>、<img onerror>）执行导致 XSS */}
               <ErrorBoundary fallback={<pre className="text-xs text-tavern-danger whitespace-pre-wrap break-all">⚠️ 消息渲染异常</pre>}>
-              {semanticBlocks ? (
-                /* 阶段5：语义分块渲染——对白/叙述/混合段按 kind 呈现样式，不依赖模型手写星号与说话人前缀。
-                   复用 markdown 路径同一套 CSS class（dialogue-block / action-block），避免 blocks 消息“无样式”。 */
-                <div className="space-y-2">
-                  {semanticBlocks.map((block, index) => {
-                    if (block.kind === 'dialogue') {
-                      // 对白块：左竖线引用形态；匿名对白（模型未写名字）同样结构、无名字行；展示层剥外层引号
-                      return (
-                        <p key={index} className="dialogue-block whitespace-pre-wrap select-text">
-                          {block.speaker && <em className="dialogue-speaker">{block.speaker}</em>}
-                          <em className="dialogue-text">{stripOuterQuotes(block.text)}</em>
-                        </p>
+                <RoleplayContentRenderer
+                  content={
+                    displayContent ||
+                    (isStreamingThis
+                      ? ''
+                      : thought
+                        ? '💭 内容已在"内心想法"中展开'
+                        : '（空消息）')
+                  }
+                  contentRenderMode={message.contentRenderMode}
+                  isStreaming={isStreamingThis}
+                  emptyFallback={
+                    !isStreamingThis ? (
+                      thought ? (
+                        <p className="text-tavern-text-muted">💭 内容已在"内心想法"中展开</p>
+                      ) : (
+                        <p className="text-tavern-text-muted">（空消息）</p>
                       )
-                    }
-                    if (block.kind === 'narration') {
-                      // 叙述/动作：灰色弱化正文（不斜体、无底色）
-                      return (
-                        <p key={index} className="action-block whitespace-pre-wrap select-text">
-                          {block.text}
-                        </p>
-                      )
-                    }
-                    // mixed：普通正文渲染，行内对白按引号段染色（与 remark 路径 dialogue-inline 一致）
-                    return (
-                      <p key={index} className="whitespace-pre-wrap select-text text-tavern-text">
-                        {splitQuoteSegments(block.text).map((seg, segIndex) => seg.quoted ? (
-                          <em key={segIndex} className="dialogue-inline">{seg.text}</em>
-                        ) : (
-                          <React.Fragment key={segIndex}>{seg.text}</React.Fragment>
-                        ))}
-                      </p>
-                    )
-                  })}
-                  {!displayContent && (thought ? (
-                    <p className="text-tavern-text-muted">💭 内容已在"内心想法"中展开</p>
-                  ) : !isStreamingThis ? (
-                    <p className="text-tavern-text-muted">（空消息）</p>
-                  ) : null)}
-                </div>
-              ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkRoleplay, remarkAudio]}
-                rehypePlugins={[rehypeHighlight]}
-                components={markdownComponents}
-              >
-                {displayContent || (isStreamingThis ? '' : (thought ? '💭 内容已在"内心想法"中展开' : '（空消息）'))}
-              </ReactMarkdown>
-              )}
+                    ) : null
+                  }
+                  onImageClick={setZoomImage}
+                  streamingClassName="typing-cursor"
+                />
               </ErrorBoundary>
-            </div>
             )}
             {/* 生成失败/截断提示：错误原因随消息持久化，正文保留不污染 */}
             {!isStreamingThis && message.generationError && (

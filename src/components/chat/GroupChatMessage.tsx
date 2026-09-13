@@ -1,21 +1,16 @@
-import React, { useState, useMemo, useCallback } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
+import React, { useState, useMemo } from 'react'
 import { charAssetUrl } from '../../utils/asset'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
-import { remarkRoleplay, remarkMentionHighlight } from '../../utils/remark-roleplay'
 import { extractThought } from '../../utils/messagePostProcess'
-import { buildRoleplayBlocks, stripOuterQuotes, splitQuoteSegments } from '../../utils/roleplayBlocks'
-import { splitMentionSegments } from '../../utils/mentionHighlight'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
 import { DialogueDirectionCard } from './DialogueDirectionCard'
+import { RoleplayContentRenderer } from './RoleplayContentRenderer'
 
 interface GroupChatMessageProps {
   message: GroupMessage
@@ -28,35 +23,11 @@ interface GroupChatMessageProps {
   onRegenerate?: () => void
   onTranslate?: () => void
   onReply?: () => void
-  /** 是否为最新一条消息；仅最新一条允许换一批。 */
   isLast?: boolean
-  /** 会话已开启“下一步方向”；关闭时不渲染卡片。 */
   dialogueDirectionsEnabled?: boolean
-  /** 触发“换一批”。 */
   onRegenerateDirections?: () => void | Promise<void>
-  /** 方向生成失败的可见反馈。 */
   directionsError?: string | null
 }
-
-import { MarkdownImage } from '../common/MarkdownImage'
-import { MarkdownLink } from '../common/MarkdownLink'
-import { remarkAudio } from '../../utils/remark-audio'
-
-/** 消息内嵌 <audio> 播放器（对齐单聊：白名单 http/https） */
-function MarkdownAudio({ src }: { src?: string }) {
-  if (!src) return null
-  return (
-    <audio
-      controls
-      loop
-      preload="none"
-      src={src}
-      style={{ width: '100%', maxWidth: 320, height: 44, margin: '4px 0' }}
-    />
-  )
-}
-
-const markdownComponents = { img: MarkdownImage, a: MarkdownLink, audio: MarkdownAudio }
 
 export const GroupChatMessage = React.memo(function GroupChatMessage({
   message,
@@ -92,7 +63,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
 
   const character = characters.find(c => c.id === message.characterId)
 
-  // 提取角色 <thought> 内心块；供应商 <think>/<thinking> 推理会在工具层先行丢弃。
+  // 提取角色 <thought> 内心块；供应商 RaisedButton / <thinking> 推理会在工具层先行丢弃。
   const { thought: thoughtContent, content: mainContent, isFallback: isThoughtFallback } = extractThought(message.content || '')
 
   // 翻译显示状态从 store 同步，而非本地 state
@@ -104,35 +75,13 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
       ? ''
       : mainContent
 
-  // 阶段5：语义分块（仅 blocks 模式的新消息；旧消息走 Markdown 兼容渲染）
-  const semanticBlocks = message.contentRenderMode === 'blocks'
-    ? buildRoleplayBlocks(displayContent)
-    : null
-
-  // @提及高亮处理
-  // BUG-09 修复：不再注入原始 HTML（原实现依赖 rehypeRaw，存在 XSS 风险），
-  // 改为 AST 层插件高亮，这里只提取需要高亮的角色名
+  // @提及高亮：只提取需要高亮的角色名（与单聊共用 RoleplayContentRenderer）
   const mentionNames = useMemo(() => {
     if (!message.mentionedCharacterIds || message.mentionedCharacterIds.length === 0) return []
     return message.mentionedCharacterIds
       .map(charId => characters.find(c => c.id === charId)?.name)
       .filter((n): n is string => !!n)
   }, [message.mentionedCharacterIds, characters])
-  // 插件以 [工厂, 参数] 形式传入 remarkPlugins（unified 会在解析后以 tree 调用返回的 transformer）
-  const mentionHighlightPlugins: NonNullable<import('react-markdown').Options['remarkPlugins']> = useMemo(
-    () => (mentionNames.length > 0 ? [[remarkMentionHighlight, mentionNames]] : []),
-    [mentionNames]
-  )
-
-  // S7：blocks 路径与 Markdown 路径共用同一提及识别（纯文本分段，不注入 HTML）
-  const renderWithMentions = useCallback((text: string) => {
-    if (mentionNames.length === 0) return text
-    const segments = splitMentionSegments(text, mentionNames)
-    if (!segments.some((segment) => segment.mention)) return text
-    return segments.map((segment, index) => segment.mention
-      ? <span key={index} className="mention-highlight">{segment.text}</span>
-      : <span key={index}>{segment.text}</span>)
-  }, [mentionNames])
 
   if (isFree) {
     return null
@@ -283,54 +232,13 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
                 </div>
               )}
 
-              {/* 正文 */}
-              {/* BUG-09 修复：移除 rehypeRaw / allowDangerousHtml，防止消息内容中的原始 HTML 执行导致 XSS；
-                  @提及高亮由 remarkMentionHighlight 插件在 AST 层完成 */}
-              <div className="markdown-body">
-                {semanticBlocks ? (
-                  /* 阶段5：语义分块渲染——对白/叙述/混合段按 kind 呈现样式。
-                     复用 markdown 路径同一套 CSS class，避免 blocks 消息“无样式”。 */
-                  <div className="space-y-2">
-                    {semanticBlocks.map((block, index) => {
-                      if (block.kind === 'dialogue') {
-                        // 对白块：左竖线引用形态；匿名对白同样结构、无名字行；展示层剥外层引号
-                        return (
-                          <p key={index} className="dialogue-block whitespace-pre-wrap select-text">
-                            {block.speaker && <em className="dialogue-speaker">{block.speaker}</em>}
-                            <em className="dialogue-text">{renderWithMentions(stripOuterQuotes(block.text))}</em>
-                          </p>
-                        )
-                      }
-                      if (block.kind === 'narration') {
-                        // 叙述/动作：灰色弱化正文（不斜体、无底色）
-                        return (
-                          <p key={index} className="action-block whitespace-pre-wrap select-text">
-                            {renderWithMentions(block.text)}
-                          </p>
-                        )
-                      }
-                      // mixed：普通正文渲染，行内对白按引号段染色（与 remark 路径 dialogue-inline 一致）
-                      return (
-                        <p key={index} className="whitespace-pre-wrap select-text text-tavern-text">
-                          {splitQuoteSegments(block.text).map((seg, segIndex) => seg.quoted ? (
-                            <em key={segIndex} className="dialogue-inline">{renderWithMentions(seg.text)}</em>
-                          ) : (
-                            <React.Fragment key={segIndex}>{renderWithMentions(seg.text)}</React.Fragment>
-                          ))}
-                        </p>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkRoleplay, remarkAudio, ...mentionHighlightPlugins]}
-                    rehypePlugins={[rehypeHighlight]}
-                    components={markdownComponents}
-                  >
-                    {displayContent || ''}
-                  </ReactMarkdown>
-                )}
-              </div>
+              {/* 正文：单聊/群聊共用 RoleplayContentRenderer */}
+              <RoleplayContentRenderer
+                content={displayContent || ''}
+                contentRenderMode={message.contentRenderMode}
+                isStreaming={isStreaming}
+                mentionNames={mentionNames}
+              />
 
               {/* 翻译切换 */}
               {message.translation && message.translation !== '...' && (

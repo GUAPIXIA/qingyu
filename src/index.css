@@ -379,14 +379,16 @@ body {
 }
 
 /* 行内对话：引号文字色、保留引号、无底色（与块级对白的层级差由左竖线/换行承担） */
+.markdown-body span.dialogue-inline,
 .markdown-body em.dialogue-inline {
   font-style: normal;
   color: var(--dialogue-text);
 }
 
-/* 对话块（带说话人或匿名）：<strong class="dialogue-block">（remark 路径）/ <p class="dialogue-block">（blocks 路径） */
-.markdown-body strong.dialogue-block,
-.markdown-body p.dialogue-block {
+/* 对话块（带说话人或匿名）：span.dialogue-block（remark/blocks 统一；CSS 负责块级布局） */
+.markdown-body span.dialogue-block,
+.markdown-body p.dialogue-block,
+.markdown-body div.dialogue-block {
   display: flex;
   flex-direction: column;
   font-weight: normal;
@@ -395,13 +397,17 @@ body {
   border-left: 2px solid color-mix(in srgb, var(--dialogue-label) 45%, transparent);
 }
 
-/* 连续对话块间距收紧 */
+/* 连续对话块间距收紧（span 相邻兄弟选择器；strong 兼容旧 CSS 缓存） */
+.markdown-body span.dialogue-block + span.dialogue-block,
+.markdown-body p.dialogue-block + p.dialogue-block,
 .markdown-body strong.dialogue-block + strong.dialogue-block,
-.markdown-body p.dialogue-block + p.dialogue-block {
+.markdown-body p.dialogue-block + strong.dialogue-block,
+.markdown-body strong.dialogue-block + p.dialogue-block {
   margin-top: 0.25rem;
 }
 
 /* 说话人标签：名字强调色 + 同色色标圆点 */
+.markdown-body span.dialogue-speaker,
 .markdown-body em.dialogue-speaker {
   font-style: normal;
   font-size: 0.75rem;
@@ -414,6 +420,7 @@ body {
   align-items: center;
   gap: 5px;
 }
+.markdown-body span.dialogue-speaker::before,
 .markdown-body em.dialogue-speaker::before {
   content: '';
   display: inline-block;
@@ -425,6 +432,7 @@ body {
 }
 
 /* 对话文本：继承气泡主文字色，正常字重 */
+.markdown-body span.dialogue-text,
 .markdown-body em.dialogue-text {
   font-style: normal;
   font-size: 0.9375rem;
@@ -432,27 +440,41 @@ body {
   color: inherit;
 }
 
+/* 流式未闭合对白：保持 dialogue 布局，可轻微弱化光标提示 */
+.markdown-body p.dialogue-block.is-incomplete,
+.markdown-body span.dialogue-block.is-incomplete {
+  border-left-style: dashed;
+}
+
 /* ===================== 用户气泡内动作和对话 ===================== */
 /* 浅色用户气泡底是琥珀浅黄：对白继承气泡琥珀深字，名字/叙述/引号用琥珀棕系 */
 .bubble-user .markdown-body p.action-block { color: #9a3412; }
 .bubble-user .markdown-body em.action-em { color: #9a3412; }
+.bubble-user .markdown-body span.dialogue-speaker,
 .bubble-user .markdown-body em.dialogue-speaker { color: #b45309; }
+.bubble-user .markdown-body span.dialogue-speaker::before,
 .bubble-user .markdown-body em.dialogue-speaker::before { background: #b45309; }
 .bubble-user .markdown-body strong.dialogue-block,
-.bubble-user .markdown-body p.dialogue-block {
+.bubble-user .markdown-body p.dialogue-block,
+.bubble-user .markdown-body span.dialogue-block {
   border-left-color: rgba(180, 83, 9, 0.4);
 }
+.bubble-user .markdown-body span.dialogue-inline,
 .bubble-user .markdown-body em.dialogue-inline { color: #92400e; }
 
 /* 深色用户气泡底是琥珀深褐：奶油色高对比 */
 :root.dark .bubble-user .markdown-body p.action-block { color: rgba(255, 251, 235, 0.75); }
 :root.dark .bubble-user .markdown-body em.action-em { color: rgba(255, 251, 235, 0.75); }
+:root.dark .bubble-user .markdown-body span.dialogue-speaker,
 :root.dark .bubble-user .markdown-body em.dialogue-speaker { color: rgba(255, 251, 235, 0.7); }
+:root.dark .bubble-user .markdown-body span.dialogue-speaker::before,
 :root.dark .bubble-user .markdown-body em.dialogue-speaker::before { background: rgba(255, 251, 235, 0.6); }
 :root.dark .bubble-user .markdown-body strong.dialogue-block,
-:root.dark .bubble-user .markdown-body p.dialogue-block {
+:root.dark .bubble-user .markdown-body p.dialogue-block,
+:root.dark .bubble-user .markdown-body span.dialogue-block {
   border-left-color: rgba(255, 251, 235, 0.4);
 }
+:root.dark .bubble-user .markdown-body span.dialogue-inline,
 :root.dark .bubble-user .markdown-body em.dialogue-inline { color: rgba(255, 251, 235, 0.9); }
 
 /* ===================== @提及高亮 ===================== */

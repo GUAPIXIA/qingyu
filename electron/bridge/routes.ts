@@ -616,6 +616,8 @@ export function buildBridgeRouter(
           images: [],
           isEditing: false,
           timestamp: Date.now(),
+          // 作者开场白显式 markdown，避免 undefined 隐式分流
+          contentRenderMode: 'markdown',
         }
         chatData.saveMessage(character.id, firstMsg)
       }

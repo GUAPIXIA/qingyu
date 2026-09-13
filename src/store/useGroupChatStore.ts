@@ -757,6 +757,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === currentSessionId)?.narrativeMode),
       speakerKind: 'character',
       generationKind: 'assistant_reply',
+      // 作者开场白可含完整 Markdown
+      contentRenderMode: 'markdown',
     }
     set(s => ({ messages: [...s.messages, msg] }))
     await window.api.group.saveMessage(currentGroup.id, currentSessionId, msg)

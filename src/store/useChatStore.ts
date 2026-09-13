@@ -169,6 +169,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === sid)?.narrativeMode),
       speakerKind: 'character',
       generationKind: 'assistant_reply',
+      // 作者开场白可含完整 Markdown（列表/代码块等），显式走兼容路径
+      contentRenderMode: 'markdown',
     }
     await window.api.chat.saveMessage(firstMsg)
     set((s) => ({ messages: [...s.messages, firstMsg] }))
@@ -416,6 +418,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
           narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === sessionId)?.narrativeMode),
           speakerKind: 'character',
           generationKind: 'assistant_reply',
+          // 作者开场白可含完整 Markdown，显式走兼容路径
+          contentRenderMode: 'markdown',
         }
         await window.api.chat.saveMessage(firstMsg)
         // N25 修复：若加载期间用户已发送消息（messages 非空），不覆盖用户消息
