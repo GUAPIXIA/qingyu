@@ -616,8 +616,6 @@ private class FakeChatRepository : ChatRepository {
     override suspend fun listGroupSessions(groupId: String) = throw UnsupportedOperationException()
     override suspend fun listGroupMessages(groupId: String, sessionId: String) = throw UnsupportedOperationException()
     override suspend fun sendGroupMessage(groupId: String, sessionId: String, requestId: String, content: String) = throw UnsupportedOperationException()
-    override suspend fun createGroupSession(groupId: String) = throw UnsupportedOperationException()
-    override suspend fun renameGroupSession(groupId: String, sessionId: String, title: String) = throw UnsupportedOperationException()
     override suspend fun editGroupMessage(groupId: String, sessionId: String, messageId: String, content: String) = throw UnsupportedOperationException()
     override suspend fun deleteGroupMessage(groupId: String, sessionId: String, messageId: String) = throw UnsupportedOperationException()
     override suspend fun groupAiReply(groupId: String, sessionId: String, speakerId: String?) = throw UnsupportedOperationException()

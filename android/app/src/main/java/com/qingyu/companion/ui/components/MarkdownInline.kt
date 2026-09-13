@@ -61,16 +61,14 @@ data class InlineStyles(
     val strike: SpanStyle = SpanStyle(textDecoration = TextDecoration.LineThrough),
     val code: SpanStyle = SpanStyle(fontFamily = FontFamily.Monospace),
     val link: SpanStyle = SpanStyle(color = androidx.compose.ui.graphics.Color(0xFF4A90D9), textDecoration = TextDecoration.Underline),
-    /** 行内对话（"…" / 「…」）：对话色文字 + 淡背景 */
+    /** 行内对话（"…" / 「…」）：对话色文字，无底色 chip（对齐 PC dialogue-inline） */
     val dialogue: SpanStyle = SpanStyle(
         color = androidx.compose.ui.graphics.Color(0xFFB0804E),
-        background = androidx.compose.ui.graphics.Color(0xFFB0804E).copy(alpha = 0.14f),
     ),
-    /** 行内动作（*动作*）：斜体 + 动作色 + 动作背景（对齐 PC action-em） */
+    /** 行内动作（*动作*）：斜体 + 弱化色，无底色（对齐 PC action-em） */
     val action: SpanStyle = SpanStyle(
         fontStyle = FontStyle.Italic,
         color = androidx.compose.ui.graphics.Color(0xFF9B7EDE),
-        background = androidx.compose.ui.graphics.Color(0xFF9B7EDE).copy(alpha = 0.10f),
     ),
     /** @提及高亮（群聊，对齐 PC mention-highlight） */
     val mention: SpanStyle = SpanStyle(

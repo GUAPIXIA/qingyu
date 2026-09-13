@@ -282,8 +282,6 @@ private class FakeGroupRepository : ChatRepository {
     override suspend fun fetchVersionInfo() = throw UnsupportedOperationException()
     override suspend fun listGroups() = throw UnsupportedOperationException()
     override suspend fun listGroupSessions(groupId: String) = throw UnsupportedOperationException()
-    override suspend fun createGroupSession(groupId: String) = throw UnsupportedOperationException()
-    override suspend fun renameGroupSession(groupId: String, sessionId: String, title: String) = throw UnsupportedOperationException()
     override suspend fun editGroupMessage(groupId: String, sessionId: String, messageId: String, content: String) = throw UnsupportedOperationException()
     override suspend fun deleteGroupMessage(groupId: String, sessionId: String, messageId: String) = throw UnsupportedOperationException()
     override suspend fun createGroup(name: String?, memberIds: List<String>) = throw UnsupportedOperationException()

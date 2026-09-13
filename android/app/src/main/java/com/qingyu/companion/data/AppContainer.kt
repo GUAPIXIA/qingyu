@@ -72,6 +72,7 @@ class AppContainer(context: Context) {
     // "Migration 失败时先备份/隔离 Outbox，不直接清库"）。
     // - v4→v5：显式迁移 CacheDatabase.MIGRATION_4_5（仅 ALTER 扩 outbox 列，outbox 存活）；
     // - v5→v6：显式迁移 CacheDatabase.MIGRATION_5_6（仅 CREATE TABLE task_cursors，F-02）；
+    // - v6→v7：显式迁移 CacheDatabase.MIGRATION_6_7（仅 ALTER 扩 cached_messages 收尾状态列，S6）；
     // - 今后的 cached_sessions/cached_messages 重建只允许写在对应版本的显式 Migration SQL 内；
     // - v1/v2/v3 老库：outbox 表 v4 才引入、库中无 outbox 数据，允许精准破坏性重建。
     //   （Room 2.6.1 的 API：仅 int... 变体；2.7+ 才有 dropAllTables 重载）
@@ -80,7 +81,7 @@ class AppContainer(context: Context) {
         CacheDatabase::class.java,
         CacheDatabase.DB_NAME,
     )
-        .addMigrations(CacheDatabase.MIGRATION_4_5, CacheDatabase.MIGRATION_5_6)
+        .addMigrations(CacheDatabase.MIGRATION_4_5, CacheDatabase.MIGRATION_5_6, CacheDatabase.MIGRATION_6_7)
         // Room 2.6.1 仅有 int... 变体（dropAllTables 重载为 Room 2.7+）；v≤3 无 outbox 表，全量重建安全
         .fallbackToDestructiveMigrationFrom(1, 2, 3)
         .build()

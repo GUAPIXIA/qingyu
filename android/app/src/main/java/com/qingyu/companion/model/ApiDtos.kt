@@ -99,13 +99,6 @@ data class SettingsDto(
     val autoScroll: Boolean = true,
     val showTokenCount: Boolean = false,
     val htmlRendering: Boolean = false,
-    /**
-     * 已废弃：PC 端快照 schemaVersion 3 起不再下发该字段（尺寸改由 ComfyUI 工作流
-     * 节点级覆盖承载）。保留字段与默认值仅用于解码旧版 PC 快照，不参与 PATCH。
-     * 待移动端统一发版后随契约一并移除。
-     */
-    @Deprecated("PC 端已不再下发；尺寸改用工作流节点级覆盖，请勿读写该字段")
-    val imageGenSize: String = "1024x1024",
     val exampleDialogMode: String = "always",
     val lorebookRatio: Double = 0.3,
     val autoTitle: Boolean = true,
@@ -208,7 +201,6 @@ data class MemoryDto(
     val memoryMode: String = "manual",
     val autoMemoryInterval: Int = 10,
     val memory: String = "",
-    val memoryCurrentState: String = "",
     val memoryFacts: List<MemoryFactDto> = emptyList(),
     val memoryUpdatedAt: Long = 0,
     val messageCount: Int = 0,
@@ -321,24 +313,6 @@ data class ContextUsageDto(
     val max: Long = 0,
     val ratio: Double = 0.0,
     val pct: Int = 0,
-)
-
-/** POST /api/v1/groups/:id/sessions 响应（新建群聊会话） */
-@Serializable
-data class GroupSessionDto(
-    val id: String,
-    val groupId: String,
-    val title: String,
-    val messageCount: Int = 0,
-    val createdAt: Long = 0,
-    val updatedAt: Long = 0,
-    val narrativeMode: String = "immersive",
-    /** 会话级“下一步方向”开关：AI 回复后生成 3 个可选方向。 */
-    val dialogueDirectionsEnabled: Boolean = false,
-    /** @deprecated 兼容期镜像字段，使用 dialogueDirectionsEnabled。 */
-    val gameMasterMode: Boolean = false,
-    val memoryCurrentState: String = "",
-    val personaId: String? = null,
 )
 
 /** POST /api/v1/sessions/:sid/messages/:mid/directions 响应（“换一批”结果） */

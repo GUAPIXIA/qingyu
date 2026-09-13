@@ -59,6 +59,8 @@ import com.qingyu.companion.model.PendingMessage
 import com.qingyu.companion.model.Role
 import com.qingyu.companion.ui.components.MarkdownText
 import com.qingyu.companion.ui.components.MessageImages
+import com.qingyu.companion.ui.components.RoleplayBlockList
+import com.qingyu.companion.ui.components.RoleplayBlocks
 import com.qingyu.companion.ui.components.extractThought
 import com.qingyu.companion.ui.components.scaledForChat
 import com.qingyu.companion.ui.components.translatedMessageContent
@@ -422,15 +424,30 @@ internal fun MessageBubble(
                     }
 
                     // 正文（body 14.5 · 1.7 行距）
-                    MarkdownText(
-                        extraction.content,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            color = qy.text,
-                        ),
-                        onUserBubble = isUser,
-                        fontScale = fontScale,
-                        spacingMultiplier = spacing,
-                    )
+                    // 阶段7.2（§6.2）：contentRenderMode='blocks' 时正式消费语义分块，
+                    // 与 PC blocks 分支同规则同 fixture；旧消息/未知模式安全回退 Markdown 兼容渲染
+                    val semanticBlocks = remember(extraction.content, message.contentRenderMode) {
+                        if (message.contentRenderMode == "blocks") RoleplayBlocks.build(extraction.content) else null
+                    }
+                    if (semanticBlocks != null) {
+                        RoleplayBlockList(
+                            blocks = semanticBlocks,
+                            baseStyle = MaterialTheme.typography.bodyLarge.copy(color = qy.text),
+                            fontScale = fontScale,
+                            spacingMultiplier = spacing,
+                            onUserBubble = isUser,
+                        )
+                    } else {
+                        MarkdownText(
+                            extraction.content,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                color = qy.text,
+                            ),
+                            onUserBubble = isUser,
+                            fontScale = fontScale,
+                            spacingMultiplier = spacing,
+                        )
+                    }
 
                     // 图片（imageUrls 已拼接完整 URL）
                     if (imageUrls.isNotEmpty()) {
@@ -439,6 +456,28 @@ internal fun MessageBubble(
                             images = imageUrls,
                             onImageClick = onImageClick,
                         )
+                    }
+
+                    // S6：结构化收尾状态——失败原因与中性提示分开显示，正文不受污染
+                    if (!isUser) {
+                        message.generationError?.let { error ->
+                            Text(
+                                text = stringResource(R.string.chat_generation_error_fmt, error),
+                                style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
+                                color = qy.danger,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                        if (message.generationError == null) {
+                            message.generationNotice?.let { notice ->
+                                Text(
+                                    text = stringResource(R.string.chat_generation_notice_fmt, notice),
+                                    style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale),
+                                    color = qy.muted.copy(alpha = 0.8f),
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                        }
                     }
 
                     if (isTranslating) {

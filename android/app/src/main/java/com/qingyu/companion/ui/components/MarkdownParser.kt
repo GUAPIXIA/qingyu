@@ -75,12 +75,11 @@ sealed interface MdBlock {
     data class Image(val url: String) : MdBlock
 }
 
-/** 对话段片段：speaker 为 null 表示普通文本；非 null 表示「角色: "对话"」 */
-
-/** 对话段片段：speaker 为 null 表示普通文本；非 null 表示「角色: "对话"」 */
+/** 对话段片段：block=true 表示整行对白块（speaker 可为 null = 匿名对白）；block=false 为普通文本段 */
 data class DialogueSegment(
     val speaker: String?,
     val text: String,
+    val block: Boolean = false,
 )
 
 private val HEADING = Regex("""^(#{1,6})\s+(.*)$""")
@@ -120,52 +119,39 @@ internal fun isTableSeparator(line: String): Boolean {
     }
 }
 
-/** 说话人对话块正则（归一化后匹配）：可选「角色:」前缀 + ASCII 双引号包裹的对话（对齐 PC remark-roleplay） */
-private val DIALOGUE_BLOCK = Regex("""(\S+[:\uFF1A]\s*)?"([^"]*)"""")
-
 /**
- * CJK 引号变体集合（开引号/闭引号统一归一化为 ASCII 双引号，对齐 PC remark-roleplay 归一化表）。
- * 归一化不改变字符串长度（1 字符 -> 1 字符），因此索引可安全映射回原文。
- */
-private val QUOTE_NORMALIZE = mapOf(
-    '\u201C' to '"', '\u201D' to '"', '\u201E' to '"', '\u201F' to '"',
-    '\uFF02' to '"', '\u2018' to '"', '\u2019' to '"',
-    '\u300C' to '"', '\u300D' to '"', '\u300E' to '"', '\u300F' to '"',
-    '\u2039' to '"', '\u203A' to '"', '\u00AB' to '"', '\u00BB' to '"',
-    '\u301D' to '"', '\u301E' to '"', '\uFE41' to '"', '\uFE42' to '"',
-    '\uFE43' to '"', '\uFE44' to '"',
-)
-
-/** 归一化 CJK 引号变体为 ASCII 双引号（长度不变，索引与原文对齐） */
-private fun normalizeQuotes(text: String): String =
-    text.map { QUOTE_NORMALIZE[it] ?: it }.joinToString("")
-
-/**
- * 拆分「角色: "对话"」说话人对话块（PC remark-roleplay dialogue-block 语义）。
- * 先归一化 CJK 引号到 ASCII 再匹配（与 PC 端完全同构）；仅当段落含带说话人前缀
- * 的对话时拆分；裸 "对话" 保持普通段落（由行内渲染处理）。
- * @return null 表示不含说话人对话，保持普通段落
+ * 行级对白拆分（对齐 PC remark-roleplay 行级分类，复用 RoleplayBlocks 同一套规则）：
+ * 整行「名字：“对白”」或整行纯引号对白 → 对白块段（后者为匿名块，无名字行）；
+ * 其余行保持普通文本段。仅当存在块段时生成 DialogueParagraph。
+ * 行内不再单独识别说话人前缀（避免把「叙述：“对白”」误拆成对话块）。
+ * @return null 表示不含对白块，保持普通段落
  */
 private fun splitDialogueParagraph(text: String): List<DialogueSegment>? {
-    val normalized = normalizeQuotes(text)
     val segments = mutableListOf<DialogueSegment>()
-    var last = 0
-    var foundSpeaker = false
-    for (m in DIALOGUE_BLOCK.findAll(normalized)) {
-        val speakerRaw = m.groupValues[1]
-        if (speakerRaw.isBlank()) continue
-        foundSpeaker = true
-        if (m.range.first > last) {
-            segments += DialogueSegment(null, text.substring(last, m.range.first))
+    var hasBlock = false
+    text.split('\n').forEachIndexed { index, rawLine ->
+        val line = rawLine.trim()
+        val speakerMatch = RoleplayBlocks.SPEAKER_QUOTE.matchEntire(line)
+        val speakerName = speakerMatch?.groupValues?.get(1)?.trim()?.takeIf {
+            !RoleplayBlocks.NARRATION_PREFIX.containsMatchIn(it)
         }
-        val speaker = speakerRaw.replace(Regex("""[:\uFF1A]\s*$"""), "").trim()
-        // 归一化长度不变：m 的索引可直接用于原文；对话内容不含引号（归一化后 [^"]* 排除）
-        segments += DialogueSegment(speaker, m.groupValues[2])
-        last = m.range.last + 1
+        when {
+            speakerMatch != null && speakerName != null -> {
+                hasBlock = true
+                segments += DialogueSegment(
+                    speakerName,
+                    RoleplayBlocks.stripOuterQuotes(speakerMatch.groupValues[2]),
+                    block = true,
+                )
+            }
+            line.isNotEmpty() && RoleplayBlocks.PURE_QUOTE.matchEntire(line) != null -> {
+                hasBlock = true
+                segments += DialogueSegment(null, RoleplayBlocks.stripOuterQuotes(line), block = true)
+            }
+            line.isNotEmpty() -> segments += DialogueSegment(null, if (index > 0) "\n$line" else line)
+        }
     }
-    if (!foundSpeaker) return null
-    if (last < text.length) segments += DialogueSegment(null, text.substring(last))
-    return segments
+    return if (hasBlock) segments else null
 }
 
 fun parseMarkdown(source: String): List<MdBlock> {

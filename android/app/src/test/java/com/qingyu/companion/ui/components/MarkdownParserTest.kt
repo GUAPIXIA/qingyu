@@ -118,7 +118,7 @@ class MarkdownParserTest {
 
     @Test
     fun `说话人对话块拆分`() {
-        val blocks = parseMarkdown("爱丽丝：\"你好，陌生人。\"")
+        val blocks = parseMarkdown("爱丽丝：“你好，陌生人。”")
         assertEquals(1, blocks.size)
         val dp = blocks[0] as MdBlock.DialogueParagraph
         assertEquals(1, dp.segments.size)
@@ -143,17 +143,42 @@ class MarkdownParserTest {
     }
 
     @Test
-    fun `对话块与普通文本交错`() {
-        val blocks = parseMarkdown("开场。\n\n爱丽丝：\"嗨\" 她挥手。")
+    fun `对白后接叙述的同行不拆块（mixed 语义）`() {
+        // 行级分类与 PC remark-roleplay 一致：尾部有叙述的同行不识别为对白块，保持普通段落染色
+        val blocks = parseMarkdown("开场。\n\n爱丽丝：“嗨” 她挥手。")
         assertEquals(2, blocks.size)
         assertEquals(MdBlock.Paragraph("开场。"), blocks[0])
-        val dp = blocks[1] as MdBlock.DialogueParagraph
-        // 说话人片段 + 尾部普通文本片段
-        assertEquals(2, dp.segments.size)
-        assertEquals("爱丽丝", dp.segments[0].speaker)
-        assertEquals("嗨", dp.segments[0].text)
-        assertEquals(null, dp.segments[1].speaker)
-        assertEquals(" 她挥手。", dp.segments[1].text)
+        assertTrue(blocks[1] is MdBlock.Paragraph)
+    }
+
+    @Test
+    fun `整行纯引号对白拆为匿名对白块`() {
+        val blocks = parseMarkdown("“我知道。”")
+        assertEquals(1, blocks.size)
+        val dp = blocks[0] as MdBlock.DialogueParagraph
+        assertEquals(1, dp.segments.size)
+        assertTrue(dp.segments[0].block)
+        assertEquals(null, dp.segments[0].speaker)
+        assertEquals("我知道。", dp.segments[0].text)
+    }
+
+    @Test
+    fun `叙述式前缀不识别为说话人`() {
+        // 代词/助词/动作动词前缀命中 NARRATION_PREFIX → 不拆块（避免"她轻声说道："被当角色名）
+        assertTrue(parseMarkdown("她轻声说道：“别怕。”")[0] is MdBlock.Paragraph)
+        assertTrue(parseMarkdown("苏晚推开门：“谁在那？”")[0] is MdBlock.Paragraph)
+    }
+
+    @Test
+    fun `多行段落逐行分类`() {
+        val blocks = parseMarkdown("美洛拉：“真够傻的。”\n紫色外星人再次回击。\n尤诺娃：“选我！”")
+        val dp = blocks[0] as MdBlock.DialogueParagraph
+        assertEquals(3, dp.segments.size)
+        assertTrue(dp.segments[0].block)
+        assertEquals("美洛拉", dp.segments[0].speaker)
+        assertTrue(!dp.segments[1].block)
+        assertTrue(dp.segments[2].block)
+        assertEquals("尤诺娃", dp.segments[2].speaker)
     }
 
     @Test
@@ -255,7 +280,7 @@ class MarkdownParserTest {
 
     @Test
     fun `说话人对话块支持全角冒号与冒号后空格`() {
-        val blocks = parseMarkdown("爱丽丝： \"嗨\"")
+        val blocks = parseMarkdown("爱丽丝： “嗨”")
         val dp = blocks[0] as MdBlock.DialogueParagraph
         assertEquals("爱丽丝", dp.segments[0].speaker)
         assertEquals("嗨", dp.segments[0].text)
@@ -263,14 +288,14 @@ class MarkdownParserTest {
 
     @Test
     fun `冒号前有空格不算说话人`() {
-        // 对齐 PC \S+[:：] 语义：冒号必须紧跟角色名，中间有空格不识别
-        val blocks = parseMarkdown("爱丽丝 ： \"嗨\"")
+        // 对齐 PC 语义：冒号必须紧跟角色名，中间有空格不识别
+        val blocks = parseMarkdown("爱丽丝 ： “嗨”")
         assertTrue(blocks[0] is MdBlock.Paragraph)
     }
 
     @Test
     fun `无闭引号的引号保持原样`() {
-        val blocks = parseMarkdown("她说：\"没说完")
+        val blocks = parseMarkdown("她说：“没说完")
         assertEquals(1, blocks.size)
         assertTrue(blocks[0] is MdBlock.Paragraph)
     }
@@ -319,14 +344,14 @@ class MarkdownParserTest {
 
     @Test
     fun `多行段落中的说话人对话块`() {
-        val blocks = parseMarkdown("爱丽丝：\"第一句\"\n她继续说着。")
+        val blocks = parseMarkdown("爱丽丝：“第一句”\n她继续说着。")
         val dp = blocks[0] as MdBlock.DialogueParagraph
         assertTrue(dp.segments.any { it.speaker == "爱丽丝" })
     }
 
     @Test
     fun `对话块内容为空串也保留结构`() {
-        val blocks = parseMarkdown("爱丽丝：\"\"")
+        val blocks = parseMarkdown("爱丽丝：“”")
         val dp = blocks[0] as MdBlock.DialogueParagraph
         assertEquals("爱丽丝", dp.segments[0].speaker)
         assertEquals("", dp.segments[0].text)

@@ -194,9 +194,8 @@ class ProtocolContractTest {
         val dto = json.decodeFromString(MessageIdentityFixture.serializer(), fixture("message_identity.json"))
         assertEquals(4, dto.singleMessages.size)
         assertEquals("narrator", dto.singleMessages[1].speakerKind)
-        assertEquals("input_continue", dto.singleMessages[1].generationKind)
         assertEquals("character", dto.singleMessages[2].speakerKind)
-        assertEquals("assistant_reply", dto.groupMessages[1].generationKind)
+        // generationKind 为安卓端未消费的协议镜像字段，已从模型移除（fixture 载荷由 ignoreUnknownKeys 容错解码）
     }
 
     @Test

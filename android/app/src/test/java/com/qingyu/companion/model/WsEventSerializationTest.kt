@@ -107,11 +107,10 @@ class GroupModelTest {
     }
 
     @Test
-    fun `群聊模型序列化往返`() {
+    fun `群聊模型序列化往返（旧版 mentionedCharacterIds 载荷由 ignoreUnknownKeys 容错）`() {
         val json = Json { ignoreUnknownKeys = true }
         val msg = gmsg("__user__").copy(
             images = listOf("url"),
-            mentionedCharacterIds = listOf("char-1", "char-2"),
             translation = "译文",
         )
         val decoded = json.decodeFromString<GroupMessage>(
@@ -119,7 +118,11 @@ class GroupModelTest {
         )
         assertEquals(msg, decoded)
         assertTrue(decoded.isUser)
-        assertEquals(2, decoded.mentionedCharacterIds.size)
+        // 旧 PC 仍下发 mentionedCharacterIds 时解码不抛（安卓端未消费，已移出模型）
+        val legacy = json.decodeFromString<GroupMessage>(
+            """{"id":"g1","groupId":"grp","characterId":"c1","content":"x","timestamp":1,"mentionedCharacterIds":["char-1","char-2"]}"""
+        )
+        assertEquals("g1", legacy.id)
     }
 
     @Test
@@ -132,11 +135,10 @@ class GroupModelTest {
     }
 
     @Test
-    fun `GroupSendRequest 带提及序列化`() {
+    fun `GroupSendRequest 序列化往返（旧版带提及载荷可解码）`() {
         val req = GroupSendRequest(
             content = "@爱丽丝 在吗",
             requestId = "r1",
-            mentionedCharacterIds = listOf("char-1"),
         )
         val json = Json { ignoreUnknownKeys = true }
         val decoded = json.decodeFromString<GroupSendRequest>(

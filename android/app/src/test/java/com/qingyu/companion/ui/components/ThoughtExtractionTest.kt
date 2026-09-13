@@ -13,9 +13,9 @@ import org.junit.Test
 class ThoughtExtractionTest {
 
     @Test
-    fun `thinking 标签归一化提取`() {
+    fun `thinking 标签作为供应商推理丢弃`() {
         val r = extractThought("<thinking>about it</thinking>The answer is 42")
-        assertEquals("about it", r.thought)
+        assertNull(r.thought)
         assertEquals("The answer is 42", r.content)
         assertFalse(r.isFallback)
     }
@@ -45,9 +45,10 @@ class ThoughtExtractionTest {
     }
 
     @Test
-    fun `多 thinking 块`() {
+    fun `多 thinking 块全部丢弃`() {
         val r = extractThought("<thinking>step1</thinking>text<thinking>step2</thinking>more")
-        assertEquals("step1\n\nstep2", r.thought)
+        assertNull(r.thought)
+        assertEquals("textmore", r.content)
         assertFalse(r.isFallback)
     }
 
@@ -98,9 +99,9 @@ class ThoughtExtractionTest {
     }
 
     @Test
-    fun `thought 与 thinking 混合归一化`() {
+    fun `thought 保留但 thinking 供应商推理丢弃`() {
         val r = extractThought("<thinking>推理</thinking>正文<thought>内心</thought>")
-        assertEquals("推理\n\n内心", r.thought)
+        assertEquals("内心", r.thought)
         assertEquals("正文", r.content)
     }
 

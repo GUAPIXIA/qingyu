@@ -4,7 +4,9 @@ import kotlinx.serialization.Serializable
 
 /**
  * 会话预览（列表用）。对齐 shared/types.ts 的 SessionPreview。
- * 记忆/压缩等 PC 侧内部字段不下发给安卓端（会话数据最小化，方案 §6.9）。
+ * 记忆/压缩等 PC 侧内部字段不下发给安卓端（会话数据最小化，方案 §6.9）；
+ * 安卓端未消费的协议镜像字段（narrativeMode/gameMasterMode/memoryCurrentState）已移除，
+ * 由 ignoreUnknownKeys 容忍 PC 继续下发。
  */
 @Serializable
 data class SessionPreview(
@@ -18,12 +20,6 @@ data class SessionPreview(
     val messageCount: Int,
     /** 对话中按时间排序的最后一条消息摘要（由 PC 桥接层生成） */
     val lastMessage: String,
-    /** 当前会话实际叙事模式。 */
-    val narrativeMode: String = "immersive",
     /** 会话级“下一步方向”开关：AI 回复后生成 3 个可选方向。 */
     val dialogueDirectionsEnabled: Boolean = false,
-    /** @deprecated 兼容期镜像字段，使用 dialogueDirectionsEnabled。 */
-    val gameMasterMode: Boolean = false,
-    /** 旁白维护的当前世界局势。 */
-    val memoryCurrentState: String = "",
 )

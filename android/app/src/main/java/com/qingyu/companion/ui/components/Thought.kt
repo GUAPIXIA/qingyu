@@ -5,7 +5,8 @@ package com.qingyu.companion.ui.components
  *
  * 对齐 PC 端 `src/utils/messagePostProcess.ts` 的 extractThought 规范
  * （方案 §3.3「渲染规则文档化，两端对照同一规范」）：
- * - 支持 `<thought>` 与 `<thinking>` 两种标签（大小写不敏感，`<thinking>` 先归一化为 `<thought>`）
+ * - `<thought>` 只表示当前角色的第一人称内心独白
+ * - `<think>` / `<thinking>` 属于供应商推理，提取前直接丢弃
  * - 提取所有 thought 块内容，trim 后以 `\n\n` 拼接
  * - 剥离 thought 块后的剩余为正文；正文为空时回退到 thought 内容（避免空消息）
  * - 无标签时 thought 为 null
@@ -16,16 +17,24 @@ data class ThoughtExtraction(
     val isFallback: Boolean,
 )
 
-private val THINKING_OPEN = Regex("""<thinking([\s>])""", RegexOption.IGNORE_CASE)
-private val THINKING_CLOSE = Regex("""</thinking>""", RegexOption.IGNORE_CASE)
+private val VENDOR_THINKING_BLOCK = Regex(
+    """<\s*(?:think|thinking)\b[^>]*>[\s\S]*?(?:<\s*/\s*(?:think|thinking)\s*>|$)""",
+    RegexOption.IGNORE_CASE,
+)
+private val ORPHAN_VENDOR_THINKING_CLOSE = Regex(
+    """<\s*/\s*(?:think|thinking)\s*>""",
+    RegexOption.IGNORE_CASE,
+)
 private val THOUGHT_BLOCK = Regex("""<thought>([\s\S]*?)</thought>""", RegexOption.IGNORE_CASE)
 
-/** 将 `<thinking>` 标签归一化为 `<thought>`（与 PC 端 normalizeThoughtTags 一致） */
+/**
+ * 历史函数名保留给现有调用方；当前语义是移除供应商推理，而不是转换成角色 thought。
+ */
 fun normalizeThoughtTags(text: String): String {
     if (text.isEmpty()) return text
     return text
-        .replace(THINKING_OPEN, "<thought$1")
-        .replace(THINKING_CLOSE, "</thought>")
+        .replace(VENDOR_THINKING_BLOCK, "")
+        .replace(ORPHAN_VENDOR_THINKING_CLOSE, "")
 }
 
 /**

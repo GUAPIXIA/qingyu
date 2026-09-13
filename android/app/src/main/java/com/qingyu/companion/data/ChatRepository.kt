@@ -183,12 +183,6 @@ interface ChatRepository {
 
     // ---------- 群聊操作 ----------
 
-    /** 新建群聊会话 */
-    suspend fun createGroupSession(groupId: String): com.qingyu.companion.model.GroupSessionDto
-
-    /** 重命名群聊会话 */
-    suspend fun renameGroupSession(groupId: String, sessionId: String, title: String)
-
     /** 编辑群聊消息 */
     suspend fun editGroupMessage(groupId: String, sessionId: String, messageId: String, content: String)
 

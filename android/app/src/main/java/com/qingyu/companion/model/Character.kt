@@ -23,8 +23,6 @@ data class Character(
     val alternateGreetings: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     val pinned: Boolean = false,
-    val creator: String = "",
-    val createdAt: Long = 0,
     val updatedAt: Long = 0,
     /** 翻译内容：UI 显示优先使用 */
     val translatedContent: TranslatedContent? = null,

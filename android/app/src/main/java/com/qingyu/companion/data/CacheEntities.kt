@@ -42,6 +42,10 @@ data class CachedMessage(
     val replyToId: String?,
     /** token 用量（JSON 字符串，可空） */
     val usage: String?,
+    /** 收尾提示 / 失败原因 / 渲染模式（v7 起缓存；缺省 null 兼容旧 PC 返回与旧缓存） */
+    val generationNotice: String? = null,
+    val generationError: String? = null,
+    val contentRenderMode: String? = null,
 )
 
 /**
@@ -103,13 +107,7 @@ data class OutboxMessage(
 @Dao
 interface OutboxDao {
     @Query("SELECT * FROM outbox_messages WHERE sessionId = :sessionId ORDER BY createdAt ASC")
-    suspend fun listForSession(sessionId: String): List<OutboxMessage>
-
-    @Query("SELECT * FROM outbox_messages WHERE sessionId = :sessionId ORDER BY createdAt ASC")
     fun observeForSession(sessionId: String): kotlinx.coroutines.flow.Flow<List<OutboxMessage>>
-
-    @Query("SELECT * FROM outbox_messages ORDER BY createdAt ASC")
-    suspend fun listAll(): List<OutboxMessage>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: OutboxMessage)
@@ -117,23 +115,8 @@ interface OutboxDao {
     @Query("SELECT * FROM outbox_messages WHERE requestId = :requestId")
     suspend fun getById(requestId: String): OutboxMessage?
 
-    @Query("UPDATE outbox_messages SET state = :state, error = :error, retryCount = :retryCount WHERE requestId = :requestId")
-    suspend fun updateState(requestId: String, state: String, error: String?, retryCount: Int)
-
-    @Query("DELETE FROM outbox_messages WHERE requestId = :requestId")
-    suspend fun delete(requestId: String)
-
     @Query("DELETE FROM outbox_messages WHERE sessionId = :sessionId AND state = 'completed'")
     suspend fun clearCompleted(sessionId: String)
-
-    @Query("DELETE FROM outbox_messages WHERE state = 'completed'")
-    suspend fun clearAllCompleted()
-
-    @Query("DELETE FROM outbox_messages WHERE sessionId NOT IN (SELECT id FROM cached_sessions)")
-    suspend fun deleteOrphan()
-
-    @Query("DELETE FROM outbox_messages")
-    suspend fun clear()
 
     /** 未完成态全集（F-04 八态；completed/cancelled 为终态不入列） */
     @Query(
@@ -142,22 +125,6 @@ interface OutboxDao {
             "ORDER BY createdAt ASC"
     )
     suspend fun listPending(): List<OutboxMessage>
-
-    /** 指定 PC 的未完成行（切 PC 隔离：只发送/展示归属当前活跃设备的行） */
-    @Query(
-        "SELECT * FROM outbox_messages WHERE deviceId = :deviceId AND state IN " +
-            "('queued','sending','relay_queued','user_committed','awaiting_ai','failed_send','failed_generation') " +
-            "ORDER BY createdAt ASC"
-    )
-    suspend fun listPendingForDevice(deviceId: String): List<OutboxMessage>
-
-    /** 无法确定归属（'legacy'）的未完成行——不得自动发送，仅提示用户选择目标 PC（F-04） */
-    @Query(
-        "SELECT * FROM outbox_messages WHERE deviceId = 'legacy' AND state IN " +
-            "('queued','sending','relay_queued','user_committed','awaiting_ai','failed_send','failed_generation') " +
-            "ORDER BY createdAt ASC"
-    )
-    suspend fun listLegacyPending(): List<OutboxMessage>
 
     @Query(
         "SELECT COUNT(*) FROM outbox_messages WHERE deviceId = 'legacy' AND state IN " +
@@ -196,14 +163,8 @@ data class TaskCursorEntity(
 
 @Dao
 interface TaskCursorDao {
-    @Query("SELECT * FROM task_cursors WHERE deviceId = :deviceId AND taskId = :taskId")
-    suspend fun get(deviceId: String, taskId: String): TaskCursorEntity?
-
     @Query("SELECT * FROM task_cursors WHERE deviceId = :deviceId")
     suspend fun listForDevice(deviceId: String): List<TaskCursorEntity>
-
-    @Query("SELECT * FROM task_cursors WHERE deviceId = :deviceId AND sessionId = :sessionId")
-    suspend fun listForSession(deviceId: String, sessionId: String): List<TaskCursorEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(cursor: TaskCursorEntity)

@@ -37,23 +37,12 @@ class OutboxRestoreTest {
         val flow = MutableStateFlow<List<OutboxMessage>>(emptyList())
         private fun emit() { flow.value = store.values.sortedBy { it.createdAt } }
 
-        override suspend fun listForSession(sessionId: String) = store.values.filter { it.sessionId == sessionId }.sortedBy { it.createdAt }
         override fun observeForSession(sessionId: String): Flow<List<OutboxMessage>> =
             flow.map { list -> list.filter { it.sessionId == sessionId } }
-        override suspend fun listAll() = store.values.sortedBy { it.createdAt }
         override suspend fun upsert(item: OutboxMessage) { store[item.requestId] = item; emit() }
         override suspend fun getById(requestId: String) = store[requestId]
-        override suspend fun updateState(requestId: String, state: String, error: String?, retryCount: Int) {
-            store[requestId]?.let { store[requestId] = it.copy(state = state, error = error, retryCount = retryCount); emit() }
-        }
-        override suspend fun delete(requestId: String) { store.remove(requestId); emit() }
         override suspend fun clearCompleted(sessionId: String) { store.entries.removeIf { it.value.sessionId == sessionId && it.value.state == "completed" }; emit() }
-        override suspend fun clearAllCompleted() { store.entries.removeIf { it.value.state == "completed" }; emit() }
-        override suspend fun deleteOrphan() { emit() }
-        override suspend fun clear() { store.clear(); emit() }
         override suspend fun listPending() = store.values.filter { it.state in PENDING_STATES }.sortedBy { it.createdAt }
-        override suspend fun listPendingForDevice(deviceId: String) = store.values.filter { it.deviceId == deviceId && it.state in PENDING_STATES }
-        override suspend fun listLegacyPending() = store.values.filter { it.deviceId == "legacy" && it.state in PENDING_STATES }
         override suspend fun countLegacyPending() = store.values.count { it.deviceId == "legacy" && it.state in PENDING_STATES }
         override suspend fun adoptLegacyPending(deviceId: String, now: Long): Int {
             var n = 0
@@ -73,9 +62,8 @@ class OutboxRestoreTest {
 
     private class FakeTaskCursorDao : TaskCursorDao {
         val store = mutableMapOf<Pair<String, String>, TaskCursorEntity>()
-        override suspend fun get(deviceId: String, taskId: String) = store[deviceId to taskId]
+        suspend fun get(deviceId: String, taskId: String) = store[deviceId to taskId] // 测试断言用，非接口方法
         override suspend fun listForDevice(deviceId: String) = store.values.filter { it.deviceId == deviceId }
-        override suspend fun listForSession(deviceId: String, sessionId: String) = store.values.filter { it.deviceId == deviceId && it.sessionId == sessionId }
         override suspend fun upsert(cursor: TaskCursorEntity) { store[cursor.deviceId to cursor.taskId] = cursor }
         override suspend fun clearDevice(deviceId: String) { store.entries.removeIf { it.key.first == deviceId } }
         override suspend fun clear() = store.clear()

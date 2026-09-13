@@ -63,18 +63,16 @@ class SettingsSyncSerializationTest {
     }
 
     @Test
-    @Suppress("DEPRECATION")
-    fun `旧版 v2 快照含 imageGenSize 仍可解码（PC v3 起不再下发）`() {
+    fun `imageGenSize 已随 v3 整体下线`() {
+        // 已退出同步白名单：旧 Android PATCH 该字段会被判 field_not_allowed
+        assertFalse("imageGenSize" in SettingsOwnership.SYNCABLE_FIELDS)
+        // 旧 PC 快照携带该字段时由 ignoreUnknownKeys 容错，解码不抛
         val raw = """
             { "schemaVersion": 2, "revision": "legacy", "updatedAt": 1,
               "values": { "activeModel": "m", "imageGenSize": "768x1344" }, "capabilities": [] }
         """.trimIndent()
         val dto = json.decodeFromString(SettingsSnapshotDto.serializer(), raw)
         assertEquals("m", dto.values.activeModel)
-        // 字段保留仅为解码旧快照，默认值不变
-        assertEquals("768x1344", dto.values.imageGenSize)
-        // 已退出同步白名单：不会进入 PATCH 增量
-        assertFalse("imageGenSize" in SettingsOwnership.SYNCABLE_FIELDS)
     }
 
     @Test

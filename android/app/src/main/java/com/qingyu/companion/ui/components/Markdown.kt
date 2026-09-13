@@ -31,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -117,15 +116,13 @@ fun MarkdownText(
             val contrast = if (qy.isDark) Color.White else Color(0xFF2A2620)
             InlineStyles(
                 code = codeStyle,
+                // 行内动作：斜体 + 弱化色，无底色 chip（对齐 PC action-em）
                 action = SpanStyle(
                     fontStyle = FontStyle.Italic,
-                    color = contrast.copy(alpha = 0.8f),
-                    background = contrast.copy(alpha = 0.08f),
+                    color = contrast.copy(alpha = 0.75f),
                 ),
-                dialogue = SpanStyle(
-                    color = qy.warn,
-                    background = contrast.copy(alpha = 0.10f),
-                ),
+                // 行内对话：引号文字色，无底色（对齐 PC dialogue-inline）
+                dialogue = SpanStyle(color = qy.warn),
                 mention = SpanStyle(
                     color = qy.accent,
                     background = qy.accent.copy(alpha = 0.10f),
@@ -133,18 +130,13 @@ fun MarkdownText(
                 ),
             )
         } else {
-            val actionColor = if (qy.isDark) Color(0xFFB9A4E8) else Color(0xFF7A5FA8)
             InlineStyles(
                 code = codeStyle,
                 action = SpanStyle(
                     fontStyle = FontStyle.Italic,
-                    color = actionColor,
-                    background = actionColor.copy(alpha = 0.10f),
+                    color = qy.soft,
                 ),
-                dialogue = SpanStyle(
-                    color = qy.warn,
-                    background = qy.warn.copy(alpha = 0.10f),
-                ),
+                dialogue = SpanStyle(color = qy.warn),
                 mention = SpanStyle(
                     color = qy.accent,
                     background = qy.accentSoft,
@@ -163,44 +155,15 @@ fun MarkdownText(
                 is MdBlock.Paragraph -> {
                     val t = block.text.trim()
                     if (isActionBlock(t)) {
-                        // 整段动作 *动作*：渐变背景 + 渐变色条 + 斜体 + 字号微缩（对齐 PC action-block）
-                        val actionColor = if (qy.isDark) Color(0xFFB9A4E8) else Color(0xFF7A5FA8)
+                        // 整段动作 *动作*：灰色弱化正文（不斜体、无底色，对齐 PC action-block 三色收敛）
                         val inner = t.removePrefix("*").removeSuffix("*")
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(actionColor.copy(alpha = 0.08f), Color.Transparent)
-                                    )
-                                )
-                                .padding(horizontal = 8.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                Modifier
-                                    .width(3.dp)
-                                    .height(18.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(actionColor, qy.accent)
-                                        )
-                                    ),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            val links = remember(inner) { mutableListOf<Pair<IntRange, String>>() }
-                            MdText(
-                                annotated = inlineMarkdown(inner, styles, links = links, mentionNames = mentionNames),
-                                style = scaledStyle.copy(
-                                    fontStyle = FontStyle.Italic,
-                                    fontSize = scaledStyle.fontSize * 0.94f,
-                                ),
-                                links = links,
-                            )
-                        }
+                        val links = remember(inner) { mutableListOf<Pair<IntRange, String>>() }
+                        MdText(
+                            annotated = inlineMarkdown(inner, styles, links = links, mentionNames = mentionNames),
+                            style = scaledStyle.copy(color = qy.soft),
+                            modifier = Modifier.padding(vertical = (2 * spacing).dp),
+                            links = links,
+                        )
                     } else {
                         val links = remember(block.text) { mutableListOf<Pair<IntRange, String>>() }
                         MdText(
@@ -213,54 +176,48 @@ fun MarkdownText(
                 }
 
                 is MdBlock.DialogueParagraph -> {
-                    // 说话人对话块：渐变背景 + 3dp 左色条 + 说话人标签（色标圆点）+ 对话文本（对齐 PC dialogue-block）
+                    // 对白块：左竖线 + 说话人名（色标圆点）+ 正文主色（对齐 PC dialogue-block 引用形态）；
+                    // 匿名块同结构无名字行；非块段为普通文本
                     block.segments.forEachIndexed { idx, seg ->
-                        if (seg.speaker != null) {
+                        if (seg.block) {
                             Row(
                                 Modifier
                                     .fillMaxWidth()
                                     // 连续对话块间距收紧（对齐 PC 相邻 dialogue-block）
-                                    .padding(top = if (idx == 0) 3.dp else 1.dp, bottom = 2.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            listOf(qy.warn.copy(alpha = 0.08f), Color.Transparent)
-                                        )
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.Top,
+                                    .padding(top = if (idx == 0) 3.dp else 1.dp, bottom = 2.dp),
                             ) {
                                 Box(
                                     Modifier
-                                        .width(3.dp)
+                                        .width(2.dp)
                                         .height(IntrinsicSize.Max)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(qy.accent.copy(alpha = 0.6f)),
+                                        .clip(RoundedCornerShape(1.dp))
+                                        .background(qy.accent.copy(alpha = 0.45f)),
                                 )
-                                Spacer(Modifier.width(8.dp))
-                                Column {
-                                    // 说话人标签：accent 色标圆点 + 600 字重小字
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            Modifier
-                                                .size(6.dp)
-                                                .clip(CircleShape)
-                                                .background(qy.accent)
-                                        )
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            seg.speaker,
-                                            style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale).copy(
-                                                color = qy.accent,
-                                                fontWeight = FontWeight.SemiBold,
-                                            ),
-                                        )
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.fillMaxWidth()) {
+                                    if (seg.speaker != null) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(qy.accent)
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                seg.speaker,
+                                                style = MaterialTheme.typography.labelSmall.scaledForChat(fontScale).copy(
+                                                    color = qy.accent,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                ),
+                                            )
+                                        }
+                                        Spacer(Modifier.height(2.dp))
                                     }
-                                    Spacer(Modifier.height(3.dp))
                                     val links = remember(seg.text) { mutableListOf<Pair<IntRange, String>>() }
                                     MdText(
                                         annotated = inlineMarkdown(seg.text, styles, links = links, mentionNames = mentionNames),
-                                        style = scaledStyle.copy(fontWeight = FontWeight.Medium),
+                                        style = scaledStyle,
                                         links = links,
                                     )
                                 }

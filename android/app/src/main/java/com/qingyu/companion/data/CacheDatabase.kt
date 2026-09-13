@@ -21,7 +21,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     //     schema JSON 随仓库保留（app/schemas/，exportSchema=true）
     // v6：新增 task_cursors 表（F-02 task 事件 cursor），经 [MIGRATION_5_6] 显式迁移，
     //     仅 CREATE TABLE，不动 outbox/cached_*
-    version = 6,
+    // v7：cached_messages 新增 generationNotice/generationError/contentRenderMode 三列
+    //     （S6：消费 PC 端结构化收尾状态），经 [MIGRATION_6_7] 显式 ALTER，仅动缓存快照表
+    version = 7,
     // F-05：开启 schema 导出（schemas 目录见 app/build.gradle.kts 的 ksp room.schemaLocation），
     // 每个版本 JSON 随仓库保留，迁移 SQL 必须与导出 schema 逐字段核对
     exportSchema = true,
@@ -105,6 +107,29 @@ abstract class CacheDatabase : RoomDatabase() {
         val MIGRATION_5_6: Migration = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 for (sql in MIGRATION_5_6_STATEMENTS) {
+                    db.execSQL(sql)
+                }
+            }
+        }
+
+        /**
+         * MIGRATION_6_7 的全部 SQL（供 [MIGRATION_6_7] 执行与 OutboxSchemaV7Test 断言）。
+         * 与 app/schemas/com.qingyu.companion.data.CacheDatabase/7.json 的 cached_messages
+         * 列逐字段对应；三列均可空（旧行回填 NULL，旧 PC 缺字段时解码为 null）。
+         */
+        val MIGRATION_6_7_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE cached_messages ADD COLUMN generationNotice TEXT",
+            "ALTER TABLE cached_messages ADD COLUMN generationError TEXT",
+            "ALTER TABLE cached_messages ADD COLUMN contentRenderMode TEXT",
+        )
+
+        /**
+         * v6→v7：仅对 cached_messages 做 ALTER 扩列（缓存快照，可安全回填 NULL）；
+         * outbox_messages 与 task_cursors 一律不动，保证发件箱与任务游标存活。
+         */
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                for (sql in MIGRATION_6_7_STATEMENTS) {
                     db.execSQL(sql)
                 }
             }

@@ -835,10 +835,6 @@ class OnlineChatRepository(
 
     // ---------- 群聊操作 ----------
 
-    override suspend fun createGroupSession(groupId: String): com.qingyu.companion.model.GroupSessionDto = try { api().createGroupSession(groupId) } catch (e: Exception) { throw e.toCompanionError() }
-
-    override suspend fun renameGroupSession(groupId: String, sessionId: String, title: String) = try { api().renameGroupSession(groupId, sessionId, RenameSessionRequest(title)) } catch (e: Exception) { throw e.toCompanionError() }
-
     override suspend fun editGroupMessage(groupId: String, sessionId: String, messageId: String, content: String) = try { api().editGroupMessage(groupId, sessionId, messageId, com.qingyu.companion.model.GroupEditMessageRequest(content)) } catch (e: Exception) { throw e.toCompanionError() }
 
     override suspend fun deleteGroupMessage(groupId: String, sessionId: String, messageId: String) = try { api().deleteGroupMessage(groupId, sessionId, messageId) } catch (e: Exception) { throw e.toCompanionError() }
@@ -957,6 +953,9 @@ class OnlineChatRepository(
         swipeIndex = swipeIndex,
         replyToId = replyToId,
         usage = usage?.let { json.encodeToString(it) },
+        generationNotice = generationNotice,
+        generationError = generationError,
+        contentRenderMode = contentRenderMode,
     )
 
     private fun CachedMessage.toModel() = Message(
@@ -974,6 +973,9 @@ class OnlineChatRepository(
         usage = usage?.let {
             runCatching { json.decodeFromString<MessageUsage>(it) }.getOrNull()
         },
+        generationNotice = generationNotice,
+        generationError = generationError,
+        contentRenderMode = contentRenderMode,
     )
 
     private companion object {

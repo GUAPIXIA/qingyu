@@ -47,10 +47,17 @@ data class Message(
     val narrativeMode: String? = null,
     /** 界面显示身份；旧消息缺失或值未知时由 MessageIdentity 推导。 */
     val speakerKind: String? = null,
-    /** manual/input_continue/assistant_reply/regenerate/message_continue。 */
-    val generationKind: String? = null,
     /** AI 回复后生成的下一步方向；随消息持久化。 */
     val dialogueDirections: List<DialogueDirection>? = null,
+    /** 收尾提示（已在完整句处收束/已自动补全结尾/已停止生成）；与 generationError 互斥。 */
+    val generationNotice: String? = null,
+    /** 生成失败原因（超时/网络中断等）；不进入正文，仅气泡下方提示。 */
+    val generationError: String? = null,
+    /**
+     * 正文渲染模式（PC 阶段5）：blocks = 语义分块渲染（RoleplayBlockList，阶段7 起单聊/群聊已消费），
+     * markdown/缺省 = Markdown 兼容渲染（旧消息安全回退）。
+     */
+    val contentRenderMode: String? = null,
 )
 
 @Serializable

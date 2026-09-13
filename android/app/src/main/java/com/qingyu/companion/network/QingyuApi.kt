@@ -299,20 +299,6 @@ interface QingyuApi {
         @Body body: com.qingyu.companion.model.GroupSendRequest,
     ): com.qingyu.companion.model.GroupSendResponse
 
-    /** 新建群聊会话 */
-    @POST("api/v1/groups/{groupId}/sessions")
-    suspend fun createGroupSession(
-        @Path("groupId") groupId: String,
-    ): com.qingyu.companion.model.GroupSessionDto
-
-    /** 重命名群聊会话 */
-    @PATCH("api/v1/groups/{groupId}/sessions/{sessionId}")
-    suspend fun renameGroupSession(
-        @Path("groupId") groupId: String,
-        @Path("sessionId") sessionId: String,
-        @Body body: RenameSessionRequest,
-    )
-
     /** 编辑群聊消息 */
     @PATCH("api/v1/groups/{groupId}/sessions/{sessionId}/messages/{messageId}")
     suspend fun editGroupMessage(

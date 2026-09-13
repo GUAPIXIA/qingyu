@@ -75,6 +75,8 @@ import com.qingyu.companion.model.MessageIdentity
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.MarkdownText
+import com.qingyu.companion.ui.components.RoleplayBlockList
+import com.qingyu.companion.ui.components.RoleplayBlocks
 import com.qingyu.companion.ui.components.extractThought
 import com.qingyu.companion.ui.components.translatedMessageContent
 import com.qingyu.companion.ui.theme.qyColors
@@ -181,13 +183,48 @@ internal fun GroupMessageRow(
                     }
                 }
                 if (extraction.content.isNotBlank()) {
-                    // 用户/角色消息统一走 Markdown 渲染（用户消息对齐 PC：Markdown + 气泡内配色适配）
-                    MarkdownText(
-                        extraction.content,
-                        style = MaterialTheme.typography.bodyMedium.copy(color = qy.text),
-                        onUserBubble = isUser,
-                        mentionNames = mentionNames,
-                    )
+                    // 阶段7.2（§6.2/§6.3）：blocks 标记的消息按语义分块渲染，@提及高亮保留；
+                    // 旧消息（contentRenderMode 缺省/未知值）安全回退 Markdown 兼容渲染
+                    val semanticBlocks = remember(extraction.content, message.contentRenderMode) {
+                        if (message.contentRenderMode == "blocks") RoleplayBlocks.build(extraction.content) else null
+                    }
+                    if (semanticBlocks != null) {
+                        RoleplayBlockList(
+                            blocks = semanticBlocks,
+                            baseStyle = MaterialTheme.typography.bodyMedium.copy(color = qy.text),
+                            onUserBubble = isUser,
+                            mentionNames = mentionNames,
+                        )
+                    } else {
+                        // 用户/角色消息统一走 Markdown 渲染（用户消息对齐 PC：Markdown + 气泡内配色适配）
+                        MarkdownText(
+                            extraction.content,
+                            style = MaterialTheme.typography.bodyMedium.copy(color = qy.text),
+                            onUserBubble = isUser,
+                            mentionNames = mentionNames,
+                        )
+                    }
+                }
+                // S6：结构化收尾状态（群聊超时/收尾提示；正文保持干净）
+                if (!isUser) {
+                    message.generationError?.let { error ->
+                        Text(
+                            text = stringResource(R.string.chat_generation_error_fmt, error),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = qy.danger,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    if (message.generationError == null) {
+                        message.generationNotice?.let { notice ->
+                            Text(
+                                text = stringResource(R.string.chat_generation_notice_fmt, notice),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = qy.muted.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                    }
                 }
                 if (isTranslating) {
                     Row(

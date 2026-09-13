@@ -118,8 +118,6 @@ class ChatViewModelErrorTest {
         override suspend fun listGroupSessions(groupId: String) = emptyList<com.qingyu.companion.model.GroupSession>()
         override suspend fun listGroupMessages(groupId: String, sessionId: String) = emptyList<com.qingyu.companion.model.GroupMessage>()
         override suspend fun sendGroupMessage(groupId: String, sessionId: String, requestId: String, content: String) = false
-        override suspend fun createGroupSession(groupId: String) = throw NotImplementedError()
-        override suspend fun renameGroupSession(groupId: String, sessionId: String, title: String) {}
         override suspend fun editGroupMessage(groupId: String, sessionId: String, messageId: String, content: String) {}
         override suspend fun deleteGroupMessage(groupId: String, sessionId: String, messageId: String) {}
         override suspend fun groupAiReply(groupId: String, sessionId: String, speakerId: String?) = false
