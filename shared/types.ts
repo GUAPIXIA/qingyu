@@ -1,4 +1,5 @@
 import type { LorebookInsertionV2, LorebookRetrievalMode } from './lorebook/domain/v2'
+import type { ReasoningGateKnob, ReasoningGateLevel } from './reasoningGate'
 
 // ===================== 基础数据模型 =====================
 
@@ -70,6 +71,16 @@ export interface AICompletion {
     completionTokens: number
     reasoningTokens?: number
   }
+  /**
+   * 阶段8（§4.3）：适配器本轮的门控探测结论（400 字段拒绝 / 静默忽略 disable / 是否上报推理用量）。
+   * 主进程据此合并 GateProbe；网络错误与用户取消不得写入任何结论。
+   */
+  gateProbe?: import('./reasoningGate').GateProbeSignal
+  /**
+   * 阶段8（§4.4）：应用层因推理越线主动中止（正文为空）。调用侧据此产出
+   * `reasoning_gate_exceeded` 终局并执行至多一次降档恢复，不再依赖中文错误文本。
+   */
+  earlyAbort?: boolean
 }
 
 /**
@@ -88,6 +99,11 @@ export type GenerationTerminationCause =
   | 'idle_timeout'
   | 'user_cancel'
   | 'protocol_error'
+  /**
+   * 阶段8（§4.4）：推理越过门控观测线且正文为空，应用层主动提前中止。
+   * 归入 length 类截断（零正文损失），由调用侧执行一次降档恢复。
+   */
+  | 'reasoning_gate_exceeded'
   | 'unknown'
 
 /** 统一终止协调入口的输入（阶段7 方案 §4.2）：一次终止事件的完整事实 */
@@ -830,6 +846,12 @@ export interface Settings {
    * 新消息不标记语义分块）。回退不删除任何新设置数据与会话数据。
    */
   generationPipeline?: 'unified' | 'legacy'
+  /**
+   * 阶段8（§4.7）临时 kill switch：推理门控。默认关闭（缺省 = false）。
+   * 关闭时 `resolveReasoningGate` 完整退回档案/P90 余量路径，探测记录照常保留；
+   * 灰度达标后由 W10 提供 UI 并按阶段 8 §八 决定默认值。
+   */
+  reasoningGateEnabled?: boolean
 }
 
 /** 用户人设注入配置（ST 的 User Persona description placement） */
@@ -1067,6 +1089,12 @@ export interface ChatParams {
   stream: boolean
   /** 辅助型请求可关闭推理；不支持该能力的适配器忽略此字段。 */
   reasoningMode?: 'default' | 'disabled'
+  /**
+   * 阶段8（§4.3）：本轮推理门控指令。由主进程在发请求前用
+   * `resolveReasoningGate(model, probe, taskKind)` 解析（含探测跳过与预算承诺值）；
+   * 缺省时适配器保持现行行为（kill switch 关闭路径，W11 清理旧分支）。
+   */
+  reasoningGate?: import('./reasoningGate').ReasoningGateDirective
   /** 阶段0观测元数据：随请求透传给主进程观测层记录，不影响请求行为；缺省视为辅助调用。 */
   observability?: {
     source: 'single' | 'group' | 'bridge' | 'aux'
@@ -1081,6 +1109,15 @@ export interface ChatParams {
     sceneFactor?: number
     characterId?: string
     sessionId?: string
+    /** 阶段8（§4.7）：本轮门控档位与 knob */
+    gateLevel?: ReasoningGateLevel
+    gateKnob?: ReasoningGateKnob | 'unknown'
+    /** 本轮请求的 knob 是否被接受（400 字段拒绝 → false；网络错误不写） */
+    knobAcceptedThisRequest?: boolean
+    /** 是否由提前中止终止（推理越线且正文为空） */
+    earlyAbort?: boolean
+    /** 本次请求是否为门控降档重试（归属原生成轮） */
+    downgradeRetry?: boolean
   }
   /** 可选的 instruct 模板（本次调用的消息包装格式） */
   instructTemplate?: InstructTemplateConfig

@@ -19,6 +19,8 @@ const mockApi: Partial<ExposedAPI> = {
     countMessagesTokens: vi.fn().mockResolvedValue([]),
     compressLorebook: vi.fn().mockResolvedValue(''),
     localizeLorebookKeywords: vi.fn().mockResolvedValue({ suggestions: [] }),
+    // W1：用量档案回读默认无样本（预算退回静态档案）；需要时由测试覆盖
+    getGenerationUsageProfile: vi.fn().mockResolvedValue(null),
   } as any,
   character: {
     list: vi.fn().mockResolvedValue([]),

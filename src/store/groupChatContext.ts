@@ -29,6 +29,8 @@ import { buildGroupNarrativeModePrompt, resolveNarrativeMode } from '../../share
 import { buildGroupRosterIntro, buildGroupTurnRulesPrompt } from '../../shared/groupChatPrompt'
 import { buildThoughtContractBody } from '../../shared/thoughtContract'
 import { resolveGroupRequestPlan } from './groupRequestPlan'
+import { withReasoningSamples } from './usageProfileCache'
+import { withReasoningGate } from './reasoningGateState'
 
 /** 群聊上下文组装结果：消息 + 本轮世界书触发键 / 超限压缩请求（调用方写回 store） */
 export interface GroupContextBuildResult {
@@ -67,6 +69,9 @@ export function buildGroupChatContext(
     messages: state.messages,
     preset,
     pipelineLegacy: (settings.generationPipeline ?? 'unified') === 'legacy',
+    // W1（主计划 §7.3）：同步读取发送前预取的近期推理样本（无样本时退回档案默认余量）
+    ...withReasoningSamples(profile, model),
+    ...withReasoningGate(profile, model),
   })
   if (!group) {
     return {

@@ -1,4 +1,6 @@
 import type { AICompletion, ChatParams } from '../../../shared/types'
+import type { GateProbeSignal, ReasoningGateKnob } from '../../../shared/reasoningGate'
+import { MIN_USABLE_BODY_TOKENS } from '../../../shared/modelOutputProfile'
 export { createVendorThinkingStreamFilter, stripVendorThinking } from '../../../shared/thoughtMarkup'
 
 /** 默认请求超时时间（毫秒）- 5 分钟 */
@@ -59,6 +61,178 @@ export function isReasoningBudgetExhausted(input: {
   if (finishReason !== 'length' || maxTokens <= 0) return false
   if (completionTokens === undefined || reasoningTokens === undefined || completionTokens <= 0) return false
   return completionTokens >= maxTokens * 0.95 && reasoningTokens >= completionTokens * 0.95
+}
+
+// ===================== 阶段8：门控字段级降级表 =====================
+
+/** 请求体里实际下发的门控字段（降级表条目） */
+export interface GateFieldProbe {
+  /** 字段路径（支持嵌套，如 ['generationConfig', 'thinkingConfig']） */
+  path: string[]
+  knob: ReasoningGateKnob
+  /**
+   * 400 错误文本是否明确指向该字段被拒。
+   * 只做字段名/参数名的明确匹配，避免把其他 400（鉴权、模型不存在）误判为参数不支持。
+   */
+  isRejected: (errText: string) => boolean
+}
+
+/**
+ * 字段级降级判定（阶段8 §4.3）：只有 400 且错误文本明确指向某个已下发字段时才返回它。
+ * 网络错误、5xx、429、用户取消一律返回 null —— 不污染 GateProbe。
+ */
+export function matchRejectedGateField(input: {
+  status: number
+  errText: string
+  probes: readonly GateFieldProbe[]
+}): GateFieldProbe | null {
+  if (input.status !== 400) return null
+  for (const probe of input.probes) {
+    if (probe.isRejected(input.errText)) return probe
+  }
+  return null
+}
+
+/** 按路径删除请求体字段（降级重发用；路径不存在时安全返回） */
+export function deleteGateField(body: Record<string, unknown>, path: readonly string[]): void {
+  if (path.length === 0) return
+  let cursor: Record<string, unknown> = body
+  for (let i = 0; i < path.length - 1; i += 1) {
+    const next = cursor[path[i]]
+    if (!next || typeof next !== 'object') return
+    cursor = next as Record<string, unknown>
+  }
+  delete cursor[path[path.length - 1]]
+}
+
+/**
+ * 把探测结论挂到抛出的错误上：失败终局（空正文 / 重发仍失败）同样要保留
+ * "明确 400 拒绝 / 静默忽略 disable" 事实，供主进程合并 GateProbe。
+ */
+export function attachGateProbe<T extends Error>(err: T, signal?: GateProbeSignal): T {
+  if (signal) (err as T & { gateProbe?: GateProbeSignal }).gateProbe = signal
+  return err
+}
+
+// ===================== 阶段8：推理越线提前中止（§4.4） =====================
+
+/**
+ * 推理 token 估算（只用于"是否越线"，不参与预算计算）：
+ * CJK（含假名/谚文）按 1 字符/token，其余按约 3 字符/token。
+ * 早期实现统一按 /3 估算，对中文推理低估约 3 倍，会让提前中止在该触发时漏触发
+ * （2026-09-13 聚合端实机复现：中文推理吃满预算、正文为空但未中止）。
+ */
+const CJK_PATTERN = /[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]/g
+
+export function estimateReasoningTokens(reasoningText: string): number {
+  if (!reasoningText) return 0
+  const cjk = (reasoningText.match(CJK_PATTERN) ?? []).length
+  const rest = reasoningText.length - cjk
+  return cjk + Math.ceil(rest / 3)
+}
+
+export interface ReasoningRunawayGuard {
+  /** 累积被过滤掉的供应商推理文本（按 CJK 感知口径折算 token） */
+  addReasoning(text: string): void
+  /** 累积正文可见字符数（正文一旦出现即永久解除中止资格） */
+  addBody(chars: number): void
+  /** 标记已完成（收到 finishReason 后不再中止） */
+  markFinished(): void
+  /** 是否应提前中止：正文为空、未结束、推理已越过观测线 */
+  shouldAbort(): boolean
+  /** 本轮是否真的中止过（供适配器返回结构化终局） */
+  readonly aborted: boolean
+  markAborted(): void
+}
+
+/**
+ * 观测线（**2026-09-13 G1 取证后修订**）= `requestMaxTokens − MIN_USABLE_BODY_TOKENS`：
+ * 只有当"继续下去连正文绝对下限都放不下"时才提前中止——即**可证明的徒劳点**。
+ *
+ * 为什么不再用 `max(gateTokens, requestMaxTokens × 0.85)`（阶段8 §4.4 原式）：
+ * - `× 0.85` 是无依据的魔数，且在 G1 实机取证（n=82，CommandCode + deepseek-v4-pro）中
+ *   被证明会误杀：3/3 次中止全部以空正文结束，而配对的对照臂在同一用例上更快地产出了正文；
+ * - `gateTokens` 是**预算承诺**而不是止损线：接入 P90 余量后它可能大于本式，取 max 会让守卫
+ *   在"已不可能留下正文"之后才触发，等于失效；
+ * - 正文绝对下限是既有常量 `MIN_USABLE_BODY_TOKENS`（256），语义与 `resolveRequestBudget`
+ *   的 `minimumViableOutputTokens` 同源，可解释、可单测。
+ *
+ * 触发时机的相对变化：预算 > 1707 时新式**晚于**旧式（更不容易误杀），预算更小时略早于旧式
+ * （但仍是"不足 256 正文空间"的正确止损点）。阈值以**估算推理 token**（CJK 感知，偏保守）计量，
+ * 而中文推理的估算普遍高于供应商上报值，因此实际触发比字面更晚。
+ * `enabled=false`（门控可信或不是 off/none 场景）时守卫永不触发。
+ */
+export function createReasoningRunawayGuard(input: {
+  enabled: boolean
+  requestMaxTokens: number
+}): ReasoningRunawayGuard {
+  const thresholdTokens = input.requestMaxTokens > 0
+    ? Math.max(1, Math.floor(input.requestMaxTokens) - MIN_USABLE_BODY_TOKENS)
+    : 0
+  let reasoningTokens = 0
+  let bodyChars = 0
+  let finished = false
+  let aborted = false
+  return {
+    addReasoning(text) {
+      if (text) reasoningTokens += estimateReasoningTokens(text)
+    },
+    addBody(chars) {
+      if (chars > 0) bodyChars += chars
+    },
+    markFinished() {
+      finished = true
+    },
+    shouldAbort() {
+      if (!input.enabled || aborted || finished || bodyChars > 0) return false
+      if (thresholdTokens <= 0) return false
+      return reasoningTokens >= thresholdTokens
+    },
+    get aborted() {
+      return aborted
+    },
+    markAborted() {
+      aborted = true
+    },
+  }
+}
+
+/**
+ * 把内部中止（推理越线）与用户 signal 合并：返回给 fetch 使用的 signal
+ * 与判因函数；用户取消时 `abortedByUs()` 为 false，保持原有错误语义。
+ */
+export function withInternalAbort(signal?: AbortSignal): {
+  signal: AbortSignal
+  abort: () => void
+  abortedByUs: () => boolean
+  cleanup: () => void
+} {
+  const controller = new AbortController()
+  let internal = false
+  // 适配器可能被不带 signal 的调用方使用（评测脚本/工具循环）；缺省只保留内部中止能力
+  if (!signal) {
+    return {
+      signal: controller.signal,
+      abort: () => {
+        internal = true
+        controller.abort(new Error('reasoning_gate_exceeded'))
+      },
+      abortedByUs: () => internal,
+      cleanup: () => { /* 无外部监听需要解除 */ },
+    }
+  }
+  if (signal.aborted) controller.abort(signal.reason)
+  const onUserAbort = () => controller.abort(signal.reason)
+  signal.addEventListener('abort', onUserAbort, { once: true })
+  return {
+    signal: controller.signal,
+    abort: () => {
+      internal = true
+      controller.abort(new Error('reasoning_gate_exceeded'))
+    },
+    abortedByUs: () => internal,
+    cleanup: () => signal.removeEventListener('abort', onUserAbort),
+  }
 }
 
 // ===================== 工具函数 =====================

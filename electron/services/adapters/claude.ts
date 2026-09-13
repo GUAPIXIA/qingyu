@@ -1,9 +1,18 @@
-import type { AIAdapter } from './types'
+import type { AIAdapter, GateFieldProbe } from './types'
 
 /** Claude API 版本号，更新时只需改此处 */
 const ANTHROPIC_API_VERSION = '2023-06-01'
-import { createVendorThinkingStreamFilter, stripVendorThinking } from './types'
+import {
+  attachGateProbe,
+  createVendorThinkingStreamFilter,
+  deleteGateField,
+  isReasoningBudgetExhausted,
+  matchRejectedGateField,
+  REASONING_BUDGET_EXHAUSTED_MESSAGE,
+  stripVendorThinking,
+} from './types'
 import { normalizeFinishReason } from '../../../shared/generationObservation'
+import { clampGateBudgetForBody, type GateProbeSignal } from '../../../shared/reasoningGate'
 import { sanitizeApiKey } from '../../utils/pathGuard'
 import { toClaudeContent, imageErrorHint } from './vision'
 
@@ -56,23 +65,42 @@ export const claudeAdapter: AIAdapter = {
 
     // Claude 3.7 / Claude 4 扩展思考支持
     const lowerModel = model.toLowerCase()
-    if (params.reasoningMode !== 'disabled' &&
-        (lowerModel.includes('claude-3-7') || lowerModel.includes('claude-4') ||
-         lowerModel.includes('claude-3.7')) && !lowerModel.includes('haiku')) {
-      // H-2 修复：Anthropic 要求 max_tokens > budget_tokens。
-      // 默认 maxTokens=1024 时预算会被钳到 0（等效禁用），避免 400；
-      // 预算 = min(1/3 max_tokens, max_tokens-1024)，最低 1024，且 max_tokens 必须 >1024 才启用。
-      const maxTok = maxTokens || 4096
+    const supportsThinking = (lowerModel.includes('claude-3-7') || lowerModel.includes('claude-4') ||
+      lowerModel.includes('claude-3.7')) && !lowerModel.includes('haiku')
+    const maxTok = maxTokens || 4096
+
+    // 阶段8（§4.3）：统一门控指令决定是否启用扩展思考与预算值。
+    // 预算型 knob 不得吞掉正文最小空间（clampGateBudgetForBody）；
+    // off 档不下发 thinking（Claude 无显式 disable 字段，省略即关闭）。
+    const gate = params.reasoningGate
+    let gateSignal: GateProbeSignal | undefined = gate ? { knob: gate.knob } : undefined
+    const gateProbes: GateFieldProbe[] = []
+    if (gate) {
+      if (gate.knob === 'thinking-budget' && supportsThinking && gate.level !== 'off') {
+        const budget = clampGateBudgetForBody(gate.tokens ?? 0, maxTok)
+        if (budget > 0) {
+          body.thinking = { type: 'enabled', budget_tokens: budget }
+          // 启用思考时 temperature 必须为 1；top_p 会与 temperature=1 冲突触发 400，一并移除
+          body.temperature = 1
+          delete body.top_p
+          gateProbes.push({
+            path: ['thinking'],
+            knob: 'thinking-budget',
+            isRejected: (text) => /thinking|budget_tokens/i.test(text),
+          })
+        }
+      }
+    } else if (params.reasoningMode !== 'disabled' && supportsThinking) {
+      // 旧分支（kill switch 关闭）：H-2 修复的固定比例预算，W11 随门控收编删除
       if (maxTok > 1024) {
         const thinkingBudget = Math.max(1024, Math.floor(maxTok / 3))
         body.thinking = { type: 'enabled', budget_tokens: Math.min(thinkingBudget, maxTok - 1024) }
-        // 启用思考时 temperature 必须为 1；top_p 会与 temperature=1 冲突触发 400，一并移除
         body.temperature = 1
         delete body.top_p
       }
     }
 
-    const response = await fetch(url, {
+    const sendRequest = () => fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,9 +113,22 @@ export const claudeAdapter: AIAdapter = {
       signal,
     })
 
+    let response = await sendRequest()
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`Claude API 错误 ${response.status}: ${sanitizeApiKey(errText)}${imageErrorHint(params.messages)}`)
+      // 阶段8（§4.3）：400 明确指向 thinking/budget_tokens → 去参重发一次并记录拒绝
+      const rejected = matchRejectedGateField({ status: response.status, errText, probes: gateProbes })
+      if (rejected) {
+        deleteGateField(body, rejected.path)
+        if (gateSignal) gateSignal.knobAccepted = false
+        response = await sendRequest()
+        if (!response.ok) {
+          const retryText = await response.text()
+          throw new Error(`Claude API 错误 ${response.status}: ${sanitizeApiKey(retryText)}${imageErrorHint(params.messages)}`)
+        }
+      } else {
+        throw new Error(`Claude API 错误 ${response.status}: ${sanitizeApiKey(errText)}${imageErrorHint(params.messages)}`)
+      }
     }
 
     if (!stream) {
@@ -128,9 +169,10 @@ export const claudeAdapter: AIAdapter = {
           text: content + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']',
           finishReason: 'tool_calls',
           usage,
+          ...(gateSignal ? { gateProbe: gateSignal } : {}),
         }
       }
-      return { text: content, finishReason, usage }
+      return { text: content, finishReason, usage, ...(gateSignal ? { gateProbe: gateSignal } : {}) }
     }
 
     const reader = response.body?.getReader()
@@ -167,8 +209,9 @@ export const claudeAdapter: AIAdapter = {
           }
         } else if (parsed.type === 'content_block_delta') {
           // thinking_delta 是供应商内部推理，不能进入角色消息。
+          // 阶段8（§4.6）：off 档仍出现 thinking_delta → 记录该端点无有效关闭手段。
           if (parsed.delta?.type === 'thinking_delta') {
-            // intentionally ignored
+            if (gate?.level === 'off' && gateSignal) gateSignal.disableIgnored = true
           } else if (parsed.delta?.type === 'text_delta' && parsed.delta.text) {
             const visible = visibleTextFilter.push(parsed.delta.text)
             if (visible) {
@@ -247,9 +290,15 @@ export const claudeAdapter: AIAdapter = {
         text: stripVendorThinking(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']',
         finishReason: 'tool_calls',
         usage,
+        ...(gateSignal ? { gateProbe: gateSignal } : {}),
       }
     }
-    return { text: stripVendorThinking(fullText), finishReason, usage }
+    return {
+      text: stripVendorThinking(fullText),
+      finishReason,
+      usage,
+      ...(gateSignal ? { gateProbe: gateSignal } : {}),
+    }
   },
 
   async listModels(baseUrl, apiKey) {

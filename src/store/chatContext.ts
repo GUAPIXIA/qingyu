@@ -1,4 +1,5 @@
 import type { Character, NarrativeMode, Preset, ResponsePolicy } from '../../shared/types'
+import type { ContextBuildData } from '../../shared/contextTypes'
 import type { RequestBudget } from '../../shared/modelOutputProfile'
 import { buildContextMessagesFromData, type BuildResult } from '../context/contextBuilder'
 import { syncBuildData } from '../context/rendererContextProvider'
@@ -49,9 +50,11 @@ export function buildChatContext(
     trackUsage?: boolean
     generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
     lorebookDiagnosticsMode?: 'live' | 'preview'
+    /** 阶段8（§4.2）：本轮门控（调用方按开关/熔断解析后传入；缺省 = 不介入） */
+    reasoningGate?: ContextBuildData['reasoningGate']
   },
 ): BuiltChatContext {
-  const data = syncBuildData(character, preset)
+  const data = syncBuildData(character, preset, opts?.reasoningGate)
   const result = buildContextMessagesFromData(data, {
     ...opts,
     lorebookDiagnosticsMode: opts?.trackUsage === false ? opts.lorebookDiagnosticsMode : 'live',

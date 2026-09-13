@@ -46,7 +46,44 @@ export interface AIDonePayload {
   requestId: string
   finishReason: import('./types').AIFinishReason
   usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number }
+  /**
+   * 阶段8（§4.4/§4.7）：应用层终止原因。主进程在提前中止时下发
+   * `reasoning_gate_exceeded`，渲染层据此执行降档恢复，不解析错误文本。
+   */
+  terminationCause?: import('./types').GenerationTerminationCause
+  /** 是否由推理提前中止终止（正文为空） */
+  earlyAbort?: boolean
 }
+
+/**
+ * 阶段8/G1（2026-09-13 取证后收口）：`ai:error` 的结构化失败分类。
+ *
+ * 此前渲染层只能拿到错误文本并一律按 `transport_error` 收口，导致"模型零输出"与真正的传输
+ * 失败无法区分，既不能做一次恢复，也会把提示文案归类错。`errorKind` 为主进程
+ * `classifyFailureOutcome` 的分类结果；**可选字段**，旧端缺失时渲染层保持原行为。
+ */
+export interface AIErrorPayload {
+  requestId: string
+  error: string
+  errorKind?: import('./generationObservation').ObservationErrorKind
+}
+
+/**
+ * W1（主计划 §7.3）：只读用量档案查询输入。
+ * 端点用原始 baseUrl（主进程标准化 + 短哈希后分桶），renderer 不需要先算指纹。
+ */
+export interface GenerationUsageProfileQuery {
+  provider: string
+  baseUrl: string
+  model: string
+  /** 缺省 = 主对话桶（main） */
+  taskType?: string
+  /** 缺省 = 无门控分桶（'(default)'）；W4 起按实际档位隔离 */
+  gate?: string
+}
+
+/** 只读聚合结果：只有数值与计数，不含正文、完整 URL 或磁盘路径 */
+export type GenerationUsageProfile = import('./usageProfile').UsageProfile
 
 export interface AIAPI {
   chat(params: ChatParams): Promise<void>
@@ -54,10 +91,15 @@ export interface AIAPI {
   cancelChat(requestId: string, reason?: 'user' | 'timeout' | 'stop_string'): Promise<void>
   testConnection(config: APIConfig): Promise<{ success: boolean; models?: string[]; error?: string }>
   listModels(provider: ProviderType, baseUrl: string, apiKey: string): Promise<{ success: boolean; models?: string[]; error?: string }>
+  /**
+   * W1：回读该 (provider + 端点 + model + task + gate) 分桶的近期推理样本聚合。
+   * 无样本或读取失败返回 null —— 调用方回退静态档案，生成不受影响。
+   */
+  getGenerationUsageProfile(query: GenerationUsageProfileQuery): Promise<GenerationUsageProfile | null>
   onChunk(callback: (data: { requestId: string; text: string }) => void): () => void
   /** 结构化完成回调（阶段3契约）：携带 finishReason 与 usage，所有完成监听统一走此轨道 */
   onComplete(callback: (payload: AIDonePayload) => void): () => void
-  onError(callback: (data: { requestId: string; error: string }) => void): () => void
+  onError(callback: (data: AIErrorPayload) => void): () => void
   /** Token 用量回调（每次 AI 调用完成时触发） */
   onUsage(callback: (data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => void): () => void
   countTokens(text: string, model: string): Promise<number>

@@ -887,6 +887,52 @@ describe('registerAIIPC 连接通道', () => {
     expect((result as { error: string }).error).toContain('ECONNREFUSED')
   })
 
+  // 阶段8/G1 收口：ai:error 必须携带结构化失败分类，否则渲染层无法区分"模型零输出"与传输失败
+  it('ai:chat 空输出失败 → ai:error 携带 errorKind=empty_output', async () => {
+    const registered = registerIpc()
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ index: 0, message: { role: 'assistant', content: '' }, finish_reason: 'stop' }],
+      usage: {
+        prompt_tokens: 1200,
+        completion_tokens: 39,
+        completion_tokens_details: { reasoning_tokens: 39 },
+      },
+    }))
+    const send = vi.fn()
+    const handler = registered.get('ai:chat')!
+    await handler(
+      { sender: { send, isDestroyed: () => false } },
+      makeParams({ requestId: 'empty-1', stream: false, reasoningMode: 'disabled', maxTokens: 4096 }),
+    )
+
+    const errorEvent = send.mock.calls.find((call) => call[0] === 'ai:error')
+    expect(errorEvent).toBeTruthy()
+    expect(errorEvent![1]).toMatchObject({ requestId: 'empty-1', errorKind: 'empty_output' })
+    expect(String(errorEvent![1].error)).toContain('未返回任何内容')
+  })
+
+  it('ai:chat 推理吃满预算失败 → ai:error 携带 errorKind=reasoning_budget_exhausted', async () => {
+    const registered = registerIpc()
+    fetchMock.mockResolvedValue(jsonResponse({
+      choices: [{ index: 0, message: { role: 'assistant', content: '' }, finish_reason: 'length' }],
+      usage: {
+        prompt_tokens: 1200,
+        completion_tokens: 4096,
+        completion_tokens_details: { reasoning_tokens: 4096 },
+      },
+    }))
+    const send = vi.fn()
+    const handler = registered.get('ai:chat')!
+    await handler(
+      { sender: { send, isDestroyed: () => false } },
+      makeParams({ requestId: 'exhausted-1', stream: false, reasoningMode: 'disabled', maxTokens: 4096 }),
+    )
+
+    const errorEvent = send.mock.calls.find((call) => call[0] === 'ai:error')
+    expect(errorEvent).toBeTruthy()
+    expect(errorEvent![1]).toMatchObject({ requestId: 'exhausted-1', errorKind: 'reasoning_budget_exhausted' })
+  })
+
   it('ai:localizeLorebookKeywords 使用聊天模型返回已校验的中文别名', async () => {
     const registered = registerIpc()
     fetchMock.mockResolvedValue(jsonResponse({

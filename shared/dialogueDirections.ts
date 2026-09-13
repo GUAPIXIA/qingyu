@@ -17,14 +17,6 @@ export const DIALOGUE_DIRECTION_LIMITS = {
   contentMaxChars: 60,
 } as const
 
-/**
- * 方向生成请求的输出预算：3 组 label+content（最多 3×(14+60) 个可见字符）
- * 加 JSON 结构与标签包裹，按中文最坏 2 token/字并留出余量封顶。
- * 部分聚合端会忽略 `thinking: disabled`，推理内容与正文共享 max_tokens；实测 640
- * 已出现推理占用 340 token，且同端点的推理量会大幅波动。提高到 1536 作为失控兜底，
- * 避免结构尾部被切断后触发一次必然昂贵的重试。上限提高不会预先增加正常调用成本。
- */
-export const DIALOGUE_DIRECTION_MAX_TOKENS = 1536
 
 /** 方向生成请求的采样温度。 */
 export const DIALOGUE_DIRECTION_TEMPERATURE = 0.6

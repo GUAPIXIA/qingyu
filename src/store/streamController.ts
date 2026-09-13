@@ -12,6 +12,18 @@ import { formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/mode
 import { BACKGROUND_GENERATION_PROFILES, hasCompleteSummaryTail } from '../../shared/backgroundGeneration'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { useSettingsStore } from './useSettingsStore'
+import { cachedReasoningSamplesFor, prefetchUsageProfile } from './usageProfileCache'
+import { resolveReasoningGate, type ReasoningGateLevel } from '../../shared/reasoningGate'
+import {
+  claimGateBreakerNotice,
+  isGateBreakerTripped,
+  noteGateRecoveryFailure,
+  noteGateRecoverySuccess,
+  resolveChatGateLevel,
+} from './reasoningGateState'
+import { nextRecoveryLevel, resolveEmptyOutputRecovery, resolveGateRecoveryBudget } from './gateRecovery'
+import type { AIErrorPayload } from '../../shared/ipc-api'
+import type { BuiltChatContext } from './chatContext'
 import { estimateTokens } from '../utils/tokenCounter'
 import { countChars } from '../utils/charCounter'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
@@ -579,7 +591,17 @@ export async function attemptTailRepair(input: {
   const requestId = `repair-${nanoid()}`
   const charName = input.character.translatedContent?.name || input.character.name
   // 补尾预算：正文 ~200 字 + 模型推理余量（方案 §5.3：160–256 Token 正文 + 推理余量）
-  const budget = resolveRequestBudget({ model: input.model, hardMaxChars: 200 })
+  // W1（主计划 §7.3）：补尾与主生成共用同一分桶的近期样本（主生成已预取，命中缓存）
+  const repairSamples = cachedReasoningSamplesFor({
+    provider: profile.provider,
+    baseUrl: profile.baseUrl,
+    model: input.model,
+  })
+  const budget = resolveRequestBudget({
+    model: input.model,
+    hardMaxChars: 200,
+    ...(repairSamples ? { recentReasoningTokens: repairSamples } : {}),
+  })
   let repairText = ''
   let settled = false
   let userAborted = false
@@ -691,6 +713,15 @@ export async function streamAIResponse(
     narrativeMode?: NarrativeMode  // 续写时继承目标消息的叙事身份
     generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
     inputText?: string   // 用户输入文本（用于字符统计），regenerate/continue 时为空
+    /**
+     * 阶段8（§4.5）：降档恢复专用。提供时跳过预取与上下文重建（复用同一快照），
+     * 只按新档位重算预算字段；`gateRecoveryUsed` 保证同一逻辑请求最多恢复一次。
+     */
+    prebuilt?: BuiltChatContext
+    gateLevel?: ReasoningGateLevel
+    gateRecoveryUsed?: boolean
+    /** 本次物理请求是否属于门控降档重试（写入观测，归属原生成轮） */
+    markDowngradeRetry?: boolean
     onComplete: (fullContent: string, meta: GenerationOutcomeMeta) => Promise<void>
     /**
      * 阶段7：异常统一派发。terminal 为经过统一收尾管线的可保存部分正文
@@ -729,10 +760,30 @@ export async function streamAIResponse(
 
   // 阶段一「对话输出弹性约束」：上下文组装与请求预算在同一次构建中计算，
   // requestMaxTokens 同时作为上下文输出预留与请求 max_tokens，禁止二次推导。
-  const builtContext = get().buildContext(character, preset, {
+  // 阶段8（§4.2/§4.5）：主对话档位（kill switch 默认关闭；熔断后从更低档起步）；
+  // 传入预算后推理项取 gateTokens，正文空间获得可预期的保证。
+  const budgetModel = settings.activeModel || profile.model
+  const chatGateLevel = opts.gateLevel
+    ?? resolveChatGateLevel({ settings, provider: profile.provider, baseUrl: profile.baseUrl, model: budgetModel })
+  const chatGate = chatGateLevel
+    ? resolveReasoningGate({ model: budgetModel, requestedLevel: chatGateLevel, enabled: true })
+    : undefined
+  const gateScope = { provider: profile.provider, baseUrl: profile.baseUrl, model: budgetModel }
+  // W1（主计划 §7.3）：构建前异步预取该端点/模型的近期推理样本；失败静默，
+  // 预算退回档案默认余量（不阻塞、不改变请求可发送性）。
+  // 降档恢复（prebuilt 在场）复用同一上下文快照，不再预取与重建。
+  if (!opts.prebuilt) {
+    await prefetchUsageProfile({
+      provider: profile.provider,
+      baseUrl: profile.baseUrl,
+      model: budgetModel,
+    })
+  }
+  const builtContext: BuiltChatContext = opts.prebuilt ?? get().buildContext(character, preset, {
     continuation: opts.continuation,
     narrativeMode: opts.narrativeMode,
     generationType: opts.generationType ?? (opts.continuation ? 'continue' : 'normal'),
+    ...(chatGate ? { reasoningGate: chatGate } : {}),
   })
   const contextMessages = builtContext.messages
 
@@ -817,6 +868,57 @@ export async function streamAIResponse(
   }
 
   /**
+   * 阶段8（§4.5）+ G1 取证后收口：复用同一上下文快照重发一次。
+   * - `level` 提供时为该档位（降档或同档零输出重试），undefined = 沿用原档（未使用门控）；
+   * - 只重算档位与预算字段，历史/记忆/世界书不重新裁剪（§4.2 同一份候选快照）；
+   * - 由调用侧置 `gateRecoveryUsed`，保证同一逻辑请求最多重发一次。
+   */
+  const runRecoveryRetry = async (decision: {
+    level?: ReasoningGateLevel
+    downgrade: boolean
+  }): Promise<void> => {
+    const samples = cachedReasoningSamplesFor({
+      provider: profile.provider,
+      baseUrl: profile.baseUrl,
+      model: budgetModel,
+    })
+    const nextBudget = decision.level
+      ? resolveGateRecoveryBudget({
+          model: budgetModel,
+          hardMaxChars: builtContext.responsePolicy.hardMaxChars,
+          userHardCap: preset?.maxTokens,
+          ...(samples ? { recentReasoningTokens: samples } : {}),
+          level: decision.level,
+        })
+      : builtContext.requestBudget
+    await streamAIResponse(set, get, {
+      ...opts,
+      prebuilt: {
+        ...builtContext,
+        requestBudget: nextBudget,
+        requestMaxTokens: nextBudget.requestMaxTokens,
+      },
+      gateLevel: decision.level,
+      gateRecoveryUsed: true,
+      // 同档零输出重试不是降档：不写 downgradeRetry，避免观测把它记成降档
+      ...(decision.downgrade ? { markDowngradeRetry: true } : {}),
+      onComplete: async (content, meta) => {
+        noteGateRecoverySuccess(gateScope)
+        return onComplete(content, meta)
+      },
+      onError: (msg, terminal) => {
+        // 熔断只统计"降档仍失败"；同档零输出重试失败不改变后续起步档
+        if (decision.downgrade) noteGateRecoveryFailure(gateScope)
+        const text = decision.downgrade && isGateBreakerTripped(gateScope) && claimGateBreakerNotice(gateScope)
+          ? `${msg}
+该模型已连续降档失败，后续请求将从更低思考强度开始。`
+          : msg
+        onError?.(text, terminal)
+      },
+    })
+  }
+
+  /**
    * 阶段7：空闲超时统一处理——初始计时与 chunk 续期计时都只走本函数。
    * 规则：先读取完整 accumulated 文本，再清理监听器（cleanupActiveStream 同步合并未执行的 flush）。
    */
@@ -830,8 +932,7 @@ export async function streamAIResponse(
     void finalizeExceptionTerminal('idle_timeout', partial, '请求超时')
   }
 
-  const onChunk = (data: { requestId: string; text: string }) => {
-    if (data.requestId !== requestId) return
+  const onChunk = (data: { requestId: string; text: string }) => {    if (data.requestId !== requestId) return
     if (!activeStream || activeStream.requestId !== requestId) return
     // 迟到 chunk：已有终止分支抢占（finalizing/persisted/cancelled/failed）后忽略
     if (!activeStream.latch.acceptsStreamEvent()) return
@@ -869,17 +970,34 @@ export async function streamAIResponse(
     const stopStringsHit = activeStream?.stopStringsHit === true
     // 阶段7：供应商 finishReason 与应用层 terminationCause 分离映射；
     // 停止字符串命中后主进程发的 cancelled 按正常 stop 收束，不是用户停止。
+    // 阶段8（§4.4/§4.7）：主进程的提前中止以结构化元数据下发，不再靠错误文本推断
     const cause: GenerationTerminationCause = finishReason === 'cancelled'
       ? (stopStringsHit ? 'provider_stop' : 'user_cancel')
-      : terminationCauseFromFinishReason(finishReason)
+      : (payload.terminationCause ?? terminationCauseFromFinishReason(finishReason))
     // 迟到 done（timeout/error 分支已抢占）直接忽略，防止超时收口结果被覆盖
     if (!latch.claim(cause)) return
     // 先读取完整 accumulated 再清理监听器（未执行的 flush timer 同步合并于 cleanup 前的读取）
     cleanupActiveStream()
 
+    // 阶段8（§4.5）：空正文 + 推理挤占 → 降一档恢复一次（复用同一上下文快照，仅重算预算）。
+    // 有正文的 length / 用户停止 / 已恢复过 / 无更低档位都不触发。
+    const recoveryLevel = nextRecoveryLevel({
+      terminationCause: payload.terminationCause,
+      finishReason,
+      rawText: rawContent,
+      usage: payload.usage,
+      currentLevel: chatGate?.level,
+      recoveryUsed: opts.gateRecoveryUsed === true || stopStringsHit,
+    })
+
     // S1：统一收尾管线——推理清理 → output 正则 → 停止字符串 → 收尾器 → 一次短补尾。
     // 阶段6灰度：legacy 管线在管线内部原样透传（不做收尾器与补尾）。
     void (async () => {
+      if (recoveryLevel) {
+        // 复用同一上下文与消息：只把档位与预算字段换成降档后的值，历史不重复裁剪
+        await runRecoveryRetry({ level: recoveryLevel, downgrade: true })
+        return
+      }
       let contentForComplete = rawContent
       const meta: GenerationOutcomeMeta = { finishReason, legacy: builtContext.pipelineLegacy, terminationCause: cause }
       if (cause === 'user_cancel') {
@@ -960,12 +1078,29 @@ export async function streamAIResponse(
     })
   })
 
-  const unbindError = window.api.ai.onError((data: { requestId: string; error: string }) => {
+  const unbindError = window.api.ai.onError((data: AIErrorPayload) => {
     if (data.requestId !== requestId) return
     const friendly = friendlyError(data.error)
     // 阶段7：普通 ai:error 接入统一异常收口——先抢占终止权并读取完整 accumulated，
     // 半截正文必须经过最终处理管线后才允许保存；迟到 error（done/timeout 已收口）只复位状态。
     const raw = activeStream?.accumulated ?? ''
+    // G1 取证后收口：主进程把"零输出"（适配器零输出防御）与传输失败分开分类后，
+    // 空正文允许一次恢复——有更低档位则降档，否则同档重试（deepseek-v4 的 off 已是末级）。
+    const emptyOutputRecovery = latch.acceptsStreamEvent()
+      ? resolveEmptyOutputRecovery({
+          errorKind: data.errorKind,
+          rawText: raw,
+          currentLevel: chatGate?.level,
+          recoveryUsed: opts.gateRecoveryUsed === true || activeStream?.stopStringsHit === true,
+        })
+      : null
+    if (emptyOutputRecovery) {
+      cleanupActiveStream()
+      void runRecoveryRetry(emptyOutputRecovery).catch((e) => {
+        logError('StreamController:emptyOutputRetry', e)
+      })
+      return
+    }
     if (!latch.claim('transport_error')) {
       set({ isStreaming: false, currentRequestId: null, error: friendly })
       return
@@ -1021,10 +1156,21 @@ export async function streamAIResponse(
       ...(builtContext.pipelineLegacy ? {} : { sceneFactor: builtContext.sceneFactor }),
       characterId: character.id,
       sessionId: get().currentSessionId ?? undefined,
+      ...(opts.markDowngradeRetry ? { downgradeRetry: true } : {}),
     },
     // DeepSeek V4 的推理通道会与角色心理描写重复，并挤占最终正文预算。
     // 主对话只保留模型最终 content；若聚合端忽略关闭参数，适配器仍会丢弃 reasoning_content。
     reasoningMode: effectiveModel.toLowerCase().includes('deepseek-v4') ? 'disabled' : undefined,
+    // 阶段8（§4.3）：门控指令由预算结果反推——tokens 即本轮推理预留（可信=承诺值）
+    ...(builtContext.requestBudget?.gate
+      ? {
+          reasoningGate: {
+            level: builtContext.requestBudget.gate.level,
+            knob: builtContext.requestBudget.gate.knob,
+            tokens: builtContext.requestBudget.reasoningReserve,
+          },
+        }
+      : {}),
   }
 
   try {

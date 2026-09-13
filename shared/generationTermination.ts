@@ -31,6 +31,8 @@ export function observationTerminationCause(input: {
   if (input.errorKind === 'timeout') return 'idle_timeout'
   if (input.errorKind === 'network' || input.finishReason === 'network_error') return 'transport_error'
   if (input.errorKind === 'content_filter' || input.finishReason === 'content_filter') return 'provider_content_filter'
+  // 阶段8（§4.7）：推理挤占是独立终局（旧文本判定路径收编为结构化原因）
+  if (input.errorKind === 'reasoning_budget_exhausted') return 'reasoning_gate_exceeded'
   if (input.outcome === 'truncated' || input.errorKind === 'length_limit' || input.finishReason === 'length') return 'provider_length'
   return terminationCauseFromFinishReason(input.finishReason)
 }
@@ -69,6 +71,8 @@ export function effectiveFinishReasonForCause(
     case 'provider_stop':
       return 'stop'
     case 'provider_length':
+      // 阶段8：提前中止是零正文的 length 类截断，收尾器按 length 处理
+    case 'reasoning_gate_exceeded':
       return 'length'
     case 'provider_content_filter':
       return 'content_filter'
@@ -114,6 +118,9 @@ export function terminationPromptWithoutContent(cause: GenerationTerminationCaus
       return '回复被内容审核拦截'
     case 'user_cancel':
       return '已停止生成'
+    case 'reasoning_gate_exceeded':
+      // 阶段8（§4.5）：降档重试仍失败后的最终兜底文案，只有重试也失败才可见
+      return '该模型推理占满输出预算，请重试或更换模型'
     default:
       return '模型未返回可用内容，请重试'
   }

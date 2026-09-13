@@ -10,6 +10,13 @@ import {
 } from '../dialogueDirectionRunner'
 import { useSettingsStore } from '../useSettingsStore'
 import type { ChatState } from '../chatTypes'
+import { BACKGROUND_GENERATION_PROFILES } from '../../../shared/backgroundGeneration'
+import {
+  BODY_RESERVE_MULTIPLIER,
+  BODY_RESERVE_OVERHEAD_TOKENS,
+  PROTOCOL_RESERVE_TOKENS,
+} from '../../../shared/modelOutputProfile'
+import { isGateBreakerTripped, resetReasoningGateStateForTests } from '../reasoningGateState'
 
 /** 与 shared/__tests__/dialogueDirections.test.ts 保持同一组合法样例。 */
 const DIRECTIONS = [
@@ -68,6 +75,33 @@ function stubAiText(texts: string[], finishReason: import('../../../shared/types
     queueMicrotask(() => {
       onChunkCb?.({ requestId: params.requestId, text: payload })
       onCompleteCb?.({ requestId: params.requestId, finishReason })
+    })
+  })
+}
+
+/** 逐次返回不同文本与 finishReason 的桩：推理挤占 fixture 需要每次调用不同结局。 */
+function stubAiSequence(
+  steps: Array<{ text: string; finishReason?: import('../../../shared/types').AIFinishReason }>,
+) {
+  let index = 0
+  let onChunkCb: ((data: { requestId: string; text: string }) => void) | undefined
+  let onCompleteCb: ((payload: import('../../../shared/ipc-api').AIDonePayload) => void) | undefined
+  vi.mocked(window.api.ai.onChunk).mockImplementation((callback) => {
+    onChunkCb = callback
+    return vi.fn()
+  })
+  vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+    onCompleteCb = callback
+    return vi.fn()
+  })
+  vi.mocked(window.api.ai.onError).mockReturnValue(vi.fn())
+  vi.mocked(window.api.ai.chat).mockImplementation(async (params) => {
+    const step = steps[Math.min(index, steps.length - 1)]
+    index += 1
+    queueMicrotask(() => {
+      // 推理吃满时没有任何 chunk（正文为空），只有触顶结束事件
+      if (step.text) onChunkCb?.({ requestId: params.requestId, text: step.text })
+      onCompleteCb?.({ requestId: params.requestId, finishReason: step.finishReason ?? 'stop' })
     })
   })
 }
@@ -564,5 +598,132 @@ describe('群聊方向生成', () => {
     await pending
     expect((raw.messages[1] as { dialogueDirections?: unknown[] }).dialogueDirections).toBeUndefined()
     expect(window.api.group.saveMessage).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * W4（主计划 §7.6）：方向任务已从 1536 直连收编为「后台档案 + 统一预算 + off 门控」，
+ * 推理挤占（length + 零正文）走一次降档重试；每个逻辑请求最多 2 次物理调用。
+ * （W0 冻结的旧基线用例已在本次显式改写，不是悄悄漂移。）
+ */
+describe('方向任务推理挤占恢复与统一预算（W4）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        userName: '林舟',
+        activeProfileId: 'p1',
+        activeModel: 'test-model',
+        connectionProfiles: [{
+          id: 'p1', name: '测试', provider: 'openai', apiKey: 'sk-test',
+          baseUrl: 'https://api.example.com', model: 'test-model',
+        }] as never,
+      },
+    }))
+  })
+
+  it('推理吃满（length + 正文为空）→ 一次降档重试（复用同一 prompt），第二次合法即接受', async () => {
+    stubAiSequence([
+      { text: '', finishReason: 'length' },
+      { text: `<directions>${JSON.stringify(DIRECTIONS)}</directions>`, finishReason: 'stop' },
+    ])
+    const { set, get, raw } = makeStore(makeMessages())
+
+    const result = await generateSingleDialogueDirections(set, get, { messageId: 'a1', character: makeCharacter() })
+
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(result).toHaveLength(3)
+    expect(raw.messages[1].dialogueDirections).toHaveLength(3)
+    // 降档重试复用同一 prompt 快照（不再插入"结构不合法"修复提示）
+    const firstSystem = vi.mocked(window.api.ai.chat).mock.calls[0][0].messages[0].content
+    const retrySystem = vi.mocked(window.api.ai.chat).mock.calls[1][0].messages[0].content
+    expect(retrySystem).toBe(firstSystem)
+    // 第二次请求标记为降档重试，便于观测归属
+    expect(vi.mocked(window.api.ai.chat).mock.calls[1][0].observability).toMatchObject({
+      source: 'aux',
+      taskType: 'direction',
+      downgradeRetry: true,
+    })
+  })
+
+  it('两次都被推理吃满 → 放弃且不落盘，总物理调用不超过 2', async () => {
+    stubAiSequence([
+      { text: '', finishReason: 'length' },
+      { text: '', finishReason: 'length' },
+    ])
+    const { set, get, raw } = makeStore(makeMessages())
+
+    const result = await generateSingleDialogueDirections(set, get, { messageId: 'a1', character: makeCharacter() })
+
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(result).toHaveLength(0)
+    expect(raw.messages[1].dialogueDirections).toBeUndefined()
+    expect(window.api.chat.saveMessage).not.toHaveBeenCalled()
+  })
+
+  it('第一次推理吃满、第二次非空但结构非法 → 不再发起第三次请求', async () => {
+    stubAiSequence([
+      { text: '', finishReason: 'length' },
+      { text: '仍然不是合法结构', finishReason: 'stop' },
+    ])
+    const { set, get, raw } = makeStore(makeMessages())
+
+    const result = await generateSingleDialogueDirections(set, get, { messageId: 'a1', character: makeCharacter() })
+
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(result).toHaveLength(0)
+    expect(raw.messages[1].dialogueDirections).toBeUndefined()
+  })
+
+  it('预算收编：后台 direction 档案 + resolveRequestBudget + off 门控（不再直连 1536）', async () => {
+    stubAiText([`<directions>${JSON.stringify(DIRECTIONS)}</directions>`])
+    const { set, get } = makeStore(makeMessages())
+
+    await generateSingleDialogueDirections(set, get, { messageId: 'a1', character: makeCharacter() })
+
+    const params = vi.mocked(window.api.ai.chat).mock.calls[0][0]
+    const expectedBody = Math.ceil(
+      BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars * BODY_RESERVE_MULTIPLIER,
+    ) + BODY_RESERVE_OVERHEAD_TOKENS
+    // test-model 无推理档案：off 门控在未探测端点取保守余量（协议余量 192）
+    expect(params.maxTokens).toBe(expectedBody + PROTOCOL_RESERVE_TOKENS)
+    expect(params.maxTokens).not.toBe(1536)
+    expect(params.reasoningGate).toMatchObject({ level: 'off' })
+    // 旧适配器回退字段保留（门控在场时适配器优先消费 reasoningGate）
+    expect(params.reasoningMode).toBe('disabled')
+    expect(params.stream).toBe(false)
+    expect(params.observability).toMatchObject({ source: 'aux', taskType: 'direction' })
+  })
+
+  it('两次都推理挤占 → 总调用 2 次、不落盘；连续两轮失败才熔断且不污染主对话', async () => {
+    resetReasoningGateStateForTests()
+    const scope = { provider: 'openai', baseUrl: 'https://api.example.com', model: 'test-model' }
+    const directionScope = { ...scope, task: 'direction' }
+
+    // 第 1 轮：两次物理调用都挤占 → 记录 1 次降档失败，尚未熔断
+    stubAiSequence([
+      { text: '', finishReason: 'length' },
+      { text: '', finishReason: 'length' },
+    ])
+    let store = makeStore(makeMessages())
+    let result = await generateSingleDialogueDirections(store.set, store.get, { messageId: 'a1', character: makeCharacter() })
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(result).toHaveLength(0)
+    expect(store.raw.messages[1].dialogueDirections).toBeUndefined()
+    expect(isGateBreakerTripped(directionScope)).toBe(false)
+
+    // 第 2 轮：再次两次失败 → 该任务域熔断
+    vi.mocked(window.api.ai.chat).mockClear()
+    stubAiSequence([
+      { text: '', finishReason: 'length' },
+      { text: '', finishReason: 'length' },
+    ])
+    store = makeStore(makeMessages())
+    await generateSingleDialogueDirections(store.set, store.get, { messageId: 'a1', character: makeCharacter() })
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(isGateBreakerTripped(directionScope)).toBe(true)
+    // 主对话作用域不受方向失败影响（起步档不被无故降低）
+    expect(isGateBreakerTripped(scope)).toBe(false)
   })
 })

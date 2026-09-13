@@ -14,6 +14,9 @@ import {
   createGenerationTerminationLatch,
   terminationCauseFromFinishReason,
   effectiveFinishReasonForCause,
+  observationTerminationCause,
+  terminationPromptWithContent,
+  terminationPromptWithoutContent,
 } from '../../../shared/generationTermination'
 import { finalizeGenerationTerminalResult } from '../generatedReplyPipeline'
 import { streamAIResponse, cleanupActiveStream, resetTailRepairFailureCounts } from '../streamController'
@@ -71,6 +74,31 @@ describe('finishReason 与 terminationCause 分离映射（§3.2）', () => {
     expect(effectiveFinishReasonForCause('idle_timeout', 'stop')).toBe('network_error')
     expect(effectiveFinishReasonForCause('provider_stop', 'stop')).toBe('stop')
     expect(effectiveFinishReasonForCause('user_cancel', 'cancelled')).toBe('cancelled')
+  })
+})
+
+/** 阶段8（主计划 W2）：推理挤占成为独立终局，并为降档失败提供可操作兜底文案 */
+describe('阶段8 推理门控终局映射（W2）', () => {
+  it('推理挤占不再混入 provider_length；普通 length 口径不受影响', () => {
+    expect(observationTerminationCause({
+      outcome: 'truncated',
+      finishReason: 'length',
+      errorKind: 'reasoning_budget_exhausted',
+    })).toBe('reasoning_gate_exceeded')
+    expect(observationTerminationCause({ outcome: 'truncated', finishReason: 'length' }))
+      .toBe('provider_length')
+    // 其他原因映射保持阶段7 口径
+    expect(observationTerminationCause({ outcome: 'error', finishReason: 'unknown', errorKind: 'network' }))
+      .toBe('transport_error')
+  })
+
+  it('收尾按零正文 length 处理；降档重试仍失败时只有兜底文案可见', () => {
+    expect(effectiveFinishReasonForCause('reasoning_gate_exceeded', 'unknown')).toBe('length')
+    // 零正文终局没有可保留的部分，不产生"已保留"类提示
+    expect(terminationPromptWithContent('reasoning_gate_exceeded')).toBeNull()
+    expect(terminationPromptWithoutContent('reasoning_gate_exceeded')).toContain('推理占满输出预算')
+    // 上游明确错误文案优先于兜底
+    expect(terminationPromptWithoutContent('reasoning_gate_exceeded', '上游原文')).toBe('上游原文')
   })
 })
 

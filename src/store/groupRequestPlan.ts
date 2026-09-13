@@ -28,6 +28,10 @@ export function resolveGroupRequestPlan(input: {
   messages: GroupMessage[]
   preset?: Preset | null
   pipelineLegacy?: boolean
+  /** W1（主计划 §7.3）：该端点/model 的近期推理样本（缺省 = 档案默认余量） */
+  reasoningSamples?: number[]
+  /** 阶段8（§4.2）：本轮推理门控（缺省 = 不介入） */
+  reasoningGate?: import('../../shared/reasoningGate').ResolvedReasoningGate
 }): GroupRequestPlan {
   const { model, messages, preset } = input
   const pipelineLegacy = input.pipelineLegacy === true
@@ -75,6 +79,8 @@ export function resolveGroupRequestPlan(input: {
     model,
     hardMaxChars: responsePolicy.hardMaxChars,
     userHardCap: preset?.maxTokens,
+    ...(input.reasoningSamples?.length ? { recentReasoningTokens: input.reasoningSamples } : {}),
+    ...(input.reasoningGate ? { reasoningGate: input.reasoningGate } : {}),
   })
   return {
     responsePolicy,

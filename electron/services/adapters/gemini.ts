@@ -1,7 +1,13 @@
-import type { AIAdapter } from './types'
-import { createVendorThinkingStreamFilter, stripVendorThinking } from './types'
+import type { AIAdapter, GateFieldProbe } from './types'
+import {
+  createVendorThinkingStreamFilter,
+  deleteGateField,
+  matchRejectedGateField,
+  stripVendorThinking,
+} from './types'
 import { normalizeFinishReason } from '../../../shared/generationObservation'
 import type { AICompletion } from '../../../shared/types'
+import type { GateProbeSignal } from '../../../shared/reasoningGate'
 import { parseImageDataUrl, imageErrorHint } from './vision'
 
 export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, onUsage) {
@@ -40,6 +46,28 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       generationConfig.presencePenalty = presencePenalty
     }
 
+    // 阶段8（§4.3）：统一门控指令 → thinkingConfig。此前 Gemini 完全没有思考控制，
+    // 2.5/3 的动态思考会无约束挤占 maxOutputTokens（§2.4）。
+    // off/low 下发最低档；standard/full 不下发（端点默认，不额外干预）。
+    const gate = params.reasoningGate
+    let gateSignal: GateProbeSignal | undefined = gate ? { knob: gate.knob } : undefined
+    const gateProbes: GateFieldProbe[] = []
+    if (gate && gate.knob === 'gemini-thinking-config' && (gate.level === 'off' || gate.level === 'low')) {
+      const lowerModel = model.toLowerCase()
+      if (lowerModel.includes('gemini-3')) {
+        // 3 系按 thinkingLevel（无 0 档：off/low 都取最低档）
+        generationConfig.thinkingConfig = { thinkingLevel: 'low' }
+      } else {
+        const budget = gate.level === 'off' ? 0 : Math.max(0, Math.floor(gate.tokens ?? 0))
+        generationConfig.thinkingConfig = { thinkingBudget: budget }
+      }
+      gateProbes.push({
+        path: ['generationConfig', 'thinkingConfig'],
+        knob: 'gemini-thinking-config',
+        isRejected: (text) => /thinkingConfig|thinkingBudget|thinkingLevel/i.test(text),
+      })
+    }
+
     const body: Record<string, unknown> = {
       contents,
       generationConfig,
@@ -59,16 +87,30 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       }]
     }
 
-    const response = await fetch(url, {
+    const sendRequest = () => fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),
       signal,
     })
 
+    let response = await sendRequest()
     if (!response.ok) {
-      await response.text()
-      throw new Error(`Gemini API 错误 ${response.status}${imageErrorHint(params.messages)}`)
+      const errText = await response.text()
+      // 阶段8（§4.3）：400 明确指向 thinkingConfig → 去参重发一次并记录拒绝；
+      // 其他状态码/错误文本保持原样抛出（不吞真实错误，不污染探测）
+      const rejected = matchRejectedGateField({ status: response.status, errText, probes: gateProbes })
+      if (rejected) {
+        deleteGateField(body, rejected.path)
+        if (gateSignal) gateSignal.knobAccepted = false
+        response = await sendRequest()
+        if (!response.ok) {
+          const retryText = await response.text()
+          throw new Error(`Gemini API 错误 ${response.status}: ${retryText.slice(0, 300)}${imageErrorHint(params.messages)}`)
+        }
+      } else {
+        throw new Error(`Gemini API 错误 ${response.status}: ${errText.slice(0, 300)}${imageErrorHint(params.messages)}`)
+      }
     }
 
     if (!stream) {
@@ -79,6 +121,10 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawToolCalls: any[] = []
       for (const part of parts) {
+        if (part.text && part.thought === true && gate?.level === 'off' && gateSignal) {
+          // 阶段8（§4.6）：off 档仍返回思考部件 → 该端点无有效关闭手段
+          gateSignal.disableIgnored = true
+        }
         if (part.text && part.thought !== true) text += part.text
         else if (part.functionCall) {
           rawToolCalls.push({
@@ -100,6 +146,9 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       if (usage && onUsage) {
         onUsage({ ...usage, totalTokens: data.usageMetadata.totalTokenCount ?? 0 })
       }
+      if (usage?.reasoningTokens !== undefined && gateSignal) {
+        gateSignal.reportsReasoningUsage = true
+      }
       // 阶段3契约：STOP/MAX_TOKENS/SAFETY 等随 AICompletion 返回
       const finishReason = normalizeFinishReason(data.candidates?.[0]?.finishReason)
       // C-03 修复：如有 functionCall，附加标记供 toolLoop 解析
@@ -108,9 +157,15 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
           text: stripVendorThinking(text) + '[TOOL_CALL:' + JSON.stringify(rawToolCalls) + ']',
           finishReason: 'tool_calls',
           usage,
+          ...(gateSignal ? { gateProbe: gateSignal } : {}),
         }
       }
-      return { text: stripVendorThinking(text), finishReason, usage }
+      return {
+        text: stripVendorThinking(text),
+        finishReason,
+        usage,
+        ...(gateSignal ? { gateProbe: gateSignal } : {}),
+      }
     }
 
     // 修复 #38: 改进的 Gemini 流式解析
@@ -156,6 +211,9 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
               if (parsed.candidates?.[0]?.finishReason) streamFinishReason = parsed.candidates[0].finishReason
               const parts = parsed.candidates?.[0]?.content?.parts ?? []
               for (const part of parts) {
+                if (part.text && part.thought === true && gate?.level === 'off' && gateSignal) {
+                  gateSignal.disableIgnored = true
+                }
                 if (part.text && part.thought !== true) {
                   emitVisibleText(part.text)
                 } else if (part.functionCall) {
@@ -256,6 +314,9 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       try { reader.releaseLock() } catch { /* ignore */ }
     }
     // 阶段3契约：结束原因随 AICompletion 返回
+    if (streamUsage?.reasoningTokens !== undefined && gateSignal) {
+      gateSignal.reportsReasoningUsage = true
+    }
     const finishReason = normalizeFinishReason(streamFinishReason)
     // C-03 修复：如有 functionCall，附加标记供 toolLoop 解析
     if (geminiFnCalls.size > 0) {
@@ -264,9 +325,15 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
         text: stripVendorThinking(fullText) + '[TOOL_CALL:' + JSON.stringify(toolCallsArray) + ']',
         finishReason: 'tool_calls',
         usage: streamUsage,
+        ...(gateSignal ? { gateProbe: gateSignal } : {}),
       }
     }
-    return { text: stripVendorThinking(fullText), finishReason, usage: streamUsage }
+    return {
+      text: stripVendorThinking(fullText),
+      finishReason,
+      usage: streamUsage,
+      ...(gateSignal ? { gateProbe: gateSignal } : {}),
+    }
   },
 
   async listModels(baseUrl, apiKey) {

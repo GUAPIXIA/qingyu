@@ -11,6 +11,8 @@
  */
 
 import type { AIFinishReason, ChatParams, ResponseLengthMode } from './types'
+import type { ReasoningGateKnob, ReasoningGateLevel } from './reasoningGate'
+import { endpointFingerprint } from './endpointKey'
 import { countVisibleCharacters, analyzeTextClosure, tailSample, isCompleteSentence } from './textMetrics'
 
 /** 适配器侧可透出的结束原因（cancelled/network_error 由观测层按失败上下文归类） */
@@ -54,6 +56,15 @@ export interface RequestObservability {
   sceneFactor?: number
   characterId?: string
   sessionId?: string
+  /** 阶段8（§4.7）：本轮门控档位与 knob */
+  gateLevel?: ReasoningGateLevel
+  gateKnob?: ReasoningGateKnob | 'unknown'
+  /** 本轮请求的 knob 是否被接受（明确 400 字段拒绝 → false；网络错误不写） */
+  knobAcceptedThisRequest?: boolean
+  /** 是否由提前中止终止（推理越线且正文为空） */
+  earlyAbort?: boolean
+  /** 本次请求是否为门控降档重试（归属原生成轮） */
+  downgradeRetry?: boolean
 }
 
 /** 逐请求观测记录（JSONL 一行一条；默认不含正文，只含长度与枚举分类，§9.1） */
@@ -68,6 +79,11 @@ export interface GenerationObservation {
   sessionId?: string
   provider?: string
   model: string
+  /**
+   * W1（主计划 §4.4/§5.3）：端点指纹（标准化地址的不可逆短哈希）。
+   * 只用于按端点隔离的用量回读，绝不保存完整 URL；旧记录缺省。
+   */
+  endpointFingerprint?: string
   requestedMaxTokens: number
   stream: boolean
   /** 篇幅模式（阶段一起随请求透传；缺省为 undefined） */
@@ -78,6 +94,15 @@ export interface GenerationObservation {
   responseIntent?: ResponseLengthMode
   /** S5：自动模式场景系数（未参与计算/默认时为 undefined） */
   sceneFactor?: number
+  /** 阶段8（§4.7）：本轮门控档位与 knob */
+  gateLevel?: ReasoningGateLevel
+  gateKnob?: ReasoningGateKnob | 'unknown'
+  /** 本轮请求的 knob 是否被接受（明确 400 字段拒绝 → false） */
+  knobAcceptedThisRequest?: boolean
+  /** 是否由提前中止终止（推理越线且正文为空） */
+  earlyAbort?: boolean
+  /** 本次请求是否为门控降档重试（归属原生成轮） */
+  downgradeRetry?: boolean
   finishReason: ObservationFinishReason
   outcome: ObservationOutcome
   /**
@@ -123,12 +148,16 @@ const CONTENT_FILTER_PATTERN = /content_filter|内容审核|SAFETY|被拦截/i
 /**
  * 触顶细分：推理占满 = reasoning token 占 completion 的绝大部分且正文几乎为空；
  * 正文过长 = 正文可见字符达到可观规模；上游未给 reasoning token 时判 unknown。
+ * 阶段8（§4.7）：提前中止已在流级确认推理越线，优先于 token 上报判定。
  */
 export function classifyTruncationKind(input: {
   bodyVisibleChars: number
   completionTokens?: number | 'unknown'
   reasoningTokens?: number | 'unknown'
+  /** 阶段8：应用层因推理越线主动中止（正文为空） */
+  earlyAbort?: boolean
 }): ObservationTruncationKind {
+  if (input.earlyAbort === true) return 'reasoning_filled'
   const completion = input.completionTokens
   if (completion === 'unknown' || completion === undefined) return 'unknown'
   const reasoning = input.reasoningTokens
@@ -237,6 +266,10 @@ export function buildGenerationObservation(params: ChatParams, state: {
   completionTokens?: number
   reasoningTokens?: number
   attempts: number
+  /** 阶段8（§4.3）：适配器本轮的门控探测结论（400 字段拒绝 / 静默忽略 disable） */
+  gateProbe?: import('./reasoningGate').GateProbeSignal
+  /** 阶段8（§4.4）：适配器因推理越线主动中止（正文为空） */
+  earlyAbort?: boolean
 }): GenerationObservation {
   const obs = resolveObservability(params)
   // 正文口径：剥离思考块后再计可见字符 / 判完整句 / 取尾部采样
@@ -251,6 +284,11 @@ export function buildGenerationObservation(params: ChatParams, state: {
     : 'unknown'
 
   const closure = analyzeTextClosure(state.text)
+  const endpointKey = endpointFingerprint(params.baseUrl)
+  // 阶段8：门控事实优先取适配器探测结论，其次取请求侧声明；两者都缺省则不写字段
+  const gateLevel = params.reasoningGate?.level ?? obs.gateLevel
+  const gateKnob = state.gateProbe?.knob ?? params.reasoningGate?.knob ?? obs.gateKnob
+  const knobAccepted = state.gateProbe?.knobAccepted ?? obs.knobAcceptedThisRequest
   const record: GenerationObservation = {
     ts: state.finishedAt,
     requestId: params.requestId,
@@ -262,12 +300,18 @@ export function buildGenerationObservation(params: ChatParams, state: {
     sessionId: obs.sessionId,
     provider: params.provider,
     model: params.model,
+    ...(endpointKey ? { endpointFingerprint: endpointKey } : {}),
     requestedMaxTokens: params.maxTokens ?? 0,
     stream: params.stream === true,
     responseLengthMode: obs.responseLengthMode,
     hardMaxChars: obs.hardMaxChars,
     responseIntent: obs.responseIntent,
     sceneFactor: obs.sceneFactor,
+    ...(gateLevel ? { gateLevel } : {}),
+    ...(gateKnob ? { gateKnob } : {}),
+    ...(knobAccepted !== undefined ? { knobAcceptedThisRequest: knobAccepted } : {}),
+    ...((state.earlyAbort ?? obs.earlyAbort) ? { earlyAbort: true } : {}),
+    ...(obs.downgradeRetry ? { downgradeRetry: true } : {}),
     finishReason: state.finishReason,
     outcome: state.outcome,
     bodyVisibleChars,
@@ -288,6 +332,7 @@ export function buildGenerationObservation(params: ChatParams, state: {
       bodyVisibleChars,
       completionTokens,
       reasoningTokens,
+      earlyAbort: state.earlyAbort === true || obs.earlyAbort === true,
     })
   }
   if (state.errorKind) record.errorKind = state.errorKind

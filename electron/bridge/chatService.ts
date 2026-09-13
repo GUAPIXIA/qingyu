@@ -13,6 +13,10 @@ import { nanoid } from 'nanoid'
 import { join } from 'node:path'
 import { chatData } from '../ipc/chat'
 import { getAdapter, chatWithRetry } from '../services/ai'
+import {
+  nextLowerGateLevel,
+  resolveReasoningGate,
+} from '../../shared/reasoningGate'
 import type { TokenUsageInfo } from '../services/adapters/types'
 import { mainContextProvider } from '../context/mainContextProvider'
 import { buildContextMessagesFromData, buildChatParamsFromData } from '../../shared/chat-core/contextBuilder'
@@ -200,7 +204,7 @@ export class BridgeChatService {
       let finishReason: AICompletion['finishReason'] = 'unknown'
       try {
         // 阶段3契约：chatWithRetry 返回 AICompletion（网络中断但有正文时也返回部分正文）
-        const completion = await chatWithRetry(
+        let completion = await chatWithRetry(
           getAdapter(params.provider),
           params,
           onChunk,
@@ -208,6 +212,43 @@ export class BridgeChatService {
           0, // 流式不重试（与渲染层一致：已发送的 chunks 无法撤回）
           onUsage,
         )
+        // 阶段8（§4.5）：空正文 + 提前中止 → 降一档重发一次（复用同一请求快照，
+        // 只按新档位重算预算）。与 PC 单聊同规则：至多一次、有正文不触发、用户停止不触发。
+        const gateLevel = params.reasoningGate?.level
+        const nextLevel = completion.earlyAbort && !completion.text.trim() && gateLevel
+          ? nextLowerGateLevel(gateLevel)
+          : null
+        if (nextLevel) {
+          const nextGate = resolveReasoningGate({ model: params.model, requestedLevel: nextLevel, enabled: true })
+          const nextBudget = resolveRequestBudget({
+            model: params.model,
+            hardMaxChars: built.responsePolicy.hardMaxChars,
+            userHardCap: data.preset?.maxTokens,
+            reasoningGate: nextGate,
+          })
+          completion = await chatWithRetry(
+            getAdapter(params.provider),
+            {
+              ...params,
+              requestId: `${requestId}-downgrade`,
+              maxTokens: nextBudget.requestMaxTokens,
+              reasoningGate: {
+                level: nextLevel,
+                knob: nextGate.knob,
+                tokens: nextGate.gateTokens,
+              },
+              observability: {
+                ...(params.observability ?? { source: 'bridge' }),
+                source: params.observability?.source ?? 'bridge',
+                downgradeRetry: true,
+              },
+            },
+            onChunk,
+            controller.signal,
+            0,
+            onUsage,
+          )
+        }
         fullContent = completion.text
         finishReason = completion.finishReason
       } catch (err) {

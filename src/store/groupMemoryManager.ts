@@ -2,6 +2,7 @@ import type { Character, MemoryFactRecord } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { cachedReasoningSamplesFor, refreshUsageProfileInBackground } from './usageProfileCache'
 import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../utils/memory'
 import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../utils/memoryWindow'
@@ -62,9 +63,23 @@ export async function runGroupMemorySummary(get: GroupStoreGet, set: GroupStoreS
   ) + 800
   // S3：与单聊同一策略——输出预算接入模型能力档案（正文约 2500 字 + 推理余量），
   // 不再固定 2048（推理端点上思考会吃光预算导致事实提案缺失）
+  // W1（主计划 §7.3）：记忆任务分桶回读近期推理样本；后台路径不阻塞当前调用。
+  refreshUsageProfileInBackground({
+    provider: profile.provider,
+    baseUrl: profile.baseUrl,
+    model: profile.model,
+    taskType: 'memory',
+  })
+  const groupMemorySamples = cachedReasoningSamplesFor({
+    provider: profile.provider,
+    baseUrl: profile.baseUrl,
+    model: profile.model,
+    taskType: 'memory',
+  })
   const GROUP_MEMORY_OUTPUT_TOKENS = resolveRequestBudget({
     model: profile.model,
     hardMaxChars: 2500,
+    ...(groupMemorySamples ? { recentReasoningTokens: groupMemorySamples } : {}),
   }).requestMaxTokens
   const summaryInputBudget = resolveMemorySummaryInputBudget(
     profile.maxContext || getDefaultMaxContext(profile.model),

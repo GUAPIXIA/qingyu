@@ -3,7 +3,6 @@ import type { DialogueTendency } from '../types'
 import { countVisibleCharacters } from '../textMetrics'
 import {
   DIALOGUE_DIRECTION_LIMITS,
-  DIALOGUE_DIRECTION_MAX_TOKENS,
   buildDialogueDirectionSystemPrompt,
   buildDialogueDirectionUserPrompt,
   hasSimilarDirections,
@@ -158,12 +157,22 @@ describe('dialogueDirections', () => {
     expect(withoutState).not.toContain('世界状态')
   })
 
-  it('输出预算覆盖选项字数与 JSON 结构的最坏情况', () => {
+  it('输出预算覆盖选项字数与 JSON 结构的最坏情况（W5：由后台档案 + 统一预算派生）', async () => {
+    const { BACKGROUND_GENERATION_PROFILES } = await import('../backgroundGeneration')
+    const { resolveRequestBudget } = await import('../modelOutputProfile')
+    const { resolveReasoningGate } = await import('../reasoningGate')
     const { labelMaxChars, contentMaxChars, count } = DIALOGUE_DIRECTION_LIMITS
     const worstChars = count * (labelMaxChars + contentMaxChars)
-    expect(DIALOGUE_DIRECTION_MAX_TOKENS).toBeGreaterThanOrEqual(worstChars * 2 + 128)
-    // 部分聚合端会忽略 thinking:disabled，推理与正文共享预算；640 在波动时会产生空响应。
-    expect(DIALOGUE_DIRECTION_MAX_TOKENS).toBe(1536)
+    const budget = resolveRequestBudget({
+      model: 'gpt-4o', // 无推理档案：只叠加协议余量，正文预留必须独立覆盖最坏情况
+      hardMaxChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
+      reasoningGate: resolveReasoningGate({ model: 'gpt-4o', requestedLevel: 'off', enabled: true }),
+    })
+    // 正文预留（含安全系数与协议开销）覆盖最坏情况的 2 倍
+    expect(budget.bodyReserve).toBeGreaterThanOrEqual(worstChars * 2)
+    expect(budget.requestMaxTokens).toBeGreaterThanOrEqual(worstChars * 2 + 128)
+    // 1536 直连已退出：请求上限由档案/门控派生，不再固定
+    expect(budget.requestMaxTokens).not.toBe(1536)
   })
 
   it('长度约束常量与校验一致', () => {

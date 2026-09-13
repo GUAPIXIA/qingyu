@@ -21,7 +21,14 @@ import {
   type ObservationFinishReason,
 } from '../../shared/generationObservation'
 import { observationTerminationCause } from '../../shared/generationTermination'
-import { recordGenerationObservation } from './generationObservation'
+import {
+  resolveReasoningGate,
+  type GateProbeSignal,
+  type ReasoningGateDirective,
+} from '../../shared/reasoningGate'
+import type { UsageProfileQuery } from '../../shared/usageProfile'
+import { queryUsageProfile, recordGenerationObservation } from './generationObservation'
+import { getGateProbe, recordGateProbeSignal } from './gateProbeStore'
 import type {
   LorebookKeywordEnrichmentMode,
   LorebookKeywordLocalizationEntry,
@@ -168,6 +175,16 @@ export async function chatWithRetry(
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<AICompletion> {
   const startedAt = Date.now()
+  // 阶段8（§4.3）：调用方给出档位（reasoningGate）时，主进程在此统一解析 knob 与承诺值——
+  // 跳过已被明确 400 拒绝的 knob、用 GateProbe 样本给出预算承诺值；适配器只消费结果。
+  // 缺省（kill switch 关闭 / 调用方未接线）完全不介入，保持适配器现行行为。
+  const requestedGate = params.reasoningGate
+  const dispatchParams: ChatParams = requestedGate
+    ? { ...params, reasoningGate: resolveDispatchGateDirective(params, requestedGate) }
+    : params
+  const gateScope = { provider: params.provider, baseUrl: params.baseUrl, model: params.model }
+  let completionGateProbe: GateProbeSignal | undefined
+  let completionEarlyAbort = false
   // 阶段0观测捕获：结束原因 / usage / 累积文本（失败时保留已产出前缀，正文口径由组装层处理）
   let capturedUsage: TokenUsageInfo | undefined
   let capturedText = ''
@@ -187,7 +204,7 @@ export async function chatWithRetry(
     errorKind?: ObservationErrorKind
   }): void => {
     try {
-      recordGenerationObservation(buildGenerationObservation(params, {
+      recordGenerationObservation(buildGenerationObservation(dispatchParams, {
         startedAt,
         finishedAt: Date.now(),
         text: capturedText,
@@ -204,6 +221,8 @@ export async function chatWithRetry(
         completionTokens: capturedUsage?.completionTokens,
         reasoningTokens: capturedUsage?.reasoningTokens,
         attempts,
+        ...(completionGateProbe ? { gateProbe: completionGateProbe } : {}),
+        ...(completionEarlyAbort ? { earlyAbort: true } : {}),
       }))
     } catch { /* 观测失败不影响主流程 */ }
     cancelReasons.delete(params.requestId)
@@ -242,7 +261,7 @@ export async function chatWithRetry(
         const { signal: timeoutSignal, cleanup } = withTimeout(signal, timeoutMs)
         let completion: AICompletion
         try {
-          completion = await adapter.chat(params, captureOnChunk, timeoutSignal, captureOnUsage)
+          completion = await adapter.chat(dispatchParams, captureOnChunk, timeoutSignal, captureOnUsage)
         } catch (err) {
           // 阶段3：网络中断但已有正文 → 降级为完成结果（观测仍按 error 记录）
           const degraded = degradeNetworkFailure(err)
@@ -255,6 +274,10 @@ export async function chatWithRetry(
           // BUG-11：请求正常完成/异常退出时清理超时 timer
           cleanup()
         }
+        // 阶段8（§4.3）：合并本轮探测结论（400 拒绝 / 静默忽略 / 推理用量上报）
+        completionGateProbe = completion.gateProbe
+        if (completionGateProbe) recordGateProbeSignal(gateScope, completionGateProbe)
+        completionEarlyAbort = completion.earlyAbort === true
         // 成功：length 是完成状态（正文交给收尾器判定是否完整）
         writeObservation({
           outcome: completion.finishReason === 'length' ? 'truncated' : 'completed',
@@ -289,6 +312,12 @@ export async function chatWithRetry(
     }
     throw lastError
   } catch (err) {
+    // 阶段8：适配器可把探测结论挂在错误上（空正文 / 去参重发仍失败），失败终局同样要合并
+    const errProbe = (err as { gateProbe?: GateProbeSignal } | null)?.gateProbe
+    if (errProbe) {
+      completionGateProbe = errProbe
+      recordGateProbeSignal(gateScope, errProbe)
+    }
     // 失败终局：区分用户停止 / 网络（含超时）/ 触顶 / 空输出 / 审核 / API 错误
     writeObservation(classifyFailureOutcome(err, {
       signalAborted: signal.aborted,
@@ -296,6 +325,26 @@ export async function chatWithRetry(
     }))
     throw err
   }
+}
+
+/**
+ * 阶段8（§4.3）：把调用方给出的档位解析为本轮可下发的门控指令。
+ * - knob 由档案 gateKnobs 顺序 + GateProbe 决定（被拒的 knob 不再尝试）；
+ * - tokens 为预算承诺值：可信门控 = 档位值；不可信/无门控 = max(档位值, 档案/P90 保守余量)。
+ */
+function resolveDispatchGateDirective(
+  params: ChatParams,
+  requested: ReasoningGateDirective,
+): ReasoningGateDirective {
+  const probe = getGateProbe({ provider: params.provider, baseUrl: params.baseUrl, model: params.model })
+  const resolved = resolveReasoningGate({
+    model: params.model,
+    probe,
+    requestedLevel: requested.level,
+    // 调用方已决定使用门控（其自身已校验 kill switch），主进程只做 knob/预算解析
+    enabled: true,
+  })
+  return { level: resolved.level, knob: resolved.knob, tokens: resolved.gateTokens }
 }
 
 export function registerAIIPC(ipcMain: IpcMain): void {
@@ -383,6 +432,8 @@ export function registerAIIPC(ipcMain: IpcMain): void {
         requestId: params.requestId,
         finishReason: completion.finishReason,
         usage: completion.usage,
+        // 阶段8（§4.4/§4.7）：提前中止作为结构化元数据下发，渲染层不解析错误文本
+        ...(completion.earlyAbort ? { earlyAbort: true, terminationCause: 'reasoning_gate_exceeded' as const } : {}),
       })
     } catch (e) {
       const err = e as Error
@@ -392,7 +443,17 @@ export function registerAIIPC(ipcMain: IpcMain): void {
         safeSend(webContents, IPC_EVENTS.aiDone, { requestId: params.requestId, finishReason: 'cancelled' })
       } else {
         log.error('AI 请求失败', { requestId: params.requestId, provider: params.provider, model: params.model, error: err.message })
-        safeSend(webContents, IPC_EVENTS.aiError, { requestId: params.requestId, error: err.message })
+        // 阶段8/G1 收口：把失败分类透传给渲染层（零输出 vs 传输失败/审核），
+        // 否则渲染层只能一律按 transport_error 收口，既无法做一次零输出恢复，提示也会归类错。
+        const classified = classifyFailureOutcome(err, {
+          signalAborted: controller.signal.aborted,
+          cancelReason: cancelReasons.get(params.requestId),
+        })
+        safeSend(webContents, IPC_EVENTS.aiError, {
+          requestId: params.requestId,
+          error: err.message,
+          ...(classified.errorKind ? { errorKind: classified.errorKind } : {}),
+        })
       }
     } finally {
       // 竞态保护：仅当 Map 中仍指向当前 controller 时才删除
@@ -598,4 +659,26 @@ export function registerAIIPC(ipcMain: IpcMain): void {
   ipcMain.handle('ai:countMessagesTokens', async (_event, messages: { content: string; role: string; images?: string[] }[], model: string) => {
     return countMessagesTokens(messages, model)
   })
+
+  // W1（主计划 §7.3）：只读用量档案查询。只返回数值聚合，
+  // 不含正文、完整 URL 或磁盘路径；读取失败返回 null 由调用方回退静态档案。
+  ipcMain.handle('ai:getGenerationUsageProfile', async (_event, query: unknown) => {
+    return queryUsageProfile(sanitizeUsageProfileQuery(query))
+  })
+}
+
+/** renderer 传入的查询参数只保留受限长度的字符串字段（其余一律丢弃） */
+function sanitizeUsageProfileQuery(raw: unknown): UsageProfileQuery {
+  const source = (raw ?? {}) as Record<string, unknown>
+  const str = (value: unknown, max: number): string =>
+    typeof value === 'string' ? value.slice(0, max) : ''
+  const optional = (value: unknown, max: number): string | undefined =>
+    typeof value === 'string' && value ? value.slice(0, max) : undefined
+  return {
+    provider: str(source.provider, 128),
+    baseUrl: str(source.baseUrl, 512),
+    model: str(source.model, 256),
+    taskType: optional(source.taskType, 64),
+    gate: optional(source.gate, 64),
+  }
 }

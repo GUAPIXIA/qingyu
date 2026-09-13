@@ -8,6 +8,7 @@ import { getDefaultMaxContext } from '../utils/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../utils/memoryWindow'
 import { resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
+import { cachedReasoningSamplesFor, refreshUsageProfileInBackground } from './usageProfileCache'
 import { MEMORY_SUMMARY_MIN } from './chatConstants'
 import { friendlyError } from './chatUtils'
 import { logWarn } from '../lib/logger'
@@ -61,10 +62,21 @@ export async function runMemorySummary(
   // S3/阶段7（§7.1）：长记忆 = background 'memory' 档案（不套主对话篇幅档位）——
   // 正文预算（摘要+事实 JSON）与推理余量分别估算；推理共享预算模型（DeepSeek V4 等）
   // 用档案默认/P90 余量，非推理模型不再无条件请求 6144/8192。该值参与输入预算扣减。
+  // W1（主计划 §7.3）：记忆任务独立分桶（task=memory）回读近期推理样本；
+  // 后台路径不阻塞当前调用（异步刷新缓存，本轮先用已缓存值），
+  // 读取失败或无样本时退回档案默认余量，不阻塞总结。
+  refreshUsageProfileInBackground({ provider: profile.provider, baseUrl: profile.baseUrl, model, taskType: 'memory' })
+  const memorySamples = cachedReasoningSamplesFor({
+    provider: profile.provider,
+    baseUrl: profile.baseUrl,
+    model,
+    taskType: 'memory',
+  })
   const MEMORY_SUMMARY_BODY_CHARS = BACKGROUND_GENERATION_PROFILES.memory.expectedBodyChars
   const MEMORY_SUMMARY_OUTPUT_TOKENS = resolveRequestBudget({
     model,
     hardMaxChars: MEMORY_SUMMARY_BODY_CHARS,
+    ...(memorySamples ? { recentReasoningTokens: memorySamples } : {}),
   }).requestMaxTokens
   const summaryInputBudget = resolveMemorySummaryInputBudget(
     profile.maxContext || getDefaultMaxContext(model),

@@ -24,6 +24,14 @@ import { formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/mode
 import { resolveGroupRequestPlan } from './groupRequestPlan'
 import { BACKGROUND_GENERATION_PROFILES, hasCompleteSummaryTail } from '../../shared/backgroundGeneration'
 import { attemptTailRepair, finalizeNoticeFields, type GenerationOutcomeMeta } from './streamController'
+import { prefetchUsageProfile, withReasoningSamples } from './usageProfileCache'
+import {
+  noteGateRecoveryFailure,
+  noteGateRecoverySuccess,
+  withReasoningGate,
+} from './reasoningGateState'
+import { nextRecoveryLevel } from './gateRecovery'
+import type { ReasoningGateLevel } from '../../shared/reasoningGate'
 import { finalizeGenerationTerminalResult, type GenerationTerminalOutcome } from './generatedReplyPipeline'
 import {
   createGenerationTerminationLatch,
@@ -557,6 +565,11 @@ export async function streamGroupAI(
   speaker: Character,
   round: number,
   onComplete: () => void,
+  /**
+   * 阶段8（§4.5）：降档恢复。复用同一 msgId 与同一上下文，只按新档位重发一次；
+   * 每个逻辑回合最多恢复一次（recoveryUsed），失败不重复其他角色已完成回合。
+   */
+  recovery?: { msgId: string; gateLevel: ReasoningGateLevel; recoveryUsed?: boolean },
 ) {
   const settingsStore = useSettingsStore.getState()
   const profile = settingsStore.getActiveProfile()
@@ -595,11 +608,21 @@ export async function streamGroupAI(
   // 记忆事实语义检索预取（P0-2）：失败回退全量注入
   await fetchGroupSemanticFacts(get, set)
 
+  // W1（主计划 §7.3）：构建前异步预取该端点/模型的近期推理样本（失败静默降级）
+  await prefetchUsageProfile({
+    provider: profile.provider,
+    baseUrl: profile.baseUrl,
+    model: settingsStore.settings.activeModel || profile.model,
+  })
+  // 阶段8（§4.2/§4.5）：本轮门控（恢复时用覆盖档位）；档位在 done 处理里用于判定降档
+  const groupGate = withReasoningGate(profile, settingsStore.settings.activeModel, recovery?.gateLevel)
   const requestPlan = resolveGroupRequestPlan({
     model: settingsStore.settings.activeModel || profile.model,
     messages: get().messages,
     preset,
     pipelineLegacy: legacyPipeline,
+    ...withReasoningSamples(profile, settingsStore.settings.activeModel),
+    ...groupGate,
   })
   const budgetRisk = formatRequestBudgetRisk(requestPlan.requestBudget)
   if (budgetRisk) {
@@ -619,9 +642,16 @@ export async function streamGroupAI(
   if (!isGroupContextCurrent(get, group, sessionId)) return
 
   const requestId = nanoid()
-  const msgId = nanoid()
+  // 阶段8：降档恢复复用原消息，避免留下 "(无回复)" + 新消息两条记录
+  const msgId = recovery?.msgId ?? nanoid()
   // 阶段7：requestId 级一次性终止状态机（点名/轮询路径）
   const latch = createGenerationTerminationLatch(requestId)
+  /** 降档恢复：复用同一 msgId 与同一上下文；成功后计入熔断清零 */
+  const retryWithDowngradedGate = (level: ReasoningGateLevel) => {
+    void streamGroupAI(set, get, group, sessionId, speaker, round, onComplete, {
+      msgId, gateLevel: level, recoveryUsed: true,
+    })
+  }
 
   // 等待中的占位消息
   const placeholder: GroupMessage = {
@@ -636,12 +666,21 @@ export async function streamGroupAI(
     speakerKind: 'character',
     generationKind: 'assistant_reply',
   }
-  set((s: GroupChatState) => ({
-    messages: [...s.messages, placeholder],
-    isStreaming: true,
-    currentStreamingCharId: speaker.id,
-    error: null,
-  }))
+  if (recovery) {
+    // 恢复：只恢复流状态，不追加第二条占位消息
+    set((s: GroupChatState) => ({
+      isStreaming: true,
+      currentStreamingCharId: speaker.id,
+      error: null,
+    }))
+  } else {
+    set((s: GroupChatState) => ({
+      messages: [...s.messages, placeholder],
+      isStreaming: true,
+      currentStreamingCharId: speaker.id,
+      error: null,
+    }))
+  }
 
   // 停止字符串（output 正则规则）：流式命中后截断 + 提前终止，省 token
   const stopStrings = collectStopStrings(regexRules)
@@ -686,8 +725,39 @@ export async function streamGroupAI(
     const { requestId: doneId, finishReason = 'unknown' } = payload
     if (doneId !== requestId || !activeStream || activeStream.requestId !== requestId) return
     const stopStringsHit = activeStream.stopStringsHit
-    // 阶段7：迟到 done（timeout/error 分支已抢占）忽略，防止覆盖已收口结果
-    const doneCause = terminationCauseFromFinishReason(finishReason)
+    // 阶段8（§4.4/§4.7）：主进程的提前中止以结构化元数据下发
+    const doneCause: GenerationTerminationCause = payload.terminationCause
+      ?? terminationCauseFromFinishReason(finishReason)
+    // 阶段8（§4.5）：空正文 + 推理挤占 → 降一档重发一次（复用同一消息与上下文快照）。
+    // 有正文的 length / 用户停止 / 已恢复过 / 无更低档位都不触发；失败不重复其他角色回合。
+    const groupRecoveryLevel = nextRecoveryLevel({
+      terminationCause: payload.terminationCause,
+      finishReason,
+      rawText: activeStream.accumulated,
+      usage: payload.usage,
+      currentLevel: groupGate.reasoningGate?.level,
+      recoveryUsed: recovery?.recoveryUsed === true || stopStringsHit,
+    })
+    if (groupRecoveryLevel && latch.claim('reasoning_gate_exceeded')) {
+      cleanupActiveStream()
+      retryWithDowngradedGate(groupRecoveryLevel)
+      return
+    }
+    if (recovery?.recoveryUsed) {
+      const groupGateScope = {
+        provider: profile.provider,
+        baseUrl: profile.baseUrl,
+        model: settingsStore.settings.activeModel || profile.model,
+        task: 'group',
+      }
+      if (doneCause === 'reasoning_gate_exceeded') {
+        // 恢复后再次挤占：记录熔断事实（本回合结束，不影响其他角色已完成回合）
+        noteGateRecoveryFailure(groupGateScope)
+      } else {
+        // 恢复成功：清零连续失败计数（熔断只按"连续"计数）
+        noteGateRecoverySuccess(groupGateScope)
+      }
+    }
     if (!latch.claim(stopStringsHit && doneCause === 'user_cancel' ? 'provider_stop' : doneCause)) return
 
     if (activeStream.flushTimer !== null) {
@@ -826,6 +896,16 @@ export async function streamGroupAI(
       presencePenalty: preset?.presencePenalty ?? 0,
       stream: true,
       instructTemplate,
+      // 阶段8（§4.3）：门控指令由预算结果反推（tokens 即本轮推理预留），与单聊同口径
+      ...(requestPlan.requestBudget?.gate
+        ? {
+            reasoningGate: {
+              level: requestPlan.requestBudget.gate.level,
+              knob: requestPlan.requestBudget.gate.knob,
+              tokens: requestPlan.requestBudget.reasoningReserve,
+            },
+          }
+        : {}),
       // 阶段0观测元数据：群聊预算统一（阶段四）前先记录来源
       observability: {
         source: 'group',
@@ -854,6 +934,8 @@ export async function streamGroupAIFree(
   group: GroupChat,
   sessionId: string,
   round: number,
+  /** 阶段8（§4.5）：与点名/轮询同一恢复语义（自由发言无固定角色） */
+  recovery?: { msgId: string; gateLevel: ReasoningGateLevel; recoveryUsed?: boolean },
 ) {
   const settingsStore = useSettingsStore.getState()
   const profile = settingsStore.getActiveProfile()
@@ -893,11 +975,21 @@ export async function streamGroupAIFree(
   // 记忆事实语义检索预取（P0-2）
   await fetchGroupSemanticFacts(get, set)
 
+  // W1（主计划 §7.3）：与点名路径同一分桶的近期推理样本
+  await prefetchUsageProfile({
+    provider: profile.provider,
+    baseUrl: profile.baseUrl,
+    model: settingsStore.settings.activeModel || profile.model,
+  })
+  // 阶段8（§4.2/§4.5）：本轮门控（恢复时用覆盖档位）；档位在 done 处理里用于判定降档
+  const groupGate = withReasoningGate(profile, settingsStore.settings.activeModel, recovery?.gateLevel)
   const requestPlan = resolveGroupRequestPlan({
     model: settingsStore.settings.activeModel || profile.model,
     messages: get().messages,
     preset,
     pipelineLegacy: legacyPipelineFree,
+    ...withReasoningSamples(profile, settingsStore.settings.activeModel),
+    ...groupGate,
   })
   const budgetRisk = formatRequestBudgetRisk(requestPlan.requestBudget)
   if (budgetRisk) {
@@ -917,9 +1009,16 @@ export async function streamGroupAIFree(
   if (!isGroupContextCurrent(get, group, sessionId)) return
 
   const requestId = nanoid()
-  const msgId = nanoid()
+  // 阶段8：降档恢复复用原消息，避免留下 "(无回复)" + 新消息两条记录
+  const msgId = recovery?.msgId ?? nanoid()
   // 阶段7：requestId 级一次性终止状态机（自由发言路径）
   const latch = createGenerationTerminationLatch(requestId)
+  /** 降档恢复：复用同一 msgId 与同一上下文（自由发言无固定角色） */
+  const retryWithDowngradedGate = (level: ReasoningGateLevel) => {
+    void streamGroupAIFree(set, get, group, sessionId, round, {
+      msgId, gateLevel: level, recoveryUsed: true,
+    })
+  }
   // 全局叙事的自由发言保留为单条实际成员回应，避免【判定】/【可选行动】被角色分段器误识别。
   const freeMessageCharacterId = narrativeMode === 'omniscient'
     ? (group.memberIds[0] ?? '__narrator__')
@@ -937,12 +1036,20 @@ export async function streamGroupAIFree(
     speakerKind: 'character',
     generationKind: 'assistant_reply',
   }
-  set((s: GroupChatState) => ({
-    messages: [...s.messages, placeholder],
-    isStreaming: true,
-    currentStreamingCharId: freeMessageCharacterId,
-    error: null,
-  }))
+  if (recovery) {
+    set((s: GroupChatState) => ({
+      isStreaming: true,
+      currentStreamingCharId: freeMessageCharacterId,
+      error: null,
+    }))
+  } else {
+    set((s: GroupChatState) => ({
+      messages: [...s.messages, placeholder],
+      isStreaming: true,
+      currentStreamingCharId: freeMessageCharacterId,
+      error: null,
+    }))
+  }
 
   // 停止字符串（output 正则规则）：流式命中后截断 + 提前终止，省 token
   const stopStrings = collectStopStrings(regexRules)
@@ -986,8 +1093,33 @@ export async function streamGroupAIFree(
     const { requestId: doneId, finishReason = 'unknown' } = payload
     if (doneId !== requestId || !activeStream || activeStream.requestId !== requestId) return
     const stopStringsHit = activeStream.stopStringsHit
-    // 阶段7：迟到 done（timeout/error 分支已抢占）忽略，防止覆盖已收口结果
-    const doneCause = terminationCauseFromFinishReason(finishReason)
+    // 阶段8（§4.4/§4.7）：主进程的提前中止以结构化元数据下发
+    const doneCause: GenerationTerminationCause = payload.terminationCause
+      ?? terminationCauseFromFinishReason(finishReason)
+    // 阶段8（§4.5）：空正文 + 推理挤占 → 降一档重发一次（复用同一消息与上下文快照）。
+    // 有正文的 length / 用户停止 / 已恢复过 / 无更低档位都不触发；失败不重复其他角色回合。
+    const groupRecoveryLevel = nextRecoveryLevel({
+      terminationCause: payload.terminationCause,
+      finishReason,
+      rawText: activeStream.accumulated,
+      usage: payload.usage,
+      currentLevel: groupGate.reasoningGate?.level,
+      recoveryUsed: recovery?.recoveryUsed === true || stopStringsHit,
+    })
+    if (groupRecoveryLevel && latch.claim('reasoning_gate_exceeded')) {
+      cleanupActiveStream()
+      retryWithDowngradedGate(groupRecoveryLevel)
+      return
+    }
+    if (recovery?.recoveryUsed && doneCause === 'reasoning_gate_exceeded') {
+      // 恢复后再次挤占：记录熔断事实（本回合结束，不影响其他角色已完成回合）
+      noteGateRecoveryFailure({
+        provider: profile.provider,
+        baseUrl: profile.baseUrl,
+        model: settingsStore.settings.activeModel || profile.model,
+        task: 'group',
+      })
+    }
     if (!latch.claim(stopStringsHit && doneCause === 'user_cancel' ? 'provider_stop' : doneCause)) return
 
     if (activeStream.flushTimer !== null) {
@@ -1091,6 +1223,16 @@ export async function streamGroupAIFree(
       presencePenalty: preset?.presencePenalty ?? 0,
       stream: true,
       instructTemplate,
+      // 阶段8（§4.3）：门控指令由预算结果反推（tokens 即本轮推理预留），与单聊同口径
+      ...(requestPlan.requestBudget?.gate
+        ? {
+            reasoningGate: {
+              level: requestPlan.requestBudget.gate.level,
+              knob: requestPlan.requestBudget.gate.knob,
+              tokens: requestPlan.requestBudget.reasoningReserve,
+            },
+          }
+        : {}),
       // 阶段0观测元数据：群聊预算统一（阶段四）前先记录来源（free 模式无固定角色）
       observability: {
         source: 'group',

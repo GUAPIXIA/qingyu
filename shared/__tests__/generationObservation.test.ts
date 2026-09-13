@@ -7,6 +7,7 @@ import {
   normalizeFinishReason,
   resolveObservability,
 } from '../generationObservation'
+import { observationTerminationCause } from '../generationTermination'
 
 function makeParams(overrides: Partial<ChatParams> = {}): ChatParams {
   return {
@@ -209,5 +210,182 @@ describe('buildGenerationObservation', () => {
     expect(obs.errorKind).toBe('network')
     expect(obs.attempts).toBe(2)
     expect(obs.tailSample).toBe('已产出的部分内容')
+  })
+})
+
+/**
+ * W0 冻结契约：单聊、群聊、Bridge 三种来源必须共用同一套
+ * finishReason → outcome / terminationCause / truncationKind 映射，
+ * 任何一端单独改口径都会先打红这组用例。
+ */
+describe('finishReason 与 terminationCause 契约（单聊/群聊/Bridge 共用，W0 冻结）', () => {
+  const makeSourceParams = (source: 'single' | 'group' | 'bridge') =>
+    makeParams({ observability: { source } })
+
+  it.each(['single', 'group', 'bridge'] as const)('%s：正常完成 / 触顶 / 用户停止三态闭环', (source) => {
+    const done = (state: Parameters<typeof buildGenerationObservation>[1]) =>
+      buildGenerationObservation(makeSourceParams(source), state)
+
+    const stop = done({
+      startedAt: 0,
+      finishedAt: 10,
+      text: '她推开门，走进房间。',
+      outcome: 'completed',
+      finishReason: 'stop',
+      terminationCause: observationTerminationCause({ outcome: 'completed', finishReason: 'stop' }),
+      attempts: 1,
+    })
+    expect(stop).toMatchObject({ finishReason: 'stop', outcome: 'completed', terminationCause: 'provider_stop' })
+    expect(stop.truncationKind).toBeUndefined()
+
+    const length = done({
+      startedAt: 0,
+      finishedAt: 10,
+      text: '她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。然后她伸手拿',
+      outcome: 'truncated',
+      finishReason: 'length',
+      terminationCause: observationTerminationCause({ outcome: 'truncated', finishReason: 'length' }),
+      completionTokens: 2000,
+      reasoningTokens: 800,
+      attempts: 1,
+    })
+    expect(length).toMatchObject({
+      finishReason: 'length',
+      outcome: 'truncated',
+      terminationCause: 'provider_length',
+      truncationKind: 'body_filled',
+    })
+
+    const cancelled = done({
+      startedAt: 0,
+      finishedAt: 10,
+      text: '用户已经看到的正文。',
+      outcome: 'user_cancelled',
+      finishReason: 'cancelled',
+      terminationCause: observationTerminationCause({
+        outcome: 'user_cancelled',
+        finishReason: 'cancelled',
+        errorKind: 'aborted',
+      }),
+      attempts: 1,
+    })
+    expect(cancelled).toMatchObject({
+      finishReason: 'cancelled',
+      outcome: 'user_cancelled',
+      terminationCause: 'user_cancel',
+    })
+  })
+
+  it('传输中断 → error/network_error/transport_error，不按完成口径记录', () => {
+    const obs = buildGenerationObservation(makeSourceParams('bridge'), {
+      startedAt: 0,
+      finishedAt: 10,
+      text: '已产出的一半。',
+      outcome: 'error',
+      finishReason: 'network_error',
+      errorKind: 'network',
+      terminationCause: observationTerminationCause({
+        outcome: 'error',
+        finishReason: 'network_error',
+        errorKind: 'network',
+      }),
+      attempts: 2,
+    })
+    expect(obs).toMatchObject({
+      outcome: 'error',
+      finishReason: 'network_error',
+      terminationCause: 'transport_error',
+      errorKind: 'network',
+      attempts: 2,
+    })
+    expect(obs.truncationKind).toBeUndefined()
+  })
+
+  it('direction 任务：1536 全被推理占用、正文为空、length → reasoning_filled（§2.1 失败形态）', () => {
+    const obs = buildGenerationObservation(makeParams({
+      maxTokens: 1536,
+      observability: { source: 'aux', taskType: 'direction' },
+    }), {
+      startedAt: 0,
+      finishedAt: 20,
+      text: '',
+      outcome: 'truncated',
+      finishReason: 'length',
+      terminationCause: observationTerminationCause({ outcome: 'truncated', finishReason: 'length' }),
+      completionTokens: 1536,
+      reasoningTokens: 1536,
+      attempts: 1,
+    })
+    expect(obs).toMatchObject({
+      taskType: 'direction',
+      requestedMaxTokens: 1536,
+      bodyVisibleChars: 0,
+      finishReason: 'length',
+      outcome: 'truncated',
+      terminationCause: 'provider_length',
+      truncationKind: 'reasoning_filled',
+    })
+    expect(obs.reasoningTokens).toBe(1536)
+  })
+})
+
+/** 阶段8（主计划 W2）：门控观测字段与推理挤占的结构化终局 */
+describe('阶段8 门控观测字段（W2）', () => {
+  it('门控字段随请求透传进观测记录，缺省不产生噪声', () => {
+    const obs = buildGenerationObservation(makeParams({
+      observability: {
+        source: 'single',
+        gateLevel: 'low',
+        gateKnob: 'reasoning-effort',
+        knobAcceptedThisRequest: false,
+        earlyAbort: true,
+        downgradeRetry: true,
+      },
+    }), {
+      startedAt: 0,
+      finishedAt: 10,
+      text: '',
+      outcome: 'truncated',
+      finishReason: 'length',
+      terminationCause: 'reasoning_gate_exceeded',
+      attempts: 1,
+    })
+    expect(obs).toMatchObject({
+      gateLevel: 'low',
+      gateKnob: 'reasoning-effort',
+      knobAcceptedThisRequest: false,
+      earlyAbort: true,
+      downgradeRetry: true,
+      terminationCause: 'reasoning_gate_exceeded',
+    })
+    // 提前中止已在流级确认推理挤占：token 不可得也判 reasoning_filled
+    expect(obs.truncationKind).toBe('reasoning_filled')
+
+    const bare = buildGenerationObservation(makeParams(), {
+      startedAt: 0,
+      finishedAt: 10,
+      text: '正常正文。',
+      outcome: 'completed',
+      finishReason: 'stop',
+      attempts: 1,
+    })
+    expect(bare.gateLevel).toBeUndefined()
+    expect(bare.earlyAbort).toBeUndefined()
+    expect(bare.downgradeRetry).toBeUndefined()
+  })
+
+  it('classifyTruncationKind：earlyAbort 优先于 token 上报', () => {
+    expect(classifyTruncationKind({
+      bodyVisibleChars: 0,
+      completionTokens: 'unknown',
+      reasoningTokens: 'unknown',
+      earlyAbort: true,
+    })).toBe('reasoning_filled')
+    // 无早期中止时维持原判定，不误伤正常截断
+    expect(classifyTruncationKind({
+      bodyVisibleChars: 0,
+      completionTokens: 'unknown',
+      reasoningTokens: 'unknown',
+    })).toBe('unknown')
   })
 })

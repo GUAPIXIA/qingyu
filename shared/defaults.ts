@@ -87,5 +87,7 @@ export function getDefaultSettings(): Settings {
       minDropTokens: 2000,
     },
     autoTitle: true,
+    // 阶段8 临时 kill switch：默认关闭，灰度达标后再由 W10 决定默认值与 UI
+    reasoningGateEnabled: false,
   }
 }

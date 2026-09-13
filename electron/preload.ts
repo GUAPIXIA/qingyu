@@ -38,6 +38,7 @@ const aiApi: AIAPI = {
   countMessagesTokens: (messages, model) => ipcRenderer.invoke('ai:countMessagesTokens', messages, model),
   compressLorebook: (payload) => ipcRenderer.invoke('ai:compressLorebook', payload),
   localizeLorebookKeywords: (payload) => ipcRenderer.invoke('ai:localizeLorebookKeywords', payload),
+  getGenerationUsageProfile: (query) => ipcRenderer.invoke('ai:getGenerationUsageProfile', query),
   onChunk: (callback) => {
     const handler = (_e: unknown, data: { requestId: string; text: string }) => callback(data)
     ipcRenderer.on(IPC_EVENTS.aiChunk, handler)
@@ -50,7 +51,8 @@ const aiApi: AIAPI = {
     return () => ipcRenderer.removeListener(IPC_EVENTS.aiDone, handler)
   },
   onError: (callback) => {
-    const handler = (_e: unknown, data: { requestId: string; error: string }) => callback(data)
+    // 阶段8/G1：透传主进程的失败分类（errorKind 可选，旧端缺失时渲染层保持原行为）
+    const handler = (_e: unknown, data: import('../shared/ipc-api').AIErrorPayload) => callback(data)
     ipcRenderer.on(IPC_EVENTS.aiError, handler)
     return () => ipcRenderer.removeListener(IPC_EVENTS.aiError, handler)
   },

@@ -6,13 +6,16 @@
  */
 import type { ChatParams, Character, DialogueDirection, GroupMessage, Message, NarrativeMode } from '../../shared/types'
 import {
-  DIALOGUE_DIRECTION_MAX_TOKENS,
   DIALOGUE_DIRECTION_TEMPERATURE,
   buildDialogueDirectionSystemPrompt,
   buildDialogueDirectionUserPrompt,
   parseDialogueDirections,
   type DirectionGenerationInput,
 } from '../../shared/dialogueDirections'
+import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
+import { resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { resolveReasoningGate } from '../../shared/reasoningGate'
+import { noteGateRecoveryFailure } from './reasoningGateState'
 import { stripThought } from '../utils/messagePostProcess'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
@@ -60,15 +63,35 @@ function newRequestId(messageId: string, attempt = 0): string {
   return `dialogue-directions-${messageId}-${attempt}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+export interface DirectionCallResult {
+  text: string
+  /** 阶段8（§4.4/§4.7）：主进程下发的结构化终止原因（提前中止时为 reasoning_gate_exceeded） */
+  terminationCause?: import('../../shared/types').GenerationTerminationCause
+}
+
 /** 非流式辅助请求：方向生成专用，不注入 preset，只用显式温度与预算。 */
-function callDirectionHelper(requestId: string, messages: ChatParams['messages']): Promise<string> {
+function callDirectionHelper(
+  requestId: string,
+  messages: ChatParams['messages'],
+  opts?: { downgradeRetry?: boolean },
+): Promise<DirectionCallResult> {
   const settingsStore = useSettingsStore.getState()
   const profile = settingsStore.getActiveProfile()
   if (!profile) return Promise.reject(new Error('未配置 API 连接'))
   const activeModel = settingsStore.settings.activeModel || profile.model
 
+  // W4（主计划 §7.6）：方向退出 1536 直连——后台 'direction' 档案给出期望正文，
+  // 统一预算负责换算，off 门控把"关闭推理"的意图正式化（可被探测与提前中止兜底）。
+  const directionProfile = BACKGROUND_GENERATION_PROFILES.direction
+  const gate = resolveReasoningGate({ model: activeModel, requestedLevel: 'off', enabled: true })
+  const budget = resolveRequestBudget({
+    model: activeModel,
+    hardMaxChars: directionProfile.expectedBodyChars,
+    reasoningGate: gate,
+  })
+
   let result = ''
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<DirectionCallResult>((resolve, reject) => {
     const cleanup = () => {
       unbindChunk(); unbindDone(); unbindError()
     }
@@ -80,12 +103,12 @@ function callDirectionHelper(requestId: string, messages: ChatParams['messages']
       if (payload.requestId !== requestId) return
       cleanup()
       // 阶段7（§7.3）：direction = background 档案，触顶输出按结构不完整处理
-      // （解析为空 → 由 requestDialogueDirections 做至多一次"只补结构"的短修复）
+      // （解析为空 → 由 requestDialogueDirections 决定"降档重试"或"只补结构"一次）
       if (payload.finishReason === 'length') {
-        resolve('')
+        resolve({ text: '', terminationCause: payload.terminationCause ?? 'provider_length' })
         return
       }
-      resolve(stripThought(result))
+      resolve({ text: stripThought(result), terminationCause: payload.terminationCause })
     })
     const unbindError = window.api.ai.onError((data) => {
       if (data.requestId !== requestId) return
@@ -102,13 +125,19 @@ function callDirectionHelper(requestId: string, messages: ChatParams['messages']
       model: activeModel,
       temperature: DIALOGUE_DIRECTION_TEMPERATURE,
       topP: 0.9,
-      maxTokens: DIALOGUE_DIRECTION_MAX_TOKENS,
+      maxTokens: budget.requestMaxTokens,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
+      // 旧适配器回退用；门控在场时适配器只消费 reasoningGate（同一产品意图：关闭推理）
       reasoningMode: 'disabled',
-      // 阶段7（§7.3）：独立 taskType，不混入主对话篇幅统计
-      observability: { source: 'aux', taskType: 'direction' },
+      reasoningGate: { level: 'off', knob: gate.knob, tokens: gate.gateTokens },
+      // 阶段7（§7.3）：独立 taskType，不混入主对话篇幅统计；降档重试归属原生成轮
+      observability: {
+        source: 'aux',
+        taskType: 'direction',
+        ...(opts?.downgradeRetry ? { downgradeRetry: true } : {}),
+      },
     } satisfies ChatParams).catch((err) => {
       cleanup()
       reject(err)
@@ -131,10 +160,25 @@ async function requestDialogueDirections(
   const firstId = newRequestId(messageId, 0)
   const untrackFirst = trackRequestId(messageId, firstId)
   const first = await callDirectionHelper(firstId, messages).finally(untrackFirst)
-  const parsed = parseDialogueDirections(first)
+  const parsed = parseDialogueDirections(first.text)
   if (parsed.length > 0) return parsed
   // 请求期间被取消（会话切换 / 消息失效）：不再发起重试
   if (!inFlight.has(messageId)) return []
+
+  // 阶段8（§4.5/§6.4）：首次推理挤占（length + 零正文）允许一次降档重试，
+  // 复用同一 prompt 快照；第二次无论再挤占还是结构非法，都不再发起第三次。
+  const reasoningExhausted = !first.text.trim()
+    && (first.terminationCause === 'reasoning_gate_exceeded' || first.terminationCause === 'provider_length')
+  if (reasoningExhausted) {
+    const retryId = newRequestId(messageId, 1)
+    const untrackRetry = trackRequestId(messageId, retryId)
+    const retry = await callDirectionHelper(retryId, messages, { downgradeRetry: true }).finally(untrackRetry)
+    const retryParsed = parseDialogueDirections(retry.text)
+    if (retryParsed.length > 0) return retryParsed
+    // 两次都失败：记录熔断事实（该端点本会话内不可靠，后续请求从更低档起步）
+    noteGateRecoveryFailure(directionGateScope())
+    return []
+  }
 
   const retryId = newRequestId(messageId, 1)
   const untrackRetry = trackRequestId(messageId, retryId)
@@ -145,7 +189,19 @@ async function requestDialogueDirections(
     },
     { role: 'user', content: userPrompt },
   ]).finally(untrackRetry)
-  return parseDialogueDirections(retry)
+  return parseDialogueDirections(retry.text)
+}
+
+/** 方向任务的门控熔断作用域（与主对话共享端点级事实） */
+function directionGateScope(): { provider: string; baseUrl: string; model: string; task: string } {
+  const settingsStore = useSettingsStore.getState()
+  const profile = settingsStore.getActiveProfile()
+  return {
+    provider: profile?.provider ?? '',
+    baseUrl: profile?.baseUrl ?? '',
+    model: settingsStore.settings.activeModel || profile?.model || '',
+    task: 'direction',
+  }
 }
 
 /** 单聊与群聊共用的方向请求参数（角色、世界状态、最近对话、叙事模式快照）。 */

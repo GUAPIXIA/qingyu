@@ -42,6 +42,21 @@ import {
 } from './chatConstants'
 import { cropHistory, applyDepthInserts, type DepthInsertItem } from './contextShared'
 import type { ContextMessage } from './chatTypes'
+import {
+  createContextShadowCollector,
+  formatContextShadowSummary,
+  type ContextShadowNote,
+  type ContextShadowReport,
+} from './contextShadow'
+import type { ContextCandidateKind } from './contextCandidates'
+import {
+  buildMemoryCandidateSet,
+  buildMemoryShadowReport,
+  formatMemoryShadowSummary,
+  type MemoryCandidateSet,
+  type MemoryInjectionStats,
+  type MemoryShadowReport,
+} from './memoryCandidates'
 
 /** 组装选项（对齐原 buildChatContext 的 opts） */
 export interface BuildOptions {
@@ -50,6 +65,11 @@ export interface BuildOptions {
   narrativeMode?: NarrativeMode
   generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
   lorebookDiagnosticsMode?: 'live' | 'preview'
+  /**
+   * W7（主计划 §7.9）：上下文候选影子运行。默认 `'shadow'`——采集分类 token/数量差异，
+   * **不改变 messages / maxTokens**；`'off'` 仅用于对照测试与性能敏感场景，不是产品开关。
+   */
+  shadow?: 'shadow' | 'off'
 }
 
 /** 待异步执行的上下文压缩任务（原 markPendingCompression 的入参） */
@@ -90,6 +110,16 @@ export interface BuildResult {
   lorebookCompressionCacheHitKeys?: string[]
   lorebookTimedEffects?: LorebookTimedEffectsState
   lorebookDiagnostics?: LorebookDiagnostics
+  /**
+   * W7（§7.9）：本轮上下文影子分配差异（只含分类计数与 token，不含任何正文）。
+   * `shadow: 'off'` 或缺省关闭时为 undefined；调用方按需写入观测/诊断，不参与注入决策。
+   */
+  contextShadow?: ContextShadowReport
+  /**
+   * W8（§7.10）：本轮长记忆专项影子对照（既有固定上限 vs 候选动态分配）。
+   * 只含分层计数与 token，不含记忆正文；生产注入仍由 `fitLayeredMemoryBudget` 决定。
+   */
+  memoryShadow?: MemoryShadowReport
 }
 
 /**
@@ -189,6 +219,10 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
     model,
     hardMaxChars: responsePolicy.hardMaxChars,
     userHardCap: data.preset?.maxTokens,
+    // W1（主计划 §7.3）：按端点/model/task 回读的近期推理样本（缺省 = 档案默认余量）
+    ...(data.reasoningSamples?.length ? { recentReasoningTokens: data.reasoningSamples } : {}),
+    // 阶段8（§4.2）：门控在场时推理项取 gateTokens（可信 = 承诺值；不可信/无门控 = 保守余量）
+    ...(data.reasoningGate ? { reasoningGate: data.reasoningGate } : {}),
   })
   return {
     responsePolicy,
@@ -213,6 +247,21 @@ export function buildContextMessagesFromData(
   const character = data.character ?? ({} as Character)
   const preset = data.preset
   const userName = settings.userName || '用户'
+  // 模型解析与实际请求一致（activeModel 优先，切换档案时二者本就同步）。
+  // W7 起在函数入口解析：影子采集的 token 估算与后续预算共用同一模型口径。
+  const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
+
+  // ===== W7（§7.9）上下文候选影子运行 =====
+  // 在真实注入点逐块登记"分类 + token 估算 + 数值元数据"，构建末尾用同一批候选跑一次
+  // ContextAllocator，得到"现有注入"与"影子选择"的分类差异。
+  // 采集器不持有消息数组、不返回任何要发送的文本，因此不可能改变 messages / maxTokens；
+  // 提示词文本只在 estimateTokens 内用完即弃（§4.4：不记录正文）。
+  const shadow = opts?.shadow === 'off'
+    ? null
+    : createContextShadowCollector({ model })
+  const noteShadow = (kind: ContextCandidateKind, id: string, note: ContextShadowNote): void => {
+    shadow?.note(kind, id, note)
+  }
 
   // 修复 #8: 保留图片消息（content 为空但有 images 时不丢弃）
   const messages = data.chat.messages.filter(
@@ -235,19 +284,30 @@ export function buildContextMessagesFromData(
     userName,
     charNameForVars,
   )
+  noteShadow('protocol', 'protocol:system-prompt', {
+    text: systemContent, mandatory: true, stablePrefix: true,
+  })
 
   // jailbreak 改为可选（修复 #32）：只在 preset 有 jailbreak 且非空时附加
   if (preset?.jailbreak && preset.jailbreak.trim()) {
-    systemContent += '\n\n' + replaceVariables(preset.jailbreak, userName, charNameForVars)
+    const jailbreakText = replaceVariables(preset.jailbreak, userName, charNameForVars)
+    systemContent += '\n\n' + jailbreakText
+    noteShadow('protocol', 'protocol:jailbreak', {
+      text: jailbreakText, mandatory: true, stablePrefix: true,
+    })
   }
 
   // 叙事模式是独立于角色卡和预设的最终行为约束，确保自定义预设也能正确切换。
-  systemContent += '\n\n' + buildNarrativeModePrompt(
+  const narrativeModePrompt = buildNarrativeModePrompt(
     narrativeMode,
     userName,
     charNameForVars,
     settings.omniscientNarrativeRules,
   )
+  systemContent += '\n\n' + narrativeModePrompt
+  noteShadow('protocol', 'protocol:narrative-mode', {
+    text: narrativeModePrompt, mandatory: true, stablePrefix: true,
+  })
 
   // 用户人设注入（可配置：开关 / 位置 / 字段，对齐 ST 的 persona placement）
   const personaInjection = settings.personaInjection
@@ -265,15 +325,25 @@ export function buildContextMessagesFromData(
       systemContent += '\n\n【用户人设】\n' + personaText
     }
   }
+  if (personaText) {
+    noteShadow('character', 'character:user-persona', {
+      text: personaText, relevance: 0.6, recency: 1, importance: 0.7, continuity: 0.8,
+      origin: `persona:${personaInjection.position}`,
+    })
+  }
 
   // 心理描写输出格式（修复 #33）：可配置，默认开启
   // 阶段7（§5.1）：thought 角色第一人称契约固化进共享提示来源，单聊与群聊不得各自漂移
   // 两种叙事模式都必须点名思考主体：全局叙事下焦点角色即当前聊天角色，避免模型写成旁白视角
   const enableThoughtFormat = preset?.enableThoughtFormat ?? (settings.enableThoughtFormat !== false)
   if (enableThoughtFormat) {
-    systemContent += '\n\n【输出格式要求】\n' + buildThoughtContractBody({
+    const thoughtContractBody = buildThoughtContractBody({
       narrativeMode,
       subjectName: narrativeMode === 'omniscient' ? `「${charNameForVars}」` : charNameForVars,
+    })
+    systemContent += '\n\n【输出格式要求】\n' + thoughtContractBody
+    noteShadow('protocol', 'protocol:thought-system', {
+      text: thoughtContractBody, mandatory: true, stablePrefix: true,
     })
   }
 
@@ -282,7 +352,6 @@ export function buildContextMessagesFromData(
   // 输出预留：阶段一起由篇幅策略 + 模型能力档案单次计算（resolveChatRequestPlan），
   // 与实际请求的 max_tokens 同源；不再对 DeepSeek V4 固定放大到 8192。
   // 模型解析与实际请求一致（activeModel 优先，切换档案时二者本就同步）
-  const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
   const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
   const plan = resolveChatRequestPlan(data)
   const reservedOutput = plan.requestMaxTokens
@@ -293,6 +362,10 @@ export function buildContextMessagesFromData(
   )
 
   // 分层长记忆注入：当前状态优先，其次相关事实，最后是时间线。
+  // W8（§7.10）：注入路径保持既有 `fitLayeredMemoryBudget` 不变；另用原始输入构造候选，
+  // 产出记忆专项影子对照（G1 通过后才考虑由候选分配接管注入）。
+  let memoryShadowPlan: MemoryCandidateSet | null = null
+  let memoryShadowExisting: MemoryInjectionStats | null = null
   if (currentSession?.memoryEnabled) {
     const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
     // P0-2：语义检索命中时仅注入相关事实，否则全量；透传语义分到预算层
@@ -325,6 +398,37 @@ export function buildContextMessagesFromData(
     if (fitted.timeline) {
       systemContent += '\n\n【对话时间线】\n' + fitted.timeline
     }
+
+    // W8 影子：既有口径（本轮实际注入的块）——时间线按行/句切块登记，供分类差异与接管对照
+    if (shadow) {
+      const injectedPlan = buildMemoryCandidateSet({
+        currentState: fitted.currentState,
+        timeline: fitted.timeline,
+        facts: fitted.facts,
+        // 预算层重排后语义分不再与数组对齐，既有口径按官方评分的回退分支取值
+        semanticScores: null,
+        model,
+      })
+      for (const candidate of injectedPlan.candidates) shadow.noteCandidate(candidate)
+      memoryShadowExisting = {
+        capTokens: memoryBudget,
+        stateTokens: injectedPlan.described.stateTokens,
+        factCount: injectedPlan.described.factCount,
+        factTokens: injectedPlan.described.factTokens,
+        timelineChunkCount: injectedPlan.described.timelineChunkCount,
+        timelineTokens: injectedPlan.described.timelineTokens,
+        totalTokens: injectedPlan.described.totalTokens,
+        retrievalMode: fitted.retrievalMode,
+      }
+      // W8 接管口径：原始输入（未截断）候选化，语义分保持与事实数组对齐
+      memoryShadowPlan = buildMemoryCandidateSet({
+        currentState: currentSession.memoryCurrentState,
+        timeline: currentSession.memory || '',
+        facts: factsForInject,
+        semanticScores,
+        model,
+      })
+    }
   }
 
   // ===== 角色设定 + 世界书 =====
@@ -334,6 +438,12 @@ export function buildContextMessagesFromData(
   if (character.description) charDesc += replaceVariables(character.description, userName, charNameForVars) + '\n'
   if (character.personality) charDesc += '性格：' + replaceVariables(character.personality, userName, charNameForVars) + '\n'
   if (character.scenario) charDesc += '场景：' + replaceVariables(character.scenario, userName, charNameForVars) + '\n'
+  // W7 影子：角色核心（不含世界书 before/after_character——那两段在下方按桶单独登记，避免重复计数）
+  if (charDesc) {
+    noteShadow('character', 'character:core', {
+      text: charDesc, mandatory: true, stablePrefix: true,
+    })
+  }
 
   // 世界书注入（支持多个世界书合并 + 递归扫描 + at_depth 深度注入）
   const lorebookIds = data.chat.activeLorebookIds
@@ -432,6 +542,41 @@ export function buildContextMessagesFromData(
     lorebookDiagnostics = result.diagnostics
   }
 
+  // W7 影子：世界书按渲染锚点分桶登记（桶级占位评分——renderPlan 只保留文本，
+  // 逐条真实评分属 W9 接入范围；此处只求分类 token/数量差异可解释）
+  if (shadow) {
+    const lorebookBucketSpecs: Array<[string, string[], number, number, number]> = [
+      ['before_character', lorebookRenderPlan.beforeCharacter, 0.55, 0.8, 0.5],
+      ['after_character', lorebookRenderPlan.afterCharacter, 0.55, 0.8, 0.5],
+      ['prompt_end', lorebookRenderPlan.promptEnd, 0.55, 0.6, 0.5],
+      ['authors_note_top', lorebookRenderPlan.authorsNoteTop, 0.5, 0.6, 0.5],
+      ['authors_note_bottom', lorebookRenderPlan.authorsNoteBottom, 0.5, 0.6, 0.5],
+      ['before_examples', lorebookRenderPlan.beforeExamples, 0.45, 0.4, 0.4],
+      ['after_examples', lorebookRenderPlan.afterExamples, 0.45, 0.4, 0.4],
+    ]
+    for (const [bucket, items, relevance, importance, continuity] of lorebookBucketSpecs) {
+      if (items.length === 0) continue
+      noteShadow('worldbook', `worldbook:${bucket}`, {
+        text: items.join('\n'),
+        relevance,
+        recency: 0.5,
+        importance,
+        continuity,
+        origin: `worldbook:${bucket}`,
+      })
+    }
+    if (lorebookRenderPlan.chat.length > 0) {
+      noteShadow('worldbook', 'worldbook:chat_depth', {
+        text: lorebookRenderPlan.chat.map((item) => item.content).join('\n'),
+        relevance: 0.45,
+        recency: 0.5,
+        importance: 0.5,
+        continuity: 0.3,
+        origin: 'worldbook:chat_depth',
+      })
+    }
+  }
+
   if (charDesc) systemContent += '\n\n【角色设定】\n' + charDesc
 
   // 宏展开（预设 / 人设 / 世界书 at_end / 角色设定均支持 {{time}} {{random:}} 等）
@@ -465,6 +610,11 @@ export function buildContextMessagesFromData(
   if (anText && anConfig!.position === 'top') {
     context.push({ role: 'system', content: anText, keepSeparate: true })
   }
+  if (anText) {
+    noteShadow('character', `character:author-note-${anConfig!.position}`, {
+      text: anText, relevance: 0.7, recency: 1, importance: 0.8, continuity: 0.7,
+    })
+  }
 
   // 对话示例位置与发送模式配置（预设级可覆盖全局）
   const exampleDialogPosition = settings.exampleDialogPosition || 'after_system'
@@ -477,6 +627,16 @@ export function buildContextMessagesFromData(
   const exampleDialogContent = shouldSendExample
     ? '【对话示例】\n' + replaceVariables(character.exampleDialog!, userName, charNameForVars)
     : ''
+  if (exampleDialogContent) {
+    noteShadow('example', 'example:dialog', {
+      text: exampleDialogContent,
+      relevance: 0.5,
+      recency: 1,
+      importance: 0.6,
+      continuity: 0.6,
+      origin: `example:${exampleDialogPosition}`,
+    })
+  }
 
   // 如果示例位置是 after_system（默认），在这里插入
   if (exampleDialogPosition === 'after_system') {
@@ -497,6 +657,12 @@ export function buildContextMessagesFromData(
     ? replaceVariables(character.postHistoryInstructions, userName, charNameForVars)
     : ''
   if (postHistoryText) usedTokens += estimateTokens(postHistoryText, model)
+  // W7 影子：尾部/后置协议块（与系统提示中的同一份正文格式文本确实被注入两次，按实际计数）
+  if (postHistoryText) {
+    noteShadow('protocol', 'protocol:post-history', {
+      text: postHistoryText, mandatory: true, stablePrefix: false,
+    })
+  }
   const bodyFormatBase = plan.pipelineLegacy
     ? buildLegacyBodyFormatPrompt(charNameForVars)
     : buildMainChatOutputPrompt(plan.responsePolicy)
@@ -507,6 +673,9 @@ export function buildContextMessagesFromData(
       })}`
     : bodyFormatBase
   usedTokens += estimateTokens(bodyFormatText, model)
+  noteShadow('protocol', 'protocol:body-format-tail', {
+    text: bodyFormatText, mandatory: true, stablePrefix: false,
+  })
   // 预留作者注释（middle/bottom 在历史段内注入，需计入预算）
   if (anText && anConfig!.position !== 'top') {
     usedTokens += estimateTokens(anText, model)
@@ -580,6 +749,30 @@ export function buildContextMessagesFromData(
     })
   }
 
+  // W7 影子：历史段（保留下来的消息）逐条登记；图片按既有 IMAGE_TOKEN_ESTIMATE 计入同一候选。
+  // 近因按"距末尾的位置"归一化，使最近连续对话落入第 2 顺位（§5.5 第 2 条）。
+  if (shadow) {
+    if (compressedSummaryInjected) {
+      noteShadow('history', 'history:compressed-summary', {
+        text: compressedSummaryInjected, relevance: 0.5, recency: 0.2, importance: 0.6, continuity: 0.3,
+      })
+    }
+    const historyCount = recentMessages.length
+    recentMessages.forEach((msg, index) => {
+      const imageTokens = msg.role === 'user' ? estimateImageTokens(msg.images?.length ?? 0) : 0
+      const recency = historyCount <= 1 ? 1 : (index + 1) / historyCount
+      noteShadow('history', `history:msg:${msg.id}`, {
+        tokens: estimateTokens(msg.content || '', model) + imageTokens,
+        dedupeKey: `msg:${msg.id}`,
+        relevance: 0.7,
+        recency,
+        importance: 0.6,
+        continuity: 0.9,
+        origin: imageTokens > 0 ? 'history:user+images' : `history:${msg.role}`,
+      })
+    })
+  }
+
   // at_depth 世界书 + 作者注释（middle/bottom）统一按深度注入历史消息段（共享工具）
   const depthInserts: DepthInsertItem[] =
     atDepthItems.map((i) => ({ content: i.content, depth: i.depth, order: i.order, role: i.role }))
@@ -635,9 +828,13 @@ export function buildContextMessagesFromData(
   // ===== 续写模式 =====
   // 在 merge/convert 之前注入续写指令，保证指令经过完整消息管线（provider 格式转换）
   if (opts?.continuation) {
+    const continuationInstruction = '请直接接续上一段内容的结尾继续写作，保持相同的风格、语气和叙事视角。不要重复已有内容，直接输出续写部分。'
     context.push({
       role: 'user',
-      content: '请直接接续上一段内容的结尾继续写作，保持相同的风格、语气和叙事视角。不要重复已有内容，直接输出续写部分。',
+      content: continuationInstruction,
+    })
+    noteShadow('protocol', 'protocol:continuation', {
+      text: continuationInstruction, mandatory: true, stablePrefix: false,
     })
   }
 
@@ -664,6 +861,30 @@ export function buildContextMessagesFromData(
   const provider = profile?.provider || 'openai'
   processedContext = convertMessages(provider, processedContext, { charName: charNameForVars, userName })
 
+  // ===== W7（§7.9）影子结果：只记录分类 token/数量差异，不参与任何注入决策 =====
+  // 采集与分配异常一律不回传错误（`degraded` 标记），生成链路不受影响。
+  const contextShadow = shadow?.collect({ budgetTokens: budgetBase, reportedUsageTokens: usedTokens })
+  if (contextShadow && !contextShadow.degraded && opts?.lorebookDiagnosticsMode !== 'preview') {
+    logInfo('buildContext', `上下文影子分配：${formatContextShadowSummary(contextShadow)}`)
+  }
+
+  // ===== W8（§7.10）记忆专项影子：既有固定上限 vs 候选动态分配 =====
+  // 记忆候选与非记忆块在同一输入预算内竞争（§5.5 分配顺序由 W7 分配器保证）；
+  // 结果只做对照，注入仍由 `fitLayeredMemoryBudget` 决定。
+  const memoryShadow: MemoryShadowReport | undefined = shadow && memoryShadowPlan && memoryShadowExisting
+    ? buildMemoryShadowReport({
+        plan: memoryShadowPlan,
+        existing: memoryShadowExisting,
+        budgetTokens: budgetBase,
+        competitors: shadow.collectedCandidates().filter(
+          (candidate) => candidate.kind !== 'memory' && candidate.kind !== 'current-state',
+        ),
+      })
+    : undefined
+  if (memoryShadow && !memoryShadow.degraded && opts?.lorebookDiagnosticsMode !== 'preview') {
+    logInfo('buildContext', `记忆影子分配：${formatMemoryShadowSummary(memoryShadow)}`)
+  }
+
   // 记录上下文用量（P1-3：上限预警）
   return {
     messages: processedContext,
@@ -681,6 +902,8 @@ export function buildContextMessagesFromData(
     lorebookCompressionCacheHitKeys,
     lorebookTimedEffects,
     lorebookDiagnostics,
+    ...(contextShadow ? { contextShadow } : {}),
+    ...(memoryShadow ? { memoryShadow } : {}),
   }
 }
 
@@ -723,6 +946,16 @@ export function buildChatParamsFromData(
     presencePenalty: preset?.presencePenalty ?? 0,
     stream: settings.streamOutput,
     instructTemplate,
+    // 阶段8（§4.3）：门控指令由预算结果反推（tokens 即本轮推理预留），与 PC 同口径
+    ...(plan.requestBudget?.gate
+      ? {
+          reasoningGate: {
+            level: plan.requestBudget.gate.level,
+            knob: plan.requestBudget.gate.knob,
+            tokens: plan.requestBudget.reasoningReserve,
+          },
+        }
+      : {}),
     // 阶段0观测元数据：随请求透传给主进程记录（不影响请求行为）
     observability: {
       source: opts?.source ?? 'bridge',

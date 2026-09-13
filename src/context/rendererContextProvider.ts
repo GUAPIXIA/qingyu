@@ -18,6 +18,7 @@ import type { ChatSession, Character, Lorebook, Preset, RegexRule } from '../../
 import { useChatStore } from '../store/useChatStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useCharacterStore } from '../store/useCharacterStore'
+import { cachedReasoningSamplesFor } from '../store/usageProfileCache'
 import { lorebookCache } from '../utils/lorebook'
 /** 渲染层会话快照：直读 useChatStore（含 P0-2 语义检索命中） */
 function buildChatSnapshot(): ContextChatSnapshot {
@@ -96,20 +97,33 @@ export const rendererContextProvider: ContextDataProvider = {
  * 同步构造数据快照（0b 薄封装专用）：从 store 实时取数，不触发任何 IPC/异步加载。
  * - lorebooks 用 lorebookCache.getAll（与迁移前 buildChatContext 的读取路径一致，不过滤书级 enabled）
  * - regexRules 恒空：正则管线在 sendMessage/streamAIResponse 内独立处理，contextBuilder 不消费
+ * - reasoningSamples（W1）：读取发送编排预取好的用量缓存（同步命中；未预取则为空）
  */
-export function syncBuildData(character: Character, preset: Preset | null): ContextBuildData {
+export function syncBuildData(
+  character: Character,
+  preset: Preset | null,
+  /** 阶段8（§4.2）：本轮门控（调用方按开关/熔断状态解析后传入；缺省 = 不介入） */
+  reasoningGate?: ContextBuildData['reasoningGate'],
+): ContextBuildData {
   const settingsStore = useSettingsStore.getState()
   const chat = buildChatSnapshot()
+  const profile = settingsStore.getActiveProfile()
+  const model = settingsStore.settings.activeModel || profile?.model || ''
+  const reasoningSamples = profile && model
+    ? cachedReasoningSamplesFor({ provider: profile.provider, baseUrl: profile.baseUrl, model })
+    : undefined
   return {
     character,
     preset,
     chat,
     settings: {
       settings: settingsStore.settings,
-      profile: settingsStore.getActiveProfile(),
+      profile,
     },
     lorebooks: lorebookCache.getAll(chat.activeLorebookIds),
     regexRules: [],
+    ...(reasoningSamples ? { reasoningSamples } : {}),
+    ...(reasoningGate ? { reasoningGate } : {}),
   }
 }
 

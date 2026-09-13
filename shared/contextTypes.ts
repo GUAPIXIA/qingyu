@@ -83,6 +83,18 @@ export interface ContextBuildData {
   lorebooks: Lorebook[]
   /** 输入/输出正则规则（桥接层组装时同样适用） */
   regexRules: RegexRule[]
+  /**
+   * W1（主计划 §5.3）：该 (provider + 端点 + model + task + gate) 分桶的近期推理样本。
+   * 由调用方在构建前预取（渲染层缓存 / 主进程回读）；缺省时预算退回档案默认余量。
+   * 只携带数值样本，不含正文、完整 URL 或磁盘路径。
+   */
+  reasoningSamples?: number[]
+  /**
+   * 阶段8（§4.2）：本轮推理门控（调用方解析后传入）。
+   * 提供时输出预算的推理项取 `gateTokens`（可信门控 = 承诺值，不可信 = 保守余量）；
+   * 缺省时预算退回档案/P90 余量路径，行为与门控改造前一致。
+   */
+  reasoningGate?: import('./reasoningGate').ResolvedReasoningGate
 }
 
 /** 拉取组装数据时的可选项 */

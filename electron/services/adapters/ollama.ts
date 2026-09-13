@@ -18,6 +18,8 @@ export const ollamaAdapter: AIAdapter = {
   async chat(params, onChunk, signal, onUsage) {
     const { baseUrl, model, temperature, topP, maxTokens,
             frequencyPenalty, presencePenalty, stream } = params
+    // 阶段8（§4.3）：Ollama 无统一推理门控参数，按 knob 'none' 处理——
+    // 不下发任何门控字段，预算与止损由档案/P90 余量 + 提前中止（W4）承担。
 
     // Instruct 模板模式：把消息包装为纯文本，走 /api/generate（原始补全接口）
     // 适用场景：本地模型的 chat template 缺失/异常，或需要精确控制包装格式时

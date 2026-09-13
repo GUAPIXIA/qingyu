@@ -13,6 +13,7 @@ import {
 } from '../groupStreamController'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
+import { resetTailRepairFailureCounts } from '../streamController'
 import { STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { GroupChat, GroupMessage, Character } from '../../../shared/types'
@@ -340,6 +341,168 @@ describe('群聊超时统一收尾（S2）', () => {
     expect(vi.mocked(window.api.group.saveMessage).mock.calls).toHaveLength(1)
     const saved = vi.mocked(window.api.group.saveMessage).mock.calls[0][2] as GroupMessage
     expect(saved.content).toBe('她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。')
+  })
+
+  /**
+   * W0 冻结契约：群聊 done 事件的 finishReason 与单聊/Bridge 同口径
+   * （provider_stop / provider_length / user_cancel / provider_content_filter），
+   * 异常提示只进 generationNotice/generationError，绝不进入正文。
+   */
+  describe('finishReason 与 terminationCause 契约（W0 冻结）', () => {
+    it('stop → 正文原样保存，无异常提示', async () => {
+      resetTailRepairFailureCounts()
+      const group = makeGroup({ chatMode: 'mention' })
+      const { get, set, read } = makeGroupGet(group, 's1')
+      const callbacks = captureCallbacks()
+      await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+
+      callbacks.onChunk!({ requestId, text: '她说：“今晚的月色真美。”' })
+      callbacks.onComplete!({ requestId, finishReason: 'stop' })
+      await vi.advanceTimersByTimeAsync(10)
+
+      const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+      expect(saved.content).toBe('她说：“今晚的月色真美。”')
+      expect(saved.generationNotice).toBeUndefined()
+      expect(saved.generationError).toBeUndefined()
+      expect(read().isStreaming).toBe(false)
+    })
+
+    it('length + 稳定正文达到保留线 → 只在句界收束，不整条重生成、不补尾', async () => {
+      resetTailRepairFailureCounts()
+      const group = makeGroup({ chatMode: 'polling' })
+      const { get, set } = makeGroupGet(group, 's1')
+      const callbacks = captureCallbacks()
+      await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+
+      callbacks.onChunk!({ requestId, text: '她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。然后她伸手拿' })
+      callbacks.onComplete!({ requestId, finishReason: 'length' })
+      await vi.advanceTimersByTimeAsync(10)
+
+      const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+      expect(saved.content).toBe('她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。')
+      expect(saved.generationNotice).toBe('内容已在完整句处收束')
+      expect(saved.generationError).toBeUndefined()
+      // provider_length 且稳定正文足够：只做边界收束，不发起补尾（无 stream=false 请求）
+      expect(vi.mocked(window.api.ai.chat)).toHaveBeenCalledTimes(1)
+      expect(saved.content).not.toContain('伸手拿')
+    })
+
+    it('length + 稳定正文过短 → 一次短补尾；失败时保留稳定前缀并提示', async () => {
+      resetTailRepairFailureCounts()
+      const group = makeGroup({ chatMode: 'polling' })
+      const { get, set } = makeGroupGet(group, 's1')
+      const callbacks = captureCallbacks()
+      await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+
+      callbacks.onChunk!({ requestId, text: '她推开门。然后她伸手拿' })
+      callbacks.onComplete!({ requestId, finishReason: 'length' })
+      // 补尾请求在测试环境无独立响应：等 60s 兜底超时按失败处理，保留稳定前缀
+      await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MS + 100)
+
+      const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+      expect(saved.content).toBe('她推开门。')
+      expect(saved.generationError).toBe('生成中断，已保留完整部分')
+      // 只发起一次非流式补尾，不整条重生成（流式主请求仍只有一次）
+      const streamFlags = vi.mocked(window.api.ai.chat).mock.calls.map(
+        (c) => (c[0] as { stream?: boolean }).stream,
+      )
+      expect(streamFlags.filter((flag) => flag === true)).toHaveLength(1)
+      expect(streamFlags.filter((flag) => flag === false)).toHaveLength(1)
+    })
+
+    it('cancelled（用户停止）→ 保留已见正文，中性提示且不计为错误', async () => {
+      resetTailRepairFailureCounts()
+      const group = makeGroup({ chatMode: 'mention' })
+      const { get, set } = makeGroupGet(group, 's1')
+      const callbacks = captureCallbacks()
+      await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+
+      callbacks.onChunk!({ requestId, text: '用户停止前看到的半句，还没写完' })
+      callbacks.onComplete!({ requestId, finishReason: 'cancelled' })
+      await vi.advanceTimersByTimeAsync(10)
+
+      const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+      expect(saved.content).toBe('用户停止前看到的半句，还没写完')
+      expect(saved.generationNotice).toBe('已停止生成')
+      expect(saved.generationError).toBeUndefined()
+    })
+
+    it('content_filter → 不保存被拦截正文，占位回退为 (无回复)', async () => {
+      resetTailRepairFailureCounts()
+      const group = makeGroup({ chatMode: 'mention' })
+      const { get, set } = makeGroupGet(group, 's1')
+      const callbacks = captureCallbacks()
+      await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+
+      callbacks.onChunk!({ requestId, text: '被拦截了一半的内容。' })
+      callbacks.onComplete!({ requestId, finishReason: 'content_filter' })
+      await vi.advanceTimersByTimeAsync(10)
+
+      const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+      expect(saved.content).toBe('(无回复)')
+      expect(saved.content).not.toContain('被拦截')
+    })
+  /**
+   * W5（主计划 §7.7）：群聊接入同一门控与恢复控制器——
+   * 空正文 + 推理挤占 → 降一档重发一次并复用同一消息；不重复其他角色已完成回合。
+   */
+  describe('降档恢复与单角色失败隔离（W5）', () => {
+    it('推理挤占 → 降档重发复用同一消息，其他角色消息不变', async () => {
+      // 开启门控（默认关闭）；gpt-4o 非 deepseek → 起步档 standard，可降到 low
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, reasoningGateEnabled: true, activeModel: 'gpt-4o' },
+      } as never))
+      const group = makeGroup({ chatMode: 'mention' })
+      const { get, set, read } = makeGroupGet(group, 's1')
+      // 其他角色已完成的历史回合：恢复过程不得触碰
+      set((s: any) => ({
+        messages: [{
+          id: 'other-1', groupId: group.id, characterId: 'c2', content: '千夏已经说过的话。',
+          images: [], timestamp: 1, round: 1, speakerKind: 'character',
+        }],
+      }))
+      const callbacks = captureCallbacks()
+      await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+
+      const firstParams = vi.mocked(window.api.ai.chat).mock.calls[0][0]
+      expect(firstParams.reasoningGate?.level).toBe('standard')
+
+      // 第一次：推理挤占（零正文 + 结构化终局）
+      callbacks.onComplete!({
+        requestId: firstParams.requestId,
+        finishReason: 'length',
+        terminationCause: 'reasoning_gate_exceeded',
+        earlyAbort: true,
+      })
+      await vi.advanceTimersByTimeAsync(10)
+
+      // 不落盘 "(无回复)"，且没有第二条占位消息
+      expect(window.api.group.saveMessage).not.toHaveBeenCalled()
+      expect(read().messages.filter((m: any) => m.content === '')).toHaveLength(1)
+
+      // 第二次：降档重发（新 requestId、档位 low）
+      expect(vi.mocked(window.api.ai.chat)).toHaveBeenCalledTimes(2)
+      const secondParams = vi.mocked(window.api.ai.chat).mock.calls[1][0]
+      expect(secondParams.reasoningGate?.level).toBe('low')
+      expect(secondParams.requestId).not.toBe(firstParams.requestId)
+
+      callbacks.onChunk!({ requestId: secondParams.requestId, text: '港口已经封锁，任何人都不能通过。' })
+      callbacks.onComplete!({ requestId: secondParams.requestId, finishReason: 'stop' })
+      await vi.advanceTimersByTimeAsync(10)
+
+      const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+      expect(saved.content).toBe('港口已经封锁，任何人都不能通过。')
+      // 复用同一消息（占位被填充，无第二条空消息）
+      expect(read().messages.filter((m: any) => m.content === '')).toHaveLength(0)
+      // 其他角色已完成回合保持不变
+      expect(read().messages.find((m: any) => m.id === 'other-1')?.content).toBe('千夏已经说过的话。')
+    })
+  })
   })
 })
 

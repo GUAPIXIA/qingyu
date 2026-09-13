@@ -12,8 +12,10 @@ import { findSessionById } from './sessionsIndex'
 import { stripThought } from '../../shared/chat-core/messagePostProcess'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
+import { resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { resolveReasoningGate } from '../../shared/reasoningGate'
 import {
-  DIALOGUE_DIRECTION_MAX_TOKENS,
   DIALOGUE_DIRECTION_TEMPERATURE,
   buildDialogueDirectionSystemPrompt,
   buildDialogueDirectionUserPrompt,
@@ -120,6 +122,14 @@ function buildDirectionParams(
   profile: DirectionProfile,
   messages: ChatParams['messages'],
 ): ChatParams {
+  // W5（主计划 §7.7）：与 PC 同口径——后台 direction 档案 + 统一预算 + off 门控，
+  // 不再直连 1536（该入口此前与 PC 存在已知漂移，方案 §2.2）。
+  const gate = resolveReasoningGate({ model: profile.model, requestedLevel: 'off', enabled: true })
+  const budget = resolveRequestBudget({
+    model: profile.model,
+    hardMaxChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
+    reasoningGate: gate,
+  })
   return {
     requestId: `directions-${Date.now()}-${nanoid(4)}`,
     messages,
@@ -129,11 +139,12 @@ function buildDirectionParams(
     model: profile.model,
     temperature: DIALOGUE_DIRECTION_TEMPERATURE,
     topP: 0.9,
-    maxTokens: DIALOGUE_DIRECTION_MAX_TOKENS,
+    maxTokens: budget.requestMaxTokens,
     frequencyPenalty: 0,
     presencePenalty: 0,
     stream: false,
     reasoningMode: 'disabled',
+    reasoningGate: { level: 'off', knob: gate.knob, tokens: gate.gateTokens },
     // 阶段7（§7.3）：独立 taskType，与渲染层方向请求同口径
     observability: { source: 'aux', taskType: 'direction' },
   }

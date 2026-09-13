@@ -38,6 +38,7 @@ import type {
 } from '../../shared/types'
 import { getDefaultSettings } from '../../shared/defaults'
 import { restoreSecrets } from '../ipc/settings'
+import { resolveDefaultGateLevel, resolveReasoningGate } from '../../shared/reasoningGate'
 import { listLorebookViews } from '../services/lorebookDocumentStore'
 
 /** 读取设置（含默认值兜底；H1：settings.json 不落 apiKey，需从 safeStorage 回填） */
@@ -134,6 +135,17 @@ export const mainContextProvider: ContextDataProvider = {
 
     const regexRules: RegexRule[] = readRules()
 
+    // 阶段8（§4.2/§4.5）：桥接端与 PC 共用同一档位策略与门控解析；
+    // kill switch 关闭时不介入（旧路径），开启后预算取 gateTokens 并可被提前中止兜底。
+    const budgetModel = settings.activeModel || profile?.model || ''
+    const gateLevel = resolveDefaultGateLevel({
+      model: budgetModel,
+      enabled: settings.reasoningGateEnabled === true,
+    })
+    const reasoningGate = gateLevel
+      ? resolveReasoningGate({ model: budgetModel, requestedLevel: gateLevel, enabled: true })
+      : undefined
+
     return {
       character,
       preset,
@@ -141,6 +153,7 @@ export const mainContextProvider: ContextDataProvider = {
       settings: { settings, profile },
       lorebooks,
       regexRules,
+      ...(reasoningGate ? { reasoningGate } : {}),
     }
   },
 
