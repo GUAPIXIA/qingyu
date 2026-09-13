@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-  从当前活跃 connection profile 安全拉取密钥并调用 evaluate-generation.ts。
+  Load active connection profile securely and invoke evaluate-generation.ts.
 
 .DESCRIPTION
-  1. 创建随机临时目录
-  2. 通过 Electron safeStorage 解密活跃 profile 的 API Key，写入临时文件（不进 argv/env）
-  3. 从 settings.connectionProfiles[activeProfileId] 读取 provider/baseUrl/model/maxContext
-  4. 用 metadata + key-file 调用评测器（不按模型名猜 provider）
-  5. finally 删除密钥与临时目录
+  1. Create a random temp directory
+  2. Decrypt active profile API key via Electron safeStorage into a temp file (never argv/env)
+  3. Read provider/baseUrl/model/maxContext from settings.connectionProfiles[activeProfileId]
+  4. Run evaluator with metadata + --key-file (no provider guessing by model name)
+  5. Delete key and temp dir in finally
 
 .EXAMPLE
   pwsh scripts/evaluate-active-profile.ps1 -Batches dialogue,group,stream -Reps 1 -Out .poc-tmp/eval-dialog-render-smoke
@@ -39,24 +39,24 @@ function Find-Electron {
     (Join-Path $repoRoot 'node_modules\electron\dist\electron.exe')
   )
   foreach ($c in $candidates) { if (Test-Path $c) { return $c } }
-  throw '未找到 electron.exe；请安装依赖或用 -ElectronExe 指定路径'
+  throw 'electron.exe not found; install deps or pass -ElectronExe'
 }
 
 function Read-ActiveProfileMeta {
   $settingsPath = Join-Path $env:USERPROFILE 'AppData/Roaming/qingyu/data/config/settings.json'
   if (-not (Test-Path $settingsPath)) {
-    throw "未找到应用 settings.json: $settingsPath"
+    throw "settings.json not found: $settingsPath"
   }
   $json = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
   $profileId = $json.activeProfileId
-  if (-not $profileId) { throw 'settings.activeProfileId 为空，无法确定活跃 profile' }
+  if (-not $profileId) { throw 'settings.activeProfileId is empty' }
 
   $profile = $null
   if ($json.connectionProfiles) {
     $profile = @($json.connectionProfiles) | Where-Object { $_.id -eq $profileId } | Select-Object -First 1
   }
   if (-not $profile) {
-    throw "connectionProfiles 中没有 id=$profileId 的活跃 profile"
+    throw "connectionProfiles has no entry for activeProfileId=$profileId"
   }
 
   $provider = [string]$profile.provider
@@ -81,28 +81,28 @@ $meta = Read-ActiveProfileMeta
 
 Write-Host "[eval-active-profile] name=$($meta.name) provider=$($meta.provider) model=$($meta.model) baseUrl=$($meta.baseUrl) maxContext=$($meta.maxContext)"
 if ($supported -notcontains $meta.provider) {
-  Write-Error "当前 provider=$($meta.provider) 尚未被评测器支持，停止真实模型阶段（不静默退回 OpenAI）。支持: $($supported -join ', ')"
+  Write-Error "Unsupported provider=$($meta.provider). Stop real-model phase (no silent OpenAI fallback). Supported: $($supported -join ', ')"
   exit 4
 }
 if (-not $meta.baseUrl -or -not $meta.model) {
-  Write-Error '活跃 profile 缺少 baseUrl 或 model，停止真实模型阶段。'
+  Write-Error 'Active profile missing baseUrl or model. Stop real-model phase.'
   exit 5
 }
 
 try {
   & $electron $decryptScript 'active' $keyFile
-  if ($LASTEXITCODE -ne 0) { throw "decrypt-api-key 退出码 $LASTEXITCODE" }
-  if (-not (Test-Path $keyFile)) { throw '密钥文件未生成' }
+  if ($LASTEXITCODE -ne 0) { throw "decrypt-api-key exit code $LASTEXITCODE" }
+  if (-not (Test-Path $keyFile)) { throw 'key file was not created' }
 
   $meta | ConvertTo-Json -Depth 5 | Set-Content -Path $metaFile -Encoding UTF8
 
   $env:GENERATION_EVAL_PROVIDER = $meta.provider
   $env:GENERATION_EVAL_BASE_URL = $meta.baseUrl
   $env:GENERATION_EVAL_MODEL = $meta.model
-  # 密钥只经 --key-file，不进环境变量
+  # key only via --key-file, never env/argv
 
   if ($SkipRealModel) {
-    Write-Host '[eval-active-profile] SkipRealModel：仅校验 profile 与密钥链路，不发起真实调用'
+    Write-Host '[eval-active-profile] SkipRealModel: profile/key path validated, no live calls'
     exit 0
   }
 
@@ -130,7 +130,7 @@ finally {
   if (Test-Path $debugPath) {
     $raw = Get-Content $debugPath -Raw
     if ($raw -match 'Bearer\s+[A-Za-z0-9_\-\.]{8,}') {
-      Write-Warning 'http-debug.jsonl 疑似含 Authorization，正在脱敏…'
+      Write-Warning 'http-debug.jsonl appears to contain Authorization; redacting...'
       $redacted = $raw -replace 'Bearer\s+[A-Za-z0-9_\-\.]+', 'Bearer ***'
       $redacted = $redacted -replace '("api[_-]?key"\s*:\s*")[^"]+', '$1***'
       Set-Content -Path $debugPath -Value $redacted -Encoding UTF8
