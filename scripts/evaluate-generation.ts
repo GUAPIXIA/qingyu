@@ -372,6 +372,9 @@ let globalEvalModel = 'deepseek/deepseek-v4.1-flash'
 
 // ===================== 模型调用 =====================
 
+/** callModel / group 对 maxTokens<=0 的抬升下限（OpenAI 兼容端点要求 >0） */
+const EVAL_MAX_TOKENS_FLOOR = 4096
+
 const transportLog: Array<{ index: number; url: string; request: string; status: number; response: string }> = []
 let transportSeq = 0
 let outDirForDebug = ''
@@ -461,6 +464,9 @@ function createModelCaller(options: CliOptions) {
     const systemContent = input.systemSuffix
       ? `${input.systemPrompt}\n\n${input.systemSuffix}`
       : input.systemPrompt
+    // 评测夹具 maxTokens=0 表示「无用户硬上限」；OpenAI 兼容端点要求 max_tokens>0。
+    // 直传 0 会 400（Too small）。这里抬到与 stream 同口径的下限，供渲染冒烟使用。
+    const requestMaxTokens = input.maxTokens > 0 ? input.maxTokens : EVAL_MAX_TOKENS_FLOOR
     const params: ChatParams = {
       requestId: `gen-eval-${input.label}`,
       messages: [
@@ -473,7 +479,7 @@ function createModelCaller(options: CliOptions) {
       model: options.model,
       temperature: input.temperature,
       topP: 0.9,
-      maxTokens: input.maxTokens,
+      maxTokens: requestMaxTokens,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
@@ -1064,7 +1070,7 @@ async function runGroupCase(options: CliOptions, callModel: CallModel, testCase:
       systemPrompt,
       userPrompt,
       temperature: PRESET_FIXTURE.temperature ?? 0.8,
-      maxTokens: PRESET_FIXTURE.maxTokens ?? 1024,
+      maxTokens: Math.max(PRESET_FIXTURE.maxTokens || 0, EVAL_MAX_TOKENS_FLOOR),
       label: testCase.id,
     })
     raw = result.text
