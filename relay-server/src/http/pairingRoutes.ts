@@ -10,6 +10,7 @@ import { withTenantTransaction } from '../db/tenantTransaction.js'
 import type { RelayHub } from '../ws/relayHub.js'
 import type { MetricsRegistry } from '../observability/metrics.js'
 import type { RedisRateLimiter } from '../security/rateLimiter.js'
+import { invalidTicket, notFound, rateLimited, sendRelayError } from './relayErrors.js'
 
 interface PairResult { spaceId: string; deviceId: string; accessToken: string; refreshToken: string; accessTokenExpiresAt: number; tokenVersion: number }
 interface PendingPair {
@@ -45,7 +46,7 @@ export async function pairingRoutes(app: FastifyInstance, options: { pool: pg.Po
         const bySecret = await options.limiter.consume('pair:secret', supplied, 8, 15 * 60)
         if (!bySecret.allowed) return rateLimited(reply, request.id, bySecret.retryAfterSeconds)
       } catch {
-        return reply.code(503).send({ error: { code: 'RELAY_UNAVAILABLE', message: '配对服务暂时不可用', retryable: true, requestId: request.id } })
+        return sendRelayError(reply, 503, 'RELAY_UNAVAILABLE', '配对服务暂时不可用', request.id, true)
       }
     }
     const ticket = body.ticket ?? (body.code ? ticketByCode.get(normalizePairCode(body.code)) : undefined)
@@ -94,7 +95,7 @@ export async function pairingRoutes(app: FastifyInstance, options: { pool: pg.Po
   }))
   app.delete('/relay/v1/devices/:id', { preHandler: requireRelayAuth(options.tokens, 'pc', options.validate) }, async (request, reply) => {
     const auth = request.relayAuth!; const deviceId = (request.params as { id: string }).id
-    if (deviceId === auth.sub) return reply.code(400).send({ error: { code: 'INVALID_REQUEST', message: '不能在此处移除 PC 设备', retryable: false, requestId: request.id } })
+    if (deviceId === auth.sub) return sendRelayError(reply, 400, 'INVALID_REQUEST', '不能在此处移除 PC 设备', request.id)
     const changed = await withTenantTransaction(options.pool, auth.sid, async (client) => {
       const result = await client.query("UPDATE relay_devices SET revoked_at=now(),token_version=token_version+1 WHERE id=$1 AND role='android' AND revoked_at IS NULL", [deviceId])
       await client.query('UPDATE relay_refresh_tokens SET revoked_at=now() WHERE device_id=$1', [deviceId]); return result.rowCount
@@ -103,7 +104,3 @@ export async function pairingRoutes(app: FastifyInstance, options: { pool: pg.Po
     return notFound(reply, request.id)
   })
 }
-
-function invalidTicket(reply: FastifyReply, requestId: string) { return reply.code(401).send({ error: { code: 'PAIR_TICKET_INVALID', message: '连接码无效或已过期', retryable: false, requestId } }) }
-function notFound(reply: FastifyReply, requestId: string) { return reply.code(404).send({ error: { code: 'RESOURCE_NOT_FOUND', message: '内容不存在', retryable: false, requestId } }) }
-function rateLimited(reply: FastifyReply, requestId: string, retryAfterSeconds: number) { return reply.header('retry-after', String(retryAfterSeconds)).code(429).send({ error: { code: 'RATE_LIMITED', message: '请稍后再试', retryable: true, requestId } }) }

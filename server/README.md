@@ -64,12 +64,15 @@ cd app && npm test
 
 ## 发版流程
 
-1. 更新 `app/package.json` 的 `version`
+发版流程细节见仓库 [`docs/规范/项目更新与上传规范.md`](../docs/规范/项目更新与上传规范.md) 与 [`docs/规范/项目推送与版本管理规范.md`](../docs/规范/项目推送与版本管理规范.md)。摘要：
+
+1. 更新 `app/package.json` 的 `version`（当前见文件头）
 2. `CHANGELOG.md` 顶部新增一节（格式：`## [x.y.z] - 日期`）
-3. 提交并打 tag：
+3. 提交并打 tag（**服务端使用 `server-v*` 前缀**，与桌面端 `v*` 区分）：
 
 ```bash
 git add -A
-git commit -m "chore: v1.0.1 — <变更摘要>"
-git tag v1.0.1
+git commit -m "chore(server): v<x.y.z> — <变更摘要>"
+git tag server-v<x.y.z>
+git push origin main server-v<x.y.z>
 ```

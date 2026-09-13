@@ -29,6 +29,11 @@ export default defineConfig({
         functions: 35,
         branches: 65,
         statements: 15,
+        // 安全敏感文件按路径单独收紧（A3）：安全回归必须先变红，而不是被全局阈值掩盖。
+        // 实测（2026-09-13，含 P0-A/P0-B 回归用例）：backup 94/77、pathGuard 97/97、auth 79/78。
+        'electron/services/backup.ts': { lines: 70, branches: 60 },
+        'electron/utils/pathGuard.ts': { lines: 90, branches: 80 },
+        'electron/bridge/auth.ts': { lines: 70, branches: 60 },
       },
     },
   },

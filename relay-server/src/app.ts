@@ -11,6 +11,7 @@ import type { RelayAccessClaims } from './auth/accessToken.js'
 import type { SnapshotService } from './cache/snapshotService.js'
 import type { CommandQueue } from './cache/commandQueue.js'
 import { requireRelayAuth } from './auth/middleware.js'
+import { notFound } from './http/relayErrors.js'
 import { withTenantTransaction } from './db/tenantTransaction.js'
 import type { MetricsRegistry } from './observability/metrics.js'
 import type { RedisRateLimiter } from './security/rateLimiter.js'
@@ -35,7 +36,7 @@ export function buildApp(config: RelayConfig, dependencies: { pool: pg.Pool; tok
     capabilities: ['relay.pairing', 'relay.rpc', 'relay.cache', 'relay.offlineQueue'],
   }))
   app.get('/relay/v1/metrics', async (_request, reply) => reply.type('text/plain; version=0.0.4').send(dependencies.metrics?.render() ?? ''))
-  app.setNotFoundHandler(async (request, reply) => reply.code(404).send({ error: { code: 'RESOURCE_NOT_FOUND', message: '内容不存在', retryable: false, requestId: request.id } }))
+  app.setNotFoundHandler(async (request, reply) => notFound(reply, request.id))
   app.addHook('onClose', async () => { await dependencies.close?.(); await dependencies.pool.end() })
   return app
 }

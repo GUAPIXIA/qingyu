@@ -6,13 +6,14 @@ import type { AccessTokenService } from '../auth/accessToken.js'
 import { createOpaqueToken, hashOpaqueToken } from '../auth/refreshToken.js'
 import { withTenantTransaction } from '../db/tenantTransaction.js'
 import type { RedisRateLimiter } from '../security/rateLimiter.js'
+import { invalidCredential, rateLimited, sendRelayError } from './relayErrors.js'
 
 export async function spaceRoutes(app: FastifyInstance, options: { pool: pg.Pool; config: RelayConfig; tokens: AccessTokenService; limiter?: RedisRateLimiter }): Promise<void> {
   const { pool, config, tokens } = options
   app.post('/relay/v1/spaces/register-pc', {
     schema: { body: { type: 'object', additionalProperties: false, required: ['name', 'fingerprint'], properties: { name: { type: 'string', minLength: 1, maxLength: 100 }, fingerprint: { type: 'string', minLength: 16, maxLength: 256 } } } },
   }, async (request, reply) => {
-    if (config.registrationMode !== 'open') return reply.code(403).send({ error: { code: 'SPACE_DISABLED', message: '当前 Relay 仅允许邀请注册', retryable: false, requestId: request.id } })
+    if (config.registrationMode !== 'open') return sendRelayError(reply, 403, 'SPACE_DISABLED', '当前 Relay 仅允许邀请注册', request.id)
     const body = request.body as { name: string; fingerprint: string }
     if (options.limiter) {
       try {
@@ -21,7 +22,7 @@ export async function spaceRoutes(app: FastifyInstance, options: { pool: pg.Pool
         const byDevice = await options.limiter.consume('register:device', body.fingerprint, 3, 24 * 60 * 60)
         if (!byDevice.allowed) return rateLimited(reply, request.id, byDevice.retryAfterSeconds)
       } catch {
-        return reply.code(503).send({ error: { code: 'RELAY_UNAVAILABLE', message: '注册服务暂时不可用', retryable: true, requestId: request.id } })
+        return sendRelayError(reply, 503, 'RELAY_UNAVAILABLE', '注册服务暂时不可用', request.id, true)
       }
     }
     const spaceId = randomUUID(); const deviceId = randomUUID(); const refreshSecret = createOpaqueToken(); const refreshToken = `${spaceId}.${refreshSecret}`
@@ -44,7 +45,7 @@ export async function spaceRoutes(app: FastifyInstance, options: { pool: pg.Pool
   }, async (request, reply) => {
     const supplied = (request.body as { refreshToken: string }).refreshToken
     const spaceId = supplied.slice(0, supplied.indexOf('.'))
-    if (!/^[0-9a-f-]{36}$/i.test(spaceId)) return reply.code(401).send({ error: { code: 'INVALID_TOKEN', message: '凭据已失效', retryable: false, requestId: request.id } })
+    if (!/^[0-9a-f-]{36}$/i.test(spaceId)) return invalidCredential(reply, request.id)
     const result = await withTenantTransaction(pool, spaceId, async (client) => {
       const hash = hashOpaqueToken(config.tokenPepper, supplied)
       const found = await client.query<{ id: string; device_id: string; role: 'pc' | 'android'; token_version: number; replaced_by: string | null; revoked_at: Date | null }>(
@@ -62,12 +63,8 @@ export async function spaceRoutes(app: FastifyInstance, options: { pool: pg.Pool
       await client.query('UPDATE relay_refresh_tokens SET replaced_by=$2,revoked_at=now() WHERE id=$1', [current.id, replacementId])
       return { ...current, refreshToken }
     })
-    if (!result) return reply.code(401).send({ error: { code: 'INVALID_TOKEN', message: '凭据已失效', retryable: false, requestId: request.id } })
+    if (!result) return invalidCredential(reply, request.id)
     const accessToken = await tokens.issue({ deviceId: result.device_id, spaceId, role: result.role, tokenVersion: result.token_version })
     return { spaceId, deviceId: result.device_id, accessToken, accessTokenExpiresAt: Date.now() + 15 * 60_000, refreshToken: result.refreshToken, tokenVersion: result.token_version }
   })
-}
-
-function rateLimited(reply: import('fastify').FastifyReply, requestId: string, retryAfterSeconds: number) {
-  return reply.header('retry-after', String(retryAfterSeconds)).code(429).send({ error: { code: 'RATE_LIMITED', message: '请稍后再试', retryable: true, requestId } })
 }
