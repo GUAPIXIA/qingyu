@@ -4,19 +4,24 @@
  * 在 Markdown AST 层识别对话和动作模式，添加语义化 CSS 类名：
  * - 整段 *动作*  -> <p class="action-block">
  * - 行内 *动作*  -> <em class="action-em">
- * - 整行「角色：“对话”」或整行纯引号对白 -> <strong class="dialogue-block">
- * - 其余行内 "对话" -> <em class="dialogue-inline">（保留引号）
+ * - 整行「角色：“对话”」或整行纯引号对白 -> <div class="dialogue-block">
+ * - 其余行内 "对话" -> <span class="dialogue-inline">（保留引号）
  *
- * 行级判定与 blocks 路径（roleplayBlocks.classifyLine）共用同一套正则与
- * 叙述前缀排除规则：同一段文本无论走哪条渲染路径，归类结果一致。
+ * 行级判定与 blocks 路径（roleplayBlocks.matchSpeakerDialogue / PURE_QUOTE）共用
+ * 同一套引号规则与叙述前缀排除：同一段文本无论走哪条渲染路径，归类结果一致。
  * 行内不再单独识别说话人前缀（避免把「叙述：“对白”」误拆成对话块）。
  *
- * 全部使用标准 mdast 节点（emphasis/strong）+ data.hProperties，
- * 不依赖 html 节点和 rehypeRaw，兼容性更好。
+ * 全部使用标准 mdast 节点 + data.hProperties 覆盖元素名（div/span），
+ * 不依赖 html 节点和 rehypeRaw，兼容性更好；纯视觉容器不用 strong/em 冒充布局。
  */
 
 import { splitMentionSegments } from './mentionHighlight'
-import { SPEAKER_QUOTE, PURE_QUOTE, NARRATION_PREFIX, stripOuterQuotes } from './roleplayBlocks'
+import {
+  PURE_QUOTE,
+  stripOuterQuotes,
+  matchSpeakerDialogue,
+  isPureDialogueLine,
+} from './roleplayBlocks'
 
 /** 简化的 mdast 节点类型 */
 interface MdastNode {
@@ -31,14 +36,6 @@ interface MdastNode {
   [key: string]: unknown
 }
 
-/** 创建带 className 的 emphasis 节点 */
-function em(className: string, text: string): MdastNode {
-  return {
-    type: 'emphasis',
-    data: { hProperties: { className: [className] } },
-    children: [{ type: 'text', value: text }],
-  }
-}
 
 /**
  * @提及高亮 remark 插件（BUG-09 修复配套）
@@ -78,11 +75,24 @@ export function remarkMentionHighlight(mentionedNames: string[]) {
   }
 }
 
-/** 创建带 className 的 strong 节点（作为容器） */
-function strong(className: string, children: MdastNode[]): MdastNode {
+/** 创建对白块容器：span + display:block（避免 p 内嵌 div 的非法结构）。
+ *  借用 strong 节点类型以保留 children，再用 hName 覆盖为 span。 */
+function dialogueBlockDiv(children: MdastNode[]): MdastNode {
   return {
     type: 'strong',
-    data: { hProperties: { className: [className] } },
+    data: {
+      hName: 'span',
+      hProperties: { className: ['dialogue-block'], role: 'presentation' },
+    },
+    children,
+  }
+}
+
+/** 创建带 className 的 span（行内对白/说话人标签；借用 emphasis 保留 children） */
+function span(className: string, children: MdastNode[]): MdastNode {
+  return {
+    type: 'emphasis',
+    data: { hName: 'span', hProperties: { className: [className] } },
     children,
   }
 }
@@ -117,16 +127,17 @@ function classifyDialogueLine(line: MdastNode[]): MdastNode | null {
   if (!line.every((n) => n.type === 'text')) return null
   const plain = line.map((n) => n.value ?? '').join('').trim()
   if (!plain) return null
-  const speakerMatch = plain.match(SPEAKER_QUOTE)
-  if (speakerMatch && !NARRATION_PREFIX.test(speakerMatch[1])) {
-    return strong('dialogue-block', [
-      em('dialogue-speaker', speakerMatch[1].trim()),
+  // 与 blocks 共用：说话人 + 纯对白，或整行纯对白（含四类引号）
+  const speakerHit = matchSpeakerDialogue(plain, 'final')
+  if (speakerHit?.complete) {
+    return dialogueBlockDiv([
+      span('dialogue-speaker', [{ type: 'text', value: speakerHit.speaker }]),
       { type: 'text', value: ' ' },
-      em('dialogue-text', stripOuterQuotes(speakerMatch[2])),
+      span('dialogue-text', [{ type: 'text', value: stripOuterQuotes(speakerHit.dialogue) }]),
     ])
   }
-  if (PURE_QUOTE.test(plain)) {
-    return strong('dialogue-block', [em('dialogue-text', stripOuterQuotes(plain))])
+  if (isPureDialogueLine(plain, 'final') && PURE_QUOTE.test(plain)) {
+    return dialogueBlockDiv([span('dialogue-text', [{ type: 'text', value: stripOuterQuotes(plain) }])])
   }
   return null
 }
@@ -147,8 +158,7 @@ function inlineProcessLine(line: MdastNode[]): MdastNode[] {
     }
     // 归一化 CJK 引号到 ASCII 双引号（先归一化再判断，确保 CJK 引号也能被检测）
     const normalized = node.value
-      .replace(/[\u201C\u201D\u201E\u201F\uFF02\u300C\u300E\u2039\u00AB\u301D\uFE41\uFE43]/g, '"')
-      .replace(/[\u300D\u300F\u203A\u00BB\u301E\uFE42\uFE44]/g, '"')
+      .replace(/[“”「」『』"']/g, '"')
 
     if (!normalized.includes('"')) {
       out.push(node)
@@ -162,7 +172,11 @@ function inlineProcessLine(line: MdastNode[]): MdastNode[] {
       if (m.index! > lastIndex) {
         out.push({ type: 'text', value: normalized.slice(lastIndex, m.index) })
       }
-      out.push(em('dialogue-inline', `"${m[1]}"`))
+      out.push({
+        type: 'emphasis',
+        data: { hName: 'span', hProperties: { className: ['dialogue-inline'] } },
+        children: [{ type: 'text', value: `"${m[1]}"` }],
+      })
       lastIndex = m.index! + m[0].length
     }
     if (lastIndex < normalized.length) {
