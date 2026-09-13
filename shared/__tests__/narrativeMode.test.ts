@@ -46,6 +46,16 @@ describe('narrativeMode', () => {
     expect(prompt).toContain('不得以角色的“我/我们”视角向 林舟 直接接话')
   })
 
+  it('旁白护栏第3条仅豁免 <thought> 内心独白，不放松正文第三人称', () => {
+    const omniscient = buildNarrativeModePrompt('omniscient', '林舟', '艾琳')
+    expect(omniscient).toContain('第一人称只能存在于引号内的角色原话或 <thought>...</thought> 块内的角色内心独白')
+    expect(omniscient).toContain('<thought> 内心独白块不受本条限制')
+    // 豁免是窄口径：正文叙述视角仍被锁死为第三人称
+    expect(omniscient).toContain('不能成为正文的叙述视角')
+    // 旧措辞（无条件禁止引号外第一人称）会造成护栏与 thought 契约互相矛盾
+    expect(omniscient).not.toContain('不能成为回答的叙述视角')
+  })
+
   it('空白自定义规则安全回退内置规则', () => {
     const prompt = buildNarrativeModePrompt('omniscient', '林舟', '艾琳', '   ')
     expect(prompt).toContain('位于故事外部的第三人称旁白、导演和世界运行者')
@@ -57,6 +67,8 @@ describe('narrativeMode', () => {
     const free = buildGroupNarrativeModePrompt('immersive', '林舟', '群聊成员', 'free')
 
     expect(immersive).toContain('本轮只由当前发言角色「艾琳」回应')
+    expect(immersive).toContain('对白必须是「艾琳」自己的第一人称')
+    expect(immersive).toContain('动作/神态可用第三人称叙述')
     expect(immersive).not.toContain('异地事件或世界变化')
     expect(omniscient).toContain('发言调度仅指定剧情焦点「艾琳」')
     expect(omniscient).toContain('异地事件或世界变化')

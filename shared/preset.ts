@@ -1,10 +1,12 @@
-import type { Preset, PresetImportResult } from './types'
+import type { Preset, PresetImportResult, ResponseLengthMode } from './types'
 
 const VALID_EXAMPLE_MODES = new Set(['always', 'first_turn', 'off'])
 
+const VALID_RESPONSE_LENGTH_HINTS = new Set(['auto', 'brief', 'balanced', 'detailed'])
+
 const NATIVE_PRESET_FIELDS = new Set([
   'id', 'name', 'description', 'systemPrompt', 'jailbreak',
-  'maxContext', 'temperature', 'topP', 'maxTokens',
+  'maxContext', 'temperature', 'topP', 'maxTokens', 'responseLengthHint',
   'frequencyPenalty', 'presencePenalty', 'isBuiltin',
   'contextTemplate', 'group', 'exampleDialogMode', 'enableThoughtFormat',
 ])
@@ -48,7 +50,8 @@ export function normalizePreset(input: unknown): Preset {
     maxContext: Math.round(finiteNumber(raw.maxContext, 0, 0, 2_000_000)),
     temperature: finiteNumber(raw.temperature, 0.8, 0, 2),
     topP: finiteNumber(raw.topP, 0.95, 0.01, 1),
-    maxTokens: Math.round(finiteNumber(raw.maxTokens, 1024, 1, 262_144)),
+    // 0 = 自动动态预算；正数 = 用户明确设置的严格硬上限。
+    maxTokens: Math.round(finiteNumber(raw.maxTokens, 0, 0, 262_144)),
     frequencyPenalty: finiteNumber(raw.frequencyPenalty, 0, -2, 2),
     presencePenalty: finiteNumber(raw.presencePenalty, 0, -2, 2),
     isBuiltin: raw.isBuiltin === true,
@@ -66,6 +69,12 @@ export function normalizePreset(input: unknown): Preset {
   if (typeof raw.enableThoughtFormat === 'boolean') {
     preset.enableThoughtFormat = raw.enableThoughtFormat
   }
+  // 篇幅提示：合法值透传；缺失/无效时补 'auto'（旧预设迁移规则，方案 §4.5）。
+  // maxTokens 仅作为"模型输出硬上限"兼容值继续保留；缺省迁移为 0（自动）。
+  preset.responseLengthHint = typeof raw.responseLengthHint === 'string'
+    && VALID_RESPONSE_LENGTH_HINTS.has(raw.responseLengthHint)
+    ? raw.responseLengthHint as ResponseLengthMode
+    : 'auto'
 
   return preset
 }

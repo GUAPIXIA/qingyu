@@ -41,13 +41,22 @@ import type { TaskSnapshot, EventPage } from './chat-core/events'
 import type { ChatCommand } from './chat-core/commands'
 
 // ===================== AI 调用接口 =====================
+/** 阶段3：ai:done 结构化完成事件（length 是完成状态；cancelled 由主进程取消时给出） */
+export interface AIDonePayload {
+  requestId: string
+  finishReason: import('./types').AIFinishReason
+  usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number }
+}
+
 export interface AIAPI {
   chat(params: ChatParams): Promise<void>
-  cancelChat(requestId: string): Promise<void>
+  /** reason 供阶段0观测区分：user = 用户停止 / timeout = 空闲看门狗 / stop_string = 停止字符串命中 */
+  cancelChat(requestId: string, reason?: 'user' | 'timeout' | 'stop_string'): Promise<void>
   testConnection(config: APIConfig): Promise<{ success: boolean; models?: string[]; error?: string }>
   listModels(provider: ProviderType, baseUrl: string, apiKey: string): Promise<{ success: boolean; models?: string[]; error?: string }>
   onChunk(callback: (data: { requestId: string; text: string }) => void): () => void
-  onDone(callback: (requestId: string) => void): () => void
+  /** 结构化完成回调（阶段3契约）：携带 finishReason 与 usage，所有完成监听统一走此轨道 */
+  onComplete(callback: (payload: AIDonePayload) => void): () => void
   onError(callback: (data: { requestId: string; error: string }) => void): () => void
   /** Token 用量回调（每次 AI 调用完成时触发） */
   onUsage(callback: (data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => void): () => void
@@ -227,8 +236,6 @@ export interface LorebookAPI {
   /** expectedRevision 提供时做乐观冲突检测（方案 §10.3）；返回保存后的最新 revision。 */
   save(lorebook: Lorebook, expectedRevision?: number): Promise<{ revision: number }>
   delete(id: string): Promise<void>
-  /** 兼容旧调用方：仅返回 Lorebook view。 */
-  importJson(): Promise<Lorebook | null>
   /** 阶段 2：返回格式检测与兼容性报告；格式歧义时返回 LorebookFormatChoicePending 而不是静默猜测。 */
   importJsonDetailed(options?: LorebookImportOptions): Promise<LorebookImportOutcome | null>
   /** 阶段 6 P2：映射向导。打开文件并返回截断预览与猜测模板；原始内容缓存在主进程。 */

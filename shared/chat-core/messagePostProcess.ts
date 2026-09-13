@@ -1,0 +1,417 @@
+/**
+ * 消息后处理工具
+ *
+ * 解决连续相同角色消息导致的 API 格式错误问题。
+ * 例如：[user: "你好"], [user: "我是小明"] → [user: "你好\n\n我是小明"]
+ */
+
+import { stripVendorThinking } from '../thoughtMarkup'
+
+export { stripVendorThinking } from '../thoughtMarkup'
+
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+  /** 图片 data URL 数组（用户消息，供 vision 模型识别） */
+  images?: string[]
+  /** 标记为需保持独立的注入消息（如 at_depth 世界书、作者注释），跳过合并 */
+  keepSeparate?: boolean
+  [key: string]: unknown
+}
+
+/**
+ * 合并连续相同角色的消息
+ *
+ * SillyTavern 的 MERGE 模式实现：
+ * - 连续的 system 消息合并为一条
+ * - 连续的 user 消息合并为一条
+ * - 连续的 assistant 消息合并为一条
+ * - system 消息穿插在 user/assistant 之间时，合并到前一条消息
+ *
+ * @param messages 原始消息数组
+ * @returns 合并后的消息数组
+ */
+export function mergeConsecutiveMessages(messages: ChatMessage[]): ChatMessage[] {
+  if (!messages || messages.length === 0) return []
+
+  const merged: ChatMessage[] = []
+
+  for (const msg of messages) {
+    const lastMsg = merged[merged.length - 1]
+
+    if (!lastMsg) {
+      // 第一条消息直接加入
+      merged.push({ ...msg })
+      continue
+    }
+
+    // keepSeparate：按深度注入的 system 消息保持独立，不被合并进相邻消息
+    // （否则 at_depth 世界书 / 作者注释会被并入前一条消息，深度注入失效）
+    if (msg.keepSeparate || lastMsg.keepSeparate) {
+      merged.push({ ...msg })
+      continue
+    }
+
+    // 如果角色相同，合并内容
+    if (lastMsg.role === msg.role) {
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
+      // 合并图片（保持顺序，供 vision 模型识别）
+      if (msg.images?.length) {
+        lastMsg.images = [...(lastMsg.images ?? []), ...msg.images]
+      }
+    }
+    // 如果当前是 system 且上一条是 user/assistant，合并到上一条
+    // （system 穿插在对话中时，追加到前一条消息）
+    else if (msg.role === 'system' && (lastMsg.role === 'user' || lastMsg.role === 'assistant')) {
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
+    }
+    // 其他情况，直接加入
+    else {
+      merged.push({ ...msg })
+    }
+  }
+
+  return merged
+}
+
+/**
+ * 严格模式：保持角色交替
+ *
+ * SillyTavern 的 STRICT 模式实现：
+ * - 强制 user/assistant 交替出现
+ * - 连续相同角色消息合并
+ * - system 消息使用占位符替换
+ *
+ * @param messages 原始消息数组
+ * @param placeholder system 消息的占位符文本
+ * @returns 处理后的消息数组
+ */
+export function strictAlternatingMessages(
+  messages: ChatMessage[],
+  _placeholder = '[System message]'
+): ChatMessage[] {
+  if (!messages || messages.length === 0) return []
+
+  // 第一步：合并连续相同角色
+  const result = mergeConsecutiveMessages(messages)
+
+  // 第二步：确保 user/assistant 交替
+  const final: ChatMessage[] = []
+
+  for (const msg of result) {
+    if (msg.role === 'system') {
+      // system 消息保持原样
+      final.push({ ...msg })
+      continue
+    }
+
+    const lastMsg = final[final.length - 1]
+
+    // BUG-16 修复：与注释一致——连续相同角色时合并内容，而非直接 push
+    // （mergeConsecutiveMessages 已处理大部分场景，此处防御系统消息穿插等边界情况）
+    if (!lastMsg || lastMsg.role === msg.role) {
+      if (lastMsg && lastMsg.role === msg.role) {
+        lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
+      } else {
+        final.push({ ...msg })
+      }
+    } else if (lastMsg.role === 'system') {
+      // 上一条是 system，当前是 user/assistant，直接加入
+      final.push({ ...msg })
+    } else {
+      // 正常交替，直接加入
+      final.push({ ...msg })
+    }
+  }
+
+  return final
+}
+
+/**
+ * Semi 模式：允许连续 system，但 user/assistant 必须交替
+ *
+ * @param messages 原始消息数组
+ * @returns 处理后的消息数组
+ */
+export function semiStrictMessages(messages: ChatMessage[]): ChatMessage[] {
+  if (!messages || messages.length === 0) return []
+
+  const result: ChatMessage[] = []
+
+  for (const msg of messages) {
+    const lastMsg = result[result.length - 1]
+
+    if (!lastMsg) {
+      result.push({ ...msg })
+      continue
+    }
+
+    // system 消息可以连续
+    if (msg.role === 'system' && lastMsg.role === 'system') {
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
+    }
+    // user/assistant 相同角色合并
+    else if (msg.role === lastMsg.role && msg.role !== 'system') {
+      lastMsg.content = `${lastMsg.content}\n\n${msg.content ?? ''}`
+    }
+    // 其他情况直接加入
+    else {
+      result.push({ ...msg })
+    }
+  }
+
+  return result
+}
+
+/**
+ * 角色内心标签处理工具
+ *
+ * `<thought>` 是产品协议：只表示当前角色的第一人称内心独白。
+ * `<think>` / `<thinking>` 是供应商推理标记，会先被丢弃，绝不转换成角色内心。
+ */
+
+/**
+ * 为代入式单聊中“独占一行且只有中文引号”的裸对白补当前角色名前缀。
+ *
+ * 只处理可确定说话人的最窄形态；全局叙事可能包含多个说话人，混合叙述、动作块与
+ * thought 内容也不能安全推断，因此一律保持原样。
+ */
+export function normalizeRoleplayDialoguePrefixes(
+  text: string,
+  characterName: string,
+  narrativeMode: 'immersive' | 'omniscient',
+): string {
+  if (!text || !characterName.trim() || narrativeMode !== 'immersive') return text
+
+  const name = characterName.trim()
+  const normalizeVisibleLines = (segment: string) => segment.replace(/[^\r\n]+/g, (line) => {
+    const trimmed = line.trim()
+    const isBareDialogue = (trimmed.startsWith('“') && trimmed.endsWith('”'))
+      || (trimmed.startsWith('「') && trimmed.endsWith('」'))
+    if (!isBareDialogue) return line
+    // R4：行内已包含角色名（如 “我没应。”苏晚顿了顿，…）时不再补前缀，避免重复人名
+    if (trimmed.includes(name)) return line
+    const leading = line.match(/^\s*/)?.[0] ?? ''
+    const trailing = line.match(/\s*$/)?.[0] ?? ''
+    return `${leading}${name}：${trimmed}${trailing}`
+  })
+
+  const tagRegex = /<\s*(\/?)\s*(?:thought|think|thinking)\b[^>]*>/gi
+  let depth = 0
+  let cursor = 0
+  let result = ''
+  let match: RegExpExecArray | null
+  while ((match = tagRegex.exec(text)) !== null) {
+    const segment = text.slice(cursor, match.index)
+    result += depth === 0 ? normalizeVisibleLines(segment) : segment
+    result += match[0]
+    depth = match[1] ? Math.max(0, depth - 1) : depth + 1
+    cursor = tagRegex.lastIndex
+  }
+  const tail = text.slice(cursor)
+  result += depth === 0 ? normalizeVisibleLines(tail) : tail
+  return result
+}
+
+/**
+ * 创建一个宽容的思考标签匹配器。
+ *
+ * 除标准标签外，还接受模型偶尔输出的反斜杠、额外空格和属性，例如：
+ * `\</ thought >`、`<thought class="inner-monologue">`。
+ */
+function createThoughtTagRegex(): RegExp {
+  return /\\?<\s*(\/?)\s*thought\b[^>]*>/gi
+}
+
+interface ParsedThoughtBlocks {
+  thought: string | null
+  content: string
+}
+
+/**
+ * 以标签状态扫描文本，同时容错模型输出的不完整标签：
+ * - 孤立的结束标签：将它前面的片段视为泄漏的思考内容；
+ * - 未闭合的开始标签：将其后的剩余文本视为思考内容；
+ * - 多余的结束标签：继续收拢前一标签后泄漏的思考片段。
+ */
+function parseThoughtBlocks(text: string): ParsedThoughtBlocks {
+  const normalized = stripVendorThinking(text)
+  const tagRegex = createThoughtTagRegex()
+  const thoughts: string[] = []
+  const contentParts: string[] = []
+  const activeThoughtParts: string[] = []
+  let depth = 0
+  let cursor = 0
+  let match: RegExpExecArray | null
+
+  const flushThought = () => {
+    const value = activeThoughtParts.join('').trim()
+    if (value) thoughts.push(value)
+    activeThoughtParts.length = 0
+  }
+
+  while ((match = tagRegex.exec(normalized)) !== null) {
+    const segment = normalized.slice(cursor, match.index)
+    const isClosing = match[1] === '/'
+
+    if (isClosing) {
+      if (depth > 0) {
+        activeThoughtParts.push(segment)
+        depth--
+        if (depth === 0) flushThought()
+      } else {
+        // 模型只输出了 </thought> 时，结束标签之前通常就是泄漏的思考。
+        const leakedThought = segment.trim()
+        if (leakedThought) thoughts.push(leakedThought)
+      }
+    } else {
+      if (depth > 0) activeThoughtParts.push(segment)
+      else contentParts.push(segment)
+      depth++
+    }
+
+    cursor = tagRegex.lastIndex
+  }
+
+  const tail = normalized.slice(cursor)
+  if (depth > 0) {
+    activeThoughtParts.push(tail)
+    flushThought()
+  } else {
+    contentParts.push(tail)
+  }
+
+  return {
+    thought: thoughts.length > 0 ? thoughts.join('\n\n') : null,
+    content: contentParts.join('').trim(),
+  }
+}
+
+/**
+ * 提取所有 <thought> 块内容
+ * @returns thought: 拼接的思考内容（无则为 null）; content: 剥离 thought 后的正文（为空时回退到思考内容）; isFallback: 是否触发了回退
+ */
+export function extractThought(text: string): { thought: string | null; content: string; isFallback: boolean } {
+  if (!text) return { thought: null, content: '', isFallback: false }
+  const { thought, content: stripped } = parseThoughtBlocks(text)
+  // 剥离后为空则回退到思考内容，避免显示"空消息"
+  const isFallback = !stripped && !!thought
+  const content = stripped || (thought ?? '')
+  return { thought, content, isFallback }
+}
+
+/** 剥离 <thought> 块，返回剩余正文（不做空回退） */
+export function stripThought(text: string): string {
+  if (!text) return text
+  return parseThoughtBlocks(text).content
+}
+
+/** 去掉 <thought> 标签本身但保留内容（用于 TTS 朗读内心想法等场景） */
+export function stripThoughtTags(text: string): string {
+  if (!text) return text
+  return stripVendorThinking(text).replace(createThoughtTagRegex(), '').trim()
+}
+
+/** 续写重叠去重的最小重叠长度（字符） */
+const MIN_CONTINUATION_OVERLAP = 8
+
+/** 续写接缝策略：达到该长度直接去重（S4 实测复读样本 4–5 字） */
+export const CONTINUATION_SEAM_MIN_OVERLAP = 4
+/** 续写接缝策略：3 字重叠仅在边界处去重，低于该值一律保留 */
+export const CONTINUATION_SEAM_FLOOR_OVERLAP = 3
+
+/** 接缝边界字符：标点、空白、引号、括号、星号等展示标记 */
+const SEAM_BOUNDARY = /[\s，。！？；：、,.!?;:…—～~“”‘’「」『』（）()［］【】〔〕《》〈〉*#-]/
+
+/**
+ * 3 字重叠是否处于可安全删除的边界：
+ * - prev 侧：重叠片段从 prev 开头或标点/空白之后开始（完整短语重复）；
+ * - next 侧：重叠片段紧邻 next 结尾或标点/空白（复读的短语本身已完整）。
+ */
+function isSeamBoundary(prev: string, next: string, overlap: number): boolean {
+  const before = prev.length > overlap ? prev[prev.length - overlap - 1] : ''
+  if (!before || SEAM_BOUNDARY.test(before)) return true
+  const after = next.length > overlap ? next[overlap] : ''
+  return !after || SEAM_BOUNDARY.test(after)
+}
+
+/**
+ * 续写接缝去重（S4 专用策略，续写入口统一使用）。
+ *
+ * 与通用 trimContinuationOverlap 的区别：阈值从 8 降到 4，覆盖
+ * “楼下的/今天其实/门外传来”这类 3–7 字复读；3 字只在词/标点边界
+ * 或完整短语重复时删除，避免误裁“你的/他的”等常见短语。
+ *
+ * 自动补尾（mergeTailRepair）继续使用更保守的默认阈值 8。
+ */
+export function trimContinuationSeam(prev: string, next: string): string {
+  if (!prev || !next) return next
+  const maxOverlap = Math.min(prev.length, next.length)
+  if (maxOverlap < CONTINUATION_SEAM_FLOOR_OVERLAP) return next
+
+  const overlap = maxSuffixPrefix(prev, next)
+  if (overlap >= CONTINUATION_SEAM_MIN_OVERLAP) {
+    return next.slice(overlap).replace(/^\s+/, '')
+  }
+  if (overlap === CONTINUATION_SEAM_FLOOR_OVERLAP && isSeamBoundary(prev, next, overlap)) {
+    return next.slice(overlap).replace(/^\s+/, '')
+  }
+  return next
+}
+
+/**
+ * 计算 prev 的最长后缀同时也是 next 的最长前缀（KMP，O(n+m)）
+ * BUG-25 修复：替代原实现逐长度 slice 比对的最坏 O(n²) 扫描
+ */
+function maxSuffixPrefix(prev: string, next: string): number {
+  if (prev.length === 0 || next.length === 0) return 0
+  // 计算 next 的 prefix 函数（最长相同前后缀长度表）
+  const lps = new Array<number>(next.length).fill(0)
+  let j = 0
+  for (let i = 1; i < next.length; i++) {
+    while (j > 0 && next[i] !== next[j]) j = lps[j - 1]
+    if (next[i] === next[j]) j++
+    lps[i] = j
+  }
+  // 在 prev 上做 KMP 扫描，结束时 j = prev 末尾处与 next 前缀的最长匹配长度
+  j = 0
+  for (let i = 0; i < prev.length; i++) {
+    while (j > 0 && prev[i] !== next[j]) j = lps[j - 1]
+    if (prev[i] === next[j]) j++
+    if (j === next.length) j = lps[j - 1]
+  }
+  return j
+}
+
+/**
+ * 续写复述前缀去重
+ *
+ * 模型续写时常会复述原消息的结尾（如把最后一句重打一遍再接新内容）。
+ * 此函数检测 next 开头与 prev 结尾的最长重叠（≥ minOverlap 字符，默认 8），
+ * 剪掉 next 的重叠前缀并清理首部空白。
+ *
+ * minOverlap 可放宽：用户输入续写的实测复读样本只有 4–5 字。
+ * 续写入口请改用 trimContinuationSeam（统一收敛 3–7 字接缝）；
+ * 本函数保留默认 8，供自动补尾 mergeTailRepair 等更保守的场景使用。
+ *
+ * 不做智能改写/段落重排，衔接语义由续写指令负责。
+ *
+ * @param prev 原消息内容
+ * @param next 模型返回的续写内容
+ * @param minOverlap 触发剪裁的最小重叠字符数（默认 8）
+ * @returns 去重后的续写内容
+ */
+export function trimContinuationOverlap(prev: string, next: string, minOverlap: number = MIN_CONTINUATION_OVERLAP): string {
+  if (!prev || !next) return next
+  // 最长可能重叠不超过两者较短长度
+  const maxOverlap = Math.min(prev.length, next.length)
+  if (maxOverlap < minOverlap) return next
+
+  const overlap = maxSuffixPrefix(prev, next)
+  if (overlap >= minOverlap) {
+    // 剪掉重叠前缀，并清理剪切处残留的首部空白
+    return next.slice(overlap).replace(/^\s+/, '')
+  }
+  return next
+}
+

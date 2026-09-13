@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { countVisibleCharacters, isCompleteSentence, trimToSentenceBoundary } from '../textMetrics'
+import { analyzeTextClosure, countVisibleCharacters, isCompleteSentence, tailSample, trimToSentenceBoundary } from '../textMetrics'
 
 describe('textMetrics', () => {
   describe('countVisibleCharacters', () => {
@@ -59,6 +59,45 @@ describe('textMetrics', () => {
       const trimmed = trimToSentenceBoundary(text, { minChars: 3, maxChars: 11 })
       expect(trimmed).toBe('甲。乙。丙。丁。戊。')
       expect(countVisibleCharacters(trimmed!)).toBe(10)
+    })
+  })
+
+  describe('analyzeTextClosure（阶段0未闭合格式率口径）', () => {
+    it('完整正文通过', () => {
+      const text = '她推开门。*环视四周*\n\n“谁在那？”'
+      expect(analyzeTextClosure(text)).toMatchObject({
+        balancedQuotes: true,
+        balancedAsterisks: true,
+        closedThought: true,
+        unclosed: false,
+      })
+    })
+
+    it('未闭合中文引号判为不闭合', () => {
+      const d = analyzeTextClosure('她说：“你还没说完')
+      expect(d.balancedQuotes).toBe(false)
+      expect(d.unclosed).toBe(true)
+    })
+
+    it('悬空单个星号判为不闭合', () => {
+      expect(analyzeTextClosure('她推开门，*动作只写了一半').balancedAsterisks).toBe(false)
+    })
+
+    it('未闭合 <thought> 判为不闭合；完整 thought 通过', () => {
+      expect(analyzeTextClosure('<thought>心理活动没闭合').closedThought).toBe(false)
+      expect(analyzeTextClosure('<thought>已闭合。</thought>\n\n正文继续。').closedThought).toBe(true)
+    })
+
+    it('空文本视为全部闭合', () => {
+      expect(analyzeTextClosure('').unclosed).toBe(false)
+    })
+  })
+
+  describe('tailSample', () => {
+    it('压缩空白并截取尾部（按码点）', () => {
+      expect(tailSample('你好  世界')).toBe('你好 世界')
+      expect(tailSample('一'.repeat(100), 10)).toBe('一'.repeat(10))
+      expect(tailSample('')).toBe('')
     })
   })
 })

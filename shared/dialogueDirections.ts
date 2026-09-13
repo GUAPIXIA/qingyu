@@ -20,9 +20,11 @@ export const DIALOGUE_DIRECTION_LIMITS = {
 /**
  * 方向生成请求的输出预算：3 组 label+content（最多 3×(14+60) 个可见字符）
  * 加 JSON 结构与标签包裹，按中文最坏 2 token/字并留出余量封顶。
- * 与续写档位同理：预算不足会在结构尾部被切断，反而抬高“格式非法→重试”的失败率。
+ * 部分聚合端会忽略 `thinking: disabled`，推理内容与正文共享 max_tokens；实测 640
+ * 已出现推理占用 340 token，且同端点的推理量会大幅波动。提高到 1536 作为失控兜底，
+ * 避免结构尾部被切断后触发一次必然昂贵的重试。上限提高不会预先增加正常调用成本。
  */
-export const DIALOGUE_DIRECTION_MAX_TOKENS = 640
+export const DIALOGUE_DIRECTION_MAX_TOKENS = 1536
 
 /** 方向生成请求的采样温度。 */
 export const DIALOGUE_DIRECTION_TEMPERATURE = 0.6
@@ -185,7 +187,7 @@ ${identity}
 - 必须使用简体中文
 - 只返回一组 <${DIALOGUE_DIRECTIONS_TAG}>...</${DIALOGUE_DIRECTIONS_TAG}> 标签，标签内是合法 JSON 数组，标签外不要输出任何内容
 - 数组必须恰好 3 个元素，每个元素包含 id、label、content、tendency 四个字段
-- label 是 6–14 个可见字符的短标签，概括这个方向要做什么
+- label 是 6–14 个可见字符的短标签，概括这个方向要做什么；不足 6 字（如“关窗守屋”）会被判为非法并触发一次重试
 - content 是 15–60 个可见字符的可发送文本，用户点选后会直接进入输入框
 - tendency 三个值必须各出现一次：safe（稳妥推进，承接主线减少风险）、explore（探索信息，追问观察调查试探）、risky（冒险变化，接受显著风险或改变计划）
 - 三个方向必须有实质差异：分别对应 safe / explore / risky，不得只是同一句话的不同措辞

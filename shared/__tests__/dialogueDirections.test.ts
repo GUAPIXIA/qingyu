@@ -124,6 +124,8 @@ describe('dialogueDirections', () => {
     const immersive = buildDialogueDirectionSystemPrompt({ ...base, narrativeMode: 'immersive' })
     expect(immersive).toContain('玩家角色')
     expect(immersive).toContain('不得替 艾莉丝')
+    // R6：label 下限带正例与后果说明，减少 4 字短标签触发整组重试
+    expect(immersive).toContain('不足 6 字（如“关窗守屋”）会被判为非法并触发一次重试')
     const omniscient = buildDialogueDirectionSystemPrompt({ ...base, narrativeMode: 'omniscient' })
     expect(omniscient).toContain('旁白')
     expect(omniscient).toContain('第三人称')
@@ -160,6 +162,8 @@ describe('dialogueDirections', () => {
     const { labelMaxChars, contentMaxChars, count } = DIALOGUE_DIRECTION_LIMITS
     const worstChars = count * (labelMaxChars + contentMaxChars)
     expect(DIALOGUE_DIRECTION_MAX_TOKENS).toBeGreaterThanOrEqual(worstChars * 2 + 128)
+    // 部分聚合端会忽略 thinking:disabled，推理与正文共享预算；640 在波动时会产生空响应。
+    expect(DIALOGUE_DIRECTION_MAX_TOKENS).toBe(1536)
   })
 
   it('长度约束常量与校验一致', () => {

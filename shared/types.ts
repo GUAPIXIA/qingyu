@@ -11,6 +11,32 @@ export type ContinueIntensity = 'subtle' | 'steady' | 'active' | 'bold'
 /** 输入续写的本次新增内容长度：控制字数区间、篇幅指令与输出 token 上限。 */
 export type ContinueLength = 'brief' | 'standard' | 'detailed' | 'extended'
 
+/**
+ * 回复篇幅意图（产品级）：表达用户对一轮回复长度的期望，与 maxTokens（模型输出硬上限）解耦。
+ * 篇幅是意图（字符软区间），Token 是资源（请求预算），二者不互相推导。
+ */
+export type ResponseLengthMode = 'auto' | 'brief' | 'balanced' | 'detailed'
+
+/**
+ * 一轮回复的篇幅策略：由篇幅模式 + 近期对话节奏解析出的软区间与硬保护线。
+ * 全部为软目标——语义完整优先，不得为满足下限凑字（方案「对话输出弹性约束」§4.1）。
+ */
+export interface ResponsePolicy {
+  mode: ResponseLengthMode
+  /** 正文软区间下限（可见字符）；低于下限但语义完整时直接接受 */
+  preferredMinChars: number
+  /** 正文软区间上限（可见字符）；接近时停止引入新信息并完成当前句 */
+  preferredMaxChars: number
+  /** 硬保护线（可见字符）：请求正文预算的估算输入 */
+  hardMaxChars: number
+  /** 常见结构（段落数参考区间；短回应可以只有一段） */
+  targetParagraphs: { min: number; max: number }
+  /** 本轮最多推进的主要事件/信息/情绪变化数 */
+  maxNewBeats: number
+  /** 篇幅来源：用户本轮明确要求 > 会话选择 > 预设提示 > 自动计算 */
+  source: 'user' | 'session' | 'preset' | 'auto'
+}
+
 /** 消息在界面中的叙事身份；与 API role / 群聊 characterId 的消息方向解耦。 */
 export type MessageSpeakerKind = 'persona' | 'narrator' | 'character' | 'system'
 
@@ -21,6 +47,57 @@ export type MessageGenerationKind =
   | 'assistant_reply'
   | 'regenerate'
   | 'message_continue'
+
+/**
+ * AI 请求的结束原因（阶段3结构化完成事件）。
+ * length 是一种完成状态而非错误；cancelled/network_error 由主进程按失败上下文归类。
+ */
+export type AIFinishReason =
+  | 'stop'
+  | 'length'
+  | 'content_filter'
+  | 'tool_calls'
+  | 'cancelled'
+  | 'network_error'
+  | 'unknown'
+
+/** 适配器/请求的结构化完成结果：正文 + 结束原因 + 用量（方案「对话输出弹性约束」§5.1） */
+export interface AICompletion {
+  text: string
+  finishReason: AIFinishReason
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    reasoningTokens?: number
+  }
+}
+
+/**
+ * 应用层终止原因（阶段7 方案 §3.2）：与供应商 finishReason 分离。
+ * finishReason 只描述模型/供应商给出的结束原因；空闲超时、用户取消与本地协议
+ * 错误属于应用层事实，不得伪装成 network_error。
+ * terminationCause 负责产品行为（是否保存部分正文、提示文案）、日志分类与界面展示；
+ * 两者不得互相覆盖。
+ */
+export type GenerationTerminationCause =
+  | 'provider_stop'
+  | 'provider_length'
+  | 'provider_content_filter'
+  | 'provider_tool_calls'
+  | 'transport_error'
+  | 'idle_timeout'
+  | 'user_cancel'
+  | 'protocol_error'
+  | 'unknown'
+
+/** 统一终止协调入口的输入（阶段7 方案 §4.2）：一次终止事件的完整事实 */
+export interface GenerationTerminalResult {
+  rawText: string
+  finishReason: AIFinishReason
+  terminationCause: GenerationTerminationCause
+  errorMessage?: string
+  usage?: AICompletion['usage']
+}
 
 /** 对话方向倾向：稳妥推进 / 探索信息 / 冒险变化（生成器的多样性约束，不直接显示在界面）。 */
 export type DialogueTendency = 'safe' | 'explore' | 'risky'
@@ -140,6 +217,12 @@ export interface Message {
   dialogueDirections?: DialogueDirection[]
   /** 方向生成时间戳；用于区分“未生成”与“生成失败后不重试”。 */
   dialogueDirectionsGeneratedAt?: number
+  /** 本次生成失败/被截断的原因；有值时气泡展示提示行，历史构建只读 content，不进入上下文。 */
+  generationError?: string
+  /** 阶段3：非失败性的收尾提示（已在完整句处收束/已自动补全结尾/已停止生成）；与 generationError 互斥使用。 */
+  generationNotice?: string
+  /** 阶段5：正文渲染模式。blocks = 语义分块渲染（新内容）；缺省 markdown = 旧消息兼容渲染。 */
+  contentRenderMode?: 'markdown' | 'blocks'
 }
 
 /** 单条消息的字符统计 */
@@ -279,6 +362,11 @@ export interface ChatSession {
   lorebookIds?: string[]
   /** 当前会话的叙事模式；旧会话缺省时按 immersive 运行。 */
   narrativeMode?: NarrativeMode
+  /**
+   * 会话级回复篇幅选择；undefined = 未设置（回退预设 responseLengthHint / auto）。
+   * 优先级高于预设提示（方案「对话输出弹性约束」§4.2）。
+   */
+  responseLengthMode?: ResponseLengthMode
   /**
    * 会话级“下一步方向”开关：AI 回复后异步生成 3 个可点选方向。
    * @deprecated 使用 dialogueDirectionsEnabled
@@ -451,10 +539,13 @@ export interface Preset {
   maxContext: number
   temperature: number
   topP: number
+  /** 模型输出硬上限（高级项）：0 = 自动动态预算；正数 = 严格上限，不再用作回复长度控制器 */
   maxTokens: number
   frequencyPenalty: number
   presencePenalty: number
   isBuiltin: boolean
+  /** 回复篇幅提示：auto（跟随对话节奏）/ brief / balanced / detailed；缺省按 auto 解析 */
+  responseLengthHint?: ResponseLengthMode
   /** 上下文模板名（如 'chatml' / 'llama3' / 'alpaca'；空 = 不启用模板包装） */
   contextTemplate?: string
   /** 分组名（按用途组织，如：通用 / 越狱 / 风格特化；空 = 未分组） */
@@ -537,6 +628,12 @@ export interface GroupMessage {
   dialogueDirections?: DialogueDirection[]
   /** 方向生成时间戳；用于区分“未生成”与“生成失败后不重试”。 */
   dialogueDirectionsGeneratedAt?: number
+  /** 本次生成失败/中断的原因；有值时气泡展示提示行（阶段4与单聊对齐）。 */
+  generationError?: string
+  /** 阶段4：非失败性收尾提示；与 generationError 互斥使用。 */
+  generationNotice?: string
+  /** 阶段5：正文渲染模式。blocks = 语义分块渲染（新内容）；缺省 markdown = 旧消息兼容渲染。 */
+  contentRenderMode?: 'markdown' | 'blocks'
 }
 
 /** 自定义字体信息 */
@@ -636,7 +733,7 @@ export interface APIConfig {
 
 /** 应用设置 */
 export interface Settings {
-  activeProvider: ProviderType
+  /** 旧版单选 provider 体系遗留字段：仅供 connectionProfiles 迁移读取（useSettingsStore），无其他读写方 */
   providers: Record<ProviderType, Omit<APIConfig, 'apiKey'>>
   /** 新版：多连接 Profile */
   connectionProfiles: ConnectionProfile[]
@@ -727,6 +824,12 @@ export interface Settings {
   }
   /** 新会话自动生成标题（默认开） */
   autoTitle?: boolean
+  /**
+   * 阶段6灰度开关：生成管线版本。unified（默认）= 篇幅策略 + 动态预算 + 统一收尾 + 语义分块；
+   * legacy = 一键回退旧链路（预设 maxTokens 直用、旧排版协议提示、不做收尾器与补尾、
+   * 新消息不标记语义分块）。回退不删除任何新设置数据与会话数据。
+   */
+  generationPipeline?: 'unified' | 'legacy'
 }
 
 /** 用户人设注入配置（ST 的 User Persona description placement） */
@@ -964,6 +1067,21 @@ export interface ChatParams {
   stream: boolean
   /** 辅助型请求可关闭推理；不支持该能力的适配器忽略此字段。 */
   reasoningMode?: 'default' | 'disabled'
+  /** 阶段0观测元数据：随请求透传给主进程观测层记录，不影响请求行为；缺省视为辅助调用。 */
+  observability?: {
+    source: 'single' | 'group' | 'bridge' | 'aux'
+    generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
+    /** 阶段7（§7.3）：后台结构化任务类型（独立观测口径，不混入主对话篇幅统计） */
+    taskType?: 'memory' | 'compression' | 'title' | 'direction'
+    responseLengthMode?: ResponseLengthMode
+    hardMaxChars?: number
+    /** S5：本轮用户文本中识别出的篇幅要求（与 generationObservation.RequestObservability 同步） */
+    responseIntent?: ResponseLengthMode
+    /** S5：自动模式场景系数（1 = 未调整） */
+    sceneFactor?: number
+    characterId?: string
+    sessionId?: string
+  }
   /** 可选的 instruct 模板（本次调用的消息包装格式） */
   instructTemplate?: InstructTemplateConfig
   /** 工具定义（OpenAI Function Calling 格式） */

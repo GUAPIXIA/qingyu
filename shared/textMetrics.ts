@@ -61,3 +61,66 @@ export function trimToSentenceBoundary(
   if (candidateChars < bounds.minChars || candidateChars > bounds.maxChars) return undefined
   return candidate
 }
+
+// ===================== 格式闭合诊断（阶段0基线观测） =====================
+
+/** 成对中文引号/括号：开符号与闭符号数量必须相等 */
+const PAIRED_MARKS: Array<[string, string]> = [
+  ['“', '”'],
+  ['‘', '’'],
+  ['「', '」'],
+  ['『', '』'],
+  ['（', '）'],
+  ['《', '》'],
+]
+
+/** 正文尾部采样长度（观测记录用，避免落盘完整正文） */
+export const TAIL_SAMPLE_MAX_CHARS = 80
+
+/** 取正文尾部采样（按码点截断），用于本地诊断记录 */
+export function tailSample(text: string, maxChars: number = TAIL_SAMPLE_MAX_CHARS): string {
+  if (!text) return ''
+  const chars = Array.from(text.replace(/\s+/g, ' ').trim())
+  return chars.length <= maxChars ? chars.join('') : chars.slice(chars.length - maxChars).join('')
+}
+
+/**
+ * 正文格式闭合性诊断（阶段0：未闭合格式率统计口径）。
+ * - balancedQuotes：中文引号/括号成对；
+ * - balancedAsterisks：星号数量为偶数（旧动作段样式）；
+ * - closedThought：不存在未闭合的 <thought> 标签；
+ * - unclosed：以上任一不满足。
+ */
+export interface TextClosureDiagnostics {
+  balancedQuotes: boolean
+  balancedAsterisks: boolean
+  closedThought: boolean
+  unclosed: boolean
+}
+
+export function analyzeTextClosure(text: string): TextClosureDiagnostics {
+  if (!text) {
+    return { balancedQuotes: true, balancedAsterisks: true, closedThought: true, unclosed: false }
+  }
+  let balancedQuotes = true
+  for (const [open, close] of PAIRED_MARKS) {
+    const openCount = text.split(open).length - 1
+    const closeCount = text.split(close).length - 1
+    if (openCount !== closeCount) {
+      balancedQuotes = false
+      break
+    }
+  }
+  const asterisks = text.split('*').length - 1
+  const balancedAsterisks = asterisks % 2 === 0
+  // 剥掉完整 <thought>...</thought> 块后不应残留起始标签
+  const closedThought = !/<thought[\s>]/i.test(
+    text.replace(/<thought[\s\S]*?<\/thought>/gi, ''),
+  )
+  return {
+    balancedQuotes,
+    balancedAsterisks,
+    closedThought,
+    unclosed: !balancedQuotes || !balancedAsterisks || !closedThought,
+  }
+}

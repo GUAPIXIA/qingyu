@@ -1,0 +1,419 @@
+{
+  "$comment": "PC(src/utils/roleplayBlocks.ts) 与 Android(RoleplayBlocks.kt) 共用语义分块契约。权威在本文件；修改必须双端测试同时跑绿。expected 由 TS 参考实现生成。",
+  "cases": [
+    {
+      "name": "single-narration",
+      "input": "夜色像一层薄纱笼罩着小镇。",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "夜色像一层薄纱笼罩着小镇。"
+        }
+      ]
+    },
+    {
+      "name": "pure-quote-cjk-curly",
+      "input": "“我知道。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“我知道。”"
+        }
+      ]
+    },
+    {
+      "name": "pure-quote-corner",
+      "input": "「走吧。」",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "「走吧。」"
+        }
+      ]
+    },
+    {
+      "name": "speaker-short-name",
+      "input": "苏晚：“今晚的月色真美。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“今晚的月色真美。”",
+          "speaker": "苏晚"
+        }
+      ]
+    },
+    {
+      "name": "speaker-one-char",
+      "input": "叶：“走吧。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“走吧。”",
+          "speaker": "叶"
+        }
+      ]
+    },
+    {
+      "name": "speaker-ascii-colon",
+      "input": "叶:“走吧。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“走吧。”",
+          "speaker": "叶"
+        }
+      ]
+    },
+    {
+      "name": "speaker-particle-prefix-is-mixed",
+      "input": "长名字的角色：“你好呀。”",
+      "expected": [
+        {
+          "kind": "mixed",
+          "text": "长名字的角色：“你好呀。”"
+        }
+      ]
+    },
+    {
+      "name": "speaker-descriptive-five-chars",
+      "input": "绿色外星人：“你好呀。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“你好呀。”",
+          "speaker": "绿色外星人"
+        }
+      ]
+    },
+    {
+      "name": "speaker-transliterated-name",
+      "input": "美洛拉：“真够傻的。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“真够傻的。”",
+          "speaker": "美洛拉"
+        }
+      ]
+    },
+    {
+      "name": "speaker-action-verb-prefix-is-mixed",
+      "input": "苏晚推开门：“谁在那？”",
+      "expected": [
+        {
+          "kind": "mixed",
+          "text": "苏晚推开门：“谁在那？”"
+        }
+      ]
+    },
+    {
+      "name": "speaker-narration-verb-tail-is-mixed",
+      "input": "她轻声说道：“别怕。”",
+      "expected": [
+        {
+          "kind": "mixed",
+          "text": "她轻声说道：“别怕。”"
+        }
+      ]
+    },
+    {
+      "name": "speaker-pronoun-prefix-is-mixed",
+      "input": "他：“走吧。”",
+      "expected": [
+        {
+          "kind": "mixed",
+          "text": "他：“走吧。”"
+        }
+      ]
+    },
+    {
+      "name": "speaker-ascii-name",
+      "input": "Alice：“你好。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“你好。”",
+          "speaker": "Alice"
+        }
+      ]
+    },
+    {
+      "name": "narration-before-quote-same-line",
+      "input": "她轻声说道“别怕。”",
+      "expected": [
+        {
+          "kind": "mixed",
+          "text": "她轻声说道“别怕。”"
+        }
+      ]
+    },
+    {
+      "name": "quote-then-narration-same-line",
+      "input": "“别怕。”她握紧了手。",
+      "expected": [
+        {
+          "kind": "mixed",
+          "text": "“别怕。”她握紧了手。"
+        }
+      ]
+    },
+    {
+      "name": "action-line-star",
+      "input": "*她推开门，走进房间。*",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "她推开门，走进房间。"
+        }
+      ]
+    },
+    {
+      "name": "action-star-with-inner-star",
+      "input": "*她轻轻*一笑*，转身。*",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "她轻轻*一笑*，转身。"
+        }
+      ]
+    },
+    {
+      "name": "star-not-whole-line",
+      "input": "她*轻轻*一笑。",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "她*轻轻*一笑。"
+        }
+      ]
+    },
+    {
+      "name": "thought-inline-single",
+      "input": "<thought>我得保持冷静。</thought>",
+      "expected": [
+        {
+          "kind": "thought",
+          "text": "我得保持冷静。"
+        }
+      ]
+    },
+    {
+      "name": "thought-multiline",
+      "input": "<thought>\n我得保持冷静。\n她就在门后。\n</thought>\n她推开门。",
+      "expected": [
+        {
+          "kind": "thought",
+          "text": "我得保持冷静。\n她就在门后。"
+        },
+        {
+          "kind": "narration",
+          "text": "她推开门。"
+        }
+      ]
+    },
+    {
+      "name": "thought-between-paragraphs",
+      "input": "她站在门前。\n\n<thought>心跳得很快。</thought>\n\n“我来了。”",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "她站在门前。"
+        },
+        {
+          "kind": "thought",
+          "text": "心跳得很快。"
+        },
+        {
+          "kind": "dialogue",
+          "text": "“我来了。”"
+        }
+      ]
+    },
+    {
+      "name": "two-thoughts",
+      "input": "<thought>第一步。</thought>她点头。\n<thought>第二步。</thought>她离开。",
+      "expected": [
+        {
+          "kind": "thought",
+          "text": "第一步。"
+        },
+        {
+          "kind": "narration",
+          "text": "她点头。"
+        },
+        {
+          "kind": "thought",
+          "text": "第二步。"
+        },
+        {
+          "kind": "narration",
+          "text": "她离开。"
+        }
+      ]
+    },
+    {
+      "name": "thought-unclosed-tail",
+      "input": "她正要开口。<thought>未写完的想法",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "她正要开口。<thought>未写完的想法"
+        }
+      ]
+    },
+    {
+      "name": "only-thought",
+      "input": "<thought>只有内心活动。</thought>",
+      "expected": [
+        {
+          "kind": "thought",
+          "text": "只有内心活动。"
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "expected": []
+    },
+    {
+      "name": "whitespace-only",
+      "input": "   \n  \n ",
+      "expected": []
+    },
+    {
+      "name": "two-paragraphs-narration-not-merged",
+      "input": "第一段叙述。\n\n第二段叙述。",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "第一段叙述。"
+        },
+        {
+          "kind": "narration",
+          "text": "第二段叙述。"
+        }
+      ]
+    },
+    {
+      "name": "same-paragraph-lines-merged",
+      "input": "第一行叙述，\n第二行仍属同段。",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "第一行叙述，\n第二行仍属同段。"
+        }
+      ]
+    },
+    {
+      "name": "fullwidth-space-trim",
+      "input": "　　夜色深沉。　",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "夜色深沉。"
+        }
+      ]
+    },
+    {
+      "name": "nested-quotes",
+      "input": "“他说：“好。””",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“他说：“好。””"
+        }
+      ]
+    },
+    {
+      "name": "mixed-speaker-plus-tail",
+      "input": "苏晚：“你好。”她挥了挥手。",
+      "expected": [
+        {
+          "kind": "mixed",
+          "text": "苏晚：“你好。”她挥了挥手。"
+        }
+      ]
+    },
+    {
+      "name": "colon-narration-no-quote",
+      "input": "答案很简单：继续往前走。",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "答案很简单：继续往前走。"
+        }
+      ]
+    },
+    {
+      "name": "two-dialogues-paragraph",
+      "input": "“你好。”\n“再见。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“你好。”"
+        },
+        {
+          "kind": "dialogue",
+          "text": "“再见。”"
+        }
+      ]
+    },
+    {
+      "name": "dialogue-narration-dialogue",
+      "input": "“早上好。”\n她拉开窗帘。\n“今天天气不错。”",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“早上好。”"
+        },
+        {
+          "kind": "narration",
+          "text": "她拉开窗帘。"
+        },
+        {
+          "kind": "dialogue",
+          "text": "“今天天气不错。”"
+        }
+      ]
+    },
+    {
+      "name": "dangling-star-line",
+      "input": "*她的动作没有闭合",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "*她的动作没有闭合"
+        }
+      ]
+    },
+    {
+      "name": "trailing-spaces-around-quote",
+      "input": "   “我知道。”   ",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“我知道。”"
+        }
+      ]
+    },
+    {
+      "name": "recovered-truncation-sample",
+      "input": "她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。\n\n“有人在吗？”\n\n<thought>心跳得很快，但我必须确认。</thought>",
+      "expected": [
+        {
+          "kind": "narration",
+          "text": "她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。"
+        },
+        {
+          "kind": "dialogue",
+          "text": "“有人在吗？”"
+        },
+        {
+          "kind": "thought",
+          "text": "心跳得很快，但我必须确认。"
+        }
+      ]
+    }
+  ]
+}

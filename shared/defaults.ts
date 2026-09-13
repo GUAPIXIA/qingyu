@@ -2,7 +2,6 @@ import type { Settings } from './types'
 
 export function getDefaultSettings(): Settings {
   return {
-    activeProvider: 'openai',
     providers: {
       openai: { type: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
       claude: { type: 'claude', baseUrl: 'https://api.anthropic.com', model: 'claude-3-5-sonnet-20241022' },
@@ -48,7 +47,8 @@ export function getDefaultSettings(): Settings {
     activePersonaId: null,
     defaultPersonaId: null,
     htmlRendering: false,
-    showTokenCount: true,
+    // 字符数 chip 默认关闭：阅读流里属开发者视角元信息，可在快捷设置打开
+    showTokenCount: false,
     enableThoughtFormat: true,
     autoExpandThought: false,
     exampleDialogMode: 'always',
