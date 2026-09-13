@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.17.1-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.17.2-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -42,7 +42,7 @@
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
-| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.17.1 |
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.17.2 |
 | **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.3.0 (build 9) |
 | **Relay 服务** | `relay-server/` | 同一仓库 | HTTPS/WSS 中转、离线缓存与短时消息队列 | v0.1.0 |
 | **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |
@@ -128,13 +128,12 @@
 
 ## 📱 安卓伴侣端（[android/](./android/README.md)）
 
-PC 端「轻语」的安卓伴侣端：**只做远程连接与对话消费，不做本地 AI 对话**。
+PC 端「轻语」的安卓伴侣端：**只做远程连接与对话消费，不做本地 AI 对话**。当前 **0.3.0 (build 9)**，独立版本线。
 
-- **扫码配对**（ZXing）+ mDNS 自动发现 + 已配对设备管理
-- **单聊**：流式接收、断线自动重发、长按操作（翻译/重新生成/朗读/引用回复）、swipe 候选、快捷回复
-- **多模态**：图片消息、TTS 音频流播放（ExoPlayer）、心理描写折叠、Markdown 渲染
-- **阶段三**：用量统计、公告同步、**检查更新**（从公告服务器获取最新版本号）
-- **离线只读**：Room 缓存最近会话，断网可回看
+- **双通道连接**：局域网直连 + Relay 中转（二维码 / 连接码 / PC 审批）
+- **单聊与群聊消费**：流式、重试、swipe、方向卡片、语义分块渲染、收尾状态提示
+- **多模态**：图片消息、TTS（ExoPlayer）、`<thought>` 折叠、Markdown
+- **其它**：用量统计、公告同步、检查更新、Room 离线只读
 
 ```bash
 cd android
@@ -142,7 +141,7 @@ cd android
 ./gradlew testDebugUnitTest    # 运行单元测试
 ```
 
-> 完整方案见 [安卓端优化实施进展报告](./docs/报告/安卓端优化实施进展报告-2026-08-29.md)（阶段 A—G 已全部收口），文档索引见 [docs/README.md](./docs/README.md)。
+> 能力与构建细节以 [android/README.md](./android/README.md) 与 [android/CHANGELOG.md](./android/CHANGELOG.md) 为准；文档索引见 [docs/README.md](./docs/README.md)。
 
 ---
 

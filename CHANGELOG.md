@@ -4,6 +4,32 @@
 
 ### 新增
 
+- **生成链路重构前遗留清理·C 线（提示词与观测基线）**：① 主对话「本轮回应范围」补连续性约束——不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复（`buildMainChatOutputPrompt`，对应 S10 单聊连续性 3/11 问题）；② 群聊点名/轮询人称表述澄清——对白必须是该角色自己的第一人称、动作/神态可用第三人称叙述（`shared/groupChatPrompt` 与 `buildGroupNarrativeModePrompt` 群聊叙事边界），评测 focus 与结构化判据同步，消除「全篇第一人称」歧义；③ thought 评测口径与 `thoughtContract.ts` 强契约对齐——每轮缺失或多组 `<thought>` 由 warn 改为 fail，LLM 评审 `thought_ok` 同步「缺失视为 false」；④ 基线口径冻结：`shared/generationBaseline.ts` 固化 G2「500 次有效生成」分母（主对话 + 供应商有响应，排除 aux/后台任务/error），`scripts/generation-baseline.ts` 扩展 terminationCause/attempts/token 分位与 provider×model×task 分组报告。真实模型复测（C1 三用例 / C3 出现率）待模型额度后执行。
+
+- **方案文档：推理门控与降级闭环（对话输出弹性约束·阶段8，待实施）**：针对真实使用中残留的「推理已占满模型输出硬上限」失败模式，新增[阶段8方案](./docs/方案/对话输出弹性约束阶段8推理门控与降级闭环方案-2026-09-13.md)——把现行"猜测式推理余量"改为四个机制：① 统一 `ReasoningGate` 档位（off/low/standard/full）翻译为各供应商的推理控制参数（`thinking:disabled` / `reasoning_effort` / `budget_tokens` / `thinkingConfig`），让推理上限由服务端强制执行；② (provider+model) 级运行时能力探测与持久化（参数 400 降级表、聚合端静默忽略 disable 的流级标记、未知模型出现 reasoning 即自动建档）；③ 流式提前中止——正文未出现且推理越过观测线即止损，不再等满输出上限；④ 空正文降档重试闭环——仅在可见正文为空时自动降一档重试至多一次，有正文的 `length` 仍走既有收尾器。同时修复现状缺口：`recentReasoningTokens` P90 估计从未接线（contextBuilder 未传参）、Gemini 未下发任何 thinkingConfig、o 系硬编码 `'medium'`、Claude `maxTok/3` 比例猜测。本期仅方案与索引落档，未改动代码。
+
+- **统一异常终止链路与跨端收口（对话输出弹性约束·阶段7.1–7.3）**：① 新增应用层终止原因 `GenerationTerminationCause` 与统一终止结果（`shared/types.ts` / `shared/generationTermination.ts`），与供应商 `finishReason` 分离、互不覆盖；`finalizeGenerationTerminalResult` 成为所有异常终止的唯一收口入口——桌面单聊空闲超时与普通 `ai:error`、群聊点名/轮询/自由发言错误、Bridge partial error 的半截正文一律先经统一最终处理管线（稳定边界收束）才允许保存，错误与超时提示只写 `generationError`/`generationNotice`（`⚠️` 文案写进正文的旧行为全面移除），无可用正文一律不创建空 AI 消息；新增 `requestId + terminalState` 一次性终止状态机（含 `claimUserStop` / `claimGroupUserStop`）：迟到 chunk/done/error 全部忽略、同一 requestId 最多落盘一次，用户停止保留已显示正文，停止字符串命中不再误标“已停止生成”。② thought 角色第一人称心理语义固化为唯一共享来源 `shared/thoughtContract.ts`（单聊与群聊上下文共同消费，禁止模型推理/规则分析/上下文复述）；新增 PC/Android 共享语义分块契约 `shared/fixtures/roleplay-blocks.json`（31 样本）与 Kotlin 等价移植 `RoleplayBlocks.kt`，两端测试读取同一 fixture 逐条比对；Android 单聊与群聊气泡正式按 `contentRenderMode='blocks'` 渲染语义分块（@提及高亮保留），旧消息安全回退 Markdown。③ 后台结构化生成接入 `BackgroundGenerationProfile`（memory / compression / title / direction）：压缩与标题触顶或结构残缺时丢弃结果且不破坏原数据、方向保持一次“只补结构”短修复、长记忆摘要与事实提案分别判断完整性；观测记录新增 `taskType` 与 `terminationCause`（默认不落正文与提示词）；自动补尾只对 `provider_length` 开放且每条消息至多一次，补尾期间用户停止立即取消并保留稳定前缀，同一模型连续失败两次本次会话关闭自动补尾。详见[阶段7实施报告](./docs/报告/对话输出弹性约束阶段7实施报告-2026-09-13.md)。
+
+- **S10 真实模型复测（thought 修复后）**：评测脚本新增 `group`（点名 / 轮询 / 自由发言）与 `stream`（流式推理隔离）批次、S10 检查项（thought 第一人称与无计划/规则复述、供应商推理隔离、全局叙事第三人称）、按模型名选择适配器并适配阶段3 `AICompletion` 契约；按复测清单用 `deepseek/deepseek-v4-pro` 实测单聊 5+5、群聊 3×5、流式 2、续写 4×2 与 14 项确定性检查——四项新增检查全部通过（thought 出现即合规 3/3、推理在 chunk/正文/TTS/记忆上下文 0 泄漏、旁白第三人称 5/5、群聊结构 15/15）。同时发现：低用户硬上限 + 推理共享模型会整轮空响应（`riskNotice` 已计算但无界面消费）、thought 出现率降至 3/28、单聊连续性 3/11 与续写 2/8 属模型质量问题。详见 [S10 真实模型复测报告](./docs/报告/S10真实模型复测报告-2026-09-12.md)。
+
+- **用户篇幅意图与场景系数接入（S5）**：新增 `detectUserLengthIntent`（只识别“简短回答 / 一句话 / 详细说说 / 展开讲”等明确词组，普通叙述不误触发）与 `resolveSceneFactor`（首轮开场 1.15、明确转场 1.25、短问句 0.85，其余 1），接入 `resolveChatRequestPlan`——本轮软区间与请求预算随用户意图/场景同步变化（“一句话回答”优先于会话的“展开”设置），`ResponsePolicy.source` 新增 `user`；识别结果写入阶段0观测（`responseIntent` / `sceneFactor`）便于核对误判。
+- **Android 消费结构化收尾状态（S6）**：移动端 Message / GroupMessage DTO 新增 `generationNotice` / `generationError` / `contentRenderMode`（缺省 null，兼容旧 PC 返回与旧缓存），Room 缓存升到 v7（仅 ALTER `cached_messages` 三列，outbox 与 task_cursors 不动）；单聊与群聊气泡下方按 PC 同义文案展示“⚠️ 生成中断：… / ℹ️ …”，超时与收尾状态在两端语义一致；Bridge 落盘时同步写入收尾提示字段。语义分块在移动端明确降级为 Markdown 兼容渲染（渲染文本一致，仅样式差异），字段先落库保证跨端协议一致。
+- **群聊语义分块支持 @提及高亮（S7）**：把提及识别抽成 `splitMentionSegments` 纯文本分段（长名优先，正则特殊字符按字面量处理），Markdown AST 插件与 blocks 渲染路径共用同一规则，新消息与旧消息的提及显示一致，且不恢复原始 HTML 注入。
+
+- **灰度开关与契约清理（对话输出弹性约束·阶段六）**：设置页新增「生成管线」开关（`Settings.generationPipeline`，默认 unified）——legacy 一键回退旧链路：预设 `maxTokens` 直用、注入旧【正文排版协议】、跳过收尾器与补尾、新消息不标记语义分块并恢复说话人前缀补齐；回退不删除任何新设置与会话数据。旧链路的固定 8192 特判与旧格式协议已在前序阶段删除，本阶段移除失效的 `ChatParams.allowTruncatedOutput` 字段（length 不再抛错后无消费方）及其全部调用点；评测脚本新增 `v-pipeline-flag` 用例（unified/legacy 预算与标记断言），文档索引新增实施报告。
+
+- **群聊与 Bridge 收尾对齐（对话输出弹性约束·阶段四）**：群聊三条生成链路（点名/轮询/自由发言）与 Bridge 单聊生成全部接入与桌面单聊相同的结构化完成事件与 shared 收尾器——结束原因随完成事件透传，残缺正文回退稳定句界、必要时至多一次短补尾；错误分支与单聊 R2 对齐（正文保留在 content、失败原因记 `generationError`，不再把 ⚠️ 拼进正文；超时保留稳定前缀）；收尾提示走中性 `generationNotice` 展示。所有入口的结束状态与收尾行为一致，正文后处理不再有各端复制的实现。
+
+- **语义分块渲染（对话输出弹性约束·阶段五）**：新增 `src/utils/roleplayBlocks.ts` 确定性分块——纯引号行为对白（可带说话人前缀，单字角色名不误判）、整段 `*动作*` 剥离星号归叙述、引号与叙述混写行归 mixed 保持原文、`<thought>` 归思考；气泡按语义块以 CSS 呈现样式（叙述沿用动作段斜体弱化样式），不再依赖模型手写星号与说话人前缀。新落盘消息标记 `contentRenderMode: 'blocks'`，旧消息缺省继续走 Markdown 渲染，不做批量迁移；单聊、群聊与 Bridge 的新正文停止调用 `normalizeRoleplayDialoguePrefixes`（该函数保留为旧内容兼容工具）；`Message.content` 继续保存可复制的原始正文，分块仅在渲染时即时计算。
+
+- **结构化完成事件与统一收尾（对话输出弹性约束·阶段三）**：适配器契约升级为返回 `AICompletion`（正文 + finishReason + usage），`finish_reason=length` 不再抛错而是作为完成状态下发——`ai:done` 事件携带结构化元数据（新增 `onComplete` 回调，旧 `onDone` 兼容保留），桌面单聊所有结束路径（正常/触顶/网络中断保留正文）统一进入 `shared/assistantOutputFinalizer` 收尾器：stop 且结构完整直接接受；length 恰好完整不提示；尾部残缺回退到最后稳定句界并剥离未闭合引号/星号/`<thought>`；稳定正文过短或无边界时自动发起一次短补尾（仅末段上下文，复用重叠去重合并后复检，失败则保留稳定前缀）。网络中断但已有正文时主进程降级为 `network_error` 完成结果，正文不再整条丢失。收尾状态区分展示：中性提示（已在完整句处收束/已自动补全结尾/已停止生成）走新增的 `generationNotice`，失败提示（生成中断，已保留完整部分）继续走 `generationError`。
+
+- **语义回合约束取代机械排版协议（对话输出弹性约束·阶段二）**：主对话提示词以「本轮回应范围」+「正文结构」两段语义规则，取代旧「正文排版协议」的固定 2–6 段、每轮必有对白、动作必加星号、对白必带角色名等机械要求——只完成一个自然互动回合（最多推进一个主要事件，展开档最多两个），推进到需要用户回应的位置即停止，接近篇幅上限时停止引入新信息并完成当前句；篇幅数字由阶段一的 ResponsePolicy 按模式/会话节奏动态给出（软目标，不为凑字数重复），短回应可以只有一个段落。展示样式不再要求模型手写，为阶段五语义块渲染铺路。
+
+- **生成基线观测（对话输出弹性约束·阶段0）**：每次 AI 请求在主进程落一条 JSONL 观测记录（`data/diagnostics/generation-observations.jsonl`，超 5MB 自动轮转），包含模型、来源（单聊/群聊/桥接/辅助）、篇幅模式与硬保护线、正文可见字符、completion/reasoning token、结束原因、尝试次数与格式闭合诊断（引号/星号/`<thought>`），正文只落尾部采样不落全文；取不到 reasoning token 的上游记 `unknown` 不填 0。四家适配器在完成或抛错前透出归一化结束原因（OpenAI `finish_reason`、Claude `stop_reason`、Gemini `finishReason`、Ollama `done_reason`），OpenAI/Gemini 同时解析 reasoning token 计数；`chatWithRetry` 汇总为完成/触顶/用户停止/错误四类终局，取消请求携带原因（用户停止/看门狗超时/停止字符串）供区分。新增基线分析脚本 `scripts/generation-baseline.ts`：输出 P50/P90 正文长度、触顶率及"正文过长 vs 推理占满"细分、未闭合格式率、用户手动继续率与观测完整性。阶段0记录为离线观测，不改变任何请求行为与界面表现。
+
+- **回复篇幅与请求预算解耦（对话输出弹性约束·阶段一）**：新增 `ResponseLengthMode`（自动/简短/适中/展开）与 `ResponsePolicy`（字符软区间 + 硬保护线），预设增加 `responseLengthHint`、会话预留 `responseLengthMode` 字段；新增模型能力档案（`shared/modelOutputProfile`），正文预算与推理余量分别估算后合并为请求上限，移除 DeepSeek V4 固定 8192 下限——"适中"回合在该模型上通常请求约 4000–5000 Token 而非固定上限，短/适中/展开正文目标不同但推理余量保持充足；上下文输出预留与实际请求 `max_tokens` 改为同一次计算结果（单聊、Bridge、预设测试生成共用），用户在高级设置中的输出硬上限始终生效，低于推理所需时在预算明细中给出风险提示；内置预设全部迁移到篇幅提示，`maxTokens` 语义改为"模型输出硬上限"，预设编辑器新增"回复篇幅"选择。
+
 - **下一步方向跟随叙事模式与待办状态**：方向视角改为跟随当前会话模式（点选后以该模式发送），切换模式后只为最新一条已有方向的消息重新生成，旧方向在新结果到达前保持可见；用户发送消息后自动清空上一轮方向（含持久化与在途请求取消），避免旧方向既不再是“下一步”又污染新一轮输入。
 - **下一步方向（阶段 C：群聊与跨端）**：群聊仅在自动接力结束、轮到用户时生成 3 个方向，中间轮次不产生无效请求；群聊消息气泡下方展示方向卡片，点选回填群聊输入框，草稿非空时先确认，仅最新一条可换一批。桥接端新增方向生成服务与 `POST /sessions/:sid/messages/:mid/directions` 接口，回复落盘后按会话开关异步补齐方向；Android 端新增方向卡片（点选回填、覆盖确认、换一批、失败提示）并读取会话开关。
 - **续写长度稳定化（阶段 B）**：续写长度改为“本次新增内容”语义，四档给出可验收的字数区间（短句 20–60 字 / 小段 80–180 / 展开 220–420 / 长篇 500–900）与结构目标，输出预算同步调整为 128 / 384 / 768 / 1536 token；生成后做长度校验，截断或明显偏短时补足、明显超长时压缩，越界修复最多一次，修复失败保留原输入并给出反馈。剧情变化温度收窄为 0.45–0.75，档位文案改为「延续 / 波澜 / 转折 / 剧变」，长度档位改为「短句 / 小段 / 展开 / 长篇」；续写设置面板移除隐形滑块，只保留分段按钮。
@@ -13,12 +39,31 @@
 
 ### 修复
 
+- **低输出硬上限导致推理模型整轮空响应**：预设 `maxTokens=0` 改为“自动预算”，内置与新建预设默认不再施加用户硬上限；单聊、群聊与 Bridge 共用“正文预算 + 推理余量”请求上限。保留用户正数硬上限的严格语义，但当其低于推理余量加最小可用正文空间时，在设置界面警告并在发送前拦截，不再用盲目重试浪费请求；若上游仍返回 `length + reasoning≈completion + 空正文`，显示可操作的“推理已占满模型输出硬上限”错误并单独记录观测分类。
+- **统一收尾顺序（S1）**：新增共享管线 `runGeneratedReplyPipeline`（供应商推理清理 → output 正则 → 停止字符串 → shared 收尾器 → 至多一次短补尾），桌面单聊、群聊三模式、消息续写与 Bridge 的 sendMessage / regenerate 全部走同一入口，正则每条消息只执行一次；Bridge regenerate 此前完全跳过正则与停止字符串、用户停止（cancelled）可能被收尾器改写正文，两者均已对齐；无稳定边界时按收尾器契约补尾，失败不保存半句。同时恢复 `streamGroupAI`（点名 / 轮询）丢失的 AI 请求派发——该回归会让群聊除自由发言外完全不发起生成。
+- **群聊超时统一收尾（S2）**：初始超时与收到 chunk 后的续期超时、点名 / 轮询 / 自由发言三种模式全部走 `handleGroupStreamTimeout`——部分正文经统一管线收尾后停在稳定句界，错误原因只写 `generationError`（不再把“⚠️ 请求超时”拼进正文，也不会进入复制 / TTS / 上下文 / 记忆摘要）；无稳定边界时不落盘半句；手动停止改用 `generationNotice: '已停止生成'`。
+- **长记忆输出预算动态化（S3）**：单聊与群聊长记忆不再固定 6144 / 2048（取代 R1 中的固定值说明），改为按模型能力档案计算请求上限（正文约 2500 字 + 推理余量），非推理模型不再无条件请求 8192；`finishReason=length` 且事实提案被截断时明确记录“摘要已保存、事实未更新”，不再静默当作完整成功。
+- **续写接缝去重统一（S4）**：新增 `trimContinuationSeam`（4 字直接去重，3 字仅在词 / 标点边界或完整短语重复时去重，“你的 / 他的”等 2 字短语不受影响），消息「继续生成」、输入框续写与 Bridge AI 续写三处统一调用，3–7 字复读不再漏裁；自动补尾继续使用更保守的默认阈值 8。
+- **测试噪声与临时文件（S9）**：测试环境 `nanoid` mock 改为自增序列，消除固定 ID 触发的消息 ID 冲突告警；删除临时调试用例与脚本，保留并归档评测辅助脚本。
+- **辅助链路截断整单失败（R1）**：`ChatParams` 新增 `allowTruncatedOutput`，生图提示词、长记忆总结、AI 生成预设等解析器自身可容错的辅助调用在 `finish_reason=length` 时返回已产出正文而非抛错（主对话缺省仍报错，含流式 tool_calls 场景行为不变）；生图输出预算提到 2560/2048、长记忆总结提到 6144（实测推理峰值 3669），为正文留足空间。
+- **主对话截断/失败内容不落盘无提示（R2）**：流式失败且已有分片时，正文保留并落盘，失败原因记入 `Message.generationError` 在气泡下方展示提示行（不写入 content，不污染后续上下文）；无分片时维持 ⚠️ 占位。
+- **生图提示词混入模型元信息（R3）**：解析器拒收自我纠错开头与任意尖括号标记；多行候选从首个结果行截取并剥掉行首残缺片段（如 `<prong>`）；tags 风格结果缺质量前缀时确定性补齐 `best quality, masterpiece, highres`。
+- **用户输入续写末尾复读（R5）**：`trimContinuationOverlap` 支持自定义阈值，输入续写路径以 4 字阈值做确定性去重兜底（实测复读样本仅 4–5 字，原 8 字阈值裁不掉）；AI 消息续写路径保持默认 8 不变。
+- **对白前缀重复说话人（R4）**：后处理跳过已含角色名的引号行，不再产生 `苏晚：“我没应。”苏晚顿了顿，…` 这类重复人名。
+- **方向 label 短于下限触发重试（R6）**：输出要求补充正例与后果说明（不足 6 字如“关窗守屋”会判非法并重试），减少整组作废的重试开销。
 - **输入框续写提示“未返回有效的中文正文”**：实机探针定位到真实成因是三条叠加——推理内容与正文共享输出预算、聚合端点忽略 `thinking: disabled`（实测仍返回 reasoning，占 167–3479 token）、模型频繁不加 `<continuation>` 标签。预算偏紧时推理吃光预算导致正文为空；未加标签时解析层又会把完整可用正文整体丢弃（实测失败样本的正文本身完整通顺，仅缺标签）。修复：长度只由提示词的字数指令与生成后校验控制，输出上限统一提到 8192 作失控兜底（覆盖较长推理 + 最大档正文）；标签降级为可选信封，缺失时回退使用标签内或全文内容并剥离元说明，无标签路径要求中文字符不少于英文以挡住英文分析；失败提示区分“没有返回正文 / 没写完 / 非中文正文”。
 - **下一步方向卡片可读性与布局**：提高浅色、深色主题及背景图片上的文字和边框对比度，将「换一批」移至卡片右上角并收紧整体高度；同步修正深色模式顶栏按钮状态，其中世界状态按钮激活时不再出现突兀白边。
 - **对话输出混入内部分析**：精简上下文思考要求，并在主回复禁用推理输出；即使兼容接口仍返回推理字段，也只展示最终正文，避免写作计划、规则复述或草稿挤占正文，恢复连贯的叙事排版。
 - **对话翻译偶发空结果**：翻译请求不再让隐藏推理占用正文预算，并提高 DeepSeek V4 翻译的最低输出空间；单聊、群聊与移动桥接端统一处理，降低长消息翻译返回空内容的概率。
 - **生图自定义描述与「仅轮廓」模式**：点击「自定义描述」后会将焦点和光标正确移到输入框末尾；「仅轮廓」改为受控的近景肩部边缘构图，禁止生成第二个完整人物，并在提示词不合格时自动重试，避免我方角色抢占主体。
 - **角色卡封面加载失败重加载按钮不出现**：导入时原始图片 URL 的识别范围与下载逻辑对齐，补齐 `cover` / `thumbnail` / `portrait` 等社区卡常见字段；此前仅识别 `avatar` / `image` / `image_url`，导致这些卡片封面下载失败后编辑器不显示「重新加载封面」按钮。
+
+### 变更
+
+- **对话样式统一与收敛（三端）**：解决同一会话内消息观感漂移（有无说话人名、叙述黑体/斜体随机、引号剥留不一致）与视觉过载。① 解析单一真源——blocks 路径与 Markdown 兼容路径共用 `roleplayBlocks` 同一套行级规则（`remark-roleplay` 重写为逐行分类：整行「名字：“对白”」/整行纯引号 → 对白块，其余行内处理），说话人前缀从 1–4 字放宽到 1–8 字并新增叙述式前缀排除（代词/助词/动作动词命中即按 mixed 处理，"她轻声说道：/苏晚推开门："不再误标角色，"绿色外星人：/美洛拉："正确识别），共享 fixture 扩至 37 样本并新增 `scripts/regenerate-roleplay-fixture.ts` 重算工具；② 三色收敛——对白正文改回气泡主文字色（区分由左竖线与名字承担）、说话人名与色点统一强调色、行内引号与行内动作去底色 chip、叙述统一灰色不斜体（中文斜体渲染质量差）；③ 对白块去卡片化——移除背景渐变/阴影/圆角，改为「左竖线 + 文本」引用形态，匿名对白（模型未写名字）与带名对白同结构仅缺名字行，mixed 段行内引号按 `splitQuoteSegments` 染色（补齐旧注释宣称但未实现的行为）；④ 消息级降噪——字符数 chip 默认关闭（`showTokenCount: false`，与 settings 快照 fixture 对齐，快捷设置可开）。Android 同步镜像：`RoleplayBlocks.kt` 规则对齐、`RoleplayBlockList`/`Markdown` 对白块改竖线形态、`MarkdownParser.splitDialogueParagraph` 改行级分类（对白块只认 ""「」，ASCII 引号仅行内染色）。
+- **冗余结构清理批次①（死代码删除，见[冗余结构审查报告](./docs/报告/冗余结构审查报告-2026-09-13.md)）**：删除零调用方的 `electron/chat/postProcessor.ts` 整模块、`fitMemoryBudget`、`MAIN_CHAT_MAX_TOKENS_LIMIT` 兼容再导出、`lorebook:importJson` 旧 IPC 通道（含 `autoPickAmbiguous` 参数）与 `setActiveProvider`/`Settings.activeProvider` 旧单选体系；迁移器改为全键透传补默认（从 defaults 移出的旧字段不再被静默丢弃）。Android 侧删除 `OutboxDao` 9 个 + `TaskCursorDao` 2 个死 DAO 方法、`createGroupSession`/`renameGroupSession` 整条零调用链与 `GroupSessionDto`、18 条无引用字符串、废弃字段 `imageGenSize`。
+- **冗余结构清理批次②（行为收敛）**：① `<thought>` 剥离统一——新增 `shared/thoughtMarkup.stripAllThinking` 作为辅助链路（翻译/摘要/标题/角色卡/生图提示词/TTS/世界书关键词）唯一清洗入口，替换 22 处只删已闭合块的内联正则（现覆盖未闭合尾部与 `think/thinking`，修复 TTS 与渲染口径漂移）；② Bridge 群聊翻译并入 `chatService.translateGroup`——与单聊共用动态预算（`translationMaxTokens`）、可取消注册与 `reasoningMode:'disabled'`，替换旧内联实现的硬编码预算与不可取消；标准翻译 system prompt 三处副本下沉 `shared/translationPrompt`；③ 群聊成员概览与点名/轮询【对话规则】下沉 `shared/groupChatPrompt`（free 模式保留两端有意差异）；④ 新会话默认长记忆决策表三份实现（renderer / ipc chat / ipc group）下沉 `shared/defaultMemory` 唯一来源，`autoMemoryInterval: 10` 魔数收口；⑤ 旧 `onDone` 回调轨道删除——10 个消费方全部迁移到结构化 `onComplete`，preload / ipc-api 只保留一条完成通道。
+- **冗余结构清理批次③（死写路径与零读取镜像字段）**：`chat:updateSession` / `group:updateSession` 白名单移除 `gameMasterMode`（渲染层零写方；桥接端旧客户端兼容映射保持不动）；Android 删除零读取协议镜像字段（`SessionPreview.{narrativeMode,gameMasterMode,memoryCurrentState}`、`GroupChat` 六个未消费字段、`GroupSession.{createdAt,updatedAt,narrativeMode,gameMasterMode,memoryCurrentState,personaId}`、`Message/GroupMessage.generationKind`、`mentionedCharacterIds`×2、`Character.{creator,createdAt}`、`MemoryDto.memoryCurrentState`），由 `ignoreUnknownKeys` 容忍 PC 继续下发；更正「移动端仅 Markdown 渲染」的过时注释（blocks 渲染阶段7 已上线）。
 
 ## [0.17.2] - 2026-09-10
 
