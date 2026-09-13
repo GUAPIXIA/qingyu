@@ -1205,7 +1205,7 @@ async function runStreamCase(options: CliOptions, testCase: StreamCase): Promise
   const streamBudget = Math.max(params.maxTokens ?? 0, 4096)
   try {
     const transportStart = transportLog.length
-    const completion = await adapterForModel(options.model).chat(
+    const completion = await adapterForProvider(options.provider).chat(
       {
         requestId: `gen-eval-${testCase.id}`,
         messages: [

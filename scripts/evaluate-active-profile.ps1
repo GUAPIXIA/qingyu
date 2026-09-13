@@ -90,8 +90,9 @@ if (-not $meta.baseUrl -or -not $meta.model) {
 }
 
 try {
-  & $electron $decryptScript 'active' $keyFile
-  if ($LASTEXITCODE -ne 0) { throw "decrypt-api-key exit code $LASTEXITCODE" }
+  # Electron GUI 进程不会阻塞 & 调用；必须 Start-Process -Wait
+  $dec = Start-Process -FilePath $electron -ArgumentList @($decryptScript, 'active', $keyFile) -Wait -PassThru -NoNewWindow
+  if ($dec.ExitCode -ne 0) { throw "decrypt-api-key exit code $($dec.ExitCode)" }
   if (-not (Test-Path $keyFile)) { throw 'key file was not created' }
 
   $meta | ConvertTo-Json -Depth 5 | Set-Content -Path $metaFile -Encoding UTF8
