@@ -108,8 +108,8 @@ export interface GateProbeSignal {
 export interface ReasoningGateResolveInput {
   model: string
   /**
-   * 临时 kill switch（`Settings.reasoningGateEnabled`，默认关闭）。
-   * false 时退回现行 `resolveReasoningReserve`（档案/P90）路径，探测记录照常保留。
+   * W11 后主进程/渲染层均视为门控开启；本字段仅作纯函数输入，默认 true。
+   * 旧 kill switch（reasoningGateEnabled）已退出产品控制面。
    */
   enabled?: boolean
   /** true = 辅助/后台路径（续写、补尾、方向、记忆、标题），默认 off（阶段8 §4.1） */

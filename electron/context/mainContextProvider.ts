@@ -136,12 +136,11 @@ export const mainContextProvider: ContextDataProvider = {
 
     const regexRules: RegexRule[] = readRules()
 
-    // 阶段8（§4.2/§4.5）：桥接端与 PC 共用同一档位策略与门控解析；
-    // kill switch 关闭时不介入（旧路径），开启后预算取 gateTokens 并可被提前中止兜底。
+    // 阶段8 / W11：桥接端与 PC 共用同一档位策略；门控视为常开（G1 后），忽略旧 reasoningGateEnabled 字段。
     const budgetModel = settings.activeModel || profile?.model || ''
     const gateLevel = resolveDefaultGateLevel({
       model: budgetModel,
-      enabled: settings.reasoningGateEnabled === true,
+      enabled: true,
     })
     const reasoningGate = gateLevel
       ? resolveReasoningGate({ model: budgetModel, requestedLevel: gateLevel, enabled: true })

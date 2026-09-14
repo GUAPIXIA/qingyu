@@ -1,8 +1,7 @@
 /**
  * 阶段8（主计划 W4 §4.5）：单聊门控会话状态（进程内存，渲染层）。
  *
- * - 开关：`Settings.reasoningGateEnabled`（默认关闭）。关闭时完全不介入，
- *   主对话保持 `reasoningMode` 旧路径（W11 清理旧分支前的回退面）。
+ * - **W11（§7.14）后门控常开**：`isReasoningGateEnabled` 恒 true，旧 `reasoningGateEnabled` 字段忽略。
  * - 起步档：默认 `standard`；deepseek-v4 系沿用既有"主对话关闭推理"产品意图（off）。
  * - 会话熔断：同一 (provider+model) 连续两次降档恢复失败后，后续请求从 `low` 起步，
  *   且熔断提示只展示一次（阶段8 §4.5）。

@@ -133,13 +133,8 @@ export function GenerationPlanningSection({ settings, updateSettings }: Props) {
                 篇幅、推理空间与上下文共享同一份计划；连续性规则始终生效，切换模型不会改写记忆或世界书。
               </p>
             </div>
-            <span className={cn(
-              'shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold',
-              settings.reasoningGateEnabled
-                ? 'border-tavern-success/25 bg-tavern-success/10 text-tavern-success'
-                : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted',
-            )}>
-              推理保护{settings.reasoningGateEnabled ? '已开启' : '已暂停'}
+            <span className="shrink-0 rounded-full border border-tavern-success/25 bg-tavern-success/10 px-2 py-1 text-[10px] font-semibold text-tavern-success">
+              推理保护已开启
             </span>
           </div>
         </div>
