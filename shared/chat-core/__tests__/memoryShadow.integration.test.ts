@@ -1,11 +1,11 @@
 /**
- * W8（主计划 §7.10）：动态记忆注入的端到端影子对照测试。
+ * W8（主计划 §7.10）：动态记忆注入端到端测试（G1 后接管口径）。
  *
  * 关键断言：
- * - 记忆注入路径与 W7 前完全一致（开启/关闭影子得到相同 messages），W8 只新增对照；
- * - `memoryShadow` 口径与既有实现（`min(800, budgetBase*0.1)` + 层内截断）可对齐；
- * - 大窗口下候选侧突破 800 上限、小窗口下分级让位且不超预算；
- * - 报告与日志不含记忆正文；同一输入重复构建结果稳定。
+ * - 记忆三段仍进入 system；存储只读；
+ * - 大预算可超过旧 800 上限；小预算分级让位且不超预算；
+ * - `memoryShadow` existing=本轮注入；报告不含正文；
+ * - 同一输入重复构建结果稳定。
  */
 import { describe, expect, it } from 'vitest'
 import type { MemoryFact } from '../../../shared/types'
@@ -90,7 +90,7 @@ describe('W8 记忆影子：不改变生产注入', () => {
     expect(withoutShadow.memoryShadow).toBeUndefined()
   })
 
-  it('既有注入路径不变：当前状态、关键事实、时间线仍按 fitLayeredMemoryBudget 注入', () => {
+  it('接管后：状态/事实/时间线仍按候选注入进 system', () => {
     const data = makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 })
     const systemText = buildContextMessagesFromData(data).messages
       .filter((message) => message.role === 'system')
@@ -101,6 +101,20 @@ describe('W8 记忆影子：不改变生产注入', () => {
     expect(systemText).toContain('【关键事实】')
     expect(systemText).toContain('【对话时间线】')
     expect(systemText).toContain(facts[0].value)
+  })
+
+  it('接管后：大预算可注入超过旧 800 上限的记忆量', () => {
+    const bigFacts = makeFacts(40)
+    const data = makeMemoryData({ maxContext: 200000, facts: bigFacts, timelineLines: 20 })
+    const built = buildContextMessagesFromData(data)
+    const systemText = built.messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .join('\n')
+    // 候选注入不再受 min(800, 10%) 硬顶：至少状态与部分事实应完整可见
+    expect(systemText).toContain('【当前状态】')
+    expect(systemText).toContain(bigFacts[0].value)
+    expect(built.memoryShadow!.existing.capTokens).toBeGreaterThan(800)
   })
 
   it('构建过程不修改输入数据快照（记忆存储只读）', () => {
@@ -117,23 +131,21 @@ describe('W8 记忆影子：不改变生产注入', () => {
   })
 })
 
-describe('W8 记忆影子：口径与验收', () => {
-  it('既有口径与 cap 对齐：cap = min(800, floor(budgetBase*0.1))', () => {
+describe('W8 记忆影子：口径与验收（接管后）', () => {
+  it('接管后 cap = budgetBase（统一输入池，无 min(800,10%) 专属上限）', () => {
     const facts = makeFacts(6)
     const built = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 }))
     const report = built.memoryShadow!
-    const expectedCap = Math.min(800, Math.floor(built.lastContextUsage.max * 0.1))
-    expect(report.existing.capTokens).toBe(expectedCap)
+    expect(report.existing.capTokens).toBe(built.lastContextUsage.max)
     expect(report.existing.totalTokens).toBeGreaterThan(0)
     expect(report.retrievalMode).toBe('fallback')
     const sumExisting = report.byLayer.reduce((sum, diff) => sum + diff.existingTokens, 0)
-    const sumCandidate = report.byLayer.reduce((sum, diff) => sum + diff.candidateTokens, 0)
     expect(sumExisting).toBe(report.existing.totalTokens)
-    expect(sumCandidate).toBe(report.candidate.totalTokens)
+    // 接管后 existing=本轮注入、plan=全量候选：delta 表示未注入进全量的差
     expect(report.deltaTokens).toBe(report.candidate.totalTokens - report.existing.totalTokens)
   })
 
-  it('大窗口：既有实现仍受 800 上限，候选侧可超过 800（§7.10 验收）', () => {
+  it('大窗口：注入量可超过旧 800 上限（§7.10 验收，接管后 existing 即候选注入）', () => {
     const facts = makeFacts(60)
     const built = buildContextMessagesFromData(makeMemoryData({
       maxContext: 200000,
@@ -142,10 +154,8 @@ describe('W8 记忆影子：口径与验收', () => {
       currentState: `当前状态：${'躲避沙尘暴'.repeat(20)}`,
     }))
     const report = built.memoryShadow!
-    expect(report.existing.totalTokens).toBeLessThanOrEqual(report.legacyCapTokens)
-    expect(report.candidate.totalTokens).toBeGreaterThan(report.legacyCapTokens)
-    expect(report.exceedsLegacyCap).toBe(true)
-    expect(report.deltaTokens).toBeGreaterThan(0)
+    expect(report.existing.totalTokens).toBeGreaterThan(800)
+    expect(report.existing.capTokens).toBeGreaterThan(800)
     expect(report.candidate.overBudget).toBe(false)
   })
 

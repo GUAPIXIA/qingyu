@@ -143,6 +143,11 @@ export interface ReasoningRunawayGuard {
   /** 本轮是否真的中止过（供适配器返回结构化终局） */
   readonly aborted: boolean
   markAborted(): void
+  /**
+   * 方案 A：流中发现 `disableIgnored` 后立刻停用守卫（本轮剩余推理不再触发中止）。
+   * 对后续请求，主进程应在 dispatch 前读到 GateProbe 并把 `earlyAbort:false` 写入指令。
+   */
+  disable(): void
 }
 
 /**
@@ -169,6 +174,7 @@ export function createReasoningRunawayGuard(input: {
   const thresholdTokens = input.requestMaxTokens > 0
     ? Math.max(1, Math.floor(input.requestMaxTokens) - MIN_USABLE_BODY_TOKENS)
     : 0
+  let enabled = input.enabled
   let reasoningTokens = 0
   let bodyChars = 0
   let finished = false
@@ -184,7 +190,7 @@ export function createReasoningRunawayGuard(input: {
       finished = true
     },
     shouldAbort() {
-      if (!input.enabled || aborted || finished || bodyChars > 0) return false
+      if (!enabled || aborted || finished || bodyChars > 0) return false
       if (thresholdTokens <= 0) return false
       return reasoningTokens >= thresholdTokens
     },
@@ -194,7 +200,27 @@ export function createReasoningRunawayGuard(input: {
     markAborted() {
       aborted = true
     },
+    disable() {
+      enabled = false
+    },
   }
+}
+
+/**
+ * 方案 A（G1 修订）：是否允许本轮提前中止。
+ * - 指令显式 `earlyAbort === false` → 禁止（端点已确认 disableIgnored）；
+ * - off/none 且未禁止 → 允许（现行行为）；
+ * - 其他档位（门控应生效）→ 禁止，空正文交给零输出恢复。
+ */
+export function shouldEnableRunawayGuard(gate: {
+  level?: string
+  knob?: string
+  earlyAbort?: boolean
+} | null | undefined): boolean {
+  if (!gate) return false
+  if (gate.earlyAbort === false) return false
+  if (gate.knob === 'none' || gate.level === 'off') return true
+  return false
 }
 
 /**

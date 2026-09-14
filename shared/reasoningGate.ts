@@ -81,6 +81,14 @@ export interface ReasoningGateDirective {
    * 适配器下发前必须用 clampGateBudgetForBody 保证不吞正文最小空间。
    */
   tokens?: number
+  /**
+   * 是否允许应用层推理越线提前中止（方案 A / G1 §7.7 修订）：
+   * - 端点已确认 `disableIgnored`（off 仍产出推理）时由主进程置 `false`——
+   *   该场景下观测线会落在推理分布中段，中止只会制造空正文；
+   * - 改由 P90 保守余量 + 零输出一次重试兜底。
+   * 缺省（undefined）保持现行行为：off/none 场景允许中止。
+   */
+  earlyAbort?: boolean
 }
 
 /**

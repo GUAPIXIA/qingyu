@@ -1,18 +1,16 @@
 /**
- * W8（主计划 §7.10）：长记忆三层（当前状态 / 结构化事实 / 时间线）→ 统一候选，交给 W7 的确定性分配器
+ * W8/W9（主计划 §7.10/§7.11）：长记忆三层（当前状态 / 结构化事实 / 时间线）→ 统一候选，交给 W7 的确定性分配器
  * 做"按剩余输入空间与相关性"的动态分配——纯函数，无 IO，不含任何存储写入。
  *
- * 本期（W8）只做到"候选化 + 影子对照"：
- * - 生产注入仍由 `fitLayeredMemoryBudget` 决定（既有固定上限 `min(800, budgetBase*0.1)`），
- *   本模块结果进入影子报告，作为 G1 通过后"记忆层接管"的决策证据；
- * - `fitLayeredMemoryBudget` 保留为对照与回滚路径（§7.10 第 2 条）；
- * - **不设新的全局上限**：记忆候选只在统一输入预算内与其他块竞争，不再有 800 / 10% 的记忆专属上限；
+ * G1 通过后（2026-09-14）：生产注入改为**候选选择 + materializeMemoryInjection**；
+ * - 不再设 `min(800, budgetBase*0.1)` 记忆专属上限；
+ * - `fitLayeredMemoryBudget` 保留为对照与**回滚路径**（分配/物化异常时回落）（§7.10 第 2 条）；
  * - 只读不写：候选、选择与报告都不触碰会话存储，任何失败都不删除记忆（§7.10 第 5 条）；
  * - 事实评分**复用官方 `scoreAndRankFacts`**，语义检索不可用时自然落入 importance+recency+confidence
  *   的既有回退口径（§7.10 第 4 条），不新建第二套事实排序规则。
  *
- * 隐私（§4.4）：候选与报告只含 id / 枚举 / 计数 / 数值；时间线与事实文本只在现场 token 估算中使用，
- * 不进入候选、不进入报告、不进入日志。
+ * 隐私（§4.4）：候选与报告只含 id / 枚举 / 计数 / 数值；时间线与事实文本只在现场 token 估算与物化中使用，
+ * 不进入候选元数据、不进入报告、不进入日志。
  */
 
 import {
@@ -550,4 +548,77 @@ export function formatMemoryShadowSummary(report: MemoryShadowReport): string {
     `degraded=${report.degraded ? 1 : 0}`,
     `layers=${layers}`,
   ].join(' ')
+}
+
+/** 接管后可直接注入 systemContent 的记忆三段（§7.10 单点替换的物化结果） */
+export interface MaterializedMemoryInjection {
+  currentState: string
+  facts: MemoryFactRecord[]
+  timeline: string
+  retrievalMode: MemoryRetrievalMode
+}
+
+/**
+ * 把分配器入选的候选 id 还原为可注入三段（W8 接管，§7.10）。
+ * - current-state：入选则注入完整 trim 状态（不再按 240 token 截断状态段）；
+ * - facts：按官方评分序过滤入选 id，还原原始 `MemoryFactRecord`（不改存储）；
+ * - timeline：按候选顺序拼接入选 chunk 文本（chunk 序即最新优先）。
+ * 入选集合为空时对应层为空——**不是**删除存储，只是本轮不注入。
+ */
+export function materializeMemoryInjection(
+  plan: MemoryCandidateSet,
+  selectedIds: ReadonlySet<string> | readonly string[],
+  source: {
+    currentState?: string | null
+    facts: readonly MemoryFactRecord[]
+    timeline?: string | null
+    semanticScores?: number[] | null
+    /** 与候选构造同源的估算模型（时间线切块 token 口径） */
+    model?: string
+  },
+): MaterializedMemoryInjection {
+  const selected = selectedIds instanceof Set ? selectedIds : new Set(selectedIds)
+  const stateText = (source.currentState ?? '').trim()
+  const currentState = stateText && selected.has('memory:current-state') ? stateText : ''
+
+  const facts = [...(source.facts ?? [])]
+  const semanticScores = source.semanticScores ?? null
+  const ranked = scoreAndRankFacts(facts, semanticScores)
+  const consumed = new Set<number>()
+  const selectedFacts: MemoryFactRecord[] = []
+  for (const entry of ranked) {
+    if (isMemoryFact(entry.fact) && entry.fact.status !== 'active') continue
+    let index = -1
+    for (let i = 0; i < facts.length; i++) {
+      if (consumed.has(i)) continue
+      if (facts[i] === entry.fact) { index = i; break }
+    }
+    if (index < 0) continue
+    consumed.add(index)
+    const candidateId = factCandidateId(entry.fact, index)
+    if (selected.has(`memory:fact:${candidateId}`)) selectedFacts.push(entry.fact)
+  }
+
+  const chunks = splitTimelineIntoChunks(source.timeline, source.model)
+  // 与 plan 同源的 timeline id 集合：source 切块结果必须与候选构造一致才可物化
+  const planTimelineIds = new Set(
+    plan.candidates
+      .filter((candidate) => candidate.origin === 'memory:timeline')
+      .map((candidate) => candidate.id),
+  )
+  const timeline = chunks
+    .filter((chunk) => planTimelineIds.has(chunk.id) && selected.has(chunk.id))
+    .map((chunk) => chunk.text)
+    .join('\n')
+
+  const hasSemantic = Array.isArray(semanticScores)
+    && semanticScores.length === facts.length
+    && semanticScores.some((score) => score > 0)
+
+  return {
+    currentState,
+    facts: selectedFacts,
+    timeline,
+    retrievalMode: hasSemantic ? 'semantic' : 'fallback',
+  }
 }

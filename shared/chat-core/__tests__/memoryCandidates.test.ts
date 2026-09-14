@@ -14,6 +14,7 @@ import {
   buildMemoryCandidateSet,
   buildMemoryShadowReport,
   formatMemoryShadowSummary,
+  materializeMemoryInjection,
   selectMemoryCandidates,
   splitTimelineIntoChunks,
   type MemoryCandidateSet,
@@ -349,5 +350,78 @@ describe('W8 记忆影子报告', () => {
     expect(withCompetitors.competitor.describedTokens).toBe(400)
     expect(withCompetitors.competitor.selectedTokens).toBeLessThanOrEqual(400)
     expect(withCompetitors.competitor.deltaTokens).toBeLessThanOrEqual(0)
+  })
+})
+
+describe('W8 接管物化 materializeMemoryInjection', () => {
+  const facts = factsFixture(4)
+  const timeline = timelineLines(3)
+  const currentState = '当前状态：在废土避难所'
+  const plan = buildMemoryCandidateSet({
+    currentState,
+    timeline,
+    facts,
+    semanticScores: null,
+    model: 'gpt-4o-mini',
+  })
+
+  it('全部入选时还原三段', () => {
+    const ids = plan.candidates.map((c) => c.id)
+    const m = materializeMemoryInjection(plan, ids, {
+      currentState,
+      facts,
+      timeline,
+      semanticScores: null,
+      model: 'gpt-4o-mini',
+    })
+    expect(m.currentState).toBe(currentState)
+    expect(m.facts.length).toBeGreaterThanOrEqual(1)
+    expect(m.timeline.length).toBeGreaterThan(0)
+    expect(m.retrievalMode).toBe('fallback')
+  })
+
+  it('空入选集合 → 三段皆空（不删除存储）', () => {
+    const m = materializeMemoryInjection(plan, [], {
+      currentState,
+      facts,
+      timeline,
+      model: 'gpt-4o-mini',
+    })
+    expect(m.currentState).toBe('')
+    expect(m.facts).toEqual([])
+    expect(m.timeline).toBe('')
+  })
+
+  it('事实按官方评分序还原原始记录对象', () => {
+    const factIds = plan.candidates
+      .filter((c) => c.origin?.startsWith('memory:fact:'))
+      .map((c) => c.id)
+    const m = materializeMemoryInjection(plan, new Set(['memory:current-state', ...factIds]), {
+      currentState,
+      facts,
+      timeline,
+      model: 'gpt-4o-mini',
+    })
+    for (const fact of m.facts) {
+      expect(facts).toContain(fact)
+    }
+  })
+
+  it('时间线仅拼接入选 chunk（与候选 id 对齐）', () => {
+    const timelineIds = plan.candidates
+      .filter((c) => c.origin === 'memory:timeline')
+      .map((c) => c.id)
+    const partial = timelineIds.length > 1 ? [timelineIds[0]] : timelineIds
+    const m = materializeMemoryInjection(plan, new Set(['memory:current-state', ...partial]), {
+      currentState,
+      facts,
+      timeline,
+      model: 'gpt-4o-mini',
+    })
+    if (timelineIds.length > 1) {
+      const chunkTexts = splitTimelineIntoChunks(timeline, 'gpt-4o-mini').map((c) => c.text)
+      expect(m.timeline).toBe(chunkTexts[0])
+      expect(m.timeline).not.toContain(chunkTexts[1])
+    }
   })
 })

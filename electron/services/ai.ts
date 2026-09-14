@@ -345,7 +345,13 @@ function resolveDispatchGateDirective(
     // 调用方已决定使用门控（其自身已校验 kill switch），主进程只做 knob/预算解析
     enabled: true,
   })
-  return { level: resolved.level, knob: resolved.knob, tokens: resolved.gateTokens }
+  return {
+    level: resolved.level,
+    knob: resolved.knob,
+    tokens: resolved.gateTokens,
+    // 方案 A（G1）：disableIgnored 端点默认停用提前中止
+    ...(probe?.disableIgnored === true ? { earlyAbort: false } : {}),
+  }
 }
 
 export function registerAIIPC(ipcMain: IpcMain): void {

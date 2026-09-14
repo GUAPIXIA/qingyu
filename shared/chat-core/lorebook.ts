@@ -534,6 +534,29 @@ export interface LorebookTriggerOptions {
   diagnosticsMode?: 'live' | 'preview'
 }
 
+/**
+ * W9（§7.11）：世界书逐条评分快照——只含 key / 数值评分 / 位置 / token，**不含正文**。
+ * 供影子分配器做 always→mandatory 与统一剩余预算竞争；生产注入仍由分桶瀑布决定。
+ */
+export interface LorebookScoredEntrySnapshot {
+  /** 条目定位键 `${lbId}:${entryId}`；旧缓存缺失时用确定性占位 id */
+  key: string
+  /** 统一评分（0~1：关键词+语义+实体+近因加权后的 score） */
+  score: number
+  priority: NonNullable<BudgetLoreItem['priority']>
+  position: BudgetLoreItem['position']
+  depth?: number
+  order: number
+  /** 既有实现本轮实际注入（或 summary 替代后）的 token 估算 */
+  tokens: number
+  /** 既有实现是否保留该条目（false = 被预算/书级裁剪丢弃） */
+  kept: boolean
+  /** 是否以手写 summary 替代全文注入 */
+  usedSummary?: boolean
+  /** 不占用世界书预算（影子侧仍计入候选，供统一池比较） */
+  ignoreBudget?: boolean
+}
+
 /** 统一触发入口输出：按插入位置分发的触发结果 */
 export interface LorebookTriggerResult {
   /** 角色定义前（常驻 → 条件 → 细节；常驻段按 order，其余段按 score 降序、order 升序） */
@@ -556,6 +579,8 @@ export interface LorebookTriggerResult {
   detailDropped?: number
   /** 因书级 tokenBudget 超限被丢弃的条目数（导入的外部格式自带书级预算） */
   bookBudgetDropped?: number
+  /** W9：逐条评分快照（无正文）；供世界书候选影子对照，不参与注入决策 */
+  scoredEntrySnapshots?: LorebookScoredEntrySnapshot[]
   /** 本轮触发（去重后）的条目 key，供调用方更新会话 recency 窗口。阶段二B */
   triggeredEntryKeys?: string[]
   /**
@@ -1972,6 +1997,41 @@ export function executeLorebookRuntime(opts: LorebookTriggerOptions): LorebookTr
 
   // 按插入位置分发（filter 保序）+ 计数
   const result = distributeLoreItems(fitted.kept)
+
+  // W9 影子：逐条评分快照（无正文）。key / score / priority / position / tokens 足够
+  // 做 always→mandatory 与统一剩余预算竞争；生产注入路径不读本字段。
+  {
+    const summaryByKey = new Map(
+      fitted.kept
+        .filter((item) => item.key)
+        .map((item) => [item.key as string, item] as const),
+    )
+    const keptKeys = new Set(fitted.kept.map((item) => item.key).filter((k): k is string => !!k))
+    const snapshots: LorebookScoredEntrySnapshot[] = scored
+      .filter((item) => !!item.key)
+      .map((item) => {
+        const key = item.key as string
+        const original = originalByKey.get(key) ?? item
+        const keptItem = summaryByKey.get(key)
+        const isKept = keptKeys.has(key)
+        const usedSummary = isKept && keptItem?.content !== original.content
+        const tokensSource = isKept && keptItem ? keptItem.content : original.content
+        return {
+          key,
+          score: Number.isFinite(item.score) ? item.score : 0,
+          priority: item.priority ?? 'conditional',
+          position: item.position,
+          ...(typeof item.depth === 'number' ? { depth: item.depth } : {}),
+          order: item.order,
+          tokens: estimateTokens(tokensSource, model),
+          kept: isKept,
+          ...(usedSummary ? { usedSummary: true } : {}),
+          ...(item.ignoreBudget ? { ignoreBudget: true } : {}),
+        }
+      })
+      .sort((a, b) => (a.order - b.order) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    result.scoredEntrySnapshots = snapshots
+  }
   for (const decision of result.renderPlan.decisions) {
     if (!decision.key) continue
     const detail = detailByKey.get(decision.key)

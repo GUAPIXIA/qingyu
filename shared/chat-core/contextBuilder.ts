@@ -18,22 +18,24 @@ import type { ContextBuildData, SemanticLoreHit } from '../contextTypes'
 import { buildNarrativeModePrompt, resolveNarrativeMode } from '../narrativeMode'
 import { buildThoughtContractBody } from '../thoughtContract'
 import { collectRecentAssistantChars, detectUserLengthIntent, resolveResponsePolicy, resolveSceneFactor } from '../responsePolicy'
-import { enabledProfileOverride, getModelOutputProfile, resolveEffectiveContextLimit, resolveRequestBudget, resolveUserHardCap, type RequestBudget } from '../modelOutputProfile'
-import { estimateTokens, estimateImageTokens } from './tokenCounter'
+import { getModelOutputProfile, resolveRequestBudget, resolveUserHardCap, type RequestBudget } from '../modelOutputProfile'
+import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from './tokenCounter'
 import { replaceVariables } from './variables'
 import { resolveEffectiveTemplate } from './chatTemplates'
 import { mergeConsecutiveMessages } from './messagePostProcess'
 import { convertMessages } from './promptConverters'
-import { fitLayeredMemoryBudget, formatMemoryFacts } from './memory'
+import { fitLayeredMemoryBudget, formatMemoryFacts, memoryFactToText } from './memory'
 import { expandMacros, buildMacroContext } from './macros'
 import {
   executeLorebookRuntime,
   type LorebookCompressionRequest,
   type LorebookDiagnostics,
+  type LorebookScoredEntrySnapshot,
 } from './lorebook'
 import { emptyLorebookRenderPlan, type LorebookRenderPlan } from './lorebookRenderer'
 import { logInfo, logWarn } from './logging'
 import {
+  DEFAULT_LOREBOOK_RATIO,
   DEFAULT_LOREBOOK_SCAN_DEPTH,
   DEFAULT_RESERVED_OUTPUT,
   resolveLorebookScanDepth,
@@ -48,14 +50,31 @@ import {
   type ContextShadowReport,
 } from './contextShadow'
 import type { ContextCandidateKind } from './contextCandidates'
+import { allocateContextCandidates } from './contextCandidates'
 import {
   buildMemoryCandidateSet,
   buildMemoryShadowReport,
   formatMemoryShadowSummary,
+  materializeMemoryInjection,
   type MemoryCandidateSet,
   type MemoryInjectionStats,
   type MemoryShadowReport,
 } from './memoryCandidates'
+import {
+  buildWorldbookCandidateSet,
+  buildWorldbookShadowReport,
+  formatWorldbookShadowSummary,
+  summarizeWorldbookInjection,
+  type WorldbookCandidateSet,
+  type WorldbookShadowReport,
+} from './worldbookCandidates'
+import {
+  auditMessagesAsSerializedInput,
+  formatHistoryDegradationSummary,
+  planHistoryDegradation,
+  type HistoryDegradationPlan,
+} from './historyDegradation'
+import type { SerializedInputAudit } from './inputAudit'
 
 /** 组装选项（对齐原 buildChatContext 的 opts） */
 export interface BuildOptions {
@@ -115,10 +134,25 @@ export interface BuildResult {
    */
   contextShadow?: ContextShadowReport
   /**
-   * W8（§7.10）：本轮长记忆专项影子对照（既有固定上限 vs 候选动态分配）。
-   * 只含分层计数与 token，不含记忆正文；生产注入仍由 `fitLayeredMemoryBudget` 决定。
+   * W8（§7.10，G1 后接管）：本轮记忆注入统计（候选分配）。
+   * 只含分层计数与 token，不含记忆正文。
    */
   memoryShadow?: MemoryShadowReport
+  /**
+   * W9（§7.11）：世界书逐条评分影子（既有固定比例 vs always→mandatory + 统一剩余预算）。
+   * 不含条目正文；生产注入仍由 `executeLorebookRuntime` 分桶瀑布决定。
+   */
+  worldbookShadow?: WorldbookShadowReport
+  /**
+   * W9（§7.11）：历史分级降级影子（摘要替代 → 再删原文）。
+   * 不改 `cropHistory` 产出的 messages。
+   */
+  historyDegradation?: HistoryDegradationPlan
+  /**
+   * W9（§7.11/§5.6）：序列化后输入审计（当前为估算视图，`serialized:false`）。
+   * 超限只报告，不在本层裁剪。
+   */
+  inputAudit?: SerializedInputAudit
 }
 
 /**
@@ -187,10 +221,7 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
     // 旧链路预算：预设 maxTokens 直用（旧 resolveMainChatMaxTokens 语义；DeepSeek V4
     // 固定 8192 特判已按方案删除，不再恢复）。仍保持单次推导。
     const legacyMaxTokens = resolveUserHardCap(data.preset?.maxTokens) ?? DEFAULT_RESERVED_OUTPUT
-    const responsePolicy = resolveResponsePolicy({
-      presetHint: data.preset?.responseLengthHint,
-      defaultMode: settings.defaultResponseLength,
-    })
+    const responsePolicy = resolveResponsePolicy({ presetHint: data.preset?.responseLengthHint })
     return {
       responsePolicy,
       requestBudget: {
@@ -213,7 +244,6 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
   const responsePolicy = resolveResponsePolicy({
     sessionMode: session?.responseLengthMode,
     presetHint: data.preset?.responseLengthHint,
-    defaultMode: settings.defaultResponseLength,
     userIntent: responseIntent,
     sceneFactor,
     recentAssistantVisibleChars: collectRecentAssistantChars(data.chat.messages),
@@ -222,7 +252,6 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
     model,
     hardMaxChars: responsePolicy.hardMaxChars,
     userHardCap: data.preset?.maxTokens,
-    profileOverride: enabledProfileOverride(profile?.capabilityOverride),
     // W1（主计划 §7.3）：按端点/model/task 回读的近期推理样本（缺省 = 档案默认余量）
     ...(data.reasoningSamples?.length ? { recentReasoningTokens: data.reasoningSamples } : {}),
     // 阶段8（§4.2）：门控在场时推理项取 gateTokens（可信 = 承诺值；不可信/无门控 = 保守余量）
@@ -236,6 +265,13 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
     responseIntent,
     sceneFactor,
   }
+}
+
+/**
+ * W8 接管：对记忆候选跑一次确定性分配并返回入选 id（与物化同源）。
+ */
+function allocateMemorySelectedIds(plan: MemoryCandidateSet, budgetTokens: number): string[] {
+  return allocateContextCandidates(plan.candidates, { budgetTokens }).selectedIds
 }
 
 /**
@@ -352,16 +388,11 @@ export function buildContextMessagesFromData(
   }
 
   // ===== Token 预算框架 =====
-  // budgetBase = (maxContext − 输出预留) × 安全余量；各类上下文在统一预算中动态竞争
+  // budgetBase = (maxContext − 输出预留) × 安全余量；世界书预算取其一定比例，剩余给历史
   // 输出预留：阶段一起由篇幅策略 + 模型能力档案单次计算（resolveChatRequestPlan），
   // 与实际请求的 max_tokens 同源；不再对 DeepSeek V4 固定放大到 8192。
   // 模型解析与实际请求一致（activeModel 优先，切换档案时二者本就同步）
-  const maxContext = resolveEffectiveContextLimit({
-    model,
-    profileMaxContext: profile?.maxContext,
-    presetMaxContext: preset?.maxContext,
-    capabilityOverride: profile?.capabilityOverride,
-  })
+  const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
   const plan = resolveChatRequestPlan(data)
   const reservedOutput = plan.requestMaxTokens
   // 下限保护：maxTokens 配置过大时至少保留 25% 上下文预算
@@ -370,14 +401,14 @@ export function buildContextMessagesFromData(
     Math.floor(maxContext * 0.25),
   )
 
-  // 分层长记忆注入：当前状态优先，其次相关事实，最后是时间线。
-  // W8（§7.10）：注入路径保持既有 `fitLayeredMemoryBudget` 不变；另用原始输入构造候选，
-  // 产出记忆专项影子对照（G1 通过后才考虑由候选分配接管注入）。
+  // ===== W8 接管（§7.10，G1 通过后）：候选动态分配取代 fitLayeredMemoryBudget 固定上限 =====
+  // 注入顺序仍：当前状态 → 关键事实 → 时间线。分配预算 = budgetBase（统一输入池，无 800/10% 专属上限）。
+  // 分配/物化异常：回落 fitLayeredMemoryBudget(min(800, budgetBase*0.1))，存储永不删除。
   let memoryShadowPlan: MemoryCandidateSet | null = null
   let memoryShadowExisting: MemoryInjectionStats | null = null
+  let memoryTakeoverSelectedIds: ReadonlySet<string> | null = null
   if (currentSession?.memoryEnabled) {
     const memoryBudget = Math.min(800, Math.floor(budgetBase * 0.1))
-    // P0-2：语义检索命中时仅注入相关事实，否则全量；透传语义分到预算层
     const semanticFacts = data.chat.semanticFactsHits
     const factsForInject = semanticFacts.length > 0
       ? semanticFacts.map((hit) => typeof hit === 'string' ? hit : hit.text)
@@ -385,58 +416,113 @@ export function buildContextMessagesFromData(
     const semanticScores = semanticFacts.length > 0
       ? semanticFacts.map((hit) => typeof hit === 'string' ? 0 : hit.score)
       : null
-    const fitted = fitLayeredMemoryBudget(
-      currentSession.memoryCurrentState,
-      currentSession.memory || '',
-      factsForInject,
-      memoryBudget,
-      estimateTokens,
-      model,
-      semanticScores,
-    )
-    if (fitted.retrievalMode === 'fallback' && factsForInject.length > 0) {
-      logInfo('buildContext', `记忆检索降级 fallback：向量缺失/语义为空，按 importance+recency 排序（facts=${factsForInject.length}）`)
-    }
-    if (fitted.currentState) {
-      systemContent += '\n\n【当前状态】\n' + fitted.currentState
-    }
-    const factsText = formatMemoryFacts(fitted.facts)
-    if (factsText) {
-      systemContent += '\n\n【关键事实】\n' + factsText
-    }
-    if (fitted.timeline) {
-      systemContent += '\n\n【对话时间线】\n' + fitted.timeline
-    }
 
-    // W8 影子：既有口径（本轮实际注入的块）——时间线按行/句切块登记，供分类差异与接管对照
-    if (shadow) {
-      const injectedPlan = buildMemoryCandidateSet({
-        currentState: fitted.currentState,
-        timeline: fitted.timeline,
-        facts: fitted.facts,
-        // 预算层重排后语义分不再与数组对齐，既有口径按官方评分的回退分支取值
-        semanticScores: null,
-        model,
-      })
-      for (const candidate of injectedPlan.candidates) shadow.noteCandidate(candidate)
-      memoryShadowExisting = {
-        capTokens: memoryBudget,
-        stateTokens: injectedPlan.described.stateTokens,
-        factCount: injectedPlan.described.factCount,
-        factTokens: injectedPlan.described.factTokens,
-        timelineChunkCount: injectedPlan.described.timelineChunkCount,
-        timelineTokens: injectedPlan.described.timelineTokens,
-        totalTokens: injectedPlan.described.totalTokens,
-        retrievalMode: fitted.retrievalMode,
-      }
-      // W8 接管口径：原始输入（未截断）候选化，语义分保持与事实数组对齐
-      memoryShadowPlan = buildMemoryCandidateSet({
+    let injected = false
+    try {
+      const plan = buildMemoryCandidateSet({
         currentState: currentSession.memoryCurrentState,
         timeline: currentSession.memory || '',
         facts: factsForInject,
         semanticScores,
         model,
       })
+      const selectedIds = allocateMemorySelectedIds(plan, budgetBase)
+      const materialized = materializeMemoryInjection(
+        plan,
+        selectedIds,
+        {
+          currentState: currentSession.memoryCurrentState,
+          facts: factsForInject,
+          timeline: currentSession.memory || '',
+          semanticScores,
+          model,
+        },
+      )
+      if (materialized.currentState) {
+        systemContent += '\n\n【当前状态】\n' + materialized.currentState
+      }
+      const factsText = formatMemoryFacts(materialized.facts)
+      if (factsText) {
+        systemContent += '\n\n【关键事实】\n' + factsText
+      }
+      if (materialized.timeline) {
+        systemContent += '\n\n【对话时间线】\n' + materialized.timeline
+      }
+      memoryShadowPlan = plan
+      memoryTakeoverSelectedIds = new Set(selectedIds)
+      const selectedSet = memoryTakeoverSelectedIds
+      const timelineSelected = plan.candidates.filter(
+        (c) => selectedSet.has(c.id) && c.origin === 'memory:timeline',
+      )
+      memoryShadowExisting = {
+        capTokens: budgetBase,
+        stateTokens: materialized.currentState ? estimateTokens(materialized.currentState, model) : 0,
+        factCount: materialized.facts.length,
+        factTokens: materialized.facts.reduce((sum, f) => sum + estimateTokens(memoryFactToText(f), model), 0),
+        timelineChunkCount: timelineSelected.length,
+        timelineTokens: timelineSelected.reduce((sum, c) => sum + c.estimatedTokens, 0),
+        totalTokens: timelineSelected.reduce(
+          (sum, c) => sum + c.estimatedTokens,
+          (materialized.currentState ? estimateTokens(materialized.currentState, model) : 0)
+            + materialized.facts.reduce((s, f) => s + estimateTokens(memoryFactToText(f), model), 0),
+        ),
+        retrievalMode: materialized.retrievalMode,
+      }
+      injected = true
+    } catch (error) {
+      injected = false
+      logWarn('buildContext', `记忆候选注入失败，回落 fitLayeredMemoryBudget：${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!injected) {
+      // 回滚路径：固定上限分层预算（§7.10 第 2 条）
+      const fitted = fitLayeredMemoryBudget(
+        currentSession.memoryCurrentState,
+        currentSession.memory || '',
+        factsForInject,
+        memoryBudget,
+        estimateTokens,
+        model,
+        semanticScores,
+      )
+      if (fitted.retrievalMode === 'fallback' && factsForInject.length > 0) {
+        logInfo('buildContext', `记忆检索降级 fallback：向量缺失/语义为空，按 importance+recency 排序（facts=${factsForInject.length}）`)
+      }
+      if (fitted.currentState) {
+        systemContent += '\n\n【当前状态】\n' + fitted.currentState
+      }
+      const factsText = formatMemoryFacts(fitted.facts)
+      if (factsText) {
+        systemContent += '\n\n【关键事实】\n' + factsText
+      }
+      if (fitted.timeline) {
+        systemContent += '\n\n【对话时间线】\n' + fitted.timeline
+      }
+      if (shadow) {
+        const fallbackPlan = buildMemoryCandidateSet({
+          currentState: fitted.currentState,
+          timeline: fitted.timeline,
+          facts: fitted.facts,
+          semanticScores: null,
+          model,
+        })
+        for (const candidate of fallbackPlan.candidates) shadow.noteCandidate(candidate)
+        memoryShadowPlan = fallbackPlan
+        memoryShadowExisting = {
+          capTokens: memoryBudget,
+          stateTokens: fallbackPlan.described.stateTokens,
+          factCount: fallbackPlan.described.factCount,
+          factTokens: fallbackPlan.described.factTokens,
+          timelineChunkCount: fallbackPlan.described.timelineChunkCount,
+          timelineTokens: fallbackPlan.described.timelineTokens,
+          totalTokens: fallbackPlan.described.totalTokens,
+          retrievalMode: fitted.retrievalMode,
+        }
+      }
+    } else if (shadow && memoryShadowPlan && memoryTakeoverSelectedIds) {
+      // 接管后：登记**实际注入**的候选到影子采集器（existing = 本轮注入）
+      for (const candidate of memoryShadowPlan.candidates) {
+        if (memoryTakeoverSelectedIds.has(candidate.id)) shadow.noteCandidate(candidate)
+      }
     }
   }
 
@@ -466,6 +552,8 @@ export function buildContextMessagesFromData(
   let lorebookTimedEffects: LorebookTimedEffectsState | undefined
   let lorebookDiagnostics: LorebookDiagnostics | undefined
   let lorebookRenderPlan: LorebookRenderPlan = emptyLorebookRenderPlan()
+  /** W9：逐条评分快照（无正文），供世界书候选影子 */
+  let lorebookScoredSnapshots: LorebookScoredEntrySnapshot[] | undefined
   if (lorebookIds.length > 0) {
     // 修复 #28: 扫描深度可配置（取激活世界书中的最大值，无配置时用默认）
     // H-16 修复：reduce 初始值此前误用 DEFAULT（10），等价于 max(配置, 10)，
@@ -481,7 +569,10 @@ export function buildContextMessagesFromData(
     const scanMessages = (scanDepth === 0 ? [] : messages.slice(-scanDepth)).map((m) => m.content)
     const scanText = scanMessages.join(' ')
 
-    // W10：旧比例只留迁移记录；世界书与其他候选竞争同一输入预算。
+    const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
+    // W9 接管（§7.11 第 3/7 条，G1 通过后）：删除固定比例——世界书与其余块共享 budgetBase，
+    // 历史由 cropHistory 吃剩余。lorebookRatio 仍可读（设置兼容），不再参与生产预算。
+    void lorebookRatio
     const lorebookBudget = budgetBase
 
     // data.lorebooks 为激活世界书全量（书级/条目级 enabled 由统一执行器内部过滤）；
@@ -519,7 +610,7 @@ export function buildContextMessagesFromData(
       logInfo('buildContext', `世界书预算裁剪：触发 ${result.triggeredCount} 条，丢弃 ${result.droppedCount} 条（常驻 ${result.alwaysDropped ?? 0} / 条件 ${result.conditionalDropped ?? 0} / 细节 ${result.detailDropped ?? 0}，预算 ${lorebookBudget} tokens）`)
     }
     if (opts?.lorebookDiagnosticsMode !== 'preview' && (result.alwaysDropped ?? 0) > 0) {
-      logWarn('buildContext', `常驻世界书条目超出预算硬上限（40%），${result.alwaysDropped} 条被截断：请精简常驻内容或调高世界书预算比例`)
+      logWarn('buildContext', `常驻世界书条目超出预算硬上限（40%），${result.alwaysDropped} 条被截断：请精简常驻内容`)
     }
     if (opts?.lorebookDiagnosticsMode !== 'preview' && (result.bookBudgetDropped ?? 0) > 0) {
       logInfo('buildContext', `世界书书级 tokenBudget 超限：${result.bookBudgetDropped} 条被丢弃（激活世界书自带预算上限）`)
@@ -549,40 +640,74 @@ export function buildContextMessagesFromData(
     lorebookCompressionCacheHitKeys = result.compressionCacheHitKeys
     lorebookTimedEffects = result.timedEffects
     lorebookDiagnostics = result.diagnostics
+    lorebookScoredSnapshots = result.scoredEntrySnapshots
   }
 
-  // W7 影子：世界书按渲染锚点分桶登记（桶级占位评分——renderPlan 只保留文本，
-  // 逐条真实评分属 W9 接入范围；此处只求分类 token/数量差异可解释）
+  // ===== W9 影子：世界书逐条评分候选（always→mandatory + 统一剩余预算） =====
+  // 有 scoredEntrySnapshots 时用真实条目评分；无世界书激活时跳过。
+  // 桶级占位保留为快照缺失时的回退，保证分类 token/数量差异仍可解释。
+  let worldbookPlan: WorldbookCandidateSet | null = null
+  let worldbookExistingCap = 0
+  /** W9：历史分级降级影子（摘要替代 → 再删原文） */
+  let historyDegradationPlan: HistoryDegradationPlan | null = null
   if (shadow) {
-    const lorebookBucketSpecs: Array<[string, string[], number, number, number]> = [
-      ['before_character', lorebookRenderPlan.beforeCharacter, 0.55, 0.8, 0.5],
-      ['after_character', lorebookRenderPlan.afterCharacter, 0.55, 0.8, 0.5],
-      ['prompt_end', lorebookRenderPlan.promptEnd, 0.55, 0.6, 0.5],
-      ['authors_note_top', lorebookRenderPlan.authorsNoteTop, 0.5, 0.6, 0.5],
-      ['authors_note_bottom', lorebookRenderPlan.authorsNoteBottom, 0.5, 0.6, 0.5],
-      ['before_examples', lorebookRenderPlan.beforeExamples, 0.45, 0.4, 0.4],
-      ['after_examples', lorebookRenderPlan.afterExamples, 0.45, 0.4, 0.4],
-    ]
-    for (const [bucket, items, relevance, importance, continuity] of lorebookBucketSpecs) {
-      if (items.length === 0) continue
-      noteShadow('worldbook', `worldbook:${bucket}`, {
-        text: items.join('\n'),
-        relevance,
-        recency: 0.5,
-        importance,
-        continuity,
-        origin: `worldbook:${bucket}`,
-      })
-    }
-    if (lorebookRenderPlan.chat.length > 0) {
-      noteShadow('worldbook', 'worldbook:chat_depth', {
-        text: lorebookRenderPlan.chat.map((item) => item.content).join('\n'),
-        relevance: 0.45,
-        recency: 0.5,
-        importance: 0.5,
-        continuity: 0.3,
-        origin: 'worldbook:chat_depth',
-      })
+    const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
+    worldbookExistingCap = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
+    if (lorebookScoredSnapshots && lorebookScoredSnapshots.length > 0) {
+      worldbookPlan = buildWorldbookCandidateSet(lorebookScoredSnapshots)
+      // 现有实现实际注入的一侧：逐条进入采集器（与候选同口径分类差异）
+      for (const snapshot of lorebookScoredSnapshots) {
+        if (!snapshot.kept) continue
+        noteShadow('worldbook', `worldbook:${snapshot.key}`, {
+          tokens: snapshot.tokens,
+          mandatory: snapshot.priority === 'always',
+          stablePrefix: snapshot.position !== 'at_depth',
+          relevance: snapshot.score,
+          recency: 0.5,
+          importance: snapshot.priority === 'always' ? 0.9 : snapshot.priority === 'detail' ? 0.35 : 0.55,
+          continuity: snapshot.priority === 'always' ? 0.7 : 0.45,
+          dedupeKey: `lore:${snapshot.key}`,
+          origin: snapshot.position === 'before_char'
+            ? 'worldbook:before_character'
+            : snapshot.position === 'after_char'
+              ? 'worldbook:after_character'
+              : snapshot.position === 'at_depth'
+                ? `worldbook:chat_depth:${snapshot.depth ?? 0}`
+                : 'worldbook:prompt_end',
+        })
+      }
+    } else {
+      // W7 桶级占位回退（无逐条快照时）
+      const lorebookBucketSpecs: Array<[string, string[], number, number, number]> = [
+        ['before_character', lorebookRenderPlan.beforeCharacter, 0.55, 0.8, 0.5],
+        ['after_character', lorebookRenderPlan.afterCharacter, 0.55, 0.8, 0.5],
+        ['prompt_end', lorebookRenderPlan.promptEnd, 0.55, 0.6, 0.5],
+        ['authors_note_top', lorebookRenderPlan.authorsNoteTop, 0.5, 0.6, 0.5],
+        ['authors_note_bottom', lorebookRenderPlan.authorsNoteBottom, 0.5, 0.6, 0.5],
+        ['before_examples', lorebookRenderPlan.beforeExamples, 0.45, 0.4, 0.4],
+        ['after_examples', lorebookRenderPlan.afterExamples, 0.45, 0.4, 0.4],
+      ]
+      for (const [bucket, items, relevance, importance, continuity] of lorebookBucketSpecs) {
+        if (items.length === 0) continue
+        noteShadow('worldbook', `worldbook:${bucket}`, {
+          text: items.join('\n'),
+          relevance,
+          recency: 0.5,
+          importance,
+          continuity,
+          origin: `worldbook:${bucket}`,
+        })
+      }
+      if (lorebookRenderPlan.chat.length > 0) {
+        noteShadow('worldbook', 'worldbook:chat_depth', {
+          text: lorebookRenderPlan.chat.map((item) => item.content).join('\n'),
+          relevance: 0.45,
+          recency: 0.5,
+          importance: 0.5,
+          continuity: 0.3,
+          origin: 'worldbook:chat_depth',
+        })
+      }
     }
   }
 
@@ -780,6 +905,28 @@ export function buildContextMessagesFromData(
         origin: imageTokens > 0 ? 'history:user+images' : `history:${msg.role}`,
       })
     })
+    // W9 影子：历史分级降级（摘要替代 → 再删原文）；不改 messages
+    historyDegradationPlan = planHistoryDegradation({
+      messages,
+      // usedTokens 此刻已含历史裁剪前占用；crop 结果直接复用，避免口径漂移
+      usedTokens,
+      budgetTokens: budgetBase,
+      model,
+      compressedSummary: compressedSummaryInjected || currentSession?.compressedSummary || null,
+      compressedRange: currentSession?.compressedRange
+        ? {
+            startTs: currentSession.compressedRange.startTs,
+            endTs: currentSession.compressedRange.endTs,
+          }
+        : null,
+      crop: {
+        recent: recentMessages,
+        droppedTokens,
+        droppedEndIndex,
+        droppedStartTs,
+        droppedEndTs,
+      },
+    })
   }
 
   // at_depth 世界书 + 作者注释（middle/bottom）统一按深度注入历史消息段（共享工具）
@@ -877,9 +1024,7 @@ export function buildContextMessagesFromData(
     logInfo('buildContext', `上下文影子分配：${formatContextShadowSummary(contextShadow)}`)
   }
 
-  // ===== W8（§7.10）记忆专项影子：既有固定上限 vs 候选动态分配 =====
-  // 记忆候选与非记忆块在同一输入预算内竞争（§5.5 分配顺序由 W7 分配器保证）；
-  // 结果只做对照，注入仍由 `fitLayeredMemoryBudget` 决定。
+  // ===== W8 接管后记忆专项影子：plan=全量候选，existing=本轮实际注入 =====
   const memoryShadow: MemoryShadowReport | undefined = shadow && memoryShadowPlan && memoryShadowExisting
     ? buildMemoryShadowReport({
         plan: memoryShadowPlan,
@@ -892,6 +1037,48 @@ export function buildContextMessagesFromData(
     : undefined
   if (memoryShadow && !memoryShadow.degraded && opts?.lorebookDiagnosticsMode !== 'preview') {
     logInfo('buildContext', `记忆影子分配：${formatMemoryShadowSummary(memoryShadow)}`)
+  }
+
+  // ===== W9（§7.11）世界书专项影子：既有固定比例 vs always→mandatory + 统一剩余预算 =====
+  const worldbookShadow: WorldbookShadowReport | undefined = shadow && worldbookPlan && lorebookScoredSnapshots
+    ? buildWorldbookShadowReport({
+        plan: worldbookPlan,
+        existing: summarizeWorldbookInjection(lorebookScoredSnapshots, worldbookExistingCap),
+        budgetTokens: budgetBase,
+        competitors: shadow.collectedCandidates().filter(
+          (candidate) => candidate.kind !== 'worldbook',
+        ),
+      })
+    : undefined
+  if (worldbookShadow && !worldbookShadow.degraded && opts?.lorebookDiagnosticsMode !== 'preview') {
+    logInfo('buildContext', `世界书影子分配：${formatWorldbookShadowSummary(worldbookShadow)}`)
+  }
+
+  // ===== W9（§7.11）历史分级降级影子：摘要替代 → 再删原文 =====
+  const historyDegradation = historyDegradationPlan ?? undefined
+  if (historyDegradation && !historyDegradation.degraded && opts?.lorebookDiagnosticsMode !== 'preview') {
+    logInfo('buildContext', `历史降级影子：${formatHistoryDegradationSummary(historyDegradation)}`)
+  }
+
+  // ===== W9（§7.11/§5.6）序列化后输入审计（估算视图；超限只报告，不裁剪） =====
+  const inputAudit = shadow
+    ? auditMessagesAsSerializedInput(processedContext, {
+        provider,
+        model,
+        reservedOutputTokens: reservedOutput,
+        contextLimit: maxContext,
+      })
+    : undefined
+  if (inputAudit && opts?.lorebookDiagnosticsMode !== 'preview') {
+    // 日志串只含数值口径（formatInputAuditSummary 不含正文/端点）
+    logInfo('buildContext', `输入审计（估算）：${[
+      `input=${inputAudit.inputTokens}`,
+      `reserved=${inputAudit.reservedOutputTokens}`,
+      `safety=${inputAudit.protocolSafetyTokens}`,
+      `total=${inputAudit.totalTokens}/${inputAudit.contextLimit}`,
+      `over=${inputAudit.overBudget ? 1 : 0}`,
+      `accounting=${inputAudit.accountingConfidence}`,
+    ].join(' ')}`)
   }
 
   // 记录上下文用量（P1-3：上限预警）
@@ -913,6 +1100,9 @@ export function buildContextMessagesFromData(
     lorebookDiagnostics,
     ...(contextShadow ? { contextShadow } : {}),
     ...(memoryShadow ? { memoryShadow } : {}),
+    ...(worldbookShadow ? { worldbookShadow } : {}),
+    ...(historyDegradation ? { historyDegradation } : {}),
+    ...(inputAudit ? { inputAudit } : {}),
   }
 }
 
@@ -970,10 +1160,6 @@ export function buildChatParamsFromData(
       source: opts?.source ?? 'bridge',
       responseLengthMode: plan.responsePolicy.mode,
       hardMaxChars: plan.responsePolicy.hardMaxChars,
-      ...(plan.requestBudget ? {
-        plannedBodyTokens: plan.requestBudget.bodyReserve,
-        plannedReasoningTokens: plan.requestBudget.reasoningReserve,
-      } : {}),
       // S5：记录意图识别与场景系数，便于核对误判（未启用时不下发）
       ...(plan.responseIntent ? { responseIntent: plan.responseIntent } : {}),
       ...(plan.pipelineLegacy ? {} : { sceneFactor: plan.sceneFactor }),

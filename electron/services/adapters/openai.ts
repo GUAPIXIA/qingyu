@@ -6,6 +6,7 @@ import {
   deleteGateField,
   isReasoningBudgetExhausted,
   matchRejectedGateField,
+  shouldEnableRunawayGuard,
   withInternalAbort,
   REASONING_BUDGET_EXHAUSTED_MESSAGE,
   stripVendorThinking,
@@ -220,8 +221,10 @@ export const openaiAdapter: AIAdapter = {
     // 阶段8（§4.4，2026-09-13 G1 取证后修订）：推理越线提前中止的观测线 =
     // requestMaxTokens − 正文绝对下限（可证明的徒劳点），不再使用"上限 85%"魔数，
     // 也不再把 gateTokens 当止损线（它是预算承诺）。正文一出现即解除资格。
+    // 方案 A：端点已确认 disableIgnored（主进程写入 earlyAbort:false）时默认不启用——
+    // 该场景下观测线会落在推理分布中段，中止只制造空正文；由 P90 余量 + 零输出重试兜底。
     const runawayGuard = createReasoningRunawayGuard({
-      enabled: gate != null && (gate.knob === 'none' || gate.level === 'off'),
+      enabled: shouldEnableRunawayGuard(gate),
       requestMaxTokens: maxTokens,
     })
     // 流式解析（修复 SSE 分隔符：使用更稳健的行解析）
@@ -274,9 +277,11 @@ export const openaiAdapter: AIAdapter = {
 
         // reasoning_content / reasoning 仅供模型内部推理，禁止透传到正文或流式 UI。
         // 阶段8（§4.3/§4.6）：off 档仍出现推理 delta → 记录该端点静默忽略 disable。
+        // 方案 A：一旦确认 disableIgnored，立刻停用本轮提前中止（剩余推理不再触发误杀）。
         const reasoningDelta: string = delta.reasoning_content ?? delta.reasoning ?? ''
         if (reasoningDelta && gate?.level === 'off' && gateSignal) {
           gateSignal.disableIgnored = true
+          runawayGuard.disable()
         }
         if (reasoningDelta) {
           runawayGuard.addReasoning(reasoningDelta)

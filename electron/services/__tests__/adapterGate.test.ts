@@ -14,7 +14,11 @@ vi.mock('electron', () => ({
 
 import { chatWithRetry, getAdapter } from '../ai'
 import { recordGateProbeSignal, resetGateProbesForTests } from '../gateProbeStore'
-import { createReasoningRunawayGuard, type AIAdapter } from '../adapters/types'
+import {
+  createReasoningRunawayGuard,
+  shouldEnableRunawayGuard,
+  type AIAdapter,
+} from '../adapters/types'
 import { MIN_USABLE_BODY_TOKENS } from '../../../shared/modelOutputProfile'
 import type { ChatParams } from '../../../shared/types'
 import type { ReasoningGateDirective } from '../../../shared/reasoningGate'
@@ -228,7 +232,10 @@ describe('假接受探测（off 档仍出现推理）', () => {
     expect(result.gateProbe).toMatchObject({ disableIgnored: true })
   })
 
-  it('推理越线且正文为空 → 提前中止并返回结构化终局（earlyAbort + length）', async () => {    // off 档 + knob none：门控无法执行，推理持续流出而正文始终为 0
+  it('流中发现 disableIgnored → 立刻停用守卫，不再提前中止（方案 A）', async () => {
+    // off 档 + knob none：门控无法执行，推理持续流出
+    // 方案 A：确认 disableIgnored 后禁用守卫——不再 earlyAbort；
+    // 若最终仍无正文，走零输出错误（由上层一次重试兜底），不伪装成 earlyAbort。
     const NL = String.fromCharCode(10)
     const reasoningChunk = 'data: '
       + JSON.stringify({ choices: [{ delta: { reasoning_content: 'think '.repeat(200) } }] })
@@ -238,14 +245,12 @@ describe('假接受探测（off 档仍出现推理）', () => {
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           const encoder = new TextEncoder()
-          // 持续推送推理，直到被中止
           for (let i = 0; i < 50; i += 1) {
             if ((init.signal as AbortSignal)?.aborted) break
             controller.enqueue(encoder.encode(reasoningChunk))
             await new Promise((r) => setTimeout(r, 1))
           }
           if ((init.signal as AbortSignal)?.aborted) {
-            // 模拟真实 fetch：中止时挂起的读取以 AbortError 拒绝
             try {
               controller.error(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
             } catch { /* 已关闭则忽略 */ }
@@ -264,13 +269,76 @@ describe('假接受探测（off 档仍出现推理）', () => {
       maxTokens: 600,
       reasoningGate: { level: 'off', knob: 'none' },
     })
+    const result = await getAdapter('openai')
+      .chat(params, vi.fn(), new AbortController().signal)
+      .then(() => null)
+      .catch((e) => e as Error & { gateProbe?: { disableIgnored?: boolean } })
+
+    // 不再是 earlyAbort 结构化终局
+    expect(result).not.toBeNull()
+    expect((result as { earlyAbort?: boolean } | null)?.earlyAbort).toBeUndefined()
+    expect(result?.gateProbe).toMatchObject({ disableIgnored: true })
+    expect(String(result?.message ?? '')).toContain('未返回任何内容')
+  })
+
+  it('指令 earlyAbort:false（已知 disableIgnored 端点）→ 守卫不启用，即使流中出现推理', async () => {
+    const NL = String.fromCharCode(10)
+    const chunks = [
+      'data: ' + JSON.stringify({ choices: [{ delta: { reasoning_content: 'think '.repeat(400) } }] }) + NL + NL,
+      'data: ' + JSON.stringify({ choices: [{ delta: { content: '正文' }, finish_reason: 'stop' }] }) + NL + NL,
+      'data: [DONE]' + NL + NL,
+    ]
+    fetchMock.mockResolvedValue(streamResponse(chunks))
+
+    const params = makeParams({
+      stream: true,
+      model: 'deepseek/deepseek-v4.1-flash',
+      maxTokens: 600,
+      reasoningGate: { level: 'off', knob: 'none', earlyAbort: false },
+    })
     const result = await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
 
-    expect(result.earlyAbort).toBe(true)
-    expect(result.finishReason).toBe('length')
-    expect(result.text).toBe('')
-    // off 档仍出现推理 → 该端点静默忽略 disable
-    expect(result.gateProbe).toMatchObject({ knob: 'none', disableIgnored: true })
+    expect(result.earlyAbort).toBeUndefined()
+    expect(result.text).toContain('正文')
+    expect(result.gateProbe).toMatchObject({ disableIgnored: true })
+  })
+
+  it('主进程对 disableIgnored 端点下发 earlyAbort:false（方案 A 接线）', async () => {
+    // 先记录探测：该端点 off 被静默忽略
+    recordGateProbeSignal(
+      { provider: 'openai', baseUrl: 'https://api.example.com/v1', model: 'deepseek/deepseek-v4.1-flash' },
+      { knob: 'none', disableIgnored: true },
+    )
+    const okBody = { choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }
+    fetchMock.mockResolvedValue(jsonResponse(okBody))
+    const spy = vi.fn(async (params: ChatParams) => ({
+      text: 'ok',
+      finishReason: 'stop' as const,
+      ...(params.reasoningGate ? {} : {}),
+    }))
+    // 注册 spy 适配器，捕获 dispatch 后的 reasoningGate
+    const adapter: AIAdapter = {
+      async chat(params, onChunk, signal, onUsage) {
+        spy(params)
+        onChunk('ok')
+        void signal
+        void onUsage
+        return { text: 'ok', finishReason: 'stop' }
+      },
+      listModels: async () => [],
+      testConnection: async () => true,
+    }
+    await chatWithRetry(
+      adapter,
+      makeParams({
+        model: 'deepseek/deepseek-v4.1-flash',
+        reasoningGate: { level: 'off', knob: 'none' },
+      }),
+      vi.fn(),
+      new AbortController().signal,
+      0,
+    )
+    expect(spy.mock.calls[0][0].reasoningGate).toMatchObject({ earlyAbort: false })
   })
 
   it('无 reasoning usage 时不写 reportsReasoningUsage（不伪造状态）', async () => {
@@ -534,5 +602,24 @@ describe('推理越线观测线（requestMaxTokens − 正文绝对下限）', (
     const guard = createReasoningRunawayGuard({ enabled: true, requestMaxTokens: 0 })
     guard.addReasoning('a'.repeat(3000))
     expect(guard.shouldAbort()).toBe(false)
+  })
+
+  it('disable() 后永不中止（方案 A：流中确认 disableIgnored）', () => {
+    const guard = createReasoningRunawayGuard({ enabled: true, requestMaxTokens: 500 })
+    guard.disable()
+    guard.addReasoning('a'.repeat(3000))
+    expect(guard.shouldAbort()).toBe(false)
+  })
+})
+
+describe('shouldEnableRunawayGuard（方案 A）', () => {
+  it('off/none 默认允许；earlyAbort:false 禁止；其他档位禁止', () => {
+    expect(shouldEnableRunawayGuard({ level: 'off', knob: 'none' })).toBe(true)
+    expect(shouldEnableRunawayGuard({ level: 'off', knob: 'thinking-disable' })).toBe(true)
+    expect(shouldEnableRunawayGuard({ level: 'standard', knob: 'none' })).toBe(true)
+    expect(shouldEnableRunawayGuard({ level: 'off', knob: 'none', earlyAbort: false })).toBe(false)
+    expect(shouldEnableRunawayGuard({ level: 'standard', knob: 'thinking-disable' })).toBe(false)
+    expect(shouldEnableRunawayGuard(null)).toBe(false)
+    expect(shouldEnableRunawayGuard(undefined)).toBe(false)
   })
 })
