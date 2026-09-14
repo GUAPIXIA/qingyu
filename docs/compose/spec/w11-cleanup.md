@@ -1,14 +1,24 @@
 ---
 feature: w11-cleanup
-status: designed
+status: delivered
 updated: 2026-09-14
 branch: feat/w11-cleanup
-commits:
+commits: 4b49b54..8621cfe
 ---
 
 # W11 旧链路清理与上限复审
 
 ## Report
+
+**What was built** — G2 通过后完成安全清理：shadow 默认关闭（仅显式 `'shadow'`）；门控常开（渲染层 `isReasoningGateEnabled` 与主进程 `mainContextProvider` 均忽略旧 `reasoningGateEnabled`）；设置页隐藏 legacy 切换（旧数据可一键回 unified）；8192 安全阀决策门结论为保留。`fitLayeredMemoryBudget` 与 runaway 实现保留作回滚/单测。已并入 W8W9 接管与方案 A。
+
+**Verification** — chat-core + 设置 + adapterGate + mainContextProvider 等 **196 通过**；`tsc -b --noEmit` 通过。复审 C1（主进程仍尊重 gate=false）已在 `8621cfe` 修复。
+
+**Journey log**
+- 环境禁 `git merge`/`checkout` 跨分支：W8W9 用 `git show` 文件集并入
+- shadow 默认翻转后测试需显式 `{ shadow: 'shadow' }`
+- 门控常开必须同时改 renderer helper 与 mainContextProvider，否则桥接路径漂移
+- `git show | Set-Content` 会丢换行，应用 `cmd /c git show > file`
 
 ## [S1] Problem
 
@@ -46,7 +56,7 @@ G2 七条已核实通过。主计划 §7.14 要求在 G2 后清理已无生产�
 
 ## Tasks
 
-- [ ] T1: shadow 默认 off；gate 开关强制 on + 去 UI — acceptance: 缺省不产 contextShadow；isReasoningGateEnabled 恒 true (covers: S2)
-- [ ] T2: legacy 设置隐藏、默认 unified；注释与误导文案清理 — acceptance: 设置页无 legacy 切换；旧数据仍可读 (covers: S2; depends: T1)
-- [ ] T3: 8192 ADR 注记 + 主计划/README/CHANGELOG/W11 报告 — acceptance: 文档写明保留 8192 与 W11 完成项 (covers: S2; depends: T2)
-- [ ] T4: 定向测试 + 评审 — acceptance: 无 critical (covers: S2; depends: T3)
+- [x] T1: shadow 默认 off；gate 开关强制 on + 去 UI — acceptance: 缺省不产 contextShadow；isReasoningGateEnabled 恒 true (covers: S2)
+- [x] T2: legacy 设置隐藏、默认 unified；注释与误导文案清理 — acceptance: 设置页无 legacy 切换；旧数据仍可读 (covers: S2; depends: T1)
+- [x] T3: 8192 ADR 注记 + 主计划/README/CHANGELOG/W11 报告 — acceptance: 文档写明保留 8192 与 W11 完成项 (covers: S2; depends: T2)
+- [x] T4: 定向测试 + 评审 — acceptance: 无 critical (covers: S2; depends: T3)
