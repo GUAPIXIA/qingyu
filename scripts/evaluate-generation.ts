@@ -1,7 +1,7 @@
 /**
  * 生成效果分批评测器（对话 / 续写 / 下一步方向 / 生图提示词 / 预设生成）
  *
- * 目标：用项目**已配置的模型**（--model，默认 deepseek/deepseek-v4.1-flash）跑真实生成链路，
+ * 目标：用项目**已配置的模型**（--model，默认 deepseek-v4.1-flash；活跃 profile 常为 chenxi）跑真实生成链路，
  * 量化各生成面的产出质量与结构合规率。所有提示词都由被测代码自己装配，脚本不重写提示词。
  *
  * 真实链路：
@@ -13,7 +13,7 @@
  *
  * 用法（分批跑，结果可 --append 累积到同一 out 目录）：
  *   npx tsx scripts/evaluate-generation.ts --batch dialogue --key-file "$TEMP/qingyu-eval-key.txt" \
- *     --base-url https://api.commandcode.ai/provider/v1 --model deepseek/deepseek-v4.1-flash \
+ *     --base-url https://api.commandcode.ai/provider/v1 --model deepseek-v4.1-flash \
  *     --out .poc-tmp/eval-gen
  *   --batch continue|directions|imagine|preset|all   --judge on|off   --only <caseId,caseId>
  *
@@ -265,7 +265,7 @@ const BASE_SETTINGS: Settings = {
   providers: {} as Settings['providers'],
   connectionProfiles: [],
   activeProfileId: null,
-  activeModel: 'deepseek/deepseek-v4.1-flash',
+  activeModel: 'deepseek-v4.1-flash',
   activePresetId: 'eval-preset',
   activeCharacterId: 'eval-suwan',
   activeSessionId: 'eval-session',
@@ -371,7 +371,7 @@ function makeBuildData(opts: {
 // 由 CLI / 安全包装脚本注入的活跃 profile 元数据（不含密钥）
 let globalEvalProvider = 'openai'
 let globalEvalBaseUrl = 'https://api.commandcode.ai/provider/v1'
-let globalEvalModel = 'deepseek/deepseek-v4.1-flash'
+let globalEvalModel = 'deepseek-v4.1-flash'
 /** W1/§5.4：`--reasoning-samples a,b,c` 注入的近期推理样本（缺省为空 = 静态档案余量） */
 let globalEvalReasoningSamples: number[] = []
 
@@ -2956,7 +2956,7 @@ function parseArgs(argv: string[]): CliOptions {
   }
   globalEvalProvider = provider || 'openai'
   globalEvalBaseUrl = baseUrl || 'https://api.commandcode.ai/provider/v1'
-  globalEvalModel = model || 'deepseek/deepseek-v4.1-flash'
+  globalEvalModel = model || 'deepseek-v4.1-flash'
   // W1/§5.4 复测：逗号分隔的近期推理样本（仅影响预算，不影响请求参数以外的行为）。
   // 注意：未传参数时 `''.split(',')` 会得到 [''] → Number('') === 0，
   // 曾因此把空样本变成 `[0]` 并让推理余量塌到协议下限（max_tokens 520 → 6/6 空正文）。

@@ -11,6 +11,10 @@
 
 .EXAMPLE
   pwsh scripts/evaluate-active-profile.ps1 -Batches dialogue,group,stream -Reps 1 -Out .poc-tmp/eval-dialog-render-smoke
+
+.EXAMPLE
+  # 实机测试：优先用活跃 profile 的 model（当前 chenxi / deepseek-v4.1-flash）；可 -Model 覆盖
+  pwsh scripts/evaluate-active-profile.ps1 -Batches dialogue,stream -Reps 3 -Out .poc-tmp/eval-g1-flash
 #>
 [CmdletBinding()]
 param(
@@ -20,6 +24,8 @@ param(
   [string]$Judge = 'off',
   [string]$ElectronExe = '',
   [string]$Only = '',
+  # 空 = 使用活跃 profile 的 model；显式传入可覆盖（G1 用 flash：deepseek-v4.1-flash）
+  [string]$Model = '',
   [switch]$NoGate,
   [switch]$NoThinkingParam,
   [switch]$SkipRealModel
@@ -67,6 +73,8 @@ function Read-ActiveProfileMeta {
   $baseUrl = [string]$profile.baseUrl
   $model = [string]$profile.model
   if (-not $model) { $model = [string]$json.activeModel }
+  # -Model 可覆盖活跃 profile（G1 用 flash 时显式传 deepseek-v4.1-flash）
+  if ($Model) { $model = $Model }
 
   return [pscustomobject]@{
     profileId  = $profileId
