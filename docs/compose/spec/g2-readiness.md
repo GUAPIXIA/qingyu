@@ -1,14 +1,23 @@
 ---
 feature: g2-readiness
-status: designed
+status: delivered
 updated: 2026-09-14
 branch: feat/g2-readiness
-commits:
+commits: 5462034..25aeeeb
 ---
 
 # G2 取证就绪（分段进度与验收清单）
 
 ## Report
+
+**What was built** — `shared/g2Readiness.ts` 按 `pipeline × gate` 分段统计有效生成（复用 C4 口径），仅单段 ≥500 且 ≥2 供应商才可过门；`scripts/g2-progress.ts` 输出分段表与 §7.13 清单，未达标 exit 2。本机观测：7/500、1 供应商 → G2 未通过。
+
+**Verification** — `g2Readiness.test.ts` 10 通过；`g2-progress.ts --g1-passed` 对本机 JSONL 正常输出，exit 2。
+
+**Journey log**
+- 跨段加总不可过门（G2 第 7 条）
+- `has()` 为 false 时勿当 `false` 写入 checklist
+- 本包不碰 main 上未提交的 W10
 
 ## [S1] Problem
 
@@ -50,6 +59,6 @@ npx tsx scripts/g2-progress.ts [--file jsonl] [--out report.md] [--days N]
 
 ## Tasks
 
-- [ ] T1: `g2Readiness` 纯函数 + 单测 — acceptance: 分段/跨段混合不过门、单段过门、排除 error/aux/后台 (covers: S2)
-- [ ] T2: `g2-progress` 脚本 + 本机观测试跑 — acceptance: 输出分段表与清单；未达标 exit 2 (covers: S2; depends: T1)
-- [ ] T3: 技术评审 — acceptance: 无 critical (covers: S2; depends: T2)
+- [x] T1: `g2Readiness` 纯函数 + 单测 — acceptance: 分段/跨段混合不过门、单段过门、排除 error/aux/后台 (covers: S2)
+- [x] T2: `g2-progress` 脚本 + 本机观测试跑 — acceptance: 输出分段表与清单；未达标 exit 2 (covers: S2; depends: T1)
+- [x] T3: 技术评审 — acceptance: 无 critical (covers: S2; depends: T2)
