@@ -13,7 +13,7 @@ import { stripThought } from '../../shared/chat-core/messagePostProcess'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
 import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
-import { resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { resolveReasoningGate } from '../../shared/reasoningGate'
 import {
   DIALOGUE_DIRECTION_TEMPERATURE,
@@ -35,6 +35,7 @@ export interface DirectionProfile {
   apiKey: string
   baseUrl: string
   model: string
+  capabilityOverride?: { enabled: boolean; contextLimit?: number; outputLimit?: number }
 }
 
 /**
@@ -128,6 +129,7 @@ function buildDirectionParams(
   const budget = resolveRequestBudget({
     model: profile.model,
     hardMaxChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
+    profileOverride: enabledProfileOverride(profile.capabilityOverride),
     reasoningGate: gate,
   })
   return {

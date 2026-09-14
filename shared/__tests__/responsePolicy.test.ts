@@ -50,6 +50,9 @@ describe('resolveResponseLengthMode 优先级', () => {
     expect(resolveResponseLengthMode({ sessionMode: 'detailed', presetHint: 'brief' }))
       .toEqual({ mode: 'detailed', source: 'session' })
     expect(resolveResponseLengthMode({ presetHint: 'brief' })).toEqual({ mode: 'brief', source: 'preset' })
+    expect(resolveResponseLengthMode({ defaultMode: 'detailed' })).toEqual({ mode: 'detailed', source: 'settings' })
+    expect(resolveResponseLengthMode({ presetHint: 'brief', defaultMode: 'detailed' }))
+      .toEqual({ mode: 'brief', source: 'preset' })
     expect(resolveResponseLengthMode({})).toEqual({ mode: 'auto', source: 'auto' })
   })
 

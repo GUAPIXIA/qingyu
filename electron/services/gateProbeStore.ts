@@ -56,3 +56,8 @@ export function resetGateProbesForTests(): void {
 export function gateProbeCount(): number {
   return probes.size
 }
+
+/** W10：重置指定端点探测；不接受模糊键，避免误清其他端点。 */
+export function resetGateProbe(scope: GateProbeScope): void {
+  probes.delete(scopeKeyOf(scope))
+}

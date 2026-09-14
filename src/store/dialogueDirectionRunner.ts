@@ -13,7 +13,7 @@ import {
   type DirectionGenerationInput,
 } from '../../shared/dialogueDirections'
 import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
-import { resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { resolveReasoningGate } from '../../shared/reasoningGate'
 import { noteGateRecoveryFailure } from './reasoningGateState'
 import { stripThought } from '../utils/messagePostProcess'
@@ -87,6 +87,7 @@ function callDirectionHelper(
   const budget = resolveRequestBudget({
     model: activeModel,
     hardMaxChars: directionProfile.expectedBodyChars,
+    profileOverride: enabledProfileOverride(profile.capabilityOverride),
     reasoningGate: gate,
   })
 

@@ -12,7 +12,7 @@ import {
 } from '../utils/lorebook'
 import type { DepthLoreItem } from '../utils/lorebook'
 import { emptyLorebookRenderPlan, type LorebookRenderPlan } from '../utils/lorebookRenderer'
-import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from '../utils/tokenCounter'
+import { estimateTokens, estimateImageTokens } from '../utils/tokenCounter'
 import { replaceVariables } from '../utils/variables'
 import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
 import { convertMessages } from '../utils/promptConverters'
@@ -20,7 +20,7 @@ import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { fitLayeredMemoryBudget, formatMemoryFacts } from '../utils/memory'
 import { expandMacros, buildMacroContext } from '../utils/macros'
 import { logInfo, logWarn } from '../lib/logger'
-import { DEFAULT_LOREBOOK_RATIO, DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFETY, resolveLorebookScanDepth } from './chatConstants'
+import { DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFETY, resolveLorebookScanDepth } from './chatConstants'
 import { markPendingGroupCompression } from './groupStreamController'
 import { cropHistory, applyDepthInserts, type DepthInsertItem } from './contextShared'
 import type { GroupStoreGet } from './groupChatTypes'
@@ -31,6 +31,7 @@ import { buildThoughtContractBody } from '../../shared/thoughtContract'
 import { resolveGroupRequestPlan } from './groupRequestPlan'
 import { withReasoningSamples } from './usageProfileCache'
 import { withReasoningGate } from './reasoningGateState'
+import { enabledProfileOverride, resolveEffectiveContextLimit } from '../../shared/modelOutputProfile'
 
 /** 群聊上下文组装结果：消息 + 本轮世界书触发键 / 超限压缩请求（调用方写回 store） */
 export interface GroupContextBuildResult {
@@ -69,6 +70,8 @@ export function buildGroupChatContext(
     messages: state.messages,
     preset,
     pipelineLegacy: (settings.generationPipeline ?? 'unified') === 'legacy',
+    defaultResponseLength: settings.defaultResponseLength,
+    profileOverride: enabledProfileOverride(profile?.capabilityOverride),
     // W1（主计划 §7.3）：同步读取发送前预取的近期推理样本（无样本时退回档案默认余量）
     ...withReasoningSamples(profile, model),
     ...withReasoningGate(profile, model),
@@ -127,7 +130,12 @@ export function buildGroupChatContext(
   }
 
   // ===== Token 预算框架（与单聊路径一致）=====
-  const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
+  const maxContext = resolveEffectiveContextLimit({
+    model,
+    profileMaxContext: profile?.maxContext,
+    presetMaxContext: preset?.maxContext,
+    capabilityOverride: profile?.capabilityOverride,
+  })
   const reservedOutput = requestPlan.requestMaxTokens
   // 下限保护：maxTokens 配置过大时至少保留 25% 上下文预算
   const budgetBase = Math.max(
@@ -216,8 +224,7 @@ export function buildGroupChatContext(
     })
     const scanText = scanMessages.join(' ')
 
-    const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
-    const lorebookBudget = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
+    const lorebookBudget = budgetBase
 
     const result = executeLorebookRuntime({
       lorebooks: lorebookCache.getAll([...allLorebookIds]),

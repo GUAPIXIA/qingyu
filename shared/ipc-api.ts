@@ -85,6 +85,52 @@ export interface GenerationUsageProfileQuery {
 /** 只读聚合结果：只有数值与计数，不含正文、完整 URL 或磁盘路径 */
 export type GenerationUsageProfile = import('./usageProfile').UsageProfile
 
+/** W10：设置页使用的脱敏生成诊断。只含枚举、计数和数值。 */
+export interface GenerationDiagnostics {
+  modelProfile: {
+    outputLimit: number
+    contextLimit: number
+    reasoningMode: string
+    source: string
+    confidence: 'high' | 'low'
+  }
+  gateProbe: {
+    knob: string
+    knobAccepted?: boolean
+    disableIgnored?: boolean
+    reportsReasoningUsage?: boolean
+    updatedAt: number
+  } | null
+  usageBuckets: Array<{
+    taskType: string
+    gate: string
+    profile: GenerationUsageProfile
+  }>
+  lastRequest: {
+    ts: number
+    taskType: string
+    generationType?: string
+    requestedMaxTokens: number
+    responseLengthMode?: string
+    hardMaxChars?: number
+    plannedBodyTokens?: number
+    plannedReasoningTokens?: number
+    gateLevel?: string
+    gateKnob?: string
+    bodyVisibleChars: number
+    completionTokens: number | 'unknown'
+    reasoningTokens: number | 'unknown'
+    attempts: number
+    downgradeRetry: boolean
+    earlyAbort: boolean
+    finishReason: string
+    outcome: string
+    terminationCause?: string
+    durationMs: number
+  } | null
+  observationStore: { loaded: boolean; keys: number; scannedRecords: number; skippedLines: number }
+}
+
 export interface AIAPI {
   chat(params: ChatParams): Promise<void>
   /** reason 供阶段0观测区分：user = 用户停止 / timeout = 空闲看门狗 / stop_string = 停止字符串命中 */
@@ -96,6 +142,10 @@ export interface AIAPI {
    * 无样本或读取失败返回 null —— 调用方回退静态档案，生成不受影响。
    */
   getGenerationUsageProfile(query: GenerationUsageProfileQuery): Promise<GenerationUsageProfile | null>
+  getGenerationDiagnostics(query: GenerationUsageProfileQuery & {
+    capabilityOverride?: { enabled?: boolean; contextLimit?: number; outputLimit?: number }
+  }): Promise<GenerationDiagnostics>
+  resetGenerationGateProbe(query: Pick<GenerationUsageProfileQuery, 'provider' | 'baseUrl' | 'model'>): Promise<void>
   onChunk(callback: (data: { requestId: string; text: string }) => void): () => void
   /** 结构化完成回调（阶段3契约）：携带 finishReason 与 usage，所有完成监听统一走此轨道 */
   onComplete(callback: (payload: AIDonePayload) => void): () => void

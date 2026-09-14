@@ -40,7 +40,7 @@ import { getCharacter } from '../services/charCard'
 import type { DialogueDirection, Settings } from '../../shared/types'
 import { trimContinuationOverlap } from '../../shared/chat-core/messagePostProcess'
 import { mergeTailRepair, type FinalizedAssistantOutput } from '../../shared/assistantOutputFinalizer'
-import { formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { finalizeGenerationTerminalResult } from '../../shared/chat-core/generatedReplyPipeline'
 import { finalizeNoticeFields } from '../../shared/generationNotice'
 import { terminationCauseFromFinishReason } from '../../shared/generationTermination'
@@ -92,6 +92,7 @@ export class BridgeChatService {
         apiKey: profile.apiKey,
         baseUrl: profile.baseUrl,
         model: settings.activeModel || profile.model,
+        capabilityOverride: profile.capabilityOverride,
       },
     })
     if (directions.length > 0) {
@@ -224,6 +225,7 @@ export class BridgeChatService {
             model: params.model,
             hardMaxChars: built.responsePolicy.hardMaxChars,
             userHardCap: data.preset?.maxTokens,
+            profileOverride: enabledProfileOverride(data.settings.profile?.capabilityOverride),
             reasoningGate: nextGate,
           })
           completion = await chatWithRetry(
@@ -310,6 +312,7 @@ export class BridgeChatService {
         params,
         regexRules: data.regexRules,
         legacy: legacyPipeline,
+        autoTailRepairEnabled: data.settings.settings.autoTailRepairEnabled,
       })
       if (!finalizedReply.content) {
         // 矩阵末行：任意异常且无可用正文 → 不创建空 AI 消息，明确错误与重试入口
@@ -387,6 +390,7 @@ export class BridgeChatService {
     params: ChatParams
     regexRules: RegexRule[]
     legacy: boolean
+    autoTailRepairEnabled?: boolean
   }): Promise<{
     content: string
     finishReason: AICompletion['finishReason']
@@ -399,7 +403,7 @@ export class BridgeChatService {
       regexRules: input.regexRules,
       characterName: charName,
       legacy: input.legacy,
-      runTailRepair: (finalized) => this.attemptBridgeTailRepair({
+      runTailRepair: input.autoTailRepairEnabled === false ? undefined : (finalized) => this.attemptBridgeTailRepair({
         finalized,
         character: input.character,
         params: input.params,
@@ -505,6 +509,7 @@ export class BridgeChatService {
         params,
         regexRules: data.regexRules,
         legacy: legacyPipeline,
+        autoTailRepairEnabled: data.settings.settings.autoTailRepairEnabled,
       })
       const finalContent = finalizedReply.content
       if (!finalContent) {

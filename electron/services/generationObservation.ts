@@ -67,6 +67,15 @@ export function appendObservationToFile(filePath: string, obs: GenerationObserva
 let usageIndex = createUsageProfileIndex()
 let usageIndexLoaded = false
 const usageDiagnostics = { skippedLines: 0, scannedRecords: 0 }
+let recentObservations: GenerationObservation[] = []
+const MAX_RECENT_OBSERVATIONS = 128
+
+function noteRecentObservation(obs: GenerationObservation): void {
+  recentObservations.push(obs)
+  if (recentObservations.length > MAX_RECENT_OBSERVATIONS) {
+    recentObservations.splice(0, recentObservations.length - MAX_RECENT_OBSERVATIONS)
+  }
+}
 
 /**
  * 读取文件尾部最多 maxBytes 的记录；超出时从行边界开始（丢弃首行残段），
@@ -120,7 +129,10 @@ function ensureUsageIndexLoaded(): void {
   const filePath = resolveObservationsFilePath()
   for (const path of [`${filePath}.old`, filePath]) {
     if (!existsSync(path)) continue
-    for (const record of readTailRecords(path, MAX_SCAN_BYTES)) usageIndex.ingest(record)
+    for (const record of readTailRecords(path, MAX_SCAN_BYTES)) {
+      usageIndex.ingest(record)
+      noteRecentObservation(record)
+    }
   }
 }
 
@@ -150,12 +162,66 @@ export function getUsageProfileDiagnostics(): {
   }
 }
 
+/** W10：按端点返回聚合桶与最后一轮脱敏数值，不返回正文、tailSample、URL 或路径。 */
+export function queryGenerationDiagnostics(query: UsageProfileQuery): {
+  usageBuckets: Array<{ taskType: string; gate: string; profile: UsageProfile }>
+  lastRequest: import('../../shared/ipc-api').GenerationDiagnostics['lastRequest']
+  observationStore: ReturnType<typeof getUsageProfileDiagnostics>
+} {
+  ensureUsageIndexLoaded()
+  const target = normalizeUsageProfileQuery(query)
+  const usageBuckets = usageIndex.keys()
+    .filter((key) => key.provider === target.provider
+      && key.endpointFingerprint === target.endpointFingerprint
+      && key.model === target.model)
+    .map((key) => ({ taskType: key.taskType, gate: key.gate, profile: usageIndex.lookup(key) }))
+    .filter((item): item is { taskType: string; gate: string; profile: UsageProfile } => item.profile !== null)
+    .sort((a, b) => b.profile.lastUpdatedAt - a.profile.lastUpdatedAt)
+
+  const last = [...recentObservations].reverse().find((record) => {
+    const key = normalizeUsageProfileQuery({
+      provider: record.provider ?? '',
+      baseUrl: '',
+      model: record.model,
+    })
+    // 旧记录无端点指纹只与空端点查询匹配；新记录按不可逆指纹匹配。
+    const fingerprint = record.endpointFingerprint ?? key.endpointFingerprint
+    return (record.provider ?? '(unknown)') === target.provider
+      && fingerprint === target.endpointFingerprint
+      && (record.model || '(unknown)') === target.model
+  })
+  const lastRequest = last ? {
+    ts: last.ts,
+    taskType: last.taskType ?? 'main',
+    ...(last.generationType ? { generationType: last.generationType } : {}),
+    requestedMaxTokens: last.requestedMaxTokens,
+    ...(last.responseLengthMode ? { responseLengthMode: last.responseLengthMode } : {}),
+    ...(last.hardMaxChars != null ? { hardMaxChars: last.hardMaxChars } : {}),
+    ...(last.plannedBodyTokens != null ? { plannedBodyTokens: last.plannedBodyTokens } : {}),
+    ...(last.plannedReasoningTokens != null ? { plannedReasoningTokens: last.plannedReasoningTokens } : {}),
+    ...(last.gateLevel ? { gateLevel: last.gateLevel } : {}),
+    ...(last.gateKnob ? { gateKnob: last.gateKnob } : {}),
+    bodyVisibleChars: last.bodyVisibleChars,
+    completionTokens: last.completionTokens,
+    reasoningTokens: last.reasoningTokens,
+    attempts: last.attempts,
+    downgradeRetry: last.downgradeRetry === true,
+    earlyAbort: last.earlyAbort === true,
+    finishReason: last.finishReason,
+    outcome: last.outcome,
+    ...(last.terminationCause ? { terminationCause: last.terminationCause } : {}),
+    durationMs: last.durationMs,
+  } : null
+  return { usageBuckets, lastRequest, observationStore: getUsageProfileDiagnostics() }
+}
+
 /** 测试专用：清空内存索引与懒加载标记（与 tailRepairFailures 的重置入口同口径） */
 export function resetUsageProfileIndexForTests(): void {
   usageIndex = createUsageProfileIndex()
   usageIndexLoaded = false
   usageDiagnostics.skippedLines = 0
   usageDiagnostics.scannedRecords = 0
+  recentObservations = []
 }
 
 /** 供上层调用的记录入口：观测绝不影响生成主流程 */
@@ -166,7 +232,9 @@ export function recordGenerationObservation(obs: GenerationObservation): void {
   try {
     // 已加载后同步增量更新，避免每轮扫盘；未加载时留给首次查询统一扫描
     // （新记录已在文件中，扫描不会漏计，也不会重复计数）
-    if (usageIndexLoaded) usageIndex.ingest(obs)
+    if (usageIndexLoaded) {
+      usageIndex.ingest(obs)
+      noteRecentObservation(obs)
+    }
   } catch { /* 索引更新失败不影响生成 */ }
 }
-

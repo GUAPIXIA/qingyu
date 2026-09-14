@@ -36,6 +36,11 @@ export interface ActiveProfile {
   model: string
   maxContext: number
   useInstructTemplate?: boolean
+  capabilityOverride?: {
+    enabled: boolean
+    contextLimit?: number
+    outputLimit?: number
+  }
 }
 
 /** 语义检索命中的世界书条目（由主进程向量检索返回） */

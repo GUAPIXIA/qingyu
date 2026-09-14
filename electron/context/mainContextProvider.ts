@@ -66,6 +66,7 @@ function resolveActiveProfile(settings: Settings): ActiveProfile | null {
     model: profile.model,
     maxContext: profile.maxContext || 0,
     useInstructTemplate: profile.useInstructTemplate,
+    capabilityOverride: profile.capabilityOverride,
   }
 }
 

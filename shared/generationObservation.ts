@@ -50,6 +50,9 @@ export interface RequestObservability {
   taskType?: 'memory' | 'compression' | 'title' | 'direction'
   responseLengthMode?: ResponseLengthMode
   hardMaxChars?: number
+  /** W10：规划器分别给正文与推理预留的 token。 */
+  plannedBodyTokens?: number
+  plannedReasoningTokens?: number
   /** S5：本轮用户文本中识别出的篇幅要求（用于核对意图误判） */
   responseIntent?: ResponseLengthMode
   /** S5：自动模式场景系数（1 = 未调整） */
@@ -90,6 +93,9 @@ export interface GenerationObservation {
   responseLengthMode?: ResponseLengthMode
   /** 篇幅硬保护线（可见字符） */
   hardMaxChars?: number
+  /** W10：请求发出前的正文/推理计划，用于与实际消耗对照。 */
+  plannedBodyTokens?: number
+  plannedReasoningTokens?: number
   /** S5：本轮识别出的用户篇幅要求（未识别时为 undefined） */
   responseIntent?: ResponseLengthMode
   /** S5：自动模式场景系数（未参与计算/默认时为 undefined） */
@@ -305,6 +311,8 @@ export function buildGenerationObservation(params: ChatParams, state: {
     stream: params.stream === true,
     responseLengthMode: obs.responseLengthMode,
     hardMaxChars: obs.hardMaxChars,
+    plannedBodyTokens: obs.plannedBodyTokens,
+    plannedReasoningTokens: obs.plannedReasoningTokens,
     responseIntent: obs.responseIntent,
     sceneFactor: obs.sceneFactor,
     ...(gateLevel ? { gateLevel } : {}),

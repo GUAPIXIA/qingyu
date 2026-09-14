@@ -39,6 +39,17 @@ describe('normalizePreset', () => {
     expect(normalizePreset({ id: 'auto', name: '自动预算', maxTokens: 0 }).maxTokens).toBe(0)
   })
 
+  it('只有内置旧快捷值映射为篇幅偏好，并区分用户保存的硬上限', () => {
+    expect(normalizePreset({ id: 'short', name: '短', maxTokens: 512, isBuiltin: true }))
+      .toMatchObject({ responseLengthHint: 'brief', maxTokens: 512 })
+    expect(normalizePreset({ id: 'normal', name: '中', maxTokens: 1024, isBuiltin: true }))
+      .toMatchObject({ responseLengthHint: 'balanced', maxTokens: 1024 })
+    expect(normalizePreset({ id: 'long', name: '长', maxTokens: 4096, isBuiltin: true }))
+      .toMatchObject({ responseLengthHint: 'detailed', maxTokens: 4096 })
+    expect(normalizePreset({ id: 'user', name: '用户旧预设', maxTokens: 4096, isBuiltin: false }))
+      .toMatchObject({ responseLengthHint: 'auto', maxTokens: 4096 })
+  })
+
   it('拒绝缺少 ID 或名称的数据', () => {
     expect(() => normalizePreset({ name: '无 ID' })).toThrow('预设 ID 不能为空')
     expect(() => normalizePreset({ id: 'p1' })).toThrow('预设名称不能为空')

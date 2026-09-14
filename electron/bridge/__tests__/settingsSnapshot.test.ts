@@ -26,6 +26,7 @@ import { signToken, registerDevice } from '../auth'
 import { buildSettingsSnapshot, toMobileSafeSettings } from '../settingsSync'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { Settings } from '../../../shared/types'
+import { currentSchemaVersion } from '../../services/migration'
 
 const TEST_ROOT = '/tmp/qingyu-settings-snapshot-test'
 
@@ -49,7 +50,7 @@ function writeSettings(s: Settings): void {
   mkdirSync(DIRS.config(), { recursive: true })
   // 带当前 schemaVersion：避免 readJson('settings') 触发迁移回写导致文件字节漂移
   // （settings 最新版本见 electron/services/migration.ts 的 LATEST_VERSION）
-  writeFileSync(settingsFile(), JSON.stringify({ ...s, schemaVersion: 3 }))
+  writeFileSync(settingsFile(), JSON.stringify({ ...s, schemaVersion: currentSchemaVersion('settings') }))
 }
 
 function readSettings(): Settings {

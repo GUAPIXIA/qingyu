@@ -52,7 +52,7 @@ export function isReasoningGateEnabled(settings: Pick<Settings, 'reasoningGateEn
  * kill switch 关闭或缺少连接信息时返回 undefined = 不介入。
  */
 export function resolveChatGateLevel(input: {
-  settings: Pick<Settings, 'reasoningGateEnabled'> | undefined
+  settings: Pick<Settings, 'reasoningGateEnabled' | 'reasoningEffort'> | undefined
   provider?: string
   baseUrl?: string
   model: string
@@ -62,6 +62,9 @@ export function resolveChatGateLevel(input: {
   const scope = { provider: input.provider ?? '', baseUrl: input.baseUrl ?? '', model: input.model }
   // 熔断：连续降档失败后从更低档起步（阶段8 §4.5）
   if (enabled && isGateBreakerTripped(scope)) return 'low'
+  if (enabled && input.settings?.reasoningEffort && input.settings.reasoningEffort !== 'auto') {
+    return input.settings.reasoningEffort
+  }
   return resolveDefaultGateLevel({ model: input.model, enabled })
 }
 

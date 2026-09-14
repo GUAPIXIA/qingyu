@@ -32,6 +32,8 @@ export function resolveGroupRequestPlan(input: {
   reasoningSamples?: number[]
   /** 阶段8（§4.2）：本轮推理门控（缺省 = 不介入） */
   reasoningGate?: import('../../shared/reasoningGate').ResolvedReasoningGate
+  defaultResponseLength?: ResponseLengthMode
+  profileOverride?: import('../../shared/modelOutputProfile').ModelProfileUserOverride
 }): GroupRequestPlan {
   const { model, messages, preset } = input
   const pipelineLegacy = input.pipelineLegacy === true
@@ -51,6 +53,7 @@ export function resolveGroupRequestPlan(input: {
     .map((message) => countVisibleChars(message.content))
   const responsePolicy = resolveResponsePolicy({
     presetHint: preset?.responseLengthHint,
+    defaultMode: input.defaultResponseLength,
     userIntent: responseIntent,
     sceneFactor,
     recentAssistantVisibleChars,
@@ -79,6 +82,7 @@ export function resolveGroupRequestPlan(input: {
     model,
     hardMaxChars: responsePolicy.hardMaxChars,
     userHardCap: preset?.maxTokens,
+    profileOverride: input.profileOverride,
     ...(input.reasoningSamples?.length ? { recentReasoningTokens: input.reasoningSamples } : {}),
     ...(input.reasoningGate ? { reasoningGate: input.reasoningGate } : {}),
   })

@@ -12,7 +12,7 @@
 
 import { countVisibleCharacters } from '../../shared/textMetrics'
 import { nextLowerGateLevel, resolveReasoningGate, type ReasoningGateLevel } from '../../shared/reasoningGate'
-import { resolveRequestBudget, type RequestBudget } from '../../shared/modelOutputProfile'
+import { resolveRequestBudget, type ModelProfileUserOverride, type RequestBudget } from '../../shared/modelOutputProfile'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import type { AIFinishReason, GenerationTerminationCause } from '../../shared/types'
 
@@ -57,6 +57,7 @@ export function resolveGateRecoveryBudget(input: {
   hardMaxChars: number
   userHardCap?: number | null
   recentReasoningTokens?: number[]
+  profileOverride?: ModelProfileUserOverride
   level: ReasoningGateLevel
 }): RequestBudget {
   const gate = resolveReasoningGate({ model: input.model, requestedLevel: input.level, enabled: true })
@@ -64,6 +65,7 @@ export function resolveGateRecoveryBudget(input: {
     model: input.model,
     hardMaxChars: input.hardMaxChars,
     userHardCap: input.userHardCap,
+    profileOverride: input.profileOverride,
     ...(input.recentReasoningTokens?.length ? { recentReasoningTokens: input.recentReasoningTokens } : {}),
     reasoningGate: gate,
   })

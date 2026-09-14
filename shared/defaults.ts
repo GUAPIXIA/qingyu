@@ -34,6 +34,10 @@ export function getDefaultSettings(): Settings {
     defaultNarrativeMode: 'immersive',
     continueIntensity: 'active',
     continueLength: 'standard',
+    defaultResponseLength: 'auto',
+    reasoningEffort: 'auto',
+    autoTailRepairEnabled: true,
+    costReminderEnabled: true,
     ttsEnabled: false,
     ttsModels: [],
     activeTTSModelId: null,
@@ -52,7 +56,6 @@ export function getDefaultSettings(): Settings {
     enableThoughtFormat: true,
     autoExpandThought: false,
     exampleDialogMode: 'always',
-    lorebookRatio: 0.3,
     coverBlurStrength: 8,
     enableUsageTracking: true,
     useCoverAsBackground: false,
@@ -87,7 +90,7 @@ export function getDefaultSettings(): Settings {
       minDropTokens: 2000,
     },
     autoTitle: true,
-    // 阶段8 临时 kill switch：默认关闭，灰度达标后再由 W10 决定默认值与 UI
-    reasoningGateEnabled: false,
+    // W10：G1 已通过；新安装默认启用，存量明确值由 v3→v4 迁移保留。
+    reasoningGateEnabled: true,
   }
 }

@@ -14,6 +14,7 @@ vi.mock('../logger', () => ({
 import {
   appendObservationToFile,
   getUsageProfileDiagnostics,
+  queryGenerationDiagnostics,
   queryUsageProfile,
   recordGenerationObservation,
   resetUsageProfileIndexForTests,
@@ -216,5 +217,46 @@ describe('W1：用量档案回读（有界读取 + 内存聚合）', () => {
       'recentReasoningTokens',
       'sampleCount',
     ])
+  })
+
+  it('W10 诊断返回分类桶与最后一轮计划/实际值，且不泄露原始记录字段', () => {
+    const path = resolveObservationsFilePath()
+    writeJsonl(path, [
+      JSON.stringify(recordAt(observedBaseUrl, {
+        requestId: 'secret-request-id',
+        generationType: 'normal',
+        requestedMaxTokens: 4096,
+        hardMaxChars: 600,
+        plannedBodyTokens: 846,
+        plannedReasoningTokens: 3072,
+        responseLengthMode: 'balanced',
+        reasoningTokens: 700,
+        completionTokens: 900,
+        bodyVisibleChars: 580,
+        tailSample: '不应进入设置页的正文',
+      })),
+    ])
+
+    const diagnostics = queryGenerationDiagnostics({
+      provider: 'openai',
+      baseUrl: observedBaseUrl,
+      model: 'deepseek-v4',
+    })
+    expect(diagnostics.usageBuckets).toHaveLength(1)
+    expect(diagnostics.lastRequest).toMatchObject({
+      taskType: 'main',
+      requestedMaxTokens: 4096,
+      hardMaxChars: 600,
+      plannedBodyTokens: 846,
+      plannedReasoningTokens: 3072,
+      completionTokens: 900,
+      reasoningTokens: 700,
+      bodyVisibleChars: 580,
+    })
+    const serialized = JSON.stringify(diagnostics)
+    expect(serialized).not.toContain(observedBaseUrl)
+    expect(serialized).not.toContain('secret-request-id')
+    expect(serialized).not.toContain('不应进入设置页的正文')
+    expect(serialized).not.toContain(path)
   })
 })

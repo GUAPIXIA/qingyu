@@ -20,7 +20,7 @@ import { stripVendorThinking } from '../utils/messagePostProcess'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
-import { formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { resolveGroupRequestPlan } from './groupRequestPlan'
 import { BACKGROUND_GENERATION_PROFILES, hasCompleteSummaryTail } from '../../shared/backgroundGeneration'
 import { attemptTailRepair, finalizeNoticeFields, type GenerationOutcomeMeta } from './streamController'
@@ -141,7 +141,7 @@ export async function finalizeGroupReply(input: {
     regexRules: input.regexRules,
     characterName: input.speaker.translatedContent?.name || input.speaker.name,
     legacy: input.legacy,
-    runTailRepair: (finalized) => attemptTailRepair({
+    runTailRepair: useSettingsStore.getState().settings.autoTailRepairEnabled === false ? undefined : (finalized) => attemptTailRepair({
       finalized,
       character: input.speaker,
       model: input.model,
@@ -536,6 +536,7 @@ async function compressGroupDroppedHistory(
     maxTokens: resolveRequestBudget({
       model: settings.activeModel || profile.model,
       hardMaxChars: compressionProfile.expectedBodyChars,
+      profileOverride: enabledProfileOverride(profile.capabilityOverride),
     }).requestMaxTokens,
     frequencyPenalty: 0,
     presencePenalty: 0,
@@ -912,6 +913,10 @@ export async function streamGroupAI(
         sessionId,
         responseLengthMode: requestPlan.responsePolicy.mode,
         hardMaxChars: requestPlan.responsePolicy.hardMaxChars,
+        ...(requestPlan.requestBudget ? {
+          plannedBodyTokens: requestPlan.requestBudget.bodyReserve,
+          plannedReasoningTokens: requestPlan.requestBudget.reasoningReserve,
+        } : {}),
         responseIntent: requestPlan.responseIntent ?? undefined,
         sceneFactor: requestPlan.sceneFactor,
       },
@@ -1239,6 +1244,10 @@ export async function streamGroupAIFree(
         sessionId,
         responseLengthMode: requestPlan.responsePolicy.mode,
         hardMaxChars: requestPlan.responsePolicy.hardMaxChars,
+        ...(requestPlan.requestBudget ? {
+          plannedBodyTokens: requestPlan.requestBudget.bodyReserve,
+          plannedReasoningTokens: requestPlan.requestBudget.reasoningReserve,
+        } : {}),
         responseIntent: requestPlan.responseIntent ?? undefined,
         sceneFactor: requestPlan.sceneFactor,
       },

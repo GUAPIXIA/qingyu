@@ -191,7 +191,7 @@ describe('QuickSettingsPanel', () => {
     }
   })
 
-  it('显示世界书瀑布预算预览', async () => {
+  it('世界书改为动态分配且不再提供固定比例', async () => {
     useSettingsStore.setState((state) => ({
       settings: {
         ...state.settings,
@@ -215,14 +215,9 @@ describe('QuickSettingsPanel', () => {
       />,
     )
     await act(async () => {})
-    expect(screen.getByText('预算预览')).toBeTruthy()
-    expect(screen.getByText(/常驻上限 40%/)).toBeTruthy()
-    expect(screen.getByText(/常驻\+条件累计 90%/)).toBeTruthy()
-
-    const radiogroup = screen.getByRole('radiogroup', { name: 'Token 预算占比' })
-    expect(within(radiogroup).getByRole('radio', { name: '30%' }).getAttribute('aria-checked')).toBe('true')
-    fireEvent.click(within(radiogroup).getByRole('radio', { name: '50%' }))
-    expect(useSettingsStore.getState().settings.lorebookRatio).toBe(0.5)
+    expect(screen.getByText(/世界书已改为动态分配/)).toBeTruthy()
+    expect(screen.queryByRole('radiogroup', { name: 'Token 预算占比' })).toBeNull()
+    expect(useSettingsStore.getState().settings.lorebookRatio).toBe(0.3)
   })
 
   it('低硬上限遇到推理共享模型时显示风险，并提供自动预算入口', async () => {

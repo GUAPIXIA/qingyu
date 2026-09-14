@@ -30,7 +30,7 @@ describe('migration', () => {
       }
       const migrated = migrateData('settings', oldSettings) as Record<string, unknown>
       expect(migrated).not.toBeNull()
-      expect(migrated.schemaVersion).toBe(3)
+      expect(migrated.schemaVersion).toBe(4)
       // 旧字段保留
       expect(migrated.activeProvider).toBe('openai')
       expect(migrated.theme).toBe('dark')
@@ -43,7 +43,7 @@ describe('migration', () => {
     })
 
     it('returns null when already at latest version', () => {
-      expect(migrateData('settings', { schemaVersion: 3, theme: 'dark' })).toBeNull()
+      expect(migrateData('settings', { schemaVersion: 4, theme: 'dark' })).toBeNull()
     })
 
     it('returns null for non-object data', () => {
@@ -120,7 +120,7 @@ describe('migration', () => {
 
       expect(migrated).not.toBeNull()
       expect(migrated.imageGenSize).toBeUndefined()
-      expect(migrated.schemaVersion).toBe(3)
+      expect(migrated.schemaVersion).toBe(4)
       const models = migrated.imageGenModels as Array<Record<string, unknown>>
       expect(models[0].overrides).toEqual({ '2.width': 1024, '2.height': 2048 })
     })
@@ -227,7 +227,7 @@ describe('migration', () => {
 
       const migrated = migrateData('settings', v2Settings()) as Record<string, unknown>
       expect(migrated).not.toBeNull()
-      expect(migrated.schemaVersion).toBe(3)
+      expect(migrated.schemaVersion).toBe(4)
 
       const profiles = migrated.connectionProfiles as Array<Record<string, unknown>>
       // openai（有凭据）+ ollama（无凭据也建）两条；cli 缺失的 claude/gemini 不建
@@ -296,7 +296,60 @@ describe('migration', () => {
       setMigrationCredentialAccess({ get: () => null, save: () => {} })
       const migrated = migrateData('settings', v2Settings()) as Record<string, unknown>
       expect(migrated).not.toBeNull()
-      expect(migrated.schemaVersion).toBe(3)
+      expect(migrated.schemaVersion).toBe(4)
+    })
+  })
+
+  describe('settings v3 → v4（W10 生成规划语义）', () => {
+    it('保留旧数值记录并移除世界书生产比例，不把连接窗口自动升级为能力覆盖', () => {
+      const migrated = migrateData('settings', {
+        schemaVersion: 3,
+        lorebookRatio: 0.5,
+        connectionProfiles: [
+          { id: 'p1', provider: 'openai', model: 'gpt-4o', maxContext: 128000 },
+        ],
+      }) as Record<string, unknown>
+
+      expect(migrated.schemaVersion).toBe(4)
+      expect(migrated.lorebookRatio).toBeUndefined()
+      expect(migrated).toMatchObject({
+        defaultResponseLength: 'auto',
+        reasoningEffort: 'auto',
+        autoTailRepairEnabled: true,
+        costReminderEnabled: true,
+        reasoningGateEnabled: true,
+        generationMigrationV4: {
+          legacyLorebookRatio: 0.5,
+          legacyProfileMaxContexts: { p1: 128000 },
+        },
+      })
+      expect((migrated.connectionProfiles as Array<Record<string, unknown>>)[0])
+        .toMatchObject({ maxContext: 128000, capabilityOverride: { enabled: false } })
+    })
+
+    it('保留用户已保存的偏好和显式能力覆盖，迁移后重复运行不变', () => {
+      const once = migrateData('settings', {
+        schemaVersion: 3,
+        defaultResponseLength: 'detailed',
+        reasoningEffort: 'low',
+        autoTailRepairEnabled: false,
+        costReminderEnabled: false,
+        reasoningGateEnabled: false,
+        connectionProfiles: [{
+          id: 'p1', maxContext: 32000,
+          capabilityOverride: { enabled: true, contextLimit: 64000, outputLimit: 4096 },
+        }],
+      }) as Record<string, unknown>
+      expect(once).toMatchObject({
+        defaultResponseLength: 'detailed',
+        reasoningEffort: 'low',
+        autoTailRepairEnabled: false,
+        costReminderEnabled: false,
+        reasoningGateEnabled: false,
+      })
+      expect((once.connectionProfiles as Array<Record<string, unknown>>)[0])
+        .toMatchObject({ capabilityOverride: { enabled: true, contextLimit: 64000, outputLimit: 4096 } })
+      expect(migrateData('settings', once)).toBeNull()
     })
   })
 
@@ -314,7 +367,7 @@ describe('migration', () => {
     it('writeJson attaches schemaVersion for the domain', () => {
       writeJson(file(), { theme: 'light' }, 'settings')
       const raw = readJson<{ schemaVersion?: number }>(file())
-      expect(raw?.schemaVersion).toBe(3)
+      expect(raw?.schemaVersion).toBe(4)
     })
 
     it('writeJson without domain does not attach schemaVersion', () => {
@@ -327,11 +380,11 @@ describe('migration', () => {
       // 写一份无版本号的旧数据
       writeJson(file(), { activeProvider: 'openai' })
       const migrated = readJson<Record<string, unknown>>(file(), 'settings')
-      expect(migrated?.schemaVersion).toBe(3)
+      expect(migrated?.schemaVersion).toBe(4)
       expect(migrated?.activeProvider).toBe('openai')
       // 回写后磁盘上已带版本号
       const again = readJson<Record<string, unknown>>(file(), 'settings')
-      expect(again?.schemaVersion).toBe(3)
+      expect(again?.schemaVersion).toBe(4)
     })
 
     it('writeJson with array data keeps it an array (regression: sessions corruption)', () => {
@@ -365,7 +418,7 @@ describe('migration', () => {
     })
 
     it('currentSchemaVersion returns expected values', () => {
-      expect(currentSchemaVersion('settings')).toBe(3)
+      expect(currentSchemaVersion('settings')).toBe(4)
       expect(currentSchemaVersion('characters')).toBe(1)
       expect(currentSchemaVersion('lorebooks')).toBe(1)
       expect(currentSchemaVersion('sessions')).toBe(2)

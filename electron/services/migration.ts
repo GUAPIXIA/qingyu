@@ -23,7 +23,7 @@ export type DataDomain = 'settings' | 'characters' | 'lorebooks' | 'sessions'
 
 /** 各数据域当前最新版本号 */
 const LATEST_VERSION: Record<DataDomain, number> = {
-  settings: 3,
+  settings: 4,
   characters: 1,
   lorebooks: 1,
   sessions: 2,
@@ -52,6 +52,11 @@ const MIGRATIONS: Record<DataDomain, Migration[]> = {
       from: 2,
       to: 3,
       run: migrateSettingsV2ToV3,
+    },
+    {
+      from: 3,
+      to: 4,
+      run: migrateSettingsV3ToV4,
     },
   ],
   characters: [],
@@ -323,6 +328,60 @@ function migrateSettingsV2ToV3(data: unknown): unknown {
   delete raw.imageGenModel
   delete raw.authorNote
 
+  return raw
+}
+
+/**
+ * settings v3 → v4：W10 生成规划产品语义迁移。
+ *
+ * - maxTokens 不在 settings 域内改写；预设读取由 shared/preset 的兼容归一负责，
+ *   因而 0 仍是自动、用户正数仍是严格硬上限；
+ * - 旧 connectionProfile.maxContext 原值完整保留，同时补 disabled 的显式能力覆盖，
+ *   防止历史供应商默认值被误当成用户授权的能力放大；
+ * - lorebookRatio 从生产设置移入只读迁移记录，运行时不再读取固定比例；
+ * - 新偏好只补缺省值，用户已经写入的合法值不覆盖。
+ *
+ * 不写时间戳、不生成随机 ID，保证对同一输入重复执行得到相同结果。
+ */
+function migrateSettingsV3ToV4(data: unknown): unknown {
+  const raw = { ...(data as Record<string, unknown>) }
+  const profiles = Array.isArray(raw.connectionProfiles) ? raw.connectionProfiles : []
+  const legacyProfileMaxContexts: Record<string, number> = {}
+
+  raw.connectionProfiles = profiles.map((item) => {
+    if (!item || typeof item !== 'object') return item
+    const profile = { ...(item as Record<string, unknown>) }
+    const id = typeof profile.id === 'string' ? profile.id : ''
+    if (id && typeof profile.maxContext === 'number' && Number.isFinite(profile.maxContext)) {
+      legacyProfileMaxContexts[id] = profile.maxContext
+    }
+    if (!profile.capabilityOverride || typeof profile.capabilityOverride !== 'object') {
+      profile.capabilityOverride = { enabled: false }
+    }
+    return profile
+  })
+
+  const previousRecord = raw.generationMigrationV4 && typeof raw.generationMigrationV4 === 'object'
+    ? { ...(raw.generationMigrationV4 as Record<string, unknown>) }
+    : {}
+  if (typeof raw.lorebookRatio === 'number' && Number.isFinite(raw.lorebookRatio)) {
+    previousRecord.legacyLorebookRatio = raw.lorebookRatio
+  }
+  if (Object.keys(legacyProfileMaxContexts).length > 0) {
+    previousRecord.legacyProfileMaxContexts = legacyProfileMaxContexts
+  }
+  if (Object.keys(previousRecord).length > 0) raw.generationMigrationV4 = previousRecord
+  delete raw.lorebookRatio
+
+  if (!['auto', 'brief', 'balanced', 'detailed'].includes(String(raw.defaultResponseLength))) {
+    raw.defaultResponseLength = 'auto'
+  }
+  if (!['auto', 'off', 'low', 'standard', 'full'].includes(String(raw.reasoningEffort))) {
+    raw.reasoningEffort = 'auto'
+  }
+  if (typeof raw.autoTailRepairEnabled !== 'boolean') raw.autoTailRepairEnabled = true
+  if (typeof raw.costReminderEnabled !== 'boolean') raw.costReminderEnabled = true
+  if (typeof raw.reasoningGateEnabled !== 'boolean') raw.reasoningGateEnabled = true
   return raw
 }
 

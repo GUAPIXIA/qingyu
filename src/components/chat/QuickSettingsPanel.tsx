@@ -7,19 +7,14 @@ import { useCharacterStore } from '../../store/useCharacterStore'
 import { lorebookCache, getEffectiveLorebookIds } from '../../utils/lorebook'
 import { cn } from '../../lib/utils'
 import { logError } from '../../lib/logger'
-import { getDefaultMaxContext } from '../../utils/tokenCounter'
 import { resolveResponsePolicy } from '../../../shared/responsePolicy'
 import {
+  enabledProfileOverride,
   formatRequestBudgetRisk,
   resolveRequestBudget,
   resolveUserHardCap,
 } from '../../../shared/modelOutputProfile'
-import {
-  DEFAULT_LOREBOOK_RATIO,
-  DEFAULT_RESERVED_OUTPUT,
-  LOREBOOK_PRIORITY_BUDGET,
-  TOKEN_BUDGET_SAFETY,
-} from '../../store/chatConstants'
+import { DEFAULT_RESERVED_OUTPUT } from '../../store/chatConstants'
 
 interface QuickSettingsPanelProps {
   open: boolean
@@ -89,35 +84,25 @@ export function QuickSettingsPanel({
         riskMessage: null,
       }
     }
-    const responsePolicy = resolveResponsePolicy({ presetHint: activePreset?.responseLengthHint })
+    const responsePolicy = resolveResponsePolicy({
+      presetHint: activePreset?.responseLengthHint,
+      defaultMode: settings.defaultResponseLength,
+    })
     const budget = resolveRequestBudget({
       model,
       hardMaxChars: responsePolicy.hardMaxChars,
       userHardCap: activePreset?.maxTokens,
+      profileOverride: enabledProfileOverride(profile?.capabilityOverride),
     })
     return {
       requestMaxTokens: budget.requestMaxTokens,
       riskMessage: formatRequestBudgetRisk(budget),
     }
-  }, [activePreset, settings.activeModel, settings.activeProfileId, settings.connectionProfiles, settings.generationPipeline])
+  }, [activePreset, settings.activeModel, settings.activeProfileId, settings.connectionProfiles, settings.defaultResponseLength, settings.generationPipeline])
   const generatedImages = useMemo(
     () => messages.flatMap((message) => message.images ?? []).slice(-12).reverse(),
     [messages],
   )
-  const lorebookBudgetPreview = useMemo(() => {
-    const profile = settings.connectionProfiles.find((item) => item.id === settings.activeProfileId)
-    const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
-    const maxContext = profile?.maxContext || getDefaultMaxContext(model)
-    const reservedOutput = outputBudgetPreview.requestMaxTokens
-    const budgetBase = Math.max(0, Math.floor((maxContext - reservedOutput) * TOKEN_BUDGET_SAFETY))
-    const total = Math.floor(budgetBase * (settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO))
-    return {
-      total,
-      always: Math.floor(total * LOREBOOK_PRIORITY_BUDGET.always),
-      conditional: Math.floor(total * LOREBOOK_PRIORITY_BUDGET.alwaysPlusConditional),
-    }
-  }, [outputBudgetPreview.requestMaxTokens, settings.activeModel, settings.activeProfileId, settings.connectionProfiles, settings.lorebookRatio])
-
   // 计算角色绑定的世界书 ID 列表
   const boundLorebookIds = useMemo(() => {
     if (group) {
@@ -655,6 +640,13 @@ export function QuickSettingsPanel({
                 {outputBudgetPreview.riskMessage && (
                   <p className="text-xs text-amber-500">{outputBudgetPreview.riskMessage}</p>
                 )}
+                {settings.costReminderEnabled !== false
+                  && !outputBudgetPreview.riskMessage
+                  && outputBudgetPreview.requestMaxTokens >= 4096 && (
+                    <p className="text-xs text-tavern-text-muted">
+                      本轮最多可申请 {outputBudgetPreview.requestMaxTokens.toLocaleString()} Token；费用仍按服务商实际用量计算。
+                    </p>
+                  )}
               </div>
             </div>
           </Section>
@@ -802,99 +794,8 @@ export function QuickSettingsPanel({
                 )}
               </>
             )}
-            {/* 世界书 token 预算占比 */}
-            <div className="mt-3 space-y-2 border-t border-tavern-border-soft pt-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-0.5 text-xs text-tavern-text-muted">
-                  Token 预算占比
-                  <HintIcon
-                    hint={
-                      <>
-                        <p>
-                          世界书注入最多占上下文预算的比例（默认 30%），超出部分按优先级与相关度裁剪。
-                        </p>
-                        <p className="mt-1.5">
-                          它是<strong className="text-tavern-text-soft">天花板而非预扣</strong>：世界书实际用多少算多少，
-                          剩余预算全部留给历史消息，不会“锁死 70%”。
-                        </p>
-                        <p className="mt-1.5 pt-1.5 border-t border-tavern-border-soft">
-                          大上下文（如 1M）下 30% ≈ 30 万 token，通常远用不满，保持默认即可；
-                          仅在拥有超大世界书时考虑调大。
-                        </p>
-                      </>
-                    }
-                  />
-                </span>
-                <div
-                  role="radiogroup"
-                  aria-label="Token 预算占比"
-                  className="flex shrink-0 items-center gap-0.5 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/60 p-0.5"
-                >
-                  {([['20%', 0.2], ['30%', 0.3], ['50%', 0.5], ['不限', 1]] as const).map(([label, r]) => {
-                    const selected = (settings.lorebookRatio ?? 0.3) === r
-                    return (
-                      <button
-                        key={label}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => updateSettings({ lorebookRatio: r })}
-                        className={cn(
-                          'h-6 rounded-md px-2 text-[11px] font-medium transition-all',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/40',
-                          selected
-                            ? 'bg-tavern-accent-soft text-tavern-accent shadow-sm ring-1 ring-inset ring-tavern-accent/35'
-                            : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text'
-                        )}
-                      >
-                        {label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              <div className="rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/40 px-2.5 py-2 space-y-1.5">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[11px] font-medium text-tavern-text-soft">预算预览</span>
-                  <span className="font-mono text-xs text-tavern-text tabular-nums">
-                    ~{lorebookBudgetPreview.total.toLocaleString()}
-                    <span className="ml-0.5 text-[10px] text-tavern-text-muted">token</span>
-                  </span>
-                </div>
-                {/* 瀑布分桶示意：常驻 40% → 条件累计至 90% → 细节用剩余 */}
-                <div
-                  className="flex h-1.5 overflow-hidden rounded-full bg-tavern-bg-hover"
-                  aria-hidden
-                  title="世界书预算瀑布分桶"
-                >
-                  <div className="h-full bg-tavern-accent/65" style={{ width: '40%' }} />
-                  <div className="h-full bg-tavern-accent/30" style={{ width: '50%' }} />
-                  <div className="h-full bg-tavern-border" style={{ width: '10%' }} />
-                </div>
-                <dl className="space-y-0.5 text-[10px] text-tavern-text-muted">
-                  <div className="flex items-center justify-between gap-2">
-                    <dt className="flex items-center gap-1">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-tavern-accent/65" />
-                      常驻上限 40%
-                    </dt>
-                    <dd className="font-mono tabular-nums">~{lorebookBudgetPreview.always.toLocaleString()}</dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <dt className="flex items-center gap-1">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-tavern-accent/30" />
-                      常驻+条件累计 90%
-                    </dt>
-                    <dd className="font-mono tabular-nums">~{lorebookBudgetPreview.conditional.toLocaleString()}</dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <dt className="flex items-center gap-1">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-tavern-border" />
-                      细节
-                    </dt>
-                    <dd>使用剩余额度</dd>
-                  </div>
-                </dl>
-              </div>
+            <div className="mt-3 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/40 px-2.5 py-2 text-[11px] leading-relaxed text-tavern-text-muted">
+              世界书已改为动态分配：常驻设定优先保留，其余条目按相关性与剩余空间选择，不再使用固定百分比。
             </div>
           </Section>
 

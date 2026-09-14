@@ -12,6 +12,7 @@ export interface ActiveProfile {
   model: string
   maxContext: number
   useInstructTemplate?: boolean
+  capabilityOverride?: ConnectionProfile['capabilityOverride']
 }
 
 export interface ActiveTTSProfile {
@@ -313,6 +314,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       model: profile.model,
       maxContext: profile.maxContext || 0, // 0 表示跟随模型默认
       useInstructTemplate: profile.useInstructTemplate,
+      capabilityOverride: profile.capabilityOverride,
     }
   },
 

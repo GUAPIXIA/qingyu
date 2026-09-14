@@ -6,9 +6,11 @@ import {
   MIN_USABLE_BODY_TOKENS,
   PROTOCOL_RESERVE_TOKENS,
   estimateTokensForVisibleChars,
+  enabledProfileOverride,
   getModelOutputProfile,
   percentile90,
   resolveReasoningReserve,
+  resolveEffectiveContextLimit,
   resolveRequestBudget,
 } from '../modelOutputProfile'
 
@@ -77,6 +79,44 @@ describe('resolveReasoningReserve', () => {
 })
 
 describe('resolveRequestBudget', () => {
+  it('只有显式启用的端点能力覆盖才参与预算，且仍受 8192 安全阀约束', () => {
+    expect(enabledProfileOverride({ enabled: false, outputLimit: 512 })).toBeUndefined()
+    const disabled = resolveRequestBudget({
+      model: 'gpt-4o',
+      hardMaxChars: 600,
+      profileOverride: enabledProfileOverride({ enabled: false, outputLimit: 512 }),
+    })
+    expect(disabled.requestMaxTokens).toBeGreaterThan(512)
+
+    const enabled = resolveRequestBudget({
+      model: 'gpt-4o',
+      hardMaxChars: 600,
+      profileOverride: enabledProfileOverride({ enabled: true, outputLimit: 512 }),
+    })
+    expect(enabled.requestMaxTokens).toBe(512)
+
+    const enlarged = resolveRequestBudget({
+      model: 'gpt-4o',
+      hardMaxChars: 20000,
+      profileOverride: enabledProfileOverride({ enabled: true, outputLimit: 32000 }),
+    })
+    expect(enlarged.requestMaxTokens).toBe(MAX_REQUEST_OUTPUT_TOKENS)
+  })
+
+  it('旧 maxContext 只能收紧，显式能力覆盖才可放大输入窗口', () => {
+    expect(resolveEffectiveContextLimit({ model: 'unknown-private-model', profileMaxContext: 131072 })).toBe(32768)
+    expect(resolveEffectiveContextLimit({
+      model: 'unknown-private-model',
+      profileMaxContext: 131072,
+      capabilityOverride: { enabled: false, contextLimit: 131072 },
+    })).toBe(32768)
+    expect(resolveEffectiveContextLimit({
+      model: 'unknown-private-model',
+      profileMaxContext: 8192,
+      capabilityOverride: { enabled: true, contextLimit: 131072 },
+    })).toBe(131072)
+  })
+
   it('正文预算、推理余量与上限分别生效', () => {
     const budget = resolveRequestBudget({ model: 'gpt-4o', hardMaxChars: 600 })
     const expectedBody = Math.ceil(600 * BODY_RESERVE_MULTIPLIER) + BODY_RESERVE_OVERHEAD_TOKENS

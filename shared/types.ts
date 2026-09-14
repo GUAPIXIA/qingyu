@@ -34,8 +34,8 @@ export interface ResponsePolicy {
   targetParagraphs: { min: number; max: number }
   /** 本轮最多推进的主要事件/信息/情绪变化数 */
   maxNewBeats: number
-  /** 篇幅来源：用户本轮明确要求 > 会话选择 > 预设提示 > 自动计算 */
-  source: 'user' | 'session' | 'preset' | 'auto'
+  /** 篇幅来源：用户本轮明确要求 > 会话选择 > 预设提示 > 全局设置 > 自动计算 */
+  source: 'user' | 'session' | 'preset' | 'settings' | 'auto'
 }
 
 /** 消息在界面中的叙事身份；与 API role / 群聊 characterId 的消息方向解耦。 */
@@ -737,6 +737,15 @@ export interface ConnectionProfile {
   apiKey: string
   maxContext: number
   useInstructTemplate?: boolean
+  /**
+   * W10：端点级能力覆盖。只有 enabled=true 时数值才参与规划；旧 maxContext
+   * 字段继续保留用于跨端 round-trip，但不会再凭一个历史默认值放大内置能力。
+   */
+  capabilityOverride?: {
+    enabled: boolean
+    contextLimit?: number
+    outputLimit?: number
+  }
 }
 
 /** API 配置 */
@@ -776,6 +785,14 @@ export interface Settings {
   continueIntensity?: ContinueIntensity
   /** 输入框 AI 续写的本次新增内容长度（全局，默认 standard） */
   continueLength?: ContinueLength
+  /** W10：未被会话或预设明确覆盖时采用的回复篇幅偏好。 */
+  defaultResponseLength?: ResponseLengthMode
+  /** W10：主对话推理档位；auto 继续使用模型档案默认值。 */
+  reasoningEffort?: 'auto' | import('./reasoningGate').ReasoningGateLevel
+  /** W10：provider length 且正文没有稳定收尾时是否允许一次自动补尾。 */
+  autoTailRepairEnabled?: boolean
+  /** W10：在界面展示预算/费用风险提醒；不绕过硬安全校验。 */
+  costReminderEnabled?: boolean
   /** 全局叙事模式的自定义规则模板；支持 {{user}} / {{char}}，空值时使用内置规则。 */
   omniscientNarrativeRules?: string
   // TTS 多模型配置
@@ -852,6 +869,14 @@ export interface Settings {
    * 灰度达标后由 W10 提供 UI 并按阶段 8 §八 决定默认值。
    */
   reasoningGateEnabled?: boolean
+  /**
+   * v3→v4 产品语义迁移的只读记录。旧比例和连接窗口只用于说明迁移来源，
+   * 不再参与生成规划。
+   */
+  generationMigrationV4?: {
+    legacyLorebookRatio?: number
+    legacyProfileMaxContexts?: Record<string, number>
+  }
 }
 
 /** 用户人设注入配置（ST 的 User Persona description placement） */
@@ -1103,6 +1128,9 @@ export interface ChatParams {
     taskType?: 'memory' | 'compression' | 'title' | 'direction'
     responseLengthMode?: ResponseLengthMode
     hardMaxChars?: number
+    /** W10：规划器为正文/推理分别预留的 token，仅用于脱敏诊断。 */
+    plannedBodyTokens?: number
+    plannedReasoningTokens?: number
     /** S5：本轮用户文本中识别出的篇幅要求（与 generationObservation.RequestObservability 同步） */
     responseIntent?: ResponseLengthMode
     /** S5：自动模式场景系数（1 = 未调整） */

@@ -4,6 +4,8 @@
 
 ### 新增
 
+- **PC 动态上下文 W10 设置、预设迁移与诊断**：设置中心新增“生成规划”，默认提供回复长度、思考强度、连续性保护、自动补全结尾与费用提醒，高级区提供按连接启用的输入/输出能力覆盖、能力来源/置信度、门控探测重置、分类用量及最后一轮 reasoning/body 计划与实际对照；诊断 IPC 只返回枚举、计数和数值，不暴露 API Key、完整端点、requestId、正文或磁盘路径。settings 唯一迁移链升至 v4：`maxTokens=0` 保持自动，用户正数硬上限完整保留，只有内置旧快捷值映射篇幅偏好，旧 `maxContext` 默认只能收紧、显式启用能力覆盖后才可放大，旧世界书比例仅留迁移记录；legacy 与 8192 通用安全阀继续保留。详见 [W10 实施报告](./docs/报告/PC端动态上下文W10设置预设迁移与诊断实施报告-2026-09-14.md)。
+
 - **生成链路重构前遗留清理·C 线（提示词与观测基线）**：① 主对话「本轮回应范围」补连续性约束——不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复（`buildMainChatOutputPrompt`，对应 S10 单聊连续性 3/11 问题）；② 群聊点名/轮询人称表述澄清——对白必须是该角色自己的第一人称、动作/神态可用第三人称叙述（`shared/groupChatPrompt` 与 `buildGroupNarrativeModePrompt` 群聊叙事边界），评测 focus 与结构化判据同步，消除「全篇第一人称」歧义；③ thought 评测口径与 `thoughtContract.ts` 强契约对齐——每轮缺失或多组 `<thought>` 由 warn 改为 fail，LLM 评审 `thought_ok` 同步「缺失视为 false」；④ 基线口径冻结：`shared/generationBaseline.ts` 固化 G2「500 次有效生成」分母（主对话 + 供应商有响应，排除 aux/后台任务/error），`scripts/generation-baseline.ts` 扩展 terminationCause/attempts/token 分位与 provider×model×task 分组报告。真实模型复测（C1 三用例 / C3 出现率）待模型额度后执行。
 
 - **方案文档：推理门控与降级闭环（对话输出弹性约束·阶段8，待实施）**：针对真实使用中残留的「推理已占满模型输出硬上限」失败模式，新增[阶段8方案](./docs/方案/对话输出弹性约束阶段8推理门控与降级闭环方案-2026-09-13.md)——把现行"猜测式推理余量"改为四个机制：① 统一 `ReasoningGate` 档位（off/low/standard/full）翻译为各供应商的推理控制参数（`thinking:disabled` / `reasoning_effort` / `budget_tokens` / `thinkingConfig`），让推理上限由服务端强制执行；② (provider+model) 级运行时能力探测与持久化（参数 400 降级表、聚合端静默忽略 disable 的流级标记、未知模型出现 reasoning 即自动建档）；③ 流式提前中止——正文未出现且推理越过观测线即止损，不再等满输出上限；④ 空正文降档重试闭环——仅在可见正文为空时自动降一档重试至多一次，有正文的 `length` 仍走既有收尾器。同时修复现状缺口：`recentReasoningTokens` P90 估计从未接线（contextBuilder 未传参）、Gemini 未下发任何 thinkingConfig、o 系硬编码 `'medium'`、Claude `maxTok/3` 比例猜测。本期仅方案与索引落档，未改动代码。

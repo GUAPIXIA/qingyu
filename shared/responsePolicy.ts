@@ -111,6 +111,8 @@ export interface ResolveResponsePolicyInput {
   sessionMode?: ResponseLengthMode | null
   /** 预设篇幅提示（undefined = 未设置） */
   presetHint?: ResponseLengthMode | null
+  /** 全局默认篇幅偏好（优先级低于会话与预设）。 */
+  defaultMode?: ResponseLengthMode | null
   /** 用户本轮明确要求（如"简短回答/详细描写"）；优先级最高 */
   userIntent?: ResponseLengthMode | null
   /** 最近已完成助手回复的可见字符数样本（自动模式基线） */
@@ -188,7 +190,7 @@ function clamp(value: number, min: number, max: number): number {
 
 /** 解析篇幅模式与来源；无效值一律视为未设置（回退到下一优先级） */
 export function resolveResponseLengthMode(
-  input: Pick<ResolveResponsePolicyInput, 'sessionMode' | 'presetHint' | 'userIntent'>,
+  input: Pick<ResolveResponsePolicyInput, 'sessionMode' | 'presetHint' | 'defaultMode' | 'userIntent'>,
 ): { mode: ResponseLengthMode; source: ResponsePolicy['source'] } {
   const userIntent = input.userIntent && VALID_MODES.has(input.userIntent) && input.userIntent !== 'auto'
     ? input.userIntent
@@ -199,6 +201,9 @@ export function resolveResponseLengthMode(
   }
   if (input.presetHint && VALID_MODES.has(input.presetHint) && input.presetHint !== 'auto') {
     return { mode: input.presetHint, source: 'preset' }
+  }
+  if (input.defaultMode && VALID_MODES.has(input.defaultMode) && input.defaultMode !== 'auto') {
+    return { mode: input.defaultMode, source: 'settings' }
   }
   return { mode: 'auto', source: 'auto' }
 }

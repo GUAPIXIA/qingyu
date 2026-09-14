@@ -5,6 +5,7 @@ import { getDefaultSettings } from '../utils/defaults'
 import { cn } from '../lib/utils'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { BehaviorSection } from './settings/BehaviorSection'
+import { GenerationPlanningSection } from './settings/GenerationPlanningSection'
 import { PhoneConnectionSection } from './settings/PhoneConnectionSection'
 import { UpdaterSection } from './settings/UpdaterSection'
 import { SectionCard } from '../components/common/SettingsShared'
@@ -20,6 +21,7 @@ import {
   Globe,
   Palette,
   Sliders,
+  BrainCircuit,
   Smartphone,
   Check,
   RefreshCw,
@@ -152,6 +154,7 @@ export function SettingsPage() {
     { id: 'api', label: '模型', icon: Plug },
     { id: 'appearance', label: '外观', icon: Palette },
     { id: 'behavior', label: '行为', icon: Sliders },
+    { id: 'generation', label: '生成规划', icon: BrainCircuit },
     { id: 'phone', label: '手机连接', icon: Smartphone },
     { id: 'network', label: '网络', icon: Globe },
     { id: 'data', label: '数据管理', icon: Database },
@@ -261,6 +264,9 @@ export function SettingsPage() {
         </div>
         <div id="settings-behavior">
         <BehaviorSection settings={settings} updateSettings={updateSettings} />
+        </div>
+        <div id="settings-generation">
+        <GenerationPlanningSection settings={settings} updateSettings={updateSettings} />
         </div>
         <div id="settings-phone">
         <PhoneConnectionSection />

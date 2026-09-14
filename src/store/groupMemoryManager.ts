@@ -1,10 +1,10 @@
 import type { Character, MemoryFactRecord } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
-import { resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, resolveEffectiveContextLimit, resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { cachedReasoningSamplesFor, refreshUsageProfileInBackground } from './usageProfileCache'
 import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../utils/memory'
-import { estimateTokens, getDefaultMaxContext } from '../utils/tokenCounter'
+import { estimateTokens } from '../utils/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../utils/memoryWindow'
 import { MEMORY_SUMMARY_MIN } from './chatConstants'
 import { vectorizeGroupSessionFacts } from './groupStreamController'
@@ -79,10 +79,15 @@ export async function runGroupMemorySummary(get: GroupStoreGet, set: GroupStoreS
   const GROUP_MEMORY_OUTPUT_TOKENS = resolveRequestBudget({
     model: profile.model,
     hardMaxChars: 2500,
+    profileOverride: enabledProfileOverride(profile.capabilityOverride),
     ...(groupMemorySamples ? { recentReasoningTokens: groupMemorySamples } : {}),
   }).requestMaxTokens
   const summaryInputBudget = resolveMemorySummaryInputBudget(
-    profile.maxContext || getDefaultMaxContext(profile.model),
+    resolveEffectiveContextLimit({
+      model: profile.model,
+      profileMaxContext: profile.maxContext,
+      capabilityOverride: profile.capabilityOverride,
+    }),
     promptOverheadTokens,
     GROUP_MEMORY_OUTPUT_TOKENS,
   )

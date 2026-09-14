@@ -27,8 +27,9 @@ import {
   type ReasoningGateDirective,
 } from '../../shared/reasoningGate'
 import type { UsageProfileQuery } from '../../shared/usageProfile'
-import { queryUsageProfile, recordGenerationObservation } from './generationObservation'
-import { getGateProbe, recordGateProbeSignal } from './gateProbeStore'
+import { queryGenerationDiagnostics, queryUsageProfile, recordGenerationObservation } from './generationObservation'
+import { getGateProbe, recordGateProbeSignal, resetGateProbe } from './gateProbeStore'
+import { enabledProfileOverride, resolveModelOutputProfile } from '../../shared/modelOutputProfile'
 import type {
   LorebookKeywordEnrichmentMode,
   LorebookKeywordLocalizationEntry,
@@ -664,6 +665,40 @@ export function registerAIIPC(ipcMain: IpcMain): void {
   // 不含正文、完整 URL 或磁盘路径；读取失败返回 null 由调用方回退静态档案。
   ipcMain.handle('ai:getGenerationUsageProfile', async (_event, query: unknown) => {
     return queryUsageProfile(sanitizeUsageProfileQuery(query))
+  })
+  ipcMain.handle('ai:getGenerationDiagnostics', async (_event, raw: unknown) => {
+    const query = sanitizeUsageProfileQuery(raw)
+    const source = (raw ?? {}) as Record<string, unknown>
+    const overrideSource = source.capabilityOverride && typeof source.capabilityOverride === 'object'
+      ? source.capabilityOverride as Record<string, unknown>
+      : null
+    const override = enabledProfileOverride(overrideSource ? {
+      enabled: overrideSource.enabled === true,
+      contextLimit: typeof overrideSource.contextLimit === 'number' ? overrideSource.contextLimit : undefined,
+      outputLimit: typeof overrideSource.outputLimit === 'number' ? overrideSource.outputLimit : undefined,
+    } : undefined)
+    const modelProfile = resolveModelOutputProfile(query.model, { userOverride: override })
+    const gateProbe = getGateProbe(query)
+    return {
+      ...queryGenerationDiagnostics(query),
+      modelProfile: {
+        outputLimit: modelProfile.outputLimit,
+        contextLimit: modelProfile.contextLimit,
+        reasoningMode: modelProfile.reasoningMode,
+        source: modelProfile.matchedBy,
+        confidence: modelProfile.confidence,
+      },
+      gateProbe: gateProbe ? {
+        knob: gateProbe.knob,
+        ...(gateProbe.knobAccepted !== undefined ? { knobAccepted: gateProbe.knobAccepted } : {}),
+        ...(gateProbe.disableIgnored !== undefined ? { disableIgnored: gateProbe.disableIgnored } : {}),
+        ...(gateProbe.reportsReasoningUsage !== undefined ? { reportsReasoningUsage: gateProbe.reportsReasoningUsage } : {}),
+        updatedAt: gateProbe.updatedAt,
+      } : null,
+    }
+  })
+  ipcMain.handle('ai:resetGenerationGateProbe', async (_event, raw: unknown) => {
+    resetGateProbe(sanitizeUsageProfileQuery(raw))
   })
 }
 

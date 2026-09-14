@@ -39,6 +39,8 @@ const aiApi: AIAPI = {
   compressLorebook: (payload) => ipcRenderer.invoke('ai:compressLorebook', payload),
   localizeLorebookKeywords: (payload) => ipcRenderer.invoke('ai:localizeLorebookKeywords', payload),
   getGenerationUsageProfile: (query) => ipcRenderer.invoke('ai:getGenerationUsageProfile', query),
+  getGenerationDiagnostics: (query) => ipcRenderer.invoke('ai:getGenerationDiagnostics', query),
+  resetGenerationGateProbe: (query) => ipcRenderer.invoke('ai:resetGenerationGateProbe', query),
   onChunk: (callback) => {
     const handler = (_e: unknown, data: { requestId: string; text: string }) => callback(data)
     ipcRenderer.on(IPC_EVENTS.aiChunk, handler)

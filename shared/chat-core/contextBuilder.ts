@@ -18,8 +18,8 @@ import type { ContextBuildData, SemanticLoreHit } from '../contextTypes'
 import { buildNarrativeModePrompt, resolveNarrativeMode } from '../narrativeMode'
 import { buildThoughtContractBody } from '../thoughtContract'
 import { collectRecentAssistantChars, detectUserLengthIntent, resolveResponsePolicy, resolveSceneFactor } from '../responsePolicy'
-import { getModelOutputProfile, resolveRequestBudget, resolveUserHardCap, type RequestBudget } from '../modelOutputProfile'
-import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from './tokenCounter'
+import { enabledProfileOverride, getModelOutputProfile, resolveEffectiveContextLimit, resolveRequestBudget, resolveUserHardCap, type RequestBudget } from '../modelOutputProfile'
+import { estimateTokens, estimateImageTokens } from './tokenCounter'
 import { replaceVariables } from './variables'
 import { resolveEffectiveTemplate } from './chatTemplates'
 import { mergeConsecutiveMessages } from './messagePostProcess'
@@ -34,7 +34,6 @@ import {
 import { emptyLorebookRenderPlan, type LorebookRenderPlan } from './lorebookRenderer'
 import { logInfo, logWarn } from './logging'
 import {
-  DEFAULT_LOREBOOK_RATIO,
   DEFAULT_LOREBOOK_SCAN_DEPTH,
   DEFAULT_RESERVED_OUTPUT,
   resolveLorebookScanDepth,
@@ -188,7 +187,10 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
     // 旧链路预算：预设 maxTokens 直用（旧 resolveMainChatMaxTokens 语义；DeepSeek V4
     // 固定 8192 特判已按方案删除，不再恢复）。仍保持单次推导。
     const legacyMaxTokens = resolveUserHardCap(data.preset?.maxTokens) ?? DEFAULT_RESERVED_OUTPUT
-    const responsePolicy = resolveResponsePolicy({ presetHint: data.preset?.responseLengthHint })
+    const responsePolicy = resolveResponsePolicy({
+      presetHint: data.preset?.responseLengthHint,
+      defaultMode: settings.defaultResponseLength,
+    })
     return {
       responsePolicy,
       requestBudget: {
@@ -211,6 +213,7 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
   const responsePolicy = resolveResponsePolicy({
     sessionMode: session?.responseLengthMode,
     presetHint: data.preset?.responseLengthHint,
+    defaultMode: settings.defaultResponseLength,
     userIntent: responseIntent,
     sceneFactor,
     recentAssistantVisibleChars: collectRecentAssistantChars(data.chat.messages),
@@ -219,6 +222,7 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
     model,
     hardMaxChars: responsePolicy.hardMaxChars,
     userHardCap: data.preset?.maxTokens,
+    profileOverride: enabledProfileOverride(profile?.capabilityOverride),
     // W1（主计划 §7.3）：按端点/model/task 回读的近期推理样本（缺省 = 档案默认余量）
     ...(data.reasoningSamples?.length ? { recentReasoningTokens: data.reasoningSamples } : {}),
     // 阶段8（§4.2）：门控在场时推理项取 gateTokens（可信 = 承诺值；不可信/无门控 = 保守余量）
@@ -348,11 +352,16 @@ export function buildContextMessagesFromData(
   }
 
   // ===== Token 预算框架 =====
-  // budgetBase = (maxContext − 输出预留) × 安全余量；世界书预算取其一定比例，剩余给历史
+  // budgetBase = (maxContext − 输出预留) × 安全余量；各类上下文在统一预算中动态竞争
   // 输出预留：阶段一起由篇幅策略 + 模型能力档案单次计算（resolveChatRequestPlan），
   // 与实际请求的 max_tokens 同源；不再对 DeepSeek V4 固定放大到 8192。
   // 模型解析与实际请求一致（activeModel 优先，切换档案时二者本就同步）
-  const maxContext = profile?.maxContext || preset?.maxContext || getDefaultMaxContext(model)
+  const maxContext = resolveEffectiveContextLimit({
+    model,
+    profileMaxContext: profile?.maxContext,
+    presetMaxContext: preset?.maxContext,
+    capabilityOverride: profile?.capabilityOverride,
+  })
   const plan = resolveChatRequestPlan(data)
   const reservedOutput = plan.requestMaxTokens
   // 下限保护：maxTokens 配置过大时至少保留 25% 上下文预算
@@ -472,8 +481,8 @@ export function buildContextMessagesFromData(
     const scanMessages = (scanDepth === 0 ? [] : messages.slice(-scanDepth)).map((m) => m.content)
     const scanText = scanMessages.join(' ')
 
-    const lorebookRatio = settings.lorebookRatio ?? DEFAULT_LOREBOOK_RATIO
-    const lorebookBudget = Math.floor(budgetBase * Math.min(Math.max(lorebookRatio, 0.05), 1))
+    // W10：旧比例只留迁移记录；世界书与其他候选竞争同一输入预算。
+    const lorebookBudget = budgetBase
 
     // data.lorebooks 为激活世界书全量（书级/条目级 enabled 由统一执行器内部过滤）；
     // 语义命中为 BudgetLoreItem 形状（携带 score/key 参与统一评分）
@@ -961,6 +970,10 @@ export function buildChatParamsFromData(
       source: opts?.source ?? 'bridge',
       responseLengthMode: plan.responsePolicy.mode,
       hardMaxChars: plan.responsePolicy.hardMaxChars,
+      ...(plan.requestBudget ? {
+        plannedBodyTokens: plan.requestBudget.bodyReserve,
+        plannedReasoningTokens: plan.requestBudget.reasoningReserve,
+      } : {}),
       // S5：记录意图识别与场景系数，便于核对误判（未启用时不下发）
       ...(plan.responseIntent ? { responseIntent: plan.responseIntent } : {}),
       ...(plan.pipelineLegacy ? {} : { sceneFactor: plan.sceneFactor }),

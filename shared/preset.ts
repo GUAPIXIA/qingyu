@@ -4,6 +4,14 @@ const VALID_EXAMPLE_MODES = new Set(['always', 'first_turn', 'off'])
 
 const VALID_RESPONSE_LENGTH_HINTS = new Set(['auto', 'brief', 'balanced', 'detailed'])
 
+/** W10：旧快捷 maxTokens 只用于补篇幅偏好；原正数本身仍作为用户硬上限保留。 */
+function inferLegacyResponseLength(maxTokens: number): ResponseLengthMode {
+  if (maxTokens <= 0) return 'auto'
+  if (maxTokens <= 768) return 'brief'
+  if (maxTokens <= 1536) return 'balanced'
+  return 'detailed'
+}
+
 const NATIVE_PRESET_FIELDS = new Set([
   'id', 'name', 'description', 'systemPrompt', 'jailbreak',
   'maxContext', 'temperature', 'topP', 'maxTokens', 'responseLengthHint',
@@ -69,12 +77,15 @@ export function normalizePreset(input: unknown): Preset {
   if (typeof raw.enableThoughtFormat === 'boolean') {
     preset.enableThoughtFormat = raw.enableThoughtFormat
   }
-  // 篇幅提示：合法值透传；缺失/无效时补 'auto'（旧预设迁移规则，方案 §4.5）。
-  // maxTokens 仅作为"模型输出硬上限"兼容值继续保留；缺省迁移为 0（自动）。
+  // 篇幅提示：合法值透传；只有可识别的内置旧预设才把历史快捷值映射为篇幅偏好。
+  // 用户保存/导入的旧预设缺字段时按 auto 处理，避免把自定义硬上限误判成篇幅意图；
+  // 无论哪种来源，maxTokens 正数都完整保留为严格硬上限。
   preset.responseLengthHint = typeof raw.responseLengthHint === 'string'
     && VALID_RESPONSE_LENGTH_HINTS.has(raw.responseLengthHint)
     ? raw.responseLengthHint as ResponseLengthMode
-    : 'auto'
+    : preset.isBuiltin
+      ? inferLegacyResponseLength(preset.maxTokens)
+      : 'auto'
 
   return preset
 }

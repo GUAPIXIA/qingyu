@@ -4,9 +4,8 @@ import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { resolveEffectiveTemplate } from '../utils/chatTemplates'
 import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../utils/memory'
 import { estimateTokens } from '../utils/tokenCounter'
-import { getDefaultMaxContext } from '../utils/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../utils/memoryWindow'
-import { resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, resolveEffectiveContextLimit, resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
 import { cachedReasoningSamplesFor, refreshUsageProfileInBackground } from './usageProfileCache'
 import { MEMORY_SUMMARY_MIN } from './chatConstants'
@@ -76,10 +75,15 @@ export async function runMemorySummary(
   const MEMORY_SUMMARY_OUTPUT_TOKENS = resolveRequestBudget({
     model,
     hardMaxChars: MEMORY_SUMMARY_BODY_CHARS,
+    profileOverride: enabledProfileOverride(profile.capabilityOverride),
     ...(memorySamples ? { recentReasoningTokens: memorySamples } : {}),
   }).requestMaxTokens
   const summaryInputBudget = resolveMemorySummaryInputBudget(
-    profile.maxContext || getDefaultMaxContext(model),
+    resolveEffectiveContextLimit({
+      model,
+      profileMaxContext: profile.maxContext,
+      capabilityOverride: profile.capabilityOverride,
+    }),
     promptOverheadTokens,
     MEMORY_SUMMARY_OUTPUT_TOKENS,
   )

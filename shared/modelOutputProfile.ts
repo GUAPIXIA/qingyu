@@ -333,6 +333,8 @@ export interface RequestBudgetInput {
    * 不可信/无门控 = 档案/P90 保守余量；缺省时行为与门控改造前完全一致。
    */
   reasoningGate?: ResolvedReasoningGate
+  /** W10：端点级用户明确能力覆盖；缺省继续使用内置档案。 */
+  profileOverride?: ModelProfileUserOverride
 }
 
 export interface RequestBudget {
@@ -364,6 +366,45 @@ export function resolveUserHardCap(value: number | null | undefined): number | n
     : null
 }
 
+/** 只有用户显式启用端点能力覆盖时，覆盖值才进入预算。 */
+export function enabledProfileOverride(input: {
+  enabled?: boolean
+  contextLimit?: number
+  outputLimit?: number
+} | null | undefined): ModelProfileUserOverride | undefined {
+  if (input?.enabled !== true) return undefined
+  const result: ModelProfileUserOverride = {}
+  if (Number.isFinite(input.contextLimit) && (input.contextLimit as number) > 0) {
+    result.contextLimit = Math.floor(input.contextLimit as number)
+  }
+  if (Number.isFinite(input.outputLimit) && (input.outputLimit as number) > 0) {
+    result.outputLimit = Math.floor(input.outputLimit as number)
+  }
+  return Object.keys(result).length > 0 ? result : undefined
+}
+
+/**
+ * W10 输入能力语义：内置档案是默认事实来源；旧 maxContext 仍可收紧，但只有
+ * 显式能力覆盖可以放大。预设 maxContext 是用户编辑的本轮硬限制，继续保留。
+ */
+export function resolveEffectiveContextLimit(input: {
+  model: string
+  profileMaxContext?: number | null
+  presetMaxContext?: number | null
+  capabilityOverride?: { enabled?: boolean; contextLimit?: number; outputLimit?: number } | null
+}): number {
+  const override = enabledProfileOverride(input.capabilityOverride)
+  const builtin = getModelOutputProfile(input.model).contextLimit
+  const profile = Number.isFinite(input.profileMaxContext) && (input.profileMaxContext as number) > 0
+    ? Math.floor(input.profileMaxContext as number)
+    : null
+  const preset = Number.isFinite(input.presetMaxContext) && (input.presetMaxContext as number) > 0
+    ? Math.floor(input.presetMaxContext as number)
+    : null
+  const endpointLimit = override?.contextLimit ?? (profile != null ? Math.min(profile, builtin) : builtin)
+  return preset != null ? Math.min(endpointLimit, preset) : endpointLimit
+}
+
 /**
  * 面向界面的可操作风险说明；旧版跨端数据或测试替身缺少明细时安全降级。
  */
@@ -379,7 +420,7 @@ export function formatRequestBudgetRisk(budget?: RequestBudget | null): string |
  * 禁止两处分别推导（方案阶段 1 验收项）。
  */
 export function resolveRequestBudget(input: RequestBudgetInput): RequestBudget {
-  const profile = getModelOutputProfile(input.model)
+  const profile = resolveModelOutputProfile(input.model, { userOverride: input.profileOverride })
   const hardMaxChars = Number.isFinite(input.hardMaxChars) && input.hardMaxChars > 0
     ? input.hardMaxChars
     : 0

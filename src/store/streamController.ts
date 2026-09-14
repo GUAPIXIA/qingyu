@@ -8,7 +8,7 @@ import {
   type GenerationTerminationLatch,
 } from '../../shared/generationTermination'
 import { mergeTailRepair, type FinalizedAssistantOutput } from '../../shared/assistantOutputFinalizer'
-import { formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
 import { BACKGROUND_GENERATION_PROFILES, hasCompleteSummaryTail } from '../../shared/backgroundGeneration'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { useSettingsStore } from './useSettingsStore'
@@ -441,6 +441,7 @@ async function compressDroppedHistory(
     maxTokens: resolveRequestBudget({
       model: settings.activeModel || profile.model,
       hardMaxChars: compressionProfile.expectedBodyChars,
+      profileOverride: enabledProfileOverride(profile.capabilityOverride),
     }).requestMaxTokens,
     frequencyPenalty: 0,
     presencePenalty: 0,
@@ -600,6 +601,7 @@ export async function attemptTailRepair(input: {
   const budget = resolveRequestBudget({
     model: input.model,
     hardMaxChars: 200,
+    profileOverride: enabledProfileOverride(profile.capabilityOverride),
     ...(repairSamples ? { recentReasoningTokens: repairSamples } : {}),
   })
   let repairText = ''
@@ -887,6 +889,7 @@ export async function streamAIResponse(
           model: budgetModel,
           hardMaxChars: builtContext.responsePolicy.hardMaxChars,
           userHardCap: preset?.maxTokens,
+          profileOverride: enabledProfileOverride(profile.capabilityOverride),
           ...(samples ? { recentReasoningTokens: samples } : {}),
           level: decision.level,
         })
@@ -1014,7 +1017,7 @@ export async function streamAIResponse(
           characterName: characterDisplayName,
           legacy: builtContext.pipelineLegacy,
           // 补尾限制（§8.1）：协调入口只在 provider_length 且稳定正文不足时调用，每轮至多一次
-          runTailRepair: (finalized) => attemptTailRepair({
+          runTailRepair: settings.autoTailRepairEnabled === false ? undefined : (finalized) => attemptTailRepair({
             finalized,
             character,
             model: effectiveModel,
@@ -1151,6 +1154,10 @@ export async function streamAIResponse(
       generationType: opts.generationType ?? (opts.continuation ? 'continue' : 'normal'),
       responseLengthMode: builtContext.responsePolicy.mode,
       hardMaxChars: builtContext.responsePolicy.hardMaxChars,
+      ...(builtContext.requestBudget ? {
+        plannedBodyTokens: builtContext.requestBudget.bodyReserve,
+        plannedReasoningTokens: builtContext.requestBudget.reasoningReserve,
+      } : {}),
       // S5：记录意图识别与场景系数，便于核对误判
       ...(builtContext.responseIntent ? { responseIntent: builtContext.responseIntent } : {}),
       ...(builtContext.pipelineLegacy ? {} : { sceneFactor: builtContext.sceneFactor }),
