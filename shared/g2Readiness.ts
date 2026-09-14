@@ -2,7 +2,7 @@
  * G2 取证就绪纯逻辑（主计划 §7.13）——无 IO。
  *
  * G2 门禁（§7.13）中可由观测 JSONL 离线核对的部分：
- * 1. unified 有效生成 ≥ 500，且覆盖 ≥ 2 个供应商；
+ * 1. unified 有效生成 ≥ 500，且覆盖 ≥ 2 个供应商（按 endpointFingerprint 区分上游；无指纹时回退 provider）；
  * 7. 500 次样本按功能状态分段（gate 开/关或档位），不得混合。
  *
  * 其余条款（阶段 7 指标、动态上下文回归、Android fixture、保留一版 legacy）
@@ -59,6 +59,10 @@ export interface G2Progress {
 }
 
 function normalizeProvider(r: GenerationObservation): string {
+  // G2「供应商」按上游端点隔离：同为 openai 协议的 chenxi 与 relayapi 是两个供应商。
+  // 有 endpointFingerprint 用指纹；否则回退 provider 字段。
+  const fp = (r.endpointFingerprint ?? '').trim()
+  if (fp) return `ep:${fp}`
   const p = (r.provider ?? '').trim()
   return p || '(unknown)'
 }

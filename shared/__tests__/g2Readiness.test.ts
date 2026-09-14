@@ -76,20 +76,29 @@ describe('computeG2Progress', () => {
     expect(p.segments).toHaveLength(2)
   })
 
-  it('单段 500 有效 + 2 供应商 → 过门', () => {
+  it('单段 500 有效 + 2 端点指纹供应商 → 过门', () => {
     const records = [
-      ...many(400, { provider: 'openai', gateLevel: 'off' }),
-      ...many(100, { provider: 'deepseek', gateLevel: 'off' }),
+      ...many(400, { provider: 'openai', gateLevel: 'off', endpointFingerprint: 'fp-chenxi' }),
+      ...many(100, { provider: 'openai', gateLevel: 'off', endpointFingerprint: 'fp-relay' }),
     ]
     const p = computeG2Progress(records)
     expect(p.pass).toBe(true)
     expect(p.passableSegments[0].key).toBe('unified/gate:off')
-    expect(p.passableSegments[0].providers).toEqual(['deepseek', 'openai'])
+    expect(p.passableSegments[0].providers).toEqual(['ep:fp-chenxi', 'ep:fp-relay'])
     expect(p.remaining).toBe(0)
   })
 
+  it('同 provider 字段但不同 endpointFingerprint 仍算 2 供应商', () => {
+    const records = [
+      ...many(250, { provider: 'openai', endpointFingerprint: 'a' }),
+      ...many(250, { provider: 'openai', endpointFingerprint: 'b' }),
+    ]
+    const p = computeG2Progress(records)
+    expect(p.pass).toBe(true)
+  })
+
   it('单供应商即使 500 也不过门', () => {
-    const records = many(500, { provider: 'openai', gateLevel: 'off' })
+    const records = many(500, { provider: 'openai', gateLevel: 'off', endpointFingerprint: 'only-one' })
     const p = computeG2Progress(records)
     expect(p.bestSegment!.valid).toBe(500)
     expect(p.pass).toBe(false)
@@ -125,8 +134,8 @@ describe('buildG2Checklist', () => {
 
   it('可过门时第 1/7 条 pass', () => {
     const records = [
-      ...many(300, { provider: 'openai', gateLevel: 'off' }),
-      ...many(200, { provider: 'anthropic', gateLevel: 'off' }),
+      ...many(300, { provider: 'openai', gateLevel: 'off', endpointFingerprint: 'fp-a' }),
+      ...many(200, { provider: 'openai', gateLevel: 'off', endpointFingerprint: 'fp-b' }),
     ]
     const list = buildG2Checklist(computeG2Progress(records), { g1Passed: true })
     expect(list.find((i) => i.id === 'valid-500')!.status).toBe('pass')
