@@ -63,7 +63,7 @@ function makeWorldbookWithAlways(id: string, name: string): Lorebook {
 describe('W9 影子：不改变生产注入', () => {
   it('开启/关闭影子得到完全一致的 messages / maxTokens / 用量', () => {
     const data = makeData()
-    const withShadow = buildContextMessagesFromData(data)
+    const withShadow = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const withoutShadow = buildContextMessagesFromData(data, { shadow: 'off' })
     expect(withShadow.messages).toEqual(withoutShadow.messages)
     expect(withShadow.requestMaxTokens).toBe(withoutShadow.requestMaxTokens)
@@ -80,7 +80,7 @@ describe('W9 影子：不改变生产注入', () => {
       chat: makeChat({ activeLorebookIds: ['lb-a'] }),
     })
     const snapshot = JSON.stringify(data)
-    buildContextMessagesFromData(data)
+    buildContextMessagesFromData(data, { shadow: 'shadow' })
     expect(JSON.stringify(data)).toBe(snapshot)
   })
 
@@ -89,8 +89,8 @@ describe('W9 影子：不改变生产注入', () => {
       lorebooks: [makeWorldbookWithAlways('lb-a', '废土世界观')],
       chat: makeChat({ activeLorebookIds: ['lb-a'] }),
     })
-    const first = buildContextMessagesFromData(data)
-    const second = buildContextMessagesFromData(data)
+    const first = buildContextMessagesFromData(data, { shadow: 'shadow' })
+    const second = buildContextMessagesFromData(data, { shadow: 'shadow' })
     expect(second.worldbookShadow).toEqual(first.worldbookShadow)
     expect(second.historyDegradation).toEqual(first.historyDegradation)
     expect(second.inputAudit).toEqual(first.inputAudit)
@@ -102,7 +102,7 @@ describe('W9 世界书影子：逐条评分与 always', () => {
     lorebooks: [makeWorldbookWithAlways('lb-a', '废土世界观')],
     chat: makeChat({ activeLorebookIds: ['lb-a'] }),
   })
-  const built = buildContextMessagesFromData(data)
+  const built = buildContextMessagesFromData(data, { shadow: 'shadow' })
   const report = built.worldbookShadow!
 
   it('世界书影子存在且未降级', () => {
@@ -138,7 +138,7 @@ describe('W9 世界书影子：逐条评分与 always', () => {
 
 describe('W9 历史降级与输入审计', () => {
   it('短会话：历史全保留，无摘要替代；输入审计为估算口径', () => {
-    const built = buildContextMessagesFromData(makeData())
+    const built = buildContextMessagesFromData(makeData(), { shadow: 'shadow' })
     const history = built.historyDegradation!
     expect(history.degraded).toBe(false)
     expect(history.candidate.keptRawCount).toBe(3)
@@ -164,7 +164,7 @@ describe('W9 历史降级与输入审计', () => {
         ],
       }),
     })
-    const withShadow = buildContextMessagesFromData(data)
+    const withShadow = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const withoutShadow = buildContextMessagesFromData(data, { shadow: 'off' })
     expect(withShadow.messages).toEqual(withoutShadow.messages)
     const history = withShadow.historyDegradation!
@@ -206,7 +206,7 @@ describe('W9 历史降级与输入审计', () => {
         ],
       }),
     })
-    const built = buildContextMessagesFromData(data)
+    const built = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const history = built.historyDegradation!
     expect(history.existing.droppedCount).toBeGreaterThan(0)
     expect(history.candidate.summaryReplacedCount).toBeGreaterThan(0)

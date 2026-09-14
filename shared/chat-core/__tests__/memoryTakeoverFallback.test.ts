@@ -44,7 +44,7 @@ describe('W8 记忆接管回滚（materialize 异常）', () => {
 
   it('物化抛错时回落 fitLayeredMemoryBudget，仍注入状态且不崩溃', () => {
     const data = makeFallbackData()
-    const built = buildContextMessagesFromData(data)
+    const built = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const systemText = built.messages
       .filter((m) => m.role === 'system')
       .map((m) => m.content)
@@ -58,7 +58,7 @@ describe('W8 记忆接管回滚（materialize 异常）', () => {
   it('回落不修改输入存储快照', () => {
     const data = makeFallbackData()
     const snapshot = JSON.stringify(data)
-    buildContextMessagesFromData(data)
+    buildContextMessagesFromData(data, { shadow: 'shadow' })
     expect(JSON.stringify(data)).toBe(snapshot)
   })
 })

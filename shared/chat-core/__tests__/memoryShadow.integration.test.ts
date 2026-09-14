@@ -81,7 +81,7 @@ describe('W8 记忆影子：不改变生产注入', () => {
 
   it('开启/关闭影子得到完全一致的 messages 与 maxTokens', () => {
     const data = makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 })
-    const withShadow = buildContextMessagesFromData(data)
+    const withShadow = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const withoutShadow = buildContextMessagesFromData(data, { shadow: 'off' })
     expect(withShadow.messages).toEqual(withoutShadow.messages)
     expect(withShadow.requestMaxTokens).toBe(withoutShadow.requestMaxTokens)
@@ -92,7 +92,7 @@ describe('W8 记忆影子：不改变生产注入', () => {
 
   it('接管后：状态/事实/时间线仍按候选注入进 system', () => {
     const data = makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 })
-    const systemText = buildContextMessagesFromData(data).messages
+    const systemText = buildContextMessagesFromData(data, { shadow: 'shadow' }).messages
       .filter((message) => message.role === 'system')
       .map((message) => message.content)
       .join('\n')
@@ -106,7 +106,7 @@ describe('W8 记忆影子：不改变生产注入', () => {
   it('接管后：大预算可注入超过旧 800 上限的记忆量', () => {
     const bigFacts = makeFacts(40)
     const data = makeMemoryData({ maxContext: 200000, facts: bigFacts, timelineLines: 20 })
-    const built = buildContextMessagesFromData(data)
+    const built = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const systemText = built.messages
       .filter((message) => message.role === 'system')
       .map((message) => message.content)
@@ -120,13 +120,13 @@ describe('W8 记忆影子：不改变生产注入', () => {
   it('构建过程不修改输入数据快照（记忆存储只读）', () => {
     const data = makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 })
     const snapshot = JSON.stringify(data)
-    buildContextMessagesFromData(data)
+    buildContextMessagesFromData(data, { shadow: 'shadow' })
     expect(JSON.stringify(data)).toBe(snapshot)
   })
 
   it('同一份数据重复构建，记忆影子报告稳定', () => {
-    const first = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 })).memoryShadow
-    const second = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 })).memoryShadow
+    const first = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 }), { shadow: 'shadow' }).memoryShadow
+    const second = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 }), { shadow: 'shadow' }).memoryShadow
     expect(second).toEqual(first)
   })
 })
@@ -134,7 +134,7 @@ describe('W8 记忆影子：不改变生产注入', () => {
 describe('W8 记忆影子：口径与验收（接管后）', () => {
   it('接管后 cap = budgetBase（统一输入池，无 min(800,10%) 专属上限）', () => {
     const facts = makeFacts(6)
-    const built = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 }))
+    const built = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts, timelineLines: 8 }), { shadow: 'shadow' })
     const report = built.memoryShadow!
     expect(report.existing.capTokens).toBe(built.lastContextUsage.max)
     expect(report.existing.totalTokens).toBeGreaterThan(0)
@@ -152,7 +152,7 @@ describe('W8 记忆影子：口径与验收（接管后）', () => {
       facts,
       timelineLines: 8,
       currentState: `当前状态：${'躲避沙尘暴'.repeat(20)}`,
-    }))
+    }), { shadow: 'shadow' })
     const report = built.memoryShadow!
     expect(report.existing.totalTokens).toBeGreaterThan(800)
     expect(report.existing.capTokens).toBeGreaterThan(800)
@@ -161,7 +161,7 @@ describe('W8 记忆影子：口径与验收（接管后）', () => {
 
   it('小窗口 + 超量记忆：分级让位、不超预算、不丢 mandatory', () => {
     const facts = makeFacts(200)
-    const built = buildContextMessagesFromData(makeMemoryData({ maxContext: 8192, facts, timelineLines: 60 }))
+    const built = buildContextMessagesFromData(makeMemoryData({ maxContext: 8192, facts, timelineLines: 60 }), { shadow: 'shadow' })
     const report = built.memoryShadow!
     const shadow = built.contextShadow!
     expect(report.degraded).toBe(false)
@@ -180,7 +180,7 @@ describe('W8 记忆影子：口径与验收（接管后）', () => {
       { text: facts[11].value, index: 11, score: 0.7 },
     ]
     const data = makeMemoryData({ maxContext: 65536, facts, timelineLines: 4, semanticHits: hits })
-    const built = buildContextMessagesFromData(data)
+    const built = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const systemText = built.messages
       .filter((message) => message.role === 'system')
       .map((message) => message.content)
@@ -200,7 +200,7 @@ describe('W8 记忆影子：口径与验收（接管后）', () => {
       facts,
       timelineLines: 20,
       currentState,
-    }))
+    }), { shadow: 'shadow' })
     const report = built.memoryShadow!
     const serialized = `${JSON.stringify(report)}\n${formatMemoryShadowSummary(report)}`
     for (const marker of memoryMarkerTexts(facts, 20, currentState)) {
@@ -210,7 +210,7 @@ describe('W8 记忆影子：口径与验收（接管后）', () => {
   })
 
   it('记忆影子报告不与影子采集器相互影响（同一轮两个报告都存在）', () => {
-    const built = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts: makeFacts(6), timelineLines: 8 }))
+    const built = buildContextMessagesFromData(makeMemoryData({ maxContext: 16384, facts: makeFacts(6), timelineLines: 8 }), { shadow: 'shadow' })
     expect(built.contextShadow).toBeDefined()
     expect(built.memoryShadow).toBeDefined()
     const memory: MemoryShadowReport = built.memoryShadow!

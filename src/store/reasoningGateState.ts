@@ -43,8 +43,10 @@ export function gateScopeKeyOf(scope: GateScopeInput): string {
   ])
 }
 
-export function isReasoningGateEnabled(settings: Pick<Settings, 'reasoningGateEnabled'> | undefined): boolean {
-  return settings?.reasoningGateEnabled === true
+export function isReasoningGateEnabled(_settings: Pick<Settings, 'reasoningGateEnabled'> | undefined): boolean {
+  // W11（§7.14）：G1 已通过，门控视为常开；旧字段忽略（兼容读）。
+  void _settings
+  return true
 }
 
 /**

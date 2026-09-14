@@ -173,57 +173,25 @@ export function BehaviorSection({ settings, updateSettings }: BehaviorSectionPro
         <BehaviorGroup
           icon={<Workflow className="h-4 w-4" />}
           title="生成兼容"
-          description="新版提供弹性篇幅和稳定收尾；旧版仅用于临时排查"
+          description="G2 后默认新版管线；旧版仅保留一版读兼容，设置页不再提供切换"
         >
           <div className="py-3.5">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="生成管线">
-              {([
-                {
-                  value: 'unified',
-                  label: '新版管线',
-                  badge: '推荐',
-                  description: '动态预算、语义分块与稳定收尾',
-                },
-                {
-                  value: 'legacy',
-                  label: '旧版管线',
-                  badge: '回退',
-                  description: '保留旧格式，供异常时临时切换',
-                },
-              ] as const).map((option) => {
-                const selected = pipeline === option.value
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="radio"
-                    aria-label={option.label}
-                    aria-checked={selected}
-                    onClick={() => updateSettings({ generationPipeline: option.value })}
-                    className={cn(
-                      'rounded-xl border p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/50',
-                      selected
-                        ? 'border-tavern-accent/60 bg-tavern-accent-soft shadow-sm'
-                        : 'border-tavern-border-soft bg-tavern-bg-card/45 hover:-translate-y-0.5 hover:border-tavern-border hover:bg-tavern-bg-hover/60',
-                    )}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className={cn('text-xs font-semibold', selected ? 'text-tavern-accent' : 'text-tavern-text')}>{option.label}</span>
-                      <span className={cn(
-                        'rounded-full px-1.5 py-0.5 text-[9px] font-medium',
-                        selected ? 'bg-tavern-accent/15 text-tavern-accent' : 'bg-tavern-bg-hover text-tavern-text-muted',
-                      )}>
-                        {option.badge}
-                      </span>
-                    </span>
-                    <span className="mt-1.5 block text-[10px] leading-relaxed text-tavern-text-muted">{option.description}</span>
-                  </button>
-                )
-              })}
-            </div>
-            <p className="mt-2.5 text-[11px] leading-relaxed text-tavern-text-muted">
-              切换管线不会修改已有消息或其他设置数据。
-            </p>
+            {pipeline === 'legacy' ? (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-tavern-text">
+                当前数据仍标记为旧版管线。请点下方切回新版；旧选项已从界面隐藏（W11）。
+                <button
+                  type="button"
+                  className="mt-2 rounded-lg bg-tavern-accent/90 px-3 py-1.5 text-xs font-semibold text-white"
+                  onClick={() => updateSettings({ generationPipeline: 'unified' })}
+                >
+                  切回新版管线
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-card/45 p-3 text-xs text-tavern-text-muted">
+                已使用新版管线（动态预算、语义分块与稳定收尾）。旧版回退能力在本版本仍保留在数据层，但不再出现在界面。
+              </div>
+            )}
           </div>
         </BehaviorGroup>
 

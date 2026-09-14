@@ -22,7 +22,7 @@ function byKind(report: ContextShadowReport): Map<ContextCandidateKind, ContextS
 describe('W7 影子运行：不改变生产注入', () => {
   it('开启影子与关闭影子得到完全一致的 messages / maxTokens / 用量', () => {
     const data = makeData()
-    const withShadow = buildContextMessagesFromData(data)
+    const withShadow = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const withoutShadow = buildContextMessagesFromData(data, { shadow: 'off' })
     expect(withShadow.messages).toEqual(withoutShadow.messages)
     expect(withShadow.requestMaxTokens).toBe(withoutShadow.requestMaxTokens)
@@ -34,19 +34,19 @@ describe('W7 影子运行：不改变生产注入', () => {
   it('构建过程不修改输入数据快照', () => {
     const data = makeData()
     const snapshot = JSON.stringify(data)
-    buildContextMessagesFromData(data)
+    buildContextMessagesFromData(data, { shadow: 'shadow' })
     expect(JSON.stringify(data)).toBe(snapshot)
   })
 
   it('同一份数据重复构建，影子报告稳定', () => {
-    const first = buildContextMessagesFromData(makeData()).contextShadow
-    const second = buildContextMessagesFromData(makeData()).contextShadow
+    const first = buildContextMessagesFromData(makeData(), { shadow: 'shadow' }).contextShadow
+    const second = buildContextMessagesFromData(makeData(), { shadow: 'shadow' }).contextShadow
     expect(second).toEqual(first)
   })
 })
 
 describe('W7 影子运行：报告口径', () => {
-  const built = buildContextMessagesFromData(makeData())
+  const built = buildContextMessagesFromData(makeData(), { shadow: 'shadow' })
   const report = built.contextShadow!
 
   it('覆盖协议 / 角色 / 记忆 / 世界书 / 历史，且未降级', () => {
@@ -108,7 +108,7 @@ describe('W7 影子运行：报告口径', () => {
         })),
       }),
     })
-    const small = buildContextMessagesFromData(data)
+    const small = buildContextMessagesFromData(data, { shadow: 'shadow' })
     const smallReport = small.contextShadow!
     const kinds = byKind(smallReport)
     expect(smallReport.degraded).toBe(false)
@@ -127,7 +127,7 @@ describe('W7 影子运行：报告口径', () => {
       preset: makePreset({ maxContext: 8192, maxTokens: 1024 }),
       character: makeCharacter({ description: '一位来自未来的仿生人'.repeat(2000) }),
     })
-    const report = buildContextMessagesFromData(data).contextShadow!
+    const report = buildContextMessagesFromData(data, { shadow: 'shadow' }).contextShadow!
     const kinds = byKind(report)
     expect(report.degraded).toBe(false)
     expect(report.mandatoryOverBudget).toBe(true)

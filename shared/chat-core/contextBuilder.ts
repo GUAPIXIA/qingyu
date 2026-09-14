@@ -84,8 +84,9 @@ export interface BuildOptions {
   generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
   lorebookDiagnosticsMode?: 'live' | 'preview'
   /**
-   * W7（主计划 §7.9）：上下文候选影子运行。默认 `'shadow'`——采集分类 token/数量差异，
-   * **不改变 messages / maxTokens**；`'off'` 仅用于对照测试与性能敏感场景，不是产品开关。
+   * W7（主计划 §7.9）：上下文候选影子运行。**W11 后默认关闭**——生产不再记录分类影子；
+   * 仅显式 `'shadow'` 用于测试/诊断（§7.14 第 3 条：删除完成使命的默认 shadow 记录）。
+   * `'off'` 等价缺省，保留兼容。
    */
   shadow?: 'shadow' | 'off'
 }
@@ -291,14 +292,11 @@ export function buildContextMessagesFromData(
   // W7 起在函数入口解析：影子采集的 token 估算与后续预算共用同一模型口径。
   const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
 
-  // ===== W7（§7.9）上下文候选影子运行 =====
-  // 在真实注入点逐块登记"分类 + token 估算 + 数值元数据"，构建末尾用同一批候选跑一次
-  // ContextAllocator，得到"现有注入"与"影子选择"的分类差异。
-  // 采集器不持有消息数组、不返回任何要发送的文本，因此不可能改变 messages / maxTokens；
-  // 提示词文本只在 estimateTokens 内用完即弃（§4.4：不记录正文）。
-  const shadow = opts?.shadow === 'off'
-    ? null
-    : createContextShadowCollector({ model })
+  // ===== W7/W11：影子默认关闭；仅 opts.shadow === 'shadow' 时采集 =====
+  // 采集器不持有消息数组、不返回任何要发送的文本，因此不可能改变 messages / maxTokens。
+  const shadow = opts?.shadow === 'shadow'
+    ? createContextShadowCollector({ model })
+    : null
   const noteShadow = (kind: ContextCandidateKind, id: string, note: ContextShadowNote): void => {
     shadow?.note(kind, id, note)
   }

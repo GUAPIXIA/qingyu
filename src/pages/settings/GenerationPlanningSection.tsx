@@ -177,22 +177,19 @@ export function GenerationPlanningSection({ settings, updateSettings }: Props) {
               <span className="flex items-center gap-2 text-xs font-semibold text-tavern-text-soft">
                 <BrainCircuit className="h-3.5 w-3.5 text-tavern-accent" /> 思考强度
               </span>
-              <Toggle
-                label="动态推理保护"
-                checked={settings.reasoningGateEnabled === true}
-                onChange={(reasoningGateEnabled) => updateSettings({ reasoningGateEnabled })}
-              />
+              <span className="rounded-full bg-tavern-accent/15 px-2 py-0.5 text-[10px] font-medium text-tavern-accent">
+                推理保护已开启（W11 常开）
+              </span>
             </div>
             <select
               aria-label="思考强度"
               value={settings.reasoningEffort ?? 'auto'}
-              disabled={settings.reasoningGateEnabled !== true}
               onChange={(event) => updateSettings({ reasoningEffort: event.target.value as Settings['reasoningEffort'] })}
-              className="input w-full text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              className="input w-full text-sm"
             >
               {EFFORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.detail}</option>)}
             </select>
-            <p className="mt-2 text-[11px] text-tavern-text-muted">端点不支持所选档位时会保守降级，不会无限重试。</p>
+            <p className="mt-2 text-[11px] text-tavern-text-muted">G1 后门控常开；端点不支持所选档位时会保守降级，不会无限重试。</p>
           </div>
 
           <div className="bg-tavern-bg-card/70 p-4">
