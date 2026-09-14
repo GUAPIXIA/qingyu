@@ -3185,13 +3185,51 @@ async function main(): Promise<void> {
         if (r.batch === batch && (options.only.length === 0 || options.only.includes(r.id))) results.push(r)
       }
     } else {
-      for (const testCase of selected) {
-        process.stdout.write(`[${batch}] ${testCase.id} ... `)
-        const result = await runner(testCase)
-        process.stdout.write(`${statusOf(result)}\n`)
-        results.push(result)
-        // 每例落盘一次，支持中断后查看已完成部分
-        persistBatch(results.filter((r) => r.batch === batch))
+      // G1 扩样（2026-09-13）：--concurrency N 真实并发（此前只解析不使用，几百次取样要跑数小时）。
+      // 并发下写盘经串行化链，避免 read-modify-write 相互覆盖；
+      // 延迟类指标（P50/P95）请用 --concurrency 1，并发会引入排队噪声。
+      let persistChain: Promise<void> = Promise.resolve()
+      const persistSerialized = (rows: CaseResult[]): Promise<void> => {
+        persistChain = persistChain.then(() => persistBatch(rows)).catch(() => { /* 忽略单次写盘失败 */ })
+        return persistChain
+      }
+      const workers = Math.max(1, Math.min(Math.floor(options.concurrency) || 1, selected.length))
+      if (workers <= 1) {
+        for (const testCase of selected) {
+          process.stdout.write(`[${batch}] ${testCase.id} ... `)
+          const result = await runner(testCase)
+          process.stdout.write(`${statusOf(result)}\n`)
+          results.push(result)
+          // 每例落盘一次，支持中断后查看已完成部分
+          persistBatch(results.filter((r) => r.batch === batch))
+        }
+      } else {
+        process.stdout.write(`[${batch}] 并发 ${workers}，共 ${selected.length} 例\n`)
+        const queue = [...selected]
+        let done = 0
+        await Promise.all(Array.from({ length: workers }, async () => {
+          for (;;) {
+            const testCase = queue.shift()
+            if (!testCase) return
+            let result: CaseResult
+            try {
+              result = await runner(testCase)
+            } catch (err) {
+              // 单例异常不拖垮整批（扩样期间的网络抖动很常见）
+              result = {
+                batch, id: testCase.id, title: testCase.title,
+                systemPrompt: '', userPrompt: '', raw: '', final: '', attempts: 0,
+                extra: {}, checks: [], transport: [], durationMs: 0,
+                error: err instanceof Error ? err.message : String(err),
+              }
+            }
+            results.push(result)
+            done += 1
+            process.stdout.write(`[${batch}] (${done}/${selected.length}) ${testCase.id} ... ${statusOf(result)}\n`)
+            await persistSerialized(results.filter((r) => r.batch === batch))
+          }
+        }))
+        await persistChain
       }
     }
     if (options.judge) {

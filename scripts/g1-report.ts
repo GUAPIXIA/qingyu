@@ -104,8 +104,10 @@ interface ArmStats {
   earlyAborts: number
   /** 中止且正文为空的用例（提前中止若救不回正文，就是用户可见失败） */
   abortedEmptyBodies: number
-  /** 最终正文为空的用例（含运行错误），G1「用户可见失败」口径 */
+  /** 最终正文为空的用例（**仅推理挤占类**，已排除限流/超时/5xx），G1 第 1 条口径 */
   emptyBodyCases: number
+  /** 基础设施错误（429/5xx/超时/网络）造成的空正文，单列不计入 G1 口径 */
+  infraErrors: number
   shortBodyCases: number
   durations: number[]
   abortedDurations: number[]
@@ -138,6 +140,7 @@ function analyseArm(arm: ArmInput): ArmStats {
     earlyAborts: 0,
     abortedEmptyBodies: 0,
     emptyBodyCases: 0,
+    infraErrors: 0,
     shortBodyCases: 0,
     durations: [],
     abortedDurations: [],
@@ -180,7 +183,13 @@ function analyseArm(arm: ArmInput): ArmStats {
 
     const chars = num(row.extra?.visibleChars) ?? bodyCharsFinal
     if (chars < 20) stats.shortBodyCases += 1
-    if (chars === 0) stats.emptyBodyCases += 1
+    // 用户可见失败 = 正文为空，但必须把"基础设施错误"排除在推理挤占口径之外：
+    // 并发取样下 429/5xx/超时会造成空正文，把它们算进 G1 第 1 条会污染结论
+    // （2026-09-13 扩样：240 例里 27 例为限流/超时，若混入会把 5.8% 误读成 17%）。
+    if (chars === 0) {
+      if (INFRA_ERROR_PATTERN.test(row.error ?? '')) stats.infraErrors += 1
+      else stats.emptyBodyCases += 1
+    }
 
     const judge = (row as { judge?: { parsed?: boolean; verdict?: string } }).judge
     if (judge?.parsed) {
@@ -218,6 +227,71 @@ function pct(value: number): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
+/**
+ * 可见失败率的 95% 置信上界（保守近似，用于判 G1 第 1 条）：
+ * k=0 用 rule of three（3/n）；k>0 用 (k+3)/n。目标 0.5% 时零失败所需样本量 ≈ 3/0.005 = 600。
+ */
+function upperBound95(failures: number, trials: number): number {
+  if (trials <= 0) return 1
+  return Math.min(1, (failures + 3) / trials)
+}
+
+/** 基础设施错误（限流/超时/5xx/网络）：单列统计，不计入 G1"推理挤占"口径 */
+const INFRA_ERROR_PATTERN = /429|524|50[0-4]|timeout|超时|rate.?limit|ECONN|socket|fetch failed|network/i
+
+/** G1 第 1 条目标（主计划 §7.7 修订版） */
+const G1_TARGET_FAILURE_RATE = 0.005
+
+/** 成功路径（无运行错误、无提前中止）的耗时样本 */
+function successDurations(arm: ArmStats): number[] {
+  return arm.rows
+    .filter((row) => !row.error && !(row.checks ?? []).some((check) => check.id === 'early-abort'))
+    .map((row) => row.durationMs)
+}
+
+/** 按"2026-09-13 修订口径"给出 G1 逐条判定；首臂为主臂，第二臂（可选）为同请求体对照臂 */
+function renderG1Verdicts(stats: ArmStats[]): string[] {
+  const [primary, control] = stats
+  const lines: string[] = []
+  lines.push('## G1 判定（2026-09-13 修订口径）')
+  lines.push('')
+  lines.push('| # | 门槛 | 实测 | 判定 |')
+  lines.push('|---|---|---|---|')
+
+  const trials = primary.cases
+  const failures = primary.emptyBodyCases
+  const upper = upperBound95(failures, trials)
+  const needZeroFailure = Math.ceil(3 / G1_TARGET_FAILURE_RATE)
+  lines.push(`| 1 | 推理挤占用户可见失败率 < ${pct(G1_TARGET_FAILURE_RATE)} | ${failures}/${trials} = ${pct(trials ? failures / trials : 0)}；95% 上界 ≈ ${pct(upper)} | ${upper < G1_TARGET_FAILURE_RATE ? '✅ 达标' : `❌ 未达标（零失败需 ≥ ${needZeroFailure} 例）`} |`)
+
+  lines.push('| 2 | 空正文降档恢复成功率 ≥ 90% | 依赖渲染层恢复控制器（离线评测器直连适配器，不覆盖该路径）；且该模型默认档为 off，无可降档位 | ⛔ 不适用 / 需应用层灰度 |')
+
+  lines.push(`| 3 | 只有正文 < 20 字符才整轮恢复 | 正文 < 20 字符用例 ${primary.shortBodyCases}/${trials}（与失败/中止例重合）；控制器行为由 gateRecovery 单测覆盖 | ⚠️ 部分（缺生产端到端） |`)
+
+  const abortedEmptyRate = primary.earlyAborts > 0 ? primary.abortedEmptyBodies / primary.earlyAborts : null
+  const controlBodyYield = control && control.cases > 0
+    ? (control.cases - control.emptyBodyCases) / control.cases
+    : null
+  const abortOk = primary.earlyAborts === 0 || (abortedEmptyRate !== null && abortedEmptyRate === 0)
+  lines.push(`| 4 | 只在"继续已不可能产出合格正文"时中止；成对对照不使正文产出率下降 | 提前中止 ${primary.earlyAborts} 例${primary.earlyAborts > 0 ? `，其中正文为空 ${primary.abortedEmptyBodies} 例` : '（未发生中止 → 无收益损失）'}${controlBodyYield !== null ? `；对照臂正文产出率 ${pct(controlBodyYield)}` : ''} | ${abortOk ? '✅ 达标' : '❌ 中止后仍无正文，等同空正文失败'} |`)
+
+  lines.push('| 5 | 降档额外 completion token 占比 < 3% | 需"首次失败 + 降档重试"的成对记录（应用层灰度） | ⛔ 不适用 |')
+
+  if (control) {
+    const p95Primary = percentile(successDurations(primary), 95)
+    const p95Control = percentile(successDurations(control), 95)
+    const delta = p95Control > 0 ? (p95Primary - p95Control) / p95Control : 0
+    const enough = successDurations(primary).length >= 100 && successDurations(control).length >= 100
+    lines.push(`| 6 | 同请求体条件下成功路径无回归 | 成功路径 P95：主臂 ${(p95Primary / 1000).toFixed(1)}s vs 对照臂 ${(p95Control / 1000).toFixed(1)}s（${pct(delta)}，n=${successDurations(primary).length}/${successDurations(control).length}） | ${!enough ? '⚠️ 样本不足以判定（P95 长尾不稳定）' : (Math.abs(delta) <= 0.05 ? '✅ 无回归' : `⚠️ 相差 ${pct(delta)}`)} |`)
+  } else {
+    lines.push('| 6 | 同请求体条件下成功路径无回归 | 未提供对照臂 | ⚠️ 需两臂 |')
+  }
+
+  lines.push('| 7 | 全量测试、Bridge 与跨端 fixture | `pnpm test` 与 `--batch verify` 全绿（见交接记录） | ✅ 达标 |')
+  lines.push('')
+  return lines
+}
+
 function renderArmTable(stats: ArmStats[]): string[] {
   const lines: string[] = []
   lines.push('| 指标 | ' + stats.map((s) => s.name).join(' | ') + ' |')
@@ -228,6 +302,7 @@ function renderArmTable(stats: ArmStats[]): string[] {
   row('生成调用数（含重试/修复）', (s) => `${s.calls}`)
   row('评审调用数', (s) => `${s.judgeCalls}`)
   row('运行错误用例', (s) => `${s.errors}`)
+  row('其中基础设施错误（限流/超时/5xx，不计入 G1）', (s) => `${s.infraErrors}`)
   row('结构化检查失败 / 警告', (s) => `${s.checksFail} / ${s.checksWarn}`)
   row('completion token', (s) => `${s.completionTokens}`)
   row('reasoning token', (s) => `${s.reasoningTokens}`)
@@ -319,6 +394,7 @@ function main(): void {
   lines.push('')
   lines.push(...renderArmTable(stats))
   lines.push('')
+  lines.push(...renderG1Verdicts(stats))
   if (stats.length > 1) {
     lines.push(...renderComparison(stats))
   }
