@@ -1,0 +1,52 @@
+[
+  {
+    "id": "empty-object",
+    "value": {}
+    ,"canonical": "{}"
+  },
+  {
+    "id": "nested-keys",
+    "value": { "b": 1, "a": { "z": true, "y": null }, "c": [1, 2, { "k": "v" }] },
+    "canonical": "{\"a\":{\"y\":null,\"z\":true},\"b\":1,\"c\":[1,2,{\"k\":\"v\"}]}"
+  },
+  {
+    "id": "negative-zero",
+    "value": -0,
+    "canonical": "0"
+  },
+  {
+    "id": "int-max-safe",
+    "value": 9007199254740991,
+    "canonical": "9007199254740991"
+  },
+  {
+    "id": "float-exp",
+    "value": 1e-7,
+    "canonical": "1e-7"
+  },
+  {
+    "id": "escape-quotes",
+    "value": "q\"\\n",
+    "canonical": "\"q\\\"\\\\n\""
+  },
+  {
+    "id": "astral-key",
+    "value": { "𝔸": 1 },
+    "canonical": "{\"𝔸\":1}"
+  },
+  {
+    "id": "array-order",
+    "value": [3, 1, 2],
+    "canonical": "[3,1,2]"
+  },
+  {
+    "id": "unicode-emoji",
+    "value": { "s": "你好👋" },
+    "canonical": "{\"s\":\"你好👋\"}"
+  },
+  {
+    "id": "empty-array",
+    "value": { "list": [] },
+    "canonical": "{\"list\":[]}"
+  }
+]

@@ -1,0 +1,27 @@
+[
+  {
+    "name": "settings-leaks-apiKey",
+    "entityType": "settings_public",
+    "payload": { "theme": "dark", "apiKey": "sk-should-not-sync" },
+    "expect": "reject-sensitive"
+  },
+  {
+    "name": "message-absolute-path",
+    "entityType": "message",
+    "payload": {
+      "sessionId": "s1",
+      "role": "user",
+      "content": "x",
+      "timestamp": 1,
+      "attachmentBlobIds": ["file:///C:/Users/x/secret.png"]
+    },
+    "expect": "reject-path-or-url"
+  },
+  {
+    "name": "counter-leading-zero",
+    "entityType": "character",
+    "payload": { "name": "x" },
+    "dot": { "deviceId": "pc", "counter": "01" },
+    "expect": "reject-counter"
+  }
+]

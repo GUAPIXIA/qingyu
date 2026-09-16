@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qingyu/sync/envelope",
+  "title": "SyncEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "entityType",
+    "entityId",
+    "parentId",
+    "schemaVersion",
+    "version",
+    "dot",
+    "deleted",
+    "updatedAt",
+    "contentHash",
+    "payload"
+  ],
+  "properties": {
+    "contractVersion": { "type": "integer", "const": 1 },
+    "entityType": {
+      "type": "string",
+      "enum": [
+        "settings_public",
+        "character",
+        "lorebook",
+        "preset",
+        "persona",
+        "regex_rule",
+        "quick_reply_set",
+        "group",
+        "session",
+        "message",
+        "memory_state",
+        "memory_fact",
+        "usage_record",
+        "mcp_public_config",
+        "media_manifest",
+        "lorebook_mapping_template",
+        "usage_clear_marker"
+      ]
+    },
+    "entityId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "parentId": { "type": ["string", "null"], "maxLength": 128 },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "version": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/counterDecimal" }
+    },
+    "dot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deviceId", "counter"],
+      "properties": {
+        "deviceId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "counter": { "$ref": "#/$defs/counterDecimal" }
+      }
+    },
+    "deleted": { "type": "boolean" },
+    "updatedAt": { "type": "integer", "minimum": 0 },
+    "contentHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "payload": { "type": "object" },
+    "aggregateType": { "type": "string" },
+    "aggregateId": { "type": "string" },
+    "aggregateRevision": { "type": "string" },
+    "references": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "maxItems": 64
+    }
+  },
+  "$defs": {
+    "counterDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "maxLength": 20
+    }
+  }
+}

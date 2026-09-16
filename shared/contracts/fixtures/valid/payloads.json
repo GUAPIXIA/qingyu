@@ -1,0 +1,53 @@
+[
+  {
+    "name": "character-min",
+    "entityType": "character",
+    "payload": { "name": "角色A" }
+  },
+  {
+    "name": "character-full-ish",
+    "entityType": "character",
+    "payload": {
+      "name": "角色B",
+      "description": "描述",
+      "personality": "冷静",
+      "scenario": "雨夜",
+      "firstMessage": "你好",
+      "exampleDialog": "",
+      "tags": ["合成"],
+      "creator": "qingyu-fixture",
+      "alternateGreetings": ["嗨"],
+      "systemPrompt": "保持简洁",
+      "avatarBlobId": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "extensions": { "k": 1 }
+    }
+  },
+  {
+    "name": "message-min",
+    "entityType": "message",
+    "payload": {
+      "sessionId": "s1",
+      "role": "user",
+      "content": "你好",
+      "timestamp": 1789562000000
+    }
+  },
+  {
+    "name": "settings-public-ok",
+    "entityType": "settings_public",
+    "payload": {
+      "theme": "dark",
+      "language": "zh-CN",
+      "narrativeMode": "immersive",
+      "responseLengthMode": "auto",
+      "ui": { "fontSize": 14, "messageDensity": "normal" }
+    }
+  },
+  {
+    "name": "usage-clear-marker",
+    "entityType": "usage_clear_marker",
+    "payload": {
+      "clearedThrough": { "pc_a": "12", "android_b": "4" }
+    }
+  }
+]

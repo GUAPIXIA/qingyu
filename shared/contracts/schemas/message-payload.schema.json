@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qingyu/sync/message-payload",
+  "title": "MessagePayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sessionId", "role", "content", "timestamp"],
+  "properties": {
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "characterId": { "type": ["string", "null"], "maxLength": 128 },
+    "role": { "type": "string", "enum": ["user", "assistant", "system"] },
+    "content": { "type": "string", "maxLength": 2000000 },
+    "timestamp": { "type": "integer", "minimum": 0 },
+    "speakerKind": {
+      "type": "string",
+      "enum": ["persona", "narrator", "character", "system"]
+    },
+    "generationKind": {
+      "type": "string",
+      "enum": ["manual", "input_continue", "assistant_reply", "regenerate", "message_continue"]
+    },
+    "narrativeMode": { "type": "string", "enum": ["immersive", "omniscient"] },
+    "swipes": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "type": "string", "maxLength": 2000000 }
+    },
+    "swipeIndex": { "type": "integer", "minimum": 0 },
+    "replyToId": { "type": ["string", "null"], "maxLength": 128 },
+    "attachmentBlobIds": {
+      "type": "array",
+      "maxItems": 16,
+      "items": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    },
+    "isDeleted": { "type": "boolean" }
+  }
+}

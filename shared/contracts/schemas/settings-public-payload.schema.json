@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qingyu/sync/settings-public-payload",
+  "title": "SettingsPublicPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "theme": { "type": "string", "enum": ["light", "dark", "system"] },
+    "language": { "type": "string", "maxLength": 32 },
+    "narrativeMode": { "type": "string", "enum": ["immersive", "omniscient"] },
+    "responseLengthMode": {
+      "type": "string",
+      "enum": ["auto", "brief", "balanced", "detailed"]
+    },
+    "activePersonaId": { "type": ["string", "null"], "maxLength": 128 },
+    "activePresetId": { "type": ["string", "null"], "maxLength": 128 },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fontSize": { "type": "integer", "minimum": 10, "maximum": 24 },
+        "messageDensity": { "type": "string", "enum": ["compact", "normal", "relaxed"] }
+      }
+    }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["apiKey"] },
+      { "required": ["token"] },
+      { "required": ["spaceKey"] },
+      { "required": ["password"] },
+      { "required": ["secret"] }
+    ]
+  }
+}

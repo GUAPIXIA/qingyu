@@ -1,0 +1,297 @@
+openapi: 3.1.0
+info:
+  title: QingYu Sync v1
+  version: "1.0.0"
+  description: |
+    用户主动触发的局域网/服务器双向同步协议。不含业务 RPC（旧 /relay/v1 不复用）。
+    协议版本与实体 schemaVersion 分开协商。
+servers:
+  - url: /sync/v1
+paths:
+  /sessions:
+    post:
+      operationId: createSyncSession
+      summary: 创建同步会话并协商版本/能力
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+  /sessions/{sessionId}/plan:
+    post:
+      operationId: planSyncSession
+      summary: 交换摘要，返回 dry-run 计划
+      parameters:
+        - $ref: '#/components/parameters/sessionId'
+      responses:
+        '200':
+          description: Plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+  /sessions/{sessionId}/push:
+    post:
+      operationId: pushBatch
+      summary: 分批推送实体信封
+      parameters:
+        - $ref: '#/components/parameters/sessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushRequest'
+      responses:
+        '200':
+          description: Push result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchAck'
+        '409':
+          $ref: '#/components/responses/Error'
+  /sessions/{sessionId}/pull:
+    post:
+      operationId: pullBatch
+      summary: 按版本向量拉取批次
+      parameters:
+        - $ref: '#/components/parameters/sessionId'
+      responses:
+        '200':
+          description: Pull result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullResult'
+  /sessions/{sessionId}/blobs:
+    post:
+      operationId: transferBlobs
+      summary: 申请/提交附件传输
+      parameters:
+        - $ref: '#/components/parameters/sessionId'
+      responses:
+        '200':
+          description: Blob transfer ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlobTransfer'
+  /sessions/{sessionId}/commit:
+    post:
+      operationId: commitSyncSession
+      summary: 提交 receipt 与确认向量
+      parameters:
+        - $ref: '#/components/parameters/sessionId'
+      responses:
+        '200':
+          description: Commit receipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitReceipt'
+  /sessions/{sessionId}:
+    get:
+      operationId: getSyncSession
+      summary: 查询会话状态（含 prepared/committed，用于 commit 响应丢失恢复）
+      parameters:
+        - $ref: '#/components/parameters/sessionId'
+      responses:
+        '200':
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+    delete:
+      operationId: abortSyncSession
+      summary: 放弃未提交会话
+      parameters:
+        - $ref: '#/components/parameters/sessionId'
+      responses:
+        '204':
+          description: Aborted
+components:
+  parameters:
+    sessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    ErrorCode:
+      type: string
+      enum:
+        - SCHEMA_UNSUPPORTED
+        - CONFLICT
+        - HASH_MISMATCH
+        - QUOTA_EXCEEDED
+        - SESSION_EXPIRED
+        - DEVICE_REVOKED
+        - DEPENDENCY_CONFLICT
+        - BATCH_TOO_LARGE
+        - INTERNAL
+    Error:
+      type: object
+      required: [code, message, retryable, requestId]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+        retryable:
+          type: boolean
+        requestId:
+          type: string
+        details:
+          type: object
+    CreateSessionRequest:
+      type: object
+      required: [protocolVersion, deviceId]
+      properties:
+        protocolVersion:
+          type: integer
+          const: 1
+        deviceId:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        knownVersions:
+          type: object
+          additionalProperties:
+            type: string
+            pattern: "^(0|[1-9][0-9]*)$"
+    Session:
+      type: object
+      required: [sessionId, state, protocolVersion, expiresAt]
+      properties:
+        sessionId:
+          type: string
+        state:
+          type: string
+          enum: [open, planned, pushing, pulling, prepared, committed, aborted, expired]
+        protocolVersion:
+          type: integer
+        expiresAt:
+          type: integer
+        preparedReceipt:
+          $ref: '#/components/schemas/PreparedReceipt'
+        commitReceipt:
+          $ref: '#/components/schemas/CommitReceipt'
+    Plan:
+      type: object
+      required: [upload, download, conflicts, estimatedBytes]
+      properties:
+        upload:
+          type: integer
+        download:
+          type: integer
+        conflicts:
+          type: integer
+        estimatedBytes:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              entityType:
+                type: string
+              entityId:
+                type: string
+              direction:
+                type: string
+                enum: [upload, download, conflict]
+    PushRequest:
+      type: object
+      required: [batchId, envelopes]
+      properties:
+        batchId:
+          type: string
+        envelopes:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+    BatchAck:
+      type: object
+      required: [batchId, accepted, rejected]
+      properties:
+        batchId:
+          type: string
+        accepted:
+          type: integer
+        rejected:
+          type: integer
+        cursor:
+          type: string
+          description: 仅服务端签发，客户端不解析
+    PullResult:
+      type: object
+      required: [batchId, envelopes, nextCursor, hasMore]
+      properties:
+        batchId:
+          type: string
+        envelopes:
+          type: array
+          items:
+            type: object
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+    BlobTransfer:
+      type: object
+      required: [blobId, mode]
+      properties:
+        blobId:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+        mode:
+          type: string
+          enum: [upload, download]
+        chunkSize:
+          type: integer
+    PreparedReceipt:
+      type: object
+      required: [sessionId, batchHash, preparedAt]
+      properties:
+        sessionId:
+          type: string
+        batchHash:
+          type: string
+        preparedAt:
+          type: integer
+        stagedCount:
+          type: integer
+    CommitReceipt:
+      type: object
+      required: [sessionId, committedAt, vector]
+      properties:
+        sessionId:
+          type: string
+        committedAt:
+          type: integer
+        vector:
+          type: object
+          additionalProperties:
+            type: string
+            pattern: "^(0|[1-9][0-9]*)$"

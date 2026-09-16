@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qingyu/sync/usage-clear-marker-payload",
+  "title": "UsageClearMarkerPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["clearedThrough"],
+  "properties": {
+    "clearedThrough": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
+  }
+}
