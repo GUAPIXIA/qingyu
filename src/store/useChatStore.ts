@@ -55,6 +55,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   lastLorebookDiagnosticsSessionId: null,
   translatingMessages: {},
   showTranslationIds: new Set(),
+  editingMessageId: null,
 
   loadSessions: async (characterId) => {
     const sessions = await window.api.chat.listSessions(characterId)
@@ -214,7 +215,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     }
     // 会话切换：取消尚未完成的方向请求，避免结果写入其他会话的消息
     cancelDialogueDirectionRequests()
-    set({ currentSessionId: sessionId })
+    set({ currentSessionId: sessionId, editingMessageId: null })
     // 持久化当前会话 ID
     useSettingsStore.getState().updateSettings({ activeSessionId: sessionId })
     // 重新加载消息
@@ -363,7 +364,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     // 竞态条件防护
     const currentLoadId = nextLoadRequestId()
     // 角色/会话切换：清空语义命中缓存，避免残留旧命中
-    set({ messages: [], _semanticLoreHits: [], _semanticLoreAvailable: undefined }) // 先清空，避免显示旧角色消息
+    set({ messages: [], editingMessageId: null, _semanticLoreHits: [], _semanticLoreAvailable: undefined }) // 先清空，避免显示旧角色消息
 
     // 先加载会话列表
     let sessionId = get().currentSessionId
@@ -431,7 +432,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   },
 
   clearMessages: () => {
-    set({ messages: [] })
+    set({ messages: [], editingMessageId: null })
   },
 
   addStandaloneMessage: async (content, images, character, role = 'assistant', sessionId) => {

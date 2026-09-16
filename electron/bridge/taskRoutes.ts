@@ -16,6 +16,7 @@ import { chatMessagePort } from '../chat/messagePort'
 import { contextService } from '../chat/contextService'
 import { RealModelPort } from '../chat/realModel'
 import { FakeModelPort } from '../chat/fakeModel'
+import { memorySummaryService } from '../services/memorySummaryService'
 import { findByRequestId, getTaskSnapshot, readEvents, listActiveTasks } from '../chat/taskStore'
 import { createDomainError } from '../../shared/chat-core/errors'
 import type { ChatCommand } from '../../shared/chat-core/commands'
@@ -28,6 +29,7 @@ function getOrchestrator(): ChatOrchestrator {
     messagePort: chatMessagePort,
     contextPort: contextService,
     modelPort,
+    memoryScheduler: memorySummaryService,
   })
 }
 

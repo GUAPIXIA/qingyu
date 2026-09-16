@@ -238,6 +238,7 @@ function normalizeEntry(raw: UnknownRecord, index: number, source: LoreSourceKin
 export function normalizeImportedLorebook(raw: unknown, options: NormalizeLorebookOptions): Lorebook {
   const payload = unwrapLorebookPayload(raw)
   const scanDepthValue = finiteNumber(payload.scanDepth, payload.scan_depth) ?? 4
+  const importedTokenBudget = finiteNumber(payload.tokenBudget, payload.token_budget)
   const enabled = typeof payload.enabled === 'boolean'
     ? payload.enabled
     : payload.disable !== true
@@ -253,8 +254,8 @@ export function normalizeImportedLorebook(raw: unknown, options: NormalizeLorebo
     ...(typeof payload.recursiveScanning === 'boolean'
       ? { recursiveScanning: payload.recursiveScanning }
       : (typeof payload.recursive_scanning === 'boolean' ? { recursiveScanning: payload.recursive_scanning } : {})),
-    ...(finiteNumber(payload.tokenBudget, payload.token_budget) !== undefined
-      ? { tokenBudget: Math.max(0, Math.floor(finiteNumber(payload.tokenBudget, payload.token_budget)!)) }
+    ...(importedTokenBudget !== undefined && Math.floor(importedTokenBudget) > 0
+      ? { tokenBudget: Math.floor(importedTokenBudget) }
       : {}),
   }
 }

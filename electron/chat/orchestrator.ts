@@ -15,7 +15,7 @@ import type { TaskSnapshot, TaskEventEnvelope } from '../../shared/chat-core/eve
 import { createDomainError, type DomainError } from '../../shared/chat-core/errors'
 import { createTask, findByRequestId as findTaskByRequestId, getTaskSnapshot, updateTask, appendEvent } from './taskStore'
 import { transitionTask, acquireSessionOrThrow, releaseSession } from './taskManager'
-import type { MessagePort, ContextPort, ModelPort } from './ports'
+import type { MessagePort, ContextPort, ModelPort, MemorySchedulerPort } from './ports'
 import { toPublicModelDescriptor } from './ports'
 import { authorizeTool } from './toolGate'
 
@@ -23,6 +23,7 @@ export interface OrchestratorDeps {
   messagePort: MessagePort
   contextPort: ContextPort
   modelPort: ModelPort
+  memoryScheduler?: MemorySchedulerPort
   // 可选：chunk batching 参数
   chunkFlushMs?: number
   chunkFlushBytes?: number
@@ -368,6 +369,12 @@ export class ChatOrchestrator {
 
       // 17. completed
       transitionTask(taskId, 'completed')
+      // 自动长记忆由主进程统一调度；调度器必须异步执行，不能阻塞主回复完成。
+      try {
+        this.deps.memoryScheduler?.schedule({ sessionId, characterId })
+      } catch {
+        // 后台辅助任务失败不反转已经落盘的主对话终态。
+      }
       return getTaskSnapshot(taskId)!
     } finally {
       releaseSession(sessionId, taskId)

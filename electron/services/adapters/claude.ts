@@ -3,12 +3,9 @@ import type { AIAdapter, GateFieldProbe } from './types'
 /** Claude API 版本号，更新时只需改此处 */
 const ANTHROPIC_API_VERSION = '2023-06-01'
 import {
-  attachGateProbe,
   createVendorThinkingStreamFilter,
   deleteGateField,
-  isReasoningBudgetExhausted,
   matchRejectedGateField,
-  REASONING_BUDGET_EXHAUSTED_MESSAGE,
   stripVendorThinking,
 } from './types'
 import { normalizeFinishReason } from '../../../shared/generationObservation'
@@ -73,7 +70,7 @@ export const claudeAdapter: AIAdapter = {
     // 预算型 knob 不得吞掉正文最小空间（clampGateBudgetForBody）；
     // off 档不下发 thinking（Claude 无显式 disable 字段，省略即关闭）。
     const gate = params.reasoningGate
-    let gateSignal: GateProbeSignal | undefined = gate ? { knob: gate.knob } : undefined
+    const gateSignal: GateProbeSignal | undefined = gate ? { knob: gate.knob } : undefined
     const gateProbes: GateFieldProbe[] = []
     if (gate) {
       if (gate.knob === 'thinking-budget' && supportsThinking && gate.level !== 'off') {

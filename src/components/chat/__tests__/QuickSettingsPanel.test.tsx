@@ -65,8 +65,12 @@ describe('QuickSettingsPanel', () => {
     expect(screen.getByRole('button', { name: '查看上下文' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '聊天背景' })).toBeTruthy()
     expect(screen.getByText('生图历史')).toBeTruthy()
-    expect(screen.getByText('AI 回复后生成 3 个可选方向')).toBeTruthy()
+    expect(screen.getByText('下一步方向')).toBeTruthy()
     expect(screen.queryByText(/点选后只回填输入框/)).toBeNull()
+    const interactSection = screen.getByText('对话交互').closest('div')?.parentElement
+    expect(interactSection).toBeTruthy()
+    fireEvent.click(within(interactSection as HTMLElement).getByRole('button', { name: '查看说明' }))
+    expect(screen.getByText(/AI 回复后生成 3 个可选方向/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '导出对话' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '清空对话' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '复制生图数据 1' })).toBeTruthy()
@@ -215,12 +219,16 @@ describe('QuickSettingsPanel', () => {
       />,
     )
     await act(async () => {})
-    expect(screen.getByText(/世界书已改为动态分配/)).toBeTruthy()
+    expect(screen.queryByText(/按相关性自动分配上下文空间/)).toBeNull()
+    const loreSection = screen.getByText('世界书').closest('div')?.parentElement
+    expect(loreSection).toBeTruthy()
+    fireEvent.click(within(loreSection as HTMLElement).getByRole('button', { name: '查看说明' }))
+    expect(screen.getByText(/按相关性自动分配上下文空间/)).toBeTruthy()
     expect(screen.queryByRole('radiogroup', { name: 'Token 预算占比' })).toBeNull()
     expect(useSettingsStore.getState().settings.lorebookRatio).toBe(0.3)
   })
 
-  it('低硬上限遇到推理共享模型时显示风险，并提供自动预算入口', async () => {
+  it('低硬上限遇到推理共享模型时显示风险，但不在快捷设置修改 Token 上限', async () => {
     useChatStore.setState({ activePresetId: 'preset-low' })
     useSettingsStore.setState((state) => ({
       settings: {
@@ -246,8 +254,30 @@ describe('QuickSettingsPanel', () => {
       />,
     )
 
+    await screen.findByText('回复长度')
+    const lengthSection = screen.getByText('回复长度').closest('div')?.parentElement
+    expect(lengthSection).toBeTruthy()
+    fireEvent.click(within(lengthSection as HTMLElement).getByRole('button', { name: '查看说明' }))
     expect(await screen.findByText(/低于该推理模型稳定输出正文/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: '自动' })).toBeTruthy()
+    expect(screen.getByText(/请前往“预设”的高级参数调整/)).toBeTruthy()
+    expect(screen.queryByText('最大Token')).toBeNull()
+    expect(screen.queryByTitle('自定义 Token 数')).toBeNull()
+  })
+
+  it('在快捷设置直接调整默认回复长度，并移除只读采样参数区', async () => {
+    render(
+      <QuickSettingsPanel
+        open onClose={vi.fn()} messages={[]} onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()} onExport={vi.fn()} onClearConfirm={vi.fn()}
+      />,
+    )
+    await act(async () => {})
+
+    const detailed = screen.getByRole('radio', { name: '展开' })
+    fireEvent.click(detailed)
+    expect(useSettingsStore.getState().settings.defaultResponseLength).toBe('detailed')
+    expect(screen.queryByText('采样参数')).toBeNull()
+    expect(screen.queryByText('最大Token')).toBeNull()
   })
 
   it('群聊模式提供与单聊一致的快捷设置并保存群聊级预设', async () => {

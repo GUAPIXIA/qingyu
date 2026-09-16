@@ -12,7 +12,6 @@ import { buildContextMessagesFromData } from '../contextBuilder'
 import type { Lorebook } from '../../../shared/types'
 import {
   CONTENT_MARKERS,
-  makeCharacter,
   makeChat,
   makeData,
   makeLorebook,

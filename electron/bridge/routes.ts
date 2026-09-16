@@ -48,9 +48,6 @@ import { mainContextProvider } from '../context/mainContextProvider'
 import { buildContextMessagesFromData } from '../../shared/chat-core/contextBuilder'
 import { buildContinueContext, ensureUserPerspective } from '../../shared/chat-core/aiInputHelper'
 import { stripThought, trimContinuationSeam } from '../../shared/chat-core/messagePostProcess'
-import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../../shared/chat-core/memory'
-import { buildMemorySummaryWindow } from '../../shared/chat-core/memoryWindow'
-import { MEMORY_SUMMARY_MIN } from '../../shared/chat-core/chatConstants'
 import { getDefaultSettings } from '../../shared/defaults'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { DEFAULT_AUTO_MEMORY_INTERVAL } from '../../shared/defaultMemory'
@@ -77,7 +74,6 @@ import { handleGroupTts, handleTts } from './ttsHandler'
 import { safeId } from '../utils/pathGuard'
 import { sanitizeApiKey } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
-import { countTokens } from '../services/tokenizer'
 import type { Request, Response, NextFunction } from 'express'
 import type { Message, Settings, Preset, ChatParams, ProviderType, GroupChat, MemoryFactRecord, Persona } from '../../shared/types'
 import type { NarrativeMode } from '../../shared/types'
@@ -87,6 +83,7 @@ import { DefaultMobileFacade, type MobileFacade } from './runtime/mobileFacade'
 import { GenerationRegistry } from './runtime/generationRegistry'
 import { buildGroupContextForBridge } from './groupContext'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import { memorySummaryService } from '../services/memorySummaryService'
 
 /** 会话 DTO 的方向开关字段：新字段 + 兼容期镜像旧字段，旧客户端也能正确显示与切换。 */
 function dialogueDirectionFields(session?: Parameters<typeof resolveDialogueDirectionsEnabled>[0]): {
@@ -1030,114 +1027,17 @@ export function buildBridgeRouter(
       const sessionId = safeId(req.params.sessionId)
       const session = await resolveSession(req, sessionId)
       if (!session) { res.status(404).json({ error: '会话不存在' }); return }
-      if (!session.memoryEnabled) { res.status(400).json({ error: '长记忆未开启' }); return }
-      const data = await mainContextProvider.fetchBuildData(session.characterId, sessionId)
-      if (!data.character) { res.status(404).json({ error: '角色不存在' }); return }
-      const profile = data.settings.profile
-      if (!profile) { res.status(400).json({ error: '未配置 API 连接' }); return }
-      const settings = data.settings.settings
-      const userName = settings.userName || '用户'
-      const charName = data.character.name
-
-      const allMessages = chatData.readMessages(session.characterId, sessionId)
-        .filter((m) => m.role !== 'system')
-        .filter((m) => m.content.trim())
-      const formatMessage = (message: typeof allMessages[number]) =>
-        `${message.role === 'user' ? userName : charName}: ${message.content}`
-      const summaryWindow = buildMemorySummaryWindow(
-        allMessages,
-        session.memoryLastMessageId,
-        formatMessage,
-        (text) => countTokens(text, settings.activeModel || profile.model),
-      )
-      if (summaryWindow.pending.length < MEMORY_SUMMARY_MIN || summaryWindow.selected.length === 0) {
-        res.status(400).json({ error: '新增消息太少，暂不总结' })
+      const result = await memorySummaryService.summarize({
+        characterId: session.characterId,
+        sessionId,
+        automatic: false,
+      })
+      if (result.status === 'skipped') {
+        res.status(400).json({ error: result.reason === 'memory_disabled' ? '长记忆未开启' : '新增消息太少，暂不总结' })
         return
       }
-
-      const messagesText = [
-        summaryWindow.overlap.length > 0
-          ? `【已总结内容，仅作衔接】\n${summaryWindow.overlap.map(formatMessage).join('\n')}`
-          : '',
-        `【待总结的新对话】\n${summaryWindow.selected.map(formatMessage).join('\n')}`,
-      ].filter(Boolean).join('\n\n')
-      const previousMemory = session.memory || '无'
-      const previousFactsText = formatMemoryFacts(session.memoryFacts) || '无'
-      const nextMemoryVersion = (session.memoryVersion ?? 0) + 1
-      const shouldAttemptFactProposal = nextMemoryVersion >= (session.memoryFactRetryAfterVersion ?? 0)
-
-      const proposalFormat = shouldAttemptFactProposal
-        ? '【事实提案】\n```json\n[{"subject":"主体","predicate":"属性或关系","value":"值","changeType":"set","scope":"本会话","importance":3,"confidence":0.9}]\n```'
-        : '本次结构化事实更新正在退避；不要输出【事实提案】。'
-      const systemPrompt = `你是一个角色扮演对话总结助手。请根据以下${charName}与${userName}之间的对话，更新当前状态、长期时间线和关键事实。\n\n输出格式（严格按此格式）：\n【当前状态】\n1-3 句：当前场景、时间/地点、正在进行的目标或冲突、角色即时关系或情绪。只保留会影响下一轮对话的内容。\n\n【时间线】\n2-4 句：已发生的重要事件、关键转折与因果。不要重复当前状态。\n\n${proposalFormat}\n\n要求：\n- 事实必须是对话中确立的、对未来有参考价值的持久信息，不要写临时情绪或过场细节。\n- 只输出语义事实提案，绝对不要输出事实 ID、action、patch 或完整事实列表。changeType 用 set 表示新增/更新，clear 表示失效。\n- 服务端会按「主体 + 属性/关系 + scope + entityId」匹配；没有事实变更时输出空数组 []。\n- 只输出上述格式内容，不要添加任何解释或评价。\n\n之前的当前状态：\n${session.memoryCurrentState || '无'}\n\n之前的时间线：\n${previousMemory}\n\n之前的事实：\n${previousFactsText}\n\n事实范围默认为本会话。`
-
-      const params: ChatParams = {
-        requestId: `memory-summary-${Date.now()}`,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `新对话内容：\n${messagesText}` },
-        ],
-        provider: profile.provider as ProviderType,
-        apiKey: profile.apiKey,
-        baseUrl: profile.baseUrl,
-        model: settings.activeModel || profile.model,
-        temperature: 0.3,
-        topP: 0.9,
-        maxTokens: 2048,
-        frequencyPenalty: 0,
-        presencePenalty: 0,
-        stream: false,
-      }
-
-      const completion = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 1)
-      const full = completion.text
-      const parsed = parseMemoryResult(full)
-      let responseFacts: MemoryFactRecord[] = parsed.facts
-      if (parsed.summary) {
-        const hasFactsSection = full.includes('【事实】')
-        const hasFactChangesSection = full.includes('【事实变更】')
-        const hasFactProposalsSection = full.includes('【事实提案】')
-        const hasCurrentStateSection = full.includes('【当前状态】')
-        let facts: MemoryFactRecord[] = hasFactsSection ? parsed.facts : (session.memoryFacts ?? [])
-        let memoryFactHistory = session.memoryFactHistory
-        let factStateUpdates: Record<string, number> = {}
-        if (shouldAttemptFactProposal && hasFactProposalsSection && parsed.factProposals) {
-          const applied = applyFactProposals(session.memoryFacts, session.memoryFactHistory, parsed.factProposals, summaryWindow.processedThroughMessageId ?? '')
-          facts = applied.facts
-          memoryFactHistory = applied.history
-          factStateUpdates = { memoryFactParseFailureCount: 0, memoryFactRetryAfterVersion: 0 }
-        } else if (hasFactChangesSection && parsed.factChanges) {
-          const applied = applyMemoryFactChanges(
-            session.memoryFacts,
-            session.memoryFactHistory,
-            parsed.factChanges,
-            summaryWindow.processedThroughMessageId ?? '',
-          )
-          facts = applied.facts
-          memoryFactHistory = applied.history
-          factStateUpdates = { memoryFactParseFailureCount: 0, memoryFactRetryAfterVersion: 0 }
-        } else if (shouldAttemptFactProposal && !hasFactsSection) {
-          const failureCount = (session.memoryFactParseFailureCount ?? 0) + 1
-          const retryAfterVersion = failureCount >= 3 ? nextMemoryVersion + 2 ** (failureCount - 2) : nextMemoryVersion
-          factStateUpdates = { memoryFactParseFailureCount: failureCount, memoryFactRetryAfterVersion: retryAfterVersion }
-          log.warn('结构化事实提案解析失败，已保留旧事实', { sessionId, failureCount, retryAfterVersion })
-        }
-        responseFacts = facts
-        await chatData.updateSession(session.characterId, sessionId, {
-          memory: parsed.summary,
-          memoryCurrentState: hasCurrentStateSection ? parsed.currentState : (session.memoryCurrentState ?? ''),
-          memoryFacts: facts,
-          ...((shouldAttemptFactProposal && hasFactProposalsSection && parsed.factProposals) || (hasFactChangesSection && parsed.factChanges) ? { memoryFactHistory } : {}),
-          ...factStateUpdates,
-          factsVectors: [],
-          factsVectorVersion: 0,
-          memoryUpdatedAt: Date.now(),
-          memoryLastMessageId: summaryWindow.processedThroughMessageId,
-          memoryVersion: nextMemoryVersion,
-        })
-        notifySessionChanged(sessionId, 'message')
-      }
-      res.json({ ok: true, summary: parsed.summary, facts: responseFacts })
+      notifySessionChanged(sessionId, 'message')
+      res.json({ ok: true, summary: result.summary, facts: result.facts })
     } catch (e) {
       res.status(500).json({ error: sanitizeApiKey((e as Error).message) })
     }

@@ -6,12 +6,12 @@ import { GenerationPlanningSection } from '../GenerationPlanningSection'
 describe('GenerationPlanningSection', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('提供默认生成偏好并保持连续性保护不可关闭', () => {
+  it('保留生成保护设置，将默认回复长度交给快捷设置', () => {
     const updateSettings = vi.fn()
     render(<GenerationPlanningSection settings={getDefaultSettings()} updateSettings={updateSettings} />)
 
-    fireEvent.click(screen.getByRole('radio', { name: '展开' }))
-    expect(updateSettings).toHaveBeenCalledWith({ defaultResponseLength: 'detailed' })
+    expect(screen.queryByRole('radiogroup', { name: '默认回复长度' })).toBeNull()
+    expect(screen.getByText(/回复长度可在每个对话的快捷设置中随时调整/)).toBeTruthy()
     expect(screen.getByText('始终开启')).toBeTruthy()
     expect(screen.queryByRole('switch', { name: '连续性保护' })).toBeNull()
 

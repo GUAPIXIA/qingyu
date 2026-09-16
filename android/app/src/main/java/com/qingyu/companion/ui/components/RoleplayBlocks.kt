@@ -8,7 +8,7 @@ package com.qingyu.companion.ui.components
  *
  * 规则与 PC 一致：
  * - `<thought>...</thought>` 转 thought（可跨行）；
- * - 纯中文引号段转 dialogue（可带 1-8 字说话人前缀，叙述式前缀排除）；
+ * - 纯引号段（“”/「」/『』/"") 转 dialogue（可带 1-8 字说话人前缀，叙述式前缀排除）；
  * - 旧整段 `*动作*` 转 narration（剥离星号）；
  * - 同行混合内容转 mixed，按普通正文安全显示；
  * - 其余普通段落转 narration；同段相邻 narration 合并，空行分块；
@@ -32,29 +32,33 @@ object RoleplayBlocks {
     /** JS trim / s 视同空白的字符集（0x0B/0x0C 用 toChar 构造，规避字面控制字符） */
     private val JS_SPACE_CHARS: Set<Char> = setOf(
         '\t', '\n', 0x0B.toChar(), 0x0C.toChar(), '\r', ' ',
-        '\u00A0', '\u1680', '\u2028', '\u2029', '\u202F', '\u205F', '\u3000', '\uFEFF',
+        '\u00A0', '\u1680', '\u2000', '\u2001', '\u2002', '\u2003',
+        '\u2004', '\u2005', '\u2006', '\u2007', '\u2008', '\u2009',
+        '\u200A', '\u2028', '\u2029', '\u202F', '\u205F', '\u3000',
+        '\uFEFF',
     )
 
     /**
      * 说话人前缀 + 纯对白：冒号前 1-8 个非空白非标点字符（对齐 PC SPEAKER_QUOTE），
      * 再用 NARRATION_PREFIX 排除叙述式前缀（代词/助词/动作动词），避免
      * "她轻声说道：/苏晚推开门："被误当说话人。
+     * 右侧只需左引号起始（闭合由 isSingleOuterQuote 深度判定），对齐 PC 未闭合 incomplete。
      */
     internal val SPEAKER_QUOTE =
-        Regex("^([^“”「」『』：:$JS_SPACE，。！？、；,.!?;'\"()（）【】〔〕—…·\\-]{1,8})[：:][$JS_SPACE]*([“「][\\s\\S]*[”」])$")
+        Regex("^([^“”「」『』：:$JS_SPACE，。！？、；,.!?;'\"()（）【】〔〕—…·\\-]{1,8})[：:][$JS_SPACE]*([“「『\"][\\s\\S]*)$")
 
     /** 叙述式前缀特征字（与 PC NARRATION_PREFIX 同集合）：命中任一即视为叙述而非角色名 */
     internal val NARRATION_PREFIX =
         Regex("[她他它您我谁的了着是在推说道问答笑喊叫哼吼念讲走站坐打握摇抬皱眨顿望听看感摆挥耸抿咬飘]")
 
-    /** 整行纯对白 */
-    internal val PURE_QUOTE = Regex("^[“「][\\s\\S]*[”」]$")
+    /** 整行纯对白（宽松字符类；精确判定走 isPureDialogueLine） */
+    internal val PURE_QUOTE = Regex("^[“「『\"][\\s\\S]*[”」』\"]$")
 
     /** 整行动作段（旧样式星号包裹，等价 JS 带 s 标志的星号整行匹配） */
     private val ACTION_LINE = Regex("^\\*(.+)\\*$", setOf(RegexOption.DOT_MATCHES_ALL))
 
-    /** 行内是否含引号字符（判断混写） */
-    private val CONTAINS_QUOTE = Regex("[“”「」『』]")
+    /** 行内是否含引号字符（判断混写；不含 ASCII 单引号，避免英文撇号误伤） */
+    private val CONTAINS_QUOTE = Regex("[“”「」『』\"]")
 
     /** 思考块（可跨行，后随空白一并吞掉） */
     private val THOUGHT_BLOCK =
@@ -64,24 +68,102 @@ object RoleplayBlocks {
     private val BLANK_LINE = Regex("\\n[$JS_SPACE]*\\n")
 
     /**
-     * 展示层剥除对白外层引号（“…”/「…」/『…』成对时去掉；对齐 PC stripOuterQuotes）。
+     * 展示层剥除对白外层引号（四类成对时去掉；对齐 PC stripOuterQuotes）。
      * 只影响渲染：块 text 与消息正文保持原文，复制/搜索不受影响。
      */
     fun stripOuterQuotes(text: String): String {
         val t = trimLine(text)
-        return if (
-            (t.startsWith("“") && t.endsWith("”")) ||
-            (t.startsWith("「") && t.endsWith("」")) ||
-            (t.startsWith("『") && t.endsWith("』"))
-        ) {
-            t.substring(1, t.length - 1)
-        } else {
-            text
+        for ((open, close) in QUOTE_PAIRS) {
+            if (t.startsWith(open) && t.endsWith(close) && t.length >= 2) {
+                if (open == close && t.length == 1) return text
+                return t.substring(1, t.length - 1)
+            }
         }
+        return text
     }
 
-    private fun isJsSpace(c: Char): Boolean =
-        JS_SPACE_CHARS.contains(c) || (c >= '\u2000' && c <= '\u200A')
+    /** 与 PC QUOTE_PAIRS 对齐的四类引号 */
+    private val QUOTE_PAIRS: List<Pair<Char, Char>> = listOf(
+        '“' to '”',
+        '「' to '」',
+        '『' to '』',
+        '"' to '"',
+    )
+
+    /** 与首引号配对的 close 下标（嵌套按深度；open==close 按成对游走）；找不到返回 -1 */
+    internal fun findMatchingCloseIndex(text: String, open: Char, close: Char): Int {
+        if (open == close) {
+            var seen = 0
+            for (i in text.indices) {
+                if (text[i] == open) {
+                    seen += 1
+                    if (seen % 2 == 0) return i
+                }
+            }
+            return -1
+        }
+        var depth = 0
+        for (i in text.indices) {
+            val ch = text[i]
+            if (ch == open) {
+                depth += 1
+            } else if (ch == close) {
+                depth -= 1
+                if (depth == 0) return i
+            }
+        }
+        return -1
+    }
+
+    private fun isOpenQuote(c: Char): Boolean =
+        c == '“' || c == '「' || c == '『' || c == '"'
+
+    private fun pairedClose(open: Char): Char = when (open) {
+        '“' -> '”'
+        '「' -> '」'
+        '『' -> '』'
+        else -> open
+    }
+
+    /**
+     * 整行纯对白：与首引号深度配对的 close 落在末尾，或未闭合左引号起始行。
+     * 不能只看「以引号开头且以引号结尾」——“A”叙述“B” 会误判为对白块。
+     */
+    internal fun isPureDialogueLine(line: String): Boolean {
+        if (line.isEmpty() || !isOpenQuote(line[0])) return false
+        val close = pairedClose(line[0])
+        val matchEnd = findMatchingCloseIndex(line, line[0], close)
+        // 外层深度配对且收在末尾 → 纯对白（允许内部嵌套与冒号）
+        if (matchEnd >= 0 && matchEnd == line.length - 1) return true
+        // 闭合后仍有文字 → mixed
+        if (matchEnd >= 0) return false
+        // 未闭合：以左引号起即 incomplete 对白（冒号不影响，对齐 PC）
+        return true
+    }
+
+    /** 对白段（可含内部冒号）是否为单一外层引号闭合/未闭合。对齐 PC classifyOpenQuote */
+    internal fun isSingleOuterQuote(dialogue: String): Boolean {
+        if (dialogue.isEmpty() || !isOpenQuote(dialogue[0])) return false
+        val close = pairedClose(dialogue[0])
+        val matchEnd = findMatchingCloseIndex(dialogue, dialogue[0], close)
+        if (matchEnd < 0) return true // 未闭合
+        return matchEnd == dialogue.length - 1
+    }
+
+    /**
+     * 说话人 + 纯对白（对齐 PC matchSpeakerDialogue）：返回 null 表示非说话人对白结构。
+     * 供 Markdown 兼容路径与 classifyLine 共用，避免旧路径继续用松散 PURE_QUOTE。
+     */
+    fun matchSpeakerDialogue(line: String): Pair<String, String>? {
+        val m = SPEAKER_QUOTE.matchEntire(line) ?: return null
+        val speaker = trimLine(m.groupValues[1])
+        if (speaker.isEmpty() || NARRATION_PREFIX.containsMatchIn(speaker)) return null
+        val dialogue = m.groupValues[2]
+        if (!isSingleOuterQuote(dialogue)) return null
+        return speaker to dialogue
+    }
+
+    private fun isJsSpace(c: Char): Boolean = JS_SPACE_CHARS.contains(c)
 
     /** 按码点 trim（对齐 TS trimLine：JS 空白 + 全角空格） */
     private fun trimLine(line: String): String =
@@ -98,14 +180,12 @@ object RoleplayBlocks {
         }
 
         // 说话人 + 纯对白：苏晚：“我知道。”（单字角色名同样成立；叙述式前缀排除）
-        SPEAKER_QUOTE.matchEntire(line)?.let { m ->
-            if (!NARRATION_PREFIX.containsMatchIn(m.groupValues[1])) {
-                return RoleplayBlock.Dialogue(m.groupValues[2], speaker = trimLine(m.groupValues[1]))
-            }
+        matchSpeakerDialogue(line)?.let { (speaker, dialogue) ->
+            return RoleplayBlock.Dialogue(dialogue, speaker = speaker)
         }
 
-        // 整行纯对白
-        if (PURE_QUOTE.matchEntire(line) != null) return RoleplayBlock.Dialogue(line, null)
+        // 整行纯对白（深度配对，排除 “A”叙述“B” 混写）
+        if (isPureDialogueLine(line)) return RoleplayBlock.Dialogue(line, null)
 
         // 对白与叙述混写 转 mixed，保持原文
         if (CONTAINS_QUOTE.containsMatchIn(line)) return RoleplayBlock.Mixed(line)

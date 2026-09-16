@@ -607,11 +607,11 @@ export function ChatPage() {
             className="h-full"
             initialTopMostItemIndex={999999}
             followOutput={settings.autoScroll ? 'smooth' : false}
+            computeItemKey={(_, msg) => msg.id}
             itemContent={(index, msg) => {
               const replied = msg.replyToId ? (messageMap.get(msg.replyToId) ?? null) : null
               return (
                 <MessageBubble
-                  key={msg.id}
                   message={msg}
                   character={currentCharacter}
                   isLast={index === messages.length - 1}

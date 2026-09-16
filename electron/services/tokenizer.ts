@@ -9,6 +9,7 @@
  */
 
 import { createRequire } from 'node:module'
+import { resolve } from 'node:path'
 import { createLogger } from './logger'
 import type { Tiktoken } from 'tiktoken'
 
@@ -16,8 +17,12 @@ const log = createLogger('tokenizer')
 
 // 兼容两种构建环境：
 // - esbuild CJS 打包（Electron 主进程）：__filename 可用
-// - vitest ESM（单元测试）：使用 import.meta.url
-const _nodeRequire = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url)
+// - vitest ESM（单元测试）：以当前项目 package.json 为解析基准
+// 避免在 CJS 构建输入中直接引用 import.meta，防止 esbuild 产生无效分支警告。
+const requireBase = typeof __filename !== 'undefined'
+  ? __filename
+  : resolve(process.cwd(), 'package.json')
+const _nodeRequire = createRequire(requireBase)
 
 /** tiktoken 模块接口（动态加载，避免 esbuild 内联 wasm 相关代码） */
 interface TiktokenApi {

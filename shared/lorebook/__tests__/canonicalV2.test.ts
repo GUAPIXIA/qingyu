@@ -79,6 +79,28 @@ describe('canonical lorebook v2 migration', () => {
     expect(second).toEqual(first)
   })
 
+  it('旧数据中的 tokenBudget = 0 迁移为未设置', () => {
+    const legacy = fixture('minimal.json') as Record<string, unknown>
+    legacy.tokenBudget = 0
+
+    const document = migrate(legacy)
+
+    expect(document.defaults.tokenBudget).toBeUndefined()
+    expect(compileCanonicalLorebookV2(document).tokenBudget).toBeUndefined()
+  })
+
+  it('已落盘 canonical v2 中的 tokenBudget = 0 也兼容归一化', () => {
+    const oldCanonical = migrate(fixture('minimal.json'))
+    oldCanonical.defaults.tokenBudget = 0
+
+    const normalized = migrateLorebookDocumentToLatest(oldCanonical, {
+      now: 1_800_000_000_000,
+      contentHash: 'old-zero-budget',
+    })
+
+    expect(normalized.defaults.tokenBudget).toBeUndefined()
+  })
+
   it('keywordProvenance 经 legacy → canonical → 兼容视图往返保留（阶段4 enrichment）', () => {
     const legacy = fixture('minimal.json') as {
       entries: Array<{ id: string }>

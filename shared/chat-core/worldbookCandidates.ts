@@ -15,7 +15,6 @@ import {
   type ContextCandidate,
 } from './contextCandidates'
 import type { LorebookScoredEntrySnapshot } from './lorebook'
-import { estimateTokens } from './tokenCounter'
 
 /** always 条目的重要度（候选层升到"相关上下文"顺位） */
 export const WORLDBOOK_ALWAYS_IMPORTANCE = 0.9

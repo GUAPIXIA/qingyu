@@ -262,6 +262,8 @@ export interface ChatAPI {
   updateSession(characterId: string, sessionId: string, updates: Record<string, unknown>): Promise<ChatSession>
   /** 在 sessions 文件锁内比较并更新记忆版本，过期写入不会落盘。 */
   updateSessionIfMemoryVersion(characterId: string, sessionId: string, expectedVersion: number, updates: Record<string, unknown>): Promise<MemoryVersionUpdateResult>
+  /** 主进程统一执行长记忆总结；automatic=true 时同时检查自动模式与消息间隔。 */
+  summarizeMemory(characterId: string, sessionId: string, automatic?: boolean): Promise<import('./chat-core/memorySummary').MemorySummaryResult>
   listMessages(characterId: string, sessionId?: string): Promise<Message[]>
   saveMessage(message: Message): Promise<void>
   deleteMessage(id: string, characterId: string, sessionId?: string): Promise<void>

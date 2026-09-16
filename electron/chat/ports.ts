@@ -112,6 +112,13 @@ export interface ModelPort {
   stream(request: ModelRequest, callbacks: ModelCallbacks, signal: AbortSignal): Promise<ModelResult>
 }
 
+/**
+ * 回复落盘后的后台记忆调度端口。实现必须自行吞掉异步失败，不能阻塞或反转主对话任务终态。
+ */
+export interface MemorySchedulerPort {
+  schedule(input: { sessionId: string; characterId: string }): void
+}
+
 export interface ProposedToolCall {
   name: string
   args: Record<string, unknown>

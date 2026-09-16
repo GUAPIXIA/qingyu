@@ -12,15 +12,11 @@ describe('BehaviorSection', () => {
 
     expect(screen.getByText('对话体验')).toBeTruthy()
     expect(screen.getByText('角色表达')).toBeTruthy()
-    expect(screen.getByText('生成兼容')).toBeTruthy()
     expect(screen.getByText('封面效果')).toBeTruthy()
+    expect(screen.queryByText('检测到旧版生成设置')).toBeNull()
 
     fireEvent.click(screen.getByRole('switch', { name: '流式输出' }))
     expect(updateSettings).toHaveBeenCalledWith({ streamOutput: false })
-
-    // W11：不再提供旧版管线 radio；默认展示新版说明
-    expect(screen.queryByRole('radio', { name: '旧版管线' })).toBeNull()
-    expect(screen.getByText(/已使用新版管线/)).toBeTruthy()
 
     fireEvent.change(screen.getByRole('combobox', { name: '翻译目标语言' }), { target: { value: 'English' } })
     expect(updateSettings).toHaveBeenCalledWith({ translationTargetLang: 'English' })
@@ -29,11 +25,12 @@ describe('BehaviorSection', () => {
     expect(updateSettings).toHaveBeenCalledWith({ coverBlurStrength: 16 })
   })
 
-  it('旧版数据提示可切回新版', () => {
+  it('仅对旧版数据显示一次性恢复入口', () => {
     const updateSettings = vi.fn()
-    const settings = { ...getDefaultSettings(), generationPipeline: 'legacy' as const }
-    render(<BehaviorSection settings={settings} updateSettings={updateSettings} />)
-    fireEvent.click(screen.getByRole('button', { name: '切回新版管线' }))
+    render(<BehaviorSection settings={{ ...getDefaultSettings(), generationPipeline: 'legacy' }} updateSettings={updateSettings} />)
+
+    expect(screen.getByText('检测到旧版生成设置')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '切回新版' }))
     expect(updateSettings).toHaveBeenCalledWith({ generationPipeline: 'unified' })
   })
 })

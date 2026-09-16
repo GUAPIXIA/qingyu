@@ -259,6 +259,12 @@ export const imagineCommand: CommandDef = {
   execute: async (args, ctx) => {
     const { mode, selfMode, prompt } = parseOptions(args)
     const activeImageGen = ctx.getActiveImageGen()
+    // 生图模型不可用时应在辅助模型生成提示词之前失败，
+    // 否则无参数调用会把配置错误误报成“提示词生成失败”。
+    if (!activeImageGen) {
+      ctx.notify('尚未配置或启用生图模型，请前往「设置 → API → 生图」完成配置')
+      return
+    }
     const jobId = ctx.beginImageGeneration(prompt ? 'generating' : 'prompting')
     if (!jobId) {
       ctx.notify('当前会话已有生图任务正在进行')

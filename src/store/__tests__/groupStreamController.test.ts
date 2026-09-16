@@ -460,7 +460,7 @@ describe('群聊超时统一收尾（S2）', () => {
       const group = makeGroup({ chatMode: 'mention' })
       const { get, set, read } = makeGroupGet(group, 's1')
       // 其他角色已完成的历史回合：恢复过程不得触碰
-      set((s: any) => ({
+      set((_s: any) => ({
         messages: [{
           id: 'other-1', groupId: group.id, characterId: 'c2', content: '千夏已经说过的话。',
           images: [], timestamp: 1, round: 1, speakerKind: 'character',

@@ -50,7 +50,7 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
     // 2.5/3 的动态思考会无约束挤占 maxOutputTokens（§2.4）。
     // off/low 下发最低档；standard/full 不下发（端点默认，不额外干预）。
     const gate = params.reasoningGate
-    let gateSignal: GateProbeSignal | undefined = gate ? { knob: gate.knob } : undefined
+    const gateSignal: GateProbeSignal | undefined = gate ? { knob: gate.knob } : undefined
     const gateProbes: GateFieldProbe[] = []
     if (gate && gate.knob === 'gemini-thinking-config' && (gate.level === 'off' || gate.level === 'low')) {
       const lowerModel = model.toLowerCase()

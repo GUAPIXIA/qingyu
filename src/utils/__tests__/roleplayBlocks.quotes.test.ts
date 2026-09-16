@@ -59,6 +59,45 @@ describe('四类引号一致识别', () => {
     expect((blocks[0] as { text: string }).text).toBe('“他说：“好。””')
   })
 
+  it('“对白”叙述“对白”整行以引号收尾也不算纯对白', () => {
+    const line = '“手机在我枕头那边啦，你自己去拿，我才不要碰。”我小声嘟囔，又补了一句，“上次那是意外。”'
+    expect(firstKind(line)).toBe('mixed')
+    const blocks = buildRoleplayBlocks(line)
+    expect(blocks[0]).toMatchObject({ kind: 'mixed' })
+    // 行内两段引号应分别标出，中间叙述保持原文
+    expect(splitQuoteSegments(line)).toEqual([
+      { text: '“手机在我枕头那边啦，你自己去拿，我才不要碰。”', quoted: true },
+      { text: '我小声嘟囔，又补了一句，', quoted: false },
+      { text: '“上次那是意外。”', quoted: true },
+    ])
+  })
+
+  it('说话人 + “对白”叙述“对白”也走 mixed', () => {
+    expect(firstKind('苏晚：“走吧。”她顿了顿，“还是算了。”')).toBe('mixed')
+  })
+
+  it('未闭合匿名引号行含冒号仍保持 incomplete dialogue（不跳 mixed）', () => {
+    const partial = '“她说：你先走'
+    expect(firstKind(partial, 'streaming')).toBe('dialogue')
+    expect(firstKind(partial, 'final')).toBe('dialogue')
+    const blocks = parseRoleplayBlocks(partial, { phase: 'streaming' })
+    expect(blocks[0]).toMatchObject({ kind: 'dialogue', complete: false })
+  })
+
+  it('ASCII 单引号不再触发对白/混写（避免英文撇号误伤）', () => {
+    expect(firstKind("'hello'")).toBe('narration')
+    expect(firstKind("it's fine")).toBe('narration')
+  })
+
+  it('splitQuoteSegments 嵌套同类引号按深度配对', () => {
+    const text = '旁白“他说：“好。””尾'
+    expect(splitQuoteSegments(text)).toEqual([
+      { text: '旁白', quoted: false },
+      { text: '“他说：“好。””', quoted: true },
+      { text: '尾', quoted: false },
+    ])
+  })
+
   it('多段对白分别成块', () => {
     const blocks = buildRoleplayBlocks('“第一句。”\n苏晚：“第二句。”')
     expect(blocks.map((b) => b.kind)).toEqual(['dialogue', 'dialogue'])

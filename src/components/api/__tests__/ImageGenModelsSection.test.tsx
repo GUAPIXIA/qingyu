@@ -234,4 +234,33 @@ describe('ImageGenModelsSection', () => {
     const save = screen.getByRole('button', { name: /保存/ })
     expect(save.hasAttribute('disabled')).toBe(true)
   })
+
+  it('扫描到唯一的 ComfyUI 工作流时自动读取，无需切换下拉项', async () => {
+    const api = window.api.imageGen as unknown as Record<string, ReturnType<typeof vi.fn>>
+    api.listLocalComfyWorkflows.mockResolvedValue({
+      success: true,
+      workflows: [{
+        name: 'image_z_image_turbo',
+        path: 'C:\\ComfyUI\\workflows\\image_z_image_turbo.json',
+        installation: 'ComfyUI Desktop',
+      }],
+    })
+    api.importLocalComfyWorkflow.mockResolvedValue(mockImportResult())
+    api.analyzeComfyWorkflow.mockResolvedValue({ success: true, analysis })
+
+    render(<ImageGenModelsSection />)
+    fireEvent.click(screen.getByRole('button', { name: '添加生图模型' }))
+    fireEvent.click(screen.getByRole('button', { name: 'ComfyUI' }))
+
+    await waitFor(() => {
+      expect(api.importLocalComfyWorkflow).toHaveBeenCalledWith(
+        'C:\\ComfyUI\\workflows\\image_z_image_turbo.json',
+      )
+    })
+
+    fireEvent.change(screen.getByPlaceholderText(/配置名称/), { target: { value: '本地 Z-Image' } })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /保存/ })).not.toBeDisabled()
+    })
+  })
 })

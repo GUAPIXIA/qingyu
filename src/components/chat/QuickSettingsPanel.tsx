@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { X, Sliders, BookOpen, Cpu, Thermometer, Hash, Sparkles, Search, ChevronDown, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle, MessageSquare, ArrowDownToLine, Eye, Image as ImageIcon, Images, Download, Trash2, Users } from 'lucide-react'
-import type { Preset, Lorebook, GroupChat } from '../../../shared/types'
+import { X, Sliders, BookOpen, Cpu, Gauge, Hash, Sparkles, Search, ChevronDown, Lock, RefreshCw, Info, Plug, Loader2, CheckCircle2, XCircle, MessageSquare, ArrowDownToLine, Eye, Image as ImageIcon, Images, Download, Trash2, Users } from 'lucide-react'
+import type { Preset, Lorebook, GroupChat, ResponseLengthMode } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { lorebookCache, getEffectiveLorebookIds } from '../../utils/lorebook'
 import { cn } from '../../lib/utils'
 import { logError } from '../../lib/logger'
-import { resolveResponsePolicy } from '../../../shared/responsePolicy'
+import { RESPONSE_LENGTH_LABELS, resolveResponsePolicy } from '../../../shared/responsePolicy'
 import {
   enabledProfileOverride,
   formatRequestBudgetRisk,
@@ -248,22 +248,6 @@ export function QuickSettingsPanel({
     action()
   }
 
-  /** 保存参数修改；内置预设会由后端创建副本，并立即切换到新副本。 */
-  const persistPresetUpdate = async (updated: Preset) => {
-    try {
-      const saved = await window.api.preset.save(updated)
-      setPresets((prev) => {
-        const exists = prev.some((preset) => preset.id === saved.id)
-        return exists
-          ? prev.map((preset) => preset.id === saved.id ? saved : preset)
-          : [...prev, saved]
-      })
-      if (saved.id !== updated.id) changeActivePreset(saved.id)
-    } catch (error) {
-      logError('QuickSettings:savePreset', error)
-    }
-  }
-
   return (
     <>
       {/* 遮罩 */}
@@ -286,144 +270,6 @@ export function QuickSettingsPanel({
         </div>
 
         <div className="p-4 space-y-5">
-
-          {/* ===== 对话操作 ===== */}
-          <Section icon={MessageSquare} title="对话操作">
-            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-2.5">
-              <div className="flex items-center gap-2 pb-2 border-b border-tavern-border-soft">
-                <span className={cn(QUICK_BUTTON_ICON_BADGE_CLASS, 'border-tavern-accent/15 bg-tavern-accent-soft text-tavern-accent')}>
-                  <ArrowDownToLine className={QUICK_BUTTON_ICON_CLASS} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-tavern-text-soft">自动滚动</p>
-                  <p className="text-[10px] text-tavern-text-muted">生成时跟随最新消息</p>
-                </div>
-                <ToggleSwitch
-                  label="自动滚动"
-                  checked={settings.autoScroll}
-                  onChange={(value) => updateSettings({ autoScroll: value })}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-1.5">
-                <ActionButton icon={Eye} label="查看上下文" onClick={() => openConversationTool(onShowContextViewer)} />
-                <ActionButton icon={isGroup ? Users : ImageIcon} label={isGroup ? '群聊管理' : '聊天背景'} onClick={() => openConversationTool(onShowBgPanel)} />
-                <ActionButton icon={Download} label="导出对话" onClick={() => openConversationTool(onExport)} />
-                <ActionButton danger icon={Trash2} label="清空对话" onClick={() => openConversationTool(onClearConfirm)} />
-              </div>
-
-              <div className="pt-2 border-t border-tavern-border-soft">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-tavern-text-soft">
-                    <Images className="w-3.5 h-3.5 text-tavern-text-muted" />
-                    生图历史
-                  </span>
-                  {generatedImages.length > 0 && (
-                    <span className="text-[10px] tabular-nums text-tavern-text-muted">最近 {generatedImages.length} 张</span>
-                  )}
-                </div>
-                {generatedImages.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-tavern-border-soft px-3 py-4 text-center text-[11px] text-tavern-text-muted">
-                    暂无生图记录
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {generatedImages.map((image, index) => (
-                      <button
-                        key={`${image.slice(0, 32)}-${index}`}
-                        type="button"
-                        aria-label={`复制生图数据 ${index + 1}`}
-                        title="复制图片数据（base64）"
-                        onClick={() => navigator.clipboard.writeText(image).catch(() => useChatStore.setState({ error: '复制图片数据失败：无法访问剪贴板' }))}
-                        className="aspect-square rounded-lg overflow-hidden bg-tavern-bg-hover border border-transparent hover:border-tavern-accent hover:shadow-sm transition-all"
-                      >
-                        <img src={image} className="w-full h-full object-cover" alt="" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </Section>
-
-          {/* ===== 对话交互 ===== */}
-          <Section icon={Sparkles} title="对话交互">
-            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-tavern-text-soft">下一步方向</p>
-                  <p className="mt-0.5 text-[10px] leading-relaxed text-tavern-text-muted">
-                    AI 回复后生成 3 个可选方向
-                  </p>
-                </div>
-                <ToggleSwitch
-                  label="下一步方向"
-                  checked={!!dialogueDirectionsEnabled}
-                  onChange={(value) => void onSetDialogueDirections?.(value)}
-                />
-              </div>
-            </div>
-          </Section>
-
-          {group && onSaveGroup && (
-            <Section icon={Users} title="接力设置">
-              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-3">
-                <p className="text-[10px] leading-relaxed text-tavern-text-muted">
-                  回复规则在输入区切换；这里仅配置“按顺序”模式的连续接力。
-                </p>
-                {group.chatMode === 'polling' ? (
-                  <>
-                  <div className="flex items-center justify-between border-t border-tavern-border-soft pt-2">
-                    <span className="min-w-0">
-                      <span className="block text-xs text-tavern-text-soft">自动接力</span>
-                      <span className="block text-[10px] text-tavern-text-muted">角色回复后自动轮到下一位</span>
-                    </span>
-                    <ToggleSwitch
-                      label="群聊自动接力"
-                      checked={group.autoMode}
-                      onChange={(autoMode) => void onSaveGroup({ ...group, autoMode })}
-                    />
-                  </div>
-                  {group.autoMode && (
-                    <div className="grid grid-cols-2 gap-2 border-t border-tavern-border-soft pt-2">
-                      <label className="space-y-1 text-[10px] text-tavern-text-muted">
-                        <span>最大轮数</span>
-                        <input
-                          aria-label="连续接力最大轮数"
-                          type="number"
-                          min={1}
-                          max={20}
-                          value={group.maxRounds}
-                          onChange={(event) => void onSaveGroup({ ...group, maxRounds: Math.max(1, Math.min(20, Number(event.target.value) || 1)) })}
-                          className="w-full rounded-lg border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
-                        />
-                      </label>
-                      <label className="space-y-1 text-[10px] text-tavern-text-muted">
-                        <span>回复间隔</span>
-                        <select
-                          aria-label="连续接力回复间隔"
-                          value={group.speakerInterval}
-                          onChange={(event) => void onSaveGroup({ ...group, speakerInterval: Number(event.target.value) })}
-                          className="w-full rounded-lg border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
-                        >
-                          <option value={500}>0.5 秒</option>
-                          <option value={1000}>1 秒</option>
-                          <option value={2000}>2 秒</option>
-                          <option value={3000}>3 秒</option>
-                          <option value={5000}>5 秒</option>
-                        </select>
-                      </label>
-                    </div>
-                  )}
-                  </>
-                ) : (
-                  <p className="border-t border-tavern-border-soft pt-2 text-[10px] text-tavern-text-muted">
-                    当前回复规则不使用连续接力。
-                  </p>
-                )}
-              </div>
-            </Section>
-          )}
 
           {/* ===== 模型 ===== */}
           <Section icon={Cpu} title="模型">
@@ -527,9 +373,6 @@ export function QuickSettingsPanel({
                 </QuickIconButton>
               </div>
             )}
-            {profile?.baseUrl && (
-              <p className="text-xs text-tavern-text-muted mt-1.5 truncate">{profile.baseUrl}</p>
-            )}
             {testResult && (
               <p className={cn('text-xs mt-1.5 flex items-start gap-1', testResult.success ? 'text-tavern-success' : 'text-tavern-danger')}>
                 {testResult.success ? <CheckCircle2 className="w-3 h-3 shrink-0 mt-px" /> : <XCircle className="w-3 h-3 shrink-0 mt-px" />}
@@ -555,104 +398,26 @@ export function QuickSettingsPanel({
               <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs text-tavern-text-muted">
                 <ParamChip label="温度" value={activePreset.temperature} />
                 <ParamChip label="Top P" value={activePreset.topP} />
-                <ParamChip label="最大Token" value={activePreset.maxTokens === 0 ? '自动' : activePreset.maxTokens} />
+                <ParamChip
+                  label="预设篇幅"
+                  value={activePreset.responseLengthHint && activePreset.responseLengthHint !== 'auto'
+                    ? RESPONSE_LENGTH_LABELS[activePreset.responseLengthHint]
+                    : '跟随默认'}
+                />
               </div>
             )}
           </Section>
 
-          {/* ===== 采样参数 ===== */}
-          <Section icon={Thermometer} title="采样参数">
-            <div className="space-y-3">
-              <SliderRow
-                label="温度"
-                value={activePreset?.temperature ?? 0.8}
-                min={0} max={2} step={0.1}
-                disabled
-                hint={
-                  <>
-                    <p>控制输出的<strong className="text-tavern-text-soft">随机性 / 创造性</strong>：</p>
-                    <ul className="mt-1 list-disc pl-3 space-y-0.5">
-                      <li>低（0.2~0.5）：稳定、严谨、可预测，适合事实性回复</li>
-                      <li>高（1.0+）：发散、有创意、更“活”，但可能偏离设定</li>
-                      <li>角色扮演常用 0.7~1.0</li>
-                    </ul>
-                  </>
-                }
-              />
-              <SliderRow
-                label="Top P"
-                value={activePreset?.topP ?? 0.95}
-                min={0} max={1} step={0.05}
-                disabled
-                hint={
-                  <>
-                    <p><strong className="text-tavern-text-soft">核采样</strong>：只从累计概率达到 P 的高概率 token 中采样。</p>
-                    <p className="mt-1.5">与温度配合使用，一般保持 0.9~1.0。微调时与温度二选一即可，不必同时反复调。</p>
-                  </>
-                }
-              />
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-3">
-                  <label className="text-xs text-tavern-text-muted shrink-0">最大Token</label>
-                  <div className="flex items-center gap-1.5">
-                    {[0, 1024, 2048, 4096].map((n) => (
-                      <button
-                        key={n}
-                        disabled={!activePreset}
-                        onClick={async () => {
-                          if (!activePreset) return
-                          const updated = { ...activePreset, maxTokens: n }
-                          await persistPresetUpdate(updated)
-                        }}
-                        className={cn(
-                          'px-2 py-0.5 rounded text-xs border transition-colors',
-                          !activePreset && 'opacity-50 cursor-not-allowed',
-                          (activePreset?.maxTokens ?? 0) === n
-                            ? 'border-tavern-accent/40 bg-tavern-accent-soft text-tavern-accent'
-                            : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text'
-                        )}
-                      >
-                        {n === 0 ? '自动' : `${n / 1024}k`}
-                      </button>
-                    ))}
-                    <input
-                      type="number"
-                      min={0}
-                      disabled={!activePreset}
-                      value={activePreset?.maxTokens ?? 0}
-                      onChange={async (e) => {
-                        if (!activePreset) return
-                        const val = Math.max(0, Number(e.target.value) || 0)
-                        const updated = { ...activePreset, maxTokens: val }
-                        setPresets(prev => prev.map(p => p.id === updated.id ? updated : p))
-                      }}
-                      onBlur={async (e) => {
-                        if (!activePreset) return
-                        const val = Math.max(0, Number(e.target.value) || 0)
-                        const updated = { ...activePreset, maxTokens: val }
-                        await persistPresetUpdate(updated)
-                      }}
-                      className="w-16 px-1.5 py-0.5 rounded text-xs border border-tavern-border-soft bg-tavern-bg text-tavern-text text-center focus:outline-none focus:border-tavern-accent/40 disabled:opacity-50"
-                      title="自定义 Token 数"
-                    />
-                  </div>
-                </div>
-                {outputBudgetPreview.riskMessage && (
-                  <p className="text-xs text-amber-500">{outputBudgetPreview.riskMessage}</p>
-                )}
-                {settings.costReminderEnabled !== false
-                  && !outputBudgetPreview.riskMessage
-                  && outputBudgetPreview.requestMaxTokens >= 4096 && (
-                    <p className="text-xs text-tavern-text-muted">
-                      本轮最多可申请 {outputBudgetPreview.requestMaxTokens.toLocaleString()} Token；费用仍按服务商实际用量计算。
-                    </p>
-                  )}
-              </div>
-            </div>
-          </Section>
-
           {/* ===== 世界书 ===== */}
-          <Section icon={BookOpen} title="世界书">
+          <Section
+            icon={BookOpen}
+            title="世界书"
+            hint={
+              <p>
+                常驻设定优先保留，其余内容按相关性自动分配上下文空间。
+              </p>
+            }
+          >
             {lorebooks.length === 0 ? (
               <p className="text-xs text-tavern-text-muted py-1">暂无世界书</p>
             ) : (
@@ -794,8 +559,190 @@ export function QuickSettingsPanel({
                 )}
               </>
             )}
-            <div className="mt-3 rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/40 px-2.5 py-2 text-[11px] leading-relaxed text-tavern-text-muted">
-              世界书已改为动态分配：常驻设定优先保留，其余条目按相关性与剩余空间选择，不再使用固定百分比。
+          </Section>
+
+          {/* ===== 对话交互 ===== */}
+          <Section
+            icon={Sparkles}
+            title="对话交互"
+            hint={
+              <p>
+                AI 回复后生成 3 个可选方向；点选只回填输入框，不自动发送。
+              </p>
+            }
+          >
+            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-tavern-text-soft">下一步方向</p>
+                </div>
+                <ToggleSwitch
+                  label="下一步方向"
+                  checked={!!dialogueDirectionsEnabled}
+                  onChange={(value) => void onSetDialogueDirections?.(value)}
+                />
+              </div>
+            </div>
+          </Section>
+
+          {group && onSaveGroup && (
+            <Section icon={Users} title="接力设置">
+              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-3">
+                <p className="text-[10px] leading-relaxed text-tavern-text-muted">
+                  回复规则在输入区切换；这里仅配置“按顺序”模式的连续接力。
+                </p>
+                {group.chatMode === 'polling' ? (
+                  <>
+                  <div className="flex items-center justify-between border-t border-tavern-border-soft pt-2">
+                    <span className="min-w-0">
+                      <span className="block text-xs text-tavern-text-soft">自动接力</span>
+                      <span className="block text-[10px] text-tavern-text-muted">角色回复后自动轮到下一位</span>
+                    </span>
+                    <ToggleSwitch
+                      label="群聊自动接力"
+                      checked={group.autoMode}
+                      onChange={(autoMode) => void onSaveGroup({ ...group, autoMode })}
+                    />
+                  </div>
+                  {group.autoMode && (
+                    <div className="grid grid-cols-2 gap-2 border-t border-tavern-border-soft pt-2">
+                      <label className="space-y-1 text-[10px] text-tavern-text-muted">
+                        <span>最大轮数</span>
+                        <input
+                          aria-label="连续接力最大轮数"
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={group.maxRounds}
+                          onChange={(event) => void onSaveGroup({ ...group, maxRounds: Math.max(1, Math.min(20, Number(event.target.value) || 1)) })}
+                          className="w-full rounded-lg border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
+                        />
+                      </label>
+                      <label className="space-y-1 text-[10px] text-tavern-text-muted">
+                        <span>回复间隔</span>
+                        <select
+                          aria-label="连续接力回复间隔"
+                          value={group.speakerInterval}
+                          onChange={(event) => void onSaveGroup({ ...group, speakerInterval: Number(event.target.value) })}
+                          className="w-full rounded-lg border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
+                        >
+                          <option value={500}>0.5 秒</option>
+                          <option value={1000}>1 秒</option>
+                          <option value={2000}>2 秒</option>
+                          <option value={3000}>3 秒</option>
+                          <option value={5000}>5 秒</option>
+                        </select>
+                      </label>
+                    </div>
+                  )}
+                  </>
+                ) : (
+                  <p className="border-t border-tavern-border-soft pt-2 text-[10px] text-tavern-text-muted">
+                    当前回复规则不使用连续接力。
+                  </p>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* ===== 回复长度 ===== */}
+          <Section
+            icon={Gauge}
+            title="回复长度"
+            hint={
+              outputBudgetPreview.riskMessage ? (
+                <p>
+                  {outputBudgetPreview.riskMessage} 请前往“预设”的高级参数调整硬上限。
+                </p>
+              ) : settings.costReminderEnabled !== false && outputBudgetPreview.requestMaxTokens >= 4096 ? (
+                <p>
+                  本轮最多可申请 {outputBudgetPreview.requestMaxTokens.toLocaleString()} Token；费用仍按服务商实际用量计算。
+                </p>
+              ) : (
+                <p>
+                  回复篇幅与模型输出硬上限解耦：此处只选篇幅偏好，硬上限在“预设”高级参数中设置。
+                </p>
+              )
+            }
+          >
+            <div className="grid grid-cols-4 gap-1 rounded-xl bg-tavern-bg-soft p-1" role="radiogroup" aria-label="默认回复长度">
+              {(['auto', 'brief', 'balanced', 'detailed'] as ResponseLengthMode[]).map((value) => {
+                const selected = (settings.defaultResponseLength ?? 'auto') === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => updateSettings({ defaultResponseLength: value })}
+                    className={cn(
+                      'rounded-lg px-1.5 py-2 text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/45',
+                      selected ? 'bg-tavern-bg-card text-tavern-accent shadow-sm' : 'text-tavern-text-muted hover:text-tavern-text',
+                    )}
+                  >
+                    {RESPONSE_LENGTH_LABELS[value]}
+                  </button>
+                )
+              })}
+            </div>
+          </Section>
+
+          {/* ===== 对话操作 ===== */}
+          <Section icon={MessageSquare} title="对话操作">
+            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-2.5">
+              <div className="flex items-center gap-2 pb-2 border-b border-tavern-border-soft">
+                <span className={cn(QUICK_BUTTON_ICON_BADGE_CLASS, 'border-tavern-accent/15 bg-tavern-accent-soft text-tavern-accent')}>
+                  <ArrowDownToLine className={QUICK_BUTTON_ICON_CLASS} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-tavern-text-soft">自动滚动</p>
+                  <p className="text-[10px] text-tavern-text-muted">生成时跟随最新消息</p>
+                </div>
+                <ToggleSwitch
+                  label="自动滚动"
+                  checked={settings.autoScroll}
+                  onChange={(value) => updateSettings({ autoScroll: value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <ActionButton icon={Eye} label="查看上下文" onClick={() => openConversationTool(onShowContextViewer)} />
+                <ActionButton icon={isGroup ? Users : ImageIcon} label={isGroup ? '群聊管理' : '聊天背景'} onClick={() => openConversationTool(onShowBgPanel)} />
+                <ActionButton icon={Download} label="导出对话" onClick={() => openConversationTool(onExport)} />
+                <ActionButton danger icon={Trash2} label="清空对话" onClick={() => openConversationTool(onClearConfirm)} />
+              </div>
+
+              <div className="pt-2 border-t border-tavern-border-soft">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-tavern-text-soft">
+                    <Images className="w-3.5 h-3.5 text-tavern-text-muted" />
+                    生图历史
+                  </span>
+                  {generatedImages.length > 0 && (
+                    <span className="text-[10px] tabular-nums text-tavern-text-muted">最近 {generatedImages.length} 张</span>
+                  )}
+                </div>
+                {generatedImages.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-tavern-border-soft px-3 py-4 text-center text-[11px] text-tavern-text-muted">
+                    暂无生图记录
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {generatedImages.map((image, index) => (
+                      <button
+                        key={`${image.slice(0, 32)}-${index}`}
+                        type="button"
+                        aria-label={`复制生图数据 ${index + 1}`}
+                        title="复制图片数据（base64）"
+                        onClick={() => navigator.clipboard.writeText(image).catch(() => useChatStore.setState({ error: '复制图片数据失败：无法访问剪贴板' }))}
+                        className="aspect-square rounded-lg overflow-hidden bg-tavern-bg-hover border border-transparent hover:border-tavern-accent hover:shadow-sm transition-all"
+                      >
+                        <img src={image} className="w-full h-full object-cover" alt="" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </Section>
 
@@ -948,12 +895,22 @@ function ToggleSwitch({ label, checked, onChange }: { label: string; checked: bo
   )
 }
 
-function Section({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
+function Section({ icon: Icon, title, hint, children }: {
+  icon: React.ElementType
+  title: string
+  hint?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-2">
         <Icon className="w-3.5 h-3.5 text-tavern-text-muted" />
         <span className="text-xs font-semibold text-tavern-text-soft uppercase tracking-wide">{title}</span>
+        {hint != null && (
+          <span className="ml-auto">
+            <HintIcon align="right" hint={hint} />
+          </span>
+        )}
       </div>
       {children}
     </div>
@@ -965,34 +922,6 @@ function ParamChip({ label, value }: { label: string; value: number | string | u
     <div className="px-2 py-1 rounded-md bg-tavern-bg-soft border border-tavern-border-soft text-center">
       <div className="text-[11px] uppercase tracking-wide opacity-60">{label}</div>
       <div className="font-mono font-medium text-xs">{value ?? '-'}</div>
-    </div>
-  )
-}
-
-function SliderRow({ label, value, min, max, step, disabled, hint }: {
-  label: string; value: number; min: number; max: number; step: number; disabled?: boolean; hint?: React.ReactNode
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <label className="flex items-center gap-0.5 text-xs text-tavern-text-muted">
-          <span>{label}</span>
-          {hint && <HintIcon hint={hint} />}
-        </label>
-        <span className="text-xs font-mono text-tavern-text-soft tabular-nums">{value}</span>
-      </div>
-      <input
-        type="range"
-        min={min} max={max} step={step}
-        value={value}
-        readOnly={disabled}
-        className={cn(
-          'w-full h-1.5 rounded-full appearance-none cursor-pointer',
-          'bg-tavern-bg-hover',
-          '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-tavern-accent [&::-webkit-slider-thumb]:shadow-sm',
-          disabled && 'opacity-60 cursor-not-allowed [&::-webkit-slider-thumb]:cursor-not-allowed'
-        )}
-      />
     </div>
   )
 }

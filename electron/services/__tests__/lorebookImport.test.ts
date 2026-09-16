@@ -3,6 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { normalizeImportedLorebook } from '../lorebookImport'
 
 describe('normalizeImportedLorebook', () => {
+  it('将 tokenBudget = 0 归一化为未设置', () => {
+    const result = normalizeImportedLorebook({
+      name: '零预算世界书',
+      token_budget: 0,
+      entries: [],
+    }, { id: 'zero-budget', fallbackName: '回退名称', sourceKind: 'sillytavern' })
+
+    expect(result.tokenBudget).toBeUndefined()
+  })
+
   it('归一化 SillyTavern 世界书对象与现代数字位置', () => {
     const result = normalizeImportedLorebook({
       name: 'ST 世界书',

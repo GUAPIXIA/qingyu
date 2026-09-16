@@ -217,7 +217,7 @@ describe('executeLorebookRuntime', () => {
   it('区分书级预算与全局优先级预算丢弃', () => {
     const bookLimited = makeLorebook('limited', [
       { id: 'book-drop', keywords: ['命中'], content: '书级预算不足内容' },
-    ], { tokenBudget: 0 })
+    ], { tokenBudget: 1 })
     const globallyLimited = makeLorebook('global', [
       { id: 'global-drop', keywords: ['命中'], content: '全局预算不足内容' },
     ])
@@ -1271,7 +1271,7 @@ describe('书级 tokenBudget 裁剪', () => {
     const free = makeLorebook('lbFree', [
       { keywords: ['触发'], content: '乙内容', order: 2 },
     ])
-    // tokenBudget = 0 的硬上限 + ignoreBudget 条目：不占书级额度，仍正常注入
+    // tokenBudget = 0 是旧数据中的“未设置”值；ignoreBudget 条目仍正常注入
     const ignore = makeLorebook('lbIgnore', [
       { keywords: ['触发'], content: '丙'.repeat(300), order: 3, ignoreBudget: true },
     ], { tokenBudget: 0 })
@@ -1280,6 +1280,20 @@ describe('书级 tokenBudget 裁剪', () => {
       ...baseOpts, lorebooks: [capped, free, ignore], scanText: '触发', budget: 10000,
     })
     expect(result.beforeChar).toEqual(['甲内容', '乙内容', '丙'.repeat(300)])
+    expect(result.bookBudgetDropped).toBeUndefined()
+    expect(result.droppedCount).toBe(0)
+  })
+
+  it('tokenBudget = 0 按未设置处理，不静默丢弃已触发条目', () => {
+    const lb = makeLorebook('lbZero', [
+      { keywords: ['触发'], content: '零预算不应禁用世界书' },
+    ], { tokenBudget: 0 })
+
+    const result = executeLorebookRuntime({
+      ...baseOpts, lorebooks: [lb], scanText: '触发', budget: 10000,
+    })
+
+    expect(result.beforeChar).toEqual(['零预算不应禁用世界书'])
     expect(result.bookBudgetDropped).toBeUndefined()
     expect(result.droppedCount).toBe(0)
   })

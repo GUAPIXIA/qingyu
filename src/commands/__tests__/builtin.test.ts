@@ -314,6 +314,17 @@ describe('imagine 命令', () => {
     expect(ctx.finishImageGeneration).toHaveBeenCalledWith('job-1')
   })
 
+  it('未配置或启用生图模型时在提示词生成前拦截', async () => {
+    const ctx = makeCtx({ getActiveImageGen: vi.fn().mockReturnValue(null) })
+
+    await findCommand('imagine')!.execute([], ctx)
+
+    expect(ctx.notify).toHaveBeenCalledWith('尚未配置或启用生图模型，请前往「设置 → API → 生图」完成配置')
+    expect(ctx.callAiHelper).not.toHaveBeenCalled()
+    expect(window.api.imageGen.generate).not.toHaveBeenCalled()
+    expect(ctx.beginImageGeneration).not.toHaveBeenCalled()
+  })
+
   it('--mode face 时使用竖图尺寸', async () => {
     const ctx = makeCtx()
     await findCommand('imagine')!.execute(['--mode', 'face', 'girl'], ctx)

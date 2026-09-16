@@ -38,9 +38,9 @@ export const QUOTE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['"', '"'],
 ]
 
-/** 用于匹配 SPEAKER/纯对白的引号字符集（含四类左/右引号） */
-const OPEN_QUOTE_CHARS = '“「『"\''
-const CLOSE_QUOTE_CHARS = '”」』"\''
+/** 用于匹配 SPEAKER/纯对白的引号字符集（四类左/右引号；不含 ASCII 单引号，避免撇号误伤） */
+const OPEN_QUOTE_CHARS = '“「『"'
+const CLOSE_QUOTE_CHARS = '”」』"'
 
 /**
  * 说话人前缀：冒号前的名称（1–8 个非空白非标点字符，覆盖中英文角色名与
@@ -71,8 +71,8 @@ const LEADING_OPEN_QUOTE = new RegExp(`^[${OPEN_QUOTE_CHARS}][\\s\\S]*$`)
 /** 整行动作段（旧样式星号包裹） */
 const ACTION_LINE = /^\*(.+)\*$/s
 
-/** 引号字符（判断行内是否含对白） */
-const CONTAINS_QUOTE = /[“”「」『』"']/
+/** 引号字符（判断行内是否含对白；不含 ASCII 单引号，避免英文撇号整行误判 mixed） */
+const CONTAINS_QUOTE = /[“”「」『』"]/
 
 /** 按码点 trim（与 textMetrics 口径一致；\u3000 = 全角空格） */
 function trimLine(line: string): string {
@@ -80,24 +80,48 @@ function trimLine(line: string): string {
 }
 
 /**
+ * 从 text[0]=open 出发，找与首引号配对的 close 下标（嵌套同类引号按深度配对）。
+ * 找不到返回 -1。ASCII 同字符引号按「成对游走」计数。
+ */
+function findMatchingCloseIndex(text: string, open: string, close: string): number {
+  if (open === close) {
+    let seen = 0
+    for (let i = 0; i < text.length; i += 1) {
+      if (text[i] === open) {
+        seen += 1
+        if (seen % 2 === 0) return i
+      }
+    }
+    return -1
+  }
+  let depth = 0
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]
+    if (ch === open) {
+      depth += 1
+    } else if (ch === close) {
+      depth -= 1
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+/**
  * 从 text[0]=open 出发的闭合判定：
- * - `endsWithClose`：整段以配对 close 收尾 → 完整纯对白
- * - `hasInnerClose`：文中出现 close 但不在末尾 → 闭合后仍有尾随（mixed）
+ * - `endsWithClose`：与首引号配对的 close 正好落在末尾 → 完整纯对白
+ *   （嵌套 “他说：“好。”” 按深度配对；不能只看末字符，否则 `"A"叙述"B"` 会被误判）
+ * - `hasInnerClose`：文中存在与首引号配对的 close，但不在末尾 → 闭合后仍有尾随（mixed）
  * - 否则：未闭合（流式 incomplete）
- * 嵌套同类引号（“他说：“好。””）按首尾配对视为完整，不找第一个 close。
  */
 function classifyOpenQuote(text: string): { endsWithClose: boolean; hasInnerClose: boolean } {
   if (!text || text.length < 1) return { endsWithClose: false, hasInnerClose: false }
   for (const [open, close] of QUOTE_PAIRS) {
     if (text[0] !== open) continue
-    if (text.length >= 2 && text.endsWith(close)) {
-      return { endsWithClose: true, hasInnerClose: true }
-    }
-    // ASCII 同字符引号：末字符若不是 close，视为未闭合（首字符是 open 不算 inner close）
-    if (open === close) {
-      return { endsWithClose: false, hasInnerClose: text.slice(1).includes(close) }
-    }
-    return { endsWithClose: false, hasInnerClose: text.slice(1).includes(close) }
+    const matchEnd = findMatchingCloseIndex(text, open, close)
+    if (matchEnd < 0) return { endsWithClose: false, hasInnerClose: false }
+    if (matchEnd === text.length - 1) return { endsWithClose: true, hasInnerClose: true }
+    return { endsWithClose: false, hasInnerClose: true }
   }
   return { endsWithClose: false, hasInnerClose: false }
 }
@@ -133,22 +157,17 @@ export function matchSpeakerDialogue(
   return { speaker, dialogue, complete: false, streamingOpen: true }
 }
 
-/** 是否整行纯对白（成对，或未闭合的左引号起始行） */
+/** 是否整行纯对白（首尾配对为单一外层引号，或未闭合的左引号起始行） */
 export function isPureDialogueLine(line: string, _phase: RoleplayParsePhase = 'final'): boolean {
-  if (PURE_QUOTE.test(line)) return true
-  // 以左引号开头且整行无冒号说话人结构 → 可能为未闭合对白
-  if (
-    LEADING_OPEN_QUOTE.test(line) &&
-    [...OPEN_QUOTE_CHARS].includes(line[0] ?? '') &&
-    !line.includes(':') &&
-    !line.includes('：')
-  ) {
-    const q = classifyOpenQuote(line)
-    // 闭合引号后仍有文字 → mixed
-    if (!q.endsWithClose && q.hasInnerClose) return false
-    return true
-  }
-  return false
+  if (!line) return false
+  if (!LEADING_OPEN_QUOTE.test(line) || ![...OPEN_QUOTE_CHARS].includes(line[0] ?? '')) return false
+  const q = classifyOpenQuote(line)
+  // 外层引号深度配对且收在末尾 → 纯对白（允许内部嵌套引号与冒号）
+  if (q.endsWithClose) return true
+  // 闭合后仍有文字（含 `"对白"叙述"对白"`）→ mixed
+  if (q.hasInnerClose) return false
+  // 未闭合：以左引号起即 incomplete 对白（流式/异常）；冒号不影响，说话人路径已单独处理
+  return true
 }
 
 /** 单行 → 块 */
@@ -242,7 +261,8 @@ export function stripOuterQuotes(text: string): string {
 
 /**
  * mixed 段行内对白切分：引号对（含引号本身）标 quoted，其余保持原文。
- * 支持四类引号；流式未闭合时尾部开引号保持未标记（原文）。
+ * 支持四类引号；与 classifyOpenQuote 同源深度/游走配对，避免嵌套被首个 close 截断。
+ * 流式未闭合时尾部开引号保持未标记（原文）。
  */
 export function splitQuoteSegments(text: string): Array<{ text: string; quoted: boolean }> {
   if (!text) return []
@@ -254,8 +274,8 @@ export function splitQuoteSegments(text: string): Array<{ text: string; quoted: 
     for (let j = from; j < text.length; j += 1) {
       for (const [open, close] of QUOTE_PAIRS) {
         if (text[j] !== open) continue
-        const end = text.indexOf(close, j + 1)
-        if (end > j) return { start: j, end }
+        const end = findMatchingCloseIndex(text.slice(j), open, close)
+        if (end > 0) return { start: j, end: j + end }
       }
     }
     return null

@@ -1574,7 +1574,7 @@ export function executeLorebookRuntime(opts: LorebookTriggerOptions): LorebookTr
       }
     }
     // 书级 tokenBudget（导入的外部格式自带）：该书条目注入总量不超过此值
-    if (typeof lb.tokenBudget === 'number' && Number.isFinite(lb.tokenBudget) && lb.tokenBudget >= 0) {
+    if (typeof lb.tokenBudget === 'number' && Number.isFinite(lb.tokenBudget) && lb.tokenBudget > 0) {
       bookBudgets.set(lb.id, Math.floor(lb.tokenBudget))
     }
   }

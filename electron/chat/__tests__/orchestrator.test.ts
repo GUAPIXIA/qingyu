@@ -95,6 +95,39 @@ describe('Orchestrator', () => {
     expect(snap.assistantMessageId).toBeTruthy()
   })
 
+  it('回复落盘后由主进程统一调度自动长记忆，且不阻塞任务完成', async () => {
+    const mp = makeMessagePort()
+    const schedule = vi.fn()
+    const orch = new ChatOrchestrator({
+      messagePort: mp,
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'success', chunks: ['remember me'] }),
+      memoryScheduler: { schedule },
+    })
+
+    const snap = await orch.handle(cmd({ requestId: 'req-memory', sessionId: 'sess-memory' }))
+
+    expect(snap.state).toBe('completed')
+    expect(schedule).toHaveBeenCalledOnce()
+    expect(schedule).toHaveBeenCalledWith({
+      sessionId: 'sess-memory',
+      characterId: 'char-1',
+    })
+  })
+
+  it('记忆调度器同步失败不反转已完成的主对话', async () => {
+    const orch = new ChatOrchestrator({
+      messagePort: makeMessagePort(),
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'success', chunks: ['ok'] }),
+      memoryScheduler: { schedule: () => { throw new Error('scheduler unavailable') } },
+    })
+
+    const snap = await orch.handle(cmd({ requestId: 'req-memory-fail', sessionId: 'sess-memory-fail' }))
+
+    expect(snap.state).toBe('completed')
+  })
+
   // 2026-09-13 修复：任务快照落盘（data/tasks）与 task:started 事件外发都不得携带凭据
   it('任务快照与事件记录落盘均不携带 apiKey/baseUrl', async () => {
     const mp = makeMessagePort()

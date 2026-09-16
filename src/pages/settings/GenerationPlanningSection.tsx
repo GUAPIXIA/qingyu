@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   BrainCircuit,
-  Gauge,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -10,9 +9,8 @@ import {
   Wrench,
 } from 'lucide-react'
 import type { GenerationDiagnostics } from '../../../shared/ipc-api'
-import type { ConnectionProfile, ResponseLengthMode, Settings } from '../../../shared/types'
+import type { ConnectionProfile, Settings } from '../../../shared/types'
 import type { ReasoningGateLevel } from '../../../shared/reasoningGate'
-import { RESPONSE_LENGTH_LABELS } from '../../../shared/responsePolicy'
 import { cn } from '../../lib/utils'
 import { SectionCard, Toggle } from '../../components/common/SettingsShared'
 
@@ -130,7 +128,7 @@ export function GenerationPlanningSection({ settings, updateSettings }: Props) {
                 <Sparkles className="h-4 w-4 text-tavern-accent" /> 每轮按内容动态安排
               </p>
               <p className="mt-1 max-w-2xl text-xs leading-relaxed text-tavern-text-muted">
-                篇幅、推理空间与上下文共享同一份计划；连续性规则始终生效，切换模型不会改写记忆或世界书。
+                推理空间、连续性与上下文共享同一份计划；回复长度可在每个对话的快捷设置中随时调整。
               </p>
             </div>
             <span className="shrink-0 rounded-full border border-tavern-success/25 bg-tavern-success/10 px-2 py-1 text-[10px] font-semibold text-tavern-success">
@@ -140,33 +138,6 @@ export function GenerationPlanningSection({ settings, updateSettings }: Props) {
         </div>
 
         <div className="grid gap-px bg-tavern-border-soft lg:grid-cols-2">
-          <div className="bg-tavern-bg-card/70 p-4">
-            <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-tavern-text-soft">
-              <Gauge className="h-3.5 w-3.5 text-tavern-accent" /> 默认回复长度
-            </div>
-            <div className="grid grid-cols-4 gap-1 rounded-xl bg-tavern-bg-soft p-1" role="radiogroup" aria-label="默认回复长度">
-              {(['auto', 'brief', 'balanced', 'detailed'] as ResponseLengthMode[]).map((value) => {
-                const selected = (settings.defaultResponseLength ?? 'auto') === value
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => updateSettings({ defaultResponseLength: value })}
-                    className={cn(
-                      'rounded-lg px-2 py-2 text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/45',
-                      selected ? 'bg-tavern-bg-card text-tavern-accent shadow-sm' : 'text-tavern-text-muted hover:text-tavern-text',
-                    )}
-                  >
-                    {RESPONSE_LENGTH_LABELS[value]}
-                  </button>
-                )
-              })}
-            </div>
-            <p className="mt-2 text-[11px] text-tavern-text-muted">会话选择、预设或本轮明确要求仍具有更高优先级。</p>
-          </div>
-
           <div className="bg-tavern-bg-card/70 p-4">
             <div className="mb-2 flex items-center justify-between gap-3">
               <span className="flex items-center gap-2 text-xs font-semibold text-tavern-text-soft">
@@ -197,15 +168,15 @@ export function GenerationPlanningSection({ settings, updateSettings }: Props) {
             </div>
           </div>
 
-          <div className="space-y-3 bg-tavern-bg-card/70 p-4">
-            <div className="flex items-center justify-between gap-4">
+          <div className="grid gap-px bg-tavern-border-soft lg:col-span-2 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-4 bg-tavern-bg-card/70 p-4">
               <div>
                 <p className="text-xs font-semibold text-tavern-text-soft">自动补全结尾</p>
                 <p className="mt-0.5 text-[11px] text-tavern-text-muted">仅在长度触顶且没有稳定结尾时尝试一次。</p>
               </div>
               <Toggle label="自动补全结尾" checked={settings.autoTailRepairEnabled !== false} onChange={(autoTailRepairEnabled) => updateSettings({ autoTailRepairEnabled })} />
             </div>
-            <div className="flex items-center justify-between gap-4 border-t border-tavern-border-soft pt-3">
+            <div className="flex items-center justify-between gap-4 bg-tavern-bg-card/70 p-4">
               <div>
                 <p className="flex items-center gap-1.5 text-xs font-semibold text-tavern-text-soft"><WalletCards className="h-3.5 w-3.5" /> 费用提醒</p>
                 <p className="mt-0.5 text-[11px] text-tavern-text-muted">在快捷设置提示高预算；硬上限安全校验始终有效。</p>

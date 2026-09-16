@@ -50,7 +50,9 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
     if (shouldAnimate) markAnimated(message.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message.id])
-  const [editing, setEditing] = useState(false)
+  // 编辑态提升到 store：Virtuoso 滚动/数据更新可能重挂载子组件，本地 state 会丢失
+  const editingMessageId = useChatStore(s => s.editingMessageId)
+  const editing = editingMessageId === message.id
   const [editContent, setEditContent] = useState(message.content)
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
   const [avatarError, setAvatarError] = useState(false)
@@ -150,12 +152,12 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const handleSaveEdit = async () => {
     if (!character) return
     // Visible feedback should not wait for background memory invalidation and persistence.
-    setEditing(false)
+    useChatStore.setState({ editingMessageId: null })
     try {
       await editMessage(message.id, editContent, character)
     } catch (error) {
       // Reopen with the draft intact so the user can retry.
-      setEditing(true)
+      useChatStore.setState({ editingMessageId: message.id })
       useChatStore.setState({ error: `保存编辑失败：${error instanceof Error ? error.message : String(error)}` })
     }
   }
@@ -226,7 +228,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             className="textarea w-full min-h-[80px] font-mono text-sm"
           />
           <div className="flex justify-end gap-2 mt-2">
-            <button className="btn-ghost" onClick={() => { setEditing(false); setEditContent(message.content) }}>
+            <button className="btn-ghost" onClick={() => { useChatStore.setState({ editingMessageId: null }); setEditContent(message.content) }}>
               <X className="w-4 h-4" /> 取消
             </button>
             <button className="btn-primary" onClick={handleSaveEdit}>
@@ -346,7 +348,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           </div>
         </Modal>
         {/* 操作栏 */}
-        <MessageActionBar bare message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); setEditing(true) }} />
+        <MessageActionBar bare message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); useChatStore.setState({ editingMessageId: message.id }) }} />
       </>
     )
   }
@@ -577,7 +579,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           </div>
 
           {/* 操作栏 */}
-          <MessageActionBar message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); setEditing(true) }} />
+          <MessageActionBar message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); useChatStore.setState({ editingMessageId: message.id }) }} />
 
           {/* 下一步方向：气泡外的独立交互，仅最新一条 AI 回复且等待用户时展示 */}
           {shouldShowDialogueDirections({

@@ -326,6 +326,59 @@
       ]
     },
     {
+      "name": "multi-quote-with-narration-same-line",
+      "input": "“走吧。”她顿了顿，“还是算了。”",
+      "expected": [
+        {
+          "kind": "mixed",
+          "text": "“走吧。”她顿了顿，“还是算了。”"
+        }
+      ]
+    },
+    {
+      "name": "ascii-double-quote-pure",
+      "input": "\"我回来了。\"",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "\"我回来了。\""
+        }
+      ]
+    },
+    {
+      "name": "ascii-double-quote-speaker",
+      "input": "苏晚:\"我回来了。\"",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "\"我回来了。\"",
+          "speaker": "苏晚"
+        }
+      ]
+    },
+    {
+      "name": "double-corner-speaker",
+      "input": "苏晚：『走吧。』",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "『走吧。』",
+          "speaker": "苏晚"
+        }
+      ]
+    },
+    {
+      "name": "unclosed-anonymous-with-colon",
+      "input": "“她说：你先走",
+      "expected": [
+        {
+          "kind": "dialogue",
+          "text": "“她说：你先走",
+          "complete": false
+        }
+      ]
+    },
+    {
       "name": "mixed-speaker-plus-tail",
       "input": "苏晚：“你好。”她挥了挥手。",
       "expected": [

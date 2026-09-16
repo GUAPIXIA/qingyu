@@ -118,6 +118,22 @@ describe('Bridge 收尾顺序（S1）', () => {
     expect(savedAiMessage()?.content).toBe('她A A。')
   })
 
+  it('回复落盘后调度自动长记忆', async () => {
+    vi.mocked(mainContextProvider.fetchBuildData).mockResolvedValue(makeBuildData([]))
+    mockGeneration('需要记住的回复。', 'stop')
+    const schedule = vi.fn()
+    const service = new BridgeChatService(
+      { publish: vi.fn() } as any,
+      () => {},
+      undefined,
+      { schedule },
+    )
+
+    await service.sendMessage('s1', 'req-memory', '你好')
+
+    expect(schedule).toHaveBeenCalledWith({ characterId: 'char-1', sessionId: 's1' })
+  })
+
   it('正则破坏结构后由收尾器兜底：补尾输入是正则处理后的文本', async () => {
     const rule: RegexRule = {
       id: 'r2', name: '去尾引号', enabled: true, scope: 'output', pattern: '”', replacement: '', flags: 'g',

@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import {
+  AlertTriangle,
   Brain,
   Image as ImageIcon,
   Languages,
   MessageSquareText,
   Sliders,
-  Workflow,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Toggle, SectionCard } from '../../components/common/SettingsShared'
@@ -97,6 +97,27 @@ export function BehaviorSection({ settings, updateSettings }: BehaviorSectionPro
           />
         </BehaviorGroup>
 
+        {pipeline === 'legacy' && (
+          <div className="flex items-start justify-between gap-4 rounded-2xl border border-amber-500/35 bg-amber-500/10 p-4 xl:col-span-2">
+            <div className="flex min-w-0 items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+              <div>
+                <p className="text-sm font-semibold text-tavern-text">检测到旧版生成设置</p>
+                <p className="mt-1 text-xs leading-relaxed text-tavern-text-muted">
+                  旧版入口已清理；切回新版后将使用动态预算、语义分块和稳定收尾。
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-lg bg-tavern-accent/90 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-tavern-accent"
+              onClick={() => updateSettings({ generationPipeline: 'unified' })}
+            >
+              切回新版
+            </button>
+          </div>
+        )}
+
         <BehaviorGroup
           icon={<Brain className="h-4 w-4" />}
           title="角色表达"
@@ -167,31 +188,6 @@ export function BehaviorSection({ settings, updateSettings }: BehaviorSectionPro
               <option value="Español">Español</option>
               <option value="Русский">Русский</option>
             </select>
-          </div>
-        </BehaviorGroup>
-
-        <BehaviorGroup
-          icon={<Workflow className="h-4 w-4" />}
-          title="生成兼容"
-          description="G2 后默认新版管线；旧版仅保留一版读兼容，设置页不再提供切换"
-        >
-          <div className="py-3.5">
-            {pipeline === 'legacy' ? (
-              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-tavern-text">
-                当前数据仍标记为旧版管线。请点下方切回新版；旧选项已从界面隐藏（W11）。
-                <button
-                  type="button"
-                  className="mt-2 rounded-lg bg-tavern-accent/90 px-3 py-1.5 text-xs font-semibold text-white"
-                  onClick={() => updateSettings({ generationPipeline: 'unified' })}
-                >
-                  切回新版管线
-                </button>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-card/45 p-3 text-xs text-tavern-text-muted">
-                已使用新版管线（动态预算、语义分块与稳定收尾）。旧版回退能力在本版本仍保留在数据层，但不再出现在界面。
-              </div>
-            )}
           </div>
         </BehaviorGroup>
 

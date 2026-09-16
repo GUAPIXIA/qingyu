@@ -120,10 +120,11 @@ internal fun isTableSeparator(line: String): Boolean {
 }
 
 /**
- * 行级对白拆分（对齐 PC remark-roleplay 行级分类，复用 RoleplayBlocks 同一套规则）：
+ * 行级对白拆分（对齐 PC remark-roleplay 行级分类，复用 RoleplayBlocks 深度配对规则）：
  * 整行「名字：“对白”」或整行纯引号对白 → 对白块段（后者为匿名块，无名字行）；
  * 其余行保持普通文本段。仅当存在块段时生成 DialogueParagraph。
- * 行内不再单独识别说话人前缀（避免把「叙述：“对白”」误拆成对话块）。
+ * 必须走 isPureDialogueLine / matchSpeakerDialogue，禁止用松散 PURE_QUOTE——
+ * 否则 “A”叙述“B” 会被整行误判为对白并错误剥引号。
  * @return null 表示不含对白块，保持普通段落
  */
 private fun splitDialogueParagraph(text: String): List<DialogueSegment>? {
@@ -131,20 +132,17 @@ private fun splitDialogueParagraph(text: String): List<DialogueSegment>? {
     var hasBlock = false
     text.split('\n').forEachIndexed { index, rawLine ->
         val line = rawLine.trim()
-        val speakerMatch = RoleplayBlocks.SPEAKER_QUOTE.matchEntire(line)
-        val speakerName = speakerMatch?.groupValues?.get(1)?.trim()?.takeIf {
-            !RoleplayBlocks.NARRATION_PREFIX.containsMatchIn(it)
-        }
+        val speakerHit = RoleplayBlocks.matchSpeakerDialogue(line)
         when {
-            speakerMatch != null && speakerName != null -> {
+            speakerHit != null -> {
                 hasBlock = true
                 segments += DialogueSegment(
-                    speakerName,
-                    RoleplayBlocks.stripOuterQuotes(speakerMatch.groupValues[2]),
+                    speakerHit.first,
+                    RoleplayBlocks.stripOuterQuotes(speakerHit.second),
                     block = true,
                 )
             }
-            line.isNotEmpty() && RoleplayBlocks.PURE_QUOTE.matchEntire(line) != null -> {
+            line.isNotEmpty() && RoleplayBlocks.isPureDialogueLine(line) -> {
                 hasBlock = true
                 segments += DialogueSegment(null, RoleplayBlocks.stripOuterQuotes(line), block = true)
             }

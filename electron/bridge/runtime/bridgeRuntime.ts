@@ -2,6 +2,7 @@ import { BridgeChatService, type SessionChangedNotifier } from '../chatService'
 import { CompositeMobileEventSink, type MobileEventSink } from './mobileEventBus'
 import { GenerationRegistry } from './generationRegistry'
 import { DefaultMobileFacade } from './mobileFacade'
+import { memorySummaryService } from '../../services/memorySummaryService'
 
 export class BridgeRuntime {
   readonly events = new CompositeMobileEventSink()
@@ -11,7 +12,7 @@ export class BridgeRuntime {
 
   constructor(notifySessionChanged: SessionChangedNotifier, initialSink?: MobileEventSink) {
     if (initialSink) this.events.add(initialSink)
-    this.chatService = new BridgeChatService(this.events, notifySessionChanged, this.generations)
+    this.chatService = new BridgeChatService(this.events, notifySessionChanged, this.generations, memorySummaryService)
     this.facade = new DefaultMobileFacade(this.chatService, this.generations)
   }
 

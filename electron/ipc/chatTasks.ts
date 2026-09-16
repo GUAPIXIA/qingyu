@@ -13,6 +13,7 @@ import { chatMessagePort } from '../chat/messagePort'
 import { contextService } from '../chat/contextService'
 import { RealModelPort } from '../chat/realModel'
 import { FakeModelPort } from '../chat/fakeModel'
+import { memorySummaryService } from '../services/memorySummaryService'
 import { getTaskSnapshot, listActiveTasks, readEvents } from '../chat/taskStore'
 import type { ChatCommand } from '../../shared/chat-core/commands'
 
@@ -24,10 +25,17 @@ function getOrchestrator(): ChatOrchestrator {
     messagePort: chatMessagePort,
     contextPort: contextService,
     modelPort,
+    memoryScheduler: memorySummaryService,
   })
 }
 
 export function registerChatTaskIPC(ipcMain: IpcMain, getWindow: () => BrowserWindow | null): void {
+  safeHandle(ipcMain, 'chat:summarizeMemory', async (_event, characterId: string, sessionId: string, automatic = false) => {
+    safeId(characterId)
+    safeId(sessionId)
+    return memorySummaryService.summarize({ characterId, sessionId, automatic })
+  })
+
   // start
   safeHandle(ipcMain, 'chatTask:start', async (_event, command: ChatCommand) => {
     if (!command || typeof command.requestId !== 'string') {

@@ -209,7 +209,9 @@ export function migrateNativeLorebookV1ToV2(
     defaults: {
       scanDepth: lorebook.scanDepth,
       recursiveScanning: lorebook.recursiveScanning !== false,
-      ...(lorebook.tokenBudget !== undefined ? { tokenBudget: lorebook.tokenBudget } : {}),
+      ...(typeof lorebook.tokenBudget === 'number' && lorebook.tokenBudget > 0
+        ? { tokenBudget: lorebook.tokenBudget }
+        : {}),
     },
     entries,
     source: {

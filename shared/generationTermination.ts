@@ -70,8 +70,8 @@ export function effectiveFinishReasonForCause(
       return 'network_error'
     case 'provider_stop':
       return 'stop'
+    // 阶段8：提前中止是零正文的 length 类截断，收尾器按 length 处理
     case 'provider_length':
-      // 阶段8：提前中止是零正文的 length 类截断，收尾器按 length 处理
     case 'reasoning_gate_exceeded':
       return 'length'
     case 'provider_content_filter':

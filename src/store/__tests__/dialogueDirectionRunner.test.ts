@@ -707,7 +707,7 @@ describe('方向任务推理挤占恢复与统一预算（W4）', () => {
       { text: '', finishReason: 'length' },
     ])
     let store = makeStore(makeMessages())
-    let result = await generateSingleDialogueDirections(store.set, store.get, { messageId: 'a1', character: makeCharacter() })
+    const result = await generateSingleDialogueDirections(store.set, store.get, { messageId: 'a1', character: makeCharacter() })
     expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
     expect(result).toHaveLength(0)
     expect(store.raw.messages[1].dialogueDirections).toBeUndefined()

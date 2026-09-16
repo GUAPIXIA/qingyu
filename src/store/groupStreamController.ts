@@ -669,7 +669,7 @@ export async function streamGroupAI(
   }
   if (recovery) {
     // 恢复：只恢复流状态，不追加第二条占位消息
-    set((s: GroupChatState) => ({
+    set((_s: GroupChatState) => ({
       isStreaming: true,
       currentStreamingCharId: speaker.id,
       error: null,
@@ -1042,7 +1042,7 @@ export async function streamGroupAIFree(
     generationKind: 'assistant_reply',
   }
   if (recovery) {
-    set((s: GroupChatState) => ({
+    set((_s: GroupChatState) => ({
       isStreaming: true,
       currentStreamingCharId: freeMessageCharacterId,
       error: null,

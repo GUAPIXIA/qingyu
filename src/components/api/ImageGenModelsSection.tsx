@@ -119,7 +119,14 @@ export function ImageGenModelsSection() {
       const result = await window.api.imageGen.listLocalComfyWorkflows()
       const workflows = result.workflows ?? []
       setLocalWorkflows(workflows)
-      setSelectedWorkflowPath((current) => current || workflows[0]?.path || '')
+      const selectedStillExists = workflows.some((workflow) => workflow.path === selectedWorkflowPath)
+      const nextSelectedPath = selectedStillExists ? selectedWorkflowPath : (workflows[0]?.path ?? '')
+      setSelectedWorkflowPath(nextSelectedPath)
+      // select 会直接展示第一项，但浏览器不会为默认选中项触发 onChange。
+      // 新建配置时主动读取该工作流，否则只有一个选项时保存按钮会永久禁用。
+      if (nextSelectedPath && form.provider === 'comfyui' && !form.workflow?.trim()) {
+        await handleImportWorkflow(nextSelectedPath)
+      }
       if (!result.success) setWorkflowMessage({ success: false, text: result.error ?? '读取本地工作流失败' })
     } catch (error) {
       setWorkflowMessage({ success: false, text: error instanceof Error ? error.message : String(error) })
@@ -591,7 +598,7 @@ export function ImageGenModelsSection() {
     )
   }
 
-  /** ComfyUI 工作流选择与读取；位于表单首位，切换下拉即读取。 */
+  /** ComfyUI 工作流选择与读取；默认项自动读取，切换下拉也立即读取。 */
   const renderComfyWorkflowPicker = () => (
     <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-2.5">
       <div className="flex items-start justify-between gap-3">

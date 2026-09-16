@@ -61,6 +61,7 @@ function setupStores() {
     activeLorebookIds: [],
     translatingMessages: {},
     showTranslationIds: new Set(),
+    editingMessageId: null,
   })
 }
 
@@ -338,6 +339,42 @@ describe('MessageBubble', () => {
       expect(getByText('保存')).toBeTruthy()
     })
 
+    it('编辑态由 store 的 editingMessageId 驱动（Virtuoso 重挂载不丢失）', () => {
+      const msg = createMessage()
+      const { getByTitle, getByText } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+      fireEvent.click(getByTitle('编辑'))
+      expect(useChatStore.getState().editingMessageId).toBe('msg-1')
+      expect(getByText('保存')).toBeTruthy()
+    })
+
+    it('AI 消息（contentRenderMode=blocks）可进入编辑态', () => {
+      const msg = createMessage({
+        content: '“你好，旅行者。”\n*她微微一笑*',
+        contentRenderMode: 'blocks',
+        role: 'assistant',
+      })
+      const { getByTitle, getByText, getByRole } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+      fireEvent.click(getByTitle('编辑'))
+      expect(getByText('保存')).toBeTruthy()
+      const textarea = getByRole('textbox') as HTMLTextAreaElement
+      expect(textarea.value).toBe('“你好，旅行者。”\n*她微微一笑*')
+    })
+
+    it('取消编辑清空 store 中的 editingMessageId', () => {
+      const { getByTitle, getByText, queryByText } = render(
+        <MessageBubble message={createMessage()} character={createCharacter()} isLast={false} />
+      )
+      fireEvent.click(getByTitle('编辑'))
+      expect(useChatStore.getState().editingMessageId).toBe('msg-1')
+      fireEvent.click(getByText('取消'))
+      expect(useChatStore.getState().editingMessageId).toBeNull()
+      expect(queryByText('保存')).toBeNull()
+    })
+
     it('保存后立即退出编辑态，不被后台记忆失效阻塞', async () => {
       let finishEdit!: () => void
       const editMessage = vi.fn(() => new Promise<void>((resolve) => { finishEdit = resolve }))
@@ -350,6 +387,7 @@ describe('MessageBubble', () => {
       fireEvent.click(getByText('保存'))
 
       expect(editMessage).toHaveBeenCalledWith('msg-1', 'Hello world', expect.anything())
+      expect(useChatStore.getState().editingMessageId).toBeNull()
       expect(queryByText('保存')).toBeNull()
       finishEdit()
       await waitFor(() => expect(editMessage).toHaveBeenCalledTimes(1))

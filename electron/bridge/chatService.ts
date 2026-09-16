@@ -44,6 +44,7 @@ import { enabledProfileOverride, formatRequestBudgetRisk, resolveRequestBudget }
 import { finalizeGenerationTerminalResult } from '../../shared/chat-core/generatedReplyPipeline'
 import { finalizeNoticeFields } from '../../shared/generationNotice'
 import { terminationCauseFromFinishReason } from '../../shared/generationTermination'
+import type { MemorySchedulerPort } from '../chat/ports'
 
 // H-10 修复：幂等缓存 TTL（覆盖安卓端断线重发窗口后清理，避免无界内存增长）
 const IDEMPOTENCY_TTL_MS = 60_000
@@ -57,15 +58,22 @@ export class BridgeChatService {
   private readonly events: MobileEventSink
   private readonly notifySessionChanged: SessionChangedNotifier
   private readonly generations: GenerationRegistry
+  private readonly memoryScheduler?: MemorySchedulerPort
   /** 幂等键 -> 已处理的用户消息（防弱网重发双条，§4.3） */
   private readonly idempotency = new Map<string, Message>()
   /** 处理中的请求（防重复触发） */
   private readonly inFlight = new Set<string>()
 
-  constructor(events: MobileEventSink, notifySessionChanged: SessionChangedNotifier, generations = new GenerationRegistry()) {
+  constructor(
+    events: MobileEventSink,
+    notifySessionChanged: SessionChangedNotifier,
+    generations = new GenerationRegistry(),
+    memoryScheduler?: MemorySchedulerPort,
+  ) {
     this.events = events
     this.notifySessionChanged = notifySessionChanged
     this.generations = generations
+    this.memoryScheduler = memoryScheduler
   }
 
   /**
@@ -340,6 +348,7 @@ export class BridgeChatService {
       chatData.saveMessage(characterId, aiMessage)
       this.events.publish('ai:done', { requestId, sessionId, message: aiMessage, finishReason: finalizedReply.finishReason })
       this.notifySessionChanged(sessionId, 'message')
+      this.scheduleMemory({ characterId, sessionId })
       // “下一步方向”：回复落盘后异步补齐，不阻塞 done 推送；失败静默降级。
       // 仅传入连接参数，模块内部按会话开关与消息有效性自行判断。
       void this.generateDirectionsFor(sessionId, aiMessage.id, data.character.name, characterId)
@@ -532,9 +541,18 @@ export class BridgeChatService {
       }
       chatData.saveMessage(characterId, updated)
       this.notifySessionChanged(sessionId, 'message')
+      this.scheduleMemory({ characterId, sessionId })
       return updated
     } finally {
       this.generations.release(requestId)
+    }
+  }
+
+  private scheduleMemory(input: { characterId: string; sessionId: string }): void {
+    try {
+      this.memoryScheduler?.schedule(input)
+    } catch {
+      // 后台记忆失败不影响已落盘、已推送的主回复。
     }
   }
 

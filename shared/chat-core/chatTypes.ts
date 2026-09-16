@@ -44,6 +44,8 @@ export interface ChatState {
   translatingMessages: Record<string, { status: 'translating' | 'done' | 'error'; content: string; errorMsg?: string }>
   /** 哪些消息正在显示翻译（替换原文） */
   showTranslationIds: Set<string>
+  /** 当前处于编辑态的消息 ID（提升到 store，避免 Virtuoso 重挂载丢失本地编辑状态） */
+  editingMessageId: string | null
   loadSessions: (characterId: string) => Promise<void>
   createSession: (characterId: string, title?: string) => Promise<ChatSession | null>
   switchSession: (sessionId: string, character: Character) => Promise<void>
