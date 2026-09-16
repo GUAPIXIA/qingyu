@@ -18,8 +18,33 @@ import kotlinx.coroutines.launch
 sealed interface StartupState {
     data object LoadingLocalState : StartupState
     data object NeedsPairing : StartupState
+    /** 阶段 3 本地优先：已有本地资料/主库，无需 PC 即可进入主界面 */
+    data object LocalReady : StartupState
+    /** 本地资料未初始化且无可用连接：引导创建本地资料 */
+    data object NeedsLocalSetup : StartupState
     data class Ready(val activeDeviceId: String, val needsRepair: Boolean = false) : StartupState
     data class ReadyWithoutActive(val connections: List<ServerConnection>) : StartupState
+}
+
+/**
+ * 阶段 3 本地优先启动决策（纯函数）：
+ * - hasLocalProfile → LocalReady
+ * - 无本地资料且有可用 PC 连接 → 旧四态（兼容伴侣场景）
+ * - 无本地资料且无连接 → NeedsLocalSetup（不再强制 NeedsPairing 作为唯一入口）
+ */
+data class LocalStartupSnapshot(
+    val hasLocalProfile: Boolean = false,
+    val hasLocalDb: Boolean = false,
+    val connectionCount: Int = 0,
+)
+
+fun decideStartupStateLocal(snapshot: LocalStartupSnapshot): StartupState {
+    if (snapshot.hasLocalProfile || snapshot.hasLocalDb) return StartupState.LocalReady
+    // 无本地资料：若有 PC 连接则保留旧伴侣路径，否则引导本地资料
+    if (snapshot.connectionCount > 0) {
+        return StartupState.ReadyWithoutActive(emptyList())
+    }
+    return StartupState.NeedsLocalSetup
 }
 
 /**

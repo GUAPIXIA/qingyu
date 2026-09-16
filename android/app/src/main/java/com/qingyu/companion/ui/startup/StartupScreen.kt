@@ -47,6 +47,9 @@ fun StartupScreen(
         when (val s = state) {
             StartupState.LoadingLocalState -> Unit
             StartupState.NeedsPairing -> onNeedsPairing()
+            // 阶段 3：本地资料就绪可直接进主界面；本地向导 UI 未就绪前暂回配对入口
+            StartupState.LocalReady -> onReady(false)
+            StartupState.NeedsLocalSetup -> onNeedsPairing()
             is StartupState.Ready -> onReady(s.needsRepair)
             is StartupState.ReadyWithoutActive -> onReadyWithoutActive()
         }
