@@ -10,14 +10,14 @@ commits: a5aacb5..HEAD
 
 ## Report
 
-**What was built** — 设备身份、sync-meta SQLite、PcDomainRepository、feature flag、bootstrap、persona use case、settings_public journal 钩子。全量域收口与启动恢复未完成。
+**What was built** — DeviceIdentity、sync-meta SQLite、PcDomainRepository、feature flag、bootstrap、persona/regex journal 钩子、settings_public 钩子、启动恢复、remote apply 骨架、观测与绕过检测脚本。
 
-**Verification** — vitest electron/domain 7/7 PASS；pnpm check PASS。
+**Verification** — vitest electron/domain **13/13 PASS**；pnpm check PASS；`scripts/check-write-bypass.mjs` 显示 HIGH_RISK 9 域仍 OPEN。
 
 **Journey log**
-1. node:sqlite 列名 snake_case，读侧需显式 mapHead。
-2. Repository put 先业务文件再 journal；严格同事务需 file_transactions 启动恢复补齐。
-3. settings 钩子目前在 writeJson 之后，阶段收口时应合并。
+1. node:sqlite 列名 snake_case，读侧 mapHead。
+2. FILES_APPLIED 恢复暂 ABORT，不做无哈希猜测前滚。
+3. 绕过检测脚本用于收口进度门禁，非运行时强制。
 
 ## [S1] Problem
 

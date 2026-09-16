@@ -2,39 +2,42 @@
 
 > 日期：2026-09-16  
 > 基线提交：`a5aacb5`  
-> 结论：**部分通过（基础设施已交付，全量写路径收口未完成）** — 可进入后续域收口；不得据此宣布阶段 2 完成。
+> 完成提交：见 git log（`e34fe03` 基础设施 + 本轮续作）  
+> 结论：**部分通过** — 基础设施 + 启动恢复 + 远端 apply + 观测 + 多域 journal 钩子已交付；**全量 IPC/Bridge 写入口收口未完成**，不得宣布阶段 2 完成。
 
 ## 已完成任务
 
 | 任务 ID | 产物 | 证据 |
 |---|---|---|
-| S2-02 | `electron/domain/deviceIdentity.ts` | 单测：生成/递增 counter/克隆新身份 |
-| S2-03 | `electron/domain/syncMeta.ts`（`node:sqlite`） | device_state/entity_heads/change_log/conflicts/checkpoints/file_transactions/bootstrap_receipts；WAL/FK/busy_timeout |
-| S2-01 | `electron/domain/pcRepository.ts` | put/tombstone → 文件 + head + journal；文件事务 PREPARED→FILES_APPLIED→JOURNAL_COMMITTED |
-| S2-04 部分 | `usecases/personaUseCase.ts` + settings IPC 钩子 | flag 开启时 persona/settings_public 写 journal |
-| S2-05 部分 | `bootstrap.ts` | 幂等 bootstrap receipt + genesisId + datasetHash |
-| flag | `electron/domain/featureFlag.ts` | 按域开关 `sync-repo-flags.json` |
+| S2-02 | `deviceIdentity.ts` | 单测：生成/递增/克隆 |
+| S2-03 | `syncMeta.ts`（`node:sqlite`） | heads/change_log/file_transactions/bootstrap_receipts |
+| S2-01 | `pcRepository.ts` | put/tombstone → 文件+head+journal |
+| S2-04 部分 | persona/regex IPC + settings_public 钩子 | flag 开启写 journal；`check-write-bypass` 报告其余高风险域仍 OPEN |
+| S2-05 | `bootstrap.ts` | 幂等 receipt + genesisId |
+| 启动恢复 | `recovery.ts` | PREPARED→ABORT；FILES_APPLIED→ABORT 待哈希增强 |
+| S2-06 骨架 | `remoteApply.ts` | origin=remote、HASH_MISMATCH 拒绝、冲突表、伪冲突收敛 |
+| S2-07 | `metrics.ts` + `scripts/check-write-bypass.mjs` | 诊断不含正文；静态绕过清单 |
 
 ## 测试命令与结果
 
 | 命令 | 结果 |
 |---|---|
-| `pnpm exec vitest run electron/domain` | PASS 7/7 |
-| `pnpm check` | PASS |
+| `pnpm exec vitest run electron/domain` | **PASS 13/13** |
+| `pnpm check` | **PASS** |
+| `node scripts/check-write-bypass.mjs` | 报告：high-risk journaled **0/9**（character/chat/group/lorebook/preset/quickReply/usage/mcp 与 bridge 业务仍直写；persona/settings 有钩子但未计入 HIGH_RISK 列表） |
 
-## 未完成与阻断（阶段 2 剩余）
+## 未完成与阻断
 
-1. **全量写入口收口未完成**：preset/lorebook/character/session/message/group/usage/mcp 尚未迁 Repository；IPC/Bridge/自动记忆/导入仍大量直写。
-2. **崩溃恢复演练**未做：`PREPARED/FILES_APPLIED` 启动前滚回滚逻辑已建表，恢复器未接主进程启动。
-3. **绕过检测自动化**未接入 CI（仅有手动能力矩阵清单）。
-4. **远端批次应用器 S2-06**、**S2-07 观测导出**未实现。
-5. settings_public journal 钩子在业务 `writeJson` **之后**调用；与「同事务」严格语义仍有差距，域收口时需与业务写合并进同一 file transaction。
+1. HIGH_RISK 域 9 项全部仍 OPEN（见脚本输出）。
+2. FILES_APPLIED 恢复未按磁盘 hash 前滚/回滚。
+3. 真实用户数据 bootstrap/崩溃恢复/Backup V2 回滚演练未做。
+4. 远端 apply 的业务文件落盘仍由调用方决定，尚未接 Bridge/同步会话。
 
 ## 回滚
 
-关闭 `sync-repo-flags.json` 各域为 false；删除 `electron/domain/**` 与 `sync-meta.db` 不影响旧业务读取（业务文件仍由旧 writeJson 负责）。
+`sync-repo-flags.json` 全 false；删除 `electron/domain/**` 与 `sync-meta.db`。
 
 ## 下一阶段输入
 
-- 继续 S2-04 其余域与启动恢复；完成后才能进入依赖“PC journal”的阶段 7 并行线。
-- 阶段 3（Android）不依赖本阶段完成。
+- 阶段 3 可并行（Android 数据/模型连接）。
+- 阶段 7 依赖本阶段写入口收口完成后启用真实 journal 上传。

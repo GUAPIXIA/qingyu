@@ -5,6 +5,9 @@ import { DIRS, withFileLock } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Persona } from '../../shared/types'
 import { nanoid } from 'nanoid'
+import { journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
+import { app } from 'electron'
+import { ensureSyncDomain } from '../domain/syncDomainService'
 
 const log = createLogger('persona')
 
@@ -37,6 +40,24 @@ function writePersonas(personas: Persona[]): void {
   }
 }
 
+function journalPersona(persona: Persona): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalPutIfEnabled({
+      domain: 'persona',
+      entityType: 'persona',
+      entityId: persona.id,
+      payload: {
+        name: persona.name,
+        description: persona.description,
+        persona: persona.persona,
+      },
+    })
+  } catch (err) {
+    log.warn('persona journal 失败（不阻断业务）', { err: String(err) })
+  }
+}
+
 export function registerPersonaIPC(ipcMain: IpcMain): void {
   // 列出所有身份
   ipcMain.handle('persona:list', async () => {
@@ -56,6 +77,7 @@ export function registerPersonaIPC(ipcMain: IpcMain): void {
         personas.push(persona)
       }
       writePersonas(personas)
+      journalPersona(persona)
       log.info('身份已保存', { id: persona.id, name: persona.name })
       return persona
     })
@@ -65,6 +87,16 @@ export function registerPersonaIPC(ipcMain: IpcMain): void {
   ipcMain.handle('persona:delete', async (_e, id: string) => {
     const personas = readPersonas().filter((p) => p.id !== id)
     writePersonas(personas)
+    try {
+      ensureSyncDomain(app.getPath('userData'))
+      journalDeleteIfEnabled({
+        domain: 'persona',
+        entityType: 'persona',
+        entityId: id,
+      })
+    } catch (err) {
+      log.warn('persona delete journal 失败', { err: String(err) })
+    }
     log.info('身份已删除', { id })
   })
 

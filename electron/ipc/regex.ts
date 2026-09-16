@@ -5,6 +5,8 @@ import { DIRS, withFileLock } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { RegexRule } from '../../shared/types'
 import { nanoid } from 'nanoid'
+import { app } from 'electron'
+import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('regex')
 
@@ -43,6 +45,27 @@ function writeRules(rules: RegexRule[]): void {
   }
 }
 
+function journalRegex(rule: RegexRule): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalPutIfEnabled({
+      domain: 'regex_rule',
+      entityType: 'regex_rule',
+      entityId: rule.id,
+      payload: {
+        name: rule.name,
+        pattern: rule.pattern,
+        replacement: rule.replacement,
+        flags: rule.flags,
+        enabled: rule.enabled,
+        scope: rule.scope,
+      },
+    })
+  } catch (err) {
+    log.warn('regex journal 失败', { err: String(err) })
+  }
+}
+
 export function registerRegexIPC(ipcMain: IpcMain): void {
   // 列出所有规则
   ipcMain.handle('regex:list', async () => {
@@ -61,6 +84,7 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
         rules.push(rule)
       }
       writeRules(rules)
+      journalRegex(rule)
       log.info('规则已保存', { id: rule.id, name: rule.name })
       return rule
     })
@@ -72,6 +96,12 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
       const rules = readRules().filter((r) => r.id !== id)
       writeRules(rules)
     })
+    try {
+      ensureSyncDomain(app.getPath('userData'))
+      journalDeleteIfEnabled({ domain: 'regex_rule', entityType: 'regex_rule', entityId: id })
+    } catch (err) {
+      log.warn('regex delete journal 失败', { err: String(err) })
+    }
     log.info('规则已删除', { id })
   })
 

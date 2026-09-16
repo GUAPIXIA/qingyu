@@ -13,40 +13,17 @@ import { safeId } from '../utils/pathGuard'
 import type { Settings } from '../../shared/types'
 import { createBackupV2, restoreBackupV2 } from '../services/backup'
 import { readLorebookView, saveLorebookDocumentInput } from '../services/lorebookDocumentStore'
-import { DeviceIdentityStore, defaultIdentityPath } from '../domain/deviceIdentity'
-import { SyncMetaDb } from '../domain/syncMeta'
-import { PcDomainRepository, defaultSyncMetaPath } from '../domain/pcRepository'
-import { RepoFeatureFlags, defaultFlagsPath, type DomainFlagKey } from '../domain/featureFlag'
+import { ensureSyncDomain, isDomainEnabled, type DomainFlagKey } from '../domain/syncDomainService'
 import { app } from 'electron'
 
 const log = createLogger('settings')
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 
-/** 阶段 2：同步元数据与 flag（惰性单例）。flag 关闭时不影响旧写路径。 */
-let syncDomain: {
-  repo: PcDomainRepository
-  flags: RepoFeatureFlags
-  meta: SyncMetaDb
-} | null = null
-
-function getSyncDomain() {
-  if (!syncDomain) {
-    const userData = app.getPath('userData')
-    const identity = new DeviceIdentityStore(defaultIdentityPath(userData))
-    identity.loadOrCreate()
-    const meta = new SyncMetaDb(defaultSyncMetaPath(userData))
-    const repo = new PcDomainRepository({ meta, identity, userDataDir: userData })
-    const flags = new RepoFeatureFlags(defaultFlagsPath(userData))
-    syncDomain = { repo, flags, meta }
-  }
-  return syncDomain
-}
-
 /** settings_public 经 Repository 记 journal（flag 开启时）。不替换 settings.json 主体写入语义。 */
 function journalSettingsPublicIfEnabled(settings: Settings): void {
   try {
-    const { repo, flags } = getSyncDomain()
+    const { repo, flags } = ensureSyncDomain(app.getPath('userData'))
     if (!flags.isEnabled('settings_public')) return
     const payload: Record<string, unknown> = {
       theme: (settings as { theme?: string }).theme,
@@ -54,7 +31,6 @@ function journalSettingsPublicIfEnabled(settings: Settings): void {
       narrativeMode: (settings as { narrativeMode?: string }).narrativeMode,
       responseLengthMode: (settings as { responseLengthMode?: string }).responseLengthMode,
     }
-    // 去掉 undefined
     for (const k of Object.keys(payload)) {
       if (payload[k] === undefined) delete payload[k]
     }
@@ -64,7 +40,7 @@ function journalSettingsPublicIfEnabled(settings: Settings): void {
       payload,
       schemaVersion: 1,
       writeBusiness: () => {
-        // 业务文件仍由原有 settings:save 路径写入；此处只保证 journal 与业务一致提交顺序
+        // 业务文件仍由原有 settings:save 路径写入
       },
     })
   } catch (err) {
@@ -73,11 +49,7 @@ function journalSettingsPublicIfEnabled(settings: Settings): void {
 }
 
 export function isRepoDomainEnabled(domain: DomainFlagKey): boolean {
-  try {
-    return getSyncDomain().flags.isEnabled(domain)
-  } catch {
-    return false
-  }
+  return isDomainEnabled(domain)
 }
 
 // B2：settings v2→v3 迁移链需要读写旧 provider 凭据，这里注入 safeStorage 实现。
