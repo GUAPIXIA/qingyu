@@ -13,10 +13,72 @@ import { safeId } from '../utils/pathGuard'
 import type { Settings } from '../../shared/types'
 import { createBackupV2, restoreBackupV2 } from '../services/backup'
 import { readLorebookView, saveLorebookDocumentInput } from '../services/lorebookDocumentStore'
+import { DeviceIdentityStore, defaultIdentityPath } from '../domain/deviceIdentity'
+import { SyncMetaDb } from '../domain/syncMeta'
+import { PcDomainRepository, defaultSyncMetaPath } from '../domain/pcRepository'
+import { RepoFeatureFlags, defaultFlagsPath, type DomainFlagKey } from '../domain/featureFlag'
+import { app } from 'electron'
 
 const log = createLogger('settings')
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
+
+/** 阶段 2：同步元数据与 flag（惰性单例）。flag 关闭时不影响旧写路径。 */
+let syncDomain: {
+  repo: PcDomainRepository
+  flags: RepoFeatureFlags
+  meta: SyncMetaDb
+} | null = null
+
+function getSyncDomain() {
+  if (!syncDomain) {
+    const userData = app.getPath('userData')
+    const identity = new DeviceIdentityStore(defaultIdentityPath(userData))
+    identity.loadOrCreate()
+    const meta = new SyncMetaDb(defaultSyncMetaPath(userData))
+    const repo = new PcDomainRepository({ meta, identity, userDataDir: userData })
+    const flags = new RepoFeatureFlags(defaultFlagsPath(userData))
+    syncDomain = { repo, flags, meta }
+  }
+  return syncDomain
+}
+
+/** settings_public 经 Repository 记 journal（flag 开启时）。不替换 settings.json 主体写入语义。 */
+function journalSettingsPublicIfEnabled(settings: Settings): void {
+  try {
+    const { repo, flags } = getSyncDomain()
+    if (!flags.isEnabled('settings_public')) return
+    const payload: Record<string, unknown> = {
+      theme: (settings as { theme?: string }).theme,
+      language: (settings as { language?: string }).language,
+      narrativeMode: (settings as { narrativeMode?: string }).narrativeMode,
+      responseLengthMode: (settings as { responseLengthMode?: string }).responseLengthMode,
+    }
+    // 去掉 undefined
+    for (const k of Object.keys(payload)) {
+      if (payload[k] === undefined) delete payload[k]
+    }
+    repo.putWithJournal({
+      entityType: 'settings_public',
+      entityId: 'settings-public',
+      payload,
+      schemaVersion: 1,
+      writeBusiness: () => {
+        // 业务文件仍由原有 settings:save 路径写入；此处只保证 journal 与业务一致提交顺序
+      },
+    })
+  } catch (err) {
+    log.warn('settings_public journal 失败（不阻断业务保存）', { err: String(err) })
+  }
+}
+
+export function isRepoDomainEnabled(domain: DomainFlagKey): boolean {
+  try {
+    return getSyncDomain().flags.isEnabled(domain)
+  } catch {
+    return false
+  }
+}
 
 // B2：settings v2→v3 迁移链需要读写旧 provider 凭据，这里注入 safeStorage 实现。
 // 在模块加载时注册，保证任何 settings 读取（含 readJson 触发的迁移）之前已就绪。
@@ -116,6 +178,8 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     await withFileLock(SETTINGS_FILE(), () => {
       const before = readSettingsFromDisk()
       writeJson(SETTINGS_FILE(), settings, 'settings')
+      // 阶段 2：settings_public 同步 journal（flag 开启时；业务文件仍以 writeJson 为准）
+      journalSettingsPublicIfEnabled(settings)
       const changedFields = diffMobileSafeFields(before, settings)
       if (changedFields.length > 0) {
         emitSettingsChanged({
