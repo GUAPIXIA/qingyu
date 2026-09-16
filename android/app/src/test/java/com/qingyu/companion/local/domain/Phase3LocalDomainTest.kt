@@ -102,4 +102,81 @@ class Phase3LocalDomainTest {
         // Kotlin LinkedHashMap preserve insert order - CanonicalJson sorts keys
         assertEquals(a, b)
     }
+
+    @Test
+    fun `anthropic gemini ollama adapters build and parse`() {
+        val anthropic = com.qingyu.companion.network.models.AnthropicAdapter()
+        val aReq = anthropic.buildChatRequest(
+            com.qingyu.companion.network.models.ConnectionProfilePublic(
+                "a",
+                com.qingyu.companion.network.models.ModelProvider.Anthropic,
+                "https://api.anthropic.com",
+                "claude-x",
+            ),
+            com.qingyu.companion.network.models.ModelChatRequest(
+                "claude-x",
+                listOf(
+                    com.qingyu.companion.network.models.ChatMessageDto("system", "sys"),
+                    com.qingyu.companion.network.models.ChatMessageDto("user", "hi"),
+                ),
+            ),
+        )
+        assertTrue(aReq.url.contains("/v1/messages"))
+        assertTrue(aReq.body.contains("\"system\""))
+        val aChunk = anthropic.parseSseLine(
+            "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"He\"}}",
+        )
+        assertTrue(aChunk is com.qingyu.companion.network.models.ModelStreamEvent.Chunk)
+
+        val gemini = com.qingyu.companion.network.models.GeminiAdapter()
+        val gReq = gemini.buildChatRequest(
+            com.qingyu.companion.network.models.ConnectionProfilePublic(
+                "g",
+                com.qingyu.companion.network.models.ModelProvider.Gemini,
+                "https://generativelanguage.googleapis.com",
+                "gemini-pro",
+            ),
+            com.qingyu.companion.network.models.ModelChatRequest(
+                "gemini-pro",
+                listOf(com.qingyu.companion.network.models.ChatMessageDto("user", "你好")),
+            ),
+        )
+        assertTrue(gReq.url.contains("streamGenerateContent"))
+        assertTrue(gReq.body.contains("\"contents\""))
+
+        val ollama = com.qingyu.companion.network.models.OllamaAdapter()
+        val oReq = ollama.buildChatRequest(
+            com.qingyu.companion.network.models.ConnectionProfilePublic(
+                "o",
+                com.qingyu.companion.network.models.ModelProvider.Ollama,
+                "http://127.0.0.1:11434",
+                "llama3",
+            ),
+            com.qingyu.companion.network.models.ModelChatRequest(
+                "llama3",
+                listOf(com.qingyu.companion.network.models.ChatMessageDto("user", "x")),
+            ),
+        )
+        assertTrue(oReq.url.contains("/api/chat"))
+        val oDone = ollama.parseSseLine("{\"content\":\"ok\",\"done\":true}")
+        assertTrue(oDone is com.qingyu.companion.network.models.ModelStreamEvent.Chunk)
+    }
+
+    @Test
+    fun `legacy importer classifies choices without rewriting`() {
+        val importer = com.qingyu.companion.local.migration.LegacyCacheImporter()
+        val scan = com.qingyu.companion.local.migration.LegacyCacheScan(
+            hasAnyData = true,
+            characterCount = 2,
+            sessionCount = 3,
+            messageCount = 10,
+            outboxUnsentCount = 1,
+            missingLorebookIds = listOf("lb1"),
+        )
+        val import = importer.plan(scan, com.qingyu.companion.local.migration.LegacyImportChoice.ImportAsLocalCopy)
+        assertEquals(2, import.importedCharacters)
+        assertTrue(import.warnings.isNotEmpty())
+        val skip = importer.plan(scan, com.qingyu.companion.local.migration.LegacyImportChoice.BackupAndSkip)
+        assertEquals(0, skip.importedCharacters)
+    }
 }

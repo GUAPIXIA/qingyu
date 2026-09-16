@@ -86,6 +86,21 @@ class AppContainer(context: Context) {
         .fallbackToDestructiveMigrationFrom(1, 2, 3)
         .build()
 
+    // ---------- 阶段 3：本地权威库（独立文件，不升级 companion-cache） ----------
+    val localDatabase: com.qingyu.companion.local.db.QingyuLocalDatabase = Room.databaseBuilder(
+        appContext,
+        com.qingyu.companion.local.db.QingyuLocalDatabase::class.java,
+        com.qingyu.companion.local.db.QingyuLocalDatabase.NAME,
+    )
+        .fallbackToDestructiveMigrationOnDowngrade()
+        .build()
+
+    val secretStore: com.qingyu.companion.security.SecretStore =
+        com.qingyu.companion.security.InMemorySecretStore() // Keystore 包装在后续实机接入
+
+    val connectionProfileStore: com.qingyu.companion.security.ConnectionProfileStore =
+        com.qingyu.companion.security.ConnectionProfileStore(secretStore)
+
     // ---------- 阶段 B：共享网络栈 / 协调器 / 连接观察者 ----------
 
     /** B-04：全应用共享一套 Dispatcher/ConnectionPool/DNS（REST/WS/Coil/TTS/探测派生） */

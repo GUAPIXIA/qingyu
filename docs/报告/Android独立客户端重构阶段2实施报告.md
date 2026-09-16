@@ -12,7 +12,7 @@
 | S2-02 | `deviceIdentity.ts` | 单测：生成/递增/克隆 |
 | S2-03 | `syncMeta.ts`（`node:sqlite`） | heads/change_log/file_transactions/bootstrap_receipts |
 | S2-01 | `pcRepository.ts` | put/tombstone → 文件+head+journal |
-| S2-04 部分 | persona/regex/**preset**/**lorebook**/**quickReply**/**usage** IPC + settings_public 钩子 | flag 开启写 journal；`check-write-bypass` high-risk journaled **4/11**（lorebook/preset/quickReply/usage） |
+| S2-04 部分 | persona/regex/**preset**/**lorebook**/**quickReply**/**usage**/**character**/**chat**/**group** IPC + settings_public | bypass **7/11**；OPEN: mcp、bridge chatService/routes、services/usage 底层 |
 | S2-05 | `bootstrap.ts` | 幂等 receipt + genesisId |
 | 启动恢复 | `recovery.ts` | PREPARED→ABORT；FILES_APPLIED→ABORT 待哈希增强 |
 | S2-06 骨架 | `remoteApply.ts` | origin=remote、HASH_MISMATCH 拒绝、冲突表、伪冲突收敛 |

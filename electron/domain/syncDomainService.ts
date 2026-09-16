@@ -68,6 +68,7 @@ export function journalPutIfEnabled(input: {
   domain: DomainFlagKey
   entityType: SyncEnvelope['entityType']
   entityId: string
+  parentId?: string | null
   payload: Record<string, unknown>
   writeBusiness?: () => void
 }): boolean {
@@ -76,6 +77,7 @@ export function journalPutIfEnabled(input: {
   repo.putWithJournal({
     entityType: input.entityType,
     entityId: input.entityId,
+    parentId: input.parentId ?? null,
     payload: input.payload,
     writeBusiness: () => input.writeBusiness?.(),
   })

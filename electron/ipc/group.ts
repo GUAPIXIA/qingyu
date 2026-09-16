@@ -11,8 +11,36 @@ import { safeId } from '../utils/pathGuard'
 import { isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDefaultGroupMemoryConfig } from '../../shared/defaultMemory'
 import { withMessageIdentity } from '../../shared/messageIdentity'
+import { app } from 'electron'
+import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('group')
+
+function journalGroupPut(group: GroupChat): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalPutIfEnabled({
+      domain: 'group',
+      entityType: 'group',
+      entityId: group.id,
+      payload: {
+        name: group.name,
+        memberIds: group.memberIds ?? [],
+      },
+    })
+  } catch (err) {
+    log.warn('group journal 失败', { err: String(err) })
+  }
+}
+
+function journalGroupDelete(id: string): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalDeleteIfEnabled({ domain: 'group', entityType: 'group', entityId: id })
+  } catch (err) {
+    log.warn('group delete journal 失败', { err: String(err) })
+  }
+}
 
 /** group:updateSession 允许更新的字段白名单（防止注入 id/groupId 等关键字段） */
 const GROUP_UPDATE_SESSION_FIELDS = new Set([
@@ -251,6 +279,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       }
       saveGroups(groups)
     })
+    journalGroupPut(group)
     log.info('群聊已保存', { groupId: group.id, name: group.name })
   })
 
@@ -267,6 +296,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       renameSync(dir, trashDir)
       rmSync(trashDir, { recursive: true, force: true })
     }
+    journalGroupDelete(id)
     log.info('群聊已删除', { groupId: id })
   })
 
@@ -384,6 +414,23 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         appendMessage(groupId, sessionId, normalizedMessage)
       }
     })
+    try {
+      ensureSyncDomain(app.getPath('userData'))
+      journalPutIfEnabled({
+        domain: 'message',
+        entityType: 'message',
+        entityId: normalizedMessage.id,
+        parentId: sessionId,
+        payload: {
+          sessionId,
+          groupId,
+          content: normalizedMessage.content,
+          timestamp: normalizedMessage.timestamp,
+        },
+      })
+    } catch (err) {
+      log.warn('group message journal 失败', { err: String(err) })
+    }
 
     // 更新 session updatedAt
     await withSessionsLock(groupId, () => {

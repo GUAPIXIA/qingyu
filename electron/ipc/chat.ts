@@ -14,8 +14,77 @@ import { safeId } from '../utils/pathGuard'
 import { safeHandle } from '../utils/safeHandle'
 import { withMessageIdentity } from '../../shared/messageIdentity'
 import { replaceFileWithRetry } from '../services/filePersistence'
+import { app } from 'electron'
+import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('chat')
+
+function journalSessionPut(characterId: string, session: ChatSession): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalPutIfEnabled({
+      domain: 'session',
+      entityType: 'session',
+      entityId: session.id,
+      parentId: characterId,
+      payload: {
+        characterId,
+        title: session.title,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        personaId: session.personaId ?? null,
+        lorebookIds: session.lorebookIds ?? [],
+        narrativeMode: session.narrativeMode ?? null,
+      },
+    })
+  } catch (err) {
+    log.warn('session journal 失败', { err: String(err) })
+  }
+}
+
+function journalSessionDelete(sessionId: string): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalDeleteIfEnabled({ domain: 'session', entityType: 'session', entityId: sessionId })
+  } catch (err) {
+    log.warn('session delete journal 失败', { err: String(err) })
+  }
+}
+
+function journalMessagePut(message: Message): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalPutIfEnabled({
+      domain: 'message',
+      entityType: 'message',
+      entityId: message.id,
+      parentId: message.sessionId,
+      payload: {
+        sessionId: message.sessionId,
+        characterId: message.characterId,
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp,
+        speakerKind: message.speakerKind ?? null,
+        generationKind: message.generationKind ?? null,
+        narrativeMode: message.narrativeMode ?? null,
+        swipeIndex: message.swipeIndex ?? 0,
+        replyToId: message.replyToId ?? null,
+      },
+    })
+  } catch (err) {
+    log.warn('message journal 失败', { err: String(err) })
+  }
+}
+
+function journalMessageDelete(id: string): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalDeleteIfEnabled({ domain: 'message', entityType: 'message', entityId: id })
+  } catch (err) {
+    log.warn('message delete journal 失败', { err: String(err) })
+  }
+}
 
 /** chat:updateSession 允许更新的字段白名单（防止注入 id/characterId 等关键字段） */
 const UPDATE_SESSION_FIELDS = new Set([
@@ -627,6 +696,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       }
       sessions.push(session)
       saveSessions(characterId, sessions)
+      journalSessionPut(characterId, session)
       log.info('会话已创建', { characterId, sessionId: session.id, title: session.title })
       return session
     })
@@ -649,6 +719,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     return withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId).filter(s => s.id !== sessionId)
       saveSessions(characterId, sessions)
+      journalSessionDelete(sessionId)
       log.info('会话已删除', { characterId, sessionId })
     })
   })
@@ -727,6 +798,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     await withSessionFileLock(message.characterId, sid, () => {
       updateMessage(message.characterId, sid, normalizedMessage)
     })
+    journalMessagePut(normalizedMessage)
 
     // 增量更新 session 的 updatedAt（只重写 sessions.json，不重读 messages）
     await withSessionsLock(message.characterId, () => {
@@ -754,6 +826,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       // P-8：全量重写后重置追加计数
       resetAppendCount(characterId, sid)
     })
+    journalMessageDelete(id)
     // 同步 session updatedAt
     await withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId)

@@ -22,8 +22,43 @@ import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { safeId } from '../utils/pathGuard'
 import { DIRS, readJson, withFileLock } from '../services/storage'
 import { suggestLorebooks } from '../services/lorebookMatcher'
+import { app } from 'electron'
+import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('character')
+
+function journalCharacter(character: Character): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalPutIfEnabled({
+      domain: 'character',
+      entityType: 'character',
+      entityId: character.id,
+      payload: {
+        name: character.name,
+        description: character.description ?? '',
+        personality: character.personality ?? '',
+        scenario: character.scenario ?? '',
+        firstMessage: character.firstMessage ?? '',
+        tags: character.tags ?? [],
+        creator: character.creator ?? '',
+        boundLorebookIds: character.boundLorebookIds ?? [],
+        boundPresetId: character.boundPresetId ?? null,
+      },
+    })
+  } catch (err) {
+    log.warn('character journal 失败', { err: String(err) })
+  }
+}
+
+function journalCharacterDelete(id: string): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalDeleteIfEnabled({ domain: 'character', entityType: 'character', entityId: id })
+  } catch (err) {
+    log.warn('character delete journal 失败', { err: String(err) })
+  }
+}
 
 /** 并发池大小 */
 const CONCURRENCY_LIMIT = 3
@@ -66,6 +101,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
     await withCharacterLock(character.id, () => {
       saveCharacter(character)
     })
+    journalCharacter(character)
     log.info('角色已保存', { id: character.id, name: character.name })
   })
 
@@ -76,6 +112,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
     await withCharacterLock(id, () => {
       deleteCharacter(id)
     })
+    journalCharacterDelete(id)
     log.info('角色已删除', { id })
   })
 

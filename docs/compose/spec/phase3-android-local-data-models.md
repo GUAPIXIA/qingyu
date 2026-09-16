@@ -10,14 +10,14 @@ commits: 60b536f..HEAD
 
 ## Report
 
-**What was built** — QingyuLocalDatabase Room v1、LocalSyncRepository journal、SecretStore/ConnectionProfileStore、OpenAI 适配器、本地启动决策（LocalReady/NeedsLocalSetup）。
+**What was built** — QingyuLocalDatabase + AppContainer 接线、LocalSyncRepository、SecretStore、四类模型适配器、LegacyCacheImporter、本地启动决策。
 
-**Verification** — `testDebugUnitTest` local.domain + contracts + startup：BUILD SUCCESSFUL。
+**Verification** — testDebugUnitTest local+contracts+startup：BUILD SUCCESSFUL。
 
 **Journey log**
-1. 不拆 Gradle 模块，先用 package 分层。
-2. OpenAI body 构造避免 org.json 依赖，便于 JVM 单测。
-3. StartupState 新增分支需同步 Compose when 穷尽。
+1. package 分层先于 Gradle 拆分。
+2. 四适配器共用 extractJsonString，避免 org.json。
+3. 阶段2 与此同时收口 character/chat/group journal。
 
 ## [S1] Problem
 

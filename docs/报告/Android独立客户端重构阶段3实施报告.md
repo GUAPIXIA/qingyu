@@ -11,8 +11,9 @@
 | S3-01 部分 | `local/db/QingyuLocalDatabase.kt` | Room v1 实体 + DAO + heads/change_log；`qingyu-local.db` 独立库 |
 | S3-03 部分 | `local/domain/LocalSyncRepository.kt` | LocalEnvelope + 内存 oracle（character/persona/connection_profile journal） |
 | S3-04 部分 | `security/SecretStore.kt` | SecretRef + ConnectionProfileStore；public 更新不擦 secret |
-| S3-05 部分 | `network/models/ModelAdapter.kt` | 统一接口、HTTPS 默认、OpenAI 请求构造与 SSE 解析 |
-| S3-07 部分 | `StartupViewModel` LocalReady / NeedsLocalSetup | 本地资料优先；StartupScreen 导航分支 |
+| S3-05 部分 | OpenAI + Anthropic + Gemini + Ollama 适配器 | 请求构造与流解析单测 |
+| S3-01/02 部分 | AppContainer.localDatabase + LegacyCacheImporter 三选一 | 单测 plan/warnings |
+| S3-07 | LocalReady / NeedsLocalSetup | 启动导航 |
 
 ## 测试命令与结果
 
