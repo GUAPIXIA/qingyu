@@ -1,14 +1,25 @@
 ---
 feature: phase0-android-sync-baseline
-status: in-progress
+status: delivered
 updated: 2026-09-16
 branch: main
-commits: # filled at delivery
+commits: 002ce41..f509918
 ---
 
 # 安卓独立客户端与主动同步 · 阶段 0 基线冻结与决策门
 
 ## Report
+
+**What was built** — 在不改生产运行时的前提下完成阶段 0 冻结：104 项能力矩阵、数据域/写入口清单、ADR-001..010、跨平台 golden fixtures（含确定性 10k 消息）、TS syncBaseline spike（canonical JSON / ULID / UInt64 字符串版本向量 / 2MiB payload 与 blob 分块）与基线指纹。阶段报告与执行索引已回写。
+
+**Verification** — `pnpm check` PASS；`pnpm test` PASS（2899 passed）；relay check/test PASS；`shared/__tests__/syncBaseline.test.ts` 6/6 PASS。`pnpm lint` 为 PRE-EXISTING（`.qa-poc` 未跟踪 QA 脚本）。Android Gradle/Keystore 实机：环境阻断（无 SDK/adb）。
+
+**Journey log**
+1. `git worktree add` 被沙箱拦截 → 在 main 干净基线上实施并经用户确认提交。
+2. lint 失败源是未跟踪 `.qa-poc`，不是阶段0文件。
+3. PowerShell 读 package.json 中文编码失败 → 指纹 JSON 改用 Node 写入。
+4. 10k fixture 用生成器提交 JSONL，避免手工维护。
+5. ADR-010 标明 Keystore 实机未验证，进阶段 7/8 前必须补测。
 
 ## [S1] Problem
 
