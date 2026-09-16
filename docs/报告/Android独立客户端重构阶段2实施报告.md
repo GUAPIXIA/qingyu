@@ -12,7 +12,7 @@
 | S2-02 | `deviceIdentity.ts` | 单测：生成/递增/克隆 |
 | S2-03 | `syncMeta.ts`（`node:sqlite`） | heads/change_log/file_transactions/bootstrap_receipts |
 | S2-01 | `pcRepository.ts` | put/tombstone → 文件+head+journal |
-| S2-04 部分 | persona/regex IPC + settings_public 钩子 | flag 开启写 journal；`check-write-bypass` 报告其余高风险域仍 OPEN |
+| S2-04 部分 | persona/regex/**preset**/**lorebook**/**quickReply**/**usage** IPC + settings_public 钩子 | flag 开启写 journal；`check-write-bypass` high-risk journaled **4/11**（lorebook/preset/quickReply/usage） |
 | S2-05 | `bootstrap.ts` | 幂等 receipt + genesisId |
 | 启动恢复 | `recovery.ts` | PREPARED→ABORT；FILES_APPLIED→ABORT 待哈希增强 |
 | S2-06 骨架 | `remoteApply.ts` | origin=remote、HASH_MISMATCH 拒绝、冲突表、伪冲突收敛 |
@@ -24,14 +24,14 @@
 |---|---|
 | `pnpm exec vitest run electron/domain` | **PASS 13/13** |
 | `pnpm check` | **PASS** |
-| `node scripts/check-write-bypass.mjs` | 报告：high-risk journaled **0/9**（character/chat/group/lorebook/preset/quickReply/usage/mcp 与 bridge 业务仍直写；persona/settings 有钩子但未计入 HIGH_RISK 列表） |
+| `node scripts/check-write-bypass.mjs` | high-risk journaled **4/11**（OK: lorebook/preset/quickReply/usage；OPEN: character/chat/group/mcp/bridge chatService+routes/services usage 底层） |
 
 ## 未完成与阻断
 
-1. HIGH_RISK 域 9 项全部仍 OPEN（见脚本输出）。
+1. HIGH_RISK 剩余 OPEN：character、chat、group、mcp、bridge（chatService/routes）、services/usage 底层（IPC 已 journal，服务层仍直接 writeJson）。
 2. FILES_APPLIED 恢复未按磁盘 hash 前滚/回滚。
 3. 真实用户数据 bootstrap/崩溃恢复/Backup V2 回滚演练未做。
-4. 远端 apply 的业务文件落盘仍由调用方决定，尚未接 Bridge/同步会话。
+4. lorebook/quickReply journal 为骨架 payload（名称/计数），完整 canonical 实体待阶段 1 扩展后回填。
 
 ## 回滚
 

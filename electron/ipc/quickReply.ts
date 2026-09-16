@@ -14,8 +14,28 @@ import { createLogger } from '../services/logger'
 import { safeId } from '../utils/pathGuard'
 import type { QuickReplyStore, QuickReply } from '../../shared/types'
 import { nanoid } from 'nanoid'
+import { app } from 'electron'
+import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('quickReply')
+
+function journalQuickReplyStore(store: QuickReplyStore): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    // 整库单实体：global 条数 + 角色 key 列表（阶段2骨架）
+    journalPutIfEnabled({
+      domain: 'quick_reply_set',
+      entityType: 'quick_reply_set',
+      entityId: 'quick-replies-root',
+      payload: {
+        globalCount: store.global.length,
+        characterIds: Object.keys(store.byCharacter).sort(),
+      },
+    })
+  } catch (err) {
+    log.warn('quickReply journal 失败', { err: String(err) })
+  }
+}
 
 const DEFAULT_STORE: QuickReplyStore = { global: [], byCharacter: {} }
 
@@ -57,6 +77,7 @@ export function registerQuickReplyIPC(ipcMain: IpcMain, dialog: Dialog): void {
       for (const qr of list) normalizeQuickReply(qr)
     }
     writeJson(getStorePath(), clean)
+    journalQuickReplyStore(clean)
     log.info('快捷回复已保存', {
       global: clean.global.length,
       characters: Object.keys(clean.byCharacter).length,
@@ -69,6 +90,17 @@ export function registerQuickReplyIPC(ipcMain: IpcMain, dialog: Dialog): void {
     const store = readStore()
     delete store.byCharacter[characterId]
     writeJson(getStorePath(), store)
+    try {
+      ensureSyncDomain(app.getPath('userData'))
+      // 角色级快捷回复集合删除：以 character 为 entityId 的 QR 子集
+      journalDeleteIfEnabled({
+        domain: 'quick_reply_set',
+        entityType: 'quick_reply_set',
+        entityId: `qr-char-${characterId}`,
+      })
+    } catch (err) {
+      log.warn('quickReply clearCharacter journal 失败', { err: String(err) })
+    }
   })
 
   // 导出 JSON（保存对话框）

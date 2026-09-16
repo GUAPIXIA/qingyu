@@ -10,14 +10,15 @@ commits: a5aacb5..HEAD
 
 ## Report
 
-**What was built** — DeviceIdentity、sync-meta SQLite、PcDomainRepository、feature flag、bootstrap、persona/regex journal 钩子、settings_public 钩子、启动恢复、remote apply 骨架、观测与绕过检测脚本。
+**What was built** — DeviceIdentity、sync-meta、Repository、flag、bootstrap、启动恢复、remote apply、观测、绕过检测；persona/regex/settings/**preset/lorebook/quickReply/usage** journal 钩子。
 
-**Verification** — vitest electron/domain **13/13 PASS**；pnpm check PASS；`scripts/check-write-bypass.mjs` 显示 HIGH_RISK 9 域仍 OPEN。
+**Verification** — vitest electron/domain 13/13 PASS；pnpm check PASS；bypass journaled 4/11。
 
 **Journey log**
-1. node:sqlite 列名 snake_case，读侧 mapHead。
-2. FILES_APPLIED 恢复暂 ABORT，不做无哈希猜测前滚。
-3. 绕过检测脚本用于收口进度门禁，非运行时强制。
+1. node:sqlite 列名 snake_case。
+2. FILES_APPLIED 恢复暂 ABORT。
+3. lorebook/QR journal 先记骨架，完整 payload 后续契约扩展。
+4. usage IPC 已 journal；services/usage 仍直写（同域双路径，收口时合并）。
 
 ## [S1] Problem
 

@@ -34,8 +34,10 @@ const HIGH_RISK = [
   'ipc/preset.ts',
   'ipc/quickReply.ts',
   'ipc/usage.ts',
+  'ipc/mcp.ts',
   'bridge/routes.ts',
   'bridge/chatService.ts',
+  'services/usage.ts',
 ]
 
 function walk(dir) {
@@ -65,19 +67,19 @@ for (const dirName of SCAN_DIRS) {
     const rel = file.slice(root.length + 1).replace(/\\/g, '/')
     const text = readFileSync(file, 'utf8')
     const writes = WRITE_PATTERNS.filter((re) => re.test(text)).length
-    if (!writes) continue
     const journaled = REPO_MARKERS.some((re) => re.test(text))
     const high = HIGH_RISK.some((h) => rel.endsWith(h))
+    if (!writes && !journaled && !high) continue
     report.push({ rel, writes, journaled, high })
   }
 }
 
 const highOpen = report.filter((r) => r.high && !r.journaled)
 const highDone = report.filter((r) => r.high && r.journaled)
-const otherWrite = report.filter((r) => !r.high)
+const otherWrite = report.filter((r) => !r.high && r.writes > 0)
 
 console.log('check-write-bypass')
-console.log(` files-with-writes=${report.length}`)
+console.log(` high-risk tracked=${HIGH_RISK.length}`)
 console.log(` high-risk journaled=${highDone.length}/${HIGH_RISK.length}`)
 for (const r of highDone) console.log(`  OK ${r.rel}`)
 for (const r of highOpen) console.log(`  OPEN ${r.rel} writes~${r.writes}`)

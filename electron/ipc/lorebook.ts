@@ -23,8 +23,38 @@ import { guessMappingTemplate, isMappingTemplate } from '../../shared/lorebook/a
 import { deleteLorebookMappingTemplate, listLorebookMappingTemplates, saveLorebookMappingTemplate } from '../services/lorebookMappingTemplates'
 import { runLorebookHealthCheck } from '../services/lorebookHealthCheck'
 import { compileCanonicalLorebookV2 } from '../../shared/lorebook/runtime/compile'
+import { app } from 'electron'
+import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('lorebook')
+
+function journalLorebook(lorebook: Lorebook): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    // 阶段2 journal 骨架：name + 条目规模；完整 canonical payload 由后续实体契约扩展
+    journalPutIfEnabled({
+      domain: 'lorebook',
+      entityType: 'lorebook',
+      entityId: lorebook.id,
+      payload: {
+        name: lorebook.name ?? '',
+        description: lorebook.description ?? '',
+        entryCount: Array.isArray(lorebook.entries) ? lorebook.entries.length : 0,
+      },
+    })
+  } catch (err) {
+    log.warn('lorebook journal 失败', { err: String(err) })
+  }
+}
+
+function journalLorebookDelete(id: string): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalDeleteIfEnabled({ domain: 'lorebook', entityType: 'lorebook', entityId: id })
+  } catch (err) {
+    log.warn('lorebook delete journal 失败', { err: String(err) })
+  }
+}
 
 export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 列表
@@ -50,6 +80,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
         }
       }
     })
+    journalLorebook(lorebook)
     log.info('世界书已保存', {
       id: lorebook.id,
       name: lorebook.name,
@@ -66,6 +97,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     removeFile(join(DIRS.lorebooks(), `${id}.json`))
     // N5 修复：同步清理向量索引（磁盘文件 + 内存缓存），避免残留垃圾
     removeVectorIndex(id)
+    journalLorebookDelete(id)
     log.info('世界书已删除', { id })
   })
 

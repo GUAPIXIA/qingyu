@@ -6,8 +6,45 @@ import type { Preset } from '../../shared/types'
 import { normalizeImportedPreset, normalizePreset } from '../../shared/preset'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
+import { app } from 'electron'
+import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('preset')
+
+function journalPreset(saved: Preset): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalPutIfEnabled({
+      domain: 'preset',
+      entityType: 'preset',
+      entityId: saved.id,
+      payload: {
+        name: saved.name,
+        description: saved.description ?? '',
+        systemPrompt: saved.systemPrompt ?? '',
+        jailbreak: saved.jailbreak ?? '',
+        temperature: saved.temperature,
+        topP: saved.topP,
+        maxContext: saved.maxContext,
+        maxTokens: saved.maxTokens,
+        frequencyPenalty: saved.frequencyPenalty,
+        presencePenalty: saved.presencePenalty,
+        responseLengthHint: saved.responseLengthHint,
+      },
+    })
+  } catch (err) {
+    log.warn('preset journal 失败', { err: String(err) })
+  }
+}
+
+function journalPresetDelete(id: string): void {
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    journalDeleteIfEnabled({ domain: 'preset', entityType: 'preset', entityId: id })
+  } catch (err) {
+    log.warn('preset delete journal 失败', { err: String(err) })
+  }
+}
 
 const ROLEPLAY_FOUNDATION = `你负责与 {{user}} 进行持续、沉浸的互动叙事。
 
@@ -282,6 +319,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
     }
     safeId(saved.id)
     writeJson(join(DIRS.presets(), `${saved.id}.json`), saved)
+    journalPreset(saved)
     log.info('预设已保存', { id: saved.id, name: saved.name })
     return saved
   })
@@ -290,6 +328,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
   ipcMain.handle('preset:delete', async (_e, id: string) => {
     safeId(id)
     removeFile(join(DIRS.presets(), `${id}.json`))
+    journalPresetDelete(id)
     log.info('预设已删除', { id })
   })
 
@@ -310,6 +349,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
       fallbackName: basename(sourcePath, extname(sourcePath)),
     })
     writeJson(join(DIRS.presets(), `${imported.preset.id}.json`), imported.preset)
+    journalPreset(imported.preset)
     log.info('预设已导入', {
       id: imported.preset.id,
       name: imported.preset.name,
