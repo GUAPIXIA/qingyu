@@ -101,6 +101,13 @@ class AppContainer(context: Context) {
     val connectionProfileStore: com.qingyu.companion.security.ConnectionProfileStore =
         com.qingyu.companion.security.ConnectionProfileStore(secretStore)
 
+    /** 阶段 3：本地权威 Repository（Room） */
+    val localSyncRepository: com.qingyu.companion.local.domain.RoomLocalSyncRepository =
+        com.qingyu.companion.local.domain.RoomLocalSyncRepository(
+            db = localDatabase,
+            deviceId = deviceIdentity.deviceInstallationId,
+        )
+
     // ---------- 阶段 B：共享网络栈 / 协调器 / 连接观察者 ----------
 
     /** B-04：全应用共享一套 Dispatcher/ConnectionPool/DNS（REST/WS/Coil/TTS/探测派生） */

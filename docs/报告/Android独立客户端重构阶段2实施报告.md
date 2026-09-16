@@ -24,11 +24,11 @@
 |---|---|
 | `pnpm exec vitest run electron/domain` | **PASS 13/13** |
 | `pnpm check` | **PASS** |
-| `node scripts/check-write-bypass.mjs` | high-risk journaled **4/11**（OK: lorebook/preset/quickReply/usage；OPEN: character/chat/group/mcp/bridge chatService+routes/services usage 底层） |
+| `node scripts/check-write-bypass.mjs` | high-risk journaled **8/11**（OK: character/chat/group/lorebook/preset/quickReply/usage/mcp；OPEN: bridge chatService+routes、services/usage 底层） |
 
 ## 未完成与阻断
 
-1. HIGH_RISK 剩余 OPEN：character、chat、group、mcp、bridge（chatService/routes）、services/usage 底层（IPC 已 journal，服务层仍直接 writeJson）。
+1. HIGH_RISK 剩余 OPEN：bridge（chatService/routes）— 旧伴侣业务面，阶段 9 删除前仍直写；`services/usage.ts` 底层直写（IPC 已 journal）。
 2. FILES_APPLIED 恢复未按磁盘 hash 前滚/回滚。
 3. 真实用户数据 bootstrap/崩溃恢复/Backup V2 回滚演练未做。
 4. lorebook/quickReply journal 为骨架 payload（名称/计数），完整 canonical 实体待阶段 1 扩展后回填。

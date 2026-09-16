@@ -23,6 +23,8 @@ const REPO_MARKERS = [
   /putWithJournal/,
   /tombstoneWithJournal/,
   /ensureSyncDomain/,
+  /bridgeJournalPut/,
+  /bridgeJournalDelete/,
 ]
 
 /** 已知高风险同步域文件（阶段 2 收口清单） */

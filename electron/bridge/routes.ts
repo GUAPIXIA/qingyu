@@ -23,6 +23,7 @@ import { Router } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import { join } from 'node:path'
 import { readJson, writeJson, listJsonFilesAsync, DIRS, withFileLock } from '../services/storage'
+import { bridgeJournalPut, bridgeJournalDelete } from './bridgeJournal'
 import { getCharacter } from '../services/charCard'
 import { listLorebookViews } from '../services/lorebookDocumentStore'
 import { chatData } from '../ipc/chat'
@@ -514,6 +515,18 @@ export function buildBridgeRouter(
       }
       updated = normalizePreset(updated)
       writeJson(join(DIRS.presets(), `${updated.id}.json`), updated)
+      bridgeJournalPut({
+        domain: 'preset',
+        entityType: 'preset',
+        entityId: updated.id,
+        payload: {
+          name: updated.name,
+          temperature: updated.temperature,
+          topP: updated.topP,
+          maxTokens: updated.maxTokens,
+          source: 'bridge',
+        },
+      })
       res.json({ ok: true, presetId: updated.id, createdCopy })
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
@@ -599,6 +612,19 @@ export function buildBridgeRouter(
         character.id,
         title && title.trim() ? title.trim() : undefined,
       )
+      bridgeJournalPut({
+        domain: 'session',
+        entityType: 'session',
+        entityId: session.id,
+        parentId: character.id,
+        payload: {
+          characterId: session.characterId,
+          title: session.title,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+          source: 'bridge',
+        },
+      })
       // 新建会话可选插入开场白（首条消息）：对齐 PC 端 insertGreetingMessage
       let firstMessageContent = ''
       if (typeof greeting === 'string' && greeting.trim()) {
@@ -617,6 +643,20 @@ export function buildBridgeRouter(
           contentRenderMode: 'markdown',
         }
         chatData.saveMessage(character.id, firstMsg)
+        bridgeJournalPut({
+          domain: 'message',
+          entityType: 'message',
+          entityId: firstMsg.id,
+          parentId: session.id,
+          payload: {
+            sessionId: firstMsg.sessionId,
+            characterId: firstMsg.characterId,
+            role: firstMsg.role,
+            content: firstMsg.content,
+            timestamp: firstMsg.timestamp,
+            source: 'bridge-greeting',
+          },
+        })
       }
       notifySessionChanged(session.id, 'created')
       res.json({
@@ -673,6 +713,19 @@ export function buildBridgeRouter(
         session.personaId,
         session.lorebookIds,
       )
+      bridgeJournalPut({
+        domain: 'session',
+        entityType: 'session',
+        entityId: branch.id,
+        parentId: session.characterId,
+        payload: {
+          characterId: branch.characterId,
+          title: branch.title,
+          createdAt: branch.createdAt,
+          updatedAt: branch.updatedAt,
+          source: 'bridge-branch',
+        },
+      })
       await chatData.updateSession(session.characterId, branch.id, {
         narrativeMode: resolveNarrativeMode(session.narrativeMode),
         dialogueDirectionsEnabled: resolveDialogueDirectionsEnabled(session),
@@ -1294,6 +1347,12 @@ export function buildBridgeRouter(
         updatedAt: now,
       }
       await groupData.saveGroup(group)
+      bridgeJournalPut({
+        domain: 'group',
+        entityType: 'group',
+        entityId: group.id,
+        payload: { name: group.name, memberIds: group.memberIds ?? [], source: 'bridge' },
+      })
       res.json({ id: group.id, name: group.name, memberIds: group.memberIds })
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })

@@ -28,6 +28,7 @@ import { applyRegexRules } from '../../shared/chat-core/regex'
 import { createLogger } from '../services/logger'
 import type { AICompletion, Character, ChatParams, Message, ProviderType, RegexRule } from '../../shared/types'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
+import { bridgeJournalPut } from './bridgeJournal'
 import { translationMaxTokens } from '../../shared/chat-core/chatConstants'
 import { generateBridgeDirections } from './dialogueDirections'
 import { groupData } from '../ipc/group'
@@ -177,6 +178,20 @@ export class BridgeChatService {
         generationKind: 'manual',
       }
       chatData.saveMessage(characterId, userMessage)
+      bridgeJournalPut({
+        domain: 'message',
+        entityType: 'message',
+        entityId: userMessage.id,
+        parentId: sessionId,
+        payload: {
+          sessionId,
+          characterId,
+          role: userMessage.role,
+          content: userMessage.content,
+          timestamp: userMessage.timestamp,
+          source: 'bridge',
+        },
+      })
       this.idempotency.set(requestId, userMessage)
       this.notifySessionChanged(sessionId, 'message')
 
