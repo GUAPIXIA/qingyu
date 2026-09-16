@@ -1,0 +1,41 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "合成角色C-V3",
+    "description": "V3 扩展字段与头像占位。",
+    "personality": "谨慎",
+    "scenario": "未来都市天台",
+    "first_mes": "风把全息广告吹得忽明忽暗。",
+    "mes_example": "",
+    "system_prompt": "",
+    "alternate_greetings": [],
+    "tags": ["合成", "v3"],
+    "creator": "qingyu-fixture",
+    "character_version": "3",
+    "group_only_greetings": [],
+    "nickname": "小C",
+    "creator_notes": "合成样本",
+    "extensions": {
+      "avatar": "avatar-placeholder://synth-c-v3",
+      "background": "background-placeholder://skyline",
+      "depth_prompt": [{ "depth": 2, "prompt": "保持第三人称", "role": "system" }],
+      "favorite": false,
+      "world": ""
+    }
+  },
+  "character_book": null,
+  "assets": {
+    "extra": {},
+    "flows": {},
+    "tavernPose": {},
+    "tavernBackgrounds": []
+  },
+  "cv": {
+    "pose": [],
+    "background": [],
+    "avatar": ["avatar-placeholder://synth-c-v3"],
+    "sprite": [],
+    "scene": []
+  }
+}

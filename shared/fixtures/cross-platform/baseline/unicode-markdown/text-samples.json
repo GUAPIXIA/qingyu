@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "id": "u-zh-emoji",
+      "text": "你好👋🌍——测试 emoji 与破折号。"
+    },
+    {
+      "id": "u-combining",
+      "text": "é café 比较宽度。"
+    },
+    {
+      "id": "u-long",
+      "text": "长文本填充……（placeholder）"
+    },
+    {
+      "id": "u-markdown",
+      "text": "# 标题\n\n**粗体** 与 `代码` 与 [链接](https://example.invalid)\n\n- 项目一\n- 项目二\n"
+    },
+    {
+      "id": "u-thought",
+      "text": "<thought>\n先想清楚再回答。\n</thought>\n正文：她推开了门。"
+    },
+    {
+      "id": "u-surrogate-key",
+      "note": "键名含非 BMP 字符；canonical 与签名必须稳定"
+    }
+  ],
+  "unicode": {
+    "astral": "𝔸𝔹",
+    "zwj": "👨‍👩‍👧",
+    "rtl": "שלום",
+    "lineSeparators": "line sep para"
+  },
+  "canonicalEdgeCases": [
+    { "case": "negative-zero", "value": -0 },
+    { "case": "float-exponent", "value": 1e-7 },
+    { "case": "int-boundary", "value": 9007199254740991 },
+    { "case": "escape-quotes", "value": "quote\"backslash\\newline\n" }
+  ]
+}

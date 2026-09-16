@@ -1,0 +1,71 @@
+{
+  "frozenAt": "2026-09-16T09:58:47.565Z",
+  "git": {
+    "commit": "002ce41608da4460d688d5055415a0741ee32023",
+    "branch": "main",
+    "worktreeCleanForTracked": true,
+    "notes": [
+      "untracked .qa-poc and scripts/_tmp_* ignored for cleanliness"
+    ]
+  },
+  "versions": {
+    "pc": "0.17.2",
+    "android": "0.3.0 (9)",
+    "relay": "0.1.0"
+  },
+  "fixtureRevision": "2026-09-16-phase0.1",
+  "toolchain": {
+    "node": "v24.18.1",
+    "pnpm": "11.21.0",
+    "java": "17",
+    "androidSdk": null
+  },
+  "commands": {
+    "pnpm check": {
+      "exit": 0,
+      "seconds": 12.84
+    },
+    "pnpm lint": {
+      "exit": 1,
+      "status": "PRE-EXISTING",
+      "detail": ".qa-poc/assist-run.ts unused vars (untracked QA probes); tracked tree lint ok"
+    },
+    "pnpm test": {
+      "exit": 0,
+      "seconds": 50.51,
+      "testFiles": "261 passed | 1 skipped (262)",
+      "tests": "2899 passed | 4 skipped (2903)"
+    },
+    "pnpm --dir relay-server check": {
+      "exit": 0,
+      "seconds": 2.43
+    },
+    "pnpm --dir relay-server test": {
+      "exit": 0,
+      "seconds": 2.37
+    },
+    "vitest shared/__tests__/syncBaseline.test.ts": {
+      "exit": 0,
+      "tests": 6
+    },
+    "android gradle test/lint/assemble": {
+      "exit": "blocked",
+      "reason": "no ANDROID_HOME/adb"
+    }
+  },
+  "performanceLocal": {
+    "messages10kScanCount": 10000,
+    "messages10kScanMs": 19.03,
+    "messages10kHeapBytes": 13688984,
+    "note": "local reference only; regression gate +20% vs this baseline"
+  },
+  "spikeBlocked": [
+    {
+      "item": "Android Keystore wrapping + X25519/Ed25519 on API 28/31/34",
+      "reason": "no Android SDK/device in environment",
+      "adrs": [
+        "ADR-010"
+      ]
+    }
+  ]
+}

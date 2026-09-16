@@ -1,0 +1,42 @@
+{
+  "groupId": "group-synth-1",
+  "name": "合成群聊",
+  "modes": [
+    {
+      "mode": "natural",
+      "description": "自然轮流",
+      "messages": [
+        { "id": "g-n-1", "role": "user", "content": "大家怎么看？", "timestamp": 1789560001000, "speakerId": "__user__" },
+        { "id": "g-n-2", "role": "assistant", "content": "我觉得可行。", "timestamp": 1789560002000, "speakerId": "char-a" },
+        { "id": "g-n-3", "role": "assistant", "content": "我保留意见。", "timestamp": 1789560003000, "speakerId": "char-b" }
+      ]
+    },
+    {
+      "mode": "nomination",
+      "description": "点名",
+      "messages": [
+        { "id": "g-t-1", "role": "user", "content": "@小A 你说。", "timestamp": 1789560101000, "speakerId": "__user__", "nominate": ["char-a"] },
+        { "id": "g-t-2", "role": "assistant", "content": "（小A）收到。", "timestamp": 1789560102000, "speakerId": "char-a" }
+      ]
+    },
+    {
+      "mode": "poll",
+      "description": "轮询",
+      "messages": [
+        { "id": "g-p-1", "role": "user", "content": "开始投票式轮流。", "timestamp": 1789560201000, "speakerId": "__user__" },
+        { "id": "g-p-2", "role": "assistant", "content": "（轮到 B）我的票。", "timestamp": 1789560202000, "speakerId": "char-b" },
+        { "id": "g-p-3", "role": "assistant", "content": "（轮到 C）下一票。", "timestamp": 1789560203000, "speakerId": "char-c" }
+      ]
+    }
+  ],
+  "members": [
+    { "characterId": "char-a", "displayName": "小A", "joinOrder": 1 },
+    { "characterId": "char-b", "displayName": "小B", "joinOrder": 2 },
+    { "characterId": "char-c", "displayName": "小C", "joinOrder": 3 }
+  ],
+  "memory": {
+    "entries": [
+      { "id": "gm-1", "content": "群约定：不人身攻击。", "timestamp": 1789560300000 }
+    ]
+  }
+}

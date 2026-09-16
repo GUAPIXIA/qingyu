@@ -1,0 +1,29 @@
+{
+  "sessionId": "sess-single-tiny",
+  "characterId": "char-synth-a",
+  "title": "单聊1条基线",
+  "createdAt": 1789550000000,
+  "updatedAt": 1789550100000,
+  "messages": [
+    {
+      "id": "msg-s-0001",
+      "sessionId": "sess-single-tiny",
+      "role": "user",
+      "content": "你好，这是一条合成消息。",
+      "timestamp": 1789550001000,
+      "swipes": [
+        {
+          "id": "swipe-s-0001-0",
+          "content": "你好，这是一条合成消息。",
+          "index": 0,
+          "isEdited": false
+        }
+      ],
+      "swipeId": 0,
+      "isEdited": false,
+      "isDeleted": false,
+      "branchFrom": null,
+      "parentMessageId": null
+    }
+  ]
+}

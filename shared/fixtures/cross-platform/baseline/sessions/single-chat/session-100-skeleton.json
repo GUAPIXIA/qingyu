@@ -1,0 +1,96 @@
+{
+  "sessionId": "sess-single-100",
+  "characterId": "char-synth-a",
+  "title": "单聊100条含分支swipe编辑删除",
+  "createdAt": 1789551000000,
+  "updatedAt": 1789559000000,
+  "messages": [
+    {
+      "id": "msg-m-0001",
+      "sessionId": "sess-single-100",
+      "role": "user",
+      "content": "第1条用户消息：雨停了吗？",
+      "timestamp": 1789551001000,
+      "swipes": [{ "id": "sw-0001-0", "content": "第1条用户消息：雨停了吗？", "index": 0, "isEdited": false }],
+      "swipeId": 0,
+      "isEdited": false,
+      "isDeleted": false
+    },
+    {
+      "id": "msg-m-0002",
+      "sessionId": "sess-single-100",
+      "role": "assistant",
+      "content": "第2条角色回复：还没有。",
+      "timestamp": 1789551002000,
+      "swipes": [
+        { "id": "sw-0002-0", "content": "第2条角色回复：还没有。", "index": 0, "isEdited": false },
+        { "id": "sw-0002-1", "content": "第2条角色回复（备用）：云很厚。", "index": 1, "isEdited": false }
+      ],
+      "swipeId": 1,
+      "isEdited": false,
+      "isDeleted": false
+    },
+    {
+      "id": "msg-m-0050",
+      "sessionId": "sess-single-100",
+      "role": "user",
+      "content": "第50条：用户编辑后的正文。",
+      "originalContent": "第50条：编辑前。",
+      "timestamp": 1789555000000,
+      "swipes": [
+        {
+          "id": "sw-0050-0",
+          "content": "第50条：用户编辑后的正文。",
+          "index": 0,
+          "isEdited": true,
+          "editedAt": 1789555100000
+        }
+      ],
+      "swipeId": 0,
+      "isEdited": true,
+      "isDeleted": false
+    },
+    {
+      "id": "msg-m-0075",
+      "sessionId": "sess-single-100",
+      "role": "assistant",
+      "content": "第75条：将被逻辑删除。",
+      "timestamp": 1789557000000,
+      "swipes": [{ "id": "sw-0075-0", "content": "第75条：将被逻辑删除。", "index": 0, "isEdited": false }],
+      "swipeId": 0,
+      "isEdited": false,
+      "isDeleted": true,
+      "deletedAt": 1789557500000
+    },
+    {
+      "id": "msg-m-0100",
+      "sessionId": "sess-single-100",
+      "role": "user",
+      "content": "第100条：分支起点。",
+      "timestamp": 1789559000000,
+      "swipes": [{ "id": "sw-0100-0", "content": "第100条：分支起点。", "index": 0, "isEdited": false }],
+      "swipeId": 0,
+      "isEdited": false,
+      "isDeleted": false,
+      "branchId": "branch-x"
+    },
+    {
+      "id": "msg-m-0100-b",
+      "sessionId": "sess-single-100",
+      "role": "user",
+      "content": "分支副本：改写第100条。",
+      "timestamp": 1789559000001,
+      "swipes": [{ "id": "sw-0100b-0", "content": "分支副本：改写第100条。", "index": 0, "isEdited": false }],
+      "swipeId": 0,
+      "isEdited": false,
+      "isDeleted": false,
+      "branchId": "branch-x",
+      "branchFromMessageId": "msg-m-0100"
+    }
+  ],
+  "notes": {
+    "completeness": "sample-skeleton",
+    "full10k": "sessions/messages-10k.jsonl (generated)",
+    "covers": ["swipe", "edit", "logical-delete", "branch"]
+  }
+}

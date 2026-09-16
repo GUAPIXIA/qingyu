@@ -1,0 +1,30 @@
+{
+  "sessionId": "sess-mem-1",
+  "summary": {
+    "id": "mem-sum-1",
+    "text": "用户偏好雨夜场景与简短回复；角色B来自书店线。",
+    "updatedAt": 1789561000000,
+    "tokenEstimate": 24
+  },
+  "facts": [
+    {
+      "id": "fact-1",
+      "content": "用户讨厌冗长战斗描写",
+      "confidence": 0.9,
+      "sourceMessageIds": ["msg-m-0002"],
+      "updatedAt": 1789561100000
+    },
+    {
+      "id": "fact-2",
+      "content": "书店老板右撇子",
+      "confidence": 0.5,
+      "sourceMessageIds": [],
+      "updatedAt": 1789561200000
+    }
+  ],
+  "vectors": {
+    "available": false,
+    "degradeReason": "vector-backend-missing",
+    "expectedFallback": "keyword-lorebook-only"
+  }
+}

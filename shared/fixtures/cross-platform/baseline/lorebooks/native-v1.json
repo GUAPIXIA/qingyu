@@ -1,0 +1,34 @@
+{
+  "entries": [
+    {
+      "key": "雨夜",
+      "content": "旧格式条目。",
+      "order": 1,
+      "disable": false,
+      "constant": false,
+      "selective": false,
+      "selectiveLogic": 0,
+      "caseSensitive": false,
+      "position": 0,
+      "depth": 4,
+      "id": 1,
+      "comment": "",
+      "displayIndex": 0,
+      "avatar": "",
+      "role": "all",
+      "excludeRandom": false,
+      "probability": 100,
+      "useProbability": true,
+      "contentIsLength": false,
+      "locks": [],
+      "uid": "native-v1-1",
+      "extension": {}
+    }
+  ],
+  "name": "Native V1 样本",
+  "description": "旧世界书格式",
+  "scanDepth": 50,
+  "tokenBudget": 200,
+  "recursiveScanning": false,
+  "extensions": {}
+}

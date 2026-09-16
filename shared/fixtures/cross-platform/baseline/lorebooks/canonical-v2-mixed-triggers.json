@@ -1,0 +1,52 @@
+{
+  "schema": "qingyu.canonical-v2",
+  "name": "合成世界书",
+  "description": "关键词/正则/语义与未知字段",
+  "scanDepth": 40,
+  "tokenBudget": 256,
+  "recursiveScanning": false,
+  "extensions": {
+    "position": "before_char",
+    "unknownVendorField": { "keep": true }
+  },
+  "entries": [
+    {
+      "uid": "lb-key-1",
+      "keys": ["雨夜", "书店"],
+      "content": "雨夜书店总是只亮一盏灯。",
+      "mode": "keyword",
+      "position": "before_char",
+      "insertionOrder": 100,
+      "enabled": true,
+      "caseSensitive": false,
+      "priority": 10,
+      "selective": false,
+      "selectiveLogic": "and_any"
+    },
+    {
+      "uid": "lb-re-1",
+      "keys": ["^老板\\s*说"],
+      "content": "正则触发：老板台词块。",
+      "mode": "regex",
+      "position": "after_char",
+      "insertionOrder": 200,
+      "enabled": true,
+      "priority": 5
+    },
+    {
+      "uid": "lb-sem-1",
+      "keys": ["信任", "背叛"],
+      "content": "语义触发候选（向量缺失时应降级为不注入）。",
+      "mode": "semantic",
+      "position": "at_depth",
+      "depth": 2,
+      "insertionOrder": 300,
+      "enabled": true,
+      "priority": 8
+    }
+  ],
+  "metadata": {
+    "source": "synthetic",
+    "unknownTopLevel": ["legacyFoo"]
+  }
+}

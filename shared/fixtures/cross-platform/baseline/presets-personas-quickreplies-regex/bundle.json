@@ -1,0 +1,52 @@
+{
+  "preset": {
+    "name": "合成预设",
+    "description": "生成规划相关合成预设",
+    "temperature": 0.8,
+    "topP": 0.95,
+    "repetitionPenalty": 1.05,
+    "maxTokens": 0,
+    "systemPrompt": "保持简洁。",
+    "stop": [],
+    "stream": true,
+    "contextLength": 8192
+  },
+  "persona": {
+    "id": "persona-synth",
+    "name": "旅人",
+    "description": "合成人设",
+    "persona": "我是一名旅人。",
+    "avatar": "avatar-placeholder://persona"
+  },
+  "quickReplySets": [
+    {
+      "id": "qr-set-1",
+      "name": "常用",
+      "items": [
+        { "id": "qr-1", "name": "继续", "content": "继续。", "isVisible": true, "injects": "user" },
+        { "id": "qr-2", "name": "翻译", "content": "请翻译为中文。", "isVisible": true, "injects": "user" }
+      ]
+    }
+  ],
+  "regexRules": [
+    {
+      "id": "re-1",
+      "name": "去思考块",
+      "pattern": "<thought>[\\s\\S]*?</thought>",
+      "placement": "ai_output",
+      "replace": "",
+      "trimStrings": [],
+      "markdownOnly": false,
+      "runOnEdit": false,
+      "disabled": false
+    },
+    {
+      "id": "re-2",
+      "name": "中文括号",
+      "pattern": "\\(([^)]*)\\)",
+      "placement": "user_input",
+      "replace": "（$1）",
+      "disabled": false
+    }
+  ]
+}

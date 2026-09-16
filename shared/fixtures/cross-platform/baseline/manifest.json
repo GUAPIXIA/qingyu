@@ -1,0 +1,9 @@
+{
+  "fixtureRevision": "2026-09-16-phase0.1",
+  "contractVersion": 1,
+  "privacy": "synthetic-only",
+  "notes": [
+    "10k message baseline generated deterministically; small samples committed inline.",
+    "No real credentials or user content."
+  ]
+}

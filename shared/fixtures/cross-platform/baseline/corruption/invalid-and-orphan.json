@@ -1,0 +1,20 @@
+{
+  "corruptJson": "{ \"name\": \"broken\", ",
+  "unknownSchema": {
+    "schema": "someone-else.v9",
+    "payload": { "foo": 1 }
+  },
+  "duplicateIds": [
+    { "id": "dup-1", "content": "a" },
+    { "id": "dup-1", "content": "b" }
+  ],
+  "orphanForeignKeys": {
+    "session": { "id": "sess-orphan", "characterId": "char-missing" },
+    "messages": [
+      { "id": "msg-orphan-1", "sessionId": "sess-missing", "role": "user", "content": "孤儿消息" }
+    ]
+  },
+  "notes": [
+    "用于导入拒绝、迁移报告与同步依赖冲突测试；不得被当作有效权威库。"
+  ]
+}
