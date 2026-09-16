@@ -51,6 +51,11 @@
     "android gradle test/lint/assemble": {
       "exit": "blocked",
       "reason": "no ANDROID_HOME/adb"
+    },
+    "connectedDebugAndroidTest CryptoSpikeTest": {
+      "exit": "PASS_XML",
+      "tests": 6,
+      "failures": 0
     }
   },
   "performanceLocal": {
@@ -59,13 +64,18 @@
     "messages10kHeapBytes": 13688984,
     "note": "local reference only; regression gate +20% vs this baseline"
   },
-  "spikeBlocked": [
-    {
-      "item": "Android Keystore wrapping + X25519/Ed25519 on API 28/31/34",
-      "reason": "no Android SDK/device in environment",
-      "adrs": [
-        "ADR-010"
-      ]
-    }
-  ]
+  "spikeBlocked": [],
+  "androidInstrumentationSpike": {
+    "date": "2026-09-16",
+    "device": "MuMu emulator-5556 API 35 V2364A x86_64",
+    "test": "com.qingyu.companion.phase0.CryptoSpikeTest",
+    "result": "6/6 PASS",
+    "xml": "android/app/build/outputs/androidTest-results/connected/debug/TEST-emulator-5556*.xml",
+    "findings": [
+      "Keystore AES-GCM wrap 32B spaceKey OK",
+      "Keystore X25519 unavailable on this emulator; software Conscrypt X25519 ECDH OK",
+      "Keystore Ed25519 JCA Signature incomplete; BC Ed25519 (androidTest-only) OK"
+    ],
+    "remaining": "API 26/31 real devices for full matrix"
+  }
 }

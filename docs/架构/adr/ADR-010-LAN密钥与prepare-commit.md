@@ -1,6 +1,6 @@
 # ADR-010: LAN 持久化 prepare/commit 与 X25519+一次性 secret；服务器新设备带外二维码/SAS
 
-- 状态：已接受（Android 8/12/14 Keystore 与 X25519/Ed25519 **实机验证环境阻断**，结论按方案冻结，实机项不得视为已通过）
+- 状态：已接受（**API 35 模拟器实机 spike 已通过**；Android 8/12/14 真机矩阵仍待补）
 - 日期：2026-09-16
 - 决策阶段：阶段 0（关联总方案决策门 5、6）
 
@@ -27,7 +27,12 @@ LAN 同步需防不可信 Wi-Fi 与中间人；commit 丢失/进程重启不得�
 ### Android 密钥保存
 
 - 不假定 Keystore 可导入任意 32 字节 `spaceKey`；使用 Keystore 生成的不可导出 wrapping key 加密保存 `spaceKey`。
-- Android 8 所需 X25519/Ed25519 实现与密码提供方必须在具备 SDK/设备的环境补做实机验证；阶段 0 仅冻结设计并记录环境阻断。
+- Android 8 所需 X25519/Ed25519 实现与密码提供方必须在具备 SDK/设备的环境补做实机验证。
+- **阶段 0 补测（2026-09-16，MuMu API 35 / V2364A，`CryptoSpikeTest` 6/6）：**
+  - Keystore AES-GCM wrapping 加密封存 32 字节 `spaceKey`：**通过**（round-trip + 密钥不可导出）。
+  - AndroidKeyStore X25519：**本模拟器不可用**（`NoSuchAlgorithmException`）；X25519 ECDH 改用系统 Conscrypt（`AndroidOpenSSL`）：**通过**。
+  - AndroidKeyStore Ed25519：可生成但系统 JCA Signature 无完整 Ed25519；以 **androidTest-only BouncyCastle Ed25519** 验证签名/验签：**通过**。
+  - 含义：生产实现不得假定 Keystore 内 X25519/Ed25519；身份密钥可用软件/Conscrypt+BC 或后续引入正式密码库，`spaceKey` 仍用 Keystore wrapping。若产品要求长期身份密钥也不可导出，需另评估 TEE/StrongBox 与库策略。
 
 ## 否决方案
 
@@ -43,3 +48,5 @@ LAN 同步需防不可信 Wi-Fi 与中间人；commit 丢失/进程重启不得�
 ## 重新评估条件
 
 - 实机证明选定 Provider 在目标 API 级别无法满足 X25519/Ed25519 时，**必须修订本 ADR** 再进入阶段 7/8 编码，不得实现期偷偷换算法。
+- 已在 API 35 模拟器确认：Keystore 无 X25519/完整 Ed25519 JCA；阶段 7/8 编码以「Keystore wrap spaceKey + 软件身份密钥（Conscrypt/BC）」为基线，除非 Android 8/12 真机或产品要求推翻。
+- Android 8（API 26）矩阵未跑；若 API 26 上连软件 X25519 都不可用，回退本 ADR。

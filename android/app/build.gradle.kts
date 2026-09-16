@@ -127,5 +127,7 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    // 阶段0 spike：系统 Provider 无 Ed25519 时用 BC 实现验证（仅测试 APK）
+    androidTestImplementation(libs.bouncycastle.prov)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

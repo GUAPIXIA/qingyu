@@ -3,7 +3,7 @@
 > 日期：2026-09-16  
 > 基线提交：`002ce41`（本报告落地时的起点；实现提交见文末）  
 > 工作区：main（沙箱禁止 `git worktree add`，经用户在 main 提交既有改动后继续）  
-> 结论：**通过（带环境阻断项）** — 离线冻结产物齐全；Android 实机 Keystore/X25519 spike **未执行**（无 SDK/adb），不得视为已验证。
+> 结论：**通过** — 离线冻结产物齐全；API 35 模拟器 Keystore/X25519/Ed25519 spike 已通过（Android 8/12 真机矩阵待补）。
 
 ## 已完成任务
 
@@ -14,7 +14,7 @@
 | S0-03 | `docs/架构/adr/ADR-001`…`ADR-010` | 均含背景/选择/否决/后果/重评；无 TBD |
 | S0-04 | `shared/fixtures/cross-platform/baseline/**` | 角色 V1–V3、单聊 1/100/10k、群三模式、世界书、预设包、记忆、unicode、corruption；密钥模式扫描在 spike 测试中 |
 | S0-05 | `docs/架构/android-independent-baseline.json` + `output/baseline/android-independent/*.log` | 见测试表；10k 消息扫描 ~19ms / ~13MB heap（本机） |
-| S0-06 | `shared/syncBaseline/**` + `shared/__tests__/syncBaseline.test.ts` | 6/6 通过；Keystore 实机 **blocked** |
+| S0-06 | `shared/syncBaseline/**` + androidTest `CryptoSpikeTest` | TS 6/6；设备 6/6（MuMu API 35） |
 
 ## 契约或迁移变化
 
@@ -32,12 +32,22 @@
 | `pnpm --dir relay-server check` | PASS | `relay-check.log` |
 | `pnpm --dir relay-server test` | PASS | `relay-test.log` |
 | `pnpm exec vitest run shared/__tests__/syncBaseline.test.ts` | PASS 6/6 | — |
-| Android `testDebugUnitTest` / `connectedDebugAndroidTest` | **BLOCKED** — 无 `ANDROID_HOME`/adb | 报告本条 |
+| Android `connectedDebugAndroidTest` class=`CryptoSpikeTest` | **PASS 6/6**（XML `failures=0`；设备 emulator-5556 API 35） | `app/build/outputs/androidTest-results/connected/debug/TEST-emulator-5556*.xml`；logcat `Phase0CryptoSpike` |
+| Android `testDebugUnitTest` 全量 | 未在本补测批次单独跑（主仓 `pnpm test` 已覆盖 TS；Android 单测可后续门禁） | — |
+
+### S0-06 实机结论（MuMu / API 35）
+
+| 项 | 结果 |
+|---|---|
+| Keystore AES-GCM wrap 32B spaceKey | PASS |
+| wrap key 不可导出 / 密文≠明文 | PASS |
+| Keystore X25519 | 不可用 → 软件 Conscrypt X25519 ECDH PASS |
+| Keystore Ed25519 | JCA Signature 不完整 → BC Ed25519 签名/验签 PASS（仅 androidTest 依赖 `bcprov-jdk18on`） |
 
 ## 未完成与阻断
 
-1. **Android 8/12/14 Keystore wrapping + X25519/Ed25519 实机验证**（S0-06）：环境无 Android SDK/设备。设计已冻结于 ADR-010；**进入阶段 7/8 编码前必须补测**，失败则修订 ADR-010。
-2. PC 冷启动/10k 会话打开/首 token/备份恢复等 **GUI 性能**未在本环境自动化采集；仅完成测试套件与 10k 消息扫描参考值。阶段后续如有需求可用受管脚本补测。
+1. **Android 8/12 真机**仍未跑同一 `CryptoSpikeTest`；API 35 结论已写入 ADR-010，阶段 7/8 前建议补矩阵。
+2. PC 冷启动/10k 会话打开/首 token/备份恢复等 **GUI 性能**未自动化采集。
 3. 完整 Android Gradle 门禁未跑（同环境阻断）。
 
 ## 回滚方法

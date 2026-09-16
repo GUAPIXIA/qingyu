@@ -29,6 +29,7 @@ androidxTestExt = "1.2.1"
 espresso = "3.6.1"
 benchmark = "1.2.4"
 uiautomator = "2.3.0"
+bcprov = "1.78.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -69,6 +70,8 @@ androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmark" }
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
+    # 仅 androidTest：阶段0 Ed25519 spike 用；不进入生产 APK
+    bouncycastle-prov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bcprov" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
