@@ -13,6 +13,8 @@ import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
 import type { UsageRecord } from '../../shared/types'
 import { getUsageDayKey } from '../../shared/usageDate'
+import { app } from 'electron'
+import { ensureSyncDomain, journalPutIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('usage')
 
@@ -66,6 +68,26 @@ export function recordUsage(record: Omit<UsageRecord, 'id'>): Promise<UsageRecor
       writeJson(USAGE_FILE, records)
     }
     log.info('用量记录已保存', { id: full.id, model: full.model, totalChars: full.totalChars })
+    try {
+      ensureSyncDomain(app.getPath('userData'))
+      journalPutIfEnabled({
+        domain: 'usage_record',
+        entityType: 'usage_record',
+        entityId: full.id,
+        payload: {
+          timestamp: full.timestamp,
+          characterId: full.characterId,
+          sessionId: full.sessionId,
+          model: full.model,
+          inputChars: full.inputChars,
+          outputChars: full.outputChars,
+          totalChars: full.totalChars,
+          source: 'usage-service',
+        },
+      })
+    } catch (err) {
+      log.warn('usage service journal 失败', { err: String(err) })
+    }
     return full
   })
 }
