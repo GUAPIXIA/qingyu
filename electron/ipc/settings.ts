@@ -1,11 +1,12 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
 import { readdirSync, existsSync, writeFileSync, readFileSync, mkdirSync, statSync } from 'node:fs'
-import { DIRS, writeJson, readJson, withFileLock } from '../services/storage'
+import { DIRS, writeJson, readJson, withFileLock, serializeJson } from '../services/storage'
 import { getDefaultSettings } from '../../shared/defaults'
 import { saveCredential, getCredential } from '../services/safeStorage'
 import { emitSettingsChanged } from '../services/settingsChangeBus'
 import { computeRevision, diffMobileSafeFields, toMobileSafeSettings } from '../bridge/settingsSync'
+import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { setMigrationCredentialAccess } from '../services/migration'
 import { createLogger } from '../services/logger'
 import { safeHandle } from '../utils/safeHandle'
@@ -13,43 +14,52 @@ import { safeId } from '../utils/pathGuard'
 import type { Settings } from '../../shared/types'
 import { createBackupV2, restoreBackupV2 } from '../services/backup'
 import { readLorebookView, saveLorebookDocumentInput } from '../services/lorebookDocumentStore'
-import { ensureSyncDomain, isDomainEnabled, type DomainFlagKey } from '../domain/syncDomainService'
+import { isDomainEnabled, writeThroughDomain, resetSyncStateForRestore, runBootstrapIfEnabled, type DomainFlagKey } from '../domain/syncDomainService'
 import { app } from 'electron'
 
 const log = createLogger('settings')
 
 const SETTINGS_FILE = () => join(DIRS.config(), 'settings.json')
 
-/** settings_public 经 Repository 记 journal（flag 开启时）。不替换 settings.json 主体写入语义。 */
-function journalSettingsPublicIfEnabled(settings: Settings): void {
-  try {
-    const { repo, flags } = ensureSyncDomain(app.getPath('userData'))
-    if (!flags.isEnabled('settings_public')) return
-    const payload: Record<string, unknown> = {
-      theme: (settings as { theme?: string }).theme,
-      language: (settings as { language?: string }).language,
-      narrativeMode: (settings as { narrativeMode?: string }).narrativeMode,
-      responseLengthMode: (settings as { responseLengthMode?: string }).responseLengthMode,
-    }
-    for (const k of Object.keys(payload)) {
-      if (payload[k] === undefined) delete payload[k]
-    }
-    repo.putWithJournal({
-      entityType: 'settings_public',
-      entityId: 'settings-public',
-      payload,
-      schemaVersion: 1,
-      writeBusiness: () => {
-        // 业务文件仍由原有 settings:save 路径写入
-      },
-    })
-  } catch (err) {
-    log.warn('settings_public journal 失败（不阻断业务保存）', { err: String(err) })
+const THEME_VALUES = new Set(['light', 'dark', 'system'])
+const LENGTH_MODE_VALUES = new Set(['auto', 'brief', 'balanced', 'detailed'])
+
+/** settings_public 的规范 payload 子集（shared/contracts/schemas/settings-public-payload.schema.json） */
+export function settingsPublicPayload(settings: Settings): Record<string, unknown> {
+  const s = settings as Settings & { responseLengthMode?: unknown; language?: unknown }
+  const payload: Record<string, unknown> = {}
+  if (typeof s.theme === 'string' && THEME_VALUES.has(s.theme)) payload.theme = s.theme
+  if (typeof s.language === 'string' && s.language.length <= 32) payload.language = s.language
+  if (s.defaultNarrativeMode !== undefined) payload.narrativeMode = resolveNarrativeMode(s.defaultNarrativeMode)
+  if (typeof s.responseLengthMode === 'string' && LENGTH_MODE_VALUES.has(s.responseLengthMode)) {
+    payload.responseLengthMode = s.responseLengthMode
   }
+  if (s.activePersonaId !== undefined) {
+    payload.activePersonaId = typeof s.activePersonaId === 'string' ? s.activePersonaId : null
+  }
+  if (s.activePresetId !== undefined) {
+    payload.activePresetId = typeof s.activePresetId === 'string' ? s.activePresetId : null
+  }
+  return payload
 }
 
 export function isRepoDomainEnabled(domain: DomainFlagKey): boolean {
   return isDomainEnabled(domain)
+}
+
+/**
+ * 整库备份恢复后的同步围栏（总方案 §6.4 / 阶段 9）：
+ * 恢复产生全新设备身份，不复用备份中的计数器；作废现有 heads/journal，
+ * 使下次 bootstrap 以恢复后的数据重建基线，避免旧 journal 与新数据混用。
+ */
+function fenceSyncStateAfterRestore(reason: string): void {
+  try {
+    const userDataDir = app.getPath('userData')
+    resetSyncStateForRestore(reason, userDataDir)
+    runBootstrapIfEnabled(userDataDir)
+  } catch (err) {
+    log.error('恢复后同步围栏失败', { reason, err: String(err) })
+  }
 }
 
 // B2：settings v2→v3 迁移链需要读写旧 provider 凭据，这里注入 safeStorage 实现。
@@ -149,9 +159,15 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     // 防回环：安卓 PATCH 走桥接层自身写路径、不经此 IPC，不会在此二次广播。
     await withFileLock(SETTINGS_FILE(), () => {
       const before = readSettingsFromDisk()
-      writeJson(SETTINGS_FILE(), settings, 'settings')
-      // 阶段 2：settings_public 同步 journal（flag 开启时；业务文件仍以 writeJson 为准）
-      journalSettingsPublicIfEnabled(settings)
+      // 阶段 2 S2-04：settings.json 与 settings_public journal 在同一持久化事务内提交
+      writeThroughDomain({
+        domain: 'settings_public',
+        entityType: 'settings_public',
+        entityId: 'settings-public',
+        payload: settingsPublicPayload(settings),
+        schemaVersion: 1,
+        files: [{ path: SETTINGS_FILE(), content: serializeJson(settings, 'settings') }],
+      })
       const changedFields = diffMobileSafeFields(before, settings)
       if (changedFields.length > 0) {
         emitSettingsChanged({
@@ -208,6 +224,7 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
       if (existsSync(presetDir)) {
         backup.presets = readdirSync(presetDir).filter((f: string) => f.endsWith('.json')).map((f: string) => readJson(join(presetDir, f)))
       }
+      // sync-bypass-ok: 导出到用户选择的 userData 之外路径，不属于同步业务数据写入
       writeFileSync(result.filePath, JSON.stringify(backup, null, 2), 'utf-8')
       log.info('备份已导出 (V1 JSON)', { path: result.filePath })
       return { status: 'success' as const, path: result.filePath, version: 1 as const }
@@ -242,6 +259,7 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
     if (isZip) {
       const { counts } = restoreBackupV2(filePath)
+      fenceSyncStateAfterRestore('importBackupV2')
       return { status: 'success' as const, version: 2 as const, counts }
     }
 
@@ -262,10 +280,12 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     const presets = safeIdList(backup.presets, '预设')
     if (backup.settings && typeof backup.settings === 'object') {
       stripSecrets(backup.settings as Settings, true)
+      // sync-bypass-ok: 整库恢复由 fenceSyncStateAfterRestore 统一作废 journal 并重建基线（总方案 §6.4）
       writeJson(SETTINGS_FILE(), backup.settings)
     }
     if (chars.length > 0) {
       mkdirSync(DIRS.characters(), { recursive: true })
+      // sync-bypass-ok: 整库恢复由 fenceSyncStateAfterRestore 统一作废 journal 并重建基线（总方案 §6.4）
       for (const { id, item } of chars) writeJson(join(DIRS.characters(), `${id}.json`), item)
     }
     if (lorebooks.length > 0) {
@@ -276,8 +296,10 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     }
     if (presets.length > 0) {
       mkdirSync(DIRS.presets(), { recursive: true })
+      // sync-bypass-ok: 整库恢复由 fenceSyncStateAfterRestore 统一作废 journal 并重建基线（总方案 §6.4）
       for (const { id, item } of presets) writeJson(join(DIRS.presets(), `${id}.json`), item)
     }
+    fenceSyncStateAfterRestore('importBackupV1')
     log.info('备份已导入 (V1 JSON)', { chars: chars.length, lorebooks: lorebooks.length, presets: presets.length })
     return { status: 'success' as const, version: 1 as const, counts: { characters: chars.length, lorebooks: lorebooks.length, presets: presets.length } }
   })

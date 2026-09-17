@@ -7,6 +7,9 @@
  * - usage:aggregate   按维度聚合用量
  * - usage:summary     全局汇总
  * - usage:clear       清空用量记录
+ *
+ * S2-04：写入（含 usage_clear_marker）统一由 services/usage 经域事务入口提交，
+ * 本层不再单独记账，避免同一变更被 journal 两次。
  */
 
 import type { IpcMain } from 'electron'
@@ -21,8 +24,6 @@ import {
 } from '../services/usage'
 import { createLogger } from '../services/logger'
 import type { UsageRecord } from '../../shared/types'
-import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled, getSyncDomain } from '../domain/syncDomainService'
 
 const log = createLogger('usage-ipc')
 
@@ -30,27 +31,7 @@ const log = createLogger('usage-ipc')
 export function registerUsageIPC(ipcMain: IpcMain): void {
   // 追加一条用量记录
   ipcMain.handle('usage:record', async (_e, record: Omit<UsageRecord, 'id'>) => {
-    const full = await recordUsage(record)
-    try {
-      ensureSyncDomain(app.getPath('userData'))
-      journalPutIfEnabled({
-        domain: 'usage_record',
-        entityType: 'usage_record',
-        entityId: full.id,
-        payload: {
-          timestamp: full.timestamp,
-          characterId: full.characterId,
-          sessionId: full.sessionId,
-          model: full.model,
-          inputChars: full.inputChars,
-          outputChars: full.outputChars,
-          totalChars: full.totalChars,
-        },
-      })
-    } catch (err) {
-      log.warn('usage journal 失败', { err: String(err) })
-    }
-    return full
+    return recordUsage(record)
   })
 
   // 按条件查询用量
@@ -69,26 +50,9 @@ export function registerUsageIPC(ipcMain: IpcMain): void {
     return getSummary(filter)
   })
 
-  // 清空用量记录
+  // 清空用量记录（tombstone + usage_clear_marker 均由 services/usage 内部提交）
   ipcMain.handle('usage:clear', async () => {
     clearUsage()
-    try {
-      ensureSyncDomain(app.getPath('userData'))
-      const { meta, repo } = getSyncDomain()
-      const deviceId = repo.deviceId()
-      const next = BigInt(meta.getDeviceState()?.nextCounter ?? '1')
-      const through: Record<string, string> = {
-        [deviceId]: String(next > 0n ? next - 1n : 0n),
-      }
-      journalPutIfEnabled({
-        domain: 'usage_record',
-        entityType: 'usage_clear_marker',
-        entityId: 'usage-clear-marker',
-        payload: { clearedThrough: through },
-      })
-    } catch (err) {
-      log.warn('usage clear marker journal 失败', { err: String(err) })
-    }
   })
 
   log.info('用量统计 IPC 已注册')

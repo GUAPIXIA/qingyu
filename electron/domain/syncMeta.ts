@@ -204,6 +204,84 @@ export class SyncMetaDb {
     return rows.map(mapHead)
   }
 
+  /** 已删除（tombstone）的 head，用于构建 delete fence */
+  listDeletedHeads(limit = 5000): EntityHeadRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT entity_type, entity_id, version_json, hash, deleted, payload_ref
+         FROM entity_heads WHERE deleted = 1 ORDER BY entity_type, entity_id LIMIT ?`,
+      )
+      .all(limit) as Array<Record<string, unknown>>
+    return rows.map(mapHead)
+  }
+
+  /** 同步 receipt：记录某对端已提交的游标与已知版本向量（S2-06 提交证据） */
+  saveReceipt(input: { peerId: string; cursor: number; knownVector: unknown }): void {
+    this.db
+      .prepare(
+        `INSERT INTO sync_receipts(peer_id, cursor, known_vector, committed_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(peer_id) DO UPDATE SET
+           cursor = excluded.cursor,
+           known_vector = excluded.known_vector,
+           committed_at = excluded.committed_at`,
+      )
+      .run(input.peerId, input.cursor, JSON.stringify(input.knownVector), Date.now())
+  }
+
+  getReceipt(peerId: string): { peerId: string; cursor: number; knownVector: string; committedAt: number } | null {
+    const row = this.db
+      .prepare('SELECT peer_id, cursor, known_vector, committed_at FROM sync_receipts WHERE peer_id = ?')
+      .get(peerId) as
+      | { peer_id: string; cursor: number; known_vector: string; committed_at: number }
+      | undefined
+    if (!row) return null
+    return {
+      peerId: row.peer_id,
+      cursor: Number(row.cursor),
+      knownVector: row.known_vector,
+      committedAt: Number(row.committed_at),
+    }
+  }
+
+  listConflicts(status?: string): Array<{
+    id: string
+    entityType: string
+    entityId: string
+    localEnvelope: string
+    remoteEnvelope: string
+    status: string
+  }> {
+    const rows = (
+      status
+        ? this.db
+            .prepare(
+              'SELECT id, entity_type, entity_id, local_envelope, remote_envelope, status FROM conflicts WHERE status = ? ORDER BY discovered_at',
+            )
+            .all(status)
+        : this.db
+            .prepare(
+              'SELECT id, entity_type, entity_id, local_envelope, remote_envelope, status FROM conflicts ORDER BY discovered_at',
+            )
+            .all()
+    ) as Array<{
+      id: string
+      entity_type: string
+      entity_id: string
+      local_envelope: string
+      remote_envelope: string
+      status: string
+    }>
+    return rows.map((r) => ({
+      id: r.id,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+      localEnvelope: r.local_envelope,
+      remoteEnvelope: r.remote_envelope,
+      status: r.status,
+    }))
+  }
+
   appendChange(input: {
     dotDevice: string
     dotCounter: string
@@ -320,6 +398,112 @@ export class SyncMetaDb {
       )
       .all() as Array<{ id: string; state: string; operations_json: string }>
     return rows.map((r) => ({ id: r.id, state: r.state, operationsJson: r.operations_json }))
+  }
+
+  /** 启动恢复需要完整 intent（含 hash 清单），不能只有 operations_json */
+  listIncompleteFileTransactionsDetailed(): Array<{
+    id: string
+    state: string
+    operationsJson: string
+    oldHashesJson: string
+    newHashesJson: string
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT id, state, operations_json, old_hashes_json, new_hashes_json
+         FROM file_transactions WHERE state IN ('PREPARED','FILES_APPLIED') ORDER BY prepared_at`,
+      )
+      .all() as Array<{
+      id: string
+      state: string
+      operations_json: string
+      old_hashes_json: string
+      new_hashes_json: string
+    }>
+    return rows.map((r) => ({
+      id: r.id,
+      state: r.state,
+      operationsJson: r.operations_json,
+      oldHashesJson: r.old_hashes_json,
+      newHashesJson: r.new_hashes_json,
+    }))
+  }
+
+  deleteFileTransaction(id: string): void {
+    this.db.prepare('DELETE FROM file_transactions WHERE id = ?').run(id)
+  }
+
+  /** 前滚幂等：同一 dot 已写入 change_log 时不得重复追加 */
+  findChangeByDot(dotDevice: string, dotCounter: string): { seq: number } | null {
+    const row = this.db
+      .prepare('SELECT seq FROM change_log WHERE dot_device = ? AND dot_counter = ? LIMIT 1')
+      .get(dotDevice, dotCounter) as { seq: number } | undefined
+    return row ? { seq: Number(row.seq) } : null
+  }
+
+  saveCheckpoint(input: { id: string; reason: string; path?: string | null; hash?: string | null }): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO checkpoints(id, reason, path, hash, created_at) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(input.id, input.reason, input.path ?? null, input.hash ?? null, Date.now())
+  }
+
+  listCheckpoints(): Array<{ id: string; reason: string; path: string | null; hash: string | null; createdAt: number }> {
+    const rows = this.db
+      .prepare('SELECT id, reason, path, hash, created_at FROM checkpoints ORDER BY created_at DESC')
+      .all() as Array<{ id: string; reason: string; path: string | null; hash: string | null; created_at: number }>
+    return rows.map((r) => ({
+      id: r.id,
+      reason: r.reason,
+      path: r.path,
+      hash: r.hash,
+      createdAt: Number(r.created_at),
+    }))
+  }
+
+  getLatestCheckpoint(reason?: string): {
+    id: string
+    reason: string
+    path: string | null
+    hash: string | null
+    createdAt: number
+  } | null {
+    const row = (
+      reason
+        ? this.db
+            .prepare(
+              'SELECT id, reason, path, hash, created_at FROM checkpoints WHERE reason = ? ORDER BY created_at DESC LIMIT 1',
+            )
+            .get(reason)
+        : this.db
+            .prepare('SELECT id, reason, path, hash, created_at FROM checkpoints ORDER BY created_at DESC LIMIT 1')
+            .get()
+    ) as { id: string; reason: string; path: string | null; hash: string | null; created_at: number } | undefined
+    if (!row) return null
+    return {
+      id: row.id,
+      reason: row.reason,
+      path: row.path,
+      hash: row.hash,
+      createdAt: Number(row.created_at),
+    }
+  }
+
+  /**
+   * 备份恢复/迁移后同步元数据不再可信：清空 heads/journal/conflicts/receipts，保留 checkpoints 审计。
+   * 方案 §6.4：恢复备份产生新设备身份，不复用备份中的设备计数器。
+   */
+  clearSyncState(): void {
+    this.db.exec(`
+      DELETE FROM entity_heads;
+      DELETE FROM change_log;
+      DELETE FROM conflicts;
+      DELETE FROM sync_receipts;
+      DELETE FROM bootstrap_receipts;
+      DELETE FROM device_state;
+      DELETE FROM file_transactions WHERE state != 'JOURNAL_COMMITTED';
+    `)
   }
 
   saveBootstrapReceipt(input: {

@@ -6,7 +6,7 @@ import { DeviceIdentityStore } from '../deviceIdentity'
 import { SyncMetaDb } from '../syncMeta'
 import { RepoFeatureFlags } from '../featureFlag'
 import { PcDomainRepository } from '../pcRepository'
-import { bootstrapHeads, scanPersonaDir, newGenesisId } from '../bootstrap'
+import { runBootstrap } from '../bootstrap'
 import { savePersonaThroughRepo, deletePersonaThroughRepo } from '../usecases/personaUseCase'
 
 function makeTemp(): string {
@@ -95,15 +95,20 @@ describe('phase2 sync-meta + repository', () => {
       { id: 'legacy-1', name: '旧人设', description: 'd', persona: 'p' },
     ])
 
-    const boot = bootstrapHeads(meta, repo.identityStore(), () =>
-      scanPersonaDir(personaFile),
-    )
+    const domain = {
+      repo,
+      flags,
+      meta,
+      identity: repo.identityStore(),
+      userDataDir: repo.rootDir(),
+    }
+    const boot = runBootstrap(domain, ['persona'], { skipBackupCheckpoint: true })
     expect(boot.alreadyBootstrapped).toBe(false)
     expect(boot.entityCount).toBe(1)
     expect(boot.genesisId).toHaveLength(32)
-    const boot2 = bootstrapHeads(meta, repo.identityStore(), () =>
-      scanPersonaDir(personaFile),
-    )
+    expect(boot.manifest.signature).toHaveLength(64)
+
+    const boot2 = runBootstrap(domain, ['persona'], { skipBackupCheckpoint: true })
     expect(boot2.alreadyBootstrapped).toBe(true)
     expect(boot2.genesisId).toBe(boot.genesisId)
 
@@ -159,7 +164,10 @@ describe('phase2 sync-meta + repository', () => {
     expect(meta.listIncompleteFileTransactions()).toHaveLength(0)
   })
 
-  it('genesis id 工厂', () => {
-    expect(newGenesisId()).toHaveLength(32)
+  it('checkpoint 可记录并查询最新一条', () => {
+    meta.saveCheckpoint({ id: 'cp-1', reason: 'bootstrap', path: 'x.zip', hash: 'sha256:abc' })
+    const latest = meta.getLatestCheckpoint('bootstrap')
+    expect(latest?.id).toBe('cp-1')
+    expect(latest?.hash).toBe('sha256:abc')
   })
 })

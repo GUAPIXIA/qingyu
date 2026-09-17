@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, renameSync, rmSync } from 'node:fs'
-import { DIRS, readJson, writeJson, countLines, withFileLock } from '../services/storage'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, renameSync, rmSync } from 'node:fs'
+import { DIRS, readJson, countLines, withFileLock } from '../services/storage'
 import { escapeMarkdownContent } from '../utils/markdown'
 import { createLogger } from '../services/logger'
 import type { GroupChat, GroupMessage, GroupSession, Settings } from '../../shared/types'
@@ -11,34 +11,92 @@ import { safeId } from '../utils/pathGuard'
 import { isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDefaultGroupMemoryConfig } from '../../shared/defaultMemory'
 import { withMessageIdentity } from '../../shared/messageIdentity'
-import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
+import { commitThroughDomain, type DomainWriteFile } from '../domain/syncDomainService'
 
 const log = createLogger('group')
 
-function journalGroupPut(group: GroupChat): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalPutIfEnabled({
-      domain: 'group',
-      entityType: 'group',
-      entityId: group.id,
-      payload: {
-        name: group.name,
-        memberIds: group.memberIds ?? [],
-      },
-    })
-  } catch (err) {
-    log.warn('group journal 失败', { err: String(err) })
+/** 群聊实体的规范 payload */
+function groupEntityPayload(group: GroupChat): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    name: group.name,
+    memberIds: group.memberIds ?? [],
   }
+  if (typeof group.createdAt === 'number') payload.createdAt = group.createdAt
+  if (typeof group.updatedAt === 'number') payload.updatedAt = group.updatedAt
+  return payload
 }
 
-function journalGroupDelete(id: string): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalDeleteIfEnabled({ domain: 'group', entityType: 'group', entityId: id })
-  } catch (err) {
-    log.warn('group delete journal 失败', { err: String(err) })
+/** 群会话实体的规范 payload */
+function groupSessionEntityPayload(groupId: string, session: GroupSession): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...session } as unknown as Record<string, unknown>
+  delete payload.id
+  if (!payload.groupId) payload.groupId = groupId
+  return payload
+}
+
+/** 群消息实体的规范 payload */
+function groupMessageEntityPayload(sessionId: string, message: GroupMessage): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...message } as unknown as Record<string, unknown>
+  delete payload.id
+  if (!payload.sessionId) payload.sessionId = sessionId
+  return payload
+}
+
+/** 解析已落盘 JSONL 的最终状态（同 id 行以最后一行为准） */
+function readMessageMapFromDisk(filePath: string): Map<string, GroupMessage> {
+  const map = new Map<string, GroupMessage>()
+  if (!existsSync(filePath)) return map
+  const content = readFileSync(filePath, 'utf-8')
+  for (const line of content.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const parsed = JSON.parse(line) as GroupMessage
+      if (parsed && typeof parsed.id === 'string' && parsed.id) map.set(parsed.id, parsed)
+    } catch {
+      /* 损坏行忽略 */
+    }
+  }
+  return map
+}
+
+/**
+ * 群聊目录级删除（S2-04）：回收站中的 sessions.json 与各 .jsonl
+ * 写 tombstone 并在同一事务内删除文件。
+ */
+function journalTrashedGroupData(groupId: string, trashDir: string): void {
+  const sessionsFile = join(trashDir, 'sessions.json')
+  const sessions = existsSync(sessionsFile)
+    ? (readJson<GroupSession[]>(sessionsFile) ?? [])
+    : []
+
+  const messageDeletes: Array<{ entityId: string; parentId: string }> = []
+  const messageFiles: DomainWriteFile[] = []
+  for (const name of readdirSync(trashDir)) {
+    if (!name.endsWith('.jsonl')) continue
+    const sessionId = name.replace(/\.jsonl$/, '')
+    const filePath = join(trashDir, name)
+    for (const m of readMessageMapFromDisk(filePath).values()) {
+      messageDeletes.push({ entityId: m.id, parentId: sessionId })
+    }
+    messageFiles.push({ path: filePath, content: null })
+  }
+  if (messageFiles.length > 0) {
+    commitThroughDomain({
+      domain: 'group',
+      entityType: 'message',
+      puts: [],
+      deletes: messageDeletes,
+      files: messageFiles,
+    })
+  }
+  if (existsSync(sessionsFile)) {
+    commitThroughDomain({
+      domain: 'group',
+      entityType: 'session',
+      puts: [],
+      deletes: sessions.map((s) => ({ entityId: s.id, parentId: groupId })),
+      files: [{ path: sessionsFile, content: null }],
+    })
   }
 }
 
@@ -120,9 +178,25 @@ function loadGroups(): GroupChat[] {
   return readJson<GroupChat[]>(file) ?? []
 }
 
+/** S2-04：index.json 与其 group journal 同一事务提交（按磁盘旧状态 diff） */
 function saveGroups(groups: GroupChat[]): void {
   mkdirSync(DIRS.groups(), { recursive: true })
-  writeJson(getIndexFile(), groups)
+  const file = getIndexFile()
+  const previous = existsSync(file) ? (readJson<GroupChat[]>(file) ?? []) : []
+  const previousById = new Map(previous.map((g) => [g.id, JSON.stringify(g)]))
+  const nextIds = new Set(groups.map((g) => g.id))
+
+  commitThroughDomain({
+    domain: 'group',
+    entityType: 'group',
+    puts: groups
+      .filter((g) => previousById.get(g.id) !== JSON.stringify(g))
+      .map((g) => ({ entityId: g.id, payload: groupEntityPayload(g), schemaVersion: 1 })),
+    deletes: previous
+      .filter((g) => !nextIds.has(g.id))
+      .map((g) => ({ entityId: g.id })),
+    files: [{ path: file, content: JSON.stringify(groups, null, 2) }],
+  })
 }
 
 // ===================== 会话管理 =====================
@@ -133,10 +207,32 @@ function loadSessions(groupId: string): GroupSession[] {
   return readJson<GroupSession[]>(file) ?? []
 }
 
+/** S2-04：群会话文件与其 journal 同一事务提交 */
 function saveSessions(groupId: string, sessions: GroupSession[]): void {
   const dir = getGroupDir(groupId)
   mkdirSync(dir, { recursive: true })
-  writeJson(getSessionsFile(groupId), sessions)
+  const file = getSessionsFile(groupId)
+  const previous = existsSync(file) ? (readJson<GroupSession[]>(file) ?? []) : []
+  const previousById = new Map(previous.map((s) => [s.id, JSON.stringify(s)]))
+  const nextIds = new Set(sessions.map((s) => s.id))
+
+  commitThroughDomain({
+    domain: 'group',
+    entityType: 'session',
+    puts: sessions
+      .filter((s) => previousById.get(s.id) !== JSON.stringify(s))
+      .map((s) => ({
+        entityId: s.id,
+        payload: groupSessionEntityPayload(groupId, s),
+        parentId: groupId,
+        references: [groupId],
+        schemaVersion: 1,
+      })),
+    deletes: previous
+      .filter((s) => !nextIds.has(s.id))
+      .map((s) => ({ entityId: s.id, parentId: groupId })),
+    files: [{ path: file, content: JSON.stringify(sessions, null, 2) }],
+  })
 }
 
 // 与 chat.ts 对齐：sessions.json / index.json / 消息文件的读-改-写统一走 per-file 锁，
@@ -221,27 +317,56 @@ function readMessages(groupId: string, sessionId: string): GroupMessage[] {
   return messages.sort((a, b) => a.timestamp - b.timestamp)
 }
 
+/** S2-04：群消息文件与其 journal 同一事务提交（按磁盘旧状态 diff） */
 function writeMessages(groupId: string, sessionId: string, messages: GroupMessage[]): void {
   const dir = getGroupDir(groupId)
   mkdirSync(dir, { recursive: true })
   const filePath = getSessionFile(groupId, sessionId)
-  const lines = messages.map(m => JSON.stringify(m)).join('\n') + '\n'
-  // 原子写入：temp + rename，防止崩溃导致会话文件损坏（与 chat.ts writeMessages 一致）
-  const tmpPath = filePath + '.tmp'
-  writeFileSync(tmpPath, lines, 'utf-8')
-  try {
-    renameSync(tmpPath, filePath)
-  } catch (err) {
-    try { unlinkSync(tmpPath) } catch { /* ignore */ }
-    throw err
-  }
+  const content = messages.map(m => JSON.stringify(m)).join('\n') + '\n'
+
+  const previous = readMessageMapFromDisk(filePath)
+  const nextIds = new Set(messages.map(m => m.id))
+  commitThroughDomain({
+    domain: 'group',
+    entityType: 'message',
+    puts: messages
+      .filter((m) => {
+        const before = previous.get(m.id)
+        return !before || JSON.stringify(before) !== JSON.stringify(m)
+      })
+      .map((m) => ({
+        entityId: m.id,
+        payload: groupMessageEntityPayload(sessionId, m),
+        parentId: sessionId,
+        references: [sessionId],
+        schemaVersion: 1,
+      })),
+    deletes: [...previous.values()]
+      .filter((m) => !nextIds.has(m.id))
+      .map((m) => ({ entityId: m.id, parentId: sessionId })),
+    files: [{ path: filePath, content }],
+  })
 }
 
+/** S2-04：追加单条群消息（append 事务，保持 O(1) 追加） */
 function appendMessage(groupId: string, sessionId: string, message: GroupMessage): void {
   const dir = getGroupDir(groupId)
   mkdirSync(dir, { recursive: true })
-  const line = JSON.stringify(message) + '\n'
-  writeFileSync(getSessionFile(groupId, sessionId), line, { flag: 'a' })
+  commitThroughDomain({
+    domain: 'group',
+    entityType: 'message',
+    puts: [
+      {
+        entityId: message.id,
+        payload: groupMessageEntityPayload(sessionId, message),
+        parentId: sessionId,
+        references: [sessionId],
+        schemaVersion: 1,
+      },
+    ],
+    deletes: [],
+    files: [{ path: getSessionFile(groupId, sessionId), content: JSON.stringify(message) + '\n', append: true }],
+  })
 }
 
 function updateMessage(groupId: string, sessionId: string, message: GroupMessage): void {
@@ -279,7 +404,6 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       }
       saveGroups(groups)
     })
-    journalGroupPut(group)
     log.info('群聊已保存', { groupId: group.id, name: group.name })
   })
 
@@ -293,10 +417,11 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     const dir = getGroupDir(id)
     if (existsSync(dir)) {
       const trashDir = join(DIRS.groups(), `.deleting-${id}-${Date.now()}`)
+      // sync-bypass-ok: 目录级回收站改名（不改变业务数据语义；实体 tombstone 由 journalTrashedGroupData 记账）
       renameSync(dir, trashDir)
+      journalTrashedGroupData(id, trashDir)
       rmSync(trashDir, { recursive: true, force: true })
     }
-    journalGroupDelete(id)
     log.info('群聊已删除', { groupId: id })
   })
 
@@ -414,23 +539,6 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         appendMessage(groupId, sessionId, normalizedMessage)
       }
     })
-    try {
-      ensureSyncDomain(app.getPath('userData'))
-      journalPutIfEnabled({
-        domain: 'message',
-        entityType: 'message',
-        entityId: normalizedMessage.id,
-        parentId: sessionId,
-        payload: {
-          sessionId,
-          groupId,
-          content: normalizedMessage.content,
-          timestamp: normalizedMessage.timestamp,
-        },
-      })
-    } catch (err) {
-      log.warn('group message journal 失败', { err: String(err) })
-    }
 
     // 更新 session updatedAt
     await withSessionsLock(groupId, () => {
@@ -554,7 +662,9 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         const files = readdirSync(dir).map((f) => join(dir, f))
         await Promise.all(files.map((f) => withFileLock(f, () => {})))
         const trashDir = join(DIRS.groups(), `.deleting-${groupId}-${Date.now()}`)
+        // sync-bypass-ok: 目录级回收站改名（不改变业务数据语义；实体 tombstone 由 journalTrashedGroupData 记账）
         renameSync(dir, trashDir)
+        journalTrashedGroupData(groupId, trashDir)
         rmSync(trashDir, { recursive: true, force: true })
       }
     }

@@ -1,13 +1,11 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
-import { DIRS, withFileLock } from '../services/storage'
+import { readFileSync, existsSync, mkdirSync } from 'node:fs'
+import { DIRS, withFileLock, serializeJson } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Persona } from '../../shared/types'
 import { nanoid } from 'nanoid'
-import { journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
-import { app } from 'electron'
-import { ensureSyncDomain } from '../domain/syncDomainService'
+import { commitThroughDomain } from '../domain/syncDomainService'
 
 const log = createLogger('persona')
 
@@ -27,35 +25,42 @@ function readPersonas(): Persona[] {
   }
 }
 
-function writePersonas(personas: Persona[]): void {
-  // 原子写入：temp + rename，防止崩溃导致数据文件损坏
-  const path = getPersonasPath()
-  const tmpPath = path + '.tmp'
-  writeFileSync(tmpPath, JSON.stringify(personas, null, 2), 'utf-8')
-  try {
-    renameSync(tmpPath, path)
-  } catch (err) {
-    try { unlinkSync(tmpPath) } catch { /* ignore */ }
-    throw err
+/** 人设实体的规范 payload：与阶段 1 冻结字段及 S2-05 扫描器一致（不含 id/头像/时间戳） */
+function personaEntityPayload(persona: Persona): Record<string, unknown> {
+  return {
+    name: persona.name,
+    description: persona.description,
+    persona: persona.persona,
   }
 }
 
-function journalPersona(persona: Persona): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalPutIfEnabled({
-      domain: 'persona',
-      entityType: 'persona',
-      entityId: persona.id,
-      payload: {
-        name: persona.name,
-        description: persona.description,
-        persona: persona.persona,
-      },
-    })
-  } catch (err) {
-    log.warn('persona journal 失败（不阻断业务）', { err: String(err) })
-  }
+/**
+ * 阶段 2 S2-04：personas.json 与其 journal 在同一文件事务内提交。
+ * 以磁盘旧状态为基准 diff 出新增/内容变化的人设实体与被移除的实体，
+ * flag 关闭时入口内部退化为与旧实现一致的原子落盘（同目录 tmp + rename）。
+ */
+function writePersonas(personas: Persona[]): void {
+  const path = getPersonasPath()
+  const previous = readPersonas()
+  const previousPayloadById = new Map(
+    previous.map((p) => [p.id, JSON.stringify(personaEntityPayload(p))]),
+  )
+  const nextIds = new Set(personas.map((p) => p.id))
+
+  const puts = personas
+    .filter((p) => previousPayloadById.get(p.id) !== JSON.stringify(personaEntityPayload(p)))
+    .map((p) => ({ entityId: p.id, payload: personaEntityPayload(p), schemaVersion: 1 }))
+  const deletes = previous
+    .filter((p) => !nextIds.has(p.id))
+    .map((p) => ({ entityId: p.id }))
+
+  commitThroughDomain({
+    domain: 'persona',
+    entityType: 'persona',
+    puts,
+    deletes,
+    files: [{ path, content: serializeJson(personas) }],
+  })
 }
 
 export function registerPersonaIPC(ipcMain: IpcMain): void {
@@ -77,7 +82,6 @@ export function registerPersonaIPC(ipcMain: IpcMain): void {
         personas.push(persona)
       }
       writePersonas(personas)
-      journalPersona(persona)
       log.info('身份已保存', { id: persona.id, name: persona.name })
       return persona
     })
@@ -87,16 +91,6 @@ export function registerPersonaIPC(ipcMain: IpcMain): void {
   ipcMain.handle('persona:delete', async (_e, id: string) => {
     const personas = readPersonas().filter((p) => p.id !== id)
     writePersonas(personas)
-    try {
-      ensureSyncDomain(app.getPath('userData'))
-      journalDeleteIfEnabled({
-        domain: 'persona',
-        entityType: 'persona',
-        entityId: id,
-      })
-    } catch (err) {
-      log.warn('persona delete journal 失败', { err: String(err) })
-    }
     log.info('身份已删除', { id })
   })
 

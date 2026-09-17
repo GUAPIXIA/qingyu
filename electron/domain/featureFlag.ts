@@ -50,6 +50,12 @@ export class RepoFeatureFlags {
     return this.read()[domain] === true
   }
 
+  /** bootstrap 需要知道哪些域已接管 */
+  enabledDomains(): DomainFlagKey[] {
+    const flags = this.read()
+    return (Object.keys(flags) as DomainFlagKey[]).filter((key) => flags[key] === true)
+  }
+
   set(domain: DomainFlagKey, enabled: boolean): RepoFlags {
     const next = { ...this.read(), [domain]: enabled }
     this.persist(next)

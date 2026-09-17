@@ -109,3 +109,45 @@ Postgres：`relay_spaces/devices/refresh_tokens/pair_tickets`、短期 cache、R
 3. 绕过检测（静态 import 图 + 运行时钩子）结果进门禁。  
 4. 为每域定义 aggregate revision / delete fence（跨实体不变量）。  
 5. 不在阶段 2 迁 SQLite（ADR-003）。
+
+## 7. 阶段 2 收口状态（2026-09-17）
+
+收口采用「单仓储 + 逐域最低层瓶颈函数」实现：把每个域的落盘瓶颈函数改为调用
+`writeThroughDomain` / `deleteThroughDomain` / `commitThroughDomain`，
+使上层调用点自动覆盖，而不是逐个改 100 余处调用点。
+
+检测方式：`node scripts/check-write-bypass.mjs --strict`（TypeScript AST 调用点级）。
+
+| 域 | 瓶颈函数 | 状态 |
+|---|---|---|
+| settings_public | `ipc/settings.writeThroughDomain` 路径 + `bridge/routes.writeBridgeSettings` | ✅ |
+| persona | `ipc/persona.writePersonas` | ✅ |
+| regex_rule | `ipc/regex.writeRules` | ✅ |
+| quick_reply_set | `ipc/quickReply.commitQuickReplyStore` | ✅ |
+| preset | `ipc/preset.savePresetFile` / `deletePresetFile` | ✅ |
+| lorebook | `lorebookDocumentStore.commitLorebookDocument` | ✅ |
+| lorebook_mapping_template | `lorebookMappingTemplates.commitMappingTemplates` | ✅ |
+| character（含媒体） | `charCard.saveCharacterThroughDomain` / `deleteCharacterThroughDomain` | ✅ |
+| session | `ipc/chat.saveSessions`、`ipc/group.saveSessions` | ✅ |
+| message | `ipc/chat.writeMessages`/`appendMessage`、`ipc/group.writeMessages`/`appendMessage` | ✅ |
+| group | `ipc/group.saveGroups` | ✅ |
+| usage_record / usage_clear_marker | `services/usage.recordUsage`/`clearUsage`（单一记账入口） | ✅ |
+| mcp_public_config | `ipc/mcp.commitMcpPublic` / `commitMcpDelete` | ✅ |
+
+结果：`violations=0`；20/20 同步域文件调用点级收口；11 处显式 `sync-bypass-ok` 豁免
+（目录级回收站改名 3、恢复写入 7、用户选择路径导出 1），逐条在报告中列出。
+
+**仍缺**（见阶段 2 报告 §8）：工作区未提交（唯一未了事项）；契约行为表仅覆盖 7 条语义；
+aggregate revision / delete fence 的跨实体不变量仅到「tombstone 推导 fence」。
+形态决策见 [ADR-011](./adr/ADR-011-阶段2单仓储与逐域瓶颈收口.md)。
+
+## 8. 同步域全景（新增同步域必查清单）
+
+| 环节 | 位置 | 缺失后果 |
+|---|---|---|
+| 域开关 | `electron/domain/featureFlag.ts` `DomainFlagKey` | 写入不会记账 |
+| 写入收口 | 该域最低层落盘函数改为 `writeThroughDomain`/`commitThroughDomain` | 检测器报 `SYNC_DOMAIN` 违规 |
+| 旧数据扫描 | `electron/domain/bootstrapScanners.ts` + `DOMAIN_ENTITY_TYPES` | 旧数据无 head，首同步全量当新增 |
+| 远端落盘 | `electron/domain/remoteMaterializers.ts` `MATERIALIZERS` | 远端实体被拒为 `UNSUPPORTED_ENTITY` |
+| 检测登记 | `scripts/check-write-bypass.mjs` `SYNC_DOMAIN_FILES` | 未归类文件报 `UNCLASSIFIED` |
+| 契约行为 | `shared/contracts/fixtures/repository/behavior-table.json` | 跨端语义无一致性证据 |

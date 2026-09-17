@@ -1,12 +1,11 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
-import { DIRS, withFileLock } from '../services/storage'
+import { readFileSync, existsSync, mkdirSync } from 'node:fs'
+import { DIRS, withFileLock, serializeJson } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { RegexRule } from '../../shared/types'
 import { nanoid } from 'nanoid'
-import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
+import { commitThroughDomain } from '../domain/syncDomainService'
 
 const log = createLogger('regex')
 
@@ -32,38 +31,40 @@ function readRules(): RegexRule[] {
 
 export { readRules }
 
-function writeRules(rules: RegexRule[]): void {
-  // 原子写入：temp + rename，防止崩溃导致数据文件损坏
-  const path = getRulesPath()
-  const tmpPath = path + '.tmp'
-  writeFileSync(tmpPath, JSON.stringify(rules, null, 2), 'utf-8')
-  try {
-    renameSync(tmpPath, path)
-  } catch (err) {
-    try { unlinkSync(tmpPath) } catch { /* ignore */ }
-    throw err
-  }
+/** 规则实体的规范 payload：与 S2-05 扫描器一致（全部业务字段，不含 id） */
+function ruleEntityPayload(rule: RegexRule): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...rule }
+  delete payload.id
+  return payload
 }
 
-function journalRegex(rule: RegexRule): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalPutIfEnabled({
-      domain: 'regex_rule',
-      entityType: 'regex_rule',
-      entityId: rule.id,
-      payload: {
-        name: rule.name,
-        pattern: rule.pattern,
-        replacement: rule.replacement,
-        flags: rule.flags,
-        enabled: rule.enabled,
-        scope: rule.scope,
-      },
-    })
-  } catch (err) {
-    log.warn('regex journal 失败', { err: String(err) })
-  }
+/**
+ * 阶段 2 S2-04：rules.json 与其 journal 在同一文件事务内提交。
+ * 以磁盘旧状态为基准 diff 出新增/内容变化的规则实体与被移除的实体，
+ * flag 关闭时入口内部退化为与旧实现一致的原子落盘（同目录 tmp + rename）。
+ */
+function writeRules(rules: RegexRule[]): void {
+  const path = getRulesPath()
+  const previous = readRules()
+  const previousPayloadById = new Map(
+    previous.map((r) => [r.id, JSON.stringify(ruleEntityPayload(r))]),
+  )
+  const nextIds = new Set(rules.map((r) => r.id))
+
+  const puts = rules
+    .filter((r) => previousPayloadById.get(r.id) !== JSON.stringify(ruleEntityPayload(r)))
+    .map((r) => ({ entityId: r.id, payload: ruleEntityPayload(r), schemaVersion: 1 }))
+  const deletes = previous
+    .filter((r) => !nextIds.has(r.id))
+    .map((r) => ({ entityId: r.id }))
+
+  commitThroughDomain({
+    domain: 'regex_rule',
+    entityType: 'regex_rule',
+    puts,
+    deletes,
+    files: [{ path, content: serializeJson(rules) }],
+  })
 }
 
 export function registerRegexIPC(ipcMain: IpcMain): void {
@@ -84,7 +85,6 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
         rules.push(rule)
       }
       writeRules(rules)
-      journalRegex(rule)
       log.info('规则已保存', { id: rule.id, name: rule.name })
       return rule
     })
@@ -96,12 +96,6 @@ export function registerRegexIPC(ipcMain: IpcMain): void {
       const rules = readRules().filter((r) => r.id !== id)
       writeRules(rules)
     })
-    try {
-      ensureSyncDomain(app.getPath('userData'))
-      journalDeleteIfEnabled({ domain: 'regex_rule', entityType: 'regex_rule', entityId: id })
-    } catch (err) {
-      log.warn('regex delete journal 失败', { err: String(err) })
-    }
     log.info('规则已删除', { id })
   })
 

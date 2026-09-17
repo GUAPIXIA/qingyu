@@ -1,5 +1,6 @@
 import { PcDomainRepository } from '../pcRepository'
 import { RepoFeatureFlags, type DomainFlagKey } from '../featureFlag'
+import type { DomainWriteFile } from '../types'
 
 export interface PersonaRecord {
   id: string
@@ -11,25 +12,31 @@ export interface PersonaRecord {
   updatedAt?: number
 }
 
+function serialize(list: PersonaRecord[]): string {
+  return JSON.stringify(list, null, 2)
+}
+
 /**
- * persona 域 use case：flag 开启时经 Repository 写 journal；关闭时仍写旧 JSON 数组文件（兼容）。
+ * persona 域 use case：flag 开启时经 Repository 在同一事务内落盘 + 写 journal；
+ * 关闭时只落盘（与旧行为一致）。
  */
 export function savePersonaThroughRepo(
   repo: PcDomainRepository,
   flags: RepoFeatureFlags,
   persona: PersonaRecord,
 ): { journaled: boolean } {
+  const file = repo.configPath('personas.json')
+  const list = repo.readJsonFile<PersonaRecord[]>(file) ?? []
+  const idx = list.findIndex((p: PersonaRecord) => p.id === persona.id)
+  const merged: PersonaRecord = { ...persona, updatedAt: Date.now() }
+  const next = idx >= 0 ? list.map((p: PersonaRecord) => (p.id === persona.id ? merged : p)) : [...list, merged]
+  const files: DomainWriteFile[] = [{ path: file, content: serialize(next) }]
+
   if (!flags.isEnabled('persona')) {
-    // 旧路径仍由 IPC 直接写；本函数在 flag 关闭时只更新文件（与旧行为一致）
-    const file = repo.configPath('personas.json')
-    const list = repo.readJsonFile<PersonaRecord[]>(file) ?? []
-    const idx = list.findIndex((p: PersonaRecord) => p.id === persona.id)
-    const next = idx >= 0 ? list.map((p: PersonaRecord) => (p.id === persona.id ? persona : p)) : [...list, persona]
     repo.writeJsonAtomic(file, next)
     return { journaled: false }
   }
 
-  const file = repo.configPath('personas.json')
   repo.putWithJournal({
     entityType: 'persona',
     entityId: persona.id,
@@ -39,16 +46,7 @@ export function savePersonaThroughRepo(
       persona: persona.persona,
     },
     schemaVersion: 1,
-    writeBusiness: () => {
-      const list = repo.readJsonFile<PersonaRecord[]>(file) ?? []
-      const idx = list.findIndex((p: PersonaRecord) => p.id === persona.id)
-      const merged: PersonaRecord = {
-        ...persona,
-        updatedAt: Date.now(),
-      }
-      const next = idx >= 0 ? list.map((p: PersonaRecord) => (p.id === persona.id ? merged : p)) : [...list, merged]
-      repo.writeJsonAtomic(file, next)
-    },
+    files,
   })
   return { journaled: true }
 }
@@ -59,18 +57,19 @@ export function deletePersonaThroughRepo(
   id: string,
 ): { journaled: boolean } {
   const file = repo.configPath('personas.json')
+  const list = repo.readJsonFile<PersonaRecord[]>(file) ?? []
+  const next = list.filter((p: PersonaRecord) => p.id !== id)
+  const files: DomainWriteFile[] = [{ path: file, content: serialize(next) }]
+
   if (!flags.isEnabled('persona')) {
-    const list = repo.readJsonFile<PersonaRecord[]>(file) ?? []
-    repo.writeJsonAtomic(file, list.filter((p: PersonaRecord) => p.id !== id))
+    repo.writeJsonAtomic(file, next)
     return { journaled: false }
   }
+
   repo.tombstoneWithJournal({
     entityType: 'persona',
     entityId: id,
-    deleteBusiness: () => {
-      const list = repo.readJsonFile<PersonaRecord[]>(file) ?? []
-      repo.writeJsonAtomic(file, list.filter((p: PersonaRecord) => p.id !== id))
-    },
+    files,
   })
   return { journaled: true }
 }

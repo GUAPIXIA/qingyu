@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "$comment": "阶段 2 S2-01 repository 契约行为表（语言无关）。PC 文件实现、内存实现与阶段 3 的 Room 实现必须对同一份表给出一致结果。字段名与 shared/contracts/sync-envelope.ts 对齐。",
+  "cases": [
+    {
+      "id": "put-creates-readable-entity-and-one-local-change",
+      "description": "写入后实体可读、head 存在且未删除、change_log 恰好追加一条 local 变更",
+      "steps": [
+        { "op": "put", "entityType": "persona", "entityId": "p1", "payload": { "name": "阿离" } },
+        {
+          "op": "expectHead",
+          "entityType": "persona",
+          "entityId": "p1",
+          "payload": { "name": "阿离" },
+          "expect": { "exists": true, "deleted": false, "hashIsContentHashOfPayload": true }
+        },
+        { "op": "expectChanges", "cursor": 0, "limit": 10, "expect": { "count": 1, "origin": "local" } },
+        { "op": "expectReadable", "entityType": "persona", "entityId": "p1", "payloadContains": { "name": "阿离" } }
+      ]
+    },
+    {
+      "id": "second-put-strictly-increases-counter",
+      "description": "同一实体再次写入时版本向量在本设备维度严格递增",
+      "steps": [
+        { "op": "put", "entityType": "persona", "entityId": "p2", "payload": { "name": "一" } },
+        { "op": "captureHeadVersion", "entityType": "persona", "entityId": "p2", "as": "v1" },
+        { "op": "put", "entityType": "persona", "entityId": "p2", "payload": { "name": "二" } },
+        { "op": "captureHeadVersion", "entityType": "persona", "entityId": "p2", "as": "v2" },
+        { "op": "expectVersionStrictlyGreater", "earlier": "v1", "later": "v2" },
+        { "op": "expectChanges", "cursor": 0, "limit": 10, "expect": { "count": 2, "origin": "local" } }
+      ]
+    },
+    {
+      "id": "tombstone-marks-deleted-and-records-change",
+      "description": "删除写入 tombstone 而不是抹除历史：head.deleted=true 且仍有 change_log 记录",
+      "steps": [
+        { "op": "put", "entityType": "character", "entityId": "c1", "payload": { "name": "角色" } },
+        { "op": "tombstone", "entityType": "character", "entityId": "c1" },
+        {
+          "op": "expectHead",
+          "entityType": "character",
+          "entityId": "c1",
+          "expect": { "exists": true, "deleted": true, "hashIsContentHashOfPayload": false }
+        },
+        { "op": "expectChanges", "cursor": 0, "limit": 10, "expect": { "count": 2, "origin": "local" } },
+        { "op": "expectNotReadable", "entityType": "character", "entityId": "c1" }
+      ]
+    },
+    {
+      "id": "changesAfter-pages-without-gap-or-overlap",
+      "description": "游标分页不重不漏：逐页读取的并集等于全量，且 nextCursor 单调不减",
+      "steps": [
+        { "op": "put", "entityType": "persona", "entityId": "pg1", "payload": { "name": "1" } },
+        { "op": "put", "entityType": "persona", "entityId": "pg2", "payload": { "name": "2" } },
+        { "op": "put", "entityType": "persona", "entityId": "pg3", "payload": { "name": "3" } },
+        { "op": "expectPagedUnionEqualsTotal", "limit": 2, "expectTotal": 3 }
+      ]
+    },
+    {
+      "id": "invalid-entity-id-is-rejected",
+      "description": "含路径分隔符或 .. 的实体 ID 必须被拒绝，不产生任何文件或 head",
+      "steps": [
+        { "op": "expectPutRejected", "entityType": "persona", "entityId": "../../evil", "payload": { "name": "x" } },
+        { "op": "expectHead", "entityType": "persona", "entityId": "../../evil", "expect": { "exists": false } },
+        { "op": "expectChanges", "cursor": 0, "limit": 10, "expect": { "count": 0, "origin": "local" } }
+      ]
+    },
+    {
+      "id": "content-hash-is-canonical-not-field-order-dependent",
+      "description": "字段顺序不同的等价 payload 产生相同 contentHash（跨语言一致性的前提）",
+      "steps": [
+        { "op": "put", "entityType": "persona", "entityId": "ph1", "payload": { "name": "A", "description": "B" } },
+        { "op": "captureHeadHash", "entityType": "persona", "entityId": "ph1", "as": "h1" },
+        { "op": "put", "entityType": "persona", "entityId": "ph2", "payload": { "description": "B", "name": "A" } },
+        { "op": "captureHeadHash", "entityType": "persona", "entityId": "ph2", "as": "h2" },
+        { "op": "expectEqual", "left": "h1", "right": "h2" }
+      ]
+    },
+    {
+      "id": "remote-origin-does-not-echo-as-local",
+      "description": "远端应用写入的 change_log 记为 remote，不产生可回传的 local 变更",
+      "steps": [
+        {
+          "op": "applyRemote",
+          "entityType": "persona",
+          "entityId": "pr1",
+          "payload": { "name": "远端" },
+          "deviceId": "android-1",
+          "counter": "1"
+        },
+        { "op": "expectChanges", "cursor": 0, "limit": 10, "expect": { "count": 1, "origin": "remote" } },
+        { "op": "expectChanges", "cursor": 0, "limit": 10, "expect": { "count": 0, "origin": "local" } }
+      ]
+    }
+  ]
+}

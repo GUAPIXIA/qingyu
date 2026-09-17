@@ -66,16 +66,21 @@ export function readJson<T>(filePath: string, domain?: DataDomain): T | null {
   }
 }
 
-/** 写入 JSON 文件（传入 domain 时自动附加当前 schemaVersion）。
- *  L-05 修复：使用 temp 文件 + rename 保证原子写入，防止崩溃时数据损坏 */
-export function writeJson(filePath: string, data: unknown, domain?: DataDomain): void {
-  mkdirSync(join(filePath, '..'), { recursive: true })
+/** 序列化 JSON 文本（与 writeJson 同语义，供事务写入复用同一份内容） */
+export function serializeJson(data: unknown, domain?: DataDomain): string {
   // 修复：数组数据域（如 sessions）不能被展开成对象，否则下次读取时 findIndex/find 会抛错
   const payload = domain && data && typeof data === 'object' && !Array.isArray(data)
     ? { ...(data as object), schemaVersion: currentSchemaVersion(domain) }
     : data
+  return JSON.stringify(payload, null, 2)
+}
+
+/** 写入 JSON 文件（传入 domain 时自动附加当前 schemaVersion）。
+ *  L-05 修复：使用 temp 文件 + rename 保证原子写入，防止崩溃时数据损坏 */
+export function writeJson(filePath: string, data: unknown, domain?: DataDomain): void {
+  mkdirSync(join(filePath, '..'), { recursive: true })
   const tmpPath = filePath + '.tmp'
-  writeFileSync(tmpPath, JSON.stringify(payload, null, 2), 'utf-8')
+  writeFileSync(tmpPath, serializeJson(data, domain), 'utf-8')
   try {
     renameSync(tmpPath, filePath)
   } catch (err) {
@@ -83,6 +88,18 @@ export function writeJson(filePath: string, data: unknown, domain?: DataDomain):
     try { unlinkSync(tmpPath) } catch { /* ignore */ }
     throw err
   }
+}
+
+/**
+ * 把导出产物写到用户选择的路径（角色卡 PNG / JSON / 封面图等）。
+ *
+ * 导出目标是应用数据目录之外的本地文件，由保存对话框显式选择，属于导出产物而非同步域业务数据，
+ * 因此不经过 writeThroughDomain（事务目标路径限定在 userData 内），原始落盘集中在 storage 服务内，
+ * 业务模块不直接调用 fs 写函数。数据目录内的角色媒体文件（头像/封面）属于角色聚合，
+ * 由角色域事务提交，不走本函数。
+ */
+export function writeExportFile(filePath: string, data: string | Buffer): void {
+  writeFileSync(filePath, data)
 }
 
 /** 列出目录下所有 JSON 文件 */

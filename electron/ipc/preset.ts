@@ -1,49 +1,46 @@
 import type { IpcMain, Dialog } from 'electron'
 import { basename, extname, join } from 'node:path'
-import { DIRS, writeJson, listJsonFilesAsync, removeFile } from '../services/storage'
+import { DIRS, listJsonFilesAsync, serializeJson } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Preset } from '../../shared/types'
 import { normalizeImportedPreset, normalizePreset } from '../../shared/preset'
 import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
-import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
+import { writeThroughDomain, deleteThroughDomain } from '../domain/syncDomainService'
+import { writeFileAtomic } from '../domain/pcRepository'
 
 const log = createLogger('preset')
 
-function journalPreset(saved: Preset): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalPutIfEnabled({
-      domain: 'preset',
-      entityType: 'preset',
-      entityId: saved.id,
-      payload: {
-        name: saved.name,
-        description: saved.description ?? '',
-        systemPrompt: saved.systemPrompt ?? '',
-        jailbreak: saved.jailbreak ?? '',
-        temperature: saved.temperature,
-        topP: saved.topP,
-        maxContext: saved.maxContext,
-        maxTokens: saved.maxTokens,
-        frequencyPenalty: saved.frequencyPenalty,
-        presencePenalty: saved.presencePenalty,
-        responseLengthHint: saved.responseLengthHint,
-      },
-    })
-  } catch (err) {
-    log.warn('preset journal 失败', { err: String(err) })
-  }
+/** 预设实体的规范 payload：与 S2-05 扫描器一致（全部业务字段，不含 id） */
+function presetEntityPayload(preset: Preset): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...preset }
+  delete payload.id
+  return payload
 }
 
-function journalPresetDelete(id: string): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalDeleteIfEnabled({ domain: 'preset', entityType: 'preset', entityId: id })
-  } catch (err) {
-    log.warn('preset delete journal 失败', { err: String(err) })
-  }
+/**
+ * 阶段 2 S2-04：单个预设文件（每文件一个实体）与其 journal 在同一文件事务内提交，
+ * flag 关闭时入口内部退化为与旧实现一致的原子落盘。
+ */
+function savePresetFile(preset: Preset): void {
+  writeThroughDomain({
+    domain: 'preset',
+    entityType: 'preset',
+    entityId: preset.id,
+    payload: presetEntityPayload(preset),
+    schemaVersion: 1,
+    files: [{ path: join(DIRS.presets(), `${preset.id}.json`), content: serializeJson(preset) }],
+  })
+}
+
+/** 阶段 2 S2-04：删除预设落 tombstone 与文件删除在同一事务内提交（不得裸 unlink） */
+function deletePresetFile(id: string): void {
+  deleteThroughDomain({
+    domain: 'preset',
+    entityType: 'preset',
+    entityId: id,
+    files: [{ path: join(DIRS.presets(), `${id}.json`), content: null }],
+  })
 }
 
 const ROLEPLAY_FOUNDATION = `你负责与 {{user}} 进行持续、沉浸的互动叙事。
@@ -318,8 +315,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
       })
     }
     safeId(saved.id)
-    writeJson(join(DIRS.presets(), `${saved.id}.json`), saved)
-    journalPreset(saved)
+    savePresetFile(saved)
     log.info('预设已保存', { id: saved.id, name: saved.name })
     return saved
   })
@@ -327,8 +323,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 删除
   ipcMain.handle('preset:delete', async (_e, id: string) => {
     safeId(id)
-    removeFile(join(DIRS.presets(), `${id}.json`))
-    journalPresetDelete(id)
+    deletePresetFile(id)
     log.info('预设已删除', { id })
   })
 
@@ -348,8 +343,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
       id: nanoid(),
       fallbackName: basename(sourcePath, extname(sourcePath)),
     })
-    writeJson(join(DIRS.presets(), `${imported.preset.id}.json`), imported.preset)
-    journalPreset(imported.preset)
+    savePresetFile(imported.preset)
     log.info('预设已导入', {
       id: imported.preset.id,
       name: imported.preset.name,
@@ -362,7 +356,7 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 导出单个预设到 JSON
   ipcMain.handle('preset:exportJson', async (_e, id: string) => {
     safeId(id)
-    const { readFileSync, writeFileSync } = await import('node:fs')
+    const { readFileSync } = await import('node:fs')
     const { dialog: d } = await import('electron')
     // 内置预设：从内置列表读取
     let preset: Preset | null = null
@@ -379,7 +373,9 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
       filters: [{ name: 'JSON 文件', extensions: ['json'] }],
     })
     if (result.canceled || !result.filePath) return { ok: false, canceled: true }
-    writeFileSync(result.filePath, JSON.stringify(preset, null, 2), 'utf-8')
+    // 导出目标是用户选择的路径，位于同步域数据目录之外、不属于同步实体：
+    // 不写 journal，但仍走统一原子写工具（同目录 tmp + rename），不使用原始写函数。
+    writeFileAtomic(result.filePath, JSON.stringify(preset, null, 2))
     log.info('预设已导出', { id: preset.id, name: preset.name })
     return { ok: true }
   })

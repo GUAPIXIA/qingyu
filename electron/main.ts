@@ -23,6 +23,7 @@ import { registerAnnouncementIPC } from './ipc/announcement'
 import { registerUpdaterIPC } from './services/updater'
 import { registerBridgeIPC, bridgeService } from './bridge'
 import { registerRelayIPC, relayService } from './relay/relayService'
+import { ensureSyncDomain, runBootstrapIfEnabled, setSyncDomainUserDataResolver } from './domain/syncDomainService'
 import { IPC_EVENTS } from '../shared/ipc-channels'
 import { mcpManager } from './mcp/manager'
 import { ensureDataDir, DIRS } from './services/storage'
@@ -137,6 +138,24 @@ app.whenReady().then(async () => {
   app.setName('轻语')
 
   await ensureDataDir()
+
+  // 阶段 2 S2-02/S2-05：初始化同步域（设备身份 + journal 元数据库 + 启动恢复），
+  // 并在已接管数据域上执行幂等 bootstrap（含 Backup V2 checkpoint）。
+  const syncLog = createLogger('sync-domain')
+  try {
+    setSyncDomainUserDataResolver(() => app.getPath('userData'))
+    ensureSyncDomain(app.getPath('userData'))
+    const bootstrap = runBootstrapIfEnabled(app.getPath('userData'))
+    if (bootstrap && !bootstrap.alreadyBootstrapped) {
+      syncLog.info('同步域 bootstrap 完成', {
+        entityCount: bootstrap.entityCount,
+        issues: bootstrap.issues.length,
+        checkpoint: bootstrap.checkpointId ?? '(skipped)',
+      })
+    }
+  } catch (err) {
+    syncLog.error('同步域初始化失败（不阻断启动）', { err: String(err) })
+  }
 
   // 注册 tavern:// 协议处理器：角色图片直接从磁盘按需加载，不经 base64/IPC
   const charDir = DIRS.characters()

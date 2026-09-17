@@ -1,16 +1,88 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs'
+import { readFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
-import { DIRS, writeJson, readJson, readJsonAsync } from './storage'
+import { DIRS, readJson, readJsonAsync, serializeJson, writeExportFile } from './storage'
 import type { Character, RegexRule, QuickReply, QuickReplyStore } from '../../shared/types'
+import type { CanonicalLorebookDocumentV2 } from '../../shared/lorebook/domain/v2'
+import { validateCanonicalLorebookV2 } from '../../shared/lorebook/domain/validation'
+import { migrateLorebookDocumentToLatest } from '../../shared/lorebook/migrations'
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
 import { validateCharacterCard, formatValidationErrors } from './charCardValidator'
 import { readPngTextChunks, writePngTextChunk, detectMimeType } from './charCardPng'
 import { downloadImageAsBase64 } from './charCardDownload'
-import { saveLorebookDocumentInput } from './lorebookDocumentStore'
 import { importLorebookWithRegistry } from './lorebookAdapters/registry'
+import { commitThroughDomain, deleteThroughDomain, writeThroughDomain, type DomainWriteFile } from '../domain/syncDomainService'
 
 const log = createLogger('charCard')
+
+// ===================== S2-04：域实体规范 payload =====================
+
+/**
+ * 角色实体 payload（shared/contracts/schemas/character-payload.schema.json）。
+ * 只写入 schema 允许且已定义的字段；avatarBlobId 需要 blob 存储（媒体通道）支撑，
+ * 当前未实现，故不下发悬空引用（S2-05 bootstrap 扫描器同样不下发）。
+ */
+function characterEntityPayload(character: Character): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    // name 为 schema 必填（minLength 1）；与导入归一化一致的兜底名
+    name: typeof character.name === 'string' && character.name.length > 0 ? character.name : '未命名角色',
+  }
+  if (typeof character.description === 'string') payload.description = character.description
+  if (typeof character.personality === 'string') payload.personality = character.personality
+  if (typeof character.scenario === 'string') payload.scenario = character.scenario
+  if (typeof character.firstMessage === 'string') payload.firstMessage = character.firstMessage
+  if (typeof character.exampleDialog === 'string') payload.exampleDialog = character.exampleDialog
+  if (typeof character.systemPrompt === 'string') payload.systemPrompt = character.systemPrompt
+  if (typeof character.creator === 'string') payload.creator = character.creator
+  const tags = stringArray(character.tags, 64)
+  if (tags) payload.tags = tags
+  const alternateGreetings = stringArray(character.alternateGreetings, 32)
+  if (alternateGreetings) payload.alternateGreetings = alternateGreetings
+  const boundLorebookIds = stringArray(character.boundLorebookIds, 32)
+  if (boundLorebookIds) payload.boundLorebookIds = boundLorebookIds
+  if (character.boundPresetId !== undefined) {
+    payload.boundPresetId = typeof character.boundPresetId === 'string' ? character.boundPresetId : null
+  }
+  if (character.extensions && typeof character.extensions === 'object' && !Array.isArray(character.extensions)) {
+    payload.extensions = character.extensions
+  }
+  return payload
+}
+
+/** schema 数组字段归一化：与 S2-05 bootstrap 扫描器一致（过滤非字符串并截断 maxItems） */
+function stringArray(value: unknown, max: number): string[] | null {
+  if (!Array.isArray(value)) return null
+  return value.filter((item): item is string => typeof item === 'string').slice(0, max)
+}
+
+/** regex_rule 实体 payload：与 S2-05 bootstrap 扫描器一致（条目去掉 id） */
+function regexRulePayload(rule: RegexRule): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...rule }
+  delete payload.id
+  return payload
+}
+
+/**
+ * 与 lorebookDocumentStore.saveLorebookDocumentInput 相同的 canonical 归一化（只算不落盘）。
+ * 角色导入内嵌世界书时文件必然不存在，因此 legacy 备份/迁移日志分支不会触发。
+ */
+function canonicalLorebookDocument(value: unknown, now = Date.now()): CanonicalLorebookDocumentV2 {
+  const canonical = validateCanonicalLorebookV2(value)
+  if (canonical.valid) return canonical.value
+  return migrateLorebookDocumentToLatest(value, {
+    now,
+    revision: 1,
+    contentHash: createHash('sha256').update(JSON.stringify(value)).digest('hex'),
+  })
+}
+
+/** lorebook 实体 payload：与 S2-05 bootstrap 扫描器一致（文件正文去掉 id 字段） */
+function lorebookEntityPayload(document: CanonicalLorebookDocumentV2): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...document }
+  delete payload.id
+  return payload
+}
 
 /** 从 PNG 文件导入角色卡 */
 export async function importCharacterFromPng(filePath: string, proxyUrl?: string): Promise<Character> {
@@ -201,7 +273,19 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
 
       const lorebookDir = DIRS.lorebooks()
       mkdirSync(lorebookDir, { recursive: true })
-      saveLorebookDocumentInput(join(lorebookDir, `${lorebookId}.json`), imported.document)
+      // 内嵌世界书属于 lorebook 域：经 lorebook 域事务提交（角色导入不再绕过 journal）。
+      // 新建文件时 lorebookDocumentStore 的 legacy 备份/迁移日志分支本就不触发，
+      // 这里复用同一 canonical 归一化，保证落盘字节与该旧入口一致。
+      const lorebookPath = join(lorebookDir, `${lorebookId}.json`)
+      const document = canonicalLorebookDocument(imported.document)
+      writeThroughDomain({
+        domain: 'lorebook',
+        entityType: 'lorebook',
+        entityId: lorebookId,
+        payload: lorebookEntityPayload(document),
+        schemaVersion: 1,
+        files: [{ path: lorebookPath, content: JSON.stringify(document, null, 2) }],
+      })
       character.lorebookId = lorebookId
     } catch {
       // 提取失败不阻断角色导入
@@ -260,7 +344,7 @@ export function exportCharacterToPng(character: Character, savePath: string): vo
   const charaBase64 = Buffer.from(charaJson).toString('base64')
 
   const newBuffer = writePngTextChunk(pngBuffer, 'chara', charaBase64)
-  writeFileSync(savePath, newBuffer)
+  writeExportFile(savePath, newBuffer)
 }
 
 /** 导出角色卡为 JSON */
@@ -289,7 +373,7 @@ export function exportCharacterToJson(character: Character, savePath: string): v
       },
     },
   }
-  writeFileSync(savePath, JSON.stringify(data, null, 2), 'utf-8')
+  writeExportFile(savePath, JSON.stringify(data, null, 2))
 }
 
 /** 从 data URL 解析图片二进制（非 data URL 或解码失败返回 null） */
@@ -317,24 +401,43 @@ export function getCoverExtension(character: Character): string | null {
 export function exportCharacterCover(character: Character, savePath: string): void {
   const buffer = decodeImageDataUrl(character.cover || character.avatar)
   if (!buffer) throw new Error('该角色没有可导出的封面图片')
-  writeFileSync(savePath, buffer)
+  writeExportFile(savePath, buffer)
 }
 
-/** 保存角色头像（自动检测 MIME 类型） */
-export function saveAvatar(characterId: string, base64Data: string): string {
-  if (!base64Data) return ''
-  const avatarDir = DIRS.characters()
-  mkdirSync(avatarDir, { recursive: true })
+/**
+ * 角色头像/封面媒体文件（属于角色聚合）：只计算目标路径与字节，
+ * 落盘由角色域事务连同角色 JSON 一起提交。
+ */
+interface CharacterMediaFile {
+  path: string
+  buffer: Buffer
+}
 
+/**
+ * 媒体文件以 Buffer 放入事务 files：
+ * DomainWriteFile.content 声明为 string|null，而 Node 的 writeFileSync 对 Buffer 参数
+ * 忽略 encoding、按原始字节写入（事务内 stageTransaction / applyFilesDirectly 均如此），
+ * 因此二进制媒体可以逐字节保真地随角色实体一起提交。
+ */
+function mediaWriteFile(media: CharacterMediaFile): DomainWriteFile {
+  return { path: media.path, content: media.buffer as unknown as string }
+}
+
+/** 解码 data URL 头像/封面字节（空或不可解码返回 null） */
+function decodeImageBase64(base64Data: string): Buffer | null {
+  if (!base64Data) return null
   const base64 = base64Data.replace(/^data:image\/\w+;base64,/, '')
   const buffer = Buffer.from(base64, 'base64')
-  const mime = detectMimeType(buffer)
-  const ext = mime.split('/')[1] // png, jpeg, gif, webp
-  const fileName = ext === 'jpeg' ? 'jpg' : ext
+  return buffer.length > 0 ? buffer : null
+}
 
-  const avatarPath = join(avatarDir, `${characterId}.${fileName}`)
-  writeFileSync(avatarPath, buffer)
-  return avatarPath
+/** 头像（suffix ''）或封面（suffix '_cover'）媒体文件；扩展名按检测到的真实格式决定 */
+function imageMediaFile(characterId: string, suffix: string, base64Data: string): CharacterMediaFile | null {
+  const buffer = decodeImageBase64(base64Data)
+  if (!buffer) return null
+  const ext = detectMimeType(buffer).split('/')[1] // png, jpeg, gif, webp
+  const fileName = ext === 'jpeg' ? 'jpg' : ext
+  return { path: join(DIRS.characters(), `${characterId}${suffix}.${fileName}`), buffer }
 }
 
 /** 读取角色头像 base64（自动检测 MIME 类型） */
@@ -357,23 +460,6 @@ export function readAvatar(characterId: string): string | null {
   return null
 }
 
-/** 保存封面 */
-export function saveCover(characterId: string, base64Data: string): string {
-  if (!base64Data) return ''
-  const avatarDir = DIRS.characters()
-  mkdirSync(avatarDir, { recursive: true })
-
-  const base64 = base64Data.replace(/^data:image\/\w+;base64,/, '')
-  const buffer = Buffer.from(base64, 'base64')
-  const mime = detectMimeType(buffer)
-  const ext = mime.split('/')[1]
-  const fileName = ext === 'jpeg' ? 'jpg' : ext
-
-  const coverPath = join(avatarDir, `${characterId}_cover.${fileName}`)
-  writeFileSync(coverPath, buffer)
-  return coverPath
-}
-
 /** 读取封面 base64 */
 export function readCover(characterId: string): string | null {
   const avatarDir = DIRS.characters()
@@ -393,23 +479,40 @@ export function readCover(characterId: string): string | null {
   return null
 }
 
-/** 保存角色 */
-export function saveCharacter(character: Character): void {
-  const filePath = join(DIRS.characters(), `${character.id}.json`)
-  mkdirSync(DIRS.characters(), { recursive: true })
-
-  // 保存头像和封面到文件
-  if (character.avatar.startsWith('data:')) {
-    saveAvatar(character.id, character.avatar)
-  }
-  if (character.cover && character.cover.startsWith('data:')) {
-    saveCover(character.id, character.cover)
-  }
+/**
+ * S2-04 角色域写入口（原 saveCharacter 的实现收口）。
+ * 角色 JSON 与其头像/封面媒体在同一字符域事务内提交；flag 关闭时退化为原子直写（与旧行为一致）。
+ * 这是角色聚合唯一的落盘入口：IPC 的保存/导入/批量导入/绑定世界书/重加载封面均经此提交。
+ */
+export function saveCharacterThroughDomain(character: Character): void {
+  const characterDir = DIRS.characters()
+  mkdirSync(characterDir, { recursive: true })
+  const filePath = join(characterDir, `${character.id}.json`)
 
   // JSON 中不存 base64，只存空字符串（图片从文件读取）
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { avatar: _avatar, cover: _cover, ...rest } = character
-  writeJson(filePath, { ...rest, avatar: '', cover: '' })
+  const files: DomainWriteFile[] = [
+    { path: filePath, content: serializeJson({ ...rest, avatar: '', cover: '' }) },
+  ]
+  // 头像/封面媒体文件同属角色聚合：与 JSON 在同一事务内落盘
+  const avatarMedia = typeof character.avatar === 'string' && character.avatar.startsWith('data:')
+    ? imageMediaFile(character.id, '', character.avatar)
+    : null
+  if (avatarMedia) files.push(mediaWriteFile(avatarMedia))
+  const coverMedia = typeof character.cover === 'string' && character.cover.startsWith('data:')
+    ? imageMediaFile(character.id, '_cover', character.cover)
+    : null
+  if (coverMedia) files.push(mediaWriteFile(coverMedia))
+
+  writeThroughDomain({
+    domain: 'character',
+    entityType: 'character',
+    entityId: character.id,
+    payload: characterEntityPayload(character),
+    schemaVersion: 1,
+    files,
+  })
 }
 
 /** 归一化已落盘的脏 tags（字符串 → 数组），并在必要时回写修复 */
@@ -423,6 +526,20 @@ function normalizeStoredTags(char: Character): boolean {
   // 非数组非字符串 → 兜底空数组
   ;(char as unknown as Record<string, unknown>).tags = fixed
   return true
+}
+
+/** tags 脏数据回写修复：经角色域事务提交，避免绕过 journal */
+function repairStoredCharacter(char: Character, filePath: string, entityId: string): void {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 剥离头像字段，仅保留 rest 写入
+  const { avatar: _a, cover: _c, ...rest } = char as unknown as Character & { avatar?: string; cover?: string }
+  writeThroughDomain({
+    domain: 'character',
+    entityType: 'character',
+    entityId,
+    payload: characterEntityPayload(char),
+    schemaVersion: 1,
+    files: [{ path: filePath, content: serializeJson({ ...rest, avatar: '', cover: '' }) }],
+  })
 }
 
 /** 读取角色列表（仅元数据，图片通过 tavern:// 协议按需加载） */
@@ -444,10 +561,8 @@ export async function listCharacters(): Promise<Character[]> {
       if (normalizeStoredTags(char)) {
         // 脏数据回写修复（同步写回 tags 字段，图片字段已剥离）
         try {
-          const filePath = join(charDir, files[i])
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 剥离头像字段，仅保留 rest 写入
-          const { avatar: _a, cover: _c, ...rest } = char as unknown as Character & { avatar: string; cover?: string }
-          writeJson(filePath, { ...rest, avatar: '', cover: '' })
+          const entityId = typeof char.id === 'string' && char.id ? char.id : files[i].replace(/\.json$/, '')
+          repairStoredCharacter(char, join(charDir, files[i]), entityId)
         } catch { /* 忽略回写失败 */ }
       }
       chars.push(char)
@@ -465,9 +580,7 @@ export function getCharacter(id: string): Character | null {
   if (char) {
     if (normalizeStoredTags(char)) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 剥离头像字段，仅保留 rest 写入
-        const { avatar: _a, cover: _c, ...rest } = char as Character & { avatar: string; cover?: string }
-        writeJson(filePath, { ...rest, avatar: '', cover: '' })
+        repairStoredCharacter(char, filePath, id)
       } catch { /* 忽略回写失败 */ }
     }
     const avatar = readAvatar(id)
@@ -478,27 +591,32 @@ export function getCharacter(id: string): Character | null {
   return char
 }
 
-/** 删除角色 */
-export function deleteCharacter(id: string): void {
+/**
+ * S2-04 角色域删除入口（原 deleteCharacter 的实现收口）。
+ * 删除产生 tombstone（而非裸 unlink）；角色 JSON 与头像/封面媒体文件在同一事务内删除。
+ */
+export function deleteCharacterThroughDomain(id: string): void {
   const charDir = DIRS.characters()
-  const jsonPath = join(charDir, `${id}.json`)
-  if (existsSync(jsonPath)) unlinkSync(jsonPath)
-
-  // 删除头像文件（所有扩展名）
+  const targets = [join(charDir, `${id}.json`)]
   for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'webp']) {
-    const avatarPath = join(charDir, `${id}.${ext}`)
-    if (existsSync(avatarPath)) {
-      try { unlinkSync(avatarPath) } catch { /* 忽略 */ }
-    }
-    // 也删除封面文件
-    const coverPath = join(charDir, `${id}_cover.${ext}`)
-    if (existsSync(coverPath)) {
-      try { unlinkSync(coverPath) } catch { /* 忽略 */ }
-    }
+    targets.push(join(charDir, `${id}.${ext}`), join(charDir, `${id}_cover.${ext}`))
   }
+  const files: DomainWriteFile[] = targets
+    .filter((path) => existsSync(path))
+    .map((path) => ({ path, content: null }))
+  deleteThroughDomain({
+    domain: 'character',
+    entityType: 'character',
+    entityId: id,
+    files,
+  })
 }
 
-/** 重新从 URL 加载角色封面头像 */
+/**
+ * 重新从 URL 加载角色封面头像。
+ * 媒体随角色实体事务提交（不再直接写文件绕过 journal）：更新角色记录后走
+ * saveCharacterThroughDomain，头像与封面文件、角色 JSON 在同一事务内落盘。
+ */
 export async function reloadAvatarFromUrl(characterId: string, url: string, proxyUrl?: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }> {
   log.info('重新加载封面', { characterId, url: url.substring(0, 100) })
   const result = await downloadImageAsBase64(url, proxyUrl)
@@ -506,8 +624,14 @@ export async function reloadAvatarFromUrl(characterId: string, url: string, prox
     log.warn('重新加载封面失败', { characterId, code: result.code ?? 'UNKNOWN', error: result.error ?? '' })
     return { success: false, avatar: '', error: result.error, code: result.code }
   }
-  saveAvatar(characterId, result.data)
-  saveCover(characterId, result.data) // 封面同步更新
+  const stored = readJson<Character>(join(DIRS.characters(), `${characterId}.json`), 'characters')
+  if (!stored) {
+    log.warn('重新加载封面失败：角色不存在', { characterId })
+    return { success: false, avatar: '', error: '角色不存在' }
+  }
+  stored.avatar = result.data
+  stored.cover = result.data // 封面同步更新
+  saveCharacterThroughDomain(stored)
   log.info('重新加载封面成功', { characterId })
   return { success: true, avatar: result.data }
 }
@@ -593,6 +717,7 @@ export function importCardFrontendExtensions(character: Character): CardExtrasRe
   if (!exts || typeof exts !== 'object') return result
 
   // ---- 正则脚本 ----
+  // 跨域写入：正则规则属于 regex_rule 域，经该域事务提交（与 regex IPC 同一 journal 账本）
   if (Array.isArray(exts.regex_scripts)) {
     const rulesPath = join(DIRS.config(), 'regex', 'rules.json')
     let existing: RegexRule[] = []
@@ -600,6 +725,7 @@ export function importCardFrontendExtensions(character: Character): CardExtrasRe
       if (existsSync(rulesPath)) existing = JSON.parse(readFileSync(rulesPath, 'utf-8')) as RegexRule[]
     } catch { /* 文件损坏则从空列表开始 */ }
     const existingKeys = new Set(existing.map(r => `${r.pattern}|${r.scope}|${r.stage ?? 'text'}`))
+    const added: RegexRule[] = []
     for (const script of exts.regex_scripts) {
       const rule = convertRegexScript(script)
       if (!rule) {
@@ -611,12 +737,23 @@ export function importCardFrontendExtensions(character: Character): CardExtrasRe
       if (existingKeys.has(key)) continue // 已导入过（幂等）
       existingKeys.add(key)
       existing.push(rule)
+      added.push(rule)
       result.regexCount++
     }
-    if (result.regexCount > 0) {
+    if (added.length > 0) {
       try {
         mkdirSync(join(DIRS.config(), 'regex'), { recursive: true })
-        writeFileSync(rulesPath, JSON.stringify(existing, null, 2), 'utf-8')
+        commitThroughDomain({
+          domain: 'regex_rule',
+          entityType: 'regex_rule',
+          puts: added.map((rule) => ({
+            entityId: rule.id,
+            payload: regexRulePayload(rule),
+            schemaVersion: 1,
+          })),
+          deletes: [],
+          files: [{ path: rulesPath, content: JSON.stringify(existing, null, 2) }],
+        })
       } catch (e) {
         log.error('角色卡正则落地失败', { error: (e as Error).message })
         result.regexCount = 0
@@ -625,6 +762,7 @@ export function importCardFrontendExtensions(character: Character): CardExtrasRe
   }
 
   // ---- 快捷回复 ----
+  // 跨域写入：quickReplies.json 是 quick_reply_set 域的单一容器实体，经该域事务提交
   if (Array.isArray(exts.quick_replies)) {
     const storePath = join(DIRS.config(), 'quickReplies.json')
     let store: QuickReplyStore = { global: [], byCharacter: {} }
@@ -645,7 +783,14 @@ export function importCardFrontendExtensions(character: Character): CardExtrasRe
     if (result.quickReplyCount > 0) {
       store.byCharacter[character.id] = charList
       try {
-        writeJson(storePath, store)
+        writeThroughDomain({
+          domain: 'quick_reply_set',
+          entityType: 'quick_reply_set',
+          entityId: 'quick-replies-root',
+          payload: { global: store.global, byCharacter: store.byCharacter },
+          schemaVersion: 1,
+          files: [{ path: storePath, content: serializeJson(store) }],
+        })
       } catch (e) {
         log.error('角色卡快捷回复落地失败', { error: (e as Error).message })
         result.quickReplyCount = 0

@@ -456,6 +456,7 @@ export function restoreBackupV2(zipPath: string): { counts: Record<string, numbe
     }
 
     // 校验通过后开始写入
+    // sync-bypass-ok: 整库恢复后由调用方执行 fenceSyncStateAfterRestore 作废 journal 并重建基线（总方案 §6.4）
     for (const { zipPath: name, data, dest } of writes) {
       // 对 settings.json 的 apiKey 迁移进 safeStorage（与旧 importBackup 一致）
       if (name === 'config/settings.json') {
@@ -463,6 +464,7 @@ export function restoreBackupV2(zipPath: string): { counts: Record<string, numbe
           const parsed = JSON.parse(data.toString('utf-8')) as Settings
           // 若包含旧明文 apiKey，迁移进加密存储
           stripSecretsLocal(parsed, true)
+          // sync-bypass-ok: 整库恢复由调用方执行 fenceSyncStateAfterRestore 作废 journal 并重建基线（总方案 §6.4）
           writeJson(dest, parsed)
           continue
         } catch { /* 回退到直接写入 */ }
@@ -470,12 +472,16 @@ export function restoreBackupV2(zipPath: string): { counts: Record<string, numbe
 
       mkdirSync(dirname(dest), { recursive: true })
       // 原子写入：temp + rename
+      // sync-bypass-ok: 整库恢复由调用方执行 fenceSyncStateAfterRestore 作废 journal 并重建基线（总方案 §6.4）
       const tmp = dest + '.tmp'
+      // sync-bypass-ok: 恢复写入的临时文件（下一步 rename 到目标），非业务数据落盘
       writeFileSync(tmp, data)
       try {
+        // sync-bypass-ok: 同上，恢复写入的原子替换步骤
         renameSync(tmp, dest)
       } catch {
         try { unlinkSync(tmp) } catch { /* ignore */ }
+        // sync-bypass-ok: 同上，rename 失败时的覆盖回退
         writeFileSync(dest, data)
       }
     }

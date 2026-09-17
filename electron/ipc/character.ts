@@ -11,10 +11,10 @@ import {
   exportCharacterToJson,
   exportCharacterCover,
   getCoverExtension,
-  saveCharacter,
+  saveCharacterThroughDomain,
   listCharacters,
   getCharacter,
-  deleteCharacter,
+  deleteCharacterThroughDomain,
   reloadAvatarFromUrl,
 } from '../services/charCard'
 import type { Character, Settings } from '../../shared/types'
@@ -22,43 +22,8 @@ import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { safeId } from '../utils/pathGuard'
 import { DIRS, readJson, withFileLock } from '../services/storage'
 import { suggestLorebooks } from '../services/lorebookMatcher'
-import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
 
 const log = createLogger('character')
-
-function journalCharacter(character: Character): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalPutIfEnabled({
-      domain: 'character',
-      entityType: 'character',
-      entityId: character.id,
-      payload: {
-        name: character.name,
-        description: character.description ?? '',
-        personality: character.personality ?? '',
-        scenario: character.scenario ?? '',
-        firstMessage: character.firstMessage ?? '',
-        tags: character.tags ?? [],
-        creator: character.creator ?? '',
-        boundLorebookIds: character.boundLorebookIds ?? [],
-        boundPresetId: character.boundPresetId ?? null,
-      },
-    })
-  } catch (err) {
-    log.warn('character journal 失败', { err: String(err) })
-  }
-}
-
-function journalCharacterDelete(id: string): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalDeleteIfEnabled({ domain: 'character', entityType: 'character', entityId: id })
-  } catch (err) {
-    log.warn('character delete journal 失败', { err: String(err) })
-  }
-}
 
 /** 并发池大小 */
 const CONCURRENCY_LIMIT = 3
@@ -97,22 +62,21 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
   ipcMain.handle('character:save', async (_e, character: Character) => {
     safeId(character.id)
     character.updatedAt = Date.now()
-    // NEW-M4：持锁保存
+    // NEW-M4：持锁保存。S2-04：saveCharacterThroughDomain 内部把角色 JSON 与媒体
+    // 连同 journal 在同一事务提交，此处不再额外记账
     await withCharacterLock(character.id, () => {
-      saveCharacter(character)
+      saveCharacterThroughDomain(character)
     })
-    journalCharacter(character)
     log.info('角色已保存', { id: character.id, name: character.name })
   })
 
   // 删除
   ipcMain.handle('character:delete', async (_e, id: string) => {
     safeId(id)
-    // NEW-M4：持锁删除
+    // NEW-M4：持锁删除。S2-04：deleteCharacterThroughDomain 产生 tombstone 并删除聚合文件
     await withCharacterLock(id, () => {
-      deleteCharacter(id)
+      deleteCharacterThroughDomain(id)
     })
-    journalCharacterDelete(id)
     log.info('角色已删除', { id })
   })
 
@@ -139,7 +103,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       // 世界书推荐（显式确认，替代旧的静默自动绑定）：角色卡不含内嵌世界书时返回候选
       const lorebookSuggestions = suggestLorebooks(character)
       await withCharacterLock(character.id, () => {
-        saveCharacter(character)
+        saveCharacterThroughDomain(character)
       })
       // 角色卡前端扩展落地（正则脚本 / 快捷回复）
       const cardExtras = importCardFrontendExtensions(character)
@@ -179,7 +143,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       // 世界书推荐（显式确认，替代旧的静默自动绑定）
       const lorebookSuggestions = suggestLorebooks(character)
       await withCharacterLock(character.id, () => {
-        saveCharacter(character)
+        saveCharacterThroughDomain(character)
       })
       // 角色卡前端扩展落地（正则脚本 / 快捷回复）
       const cardExtras = importCardFrontendExtensions(character)
@@ -213,7 +177,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       character.boundLorebookIds = lorebookId ? [lorebookId] : []
       character.lorebookId = lorebookId
       character.updatedAt = Date.now()
-      saveCharacter(character)
+      saveCharacterThroughDomain(character)
       log.info('角色世界书已更新', { characterId, lorebookId })
     })
   })
@@ -370,7 +334,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       const saveResults = await runWithPool(toImport, CONCURRENCY_LIMIT, async ({ character, fileName }) => {
         try {
           await withCharacterLock(character.id, () => {
-            saveCharacter(character)
+            saveCharacterThroughDomain(character)
           })
           // 角色卡前端扩展落地（正则脚本 / 快捷回复）
           importCardFrontendExtensions(character)

@@ -28,8 +28,8 @@ vi.mock('node:fs', async (importOriginal) => {
 vi.mock('../../services/charCard', () => ({
   listCharacters: mockListCharacters,
   getCharacter: mockGetCharacter,
-  saveCharacter: mockSaveCharacter,
-  deleteCharacter: mockDeleteCharacter,
+  saveCharacterThroughDomain: mockSaveCharacter,
+  deleteCharacterThroughDomain: mockDeleteCharacter,
   exportCharacterToPng: mockExportCharacterToPng,
   exportCharacterToJson: mockExportCharacterToJson,
   exportCharacterCover: mockExportCharacterCover,

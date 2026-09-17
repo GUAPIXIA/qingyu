@@ -4,17 +4,36 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Preset } from '../../../shared/types'
 
-const { mockWriteJson, mockListJsonFilesAsync, mockRemoveFile } = vi.hoisted(() => ({
-  mockWriteJson: vi.fn(),
-  mockListJsonFilesAsync: vi.fn<() => Promise<Record<string, unknown>[]>>(async () => []),
-  mockRemoveFile: vi.fn(),
-}))
+interface DomainWriteCall {
+  domain: string
+  entityType: string
+  entityId: string
+  payload: Record<string, unknown>
+  files: { path: string; content: string | null }[]
+}
+
+const { mockWriteJson, mockListJsonFilesAsync, mockRemoveFile, mockWriteThroughDomain, mockDeleteThroughDomain } =
+  vi.hoisted(() => ({
+    mockWriteJson: vi.fn(),
+    mockListJsonFilesAsync: vi.fn<() => Promise<Record<string, unknown>[]>>(async () => []),
+    mockRemoveFile: vi.fn(),
+    mockWriteThroughDomain: vi.fn(),
+    mockDeleteThroughDomain: vi.fn(),
+  }))
 
 vi.mock('../../services/storage', () => ({
   DIRS: { presets: () => '/mock/presets' },
   writeJson: mockWriteJson,
+  serializeJson: (data: unknown) => JSON.stringify(data, null, 2),
   listJsonFilesAsync: mockListJsonFilesAsync,
   removeFile: mockRemoveFile,
+}))
+
+// 阶段 2 S2-04：preset 写入必须经事务入口（不再直接 writeJson/removeFile）
+vi.mock('../../domain/syncDomainService', () => ({
+  writeThroughDomain: mockWriteThroughDomain,
+  deleteThroughDomain: mockDeleteThroughDomain,
+  commitThroughDomain: vi.fn(),
 }))
 
 vi.mock('../../services/logger', () => ({
@@ -74,7 +93,14 @@ describe('preset IPC', () => {
     it('保存预设', async () => {
       const preset = { id: 'p1', name: '测试预设', content: {} }
       const saved = await handlers['preset:save'](null, preset) as Preset
-      expect(mockWriteJson).toHaveBeenCalled()
+      expect(mockWriteThroughDomain).toHaveBeenCalledTimes(1)
+      const input = mockWriteThroughDomain.mock.calls[0][0] as DomainWriteCall
+      expect(input.domain).toBe('preset')
+      expect(input.entityType).toBe('preset')
+      expect(input.entityId).toBe('p1')
+      expect(input.files[0].path.endsWith('p1.json')).toBe(true)
+      // 文件字节与原 writeJson(JSON.stringify(data, null, 2)) 一致
+      expect(JSON.parse(input.files[0].content as string)).toMatchObject({ id: 'p1', name: '测试预设' })
       expect(saved).toMatchObject({ id: 'p1', name: '测试预设', temperature: 0.8 })
     })
 
@@ -86,6 +112,17 @@ describe('preset IPC', () => {
       expect(saved.isBuiltin).toBe(false)
       expect(preset.id).toBe(originalId)
       expect(preset.isBuiltin).toBe(true)
+    })
+  })
+
+  describe('preset:delete', () => {
+    it('落 tombstone 并删除对应文件（不裸 unlink）', async () => {
+      await handlers['preset:delete'](null, 'p1')
+      expect(mockDeleteThroughDomain).toHaveBeenCalledTimes(1)
+      const input = mockDeleteThroughDomain.mock.calls[0][0] as DomainWriteCall
+      expect(input.domain).toBe('preset')
+      expect(input.entityId).toBe('p1')
+      expect(input.files).toEqual([{ path: expect.stringContaining('p1.json'), content: null }])
     })
   })
 })

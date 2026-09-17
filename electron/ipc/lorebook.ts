@@ -1,11 +1,12 @@
 import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
-import { readFileSync, writeFileSync, statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { nanoid } from 'nanoid'
-import { DIRS, removeFile, withFileLock } from '../services/storage'
+import { DIRS, withFileLock } from '../services/storage'
 import { createLogger } from '../services/logger'
 import type { Lorebook, LoreEntry } from '../../shared/types'
 import type { LorebookImportOptions } from '../../shared/ipc-api'
+import type { CanonicalLorebookDocumentV2 } from '../../shared/lorebook/domain/v2'
 import { LOREBOOK_IMPORT_LIMITS } from '../../shared/lorebook/limits'
 import {
   LOREBOOK_ADAPTER_AMBIGUITY_MARGIN,
@@ -14,46 +15,27 @@ import {
 import { getVectorIndex, markStaleEntries, removeVectorIndex } from '../services/vectorStore'
 import { safeId } from '../utils/pathGuard'
 import { unwrapLorebookPayload } from '../services/lorebookImport'
-import { listLorebookViews, readLorebookDocument, readLorebookView, saveLorebookDocumentInput, saveLorebookView } from '../services/lorebookDocumentStore'
+import { listLorebookViews, readLorebookDocument, readLorebookView, buildLorebookDocumentInput, buildLorebookViewDocument, commitLorebookDocument } from '../services/lorebookDocumentStore'
 import { exportLorebookWithAdapter, importLorebookWithRegistry, lorebookAdapterRegistry } from '../services/lorebookAdapters/registry'
 import { createCompatibilityReport } from '../services/lorebookAdapters/report'
 import { importLorebookWithMappingTemplate } from '../services/lorebookAdapters/mappingImport'
 import type { LorebookMappingTemplate } from '../../shared/lorebook/adapters/mapping'
 import { guessMappingTemplate, isMappingTemplate } from '../../shared/lorebook/adapters/mapping'
-import { deleteLorebookMappingTemplate, listLorebookMappingTemplates, saveLorebookMappingTemplate } from '../services/lorebookMappingTemplates'
+import { listLorebookMappingTemplates, removeLorebookMappingTemplate, upsertLorebookMappingTemplate } from '../services/lorebookMappingTemplates'
 import { runLorebookHealthCheck } from '../services/lorebookHealthCheck'
 import { compileCanonicalLorebookV2 } from '../../shared/lorebook/runtime/compile'
-import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
+import { deleteThroughDomain } from '../domain/syncDomainService'
+import { writeFileAtomic } from '../domain/pcRepository'
 
 const log = createLogger('lorebook')
 
-function journalLorebook(lorebook: Lorebook): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    // 阶段2 journal 骨架：name + 条目规模；完整 canonical payload 由后续实体契约扩展
-    journalPutIfEnabled({
-      domain: 'lorebook',
-      entityType: 'lorebook',
-      entityId: lorebook.id,
-      payload: {
-        name: lorebook.name ?? '',
-        description: lorebook.description ?? '',
-        entryCount: Array.isArray(lorebook.entries) ? lorebook.entries.length : 0,
-      },
-    })
-  } catch (err) {
-    log.warn('lorebook journal 失败', { err: String(err) })
-  }
-}
-
-function journalLorebookDelete(id: string): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalDeleteIfEnabled({ domain: 'lorebook', entityType: 'lorebook', entityId: id })
-  } catch (err) {
-    log.warn('lorebook delete journal 失败', { err: String(err) })
-  }
+/**
+ * 阶段 2 S2-04：导入产生的 canonical v2 文档经收口入口落盘，
+ * 业务文件字节与 journal 在同一持久化事务中提交（flag 关闭时退化为原原子直写）。
+ */
+function saveImportedLorebookDocument(document: CanonicalLorebookDocumentV2): void {
+  const filePath = join(DIRS.lorebooks(), `${document.id}.json`)
+  commitLorebookDocument(filePath, buildLorebookDocumentInput(filePath, document))
 }
 
 export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
@@ -71,7 +53,11 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     // NEW-M5：读-改-写整体持锁，避免并发保存互相覆盖
     await withFileLock(filePath, () => {
       const prev = readLorebookView(filePath)
-      savedRevision = saveLorebookView(filePath, lorebook, Date.now(), expectedRevision).revision
+      // 阶段 2 S2-04：锁内构建 canonical v2 文档（乐观冲突检测），
+      // 再由收口入口把文件字节与 journal 在同一事务提交
+      const document = buildLorebookViewDocument(filePath, lorebook, Date.now(), expectedRevision)
+      commitLorebookDocument(filePath, document)
+      savedRevision = document.revision
       // 有向量索引时，对比语义相关字段，标记变化的条目
       if (getVectorIndex(lorebook.id)) {
         const changedIds = diffSemanticEntries(prev?.entries ?? [], lorebook.entries)
@@ -80,7 +66,6 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
         }
       }
     })
-    journalLorebook(lorebook)
     log.info('世界书已保存', {
       id: lorebook.id,
       name: lorebook.name,
@@ -94,10 +79,15 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 删除
   ipcMain.handle('lorebook:delete', async (_e, id: string) => {
     safeId(id)
-    removeFile(join(DIRS.lorebooks(), `${id}.json`))
+    // 阶段 2 S2-04：删除 = tombstone + 业务文件删除，同一持久化事务提交（不再裸 unlink）
+    deleteThroughDomain({
+      domain: 'lorebook',
+      entityType: 'lorebook',
+      entityId: id,
+      files: [{ path: join(DIRS.lorebooks(), `${id}.json`), content: null }],
+    })
     // N5 修复：同步清理向量索引（磁盘文件 + 内存缓存），避免残留垃圾
     removeVectorIndex(id)
-    journalLorebookDelete(id)
     log.info('世界书已删除', { id })
   })
 
@@ -206,7 +196,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
       file: fileMeta,
       ...(options?.adapterId ? { adapterId: options.adapterId } : {}),
     })
-    saveLorebookDocumentInput(join(DIRS.lorebooks(), `${imported.document.id}.json`), imported.document)
+    saveImportedLorebookDocument(imported.document)
     const lorebook = compileCanonicalLorebookV2(imported.document)
     log.info('世界书已导入', {
       name: lorebook.name,
@@ -280,7 +270,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     if (mapped.summary.rejected > 0) {
       throw new Error(`映射导入失败：${mapped.issues.find((item) => item.action === 'rejected')?.message ?? '结构不合法'}`)
     }
-    saveLorebookDocumentInput(join(DIRS.lorebooks(), `${mapped.document.id}.json`), mapped.document)
+    saveImportedLorebookDocument(mapped.document)
     const lorebook = compileCanonicalLorebookV2(mapped.document)
     const report = createCompatibilityReport(`mapping.${template.id}`, `映射模板：${template.name}`, 'template', mapped.issues)
     log.info('世界书已通过映射模板导入', {
@@ -309,9 +299,9 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
   ipcMain.handle('lorebook:listMappingTemplates', async () => listLorebookMappingTemplates())
   ipcMain.handle('lorebook:saveMappingTemplate', (_e, template: LorebookMappingTemplate) => {
     if (!isMappingTemplate(template)) throw new Error('映射模板结构不合法')
-    saveLorebookMappingTemplate({ ...template, id: template.id === 'guess' ? nanoid() : template.id })
+    upsertLorebookMappingTemplate({ ...template, id: template.id === 'guess' ? nanoid() : template.id })
   })
-  ipcMain.handle('lorebook:deleteMappingTemplate', (_e, id: string) => deleteLorebookMappingTemplate(id))
+  ipcMain.handle('lorebook:deleteMappingTemplate', (_e, id: string) => removeLorebookMappingTemplate(id))
 
 
   // 导出：默认回到来源 adapter；来源不可用时导出 canonical v2。
@@ -338,7 +328,9 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     })
     if (result.canceled || !result.filePath) return { ok: false, canceled: true }
     const outputPath = result.filePath.toLowerCase().endsWith('.json') ? result.filePath : `${result.filePath}.json`
-    writeFileSync(outputPath, JSON.stringify(exported.value, null, 2), 'utf8')
+    // 导出目标是用户选择的路径，位于同步域数据目录之外、不属于同步实体：
+    // 不写 journal，但仍走统一原子写工具（同目录 tmp + rename），不使用原始写函数。
+    writeFileAtomic(outputPath, JSON.stringify(exported.value, null, 2))
     log.info('世界书已导出', { id, adapter: adapterId, path: outputPath })
     return { ok: true, path: outputPath, adapterId, report: exported.report }
   })

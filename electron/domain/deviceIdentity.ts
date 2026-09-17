@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export interface DeviceIdentityFile {
@@ -7,6 +7,8 @@ export interface DeviceIdentityFile {
   createdAt: number
   /** 十进制 UInt64 字符串，无前导零 */
   nextCounter: string
+  /** genesis manifest HMAC 密钥（本地生成，备份不恢复） */
+  manifestSecret?: string
 }
 
 const UINT64_MAX = (1n << 64n) - 1n
@@ -82,6 +84,15 @@ export class DeviceIdentityStore {
     return this.loadOrCreate()
   }
 
+  /** genesis manifest 受认证所需的本机密钥；缺失时生成并持久化 */
+  manifestSecret(): string {
+    const current = this.loadOrCreate()
+    if (current.manifestSecret && current.manifestSecret.length >= 32) return current.manifestSecret
+    const next: DeviceIdentityFile = { ...current, manifestSecret: randomBytes(32).toString('hex') }
+    this.persist(next)
+    return next.manifestSecret as string
+  }
+
   private persist(value: DeviceIdentityFile): void {
     mkdirSync(dirname(this.filePath), { recursive: true })
     const tmp = this.filePath + '.tmp'
@@ -89,7 +100,7 @@ export class DeviceIdentityStore {
     writeFileSync(this.filePath, JSON.stringify(value, null, 2), 'utf8')
     try {
       // 清理 tmp
-      if (existsSync(tmp)) require('node:fs').unlinkSync(tmp)
+      if (existsSync(tmp)) unlinkSync(tmp)
     } catch {
       /* ignore */
     }

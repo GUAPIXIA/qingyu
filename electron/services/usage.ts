@@ -7,14 +7,14 @@
  * - 统计用户输入与系统输出的字符数（中文/英文/数字/符号总和）
  */
 
-import { DIRS, readJson, writeJson, withFileLock } from './storage'
+import { DIRS, readJson, serializeJson, withFileLock } from './storage'
 import { join } from 'node:path'
 import { createLogger } from './logger'
 import { nanoid } from 'nanoid'
 import type { UsageRecord } from '../../shared/types'
 import { getUsageDayKey } from '../../shared/usageDate'
 import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled } from '../domain/syncDomainService'
+import { commitThroughDomain, ensureSyncDomain, getSyncDomain, writeThroughDomain } from '../domain/syncDomainService'
 
 const log = createLogger('usage')
 
@@ -30,10 +30,33 @@ export function loadUsage(): UsageRecord[] {
   return Array.isArray(data) ? data : []
 }
 
+/** usage_record 实体规范 payload（与 S2-05 bootstrap 扫描器一致：记录去掉 id） */
+function usageRecordPayload(record: UsageRecord): Record<string, unknown> {
+  return {
+    timestamp: record.timestamp,
+    characterId: record.characterId,
+    sessionId: record.sessionId,
+    model: record.model,
+    inputChars: record.inputChars,
+    outputChars: record.outputChars,
+    totalChars: record.totalChars,
+  }
+}
+
+/** 可安全作为实体 ID 的记录 ID（脏数据不应让整批 tombstone 失败） */
+function validRecordIds(records: UsageRecord[]): string[] {
+  return records
+    .map((record) => record?.id)
+    .filter((id): id is string => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,256}$/.test(id))
+}
+
 /** 单条字段最大长度（防止异常数据撑爆磁盘/内存） */
 const MAX_FIELD_LEN = 256
 
-/** 追加一条用量记录，自动生成 id，返回完整记录。超过 MAX_RECORDS 时删除最早的 */
+/**
+ * 追加一条用量记录，自动生成 id，返回完整记录。超过 MAX_RECORDS 时删除最早的。
+ * S2-04：usage.json 与 usage_record journal 在同一事务内提交（usage 域唯一记账入口）。
+ */
 export function recordUsage(record: Omit<UsageRecord, 'id'>): Promise<UsageRecord> {
   // N4 修复：读-改-写整体持文件锁，串行化并发调用，避免互相覆盖丢记录
   return withFileLock(USAGE_FILE, () => {
@@ -59,35 +82,22 @@ export function recordUsage(record: Omit<UsageRecord, 'id'>): Promise<UsageRecor
       id: nanoid(),
     }
     records.push(full)
-    // 超过上限时按 timestamp 排序，保留最新的 MAX_RECORDS 条
+    // 超过上限时按 timestamp 排序，保留最新的 MAX_RECORDS 条；被淘汰的记录产生 tombstone
+    let next = records
+    let trimmedIds: string[] = []
     if (records.length > MAX_RECORDS) {
       records.sort((a, b) => a.timestamp - b.timestamp)
-      const trimmed = records.slice(records.length - MAX_RECORDS)
-      writeJson(USAGE_FILE, trimmed)
-    } else {
-      writeJson(USAGE_FILE, records)
+      next = records.slice(records.length - MAX_RECORDS)
+      trimmedIds = validRecordIds(records.slice(0, records.length - MAX_RECORDS))
     }
+    commitThroughDomain({
+      domain: 'usage_record',
+      entityType: 'usage_record',
+      puts: [{ entityId: full.id, payload: usageRecordPayload(full), schemaVersion: 1 }],
+      deletes: trimmedIds.map((entityId) => ({ entityId })),
+      files: [{ path: USAGE_FILE, content: serializeJson(next) }],
+    })
     log.info('用量记录已保存', { id: full.id, model: full.model, totalChars: full.totalChars })
-    try {
-      ensureSyncDomain(app.getPath('userData'))
-      journalPutIfEnabled({
-        domain: 'usage_record',
-        entityType: 'usage_record',
-        entityId: full.id,
-        payload: {
-          timestamp: full.timestamp,
-          characterId: full.characterId,
-          sessionId: full.sessionId,
-          model: full.model,
-          inputChars: full.inputChars,
-          outputChars: full.outputChars,
-          totalChars: full.totalChars,
-          source: 'usage-service',
-        },
-      })
-    } catch (err) {
-      log.warn('usage service journal 失败', { err: String(err) })
-    }
     return full
   })
 }
@@ -122,9 +132,40 @@ export function queryUsage(filter: UsageFilter): UsageRecord[] {
   return records
 }
 
-/** 清空所有用量记录 */
+/**
+ * 清空所有用量记录（S2-04）。
+ *
+ * - 被清空的记录在同一事务内产生 tombstone（保留删除语义，而不是仅把文件覆盖为空数组）；
+ * - 随后写入 usage_clear_marker，保留既有 clearedThrough（已消费 counter 上界）语义。
+ */
 export function clearUsage(): void {
-  writeJson(USAGE_FILE, [])
+  const records = loadUsage()
+  commitThroughDomain({
+    domain: 'usage_record',
+    entityType: 'usage_record',
+    puts: [],
+    deletes: validRecordIds(records).map((entityId) => ({ entityId })),
+    files: [{ path: USAGE_FILE, content: serializeJson([]) }],
+  })
+  try {
+    ensureSyncDomain(app.getPath('userData'))
+    const { meta, repo } = getSyncDomain()
+    const deviceId = repo.deviceId()
+    const next = BigInt(meta.getDeviceState()?.nextCounter ?? '1')
+    const through: Record<string, string> = {
+      [deviceId]: String(next > 0n ? next - 1n : 0n),
+    }
+    writeThroughDomain({
+      domain: 'usage_record',
+      entityType: 'usage_clear_marker',
+      entityId: 'usage-clear-marker',
+      payload: { clearedThrough: through },
+      schemaVersion: 1,
+      files: [],
+    })
+  } catch (err) {
+    log.warn('usage clear marker 写入失败', { err: String(err) })
+  }
   log.info('用量记录已清空')
 }
 

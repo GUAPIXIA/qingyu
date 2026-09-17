@@ -1,31 +1,46 @@
 import type { IpcMain } from 'electron'
+import { join } from 'node:path'
 import { mcpManager } from '../mcp/manager'
 import { safeId } from '../utils/pathGuard'
 import { safeHandle } from '../utils/safeHandle'
 import type { McpServerConfig } from '../../shared/types'
-import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
-import { createLogger } from '../services/logger'
+import { DIRS } from '../services/storage'
+import { writeThroughDomain, deleteThroughDomain } from '../domain/syncDomainService'
 
-const log = createLogger('mcp-ipc')
 
-function journalMcpPublic(server: McpServerConfig): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    // 仅公共配置；env 敏感值不同步（总方案 §6.1）
-    journalPutIfEnabled({
-      domain: 'mcp_public_config',
-      entityType: 'mcp_public_config',
-      entityId: server.id,
-      payload: {
-        name: server.name,
-        transport: server.transport,
-        enabled: server.enabled,
-      },
-    })
-  } catch (err) {
-    log.warn('mcp journal 失败', { err: String(err) })
-  }
+/** MCP 服务器配置由 mcpManager 持有；这里把同一文件内容纳入事务，避免只记 journal 的假事务 */
+function mcpConfigFile(): string {
+  return join(DIRS.config(), 'mcp-servers.json')
+}
+
+/**
+ * mcp_public_config 写入口（S2-04）：仅公共字段进 payload，
+ * env / headers / command 等敏感值不同步（总方案 §6.1、§3.3）。
+ */
+function commitMcpPublic(server: McpServerConfig): void {
+  const servers = mcpManager.listServers()
+  writeThroughDomain({
+    domain: 'mcp_public_config',
+    entityType: 'mcp_public_config',
+    entityId: server.id,
+    payload: {
+      name: server.name,
+      transport: server.transport,
+      enabled: server.enabled,
+    },
+    schemaVersion: 1,
+    files: [{ path: mcpConfigFile(), content: JSON.stringify(servers, null, 2) }],
+  })
+}
+
+function commitMcpDelete(id: string): void {
+  const servers = mcpManager.listServers()
+  deleteThroughDomain({
+    domain: 'mcp_public_config',
+    entityType: 'mcp_public_config',
+    entityId: id,
+    files: [{ path: mcpConfigFile(), content: JSON.stringify(servers, null, 2) }],
+  })
 }
 
 export function registerMcpIPC(ipcMain: IpcMain): void {
@@ -39,7 +54,7 @@ export function registerMcpIPC(ipcMain: IpcMain): void {
 
   safeHandle(ipcMain, 'mcp:addServer', async (_e, config: Omit<McpServerConfig, 'id'>) => {
     const created = await mcpManager.addServer(config)
-    journalMcpPublic(created)
+    commitMcpPublic(created)
     return created
   })
 
@@ -47,19 +62,14 @@ export function registerMcpIPC(ipcMain: IpcMain): void {
     safeId(id)
     mcpManager.updateServer(id, patch)
     const updated = mcpManager.listServers().find((s) => s.id === id)
-    if (updated != null) journalMcpPublic(updated)
+    if (updated != null) commitMcpPublic(updated)
     return updated
   })
 
   safeHandle(ipcMain, 'mcp:removeServer', async (_e, id: string) => {
     safeId(id)
     await mcpManager.removeServer(id)
-    try {
-      ensureSyncDomain(app.getPath('userData'))
-      journalDeleteIfEnabled({ domain: 'mcp_public_config', entityType: 'mcp_public_config', entityId: id })
-    } catch (err) {
-      log.warn('mcp delete journal 失败', { err: String(err) })
-    }
+    commitMcpDelete(id)
   })
 
   safeHandle(ipcMain, 'mcp:startServer', async (_e, id: string) => {

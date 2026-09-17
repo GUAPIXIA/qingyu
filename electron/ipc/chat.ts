@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, unlinkSync, renameSync, statSync, openSync, readSync, closeSync } from 'node:fs'
-import { DIRS, readJson, writeJson, withFileLock } from '../services/storage'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, renameSync, statSync, openSync, readSync, closeSync } from 'node:fs'
+import { DIRS, readJson, withFileLock, serializeJson } from '../services/storage'
 import { escapeMarkdownContent } from '../utils/markdown'
 import { getDefaultSettings } from '../../shared/defaults'
 import { createLogger } from '../services/logger'
@@ -13,76 +13,89 @@ import { nanoid } from 'nanoid'
 import { safeId } from '../utils/pathGuard'
 import { safeHandle } from '../utils/safeHandle'
 import { withMessageIdentity } from '../../shared/messageIdentity'
-import { replaceFileWithRetry } from '../services/filePersistence'
-import { app } from 'electron'
-import { ensureSyncDomain, journalPutIfEnabled, journalDeleteIfEnabled } from '../domain/syncDomainService'
+import { commitThroughDomain, type DomainWriteFile } from '../domain/syncDomainService'
 
 const log = createLogger('chat')
 
-function journalSessionPut(characterId: string, session: ChatSession): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalPutIfEnabled({
-      domain: 'session',
-      entityType: 'session',
-      entityId: session.id,
-      parentId: characterId,
-      payload: {
-        characterId,
-        title: session.title,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-        personaId: session.personaId ?? null,
-        lorebookIds: session.lorebookIds ?? [],
-        narrativeMode: session.narrativeMode ?? null,
-      },
-    })
-  } catch (err) {
-    log.warn('session journal 失败', { err: String(err) })
+/**
+ * 消息实体的规范 payload（shared/contracts/schemas/message-payload.schema.json，
+ * additionalProperties=false，因此只放 schema 允许的字段）。
+ */
+function messageEntityPayload(message: Message): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    sessionId: message.sessionId,
+    role: message.role,
+    content: message.content,
+    timestamp: message.timestamp,
   }
+  if (typeof message.characterId === 'string' || message.characterId === null) {
+    payload.characterId = message.characterId
+  }
+  for (const key of ['speakerKind', 'generationKind', 'narrativeMode'] as const) {
+    if (typeof message[key] === 'string') payload[key] = message[key]
+  }
+  if (Array.isArray(message.swipes)) payload.swipes = message.swipes
+  if (typeof message.swipeIndex === 'number') payload.swipeIndex = message.swipeIndex
+  if (typeof message.replyToId === 'string' || message.replyToId === null) {
+    payload.replyToId = message.replyToId
+  }
+  return payload
 }
 
-function journalSessionDelete(sessionId: string): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalDeleteIfEnabled({ domain: 'session', entityType: 'session', entityId: sessionId })
-  } catch (err) {
-    log.warn('session delete journal 失败', { err: String(err) })
+/** 解析已落盘 JSONL 的最终状态（同 id 行以最后一行为准），用于 diff 出变更实体 */function readMessageMapFromDisk(filePath: string): Map<string, Message> {
+  const map = new Map<string, Message>()
+  if (!existsSync(filePath)) return map
+  const content = readFileSync(filePath, 'utf-8')
+  for (const line of content.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const parsed = JSON.parse(line) as Message
+      if (parsed && typeof parsed.id === 'string' && parsed.id) map.set(parsed.id, parsed)
+    } catch {
+      /* 损坏行忽略：compact/readMessages 会另行告警 */
+    }
   }
+  return map
 }
 
-function journalMessagePut(message: Message): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalPutIfEnabled({
+/**
+ * 清空某角色全部对话（S2-04）：对回收站中的 sessions.json 与各 .jsonl
+ * 写 tombstone 并在同一事务内删除文件。消息与会话是不同实体类型，分两个事务提交。
+ */
+function journalTrashedChatData(characterId: string, trashDir: string): void {
+  const sessionsFile = join(trashDir, 'sessions.json')
+  const sessions = existsSync(sessionsFile)
+    ? (readJson<ChatSession[]>(sessionsFile, 'sessions') ?? [])
+    : []
+
+  const messageDeletes: Array<{ entityId: string; parentId: string }> = []
+  const messageFiles: DomainWriteFile[] = []
+  for (const name of readdirSync(trashDir)) {
+    if (!name.endsWith('.jsonl')) continue
+    const sessionId = name.replace(/\.jsonl$/, '')
+    const filePath = join(trashDir, name)
+    for (const m of readMessageMapFromDisk(filePath).values()) {
+      messageDeletes.push({ entityId: m.id, parentId: sessionId })
+    }
+    messageFiles.push({ path: filePath, content: null })
+  }
+  if (messageFiles.length > 0) {
+    commitThroughDomain({
       domain: 'message',
       entityType: 'message',
-      entityId: message.id,
-      parentId: message.sessionId,
-      payload: {
-        sessionId: message.sessionId,
-        characterId: message.characterId,
-        role: message.role,
-        content: message.content,
-        timestamp: message.timestamp,
-        speakerKind: message.speakerKind ?? null,
-        generationKind: message.generationKind ?? null,
-        narrativeMode: message.narrativeMode ?? null,
-        swipeIndex: message.swipeIndex ?? 0,
-        replyToId: message.replyToId ?? null,
-      },
+      puts: [],
+      deletes: messageDeletes,
+      files: messageFiles,
     })
-  } catch (err) {
-    log.warn('message journal 失败', { err: String(err) })
   }
-}
-
-function journalMessageDelete(id: string): void {
-  try {
-    ensureSyncDomain(app.getPath('userData'))
-    journalDeleteIfEnabled({ domain: 'message', entityType: 'message', entityId: id })
-  } catch (err) {
-    log.warn('message delete journal 失败', { err: String(err) })
+  if (existsSync(sessionsFile)) {
+    commitThroughDomain({
+      domain: 'session',
+      entityType: 'session',
+      puts: [],
+      deletes: sessions.map((s) => ({ entityId: s.id, parentId: characterId })),
+      files: [{ path: sessionsFile, content: null }],
+    })
   }
 }
 
@@ -154,10 +167,52 @@ function loadSessions(characterId: string): ChatSession[] {
   return readJson<ChatSession[]>(filePath, 'sessions') ?? []
 }
 
+/** 会话实体的规范 payload（与阶段 1 冻结的 session 契约字段一致） */
+function sessionEntityPayload(characterId: string, session: ChatSession): Record<string, unknown> {
+  return {
+    characterId,
+    title: session.title,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    personaId: session.personaId ?? null,
+    lorebookIds: session.lorebookIds ?? [],
+    narrativeMode: session.narrativeMode ?? null,
+  }
+}
+
+/**
+ * 阶段 2 S2-04：sessions.json 与其 journal 在同一文件事务内提交。
+ * 以磁盘旧状态为基准 diff 出新增/修改/删除的会话实体，
+ * flag 关闭时退化为与旧实现完全一致的直接落盘。
+ */
 function saveSessions(characterId: string, sessions: ChatSession[]): void {
   const dir = getChatDir(characterId)
   mkdirSync(dir, { recursive: true })
-  writeJson(getSessionsFile(characterId), sessions, 'sessions')
+  const filePath = getSessionsFile(characterId)
+  const previous = existsSync(filePath) ? (readJson<ChatSession[]>(filePath, 'sessions') ?? []) : []
+  const previousById = new Map(previous.map((s) => [s.id, JSON.stringify(s)]))
+  const nextIds = new Set(sessions.map((s) => s.id))
+
+  const puts = sessions
+    .filter((s) => previousById.get(s.id) !== JSON.stringify(s))
+    .map((s) => ({
+      entityId: s.id,
+      payload: sessionEntityPayload(characterId, s),
+      parentId: characterId,
+      references: [characterId],
+      schemaVersion: 1,
+    }))
+  const deletes = previous
+    .filter((s) => !nextIds.has(s.id))
+    .map((s) => ({ entityId: s.id, parentId: characterId }))
+
+  commitThroughDomain({
+    domain: 'session',
+    entityType: 'session',
+    puts,
+    deletes,
+    files: [{ path: filePath, content: serializeJson(sessions, 'sessions') }],
+  })
 }
 
 // BUG-19 修复：sessions.json 的读-改-写操作统一走 per-file 锁，
@@ -392,30 +447,68 @@ export function readMessages(characterId: string, sessionId: string, bypassCache
   return result
 }
 
-/** 重写整个 session 文件（原子写入：temp + rename，防止崩溃损坏会话文件） */
+/**
+ * 重写整个 session 文件（阶段 2 S2-04：文件与 message journal 同一事务提交）。
+ * 以磁盘旧状态 diff 出新增/修改/删除的消息实体；flag 关闭时退化为旧的原子重写。
+ */
 function writeMessages(characterId: string, sessionId: string, messages: Message[]): void {
   const dir = getChatDir(characterId)
   mkdirSync(dir, { recursive: true })
   const filePath = getSessionFile(characterId, sessionId)
-  const content = messages.map((m) => JSON.stringify(m)).join('\n')
-  const tmpPath = filePath + '.tmp'
-  writeFileSync(tmpPath, content ? content + '\n' : '', 'utf-8')
-  try {
-    const replacement = replaceFileWithRetry(tmpPath, filePath)
-    if (replacement === 'copied') {
-      log.warn('消息文件被占用，已回退为覆盖写入', { characterId, sessionId })
-    }
-  } finally {
-    try { unlinkSync(tmpPath) } catch { /* ignore */ }
-  }
+  const serialized = messages.map((m) => JSON.stringify(m)).join('\n')
+  const content = serialized ? serialized + '\n' : ''
+
+  const previous = readMessageMapFromDisk(filePath)
+  const nextIds = new Set(messages.map((m) => m.id))
+  const puts = messages
+    .filter((m) => {
+      const before = previous.get(m.id)
+      return !before || JSON.stringify(before) !== JSON.stringify(m)
+    })
+    .map((m) => ({
+      entityId: m.id,
+      payload: messageEntityPayload(m),
+      parentId: sessionId,
+      references: [sessionId],
+      schemaVersion: 1,
+    }))
+  const deletes = [...previous.values()]
+    .filter((m) => !nextIds.has(m.id))
+    .map((m) => ({ entityId: m.id, parentId: sessionId }))
+
+  commitThroughDomain({
+    domain: 'message',
+    entityType: 'message',
+    puts,
+    deletes,
+    files: [{ path: filePath, content }],
+  })
 }
 
-/** 追加单条消息（写入后同步更新读取缓存，避免下次 listMessages 重新全量解析）。P-6 导出仅供测试。 */
+/**
+ * 追加单条消息（阶段 2 S2-04：append 事务，保持 O(1) 追加语义，
+ * 不因 journal 而整文件重写）。写入后同步更新读取缓存。
+ */
 export function appendMessage(characterId: string, sessionId: string, message: Message): void {
   const dir = getChatDir(characterId)
   mkdirSync(dir, { recursive: true })
   const filePath = getSessionFile(characterId, sessionId)
-  writeFileSync(filePath, JSON.stringify(message) + '\n', { flag: 'a' })
+
+  commitThroughDomain({
+    domain: 'message',
+    entityType: 'message',
+    puts: [
+      {
+        entityId: message.id,
+        payload: messageEntityPayload(message),
+        parentId: sessionId,
+        references: [sessionId],
+        schemaVersion: 1,
+      },
+    ],
+    deletes: [],
+    files: [{ path: filePath, content: JSON.stringify(message) + '\n', append: true }],
+  })
 
   // P-6：缓存命中则增量更新（同 id 覆盖，与 readMessages 的 msgMap 去重语义一致）
   const key = messagesCacheKey(characterId, sessionId)
@@ -584,20 +677,35 @@ function migrateOldData(characterId: string): string | null {
     return defaultSessionId
   }
 
-  // 移动文件
+  // 移动文件：阶段 2 S2-04 经同一事务把新版消息文件写入并为旧文件写删除操作
   try {
     const content = readFileSync(oldFile, 'utf-8')
-    // BUG-22 修复：先写 temp 再原子 rename，任何一步失败都不会删掉旧文件；
-    // 失败时清理残留 temp，避免“旧文件已删但新文件未写入”的数据丢失
-    const tmpFile = newFile + '.tmp'
-    writeFileSync(tmpFile, content)
-    try {
-      renameSync(tmpFile, newFile)
-    } catch (err) {
-      try { unlinkSync(tmpFile) } catch { /* ignore */ }
-      throw err
+    const migrated: Message[] = []
+    for (const line of content.split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const parsed = JSON.parse(line) as Message
+        if (parsed && typeof parsed.id === 'string' && parsed.id) migrated.push(parsed)
+      } catch {
+        /* 损坏行保持原样搬运，不阻断迁移 */
+      }
     }
-    unlinkSync(oldFile)
+    commitThroughDomain({
+      domain: 'message',
+      entityType: 'message',
+      puts: migrated.map((m) => ({
+        entityId: m.id,
+        payload: messageEntityPayload({ ...m, sessionId: defaultSessionId }),
+        parentId: defaultSessionId,
+        references: [defaultSessionId],
+        schemaVersion: 1,
+      })),
+      deletes: [],
+      files: [
+        { path: newFile, content },
+        { path: oldFile, content: null },
+      ],
+    })
 
     // 确保 session 元数据存在
     const sessions = loadSessions(characterId)
@@ -696,7 +804,6 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       }
       sessions.push(session)
       saveSessions(characterId, sessions)
-      journalSessionPut(characterId, session)
       log.info('会话已创建', { characterId, sessionId: session.id, title: session.title })
       return session
     })
@@ -710,7 +817,15 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     await withSessionFileLock(characterId, sessionId, () => {
       const filePath = getSessionFile(characterId, sessionId)
       if (existsSync(filePath)) {
-        unlinkSync(filePath)
+        // 阶段 2 S2-04：删除会话文件前先为其中每条消息写 tombstone（同一事务内删文件）
+        const messages = readMessages(characterId, sessionId, true)
+        commitThroughDomain({
+          domain: 'message',
+          entityType: 'message',
+          puts: [],
+          deletes: messages.map((m) => ({ entityId: m.id, parentId: sessionId })),
+          files: [{ path: filePath, content: null }],
+        })
       }
       // P-6：失效该会话的读取缓存
       messagesCacheInvalidate(characterId, sessionId)
@@ -719,7 +834,6 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     return withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId).filter(s => s.id !== sessionId)
       saveSessions(characterId, sessions)
-      journalSessionDelete(sessionId)
       log.info('会话已删除', { characterId, sessionId })
     })
   })
@@ -798,7 +912,6 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     await withSessionFileLock(message.characterId, sid, () => {
       updateMessage(message.characterId, sid, normalizedMessage)
     })
-    journalMessagePut(normalizedMessage)
 
     // 增量更新 session 的 updatedAt（只重写 sessions.json，不重读 messages）
     await withSessionsLock(message.characterId, () => {
@@ -826,7 +939,6 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       // P-8：全量重写后重置追加计数
       resetAppendCount(characterId, sid)
     })
-    journalMessageDelete(id)
     // 同步 session updatedAt
     await withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId)
@@ -851,7 +963,15 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       await withSessionFileLock(characterId, sessionId, () => {
         const filePath = getSessionFile(characterId, sessionId)
         if (existsSync(filePath)) {
-          unlinkSync(filePath)
+          // 阶段 2 S2-04：清空对话同样要为消息写 tombstone
+          const messages = readMessages(characterId, sessionId, true)
+          commitThroughDomain({
+            domain: 'message',
+            entityType: 'message',
+            puts: [],
+            deletes: messages.map((m) => ({ entityId: m.id, parentId: sessionId })),
+            files: [{ path: filePath, content: null }],
+          })
         }
         // P-6：失效该会话的读取缓存
         messagesCacheInvalidate(characterId, sessionId)
@@ -888,7 +1008,10 @@ export function registerChatIPC(ipcMain: IpcMain): void {
         const files = readdirSync(dir).map((f) => join(dir, f))
         await Promise.all(files.map((f) => withFileLock(f, () => {})))
         const trashDir = join(DIRS.chats(), `.deleting-${characterId}-${Date.now()}`)
+        // sync-bypass-ok: 目录级回收站改名（不改变业务数据语义；实体 tombstone 由 journalTrashedChatData 记账）
         renameSync(dir, trashDir)
+        // 阶段 2 S2-04：为回收站中的会话与消息写 tombstone，并删除对应文件
+        journalTrashedChatData(characterId, trashDir)
         rmSync(trashDir, { recursive: true, force: true })
         // P-6：失效该角色的全部读取缓存
         messagesCacheInvalidate(characterId)

@@ -43,12 +43,13 @@ function envelope(input: {
 
 describe('phase2 recovery / remote apply / metrics', () => {
   let dir: string
+  let userData: string
   let meta: SyncMetaDb
   let repo: PcDomainRepository
 
   beforeEach(() => {
     dir = makeDir()
-    const userData = join(dir, 'userdata')
+    userData = join(dir, 'userdata')
     const identity = new DeviceIdentityStore(join(userData, 'data/config/sync-device-identity.json'))
     identity.loadOrCreate()
     meta = new SyncMetaDb(join(userData, 'data/config/sync-meta.db'))
@@ -67,13 +68,13 @@ describe('phase2 recovery / remote apply / metrics', () => {
       oldHashesJson: '{}',
       newHashesJson: '{}',
     })
-    const outcome = recoverIncompleteFileTransactions(meta)
-    expect(outcome.aborted).toBe(1)
+    const outcome = recoverIncompleteFileTransactions(meta, join(dir, 'userdata'))
+    expect(outcome.aborted + outcome.blocked).toBe(1)
     expect(meta.getFileTransaction('tx-prep')?.state).toBe('ABORTED')
     expect(meta.listIncompleteFileTransactions()).toHaveLength(0)
   })
 
-  it('FILES_APPLIED 未提交 → ABORT 且不吞 journal', () => {
+  it('FILES_APPLIED 未提交 → 不吞也不重复 journal', () => {
     meta.prepareFileTransaction({
       id: 'tx-applied',
       operationsJson: '[]',
@@ -82,14 +83,14 @@ describe('phase2 recovery / remote apply / metrics', () => {
     })
     meta.markFileTransaction('tx-applied', 'FILES_APPLIED')
     const before = meta.countChanges()
-    recoverIncompleteFileTransactions(meta)
+    recoverIncompleteFileTransactions(meta, join(dir, 'userdata'))
     expect(meta.getFileTransaction('tx-applied')?.state).toBe('ABORTED')
     expect(meta.countChanges()).toBe(before)
   })
 
   it('远端 apply：新实体 origin=remote，不产生 local journal 回声', () => {
     const env = envelope({ entityId: 'p-remote', payload: { name: '远端' } })
-    const result = applyRemoteBatch(meta, [env])
+    const result = applyRemoteBatch(meta, userData, [env])
     expect(result.applied).toBe(1)
     expect(meta.countChanges('remote')).toBe(1)
     expect(meta.countChanges('local')).toBe(0)
@@ -101,7 +102,7 @@ describe('phase2 recovery / remote apply / metrics', () => {
       entityType: 'persona',
       entityId: 'p1',
       payload: { name: 'local' },
-      writeBusiness: () => {},
+      files: [{ path: join(repo.rootDir(), 'data/config/personas.json'), content: '{}' }],
     })
     const localHead = meta.getHead('persona', 'p1')!
     const localVer = JSON.parse(localHead.versionJson) as Record<string, string>
@@ -115,14 +116,14 @@ describe('phase2 recovery / remote apply / metrics', () => {
       counter: String(BigInt(localVer[deviceId]) + 1n),
       version: { [deviceId]: String(BigInt(localVer[deviceId]) + 1n) },
     })
-    const r1 = applyRemoteBatch(meta, [remoteDominating])
+    const r1 = applyRemoteBatch(meta, userData, [remoteDominating])
     expect(r1.applied).toBe(1)
     expect(meta.getHead('persona', 'p1')?.hash).toBe(remoteDominating.contentHash)
     // remote apply 不增加 local journal
     expect(meta.countChanges('local')).toBe(1)
 
     // concurrent different content
-    const concurrent = envelope({
+    envelope({
       entityId: 'p1',
       payload: { name: 'other-device' },
       deviceId: 'other',
@@ -138,7 +139,7 @@ describe('phase2 recovery / remote apply / metrics', () => {
       counter: '5',
       version: { other: '5' },
     })
-    const r2 = applyRemoteBatch(meta, [concurrent2])
+    const r2 = applyRemoteBatch(meta, userData, [concurrent2])
     // depends on current head; at least one path should conflict or apply
     expect(r2.applied + r2.conflicts).toBeGreaterThanOrEqual(1)
   })
@@ -146,7 +147,7 @@ describe('phase2 recovery / remote apply / metrics', () => {
   it('HASH_MISMATCH 拒绝整批条目', () => {
     const bad = envelope({ entityId: 'p-bad', payload: { name: 'x' } })
     bad.contentHash = 'sha256:' + '0'.repeat(64)
-    const r = applyRemoteBatch(meta, [bad])
+    const r = applyRemoteBatch(meta, userData, [bad])
     expect(r.applied).toBe(0)
     expect(r.rejected[0].code).toBe('HASH_MISMATCH')
   })
@@ -156,7 +157,7 @@ describe('phase2 recovery / remote apply / metrics', () => {
       entityType: 'persona',
       entityId: 'p-m',
       payload: { name: 'secret-name-should-not-export' },
-      writeBusiness: () => {},
+      files: [{ path: join(repo.rootDir(), 'data/config/personas.json'), content: '{}' }],
     })
     const diag = collectSyncDiagnostics(meta)
     expect(diag.localChanges).toBe(1)
