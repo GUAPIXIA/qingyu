@@ -23,7 +23,7 @@ export type DataDomain = 'settings' | 'characters' | 'lorebooks' | 'sessions'
 
 /** 各数据域当前最新版本号 */
 const LATEST_VERSION: Record<DataDomain, number> = {
-  settings: 4,
+  settings: 5,
   characters: 1,
   lorebooks: 1,
   sessions: 2,
@@ -57,6 +57,11 @@ const MIGRATIONS: Record<DataDomain, Migration[]> = {
       from: 3,
       to: 4,
       run: migrateSettingsV3ToV4,
+    },
+    {
+      from: 4,
+      to: 5,
+      run: migrateSettingsV4ToV5,
     },
   ],
   characters: [],
@@ -382,6 +387,13 @@ function migrateSettingsV3ToV4(data: unknown): unknown {
   if (typeof raw.autoTailRepairEnabled !== 'boolean') raw.autoTailRepairEnabled = true
   if (typeof raw.costReminderEnabled !== 'boolean') raw.costReminderEnabled = true
   if (typeof raw.reasoningGateEnabled !== 'boolean') raw.reasoningGateEnabled = true
+  return raw
+}
+
+/** settings v4 → v5：旧生成管线退役；历史字段直接删除，运行时只走统一计划。 */
+function migrateSettingsV4ToV5(data: unknown): unknown {
+  const raw = { ...(data as Record<string, unknown>) }
+  delete raw.generationPipeline
   return raw
 }
 

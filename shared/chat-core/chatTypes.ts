@@ -98,7 +98,6 @@ export interface ChatState {
     requestMaxTokens: number
     requestBudget: RequestBudget
     responsePolicy: ResponsePolicy
-    pipelineLegacy: boolean
     responseIntent: ResponsePolicy['mode'] | null
     sceneFactor: number
   }

@@ -17,6 +17,41 @@ import type { GateProbeSignal } from '../../../shared/reasoningGate'
 import { sanitizeApiKey } from '../../utils/pathGuard'
 import { toOpenAIContent, imageErrorHint } from './vision'
 
+const SAMPLING_FIELD_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
+  ['temperature', /\btemperature\b/i],
+  ['top_p', /\btop[_\s-]?p\b/i],
+  ['frequency_penalty', /\bfrequency[_\s-]?penalty\b/i],
+  ['presence_penalty', /\bpresence[_\s-]?penalty\b/i],
+]
+
+/**
+ * OpenAI 兼容端点对采样字段的支持并不一致。只有服务端用 400 明确指出
+ * 某个采样字段（或笼统指出 sampling parameters）时才去参重试，让端点使用
+ * 自身默认值；不再根据模型名预先写死数值或维护模型名单。
+ */
+function stripRejectedSamplingFields(
+  status: number,
+  errText: string,
+  body: Record<string, unknown>,
+): string[] {
+  if (status !== 400) return []
+  const explicitlyRejected = SAMPLING_FIELD_PATTERNS
+    .filter(([, pattern]) => pattern.test(errText))
+    .map(([field]) => field)
+  const rejected = explicitlyRejected.length > 0
+    ? explicitlyRejected
+    : /sampling\s+(?:parameter|parameters|settings?)/i.test(errText)
+      ? SAMPLING_FIELD_PATTERNS.map(([field]) => field)
+      : []
+  const removed: string[] = []
+  for (const field of rejected) {
+    if (!Object.prototype.hasOwnProperty.call(body, field)) continue
+    delete body[field]
+    removed.push(field)
+  }
+  return removed
+}
+
 export const openaiAdapter: AIAdapter = {
   async chat(params, onChunk, signal, onUsage) {
     const { baseUrl, apiKey, model, temperature, topP, maxTokens,
@@ -26,7 +61,6 @@ export const openaiAdapter: AIAdapter = {
     // Vision：带图片的消息转换为 content 数组格式（无图片消息保持字符串，兼容非视觉服务）
     const messages = toOpenAIContent(params.messages)
 
-    const lowerModel = model.toLowerCase()
     const body: Record<string, unknown> = {
       model,
       messages,
@@ -36,16 +70,6 @@ export const openaiAdapter: AIAdapter = {
       frequency_penalty: frequencyPenalty,
       presence_penalty: presencePenalty,
       stream,
-    }
-
-    // 采样参数限制与推理控制无关：o 系 / R1 不接受 temperature/top_p 等字段
-    // L-01 修复：用词边界正则避免误匹配（如 gpt-3.5-turbo-1106 含 "o1"）
-    const reasoningOnlySampling = /\bo[134](?:-mini)?\b/.test(lowerModel) || lowerModel.includes('deepseek-r1')
-    if (reasoningOnlySampling) {
-      delete body.temperature
-      delete body.top_p
-      delete body.frequency_penalty
-      delete body.presence_penalty
     }
 
     // 阶段8（§4.3）：统一门控指令 → 请求体字段。适配器只做机械映射，
@@ -89,28 +113,6 @@ export const openaiAdapter: AIAdapter = {
           })
         }
       }
-    } else {
-      // 旧分支（kill switch 关闭）：DeepSeek V4 的辅助请求显式关闭思考
-      if (params.reasoningMode === 'disabled' && lowerModel.includes('deepseek-v4')) {
-        body.thinking = { type: 'disabled' }
-        // 旧路径同样纳入字段级降级表（400 明确拒绝才去参重发一次，行为与门控路径一致）
-        gateProbes.push({
-          path: ['thinking'],
-          knob: 'thinking-disable',
-          isRejected: (text) => /thinking/i.test(text),
-        })
-      }
-      // 旧分支：o 系 / R1 硬编码 medium（门控在场时改为按档位下发，standard/full 不下发）
-      if (reasoningOnlySampling) {
-        body.reasoning_effort = 'medium'
-      }
-    }
-
-    // OpenCode Go 上游约束：kimi-k3 采样参数固定（temperature 仅允许 1、top_p 仅允许 0.95），
-    // 不修正会直接 400（invalid temperature / invalid top_p），已全量实测确认
-    if (model === 'kimi-k3' || model.endsWith('/kimi-k3')) {
-      body.temperature = 1
-      body.top_p = 0.95
     }
 
     // C-03 修复：传递工具定义给 API
@@ -136,22 +138,33 @@ export const openaiAdapter: AIAdapter = {
     })
 
     let response = await sendRequest()
-    if (!response.ok) {
+    const rejectedGatePaths = new Set<string>()
+    while (!response.ok) {
       const errText = await response.text()
       // 阶段8（§4.3）字段级降级表：仅当 400 明确指向本轮下发的门控字段时才去参重发一次。
       // 聚合代理未必透传 DeepSeek 的 thinking 扩展参数；网络错误与其他 400 不进入该分支。
-      const rejected = matchRejectedGateField({ status: response.status, errText, probes: gateProbes })
+      const rejected = matchRejectedGateField({
+        status: response.status,
+        errText,
+        probes: gateProbes.filter((probe) => !rejectedGatePaths.has(probe.path.join('.'))),
+      })
       if (rejected) {
         deleteGateField(body, rejected.path)
+        rejectedGatePaths.add(rejected.path.join('.'))
         if (gateSignal) gateSignal.knobAccepted = false
         response = await sendRequest()
-        if (!response.ok) {
-          const retryText = await response.text()
-          throw new Error(`OpenAI API 错误 ${response.status}: ${sanitizeApiKey(retryText)}${imageErrorHint(params.messages)}`)
-        }
-      } else {
-        throw new Error(`OpenAI API 错误 ${response.status}: ${sanitizeApiKey(errText)}${imageErrorHint(params.messages)}`)
+        continue
       }
+
+      // 采样兼容也采用相同的“服务端明确拒绝后去参”机制：每次至少删除一个仍在
+      // 请求体中的字段，因此循环有自然上界，不依赖固定重试次数。
+      const removedSamplingFields = stripRejectedSamplingFields(response.status, errText, body)
+      if (removedSamplingFields.length > 0) {
+        response = await sendRequest()
+        continue
+      }
+
+      throw new Error(`OpenAI API 错误 ${response.status}: ${sanitizeApiKey(errText)}${imageErrorHint(params.messages)}`)
     }
 
     if (!stream) {

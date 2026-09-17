@@ -212,19 +212,6 @@ describe('终止协调入口行为矩阵（§4.1）', () => {
     }
   })
 
-  it('legacy 管线跳过收尾器，但错误提示仍与正文分离', async () => {
-    const result = await finalizeGenerationTerminalResult({
-      terminalResult: makeTerminal('idle_timeout', RAW),
-      regexRules: [],
-      characterName: '艾琳',
-      legacy: true,
-    })
-    // legacy：正文原样透传（不做稳定边界收束）
-    expect(result.content).toBe(RAW)
-    // 但超时提示不得拼进正文
-    expect(result.noticeFields.generationError).toBe('请求超时，已保留完整部分')
-    expect(result.content).not.toContain('超时')
-  })
 })
 
 // ===================== 桌面单聊：迟到事件竞态（§4.3 / §4.4） =====================

@@ -273,7 +273,7 @@ function createModelCaller(options: CliOptions, model = options.model) {
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
-      reasoningMode: 'disabled',
+      reasoningGate: { level: 'off', knob: 'none', tokens: 2048 },
     }
 
     let lastError: unknown
@@ -345,7 +345,7 @@ async function runOnce(
     callAiHelper: async (
       systemPrompt: string,
       userContent: string,
-      aiOptions?: { temperature?: number; maxTokens?: number; reasoningMode?: ChatParams['reasoningMode'] },
+      aiOptions?: { temperature?: number; maxTokens?: number },
     ) => {
       const started = Date.now()
       const record: Attempt = {

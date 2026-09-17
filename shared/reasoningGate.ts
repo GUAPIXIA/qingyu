@@ -219,8 +219,8 @@ export function resolveReasoningGate(input: ReasoningGateResolveInput): Resolved
 }
 
 /**
- * 默认档位策略（主对话）：deepseek-v4 系沿用既有"主对话关闭推理"的产品意图（off），
- * 其余模型按端点默认（standard）。辅助/后台任务由调用方传 auxiliary。
+ * 默认档位策略（主对话）：所有模型统一按端点默认（standard）。
+ * 辅助/后台任务由调用方传 auxiliary，统一请求 off；不再按模型名写死策略。
  * kill switch 关闭时返回 undefined（不介入，保持旧路径）。
  */
 export function resolveDefaultGateLevel(input: {
@@ -231,7 +231,7 @@ export function resolveDefaultGateLevel(input: {
   if (!input.enabled) return undefined
   if (input.auxiliary) return 'off'
   if (!input.model) return undefined
-  return input.model.toLowerCase().includes('deepseek-v4') ? 'off' : 'standard'
+  return 'standard'
 }
 
 export interface GateProbeUpdate {

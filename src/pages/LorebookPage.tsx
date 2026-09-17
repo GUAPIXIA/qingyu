@@ -26,7 +26,7 @@ import {
   HeartPulse,
 } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { translationMaxTokens } from '../store/chatConstants'
+import { resolveRendererGenerationTaskBudget } from '../store/generationTaskBudget'
 import type { Lorebook, LoreEntry } from '../../shared/types'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import type {
@@ -418,6 +418,14 @@ export function LorebookPage() {
     })
 
     const targetLang = settings.translationTargetLang || '中文'
+    const model = settings.activeModel || profile.model
+    const translationPlan = await resolveRendererGenerationTaskBudget({
+      profile,
+      model,
+      task: 'translation',
+      inputChars: text.length,
+      usageTaskType: 'translation',
+    })
     window.api.ai.chat({
       requestId,
       messages: [
@@ -427,13 +435,16 @@ export function LorebookPage() {
       provider: profile.provider,
       apiKey: profile.apiKey,
       baseUrl: profile.baseUrl,
-      model: settings.activeModel || profile.model,
+      model,
       temperature: 0.3,
       topP: 0.9,
-      maxTokens: translationMaxTokens(text),
+      maxTokens: translationPlan.requestMaxTokens,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: true,
+      observability: { source: 'aux', taskType: 'translation' },
+      adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
+      reasoningGate: translationPlan.reasoningGate,
     }).catch(() => {
       cleanup()
       setTranslatingField(null)

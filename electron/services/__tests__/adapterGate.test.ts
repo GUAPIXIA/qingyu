@@ -19,7 +19,10 @@ import {
   shouldEnableRunawayGuard,
   type AIAdapter,
 } from '../adapters/types'
-import { MIN_USABLE_BODY_TOKENS } from '../../../shared/modelOutputProfile'
+import {
+  DEFAULT_AUTOMATIC_REASONING_RESERVE,
+  MIN_USABLE_BODY_TOKENS,
+} from '../../../shared/modelOutputProfile'
 import type { ChatParams } from '../../../shared/types'
 import type { ReasoningGateDirective } from '../../../shared/reasoningGate'
 
@@ -91,7 +94,6 @@ describe('OpenAI 门控映射（knob → 请求体）', () => {
       stream: false,
       model,
       reasoningGate: gate,
-      ...(gate.level === 'off' ? { reasoningMode: 'disabled' as const } : {}),
     })
   }
 
@@ -109,7 +111,7 @@ describe('OpenAI 门控映射（knob → 请求体）', () => {
       paramsFor('o3-mini', { level: 'off', knob: 'reasoning-effort' }), vi.fn(), new AbortController().signal,
     )
     expect(bodyOf(0).reasoning_effort).toBe('minimal')
-    expect(bodyOf(0).temperature).toBeUndefined()
+    expect(bodyOf(0).temperature).toBe(0.7)
 
     fetchMock.mockResolvedValue(jsonResponse(okBody))
     await getAdapter('openai').chat(
@@ -530,8 +532,8 @@ describe('Ollama 与主进程统一解析', () => {
     )
 
     expect(calls[0].reasoningGate).toMatchObject({ level: 'off', knob: 'reasoning-effort' })
-    // 未确认接受该 knob：预算承诺值退化为档案保守余量（deepseek-v4 = 3072）
-    expect((calls[0].reasoningGate as ReasoningGateDirective).tokens).toBe(3072)
+    // 未确认接受该 knob：预算承诺值退化为统一保守余量。
+    expect((calls[0].reasoningGate as ReasoningGateDirective).tokens).toBe(DEFAULT_AUTOMATIC_REASONING_RESERVE)
   })
 
   it('没有探测记录时不做 knob 跳过，tokens 为保守余量', async () => {
@@ -550,7 +552,11 @@ describe('Ollama 与主进程统一解析', () => {
       makeParams({ model: 'deepseek/deepseek-v4.1-flash', reasoningGate: { level: 'off', knob: 'thinking-disable' } }),
       () => {}, new AbortController().signal, 0,
     )
-    expect(calls[0].reasoningGate).toMatchObject({ level: 'off', knob: 'thinking-disable', tokens: 3072 })
+    expect(calls[0].reasoningGate).toMatchObject({
+      level: 'off',
+      knob: 'thinking-disable',
+      tokens: DEFAULT_AUTOMATIC_REASONING_RESERVE,
+    })
   })
 
   it('未提供门控指令时完全不介入（适配器保持现行行为）', async () => {

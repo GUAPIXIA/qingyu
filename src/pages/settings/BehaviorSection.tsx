@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import {
-  AlertTriangle,
   Brain,
   Image as ImageIcon,
   Languages,
@@ -66,7 +65,6 @@ function ToggleSetting({
 /** 显示与行为 */
 export function BehaviorSection({ settings, updateSettings }: BehaviorSectionProps) {
   const narrativeMode = resolveNarrativeMode(settings.defaultNarrativeMode)
-  const pipeline = settings.generationPipeline ?? 'unified'
   const blurStrength = settings.coverBlurStrength ?? 8
 
   return (
@@ -96,27 +94,6 @@ export function BehaviorSection({ settings, updateSettings }: BehaviorSectionPro
             onChange={(defaultMemoryEnabled) => updateSettings({ defaultMemoryEnabled })}
           />
         </BehaviorGroup>
-
-        {pipeline === 'legacy' && (
-          <div className="flex items-start justify-between gap-4 rounded-2xl border border-amber-500/35 bg-amber-500/10 p-4 xl:col-span-2">
-            <div className="flex min-w-0 items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-              <div>
-                <p className="text-sm font-semibold text-tavern-text">检测到旧版生成设置</p>
-                <p className="mt-1 text-xs leading-relaxed text-tavern-text-muted">
-                  旧版入口已清理；切回新版后将使用动态预算、语义分块和稳定收尾。
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="shrink-0 rounded-lg bg-tavern-accent/90 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-tavern-accent"
-              onClick={() => updateSettings({ generationPipeline: 'unified' })}
-            >
-              切回新版
-            </button>
-          </div>
-        )}
 
         <BehaviorGroup
           icon={<Brain className="h-4 w-4" />}

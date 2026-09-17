@@ -11,10 +11,8 @@ import { RESPONSE_LENGTH_LABELS, resolveResponsePolicy } from '../../../shared/r
 import {
   enabledProfileOverride,
   formatRequestBudgetRisk,
-  resolveRequestBudget,
-  resolveUserHardCap,
 } from '../../../shared/modelOutputProfile'
-import { DEFAULT_RESERVED_OUTPUT } from '../../store/chatConstants'
+import { resolveGenerationTaskBudget } from '../../../shared/generationTaskBudget'
 
 interface QuickSettingsPanelProps {
   open: boolean
@@ -78,19 +76,14 @@ export function QuickSettingsPanel({
   const outputBudgetPreview = useMemo(() => {
     const profile = settings.connectionProfiles.find((item) => item.id === settings.activeProfileId)
     const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
-    if ((settings.generationPipeline ?? 'unified') === 'legacy') {
-      return {
-        requestMaxTokens: resolveUserHardCap(activePreset?.maxTokens) ?? DEFAULT_RESERVED_OUTPUT,
-        riskMessage: null,
-      }
-    }
     const responsePolicy = resolveResponsePolicy({
       presetHint: activePreset?.responseLengthHint,
       defaultMode: settings.defaultResponseLength,
     })
-    const budget = resolveRequestBudget({
+    const budget = resolveGenerationTaskBudget({
+      task: 'main',
       model,
-      hardMaxChars: responsePolicy.hardMaxChars,
+      expectedBodyChars: responsePolicy.hardMaxChars,
       userHardCap: activePreset?.maxTokens,
       profileOverride: enabledProfileOverride(profile?.capabilityOverride),
     })
@@ -98,7 +91,7 @@ export function QuickSettingsPanel({
       requestMaxTokens: budget.requestMaxTokens,
       riskMessage: formatRequestBudgetRisk(budget),
     }
-  }, [activePreset, settings.activeModel, settings.activeProfileId, settings.connectionProfiles, settings.defaultResponseLength, settings.generationPipeline])
+  }, [activePreset, settings.activeModel, settings.activeProfileId, settings.connectionProfiles, settings.defaultResponseLength])
   const generatedImages = useMemo(
     () => messages.flatMap((message) => message.images ?? []).slice(-12).reverse(),
     [messages],

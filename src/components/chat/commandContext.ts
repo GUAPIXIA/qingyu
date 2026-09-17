@@ -1,4 +1,5 @@
 import type { Character, Preset, Lorebook, ChatParams } from '../../../shared/types'
+import type { GenerationTask } from '../../../shared/generationTaskBudget'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
@@ -22,8 +23,9 @@ export interface CommandContextDeps {
   callAiHelper: (opts: {
     messages: ChatParams['messages']
     temperature?: number
-    maxTokens?: number
-    reasoningMode?: ChatParams['reasoningMode']
+    task?: GenerationTask
+    inputChars?: number
+    expectedBodyChars?: number
   }) => Promise<string>
 }
 
@@ -184,8 +186,9 @@ export function createCommandContext(deps: CommandContextDeps): CommandContext {
           { role: 'user', content: userContent },
         ],
         temperature: options?.temperature,
-        maxTokens: options?.maxTokens,
-        reasoningMode: options?.reasoningMode,
+        task: options?.task,
+        inputChars: options?.inputChars ?? userContent.length,
+        expectedBodyChars: options?.expectedBodyChars,
       })
     },
     getRecentMessages: (count) => {

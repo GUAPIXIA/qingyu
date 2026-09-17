@@ -403,8 +403,9 @@ describe('useChatStore', () => {
       // 从 store 直接发起翻译（不手动 toggle），模拟翻译完成后自动显示
       useChatStore.getState().translateMessage('m1', 'Hello world')
 
+      await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
       const chatCall = vi.mocked(window.api.ai.chat).mock.calls[0] as any
-      expect(chatCall[0].reasoningMode).toBe('disabled')
+      expect(chatCall[0].reasoningGate).toMatchObject({ level: 'off' })
       const requestId = chatCall[0].requestId
       chunkCb({ requestId, text: '你好' })
       chunkCb({ requestId, text: '世界' })
@@ -441,9 +442,10 @@ describe('useChatStore', () => {
 
       useChatStore.getState().translateMessage('m1', 'Hello world')
 
+      await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
       const chatCall = vi.mocked(window.api.ai.chat).mock.calls[0] as any
       const requestId = chatCall[0].requestId
-      expect(chatCall[0].maxTokens).toBeGreaterThanOrEqual(4096)
+      expect(chatCall[0].maxTokens).toBeGreaterThan(0)
       // 模拟推理模型只输出思考内容，正文为空
       chunkCb({ requestId, text: '<thought>我来翻译这段内容……</thought>' })
       doneCb(requestId)

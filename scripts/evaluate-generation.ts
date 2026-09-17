@@ -556,7 +556,7 @@ function createModelCaller(options: CliOptions) {
     systemSuffix?: string
     /** 与 ChatParams.allowTruncatedOutput 对齐（生图/长记忆等可容错解析的辅助链路会开启） */
     allowTruncatedOutput?: boolean
-    /** W5：门控指令（与生产同口径）；缺省时适配器走旧分支 */
+    /** 门控指令（与生产同口径） */
     reasoningGate?: import('../shared/reasoningGate').ReasoningGateDirective
   }): Promise<ModelCallResult> {
     const systemContent = input.systemSuffix
@@ -567,12 +567,8 @@ function createModelCaller(options: CliOptions) {
     const requestMaxTokens = input.maxTokens > 0 ? input.maxTokens : EVAL_MAX_TOKENS_FLOOR
     // 阶段8：默认门控按主对话档位策略（与生产 streamGroupAI/streamAIResponse 同口径）
     const { resolveDefaultGateLevel, resolveReasoningGate } = await import('../shared/reasoningGate')
-    // 对照开关（归因用）：
-    // - GENERATION_EVAL_NO_GATE=1：不发门控指令（复现改造前路径；legacy reasoningMode 仍在）
-    // - GENERATION_EVAL_NO_THINKING_PARAM=1：连 legacy 的 reasoningMode:'disabled' 也不发，
-    //   用于验证"该端点是否根本关不掉推理"（真基线臂）
-    const omitThinkingParam = process.env.GENERATION_EVAL_NO_THINKING_PARAM === '1'
-    const defaultLevel = omitThinkingParam || process.env.GENERATION_EVAL_NO_GATE === '1'
+    // 对照开关（归因用）：GENERATION_EVAL_NO_GATE=1 时不发统一门控指令。
+    const defaultLevel = process.env.GENERATION_EVAL_NO_GATE === '1'
       ? undefined
       : resolveDefaultGateLevel({ model: options.model, enabled: true })
     const defaultGateDirective = defaultLevel
@@ -597,10 +593,7 @@ function createModelCaller(options: CliOptions) {
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
-      // legacy 关推理字段；真基线臂（NO_THINKING_PARAM=1）下完全不发，用于验证端点是否本就不接受关闭
-      ...(omitThinkingParam ? {} : { reasoningMode: 'disabled' as const }),
-      // W5：门控指令（与生产同口径）。默认按主对话档位策略下发（deepseek-v4 → off，
-      // 其余 → standard）；方向等用例可显式覆盖自己的档位。缺省时适配器走旧分支。
+      // 门控指令与生产同口径；方向等用例可显式覆盖自己的档位。
       ...(input.reasoningGate ?? defaultGateDirective ? { reasoningGate: input.reasoningGate ?? defaultGateDirective } : {}),
       allowTruncatedOutput: input.allowTruncatedOutput,
     }
@@ -1318,10 +1311,9 @@ async function runStreamCase(options: CliOptions, testCase: StreamCase): Promise
   const systemPrompt = built.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n---\n\n')
   const userPrompt = built.messages.filter((m) => m.role !== 'system').map((m) => `${m.role}: ${m.content}`).join('\n')
 
-  // W5：流式用例的门控（与生产同口径；NO_GATE=1 时走旧路径对照）
+  // 流式用例的门控（与生产同口径；NO_GATE=1 时做无门控对照）
   const { resolveDefaultGateLevel, resolveReasoningGate } = await import('../shared/reasoningGate')
-  const omitThinkingParam = process.env.GENERATION_EVAL_NO_THINKING_PARAM === '1'
-  const streamGateLevel = omitThinkingParam || process.env.GENERATION_EVAL_NO_GATE === '1'
+  const streamGateLevel = process.env.GENERATION_EVAL_NO_GATE === '1'
     ? undefined
     : resolveDefaultGateLevel({ model: options.model, enabled: true })
   const streamGate = streamGateLevel
@@ -1360,8 +1352,7 @@ async function runStreamCase(options: CliOptions, testCase: StreamCase): Promise
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: true,
-        ...(omitThinkingParam ? {} : { reasoningMode: 'disabled' as const }),
-        // W5：与生产同口径的门控（deepseek-v4 → off；可用 GENERATION_EVAL_NO_GATE=1 关闭对照）
+        // 与生产同口径的门控；可用 GENERATION_EVAL_NO_GATE=1 关闭做对照。
         ...(streamGate ? { reasoningGate: streamGate } : {}),
       },
       (text) => { deltas.push(text) },
@@ -2388,7 +2379,7 @@ function verifyCases(): VerifyCase[] {
   return [
     { id: 'v-memory-clear-proposal', title: '长记忆 clear 提案容错', focus: 'D3：clear 允许空 value；坏条目逐条丢弃' },
     { id: 'v-dialogue-prefix-normalize', title: '裸对白补角色名前缀', focus: 'D7：仅代入式、仅独占一行的引号对白，thought 内不改' },
-    { id: 'v-main-chat-budget', title: '主对话输出预算', focus: '阶段一：正文预算+推理余量动态计算，DeepSeek V4 不再固定 8192，用户硬上限始终生效' },
+    { id: 'v-main-chat-budget', title: '主对话输出预算', focus: '统一规划：正文预算+推理余量动态计算，模型名称不改变数值预算，用户硬上限始终生效' },
     { id: 'v-adapter-length-error', title: '适配器结构化完成', focus: '阶段3：length 走 AICompletion 不抛错（非流式/流式/tool_calls）；content_filter 与空正文仍报错' },
     { id: 'v-imagine-meta-rejected', title: '生图提示词拒收元信息', focus: 'R3：自述纠错行与残缺 <prong> 标签不进入最终提示词' },
     { id: 'v-continue-overlap-trim', title: '续写重叠去重阈值', focus: 'R5：minOverlap=4 裁掉 4 字复读；默认 8 行为不变' },
@@ -2396,7 +2387,7 @@ function verifyCases(): VerifyCase[] {
     { id: 'v-direction-budget', title: '方向生成预算', focus: 'D6：1536' },
     { id: 'v-continue-continuity', title: '续写衔接约束', focus: 'D4：提示词含"不得重复末尾措辞/优先回应悬念"' },
     { id: 'v-body-format-position', title: '回应范围注入位置', focus: '阶段二：本轮回应范围出现一次，且位于历史消息之后（末端约束），无固定段落数/星号协议' },
-    { id: 'v-pipeline-flag', title: '生成管线灰度开关', focus: '阶段六：unified 动态预算，legacy 回退预设 maxTokens 直用且标记旧链路；回退不删数据' },
+    { id: 'v-pipeline-flag', title: '旧生成管线退役', focus: '旧 generationPipeline 数据不会改变统一预算，旧排版协议和运行时分支已移除' },
     { id: 'v-imagine-ethnicity-removed', title: '族裔功能已回退', focus: 'D2：imagine 与 Character 类型不再含 ethnicity' },
     { id: 'v-thought-isolation-pipeline', title: '推理隔离与落盘正文（S10）', focus: 'S10：供应商推理不进落盘正文/记忆上下文；<thought> 保留给渲染层' },
     { id: 'v-thought-tts-memory', title: 'TTS 与记忆上下文的推理隔离（S10）', focus: 'S10：TTS 预处理不朗读推理；记忆窗口使用落盘正文且不含推理标记' },
@@ -2439,7 +2430,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-main-chat-budget') {
-    const { resolveRequestBudget, MAX_REQUEST_OUTPUT_TOKENS } = await import('../shared/modelOutputProfile')
+    const { resolveRequestBudget, DEFAULT_AUTOMATIC_OUTPUT_LIMIT } = await import('../shared/modelOutputProfile')
     const { resolveResponsePolicy } = await import('../shared/responsePolicy')
     const brief = resolveResponsePolicy({ presetHint: 'brief' })
     const balanced = resolveResponsePolicy({ presetHint: 'balanced' })
@@ -2448,13 +2439,13 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
     const dsBrief = resolveRequestBudget({ model: 'deepseek/deepseek-v4.1-flash', hardMaxChars: brief.hardMaxChars })
     const dsBalanced = resolveRequestBudget({ model: 'deepseek/deepseek-v4.1-flash', hardMaxChars: balanced.hardMaxChars })
     const dsDetailed = resolveRequestBudget({ model: 'deepseek/deepseek-v4.1-flash', hardMaxChars: detailed.hardMaxChars })
-    checks.push(check('deepseek-v4-dynamic', dsBalanced.requestMaxTokens < MAX_REQUEST_OUTPUT_TOKENS && dsBalanced.reasoningReserve >= 3072, `balanced → ${dsBalanced.requestMaxTokens}（正文 ${dsBalanced.bodyReserve} + 推理 ${dsBalanced.reasoningReserve}）`))
+    checks.push(check('automatic-limit', dsBalanced.requestMaxTokens <= DEFAULT_AUTOMATIC_OUTPUT_LIMIT, `balanced → ${dsBalanced.requestMaxTokens}（正文 ${dsBalanced.bodyReserve} + 推理 ${dsBalanced.reasoningReserve}）`))
     checks.push(check('reasoning-reserve-stable-across-lengths', dsBrief.reasoningReserve === dsDetailed.reasoningReserve, `brief/detailed 推理余量一致（${dsBrief.reasoningReserve}）`))
     checks.push(check('body-budget-follows-policy', dsBrief.bodyReserve < dsDetailed.bodyReserve, `正文预算 ${dsBrief.bodyReserve} < ${dsDetailed.bodyReserve}`))
     const capped = resolveRequestBudget({ model: 'deepseek/deepseek-v4.1-flash', hardMaxChars: balanced.hardMaxChars, userHardCap: 1024 })
     checks.push(check('user-cap-respected', capped.requestMaxTokens === 1024 && capped.riskNotice === 'user_cap_below_reasoning_reserve', `硬上限 1024 → ${capped.requestMaxTokens}（riskNotice=${capped.riskNotice ?? 'none'}）`))
     const plain = resolveRequestBudget({ model: 'gpt-4o-mini', hardMaxChars: balanced.hardMaxChars })
-    checks.push(check('plain-model-protocol-only', plain.reasoningReserve <= 256 && plain.requestMaxTokens <= MAX_REQUEST_OUTPUT_TOKENS, `gpt-4o-mini → ${plain.requestMaxTokens}（推理 ${plain.reasoningReserve}）`))
+    checks.push(check('model-name-independent', plain.requestMaxTokens === dsBalanced.requestMaxTokens && plain.reasoningReserve === dsBalanced.reasoningReserve, `两个模型名均为 ${plain.requestMaxTokens}（推理 ${plain.reasoningReserve}）`))
   }
 
   if (testCase.id === 'v-adapter-length-error') {
@@ -2632,31 +2623,18 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-pipeline-flag') {
-    const { resolveChatRequestPlan, buildLegacyBodyFormatPrompt } = await import('../src/context/contextBuilder')
-    const preset = PRESET_FIXTURE
-    // unified（缺省）：动态预算
+    const { resolveChatRequestPlan } = await import('../src/context/contextBuilder')
     const unified = resolveChatRequestPlan(makeBuildData({ character: CHAR_SUWAN, messages: SUWAN_MESSAGES, session: makeSession() }))
-    checks.push(check('unified-default', !unified.pipelineLegacy && unified.requestMaxTokens > 0, `缺省 unified：requestMaxTokens=${unified.requestMaxTokens}`))
-    // legacy：预设 maxTokens 直用（DeepSeek V4 不再恢复固定 8192）
+    checks.push(check('unified-default', unified.requestMaxTokens > 0, `统一预算：requestMaxTokens=${unified.requestMaxTokens}`))
     const legacySettings = { ...BASE_SETTINGS, generationPipeline: 'legacy' as const }
     const legacyData = {
       ...makeBuildData({ character: CHAR_SUWAN, messages: SUWAN_MESSAGES, session: makeSession() }),
       settings: { settings: legacySettings, profile: makeBuildData({ character: CHAR_SUWAN, messages: SUWAN_MESSAGES, session: makeSession() }).settings.profile },
     }
-    const legacy = resolveChatRequestPlan(legacyData as never)
-    checks.push(check('legacy-flag-resolved', legacy.pipelineLegacy, 'legacy 标记已解析'))
-    // preset.maxTokens = 0 表示「自动」：legacy 路径同样不能直传 0（OpenAI 兼容端点会 400），
-    // 由 resolveUserHardCap(0)=null 落到 DEFAULT_RESERVED_OUTPUT 兜底。
-    const { DEFAULT_RESERVED_OUTPUT } = await import('../shared/chat-core/chatConstants')
-    const expectedLegacyBudget = preset.maxTokens > 0 ? preset.maxTokens : DEFAULT_RESERVED_OUTPUT
-    checks.push(check(
-      'legacy-preset-maxTokens',
-      legacy.requestMaxTokens === expectedLegacyBudget,
-      `legacy 预算=${legacy.requestMaxTokens}（preset.maxTokens=${preset.maxTokens}；0=自动→兜底 ${DEFAULT_RESERVED_OUTPUT}）`,
-    ))
-    // legacy 提示词回退：旧排版协议可用且新提示词与其互斥
-    checks.push(check('legacy-prompt-available', buildLegacyBodyFormatPrompt('苏晚').includes('正文排版协议'), '旧排版协议提示词保留（回退注入）'))
-    checks.push(check('legacy-not-8192-floor', legacy.requestMaxTokens !== 8192 || preset.maxTokens === 8192, '旧固定 8192 下限不再恢复'))
+    const withOldData = resolveChatRequestPlan(legacyData as never)
+    checks.push(check('legacy-data-ignored', withOldData.requestMaxTokens === unified.requestMaxTokens, `旧字段不改变预算：${withOldData.requestMaxTokens}`))
+    const built = buildContextMessagesFromData(legacyData as never)
+    checks.push(check('legacy-prompt-removed', !built.messages.some((message) => message.content.includes('正文排版协议')), '旧排版协议不再注入'))
   }
 
   if (testCase.id === 'v-imagine-ethnicity-removed') {

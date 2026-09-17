@@ -81,7 +81,7 @@ export const CONTINUE_INTENSITY_PARAMS: Record<
 /**
  * 续写长度只控制“本次新增内容”的目标区间，不改变剧情推进幅度。
  * minChars/maxChars 是给模型的字数指令，也是生成后校验的依据；
- * 它不承担输出上限的职责——上限见 CONTINUE_REQUEST_MAX_TOKENS。
+ * 它不承担输出上限的职责——输出预算由统一任务预算器按正文目标与实测推理量换算。
  */
 export const CONTINUE_LENGTH_PARAMS: Record<ContinueLength, {
   minChars: number
@@ -111,7 +111,6 @@ export const CONTINUE_LENGTH_PARAMS: Record<ContinueLength, {
  * 故取值需覆盖“较长推理 + 最大档正文”，并留出余量（由 continueIntensity.test.ts
  * 的不变量断言约束）。上限是封顶而非预扣，给足不增加成本。
  */
-export const CONTINUE_REQUEST_MAX_TOKENS = 8192
 
 /**
  * 长度校验阈值（方案 §6.5）。

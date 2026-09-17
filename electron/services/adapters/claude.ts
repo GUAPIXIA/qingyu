@@ -27,7 +27,7 @@ export const claudeAdapter: AIAdapter = {
 
     const body: Record<string, unknown> = {
       model,
-      max_tokens: maxTokens || 4096,
+      max_tokens: maxTokens,
       // Anthropic 的 temperature 上限为 1；跨提供商预设可配置到 2，
       // 在适配器边界归一化，避免创意预设直接触发 400。
       temperature: Math.min(1, Math.max(0, temperature)),
@@ -64,7 +64,7 @@ export const claudeAdapter: AIAdapter = {
     const lowerModel = model.toLowerCase()
     const supportsThinking = (lowerModel.includes('claude-3-7') || lowerModel.includes('claude-4') ||
       lowerModel.includes('claude-3.7')) && !lowerModel.includes('haiku')
-    const maxTok = maxTokens || 4096
+    const maxTok = maxTokens
 
     // 阶段8（§4.3）：统一门控指令决定是否启用扩展思考与预算值。
     // 预算型 knob 不得吞掉正文最小空间（clampGateBudgetForBody）；
@@ -86,14 +86,6 @@ export const claudeAdapter: AIAdapter = {
             isRejected: (text) => /thinking|budget_tokens/i.test(text),
           })
         }
-      }
-    } else if (params.reasoningMode !== 'disabled' && supportsThinking) {
-      // 旧分支（kill switch 关闭）：H-2 修复的固定比例预算，W11 随门控收编删除
-      if (maxTok > 1024) {
-        const thinkingBudget = Math.max(1024, Math.floor(maxTok / 3))
-        body.thinking = { type: 'enabled', budget_tokens: Math.min(thinkingBudget, maxTok - 1024) }
-        body.temperature = 1
-        delete body.top_p
       }
     }
 

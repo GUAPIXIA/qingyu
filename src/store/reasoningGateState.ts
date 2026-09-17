@@ -2,7 +2,7 @@
  * 阶段8（主计划 W4 §4.5）：单聊门控会话状态（进程内存，渲染层）。
  *
  * - **W11（§7.14）后门控常开**：`isReasoningGateEnabled` 恒 true，旧 `reasoningGateEnabled` 字段忽略。
- * - 起步档：默认 `standard`；deepseek-v4 系沿用既有"主对话关闭推理"产品意图（off）。
+ * - 起步档：所有模型默认 `standard`，用户显式档位优先；不再按模型名分叉。
  * - 会话熔断：同一 (provider+model) 连续两次降档恢复失败后，后续请求从 `low` 起步，
  *   且熔断提示只展示一次（阶段8 §4.5）。
  */
@@ -49,7 +49,7 @@ export function isReasoningGateEnabled(_settings: Pick<Settings, 'reasoningGateE
 }
 
 /**
- * 主对话起步档：deepseek-v4 系沿用既有"关闭推理"意图（off），其余按端点默认（standard）。
+ * 主对话起步档：统一按端点默认（standard），不再对某个模型设置固定档位。
  * kill switch 关闭或缺少连接信息时返回 undefined = 不介入。
  */
 export function resolveChatGateLevel(input: {

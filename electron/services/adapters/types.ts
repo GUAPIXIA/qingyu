@@ -44,7 +44,7 @@ export interface TokenUsageInfo {
 
 /** 推理 token 吃满输出额度且没有留下正文空间时给用户的可操作提示。 */
 export const REASONING_BUDGET_EXHAUSTED_MESSAGE =
-  '推理已占满模型输出硬上限，未留下正文空间。请提高“模型输出硬上限”，或设为 0 使用自动预算。'
+  '推理已占满本次输出预算，未留下正文空间。自动预算会根据实际用量调整；请重试。若持续发生，请检查当前端点是否支持关闭推理。'
 
 /**
  * OpenAI 兼容接口的 completion_tokens 通常包含 reasoning_tokens。

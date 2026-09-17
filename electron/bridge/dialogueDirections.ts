@@ -13,8 +13,8 @@ import { stripThought } from '../../shared/chat-core/messagePostProcess'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
 import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
-import { enabledProfileOverride, resolveRequestBudget } from '../../shared/modelOutputProfile'
-import { resolveReasoningGate } from '../../shared/reasoningGate'
+import { enabledProfileOverride } from '../../shared/modelOutputProfile'
+import { resolveGenerationTaskBudget } from '../../shared/generationTaskBudget'
 import {
   DIALOGUE_DIRECTION_TEMPERATURE,
   buildDialogueDirectionSystemPrompt,
@@ -125,12 +125,11 @@ function buildDirectionParams(
 ): ChatParams {
   // W5（主计划 §7.7）：与 PC 同口径——后台 direction 档案 + 统一预算 + off 门控，
   // 不再直连 1536（该入口此前与 PC 存在已知漂移，方案 §2.2）。
-  const gate = resolveReasoningGate({ model: profile.model, requestedLevel: 'off', enabled: true })
-  const budget = resolveRequestBudget({
+  const budget = resolveGenerationTaskBudget({
+    task: 'direction',
     model: profile.model,
-    hardMaxChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
+    expectedBodyChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
     profileOverride: enabledProfileOverride(profile.capabilityOverride),
-    reasoningGate: gate,
   })
   return {
     requestId: `directions-${Date.now()}-${nanoid(4)}`,
@@ -145,8 +144,7 @@ function buildDirectionParams(
     frequencyPenalty: 0,
     presencePenalty: 0,
     stream: false,
-    reasoningMode: 'disabled',
-    reasoningGate: { level: 'off', knob: gate.knob, tokens: gate.gateTokens },
+    reasoningGate: budget.reasoningGate,
     // 阶段7（§7.3）：独立 taskType，与渲染层方向请求同口径
     observability: { source: 'aux', taskType: 'direction' },
   }

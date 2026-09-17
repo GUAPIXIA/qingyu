@@ -262,8 +262,8 @@ describe('buildChatContext', () => {
     // 压缩标记需要当前会话存在（compression.enabled 且 currentSession 有值）
     const get = makeGet({ messages, sessions: [makeSession()] })
     const set = vi.fn()
-    // maxContext 2000 → budgetBase ≈ max((2000-1024)*0.95, 500) = 927 tokens
-    const ctx = buildChatContext(get, set, char, { id: 'pr1', name: 'P', description: '', systemPrompt: '', jailbreak: '', maxContext: 2000, temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false }).messages
+    // 小上下文 + 1024 用户硬上限：应裁掉早期历史，但仍给最新消息留出空间。
+    const ctx = buildChatContext(get, set, char, { id: 'pr1', name: 'P', description: '', systemPrompt: '', jailbreak: '', maxContext: 4000, temperature: 0.8, topP: 0.95, maxTokens: 1024, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false }).messages
     // 保留的历史消息数应远小于 40
     const historyCount = ctx.filter(c => c.role === 'user' || c.role === 'assistant').length
     expect(historyCount).toBeLessThan(40)

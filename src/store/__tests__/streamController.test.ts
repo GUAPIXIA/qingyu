@@ -5,7 +5,7 @@ import { usePersonaStore } from '../usePersonaStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { streamAIResponse, cleanupActiveStream } from '../streamController'
 import { STREAM_THROTTLE_MS, STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
-import type { Character, Message, ConnectionProfile, Preset } from '../../../shared/types'
+import type { Character, Message, ConnectionProfile, Preset, Settings } from '../../../shared/types'
 
 function createCharacter(overrides: Partial<Character> = {}): Character {
   return {
@@ -200,12 +200,12 @@ describe('streamAIResponse 流式控制', () => {
     await promise
   })
 
-  it('阶段6灰度：legacy 管线跳过收尾器（截断正文原样透传，不回退）', async () => {
+  it('旧 generationPipeline 数据不再绕过统一预算与收尾器', async () => {
     useSettingsStore.setState({
       settings: {
         ...useSettingsStore.getState().settings,
         generationPipeline: 'legacy',
-      },
+      } as unknown as Settings,
     })
     const callbacks = captureStreamCallbacks()
     const onComplete = vi.fn().mockResolvedValue(undefined)
@@ -219,18 +219,16 @@ describe('streamAIResponse 流式控制', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     const requestId = callbacks.chatParams!.requestId
-    // legacy：请求 maxTokens 回退为预设/默认值（此处无预设 → 1024），而非动态预算
-    expect(callbacks.chatParams!.maxTokens).toBe(1024)
+    expect(callbacks.chatParams!.maxTokens).toBeGreaterThan(1024)
 
     callbacks.onChunk!({ requestId, text: '她推开门，走进房间，环顾四周陌生的陈设与积灰的家具。然后她伸手拿' })
     await vi.advanceTimersByTimeAsync(STREAM_THROTTLE_MS + 10)
     callbacks.onComplete!({ requestId, finishReason: 'length' })
     await vi.advanceTimersByTimeAsync(10)
 
-    // 旧链路：不进收尾器，正文原样透传（半句保留由旧行为负责），无收尾提示
     expect(onComplete).toHaveBeenCalledWith(
-      '她推开门，走进房间，环顾四周陌生的陈设与积灰的家具。然后她伸手拿',
-      expect.objectContaining({ finishReason: 'length', legacy: true }),
+      '她推开门，走进房间，环顾四周陌生的陈设与积灰的家具。',
+      expect.objectContaining({ finishReason: 'length' }),
     )
     await promise
   })
@@ -441,7 +439,7 @@ describe('streamAIResponse 流式控制', () => {
     await promise
   })
 
-  it('DeepSeek V4 主对话关闭推理通道，且请求预算保留推理余量（不再固定 8192）', async () => {
+  it('主对话使用统一门控与自动预算，不按模型名固定 token', async () => {
     useSettingsStore.setState({
       settings: {
         ...useSettingsStore.getState().settings,
@@ -459,10 +457,9 @@ describe('streamAIResponse 流式控制', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     const params = (callbacks.chatParams as any)
-    expect(params.reasoningMode).toBe('disabled')
-    // 阶段一：请求预算 = 正文预算 + 推理余量（≥3072），由模型能力档案动态计算
-    expect(params.maxTokens).toBeGreaterThan(3072)
-    expect(params.maxTokens).toBeLessThanOrEqual(8192)
+    expect(params.reasoningGate).toMatchObject({ level: 'standard' })
+    expect(params.maxTokens).toBeGreaterThan(2048)
+    expect(params.maxTokens).toBeLessThanOrEqual(32768)
     await promise
   })
 

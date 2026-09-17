@@ -14,8 +14,10 @@ import { syncBuildData } from '../context/rendererContextProvider'
 import { buildChatParamsFromData, buildContextMessagesFromData } from '../context/contextBuilder'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { RESPONSE_LENGTH_LABELS, resolveResponsePolicy } from '../../shared/responsePolicy'
-import { formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
 import type { ChatParams, Message, Preset, ResponseLengthMode } from '../../shared/types'
+import { resolveRendererGenerationTaskBudget } from '../store/generationTaskBudget'
+import { resolveGenerationTaskBudget, type GenerationTask } from '../../shared/generationTaskBudget'
 
 /** 模板名 → 展示标签 */
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -76,9 +78,10 @@ export function PresetsPage() {
     )
     const model = liveSettings.activeModel || profile?.model || 'gpt-4o-mini'
     const responsePolicy = resolveResponsePolicy({ presetHint: editingPreset.responseLengthHint })
-    const requestBudget = resolveRequestBudget({
+    const requestBudget = resolveGenerationTaskBudget({
+      task: 'main',
       model,
-      hardMaxChars: responsePolicy.hardMaxChars,
+      expectedBodyChars: responsePolicy.hardMaxChars,
       userHardCap: editingPreset.maxTokens,
     })
     return {
@@ -148,11 +151,14 @@ export function PresetsPage() {
   }
 
   /** 流式调用辅助：注册 onChunk/onDone/onError，返回清理函数 */
-  const streamCall = (opts: {
+  const streamCall = async (opts: {
     requestId: string
     messages: ChatParams['messages']
     onResult: (text: string) => void
     onError: (msg: string) => void
+    task?: GenerationTask
+    inputChars?: number
+    expectedBodyChars?: number
     extra?: Partial<Pick<ChatParams,
       'temperature' | 'topP' | 'maxTokens' | 'frequencyPenalty' | 'presencePenalty' | 'instructTemplate'>>
   }) => {
@@ -181,20 +187,31 @@ export function PresetsPage() {
       unbindChunk(); unbindDone(); unbindError()
     }
     const settings = useSettingsStore.getState().settings
+    const model = settings.activeModel || profile.model
+    const plan = opts.extra?.maxTokens == null
+      ? await resolveRendererGenerationTaskBudget({
+          profile,
+          model,
+          task: opts.task ?? 'generic',
+          inputChars: opts.inputChars,
+          expectedBodyChars: opts.expectedBodyChars,
+        })
+      : null
     window.api.ai.chat({
       requestId: opts.requestId,
       messages: opts.messages,
       provider: profile.provider,
       apiKey: profile.apiKey,
       baseUrl: profile.baseUrl,
-      model: settings.activeModel || profile.model,
+      model,
       temperature: opts.extra?.temperature ?? 0.7,
       topP: opts.extra?.topP ?? 0.95,
-      maxTokens: opts.extra?.maxTokens ?? 1024,
+      maxTokens: opts.extra?.maxTokens ?? plan!.requestMaxTokens,
       frequencyPenalty: opts.extra?.frequencyPenalty ?? 0,
       presencePenalty: opts.extra?.presencePenalty ?? 0,
       stream: true,
       instructTemplate: opts.extra?.instructTemplate,
+      ...(plan ? { reasoningGate: plan.reasoningGate } : {}),
     }).catch(() => {
       cleanup()
     })
@@ -211,8 +228,10 @@ export function PresetsPage() {
     setAiGenBusy(true)
     setAiGenError(null)
     const requestId = `preset-gen-${Date.now()}`
-    streamCall({
+    await streamCall({
       requestId,
+      task: 'preset_draft',
+      inputChars: aiGenDesc.trim().length,
       messages: [
         {
           role: 'system',
@@ -251,7 +270,6 @@ TopP: <0-1>
         setAiGenBusy(false)
         setAiGenError(`生成失败：${msg}`)
       },
-      extra: { maxTokens: 1200 },
     })
   }
 
@@ -328,7 +346,7 @@ TopP: <0-1>
         instructTemplate: params.instructTemplate,
       }
     }
-    streamCall({
+    await streamCall({
       requestId,
       messages,
       onResult: (result) => {

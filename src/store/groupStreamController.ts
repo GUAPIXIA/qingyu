@@ -20,7 +20,8 @@ import { stripVendorThinking } from '../utils/messagePostProcess'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
-import { enabledProfileOverride, formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
+import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
 import { resolveGroupRequestPlan } from './groupRequestPlan'
 import { BACKGROUND_GENERATION_PROFILES, hasCompleteSummaryTail } from '../../shared/backgroundGeneration'
 import { attemptTailRepair, finalizeNoticeFields, type GenerationOutcomeMeta } from './streamController'
@@ -132,7 +133,6 @@ export async function finalizeGroupReply(input: {
   model: string
   temperature?: number
   regexRules: import('../../shared/types').RegexRule[]
-  legacy?: boolean
 }): Promise<{ content: string; noticeFields: { generationNotice?: string; generationError?: string }; stopped: boolean } | null> {
   const cause = terminationCauseFromFinishReason(input.finishReason)
   // 补尾限制（§8.1）：只有 provider_length 会被协调入口调用（每轮至多一次）
@@ -140,7 +140,6 @@ export async function finalizeGroupReply(input: {
     terminalResult: { rawText: input.rawText, finishReason: input.finishReason, terminationCause: cause },
     regexRules: input.regexRules,
     characterName: input.speaker.translatedContent?.name || input.speaker.name,
-    legacy: input.legacy,
     runTailRepair: useSettingsStore.getState().settings.autoTailRepairEnabled === false ? undefined : (finalized) => attemptTailRepair({
       finalized,
       character: input.speaker,
@@ -156,7 +155,7 @@ export async function finalizeGroupReply(input: {
   // 异常类提示（协调入口生成）优先；正常收尾走 finalizeNoticeFields 统一口径
   const noticeFields = Object.keys(result.noticeFields).length > 0
     ? result.noticeFields
-    : (input.legacy ? {} : finalizeNoticeFields(meta))
+    : finalizeNoticeFields(meta)
   return { content: result.content, noticeFields, stopped: cause === 'user_cancel' }
 }
 
@@ -180,7 +179,6 @@ export async function handleGroupStreamException(input: {
   regexRules: import('../../shared/types').RegexRule[]
   round: number
   isFree: boolean
-  legacy?: boolean
   latch?: GenerationTerminationLatch
   /** NEW-M12：错误后继续推进轮询链/自动记忆检查 */
   onChainContinue?: () => void
@@ -203,7 +201,6 @@ export async function handleGroupStreamException(input: {
       terminalResult: { rawText: partialContent, finishReason: 'unknown', terminationCause: cause, errorMessage: detailMessage },
       regexRules: input.regexRules,
       characterName: input.characterName,
-      legacy: input.legacy,
     })
     dispatchGroupTerminal(input, result, errText)
   } catch (e) {
@@ -222,8 +219,8 @@ function dispatchGroupTerminal(input: Parameters<typeof handleGroupStreamExcepti
   input.latch?.markPersisted()
   const messageError = result.noticeFields.generationError ?? errText
   if (result.persistable && result.content) {
-    // 阶段5：中断保留的正文与正常完成一致走语义分块；legacy 不标记
-    const renderMode = input.legacy ? {} : { contentRenderMode: 'blocks' as const }
+    // 中断保留的正文与正常完成一致走语义分块。
+    const renderMode = { contentRenderMode: 'blocks' as const }
     input.set((s: GroupChatState) => ({
       messages: s.messages.map((m: GroupMessage) =>
         m.id === input.msgId ? { ...m, content: result.content, ...result.noticeFields, ...renderMode } : m,
@@ -259,7 +256,6 @@ export async function handleGroupStreamTimeout(input: {
   regexRules: import('../../shared/types').RegexRule[]
   round: number
   isFree: boolean
-  legacy?: boolean
   latch?: GenerationTerminationLatch
   set: GroupStoreSet
 }): Promise<void> {
@@ -491,6 +487,13 @@ async function compressGroupDroppedHistory(
   })
   // 阶段7（§7.3）：群聊历史压缩与单聊同一 background 档案（只允许任务体量参数不同）
   const compressionProfile = BACKGROUND_GENERATION_PROFILES.compression
+  const compressionPlan = await resolveRendererGenerationTaskBudget({
+    profile,
+    model: settings.activeModel || profile.model,
+    task: 'compression',
+    expectedBodyChars: compressionProfile.expectedBodyChars,
+    usageTaskType: 'compression',
+  })
   const unbindDone = window.api.ai.onComplete((payload) => {
     if (payload.requestId !== requestId) return
     cleanup()
@@ -533,14 +536,11 @@ async function compressGroupDroppedHistory(
     model: settings.activeModel || profile.model,
     temperature: 0.3,
     topP: 0.9,
-    maxTokens: resolveRequestBudget({
-      model: settings.activeModel || profile.model,
-      hardMaxChars: compressionProfile.expectedBodyChars,
-      profileOverride: enabledProfileOverride(profile.capabilityOverride),
-    }).requestMaxTokens,
+    maxTokens: compressionPlan.requestMaxTokens,
     frequencyPenalty: 0,
     presencePenalty: 0,
     stream: true,
+    reasoningGate: compressionPlan.reasoningGate,
     observability: { source: 'aux', taskType: 'compression', sessionId: pending.sessionId },
   }).catch(() => {
     cleanup()
@@ -596,8 +596,6 @@ export async function streamGroupAI(
     regexRules = await window.api.regex.list()
   } catch { /* 忽略 */ }
 
-  // 阶段6灰度：legacy 管线跳过收尾器与语义分块标记
-  const legacyPipeline = (useSettingsStore.getState().settings.generationPipeline ?? 'unified') === 'legacy'
 
   // 预加载角色绑定的世界书
   if (speaker.boundLorebookIds && speaker.boundLorebookIds.length > 0) {
@@ -621,7 +619,6 @@ export async function streamGroupAI(
     model: settingsStore.settings.activeModel || profile.model,
     messages: get().messages,
     preset,
-    pipelineLegacy: legacyPipeline,
     ...withReasoningSamples(profile, settingsStore.settings.activeModel),
     ...groupGate,
   })
@@ -717,7 +714,7 @@ export async function streamGroupAI(
         requestId, msgId, groupId: group.id, sessionId,
         characterId: speaker.id,
         characterName: speaker.translatedContent?.name || speaker.name,
-        narrativeMode, regexRules, round, isFree: false, legacy: legacyPipeline, latch, set,
+        narrativeMode, regexRules, round, isFree: false, latch, set,
       })
     }, STREAM_IDLE_TIMEOUT_MS)
   })
@@ -781,12 +778,11 @@ export async function streamGroupAI(
         speaker,
         model: profile.model,
         regexRules,
-        legacy: legacyPipeline,
       })
       // 无可用正文：维持 (无回复) 占位
       const processed = finalizedReply?.content || '(无回复)'
       const noticeFields = finalizedReply?.noticeFields ?? {}
-      const renderMode = finalizedReply && !legacyPipeline ? { contentRenderMode: 'blocks' as const } : {}
+      const renderMode = finalizedReply ? { contentRenderMode: 'blocks' as const } : {}
 
       // 更新消息
       set((s: GroupChatState) => ({
@@ -849,7 +845,7 @@ export async function streamGroupAI(
       requestId, msgId, groupId: group.id, sessionId,
       characterId: speaker.id,
       characterName: speaker.translatedContent?.name || speaker.name,
-      narrativeMode, regexRules, round, isFree: false, legacy: legacyPipeline, latch,
+      narrativeMode, regexRules, round, isFree: false, latch,
       onChainContinue: onComplete,
       set,
     }, 'transport_error', friendlyMsg)
@@ -870,7 +866,7 @@ export async function streamGroupAI(
         requestId, msgId, groupId: group.id, sessionId,
         characterId: speaker.id,
         characterName: speaker.translatedContent?.name || speaker.name,
-        narrativeMode, regexRules, round, isFree: false, legacy: legacyPipeline, latch, set,
+        narrativeMode, regexRules, round, isFree: false, latch, set,
       })
     }, STREAM_IDLE_TIMEOUT_MS),
   }
@@ -927,7 +923,7 @@ export async function streamGroupAI(
       requestId, msgId, groupId: group.id, sessionId,
       characterId: speaker.id,
       characterName: speaker.translatedContent?.name || speaker.name,
-      narrativeMode, regexRules, round, isFree: false, legacy: legacyPipeline, latch, set,
+      narrativeMode, regexRules, round, isFree: false, latch, set,
     }, 'protocol_error', friendlyError(err instanceof Error ? err.message : '请求失败'))
   }
 }
@@ -945,8 +941,6 @@ export async function streamGroupAIFree(
   const settingsStore = useSettingsStore.getState()
   const profile = settingsStore.getActiveProfile()
   if (!profile) return
-  // 阶段6灰度：legacy 管线跳过收尾器与语义分块标记
-  const legacyPipelineFree = (settingsStore.settings.generationPipeline ?? 'unified') === 'legacy'
 
   // BUG-08 修复：异步加载期间用户可能已切换群聊/会话，先校验一次
   if (!isGroupContextCurrent(get, group, sessionId)) return
@@ -992,7 +986,6 @@ export async function streamGroupAIFree(
     model: settingsStore.settings.activeModel || profile.model,
     messages: get().messages,
     preset,
-    pipelineLegacy: legacyPipelineFree,
     ...withReasoningSamples(profile, settingsStore.settings.activeModel),
     ...groupGate,
   })
@@ -1089,7 +1082,7 @@ export async function streamGroupAIFree(
         requestId, msgId, groupId: group.id, sessionId,
         characterId: freeMessageCharacterId,
         characterName: group.name,
-        narrativeMode, regexRules, round, isFree: true, legacy: legacyPipelineFree, latch, set,
+        narrativeMode, regexRules, round, isFree: true, latch, set,
       })
     }, STREAM_IDLE_TIMEOUT_MS)
   })
@@ -1150,11 +1143,10 @@ export async function streamGroupAIFree(
         speaker: freeSpeaker,
         model: profile.model,
         regexRules,
-        legacy: legacyPipelineFree,
       })
       latch.markPersisted()
       const processed = finalizedReply?.content || '(无回复)'
-      const extras = finalizedReply && !legacyPipelineFree
+      const extras = finalizedReply
         ? { noticeFields: finalizedReply.noticeFields, renderMode: { contentRenderMode: 'blocks' as const } }
         : undefined
       splitAndSaveMessages(set, get, group, sessionId, processed, round, msgId, extras)
@@ -1189,7 +1181,7 @@ export async function streamGroupAIFree(
       requestId, msgId, groupId: group.id, sessionId,
       characterId: freeMessageCharacterId,
       characterName: group.name,
-      narrativeMode, regexRules, round, isFree: true, legacy: legacyPipelineFree, latch, set,
+      narrativeMode, regexRules, round, isFree: true, latch, set,
     }, 'transport_error', friendlyMsg)
   })
 
@@ -1202,7 +1194,7 @@ export async function streamGroupAIFree(
         requestId, msgId, groupId: group.id, sessionId,
         characterId: freeMessageCharacterId,
         characterName: group.name,
-        narrativeMode, regexRules, round, isFree: true, legacy: legacyPipelineFree, latch, set,
+        narrativeMode, regexRules, round, isFree: true, latch, set,
       })
     }, STREAM_IDLE_TIMEOUT_MS),
   }
@@ -1258,7 +1250,7 @@ export async function streamGroupAIFree(
       requestId, msgId, groupId: group.id, sessionId,
       characterId: freeMessageCharacterId,
       characterName: group.name,
-      narrativeMode, regexRules, round, isFree: true, legacy: legacyPipelineFree, latch, set,
+      narrativeMode, regexRules, round, isFree: true, latch, set,
     }, 'protocol_error', friendlyError(err instanceof Error ? err.message : '请求失败'))
   }
 }

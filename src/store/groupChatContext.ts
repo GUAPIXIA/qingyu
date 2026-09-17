@@ -69,7 +69,6 @@ export function buildGroupChatContext(
     model,
     messages: state.messages,
     preset,
-    pipelineLegacy: (settings.generationPipeline ?? 'unified') === 'legacy',
     defaultResponseLength: settings.defaultResponseLength,
     profileOverride: enabledProfileOverride(profile?.capabilityOverride),
     // W1（主计划 §7.3）：同步读取发送前预取的近期推理样本（无样本时退回档案默认余量）

@@ -7,7 +7,7 @@ import { AdvancedSection } from './editor/AdvancedSection'
 import type { TranslatableField } from './editor/types'
 import { Languages, Loader2 } from 'lucide-react'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { translationMaxTokens } from '../../store/chatConstants'
+import { resolveRendererGenerationTaskBudget } from '../../store/generationTaskBudget'
 import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
 import { logError } from '../../lib/logger'
 
@@ -310,6 +310,14 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   ): Promise<string> => {
     const requestId = `translate-card-${Date.now()}-${Math.random().toString(36).slice(2)}`
     activeRequestIdsRef.current.add(requestId)
+    const model = settings.activeModel || profile.model
+    const translationPlan = await resolveRendererGenerationTaskBudget({
+      profile,
+      model,
+      task: 'translation',
+      inputChars: text.length,
+      usageTaskType: 'translation',
+    })
 
     return new Promise((resolve) => {
       let result = ''
@@ -374,13 +382,16 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         provider: profile.provider,
         apiKey: profile.apiKey,
         baseUrl: profile.baseUrl,
-        model: settings.activeModel || profile.model,
+        model,
         temperature: 0.3,
         topP: 0.9,
-        maxTokens: translationMaxTokens(text),
+        maxTokens: translationPlan.requestMaxTokens,
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: true,
+        observability: { source: 'aux', taskType: 'translation' },
+        adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
+        reasoningGate: translationPlan.reasoningGate,
       }).catch(() => {
         cleanup()
         resolve('')

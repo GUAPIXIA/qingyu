@@ -64,7 +64,7 @@ export const BACKGROUND_GENERATION_PROFILES: Record<BackgroundGenerationTask, Ba
     task: 'direction',
     expectedBodyChars: 800,
     requiresStructuredTail: true,
-    // 方向请求显式 reasoningMode:'disabled'，不预留推理预算
+    // 辅助任务统一使用 off 门控，推理控制与输出预算同源。
     reasoningReservePolicy: 'none',
     // 方向建议：结构不完整时最多一次"只补结构"的短修复，不重写完整剧情
     retryPolicy: 'structure_only_once',

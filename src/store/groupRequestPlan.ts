@@ -1,17 +1,12 @@
 import type { GroupMessage, Preset, ResponseLengthMode, ResponsePolicy } from '../../shared/types'
 import type { RequestBudget } from '../../shared/modelOutputProfile'
-import {
-  getModelOutputProfile,
-  resolveRequestBudget,
-  resolveUserHardCap,
-} from '../../shared/modelOutputProfile'
+import { resolveGenerationTaskBudget } from '../../shared/generationTaskBudget'
 import {
   countVisibleChars,
   detectUserLengthIntent,
   resolveResponsePolicy,
   resolveSceneFactor,
 } from '../../shared/responsePolicy'
-import { DEFAULT_RESERVED_OUTPUT } from './chatConstants'
 
 export interface GroupRequestPlan {
   responsePolicy: ResponsePolicy
@@ -19,7 +14,6 @@ export interface GroupRequestPlan {
   requestMaxTokens: number
   responseIntent: ResponseLengthMode | null
   sceneFactor: number
-  pipelineLegacy: boolean
 }
 
 /** 群聊与单聊共享同一套篇幅策略和模型输出预算语义。 */
@@ -27,7 +21,6 @@ export function resolveGroupRequestPlan(input: {
   model: string
   messages: GroupMessage[]
   preset?: Preset | null
-  pipelineLegacy?: boolean
   /** W1（主计划 §7.3）：该端点/model 的近期推理样本（缺省 = 档案默认余量） */
   reasoningSamples?: number[]
   /** 阶段8（§4.2）：本轮推理门控（缺省 = 不介入） */
@@ -36,16 +29,13 @@ export function resolveGroupRequestPlan(input: {
   profileOverride?: import('../../shared/modelOutputProfile').ModelProfileUserOverride
 }): GroupRequestPlan {
   const { model, messages, preset } = input
-  const pipelineLegacy = input.pipelineLegacy === true
   const latestUserText = [...messages].reverse()
     .find((message) => message.characterId === '__user__')?.content ?? ''
   const hasAssistantReply = messages.some(
     (message) => message.characterId !== '__user__' && !!message.content?.trim(),
   )
-  const responseIntent = pipelineLegacy ? null : detectUserLengthIntent(latestUserText)
-  const sceneFactor = pipelineLegacy
-    ? 1
-    : resolveSceneFactor({ latestUserText, hasAssistantReply })
+  const responseIntent = detectUserLengthIntent(latestUserText)
+  const sceneFactor = resolveSceneFactor({ latestUserText, hasAssistantReply })
   const recentAssistantVisibleChars = messages
     .filter((message) => message.characterId !== '__user__' && !!message.content?.trim())
     .slice(-5)
@@ -59,28 +49,11 @@ export function resolveGroupRequestPlan(input: {
     recentAssistantVisibleChars,
   })
 
-  if (pipelineLegacy) {
-    const requestMaxTokens = resolveUserHardCap(preset?.maxTokens) ?? DEFAULT_RESERVED_OUTPUT
-    return {
-      responsePolicy,
-      requestBudget: {
-        model,
-        profile: getModelOutputProfile(model),
-        bodyReserve: 0,
-        reasoningReserve: 0,
-        minimumViableOutputTokens: 0,
-        requestMaxTokens,
-      },
-      requestMaxTokens,
-      responseIntent,
-      sceneFactor,
-      pipelineLegacy,
-    }
-  }
 
-  const requestBudget = resolveRequestBudget({
+  const requestBudget = resolveGenerationTaskBudget({
+    task: 'group_reply',
     model,
-    hardMaxChars: responsePolicy.hardMaxChars,
+    expectedBodyChars: responsePolicy.hardMaxChars,
     userHardCap: preset?.maxTokens,
     profileOverride: input.profileOverride,
     ...(input.reasoningSamples?.length ? { recentReasoningTokens: input.reasoningSamples } : {}),
@@ -92,6 +65,5 @@ export function resolveGroupRequestPlan(input: {
     requestMaxTokens: requestBudget.requestMaxTokens,
     responseIntent,
     sceneFactor,
-    pipelineLegacy,
   }
 }

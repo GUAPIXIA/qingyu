@@ -7,10 +7,9 @@ import { useCharacterStore } from './useCharacterStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { replaceVariables } from '../utils/variables'
 import { applyRegexRules, applyOutputRegexRules } from '../utils/regex'
-import { normalizeRoleplayDialoguePrefixes } from '../utils/messagePostProcess'
 import { getEffectiveLorebookIds, lorebookCache } from '../utils/lorebook'
 import { logError } from '../lib/logger'
-import { translationMaxTokens } from './chatConstants'
+import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
 import {
   friendlyError, syncPersonaToSettings, applyDefaultMemory,
   invalidateDerivedMemory, nextLoadRequestId, currentLoadRequestId,
@@ -675,16 +674,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
 
         // S1：output 正则与停止字符串已由统一收尾管线执行（每条消息仅一次），
         // 此处不再重复应用。
-        let finalContent = fullContent
-
-        // 阶段6灰度：旧链路恢复说话人前缀补齐；新管线（阶段5）为语义分块渲染，不再补前缀
-        if (meta.legacy) {
-          finalContent = normalizeRoleplayDialoguePrefixes(
-            finalContent,
-            character.translatedContent?.name || character.name,
-            aiMessage.narrativeMode ?? 'immersive',
-          )
-        }
+        const finalContent = fullContent
         // 更新 UI 中的消息内容
         const currentMsg = get().messages.find(m => m.id === aiMessageId) ?? aiMessage
         const finalMsg: Message = {
@@ -692,8 +682,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
           content: finalContent,
           // 阶段3：收尾状态——"已恢复"走中性提示（generationNotice），失败走 generationError
           ...finalizeNoticeFields(meta),
-          // 阶段5：新内容使用语义分块渲染（渲染时即时分块，正文不受影响）；legacy 不标记
-          ...(meta.legacy ? {} : { contentRenderMode: 'blocks' as const }),
+          contentRenderMode: 'blocks' as const,
         }
         set((s) => ({
           messages: s.messages.map((m) => (m.id === aiMessageId ? finalMsg : m)),
@@ -723,8 +712,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
               // 提示字段由统一协调入口生成（generationError 与正文分离）
               ...(terminal.noticeFields.generationError ? { generationError: terminal.noticeFields.generationError } : {}),
               ...(terminal.noticeFields.generationNotice ? { generationNotice: terminal.noticeFields.generationNotice } : {}),
-              // 阶段5：中断保留的正文与正常完成一致走语义分块；legacy 不标记
-              ...(terminal.legacy ? {} : { contentRenderMode: 'blocks' as const }),
+              contentRenderMode: 'blocks' as const,
             }
           : null
         if (!updatedMsg) {
@@ -749,13 +737,11 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       const msg = get().messages.find((m) => m.id === stoppedStream.aiMessageId)
       const content = stoppedStream.content.trim() || (msg?.content ?? '')
       if (msg && content) {
-        // 用户停止会抢先 latch，onComplete 不会再写 contentRenderMode；此处按管线补标记
-        const isLegacyPipeline = (useSettingsStore.getState().settings.generationPipeline ?? 'unified') === 'legacy'
         const stopped: Message = {
           ...msg,
           content,
           generationNotice: '已停止生成',
-          ...(isLegacyPipeline ? {} : { contentRenderMode: 'blocks' as const }),
+          contentRenderMode: 'blocks' as const,
         }
         set((s) => ({ messages: s.messages.map((m) => (m.id === stoppedStream.aiMessageId ? stopped : m)) }))
         window.api.chat.saveMessage(stopped).catch(() => { /* ignore */ })
@@ -881,7 +867,7 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   },
 
   /** 启动 AI 翻译 - 全局状态管理，页面切换不中断 */
-  translateMessage: (messageId, content) => {
+  translateMessage: async (messageId, content) => {
     if (!content) return
 
     const existing = get().translatingMessages[messageId]
@@ -973,6 +959,13 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     const settings = useSettingsStore.getState().settings
     const targetLang = settings.translationTargetLang || '中文'
     const model = settings.activeModel || profile.model
+    const translationPlan = await resolveRendererGenerationTaskBudget({
+      profile,
+      model,
+      task: 'translation',
+      inputChars: content.length,
+      usageTaskType: 'translation',
+    })
     window.api.ai.chat({
       requestId,
       messages: [
@@ -985,13 +978,15 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
       model,
       temperature: 0.3,
       topP: 0.9,
-      maxTokens: translationMaxTokens(content, model),
+      maxTokens: translationPlan.requestMaxTokens,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: true,
+      observability: { source: 'aux', taskType: 'translation' },
+      adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
       // 翻译只需要最终文本。关闭推理可避免模型把输出额度耗在 reasoning 中，
       // reasoning 被界面剥离后留下“翻译结果为空”。
-      reasoningMode: 'disabled',
+      reasoningGate: translationPlan.reasoningGate,
     }).catch(() => {
       acc.dispose()
       unbindChunk(); unbindDone(); unbindError()

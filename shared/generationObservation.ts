@@ -47,7 +47,7 @@ export interface RequestObservability {
   source: 'single' | 'group' | 'bridge' | 'aux'
   generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
   /** 阶段7（§7.3）：后台结构化任务类型；独立记录，不混入主对话篇幅统计 */
-  taskType?: 'memory' | 'compression' | 'title' | 'direction'
+  taskType?: import('./generationTaskBudget').GenerationTask
   responseLengthMode?: ResponseLengthMode
   hardMaxChars?: number
   /** W10：规划器分别给正文与推理预留的 token。 */
@@ -77,7 +77,7 @@ export interface GenerationObservation {
   source: ObservationSource
   generationType?: string
   /** 阶段7（§7.3）：后台结构化任务类型（独立于主对话口径） */
-  taskType?: 'memory' | 'compression' | 'title' | 'direction'
+  taskType?: import('./generationTaskBudget').GenerationTask
   characterId?: string
   sessionId?: string
   provider?: string
@@ -146,7 +146,7 @@ export interface ObservationCapture {
 }
 
 const NETWORK_ERROR_PATTERN = /network|fetch failed|econnrefused|econnreset|enotfound|econnaborted|socket hang up|err_network/i
-const REASONING_BUDGET_EXHAUSTED_PATTERN = /推理已占满模型输出硬上限/
+const REASONING_BUDGET_EXHAUSTED_PATTERN = /推理已占满(?:模型输出硬上限|本次输出预算)/
 const LENGTH_LIMIT_PATTERN = /长度上限|max_tokens|maximum context length|too many tokens/i
 const EMPTY_OUTPUT_PATTERN = /未返回任何内容|没有返回正文|空内容/
 const CONTENT_FILTER_PATTERN = /content_filter|内容审核|SAFETY|被拦截/i

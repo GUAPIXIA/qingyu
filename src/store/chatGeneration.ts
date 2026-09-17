@@ -8,7 +8,6 @@ import {
   stripThought,
   stripVendorThinking,
   trimContinuationSeam,
-  normalizeRoleplayDialoguePrefixes,
 } from '../utils/messagePostProcess'
 import { logError } from '../lib/logger'
 import { streamAIResponse, finalizeNoticeFields } from './streamController'
@@ -112,16 +111,7 @@ export async function regenerateChatMessage(
       }
 
       // S1：output 正则与停止字符串已由统一收尾管线执行
-      let finalContent = fullContent
-
-      // 阶段6灰度：旧链路恢复说话人前缀补齐
-      if (meta.legacy) {
-        finalContent = normalizeRoleplayDialoguePrefixes(
-          finalContent,
-          character.translatedContent?.name || character.name,
-          updatedMsg.narrativeMode ?? 'immersive',
-        )
-      }
+      const finalContent = fullContent
       const curMsg = get().messages.find(m => m.id === messageId)
       if (!curMsg?.swipes) return
       const newSwipes = [...curMsg.swipes]
@@ -133,8 +123,7 @@ export async function regenerateChatMessage(
         content: finalContent,
         // 阶段3：新候选的收尾状态覆盖旧提示（成功生成清空上一轮失败/提示）
         ...finalizeNoticeFields(meta),
-        // 阶段5：新内容使用语义分块渲染；legacy 不标记
-        ...(meta.legacy ? {} : { contentRenderMode: 'blocks' as const }),
+        contentRenderMode: 'blocks' as const,
       }
       set((s) => ({
         messages: s.messages.map(m => m.id === messageId ? finalMsg : m),
@@ -176,8 +165,7 @@ export async function regenerateChatMessage(
         content: terminal.content,
         ...(terminal.noticeFields.generationError ? { generationError: terminal.noticeFields.generationError } : {}),
         ...(terminal.noticeFields.generationNotice ? { generationNotice: terminal.noticeFields.generationNotice } : {}),
-        // 阶段5：中断保留的候选与正常完成一致走语义分块；legacy 不标记
-        ...(terminal.legacy ? {} : { contentRenderMode: 'blocks' as const }),
+        contentRenderMode: 'blocks' as const,
       }
       set((s) => ({ messages: s.messages.map(m => m.id === messageId ? finalMsg : m) }))
       window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
@@ -256,7 +244,6 @@ export async function continueChatMessage(
   }
 
   // 将清洗后的续写内容写入新气泡并持久化；内容为空则移除占位气泡
-  let continueLegacy = false
   const finalizeContinuation = (content: string): boolean => {
     if (!content) {
       set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))
@@ -264,16 +251,11 @@ export async function continueChatMessage(
     }
     const curMsg = get().messages.find(m => m.id === newMsgId)
     if (!curMsg) return false
-    // 阶段5：续写新内容使用语义分块渲染；legacy 不标记
-    // 无论占位是否已带 blocks，完成后统一按管线结果重写，避免 legacy 误标
     const finalMsg: Message = {
       ...curMsg,
       content,
-      ...(continueLegacy
-        ? { contentRenderMode: undefined }
-        : { contentRenderMode: 'blocks' as const }),
+      contentRenderMode: 'blocks' as const,
     }
-    if (continueLegacy) delete (finalMsg as Message).contentRenderMode
     set((s) => ({
       messages: s.messages.map(m => m.id === newMsgId ? finalMsg : m),
     }))
@@ -288,8 +270,7 @@ export async function continueChatMessage(
     continuation: true,
     narrativeMode: continuationNarrativeMode,
     generationType: 'continue',
-    onComplete: async (newContent, meta) => {
-      continueLegacy = meta.legacy === true
+    onComplete: async (newContent) => {
       const processed = await cleanContinuation(newContent)
       if (!finalizeContinuation(processed)) {
         if (newContent) set({ error: '模型未输出有效续写内容' })
@@ -302,7 +283,6 @@ export async function continueChatMessage(
     onError: (errMsg, terminal) => {
       // 阶段7：续写中断的半截正文同样必须先经过统一收尾管线（streamController 已收口），
       // 不再直接保存流式原文；无稳定正文则移除占位气泡，不创建空消息。
-      continueLegacy = terminal?.legacy === true
       const partial = terminal?.content || ''
       if (!partial.trim()) {
         set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))

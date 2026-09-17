@@ -287,9 +287,8 @@ export const imagineCommand: CommandDef = {
             : `${systemPrompt}\n\nThe previous response was invalid. Return only one <prompt>...</prompt> result with no analysis or commentary.`
           const raw = await ctx.callAiHelper(attemptPrompt, userContent, {
             temperature: attempt === 0 ? 0.5 : 0.2,
-            // R1-B：实测推理峰值 ≈1200 token，为正文留 2 倍余量
-            maxTokens: style === 'natural' ? 2560 : 2048,
-            reasoningMode: 'disabled',
+            task: 'image_prompt',
+            expectedBodyChars: style === 'natural' ? 1200 : 800,
             // R1-A：撞上限时返回已产出正文，由 parseImagePromptResult 兜底解析
           })
           const candidate = parseImagePromptResult(raw, style)

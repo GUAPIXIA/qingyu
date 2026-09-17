@@ -202,7 +202,7 @@ describe('useChatInputState', () => {
     })
 
     expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(window.api.ai.chat).mock.calls[0][0].reasoningMode).toBe('disabled')
+    expect(vi.mocked(window.api.ai.chat).mock.calls[0][0].reasoningGate).toMatchObject({ level: 'off' })
     expect(result.current.text).toBe('夜已经很深。门外忽然传来急促的敲门声，走廊里的灯随之闪烁起来。')
     expect(result.current.text).not.toContain('We need')
   })
@@ -359,8 +359,7 @@ describe('useChatInputState', () => {
     expect(result.current.text).toBe(sentenceText(40))
   })
 
-  it('输出上限不随长度档位变化，稳定为统一兜底值', async () => {
-    // 长度由提示词的字数指令控制；上限若随档位收紧，合规输出会在闭标签前被切断
+  it('输出预算随任务正文体量变化，但由同一规划器计算', async () => {
     useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
     mockAiHelperResponses([`<continuation>${sentenceText(40)}</continuation>`])
     const { result } = renderHook(() => useChatInputState(createCharacter()))
@@ -378,8 +377,8 @@ describe('useChatInputState', () => {
     })
     const extendedMax = vi.mocked(window.api.ai.chat).mock.calls[0][0].maxTokens
 
-    expect(briefMax).toBe(extendedMax)
-    expect(briefMax).toBeGreaterThanOrEqual(4096)
+    expect(extendedMax).toBeGreaterThan(briefMax)
+    expect(briefMax).toBeGreaterThan(0)
   })
 
   it('修复后轻微越界但句意完整时接受', async () => {

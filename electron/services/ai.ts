@@ -30,6 +30,10 @@ import type { UsageProfileQuery } from '../../shared/usageProfile'
 import { queryGenerationDiagnostics, queryUsageProfile, recordGenerationObservation } from './generationObservation'
 import { getGateProbe, recordGateProbeSignal, resetGateProbe } from './gateProbeStore'
 import { enabledProfileOverride, resolveModelOutputProfile } from '../../shared/modelOutputProfile'
+import {
+  expandAdaptiveOutputBudget,
+  resolveGenerationTaskBudget,
+} from '../../shared/generationTaskBudget'
 import type {
   LorebookKeywordEnrichmentMode,
   LorebookKeywordLocalizationEntry,
@@ -180,7 +184,7 @@ export async function chatWithRetry(
   // 跳过已被明确 400 拒绝的 knob、用 GateProbe 样本给出预算承诺值；适配器只消费结果。
   // 缺省（kill switch 关闭 / 调用方未接线）完全不介入，保持适配器现行行为。
   const requestedGate = params.reasoningGate
-  const dispatchParams: ChatParams = requestedGate
+  let dispatchParams: ChatParams = requestedGate
     ? { ...params, reasoningGate: resolveDispatchGateDirective(params, requestedGate) }
     : params
   const gateScope = { provider: params.provider, baseUrl: params.baseUrl, model: params.model }
@@ -189,14 +193,51 @@ export async function chatWithRetry(
   // 阶段0观测捕获：结束原因 / usage / 累积文本（失败时保留已产出前缀，正文口径由组装层处理）
   let capturedUsage: TokenUsageInfo | undefined
   let capturedText = ''
+  let attemptText = ''
   let attempts = 0
+  const bufferAdaptiveOutput = params.adaptiveOutputBudget != null
   const captureOnChunk = (text: string) => {
-    capturedText += text
-    onChunk(text)
+    attemptText += text
+    // 可扩容请求必须等本次尝试完整后再外发；否则 length 重试会把半段译文重复拼进界面。
+    if (!bufferAdaptiveOutput) {
+      capturedText += text
+      onChunk(text)
+    }
   }
   const captureOnUsage = (usage: TokenUsageInfo) => {
     capturedUsage = usage
     onUsage?.(usage)
+  }
+
+  /**
+   * 自动模式下，只有“正文为零”的推理触顶/提前中止可以无损重试。
+   * 每次根据当前窗口、实际推理消耗和正文预留推导下一档，直到成功或端点能力上限。
+  */
+  const expandAutomaticBudget = (observedReasoningTokens?: number): boolean => {
+    const adaptiveBudget = dispatchParams.adaptiveOutputBudget
+    if (!adaptiveBudget || capturedText.trim()) return false
+    const nextMaxTokens = expandAdaptiveOutputBudget({
+      currentMaxTokens: dispatchParams.maxTokens,
+      budget: adaptiveBudget,
+      observedReasoningTokens,
+    })
+    if (nextMaxTokens == null) return false
+
+    const previousMaxTokens = dispatchParams.maxTokens
+    const nextParams: ChatParams = { ...dispatchParams, maxTokens: nextMaxTokens }
+    dispatchParams = requestedGate
+      ? { ...nextParams, reasoningGate: resolveDispatchGateDirective(nextParams, requestedGate) }
+      : nextParams
+    capturedUsage = undefined
+    completionGateProbe = undefined
+    completionEarlyAbort = false
+    log.warn('自动输出预算触顶，扩大后重试', {
+      requestId: params.requestId,
+      from: previousMaxTokens,
+      to: nextMaxTokens,
+      ceiling: adaptiveBudget.ceilingTokens,
+    })
+    return true
   }
 
   const writeObservation = (state: {
@@ -231,14 +272,19 @@ export async function chatWithRetry(
 
   /** 网络中断/超时但已有正文：降级为结构化完成，正文交给收尾器（方案 §5.1） */
   const degradeNetworkFailure = (err: unknown): AICompletion | null => {
-    if (!capturedText.trim()) return null
+    const partialText = bufferAdaptiveOutput ? attemptText : capturedText
+    if (!partialText.trim()) return null
     const classified = classifyFailureOutcome(err, {
       signalAborted: signal.aborted,
       cancelReason: cancelReasons.get(params.requestId),
     })
     if (classified.errorKind !== 'network' && classified.errorKind !== 'timeout') return null
+    if (bufferAdaptiveOutput) {
+      capturedText = partialText
+      onChunk(partialText)
+    }
     return {
-      text: capturedText,
+      text: partialText,
       finishReason: 'network_error',
       usage: capturedUsage
         ? {
@@ -252,10 +298,11 @@ export async function chatWithRetry(
 
   // H-05 修复：流式请求不重试，因为已发送的 chunks 无法撤回，重试会导致内容重复
   const effectiveRetry = params.stream ? 0 : retryCount
-  let lastError: unknown
+  let transportRetriesUsed = 0
   try {
-    for (let attempt = 0; attempt <= effectiveRetry; attempt++) {
-      attempts = attempt + 1
+    while (true) {
+      attempts += 1
+      attemptText = ''
       if (signal.aborted) throw new Error('Aborted')
       try {
         // 加入超时（与用户 signal 合并）
@@ -279,6 +326,24 @@ export async function chatWithRetry(
         completionGateProbe = completion.gateProbe
         if (completionGateProbe) recordGateProbeSignal(gateScope, completionGateProbe)
         completionEarlyAbort = completion.earlyAbort === true
+        if (
+          completionEarlyAbort
+          && !completion.text.trim()
+          && expandAutomaticBudget(completion.usage?.reasoningTokens ?? capturedUsage?.reasoningTokens)
+        ) {
+          continue
+        }
+        if (completion.finishReason === 'length' && bufferAdaptiveOutput) {
+          if (expandAutomaticBudget(completion.usage?.reasoningTokens ?? capturedUsage?.reasoningTokens)) {
+            continue
+          }
+          throw new Error('自动输出预算已达到端点能力上限，但结果仍被截断。请缩短待处理内容或提高端点能力上限。')
+        }
+        if (bufferAdaptiveOutput) {
+          const finalText = completion.text || attemptText
+          capturedText = finalText
+          if (finalText) onChunk(finalText)
+        }
         // 成功：length 是完成状态（正文交给收尾器判定是否完整）
         writeObservation({
           outcome: completion.finishReason === 'length' ? 'truncated' : 'completed',
@@ -286,9 +351,17 @@ export async function chatWithRetry(
         })
         return completion
       } catch (err) {
-        lastError = err
         // 用户主动取消不重试
         if (signal.aborted) throw err
+        const classified = classifyFailureOutcome(err, {
+          signalAborted: signal.aborted,
+          cancelReason: cancelReasons.get(params.requestId),
+        })
+        if (classified.errorKind === 'reasoning_budget_exhausted') {
+          const errProbe = (err as { gateProbe?: GateProbeSignal } | null)?.gateProbe
+          if (errProbe) recordGateProbeSignal(gateScope, errProbe)
+          if (expandAutomaticBudget(capturedUsage?.reasoningTokens)) continue
+        }
         const errName = (err as Error)?.name
         if (errName === 'AbortError' && !signal.aborted) {
           // 是超时 abort，可重试
@@ -296,10 +369,11 @@ export async function chatWithRetry(
         // 不可重试的错误直接抛出
         if (!isRetryableError(err)) throw err
         // 最后一次尝试不再等待
-        if (attempt === effectiveRetry) throw err
+        if (transportRetriesUsed >= effectiveRetry) throw err
         // 指数退避：500ms, 1000ms, 2000ms...
-        const delay = 500 * Math.pow(2, attempt)
-        log.warn(`请求失败，${delay}ms 后重试 (${attempt + 1}/${effectiveRetry + 1})`, {
+        const delay = 500 * Math.pow(2, transportRetriesUsed)
+        transportRetriesUsed += 1
+        log.warn(`请求失败，${delay}ms 后重试 (${transportRetriesUsed}/${effectiveRetry})`, {
           error: (err as Error).message,
         })
         // 修复：退避等待响应取消信号（用户取消后立即中止，不干等完整延迟）
@@ -311,7 +385,6 @@ export async function chatWithRetry(
         if (signal.aborted) throw err
       }
     }
-    throw lastError
   } catch (err) {
     // 阶段8：适配器可把探测结论挂在错误上（空正文 / 去参重发仍失败），失败终局同样要合并
     const errProbe = (err as { gateProbe?: GateProbeSignal } | null)?.gateProbe
@@ -497,6 +570,13 @@ export function registerAIIPC(ipcMain: IpcMain): void {
     if (contents.length === 0) throw new Error('参数无效：contents 为空')
     const targetTokens = Math.max(32, Math.floor(payload.targetTokens) || 32)
     const adapter = getAdapter(payload.provider)
+    const samples = queryUsageProfile({
+      provider: payload.provider, baseUrl: payload.baseUrl, model: payload.model, taskType: 'compression',
+    })?.recentReasoningTokens
+    const requestPlan = resolveGenerationTaskBudget({
+      task: 'compression', model: payload.model, expectedBodyChars: targetTokens,
+      ...(samples?.length ? { recentReasoningTokens: samples } : {}),
+    })
     const params: ChatParams = {
       requestId: `lorebook-compress-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       messages: [
@@ -516,11 +596,12 @@ export function registerAIIPC(ipcMain: IpcMain): void {
       model: payload.model,
       temperature: 0.3,
       topP: 0.9,
-      // 直接约束生成上限；渲染层还会用本地 tokenizer 二次校验，超限结果不入缓存。
-      maxTokens: targetTokens,
+      maxTokens: requestPlan.requestMaxTokens,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
+      reasoningGate: requestPlan.reasoningGate,
+      observability: { source: 'aux', taskType: 'compression' },
     }
     // 非流式请求（stream=false）可安全重试；失败抛错由渲染方降级为直接裁剪
     const completion = await chatWithRetry(adapter, params, () => {}, new AbortController().signal, DEFAULT_RETRY_COUNT)
@@ -585,6 +666,14 @@ export function registerAIIPC(ipcMain: IpcMain): void {
 5. 只输出严格 JSON 数组，不要 Markdown、解释或额外文字
 格式：[{"entryId":"原始 id","aliases":["中文词"]}]`
 
+    const samples = queryUsageProfile({
+      provider: payload.provider, baseUrl: payload.baseUrl, model: payload.model,
+    })?.recentReasoningTokens
+    const requestPlan = resolveGenerationTaskBudget({
+      task: 'lorebook_keywords', model: payload.model,
+      expectedBodyChars: Math.max(384, entries.length * 140),
+      ...(samples?.length ? { recentReasoningTokens: samples } : {}),
+    })
     const params: ChatParams = {
       requestId,
       messages: [
@@ -597,10 +686,11 @@ export function registerAIIPC(ipcMain: IpcMain): void {
       model: payload.model,
       temperature: 0.2,
       topP: 0.9,
-      maxTokens: Math.min(2048, Math.max(384, entries.length * 140)),
+      maxTokens: requestPlan.requestMaxTokens,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
+      reasoningGate: requestPlan.reasoningGate,
     }
 
     const startedAt = Date.now()

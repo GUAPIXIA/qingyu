@@ -16,6 +16,7 @@ import { buildCoverPrompt } from '../utils/charPrompt'
 import type { Character } from '../../shared/types'
 import type { ChatParams } from '../../shared/types'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
+import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
 
 export const DRAFT_KEY = 'character-creator-draft'
 
@@ -377,6 +378,10 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       window.api.ai.cancelChat(prevRequest)
     }
     set({ isExpanding: true, error: null })
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    const plan = await resolveRendererGenerationTaskBudget({
+      profile, model, task: 'character_expand', inputChars: concept.length,
+    })
 
     const requestId = runAIChat(
       {
@@ -387,13 +392,14 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
         provider: profile.provider,
         apiKey: profile.apiKey,
         baseUrl: profile.baseUrl,
-        model: profile.model,
+        model,
         temperature: 0.8,
         topP: 0.95,
-        maxTokens: 2048,
+        maxTokens: plan.requestMaxTokens,
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: true,
+        reasoningGate: plan.reasoningGate,
       },
       {
         onDone: (text) => {
@@ -430,6 +436,10 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
     set({ generatingField: field, error: null })
 
     const { systemPrompt, userContent } = buildFieldGeneratePrompt(field, get().draft, userInput)
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    const plan = await resolveRendererGenerationTaskBudget({
+      profile, model, task: 'character_field', inputChars: userContent.length,
+    })
     const requestId = runAIChat(
       {
         messages: [
@@ -439,13 +449,14 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
         provider: profile.provider,
         apiKey: profile.apiKey,
         baseUrl: profile.baseUrl,
-        model: profile.model,
+        model,
         temperature: 0.8,
         topP: 0.95,
-        maxTokens: 1024,
+        maxTokens: plan.requestMaxTokens,
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: true,
+        reasoningGate: plan.reasoningGate,
       },
       {
         onDone: (text) => {
@@ -492,6 +503,10 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
     set({ generatingGreetingIndex: index, error: null })
 
     const { systemPrompt, userContent } = buildGreetingPrompt(index, get().draft, userInput)
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    const plan = await resolveRendererGenerationTaskBudget({
+      profile, model, task: 'greeting', inputChars: userContent.length,
+    })
     const requestId = runAIChat(
       {
         messages: [
@@ -501,13 +516,14 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
         provider: profile.provider,
         apiKey: profile.apiKey,
         baseUrl: profile.baseUrl,
-        model: profile.model,
+        model,
         temperature: 0.9,
         topP: 0.95,
-        maxTokens: 1024,
+        maxTokens: plan.requestMaxTokens,
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: true,
+        reasoningGate: plan.reasoningGate,
       },
       {
         onDone: (text) => {

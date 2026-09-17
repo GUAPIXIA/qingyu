@@ -29,8 +29,10 @@ import {
   resolveContinueIntensity,
   resolveContinueLength,
   CONTINUE_INTENSITY_PARAMS,
-  CONTINUE_REQUEST_MAX_TOKENS,
+  CONTINUE_LENGTH_PARAMS,
 } from '../../../shared/continueIntensity'
+import type { GenerationTask } from '../../../shared/generationTaskBudget'
+import { resolveRendererGenerationTaskBudget } from '../../store/generationTaskBudget'
 
 // 初始化内置命令（只执行一次）
 let commandsInitialized = false
@@ -429,17 +431,31 @@ export function useChatInputState(
   const callAiHelper = async (opts: {
     messages: ChatParams['messages']
     temperature?: number
-    maxTokens?: number
+    task?: GenerationTask
+    inputChars?: number
+    expectedBodyChars?: number
     onChunk?: (delta: string, full: string) => void
-    reasoningMode?: ChatParams['reasoningMode']
   }): Promise<string> => {
     const p = getActiveProfile()
     if (!p) throw new Error('未配置 API 连接')
     const [preset] = await loadActivePresetLorebook()
-    return callAiHelperCore({
-      ...opts,
+    const activeModel = settings.activeModel || p.model
+    const plan = await resolveRendererGenerationTaskBudget({
       profile: p,
-      activeModel: settings.activeModel || p.model,
+      model: activeModel,
+      task: opts.task ?? 'generic',
+      inputChars: opts.inputChars,
+      expectedBodyChars: opts.expectedBodyChars,
+      userHardCap: preset?.maxTokens,
+    })
+    return callAiHelperCore({
+      messages: opts.messages,
+      temperature: opts.temperature,
+      onChunk: opts.onChunk,
+      maxTokens: plan.requestMaxTokens,
+      reasoningGate: plan.reasoningGate,
+      profile: p,
+      activeModel,
       preset,
       activeRequestIds: activeRequestIdsRef.current,
     })
@@ -488,10 +504,8 @@ export function useChatInputState(
       const requestContinuation = (messages: ChatParams['messages'], temperature: number) => callAiHelper({
         messages,
         temperature,
-        // 输出上限只是失控兜底，不参与长度控制：长度由提示词的字数指令 + 生成后校验负责。
-        // 按档位配紧预算会让合规输出在闭标签前被切断，解析拿不到完整标签对。
-        maxTokens: CONTINUE_REQUEST_MAX_TOKENS,
-        reasoningMode: 'disabled',
+        task: 'continuation',
+        expectedBodyChars: CONTINUE_LENGTH_PARAMS[length].maxChars,
       })
 
       /** 在 system 提示词后追加一段指令并重发（格式重试与长度修复共用）。 */
@@ -570,8 +584,8 @@ export function useChatInputState(
           { role: 'user', content: text },
         ],
         temperature: 0.3,
-        maxTokens: 800,
-        reasoningMode: 'disabled',
+        task: 'polish',
+        inputChars: text.length,
       })
       if (result) setText(result)
       else setText(originalText ?? '')

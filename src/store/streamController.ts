@@ -8,11 +8,12 @@ import {
   type GenerationTerminationLatch,
 } from '../../shared/generationTermination'
 import { mergeTailRepair, type FinalizedAssistantOutput } from '../../shared/assistantOutputFinalizer'
-import { enabledProfileOverride, formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
 import { BACKGROUND_GENERATION_PROFILES, hasCompleteSummaryTail } from '../../shared/backgroundGeneration'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { useSettingsStore } from './useSettingsStore'
 import { cachedReasoningSamplesFor, prefetchUsageProfile } from './usageProfileCache'
+import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
 import { resolveReasoningGate, type ReasoningGateLevel } from '../../shared/reasoningGate'
 import {
   claimGateBreakerNotice,
@@ -61,8 +62,6 @@ export interface GenerationOutcomeMeta {
   stopped?: boolean
   /** 补尾失败：已保留稳定前缀，展示可重试提示 */
   repairFailed?: boolean
-  /** 阶段6灰度：本轮走旧链路（调用方恢复 normalize 前缀、不标记语义分块） */
-  legacy?: boolean
   /** 阶段7：应用层终止原因（与 finishReason 分离，供观测与界面分类，不改变正文） */
   terminationCause?: GenerationTerminationCause
 }
@@ -72,8 +71,6 @@ export interface GenerationTerminalPartial {
   content: string
   noticeFields: { generationNotice?: string; generationError?: string }
   terminationCause: GenerationTerminationCause
-  /** 阶段6灰度：本轮走旧链路时，落盘方不得标记语义分块 */
-  legacy?: boolean
 }
 
 /** 阶段3：把收尾元数据映射为消息提示字段——"已恢复"走中性提示，失败走 generationError */
@@ -393,6 +390,13 @@ async function compressDroppedHistory(
   // 阶段7（§7.3）：历史压缩按 background 'compression' 档案执行——
   // 触顶或无完整摘要边界时丢弃本次结果（原历史照常保留），不做补尾
   const compressionProfile = BACKGROUND_GENERATION_PROFILES.compression
+  const compressionPlan = await resolveRendererGenerationTaskBudget({
+    profile,
+    model: settings.activeModel || profile.model,
+    task: 'compression',
+    expectedBodyChars: compressionProfile.expectedBodyChars,
+    usageTaskType: 'compression',
+  })
   const unbindDone = window.api.ai.onComplete((payload) => {
     if (payload.requestId !== requestId) return
     cleanup()
@@ -437,15 +441,11 @@ async function compressDroppedHistory(
     model: settings.activeModel || profile.model,
     temperature: 0.3,
     topP: 0.9,
-    // 后台任务档案：正文预算 + 推理余量分离估算（不再无条件请求 600/大值）
-    maxTokens: resolveRequestBudget({
-      model: settings.activeModel || profile.model,
-      hardMaxChars: compressionProfile.expectedBodyChars,
-      profileOverride: enabledProfileOverride(profile.capabilityOverride),
-    }).requestMaxTokens,
+    maxTokens: compressionPlan.requestMaxTokens,
     frequencyPenalty: 0,
     presencePenalty: 0,
     stream: true,
+    reasoningGate: compressionPlan.reasoningGate,
     observability: { source: 'aux', taskType: 'compression', characterId: character.id, sessionId: pending.sessionId },
   }).catch(() => {
     cleanup()
@@ -475,6 +475,13 @@ async function maybeAutoTitle(get: StoreGet, set: StoreSet, character: Character
   const recentText = messages.slice(-12).map((m) =>
     `${m.role === 'user' ? userName : character.name}: ${m.content}`
   ).join('\n')
+  const model = settings.activeModel || profile.model
+  const titlePlan = await resolveRendererGenerationTaskBudget({
+    profile,
+    model,
+    task: 'title',
+    usageTaskType: 'title',
+  })
 
   const requestId = `autotitle-${Date.now()}`
   let result = ''
@@ -525,13 +532,14 @@ async function maybeAutoTitle(get: StoreGet, set: StoreSet, character: Character
     provider: profile.provider,
     apiKey: profile.apiKey,
     baseUrl: profile.baseUrl,
-    model: settings.activeModel || profile.model,
+    model,
     temperature: 0.5,
     topP: 0.9,
-    maxTokens: 50,
+    maxTokens: titlePlan.requestMaxTokens,
     frequencyPenalty: 0,
     presencePenalty: 0,
     stream: true,
+    reasoningGate: titlePlan.reasoningGate,
     observability: { source: 'aux', taskType: 'title', characterId: character.id, sessionId: session.id },
   }).catch(() => {
     cleanup()
@@ -574,7 +582,6 @@ export async function attemptTailRepair(input: {
   character: Character
   model: string
   temperature?: number
-  reasoningMode?: 'default' | 'disabled'
   sessionId?: string | null
 }): Promise<string | null> {
   // 补尾限制（§8.1）：不重新发送完整世界书与长历史（只带 repairContext）；
@@ -593,16 +600,11 @@ export async function attemptTailRepair(input: {
   const charName = input.character.translatedContent?.name || input.character.name
   // 补尾预算：正文 ~200 字 + 模型推理余量（方案 §5.3：160–256 Token 正文 + 推理余量）
   // W1（主计划 §7.3）：补尾与主生成共用同一分桶的近期样本（主生成已预取，命中缓存）
-  const repairSamples = cachedReasoningSamplesFor({
-    provider: profile.provider,
-    baseUrl: profile.baseUrl,
+  const budget = await resolveRendererGenerationTaskBudget({
+    profile,
     model: input.model,
-  })
-  const budget = resolveRequestBudget({
-    model: input.model,
-    hardMaxChars: 200,
-    profileOverride: enabledProfileOverride(profile.capabilityOverride),
-    ...(repairSamples ? { recentReasoningTokens: repairSamples } : {}),
+    task: 'tail_repair',
+    usageTaskType: 'tail_repair',
   })
   let repairText = ''
   let settled = false
@@ -683,7 +685,7 @@ export async function attemptTailRepair(input: {
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
-      reasoningMode: input.reasoningMode,
+      reasoningGate: budget.reasoningGate,
       observability: {
         source: 'single',
         // quiet = 归属主生成任务的内部补尾请求，基线统计按辅助口径过滤
@@ -840,7 +842,6 @@ export async function streamAIResponse(
             content: result.content,
             noticeFields: result.noticeFields,
             terminationCause: cause,
-            legacy: builtContext.pipelineLegacy,
           }
         : undefined
     onError?.(errText, terminal)
@@ -860,7 +861,6 @@ export async function streamAIResponse(
         terminalResult: { rawText, finishReason: 'unknown', terminationCause: cause, errorMessage: detailMessage },
         regexRules: streamRegexRules,
         characterName: characterDisplayName,
-        legacy: builtContext.pipelineLegacy,
       })
       dispatchTerminalError(cause, result, detailMessage)
     } catch (e) {
@@ -994,7 +994,6 @@ export async function streamAIResponse(
     })
 
     // S1：统一收尾管线——推理清理 → output 正则 → 停止字符串 → 收尾器 → 一次短补尾。
-    // 阶段6灰度：legacy 管线在管线内部原样透传（不做收尾器与补尾）。
     void (async () => {
       if (recoveryLevel) {
         // 复用同一上下文与消息：只把档位与预算字段换成降档后的值，历史不重复裁剪
@@ -1002,7 +1001,7 @@ export async function streamAIResponse(
         return
       }
       let contentForComplete = rawContent
-      const meta: GenerationOutcomeMeta = { finishReason, legacy: builtContext.pipelineLegacy, terminationCause: cause }
+      const meta: GenerationOutcomeMeta = { finishReason, terminationCause: cause }
       if (cause === 'user_cancel') {
         // 用户手动停止：保留用户已经看到的正文，不收尾、不补尾（矩阵 §4.1）
         meta.stopped = true
@@ -1015,14 +1014,12 @@ export async function streamAIResponse(
           terminalResult: { rawText: rawContent, finishReason, terminationCause: cause },
           regexRules: streamRegexRules,
           characterName: characterDisplayName,
-          legacy: builtContext.pipelineLegacy,
           // 补尾限制（§8.1）：协调入口只在 provider_length 且稳定正文不足时调用，每轮至多一次
           runTailRepair: settings.autoTailRepairEnabled === false ? undefined : (finalized) => attemptTailRepair({
             finalized,
             character,
             model: effectiveModel,
             temperature: preset?.temperature,
-            reasoningMode: effectiveModel.toLowerCase().includes('deepseek-v4') ? 'disabled' : undefined,
             sessionId: get().currentSessionId,
           }),
         })
@@ -1160,14 +1157,11 @@ export async function streamAIResponse(
       } : {}),
       // S5：记录意图识别与场景系数，便于核对误判
       ...(builtContext.responseIntent ? { responseIntent: builtContext.responseIntent } : {}),
-      ...(builtContext.pipelineLegacy ? {} : { sceneFactor: builtContext.sceneFactor }),
+      sceneFactor: builtContext.sceneFactor,
       characterId: character.id,
       sessionId: get().currentSessionId ?? undefined,
       ...(opts.markDowngradeRetry ? { downgradeRetry: true } : {}),
     },
-    // DeepSeek V4 的推理通道会与角色心理描写重复，并挤占最终正文预算。
-    // 主对话只保留模型最终 content；若聚合端忽略关闭参数，适配器仍会丢弃 reasoning_content。
-    reasoningMode: effectiveModel.toLowerCase().includes('deepseek-v4') ? 'disabled' : undefined,
     // 阶段8（§4.3）：门控指令由预算结果反推——tokens 即本轮推理预留（可信=承诺值）
     ...(builtContext.requestBudget?.gate
       ? {

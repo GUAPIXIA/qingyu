@@ -22,18 +22,33 @@
 import { Router } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import { join } from 'node:path'
-import { readJson, writeJson, listJsonFilesAsync, DIRS, withFileLock } from '../services/storage'
-import { bridgeJournalPut, bridgeJournalDelete } from './bridgeJournal'
+import { readJson, listJsonFilesAsync, DIRS, withFileLock, serializeJson } from '../services/storage'
+import { writeThroughDomain } from '../domain/syncDomainService'
 import { getCharacter } from '../services/charCard'
 import { listLorebookViews } from '../services/lorebookDocumentStore'
 import { chatData } from '../ipc/chat'
 import { groupData } from '../ipc/group'
 import { getBuiltinPresets } from '../ipc/preset'
 
+/**
+ * 阶段 2 S2-04：Bridge 侧写 settings.json 也必须经同一事务入口，
+ * 与 settings_public 实体 journal 一起提交（flag 关闭时等价于旧的直接落盘）。
+ */
+function writeBridgeSettings(file: string, settings: Settings): void {
+  writeThroughDomain({
+    domain: 'settings_public',
+    entityType: 'settings_public',
+    entityId: 'settings-public',
+    payload: settingsPublicPayload(settings),
+    schemaVersion: 1,
+    files: [{ path: file, content: serializeJson(settings, 'settings') }],
+  })
+}
+
 import { getSummary, queryUsage } from '../services/usage'
 import { fetchAnnouncementList, fetchVersionInfo } from '../ipc/announcement'
 import { readStore as readQuickReplyStore } from '../ipc/quickReply'
-import { restoreSecrets } from '../ipc/settings'
+import { restoreSecrets, settingsPublicPayload } from '../ipc/settings'
 import {
   buildSettingsSnapshot,
   validateSettingsPatch,
@@ -52,6 +67,10 @@ import { stripThought, trimContinuationSeam } from '../../shared/chat-core/messa
 import { getDefaultSettings } from '../../shared/defaults'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { DEFAULT_AUTO_MEMORY_INTERVAL } from '../../shared/defaultMemory'
+import { CONTINUE_LENGTH_PARAMS, resolveContinueLength } from '../../shared/continueIntensity'
+import { resolveGenerationTaskBudget } from '../../shared/generationTaskBudget'
+import { enabledProfileOverride } from '../../shared/modelOutputProfile'
+import { queryUsageProfile } from '../services/generationObservation'
 import { normalizePreset } from '../../shared/preset'
 import { nanoid } from 'nanoid'
 import { replaceVariables } from '../../shared/chat-core/variables'
@@ -310,7 +329,7 @@ export function buildBridgeRouter(
         if (key === 'omniscientNarrativeRules' && typeof body[key] !== 'string') continue
         ;(settings as unknown as Record<string, unknown>)[key] = body[key]
       }
-      writeJson(file, settings, 'settings')
+      writeBridgeSettings(file, settings)
       res.json({ ok: true })
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
@@ -393,7 +412,7 @@ export function buildBridgeRouter(
             ...currentSettings,
             ...(accepted as Partial<MobileSafeSettings> as Partial<Settings>),
           }
-          writeJson(file, merged, 'settings')
+          writeBridgeSettings(file, merged)
         }
         const next = buildSettingsSnapshot(readJson<Settings>(file, 'settings') ?? getDefaultSettings())
         const payload: SettingsPatchResponse = {
@@ -514,19 +533,23 @@ export function buildBridgeRouter(
         createdCopy = true
       }
       updated = normalizePreset(updated)
-      writeJson(join(DIRS.presets(), `${updated.id}.json`), updated)
-      bridgeJournalPut({
-        domain: 'preset',
-        entityType: 'preset',
-        entityId: updated.id,
-        payload: {
-          name: updated.name,
-          temperature: updated.temperature,
-          topP: updated.topP,
-          maxTokens: updated.maxTokens,
-          source: 'bridge',
-        },
-      })
+      {
+        const payload: Record<string, unknown> = { ...updated } as unknown as Record<string, unknown>
+        delete payload.id
+        writeThroughDomain({
+          domain: 'preset',
+          entityType: 'preset',
+          entityId: updated.id,
+          payload,
+          schemaVersion: 1,
+          files: [
+            {
+              path: join(DIRS.presets(), `${updated.id}.json`),
+              content: JSON.stringify(updated, null, 2),
+            },
+          ],
+        })
+      }
       res.json({ ok: true, presetId: updated.id, createdCopy })
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
@@ -580,7 +603,7 @@ export function buildBridgeRouter(
       const file = join(DIRS.config(), 'settings.json')
       const settings = readJson<Settings>(file, 'settings') ?? getDefaultSettings()
       settings.activePresetId = presetId ?? null
-      writeJson(file, settings, 'settings')
+      writeBridgeSettings(file, settings)
       res.json({ ok: true, presetId: settings.activePresetId })
     } catch (e) {
       res.status(400).json({ error: (e as Error).message })
@@ -611,21 +634,7 @@ export function buildBridgeRouter(
       const session = await chatData.createSession(
         character.id,
         title && title.trim() ? title.trim() : undefined,
-      )
-      bridgeJournalPut({
-        domain: 'session',
-        entityType: 'session',
-        entityId: session.id,
-        parentId: character.id,
-        payload: {
-          characterId: session.characterId,
-          title: session.title,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt,
-          source: 'bridge',
-        },
-      })
-      // 新建会话可选插入开场白（首条消息）：对齐 PC 端 insertGreetingMessage
+      )      // 新建会话可选插入开场白（首条消息）：对齐 PC 端 insertGreetingMessage
       let firstMessageContent = ''
       if (typeof greeting === 'string' && greeting.trim()) {
         const settings = readJson<Settings>(join(DIRS.config(), 'settings.json'), 'settings') ?? getDefaultSettings()
@@ -642,22 +651,7 @@ export function buildBridgeRouter(
           // 作者开场白显式 markdown，避免 undefined 隐式分流
           contentRenderMode: 'markdown',
         }
-        chatData.saveMessage(character.id, firstMsg)
-        bridgeJournalPut({
-          domain: 'message',
-          entityType: 'message',
-          entityId: firstMsg.id,
-          parentId: session.id,
-          payload: {
-            sessionId: firstMsg.sessionId,
-            characterId: firstMsg.characterId,
-            role: firstMsg.role,
-            content: firstMsg.content,
-            timestamp: firstMsg.timestamp,
-            source: 'bridge-greeting',
-          },
-        })
-      }
+        chatData.saveMessage(character.id, firstMsg)      }
       notifySessionChanged(session.id, 'created')
       res.json({
         id: session.id,
@@ -713,19 +707,6 @@ export function buildBridgeRouter(
         session.personaId,
         session.lorebookIds,
       )
-      bridgeJournalPut({
-        domain: 'session',
-        entityType: 'session',
-        entityId: branch.id,
-        parentId: session.characterId,
-        payload: {
-          characterId: branch.characterId,
-          title: branch.title,
-          createdAt: branch.createdAt,
-          updatedAt: branch.updatedAt,
-          source: 'bridge-branch',
-        },
-      })
       await chatData.updateSession(session.characterId, branch.id, {
         narrativeMode: resolveNarrativeMode(session.narrativeMode),
         dialogueDirectionsEnabled: resolveDialogueDirectionsEnabled(session),
@@ -938,7 +919,8 @@ export function buildBridgeRouter(
       let systemPrompt: string
       let userContent: string
       let temperature: number
-      let maxTokens: number
+      let task: 'continuation' | 'polish'
+      let expectedBodyChars: number
 
       if (type === 'continue') {
         const hasInput = (content ?? '').trim().length > 0
@@ -953,13 +935,24 @@ export function buildBridgeRouter(
         systemPrompt = ctx[0].content
         userContent = ctx[ctx.length - 1].content
         temperature = 0.7
-        maxTokens = 300
+        task = 'continuation'
+        expectedBodyChars = CONTINUE_LENGTH_PARAMS[resolveContinueLength(settings.continueLength)].maxChars
       } else {
         systemPrompt = '你是一个文字润色助手。请润色以下文本，修正语法、改善表达、使其更加流畅自然，但保持原意和语气不变。只输出润色后的文本，不要添加任何解释或额外内容。'
         userContent = content ?? ''
         temperature = 0.3
-        maxTokens = 800
+        task = 'polish'
+        expectedBodyChars = Math.max(256, userContent.length)
       }
+      const samples = queryUsageProfile({
+        provider: profile.provider, baseUrl: profile.baseUrl, model,
+      })?.recentReasoningTokens
+      const requestPlan = resolveGenerationTaskBudget({
+        task, model, inputChars: userContent.length, expectedBodyChars,
+        userHardCap: preset?.maxTokens,
+        profileOverride: enabledProfileOverride(profile.capabilityOverride),
+        ...(samples?.length ? { recentReasoningTokens: samples } : {}),
+      })
 
       const params: ChatParams = {
         requestId: `ai-assist-${Date.now()}-${nanoid(4)}`,
@@ -973,10 +966,11 @@ export function buildBridgeRouter(
         model,
         temperature,
         topP: preset?.topP ?? 0.9,
-        maxTokens,
+        maxTokens: requestPlan.requestMaxTokens,
         frequencyPenalty: preset?.frequencyPenalty ?? 0,
         presencePenalty: preset?.presencePenalty ?? 0,
         stream: false,
+        reasoningGate: requestPlan.reasoningGate,
       }
 
       const completion = await chatWithRetry(
@@ -1229,7 +1223,7 @@ export function buildBridgeRouter(
       const settingsFile = join(DIRS.config(), 'settings.json')
       const settings = readJson<Settings>(settingsFile, 'settings') ?? getDefaultSettings()
       settings.activeCharacterId = characterId
-      writeJson(settingsFile, settings, 'settings')
+      writeBridgeSettings(settingsFile, settings)
       const session = await chatData.createSession(characterId)
       notifySessionChanged(session.id, 'created')
       res.json({ ok: true, sessionId: session.id })
@@ -1347,12 +1341,6 @@ export function buildBridgeRouter(
         updatedAt: now,
       }
       await groupData.saveGroup(group)
-      bridgeJournalPut({
-        domain: 'group',
-        entityType: 'group',
-        entityId: group.id,
-        payload: { name: group.name, memberIds: group.memberIds ?? [], source: 'bridge' },
-      })
       res.json({ id: group.id, name: group.name, memberIds: group.memberIds })
     } catch (e) {
       res.status(500).json({ error: (e as Error).message })
@@ -1664,6 +1652,15 @@ export function buildBridgeRouter(
         narrativeMode,
         omniscientNarrativeRules: settings.omniscientNarrativeRules,
       })
+      const model = settings.activeModel || profile.model
+      const samples = queryUsageProfile({
+        provider: profile.provider, baseUrl: profile.baseUrl, model,
+      })?.recentReasoningTokens
+      const requestPlan = resolveGenerationTaskBudget({
+        task: 'group_reply', model,
+        profileOverride: enabledProfileOverride(profile.capabilityOverride),
+        ...(samples?.length ? { recentReasoningTokens: samples } : {}),
+      })
 
       const params: ChatParams = {
         requestId: `group-ai-${Date.now()}-${nanoid(4)}`,
@@ -1674,13 +1671,14 @@ export function buildBridgeRouter(
         provider: profile.provider as ProviderType,
         apiKey: profile.apiKey,
         baseUrl: profile.baseUrl,
-        model: settings.activeModel || profile.model,
+        model,
         temperature: 0.8,
         topP: 0.95,
-        maxTokens: 2048,
+        maxTokens: requestPlan.requestMaxTokens,
         frequencyPenalty: 0,
         presencePenalty: 0,
         stream: false,
+        reasoningGate: requestPlan.reasoningGate,
       }
 
       const completion = await chatWithRetry(getAdapter(params.provider), params, () => {}, new AbortController().signal, 1)

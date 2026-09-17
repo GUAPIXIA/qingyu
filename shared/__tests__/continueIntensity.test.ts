@@ -4,7 +4,6 @@ import {
   CONTINUE_INTENSITY_PARAMS,
   CONTINUE_LENGTH_OPTIONS,
   CONTINUE_LENGTH_PARAMS,
-  CONTINUE_REQUEST_MAX_TOKENS,
   DEFAULT_CONTINUE_INTENSITY,
   DEFAULT_CONTINUE_LENGTH,
   isContinueIntensity,
@@ -65,19 +64,6 @@ describe('continueIntensity', () => {
       expect(CONTINUE_LENGTH_PARAMS[values[i]].minChars)
         .toBeGreaterThan(CONTINUE_LENGTH_PARAMS[values[i - 1]].maxChars)
     }
-  })
-
-  it('统一输出上限覆盖“推理占用 + 最大档正文”', () => {
-    // 长度由提示词的字数指令控制，输出上限只做失控兜底。上限必须容纳：
-    // 推理内容（聚合端点常忽略 thinking:disabled，实测可达约 3400 token）
-    // + 最大档正文（900 字 × 2 token/字）+ 标签与开场余量。
-    // 上限不足时推理会吃光预算导致正文为空，表现为“续写未返回有效的中文正文”。
-    const worstMaxChars = Math.max(
-      ...Object.values(CONTINUE_LENGTH_PARAMS).map((params) => params.maxChars),
-    )
-    const OBSERVED_MAX_REASONING_TOKENS = 3400
-    expect(CONTINUE_REQUEST_MAX_TOKENS)
-      .toBeGreaterThanOrEqual(worstMaxChars * 2 + OBSERVED_MAX_REASONING_TOKENS + 512)
   })
 
   it('长度档位说明包含区间与结构目标', () => {

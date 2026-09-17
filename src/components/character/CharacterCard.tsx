@@ -2,7 +2,7 @@ import type { Character } from '../../../shared/types'
 import { stripAllThinking } from '../../../shared/thoughtMarkup'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { translationMaxTokens } from '../../store/chatConstants'
+import { resolveRendererGenerationTaskBudget } from '../../store/generationTaskBudget'
 import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
 import { getDisplayName } from '../../utils/variables'
@@ -90,6 +90,14 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
 
     setTranslating(true)
     const requestId = `translate-fm-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    const translationPlan = await resolveRendererGenerationTaskBudget({
+      profile,
+      model,
+      task: 'translation',
+      inputChars: text.length,
+      usageTaskType: 'translation',
+    })
 
     try {
       const result = await new Promise<string>((resolve) => {
@@ -128,13 +136,16 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
           provider: profile.provider,
           apiKey: profile.apiKey,
           baseUrl: profile.baseUrl,
-          model: useSettingsStore.getState().settings.activeModel || profile.model,
+          model,
           temperature: 0.3,
           topP: 0.9,
-          maxTokens: translationMaxTokens(text),
+          maxTokens: translationPlan.requestMaxTokens,
           frequencyPenalty: 0,
           presencePenalty: 0,
           stream: true,
+          observability: { source: 'aux', taskType: 'translation' },
+          adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
+          reasoningGate: translationPlan.reasoningGate,
         })
       })
 

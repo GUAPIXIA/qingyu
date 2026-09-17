@@ -644,20 +644,20 @@ describe('两端一致性（同一 contextBuilder 入口）', () => {
     expect(result.lastContextUsage.max).toBe(expectedBase)
   })
 
-  it('篇幅提示驱动请求预算：balanced 正文预算 + 协议余量（普通模型）', () => {
+  it('篇幅提示驱动请求预算：balanced 正文预算 + 统一自动推理余量', () => {
     const data = makeData({
       preset: makePreset({ responseLengthHint: 'balanced', maxTokens: 8192 }),
     })
     const result = buildContextMessagesFromData(data)
-    // bodyReserve = ceil(600 × 1.25) + 96 = 846；gpt-4o-mini 无推理 → 协议余量 192
+    // bodyReserve = ceil(600 × 1.25) + 96 = 846；无样本时使用统一自动推理余量 2048
     expect(result.requestBudget.bodyReserve).toBe(846)
-    expect(result.requestBudget.reasoningReserve).toBe(192)
-    expect(result.requestMaxTokens).toBe(1038)
+    expect(result.requestBudget.reasoningReserve).toBe(2048)
+    expect(result.requestMaxTokens).toBe(2894)
     expect(result.responsePolicy.mode).toBe('balanced')
     expect(result.responsePolicy.source).toBe('preset')
   })
 
-  it('DeepSeek V4 动态预算：正文预算 + 推理余量，不再固定 8192', () => {
+  it('模型名称不再改变动态预算数值', () => {
     const data = makeData({
       preset: makePreset({ responseLengthHint: 'balanced', maxTokens: 8192 }),
       settings: {
@@ -674,37 +674,32 @@ describe('两端一致性（同一 contextBuilder 入口）', () => {
       },
     })
     const result = buildContextMessagesFromData(data)
-    expect(result.requestBudget.reasoningReserve).toBeGreaterThanOrEqual(3072)
+    expect(result.requestBudget.reasoningReserve).toBe(2048)
     expect(result.requestMaxTokens).toBe(result.requestBudget.bodyReserve + result.requestBudget.reasoningReserve)
     expect(result.requestMaxTokens).toBeLessThan(8192)
     const params = buildChatParamsFromData(data, result.messages, { requestMaxTokens: result.requestMaxTokens })
     expect(params.maxTokens).toBe(result.requestMaxTokens)
   })
 
-  it('阶段6灰度：legacy 管线回退预设 maxTokens 直用并标记旧链路', () => {
+  it('旧 generationPipeline 标记不再切回旧预算管线', () => {
     const data = makeData({
       preset: makePreset({ maxTokens: 1024, responseLengthHint: 'balanced' }),
       settings: {
-        settings: makeSettings({
-          activeModel: 'deepseek/deepseek-v4.1-flash',
+        settings: {
+          ...makeSettings({ activeModel: 'deepseek/deepseek-v4.1-flash' }),
           generationPipeline: 'legacy',
-        }),
+        } as unknown as Settings,
         profile: null,
       },
     })
     const result = buildContextMessagesFromData(data)
-    expect(result.pipelineLegacy).toBe(true)
-    // 旧链路预算：预设 maxTokens 直用（不恢复 8192 下限，也不走动态预算）
-    expect(result.requestMaxTokens).toBe(1024)
-    // 提示词回退：旧排版协议
-    expect(result.messages.some((m) => m.content.includes('【正文排版协议】'))).toBe(true)
-    expect(result.messages.some((m) => m.content.includes('【本轮回应范围】'))).toBe(false)
+    expect(result.messages.some((m) => m.content.includes('【正文排版协议】'))).toBe(false)
+    expect(result.messages.some((m) => m.content.includes('【本轮回应范围】'))).toBe(true)
   })
 
-  it('阶段6灰度：unified 缺省不注入旧排版协议', () => {
+  it('统一管线缺省不注入旧排版协议', () => {
     const data = makeData({ preset: makePreset({ responseLengthHint: 'balanced' }) })
     const result = buildContextMessagesFromData(data)
-    expect(result.pipelineLegacy).toBe(false)
     expect(result.messages.some((m) => m.content.includes('【正文排版协议】'))).toBe(false)
   })
 
@@ -748,7 +743,7 @@ describe('两端一致性（同一 contextBuilder 入口）', () => {
     })
     const result = buildContextMessagesFromData(data)
     expect(result.requestMaxTokens).toBe(result.requestBudget.bodyReserve + result.requestBudget.reasoningReserve)
-    expect(result.requestMaxTokens).toBeGreaterThan(3072)
+    expect(result.requestMaxTokens).toBeGreaterThan(2048)
     expect(result.requestBudget.riskNotice).toBeUndefined()
   })
 })

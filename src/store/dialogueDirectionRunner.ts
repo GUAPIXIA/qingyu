@@ -13,8 +13,7 @@ import {
   type DirectionGenerationInput,
 } from '../../shared/dialogueDirections'
 import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
-import { enabledProfileOverride, resolveRequestBudget } from '../../shared/modelOutputProfile'
-import { resolveReasoningGate } from '../../shared/reasoningGate'
+import { resolveCachedRendererGenerationTaskBudget } from './generationTaskBudget'
 import { noteGateRecoveryFailure } from './reasoningGateState'
 import { stripThought } from '../utils/messagePostProcess'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
@@ -82,13 +81,12 @@ function callDirectionHelper(
 
   // W4（主计划 §7.6）：方向退出 1536 直连——后台 'direction' 档案给出期望正文，
   // 统一预算负责换算，off 门控把"关闭推理"的意图正式化（可被探测与提前中止兜底）。
-  const directionProfile = BACKGROUND_GENERATION_PROFILES.direction
-  const gate = resolveReasoningGate({ model: activeModel, requestedLevel: 'off', enabled: true })
-  const budget = resolveRequestBudget({
+  const budget = resolveCachedRendererGenerationTaskBudget({
+    profile,
     model: activeModel,
-    hardMaxChars: directionProfile.expectedBodyChars,
-    profileOverride: enabledProfileOverride(profile.capabilityOverride),
-    reasoningGate: gate,
+    task: 'direction',
+    expectedBodyChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
+    usageTaskType: 'direction',
   })
 
   let result = ''
@@ -130,9 +128,7 @@ function callDirectionHelper(
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
-      // 旧适配器回退用；门控在场时适配器只消费 reasoningGate（同一产品意图：关闭推理）
-      reasoningMode: 'disabled',
-      reasoningGate: { level: 'off', knob: gate.knob, tokens: gate.gateTokens },
+      reasoningGate: budget.reasoningGate,
       // 阶段7（§7.3）：独立 taskType，不混入主对话篇幅统计；降档重试归属原生成轮
       observability: {
         source: 'aux',

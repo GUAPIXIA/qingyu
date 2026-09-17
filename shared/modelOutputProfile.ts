@@ -76,8 +76,17 @@ export interface ModelProfileResolveOptions {
 
 /** 协议余量：可关闭/独立推理的模型仅保留的请求开销余量（方案 §4.4 的 128–256 区间） */
 export const PROTOCOL_RESERVE_TOKENS = 192
-/** 通用请求输出安全上限（兜底；取代旧 DeepSeek V4 固定 8192 特判） */
-export const MAX_REQUEST_OUTPUT_TOKENS = 8192
+/**
+ * 自动预算的通用能力回退。它不按模型名分叉；端点显式能力覆盖可收紧或放大。
+ * 保留旧导出名只为源码兼容，运行时不再额外叠加第二个 8192 安全阀。
+ */
+export const DEFAULT_AUTOMATIC_OUTPUT_LIMIT = 32768
+/**
+ * 无可靠样本时所有端点共用的自动推理余量。
+ * 按自动输出能力的固定比例推导，而不是为某个模型写死 token；这也给首次请求留下足够的
+ * 探索空间，避免端点忽略“关闭推理”时在低预算处必然截断。
+ */
+export const DEFAULT_AUTOMATIC_REASONING_RESERVE = Math.floor(DEFAULT_AUTOMATIC_OUTPUT_LIMIT / 4)
 /** 正文预算安全系数与固定协议开销（方案 §4.4 公式） */
 export const BODY_RESERVE_MULTIPLIER = 1.25
 export const BODY_RESERVE_OVERHEAD_TOKENS = 96
@@ -87,13 +96,13 @@ export const BODY_RESERVE_OVERHEAD_TOKENS = 96
  */
 export const MIN_USABLE_BODY_TOKENS = 256
 
-const PROTOCOL_ONLY_PROFILE: ModelOutputProfile = {
-  outputLimit: 8192,
+const AUTOMATIC_PROFILE: ModelOutputProfile = {
+  outputLimit: DEFAULT_AUTOMATIC_OUTPUT_LIMIT,
   // 未知型号的保守回退窗口（无数据时不猜测供应商宣传值）
   contextLimit: 32768,
-  reasoningMode: 'none',
-  defaultReasoningReserve: 0,
-  maxReasoningReserve: 0,
+  reasoningMode: 'shared-unknown',
+  defaultReasoningReserve: DEFAULT_AUTOMATIC_REASONING_RESERVE,
+  maxReasoningReserve: DEFAULT_AUTOMATIC_OUTPUT_LIMIT - MIN_USABLE_BODY_TOKENS,
   defaultGate: 'standard',
   gateKnobs: ['none'],
   matchedBy: 'fallback',
@@ -101,14 +110,8 @@ const PROTOCOL_ONLY_PROFILE: ModelOutputProfile = {
 }
 
 const DEEPSEEK_V4_PROFILE: ModelOutputProfile = {
-  // 部分聚合端会忽略 thinking: disabled，推理与正文共享 max_tokens；
-  // 实测推理可消耗 3000+ token，无统计时默认 3072，触顶反馈最高 4096。
-  outputLimit: 8192,
+  ...AUTOMATIC_PROFILE,
   contextLimit: 65536,
-  reasoningMode: 'shared-unknown',
-  defaultReasoningReserve: 3072,
-  maxReasoningReserve: 4096,
-  defaultGate: 'standard',
   // 官方端点支持 thinking:{type:'disabled'}；聚合端可能改判为 reasoning_effort
   gateKnobs: ['thinking-disable', 'reasoning-effort', 'none'],
   matchedBy: 'exact',
@@ -116,12 +119,8 @@ const DEEPSEEK_V4_PROFILE: ModelOutputProfile = {
 }
 
 const DEEPSEEK_REASONER_PROFILE: ModelOutputProfile = {
-  outputLimit: 8192,
+  ...AUTOMATIC_PROFILE,
   contextLimit: 65536,
-  reasoningMode: 'shared-unknown',
-  defaultReasoningReserve: 2048,
-  maxReasoningReserve: 4096,
-  defaultGate: 'standard',
   // R1/reasoner 无关闭与档位参数：只能本地余量 + 提前中止
   gateKnobs: ['none'],
   matchedBy: 'exact',
@@ -130,12 +129,8 @@ const DEEPSEEK_REASONER_PROFILE: ModelOutputProfile = {
 
 // Claude 扩展思考（3.7/4，非 haiku）的 budget_tokens 从 max_tokens 内划扣（适配器现行实现）
 const CLAUDE_THINKING_PROFILE: ModelOutputProfile = {
-  outputLimit: 8192,
+  ...AUTOMATIC_PROFILE,
   contextLimit: 200000,
-  reasoningMode: 'shared-unknown',
-  defaultReasoningReserve: 2048,
-  maxReasoningReserve: 4096,
-  defaultGate: 'standard',
   gateKnobs: ['thinking-budget', 'none'],
   matchedBy: 'exact',
   confidence: 'high',
@@ -143,12 +138,8 @@ const CLAUDE_THINKING_PROFILE: ModelOutputProfile = {
 
 // Gemini 2.5/3 动态思考在部分网关下挤占 maxOutputTokens
 const GEMINI_THINKING_PROFILE: ModelOutputProfile = {
-  outputLimit: 8192,
+  ...AUTOMATIC_PROFILE,
   contextLimit: 1048576,
-  reasoningMode: 'shared-unknown',
-  defaultReasoningReserve: 1024,
-  maxReasoningReserve: 2048,
-  defaultGate: 'standard',
   gateKnobs: ['gemini-thinking-config', 'none'],
   matchedBy: 'exact',
   confidence: 'high',
@@ -156,12 +147,8 @@ const GEMINI_THINKING_PROFILE: ModelOutputProfile = {
 
 // OpenAI o 系列与 GPT-5 的 max_completion_tokens 包含推理 token
 const OPENAI_REASONING_PROFILE: ModelOutputProfile = {
-  outputLimit: 8192,
+  ...AUTOMATIC_PROFILE,
   contextLimit: 200000,
-  reasoningMode: 'shared-unknown',
-  defaultReasoningReserve: 2048,
-  maxReasoningReserve: 4096,
-  defaultGate: 'standard',
   gateKnobs: ['reasoning-effort', 'none'],
   matchedBy: 'exact',
   confidence: 'high',
@@ -172,14 +159,14 @@ const MODEL_PROFILE_RULES: Array<{ match: string[]; profile: ModelOutputProfile 
   { match: ['deepseek-v4'], profile: DEEPSEEK_V4_PROFILE },
   { match: ['deepseek-reasoner', 'deepseek-r1'], profile: DEEPSEEK_REASONER_PROFILE },
   // haiku 无扩展思考，需排在 claude-4 之前
-  { match: ['haiku'], profile: PROTOCOL_ONLY_PROFILE },
+  { match: ['haiku'], profile: { ...AUTOMATIC_PROFILE, contextLimit: 200000 } },
   { match: ['claude-3-7', 'claude-3.7', 'claude-4'], profile: CLAUDE_THINKING_PROFILE },
   { match: ['gemini-2.5', 'gemini-3'], profile: GEMINI_THINKING_PROFILE },
   { match: ['o1', 'o3', 'o4', 'gpt-5'], profile: OPENAI_REASONING_PROFILE },
 ]
 
-/** 未知模型默认档案：无推理余量假设，请求预算由正文硬保护线驱动 */
-export const DEFAULT_OUTPUT_PROFILE: ModelOutputProfile = PROTOCOL_ONLY_PROFILE
+/** 未知模型默认档案：使用跨模型统一的自动余量，不按模型名写死预算。 */
+export const DEFAULT_OUTPUT_PROFILE: ModelOutputProfile = AUTOMATIC_PROFILE
 
 /**
  * 族通配回退（低置信）：只修正"上下文窗口"这一项能力，不改变推理策略与输出上限。
@@ -211,7 +198,7 @@ export function getModelOutputProfile(model: string): ModelOutputProfile {
   for (const hint of FAMILY_CONTEXT_HINTS) {
     if (hint.match.some((token) => lower.includes(token))) {
       return {
-        ...PROTOCOL_ONLY_PROFILE,
+        ...AUTOMATIC_PROFILE,
         contextLimit: hint.contextLimit,
         matchedBy: 'family',
         confidence: 'low',
@@ -444,7 +431,7 @@ export function resolveRequestBudget(input: RequestBudgetInput): RequestBudget {
 
   const cap = resolveUserHardCap(input.userHardCap)
 
-  let requestMaxTokens = Math.min(profile.outputLimit, MAX_REQUEST_OUTPUT_TOKENS, needed)
+  let requestMaxTokens = Math.min(profile.outputLimit, needed)
   let riskNotice: RequestBudget['riskNotice']
   if (cap != null) {
     if (cap < minimumViableOutputTokens) riskNotice = 'user_cap_below_reasoning_reserve'

@@ -1,8 +1,9 @@
 import type { Character, MemoryFactRecord } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
-import { enabledProfileOverride, resolveEffectiveContextLimit, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, resolveEffectiveContextLimit } from '../../shared/modelOutputProfile'
 import { cachedReasoningSamplesFor, refreshUsageProfileInBackground } from './usageProfileCache'
+import { resolveGenerationTaskBudget } from '../../shared/generationTaskBudget'
 import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMemoryResult } from '../utils/memory'
 import { estimateTokens } from '../utils/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../utils/memoryWindow'
@@ -76,12 +77,13 @@ export async function runGroupMemorySummary(get: GroupStoreGet, set: GroupStoreS
     model: profile.model,
     taskType: 'memory',
   })
-  const GROUP_MEMORY_OUTPUT_TOKENS = resolveRequestBudget({
+  const groupMemoryPlan = resolveGenerationTaskBudget({
+    task: 'memory',
     model: profile.model,
-    hardMaxChars: 2500,
     profileOverride: enabledProfileOverride(profile.capabilityOverride),
     ...(groupMemorySamples ? { recentReasoningTokens: groupMemorySamples } : {}),
-  }).requestMaxTokens
+  })
+  const GROUP_MEMORY_OUTPUT_TOKENS = groupMemoryPlan.requestMaxTokens
   const summaryInputBudget = resolveMemorySummaryInputBudget(
     resolveEffectiveContextLimit({
       model: profile.model,
@@ -280,6 +282,7 @@ ${shouldAttemptFactProposal ? `【事实提案】
       temperature: 0.3,
       topP: 1,
       maxTokens: GROUP_MEMORY_OUTPUT_TOKENS,
+      reasoningGate: groupMemoryPlan.reasoningGate,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,

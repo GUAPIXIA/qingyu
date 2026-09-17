@@ -5,11 +5,11 @@
  * 1. unified 有效生成 ≥ 500，且覆盖 ≥ 2 个供应商（按 endpointFingerprint 区分上游；无指纹时回退 provider）；
  * 7. 500 次样本按功能状态分段（gate 开/关或档位），不得混合。
  *
- * 其余条款（阶段 7 指标、动态上下文回归、Android fixture、保留一版 legacy）
+ * 其余条款（阶段 7 指标、动态上下文回归、Android fixture）
  * 不在本模块：由实施清单人工/另包核对，本模块只负责「可计数」部分。
  *
  * 分段键（不混合）：
- * - `pipeline`：generationPipeline ∈ {unified, legacy}，缺省按 unified（当前产品默认）；
+ * - `pipeline`：仅用于给历史观测记录分段；当前运行时只生成 unified；
  * - `gate`：`off` = 无门控或 gateLevel 缺省且无 knob；否则用 gateLevel（off/low/standard/full）。
  *
  * 有效生成口径复用 `computeValidGenerations`（C4 冻结，不重定义分母）。
@@ -159,7 +159,7 @@ export function formatG2ProgressSummary(progress: G2Progress): string {
 
 /**
  * G2 可离线核对条款的清单（人工项标 pending）。
- * 不替代人工验收：阶段 7 指标、Android、保留 legacy 仍需人工确认。
+ * 不替代人工验收：阶段 7 指标与 Android 仍需人工确认。
  */
 export interface G2ChecklistItem {
   id: string
@@ -173,7 +173,6 @@ export function buildG2Checklist(progress: G2Progress, notes?: {
   phase7MetricsOk?: boolean
   dynamicContextOk?: boolean
   androidFixturesOk?: boolean
-  legacyKept?: boolean
 }): G2ChecklistItem[] {
   const n = notes ?? {}
   const best = progress.bestSegment
@@ -213,10 +212,10 @@ export function buildG2Checklist(progress: G2Progress, notes?: {
       detail: '本期不接入 Android；需单独跑跨端 fixture',
     },
     {
-      id: 'legacy-kept',
-      title: '至少一个版本保留 legacy 可回退',
-      status: n.legacyKept === true ? 'pass' : 'pending',
-      detail: 'W11 前不得删除 legacy；当前代码应仍保留 generationPipeline 分支',
+      id: 'legacy-retired',
+      title: '旧生成管线已退役',
+      status: 'pass',
+      detail: 'generationPipeline 只在设置迁移中删除；运行时不再包含 legacy 分支',
     },
     {
       id: 'segmented',

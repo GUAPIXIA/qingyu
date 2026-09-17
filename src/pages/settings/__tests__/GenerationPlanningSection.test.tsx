@@ -28,7 +28,7 @@ describe('GenerationPlanningSection', () => {
     settings.activeProfileId = 'p1'
     settings.activeModel = 'o3-mini'
     vi.mocked(window.api.ai.getGenerationDiagnostics).mockResolvedValueOnce({
-      modelProfile: { outputLimit: 8192, contextLimit: 200000, reasoningMode: 'shared-unknown', source: 'exact', confidence: 'high' },
+      modelProfile: { outputLimit: 32768, contextLimit: 200000, reasoningMode: 'shared-unknown', source: 'exact', confidence: 'high' },
       gateProbe: { knob: 'reasoning-effort', knobAccepted: true, updatedAt: 1 },
       usageBuckets: [],
       lastRequest: {

@@ -51,21 +51,6 @@ export const LOREBOOK_RECENCY_WINDOW = 5
 /** 启发式 token 估算的安全余量系数（吸收估算误差，替代精确计数） */
 export const TOKEN_BUDGET_SAFETY = 0.95
 
-/** 输出预留兜底值（preset.maxTokens 缺省时） */
-export const DEFAULT_RESERVED_OUTPUT = 1024
-
-/** 翻译输出 token 预算：按输入长度与模型特性自适应
- *  输出量 ≈ 输入量（中英互译），但推理模型的思考（reasoning）会额外占用输出预算，
- *  因此普通模型预留 2048 下限；DeepSeek V4 的部分聚合端会忽略关闭思考参数，
- *  为它保留 4096 下限，避免思考耗尽额度后正文为空。统一使用 8192 上限。
- *  固定大值会超出部分模型输出上限导致 400 错误，短文本也会不必要地放大超限风险。 */
-export function translationMaxTokens(inputText: string, model = ''): number {
-  // 字符→token 粗估：英文约 4 字符/token，中文约 1 字符/token，取 1.5 系数偏保守
-  const estimatedOutput = Math.ceil(inputText.length * 1.5)
-  const minimum = model.toLowerCase().includes('deepseek-v4') ? 4096 : 2048
-  return Math.min(8192, Math.max(minimum, estimatedOutput))
-}
-
 /** 图片消息的 token 估算（每张） */
 export const IMAGE_TOKEN_ESTIMATE = 200
 

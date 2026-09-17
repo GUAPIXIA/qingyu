@@ -2,7 +2,7 @@
  * 斜杠命令注册中心
  */
 import type { Character } from '../../shared/types'
-import type { ChatParams } from '../../shared/types'
+import type { GenerationTask } from '../../shared/generationTaskBudget'
 import type { ActiveImageGenProfile } from '../store/useSettingsStore'
 import type { ImageGenerationStage } from '../store/chatTypes'
 
@@ -46,8 +46,9 @@ export interface CommandContext {
   /** 静默调用 AI（不显示在对话中），返回完整响应 */
   callAiHelper: (systemPrompt: string, userContent: string, options?: {
     temperature?: number
-    maxTokens?: number
-    reasoningMode?: ChatParams['reasoningMode']
+    task?: GenerationTask
+    inputChars?: number
+    expectedBodyChars?: number
     /** 生图等解析器可容错的辅助调用：截断时返回已产出正文而非报错 */
   }) => Promise<string>
   /** 获取最近 N 条对话消息（含角色名） */

@@ -24,13 +24,4 @@ describe('BehaviorSection', () => {
     fireEvent.click(screen.getByRole('button', { name: '封面毛玻璃 16px' }))
     expect(updateSettings).toHaveBeenCalledWith({ coverBlurStrength: 16 })
   })
-
-  it('仅对旧版数据显示一次性恢复入口', () => {
-    const updateSettings = vi.fn()
-    render(<BehaviorSection settings={{ ...getDefaultSettings(), generationPipeline: 'legacy' }} updateSettings={updateSettings} />)
-
-    expect(screen.getByText('检测到旧版生成设置')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '切回新版' }))
-    expect(updateSettings).toHaveBeenCalledWith({ generationPipeline: 'unified' })
-  })
 })

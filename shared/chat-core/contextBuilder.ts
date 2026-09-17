@@ -18,7 +18,8 @@ import type { ContextBuildData, SemanticLoreHit } from '../contextTypes'
 import { buildNarrativeModePrompt, resolveNarrativeMode } from '../narrativeMode'
 import { buildThoughtContractBody } from '../thoughtContract'
 import { collectRecentAssistantChars, detectUserLengthIntent, resolveResponsePolicy, resolveSceneFactor } from '../responsePolicy'
-import { getModelOutputProfile, resolveRequestBudget, resolveUserHardCap, type RequestBudget } from '../modelOutputProfile'
+import type { RequestBudget } from '../modelOutputProfile'
+import { resolveGenerationTaskBudget } from '../generationTaskBudget'
 import { estimateTokens, getDefaultMaxContext, estimateImageTokens } from './tokenCounter'
 import { replaceVariables } from './variables'
 import { resolveEffectiveTemplate } from './chatTemplates'
@@ -37,7 +38,6 @@ import { logInfo, logWarn } from './logging'
 import {
   DEFAULT_LOREBOOK_RATIO,
   DEFAULT_LOREBOOK_SCAN_DEPTH,
-  DEFAULT_RESERVED_OUTPUT,
   resolveLorebookScanDepth,
   TOKEN_BUDGET_SAFETY,
 } from './chatConstants'
@@ -113,8 +113,6 @@ export interface BuildResult {
   requestMaxTokens: number
   /** 本轮请求预算明细（正文预算 / 推理余量 / 风险提示，供诊断与界面提示） */
   requestBudget: RequestBudget
-  /** 阶段6灰度：本轮是否走旧链路（调用方据此跳过收尾器/补尾/语义分块标记） */
-  pipelineLegacy: boolean
   /** S5：本轮识别出的用户篇幅要求（写入观测，便于核对误判） */
   responseIntent: ResponseLengthMode | null
   /** S5：自动模式场景系数（未参与计算时为 1） */
@@ -157,20 +155,6 @@ export interface BuildResult {
 }
 
 /**
- * 旧版正文排版协议（阶段6灰度回退用）：固定 2–6 段、每轮必有对白、动作必加星号。
- * 仅在 settings.generationPipeline === 'legacy' 时注入。
- */
-export function buildLegacyBodyFormatPrompt(characterName: string): string {
-  return `【正文排版协议】
-1. 回复拆成 2–6 个短段落，段落之间留一个空行；每段通常不超过 3 句，禁止连续堆成长篇大段。
-2. 除非角色此刻不能或不应说话，每次回复至少包含一个对白段落。
-3. 对白必须独占段落，使用“说话人＋中文引号”的格式：${characterName}：“对白内容”。对白段落外侧禁止使用星号。
-4. 动作、神态或环境描写必须另起段落，并使用一组星号包裹整段：*动作、神态或环境描写*。
-5. 不要把对白塞进动作星号内，不要在同一段混写对白与长篇叙述，禁止把整条回复全部写成动作斜体块。
-6. 心理活动继续遵循 <thought>...</thought> 规则；正文不要使用标题、项目列表或代码块。`
-}
-
-/**
  * 主对话输出约束（阶段二「替换主对话提示约束」）：
  * 用"一个互动回合"的语义停止规则取代固定 2–6 段、每轮必有对白、动作必加星号等机械协议。
  * 篇幅数字来自 ResponsePolicy（阶段一），只作为软目标——语义完整和自然收尾优先，不为凑字数重复。
@@ -204,38 +188,17 @@ export interface ChatRequestPlan {
   responsePolicy: ResponsePolicy
   requestBudget: RequestBudget
   requestMaxTokens: number
-  /** 阶段6灰度：legacy = 回退旧链路（预设 maxTokens 直用 + 旧排版协议提示） */
-  pipelineLegacy: boolean
-  /** S5：本轮用户文本中识别出的篇幅要求（未识别为 null；legacy 恒为 null） */
+  /** S5：本轮用户文本中识别出的篇幅要求（未识别为 null） */
   responseIntent: ResponseLengthMode | null
-  /** S5：自动模式场景系数（legacy 恒为 1；非 auto 模式不参与计算） */
+  /** S5：自动模式场景系数（非 auto 模式不参与计算） */
   sceneFactor: number
 }
 
 export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan {
   const settings = data.settings.settings
   const profile = data.settings.profile
-  const pipelineLegacy = (settings.generationPipeline ?? 'unified') === 'legacy'
   // 模型解析与实际请求一致（activeModel 优先，切换档案时二者本就同步）
   const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
-  if (pipelineLegacy) {
-    // 旧链路预算：预设 maxTokens 直用（旧 resolveMainChatMaxTokens 语义；DeepSeek V4
-    // 固定 8192 特判已按方案删除，不再恢复）。仍保持单次推导。
-    const legacyMaxTokens = resolveUserHardCap(data.preset?.maxTokens) ?? DEFAULT_RESERVED_OUTPUT
-    const responsePolicy = resolveResponsePolicy({ presetHint: data.preset?.responseLengthHint })
-    return {
-      responsePolicy,
-      requestBudget: {
-        model, profile: getModelOutputProfile(model), bodyReserve: 0, reasoningReserve: 0,
-        minimumViableOutputTokens: 0,
-        requestMaxTokens: legacyMaxTokens,
-      },
-      requestMaxTokens: legacyMaxTokens,
-      pipelineLegacy,
-      responseIntent: null,
-      sceneFactor: 1,
-    }
-  }
   const session = data.chat.sessions.find((s) => s.id === data.chat.currentSessionId)
   // S5：本轮意图取最新一条用户消息；场景系数只依赖确定事件（首轮/明确转场/短问句）
   const latestUserText = [...data.chat.messages].reverse().find((m) => m.role === 'user')?.content ?? ''
@@ -249,9 +212,10 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
     sceneFactor,
     recentAssistantVisibleChars: collectRecentAssistantChars(data.chat.messages),
   })
-  const requestBudget = resolveRequestBudget({
+  const requestBudget = resolveGenerationTaskBudget({
+    task: 'main',
     model,
-    hardMaxChars: responsePolicy.hardMaxChars,
+    expectedBodyChars: responsePolicy.hardMaxChars,
     userHardCap: data.preset?.maxTokens,
     // W1（主计划 §7.3）：按端点/model/task 回读的近期推理样本（缺省 = 档案默认余量）
     ...(data.reasoningSamples?.length ? { recentReasoningTokens: data.reasoningSamples } : {}),
@@ -262,7 +226,6 @@ export function resolveChatRequestPlan(data: ContextBuildData): ChatRequestPlan 
     responsePolicy,
     requestBudget,
     requestMaxTokens: requestBudget.requestMaxTokens,
-    pipelineLegacy,
     responseIntent,
     sceneFactor,
   }
@@ -795,9 +758,7 @@ export function buildContextMessagesFromData(
       text: postHistoryText, mandatory: true, stablePrefix: false,
     })
   }
-  const bodyFormatBase = plan.pipelineLegacy
-    ? buildLegacyBodyFormatPrompt(charNameForVars)
-    : buildMainChatOutputPrompt(plan.responsePolicy)
+  const bodyFormatBase = buildMainChatOutputPrompt(plan.responsePolicy)
   const bodyFormatText = enableThoughtFormat
     ? `${bodyFormatBase}\n\n【内心想法契约】\n${buildThoughtContractBody({
         narrativeMode,
@@ -1086,7 +1047,6 @@ export function buildContextMessagesFromData(
     responsePolicy: plan.responsePolicy,
     requestMaxTokens: plan.requestMaxTokens,
     requestBudget: plan.requestBudget,
-    pipelineLegacy: plan.pipelineLegacy,
     responseIntent: plan.responseIntent,
     sceneFactor: plan.sceneFactor,
     narrativeMode,
@@ -1160,7 +1120,7 @@ export function buildChatParamsFromData(
       hardMaxChars: plan.responsePolicy.hardMaxChars,
       // S5：记录意图识别与场景系数，便于核对误判（未启用时不下发）
       ...(plan.responseIntent ? { responseIntent: plan.responseIntent } : {}),
-      ...(plan.pipelineLegacy ? {} : { sceneFactor: plan.sceneFactor }),
+      sceneFactor: plan.sceneFactor,
       characterId: data.character?.id,
       sessionId: data.chat.currentSessionId ?? undefined,
     },

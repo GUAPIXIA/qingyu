@@ -858,12 +858,6 @@ export interface Settings {
   /** 新会话自动生成标题（默认开） */
   autoTitle?: boolean
   /**
-   * 阶段6灰度开关：生成管线版本。unified（默认）= 篇幅策略 + 动态预算 + 统一收尾 + 语义分块；
-   * legacy = 一键回退旧链路（预设 maxTokens 直用、旧排版协议提示、不做收尾器与补尾、
-   * 新消息不标记语义分块）。回退不删除任何新设置数据与会话数据。
-   */
-  generationPipeline?: 'unified' | 'legacy'
-  /**
    * 阶段8（§4.7）临时 kill switch：推理门控。默认关闭（缺省 = false）。
    * 关闭时 `resolveReasoningGate` 完整退回档案/P90 余量路径，探测记录照常保留；
    * 灰度达标后由 W10 提供 UI 并按阶段 8 §八 决定默认值。
@@ -1113,19 +1107,23 @@ export interface ChatParams {
   presencePenalty: number
   stream: boolean
   /** 辅助型请求可关闭推理；不支持该能力的适配器忽略此字段。 */
-  reasoningMode?: 'default' | 'disabled'
   /**
    * 阶段8（§4.3）：本轮推理门控指令。由主进程在发请求前用
    * `resolveReasoningGate(model, probe, taskKind)` 解析（含探测跳过与预算承诺值）；
    * 缺省时适配器保持现行行为（kill switch 关闭路径，W11 清理旧分支）。
    */
   reasoningGate?: import('./reasoningGate').ReasoningGateDirective
+  /**
+   * 自动输出预算的失败扩容指令。仅自动模式携带；用户显式硬上限时必须缺省，
+   * 因而主进程不能越过用户上限重试。
+   */
+  adaptiveOutputBudget?: import('./generationTaskBudget').AdaptiveOutputBudget
   /** 阶段0观测元数据：随请求透传给主进程观测层记录，不影响请求行为；缺省视为辅助调用。 */
   observability?: {
     source: 'single' | 'group' | 'bridge' | 'aux'
     generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
     /** 阶段7（§7.3）：后台结构化任务类型（独立观测口径，不混入主对话篇幅统计） */
-    taskType?: 'memory' | 'compression' | 'title' | 'direction'
+    taskType?: import('./generationTaskBudget').GenerationTask
     responseLengthMode?: ResponseLengthMode
     hardMaxChars?: number
     /** W10：规划器为正文/推理分别预留的 token，仅用于脱敏诊断。 */

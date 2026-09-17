@@ -367,9 +367,9 @@ describe('imagine 命令', () => {
     const ctx = makeCtx()
     await findCommand('imagine')!.execute([], ctx)
     expect(ctx.callAiHelper).toHaveBeenCalled()
-    // R1：辅助调用放宽截断并预留 2 倍余量（tags 风格 2048，推理峰值 ≈1200）
+    // 生图提示词只描述任务和正文体量，具体 token 由统一规划器解析。
     const options = (ctx.callAiHelper as any).mock.calls[0][2]
-    expect(options).toMatchObject({ maxTokens: 2048, reasoningMode: 'disabled' })
+    expect(options).toMatchObject({ task: 'image_prompt', expectedBodyChars: 800 })
     expect(ctx.notify).toHaveBeenCalledWith(expect.stringContaining('提示词: best quality'))
     expect(ctx.addImageMessage).toHaveBeenCalledWith(
       ['data:image/png;base64,x'],

@@ -15,7 +15,6 @@ import { chatData } from '../ipc/chat'
 import { getAdapter, chatWithRetry } from '../services/ai'
 import {
   nextLowerGateLevel,
-  resolveReasoningGate,
 } from '../../shared/reasoningGate'
 import type { TokenUsageInfo } from '../services/adapters/types'
 import { mainContextProvider } from '../context/mainContextProvider'
@@ -28,8 +27,8 @@ import { applyRegexRules } from '../../shared/chat-core/regex'
 import { createLogger } from '../services/logger'
 import type { AICompletion, Character, ChatParams, Message, ProviderType, RegexRule } from '../../shared/types'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
-import { bridgeJournalPut } from './bridgeJournal'
-import { translationMaxTokens } from '../../shared/chat-core/chatConstants'
+import { resolveGenerationTaskBudget } from '../../shared/generationTaskBudget'
+import { queryUsageProfile } from '../services/generationObservation'
 import { generateBridgeDirections } from './dialogueDirections'
 import { groupData } from '../ipc/group'
 import { buildMessageTranslationSystemPrompt } from '../../shared/translationPrompt'
@@ -41,7 +40,7 @@ import { getCharacter } from '../services/charCard'
 import type { DialogueDirection, Settings } from '../../shared/types'
 import { trimContinuationOverlap } from '../../shared/chat-core/messagePostProcess'
 import { mergeTailRepair, type FinalizedAssistantOutput } from '../../shared/assistantOutputFinalizer'
-import { enabledProfileOverride, formatRequestBudgetRisk, resolveRequestBudget } from '../../shared/modelOutputProfile'
+import { enabledProfileOverride, formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
 import { finalizeGenerationTerminalResult } from '../../shared/chat-core/generatedReplyPipeline'
 import { finalizeNoticeFields } from '../../shared/generationNotice'
 import { terminationCauseFromFinishReason } from '../../shared/generationTermination'
@@ -178,20 +177,6 @@ export class BridgeChatService {
         generationKind: 'manual',
       }
       chatData.saveMessage(characterId, userMessage)
-      bridgeJournalPut({
-        domain: 'message',
-        entityType: 'message',
-        entityId: userMessage.id,
-        parentId: sessionId,
-        payload: {
-          sessionId,
-          characterId,
-          role: userMessage.role,
-          content: userMessage.content,
-          timestamp: userMessage.timestamp,
-          source: 'bridge',
-        },
-      })
       this.idempotency.set(requestId, userMessage)
       this.notifySessionChanged(sessionId, 'message')
 
@@ -213,8 +198,6 @@ export class BridgeChatService {
       const controller = this.generations.create(requestId)
       const chunks: string[] = []
       const aiMessageId = nanoid()
-      // 阶段6灰度：legacy 管线正文原样落盘（管线内跳过收尾器/补尾，不标记语义分块）
-      const legacyPipeline = (freshData.settings.settings.generationPipeline ?? 'unified') === 'legacy'
 
       const onChunk = (text: string) => {
         chunks.push(text)
@@ -243,13 +226,13 @@ export class BridgeChatService {
           ? nextLowerGateLevel(gateLevel)
           : null
         if (nextLevel) {
-          const nextGate = resolveReasoningGate({ model: params.model, requestedLevel: nextLevel, enabled: true })
-          const nextBudget = resolveRequestBudget({
+          const nextBudget = resolveGenerationTaskBudget({
+            task: 'main',
             model: params.model,
-            hardMaxChars: built.responsePolicy.hardMaxChars,
+            expectedBodyChars: built.responsePolicy.hardMaxChars,
             userHardCap: data.preset?.maxTokens,
             profileOverride: enabledProfileOverride(data.settings.profile?.capabilityOverride),
-            reasoningGate: nextGate,
+            reasoningLevel: nextLevel,
           })
           completion = await chatWithRetry(
             getAdapter(params.provider),
@@ -259,8 +242,8 @@ export class BridgeChatService {
               maxTokens: nextBudget.requestMaxTokens,
               reasoningGate: {
                 level: nextLevel,
-                knob: nextGate.knob,
-                tokens: nextGate.gateTokens,
+                knob: nextBudget.reasoningGate.knob,
+                tokens: nextBudget.reasoningGate.gateTokens,
               },
               observability: {
                 ...(params.observability ?? { source: 'bridge' }),
@@ -292,7 +275,6 @@ export class BridgeChatService {
               terminalResult: { rawText: partialText, finishReason: 'unknown', terminationCause: 'transport_error', errorMessage: errMsg },
               regexRules: data.regexRules,
               characterName: data.character.translatedContent?.name || data.character.name,
-              legacy: legacyPipeline,
             })
             if (result.persistable && result.content) {
               const partialMessage: Message = {
@@ -307,7 +289,7 @@ export class BridgeChatService {
                 narrativeMode,
                 speakerKind: 'character',
                 generationKind: 'assistant_reply',
-                ...(legacyPipeline ? {} : { contentRenderMode: 'blocks' as const }),
+                contentRenderMode: 'blocks' as const,
                 ...result.noticeFields,
               }
               chatData.saveMessage(characterId, partialMessage)
@@ -334,7 +316,6 @@ export class BridgeChatService {
         character: data.character,
         params,
         regexRules: data.regexRules,
-        legacy: legacyPipeline,
         autoTailRepairEnabled: data.settings.settings.autoTailRepairEnabled,
       })
       if (!finalizedReply.content) {
@@ -356,7 +337,7 @@ export class BridgeChatService {
         speakerKind: 'character',
         generationKind: 'assistant_reply',
         // 阶段5：新内容使用语义分块渲染；legacy 不标记
-        ...(legacyPipeline ? {} : { contentRenderMode: 'blocks' as const }),
+        contentRenderMode: 'blocks' as const,
         // S6：收尾提示/失败原因随消息下发（Android 与 PC 同义展示）
         ...finalizedReply.noticeFields,
       }
@@ -413,7 +394,6 @@ export class BridgeChatService {
     character: Character
     params: ChatParams
     regexRules: RegexRule[]
-    legacy: boolean
     autoTailRepairEnabled?: boolean
   }): Promise<{
     content: string
@@ -426,7 +406,6 @@ export class BridgeChatService {
       terminalResult: { rawText: input.rawText, finishReason: input.finishReason, terminationCause },
       regexRules: input.regexRules,
       characterName: charName,
-      legacy: input.legacy,
       runTailRepair: input.autoTailRepairEnabled === false ? undefined : (finalized) => this.attemptBridgeTailRepair({
         finalized,
         character: input.character,
@@ -442,11 +421,11 @@ export class BridgeChatService {
     const coordinatorHasPrompt = Object.keys(result.noticeFields).length > 0
     const noticeFields = coordinatorHasPrompt
       ? result.noticeFields
-      : (input.legacy ? {} : finalizeNoticeFields({
+      : finalizeNoticeFields({
           finishReason: input.finishReason,
           notice: result.notice,
           repairFailed: result.repairFailed,
-        }))
+        })
     return { content: result.content, finishReason: input.finishReason, noticeFields }
   }
 
@@ -459,7 +438,19 @@ export class BridgeChatService {
   }): Promise<string | null> {
     if (!input.finalized.repairContext) return null
     try {
-      const budget = resolveRequestBudget({ model: input.params.model, hardMaxChars: 200 })
+      const usageProfile = queryUsageProfile({
+        provider: input.params.provider,
+        baseUrl: input.params.baseUrl,
+        model: input.params.model,
+        taskType: 'tail_repair',
+      })
+      const budget = resolveGenerationTaskBudget({
+        task: 'tail_repair',
+        model: input.params.model,
+        ...(usageProfile?.recentReasoningTokens?.length
+          ? { recentReasoningTokens: usageProfile.recentReasoningTokens }
+          : {}),
+      })
       const repairCompletion = await chatWithRetry(
         getAdapter(input.params.provider),
         {
@@ -473,6 +464,7 @@ export class BridgeChatService {
             { role: 'user', content: `【角色】${input.charName}\n【已生成的回复结尾】\n${input.finalized.repairContext}` },
           ],
           maxTokens: budget.requestMaxTokens,
+          reasoningGate: budget.reasoningGate,
           stream: false,
           tools: undefined,
           toolChoice: undefined,
@@ -524,15 +516,12 @@ export class BridgeChatService {
         controller.signal,
         0,
       )
-      // 阶段4/S1：统一收尾管线（与桌面端同顺序）；阶段6灰度 legacy 正文原样落盘
-      const legacyPipeline = (data.settings.settings.generationPipeline ?? 'unified') === 'legacy'
       const finalizedReply = await this.finalizeBridgeReply({
         rawText: regenCompletion.text,
         finishReason: regenCompletion.finishReason,
         character: data.character,
         params,
         regexRules: data.regexRules,
-        legacy: legacyPipeline,
         autoTailRepairEnabled: data.settings.settings.autoTailRepairEnabled,
       })
       const finalContent = finalizedReply.content
@@ -550,7 +539,7 @@ export class BridgeChatService {
         speakerKind: 'character',
         generationKind: 'regenerate',
         // 阶段5：新内容使用语义分块渲染；legacy 不标记
-        ...(legacyPipeline ? {} : { contentRenderMode: 'blocks' as const }),
+        contentRenderMode: 'blocks' as const,
         // S6：收尾提示/失败原因随候选下发（与 PC regenerate 一致）
         ...finalizedReply.noticeFields,
       }
@@ -587,6 +576,12 @@ export class BridgeChatService {
     const targetLang = settings.translationTargetLang || '中文'
     const provider = (profile.provider || 'openai') as ProviderType
     const model = settings.activeModel || profile.model
+    const samples = queryUsageProfile({ provider, baseUrl: profile.baseUrl, model, taskType: 'translation' })?.recentReasoningTokens
+    const translationPlan = resolveGenerationTaskBudget({
+      task: 'translation', model, inputChars: target.content.length,
+      profileOverride: enabledProfileOverride(profile.capabilityOverride),
+      ...(samples?.length ? { recentReasoningTokens: samples } : {}),
+    })
 
     const requestId = `translate-${messageId}-${Date.now()}`
     const controller = this.generations.create(requestId)
@@ -605,11 +600,13 @@ export class BridgeChatService {
           model,
           temperature: 0.3,
           topP: 0.9,
-          maxTokens: translationMaxTokens(target.content, model),
+          maxTokens: translationPlan.requestMaxTokens,
           frequencyPenalty: 0,
           presencePenalty: 0,
           stream: true,
-          reasoningMode: 'disabled',
+          observability: { source: 'aux', taskType: 'translation' },
+          adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
+          reasoningGate: translationPlan.reasoningGate,
         },
         () => {},
         controller.signal,
@@ -643,6 +640,12 @@ export class BridgeChatService {
     const targetLang = settings.translationTargetLang || '中文'
     const provider = (profile.provider || 'openai') as ProviderType
     const model = settings.activeModel || profile.model
+    const samples = queryUsageProfile({ provider, baseUrl: profile.baseUrl, model, taskType: 'translation' })?.recentReasoningTokens
+    const translationPlan = resolveGenerationTaskBudget({
+      task: 'translation', model, inputChars: target.content.length,
+      profileOverride: enabledProfileOverride(profile.capabilityOverride),
+      ...(samples?.length ? { recentReasoningTokens: samples } : {}),
+    })
 
     const requestId = `translate-${messageId}-${Date.now()}`
     const controller = this.generations.create(requestId)
@@ -661,11 +664,13 @@ export class BridgeChatService {
           model,
           temperature: 0.3,
           topP: 0.9,
-          maxTokens: translationMaxTokens(target.content, model),
+          maxTokens: translationPlan.requestMaxTokens,
           frequencyPenalty: 0,
           presencePenalty: 0,
           stream: true,
-          reasoningMode: 'disabled',
+          observability: { source: 'aux', taskType: 'translation' },
+          adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
+          reasoningGate: translationPlan.reasoningGate,
         },
         () => {},
         controller.signal,

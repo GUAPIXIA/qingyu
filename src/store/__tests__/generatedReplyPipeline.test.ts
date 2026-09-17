@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { runGeneratedReplyPipeline } from '../generatedReplyPipeline'
 import type { RegexRule } from '../../../shared/types'
 
@@ -74,21 +74,6 @@ describe('runGeneratedReplyPipeline（S1 统一收尾顺序）', () => {
     })
     expect(outcome.content).toBe('她推开门。')
     expect(outcome.status).toBe('complete')
-  })
-
-  it('legacy 管线在正则之后原样透传，不进收尾器与补尾', async () => {
-    const repair = vi.fn()
-    const outcome = await runGeneratedReplyPipeline({
-      rawText: '她推开门，走进房间，然后她伸手拿',
-      finishReason: 'length',
-      regexRules: [],
-      characterName: '艾琳',
-      legacy: true,
-      runTailRepair: repair,
-    })
-    expect(outcome.status).toBe('raw')
-    expect(outcome.content).toBe('她推开门，走进房间，然后她伸手拿')
-    expect(repair).not.toHaveBeenCalled()
   })
 
   it('供应商推理残留先被丢弃，不进入正文与正则', async () => {

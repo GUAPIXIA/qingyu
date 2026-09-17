@@ -1,4 +1,6 @@
 import type { ChatParams, ProviderType, Preset, Character, Message, NarrativeMode, ContinueIntensity, ContinueLength } from '../types'
+import type { ReasoningGateDirective } from '../reasoningGate'
+import { resolveGenerationTaskBudget } from '../generationTaskBudget'
 import { stripThought } from './messagePostProcess'
 import {
   CONTINUE_LENGTH_PARAMS,
@@ -422,7 +424,7 @@ export interface AiHelperCallOptions {
   temperature?: number
   maxTokens?: number
   onChunk?: (delta: string, full: string) => void
-  reasoningMode?: ChatParams['reasoningMode']
+  reasoningGate?: ReasoningGateDirective
   /** 截断时返回已产出正文（仅限解析器自身可容错的辅助调用） */
   profile: { provider: ProviderType; apiKey: string; baseUrl: string }
   activeModel: string
@@ -436,7 +438,10 @@ export interface AiHelperCallOptions {
  * 注册 chunk/done/error 监听，完成后自清理。
  */
 export function callAiHelper(opts: AiHelperCallOptions): Promise<string> {
-  const { messages, temperature, maxTokens, onChunk, reasoningMode, profile, activeModel, preset, activeRequestIds } = opts
+  const { messages, temperature, maxTokens, onChunk, reasoningGate, profile, activeModel, preset, activeRequestIds } = opts
+  const automaticPlan = maxTokens == null
+    ? resolveGenerationTaskBudget({ task: 'generic', model: activeModel, userHardCap: preset?.maxTokens })
+    : null
   let result = ''
   const requestId = `ai-helper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   activeRequestIds.add(requestId)
@@ -473,11 +478,11 @@ export function callAiHelper(opts: AiHelperCallOptions): Promise<string> {
       model: activeModel,
       temperature: temperature ?? preset?.temperature ?? 0.5,
       topP: preset?.topP ?? 0.9,
-      maxTokens: maxTokens ?? 800,
+      maxTokens: maxTokens ?? automaticPlan!.requestMaxTokens,
       frequencyPenalty: preset?.frequencyPenalty ?? 0,
       presencePenalty: preset?.presencePenalty ?? 0,
       stream: false,
-      reasoningMode,
+      reasoningGate: reasoningGate ?? automaticPlan?.reasoningGate,
     }
 
     window.api.ai.chat(params).catch((err) => {

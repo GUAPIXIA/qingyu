@@ -69,7 +69,10 @@ export async function prefetchUsageProfile(input: UsageProfileCacheKeyInput): Pr
       // 回读失败：静态档案兜底，不阻塞生成
       profile = null
     }
-    cache.set(key, { profile: profile ?? null, fetchedAt: Date.now() })
+    // 空档案不能按正常 TTL 缓存：当前请求结束后主进程可能立刻写入首条推理样本。
+    // 若把 null 缓存五分钟，用户马上重试仍会沿用旧预算，自动学习形同失效。
+    if (profile) cache.set(key, { profile, fetchedAt: Date.now() })
+    else cache.delete(key)
     inflight.delete(key)
   })()
   inflight.set(key, task)

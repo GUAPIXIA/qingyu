@@ -31,8 +31,6 @@ export interface GeneratedReplyPipelineOptions {
   /** output 正则规则（调用方各自获取：渲染层 window.api.regex.list() / Bridge buildData） */
   regexRules: RegexRule[]
   characterName: string
-  /** 阶段6灰度：legacy 管线正文原样透传（不做收尾器与补尾） */
-  legacy?: boolean
   /**
    * 一次短补尾执行器：渲染层注入 attemptTailRepair，Bridge 注入 chatWithRetry 实现。
    * 仅在收尾器判定 needs_tail_repair 且本轮未补尾时调用一次；缺省 = 不补尾。
@@ -66,10 +64,6 @@ export async function runGeneratedReplyPipeline(opts: GeneratedReplyPipelineOpti
   if (opts.regexRules.length > 0) {
     text = applyOutputRegexRules(text, opts.regexRules)
     text = truncateAtStop(text, collectStopStrings(opts.regexRules)).text
-  }
-
-  if (opts.legacy) {
-    return { content: text, status: 'raw' }
   }
 
   // 4. 收尾器（完整性检查 + 稳定边界回退）
@@ -133,8 +127,6 @@ export interface GenerationTerminalCoordination {
   terminalResult: GenerationTerminalResult
   regexRules: RegexRule[]
   characterName: string
-  /** 阶段6灰度：legacy 跳过收尾器，但仍不得把错误文案写进正文 */
-  legacy?: boolean
   /** 自动补尾执行器：协调入口按 §8.1 自行决定何时调用（仅 provider_length） */
   runTailRepair?: (finalized: FinalizedAssistantOutput) => Promise<string | null>
 }
@@ -147,7 +139,7 @@ export interface GenerationTerminalCoordination {
 export async function finalizeGenerationTerminalResult(
   input: GenerationTerminalCoordination,
 ): Promise<GenerationTerminalOutcome> {
-  const { terminalResult, regexRules, characterName, legacy } = input
+  const { terminalResult, regexRules, characterName } = input
   const cause = terminalResult.terminationCause
   const rawText = terminalResult.rawText ?? ''
 
@@ -178,13 +170,12 @@ export async function finalizeGenerationTerminalResult(
   // 自动补尾限制（§8.1）：只有 provider_length 且稳定正文不足时允许，每条消息最多一次；
   // transport/timeout/protocol/cancel/filter 一律不补尾。
   const finishReason = effectiveFinishReasonForCause(cause, terminalResult.finishReason)
-  const mayRepair = cause === 'provider_length' && !legacy && !!input.runTailRepair
+  const mayRepair = cause === 'provider_length' && !!input.runTailRepair
   const outcome = await runGeneratedReplyPipeline({
     rawText,
     finishReason,
     regexRules,
     characterName,
-    legacy,
     runTailRepair: mayRepair ? input.runTailRepair : undefined,
     // 矩阵 §4.1：正常 stop / tool_calls 的保存结果是"完整正文"，不整条丢弃
     allowEmptyTailPassthrough: cause === 'provider_stop' || cause === 'provider_tool_calls',
@@ -206,7 +197,7 @@ export async function finalizeGenerationTerminalResult(
   if (prompt) noticeFields[prompt.field] = prompt.text
   // provider_length 的轻提示由收尾器 notice 决定（已在完整句处收束/已自动补全结尾），
   // 与异常类提示互斥：异常类优先展示 generationError。
-  if (!prompt && cause === 'provider_length' && !legacy) {
+  if (!prompt && cause === 'provider_length') {
     if (outcome.notice === 'trimmed_to_boundary') noticeFields.generationNotice = '内容已在完整句处收束'
     if (outcome.notice === 'tail_repaired') noticeFields.generationNotice = '已自动补全结尾'
     if (outcome.repairFailed) {

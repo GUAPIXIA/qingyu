@@ -10,10 +10,10 @@ import {
 } from '../../shared/chat-core/memoryWindow'
 import { MEMORY_SUMMARY_MIN } from '../../shared/chat-core/chatConstants'
 import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
+import { resolveGenerationTaskBudget } from '../../shared/generationTaskBudget'
 import {
   enabledProfileOverride,
   resolveEffectiveContextLimit,
-  resolveRequestBudget,
 } from '../../shared/modelOutputProfile'
 import { resolveEffectiveTemplate } from '../../shared/chat-core/chatTemplates'
 import { chatWithRetry, getAdapter } from './ai'
@@ -122,12 +122,14 @@ export function createMemorySummaryService(deps: MemorySummaryServiceDeps): Memo
     const previousMemory = session.memory || '无'
     const previousFacts = session.memoryFacts ?? []
     const previousFactsText = formatMemoryFacts(previousFacts) || '无'
-    const outputTokens = resolveRequestBudget({
+    const memoryPlan = resolveGenerationTaskBudget({
+      task: 'memory',
       model,
-      hardMaxChars: BACKGROUND_GENERATION_PROFILES.memory.expectedBodyChars,
+      expectedBodyChars: BACKGROUND_GENERATION_PROFILES.memory.expectedBodyChars,
       profileOverride: enabledProfileOverride(profile.capabilityOverride),
       ...(data.reasoningSamples ? { recentReasoningTokens: data.reasoningSamples } : {}),
-    }).requestMaxTokens
+    })
+    const outputTokens = memoryPlan.requestMaxTokens
     const promptOverheadTokens = deps.countTokens(
       `${characterName}\n${userName}\n${session.memoryCurrentState || '无'}\n${previousMemory}\n${previousFactsText}`,
       model,
@@ -190,6 +192,7 @@ export function createMemorySummaryService(deps: MemorySummaryServiceDeps): Memo
       temperature: 0.3,
       topP: 0.9,
       maxTokens: outputTokens,
+      reasoningGate: memoryPlan.reasoningGate,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,

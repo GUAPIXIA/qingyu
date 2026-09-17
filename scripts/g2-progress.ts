@@ -29,7 +29,6 @@ function parseArgs(): {
   phase7?: boolean
   dynamicContext?: boolean
   android?: boolean
-  legacyKept?: boolean
 } {
   const args = process.argv.slice(2)
   const get = (flag: string): string | undefined => {
@@ -45,7 +44,6 @@ function parseArgs(): {
     phase7: has('--phase7-ok'),
     dynamicContext: has('--dynamic-context-ok'),
     android: has('--android-ok'),
-    legacyKept: has('--legacy-kept'),
   }
 }
 
@@ -94,7 +92,6 @@ function main(): void {
     ...(opts.phase7 ? { phase7MetricsOk: true } : {}),
     ...(opts.dynamicContext ? { dynamicContextOk: true } : {}),
     ...(opts.android ? { androidFixturesOk: true } : {}),
-    ...(opts.legacyKept ? { legacyKept: true } : {}),
   })
 
   const lines: string[] = []

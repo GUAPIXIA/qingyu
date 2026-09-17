@@ -38,12 +38,12 @@ describe('能力来源优先级（精确 → 族通配 → 回退）', () => {
     expect(family.defaultReasoningReserve).toBe(DEFAULT_OUTPUT_PROFILE.defaultReasoningReserve)
   })
 
-  it('无数据保持当前保守行为（32K 窗口 + 无推理余量假设）', () => {
+  it('无数据保持统一保守行为（32K 窗口 + 通用推理余量）', () => {
     const unknown = getModelOutputProfile('某未登记聚合模型-9')
     expect(unknown.matchedBy).toBe('fallback')
     expect(unknown.confidence).toBe('low')
     expect(unknown.contextLimit).toBe(32768)
-    expect(unknown.defaultReasoningReserve).toBe(0)
+    expect(unknown.defaultReasoningReserve).toBe(2048)
     expect(getDefaultMaxContext('某未登记聚合模型-9')).toBe(32768)
   })
 
@@ -76,8 +76,8 @@ describe('用户覆盖与运行时纠正', () => {
     const profile = resolveModelOutputProfile('deepseek/deepseek-v4.1-flash', {
       runtimeCorrection: { outputLimit: 999999, contextLimit: 999999, reason: 'context_limit', updatedAt: 1 },
     })
-    // 内置 8192/65536 未被放大
-    expect(profile.outputLimit).toBe(8192)
+    // 通用 32768 输出回退与内置 65536 上下文均未被放大
+    expect(profile.outputLimit).toBe(32768)
     expect(profile.contextLimit).toBe(65536)
     expect(profile.confidence).toBe('low')
     expect(profile.matchedBy).toBe('runtime')

@@ -30,7 +30,7 @@ describe('migration', () => {
       }
       const migrated = migrateData('settings', oldSettings) as Record<string, unknown>
       expect(migrated).not.toBeNull()
-      expect(migrated.schemaVersion).toBe(4)
+      expect(migrated.schemaVersion).toBe(5)
       // 旧字段保留
       expect(migrated.activeProvider).toBe('openai')
       expect(migrated.theme).toBe('dark')
@@ -43,7 +43,7 @@ describe('migration', () => {
     })
 
     it('returns null when already at latest version', () => {
-      expect(migrateData('settings', { schemaVersion: 4, theme: 'dark' })).toBeNull()
+      expect(migrateData('settings', { schemaVersion: 5, theme: 'dark' })).toBeNull()
     })
 
     it('returns null for non-object data', () => {
@@ -120,7 +120,7 @@ describe('migration', () => {
 
       expect(migrated).not.toBeNull()
       expect(migrated.imageGenSize).toBeUndefined()
-      expect(migrated.schemaVersion).toBe(4)
+      expect(migrated.schemaVersion).toBe(5)
       const models = migrated.imageGenModels as Array<Record<string, unknown>>
       expect(models[0].overrides).toEqual({ '2.width': 1024, '2.height': 2048 })
     })
@@ -227,7 +227,7 @@ describe('migration', () => {
 
       const migrated = migrateData('settings', v2Settings()) as Record<string, unknown>
       expect(migrated).not.toBeNull()
-      expect(migrated.schemaVersion).toBe(4)
+      expect(migrated.schemaVersion).toBe(5)
 
       const profiles = migrated.connectionProfiles as Array<Record<string, unknown>>
       // openai（有凭据）+ ollama（无凭据也建）两条；cli 缺失的 claude/gemini 不建
@@ -296,7 +296,7 @@ describe('migration', () => {
       setMigrationCredentialAccess({ get: () => null, save: () => {} })
       const migrated = migrateData('settings', v2Settings()) as Record<string, unknown>
       expect(migrated).not.toBeNull()
-      expect(migrated.schemaVersion).toBe(4)
+      expect(migrated.schemaVersion).toBe(5)
     })
   })
 
@@ -310,7 +310,7 @@ describe('migration', () => {
         ],
       }) as Record<string, unknown>
 
-      expect(migrated.schemaVersion).toBe(4)
+      expect(migrated.schemaVersion).toBe(5)
       expect(migrated.lorebookRatio).toBeUndefined()
       expect(migrated).toMatchObject({
         defaultResponseLength: 'auto',
@@ -353,6 +353,20 @@ describe('migration', () => {
     })
   })
 
+  describe('settings v4 → v5（移除旧生成管线）', () => {
+    it('删除 generationPipeline，旧数据不再能切回 legacy', () => {
+      const migrated = migrateData('settings', {
+        schemaVersion: 4,
+        generationPipeline: 'legacy',
+        theme: 'dark',
+      }) as Record<string, unknown>
+
+      expect(migrated.schemaVersion).toBe(5)
+      expect(migrated.generationPipeline).toBeUndefined()
+      expect(migrated.theme).toBe('dark')
+    })
+  })
+
   describe('storage integration', () => {
     const file = () => join(DIRS.config(), 'settings.json')
     function join(...parts: string[]): string {
@@ -367,7 +381,7 @@ describe('migration', () => {
     it('writeJson attaches schemaVersion for the domain', () => {
       writeJson(file(), { theme: 'light' }, 'settings')
       const raw = readJson<{ schemaVersion?: number }>(file())
-      expect(raw?.schemaVersion).toBe(4)
+      expect(raw?.schemaVersion).toBe(5)
     })
 
     it('writeJson without domain does not attach schemaVersion', () => {
@@ -380,11 +394,11 @@ describe('migration', () => {
       // 写一份无版本号的旧数据
       writeJson(file(), { activeProvider: 'openai' })
       const migrated = readJson<Record<string, unknown>>(file(), 'settings')
-      expect(migrated?.schemaVersion).toBe(4)
+      expect(migrated?.schemaVersion).toBe(5)
       expect(migrated?.activeProvider).toBe('openai')
       // 回写后磁盘上已带版本号
       const again = readJson<Record<string, unknown>>(file(), 'settings')
-      expect(again?.schemaVersion).toBe(4)
+      expect(again?.schemaVersion).toBe(5)
     })
 
     it('writeJson with array data keeps it an array (regression: sessions corruption)', () => {
@@ -418,7 +432,7 @@ describe('migration', () => {
     })
 
     it('currentSchemaVersion returns expected values', () => {
-      expect(currentSchemaVersion('settings')).toBe(4)
+      expect(currentSchemaVersion('settings')).toBe(5)
       expect(currentSchemaVersion('characters')).toBe(1)
       expect(currentSchemaVersion('lorebooks')).toBe(1)
       expect(currentSchemaVersion('sessions')).toBe(2)

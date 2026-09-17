@@ -316,7 +316,8 @@ describe('ChatInput', () => {
       await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
 
       const params = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
-      expect(params?.maxTokens).toBe(8192) // 统一失控兜底上限
+      expect(params?.maxTokens).toBeGreaterThan(0)
+      expect(params?.reasoningGate).toMatchObject({ level: 'off' })
       expect(params?.messages[0].content).toContain('剧情推进助手')
 
       // 落在默认「小段」档（80–180 字）内，避免触发长度补足修复
@@ -401,7 +402,8 @@ describe('ChatInput', () => {
       await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
       const params = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
       expect(params?.temperature).toBe(0.75)
-      expect(params?.maxTokens).toBe(8192) // 统一失控兜底上限，不随档位变化
+      expect(params?.maxTokens).toBeGreaterThan(0)
+      expect(params?.reasoningGate).toMatchObject({ level: 'off' })
       expect(params?.messages[0].content).toContain('重大转折、场景变化或新的冲突方向')
       expect(params?.messages[0].content).toContain('写 500–900 个可见中文字符')
       await act(async () => {

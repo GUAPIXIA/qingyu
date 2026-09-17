@@ -22,7 +22,7 @@ const mockApi: Partial<ExposedAPI> = {
     // W1：用量档案回读默认无样本（预算退回静态档案）；需要时由测试覆盖
     getGenerationUsageProfile: vi.fn().mockResolvedValue(null),
     getGenerationDiagnostics: vi.fn().mockResolvedValue({
-      modelProfile: { outputLimit: 8192, contextLimit: 32768, reasoningMode: 'none', source: 'fallback', confidence: 'low' },
+      modelProfile: { outputLimit: 32768, contextLimit: 32768, reasoningMode: 'shared-unknown', source: 'fallback', confidence: 'low' },
       gateProbe: null, usageBuckets: [], lastRequest: null,
       observationStore: { loaded: true, keys: 0, scannedRecords: 0, skippedLines: 0 },
     }),

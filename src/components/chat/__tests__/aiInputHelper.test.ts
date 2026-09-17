@@ -548,7 +548,7 @@ describe('callAiHelper', () => {
     await expect(result).resolves.toBe('')
   })
 
-  it('辅助请求可显式关闭推理模式', async () => {
+  it('辅助请求可显式传入统一推理门控', async () => {
     let done: ((requestId: string) => void) | undefined
     vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
       done = (requestId) => callback({ requestId, finishReason: 'stop' })
@@ -556,14 +556,14 @@ describe('callAiHelper', () => {
     })
     const result = callAiHelper({
       messages: [{ role: 'user', content: '续写' }],
-      reasoningMode: 'disabled',
+      reasoningGate: { level: 'off', knob: 'none', tokens: 192 },
       profile: { provider: 'openai', apiKey: 'sk-test', baseUrl: 'https://api.example.com' },
       activeModel: 'deepseek/deepseek-v4-flash',
       preset: null,
       activeRequestIds: new Set(),
     })
     const params = vi.mocked(window.api.ai.chat).mock.calls.at(-1)?.[0]
-    expect(params?.reasoningMode).toBe('disabled')
+    expect(params?.reasoningGate).toMatchObject({ level: 'off' })
     done?.(params!.requestId)
     await expect(result).resolves.toBe('')
   })

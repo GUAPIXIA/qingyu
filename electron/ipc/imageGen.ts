@@ -4,8 +4,12 @@ import { generateImage, testImageGenConnection, fetchComfyObjectInfo, type Image
 import { analyzeComfyWorkflow, importLocalComfyWorkflow, listLocalComfyWorkflows, normalizeComfyWorkflow } from '../services/comfyWorkflow'
 import { readSettingsFromDisk, restoreSecrets } from './settings'
 import { sanitizeApiKey } from '../utils/pathGuard'
-import type { Settings, ConnectionProfile } from '../../shared/types'
+import type { Settings, ConnectionProfile, ProviderType } from '../../shared/types'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
+import { chatWithRetry, getAdapter } from '../services/ai'
+import { resolveGenerationTaskBudget } from '../../shared/generationTaskBudget'
+import { enabledProfileOverride } from '../../shared/modelOutputProfile'
+import { queryUsageProfile } from '../services/generationObservation'
 
 const log = createLogger('imageGenIPC')
 
@@ -35,17 +39,18 @@ async function translatePromptToEnglish(prompt: string, settings: Settings): Pro
     throw new Error('API Key 未配置')
   }
 
-  const baseUrl = profile.baseUrl.replace(/\/$/, '')
-  const url = `${baseUrl}/chat/completions`
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: profile.model,
+  const provider = profile.provider as ProviderType
+  const model = settings.activeModel || profile.model
+  const samples = queryUsageProfile({ provider, baseUrl: profile.baseUrl, model, taskType: 'image_prompt_translation' })?.recentReasoningTokens
+  const plan = resolveGenerationTaskBudget({
+    task: 'image_prompt_translation', model, inputChars: prompt.length,
+    profileOverride: enabledProfileOverride(profile.capabilityOverride),
+    ...(samples?.length ? { recentReasoningTokens: samples } : {}),
+  })
+  const completion = await chatWithRetry(
+    getAdapter(provider),
+    {
+      requestId: `image-prompt-translate-${Date.now()}`,
       messages: [
         {
           role: 'system',
@@ -53,23 +58,29 @@ async function translatePromptToEnglish(prompt: string, settings: Settings): Pro
         },
         { role: 'user', content: prompt },
       ],
+      provider,
+      apiKey,
+      baseUrl: profile.baseUrl,
+      model,
       temperature: 0.3,
-      max_tokens: 200,
-    }),
-    signal: AbortSignal.timeout(15000),
-  })
-
-  if (!response.ok) {
-    throw new Error(`翻译 API 返回 ${response.status}`)
-  }
-
-  const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
-  const translated = data?.choices?.[0]?.message?.content?.trim()
+      topP: 0.9,
+      maxTokens: plan.requestMaxTokens,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      stream: false,
+      observability: { source: 'aux', taskType: 'image_prompt_translation' },
+      adaptiveOutputBudget: plan.adaptiveOutputBudget,
+      reasoningGate: plan.reasoningGate,
+    },
+    () => {},
+    AbortSignal.timeout(15000),
+    1,
+  )
+  const translated = stripAllThinking(completion.text).trim()
   if (!translated) {
     throw new Error('翻译 API 返回空结果')
   }
-
-  return stripAllThinking(translated)
+  return translated
 }
 
 export function registerImageGenIPC(ipcMain: IpcMain): void {

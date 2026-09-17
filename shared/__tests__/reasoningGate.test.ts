@@ -18,9 +18,8 @@ import {
 import {
   BODY_RESERVE_MULTIPLIER,
   BODY_RESERVE_OVERHEAD_TOKENS,
-  MAX_REQUEST_OUTPUT_TOKENS,
+  DEFAULT_AUTOMATIC_REASONING_RESERVE,
   MIN_USABLE_BODY_TOKENS,
-  PROTOCOL_RESERVE_TOKENS,
   getModelOutputProfile,
   resolveReasoningReserve,
   resolveRequestBudget,
@@ -112,7 +111,7 @@ describe('resolveReasoningGate', () => {
   it('不可信门控（未探测/未验证）：gateTokens = max(档位值, 档案保守余量)', () => {
     const unprobed = resolveReasoningGate({ model: DEEPSEEK, enabled: true, auxiliary: true })
     expect(unprobed.enforced).toBe(false)
-    expect(unprobed.gateTokens).toBe(3072)
+    expect(unprobed.gateTokens).toBe(DEFAULT_AUTOMATIC_REASONING_RESERVE)
     expect(unprobed.source).toBe('conservative')
 
     // 已记录探测但未确认接受 disable（knobAccepted 缺省）：同样是保守余量
@@ -123,7 +122,7 @@ describe('resolveReasoningGate', () => {
       probe: probeOf(),
     })
     expect(unverified.enforced).toBe(false)
-    expect(unverified.gateTokens).toBe(3072)
+    expect(unverified.gateTokens).toBe(DEFAULT_AUTOMATIC_REASONING_RESERVE)
 
     // 静默忽略 disable：off 档没有可执行 knob，退回保守余量
     const ignored = resolveReasoningGate({
@@ -134,14 +133,14 @@ describe('resolveReasoningGate', () => {
     })
     expect(ignored.knob).toBe('none')
     expect(ignored.enforced).toBe(false)
-    expect(ignored.gateTokens).toBe(3072)
+    expect(ignored.gateTokens).toBe(DEFAULT_AUTOMATIC_REASONING_RESERVE)
   })
 
   it('无门控模型：standard 档没有承诺值，退回档案/P90 余量', () => {
     const gate = resolveReasoningGate({ model: 'deepseek-reasoner', enabled: true, auxiliary: true })
     expect(gate.knob).toBe('none')
     expect(gate.enforced).toBe(false)
-    expect(gate.gateTokens).toBe(2048)
+    expect(gate.gateTokens).toBe(DEFAULT_AUTOMATIC_REASONING_RESERVE)
     // P90 样本在场时按样本估计（W1 接线后生效）
     const withSamples = resolveReasoningGate({
       model: 'deepseek-reasoner',
@@ -162,8 +161,7 @@ describe('resolveReasoningGate', () => {
       recentReasoningTokens: [3881, 3200, 3000],
     })
     expect(fromUsage.enforced).toBe(false)
-    // P90(3881) × 1.2 = 4658 → 钳制到档案 maxReasoningReserve(4096)
-    expect(fromUsage.gateTokens).toBe(4096)
+    expect(fromUsage.gateTokens).toBe(Math.ceil(3881 * 1.2))
 
     // probe 与档案样本合并后取整体 P90（合并样本的最大值主导）
     const merged = resolveReasoningGate({
@@ -173,7 +171,7 @@ describe('resolveReasoningGate', () => {
       probe: probeOf({ recentReasoningTokens: [500, 600, 700] }),
       recentReasoningTokens: [3881, 3200, 3000],
     })
-    expect(merged.gateTokens).toBe(4096)
+    expect(merged.gateTokens).toBe(Math.ceil(3881 * 1.2))
 
     // 档案样本较小时仍取档案/P90 的较大者，不被低样本拉低
     const small = resolveReasoningGate({
@@ -182,7 +180,7 @@ describe('resolveReasoningGate', () => {
       auxiliary: true,
       recentReasoningTokens: [100, 120, 150],
     })
-    expect(small.gateTokens).toBe(PROTOCOL_RESERVE_TOKENS)
+    expect(small.gateTokens).toBe(192)
   })
 
   it('kill switch 关闭：退回现行余量路径（与 resolveReasoningReserve 同值）', () => {
@@ -205,7 +203,7 @@ describe('resolveReasoningGate', () => {
     const gate = resolveReasoningGate({ model: '某新聚合推理模型', enabled: true })
     expect(gate.knob).toBe('none')
     expect(gate.enforced).toBe(false)
-    expect(gate.gateTokens).toBe(PROTOCOL_RESERVE_TOKENS)
+    expect(gate.gateTokens).toBe(DEFAULT_AUTOMATIC_REASONING_RESERVE)
   })
 })
 
@@ -283,7 +281,12 @@ describe('预算三态接线（resolveRequestBudget × 门控）', () => {
       enabled: true,
       probe: probeOf({ recentReasoningTokens: [2000, 3000] }),
     })
-    const budget = resolveRequestBudget({ model: 'deepseek-reasoner', hardMaxChars: CHARS, reasoningGate: gate })
+    const budget = resolveRequestBudget({
+      model: 'deepseek-reasoner',
+      hardMaxChars: CHARS,
+      recentReasoningTokens: [2000, 3000],
+      reasoningGate: gate,
+    })
     expect(budget.reasoningReserve).toBe(Math.ceil(3000 * 1.2))
     expect(budget.requestMaxTokens).toBe(BODY + Math.ceil(3000 * 1.2))
     expect(budget.requestMaxTokens - budget.reasoningReserve).toBe(BODY)
@@ -313,7 +316,7 @@ describe('预算三态接线（resolveRequestBudget × 门控）', () => {
     expect(roomy.requestMaxTokens).toBe(BODY)
   })
 
-  it('通用安全上限 8192 仍优先于门控承诺值', () => {
+  it('自动预算不再被旧 8192 安全阀截断', () => {
     const accepted = probeOf({ knobAccepted: true })
     const lowGate = resolveReasoningGate({
       model: DEEPSEEK,
@@ -322,7 +325,7 @@ describe('预算三态接线（resolveRequestBudget × 门控）', () => {
       probe: accepted,
     })
     const budget = resolveRequestBudget({ model: DEEPSEEK, hardMaxChars: 20000, reasoningGate: lowGate })
-    expect(budget.requestMaxTokens).toBe(MAX_REQUEST_OUTPUT_TOKENS)
+    expect(budget.requestMaxTokens).toBe(bodyReserveOf(20000) + LOW_GATE_TOKENS)
   })
 })
 

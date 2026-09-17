@@ -231,8 +231,8 @@ describe('useGroupChatStore', () => {
       await useGroupChatStore.getState().translateMessage('m1')
 
       expect(window.api.ai.chat).toHaveBeenCalledWith(expect.objectContaining({
-        reasoningMode: 'disabled',
-        maxTokens: 4096,
+        reasoningGate: expect.objectContaining({ level: 'off' }),
+        maxTokens: expect.any(Number),
       }))
     })
   })
@@ -412,7 +412,7 @@ describe('useGroupChatStore', () => {
         frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false, responseLengthHint: 'balanced' as const,
       }
       const report = useGroupChatStore.getState().buildGroupContextReport(undefined, preset)
-      expect(report.requestMaxTokens).toBeGreaterThan(3072)
+      expect(report.requestMaxTokens).toBeGreaterThan(1024)
       expect(report.requestBudget?.riskNotice).toBeUndefined()
     })
 

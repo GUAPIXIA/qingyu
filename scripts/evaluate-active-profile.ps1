@@ -27,7 +27,6 @@ param(
   # 空 = 使用活跃 profile 的 model；显式传入可覆盖（G1 用 flash：deepseek-v4.1-flash）
   [string]$Model = '',
   [switch]$NoGate,
-  [switch]$NoThinkingParam,
   [switch]$SkipRealModel
 )
 
@@ -113,11 +112,8 @@ try {
   $env:GENERATION_EVAL_MODEL = $meta.model
   # key only via --key-file, never env/argv
 
-  # G1/阶段8 取证用的臂开关（只影响评测器，不改变生产）：
-  # -NoGate          不发门控指令（改造前路径对照；legacy reasoningMode 仍在）
-  # -NoThinkingParam 连 legacy 的 reasoningMode:'disabled' 也不发（真基线：验证端点能否关闭推理）
+  # 取证用的对照开关（只影响评测器，不改变生产）：-NoGate 不发统一门控指令。
   if ($NoGate) { $env:GENERATION_EVAL_NO_GATE = '1' } else { Remove-Item Env:GENERATION_EVAL_NO_GATE -ErrorAction SilentlyContinue }
-  if ($NoThinkingParam) { $env:GENERATION_EVAL_NO_THINKING_PARAM = '1' } else { Remove-Item Env:GENERATION_EVAL_NO_THINKING_PARAM -ErrorAction SilentlyContinue }
 
   if ($SkipRealModel) {
     Write-Host '[eval-active-profile] SkipRealModel: profile/key path validated, no live calls'

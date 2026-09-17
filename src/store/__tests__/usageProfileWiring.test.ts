@@ -8,8 +8,13 @@ import { useChatStore } from '../useChatStore'
 import { useSettingsStore } from '../useSettingsStore'
 import { usePersonaStore } from '../usePersonaStore'
 import { getDefaultSettings } from '../../../shared/defaults'
+import { DEFAULT_AUTOMATIC_REASONING_RESERVE } from '../../../shared/modelOutputProfile'
 import { streamAIResponse, cleanupActiveStream } from '../streamController'
-import { clearUsageProfileCache } from '../usageProfileCache'
+import {
+  cachedReasoningSamplesFor,
+  clearUsageProfileCache,
+  prefetchUsageProfile,
+} from '../usageProfileCache'
 import type { Character, Message, ConnectionProfile } from '../../../shared/types'
 
 const MODEL = 'deepseek/deepseek-v4.1-flash'
@@ -113,11 +118,11 @@ describe('W1 生产接线：样本进入 resolveRequestBudget', () => {
   })
 
   it('单聊请求预算使用回读样本的 P90×1.2，而不是静态档案默认余量', async () => {
-    const samples = [3000, 3500, 4000]
+    const samples = [7000, 8000, 9000]
     const getProfile = vi.fn().mockResolvedValue({
       sampleCount: 12,
       recentReasoningTokens: samples,
-      reasoningP90: 4000,
+      reasoningP90: 9000,
       bodyVisibleCharsP95: 500,
       reasoningFilledRate: 0.08,
       lowConfidence: false,
@@ -133,17 +138,17 @@ describe('W1 生产接线：样本进入 resolveRequestBudget', () => {
       model: MODEL,
     })
 
-    // 对照：回读失败 → 静态档案默认余量 3072（deepseek-v4 档案）
+    // 对照：回读失败 → 统一自动保守余量。
     ;(window.api.ai as any).getGenerationUsageProfile = vi.fn().mockRejectedValue(new Error('read failed'))
     clearUsageProfileCache()
     setupStores()
     const staticFallback = await runSend()
 
-    // P90（样本 < 10 取最大值 4000）× 1.2 = 4800，再被档案上限 4096 钳制：
-    // 与静态默认余量 3072 的差值必须原样体现在请求上限上
-    const expectedReserve = Math.min(4096, Math.ceil(4000 * 1.2))
-    expect(withSamples.maxTokens - staticFallback.maxTokens).toBe(expectedReserve - 3072)
-    expect(expectedReserve).toBe(4096)
+    // P90（样本 < 10 取最大值 9000）× 1.2 = 10800；
+    // 与统一自动余量的差值必须原样体现在请求上限上。
+    const expectedReserve = Math.ceil(9000 * 1.2)
+    expect(withSamples.maxTokens - staticFallback.maxTokens).toBe(expectedReserve - DEFAULT_AUTOMATIC_REASONING_RESERVE)
+    expect(expectedReserve).toBe(10800)
     expect(staticFallback.maxTokens).toBeGreaterThan(0)
   })
 
@@ -158,6 +163,29 @@ describe('W1 生产接线：样本进入 resolveRequestBudget', () => {
     const empty = await runSend()
 
     expect(sent.maxTokens).toBe(empty.maxTokens)
+  })
+
+  it('空档案不缓存五分钟，下一次请求能立即读取刚产生的推理样本', async () => {
+    const key = { provider: 'openai', baseUrl: 'https://api.example.com', model: MODEL, taskType: 'translation' }
+    const getProfile = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        sampleCount: 1,
+        recentReasoningTokens: [8192],
+        reasoningP90: 8192,
+        bodyVisibleCharsP95: 0,
+        reasoningFilledRate: 1,
+        lowConfidence: true,
+        counts: { completed: 0, reasoningFilled: 1, knobRejected: 0, error: 0 },
+        lastUpdatedAt: Date.now(),
+      })
+    ;(window.api.ai as any).getGenerationUsageProfile = getProfile
+
+    await prefetchUsageProfile(key)
+    await prefetchUsageProfile(key)
+
+    expect(getProfile).toHaveBeenCalledTimes(2)
+    expect(cachedReasoningSamplesFor(key)).toEqual([8192])
   })
 
   it('补尾请求复用同一分桶样本（同步命中缓存，不再单独回读）', async () => {

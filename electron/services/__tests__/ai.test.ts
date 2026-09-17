@@ -12,12 +12,17 @@ vi.mock('electron', () => ({
 }))
 
 import {
+  chatWithRetry,
   getAdapter,
   parseLorebookKeywordSuggestions,
   registerAIIPC,
   registerAdapter,
   unregisterAdapter,
 } from '../ai'
+import {
+  REASONING_BUDGET_EXHAUSTED_MESSAGE,
+  type AIAdapter,
+} from '../adapters/types'
 import type { ChatParams } from '../../../shared/types'
 import type { LorebookKeywordLocalizationResult } from '../../../shared/ipc-api'
 
@@ -43,6 +48,96 @@ function makeParams(overrides: Partial<ChatParams> = {}): ChatParams {
     ...overrides,
   }
 }
+
+describe('自动输出预算扩容', () => {
+  it('翻译被推理吃满且正文为零时逐次扩大预算，直到成功或达到能力上限', async () => {
+    const seenBudgets: number[] = []
+    const adapter: AIAdapter = {
+      chat: vi.fn(async (params, onChunk, _signal, onUsage) => {
+        seenBudgets.push(params.maxTokens)
+        if (params.maxTokens < 7000) {
+          onUsage?.({
+            promptTokens: 100,
+            completionTokens: params.maxTokens,
+            reasoningTokens: params.maxTokens,
+            totalTokens: params.maxTokens + 100,
+          })
+          throw new Error(REASONING_BUDGET_EXHAUSTED_MESSAGE)
+        }
+        onChunk('译文')
+        return { text: '译文', finishReason: 'stop' as const }
+      }),
+      listModels: vi.fn(async () => []),
+      testConnection: vi.fn(async () => true),
+    }
+    const params = makeParams({
+      requestId: 'translation-adaptive-budget',
+      stream: true,
+      maxTokens: 2000,
+      observability: { source: 'aux', taskType: 'translation' },
+      adaptiveOutputBudget: {
+        ceilingTokens: 10000,
+        bodyReserveTokens: 1000,
+      },
+    } as Partial<ChatParams>)
+
+    const completion = await chatWithRetry(
+      adapter,
+      params,
+      vi.fn(),
+      new AbortController().signal,
+      0,
+    )
+
+    expect(completion.text).toBe('译文')
+    expect(seenBudgets.length).toBeGreaterThan(1)
+    expect(seenBudgets.at(-1)).toBeGreaterThanOrEqual(7000)
+    expect(seenBudgets.every((value) => value <= 10000)).toBe(true)
+    expect(seenBudgets).toEqual([...seenBudgets].sort((a, b) => a - b))
+  })
+
+  it('长翻译已有半段正文但以 length 截断时，丢弃半段并扩容重试，不向界面重复发送', async () => {
+    const seenBudgets: number[] = []
+    const adapter: AIAdapter = {
+      chat: vi.fn(async (params, onChunk) => {
+        seenBudgets.push(params.maxTokens)
+        if (seenBudgets.length === 1) {
+          onChunk('半段译文')
+          return { text: '半段译文', finishReason: 'length' as const }
+        }
+        onChunk('完整译文')
+        return { text: '完整译文', finishReason: 'stop' as const }
+      }),
+      listModels: vi.fn(async () => []),
+      testConnection: vi.fn(async () => true),
+    }
+    const outwardChunk = vi.fn()
+    const params = makeParams({
+      requestId: 'translation-partial-adaptive-budget',
+      stream: true,
+      maxTokens: 4000,
+      observability: { source: 'aux', taskType: 'translation' },
+      adaptiveOutputBudget: {
+        ceilingTokens: 12000,
+        bodyReserveTokens: 2500,
+      },
+    })
+
+    const completion = await chatWithRetry(
+      adapter,
+      params,
+      outwardChunk,
+      new AbortController().signal,
+      0,
+    )
+
+    expect(completion).toMatchObject({ text: '完整译文', finishReason: 'stop' })
+    expect(seenBudgets).toHaveLength(2)
+    expect(seenBudgets[1]).toBeGreaterThan(seenBudgets[0])
+    expect(outwardChunk).toHaveBeenCalledTimes(1)
+    expect(outwardChunk).toHaveBeenCalledWith('完整译文')
+  })
+})
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -126,8 +221,8 @@ describe('OpenAI 适配器', () => {
     expect(onChunk).toHaveBeenCalledWith('回答')
   })
 
-  it('非流式：已关闭推理时即使上游仍返回 reasoning_content 也只保留正文', async () => {
-    const params = makeParams({ stream: false, model: 'deepseek/deepseek-v4.1-flash', reasoningMode: 'disabled' })
+  it('非流式：即使上游返回 reasoning_content 也只保留正文', async () => {
+    const params = makeParams({ stream: false, model: 'deepseek/deepseek-v4.1-flash' })
     fetchMock.mockResolvedValue(jsonResponse({
       choices: [{ message: { content: '最终正文', reasoning_content: '内部写作计划' } }],
     }))
@@ -184,8 +279,8 @@ describe('OpenAI 适配器', () => {
     expect(onChunk).toHaveBeenCalledWith('正文')
   })
 
-  it('流式：已关闭推理时忽略上游泄漏的 reasoning_content', async () => {
-    const params = makeParams({ stream: true, model: 'deepseek/deepseek-v4.1-flash', reasoningMode: 'disabled' })
+  it('流式：忽略上游泄漏的 reasoning_content', async () => {
+    const params = makeParams({ stream: true, model: 'deepseek/deepseek-v4.1-flash' })
     fetchMock.mockResolvedValue(streamResponse([
       'data: {"choices":[{"delta":{"reasoning_content":"内部写作计划"}}]}\n\n',
       'data: {"choices":[{"delta":{"content":"最终正文"}}]}\n\n',
@@ -285,7 +380,7 @@ describe('OpenAI 适配器', () => {
       },
     }))
     await expect(getAdapter('openai').chat(params, vi.fn(), new AbortController().signal))
-      .rejects.toThrow('推理已占满模型输出硬上限')
+      .rejects.toThrow('推理已占满本次输出预算')
   })
 
   it('非流式：finish_reason 为 content_filter 时报审核拦截', async () => {
@@ -403,24 +498,24 @@ describe('OpenAI 适配器', () => {
     expect(onUsage).toHaveBeenCalledWith({ promptTokens: 5, completionTokens: 2, totalTokens: 7 })
   })
 
-  it('推理模型（o1 系列）剔除 temperature / top_p 并设置 reasoning_effort', async () => {
+  it('不再根据模型名预先改写采样参数或硬编码 reasoning_effort', async () => {
     const params = makeParams({ stream: false, model: 'o1-mini' })
     fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'ok' } }] }))
 
     await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(body.temperature).toBeUndefined()
-    expect(body.top_p).toBeUndefined()
-    expect(body.frequency_penalty).toBeUndefined()
-    expect(body.reasoning_effort).toBe('medium')
+    expect(body.temperature).toBe(0.7)
+    expect(body.top_p).toBe(1)
+    expect(body.frequency_penalty).toBe(0)
+    expect(body.reasoning_effort).toBeUndefined()
   })
 
   it('DeepSeek V4 辅助请求关闭 thinking', async () => {
     const params = makeParams({
       stream: false,
       model: 'deepseek/deepseek-v4-flash',
-      reasoningMode: 'disabled',
+      reasoningGate: { level: 'off', knob: 'thinking-disable', tokens: 192 },
     })
     fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'ok' } }] }))
 
@@ -434,7 +529,7 @@ describe('OpenAI 适配器', () => {
     const params = makeParams({
       stream: false,
       model: 'deepseek/deepseek-v4-flash',
-      reasoningMode: 'disabled',
+      reasoningGate: { level: 'off', knob: 'thinking-disable', tokens: 192 },
     })
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ error: { message: 'unknown parameter: thinking' } }, 400))
@@ -446,20 +541,27 @@ describe('OpenAI 适配器', () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).thinking).toBeUndefined()
   })
 
-  it('OpenCode Go kimi-k3：采样参数强制修正（temperature=1 / top_p=0.95）', async () => {
-    // 上游约束：kimi-k3 仅允许 temperature=1、top_p=0.95，项目默认 0.3/0.9 会直接 400
-    const params = makeParams({ stream: true, model: 'kimi-k3', temperature: 0.3, topP: 0.9 })
-    fetchMock.mockResolvedValue(streamResponse([
-      'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
-      'data: [DONE]\n',
-    ]))
+  it('端点逐项拒绝采样字段时按错误自适应去参，不识别模型名或写死替代值', async () => {
+    const params = makeParams({ stream: true, model: 'private-model', temperature: 0.3, topP: 0.9 })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'invalid temperature; only 1 is allowed' } }, 400))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: 'invalid top_p; only 0.95 is allowed' } }, 400))
+      .mockResolvedValueOnce(streamResponse([
+        'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
+        'data: [DONE]\n',
+      ]))
 
     await getAdapter('openai').chat(params, vi.fn(), new AbortController().signal)
 
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(body.model).toBe('kimi-k3')
-    expect(body.temperature).toBe(1)
-    expect(body.top_p).toBe(0.95)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body)
+    const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body)
+    const thirdBody = JSON.parse(fetchMock.mock.calls[2][1].body)
+    expect(firstBody).toMatchObject({ model: 'private-model', temperature: 0.3, top_p: 0.9 })
+    expect(secondBody.temperature).toBeUndefined()
+    expect(secondBody.top_p).toBe(0.9)
+    expect(thirdBody.temperature).toBeUndefined()
+    expect(thirdBody.top_p).toBeUndefined()
   })
 
   it('非 2xx 响应抛出带状态码的错误', async () => {
@@ -588,7 +690,13 @@ describe('Claude 适配器', () => {
   })
 
   it('Claude 3.7+ maxTokens 充足时启用 thinking 且移除 top_p', async () => {
-    const params = makeParams({ provider: 'claude', model: 'claude-3-7-sonnet', maxTokens: 4096, stream: false })
+    const params = makeParams({
+      provider: 'claude',
+      model: 'claude-3-7-sonnet',
+      maxTokens: 4096,
+      stream: false,
+      reasoningGate: { level: 'standard', knob: 'thinking-budget', tokens: 1365 },
+    })
     fetchMock.mockResolvedValue(jsonResponse({ content: [{ type: 'text', text: 'hi' }] }))
 
     await getAdapter('claude').chat(params, vi.fn(), new AbortController().signal)
@@ -607,7 +715,7 @@ describe('Claude 适配器', () => {
       model: 'claude-3-7-sonnet',
       maxTokens: 4096,
       stream: false,
-      reasoningMode: 'disabled',
+      reasoningGate: { level: 'off', knob: 'thinking-budget', tokens: 192 },
     })
     fetchMock.mockResolvedValue(jsonResponse({ content: [{ type: 'text', text: 'hi' }] }))
 
@@ -902,7 +1010,7 @@ describe('registerAIIPC 连接通道', () => {
     const handler = registered.get('ai:chat')!
     await handler(
       { sender: { send, isDestroyed: () => false } },
-      makeParams({ requestId: 'empty-1', stream: false, reasoningMode: 'disabled', maxTokens: 4096 }),
+      makeParams({ requestId: 'empty-1', stream: false, maxTokens: 4096 }),
     )
 
     const errorEvent = send.mock.calls.find((call) => call[0] === 'ai:error')
@@ -925,7 +1033,7 @@ describe('registerAIIPC 连接通道', () => {
     const handler = registered.get('ai:chat')!
     await handler(
       { sender: { send, isDestroyed: () => false } },
-      makeParams({ requestId: 'exhausted-1', stream: false, reasoningMode: 'disabled', maxTokens: 4096 }),
+      makeParams({ requestId: 'exhausted-1', stream: false, maxTokens: 4096 }),
     )
 
     const errorEvent = send.mock.calls.find((call) => call[0] === 'ai:error')

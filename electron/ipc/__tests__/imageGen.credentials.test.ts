@@ -28,6 +28,12 @@ vi.mock('../../services/imageGen', () => ({
   fetchComfyObjectInfo: vi.fn(),
 }))
 
+// prompt 翻译复用统一 AI 传输层；本用例只验证生图凭据，不加载其 Electron/MCP 依赖。
+vi.mock('../../services/ai', () => ({
+  getAdapter: vi.fn(),
+  chatWithRetry: vi.fn(),
+}))
+
 // comfyWorkflow 会引入 electron（dialog/app），测试中不需要，整体替身。
 vi.mock('../../services/comfyWorkflow', () => ({
   analyzeComfyWorkflow: vi.fn(),

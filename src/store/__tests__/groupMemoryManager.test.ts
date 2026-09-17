@@ -220,7 +220,7 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
     await p
     // S3：输出预算接入模型能力档案（正文 2500 字 + 推理余量），不再固定 2048
     const expected = resolveRequestBudget({ model: 'gpt-4o', hardMaxChars: 2500 })
-    expect(expected.reasoningReserve).toBe(192)
+    expect(expected.reasoningReserve).toBe(2048)
     expect((callbacks.chatParams as any).maxTokens).toBe(expected.requestMaxTokens)
   })
 

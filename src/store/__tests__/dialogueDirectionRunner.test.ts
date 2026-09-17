@@ -14,7 +14,7 @@ import { BACKGROUND_GENERATION_PROFILES } from '../../../shared/backgroundGenera
 import {
   BODY_RESERVE_MULTIPLIER,
   BODY_RESERVE_OVERHEAD_TOKENS,
-  PROTOCOL_RESERVE_TOKENS,
+  DEFAULT_AUTOMATIC_REASONING_RESERVE,
 } from '../../../shared/modelOutputProfile'
 import { isGateBreakerTripped, resetReasoningGateStateForTests } from '../reasoningGateState'
 
@@ -686,12 +686,10 @@ describe('方向任务推理挤占恢复与统一预算（W4）', () => {
     const expectedBody = Math.ceil(
       BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars * BODY_RESERVE_MULTIPLIER,
     ) + BODY_RESERVE_OVERHEAD_TOKENS
-    // test-model 无推理档案：off 门控在未探测端点取保守余量（协议余量 192）
-    expect(params.maxTokens).toBe(expectedBody + PROTOCOL_RESERVE_TOKENS)
+    // 未探测端点使用统一保守推理余量，不按模型名分叉。
+    expect(params.maxTokens).toBe(expectedBody + DEFAULT_AUTOMATIC_REASONING_RESERVE)
     expect(params.maxTokens).not.toBe(1536)
     expect(params.reasoningGate).toMatchObject({ level: 'off' })
-    // 旧适配器回退字段保留（门控在场时适配器优先消费 reasoningGate）
-    expect(params.reasoningMode).toBe('disabled')
     expect(params.stream).toBe(false)
     expect(params.observability).toMatchObject({ source: 'aux', taskType: 'direction' })
   })

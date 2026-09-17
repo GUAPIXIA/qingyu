@@ -8,7 +8,8 @@ import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { applyRegexRules as applyRegexRulesEngine } from '../utils/regex'
 import { lorebookCache, appendRecentTriggeredIds, touchCompressionCache, upsertCompressionCache } from '../utils/lorebook'
 import { compressLorebookOverflow } from './chatUtils'
-import { STREAM_IDLE_TIMEOUT_MS, translationMaxTokens, LOREBOOK_RECENCY_WINDOW } from './chatConstants'
+import { STREAM_IDLE_TIMEOUT_MS, LOREBOOK_RECENCY_WINDOW } from './chatConstants'
+import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
 import { logError } from '../lib/logger'
 import {
   applyDefaultGroupMemory,
@@ -450,6 +451,13 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const settings = useSettingsStore.getState().settings
     const targetLang = settings.translationTargetLang || '中文'
     const model = settings.activeModel || profile.model
+    const translationPlan = await resolveRendererGenerationTaskBudget({
+      profile,
+      model,
+      task: 'translation',
+      inputChars: msg.content.length,
+      usageTaskType: 'translation',
+    })
     window.api.ai.chat({
       requestId,
       messages: [
@@ -462,11 +470,13 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       model,
       temperature: 0.3,
       topP: 1,
-      maxTokens: translationMaxTokens(msg.content, model),
+      maxTokens: translationPlan.requestMaxTokens,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stream: false,
-      reasoningMode: 'disabled',
+      observability: { source: 'aux', taskType: 'translation' },
+      adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
+      reasoningGate: translationPlan.reasoningGate,
     }).catch(() => {
       clearTranslateTimeout()
       unbindChunk(); unbindDone(); unbindError()

@@ -31,8 +31,6 @@ export interface BuiltChatContext {
   requestBudget: RequestBudget
   /** 本轮篇幅策略（阶段二提示注入复用） */
   responsePolicy: ResponsePolicy
-  /** 阶段6灰度：本轮是否走旧链路 */
-  pipelineLegacy: boolean
   /** S5：本轮识别出的用户篇幅要求（写入观测，便于核对误判） */
   responseIntent: ResponsePolicy['mode'] | null
   /** S5：自动模式场景系数（写入观测） */
@@ -106,7 +104,6 @@ export function buildChatContext(
     requestMaxTokens: result.requestMaxTokens,
     requestBudget: result.requestBudget,
     responsePolicy: result.responsePolicy,
-    pipelineLegacy: result.pipelineLegacy,
     responseIntent: result.responseIntent,
     sceneFactor: result.sceneFactor,
   }

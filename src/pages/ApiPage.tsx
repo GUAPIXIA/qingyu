@@ -251,7 +251,6 @@ export function ApiPage() {
     'mimo-v2-omni': { disabled: true, note: '已弃用，建议迁移 mimo-v2.5' },
     'grok-4.5': { disabled: true, note: '上游暂不可用（Router.Unavailable）' },
     'hy3-preview': { disabled: true, note: '上游暂不可用（ModelNotFound）' },
-    'kimi-k3': { disabled: false, note: '采样参数固定 temperature=1 / top_p=0.95（应用已自动修正）' },
   }
 
   const renderModelChip = (m: string) => {
