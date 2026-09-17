@@ -3,7 +3,8 @@ import { runGroupMemorySummary } from '../groupMemoryManager'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
 import { getDefaultSettings } from '../../../shared/defaults'
-import { resolveRequestBudget } from '../../../shared/modelOutputProfile'
+import { resolveGenerationTaskBudget } from '../../../shared/generationTaskBudget'
+import { BODY_RESERVE_MULTIPLIER, BODY_RESERVE_OVERHEAD_TOKENS } from '../../../shared/modelOutputProfile'
 import type { GroupChat, GroupMessage, Character, ConnectionProfile } from '../../../shared/types'
 
 function makeCharacter(id: string, name: string): Character {
@@ -218,9 +219,14 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
 
     callbacks.onDone!(callbacks.chatParams!.requestId)
     await p
-    // S3：输出预算接入模型能力档案（正文 2500 字 + 推理余量），不再固定 2048
-    const expected = resolveRequestBudget({ model: 'gpt-4o', hardMaxChars: 2500 })
-    expect(expected.reasoningReserve).toBe(2048)
+    // S3：输出预算接入统一任务预算入口（memory 任务默认正文 2500 字 → bodyReserve + 门控推理余量），
+    // 不再固定 2048；与 src/store/groupMemoryManager.ts 使用同一入口与同一组输入
+    const expected = resolveGenerationTaskBudget({ task: 'memory', model: 'gpt-4o' })
+    expect(expected.bodyReserve).toBe(
+      Math.ceil(2500 * BODY_RESERVE_MULTIPLIER) + BODY_RESERVE_OVERHEAD_TOKENS,
+    )
+    // 无用户硬上限且未触及端点输出上限时，请求上限 = bodyReserve + 推理余量
+    expect(expected.requestMaxTokens).toBe(expected.bodyReserve + expected.reasoningReserve)
     expect((callbacks.chatParams as any).maxTokens).toBe(expected.requestMaxTokens)
   })
 

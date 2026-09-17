@@ -17,6 +17,7 @@ import type {
 } from '../../../shared/contextTypes'
 import type { Character, Lorebook, Message, Preset, Settings } from '../../../shared/types'
 import { buildContextMessagesFromData, buildChatParamsFromData } from '../contextBuilder'
+import { DEFAULT_AUTOMATIC_REASONING_RESERVE } from '../../../shared/modelOutputProfile'
 
 // ===== Fixture 构造 =====
 
@@ -626,7 +627,8 @@ describe('两端一致性（同一 contextBuilder 入口）', () => {
     expect(params.temperature).toBe(0.8)
     expect(params.maxTokens).toBe(result.requestMaxTokens)
     expect(params.maxTokens).toBeGreaterThan(0)
-    expect(params.maxTokens).toBeLessThanOrEqual(8192)
+    // 自动预算不再有固定 8192 天花板：无用户硬上限时上限由端点输出能力封顶
+    expect(params.maxTokens).toBeLessThanOrEqual(result.requestBudget.profile.outputLimit)
   })
 
   it('上下文输出预留与请求 max_tokens 来自同一次计算（阶段一验收）', () => {
@@ -649,10 +651,12 @@ describe('两端一致性（同一 contextBuilder 入口）', () => {
       preset: makePreset({ responseLengthHint: 'balanced', maxTokens: 8192 }),
     })
     const result = buildContextMessagesFromData(data)
-    // bodyReserve = ceil(600 × 1.25) + 96 = 846；无样本时使用统一自动推理余量 2048
+    // bodyReserve = ceil(600 × 1.25) + 96 = 846；无样本时使用统一自动推理余量 8192
     expect(result.requestBudget.bodyReserve).toBe(846)
-    expect(result.requestBudget.reasoningReserve).toBe(2048)
-    expect(result.requestMaxTokens).toBe(2894)
+    expect(result.requestBudget.reasoningReserve).toBe(DEFAULT_AUTOMATIC_REASONING_RESERVE)
+    // 预设硬上限 8192 低于 bodyReserve + 推理余量（846 + 8192 = 9038），因此上限生效并被标记风险
+    expect(result.requestMaxTokens).toBe(8192)
+    expect(result.requestBudget.riskNotice).toBe('user_cap_below_reasoning_reserve')
     expect(result.responsePolicy.mode).toBe('balanced')
     expect(result.responsePolicy.source).toBe('preset')
   })
@@ -674,9 +678,10 @@ describe('两端一致性（同一 contextBuilder 入口）', () => {
       },
     })
     const result = buildContextMessagesFromData(data)
-    expect(result.requestBudget.reasoningReserve).toBe(2048)
-    expect(result.requestMaxTokens).toBe(result.requestBudget.bodyReserve + result.requestBudget.reasoningReserve)
-    expect(result.requestMaxTokens).toBeLessThan(8192)
+    // 推理余量取统一自动余量，与模型名无关；预设硬上限 8192 生效，故请求上限同为 8192
+    expect(result.requestBudget.reasoningReserve).toBe(DEFAULT_AUTOMATIC_REASONING_RESERVE)
+    expect(result.requestMaxTokens).toBe(8192)
+    expect(result.requestMaxTokens).toBeLessThanOrEqual(8192)
     const params = buildChatParamsFromData(data, result.messages, { requestMaxTokens: result.requestMaxTokens })
     expect(params.maxTokens).toBe(result.requestMaxTokens)
   })

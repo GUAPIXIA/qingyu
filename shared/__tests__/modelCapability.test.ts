@@ -43,7 +43,9 @@ describe('能力来源优先级（精确 → 族通配 → 回退）', () => {
     expect(unknown.matchedBy).toBe('fallback')
     expect(unknown.confidence).toBe('low')
     expect(unknown.contextLimit).toBe(32768)
-    expect(unknown.defaultReasoningReserve).toBe(2048)
+    // 通用推理余量按自动输出能力的固定比例推导（DEFAULT_AUTOMATIC_OUTPUT_LIMIT / 4），
+    // 不再是为所有模型写死的 2048
+    expect(unknown.defaultReasoningReserve).toBe(DEFAULT_OUTPUT_PROFILE.defaultReasoningReserve)
     expect(getDefaultMaxContext('某未登记聚合模型-9')).toBe(32768)
   })
 
