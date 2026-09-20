@@ -27,6 +27,14 @@ import kotlinx.coroutines.launch
  */
 class AnnouncementsViewModel(
     private val repository: ChatRepository,
+    /**
+     * 仓库留下的「未迁移能力」提示（`LocalChatRepository.unsupportedNotice`）。
+     *
+     * 为什么必须接进来：本地模式下公告是**未迁移能力**，仓库会写一句可行动提示，
+     * 但此前只有 `ChatViewModel` 消费它——公告屏看到的仍是「暂无公告」，
+     * 用户分不清「真的没有公告」与「这一端还没提供」。提示写了却没人显示，等于没写。
+     */
+    notice: StateFlow<String?>? = null,
 ) : ViewModel() {
 
     data class UiState(
@@ -37,6 +45,8 @@ class AnnouncementsViewModel(
         val pageError: CompanionError? = null,
         /** 展开详情的公告 id（其余折叠） */
         val expandedId: Int? = null,
+        /** 未迁移/降级提示；非空时由界面显示在空态说明里 */
+        val notice: String? = null,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -51,6 +61,11 @@ class AnnouncementsViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, LoadState.Loading)
 
     init {
+        notice?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { value -> _ui.update { it.copy(notice = value) } }
+            }
+        }
         refresh()
     }
 

@@ -64,7 +64,7 @@ fun AnnouncementsScreen(onBack: () -> Unit) {
     val qy = qyColors()
     val container = LocalAppContainer.current
     val vm: AnnouncementsViewModel = viewModel(factory = viewModelFactory {
-        initializer { AnnouncementsViewModel(container.repository) }
+        initializer { AnnouncementsViewModel(container.repository, container.chatRepository.unsupportedNotice) }
     })
     val loadState by vm.loadState.collectAsStateWithLifecycle()
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -104,6 +104,9 @@ fun AnnouncementsScreen(onBack: () -> Unit) {
                     is LoadState.Empty -> {
                         QyEmptyState(
                             title = stringResource(R.string.announcements_empty),
+                            // 本地模式下公告是未迁移能力：把仓库写的可行动提示显示出来，
+                            // 用户才分得清「真的没有公告」与「这一端还没提供」
+                            description = ui.notice,
                             actionLabel = stringResource(R.string.action_retry),
                             onAction = vm::refresh,
                             modifier = Modifier.fillMaxSize(),

@@ -4,7 +4,7 @@
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
-> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1110 / 0**、
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1111 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
 > `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
@@ -1060,6 +1060,34 @@ git ls-files --others --ignored --exclude-standard |
 **这一条为什么排在本轮最前**：它不是「功能缺一点」，而是**仓库不自洽**——
 在没有这 9 个文件的机器上，本阶段的任何门禁都跑不起来，更谈不上「可实施阶段 6」。
 
+### 2.30 仓库自洽性复核 + 收口 §2.28 的「提示没人显示」
+
+**（一）把 §2.29 的检查命令真的跑了一遍（repo-wide）**，这次是「反过来查」：除了 `.kt`，还查了
+`.ts/.tsx/.java/.json/.toml`——即**所有源码与测试资产**：
+
+| 范围 | tracked | on-disk | 结论 |
+|---|---|---|---|
+| `android/app/src`（.kt） | 434 | 434 | 全部入库 |
+| `shared/fixtures`（跨端 fixture） | 98 | 98 | 全部入库 |
+| `android/app/schemas`（Room schema） | 8 | 8 | 全部入库 |
+| `electron`（.ts） | 257 | 257 | 全部入库 |
+| `src`（.ts/.tsx） | 311 | 311 | 全部入库 |
+| `shared`（.ts） | 135 | 135 | 全部入库 |
+
+忽略项复核后只剩**本来就该忽略**的：`node_modules/`、各类 `build/`、`.gradle/`、`coverage/`、
+`.poc-tmp/`（本地评测）、`models/`（本地语义模型）、`.mimosa/`、`.idea/`、`server/app/data/`（运行时 SQLite）。
+顺带打消一个假警报：`android/app/schemas` 的 on-disk 比 tracked 多 1，那第 9 个是 `.mimosa/hook-state/*.json`（工具状态），不是 schema。
+
+**顺手修了「检查命令本身不可用」**：§2.29 写进备忘的那条会喷出几百行构建产物，等于没写——
+已改成带完整排除项的版本（期望输出**为空**），并写明「**不要用裸目录名**」的规则。
+
+**（二）收口 §2.28 记录的「可见性未闭环」**：公告屏此前即便仓库写了提示也看不到（只有 `ChatViewModel` 消费）。
+现在 `AnnouncementsViewModel` 接收 `unsupportedNotice`（作为 `UiState.notice`），空态用
+`QyEmptyState.description` 渲染——用户终于能分清「真的没有公告」与「这一端还没提供」。
+新增 `AnnouncementsNoticeTest`（真实 `LocalChatRepository` + `FakeLocalStore`）断言三件事：
+提示进入状态、**空列表仍投影为 `Empty`**（提示只是空态的补充说明，不改五态语义）、不得伪造条数。
+**突变验证**：删掉 VM 里的收集块 → 用例立刻红（已还原、复跑全绿）。
+
 ### 2.6 迁移
 
 `MIGRATION_3_4` 全部是加列/加表/加索引，无重建、无 destructive fallback；新列都带 DEFAULT。
@@ -1147,6 +1175,9 @@ git ls-files --others --ignored --exclude-standard |
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.28 改动后） | **1110 通过 / 0 失败 / 0 跳过 / 142 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 条数不变（`listAnnouncements` 改为 `notMigrated` 只改实现，`ContentWiringAuditTest` 里把「公告」加进既有断言） |
 | 设备（§2.28 改动后） | API 31 经典 AVD **59/0**（1m12s） | |
 | `.gitignore` 修复（§2.29） | **9 个源文件入库**；`git ls-files --others --ignored --exclude-standard` 下 `android/app/src` 的 `.kt` **清零**；`server/app/data/tavern.db` 仍被忽略 | 这一条**不改代码**，但它是「新克隆能否编译」的前提——见 §2.29 的检查命令 |
+| 自洽性复核 + 公告提示收口（§2.30） | 六项 tracked/on-disk 全部相等（434/434、98/98、8/8、257/257、311/311、135/135）；`AnnouncementsNoticeTest` 通过并突变验证 | |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.30 改动后） | **1111 通过 / 0 失败 / 0 跳过 / 143 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1110；**+1 条**（`AnnouncementsNoticeTest`）。改了生产代码（公告页接线），故设备复跑 |
+| 设备（§2.30 改动后） | API 31 经典 AVD **59/0**（1m11s） | |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`
