@@ -2,7 +2,17 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-20
+
 ### 新增
+
+- **PC 界面动效体系统一**：新增 `--motion-fast` / `--motion-base` / `--motion-slow` 三档时长与标准、出场、弹性三组缓动曲线，按钮、弹层、侧栏、页签与本地模型任务中心改用 GPU 友好的过渡属性（只过渡颜色、背景、边框、透明度与位移），短反馈更快、面板稍缓，减少界面切换的生硬感。
+
+- **世界书语义索引收口**：世界书条目按「标题 + 别名 + 摘要 + 正文」构造稳定检索文档并分块向量化，禁用条目、常驻条目与仅关键词模式不进入索引；条目保存后自动比对语义字段变化、统一失效旧向量并调度重建（不再以远程索引是否存在作为是否失效的前置条件）。语义阈值判定（自动 / 手动）下沉为两端共享的纯逻辑（`shared/chat-core/embeddingPolicy`），桌面设置页与 Android 使用同一套阈值决策。
+
+- **发送前语义预取并行化**：单聊发送前的世界书语义命中与记忆事实检索改为并行发起（两者互不依赖），不再把两次嵌入往返串行压在主请求之前。
+
+- **跨端共享导出与候选语义**：会话导出（Markdown / JSON）与消息候选（swipe）语义提取为 `shared/chat-core` 纯逻辑，PC 与 Android 以同一份生产实现作为黄金 fixture 的 oracle，避免两端导出文件内容与消息数量、顺序出现差异。
 
 - **PC 动态上下文 W10 设置、预设迁移与诊断**：默认回复长度移入对话快捷设置；设置中心“生成规划”保留思考强度、连续性保护、自动补全结尾与费用提醒，高级区提供按连接启用的输入/输出能力覆盖、能力来源/置信度、门控探测重置、分类用量及最后一轮 reasoning/body 计划与实际对照。快捷设置删除重复的只读采样区、最大 Token 档位/输入框及完整端点展示，输出硬上限集中到预设高级参数；行为设置对正常数据不再显示“新版管线”说明，只在检测到 legacy 数据时提供一次性恢复入口。诊断 IPC 不暴露 API Key、完整端点、requestId、正文或磁盘路径。settings 唯一迁移链升至 v4：`maxTokens=0` 保持自动，用户正数硬上限完整保留，只有内置旧快捷值映射篇幅偏好，旧 `maxContext` 默认只能收紧、显式启用能力覆盖后才可放大，旧世界书比例仅留迁移记录；legacy 与 8192 通用安全阀继续保留。详见 [W10 实施报告](./docs/报告/PC端动态上下文W10设置预设迁移与诊断实施报告-2026-09-14.md)。
 
@@ -61,6 +71,8 @@
 - **角色卡封面加载失败重加载按钮不出现**：导入时原始图片 URL 的识别范围与下载逻辑对齐，补齐 `cover` / `thumbnail` / `portrait` 等社区卡常见字段；此前仅识别 `avatar` / `image` / `image_url`，导致这些卡片封面下载失败后编辑器不显示「重新加载封面」按钮。
 
 ### 变更
+
+- **跨平台黄金基线（工程）**：新增 shared 黄金用例与跨语言 fixture（chat-core / content-io / sync-payload），并把世界书预算分配、评分等内部函数导出为公开入口，使 Android 侧能以生产实现本身作为 oracle 逐字节对齐。同步落地《PC端算法逻辑优化审查报告》与《开发环境与门禁-备忘录-2026-09-18》（含仓库结构、两端门禁命令与跨语言 fixture 机制），并更新文档索引。
 
 - **对话样式统一与收敛（三端）**：解决同一会话内消息观感漂移（有无说话人名、叙述黑体/斜体随机、引号剥留不一致）与视觉过载。① 解析单一真源——blocks 路径与 Markdown 兼容路径共用 `roleplayBlocks` 同一套行级规则（`remark-roleplay` 重写为逐行分类：整行「名字：“对白”」/整行纯引号 → 对白块，其余行内处理），说话人前缀从 1–4 字放宽到 1–8 字并新增叙述式前缀排除（代词/助词/动作动词命中即按 mixed 处理，"她轻声说道：/苏晚推开门："不再误标角色，"绿色外星人：/美洛拉："正确识别），共享 fixture 扩至 37 样本并新增 `scripts/regenerate-roleplay-fixture.ts` 重算工具；② 三色收敛——对白正文改回气泡主文字色（区分由左竖线与名字承担）、说话人名与色点统一强调色、行内引号与行内动作去底色 chip、叙述统一灰色不斜体（中文斜体渲染质量差）；③ 对白块去卡片化——移除背景渐变/阴影/圆角，改为「左竖线 + 文本」引用形态，匿名对白（模型未写名字）与带名对白同结构仅缺名字行，mixed 段行内引号按 `splitQuoteSegments` 染色（补齐旧注释宣称但未实现的行为）；④ 消息级降噪——字符数 chip 默认关闭（`showTokenCount: false`，与 settings 快照 fixture 对齐，快捷设置可开）。Android 同步镜像：`RoleplayBlocks.kt` 规则对齐、`RoleplayBlockList`/`Markdown` 对白块改竖线形态、`MarkdownParser.splitDialogueParagraph` 改行级分类（对白块只认 ""「」，ASCII 引号仅行内染色）。
 - **冗余结构清理批次①（死代码删除，见[冗余结构审查报告](./docs/报告/冗余结构审查报告-2026-09-13.md)）**：删除零调用方的 `electron/chat/postProcessor.ts` 整模块、`fitMemoryBudget`、`MAIN_CHAT_MAX_TOKENS_LIMIT` 兼容再导出、`lorebook:importJson` 旧 IPC 通道（含 `autoPickAmbiguous` 参数）与 `setActiveProvider`/`Settings.activeProvider` 旧单选体系；迁移器改为全键透传补默认（从 defaults 移出的旧字段不再被静默丢弃）。Android 侧删除 `OutboxDao` 9 个 + `TaskCursorDao` 2 个死 DAO 方法、`createGroupSession`/`renameGroupSession` 整条零调用链与 `GroupSessionDto`、18 条无引用字符串、废弃字段 `imageGenSize`。
