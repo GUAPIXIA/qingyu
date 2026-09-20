@@ -4,7 +4,7 @@
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
-> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1101 / 0**、
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1106 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
 > `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
@@ -871,6 +871,40 @@ PC 的 `chatMode`/`maxRounds`/`speakerInterval`/`presetId` 同样没进 payload�
 `session`/`message` 同一实体类型下、却用另一套 payload 构造函数）、**D-12**
 （`memory_state`/`memory_fact`/`media_manifest` 在 PC 侧没有落点）。
 
+### 2.25 内容层接线审计：把「功能在、接线不在」变成机械检查（并拿到一次阴性结论）
+
+**为什么做这个**：备忘 §5-3 把「功能在、接线不在」列为本仓高发缺陷，并记下了历史上的四次
+——`recordUsage` 没有生产调用者（用量页永远 0）、世界书检索/渲染只被测试使用（绑定了书却一条不注入）、
+会话预设/人设从未传给装配器。这类缺陷**编译期与常规门禁都不报错**：单测全绿、跨端 golden 也对。
+阶段 4 已有 `ChatBuilderWiringAuditTest` 守住装配器输入，而**内容层（阶段 5 的八个编辑器、
+草稿区、媒体闸门、备份编排、用量分析）一直没有同类守卫**——它们正是下一批候选。
+
+**先做人工审计，结论是阴性的（值得记）**：逐模块查簇外生产调用方，17 个交付项里 14 个有；
+唯一没有的是 `ChatEmbeddingPolicy` / `ChatLorebookEmbedding` / `ChatVector` 这**一个互相引用的簇**
+——它按 fixture 锁定、是纯函数，等的是阶段 6 §S6-05 的嵌入通道，属**有意未接线**而非漏接。
+同时确认未迁移能力那条链是通的：`LocalChatRepository.notMigrated()` 会写 `unsupportedNotice`，
+而这个 StateFlow **确实被 `ChatViewModel`（第 171 行）消费**，不是死信号。
+
+**把结论固化成守卫**：新增 `ContentWiringAuditTest`（5 条，纯 JVM，扫源码文本），判据：
+
+1. **能力 → 生产调用方**：清单 18 项，每项必须被「≥2 个生产文件」提到（声明处 + 至少一个调用方），
+   否则要么接上、要么写进 `notWiredYet` 并注明归属阶段；
+2. **未接线清单不许腐烂**：判据是「**簇外**没有任何生产文件引用」——不能数「出现几次」，
+   因为这个簇内部互相调用（第一版正是那么写的，被自己的测试当场指出）；
+3. **中心页八条入口三件齐全**：八个回调都要真的挂在 `HubRow` 的 `onClick` 上、导航宿主都要传
+   **非空**实现、目标路由都要有 `composable` 落点。这条针对一个很容易重犯的坑：
+   后六个回调**有 `null` 默认值**，不传也能编译，那一行会渲染出来但**点不动**；
+4. **同步 payload 只能由 `EntityPayloads` 产出**：三条写路径必须委派，且不得再出现
+   「把 Room 列名当 payload 键」的写法——直接锁住 §2.23/§2.24 修掉的那个 P0 类；
+5. （附带）未迁移能力必须继续走 `notMigrated`，且 `unsupportedNotice` 必须仍被界面消费。
+
+**突变验证**（备忘 §5-2 要求「每个新守卫都要故意打破一次，确认会变红」）：
+把 `FakeLocalStore` 的 `groupPayload(row)` 换回 `mapOf("characterIdsJson" to …)` → 第 4 条**变红**；
+从导航宿主删掉 `onOpenBackup = { … }` 一行 → 第 3 条**变红**。两处均已还原并复跑全绿。
+
+**本轮改动是「只加测试」**：没有改任何生产代码，因此不涉及设备复跑，也不涉及 PC 门禁
+（Android 单测 1101 → **1106**、`lintDebug` **0 Error**、`assembleDebug` 通过）。
+
 ### 2.6 迁移
 
 `MIGRATION_3_4` 全部是加列/加表/加索引，无重建、无 destructive fallback；新列都带 DEFAULT。
@@ -948,6 +982,7 @@ PC 的 `chatMode`/`maxRounds`/`speakerInterval`/`presetId` 同样没进 payload�
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.24 改动后） | **1101 通过 / 0 失败 / 0 跳过 / 139 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1099；本轮 **+2 条**（`SyncPayloadGoldenTest` 的群 payload 不动点 + 「调度/本地列不得进信封」）；该文件现 16 条 |
 | `pnpm check` / `lint` / `test`（§2.24 改动后） | 通过 / **0 error** / **3048 通过 / 4 跳过** | 上一版 3047；**+1 条**（`group-payload` fixture 的生成与只读校验）；PC 侧只改了 `groupEntityPayload` 加 `export`（不改行为） |
 | 设备（§2.24 改动后） | API 31 经典 AVD **59/0**（1m15s，XML 时间戳为本次） | 本轮只复跑这一档：改动在 payload 层，已由 JVM 契约套件（含替身 vs Room 同表）与 api31 设备套件覆盖；**api26/api34 本轮未复跑**，不把上一轮的结果当成这一轮的（两档的既有间歇项见上两行） |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.25 **只加测试**后） | **1106 通过 / 0 失败 / 0 跳过 / 140 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1101；本轮 **+5 条**（`ContentWiringAuditTest`）。**没有改生产代码**，所以设备与 PC 门禁都不涉及——这一点本身就是「只加守卫」应有的形状 |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`
