@@ -5,11 +5,11 @@
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
 > 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1091 / 0**、
-> `lintDebug` **0 Error**、`assembleDebug` 通过，设备全量 API 26 / API 34 各 **59 / 0**，
-> `pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），关闭了 §5 那条悬置的 P1
-> （`retrieval` 从没进过运行时 → §2.21）。
-> 仍不能签字的三件事：**物理真机走查未做**（模拟器不能顶替，§11.1 两个要求不互替）、
-> **API 31（Android 12）这一档仍跑不成**（`AdbTimeoutException`，`Finished 0 tests`，§3.2）、
+> `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
+> （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
+> `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
+> 关闭了 §5 那条悬置的 P1（`retrieval` 从没进过运行时 → §2.21）。
+> 仍不能签字的两件事：**物理真机走查未做**（模拟器不能顶替，§11.1 两个要求不互替）、
 > 以及 D-1～D-9 那批需要产品签字的决策。
 > 按 §4 看板规则记「进行中」，不记「已完成」。
 
@@ -821,7 +821,8 @@ Room 给 `[delta, epsilon]`、替身给 `[gamma-book, delta]`。同源风险在 
 | `ContentLoadMatrixInstrumentedTest` + `ContentUiWalkthroughInstrumentedTest` 两类同跑（api26，Nexus 5） | **7 / 0** | 压力矩阵不是触发条件 |
 | `BackupRestoreFailureInstrumentedTest` + `ContentUiWalkthroughInstrumentedTest` 两类同跑（api26，Nexus 5） | **7 / 0** | 64 MiB 备份载荷也不是触发条件 |
 | `:app:pixel2Api26DebugAndroidTest`（全量，**Pixel 2 档**） | **59 tests / 0 失败**（3m54s） | A/B 结论见下 |
-| `:app:pixel2Api31DebugAndroidTest`（两次，第二次前已清掉残留 emulator 进程） | **未跑成：两次都 `Finished 0 tests`** | `Adb command timed out`（GMD 安装插件写死 `Timeout: PT2M`）：第一次卡在 `shell am get-current-user`，第二次卡在 `install-multiple … app-debug.apk`，收尾的 `pm uninstall` 同样超时。**一条用例都没跑过**，所以 Android 12 这一档**不算已验证**；替代证据是同一份代码在 API 26 / API 34 各 **59/0**（§11.2 要求记录命令、失败摘要与替代证据） |
+| `:app:pixel2Api31DebugAndroidTest`（GMD 路径，两次，第二次前已清掉残留 emulator 进程） | **未跑成：两次都 `Finished 0 tests`** | `Adb command timed out`（GMD 安装插件写死 `Timeout: PT2M`）：第一次卡在 `shell am get-current-user`，第二次卡在 `install-multiple … app-debug.apk`，收尾的 `pm uninstall` 同样超时。**这条路径上一条用例都没跑过** |
+| `:app:connectedDebugAndroidTest --rerun`（**经典 AVD 路径**，`qingyu-api31(AVD) - 12`，手动起 AVD 后连跑） | **59 tests / 0 失败 / 0 跳过**（49.9s，整轮 1m4s） | 绕开 GMD 写死的 `PT2M`：手动起 `qingyu-api31`（`ANDROID_AVD_HOME=D:\Code\android-avd`）→ `adb` 等 `sys.boot_completed=1`（约 45s）→ `connectedDebugAndroidTest --rerun`。按备忘 §5-7 的「缓存回放」陷阱核验过三点：结果 XML 时间戳为本次（18:09:19，读取时 18:09:29）、`adb devices` 显示 `emulator-5554 device`、且加了 `--rerun` 绕过缓存。16 个类逐类全绿，含本轮受影响的 `ContentDraftAreaInstrumentedTest` 7/0、`ContentLoadMatrixInstrumentedTest` 4/0、`CharacterEditorSaveIdempotenceInstrumentedTest` 2/0 |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`
@@ -1335,7 +1336,9 @@ instrumentation 侧新增两组：`BackupRestoreFailureInstrumentedTest` 4/0（a
      （`repeat(40) { delay(50) }`），而它用的是**容器交出的真实文件库**，同进程里前面的类会先动它；
      现在的证据只支持「该用例依赖进程内先后顺序」这一句，**不支持**把它判成产品缺陷或环境问题。
      想复跑确认也做不到：本轮之后 api31 的 adb 安装已稳定超时（宿主磁盘 97% 满，见 §3），→ **已判因并关闭（§2.17(b)）**：既不是产品缺陷也不是档位问题，是那两条断言把「设备全局 dot」当成了「这一行的变更条数」，谁后跑谁红。改成 per-entity 口径后，探针 + 走查 + 草稿区 + 幂等 13 条在 API 34 与 API 26 连跑各 0 失败。
-     api31 那一档在本轮全部改动之后仍未复跑（宿主磁盘 97% 满导致 adb 安装超时，见 §3），所以「Android 12 + 本轮改动」这一格仍是空的，不假装已验证。
+      **2026-09-20 更正：这一格已补上**——API 31 用经典 AVD 路径全量 59/0（见 §3.2/U-10），
+      「Android 12 + 本轮改动」不再是空的。下面这句是当时的记录，保留以说明当时的判断：
+      api31 那一档在本轮全部改动之后仍未复跑（宿主磁盘 97% 满导致 adb 安装超时，见 §3）。
      下一步按判因顺序做：先给这条用例换可控的库与超时口径，再看它在全量下是否仍红。
 - ~~预设列表没有搜索/分页~~ **已补**（§2.19）：`searchPresets`/`countPresets` 下推 SQL，
   列表页有搜索框与「加载更多（X / N）」，内建分区保持整份只读（它是安装包的固定小集合）。
@@ -1365,14 +1368,15 @@ instrumentation 侧新增两组：`BackupRestoreFailureInstrumentedTest` 4/0（a
   **不等于**「列表在用户手上不卡」——Compose 层的渲染与滚动仍未走查（见上面八条路径的实机走查）。
 - U-10 v3→v4 迁移 instrumentation：**已在真机跑通**——API 26 与 API 34 各 35 tests 全绿
   （Gradle Managed Devices，aosp x86_64 镜像，见 §3）。
-  **API 31 这一档 2026-09-19 已跑通**（`ContentDraftAreaInstrumentedTest` 7/0，见 §3）：
-  此前两次 `adb install-multiple` 超时是宿主空闲度问题，单独重跑即可。
-  **但这一档不稳定**：同一轮里再一次 api31 尝试因 `Adb command timed out`（安装插件写死 `PT2M`）
-  直接 `Finished 0 tests`，收尾 `pm uninstall` 也超时——所以 §11.1「Android 12 一档」的证据是
-  「跑通过、可复现性受限」，不是「门禁稳定」。要判稳定需要连续多次全绿，或换一台宿主；
-  走查类（`ContentUiWalkthroughInstrumentedTest`）**也已在 API 31 通过**（3/0，见 §3）；
-  仍未在 API 31 上跑的是：迁移类（阶段 3）、备份失败路径与压力矩阵（阶段 5）、以及阶段 4 的用例。这三处与 Android 12 的差异点位没有已知耦合，但按 §11.1「两个要求不能互相顶替」的口径，没跑就是没跑，不能拿 26/34 的结果替它打勾；
-  Android 8/12/14 **物理真机**矩阵同样仍未跑（模拟器不等于真机，§11.1 两个要求不能互相顶替）。
+  **API 31（Android 12）这一档：2026-09-20 已用「经典 AVD」路径全量跑通 59/59**
+  （`qingyu-api31(AVD) - 12`，`connectedDebugAndroidTest --rerun`，见 §3.2）。
+  这条把此前几次 `AdbTimeoutException` 的性质定死了：**卡的是 GMD 那条路**——
+  它的 APK 安装插件把 adb 超时写死成 `Timeout: PT2M`，本机 api31 的安装间歇性超过 2 分钟；
+  换 `connectedDebugAndroidTest`（手动起 AVD + 已连设备）后同一份代码 1m4s 跑完全部 59 条、0 失败。
+  所以「Android 12 一档」现在**自动化矩阵内三档齐**（26 GMD / 31 经典 AVD / 34 GMD 各 59/0），
+  且阶段 3 迁移类、阶段 4 用例、阶段 5 备份失败路径与压力矩阵**都在 API 31 上真跑过了**
+  （16 个类逐类 0 失败）。
+  仍不能顶替的是**物理真机**：Android 8/12/14 真机矩阵依旧未跑（§11.1 两个要求不能互相顶替）。
 
 **已接通的可达路径**（数据层全绿之后才接，顺序见 §4-7）：
 设置 → 内容管理（`Routes.CONTENT_HUB`）→ 角色管理（S5-01）、正则规则（S5-05）、
