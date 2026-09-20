@@ -68,6 +68,9 @@ class RoomLocalSyncRepository(
         entityType: String,
         entityId: String,
         origin: Origin,
+        /** §6.3 跨实体不变量的来源：会话→角色/群、消息→会话、记忆→会话。顶层实体为 null。 */
+        parentId: String? = null,
+        schemaVersion: Int = LocalEnvelope.DEFAULT_SCHEMA_VERSION,
         deleted: Boolean = false,
         payload: () -> Map<String, Any?>,
         business: suspend () -> R,
@@ -105,6 +108,8 @@ class RoomLocalSyncRepository(
             deviceId = dotDevice,
             counter = dotCounter,
             version = version,
+            parentId = parentId,
+            schemaVersion = schemaVersion,
             deleted = deleted,
             updatedAt = now,
             contentHash = contentHash,
@@ -165,6 +170,8 @@ class RoomLocalSyncRepository(
         entityType: String,
         entityId: String,
         requireAncestor: Boolean = true,
+        /** 被删实体的父：PC 的 `deletes` 也带 parentId（`chat.ts:100/211`），delete fence 靠它归属。 */
+        parentId: String? = null,
     ): Boolean {
         val head = db.syncMetaDao().getHead(entityType, entityId)
         if (head == null && requireAncestor) return false
@@ -202,6 +209,7 @@ class RoomLocalSyncRepository(
                     deviceId = device,
                     counter = counter,
                     version = version,
+                    parentId = parentId,
                     deleted = true,
                     updatedAt = now,
                     contentHash = emptyHash,
@@ -220,11 +228,12 @@ class RoomLocalSyncRepository(
     private suspend fun deleteWithTombstone(
         entityType: String,
         entityId: String,
+        parentId: String? = null,
         businessDelete: suspend () -> Unit,
     ) {
         db.withTransaction {
             businessDelete()
-            tombstoneInTx(entityType, entityId)
+            tombstoneInTx(entityType, entityId, parentId = parentId)
         }
     }
 
@@ -683,16 +692,23 @@ class RoomLocalSyncRepository(
             "session",
             row.id,
             Origin.Local,
+            // 群会话的父是群、单聊会话的父是角色——与 PC `group.ts`/`chat.ts` 的 parentId 口径一致
+            parentId = row.groupId ?: row.characterId,
             payload = { EntityPayloads.sessionPayload(row) },
         ) {
             db.sessionDao().upsert(row)
         }
     }
 
-    override suspend fun deleteSession(id: String) = deleteWithTombstone("session", id) {
-        db.messageDao().deleteForSession(id)
-        db.memoryDao().deleteFactsForSession(id)
-        db.sessionDao().delete(id)
+    override suspend fun deleteSession(id: String) {
+        // 父必须在删除**之前**读：行没了以后 tombstone 的 parentId 就永久是 null，
+        // 而 §6.3 的删除并发/孤儿检测正是靠它把 tombstone 归到某个角色/群下。
+        val parent = io { db.sessionDao().getById(id) }?.let { it.groupId ?: it.characterId }
+        deleteWithTombstone("session", id, parentId = parent) {
+            db.messageDao().deleteForSession(id)
+            db.memoryDao().deleteFactsForSession(id)
+            db.sessionDao().delete(id)
+        }
     }
 
     override fun observeMessages(sessionId: String): Flow<List<LocalMessageEntity>> =
@@ -708,6 +724,7 @@ class RoomLocalSyncRepository(
             "message",
             entity.id,
             Origin.Local,
+            parentId = entity.sessionId,
             payload = { EntityPayloads.messagePayload(entity) },
             business = {
                 require(db.sessionDao().getById(entity.sessionId) != null) { "父会话不存在，拒绝写入消息" }
@@ -731,6 +748,7 @@ class RoomLocalSyncRepository(
             "message",
             entity.id,
             Origin.Local,
+            parentId = entity.sessionId,
             payload = { EntityPayloads.messagePayload(entity) },
         ) {
             val existing = db.messageDao().getById(entity.id)
@@ -745,7 +763,7 @@ class RoomLocalSyncRepository(
     }
 
     override suspend fun deleteMessage(id: String, sessionId: String) =
-        deleteWithTombstone("message", id) { db.messageDao().delete(id) }
+        deleteWithTombstone("message", id, parentId = sessionId) { db.messageDao().delete(id) }
 
     // ------------------------------------------------------------ 记忆 / 用量 / 媒体
 
@@ -759,14 +777,12 @@ class RoomLocalSyncRepository(
             "memory_state",
             row.id,
             Origin.Local,
-            payload = {
-                mapOf(
-                    "sessionId" to row.sessionId,
-                    "summary" to row.summary,
-                    "coveredThroughSeq" to row.coveredThroughSeq,
-                    "budgetJson" to row.budgetJson,
-                )
-            },
+            parentId = row.sessionId,
+            // 这里原先是一份**自己的 4 键内联 map**（sessionId/summary/coveredThroughSeq/budgetJson），
+            // 而 CAS 路径用的是 [memoryStatePayload] 的 7 键——同一实体类型两种 payload 形状，
+            // 两条生产写路径算出不同 contentHash（§2.23 修的是跨端版本，这个是**本机内部**版本）。
+            // 上方的注释「保留原字段进 journal 载荷，同时补上 S4-05 新增字段」正说明它当时漏改了这一处。
+            payload = { memoryStatePayload(row) },
         ) {
             db.memoryDao().upsertState(row)
         }
@@ -802,12 +818,12 @@ class RoomLocalSyncRepository(
         val existing = db.memoryDao().getState(sessionId)
         if (existing == null) {
             if (expectedVersion != 0L) return@io MemoryCasResult(applied = false, currentVersion = 0L)
-            withJournal("memory_state", row.id, Origin.Local, payload = { memoryStatePayload(row) }) {
+            withJournal("memory_state", row.id, Origin.Local, parentId = sessionId, payload = { memoryStatePayload(row) }) {
                 db.memoryDao().upsertState(row)
             }
             return@io MemoryCasResult(applied = true, currentVersion = row.memoryVersion)
         }
-        val affected = withJournal("memory_state", existing.id, Origin.Local, payload = { memoryStatePayload(row) }) {
+        val affected = withJournal("memory_state", existing.id, Origin.Local, parentId = sessionId, payload = { memoryStatePayload(row) }) {
             db.memoryDao().applyStateIfVersion(
                 sessionId = sessionId,
                 expectedVersion = expectedVersion,
@@ -844,6 +860,7 @@ class RoomLocalSyncRepository(
             "memory_fact",
             row.id,
             Origin.Local,
+            parentId = row.sessionId,
             payload = {
                 mapOf(
                     "sessionId" to row.sessionId,
@@ -858,8 +875,11 @@ class RoomLocalSyncRepository(
         }
     }
 
-    override suspend fun deleteMemoryFact(id: String) =
-        deleteWithTombstone("memory_fact", id) { db.memoryDao().deleteFact(id) }
+    override suspend fun deleteMemoryFact(id: String) {
+        // 同 deleteSession：父（会话）要在删除前读出来
+        val sessionId = io { db.memoryDao().getFact(id) }?.sessionId
+        deleteWithTombstone("memory_fact", id, parentId = sessionId) { db.memoryDao().deleteFact(id) }
+    }
 
     /**
      * 用量记录按事件 ID 去重并集（总方案 §6.3）：
@@ -1063,6 +1083,9 @@ class RoomLocalSyncRepository(
             "media_manifest",
             row.id,
             Origin.Local,
+            // 媒体的父是它归属的实体（owner）。PC 侧还没有 media_manifest 的独立落点（见 D-12），
+            // 所以这条 parent 语义是 Android 自己定的，等 D-12 有结论再对齐。
+            parentId = row.ownerId,
             payload = {
                 mapOf(
                     "ownerType" to row.ownerType,
@@ -1217,7 +1240,9 @@ class RoomLocalSyncRepository(
         entityId: String,
         payload: () -> Map<String, Any?>,
         business: suspend () -> R,
-    ): R = withJournal(entityType, entityId, Origin.Remote, payload = payload, business = business)
+        /** 远端信封里的 parentId 必须原样落到本机 head/journal，否则 §6.3 的跨实体不变量在应用端丢失。 */
+        parentId: String?,
+    ): R = withJournal(entityType, entityId, Origin.Remote, parentId = parentId, payload = payload, business = business)
 
     override suspend fun listTombstones(): List<EntityHeadEntity> = io { db.syncMetaDao().listTombstones() }
 

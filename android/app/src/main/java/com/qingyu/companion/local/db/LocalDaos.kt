@@ -570,6 +570,10 @@ interface LocalMemoryDao {
     @Query("SELECT * FROM local_memory_facts WHERE session_id = :sessionId ORDER BY created_at ASC, id")
     suspend fun listFacts(sessionId: String): List<LocalMemoryFactEntity>
 
+    /** 删除前读一次：tombstone 的 `parentId` 必须来自这一行，删掉就再也取不到了。 */
+    @Query("SELECT * FROM local_memory_facts WHERE id = :id")
+    suspend fun getFact(id: String): LocalMemoryFactEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertFact(entity: LocalMemoryFactEntity)
 

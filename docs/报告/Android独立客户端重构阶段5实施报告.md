@@ -4,14 +4,15 @@
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
-> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1106 / 0**、
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1108 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
 > `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
 > 关闭了 §5 那条悬置的 P1（`retrieval` 从没进过运行时 → §2.21），
 > 把 P1-d 的「诚实失败」那一半修了（OOM 不再被说成「ZIP 解析失败」+ 驻留预算先拒 → §2.22），
 > 并修掉 **message / session / group** 三类实体的 payload P0（三条写路径此前都在发 Room 列名 →
-> 两端哈希永不相等 → §2.23、§2.24）。
+> 两端哈希永不相等 → §2.23、§2.24），以及**信封本身**的 P0（少了 `parentId`/`schemaVersion`
+> 两个必填键 → §2.26）。
 > 同时新增 **D-10/D-11/D-12** 三条契约级决策（`usage_clear_marker` 粒度、
 > PC 的群消息 payload 与 `message` 契约不一致、`memory_*`/`media_manifest` 在 PC 无落点）。
 > **注意 §3.2「(2)」**：api26 全量套件的间歇 522 曾被我记成「已用设备档位 A/B 定位」，
@@ -905,6 +906,55 @@ PC 的 `chatMode`/`maxRounds`/`speakerInterval`/`presetId` 同样没进 payload�
 **本轮改动是「只加测试」**：没有改任何生产代码，因此不涉及设备复跑，也不涉及 PC 门禁
 （Android 单测 1101 → **1106**、`lintDebug` **0 Error**、`assembleDebug` 通过）。
 
+### 2.26 同步信封少了两个**必填键**：`parentId` 与 `schemaVersion`（P0，已修）
+
+**怎么发现的**：把 §2.23/§2.24 那套「与契约逐键对一遍」往上一层用——这次对的是**信封本身**。
+`shared/contracts/schemas/sync-envelope.schema.json` 是 `additionalProperties:false` 且有 **11 个 `required`**，
+而 Android 的 `LocalEnvelope.toJson()` 只发 9 个键，缺的正是两个：
+
+| 缺的键 | 为什么它不是「可有可无」 |
+|---|---|
+| **`parentId`** | §6.3 跨实体不变量（角色—会话—消息、会话—记忆、资产—绑定）的**唯一来源**；Sync Core 靠它做 delete fence 与孤儿检测 |
+| **`schemaVersion`** | payload 迁移注册表（`shared/contracts/migrations.ts` 只允许 N→N+1）的入口；没有它，接收端不知道该不该跑迁移 |
+
+PC 那边一直是对的：`shared/contracts/sync-envelope.ts#makeEnvelope` 明确发
+`contractVersion/parentId/schemaVersion`，各写路径也都带 parent（`chat.ts` 会话→角色、消息→会话；
+`group.ts` 会话→群、消息→会话，**连 `deletes` 都带**），而且
+`shared/domain/__tests__/memoryRepository.test.ts` 里已有孤儿（orphan）用例——**PC 侧这套语义是被测试过的**。
+所以这是 Android 单边不合契约，按 §0「优先修正 Android 映射」直接对齐，**不需要决策**。
+
+**为什么一直没人发现**：Android 只写不读。跨端 payload golden 只管 payload、不管信封；
+契约套件比的是「Room 与替身是否相同」——两边同样缺，**一致地错**。这恰好说明这类缺陷会在
+「没人对着契约检查」的那一层继续存活。
+
+**改了什么**
+
+1. `LocalEnvelope` 新增 `parentId` / `schemaVersion` 并**写进 `toJson()`**（缺省 `null` / `1`，与 PC `makeEnvelope` 同口径）；
+2. `withJournal(...)` / `tombstoneInTx(...)` / `deleteWithTombstone(...)` 增加 `parentId` 并透传；
+3. **补齐 parent 语义**（让字段真正有用的那一半）：
+   - 会话 → 父是群或角色（`groupId ?: characterId`，与 PC 的两条写路径一致）；
+   - 消息 → 父是会话；记忆状态 / 事实 → 父是会话；媒体清单 → 父是 owner（PC 尚无落点，见 D-12）；
+   - **删除路径也带 parent**（PC 的 `deletes` 带）：`deleteSession`/`deleteMemoryFact` 在删除**之前**把父读出来
+     （行一删，parentId 就永久是 null；为此给 `LocalMemoryDao` 加了 `getFact(id)`），`deleteMessage` 用已有的 sessionId；
+   - `applyRemote(...)` 增加 `parentId` 形参：远端信封里的 parent 必须落到本机 head/journal，否则不变量在应用端丢失；
+4. `FakeLocalStore` 同步（替身与真实现必须跑同一张行为表：`journal`/`tombstone`/三个删除/`applyRemote` 都带上 parentId）。
+
+**顺带修掉同一类的第四处——而且这次是「本机内部」版本**：`memory_state` 有**两种 payload 形状**：
+`putMemoryState` 用 4 键内联 map，而 CAS 路径用 `memoryStatePayload` 的 7 键。
+同一实体类型、两条生产写路径 → 两个 `contentHash`。旁边那句注释
+「保留原字段进 journal 载荷，同时补上 S4-05 新增字段」正说明当时只改了 CAS 那一处。
+现统一到 `memoryStatePayload` 并补上 `parentId = row.sessionId`。
+
+**新增守卫（2 条）**：`EnvelopeSchemaConformanceTest` 直接读**同一份 schema 文件**逐项核对——
+必填键齐全、无额外键、`contractVersion` 为常量、`entityType` 在枚举内、`dot` 恰为 `{deviceId, counter}`、
+所有 counter 是「无前导零的十进制字符串」（§6.2 要求不得经过 JVM `Long` 的有损转换）、
+`contentHash` 形态正确，且 `parentId`/`schemaVersion` **键必须在**（值可为 null）。
+**突变验证**：把 `parentId` 从 `toJson()` 里删掉 → 两条用例立刻红（已还原、复跑全绿）——正是原始缺陷的形状。
+
+**未做（如实记，属下一轮）**：迁移路径 `importFromLegacy(...)` 仍不带 parent
+（要改 `LocalStore` 接口 + 两处实现 + 迁移器三处调用），因此**迁移进来的会话/消息**在 §6.3 意义上仍是「无父」。
+`usage_record`/`usage_clear_marker`/设置等顶层实体 parent 恒为 null——这与 PC 一致，不需要改。
+
 ### 2.6 迁移
 
 `MIGRATION_3_4` 全部是加列/加表/加索引，无重建、无 destructive fallback；新列都带 DEFAULT。
@@ -983,6 +1033,8 @@ PC 的 `chatMode`/`maxRounds`/`speakerInterval`/`presetId` 同样没进 payload�
 | `pnpm check` / `lint` / `test`（§2.24 改动后） | 通过 / **0 error** / **3048 通过 / 4 跳过** | 上一版 3047；**+1 条**（`group-payload` fixture 的生成与只读校验）；PC 侧只改了 `groupEntityPayload` 加 `export`（不改行为） |
 | 设备（§2.24 改动后） | API 31 经典 AVD **59/0**（1m15s，XML 时间戳为本次） | 本轮只复跑这一档：改动在 payload 层，已由 JVM 契约套件（含替身 vs Room 同表）与 api31 设备套件覆盖；**api26/api34 本轮未复跑**，不把上一轮的结果当成这一轮的（两档的既有间歇项见上两行） |
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.25 **只加测试**后） | **1106 通过 / 0 失败 / 0 跳过 / 140 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1101；本轮 **+5 条**（`ContentWiringAuditTest`）。**没有改生产代码**，所以设备与 PC 门禁都不涉及——这一点本身就是「只加守卫」应有的形状 |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.26 改动后） | **1108 通过 / 0 失败 / 0 跳过 / 141 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1106；**+2 条**（`EnvelopeSchemaConformanceTest`）。本轮改了生产代码（信封字段 + parent 语义 + `memory_state` payload 统一），故设备复跑 |
+| 设备（§2.26 改动后） | API 31 经典 AVD **59/0**（1m14s，XML 时间戳为本次） | api26/api34 本轮未复跑（同上一行的口径：不把旧结果当新结果） |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`
@@ -1484,6 +1536,12 @@ instrumentation 侧新增两组：`BackupRestoreFailureInstrumentedTest` 4/0（a
 
 **未开始**
 
+- U-14 **迁移路径的 `parentId` 还没补**（§2.26 的剩余项）：`LocalStore.importFromLegacy(...)`
+  仍不带 parent，因此**一次性迁移进来的会话/消息**在 §6.3 意义上仍是「无父」——
+  而这两类恰恰是迁移数据量最大的。改法明确：`LocalStore` 接口加一个 `parentId` 形参 →
+  `RoomLocalSyncRepository` 与 `FakeLocalStore` 两处实现 → `LegacyCacheImporter` 三处调用
+  （角色 null、会话 `characterId`、消息 `sessionId`）。属**纯 Android 侧、不需要决策**，
+  建议与下一轮的信封/反射扫描一起做。
 - U-1 S5-02 世界书编辑器 UI：`ui/lorebooks/LorebookEditorViewModel.kt` + `LorebookEditorScreen.kt`
   **已能编译**（canonical v2 条目编辑、多格式导入、兼容性报告、触发测试台走 runtime 同一执行器），
   **已接通**（`Routes.LOREBOOKS` + `CompanionNavHost` composable + 中心页入口，指向

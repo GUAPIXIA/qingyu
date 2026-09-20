@@ -400,6 +400,8 @@ interface LocalStore {
         entityId: String,
         payload: () -> Map<String, Any?>,
         business: suspend () -> R,
+        /** 远端信封里的 `parentId`；不传就当顶层实体。§6.3 的跨实体不变量靠它。 */
+        parentId: String? = null,
     ): R
 
     // ---- 迁移 / 设备 ----

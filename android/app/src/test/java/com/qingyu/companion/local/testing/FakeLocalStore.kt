@@ -181,6 +181,7 @@ class FakeLocalStore(
         payload: Map<String, Any?>,
         origin: Origin,
         deleted: Boolean = false,
+        parentId: String? = null,
     ) {
         MigrationIdentity.requireValidEntityId(entityId)
         val (device, counter) = when (origin) {
@@ -225,6 +226,7 @@ class FakeLocalStore(
                 deviceId = device,
                 counter = counter,
                 version = vector,
+                parentId = parentId,
                 deleted = deleted,
                 updatedAt = now,
                 contentHash = hash,
@@ -241,9 +243,14 @@ class FakeLocalStore(
      * 从未单独记账过的 id 落 delete（整库只有一个 `quick-replies-root` 实体），
      * 此时必须照样建一条 deleted head，否则删除语义丢失（与 Room 同口径）。
      */
-    private fun tombstone(entityType: String, entityId: String, requireAncestor: Boolean = true) {
+    private fun tombstone(
+        entityType: String,
+        entityId: String,
+        requireAncestor: Boolean = true,
+        parentId: String? = null,
+    ) {
         if (heads[entityType to entityId] == null && requireAncestor) return
-        journal(entityType, entityId, emptyMap(), Origin.Local, deleted = true)
+        journal(entityType, entityId, emptyMap(), Origin.Local, deleted = true, parentId = parentId)
     }
 
     private fun <T> upsertList(flow: MutableStateFlow<List<T>>, item: T, id: (T) -> String) {
@@ -678,10 +685,12 @@ class FakeLocalStore(
     }
 
     override suspend fun deleteSession(id: String) = transaction {
+        // 与 Room 实现同口径：父（角色/群）必须在删除前读出来
+        val parent = sessions.value.firstOrNull { it.id == id }?.let { it.groupId ?: it.characterId }
         sessions.value = sessions.value.filterNot { it.id == id }
         messages.value = messages.value.filterNot { it.sessionId == id }
         memoryFacts.value = memoryFacts.value.filterNot { it.sessionId == id }
-        tombstone("session", id)
+        tombstone("session", id, parentId = parent)
     }
 
     override fun observeMessages(sessionId: String): Flow<List<LocalMessageEntity>> =
@@ -722,7 +731,7 @@ class FakeLocalStore(
 
     override suspend fun deleteMessage(id: String, sessionId: String) = transaction {
         messages.value = messages.value.filterNot { it.id == id }
-        tombstone("message", id)
+        tombstone("message", id, parentId = sessionId)
     }
 
     // ---------------------------------------------------------------- 记忆 / 用量 / 媒体
@@ -812,8 +821,9 @@ class FakeLocalStore(
     }
 
     override suspend fun deleteMemoryFact(id: String) = transaction {
+        val sessionId = memoryFacts.value.firstOrNull { it.id == id }?.sessionId
         memoryFacts.value = memoryFacts.value.filterNot { it.id == id }
-        tombstone("memory_fact", id)
+        tombstone("memory_fact", id, parentId = sessionId)
     }
 
     override suspend fun recordUsage(entity: LocalUsageRecordEntity): Boolean = transactionValue {
@@ -1096,11 +1106,12 @@ class FakeLocalStore(
         entityId: String,
         payload: () -> Map<String, Any?>,
         business: suspend () -> R,
+        parentId: String?,
     ): R {
         var result: R? = null
         transactionSuspend {
             result = business()
-            journal(entityType, entityId, payload(), Origin.Remote)
+            journal(entityType, entityId, payload(), Origin.Remote, parentId = parentId)
         }
         @Suppress("UNCHECKED_CAST")
         return result as R
