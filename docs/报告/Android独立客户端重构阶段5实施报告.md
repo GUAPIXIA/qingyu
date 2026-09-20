@@ -4,7 +4,7 @@
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
-> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1108 / 0**、
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1109 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
 > `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
@@ -951,9 +951,13 @@ PC 那边一直是对的：`shared/contracts/sync-envelope.ts#makeEnvelope` 明�
 `contentHash` 形态正确，且 `parentId`/`schemaVersion` **键必须在**（值可为 null）。
 **突变验证**：把 `parentId` 从 `toJson()` 里删掉 → 两条用例立刻红（已还原、复跑全绿）——正是原始缺陷的形状。
 
-**未做（如实记，属下一轮）**：迁移路径 `importFromLegacy(...)` 仍不带 parent
-（要改 `LocalStore` 接口 + 两处实现 + 迁移器三处调用），因此**迁移进来的会话/消息**在 §6.3 意义上仍是「无父」。
-`usage_record`/`usage_clear_marker`/设置等顶层实体 parent 恒为 null——这与 PC 一致，不需要改。
+**2026-09-20 第 9 轮补齐**：迁移路径 `importFromLegacy(...)` 现已带 `parentId`——
+`LocalStore` 接口 + `RoomLocalSyncRepository`/`FakeLocalStore` 两处实现 + `LegacyCacheImporter` 三处调用
+（角色 `null`、会话 `characterId`、消息 `sessionId`）。新增用例
+`migrated sessions and messages carry their parent in the envelope`：不读内存对象，而是从
+**change_log 里读回真实信封**逐条核对（会话→角色、消息→会话，顶层实体的 `parentId` 键在场且为 null）。
+**突变验证**：把会话那处改回 `null` → 用例立刻红（已还原、复跑全绿）。
+`usage_record`/`usage_clear_marker`/设置等顶层实体 parent 恒为 null——与 PC 一致，不需要改。
 
 ### 2.6 迁移
 
@@ -1035,6 +1039,8 @@ PC 那边一直是对的：`shared/contracts/sync-envelope.ts#makeEnvelope` 明�
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.25 **只加测试**后） | **1106 通过 / 0 失败 / 0 跳过 / 140 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1101；本轮 **+5 条**（`ContentWiringAuditTest`）。**没有改生产代码**，所以设备与 PC 门禁都不涉及——这一点本身就是「只加守卫」应有的形状 |
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.26 改动后） | **1108 通过 / 0 失败 / 0 跳过 / 141 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1106；**+2 条**（`EnvelopeSchemaConformanceTest`）。本轮改了生产代码（信封字段 + parent 语义 + `memory_state` payload 统一），故设备复跑 |
 | 设备（§2.26 改动后） | API 31 经典 AVD **59/0**（1m14s，XML 时间戳为本次） | api26/api34 本轮未复跑（同上一行的口径：不把旧结果当新结果） |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§5-U-14 补齐后） | **1109 通过 / 0 失败 / 0 跳过 / 141 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1108；**+1 条**（迁移信封 parent 用例，含突变验证）。改了生产代码（`importFromLegacy` 链路），故设备复跑 |
+| 设备（U-14 补齐后） | API 31 经典 AVD **59/0**（1m12s，XML 时间戳为本次） | api26/api34 本轮未复跑 |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`
@@ -1536,12 +1542,10 @@ instrumentation 侧新增两组：`BackupRestoreFailureInstrumentedTest` 4/0（a
 
 **未开始**
 
-- U-14 **迁移路径的 `parentId` 还没补**（§2.26 的剩余项）：`LocalStore.importFromLegacy(...)`
-  仍不带 parent，因此**一次性迁移进来的会话/消息**在 §6.3 意义上仍是「无父」——
-  而这两类恰恰是迁移数据量最大的。改法明确：`LocalStore` 接口加一个 `parentId` 形参 →
-  `RoomLocalSyncRepository` 与 `FakeLocalStore` 两处实现 → `LegacyCacheImporter` 三处调用
-  （角色 null、会话 `characterId`、消息 `sessionId`）。属**纯 Android 侧、不需要决策**，
-  建议与下一轮的信封/反射扫描一起做。
+- ~~U-14 迁移路径的 `parentId` 还没补~~ **已修（第 9 轮，见 §2.26 末尾）**：`LocalStore.importFromLegacy(...)`
+  增加 `parentId` 形参，`RoomLocalSyncRepository`/`FakeLocalStore` 两处实现透传，`LegacyCacheImporter`
+  三处调用分别给 `null` / `characterId` / `sessionId`；并有从 change_log 真实信封读回校验的用例
+  （含突变验证）。因此**迁移进来的会话/消息不再是「无父」**。
 - U-1 S5-02 世界书编辑器 UI：`ui/lorebooks/LorebookEditorViewModel.kt` + `LorebookEditorScreen.kt`
   **已能编译**（canonical v2 条目编辑、多格式导入、兼容性报告、触发测试台走 runtime 同一执行器），
   **已接通**（`Routes.LOREBOOKS` + `CompanionNavHost` composable + 中心页入口，指向

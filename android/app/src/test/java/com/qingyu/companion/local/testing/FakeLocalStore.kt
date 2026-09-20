@@ -1148,6 +1148,7 @@ class FakeLocalStore(
         genesisContentHash: String?,
         payload: () -> Map<String, Any?>,
         business: suspend () -> Unit,
+        parentId: String?,
     ) = transactionSuspend {
         val computed = MigrationIdentity.contentHash(payload())
         val origin = if (MigrationIdentity.isSameProjection(genesisContentHash, computed)) {
@@ -1156,7 +1157,7 @@ class FakeLocalStore(
             Origin.Local
         }
         business()
-        journal(entityType, entityId, payload(), origin)
+        journal(entityType, entityId, payload(), origin, parentId = parentId)
     }
 
     override suspend fun setMigrationGenesisId(genesisId: String) {

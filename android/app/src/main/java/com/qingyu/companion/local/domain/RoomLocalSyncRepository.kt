@@ -1279,6 +1279,7 @@ class RoomLocalSyncRepository(
         genesisContentHash: String?,
         payload: () -> Map<String, Any?>,
         business: suspend () -> Unit,
+        parentId: String?,
     ) {
         val computed = MigrationIdentity.contentHash(payload())
         val sameHash = MigrationIdentity.isSameProjection(genesisContentHash, computed)
@@ -1286,6 +1287,7 @@ class RoomLocalSyncRepository(
             entityType = entityType,
             entityId = entityId,
             origin = if (sameHash) Origin.Migration else Origin.Local,
+            parentId = parentId,
             payload = payload,
             business = business,
         )

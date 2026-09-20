@@ -411,6 +411,13 @@ interface LocalStore {
         genesisContentHash: String?,
         payload: () -> Map<String, Any?>,
         business: suspend () -> Unit,
+        /**
+         * 被导入实体的父（§6.3 跨实体不变量）：会话→角色、消息→会话。
+         *
+         * 报告 §5-U-14：迁移路径此前不带 parent，于是**迁移进来的会话/消息在信封里 parentId 恒为 null**
+         * ——而这两类恰恰是迁移数据量最大的，delete fence 与孤儿检测对它们完全失效。
+         */
+        parentId: String? = null,
     )
 
     suspend fun setMigrationGenesisId(genesisId: String)

@@ -384,6 +384,42 @@ class LegacyCacheMigrationTest {
         assertEquals(0, aborted.importedMessages)
     }
 
+    /**
+     * 迁移进来的会话/消息必须带 `parentId`（报告 §5-U-14）。
+     *
+     * 为什么单列一条：`importFromLegacy` 曾是**唯一不带 parent 的写路径**，而迁移恰恰是
+     * 新装用户唯一的数据入口——那批会话/消息的信封 `parentId` 恒为 null，于是 §6.3 的
+     * delete fence 与孤儿检测对**数据量最大的一批实体**完全失效。
+     * 这里从 change_log 里读回真实信封（而不是读内存对象），因为要钉的正是**落进 journal 的形状**。
+     */
+    @Test
+    fun `migrated sessions and messages carry their parent in the envelope`() = runBlocking {
+        createLegacyDatabase { it.seedSample() }
+        val reader = LegacyCacheReader(context, legacyDbName = legacyName, snapshotDbName = snapshotName)
+        val store = newLocalStore()
+
+        importIntoLocal(reader, store)
+
+        val envelopes = store.changesAfter(0, 10_000)
+            .associate { (it.entityType to it.entityId) to it.envelopeJson }
+        fun envelopeOf(type: String, id: String): org.json.JSONObject =
+            org.json.JSONObject(envelopes[type to id] ?: error("没有 $type/$id 的变更记录"))
+        fun parentOf(type: String, id: String): String? =
+            envelopeOf(type, id).let { if (it.isNull("parentId")) null else it.getString("parentId") }
+
+        assertEquals("会话的父必须是角色", "char-1", parentOf("session", "sess-1"))
+        assertEquals("会话的父必须是角色", "char-2", parentOf("session", "sess-2"))
+        assertEquals("消息的父必须是会话", "sess-1", parentOf("message", "msg-1"))
+        assertEquals("消息的父必须是会话", "sess-1", parentOf("message", "msg-2"))
+        assertEquals("消息的父必须是会话", "sess-2", parentOf("message", "msg-3"))
+
+        // 顶层实体没有父，但**键必须在场**（契约 required 里有 parentId，值可为 null）
+        val character = envelopeOf("character", "char-1")
+        assertTrue("parentId 键必须在场（值可为 null）", character.has("parentId"))
+        assertTrue("角色是顶层实体，parentId 应为 null", character.isNull("parentId"))
+        assertTrue("schemaVersion 也必须随信封出去（§2.26）", character.has("schemaVersion"))
+    }
+
     private fun snapshotFile(): File = context.getDatabasePath(snapshotName)
 
     private fun SupportSQLiteDatabase.seedSample() {

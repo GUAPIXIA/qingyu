@@ -203,6 +203,8 @@ class LegacyCacheImporter(private val reader: LegacyCacheReader? = null) {
                         entityId = id,
                         genesisContentHash = genesisManifest["character" to id],
                         payload = { characterPayload(entity) },
+                        // 顶层实体：角色没有父
+                        parentId = null,
                         business = { store.importCharacter(entity) },
                     )
                 }
@@ -239,6 +241,8 @@ class LegacyCacheImporter(private val reader: LegacyCacheReader? = null) {
                         entityId = id,
                         genesisContentHash = genesisManifest["session" to id],
                         payload = { sessionPayload(entity) },
+                        // 会话的父是角色（旧伴侣缓存里没有群会话，所以这里就是 characterId）
+                        parentId = characterId,
                         business = { store.importSession(entity) },
                     )
                     sessionIds += id
@@ -299,6 +303,8 @@ class LegacyCacheImporter(private val reader: LegacyCacheReader? = null) {
                         entityId = id,
                         genesisContentHash = genesisManifest["message" to id],
                         payload = { messagePayload(entity) },
+                        // 消息的父是它所属的会话
+                        parentId = sessionId,
                         business = { store.importMessage(entity) },
                     )
                     importedMessages++
