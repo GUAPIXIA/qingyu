@@ -131,9 +131,16 @@ class BackupV3SafetyTest {
      * 在默认堆的 JVM 测试里会把堆打爆（实测报 `ZIP 解析失败：Java heap space`，
      * 断言拿到的不是「过大」而是 OOM 转成的拒绝）。硬把断言改成「拒绝就行」是假绿，
      * 所以那条留在报告 §5 里，用大堆的 instrumentation 用例补。
-     * 顺带记下一个真实设计问题：`inspect` 把整包与每个条目的字节都留在内存里，
-     * 上限却是 1 GiB，而 Android 单应用堆通常只有 1/4 到 1/8 那个量级——
-     * 备份变大时这条路径会 OOM，不是靠降断言能掩盖的。
+     *
+     * **2026-09-20 更新**：这里原先还记着一个设计问题——`inspect` 把整包与每个条目的字节
+     * 都留在内存里、上限却是 1 GiB，而 Android 单应用堆只有它的 1/4–1/8，
+     * 于是「备份变大」会 OOM 并被报成「ZIP 解析失败」。现在分成了两半：
+     * - **已修**：`inspect` 按 [BackupV3.residentBudgetBytes]（契约上限与「可用堆的一半」取小）
+     *   在**超预算时先拒**，并用 [BackupV3.describeInspectFailure] 把 OOM 与「包损坏」分开说——
+     *   用户不会再把「本机内存不够」当成「文件坏了」。下面两条用例钉这两件事；
+     * - **仍未修（能力层）**：真正**恢复**一个大于驻留预算的备份要改接口形状
+     *   （`Preview.entries: Map<String, ByteArray>` 是整包驻留的根），属报告 §5-P1-d 的剩余项。
+     *   所以现在的口径是「拒绝得诚实且可执行」，不是「多大的备份都能恢复」。
      */
     @Test
     fun entryCountCapRejectsZipBomb() {
@@ -146,6 +153,110 @@ class BackupV3SafetyTest {
             result is BackupV3.InspectResult.Rejected && result.reason.contains("条目数超过上限"),
             "条目数超限必须被拒，实际：$result",
         )
+    }
+
+    /**
+     * 驻留预算是「契约上限」与「可用堆的一半」取小，并且先把源包自身扣掉。
+     *
+     * 纯函数（堆大小可注入）：设备上的真实堆值不该成为断言的一部分，
+     * 否则同一条用例在不同机器上断的是不同的数。
+     */
+    @Test
+    fun residentBudgetIsTheSmallerOfTheContractCeilingAndHalfTheHeadroom() {
+        val mib = 1024L * 1024L
+        // 堆很小：预算由堆决定 = (堆 − 源包) × 0.5
+        assertEquals(
+            (100L * mib - 10L * mib) / 2,
+            BackupV3.residentBudgetBytes(sourceBytes = 10L * mib, heapMaxBytes = 100L * mib),
+            "预算必须先把源包自身从堆里扣掉，再取一半",
+        )
+        // 堆很大：被契约上限夹住，不会超过 1 GiB
+        assertEquals(
+            BackupV3.MAX_TOTAL_UNCOMPRESSED_BYTES,
+            BackupV3.residentBudgetBytes(sourceBytes = 1024L, heapMaxBytes = 64L * 1024 * mib),
+            "再大的堆也不能让预算超过契约上限",
+        )
+        // 源包自己就吃掉整个堆：没有预算可用（返回 0，调用方据此直接拒，而不是等 OOM）
+        assertEquals(0L, BackupV3.residentBudgetBytes(sourceBytes = 200L, heapMaxBytes = 100L))
+    }
+
+    /**
+     * 超出**驻留预算**必须在解压过程中被拒，而且文案要说清是「本机放不下」。
+     *
+     * 这条注入一个极小的预算，从而不必真的分配几百 MB——否则要复现同一个场景得先有
+     * 一个几百 MB 的合法备份，用例既慢又依赖机型堆大小。第三条断言是对照组：
+     * 同一个包给足预算必须通过，防止把「这包本来就坏」误当成「超预算」。
+     */
+    @Test
+    fun exceedingTheResidentBudgetIsRejectedByTheBudgetNotByTheHeap() {
+        val entries = (0 until 8).map { index ->
+            BackupV3.Entry("characters/big$index.json", ByteArray(64 * 1024) { 'a'.code.toByte() })
+        }
+        val manifest = BackupV3.manifestOf(entries, "0.17.2", "android", 1L, counts = emptyMap())
+        val archive = BackupV3.build(entries, manifest)
+
+        val result = BackupV3.inspect(archive, budgetBytes = 128 * 1024)
+        assertTrue(result is BackupV3.InspectResult.Rejected, "超预算必须被拒，实际：$result")
+        val reason = (result as BackupV3.InspectResult.Rejected).reason
+        assertTrue("上限" in reason, "拒绝原因必须报出上限：$reason")
+        assertTrue("ZIP 解析失败" !in reason, "不能把「本机放不下」说成「ZIP 坏了」：$reason")
+        assertTrue("PC" in reason, "文案要给出下一步（PC / 分批）：$reason")
+
+        assertTrue(
+            BackupV3.inspect(archive, budgetBytes = 8L * 1024 * 1024) is BackupV3.InspectResult.Ok,
+            "同一份备份在预算充足时必须通过——这是上面那条的对照组",
+        )
+    }
+
+    /**
+     * OOM 与「包损坏」必须是两句不同的话。
+     *
+     * 前两条测 [BackupV3.describeInspectFailure] 本身（纯函数、确定性）：真的制造一次 OOM
+     * 需要按机型堆大小调参，那种用例本身就不稳定，属于「用不稳定的用例证明一件稳定的事」。
+     * 第三条从 `inspect` 入口把「包损坏」那一支端到端跑一遍——该函数的调用点只有一处。
+     */
+    @Test
+    fun outOfMemoryIsReportedAsAMemoryProblemNotNullAsZipCorruption() {
+        val oom = BackupV3.describeInspectFailure(OutOfMemoryError("Java heap space"), 150L * 1024 * 1024)
+        assertTrue("内存不足" in oom, "OOM 必须说成内存问题：$oom")
+        assertTrue("ZIP 解析失败" !in oom, "OOM 不能被说成套 ZIP 解析失败：$oom")
+        assertTrue("PC" in oom, "文案要给出下一步（改在 PC 上恢复）：$oom")
+        assertTrue("150 MB" in oom, "文案要带上已解压量，便于用户判断：$oom")
+
+        val corrupt = BackupV3.describeInspectFailure(java.util.zip.ZipException("bad header"), 0)
+        assertTrue("ZIP 解析失败" in corrupt, "真正的解析失败仍要说成解析失败：$corrupt")
+    }
+
+    /** 坏包的端到端：一个 deflate 条目却塞着垃圾字节，`inspect` 必须整体拒绝而不是抛出去。 */
+    @Test
+    fun aCorruptArchiveIsRejectedThroughTheSamePathInsteadOfThrowing() {
+        val result = BackupV3.inspect(fakeDeflateEntryWithGarbage())
+        assertTrue(result is BackupV3.InspectResult.Rejected, "坏包必须被拒，实际：$result")
+        val reason = (result as BackupV3.InspectResult.Rejected).reason
+        assertTrue(
+            "ZIP 解析失败" in reason || "缺少 manifest.json" in reason,
+            "坏包要么报解析失败、要么报缺少清单，但不能是内存问题：$reason",
+        )
+    }
+
+    /** 手工拼一个「local header 声明 deflate、数据是垃圾」的最小 ZIP，用于走坏包分支。 */
+    private fun fakeDeflateEntryWithGarbage(): ByteArray {
+        val name = "x.json".toByteArray(Charsets.US_ASCII)
+        val buffer = java.nio.ByteBuffer.allocate(30 + name.size + 8).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        buffer.put(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
+        buffer.putShort(20.toShort())   // version needed
+        buffer.putShort(0.toShort())    // flags
+        buffer.putShort(8.toShort())    // method = deflate
+        buffer.putShort(0.toShort())    // mod time
+        buffer.putShort(0.toShort())    // mod date
+        buffer.putInt(0)                // crc32
+        buffer.putInt(8)                // compressed size
+        buffer.putInt(8)                // uncompressed size
+        buffer.putShort(name.size.toShort())
+        buffer.putShort(0.toShort())    // extra len
+        buffer.put(name)
+        repeat(8) { buffer.put(0xFF.toByte()) }
+        return buffer.array()
     }
 
     @Test

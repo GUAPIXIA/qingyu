@@ -38,7 +38,28 @@ object BackupV3 {
     /** ZIP 防护上限（方案 §3 测试矩阵的 ZIP bomb 项）。 */
     const val MAX_ENTRIES = 20_000
     const val MAX_SINGLE_ENTRY_BYTES = 64L * 1024 * 1024
+
+    /**
+     * 契约层的解压总量上限（1 GiB）。
+     *
+     * 这是**契约**（两端与测试矩阵都按它说话），但它单独并不是一条可执行的防线：
+     * `inspect` 会把整包与每个条目的字节全部留在内存里，而 Android 单应用堆通常在
+     * 1/4–1/8 GiB 这个量级，所以真到 1 GiB 之前进程早就 OOM 了。
+     * 因此实际执行的是 [residentBudgetBytes] 给出的「本进程放得下」的那个更小的值，
+     * 见 [inspect] 的 `budgetBytes` 参数。
+     */
     const val MAX_TOTAL_UNCOMPRESSED_BYTES = 1024L * 1024 * 1024
+
+    /**
+     * 驻留预算占「可用堆」的比例。
+     *
+     * 留一半给解压缓冲、JSON 解析对象与源包本身：`total` 只统计条目**解压后**的字节，
+     * 而同一时刻还在内存里的是「源包 + 每个条目字节 + 解析出来的 JSONObject」，
+     * 取 0.5 是刻意保守——宁可早一点给出可读的拒绝，也不要撞上 OOM 再兜。
+     */
+    private const val RESIDENT_HEAP_FRACTION = 0.5
+
+    private const val MIB = 1024L * 1024L
 
     /** 备份文件布局（与 PC V2 一致的前缀）。 */
     object Paths {
@@ -178,12 +199,57 @@ object BackupV3 {
     }
 
     /**
+     * 本进程真正放得下的解压总量预算：**契约上限**与「可用堆的一半」取小。
+     *
+     * 纯函数（堆大小可注入）是为了可测：设备上的真实堆值不该成为断言的一部分。
+     * `sourceBytes` 是源包自身的字节数——它此刻已经在内存里，所以要从堆里先扣掉；
+     * 扣完不够就返回 0，调用方据此直接拒绝，而不是等 OOM。
+     */
+    fun residentBudgetBytes(
+        sourceBytes: Long,
+        heapMaxBytes: Long = Runtime.getRuntime().maxMemory(),
+    ): Long {
+        val headroom = heapMaxBytes - sourceBytes
+        if (headroom <= 0) return 0
+        return minOf(MAX_TOTAL_UNCOMPRESSED_BYTES, (headroom * RESIDENT_HEAP_FRACTION).toLong())
+    }
+
+    /**
+     * 预检失败时的**如实**文案。
+     *
+     * `inspect` 里那句 `runCatching` 会把 `OutOfMemoryError` 一起吞掉，
+     * 于是「本机内存不够」被报成「ZIP 解析失败：Java heap space」——用户看到的是
+     * 「这个包坏了」，于是重导一遍、或者去怀疑文件来源，而真正该做的是换到 PC 上恢复。
+     * 这条分支把两种失败分开，并且都给出下一步动作。
+     */
+    fun describeInspectFailure(error: Throwable, uncompressedBytes: Long): String =
+        if (error is OutOfMemoryError) {
+            "本机内存不足，无法校验这个备份（已解压约 ${uncompressedBytes / MIB} MB）：" +
+                "请改在 PC 上恢复，或分批导出后分别恢复。"
+        } else {
+            "ZIP 解析失败：${error.message}"
+        }
+
+    /**
      * 恢复前预检：**只读不写**。
      *
      * 一次遍历同时完成条目名校验、SHA-256 与清单比对、条目数与解压总量上限。
      * 任一条不通过就整包拒绝——半包应用比不应用危险得多（会留下部分覆盖的数据）。
+     *
+     * `budgetBytes` 缺省取 [residentBudgetBytes]；显式传入是为了让「超出预算」这条分支
+     * 能在**不真的分配几百 MB**的前提下被测到（见 `BackupV3SafetyTest`）。
+     * 传进来的值仍会被契约上限 [MAX_TOTAL_UNCOMPRESSED_BYTES] 夹住，契约不因注入而放宽。
      */
-    fun inspect(bytes: ByteArray): InspectResult {
+    fun inspect(
+        bytes: ByteArray,
+        budgetBytes: Long = residentBudgetBytes(bytes.size.toLong()),
+    ): InspectResult {
+        val effectiveBudget = minOf(budgetBytes, MAX_TOTAL_UNCOMPRESSED_BYTES)
+        if (effectiveBudget <= 0) {
+            return InspectResult.Rejected(
+                "本机可用内存不足以校验这个备份（源包 ${bytes.size / MIB} MB）：请改在 PC 上恢复。",
+            )
+        }
         val entries = LinkedHashMap<String, ByteArray>()
         val seen = HashSet<String>()
         var total = 0L
@@ -206,8 +272,12 @@ object BackupV3 {
                     }
                     val payload = readLimited(zip) ?: return InspectResult.Rejected("${entry.name}：单条目过大")
                     total += payload.size
-                    if (total > MAX_TOTAL_UNCOMPRESSED_BYTES) {
-                        return InspectResult.Rejected("解压总量超过上限")
+                    if (total > effectiveBudget) {
+                        return InspectResult.Rejected(
+                            "备份解压后合计超过本机可校验上限" +
+                                "（上限 ${effectiveBudget / MIB} MB，已解压 ${total / MIB} MB）：" +
+                                "请改在 PC 上恢复，或分批导出后分别恢复。",
+                        )
                     }
                     if (entry.name == MANIFEST_NAME) {
                         manifest = parseManifest(payload.toString(Charsets.UTF_8))
@@ -218,7 +288,7 @@ object BackupV3 {
                     zip.closeEntry()
                 }
             }
-        }.onFailure { return InspectResult.Rejected("ZIP 解析失败：${it.message}") }
+        }.onFailure { return InspectResult.Rejected(describeInspectFailure(it, total)) }
 
         val manifestValue = manifest ?: return InspectResult.Rejected("缺少 manifest.json")
         entries.forEach { (path, payload) ->

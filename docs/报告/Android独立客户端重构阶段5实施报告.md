@@ -4,11 +4,12 @@
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
-> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1091 / 0**、
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1095 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
 > `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
-> 关闭了 §5 那条悬置的 P1（`retrieval` 从没进过运行时 → §2.21）。
+> 关闭了 §5 那条悬置的 P1（`retrieval` 从没进过运行时 → §2.21），
+> 并把 P1-d 的「诚实失败」那一半修了（OOM 不再被说成「ZIP 解析失败」+ 驻留预算先拒 → §2.22）。
 > 仍不能签字的两件事：**物理真机走查未做**（模拟器不能顶替，§11.1 两个要求不互替）、
 > 以及 D-1～D-9 那批需要产品签字的决策。
 > 按 §4 看板规则记「进行中」，不记「已完成」。
@@ -754,6 +755,37 @@ Room 给 `[delta, epsilon]`、替身给 `[gamma-book, delta]`。同源风险在 
 `hybrid` 条目（ST 里 `vectorized` 且**有关键词**的）照常按关键词触发；真正不触发的是
 「无关键词的 `hybrid`」以及「`semanticPreferred` 且没有任何可用命中途径」这两类。
 
+### 2.22 §5-P1-d 的「诚实失败」那一半：驻留预算 + OOM 与「包损坏」分开说
+
+**问题**（报告此前只记了现象）：`BackupV3.inspect` 把整包与每个条目字节都留在内存里，
+上限却是**契约**的 1 GiB，而 Android 单应用堆只有它的 1/4–1/8；于是「备份变大」先撞 OOM，
+而那句 `runCatching` 把 `OutOfMemoryError` 一起吞掉，用户看到的是
+**「ZIP 解析失败：Java heap space」**——读起来像文件坏了，于是重导一遍或去怀疑文件来源，
+而真正该做的是换台机器或换路径。`BackupV3SafetyTest` 里原先那段注释把这个设计问题写得很清楚，
+但它写的是「仍未解决」。
+
+**改了什么（都在 `BackupV3.kt`，**接口形状未动**）**
+
+1. `residentBudgetBytes(sourceBytes, heapMaxBytes)`：驻留预算 = `min(契约 1 GiB, (可用堆 − 源包) × 0.5)`。
+   纯函数、堆大小可注入，因此**设备的真实堆值不进断言**（否则同一条用例在不同机器上断的是不同的数）。
+   先把源包扣掉是因为它此刻已经在内存里；扣完不够就返回 0，调用方据此**直接拒**而不是等 OOM。
+2. `inspect(bytes, budgetBytes = …)`：超预算在**解压过程中**就拒，文案给出「上限 / 已解压 / 下一步」；
+   注入的预算仍被契约上限夹住，**契约不因注入而放宽**。
+3. `describeInspectFailure(error, seenBytes)`：OOM → 「本机内存不足…请改在 PC 上恢复」，
+   其它 → 「ZIP 解析失败：…」。两条分支各有断言，坏包那一支还从 `inspect` 入口**端到端**跑过
+   （手工拼一个「local header 声明 deflate、数据是垃圾」的最小 ZIP）。
+
+**口径要读准——别把它读成已修**：这一轮修的是**失败的可解释性**与**提前拒绝**。
+真正**恢复**一个大于驻留预算的备份仍然做不到，那要改 `Preview.entries: Map<String, ByteArray>`
+这个整包驻留的接口形状（P1-d 的剩余项，属 S5-08 能力层）。所以现在正确的说法是
+**「拒绝得诚实且可执行」**，不是「多大的备份都能恢复」。
+
+**新增用例（4 条；`BackupV3SafetyTest` 现有 15 条，全量单测 1091 → 1095）**：
+预算数学（取小 + 扣源包 + 兜底 0）；超预算被预算拒而不是被堆拒，并**带对照组**
+（同一个包给足预算必须通过——否则证明的是「这包本来就坏」）；OOM 与包损坏两句不同的话；
+坏包端到端不抛异常。同时把该文件里那段「这是个未解决的设计问题」的注释改成现状说明：
+**过期的注释比没有注释更危险**，它会让下一个人以为这里还是坏的、或者以为已经修好了。
+
 ### 2.6 迁移
 
 `MIGRATION_3_4` 全部是加列/加表/加索引，无重建、无 destructive fallback；新列都带 DEFAULT。
@@ -823,6 +855,8 @@ Room 给 `[delta, epsilon]`、替身给 `[gamma-book, delta]`。同源风险在 
 | `:app:pixel2Api26DebugAndroidTest`（全量，**Pixel 2 档**） | **59 tests / 0 失败**（3m54s） | A/B 结论见下 |
 | `:app:pixel2Api31DebugAndroidTest`（GMD 路径，两次，第二次前已清掉残留 emulator 进程） | **未跑成：两次都 `Finished 0 tests`** | `Adb command timed out`（GMD 安装插件写死 `Timeout: PT2M`）：第一次卡在 `shell am get-current-user`，第二次卡在 `install-multiple … app-debug.apk`，收尾的 `pm uninstall` 同样超时。**这条路径上一条用例都没跑过** |
 | `:app:connectedDebugAndroidTest --rerun`（**经典 AVD 路径**，`qingyu-api31(AVD) - 12`，手动起 AVD 后连跑） | **59 tests / 0 失败 / 0 跳过**（49.9s，整轮 1m4s） | 绕开 GMD 写死的 `PT2M`：手动起 `qingyu-api31`（`ANDROID_AVD_HOME=D:\Code\android-avd`）→ `adb` 等 `sys.boot_completed=1`（约 45s）→ `connectedDebugAndroidTest --rerun`。按备忘 §5-7 的「缓存回放」陷阱核验过三点：结果 XML 时间戳为本次（18:09:19，读取时 18:09:29）、`adb devices` 显示 `emulator-5554 device`、且加了 `--rerun` 绕过缓存。16 个类逐类全绿，含本轮受影响的 `ContentDraftAreaInstrumentedTest` 7/0、`ContentLoadMatrixInstrumentedTest` 4/0、`CharacterEditorSaveIdempotenceInstrumentedTest` 2/0 |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.22 改动后） | **1095 通过 / 0 失败 / 0 跳过 / 139 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过（`app-debug.apk` 25.6 MB） | 上一版 1091；本轮 **+4 条**（`BackupV3SafetyTest` 的预算数学 / 超预算带对照组 / OOM 与包损坏分句 / 坏包端到端） |
+| 三档设备矩阵（§2.22 改动后**全部复跑**） | API 26 GMD **59/0**、API 34 GMD **59/0**、API 31 经典 AVD **59/0** | 改的是 `BackupV3.inspect`（生产代码），所以三档都复跑而不是只跑备份那一类；`BackupRestoreFailureInstrumentedTest` 三档均 **4/0**（含「单条目过大」那条断言，证明单条目上限路径没被带偏） |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`
@@ -1206,11 +1240,13 @@ instrumentation 侧新增两组：`BackupRestoreFailureInstrumentedTest` 4/0（a
   该条上限断言因此从单测里撤出（不降级成「反正都拒绝」的假绿），改由大堆 instrumentation 补。
   **本轮补上了那一半**：`oversizedSingleEntryIsRejectedByTheLimitNotByTheHeap` 在 API 26/34
   各跑一次，64 MiB+1 的全零载荷实测 ~1.9 s 内被「单条目过大」拒掉、**没有 OOM**，
-  证明拒绝来自上限判定而不是堆崩。**剩下的那一半仍未解决**：
-  `MAX_TOTAL_UNCOMPRESSED_BYTES = 1 GiB` 是「全部条目同时驻留内存」的口径，
-  16 个 64 MiB 条目同时在内存里在设备上是不可行的，合法的大备份仍会先 OOM 再被误报成
-  「ZIP 解析失败」；要修得把 `BackupV3.inspect` 改成流式（校验完即丢弃条目字节），
-  那是接口形状改动（`Preview.entries: Map<String, ByteArray>` 是整包驻留的根），不在阶段 5 顺手做。
+  证明拒绝来自上限判定而不是堆崩。**2026-09-20 更新（§2.22）**：这条的**前半**已修——
+  执行层改成按 `residentBudgetBytes`（`min(契约 1 GiB, (可用堆 − 源包) × 0.5)`）在解压过程中
+  **先拒**，并用 `describeInspectFailure` 把 `OutOfMemoryError` 与「包损坏」分成两句：
+  用户不会再看到「ZIP 解析失败：Java heap space」这种把内存问题说成文件损坏的文案。
+  **仍未修的是能力层**：`Preview.entries: Map<String, ByteArray>` 是整包驻留的根，
+  大于驻留预算的**合法**备份目前只能被诚实拒绝（文案指向「改在 PC 上恢复或分批导出」），
+  要能真的恢复它得改成流式/两遍式——接口形状改动，仍不在阶段 5 顺手做。
 - D-5 **§3 测试矩阵三项都已跑通，但每一格的口径都要照实读**（不是「以后再说」，是签字项）：
   ~~① 每种外部格式的 **PC 导入 → Android 导出 → PC 再导入**~~ **已闭合**（见 §2.8：
   跨语言 golden 接活 + 阶段 0 的 28 份样本冻结成 `lorebook-catalog-canonical.json`，
