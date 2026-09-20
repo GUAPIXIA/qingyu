@@ -3,10 +3,12 @@ package com.qingyu.companion.local.domain
 import com.qingyu.companion.local.db.LocalCharacterEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
 import com.qingyu.companion.local.db.LocalLorebookMappingTemplateEntity
+import com.qingyu.companion.local.db.LocalMessageEntity
 import com.qingyu.companion.local.db.LocalPersonaEntity
 import com.qingyu.companion.local.db.LocalPresetEntity
 import com.qingyu.companion.local.db.LocalQuickReplySetEntity
 import com.qingyu.companion.local.db.LocalRegexRuleEntity
+import com.qingyu.companion.local.db.LocalSessionEntity
 import com.qingyu.companion.local.db.LocalUsageRecordEntity
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -237,6 +239,73 @@ object EntityPayloads {
 
     // PC `characterEntityPayload` 的兜底名，逐字一致。
     const val UNNAMED_CHARACTER = "未命名角色"
+
+    /**
+     * 消息实体 payload —— 对齐 `electron/ipc/chat.ts#messageEntityPayload`
+     * 与 `shared/contracts/schemas/message-payload.schema.json`（`additionalProperties:false`）。
+     *
+     * 为什么这次必须动它：阶段 3 起这里直接把 **Room 列名**当 payload 下发
+     * （`logicalTime`/`seq`/`swipesJson`/`imagesJson`/`usageJson`/`translation`/`generationStatus`），
+     * 而契约要求 `timestamp` 且禁止额外键。两端对同一条消息算出的 `contentHash` 因此
+     * **永远不相等**；消息又是同步量最大的实体（总方案 §12 的基线是 100 万条），
+     * 阶段 7 会把它读成满屏伪冲突。这是阶段 5 §2.1 给 `character` 修过的同一类缺陷，
+     * 只是当时没把 `message` 纳入 `sync-payload` golden（那份 golden 只覆盖 8 类实体）。
+     *
+     * 逐条对齐规则（oracle = `shared/fixtures/cross-platform/sync-payload/message-payload.json`）：
+     * - `timestamp` ← `logicalTime`：两端都用它当消息的逻辑位置（PC 的 `Message.timestamp`）
+     * - `swipes` 是**数组**，由 `swipesJson` 解析；`swipesJson` 为 null/空串时不下发键
+     * - `characterId` **始终下发**（可为 null）——PC 那边是 `string | null` 都下发
+     * - 可空列（`replyToId`/`swipeIndex`）为 null 时**不下发键**，对齐 PC 的 `undefined`
+     * - `imagesJson`/`translation`/`usageJson`/`generationStatus`/`generationNotice`/
+     *   `generationError`/`seq` 属**本地保真**，不进契约（PC 也一个都不发）；
+     *   跨端保真由 Backup V3 与导入导出承担
+     *
+     * **仍缺三键（属阶段 6 S6-01「旁白与角色身份」）**：Android 没有 `speakerKind` /
+     * `generationKind` / `narrativeMode` 列，PC 下发这三键时本机发不出。
+     * `SyncPayloadGoldenTest` 把这条缺口**逐键登记**——不是放宽断言：
+     * 多一个键、少一个键（缺口变化）都会让它变红。
+     */
+    fun messagePayload(row: LocalMessageEntity): Map<String, Any?> {
+        val out = linkedMapOf<String, Any?>(
+            "sessionId" to row.sessionId,
+            "role" to row.role,
+            "content" to row.content,
+            "timestamp" to row.logicalTime,
+            "characterId" to row.characterId,
+        )
+        // 不截断：PC 对 `swipes` 是原样透传（schema 的 maxItems 32 两端都没执行），
+        // 单边截断会让候选数超过 32 的消息哈希不同。
+        stringArray(row.swipesJson, Int.MAX_VALUE)?.let { out["swipes"] = it }
+        row.swipeIndex?.let { out["swipeIndex"] = it }
+        row.replyToId?.let { out["replyToId"] = it }
+        return out
+    }
+
+    /**
+     * 会话实体 payload —— 对齐 `electron/ipc/chat.ts#sessionEntityPayload`。
+     *
+     * 同一类缺陷的第二处：阶段 3 起这里下发的是 `lorebookIdsJson`（Room 列名），
+     * 而 PC 用的是契约键 `lorebookIds`，并且 PC 还下发 `createdAt`/`updatedAt`/`narrativeMode`
+     * ——三键此前**一个都没发**。两端对同一会话算出的哈希因此不相等。
+     *
+     * 逐条对齐：
+     * - `lorebookIds` ← 解析 `lorebookIdsJson`；解析不出就当空数组（对齐 PC 的 `?? []`，**始终下发**）
+     * - `personaId` / `narrativeMode` **始终下发**，未设置时为 `null`（PC 是 `?? null`）
+     * - Android 的空串表示「未设置」，因此 `narrativeMode` 要 `"" → null`
+     * - `groupId` / `presetId` / `memoryEnabled` / `memoryMode` / `autoMemoryInterval` /
+     *   `responseLengthMode` 等属**平台扩展或本地状态**，PC 的 session payload 里没有这些键，
+     *   塞进去就是 `additionalProperties:false` 判非法 + 哈希不等。
+     *   群会话的归属（`groupId`）在 PC 是**另一个实体类型**，属阶段 6 S6-01 的对齐范围。
+     */
+    fun sessionPayload(row: LocalSessionEntity): Map<String, Any?> = linkedMapOf(
+        "characterId" to row.characterId,
+        "title" to row.title,
+        "createdAt" to row.createdAt,
+        "updatedAt" to row.updatedAt,
+        "personaId" to row.personaId,
+        "lorebookIds" to (stringArray(row.lorebookIdsJson, Int.MAX_VALUE) ?: emptyList()),
+        "narrativeMode" to row.narrativeMode.takeIf { it.isNotBlank() },
+    )
 
     private const val MAX_TAGS = 64
     private const val MAX_ALTERNATE_GREETINGS = 32

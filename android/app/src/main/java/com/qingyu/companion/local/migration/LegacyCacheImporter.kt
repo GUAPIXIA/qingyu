@@ -4,6 +4,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.qingyu.companion.local.db.LocalCharacterEntity
 import com.qingyu.companion.local.db.LocalMessageEntity
 import com.qingyu.companion.local.db.LocalSessionEntity
+import com.qingyu.companion.local.domain.EntityPayloads
 import com.qingyu.companion.local.domain.LocalStore
 import com.qingyu.companion.local.domain.MigrationIdentity
 
@@ -361,44 +362,23 @@ class LegacyCacheImporter(private val reader: LegacyCacheReader? = null) {
     }
 
     companion object {
-        fun characterPayload(entity: LocalCharacterEntity): Map<String, Any?> = mapOf(            "name" to entity.name,
-            "description" to entity.description,
-            "personality" to entity.personality,
-            "scenario" to entity.scenario,
-            "firstMessage" to entity.firstMessage,
-            "exampleDialogueJson" to entity.exampleDialogueJson,
-            "avatarPath" to entity.avatarPath,
-            "backgroundPath" to entity.backgroundPath,
-            "extensionsJson" to entity.extensionsJson,
-            "lorebookId" to entity.lorebookId,
-            "defaultPresetId" to entity.defaultPresetId,
-            "defaultPersonaId" to entity.defaultPersonaId,
-        )
+        /**
+         * 这三条 payload 此前在本文件里各有一份**自己的**规则，用的还是 Room 列名
+         * （`exampleDialogueJson`/`lorebookId`/`lorebookIdsJson`/`logicalTime`/`seq`…）——
+         * 也就是阶段 5 §2.1 已经给 `EntityPayloads` 修掉的那类缺陷，在**一次性迁移这条写路径上还在**。
+         * 迁移是旧 Android 首次启动唯一的数据入口，走这条路的角色/会话/消息会拿到与仓储
+         * 写出来的**不同** `contentHash`：同一份数据在本机内部就先自相矛盾，更不可能与 PC 一致。
+         * 现在统一委派给 [EntityPayloads]，本文件不再保留第二份规则（金丝雀由
+         * `SyncPayloadGoldenTest` 与 `local/domain` 的契约套件一起看着）。
+         */
+        fun characterPayload(entity: LocalCharacterEntity): Map<String, Any?> =
+            EntityPayloads.characterPayload(entity)
 
-        fun sessionPayload(entity: LocalSessionEntity): Map<String, Any?> = mapOf(
-            "characterId" to entity.characterId,
-            "groupId" to entity.groupId,
-            "title" to entity.title,
-            "personaId" to entity.personaId,
-            "presetId" to entity.presetId,
-            "lorebookIdsJson" to entity.lorebookIdsJson,
-        )
+        fun sessionPayload(entity: LocalSessionEntity): Map<String, Any?> =
+            EntityPayloads.sessionPayload(entity)
 
-        fun messagePayload(entity: LocalMessageEntity): Map<String, Any?> = mapOf(
-            "sessionId" to entity.sessionId,
-            "characterId" to entity.characterId,
-            "role" to entity.role,
-            "content" to entity.content,
-            "imagesJson" to entity.imagesJson,
-            "replyToId" to entity.replyToId,
-            "swipesJson" to entity.swipesJson,
-            "swipeIndex" to entity.swipeIndex,
-            "translation" to entity.translation,
-            "usageJson" to entity.usageJson,
-            "generationStatus" to entity.generationStatus,
-            "logicalTime" to entity.logicalTime,
-            "seq" to entity.seq,
-        )
+        fun messagePayload(entity: LocalMessageEntity): Map<String, Any?> =
+            EntityPayloads.messagePayload(entity)
     }
 
     private fun requireReader(): LegacyCacheReader = reader

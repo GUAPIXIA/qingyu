@@ -20,8 +20,12 @@ const log = createLogger('chat')
 /**
  * 消息实体的规范 payload（shared/contracts/schemas/message-payload.schema.json，
  * additionalProperties=false，因此只放 schema 允许的字段）。
+ *
+ * 为可测性加 `export`（**不改任何行为**）：跨端 sync-payload golden 直接以这个函数为 oracle，
+ * 否则 Android 侧只能对着抄一份规则，抄错了也没人发现——阶段 5 给其余 payload 构造函数
+ * 加 export 是同一个理由。
  */
-function messageEntityPayload(message: Message): Record<string, unknown> {
+export function messageEntityPayload(message: Message): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     sessionId: message.sessionId,
     role: message.role,
@@ -168,7 +172,7 @@ function loadSessions(characterId: string): ChatSession[] {
 }
 
 /** 会话实体的规范 payload（与阶段 1 冻结的 session 契约字段一致） */
-function sessionEntityPayload(characterId: string, session: ChatSession): Record<string, unknown> {
+export function sessionEntityPayload(characterId: string, session: ChatSession): Record<string, unknown> {
   return {
     characterId,
     title: session.title,

@@ -4,12 +4,15 @@
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
-> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1095 / 0**、
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1099 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
 > `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
 > 关闭了 §5 那条悬置的 P1（`retrieval` 从没进过运行时 → §2.21），
-> 并把 P1-d 的「诚实失败」那一半修了（OOM 不再被说成「ZIP 解析失败」+ 驻留预算先拒 → §2.22）。
+> 把 P1-d 的「诚实失败」那一半修了（OOM 不再被说成「ZIP 解析失败」+ 驻留预算先拒 → §2.22），
+> 并修掉消息/会话 payload 的 P0（三条写路径都在发 Room 列名 → 两端哈希永不相等 → §2.23）。
+> **注意 §3.2「(2)」**：api26 全量套件的间歇 522 曾被我记成「已用设备档位 A/B 定位」，
+> 第 5 轮已**自我推翻**并撤回该结论。
 > 仍不能签字的两件事：**物理真机走查未做**（模拟器不能顶替，§11.1 两个要求不互替）、
 > 以及 D-1～D-9 那批需要产品签字的决策。
 > 按 §4 看板规则记「进行中」，不记「已完成」。
@@ -786,6 +789,59 @@ Room 给 `[delta, epsilon]`、替身给 `[gamma-book, delta]`。同源风险在 
 坏包端到端不抛异常。同时把该文件里那段「这是个未解决的设计问题」的注释改成现状说明：
 **过期的注释比没有注释更危险**，它会让下一个人以为这里还是坏的、或者以为已经修好了。
 
+### 2.23 消息与会话的同步 payload：三条写路径都在发 Room 列名（P0，已修）
+
+**怎么发现的**：回看 §5-P1-d 时顺手核对「`EntityPayloads` 到底覆盖了哪几类实体」——只有 **9 个**
+构造函数，而总方案 §6.1 列了 **17 类**同步实体。于是把 `message` / `session` 的 payload 与
+`shared/contracts/schemas/` 逐键对了一遍：
+
+- 契约 `message-payload.schema.json` 是 `additionalProperties:false`，`required` 里**有 `timestamp`**；
+- PC 的 `messageEntityPayload`（`electron/ipc/chat.ts`）逐字照着它写：`sessionId/role/content/timestamp/
+  characterId` + 可选的 `speakerKind/generationKind/narrativeMode/swipes(数组)/swipeIndex/replyToId`，
+  本地保真字段（`images`/`translation`/`charUsage`/`generationError`/`contentRenderMode`/
+  `dialogueDirections`）**一个都不发**；
+- 而 Android 三条写路径发的都是 **Room 列名**：`logicalTime`/`seq`/`swipesJson`/`imagesJson`/
+  `usageJson`/`translation`/`generationStatus`，**没有 `timestamp`**；
+- 会话同理：PC 发 `lorebookIds`（数组）+ `createdAt`/`updatedAt`/`narrativeMode`，
+  Android 发 `lorebookIdsJson`（字符串）并**漏掉那三键**。
+
+后果不是「不一致」这么轻：`contentHash = sha256(canonicalJson(payload))`，因此**两端对同一条消息、
+同一个会话算出的哈希永远不相等**。消息是同步量最大的实体（总方案 §12 基线 100 万条），而 §6.3 的
+合并规则完全建立在「同内容 → 同哈希」之上，所以这条缺陷在阶段 7 会表现成**满屏伪冲突**。
+
+**这不是新问题，是 §2.1 那一处的漏网**：阶段 5 给 `character` 修掉了「Room 列名进信封」，
+但 `message`/`session` 从没进 `sync-payload` golden（那份只覆盖 8 类实体），于是同一类缺陷
+在**量级更大**的实体上活了下来。更糟的是它有**三份实现**——仓储、`LegacyCacheImporter`
+（一次性迁移那条写路径）、`FakeLocalStore`（测试替身）——三份都是旧的列名版本，
+**彼此「一致地错」**，所以契约套件与跨端 golden 都抓不到它。
+
+**改了什么**
+
+1. `EntityPayloads` 新增 `messagePayload` / `sessionPayload`，逐键对齐 PC：
+   `timestamp ← logicalTime`、`swipes` 由 `swipesJson` 解析成**数组**、`lorebookIds` 由
+   `lorebookIdsJson` 解析、`narrativeMode` 的 `"" → null`、可空键为空则不下发键；
+2. **三条写路径全部改成委派**：`RoomLocalSyncRepository.putSession/appendMessage/updateMessage`、
+   `LegacyCacheImporter` 的三个同伴函数、`FakeLocalStore`（各自的第二份规则直接删掉）；
+3. PC 侧给 `messageEntityPayload` / `sessionEntityPayload` 各加一个 `export`（**不改行为**）
+   ——跨端 golden 的 oracle 必须是**生产代码本身**，否则 Android 只能抄一份规则，抄错了没人发现；
+4. 新增两组 fixture：`sync-payload/message-payload.json`（5 例）与 `session-payload.json`（3 例），
+   Kotlin 侧 4 条用例把它们钉成不动点（含「本地保真列一个都不许进信封」与「平台扩展列不许进会话 payload」）。
+
+**未做的部分（逐键登记，不是放宽断言）**：Android 的 message 行**没有**
+`speakerKind`/`generationKind`/`narrativeMode` 三列，PC 下发这三键时本机发不出。
+`SyncPayloadGoldenTest` 用 `PC_ONLY_KEYS` 把缺口**逐键登记**，断言的形态是
+「缺口必须**恰好等于**登记集合 ∩ 本用例 PC 键集」——PC 新增键、或 Android 补上列，都会立刻变红。
+补这三列本身属**阶段 6 S6-01「群聊……旁白与角色身份」**。
+
+**一处测试输入的修正（不是放宽断言）**：`LegacyCacheMigrationTest` 原先用手搓的
+`createdAt = 0 / updatedAt = 0` 会话去预测 genesis 哈希，而会话 payload 按契约**要带**这两个值、
+导入端读的是旧库里的真实值（`seedSample()` 里的 `1000 / 2000`）。委派之后预测对不上，用例因此变红
+——修的是**测试输入**（改成与种子一致），断言一条没动。这同时说明：这条用例此前之所以绿，
+正是因为旧 payload 里**没有**这两个键。
+
+**回滚**：新增的两个 payload 函数与三条委派可独立回退；两组 fixture 是纯新增
+（删掉会让 Kotlin 用例因缺输入而直接报错，不会静默跳过）。
+
 ### 2.6 迁移
 
 `MIGRATION_3_4` 全部是加列/加表/加索引，无重建、无 destructive fallback；新列都带 DEFAULT。
@@ -852,11 +908,14 @@ Room 给 `[delta, epsilon]`、替身给 `[gamma-book, delta]`。同源风险在 
 | 同类单跑（api26，Nexus 5 档） | **3 / 0**（47s） | 同上 |
 | `ContentLoadMatrixInstrumentedTest` + `ContentUiWalkthroughInstrumentedTest` 两类同跑（api26，Nexus 5） | **7 / 0** | 压力矩阵不是触发条件 |
 | `BackupRestoreFailureInstrumentedTest` + `ContentUiWalkthroughInstrumentedTest` 两类同跑（api26，Nexus 5） | **7 / 0** | 64 MiB 备份载荷也不是触发条件 |
-| `:app:pixel2Api26DebugAndroidTest`（全量，**Pixel 2 档**） | **59 tests / 0 失败**（3m54s） | A/B 结论见下 |
+| `:app:pixel2Api26DebugAndroidTest`（全量，**Pixel 2 档**，第 3 轮） | **59 tests / 0 失败**（3m54s） | **这一格后来被推翻**：同一档位在第 5 轮又以同样两条 522 失败（见下「(2)」）。当时的 59/0 是**单次巧合**，不是「档位换对了」 |
 | `:app:pixel2Api31DebugAndroidTest`（GMD 路径，两次，第二次前已清掉残留 emulator 进程） | **未跑成：两次都 `Finished 0 tests`** | `Adb command timed out`（GMD 安装插件写死 `Timeout: PT2M`）：第一次卡在 `shell am get-current-user`，第二次卡在 `install-multiple … app-debug.apk`，收尾的 `pm uninstall` 同样超时。**这条路径上一条用例都没跑过** |
 | `:app:connectedDebugAndroidTest --rerun`（**经典 AVD 路径**，`qingyu-api31(AVD) - 12`，手动起 AVD 后连跑） | **59 tests / 0 失败 / 0 跳过**（49.9s，整轮 1m4s） | 绕开 GMD 写死的 `PT2M`：手动起 `qingyu-api31`（`ANDROID_AVD_HOME=D:\Code\android-avd`）→ `adb` 等 `sys.boot_completed=1`（约 45s）→ `connectedDebugAndroidTest --rerun`。按备忘 §5-7 的「缓存回放」陷阱核验过三点：结果 XML 时间戳为本次（18:09:19，读取时 18:09:29）、`adb devices` 显示 `emulator-5554 device`、且加了 `--rerun` 绕过缓存。16 个类逐类全绿，含本轮受影响的 `ContentDraftAreaInstrumentedTest` 7/0、`ContentLoadMatrixInstrumentedTest` 4/0、`CharacterEditorSaveIdempotenceInstrumentedTest` 2/0 |
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.22 改动后） | **1095 通过 / 0 失败 / 0 跳过 / 139 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过（`app-debug.apk` 25.6 MB） | 上一版 1091；本轮 **+4 条**（`BackupV3SafetyTest` 的预算数学 / 超预算带对照组 / OOM 与包损坏分句 / 坏包端到端） |
 | 三档设备矩阵（§2.22 改动后**全部复跑**） | API 26 GMD **59/0**、API 34 GMD **59/0**、API 31 经典 AVD **59/0** | 改的是 `BackupV3.inspect`（生产代码），所以三档都复跑而不是只跑备份那一类；`BackupRestoreFailureInstrumentedTest` 三档均 **4/0**（含「单条目过大」那条断言，证明单条目上限路径没被带偏） |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.23 改动后） | **1099 通过 / 0 失败 / 0 跳过 / 139 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1095；本轮 **+4 条**（`SyncPayloadGoldenTest` 的消息/会话不动点 + 两条「本地保真列与平台扩展列不得进信封」）；该文件现 14 条 |
+| `pnpm check` / `pnpm lint` / `pnpm test`（§2.23 改动后） | 通过 / **0 error** / **3047 通过 / 4 跳过**（278 文件 + 1 跳过） | 上一版 3045；**+2 条**（`syncPayloadGolden` 新增 message/session 两组 fixture 的生成与只读校验）。PC 侧只改了 `messageEntityPayload`/`sessionEntityPayload` 各加一个 `export` |
+| 设备矩阵（§2.23 改动后复跑） | API 31 经典 AVD **59/0**；API 26 GMD **59 条 / 2 失败**；API 34 GMD **59 条 / 1 失败** | **三条失败全是已知既有项，与本轮改动无关**：api26 的两条是上面「(2)」那条间歇性 522；api34 的一条是 `Phase4AcceptanceWalkthroughInstrumentedTest.fullWalkthroughRunsEntirelyOnLocalDatabase`（`编辑历史必须使派生记忆失效 expected:<1> but was:<0>`，即 §5-F-1 记的阶段 4 时序脆弱）。两个类**单跑均通过**（`ContentUiWalkthroughInstrumentedTest` 3/3、`Phase4AcceptanceWalkthroughInstrumentedTest` 1/1） |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`
@@ -908,28 +967,32 @@ Room 给 `[delta, epsilon]`、替身给 `[gamma-book, delta]`。同源风险在 
   新用例顺带钉住一个前提：`viewModelScope`（`Main.immediate`）在调用线程上**同步**跑到首个挂起点——
   若哪天不成立，第二次会真的落库，这条会立刻红。
 
-**(2) API 26 那条是设备档位问题，已用 A/B 定位**
+**(2) API 26 全量套件的 `SQLiteDiskIOException(522)`：间歇性；我先前那条「A/B 定位到设备档位」的结论已作废**
 
-现象：全量 59 条同实例跑两次，都红在同一个类的同两条用例上，错误是
-`SQLiteDiskIOException: disk I/O error (code 522)`，且发生在 `PRAGMA journal_mode`（打开数据库）阶段——
-**不是断言失败**。而同一镜像上：同类单跑 3/0、加上压力矩阵 7/0、加上 64 MiB 备份载荷 7/0；
-宿主磁盘也不是满的（D: 剩 49.7 GB），所以**不是**报告此前记的「宿主磁盘 97% 满」那个原因。
+现象：**全量 59 条同实例**跑完时，后段的 `ContentUiWalkthroughInstrumentedTest` 两条用例红在
+`SQLiteDiskIOException: disk I/O error (code 522)`，且发生在 `PRAGMA journal_mode`（打开数据库）阶段
+——**不是断言失败**。而同一镜像上：同类单跑 **3/0**、加上压力矩阵 **7/0**、加上 64 MiB 备份载荷 **7/0**。
+宿主磁盘也不是满的（当时 D: 剩 49.7 GB），所以**不是**报告此前记的「宿主磁盘 97% 满」那个原因。
 
-查构建文件时发现一处**报告与配置不符**：`app/build.gradle.kts` 里 `pixel2Api26` 用的是
-`device = "Nexus 5"`，而本报告 §3 一直写着「三档都是 `Pixel 2`」。
-Nexus 5 是 2013 年的档位，数据分区远小于 Pixel 2；全量套件的累积写入
-（压力矩阵 1.9 万条世界书条目、草稿区、64 MiB 备份载荷）正好可能把小的那个撑满，
-于是后段用例在开库时就 I/O 失败。A/B 支持这一点：**同一份代码、同样 59 条用例，
-Nexus 5 档 2 失败 → Pixel 2 档 0 失败**。
+**中间那条（现已作废）的推断**：查构建文件时发现 `pixel2Api26` 用的是 `device = "Nexus 5"`
+（而本报告一直写「三档都是 Pixel 2」），于是假设「2013 年的档位数据分区更小、被全量套件的累积写入撑满」，
+并做了一次 A/B：Nexus 5 档 2 失败 → Pixel 2 档 **0 失败**，据此把它记成了「设备档位是差异变量」。
 
-处理：把 `pixel2Api26` 的设备档位对齐成 `Pixel 2`（两者同为 1080x1920 xxhdpi，
-因此 Compose 点击坐标类用例不受影响），并在构建文件里写清换的原因与换之前的现象。
-这**不是**「换个设备把红灯藏起来」——换掉的是已被 A/B 证明不够用的档位，
-同时让构建文件与报告里一直写的「三档都是 Pixel 2」不再互相矛盾。
+**2026-09-20 第 5 轮推翻**：在同一份代码、同一个 **Pixel 2** 档位上，全量跑**又出现了同样两条、同样的 522**
+（而同类单跑 3/3 通过）。所以：
 
-**口径要说准**：我没有直接取到模拟器 `/data` 用量的证据（GMD 跑完即销毁实例），
-所以「数据分区被撑满」是**推断**（设备档位是唯一差异变量 + 现象只出现在累积写入最多的全量跑里），
-不是实测。要变成实测，得在用例里读一次 `StatFs` 并把数字打进断言消息——记为待办，不写成已证实。
+1. **档位不是差异变量**，那次 59/0 是**单次巧合**；把它写成「A/B 已定位」是错的，此处撤回。
+   这条正好是报告自己反复强调的那件事：**一次绿不等于因果**。
+2. 该失败**与第 5 轮的改动无关**（改的是 message/session payload；同一份代码在 api31 全量 59/0，
+   两条失败用例单跑也都通过）。
+3. `pixel2Api26` 的档位改动**保留**，但理由只剩两条：与 api31/api34 对齐（报告一直这么写），
+   以及两者同为 1080x1920 xxhdpi（点击坐标类用例不受影响）。**它不再被当成修复**，
+   构建文件里的注释已按这个口径重写。
+
+**仍未解决的是机制**：单跑/子集绿、全量红，这个形状说明与「累积」有关（磁盘、句柄或进程内状态），
+但**我没有证据**指向其中任何一个，不写成已定位。下一步是两个具体动作：
+① 在用例里读一次 `StatFs`（`/data` 可用字节）并把数字打进断言消息，把「磁盘要满」从推断变成实测；
+② 把 59 条拆到两个模拟器实例上跑，看 522 是否消失（用来区分「累积」与「同实例」）。
 
 ### 3.3 设备矩阵与随阶段提交的入库清单（§3 通用说明）
 

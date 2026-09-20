@@ -677,14 +677,7 @@ class FakeLocalStore(
         journal(
             "session",
             row.id,
-            mapOf(
-                "characterId" to row.characterId,
-                "groupId" to row.groupId,
-                "title" to row.title,
-                "personaId" to row.personaId,
-                "presetId" to row.presetId,
-                "lorebookIdsJson" to row.lorebookIdsJson,
-            ),
+            EntityPayloads.sessionPayload(row),
             Origin.Local,
         )
         upsertList(sessions, row) { it.id }
@@ -718,7 +711,7 @@ class FakeLocalStore(
             createdAt = if (entity.createdAt == 0L) now else entity.createdAt,
             updatedAt = now,
         )
-        journal("message", row.id, messagePayload(row), Origin.Local)
+        journal("message", row.id, EntityPayloads.messagePayload(row), Origin.Local)
         upsertList(messages, row) { it.id }
     }
 
@@ -729,7 +722,7 @@ class FakeLocalStore(
             createdAt = existing?.createdAt ?: System.currentTimeMillis(),
             updatedAt = System.currentTimeMillis(),
         )
-        journal("message", row.id, messagePayload(row), Origin.Local)
+        journal("message", row.id, EntityPayloads.messagePayload(row), Origin.Local)
         upsertList(messages, row) { it.id }
     }
 
@@ -737,22 +730,6 @@ class FakeLocalStore(
         messages.value = messages.value.filterNot { it.id == id }
         tombstone("message", id)
     }
-
-    private fun messagePayload(row: LocalMessageEntity): Map<String, Any?> = mapOf(
-        "sessionId" to row.sessionId,
-        "characterId" to row.characterId,
-        "role" to row.role,
-        "content" to row.content,
-        "imagesJson" to row.imagesJson,
-        "replyToId" to row.replyToId,
-        "swipesJson" to row.swipesJson,
-        "swipeIndex" to row.swipeIndex,
-        "translation" to row.translation,
-        "usageJson" to row.usageJson,
-        "generationStatus" to row.generationStatus,
-        "logicalTime" to row.logicalTime,
-        "seq" to row.seq,
-    )
 
     // ---------------------------------------------------------------- 记忆 / 用量 / 媒体
 

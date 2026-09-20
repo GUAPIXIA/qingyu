@@ -691,16 +691,7 @@ class RoomLocalSyncRepository(
             "session",
             row.id,
             Origin.Local,
-            payload = {
-                mapOf(
-                    "characterId" to row.characterId,
-                    "groupId" to row.groupId,
-                    "title" to row.title,
-                    "personaId" to row.personaId,
-                    "presetId" to row.presetId,
-                    "lorebookIdsJson" to row.lorebookIdsJson,
-                )
-            },
+            payload = { EntityPayloads.sessionPayload(row) },
         ) {
             db.sessionDao().upsert(row)
         }
@@ -725,7 +716,7 @@ class RoomLocalSyncRepository(
             "message",
             entity.id,
             Origin.Local,
-            payload = { messagePayload(entity) },
+            payload = { EntityPayloads.messagePayload(entity) },
             business = {
                 require(db.sessionDao().getById(entity.sessionId) != null) { "父会话不存在，拒绝写入消息" }
                 require(!isTombstoned("session", entity.sessionId)) { "父会话已被删除，拒绝写入消息" }
@@ -748,7 +739,7 @@ class RoomLocalSyncRepository(
             "message",
             entity.id,
             Origin.Local,
-            payload = { messagePayload(entity) },
+            payload = { EntityPayloads.messagePayload(entity) },
         ) {
             val existing = db.messageDao().getById(entity.id)
             db.messageDao().upsert(
@@ -763,22 +754,6 @@ class RoomLocalSyncRepository(
 
     override suspend fun deleteMessage(id: String, sessionId: String) =
         deleteWithTombstone("message", id) { db.messageDao().delete(id) }
-
-    private fun messagePayload(row: LocalMessageEntity): Map<String, Any?> = mapOf(
-        "sessionId" to row.sessionId,
-        "characterId" to row.characterId,
-        "role" to row.role,
-        "content" to row.content,
-        "imagesJson" to row.imagesJson,
-        "replyToId" to row.replyToId,
-        "swipesJson" to row.swipesJson,
-        "swipeIndex" to row.swipeIndex,
-        "translation" to row.translation,
-        "usageJson" to row.usageJson,
-        "generationStatus" to row.generationStatus,
-        "logicalTime" to row.logicalTime,
-        "seq" to row.seq,
-    )
 
     // ------------------------------------------------------------ 记忆 / 用量 / 媒体
 

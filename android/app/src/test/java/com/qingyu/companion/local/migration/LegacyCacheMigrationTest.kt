@@ -282,13 +282,17 @@ class LegacyCacheMigrationTest {
         )
         val sessionHash = MigrationIdentity.contentHash(
             LegacyCacheImporter.sessionPayload(
+                // createdAt/updatedAt 必须与 `seedSample()` 里那一行**完全一致**
+                // （'sess-1','char-1','旧角色一','会话一',1000,2000,…）：
+                // 会话 payload 按契约是要带 createdAt/updatedAt 的，填 0 就等于拿一份
+                // 真实导入永远不会产出的数据去预测哈希，genesis 自然继承不上。
                 com.qingyu.companion.local.db.LocalSessionEntity(
                     id = "sess-1",
                     characterId = "char-1",
                     title = "会话一",
                     importedFrom = "legacy_companion_cache",
-                    createdAt = 0,
-                    updatedAt = 0,
+                    createdAt = 1000,
+                    updatedAt = 2000,
                 ),
             ),
         )

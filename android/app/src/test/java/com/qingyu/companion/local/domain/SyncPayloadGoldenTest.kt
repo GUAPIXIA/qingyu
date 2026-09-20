@@ -3,10 +3,12 @@ package com.qingyu.companion.local.domain
 import com.qingyu.companion.domain.contracts.CanonicalJson
 import com.qingyu.companion.local.db.LocalCharacterEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
+import com.qingyu.companion.local.db.LocalMessageEntity
 import com.qingyu.companion.local.db.LocalPersonaEntity
 import com.qingyu.companion.local.db.LocalPresetEntity
 import com.qingyu.companion.local.db.LocalQuickReplySetEntity
 import com.qingyu.companion.local.db.LocalRegexRuleEntity
+import com.qingyu.companion.local.db.LocalSessionEntity
 import com.qingyu.companion.local.db.LocalUsageRecordEntity
 import java.io.File
 import kotlin.test.assertEquals
@@ -315,6 +317,100 @@ class SyncPayloadGoldenTest {
         assertEquals(setOf("theme"), secrets.keys, "非白名单键（凭据/设备偏好）绝不允许进入同步 payload")
     }
 
+    // ---------------------------------------------------------------- S5-00 会话 / 消息
+
+    /**
+     * `session` 与 `message` 此前**没有** golden（那份 `sync-payload` 只覆盖 8 类实体），
+     * 于是 Android 一直把 Room 列名当 payload 下发：`lorebookIdsJson`、`logicalTime`、`seq`、
+     * `swipesJson`、`imagesJson`…，而契约要求 `lorebookIds`/`timestamp` 且禁止额外键。
+     * 消息是同步量最大的实体（总方案 §12 基线 100 万条），这条缺口在阶段 7 会表现成满屏伪冲突。
+     * 这两条用例就是把它按 PC 真值钉死。
+     */
+    @Test
+    fun messagePayloadMatchesPcContract() {
+        val seen = mutableListOf<String>()
+        for (case in cases("message-payload")) {
+            val label = "message/${case.getString("label")}"
+            val payload = valueOf(case, "payload") as Map<String, Any?>
+            seen += label
+            assertPayloadMatchesPc(label, "message", payload, EntityPayloads.messagePayload(messageRow(payload)))
+        }
+        assertEquals(5, seen.size, "fixture 用例数变了，请确认覆盖仍然完整：$seen")
+    }
+
+    @Test
+    fun sessionPayloadMatchesPcContract() {
+        val seen = mutableListOf<String>()
+        for (case in cases("session-payload")) {
+            val label = "session/${case.getString("label")}"
+            val payload = valueOf(case, "payload") as Map<String, Any?>
+            seen += label
+            assertPayloadMatchesPc(label, "session", payload, EntityPayloads.sessionPayload(sessionRow(payload)))
+        }
+        assertEquals(3, seen.size, "fixture 用例数变了，请确认覆盖仍然完整：$seen")
+    }
+
+    /** 本地保真列一个都不能进信封，且 `timestamp` 必须来自 `logicalTime`。 */
+    @Test
+    fun messagePayloadKeepsLocalOnlyColumnsOutAndMapsTimestamp() {
+        val row = messageRow(
+            mapOf(
+                "sessionId" to "s-1",
+                "role" to "assistant",
+                "content" to "正文",
+                "timestamp" to 1_700_000_000_000L,
+                "characterId" to "char-1",
+            ),
+        ).copy(
+            imagesJson = "[\"data:image/png;base64,AA\"]",
+            translation = "译文",
+            usageJson = "{\"input\":1}",
+            generationStatus = "done",
+            generationNotice = "已收束",
+            generationError = "中断",
+            seq = 7L,
+        )
+        val payload = EntityPayloads.messagePayload(row)
+        assertEquals(1_700_000_000_000L, payload["timestamp"], "timestamp 必须来自 logicalTime")
+        assertEquals(
+            setOf("sessionId", "role", "content", "timestamp", "characterId"),
+            payload.keys,
+            "本地保真列（images/translation/usage/generationStatus/generationNotice/generationError/seq）" +
+                "不得进入同步 payload",
+        )
+    }
+
+    /** 会话：`lorebookIds` 要是数组，`""` 的叙事模式要变 null，平台扩展列一个都不发。 */
+    @Test
+    fun sessionPayloadMapsBindingsAndKeepsPlatformExtensionsOut() {
+        val row = sessionRow(
+            mapOf(
+                "characterId" to "char-1",
+                "title" to "标题",
+                "createdAt" to 1L,
+                "updatedAt" to 2L,
+                "personaId" to null,
+                "lorebookIds" to listOf("lb-1", "lb-2"),
+                "narrativeMode" to null,
+            ),
+        ).copy(
+            groupId = "g-1",
+            presetId = "pre-1",
+            memoryEnabled = true,
+            memoryMode = "auto",
+            autoMemoryInterval = 5,
+            responseLengthMode = "brief",
+        )
+        val payload = EntityPayloads.sessionPayload(row)
+        assertEquals(listOf("lb-1", "lb-2"), payload["lorebookIds"], "必须是契约键 lorebookIds 的数组，而不是 lorebookIdsJson 字符串")
+        assertEquals(null, payload["narrativeMode"], "空串表示未设置，要下发 null 而不是 \"\"")
+        assertEquals(
+            setOf("characterId", "title", "createdAt", "updatedAt", "personaId", "lorebookIds", "narrativeMode"),
+            payload.keys,
+            "平台扩展列（groupId/presetId/记忆开关/篇幅意图）不得进入会话 payload",
+        )
+    }
+
     // ---------------------------------------------------------------- 行构造
 
     @Suppress("UNCHECKED_CAST")
@@ -384,6 +480,67 @@ class SyncPayloadGoldenTest {
     )
 
     @Suppress("UNCHECKED_CAST")
+    private fun messageRow(payload: Map<String, Any?>): LocalMessageEntity = LocalMessageEntity(
+        id = "m-golden",
+        sessionId = payload["sessionId"] as String,
+        characterId = payload["characterId"] as String?,
+        role = payload["role"] as String,
+        content = payload["content"] as String,
+        // 只有 PC 真的下发了 `swipes` 才写入列：否则「键缺失」会被补成 `[]`，哈希又不一样
+        swipesJson = (payload["swipes"] as? List<Any?>)?.let { JsonValues.stringify(it) },
+        swipeIndex = (payload["swipeIndex"] as? Number)?.toInt(),
+        replyToId = payload["replyToId"] as String?,
+        logicalTime = (payload["timestamp"] as Number).toLong(),
+        seq = 0L,
+        createdAt = 0L,
+        updatedAt = 0L,
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    private fun sessionRow(payload: Map<String, Any?>): LocalSessionEntity = LocalSessionEntity(
+        id = "sess-golden",
+        characterId = payload["characterId"] as String?,
+        title = payload["title"] as String? ?: "",
+        personaId = payload["personaId"] as String?,
+        lorebookIdsJson = JsonValues.stringify(payload["lorebookIds"] ?: emptyList<String>()),
+        createdAt = (payload["createdAt"] as Number).toLong(),
+        updatedAt = (payload["updatedAt"] as Number).toLong(),
+        // Android 用空串表达「未设置」，PC 用 undefined→null
+        narrativeMode = payload["narrativeMode"] as String? ?: "",
+    )
+
+    /**
+     * 断言 Android 的 payload 与 PC 真值逐键一致，只允许**登记在案的缺口**。
+     *
+     * 与 [assertPayload] 的分工：那个管「Android 多发键」（非空列只能把「未设置」写成 `""`/`[]`），
+     * 这里多管一种情况——PC 会下发、而 Android **根本没有对应列**的键。
+     * 缺口必须**恰好等于**「登记集合 ∩ 本用例 PC 的键集」：PC 新增键、或 Android 补上列，
+     * 都会立刻变红，而不是被默默当成「已知差异」。
+     */
+    private fun assertPayloadMatchesPc(
+        label: String,
+        entity: String,
+        expected: Map<String, Any?>,
+        actual: Map<String, Any?>,
+    ) {
+        val extra = actual.keys - expected.keys
+        assertTrue(extra.isEmpty(), "$label：Android 多发了 PC 没有的键 $extra（契约 additionalProperties:false，两端哈希会不同）")
+        val missing = expected.keys - actual.keys
+        assertEquals(
+            PC_ONLY_KEYS.getValue(entity) intersect expected.keys,
+            missing,
+            "$label：与 PC 的键缺口已变化，需复审 PC_ONLY_KEYS",
+        )
+        for (key in expected.keys - missing) {
+            assertEquals(
+                CanonicalJson.encode(mapOf("v" to expected[key])),
+                CanonicalJson.encode(mapOf("v" to actual[key])),
+                "$label：键 $key 的值两端不一致",
+            )
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
     private fun valueOf(obj: JSONObject, key: String): Any? = when (val raw = obj.get(key)) {
         is JSONObject -> JsonValues.parseObject(raw.toString())
         is org.json.JSONArray -> JsonValues.parseArray(raw.toString())
@@ -408,6 +565,20 @@ class SyncPayloadGoldenTest {
             "regex_rule/minimal" to setOf(
                 "flags", "group", "stage", "triggerPattern", "triggerFlags", "stopStrings",
             ),
+        )
+
+        /**
+         * PC 会下发、而 Android **当前没有对应列**的键（逐条登记，不是放宽断言：
+         * 缺口一变就红）。
+         *
+         * `message` 的三键属**阶段 6 S6-01「旁白与角色身份」**：Android 的 message 行里
+         * 没有 `speakerKind`/`generationKind`/`narrativeMode` 三列，所以 PC 下发时本机发不出。
+         * 补列时要连同 Room 迁移、payload 映射与本节登记一起改——那正是这个映射存在的意义。
+         * `session` 目前没有缺口（Android 的 `narrative_mode` 列已在 v3 落地）。
+         */
+        private val PC_ONLY_KEYS: Map<String, Set<String>> = mapOf(
+            "message" to setOf("speakerKind", "generationKind", "narrativeMode"),
+            "session" to emptySet(),
         )
     }
 }

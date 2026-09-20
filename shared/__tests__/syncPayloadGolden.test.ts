@@ -32,6 +32,8 @@ import {
   regexRulePayload,
 } from '../../electron/services/charCard'
 import { personaEntityPayload } from '../../electron/ipc/persona'
+import { messageEntityPayload } from '../../electron/ipc/chat'
+import { sessionEntityPayload } from '../../electron/ipc/chat'
 import { presetEntityPayload } from '../../electron/ipc/preset'
 import { ruleEntityPayload } from '../../electron/ipc/regex'
 import { quickReplyStorePayload } from '../../electron/ipc/quickReply'
@@ -286,5 +288,131 @@ describe('sync-payload / other entity types', () => {
     // 两处若漂移，PC 自己的 bootstrap 与增量写就会给出不同哈希。
     const rule = { id: 'r-x', name: 'n', pattern: 'p', replacement: 'r', flags: 'g', enabled: true, scope: 'output' }
     expect(JSON.stringify(regexRulePayload(rule as never))).toBe(JSON.stringify(ruleEntityPayload(rule as never)))
+  })
+})
+
+/**
+ * `message` 是**同步量最大**的实体（总方案 §12 的基线是 100 万条），此前它没有 golden，
+ * 于是 Android 那边把 Room 列名（`logicalTime`/`seq`/`swipesJson`/`usageJson`…）
+ * 直接当 payload 下发了很久，而契约 schema 是 `additionalProperties:false` 且要求 `timestamp`。
+ * 两端对同一条消息算出的 `contentHash` 因此永远不相等 —— 阶段 7 会把它读成满屏伪冲突。
+ * 这组 fixture 就是把这个映射冻住：Android 必须逐键复现 PC 的输出。
+ */
+describe('sync-payload / message', () => {
+  it('pins messageEntityPayload', () => {
+    const message = (overrides: Record<string, unknown> = {}) => ({
+      id: 'm-1',
+      sessionId: 's-1',
+      characterId: 'char-full',
+      role: 'user',
+      content: '在吗',
+      images: [],
+      isEditing: false,
+      timestamp: 1700000000000,
+      ...overrides,
+    })
+
+    const cases = [
+      { label: 'minimal-text', input: message() },
+      {
+        label: 'assistant-with-swipes',
+        input: message({
+          role: 'assistant',
+          content: '正文',
+          swipes: ['候选甲', '候选乙'],
+          swipeIndex: 1,
+        }),
+      },
+      {
+        label: 'null-character-and-reply',
+        input: message({ characterId: null, replyToId: 'm-0' }),
+      },
+      {
+        label: 'omniscient-speaker-and-generation',
+        input: message({
+          role: 'assistant',
+          speakerKind: 'narrator',
+          narrativeMode: 'omniscient',
+          generationKind: 'regenerate',
+        }),
+      },
+      {
+        // 这些是**本地保真**字段（正文翻译、字符用量、生图引用、收尾提示、渲染模式、方向卡片）：
+        // 它们不在契约 schema 里，因此 PC 一个都不下发；Android 也必须一个都不下发，
+        // 跨端保真由 Backup V3 / 导入导出承担。这条用例就是钉住「别顺手把它们塞进信封」。
+        label: 'local-only-fields-are-not-sent',
+        input: message({
+          translation: '译文',
+          charUsage: { input: 1, output: 2 },
+          images: ['data:image/png;base64,AA'],
+          generationError: '中断',
+          generationNotice: '已收束',
+          contentRenderMode: 'blocks',
+          dialogueDirections: [{ label: 'a', text: 'b' }],
+        }),
+      },
+    ].map((entry) => {
+      const payload = messageEntityPayload(entry.input as never) as Record<string, unknown>
+      return {
+        label: entry.label,
+        keys: Object.keys(payload).sort(),
+        payload,
+      }
+    })
+
+    writeFixture('message-payload', {
+      algorithm: 'electron/ipc/chat.ts#messageEntityPayload',
+      deliberatelyExcluded: [
+        'id', 'images', 'isEditing', 'translation', 'charUsage', 'generationError',
+        'generationNotice', 'contentRenderMode', 'dialogueDirections',
+        'dialogueDirectionsGeneratedAt',
+      ],
+      cases,
+    })
+  })
+})
+
+/**
+ * `session` 与 `message` 是同一批缺陷：Android 那边下发的也是 Room 列名
+ * （`lorebookIdsJson`），且**漏掉了** PC 会下发的 `createdAt`/`updatedAt`/`narrativeMode`。
+ * 这两组 fixture 一起把「会话/消息的契约映射」冻住。
+ */
+describe('sync-payload / session', () => {
+  it('pins sessionEntityPayload', () => {
+    const cases = [
+      {
+        label: 'minimal',
+        characterId: 'char-full',
+        session: { id: 'sess-1', title: '会话一', createdAt: 1700000000000, updatedAt: 1700000000001 },
+      },
+      {
+        label: 'bindings-and-omniscient',
+        characterId: 'char-full',
+        session: {
+          id: 'sess-2', title: '带绑定', createdAt: 1700000000002, updatedAt: 1700000000003,
+          personaId: 'p-1', lorebookIds: ['lb-1', 'lb-2'], narrativeMode: 'omniscient',
+        },
+      },
+      {
+        label: 'explicit-nulls',
+        characterId: 'char-full',
+        session: {
+          id: 'sess-3', title: '', createdAt: 0, updatedAt: 0,
+          personaId: null, lorebookIds: [], narrativeMode: null,
+        },
+      },
+    ].map((entry) => {
+      const payload = sessionEntityPayload(entry.characterId, entry.session as never) as Record<string, unknown>
+      return { label: entry.label, keys: Object.keys(payload).sort(), payload }
+    })
+
+    writeFixture('session-payload', {
+      algorithm: 'electron/ipc/chat.ts#sessionEntityPayload',
+      deliberatelyExcluded: [
+        'id', 'groupId', 'presetId', 'memoryEnabled', 'memoryMode', 'autoMemoryInterval',
+        'responseLengthMode', 'recentLoreKeys',
+      ],
+      cases,
+    })
   })
 })

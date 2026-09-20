@@ -1,0 +1,81 @@
+{
+  "algorithm": "electron/ipc/chat.ts#sessionEntityPayload",
+  "deliberatelyExcluded": [
+    "id",
+    "groupId",
+    "presetId",
+    "memoryEnabled",
+    "memoryMode",
+    "autoMemoryInterval",
+    "responseLengthMode",
+    "recentLoreKeys"
+  ],
+  "cases": [
+    {
+      "label": "minimal",
+      "keys": [
+        "characterId",
+        "createdAt",
+        "lorebookIds",
+        "narrativeMode",
+        "personaId",
+        "title",
+        "updatedAt"
+      ],
+      "payload": {
+        "characterId": "char-full",
+        "title": "会话一",
+        "createdAt": 1700000000000,
+        "updatedAt": 1700000000001,
+        "personaId": null,
+        "lorebookIds": [],
+        "narrativeMode": null
+      }
+    },
+    {
+      "label": "bindings-and-omniscient",
+      "keys": [
+        "characterId",
+        "createdAt",
+        "lorebookIds",
+        "narrativeMode",
+        "personaId",
+        "title",
+        "updatedAt"
+      ],
+      "payload": {
+        "characterId": "char-full",
+        "title": "带绑定",
+        "createdAt": 1700000000002,
+        "updatedAt": 1700000000003,
+        "personaId": "p-1",
+        "lorebookIds": [
+          "lb-1",
+          "lb-2"
+        ],
+        "narrativeMode": "omniscient"
+      }
+    },
+    {
+      "label": "explicit-nulls",
+      "keys": [
+        "characterId",
+        "createdAt",
+        "lorebookIds",
+        "narrativeMode",
+        "personaId",
+        "title",
+        "updatedAt"
+      ],
+      "payload": {
+        "characterId": "char-full",
+        "title": "",
+        "createdAt": 0,
+        "updatedAt": 0,
+        "personaId": null,
+        "lorebookIds": [],
+        "narrativeMode": null
+      }
+    }
+  ]
+}
