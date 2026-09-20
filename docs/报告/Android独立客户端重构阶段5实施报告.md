@@ -4,7 +4,7 @@
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
-> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1109 / 0**、
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1110 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
 > `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
@@ -959,6 +959,43 @@ PC 那边一直是对的：`shared/contracts/sync-envelope.ts#makeEnvelope` 明�
 **突变验证**：把会话那处改回 `null` → 用例立刻红（已还原、复跑全绿）。
 `usage_record`/`usage_clear_marker`/设置等顶层实体 parent 恒为 null——与 PC 一致，不需要改。
 
+### 2.27 备份往返的「逐类保真」用例：当场抓到两处**静默数据丢失**
+
+**背景**：本阶段此前唯一的端到端往返用例只盯 `usage_clear_marker`（它自己的文档就这么写），
+于是「打包器写了什么 / 恢复器读什么」对**其余每一类**都没有核对过——单测各测各的、
+跨端 golden 只管 payload、设备用例只管失败路径。这正是「没人对着契约检查的那一层」。
+
+**先补用例，再看结果**：新增 `BackupFullKindRoundTripTest`——用**真实写入路径**铺满每一类
+（角色/世界书/预设/人设/正则/映射模板/快捷回复/会话+消息/用量），媒体按 `MediaImportGate` 的
+真实布局放进 `media/<kind>/` 子目录，然后 `create → inspect → restore` 到另一台设备，**逐字段**核对。
+
+**当场抓到两处静默数据丢失（都是"用户以为备份里有、其实没有"）**：
+
+| # | 现象 | 根因 |
+|---|---|---|
+| 1 | **所有媒体（头像/背景/人设头像）都没进备份包**。`counts["media"]` 恒为 0；恢复后实体的 `avatarRef` 指向**不存在的文件**，全程无报错、无提示 | `MediaImportGate` 把文件放在 `media/<kind>/<sha>.<ext>`，而 `create()` 只扫 `mediaRoot.listFiles()` 的**顶层文件**（非递归）。旧注释写的是「只带被实体引用得到的文件」——**注释描述的是意图，代码做的是另一件事** |
+| 2 | **消息的候选回复（swipe）与配图全丢**。重新生成过几次、留了几个候选，恢复后只剩当前那条；`imagesJson`/`usageJson`/`generation*` 同样不在包里 | 打包/恢复两侧的消息字段表只有 `id/role/content/logicalTime/seq/replyToId/translation/createdAt/updatedAt`，**整个 `swipes`/`swipeIndex` 从未出现**（`grep swipes` 在编排器里零命中） |
+
+修法：① 媒体改为**递归收集**（排除 `.incoming/` 恢复暂存区与点开头的路径；媒体目录里只有
+`MediaImportGate` 写的文件，没有下载缓存，所以递归不会捎上无关数据）；② 消息字段表两侧对称补齐
+`characterId`（群聊里「谁说的」≠ 会话的角色）、`swipes`/`swipeIndex`、`images`、`usage`、
+`generationStatus/Notice/Error`，恢复端对旧包保持向后兼容（缺键即回落默认）。
+
+**过程中被现有守卫挡回的两次**（值得记，说明这些守卫真的在工作）：
+- 我第一版把映射模板写成 `{"map":[]}` → `LorebookMappingTemplateDsl.requireValid` 直接拒（受限 DSL 生效）；
+- 我把预设 `bodyJson` 播种成「只有业务字段」，`create()` 按 PC 口径补回 `name/description/isBuiltin`
+  → 我一度以为「往返污染 bodyJson」并动手去拆键，**随后被 `SyncPayloadGoldenTest.presetPayloadIsWholeBodyNoId`
+  纠正**：`bodyJson` 的约定本来就是「整个预设对象 + id」（那条 golden 正是用 `payload + id` 反推行的）。
+  如果当时按第一直觉改下去，就会把 PC 也有的键从 payload 里弄丢——**先看 oracle 再动手**这一条又对了一次。
+
+**顺带记一处接线缺口（未修，属阶段 6 S6-02）**：`putMediaManifest` **没有任何生产调用者**
+（只有接口声明 + 两处实现），因此 `local_media_manifests` 表在真实使用中永远是空的，
+`media_manifest` 实体也从不进 journal。这正是备忘 §5-3 点名的「功能在、接线不在」，
+而我的 `ContentWiringAuditTest` 没抓到它——因为那份审计的粒度是**模块**，而这是**接口方法**级。
+下次扩审计时应把「LocalStore 的关键写方法必须有生产调用者」纳入（并在 Stage 6 S6-02 里真正接上）。
+
+**新增用例（1 条，但覆盖 10 类实体 + 媒体）**：`BackupFullKindRoundTripTest.everyEntityKindAndMediaSurvivesTheRoundTrip`。
+
 ### 2.6 迁移
 
 `MIGRATION_3_4` 全部是加列/加表/加索引，无重建、无 destructive fallback；新列都带 DEFAULT。
@@ -1041,6 +1078,8 @@ PC 那边一直是对的：`shared/contracts/sync-envelope.ts#makeEnvelope` 明�
 | 设备（§2.26 改动后） | API 31 经典 AVD **59/0**（1m14s，XML 时间戳为本次） | api26/api34 本轮未复跑（同上一行的口径：不把旧结果当新结果） |
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§5-U-14 补齐后） | **1109 通过 / 0 失败 / 0 跳过 / 141 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1108；**+1 条**（迁移信封 parent 用例，含突变验证）。改了生产代码（`importFromLegacy` 链路），故设备复跑 |
 | 设备（U-14 补齐后） | API 31 经典 AVD **59/0**（1m12s，XML 时间戳为本次） | api26/api34 本轮未复跑 |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.27 改动后） | **1110 通过 / 0 失败 / 0 跳过 / 142 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1109；**+1 条**（`BackupFullKindRoundTripTest`，覆盖 10 类实体 + 媒体）。改了生产代码（媒体递归收集 + 消息字段表补齐），故设备复跑 |
+| 设备（§2.27 改动后） | API 31 经典 AVD **59/0**（1m8s） | 备份/媒体相关类在套件内，含 `BackupRestoreFailureInstrumentedTest` 4 条 |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`

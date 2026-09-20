@@ -111,16 +111,31 @@ class BackupOrchestrator(
         counts["usageClearMarkers"] = clearMarkers.size
         counts["sessions"] = sessions.size
 
-        // 媒体只带被实体引用得到的文件：整目录打包会把下载缓存一起备份出去
+        // 媒体：**必须递归**收集。
+        //
+        // `MediaImportGate` 把文件放在 `media/<kind>/<sha>.<ext>` 下，实体里的
+        // `avatarRef`/`chatBackgroundRef` 就是那个相对路径（`"avatar/<sha>.png"`）。
+        // 此前这里只扫 `mediaRoot.listFiles()` 的**顶层文件**（非递归），于是
+        // `media/avatar/...` 一个都进不了包——**所有媒体都没有被备份**，而且是静默的：
+        // 恢复端只看到角色少了头像，`counts["media"]` 恒为 0，没有任何报错或提示。
+        // 注释当时写的是「只带被实体引用得到的文件」，即**注释描述的是意图、代码做的是另一件事**。
+        //
+        // 现在按「递归收集 + 排除恢复暂存区」实现：媒体目录里只有 MediaImportGate 写的内容寻址文件
+        // 与 `.incoming/`（恢复时的暂存目录，绝不能被打进包），没有下载缓存之类的东西，
+        // 所以递归不会把无关数据捎上；少带文件比多带文件危险得多（引用会指向缺失文件）。
         var mediaCount = 0
-        mediaRoot.listFiles()?.filter { it.isFile }?.forEach { file ->
-            val rel = file.relativeTo(mediaRoot).path.replace('\\', '/')
-            if (rel.startsWith(".")) return@forEach
-            val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@forEach
-            if (bytes.isEmpty()) return@forEach
-            entries += BackupV3.Entry(BackupV3.Paths.MEDIA + rel, bytes)
-            mediaCount += 1
-        }
+        mediaRoot.walkTopDown()
+            .onEnter { it.name != INCOMING_DIR }
+            .filter { it.isFile }
+            .forEach { file ->
+                val rel = file.relativeTo(mediaRoot).path.replace('\\', '/')
+                // 点开头的路径一律不带（`.incoming/`、编辑器可能留下的临时文件）
+                if (rel.split('/').any { it.startsWith(".") }) return@forEach
+                val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@forEach
+                if (bytes.isEmpty()) return@forEach
+                entries += BackupV3.Entry(BackupV3.Paths.MEDIA + rel, bytes)
+                mediaCount += 1
+            }
         counts["media"] = mediaCount
 
         val manifest = BackupV3.manifestOf(
@@ -434,10 +449,22 @@ class BackupOrchestrator(
                 "id" to message.id,
                 "role" to message.role,
                 "content" to message.content,
+                // 「这条是谁说的」必须随包走：群聊/多角色会话里它不等于会话的 characterId
+                "characterId" to message.characterId,
                 "logicalTime" to message.logicalTime,
                 "seq" to message.seq,
                 "replyToId" to message.replyToId,
                 "translation" to message.translation,
+                // 候选回复（swipe）是**用户数据**：重新生成过几次、存了几个候选，
+                // 丢了就等于把用户留着的那些分支全删了（§6.3 对 swipe 有专门语义）。
+                "swipes" to JsonValues.parseArray(message.swipesJson ?: "[]"),
+                "swipeIndex" to message.swipeIndex,
+                // 消息配图与用量、以及生成收尾提示：都是本地保真字段，备份必须带上
+                "images" to JsonValues.parseArray(message.imagesJson),
+                "usage" to JsonValues.parseObject(message.usageJson ?: "{}"),
+                "generationStatus" to message.generationStatus,
+                "generationNotice" to message.generationNotice,
+                "generationError" to message.generationError,
                 "createdAt" to message.createdAt,
                 "updatedAt" to message.updatedAt,
             )
@@ -512,6 +539,10 @@ class BackupOrchestrator(
         preview.objectsUnder(BackupV3.Paths.PRESETS).mapNotNull { obj ->
             val id = string(obj, "id").ifEmpty { return@mapNotNull null }
             val body = LinkedHashMap<String, Any?>()
+            // 只剔 id：`bodyJson` 的约定就是「整个预设对象（含 name/description/isBuiltin）+ id」
+            // ——见 `SyncPayloadGoldenTest.presetPayloadIsWholeBodyMinusId`，那里正是用
+            // `payload + id` 反推行的。所以恢复时把其余键原样放回 body 才是对的，
+            // 顺手「拆回列」会把 PC 也有的键从 payload 里弄丢（同步哈希就变了）。
             obj.keys().forEach { key -> if (key != "id") body[key] = JsonValues.parseAny(obj.opt(key).toString()) }
             LocalPresetEntity(
                 id = id,
@@ -672,9 +703,17 @@ class BackupOrchestrator(
                     LocalMessageEntity(
                         id = messageId,
                         sessionId = id,
-                        characterId = session.characterId,
+                        // 优先用消息自带的说话人；旧包没有这个键时回落到会话的角色（单聊两者相同）
+                        characterId = nullableString(message, "characterId") ?: session.characterId,
                         role = string(message, "role").ifEmpty { "user" },
                         content = string(message, "content"),
+                        swipesJson = message.optJSONArray("swipes")?.toString(),
+                        swipeIndex = if (message.isNull("swipeIndex")) null else message.optInt("swipeIndex"),
+                        imagesJson = message.optJSONArray("images")?.toString() ?: "[]",
+                        usageJson = message.optJSONObject("usage")?.toString(),
+                        generationStatus = nullableString(message, "generationStatus"),
+                        generationNotice = nullableString(message, "generationNotice"),
+                        generationError = nullableString(message, "generationError"),
                         logicalTime = message.optLong("logicalTime", System.currentTimeMillis() + index),
                         seq = message.optLong("seq", index.toLong()),
                         replyToId = nullableString(message, "replyToId"),
