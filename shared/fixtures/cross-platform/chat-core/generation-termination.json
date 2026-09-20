@@ -1,0 +1,709 @@
+{
+  "version": 1,
+  "terminalStates": [
+    "streaming",
+    "finalizing",
+    "persisted",
+    "cancelled",
+    "failed"
+  ],
+  "observationCases": [
+    {
+      "outcome": "completed",
+      "finishReason": "stop",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "provider_stop"
+    },
+    {
+      "outcome": "completed",
+      "finishReason": "length",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "provider_length"
+    },
+    {
+      "outcome": "completed",
+      "finishReason": "content_filter",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "provider_content_filter"
+    },
+    {
+      "outcome": "completed",
+      "finishReason": "tool_calls",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "provider_tool_calls"
+    },
+    {
+      "outcome": "completed",
+      "finishReason": "cancelled",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "user_cancel"
+    },
+    {
+      "outcome": "completed",
+      "finishReason": "network_error",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "transport_error"
+    },
+    {
+      "outcome": "completed",
+      "finishReason": "unknown",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "unknown"
+    },
+    {
+      "outcome": "truncated",
+      "finishReason": "stop",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "provider_length"
+    },
+    {
+      "outcome": "user_cancelled",
+      "finishReason": "cancelled",
+      "errorKind": null,
+      "cancelReason": null,
+      "cause": "user_cancel"
+    },
+    {
+      "outcome": "user_cancelled",
+      "finishReason": "cancelled",
+      "cancelReason": "timeout",
+      "errorKind": null,
+      "cause": "idle_timeout"
+    },
+    {
+      "outcome": "user_cancelled",
+      "finishReason": "cancelled",
+      "cancelReason": "stop_string",
+      "errorKind": null,
+      "cause": "user_cancel"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "stop",
+      "errorKind": "aborted",
+      "cancelReason": null,
+      "cause": "user_cancel"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "stop",
+      "errorKind": "aborted",
+      "cancelReason": "timeout",
+      "cause": "idle_timeout"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "stop",
+      "errorKind": "timeout",
+      "cancelReason": null,
+      "cause": "idle_timeout"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "stop",
+      "errorKind": "network",
+      "cancelReason": null,
+      "cause": "transport_error"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "stop",
+      "errorKind": "content_filter",
+      "cancelReason": null,
+      "cause": "provider_content_filter"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "stop",
+      "errorKind": "reasoning_budget_exhausted",
+      "cancelReason": null,
+      "cause": "reasoning_gate_exceeded"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "stop",
+      "errorKind": "length_limit",
+      "cancelReason": null,
+      "cause": "provider_length"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "content_filter",
+      "errorKind": "other",
+      "cancelReason": null,
+      "cause": "provider_content_filter"
+    },
+    {
+      "outcome": "error",
+      "finishReason": "network_error",
+      "errorKind": "other",
+      "cancelReason": null,
+      "cause": "transport_error"
+    }
+  ],
+  "finishReasonCases": [
+    {
+      "reason": "stop",
+      "cause": "provider_stop"
+    },
+    {
+      "reason": "length",
+      "cause": "provider_length"
+    },
+    {
+      "reason": "content_filter",
+      "cause": "provider_content_filter"
+    },
+    {
+      "reason": "tool_calls",
+      "cause": "provider_tool_calls"
+    },
+    {
+      "reason": "cancelled",
+      "cause": "user_cancel"
+    },
+    {
+      "reason": "network_error",
+      "cause": "transport_error"
+    },
+    {
+      "reason": "unknown",
+      "cause": "unknown"
+    },
+    {
+      "cause": "unknown"
+    }
+  ],
+  "effectiveCauseCases": [
+    {
+      "cause": "transport_error",
+      "providerFinishReason": "stop",
+      "effective": "network_error"
+    },
+    {
+      "cause": "idle_timeout",
+      "providerFinishReason": "stop",
+      "effective": "network_error"
+    },
+    {
+      "cause": "protocol_error",
+      "providerFinishReason": "stop",
+      "effective": "network_error"
+    },
+    {
+      "cause": "provider_stop",
+      "providerFinishReason": "length",
+      "effective": "stop"
+    },
+    {
+      "cause": "provider_length",
+      "providerFinishReason": "stop",
+      "effective": "length"
+    },
+    {
+      "cause": "reasoning_gate_exceeded",
+      "providerFinishReason": "stop",
+      "effective": "length"
+    },
+    {
+      "cause": "provider_content_filter",
+      "providerFinishReason": "stop",
+      "effective": "content_filter"
+    },
+    {
+      "cause": "provider_tool_calls",
+      "providerFinishReason": "stop",
+      "effective": "tool_calls"
+    },
+    {
+      "cause": "user_cancel",
+      "providerFinishReason": "stop",
+      "effective": "cancelled"
+    },
+    {
+      "cause": "unknown",
+      "providerFinishReason": "tool_calls",
+      "effective": "tool_calls"
+    }
+  ],
+  "withContentCases": [
+    {
+      "cause": "provider_stop",
+      "prompt": null
+    },
+    {
+      "cause": "provider_length",
+      "prompt": null
+    },
+    {
+      "cause": "provider_content_filter",
+      "prompt": null
+    },
+    {
+      "cause": "provider_tool_calls",
+      "prompt": null
+    },
+    {
+      "cause": "user_cancel",
+      "prompt": {
+        "field": "generationNotice",
+        "text": "已停止生成"
+      }
+    },
+    {
+      "cause": "transport_error",
+      "prompt": {
+        "field": "generationError",
+        "text": "生成中断，已保留完整部分"
+      }
+    },
+    {
+      "cause": "idle_timeout",
+      "prompt": {
+        "field": "generationError",
+        "text": "请求超时，已保留完整部分"
+      }
+    },
+    {
+      "cause": "protocol_error",
+      "prompt": {
+        "field": "generationError",
+        "text": "响应格式异常，已保留完整部分"
+      }
+    },
+    {
+      "cause": "reasoning_gate_exceeded",
+      "prompt": null
+    },
+    {
+      "cause": "unknown",
+      "prompt": null
+    }
+  ],
+  "withoutContentCases": [
+    {
+      "cause": "provider_stop",
+      "errorMessage": null,
+      "text": "模型未返回可用内容，请重试"
+    },
+    {
+      "cause": "provider_stop",
+      "errorMessage": "   ",
+      "text": "模型未返回可用内容，请重试"
+    },
+    {
+      "cause": "provider_stop",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "provider_length",
+      "errorMessage": null,
+      "text": "模型未返回可用内容，请重试"
+    },
+    {
+      "cause": "provider_length",
+      "errorMessage": "   ",
+      "text": "模型未返回可用内容，请重试"
+    },
+    {
+      "cause": "provider_length",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "provider_content_filter",
+      "errorMessage": null,
+      "text": "回复被内容审核拦截"
+    },
+    {
+      "cause": "provider_content_filter",
+      "errorMessage": "   ",
+      "text": "回复被内容审核拦截"
+    },
+    {
+      "cause": "provider_content_filter",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "provider_tool_calls",
+      "errorMessage": null,
+      "text": "模型未返回可用内容，请重试"
+    },
+    {
+      "cause": "provider_tool_calls",
+      "errorMessage": "   ",
+      "text": "模型未返回可用内容，请重试"
+    },
+    {
+      "cause": "provider_tool_calls",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "user_cancel",
+      "errorMessage": null,
+      "text": "已停止生成"
+    },
+    {
+      "cause": "user_cancel",
+      "errorMessage": "   ",
+      "text": "已停止生成"
+    },
+    {
+      "cause": "user_cancel",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "transport_error",
+      "errorMessage": null,
+      "text": "生成中断，请重试"
+    },
+    {
+      "cause": "transport_error",
+      "errorMessage": "   ",
+      "text": "生成中断，请重试"
+    },
+    {
+      "cause": "transport_error",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "idle_timeout",
+      "errorMessage": null,
+      "text": "请求超时，请重试"
+    },
+    {
+      "cause": "idle_timeout",
+      "errorMessage": "   ",
+      "text": "请求超时，请重试"
+    },
+    {
+      "cause": "idle_timeout",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "protocol_error",
+      "errorMessage": null,
+      "text": "响应格式异常，请重试"
+    },
+    {
+      "cause": "protocol_error",
+      "errorMessage": "   ",
+      "text": "响应格式异常，请重试"
+    },
+    {
+      "cause": "protocol_error",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "reasoning_gate_exceeded",
+      "errorMessage": null,
+      "text": "该模型推理占满输出预算，请重试或更换模型"
+    },
+    {
+      "cause": "reasoning_gate_exceeded",
+      "errorMessage": "   ",
+      "text": "该模型推理占满输出预算，请重试或更换模型"
+    },
+    {
+      "cause": "reasoning_gate_exceeded",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    },
+    {
+      "cause": "unknown",
+      "errorMessage": null,
+      "text": "模型未返回可用内容，请重试"
+    },
+    {
+      "cause": "unknown",
+      "errorMessage": "   ",
+      "text": "模型未返回可用内容，请重试"
+    },
+    {
+      "cause": "unknown",
+      "errorMessage": "供应商原文错误",
+      "text": "供应商原文错误"
+    }
+  ],
+  "contentFilterPreservesBody": false,
+  "latchCases": [
+    {
+      "requestId": "r1",
+      "actions": [
+        {
+          "op": "accepts"
+        },
+        {
+          "op": "claim",
+          "cause": "provider_stop"
+        },
+        {
+          "op": "accepts"
+        },
+        {
+          "op": "markPersisted"
+        },
+        {
+          "op": "markPersisted"
+        },
+        {
+          "op": "accepts"
+        }
+      ],
+      "trace": [
+        {
+          "op": "accepts",
+          "result": true,
+          "state": "streaming",
+          "claimedCause": null
+        },
+        {
+          "op": "claim",
+          "cause": "provider_stop",
+          "result": true,
+          "state": "finalizing",
+          "claimedCause": "provider_stop"
+        },
+        {
+          "op": "accepts",
+          "result": false,
+          "state": "finalizing",
+          "claimedCause": "provider_stop"
+        },
+        {
+          "op": "markPersisted",
+          "result": null,
+          "state": "persisted",
+          "claimedCause": "provider_stop"
+        },
+        {
+          "op": "markPersisted",
+          "result": null,
+          "state": "persisted",
+          "claimedCause": "provider_stop"
+        },
+        {
+          "op": "accepts",
+          "result": false,
+          "state": "persisted",
+          "claimedCause": "provider_stop"
+        }
+      ],
+      "finalState": "persisted"
+    },
+    {
+      "requestId": "r2",
+      "actions": [
+        {
+          "op": "claim",
+          "cause": "user_cancel"
+        },
+        {
+          "op": "markPersisted"
+        },
+        {
+          "op": "claim",
+          "cause": "provider_stop"
+        }
+      ],
+      "trace": [
+        {
+          "op": "claim",
+          "cause": "user_cancel",
+          "result": true,
+          "state": "cancelled",
+          "claimedCause": "user_cancel"
+        },
+        {
+          "op": "markPersisted",
+          "result": null,
+          "state": "persisted",
+          "claimedCause": "user_cancel"
+        },
+        {
+          "op": "claim",
+          "cause": "provider_stop",
+          "result": false,
+          "state": "persisted",
+          "claimedCause": "user_cancel"
+        }
+      ],
+      "finalState": "persisted"
+    },
+    {
+      "requestId": "r3",
+      "actions": [
+        {
+          "op": "claim",
+          "cause": "transport_error"
+        },
+        {
+          "op": "claim",
+          "cause": "provider_stop"
+        },
+        {
+          "op": "markPersisted"
+        }
+      ],
+      "trace": [
+        {
+          "op": "claim",
+          "cause": "transport_error",
+          "result": true,
+          "state": "finalizing",
+          "claimedCause": "transport_error"
+        },
+        {
+          "op": "claim",
+          "cause": "provider_stop",
+          "result": false,
+          "state": "finalizing",
+          "claimedCause": "transport_error"
+        },
+        {
+          "op": "markPersisted",
+          "result": null,
+          "state": "persisted",
+          "claimedCause": "transport_error"
+        }
+      ],
+      "finalState": "persisted"
+    },
+    {
+      "requestId": "r4",
+      "actions": [
+        {
+          "op": "markPersisted"
+        },
+        {
+          "op": "claim",
+          "cause": "provider_stop"
+        }
+      ],
+      "trace": [
+        {
+          "op": "markPersisted",
+          "result": null,
+          "state": "streaming",
+          "claimedCause": null
+        },
+        {
+          "op": "claim",
+          "cause": "provider_stop",
+          "result": true,
+          "state": "finalizing",
+          "claimedCause": "provider_stop"
+        }
+      ],
+      "finalState": "finalizing"
+    },
+    {
+      "requestId": "r5",
+      "actions": [
+        {
+          "op": "claim",
+          "cause": "user_cancel"
+        },
+        {
+          "op": "claim",
+          "cause": "idle_timeout"
+        },
+        {
+          "op": "accepts"
+        }
+      ],
+      "trace": [
+        {
+          "op": "claim",
+          "cause": "user_cancel",
+          "result": true,
+          "state": "cancelled",
+          "claimedCause": "user_cancel"
+        },
+        {
+          "op": "claim",
+          "cause": "idle_timeout",
+          "result": false,
+          "state": "cancelled",
+          "claimedCause": "user_cancel"
+        },
+        {
+          "op": "accepts",
+          "result": false,
+          "state": "cancelled",
+          "claimedCause": "user_cancel"
+        }
+      ],
+      "finalState": "cancelled"
+    },
+    {
+      "requestId": "r6",
+      "actions": [],
+      "trace": [],
+      "finalState": "streaming"
+    },
+    {
+      "requestId": "r7",
+      "actions": [
+        {
+          "op": "claim",
+          "cause": "protocol_error"
+        },
+        {
+          "op": "accepts"
+        },
+        {
+          "op": "markPersisted"
+        },
+        {
+          "op": "claim",
+          "cause": "user_cancel"
+        }
+      ],
+      "trace": [
+        {
+          "op": "claim",
+          "cause": "protocol_error",
+          "result": true,
+          "state": "finalizing",
+          "claimedCause": "protocol_error"
+        },
+        {
+          "op": "accepts",
+          "result": false,
+          "state": "finalizing",
+          "claimedCause": "protocol_error"
+        },
+        {
+          "op": "markPersisted",
+          "result": null,
+          "state": "persisted",
+          "claimedCause": "protocol_error"
+        },
+        {
+          "op": "claim",
+          "cause": "user_cancel",
+          "result": false,
+          "state": "persisted",
+          "claimedCause": "protocol_error"
+        }
+      ],
+      "finalState": "persisted"
+    }
+  ]
+}

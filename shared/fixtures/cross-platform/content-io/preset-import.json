@@ -1,0 +1,156 @@
+{
+  "algorithm": "shared/preset.ts#normalizeImportedPreset",
+  "cases": [
+    {
+      "label": "standard-snake-case",
+      "input": {
+        "name": "酒馆",
+        "main_prompt": "sys",
+        "max_context": "8192",
+        "top_p": 0.9,
+        "temperature": 1.1,
+        "unknown_field": 1
+      },
+      "options": {
+        "id": "imp1",
+        "fallbackName": "导入预设"
+      },
+      "ok": true,
+      "sourceFormat": "standard",
+      "unsupportedFields": [
+        "unknown_field"
+      ],
+      "preset": {
+        "id": "imp1",
+        "name": "酒馆",
+        "description": "",
+        "systemPrompt": "sys",
+        "jailbreak": "",
+        "maxContext": 8192,
+        "temperature": 1.1,
+        "topP": 0.9,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "mixed-native-wins",
+      "input": {
+        "name": "混合",
+        "main_prompt": "from-snake",
+        "systemPrompt": "from-native"
+      },
+      "options": {
+        "id": "imp2",
+        "fallbackName": "导入预设"
+      },
+      "ok": true,
+      "sourceFormat": "standard",
+      "unsupportedFields": [],
+      "preset": {
+        "id": "imp2",
+        "name": "混合",
+        "description": "",
+        "systemPrompt": "from-native",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "no-name-falls-back",
+      "input": {
+        "prompt_set": []
+      },
+      "options": {
+        "id": "imp3",
+        "fallbackName": " 回退名 "
+      },
+      "ok": true,
+      "sourceFormat": "qingyu",
+      "unsupportedFields": [
+        "prompt_set"
+      ],
+      "preset": {
+        "id": "imp3",
+        "name": "回退名",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "unsupported-fields-sorted",
+      "input": {
+        "name": "脏",
+        "zeta": 1,
+        "alpha": 2,
+        "novelai_only": 3
+      },
+      "options": {
+        "id": "imp4",
+        "fallbackName": "导入预设"
+      },
+      "ok": true,
+      "sourceFormat": "qingyu",
+      "unsupportedFields": [
+        "alpha",
+        "novelai_only",
+        "zeta"
+      ],
+      "preset": {
+        "id": "imp4",
+        "name": "脏",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "rejects-array",
+      "input": [
+        1,
+        2,
+        3
+      ],
+      "options": {
+        "id": "imp5",
+        "fallbackName": "导入预设"
+      },
+      "ok": false,
+      "sourceFormat": null,
+      "unsupportedFields": null,
+      "preset": null,
+      "error": "预设格式无效"
+    }
+  ]
+}

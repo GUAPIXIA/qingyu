@@ -292,6 +292,17 @@ export function semanticCacheSet(key: string, hits: unknown): void {
   semanticCache.set(key, { hits, ts: Date.now() })
 }
 
+/** 把世界书修订号纳入语义缓存语料标识，保存后立即绕过旧命中。 */
+export function buildLorebookRevisionCorpus(
+  lorebookIds: string[],
+  revisionOf: (id: string) => number | undefined,
+): string {
+  return [...lorebookIds]
+    .sort()
+    .map((id) => `${id}@${revisionOf(id) ?? 0}`)
+    .join(',')
+}
+
 /**
  * 构造语义检索缓存键。检索参数必须全部入键，避免用户切换服务、阈值或 topK 后
  * 在 TTL 内误用上一套配置的结果。JSON 序列化也避免正文中的分隔符造成碰撞。
@@ -310,7 +321,7 @@ export function buildSemanticCacheKey(input: {
     ...input,
     baseUrl: input.baseUrl.trim().replace(/\/$/, ''),
     model: input.model.trim(),
-    threshold: input.threshold ?? 0.3,
+    threshold: input.threshold ?? 'auto',
     maxResults: input.maxResults ?? 3,
   })
 }

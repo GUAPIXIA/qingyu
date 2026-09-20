@@ -571,6 +571,24 @@ describe('MessageBubble', () => {
       )
       expect(queryByText('选择下一步方向')).toBeNull()
     })
+
+    it('尾随系统消息存在时，最新可操作回复仍显示换一批', () => {
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', dialogueDirectionsEnabled: true } as never],
+        currentSessionId: 's1',
+        isStreaming: false,
+      })
+      const { getByRole } = render(
+        <MessageBubble
+          message={createMessage({ dialogueDirections: directions })}
+          character={createCharacter()}
+          isLast={false}
+          canRegenerateDirections
+        />,
+      )
+
+      expect(getByRole('button', { name: /换一批/ })).toBeTruthy()
+    })
   })
 
   describe('生成失败提示（generationError）', () => {
@@ -593,16 +611,27 @@ describe('MessageBubble', () => {
       expect(queryByText(/生成中断/)).toBeNull()
     })
 
-    it('generationNotice 走中性提示行（与失败提示区分）', () => {
-      const { getByText, queryByText } = render(
+    it('隐藏历史消息中已保存的普通句界收束提示', () => {
+      const { queryByText } = render(
         <MessageBubble
           message={createMessage({ content: '她推开门。', generationNotice: '内容已在完整句处收束' })}
           character={createCharacter()}
           isLast={false}
         />,
       )
-      expect(getByText(/内容已在完整句处收束/)).toBeTruthy()
+      expect(queryByText(/内容已在完整句处收束/)).toBeNull()
       expect(queryByText(/生成中断/)).toBeNull()
+    })
+
+    it('继续显示需要用户知晓的生成状态', () => {
+      const { getByText } = render(
+        <MessageBubble
+          message={createMessage({ content: '她推开门。', generationNotice: '已自动补全结尾' })}
+          character={createCharacter()}
+          isLast={false}
+        />,
+      )
+      expect(getByText(/已自动补全结尾/)).toBeTruthy()
     })
   })
 

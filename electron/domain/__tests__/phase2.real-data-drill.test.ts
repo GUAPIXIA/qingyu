@@ -31,7 +31,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 const MAX_MEDIA_BYTES = 2 * 1024 * 1024
 
 const { ROOT, USER_DATA } = vi.hoisted(() => {
-  const root = `${process.cwd()}/.tmp-drill-${process.pid}-${Date.now()}`
+  // 演练副本放系统临时目录，不放 process.cwd()：后者每次运行都会把真实数据的只读副本
+  // （约 2500 个文件）写进仓库根目录，中断即残留；累计到 12 万+ 文件后 Vite 冷启动的
+  // 文件监听会被拖到分钟级（2026-09-20 实测，见 vite.config.ts 的 watch.ignored）。
+  const base = process.env.TEMP || process.env.TMPDIR || '/tmp'
+  const root = `${base}/qingyu-drill-${process.pid}-${Date.now()}`
   return { ROOT: root, USER_DATA: `${root}/userdata` }
 })
 

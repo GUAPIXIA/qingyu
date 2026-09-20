@@ -1,7 +1,11 @@
 import { fireEvent, render, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { DialogueDirectionCard } from '../DialogueDirectionCard'
-import { shouldShowDialogueDirections } from '../dialogueDirectionView'
+import {
+  findLatestActionableGroupDirectionMessageId,
+  findLatestActionableSingleDirectionMessageId,
+  shouldShowDialogueDirections,
+} from '../dialogueDirectionView'
 import { registerDraftBridge } from '../draftBridge'
 import type { Character, DialogueDirection } from '../../../../shared/types'
 
@@ -120,5 +124,47 @@ describe('shouldShowDialogueDirections', () => {
   it('用户消息与空正文不展示', () => {
     expect(shouldShowDialogueDirections({ message: { ...base, role: 'user' }, character, isStreaming: false, isSystem: false, enabled: true })).toBe(false)
     expect(shouldShowDialogueDirections({ message: { ...base, content: '' }, character, isStreaming: false, isSystem: false, enabled: true })).toBe(false)
+  })
+})
+
+describe('latest actionable dialogue direction message', () => {
+  it('单聊忽略尾随系统消息，仍允许最新 AI 回复换一批', () => {
+    expect(findLatestActionableSingleDirectionMessageId([
+      { id: 'assistant-1', role: 'assistant', content: '港口已经封锁。', dialogueDirections: DIRECTIONS },
+      { id: 'system-1', role: 'system', content: '后台状态已更新。' },
+    ])).toBe('assistant-1')
+  })
+
+  it('单聊已有更新的用户消息或 AI 回复时，不回退到旧方向', () => {
+    const oldReply = { id: 'assistant-1', role: 'assistant' as const, content: '港口已经封锁。', dialogueDirections: DIRECTIONS }
+
+    expect(findLatestActionableSingleDirectionMessageId([
+      oldReply,
+      { id: 'user-1', role: 'user', content: '我去找另一条路。' },
+    ])).toBeNull()
+    expect(findLatestActionableSingleDirectionMessageId([
+      oldReply,
+      { id: 'assistant-2', role: 'assistant', content: '你来到了旧城墙下。' },
+    ])).toBeNull()
+  })
+
+  it('群聊忽略不会渲染的 __free__ 尾随消息', () => {
+    expect(findLatestActionableGroupDirectionMessageId([
+      { id: 'member-1', characterId: 'c1', content: '港口已经封锁。', dialogueDirections: DIRECTIONS },
+      { id: 'free-1', characterId: '__free__', content: '' },
+    ])).toBe('member-1')
+  })
+
+  it('群聊已有更新的用户消息或角色回复时，不回退到旧方向', () => {
+    const oldReply = { id: 'member-1', characterId: 'c1', content: '港口已经封锁。', dialogueDirections: DIRECTIONS }
+
+    expect(findLatestActionableGroupDirectionMessageId([
+      oldReply,
+      { id: 'user-1', characterId: '__user__', content: '我去找另一条路。' },
+    ])).toBeNull()
+    expect(findLatestActionableGroupDirectionMessageId([
+      oldReply,
+      { id: 'member-2', characterId: 'c2', content: '旧城墙下传来脚步声。' },
+    ])).toBeNull()
   })
 })

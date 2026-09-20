@@ -20,8 +20,12 @@ const log = createLogger('usage')
 
 const USAGE_FILE = join(DIRS.config(), 'usage.json')
 
-/** 最大记录数，超过时删除最早的 */
-const MAX_RECORDS = 10000
+/**
+ * 最大记录数，超过时删除最早的。
+ * S5-07：导出只为让跨端 golden 能读到它——Android 的 `LocalStore.MAX_USAGE_RECORDS`
+ * 必须与这个数一致，否则两端保留不同的记录集。行为不变。
+ */
+export const MAX_RECORDS = 10000
 
 /** 加载所有用量记录，文件不存在返回空数组 */
 export function loadUsage(): UsageRecord[] {
@@ -31,7 +35,7 @@ export function loadUsage(): UsageRecord[] {
 }
 
 /** usage_record 实体规范 payload（与 S2-05 bootstrap 扫描器一致：记录去掉 id） */
-function usageRecordPayload(record: UsageRecord): Record<string, unknown> {
+export function usageRecordPayload(record: UsageRecord): Record<string, unknown> {
   return {
     timestamp: record.timestamp,
     characterId: record.characterId,

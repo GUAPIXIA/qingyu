@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "history": [
+        "h1",
+        "h2",
+        "h3"
+      ],
+      "inserts": [],
+      "resultIds": [
+        "h1",
+        "h2",
+        "h3"
+      ]
+    },
+    {
+      "history": [
+        "h1",
+        "h2",
+        "h3"
+      ],
+      "inserts": [
+        {
+          "content": "i0",
+          "depth": 0,
+          "order": 1
+        }
+      ],
+      "resultIds": [
+        "h1",
+        "h2",
+        "h3",
+        "i0"
+      ]
+    },
+    {
+      "history": [
+        "h1",
+        "h2",
+        "h3"
+      ],
+      "inserts": [
+        {
+          "content": "deep",
+          "depth": 2,
+          "order": 1
+        },
+        {
+          "content": "same-depth-a",
+          "depth": 1,
+          "order": 2
+        },
+        {
+          "content": "same-depth-b",
+          "depth": 1,
+          "order": 1
+        }
+      ],
+      "resultIds": [
+        "h1",
+        "deep",
+        "h2",
+        "same-depth-b",
+        "same-depth-a",
+        "h3"
+      ]
+    },
+    {
+      "history": [
+        "h1",
+        "h2"
+      ],
+      "inserts": [
+        {
+          "content": "withRole",
+          "depth": 1,
+          "order": 1,
+          "role": "user"
+        },
+        {
+          "content": "over",
+          "depth": 99,
+          "order": 1
+        }
+      ],
+      "resultIds": [
+        "over",
+        "h1",
+        "withRole@user",
+        "h2"
+      ]
+    },
+    {
+      "history": [],
+      "inserts": [
+        {
+          "content": "only",
+          "depth": 0,
+          "order": 1
+        }
+      ],
+      "resultIds": [
+        "only"
+      ]
+    },
+    {
+      "history": [
+        "h1",
+        "h2",
+        "h3"
+      ],
+      "inserts": [
+        {
+          "content": "neg",
+          "depth": -3,
+          "order": 1
+        },
+        {
+          "content": "neg2",
+          "depth": -3,
+          "order": 2
+        }
+      ],
+      "resultIds": [
+        "h1",
+        "h2",
+        "h3",
+        "neg",
+        "neg2"
+      ]
+    }
+  ]
+}

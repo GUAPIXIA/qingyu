@@ -12,9 +12,13 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-// vi.hoisted 早于 import 求值，因此这里只用字符串拼接；目录在 beforeAll 中创建
+// vi.hoisted 早于 import 求值，因此这里只用字符串拼接；目录在 beforeAll 中创建。
+// 临时根放在系统临时目录而不是 process.cwd()：放在仓库根时，每次跑测试都会往仓库里
+// 写约 2500 个文件，中断（Ctrl+C / 取消）就残留一份，累计 12 万+ 文件后 Vite 冷启动
+// 的文件监听会被拖到分钟级（2026-09-20 实测，见 vite.config.ts 的 watch.ignored）。
 const { ROOT, USER_DATA } = vi.hoisted(() => {
-  const root = `${process.cwd()}/.tmp-s204-${process.pid}-${Date.now()}`
+  const base = process.env.TEMP || process.env.TMPDIR || '/tmp'
+  const root = `${base}/qingyu-s204-${process.pid}-${Date.now()}`
   return { ROOT: root, USER_DATA: `${root}/userdata` }
 })
 

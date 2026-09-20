@@ -36,6 +36,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const isDev = !app.isPackaged
+const appIcon = join(__dirname, '../png/2048圆角.png')
 
 // 全局错误兜底：捕获未处理的 Promise rejection 和未捕获异常，避免静默丢失
 process.on('unhandledRejection', (reason) => {
@@ -63,6 +64,7 @@ function createWindow() {
     show: false,
     backgroundColor: '#1a1625',
     title: '轻语',
+    icon: appIcon,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,

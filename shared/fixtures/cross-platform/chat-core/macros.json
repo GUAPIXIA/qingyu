@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "context": {
+    "userName": "小明",
+    "charName": "苏晚",
+    "originalCharName": "Su Wan",
+    "groupName": "四人组",
+    "lastMessage": "最后一条消息",
+    "lastUserMessage": "最后一条用户消息"
+  },
+  "cases": [
+    {
+      "text": "{{user}} 和 {{char}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "小明 和 苏晚"
+    },
+    {
+      "text": "{{original}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "Su Wan"
+    },
+    {
+      "text": "{{group}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "四人组"
+    },
+    {
+      "text": "{{lastMessage}}|{{lastUserMessage}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "最后一条消息|最后一条用户消息"
+    },
+    {
+      "text": "{{newline}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "\n"
+    },
+    {
+      "text": "{{unknown}} 保持原样",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "{{unknown}} 保持原样"
+    },
+    {
+      "text": "{{ random:唯一选项 }}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "唯一选项"
+    },
+    {
+      "text": "{{random:早安|晚安}}",
+      "hasMacro": true,
+      "randomOptions": [
+        "早安",
+        "晚安"
+      ],
+      "idShape": null,
+      "normalized": "<RANDOM>"
+    },
+    {
+      "text": "{{newline:}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "\n"
+    },
+    {
+      "text": "{{char:ignored}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "苏晚"
+    },
+    {
+      "text": "{ {user} }",
+      "hasMacro": false,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "{ {user} }"
+    },
+    {
+      "text": "{{user",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "{{user"
+    },
+    {
+      "text": "{{user}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "小明"
+    },
+    {
+      "text": "文本无宏",
+      "hasMacro": false,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "文本无宏"
+    },
+    {
+      "text": "",
+      "hasMacro": false,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": ""
+    },
+    {
+      "text": "{{USER}}",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": null,
+      "normalized": "小明"
+    },
+    {
+      "text": "{{id}} 长度不定",
+      "hasMacro": true,
+      "randomOptions": null,
+      "idShape": true,
+      "normalized": "<ID> 长度不定"
+    }
+  ]
+}

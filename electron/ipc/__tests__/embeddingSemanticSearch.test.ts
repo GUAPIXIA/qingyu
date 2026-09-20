@@ -37,13 +37,14 @@ vi.mock('../localModels', () => {
       embed: (texts: string[], inputKind: 'query' | 'passage') =>
         Promise.resolve(texts.map((t) => embedVec(`${inputKind}:${t}`))),
       test: () => Promise.resolve({ ok: true, dimensions: DIMS, error: undefined }),
+      activeManifest: () => ({ id: 'bge-small-zh', version: '1.2.3', maxTokens: 512 }),
     }),
   }
 })
 
-import { registerEmbeddingIPC } from '../embedding'
+import { registerEmbeddingIPC, resolveSemanticThreshold } from '../embedding'
 import { DIRS } from '../../services/storage'
-import { saveVectorIndex, markStaleEntries, removeVectorIndex } from '../../services/vectorStore'
+import { getVectorIndex, saveVectorIndex, markStaleEntries, removeVectorIndex } from '../../services/vectorStore'
 
 const root = '/tmp/qingyu-embedding-semantic-search'
 const handlers = new Map<string, (...args: unknown[]) => unknown>()
@@ -140,6 +141,24 @@ afterEach(() => {
 })
 
 describe('embedding:semanticSearch 全流程', () => {
+  it('自动阈值按已评测模型校准，手动值始终优先', () => {
+    expect(resolveSemanticThreshold({ provider: 'local', baseUrl: '', model: 'multilingual-e5-small@1.0.0', apiKey: '' })).toBe(0.8)
+    expect(resolveSemanticThreshold({ provider: 'local', baseUrl: '', model: 'multilingual-e5-small@1.0.0', apiKey: '' }, 0.55)).toBe(0.55)
+    expect(resolveSemanticThreshold({ provider: 'local', baseUrl: '', model: 'unknown@1.0.0', apiKey: '' })).toBe(0.3)
+  })
+
+  it('建立索引时写入世界书修订号，并使用本地模型 token 能力切片', async () => {
+    writeLorebook('lb1', [
+      { id: 'dragon', content: `${'巨龙与雪山的传说。'.repeat(200)}结尾`, retrieval: 'hybrid' },
+    ])
+    registerEmbeddingIPC(ipcMainMock())
+    const result = await handlers.get('embedding:indexLorebook')!(null, 'lb1', {
+      provider: 'local', baseUrl: '', model: LOCAL_MODEL, apiKey: '',
+    }) as { ok: boolean; indexed: number }
+    expect(result).toMatchObject({ ok: true, indexed: 1 })
+    expect(getVectorIndex('lb1', LOCAL_SPACE)).toMatchObject({ sourceRevision: 1, entries: { dragon: expect.any(Array) } })
+  })
+
   it('扫描文本嵌入后按余弦相似度召回语义相关条目，附带条目元数据', async () => {
     writeLorebook('lb1', [
       { id: 'dragon', content: '巨龙栖息在北方的雪山之巅，鳞片泛着寒光', retrieval: 'semanticPreferred' },

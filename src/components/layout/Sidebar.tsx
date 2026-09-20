@@ -146,7 +146,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'flex flex-col bg-tavern-bg-soft/95 border-r border-tavern-border-soft transition-all duration-300',
+        'flex flex-col bg-tavern-bg-soft/95 border-r border-tavern-border-soft transition-[width] duration-200 ease-out',
         sidebarCollapsed ? 'w-16' : 'w-56'
       )}
     >
@@ -203,7 +203,7 @@ export function Sidebar() {
                 aria-label={item.label}
                 className={({ isActive }) =>
                   cn(
-                    "relative flex items-center justify-center h-10 rounded-xl transition-all duration-150 after:content-['']",
+                    "relative flex items-center justify-center h-10 rounded-xl transition-[color,background-color,box-shadow] duration-150 after:content-['']",
                     isActive
                       ? 'bg-tavern-bg-card text-tavern-accent shadow-sm ring-1 ring-tavern-border-soft after:absolute after:left-0 after:top-2.5 after:bottom-2.5 after:w-0.5 after:rounded-full after:bg-tavern-accent'
                       : 'text-tavern-text-muted hover:text-tavern-text-soft hover:bg-tavern-bg-hover/70'
@@ -245,7 +245,7 @@ export function Sidebar() {
                         aria-label={item.label}
                         className={({ isActive }) =>
                           cn(
-                            "group relative flex items-center gap-2.5 h-10 px-2.5 rounded-xl text-sm transition-all duration-150 after:content-['']",
+                            "group relative flex items-center gap-2.5 h-10 px-2.5 rounded-xl text-sm transition-[color,background-color,box-shadow] duration-150 after:content-['']",
                             isActive
                               ? 'bg-tavern-bg-card/80 text-tavern-text shadow-sm ring-1 ring-tavern-border-soft after:absolute after:left-0 after:top-2.5 after:bottom-2.5 after:w-0.5 after:rounded-full after:bg-tavern-accent'
                               : 'text-tavern-text-soft hover:text-tavern-text hover:bg-tavern-bg-hover/60'

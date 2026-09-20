@@ -57,10 +57,10 @@ export function CharacterDetail({ character, onClose, onEdit, onChat }: Characte
   return (
     <>
       {/* 遮罩 */}
-      <div className="fixed inset-0 bg-black/40 z-40 animate-fade-in" onClick={onClose} />
+      <div className="motion-overlay fixed inset-0 bg-black/40 z-40" onClick={onClose} />
 
       {/* 侧边面板 */}
-      <div className="fixed right-0 top-0 bottom-0 w-[420px] max-w-[90vw] z-50 bg-tavern-bg-card border-l border-tavern-border shadow-2xl flex flex-col animate-slide-in-right">
+      <div className="motion-drawer fixed right-0 top-0 bottom-0 w-[420px] max-w-[90vw] z-50 bg-tavern-bg-card border-l border-tavern-border shadow-2xl flex flex-col">
         {/* 顶部操作栏 */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-tavern-border-soft shrink-0">
           <h2 className="font-display font-bold text-lg text-tavern-text truncate">{getDisplayName(character)}</h2>

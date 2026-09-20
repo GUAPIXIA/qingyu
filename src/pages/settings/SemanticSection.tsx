@@ -38,6 +38,7 @@ export function SemanticSection(props: SemanticSectionProps) {
   if (!trigger?.enabled) return null
 
   const isLocal = trigger.provider === 'local'
+  const automaticThreshold = trigger.thresholdMode !== 'manual'
 
   return (
     <div className="space-y-4">
@@ -115,16 +116,29 @@ export function SemanticSection(props: SemanticSectionProps) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
-          <label className="label" htmlFor="semantic-threshold">相似度阈值：{((trigger.threshold ?? 0.3) * 100).toFixed(0)}%</label>
+          <div className="flex items-center justify-between gap-3">
+            <label className="label" htmlFor="semantic-threshold">
+              相似度阈值：{automaticThreshold ? '自动校准' : `${((trigger.threshold ?? 0.3) * 100).toFixed(0)}%`}
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-tavern-text-muted">
+              <input
+                type="checkbox"
+                checked={automaticThreshold}
+                onChange={(event) => updateSettings({ semanticTrigger: { ...trigger, thresholdMode: event.target.checked ? 'auto' : 'manual' } })}
+              />
+              跟随模型
+            </label>
+          </div>
           <input
             id="semantic-threshold"
             type="range"
             min="0"
             max="100"
             step="5"
+            disabled={automaticThreshold}
             value={Math.round((trigger.threshold ?? 0.3) * 100)}
-            onChange={(event) => updateSettings({ semanticTrigger: { ...trigger, threshold: Number(event.target.value) / 100 } })}
-            className="mt-1 w-full accent-tavern-accent"
+            onChange={(event) => updateSettings({ semanticTrigger: { ...trigger, thresholdMode: 'manual', threshold: Number(event.target.value) / 100 } })}
+            className="mt-1 w-full accent-tavern-accent disabled:opacity-40"
           />
           <div className="mt-1.5 flex gap-2">
             {[20, 30, 40, 50].map((value) => (
@@ -136,13 +150,14 @@ export function SemanticSection(props: SemanticSectionProps) {
                     ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
                     : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border',
                 )}
-                onClick={() => updateSettings({ semanticTrigger: { ...trigger, threshold: value / 100 } })}
+                disabled={automaticThreshold}
+                onClick={() => updateSettings({ semanticTrigger: { ...trigger, thresholdMode: 'manual', threshold: value / 100 } })}
               >
                 {value}%
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-tavern-text-muted">越高越严格，误触发更少但可能漏召回。</p>
+          <p className="mt-1 text-xs text-tavern-text-muted">自动模式使用当前模型的召回评测值；切换为手动后，越高越严格。</p>
         </div>
 
         <div>

@@ -1,0 +1,352 @@
+{
+  "version": 1,
+  "providerId": "local.lexical.unicode-bigram-v1",
+  "corpus": [
+    {
+      "id": "book-city",
+      "name": "城市设定",
+      "description": "",
+      "enabled": true,
+      "scanDepth": 4,
+      "runtime": {
+        "schemaVersion": 2,
+        "revision": 3
+      },
+      "entries": [
+        {
+          "id": "e-rain",
+          "keywords": [
+            "下雨",
+            "雨夜"
+          ],
+          "content": "这座城市入夜后总会下起小雨，路灯在积水里碎成一片金色。",
+          "position": "before_char",
+          "order": 10,
+          "probability": 100,
+          "enabled": true,
+          "runtime": {
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "retrieval": "keyword",
+            "title": "雨夜街景"
+          }
+        },
+        {
+          "id": "e-cat",
+          "keywords": [
+            "猫",
+            "流浪猫"
+          ],
+          "content": "巷口有只三花猫，雨天会躲在旧书店的雨棚下面。",
+          "position": "after_char",
+          "order": 20,
+          "probability": 100,
+          "enabled": true
+        },
+        {
+          "id": "e-disabled",
+          "keywords": [
+            "禁用条目"
+          ],
+          "content": "这条内容不应出现在任何检索结果里。",
+          "position": "before_char",
+          "order": 30,
+          "probability": 100,
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "id": "book-tech",
+      "name": "Tech notes",
+      "description": "",
+      "enabled": true,
+      "scanDepth": 2,
+      "entries": [
+        {
+          "id": "e-bm25",
+          "keywords": [
+            "BM25",
+            "retrieval"
+          ],
+          "content": "BM25 combines term frequency with inverse document frequency and length normalization.",
+          "position": "before_char",
+          "order": 5,
+          "probability": 100,
+          "enabled": true
+        },
+        {
+          "id": "e-vector",
+          "keywords": [
+            "vector",
+            "embedding"
+          ],
+          "content": "Vector search uses cosine similarity over embeddings; reciprocal rank fusion merges channels.",
+          "position": "before_char",
+          "order": 6,
+          "probability": 100,
+          "enabled": true
+        },
+        {
+          "id": "e-empty",
+          "keywords": [
+            "empty"
+          ],
+          "content": "   ",
+          "position": "before_char",
+          "order": 7,
+          "probability": 100,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "book-mixed",
+      "name": "混合脚本",
+      "description": "",
+      "enabled": true,
+      "scanDepth": 2,
+      "entries": [
+        {
+          "id": "e-hangul",
+          "keywords": [
+            "서울"
+          ],
+          "content": "서울의 밤은 조용하다 그리고 비가 온다.",
+          "position": "before_char",
+          "order": 1,
+          "probability": 100,
+          "enabled": true
+        },
+        {
+          "id": "e-kana",
+          "keywords": [
+            "さくら"
+          ],
+          "content": "さくらの花びらが風に舞う。カタカナもテストする。",
+          "position": "before_char",
+          "order": 2,
+          "probability": 100,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "id": "book-disabled",
+      "name": "停用书",
+      "description": "",
+      "enabled": false,
+      "scanDepth": 2,
+      "entries": [
+        {
+          "id": "e-never",
+          "keywords": [
+            "绝不会命中"
+          ],
+          "content": "整本书被停用，内容不应进入索引。",
+          "position": "before_char",
+          "order": 1,
+          "probability": 100,
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "query": "下雨",
+      "topK": null,
+      "threshold": null,
+      "hits": [
+        {
+          "key": "book-city:e-rain",
+          "bookId": "book-city",
+          "entryId": "e-rain",
+          "rank": 1,
+          "score": 0.2634491626429971,
+          "rawScore": 2.1460772233048546,
+          "matchedTokens": [
+            "下雨"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "雨夜街景",
+      "topK": null,
+      "threshold": null,
+      "hits": [
+        {
+          "key": "book-city:e-rain",
+          "bookId": "book-city",
+          "entryId": "e-rain",
+          "rank": 1,
+          "score": 0.6603389968122724,
+          "rawScore": 11.664671374369858,
+          "matchedTokens": [
+            "雨夜",
+            "夜街",
+            "街景",
+            "雨夜街",
+            "夜街景"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "猫",
+      "topK": null,
+      "threshold": null,
+      "hits": [
+        {
+          "key": "book-city:e-cat",
+          "bookId": "book-city",
+          "entryId": "e-cat",
+          "rank": 1,
+          "score": 0.28467311247627686,
+          "rawScore": 2.3877736244061083,
+          "matchedTokens": [
+            "猫"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "BM25 retrieval",
+      "topK": null,
+      "threshold": null,
+      "hits": [
+        {
+          "key": "book-tech:e-bm25",
+          "bookId": "book-tech",
+          "entryId": "e-bm25",
+          "rank": 1,
+          "score": 0.4876400780048081,
+          "rawScore": 5.710517826287561,
+          "matchedTokens": [
+            "bm25",
+            "retrieval"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "vector embedding fusion",
+      "topK": null,
+      "threshold": null,
+      "hits": [
+        {
+          "key": "book-tech:e-vector",
+          "bookId": "book-tech",
+          "entryId": "e-vector",
+          "rank": 1,
+          "score": 0.5589622964928359,
+          "rawScore": 7.6042790724864595,
+          "matchedTokens": [
+            "vector",
+            "embedding",
+            "fusion"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "서울",
+      "topK": null,
+      "threshold": null,
+      "hits": [
+        {
+          "key": "book-mixed:e-hangul",
+          "bookId": "book-mixed",
+          "entryId": "e-hangul",
+          "rank": 1,
+          "score": 0.32723061094694045,
+          "rawScore": 2.9183605818409135,
+          "matchedTokens": [
+            "서울"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "さくら",
+      "topK": null,
+      "threshold": null,
+      "hits": [
+        {
+          "key": "book-mixed:e-kana",
+          "bookId": "book-mixed",
+          "entryId": "e-kana",
+          "rank": 1,
+          "score": 0.5604734055422829,
+          "rawScore": 7.651051098290719,
+          "matchedTokens": [
+            "さく",
+            "くら",
+            "さくら"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "完全没有出现的词",
+      "topK": null,
+      "threshold": null,
+      "hits": []
+    },
+    {
+      "query": "下雨",
+      "topK": 1,
+      "threshold": null,
+      "hits": [
+        {
+          "key": "book-city:e-rain",
+          "bookId": "book-city",
+          "entryId": "e-rain",
+          "rank": 1,
+          "score": 0.2634491626429971,
+          "rawScore": 2.1460772233048546,
+          "matchedTokens": [
+            "下雨"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "雨夜街景 猫",
+      "topK": null,
+      "threshold": 0.5,
+      "hits": [
+        {
+          "key": "book-city:e-rain",
+          "bookId": "book-city",
+          "entryId": "e-rain",
+          "rank": 1,
+          "score": 0.6163163970247876,
+          "rawScore": 11.664671374369858,
+          "matchedTokens": [
+            "雨夜",
+            "夜街",
+            "街景",
+            "雨夜街",
+            "夜街景"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "禁用条目",
+      "topK": null,
+      "threshold": null,
+      "hits": []
+    },
+    {
+      "query": "",
+      "topK": null,
+      "threshold": null,
+      "hits": []
+    }
+  ]
+}

@@ -1,0 +1,405 @@
+{
+  "algorithm": "shared/preset.ts#normalizePreset",
+  "cases": [
+    {
+      "label": "minimal-id-and-name",
+      "input": {
+        "id": "p1",
+        "name": "基础"
+      },
+      "ok": true,
+      "preset": {
+        "id": "p1",
+        "name": "基础",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "trims-name-to-100",
+      "input": {
+        "id": "p2",
+        "name": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长"
+      },
+      "ok": true,
+      "preset": {
+        "id": "p2",
+        "name": "长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "clamps-out-of-range",
+      "input": {
+        "id": "p3",
+        "name": "钳位",
+        "temperature": 99,
+        "topP": 0,
+        "maxContext": -5,
+        "frequencyPenalty": -9,
+        "presencePenalty": 9,
+        "maxTokens": 1000000000
+      },
+      "ok": true,
+      "preset": {
+        "id": "p3",
+        "name": "钳位",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 2,
+        "topP": 0.01,
+        "maxTokens": 262144,
+        "frequencyPenalty": -2,
+        "presencePenalty": 2,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "falls-back-on-non-finite",
+      "input": {
+        "id": "p4",
+        "name": "非法数",
+        "temperature": "sentinel:NaN",
+        "topP": "sentinel:Infinity",
+        "maxContext": "abc"
+      },
+      "ok": true,
+      "preset": {
+        "id": "p4",
+        "name": "非法数",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "coerces-numeric-strings",
+      "input": {
+        "id": "p5",
+        "name": "字符串数",
+        "temperature": "1.5",
+        "topP": "1"
+      },
+      "ok": true,
+      "preset": {
+        "id": "p5",
+        "name": "字符串数",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 1.5,
+        "topP": 1,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "rounds-half-up",
+      "input": {
+        "id": "p6",
+        "name": "取整",
+        "maxContext": 10.5,
+        "maxTokens": 2.5
+      },
+      "ok": true,
+      "preset": {
+        "id": "p6",
+        "name": "取整",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 11,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 3,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "rounds-down-below-half",
+      "input": {
+        "id": "p6b",
+        "name": "取整下",
+        "maxContext": 10.4,
+        "maxTokens": 3.49
+      },
+      "ok": true,
+      "preset": {
+        "id": "p6b",
+        "name": "取整下",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 10,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 3,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "builtin-legacy-max-tokens-infers-brief",
+      "input": {
+        "id": "p7",
+        "name": "内置旧卡",
+        "maxTokens": 512,
+        "isBuiltin": true
+      },
+      "ok": true,
+      "preset": {
+        "id": "p7",
+        "name": "内置旧卡",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 512,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": true,
+        "responseLengthHint": "brief"
+      },
+      "error": null
+    },
+    {
+      "label": "builtin-legacy-max-tokens-infers-balanced",
+      "input": {
+        "id": "p8",
+        "name": "内置",
+        "maxTokens": 1024,
+        "isBuiltin": true
+      },
+      "ok": true,
+      "preset": {
+        "id": "p8",
+        "name": "内置",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 1024,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": true,
+        "responseLengthHint": "balanced"
+      },
+      "error": null
+    },
+    {
+      "label": "builtin-legacy-max-tokens-infers-detailed",
+      "input": {
+        "id": "p9",
+        "name": "内置",
+        "maxTokens": 4096,
+        "isBuiltin": true
+      },
+      "ok": true,
+      "preset": {
+        "id": "p9",
+        "name": "内置",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 4096,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": true,
+        "responseLengthHint": "detailed"
+      },
+      "error": null
+    },
+    {
+      "label": "builtin-zero-max-tokens-is-auto",
+      "input": {
+        "id": "p10",
+        "name": "内置",
+        "maxTokens": 0,
+        "isBuiltin": true
+      },
+      "ok": true,
+      "preset": {
+        "id": "p10",
+        "name": "内置",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": true,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "user-preset-legacy-max-tokens-stays-auto",
+      "input": {
+        "id": "p11",
+        "name": "用户",
+        "maxTokens": 512,
+        "isBuiltin": false
+      },
+      "ok": true,
+      "preset": {
+        "id": "p11",
+        "name": "用户",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 512,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "optional-keys-present",
+      "input": {
+        "id": "p12",
+        "name": "全字段",
+        "contextTemplate": " chatml ",
+        "group": " 风格 ",
+        "exampleDialogMode": "first_turn",
+        "enableThoughtFormat": true,
+        "responseLengthHint": "detailed"
+      },
+      "ok": true,
+      "preset": {
+        "id": "p12",
+        "name": "全字段",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "contextTemplate": "chatml",
+        "group": "风格",
+        "exampleDialogMode": "first_turn",
+        "enableThoughtFormat": true,
+        "responseLengthHint": "detailed"
+      },
+      "error": null
+    },
+    {
+      "label": "optional-keys-invalid-are-omitted",
+      "input": {
+        "id": "p13",
+        "name": "脏可选",
+        "contextTemplate": "   ",
+        "group": "",
+        "exampleDialogMode": "sometimes",
+        "responseLengthHint": "huge"
+      },
+      "ok": true,
+      "preset": {
+        "id": "p13",
+        "name": "脏可选",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "error": null
+    },
+    {
+      "label": "rejects-missing-id",
+      "input": {
+        "name": "无 id"
+      },
+      "ok": false,
+      "preset": null,
+      "error": "预设 ID 不能为空"
+    },
+    {
+      "label": "rejects-missing-name",
+      "input": {
+        "id": "p14",
+        "name": "   "
+      },
+      "ok": false,
+      "preset": null,
+      "error": "预设名称不能为空"
+    },
+    {
+      "label": "rejects-non-object",
+      "input": "not-an-object",
+      "ok": false,
+      "preset": null,
+      "error": "预设格式无效"
+    }
+  ]
+}

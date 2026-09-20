@@ -1,0 +1,729 @@
+{
+  "version": 1,
+  "note": "fixture 使用无词法 provider + 概率 100/0，保证确定性；不覆盖时效/包含组/向量/诊断",
+  "cases": [
+    {
+      "caseIndex": 0,
+      "input": {
+        "lorebooks": [],
+        "scanText": "",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 200,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 0,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 1,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "城市设定",
+            "entries": [
+              {
+                "id": "e1",
+                "content": "常驻设定。",
+                "position": "before_char",
+                "priority": "always",
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "码头条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "after_char",
+                "order": 1
+              },
+              {
+                "id": "e3",
+                "content": "结尾条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "at_end",
+                "order": 2
+              },
+              {
+                "id": "e4",
+                "content": "深度条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "at_depth",
+                "depth": 2,
+                "role": "system",
+                "order": 3
+              }
+            ]
+          }
+        ],
+        "scanText": "他们站在码头边。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "常驻设定。"
+      ],
+      "afterChar": [
+        "码头条目。"
+      ],
+      "atEnd": [
+        "结尾条目。"
+      ],
+      "atDepth": [
+        {
+          "content": "深度条目。",
+          "order": 3,
+          "depth": 2,
+          "role": "system"
+        }
+      ],
+      "triggeredCount": 4,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e1",
+        "lb1:e2",
+        "lb1:e3",
+        "lb1:e4"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 2,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "窗口设定",
+            "scanDepth": 1,
+            "entries": [
+              {
+                "id": "e1",
+                "content": "书级窗口条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "条目窗口条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "order": 1,
+                "scanDepth": 3
+              }
+            ]
+          }
+        ],
+        "scanText": "整体扫描文本不含关键词。",
+        "scanMessages": [
+          "他们在码头边。",
+          "后来下了雨。",
+          "夜深了。"
+        ],
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "条目窗口条目。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 1,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e2"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 3,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "二级逻辑",
+            "entries": [
+              {
+                "id": "e1",
+                "content": "and_any 条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "secondaryKeywords": [
+                  "雨"
+                ],
+                "selectiveLogic": "and_any",
+                "position": "before_char",
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "and_all 条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "secondaryKeywords": [
+                  "雨",
+                  "夜"
+                ],
+                "selectiveLogic": "and_all",
+                "position": "before_char",
+                "order": 1
+              },
+              {
+                "id": "e3",
+                "content": "not_any 条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "secondaryKeywords": [
+                  "雪"
+                ],
+                "selectiveLogic": "not_any",
+                "position": "before_char",
+                "order": 2
+              },
+              {
+                "id": "e4",
+                "content": "not_all 条目。",
+                "keywords": [
+                  "码头"
+                ],
+                "secondaryKeywords": [
+                  "雨",
+                  "夜"
+                ],
+                "selectiveLogic": "not_all",
+                "position": "before_char",
+                "order": 3
+              }
+            ]
+          }
+        ],
+        "scanText": "码头下着雨，夜深了。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "not_any 条目。",
+        "not_all 条目。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 2,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e3",
+        "lb1:e4"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 4,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "递归设定",
+            "entries": [
+              {
+                "id": "e1",
+                "content": "灯塔管理员住在灯塔里。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "管理员有一本旧航海日志。",
+                "keywords": [
+                  "管理员"
+                ],
+                "position": "before_char",
+                "order": 1
+              }
+            ]
+          }
+        ],
+        "scanText": "他们在码头边。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "灯塔管理员住在灯塔里。",
+        "管理员有一本旧航海日志。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 2,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e1",
+        "lb1:e2"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 5,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "阻断递归",
+            "entries": [
+              {
+                "id": "e1",
+                "content": "灯塔管理员住在灯塔里。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "order": 0,
+                "preventRecursion": true
+              },
+              {
+                "id": "e2",
+                "content": "管理员有一本旧航海日志。",
+                "keywords": [
+                  "管理员"
+                ],
+                "position": "before_char",
+                "order": 1
+              }
+            ]
+          }
+        ],
+        "scanText": "他们在码头边。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "灯塔管理员住在灯塔里。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 1,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e1"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 6,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "重复内容",
+            "entries": [
+              {
+                "id": "e1",
+                "content": "同一段设定。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "同一段设定。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "after_char",
+                "order": 1
+              }
+            ]
+          }
+        ],
+        "scanText": "码头。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "同一段设定。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 1,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e1"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 7,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "资格过滤",
+            "entries": [
+              {
+                "id": "e1",
+                "content": "只在续写时触发。",
+                "keywords": [
+                  "码头"
+                ],
+                "generationTriggers": [
+                  "continue"
+                ],
+                "position": "before_char",
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "仅苏晚可用。",
+                "keywords": [
+                  "码头"
+                ],
+                "characterFilter": {
+                  "names": [
+                    "苏晚"
+                  ]
+                },
+                "position": "before_char",
+                "order": 1
+              },
+              {
+                "id": "e3",
+                "content": "排除苏晚。",
+                "keywords": [
+                  "码头"
+                ],
+                "characterFilter": {
+                  "names": [
+                    "苏晚"
+                  ],
+                  "exclude": true
+                },
+                "position": "before_char",
+                "order": 2
+              },
+              {
+                "id": "e4",
+                "content": "仅带某标签可用。",
+                "keywords": [
+                  "码头"
+                ],
+                "characterFilter": {
+                  "tags": [
+                    "modern"
+                  ]
+                },
+                "position": "before_char",
+                "order": 3
+              }
+            ]
+          }
+        ],
+        "scanText": "码头。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "characterNames": [
+          "苏晚"
+        ],
+        "characterTags": [
+          "ancient"
+        ],
+        "generationType": "normal",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "仅苏晚可用。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 1,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e2"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 8,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "概率",
+            "entries": [
+              {
+                "id": "e1",
+                "content": "必然注入。",
+                "keywords": [
+                  "码头"
+                ],
+                "probability": 100,
+                "position": "before_char",
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "必然丢弃。",
+                "keywords": [
+                  "码头"
+                ],
+                "probability": 0,
+                "position": "before_char",
+                "order": 1
+              }
+            ]
+          }
+        ],
+        "scanText": "码头。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "必然注入。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 1,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e1"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 9,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "预算",
+            "entries": [
+              {
+                "id": "a1",
+                "content": "常驻内容甲。常驻内容甲。常驻内容甲。常驻内容甲。常驻内容甲。常驻内容甲。",
+                "position": "before_char",
+                "priority": "always",
+                "order": 0
+              },
+              {
+                "id": "a2",
+                "content": "常驻内容乙。常驻内容乙。常驻内容乙。常驻内容乙。常驻内容乙。常驻内容乙。",
+                "position": "before_char",
+                "priority": "always",
+                "order": 1
+              },
+              {
+                "id": "c1",
+                "content": "条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "order": 2
+              }
+            ]
+          }
+        ],
+        "scanText": "码头。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 60,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 3,
+      "droppedCount": 2,
+      "alwaysDropped": 2,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:a1",
+        "lb1:a2",
+        "lb1:c1"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 10,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "摘要替代",
+            "entries": [
+              {
+                "id": "e1",
+                "content": "很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。很长很长的正文。",
+                "summary": "短摘要。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "order": 0
+              }
+            ]
+          }
+        ],
+        "scanText": "码头。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 30,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "短摘要。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 1,
+      "droppedCount": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": null,
+      "triggeredEntryKeys": [
+        "lb1:e1"
+      ],
+      "compressionCacheHitKeys": null
+    },
+    {
+      "caseIndex": 11,
+      "input": {
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "书级预算",
+            "tokenBudget": 20,
+            "entries": [
+              {
+                "id": "e1",
+                "content": "高分条目。",
+                "keywords": [
+                  "码头",
+                  "灯塔"
+                ],
+                "position": "before_char",
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "另一条内容。另一条内容。另一条内容。另一条内容。另一条内容。另一条内容。另一条内容。另一条内容。另一条内容。另一条内容。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "order": 1
+              }
+            ]
+          }
+        ],
+        "scanText": "码头灯塔。",
+        "userName": "旅人",
+        "charName": "苏晚",
+        "budget": 500,
+        "model": "gpt-4o-mini"
+      },
+      "beforeChar": [
+        "高分条目。"
+      ],
+      "afterChar": [],
+      "atEnd": [],
+      "atDepth": [],
+      "triggeredCount": 2,
+      "droppedCount": 1,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "bookBudgetDropped": 1,
+      "triggeredEntryKeys": [
+        "lb1:e1",
+        "lb1:e2"
+      ],
+      "compressionCacheHitKeys": null
+    }
+  ]
+}

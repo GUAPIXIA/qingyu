@@ -1,0 +1,360 @@
+{
+  "version": 1,
+  "constants": {
+    "tendencies": [
+      "safe",
+      "explore",
+      "risky"
+    ],
+    "limits": {
+      "count": 3,
+      "labelMinChars": 6,
+      "labelMaxChars": 14,
+      "contentMinChars": 15,
+      "contentMaxChars": 60
+    },
+    "temperature": 0.6,
+    "tag": "directions"
+  },
+  "enabledCases": [
+    {
+      "dialogueDirectionsEnabled": null,
+      "gameMasterMode": null,
+      "enabled": false
+    },
+    {
+      "dialogueDirectionsEnabled": true,
+      "gameMasterMode": null,
+      "enabled": true
+    },
+    {
+      "dialogueDirectionsEnabled": false,
+      "gameMasterMode": null,
+      "enabled": false
+    },
+    {
+      "dialogueDirectionsEnabled": null,
+      "gameMasterMode": true,
+      "enabled": true
+    },
+    {
+      "dialogueDirectionsEnabled": null,
+      "gameMasterMode": false,
+      "enabled": false
+    },
+    {
+      "dialogueDirectionsEnabled": false,
+      "gameMasterMode": true,
+      "enabled": false
+    },
+    {
+      "dialogueDirectionsEnabled": true,
+      "gameMasterMode": false,
+      "enabled": true
+    }
+  ],
+  "payloadCases": [
+    {
+      "raw": "",
+      "payload": ""
+    },
+    {
+      "raw": "<directions>[{\"id\":\"a\"}]</directions>",
+      "payload": "[{\"id\":\"a\"}]"
+    },
+    {
+      "raw": "<directions>甲</directions><directions>乙</directions>",
+      "payload": ""
+    },
+    {
+      "raw": "[{\"id\":\"a\"}]",
+      "payload": ""
+    },
+    {
+      "raw": "  <directions>  [{\"id\":\"a\"}]  </directions>  ",
+      "payload": "[{\"id\":\"a\"}]"
+    }
+  ],
+  "parseCases": [
+    {
+      "raw": "<directions>[{\"id\":\"safe\",\"label\":\"稳妥地接过茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势。\",\"tendency\":\"safe\"},{\"id\":\"explore\",\"label\":\"打量四周书架\",\"content\":\"我慢慢环视四周的书架，留意那些被翻旧了的书脊。\",\"tendency\":\"explore\"},{\"id\":\"risky\",\"label\":\"直接问出心事\",\"content\":\"我放下茶杯，直视着她，问出那个一直没敢问的问题。\",\"tendency\":\"risky\"}]</directions>",
+      "directions": [
+        {
+          "id": "safe",
+          "label": "稳妥地接过茶",
+          "content": "我接过茶杯，轻声道谢，顺势问起今晚的雨势。",
+          "tendency": "safe"
+        },
+        {
+          "id": "explore",
+          "label": "打量四周书架",
+          "content": "我慢慢环视四周的书架，留意那些被翻旧了的书脊。",
+          "tendency": "explore"
+        },
+        {
+          "id": "risky",
+          "label": "直接问出心事",
+          "content": "我放下茶杯，直视着她，问出那个一直没敢问的问题。",
+          "tendency": "risky"
+        }
+      ]
+    },
+    {
+      "raw": "<directions>```json\n[{\"id\":\"safe\",\"label\":\"稳妥地接过茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势。\",\"tendency\":\"safe\"},{\"id\":\"explore\",\"label\":\"打量四周书架\",\"content\":\"我慢慢环视四周的书架，留意那些被翻旧了的书脊。\",\"tendency\":\"explore\"},{\"id\":\"risky\",\"label\":\"直接问出心事\",\"content\":\"我放下茶杯，直视着她，问出那个一直没敢问的问题。\",\"tendency\":\"risky\"}]\n```</directions>",
+      "directions": [
+        {
+          "id": "safe",
+          "label": "稳妥地接过茶",
+          "content": "我接过茶杯，轻声道谢，顺势问起今晚的雨势。",
+          "tendency": "safe"
+        },
+        {
+          "id": "explore",
+          "label": "打量四周书架",
+          "content": "我慢慢环视四周的书架，留意那些被翻旧了的书脊。",
+          "tendency": "explore"
+        },
+        {
+          "id": "risky",
+          "label": "直接问出心事",
+          "content": "我放下茶杯，直视着她，问出那个一直没敢问的问题。",
+          "tendency": "risky"
+        }
+      ]
+    },
+    {
+      "raw": "[{\"id\":\"safe\",\"label\":\"稳妥地接过茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势。\",\"tendency\":\"safe\"},{\"id\":\"explore\",\"label\":\"打量四周书架\",\"content\":\"我慢慢环视四周的书架，留意那些被翻旧了的书脊。\",\"tendency\":\"explore\"},{\"id\":\"risky\",\"label\":\"直接问出心事\",\"content\":\"我放下茶杯，直视着她，问出那个一直没敢问的问题。\",\"tendency\":\"risky\"}]",
+      "directions": []
+    },
+    {
+      "raw": "<directions>[{\"id\":\"safe\",\"label\":\"稳妥地接过茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势。\",\"tendency\":\"safe\"}]</directions>",
+      "directions": []
+    },
+    {
+      "raw": "<directions>[{\"id\":\"safe\",\"label\":\"稳妥地接过茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势。\",\"tendency\":\"safe\"},{\"id\":\"safe2\",\"label\":\"另一种稳妥\",\"content\":\"我把伞收好靠在门边，慢慢在柜台前坐下来。\",\"tendency\":\"safe\"},{\"id\":\"risky\",\"label\":\"直接问出心事\",\"content\":\"我放下茶杯，直视着她，问出那个一直没敢问的问题。\",\"tendency\":\"risky\"}]</directions>",
+      "directions": []
+    },
+    {
+      "raw": "<directions>[{\"id\":\"safe\",\"label\":\"喝茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势。\",\"tendency\":\"safe\"},{\"id\":\"explore\",\"label\":\"打量四周书架\",\"content\":\"我慢慢环视四周的书架，留意那些被翻旧了的书脊。\",\"tendency\":\"explore\"},{\"id\":\"risky\",\"label\":\"直接问出心事\",\"content\":\"我放下茶杯，直视着她，问出那个一直没敢问的问题。\",\"tendency\":\"risky\"}]</directions>",
+      "directions": []
+    },
+    {
+      "raw": "<directions>[{\"id\":\"safe\",\"label\":\"稳妥地接过茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势，然后又说起了路上遇到的种种事情，包括那家关门的旧书铺和空无一人的码头。\",\"tendency\":\"safe\"},{\"id\":\"explore\",\"label\":\"打量四周书架\",\"content\":\"我慢慢环视四周的书架，留意那些被翻旧了的书脊。\",\"tendency\":\"explore\"},{\"id\":\"risky\",\"label\":\"直接问出心事\",\"content\":\"我放下茶杯，直视着她，问出那个一直没敢问的问题。\",\"tendency\":\"risky\"}]</directions>",
+      "directions": [
+        {
+          "id": "safe",
+          "label": "稳妥地接过茶",
+          "content": "我接过茶杯，轻声道谢，顺势问起今晚的雨势，然后又说起了路上遇到的种种事情，包括那家关门的旧书铺和空无一人的码头。",
+          "tendency": "safe"
+        },
+        {
+          "id": "explore",
+          "label": "打量四周书架",
+          "content": "我慢慢环视四周的书架，留意那些被翻旧了的书脊。",
+          "tendency": "explore"
+        },
+        {
+          "id": "risky",
+          "label": "直接问出心事",
+          "content": "我放下茶杯，直视着她，问出那个一直没敢问的问题。",
+          "tendency": "risky"
+        }
+      ]
+    },
+    {
+      "raw": "<directions>[{\"id\":\"safe\",\"label\":\"选项 A：接过茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势。\",\"tendency\":\"safe\"},{\"id\":\"explore\",\"label\":\"打量四周书架\",\"content\":\"我慢慢环视四周的书架，留意那些被翻旧了的书脊。\",\"tendency\":\"explore\"},{\"id\":\"risky\",\"label\":\"直接问出心事\",\"content\":\"我放下茶杯，直视着她，问出那个一直没敢问的问题。\",\"tendency\":\"risky\"}]</directions>",
+      "directions": []
+    },
+    {
+      "raw": "<directions>not json</directions>",
+      "directions": []
+    },
+    {
+      "raw": "<directions>[{\"id\":\"a\",\"label\":\"稳妥地接过茶\",\"content\":\"我接过茶杯，轻声道谢，顺势问起今晚的雨势。\",\"tendency\":\"calm\"},{\"id\":\"explore\",\"label\":\"打量四周书架\",\"content\":\"我慢慢环视四周的书架，留意那些被翻旧了的书脊。\",\"tendency\":\"explore\"},{\"id\":\"risky\",\"label\":\"直接问出心事\",\"content\":\"我放下茶杯，直视着她，问出那个一直没敢问的问题。\",\"tendency\":\"risky\"}]</directions>",
+      "directions": []
+    }
+  ],
+  "similarityCases": [
+    {
+      "directions": [
+        {
+          "id": "safe",
+          "label": "稳妥地接过茶",
+          "content": "我接过茶杯，轻声道谢。",
+          "tendency": "safe"
+        },
+        {
+          "id": "explore",
+          "label": "打量四周书架",
+          "content": "我环视四周的书架，留意旧书脊。",
+          "tendency": "explore"
+        },
+        {
+          "id": "risky",
+          "label": "直接问出心事",
+          "content": "我放下茶杯，问出那个问题。",
+          "tendency": "risky"
+        }
+      ],
+      "similar": false
+    },
+    {
+      "directions": [
+        {
+          "id": "safe",
+          "label": "稳妥地接过茶",
+          "content": "我接过茶杯，轻声道谢。",
+          "tendency": "safe"
+        },
+        {
+          "id": "explore",
+          "label": "稳妥地接过茶",
+          "content": "我接过茶杯，轻声道谢。",
+          "tendency": "explore"
+        },
+        {
+          "id": "risky",
+          "label": "直接问出心事",
+          "content": "我放下茶杯，问出那个问题。",
+          "tendency": "risky"
+        }
+      ],
+      "similar": true
+    },
+    {
+      "directions": [
+        {
+          "id": "safe",
+          "label": "慢慢环视四周的书架",
+          "content": "我慢慢环视四周的书架，留意书脊。",
+          "tendency": "safe"
+        },
+        {
+          "id": "explore",
+          "label": "慢慢环视四周",
+          "content": "我环视书架。",
+          "tendency": "explore"
+        },
+        {
+          "id": "risky",
+          "label": "直接问出心事",
+          "content": "我放下茶杯，问出那个问题。",
+          "tendency": "risky"
+        }
+      ],
+      "similar": true
+    }
+  ],
+  "promptCases": [
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "characterDescription": "旧书店的店主。",
+        "narrativeMode": "immersive",
+        "recentMessages": [
+          {
+            "speaker": "旅人",
+            "content": "夜安。"
+          },
+          {
+            "speaker": "苏晚",
+            "content": "夜安，要坐一会儿吗？"
+          }
+        ],
+        "latestReply": "她把茶推到他面前。",
+        "worldState": null
+      },
+      "systemPrompt": "你是剧情推进助手，负责在 AI 回复之后提供 3 个风格不同的「下一步方向」，供用户挑选后继续对话。\n\n当前采用代入式角色扮演：旅人 是玩家角色，方向内容应是玩家角色可以说的话或可以尝试的行动，用玩家视角口吻，不得替 苏晚 或其他角色发言。\n\n输出要求：\n- 必须使用简体中文\n- 只返回一组 <directions>...</directions> 标签，标签内是合法 JSON 数组，标签外不要输出任何内容\n- 数组必须恰好 3 个元素，每个元素包含 id、label、content、tendency 四个字段\n- label 是 6–14 个可见字符的短标签，概括这个方向要做什么；不足 6 字（如“关窗守屋”）会被判为非法并触发一次重试\n- content 是 15–60 个可见字符的可发送文本，用户点选后会直接进入输入框\n- tendency 三个值必须各出现一次：safe（稳妥推进，承接主线减少风险）、explore（探索信息，追问观察调查试探）、risky（冒险变化，接受显著风险或改变计划）\n- 三个方向必须有实质差异：分别对应 safe / explore / risky，不得只是同一句话的不同措辞\n- 只描述接下来可以做什么，不要评价、建议或解释，不要写“选项 A”“建议你”“作为 AI”等前缀\n- 不要泄露 旅人 的角色尚未知晓的幕后信息",
+      "userPrompt": "当前角色：苏晚\n角色设定：旧书店的店主。\n\n最近对话：\n旅人：夜安。\n苏晚：夜安，要坐一会儿吗？\n\n最新一条 AI 回复（苏晚）：\n她把茶推到他面前。\n\n请据此给出 旅人 接下来可以选择的 3 个方向。"
+    },
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "characterDescription": "旧书店的店主。",
+        "narrativeMode": "omniscient",
+        "recentMessages": [
+          {
+            "speaker": "旅人",
+            "content": "夜安。"
+          },
+          {
+            "speaker": "苏晚",
+            "content": "夜安，要坐一会儿吗？"
+          }
+        ],
+        "latestReply": "她把茶推到他面前。",
+        "worldState": null
+      },
+      "systemPrompt": "你是剧情推进助手，负责在 AI 回复之后提供 3 个风格不同的「下一步方向」，供用户挑选后继续对话。\n\n当前采用全局叙事：旅人 是故事外部的旁白、导演与世界推动者，方向内容应写成旁白式的剧情推动或世界变化，使用第三人称，不得写成某个角色的第一人称台词。\n\n输出要求：\n- 必须使用简体中文\n- 只返回一组 <directions>...</directions> 标签，标签内是合法 JSON 数组，标签外不要输出任何内容\n- 数组必须恰好 3 个元素，每个元素包含 id、label、content、tendency 四个字段\n- label 是 6–14 个可见字符的短标签，概括这个方向要做什么；不足 6 字（如“关窗守屋”）会被判为非法并触发一次重试\n- content 是 15–60 个可见字符的可发送文本，用户点选后会直接进入输入框\n- tendency 三个值必须各出现一次：safe（稳妥推进，承接主线减少风险）、explore（探索信息，追问观察调查试探）、risky（冒险变化，接受显著风险或改变计划）\n- 三个方向必须有实质差异：分别对应 safe / explore / risky，不得只是同一句话的不同措辞\n- 只描述接下来可以做什么，不要评价、建议或解释，不要写“选项 A”“建议你”“作为 AI”等前缀\n- 不要泄露 旅人 的角色尚未知晓的幕后信息",
+      "userPrompt": "当前角色：苏晚\n角色设定：旧书店的店主。\n\n最近对话：\n旅人：夜安。\n苏晚：夜安，要坐一会儿吗？\n\n最新一条 AI 回复（苏晚）：\n她把茶推到他面前。\n\n请据此给出 旅人 接下来可以选择的 3 个方向。"
+    },
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "characterDescription": "",
+        "narrativeMode": "immersive",
+        "recentMessages": [
+          {
+            "speaker": "旅人",
+            "content": "夜安。"
+          },
+          {
+            "speaker": "苏晚",
+            "content": "夜安，要坐一会儿吗？"
+          }
+        ],
+        "latestReply": "她把茶推到他面前。",
+        "worldState": null
+      },
+      "systemPrompt": "你是剧情推进助手，负责在 AI 回复之后提供 3 个风格不同的「下一步方向」，供用户挑选后继续对话。\n\n当前采用代入式角色扮演：旅人 是玩家角色，方向内容应是玩家角色可以说的话或可以尝试的行动，用玩家视角口吻，不得替 苏晚 或其他角色发言。\n\n输出要求：\n- 必须使用简体中文\n- 只返回一组 <directions>...</directions> 标签，标签内是合法 JSON 数组，标签外不要输出任何内容\n- 数组必须恰好 3 个元素，每个元素包含 id、label、content、tendency 四个字段\n- label 是 6–14 个可见字符的短标签，概括这个方向要做什么；不足 6 字（如“关窗守屋”）会被判为非法并触发一次重试\n- content 是 15–60 个可见字符的可发送文本，用户点选后会直接进入输入框\n- tendency 三个值必须各出现一次：safe（稳妥推进，承接主线减少风险）、explore（探索信息，追问观察调查试探）、risky（冒险变化，接受显著风险或改变计划）\n- 三个方向必须有实质差异：分别对应 safe / explore / risky，不得只是同一句话的不同措辞\n- 只描述接下来可以做什么，不要评价、建议或解释，不要写“选项 A”“建议你”“作为 AI”等前缀\n- 不要泄露 旅人 的角色尚未知晓的幕后信息",
+      "userPrompt": "当前角色：苏晚\n角色设定：无\n\n最近对话：\n旅人：夜安。\n苏晚：夜安，要坐一会儿吗？\n\n最新一条 AI 回复（苏晚）：\n她把茶推到他面前。\n\n请据此给出 旅人 接下来可以选择的 3 个方向。"
+    },
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "characterDescription": "旧书店的店主。",
+        "narrativeMode": "immersive",
+        "recentMessages": [
+          {
+            "speaker": "旅人",
+            "content": "夜安。"
+          },
+          {
+            "speaker": "苏晚",
+            "content": "夜安，要坐一会儿吗？"
+          }
+        ],
+        "latestReply": "她把茶推到他面前。",
+        "worldState": "雨势渐大，码头封航。"
+      },
+      "systemPrompt": "你是剧情推进助手，负责在 AI 回复之后提供 3 个风格不同的「下一步方向」，供用户挑选后继续对话。\n\n当前采用代入式角色扮演：旅人 是玩家角色，方向内容应是玩家角色可以说的话或可以尝试的行动，用玩家视角口吻，不得替 苏晚 或其他角色发言。\n\n输出要求：\n- 必须使用简体中文\n- 只返回一组 <directions>...</directions> 标签，标签内是合法 JSON 数组，标签外不要输出任何内容\n- 数组必须恰好 3 个元素，每个元素包含 id、label、content、tendency 四个字段\n- label 是 6–14 个可见字符的短标签，概括这个方向要做什么；不足 6 字（如“关窗守屋”）会被判为非法并触发一次重试\n- content 是 15–60 个可见字符的可发送文本，用户点选后会直接进入输入框\n- tendency 三个值必须各出现一次：safe（稳妥推进，承接主线减少风险）、explore（探索信息，追问观察调查试探）、risky（冒险变化，接受显著风险或改变计划）\n- 三个方向必须有实质差异：分别对应 safe / explore / risky，不得只是同一句话的不同措辞\n- 只描述接下来可以做什么，不要评价、建议或解释，不要写“选项 A”“建议你”“作为 AI”等前缀\n- 不要泄露 旅人 的角色尚未知晓的幕后信息",
+      "userPrompt": "当前角色：苏晚\n角色设定：旧书店的店主。\n当前世界状态（精简）：雨势渐大，码头封航。\n\n最近对话：\n旅人：夜安。\n苏晚：夜安，要坐一会儿吗？\n\n最新一条 AI 回复（苏晚）：\n她把茶推到他面前。\n\n请据此给出 旅人 接下来可以选择的 3 个方向。"
+    },
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "characterDescription": "旧书店的店主。",
+        "narrativeMode": "omniscient",
+        "recentMessages": [
+          {
+            "speaker": "旅人",
+            "content": "夜安。"
+          },
+          {
+            "speaker": "苏晚",
+            "content": "夜安，要坐一会儿吗？"
+          }
+        ],
+        "latestReply": "她把茶推到他面前。",
+        "worldState": "   "
+      },
+      "systemPrompt": "你是剧情推进助手，负责在 AI 回复之后提供 3 个风格不同的「下一步方向」，供用户挑选后继续对话。\n\n当前采用全局叙事：旅人 是故事外部的旁白、导演与世界推动者，方向内容应写成旁白式的剧情推动或世界变化，使用第三人称，不得写成某个角色的第一人称台词。\n\n输出要求：\n- 必须使用简体中文\n- 只返回一组 <directions>...</directions> 标签，标签内是合法 JSON 数组，标签外不要输出任何内容\n- 数组必须恰好 3 个元素，每个元素包含 id、label、content、tendency 四个字段\n- label 是 6–14 个可见字符的短标签，概括这个方向要做什么；不足 6 字（如“关窗守屋”）会被判为非法并触发一次重试\n- content 是 15–60 个可见字符的可发送文本，用户点选后会直接进入输入框\n- tendency 三个值必须各出现一次：safe（稳妥推进，承接主线减少风险）、explore（探索信息，追问观察调查试探）、risky（冒险变化，接受显著风险或改变计划）\n- 三个方向必须有实质差异：分别对应 safe / explore / risky，不得只是同一句话的不同措辞\n- 只描述接下来可以做什么，不要评价、建议或解释，不要写“选项 A”“建议你”“作为 AI”等前缀\n- 不要泄露 旅人 的角色尚未知晓的幕后信息",
+      "userPrompt": "当前角色：苏晚\n角色设定：旧书店的店主。\n\n最近对话：\n旅人：夜安。\n苏晚：夜安，要坐一会儿吗？\n\n最新一条 AI 回复（苏晚）：\n她把茶推到他面前。\n\n请据此给出 旅人 接下来可以选择的 3 个方向。"
+    }
+  ]
+}

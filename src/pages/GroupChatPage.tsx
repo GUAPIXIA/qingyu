@@ -28,6 +28,7 @@ import type { LorebookDiagnostics } from '../utils/lorebook'
 import type { GroupChat, GroupMessage, Lorebook, NarrativeMode, Preset } from '../../shared/types'
 import { getNarrativeModeLabel, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import { findLatestActionableGroupDirectionMessageId } from '../components/chat/dialogueDirectionView'
 import {
   Plus,
   Trash2,
@@ -86,6 +87,10 @@ export function GroupChatPage() {
     for (const m of messages) map.set(m.id, m)
     return map
   }, [messages])
+  const regeneratableDirectionMessageId = useMemo(
+    () => findLatestActionableGroupDirectionMessageId(messages),
+    [messages],
+  )
 
   // P-8 修复：成员索引查找 O(n)→O(1)——itemContent 每条可见消息渲染都查 indexOf
   const memberIndexMap = useMemo(() => {
@@ -681,6 +686,7 @@ export function GroupChatPage() {
                             !isStreaming ? () => translateMessage(m.id) : undefined
                           }
                           isLast={index === messages.length - 1}
+                          canRegenerateDirections={m.id === regeneratableDirectionMessageId}
                           dialogueDirectionsEnabled={dialogueDirectionsEnabled}
                           directionsError={directionsError[m.id] ?? null}
                           onRegenerateDirections={

@@ -1,0 +1,443 @@
+{
+  "version": 1,
+  "corpus": [
+    {
+      "content": "旧消息一",
+      "timestamp": 100
+    },
+    {
+      "content": "旧消息二，稍长一些",
+      "timestamp": 200
+    },
+    {
+      "content": "新消息一",
+      "timestamp": 300
+    },
+    {
+      "content": "新消息二",
+      "timestamp": 400
+    }
+  ],
+  "cases": [
+    {
+      "usedTokens": 0,
+      "budgetTokens": 1000,
+      "model": "gpt-4o",
+      "compressedSummary": null,
+      "compressedRange": null,
+      "plan": {
+        "mode": "history-degradation",
+        "budgetTokens": 1000,
+        "existing": {
+          "keptCount": 4,
+          "keptTokens": 20,
+          "droppedCount": 0,
+          "droppedTokens": 0,
+          "summaryInjected": false,
+          "summaryTokens": 0
+        },
+        "candidate": {
+          "keptRawCount": 4,
+          "keptRawTokens": 20,
+          "summaryReplacedCount": 0,
+          "summaryTokens": 0,
+          "droppedRawCount": 0,
+          "droppedRawTokens": 0,
+          "totalTokens": 20
+        },
+        "deltaTokens": 0,
+        "items": [
+          {
+            "id": "history:msg:0",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:1",
+            "action": "keep-raw",
+            "tokens": 8,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:2",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:3",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=history-degradation budget=1000 existingKept=20 existingSummary=0 candRaw=20 candSummary=0 replace=0 drop=0 delta=0 degraded=0"
+    },
+    {
+      "usedTokens": 0,
+      "budgetTokens": 8,
+      "model": "gpt-4o",
+      "compressedSummary": null,
+      "compressedRange": null,
+      "plan": {
+        "mode": "history-degradation",
+        "budgetTokens": 8,
+        "existing": {
+          "keptCount": 2,
+          "keptTokens": 8,
+          "droppedCount": 2,
+          "droppedTokens": 12,
+          "summaryInjected": false,
+          "summaryTokens": 0
+        },
+        "candidate": {
+          "keptRawCount": 2,
+          "keptRawTokens": 8,
+          "summaryReplacedCount": 0,
+          "summaryTokens": 0,
+          "droppedRawCount": 2,
+          "droppedRawTokens": 12,
+          "totalTokens": 8
+        },
+        "deltaTokens": 0,
+        "items": [
+          {
+            "id": "history:msg:0",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:1",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:dropped-raw",
+            "action": "drop-raw",
+            "tokens": 12,
+            "coveredBySummary": false
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=history-degradation budget=8 existingKept=8 existingSummary=0 candRaw=8 candSummary=0 replace=0 drop=2 delta=0 degraded=0"
+    },
+    {
+      "usedTokens": 0,
+      "budgetTokens": 8,
+      "model": "gpt-4o",
+      "compressedSummary": "这是对旧对话的压缩摘要。",
+      "compressedRange": {
+        "startTs": 0,
+        "endTs": 500
+      },
+      "plan": {
+        "mode": "history-degradation",
+        "budgetTokens": 8,
+        "existing": {
+          "keptCount": 2,
+          "keptTokens": 8,
+          "droppedCount": 2,
+          "droppedTokens": 12,
+          "summaryInjected": true,
+          "summaryTokens": 11
+        },
+        "candidate": {
+          "keptRawCount": 2,
+          "keptRawTokens": 8,
+          "summaryReplacedCount": 2,
+          "summaryTokens": 11,
+          "droppedRawCount": 0,
+          "droppedRawTokens": 0,
+          "totalTokens": 19
+        },
+        "deltaTokens": 0,
+        "items": [
+          {
+            "id": "history:msg:0",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:1",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:summary",
+            "action": "replace-with-summary",
+            "tokens": 11,
+            "coveredBySummary": true
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=history-degradation budget=8 existingKept=8 existingSummary=11 candRaw=8 candSummary=11 replace=2 drop=0 delta=0 degraded=0"
+    },
+    {
+      "usedTokens": 0,
+      "budgetTokens": 8,
+      "model": "gpt-4o",
+      "compressedSummary": "摘要不覆盖",
+      "compressedRange": {
+        "startTs": 150,
+        "endTs": 250
+      },
+      "plan": {
+        "mode": "history-degradation",
+        "budgetTokens": 8,
+        "existing": {
+          "keptCount": 2,
+          "keptTokens": 8,
+          "droppedCount": 2,
+          "droppedTokens": 12,
+          "summaryInjected": false,
+          "summaryTokens": 0
+        },
+        "candidate": {
+          "keptRawCount": 2,
+          "keptRawTokens": 8,
+          "summaryReplacedCount": 0,
+          "summaryTokens": 0,
+          "droppedRawCount": 2,
+          "droppedRawTokens": 12,
+          "totalTokens": 8
+        },
+        "deltaTokens": 0,
+        "items": [
+          {
+            "id": "history:msg:0",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:1",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:dropped-raw",
+            "action": "drop-raw",
+            "tokens": 12,
+            "coveredBySummary": false
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=history-degradation budget=8 existingKept=8 existingSummary=0 candRaw=8 candSummary=0 replace=0 drop=2 delta=0 degraded=0"
+    },
+    {
+      "usedTokens": 0,
+      "budgetTokens": 8,
+      "model": "gpt-4o",
+      "compressedSummary": null,
+      "compressedRange": null,
+      "plan": {
+        "mode": "history-degradation",
+        "budgetTokens": 8,
+        "existing": {
+          "keptCount": 2,
+          "keptTokens": 8,
+          "droppedCount": 2,
+          "droppedTokens": 12,
+          "summaryInjected": false,
+          "summaryTokens": 0
+        },
+        "candidate": {
+          "keptRawCount": 2,
+          "keptRawTokens": 8,
+          "summaryReplacedCount": 0,
+          "summaryTokens": 0,
+          "droppedRawCount": 2,
+          "droppedRawTokens": 12,
+          "totalTokens": 8
+        },
+        "deltaTokens": 0,
+        "items": [
+          {
+            "id": "history:msg:0",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:1",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:dropped-raw",
+            "action": "drop-raw",
+            "tokens": 12,
+            "coveredBySummary": false
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=history-degradation budget=8 existingKept=8 existingSummary=0 candRaw=8 candSummary=0 replace=0 drop=2 delta=0 degraded=0"
+    },
+    {
+      "usedTokens": 0,
+      "budgetTokens": 8,
+      "model": "gpt-4o",
+      "compressedSummary": "   ",
+      "compressedRange": {
+        "startTs": 0,
+        "endTs": 500
+      },
+      "plan": {
+        "mode": "history-degradation",
+        "budgetTokens": 8,
+        "existing": {
+          "keptCount": 2,
+          "keptTokens": 8,
+          "droppedCount": 2,
+          "droppedTokens": 12,
+          "summaryInjected": false,
+          "summaryTokens": 0
+        },
+        "candidate": {
+          "keptRawCount": 2,
+          "keptRawTokens": 8,
+          "summaryReplacedCount": 0,
+          "summaryTokens": 0,
+          "droppedRawCount": 2,
+          "droppedRawTokens": 12,
+          "totalTokens": 8
+        },
+        "deltaTokens": 0,
+        "items": [
+          {
+            "id": "history:msg:0",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:1",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:dropped-raw",
+            "action": "drop-raw",
+            "tokens": 12,
+            "coveredBySummary": false
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=history-degradation budget=8 existingKept=8 existingSummary=0 candRaw=8 candSummary=0 replace=0 drop=2 delta=0 degraded=0"
+    },
+    {
+      "usedTokens": 0,
+      "budgetTokens": 1000,
+      "model": "gpt-4o",
+      "compressedSummary": "无裁剪但有摘要",
+      "compressedRange": {
+        "startTs": 0,
+        "endTs": 500
+      },
+      "plan": {
+        "mode": "history-degradation",
+        "budgetTokens": 1000,
+        "existing": {
+          "keptCount": 4,
+          "keptTokens": 20,
+          "droppedCount": 0,
+          "droppedTokens": 0,
+          "summaryInjected": false,
+          "summaryTokens": 0
+        },
+        "candidate": {
+          "keptRawCount": 4,
+          "keptRawTokens": 20,
+          "summaryReplacedCount": 0,
+          "summaryTokens": 0,
+          "droppedRawCount": 0,
+          "droppedRawTokens": 0,
+          "totalTokens": 20
+        },
+        "deltaTokens": 0,
+        "items": [
+          {
+            "id": "history:msg:0",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:1",
+            "action": "keep-raw",
+            "tokens": 8,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:2",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          },
+          {
+            "id": "history:msg:3",
+            "action": "keep-raw",
+            "tokens": 4,
+            "coveredBySummary": false
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=history-degradation budget=1000 existingKept=20 existingSummary=0 candRaw=20 candSummary=0 replace=0 drop=0 delta=0 degraded=0"
+    },
+    {
+      "usedTokens": 0,
+      "budgetTokens": "NaN",
+      "model": "gpt-4o",
+      "compressedSummary": null,
+      "compressedRange": null,
+      "plan": {
+        "mode": "history-degradation",
+        "budgetTokens": 0,
+        "existing": {
+          "keptCount": 0,
+          "keptTokens": 0,
+          "droppedCount": 4,
+          "droppedTokens": 20,
+          "summaryInjected": false,
+          "summaryTokens": 0
+        },
+        "candidate": {
+          "keptRawCount": 0,
+          "keptRawTokens": 0,
+          "summaryReplacedCount": 0,
+          "summaryTokens": 0,
+          "droppedRawCount": 4,
+          "droppedRawTokens": 20,
+          "totalTokens": 0
+        },
+        "deltaTokens": 0,
+        "items": [
+          {
+            "id": "history:dropped-raw",
+            "action": "drop-raw",
+            "tokens": 20,
+            "coveredBySummary": false
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=history-degradation budget=0 existingKept=0 existingSummary=0 candRaw=0 candSummary=0 replace=0 drop=4 delta=0 degraded=0"
+    }
+  ]
+}

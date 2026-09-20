@@ -98,15 +98,15 @@ export function Modal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" ref={overlayRef}>
-      <div className={cn('absolute inset-0 bg-black/60 backdrop-blur-sm', overlayClassName)} onClick={onClose} aria-hidden />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" ref={overlayRef}>
+      <div className={cn('motion-overlay absolute inset-0 bg-black/60 backdrop-blur-[2px]', overlayClassName)} onClick={onClose} aria-hidden />
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         className={cn(
-          'relative w-full bg-tavern-bg-card border border-tavern-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden',
+          'modal-pop relative w-full bg-tavern-bg-card border border-tavern-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden',
           widths[width],
         )}
       >

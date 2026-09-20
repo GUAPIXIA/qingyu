@@ -1,0 +1,451 @@
+{
+  "algorithm": "electron/services/lorebookAdapters/registry.ts#detectLorebookFormats",
+  "cases": [
+    {
+      "label": "embedded-character-book",
+      "input": {
+        "name": "卡内世界书",
+        "scan_depth": 2,
+        "token_budget": 1024,
+        "recursive_scanning": true,
+        "extensions": {},
+        "entries": [
+          {
+            "keys": "阿尔法, 贝塔",
+            "content": "正文一",
+            "comment": "标题一",
+            "enabled": true,
+            "constant": false,
+            "position": 0,
+            "insertion_order": 100
+          },
+          {
+            "keys": [
+              "伽马"
+            ],
+            "secondary_keys": [
+              "次要"
+            ],
+            "content": "正文二",
+            "constant": true,
+            "selective": true,
+            "selective_logic": 1,
+            "case_sensitive": true,
+            "depth": 3,
+            "order": 5,
+            "probability": 80,
+            "position": 1,
+            "disable": false
+          }
+        ]
+      },
+      "file": {
+        "fileName": "embedded-character_book.json",
+        "extension": "json"
+      },
+      "candidates": [
+        {
+          "adapterId": "character-card.character-book",
+          "formatLabel": "CCv2/CCv3 character_book",
+          "formatVersion": "2/3",
+          "confidence": 100,
+          "reasons": [
+            "entries 为数组",
+            "条目包含 keys/insertion_order/use_regex 字段",
+            "文件名提示 character_book"
+          ],
+          "conflicts": []
+        },
+        {
+          "adapterId": "sillytavern.world-info",
+          "formatLabel": "SillyTavern World Info",
+          "formatVersion": "2026-07",
+          "confidence": 82,
+          "reasons": [
+            "条目包含 uid/key/keysecondary/disable 字段"
+          ],
+          "conflicts": [
+            "同时检测到 character_book 的 keys/insertion_order 字段"
+          ]
+        },
+        {
+          "adapterId": "qingyu.native-v1",
+          "formatLabel": "轻语原生世界书 v1",
+          "formatVersion": "1",
+          "confidence": 45,
+          "reasons": [
+            "entries 为数组"
+          ],
+          "conflicts": [
+            "条目同时出现原生与外部格式字段"
+          ]
+        }
+      ],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    },
+    {
+      "label": "sillytavern-world-info",
+      "input": {
+        "entries": {
+          "0": {
+            "uid": 0,
+            "key": [
+              "主键"
+            ],
+            "keysecondary": [
+              "次"
+            ],
+            "comment": "ST 条目标题",
+            "content": "ST 正文",
+            "constant": false,
+            "selective": true,
+            "insertion_order": 10,
+            "position": 0,
+            "disabled": false,
+            "group": "A组",
+            "probability": 100
+          },
+          "1": {
+            "uid": 1,
+            "key": "单串",
+            "comment": "B",
+            "content": "B 正文",
+            "constant": true
+          }
+        },
+        "scan_depth": 1,
+        "token_budget": 512,
+        "recursive_scanning": false,
+        "extension_prompt": "前缀",
+        "unknown_wrapper_field": {
+          "keep": "me"
+        }
+      },
+      "file": {
+        "fileName": "world_info.json",
+        "extension": "json"
+      },
+      "candidates": [
+        {
+          "adapterId": "sillytavern.world-info",
+          "formatLabel": "SillyTavern World Info",
+          "formatVersion": "2026-07",
+          "confidence": 100,
+          "reasons": [
+            "entries 使用 ST 常见的 uid 键控对象",
+            "条目包含 uid/key/keysecondary/disable 字段",
+            "文件名提示 SillyTavern World Info"
+          ],
+          "conflicts": [
+            "同时检测到 character_book 的 keys/insertion_order 字段"
+          ]
+        }
+      ],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    },
+    {
+      "label": "lorebook-v3",
+      "input": {
+        "spec": "lorebook_v3",
+        "spec_version": "3.0",
+        "data": {
+          "name": "v3 书",
+          "entries": [
+            {
+              "id": "e1",
+              "key": [
+                "k1"
+              ],
+              "comment": "v3 标题",
+              "content": "v3 正文",
+              "enabled": true,
+              "insertion_order": 1,
+              "constant": false
+            }
+          ]
+        }
+      },
+      "file": {
+        "fileName": "book.json",
+        "extension": "json"
+      },
+      "candidates": [
+        {
+          "adapterId": "character-card.lorebook-v3",
+          "formatLabel": "Character Card lorebook_v3",
+          "formatVersion": "3.0",
+          "confidence": 100,
+          "reasons": [
+            "spec=lorebook_v3",
+            "data 为对象"
+          ],
+          "conflicts": []
+        }
+      ],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    },
+    {
+      "label": "risu",
+      "input": {
+        "type": "risu",
+        "data": [
+          {
+            "key": "rk",
+            "comment": "risu 标题",
+            "text": "risu 正文",
+            "enabled": true,
+            "priority": 2,
+            "depth": 4,
+            "secondkey": "rk2",
+            "insertorder": 7
+          }
+        ]
+      },
+      "file": {
+        "fileName": "lorebook.json",
+        "extension": "json"
+      },
+      "candidates": [
+        {
+          "adapterId": "risu.lorebook",
+          "formatLabel": "Risu Lorebook",
+          "formatVersion": "1",
+          "confidence": 98,
+          "reasons": [
+            "顶层 type=risu 且 data 为 Risu 条目数组"
+          ],
+          "conflicts": []
+        }
+      ],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    },
+    {
+      "label": "agnai",
+      "input": {
+        "name": "agnai 书",
+        "entries": [
+          {
+            "id": "a1",
+            "name": "agnai 名",
+            "entry": "agnai 正文",
+            "keywords": [
+              "ak"
+            ],
+            "priority": 1,
+            "enabled": true
+          }
+        ]
+      },
+      "file": {
+        "fileName": "lorebook.json",
+        "extension": "json"
+      },
+      "candidates": [
+        {
+          "adapterId": "agnai.memory-book",
+          "formatLabel": "Agnai Memory Book",
+          "formatVersion": "1",
+          "confidence": 92,
+          "reasons": [
+            "1 个条目使用 Agnai 的 name/entry/keywords 组合"
+          ],
+          "conflicts": []
+        },
+        {
+          "adapterId": "qingyu.native-v1",
+          "formatLabel": "轻语原生世界书 v1",
+          "formatVersion": "1",
+          "confidence": 68,
+          "reasons": [
+            "entries 为数组",
+            "条目使用 keywords/matchMode/useRegex 原生字段"
+          ],
+          "conflicts": []
+        },
+        {
+          "adapterId": "character-card.character-book",
+          "formatLabel": "CCv2/CCv3 character_book",
+          "formatVersion": "2/3",
+          "confidence": 35,
+          "reasons": [
+            "entries 为数组"
+          ],
+          "conflicts": [
+            "同时检测到轻语原生 keywords/matchMode 字段"
+          ]
+        }
+      ],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    },
+    {
+      "label": "novelai",
+      "input": {
+        "name": "novelai 书",
+        "entries": [
+          {
+            "id": "n1",
+            "text": "nai 正文",
+            "keys": [
+              "nk"
+            ],
+            "secondKey": "nai2",
+            "forceActivation": true,
+            "priority": 1,
+            "enabled": true,
+            "caseSensitive": false
+          }
+        ]
+      },
+      "file": {
+        "fileName": "lorebook.json",
+        "extension": "json"
+      },
+      "candidates": [
+        {
+          "adapterId": "character-card.character-book",
+          "formatLabel": "CCv2/CCv3 character_book",
+          "formatVersion": "2/3",
+          "confidence": 96,
+          "reasons": [
+            "entries 为数组",
+            "条目包含 keys/insertion_order/use_regex 字段"
+          ],
+          "conflicts": []
+        },
+        {
+          "adapterId": "novelai.lorebook",
+          "formatLabel": "NovelAI Lorebook",
+          "formatVersion": "4",
+          "confidence": 80,
+          "reasons": [
+            "条目包含 NovelAI 特有的 text/forceActivation 字段"
+          ],
+          "conflicts": []
+        },
+        {
+          "adapterId": "qingyu.native-v1",
+          "formatLabel": "轻语原生世界书 v1",
+          "formatVersion": "1",
+          "confidence": 45,
+          "reasons": [
+            "entries 为数组"
+          ],
+          "conflicts": [
+            "条目同时出现原生与外部格式字段"
+          ]
+        }
+      ],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    },
+    {
+      "label": "native-v1",
+      "input": {
+        "id": "native-v1-book",
+        "name": "原生 v1",
+        "description": "阶段 3 之前的落盘形状",
+        "enabled": true,
+        "scanDepth": 2,
+        "recursiveScanning": true,
+        "tokenBudget": 700,
+        "entries": [
+          {
+            "id": "v1e",
+            "keywords": [
+              "vk"
+            ],
+            "content": "v1 正文",
+            "position": "before_char",
+            "order": 100,
+            "probability": 100,
+            "enabled": true,
+            "depth": 2,
+            "secondaryKeywords": [
+              "vk2"
+            ],
+            "selectiveLogic": "and_any",
+            "caseSensitive": true,
+            "matchWholeWords": true,
+            "useRegex": false
+          }
+        ]
+      },
+      "file": {
+        "fileName": "native.json",
+        "extension": "json"
+      },
+      "candidates": [
+        {
+          "adapterId": "qingyu.native-v1",
+          "formatLabel": "轻语原生世界书 v1",
+          "formatVersion": "1",
+          "confidence": 95,
+          "reasons": [
+            "entries 为数组",
+            "条目使用 keywords/matchMode/useRegex 原生字段"
+          ],
+          "conflicts": []
+        },
+        {
+          "adapterId": "character-card.character-book",
+          "formatLabel": "CCv2/CCv3 character_book",
+          "formatVersion": "2/3",
+          "confidence": 35,
+          "reasons": [
+            "entries 为数组"
+          ],
+          "conflicts": [
+            "同时检测到轻语原生 keywords/matchMode 字段"
+          ]
+        }
+      ],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    },
+    {
+      "label": "empty-object",
+      "input": {},
+      "file": {
+        "fileName": "x.json",
+        "extension": "json"
+      },
+      "candidates": [],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    },
+    {
+      "label": "array-input",
+      "input": [],
+      "file": {
+        "fileName": "x.json",
+        "extension": "json"
+      },
+      "candidates": [],
+      "thresholds": {
+        "minConfidence": 30,
+        "ambiguityMargin": 5
+      }
+    }
+  ]
+}

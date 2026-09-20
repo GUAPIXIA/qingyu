@@ -1,0 +1,978 @@
+{
+  "version": 1,
+  "constants": {
+    "alwaysImportance": 0.9,
+    "conditionalImportance": 0.55,
+    "detailImportance": 0.35
+  },
+  "scoreCases": [
+    {
+      "score": 0.5,
+      "normalized": 0.5
+    },
+    {
+      "score": 0,
+      "normalized": 0
+    },
+    {
+      "score": -1,
+      "normalized": 0
+    },
+    {
+      "score": 1,
+      "normalized": 1
+    },
+    {
+      "score": 1.5,
+      "normalized": 1
+    },
+    {
+      "score": 0.999999,
+      "normalized": 0.999999
+    },
+    {
+      "score": "Infinity",
+      "normalized": 0
+    },
+    {
+      "score": "NaN",
+      "normalized": 0
+    }
+  ],
+  "originCases": [
+    {
+      "snapshot": {
+        "priority": "conditional",
+        "position": "before_char",
+        "order": 0,
+        "tokens": 0,
+        "kept": false,
+        "key": "k1"
+      },
+      "origin": "worldbook:before_character"
+    },
+    {
+      "snapshot": {
+        "priority": "conditional",
+        "position": "after_char",
+        "order": 0,
+        "tokens": 0,
+        "kept": false,
+        "key": "k2"
+      },
+      "origin": "worldbook:after_character"
+    },
+    {
+      "snapshot": {
+        "priority": "conditional",
+        "position": "at_depth",
+        "order": 0,
+        "tokens": 0,
+        "kept": false,
+        "key": "k3",
+        "depth": 3
+      },
+      "origin": "worldbook:chat_depth:3"
+    },
+    {
+      "snapshot": {
+        "priority": "conditional",
+        "position": "at_depth",
+        "order": 0,
+        "tokens": 0,
+        "kept": false,
+        "key": "k4"
+      },
+      "origin": "worldbook:chat_depth:0"
+    },
+    {
+      "snapshot": {
+        "priority": "conditional",
+        "position": "at_end",
+        "order": 0,
+        "tokens": 0,
+        "kept": false,
+        "key": "k5"
+      },
+      "origin": "worldbook:prompt_end"
+    }
+  ],
+  "candidateSets": [
+    {
+      "snapshots": [
+        {
+          "priority": "always",
+          "position": "before_char",
+          "order": 2,
+          "tokens": 100,
+          "kept": false,
+          "key": "a",
+          "score": 0.9
+        },
+        {
+          "priority": "conditional",
+          "position": "after_char",
+          "order": 1,
+          "tokens": 50,
+          "kept": false,
+          "key": "b",
+          "score": 0.4
+        },
+        {
+          "priority": "detail",
+          "position": "at_depth",
+          "order": 1,
+          "tokens": 30,
+          "kept": false,
+          "key": "c",
+          "depth": 1,
+          "score": 0.7
+        },
+        {
+          "priority": "detail",
+          "position": "at_end",
+          "order": 1,
+          "tokens": 20,
+          "kept": false,
+          "key": "aa"
+        }
+      ],
+      "described": {
+        "totalCount": 4,
+        "totalTokens": 200,
+        "alwaysCount": 1,
+        "alwaysTokens": 100,
+        "conditionalCount": 1,
+        "detailCount": 2
+      },
+      "keyByCandidateId": {
+        "worldbook:aa": "aa",
+        "worldbook:b": "b",
+        "worldbook:c": "c",
+        "worldbook:a": "a"
+      },
+      "priorityByCandidateId": {
+        "worldbook:aa": "detail",
+        "worldbook:b": "conditional",
+        "worldbook:c": "detail",
+        "worldbook:a": "always"
+      },
+      "candidates": [
+        {
+          "id": "worldbook:aa",
+          "kind": "worldbook",
+          "estimatedTokens": 20,
+          "mandatory": false,
+          "stablePrefix": true,
+          "relevance": 0,
+          "recency": 0.5,
+          "importance": 0.35,
+          "continuity": 0.45,
+          "dedupeKey": "lore:aa",
+          "originalOrder": 0,
+          "origin": "worldbook:prompt_end"
+        },
+        {
+          "id": "worldbook:b",
+          "kind": "worldbook",
+          "estimatedTokens": 50,
+          "mandatory": false,
+          "stablePrefix": true,
+          "relevance": 0.4,
+          "recency": 0.5,
+          "importance": 0.55,
+          "continuity": 0.45,
+          "dedupeKey": "lore:b",
+          "originalOrder": 1,
+          "origin": "worldbook:after_character"
+        },
+        {
+          "id": "worldbook:c",
+          "kind": "worldbook",
+          "estimatedTokens": 30,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.7,
+          "recency": 0.5,
+          "importance": 0.35,
+          "continuity": 0.45,
+          "dedupeKey": "lore:c",
+          "originalOrder": 2,
+          "origin": "worldbook:chat_depth:1"
+        },
+        {
+          "id": "worldbook:a",
+          "kind": "worldbook",
+          "estimatedTokens": 100,
+          "mandatory": true,
+          "stablePrefix": true,
+          "relevance": 0.9,
+          "recency": 0.5,
+          "importance": 0.9,
+          "continuity": 0.7,
+          "dedupeKey": "lore:a",
+          "originalOrder": 3,
+          "origin": "worldbook:before_character"
+        }
+      ]
+    },
+    {
+      "snapshots": [
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 0,
+          "kept": false,
+          "key": "zero"
+        },
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 0,
+          "kept": false,
+          "key": "zero-ignore",
+          "ignoreBudget": true
+        },
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": -5,
+          "kept": false,
+          "key": "negative"
+        },
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 10.9,
+          "kept": false,
+          "key": "fraction"
+        },
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 1000000000,
+          "kept": false,
+          "key": "huge"
+        }
+      ],
+      "described": {
+        "totalCount": 3,
+        "totalTokens": 1000000010,
+        "alwaysCount": 0,
+        "alwaysTokens": 0,
+        "conditionalCount": 3,
+        "detailCount": 0
+      },
+      "keyByCandidateId": {
+        "worldbook:fraction": "fraction",
+        "worldbook:huge": "huge",
+        "worldbook:zero-ignore": "zero-ignore"
+      },
+      "priorityByCandidateId": {
+        "worldbook:fraction": "conditional",
+        "worldbook:huge": "conditional",
+        "worldbook:zero-ignore": "conditional"
+      },
+      "candidates": [
+        {
+          "id": "worldbook:fraction",
+          "kind": "worldbook",
+          "estimatedTokens": 10,
+          "mandatory": false,
+          "stablePrefix": true,
+          "relevance": 0,
+          "recency": 0.5,
+          "importance": 0.55,
+          "continuity": 0.45,
+          "dedupeKey": "lore:fraction",
+          "originalOrder": 0,
+          "origin": "worldbook:prompt_end"
+        },
+        {
+          "id": "worldbook:huge",
+          "kind": "worldbook",
+          "estimatedTokens": 1000000000,
+          "mandatory": false,
+          "stablePrefix": true,
+          "relevance": 0,
+          "recency": 0.5,
+          "importance": 0.55,
+          "continuity": 0.45,
+          "dedupeKey": "lore:huge",
+          "originalOrder": 1,
+          "origin": "worldbook:prompt_end"
+        },
+        {
+          "id": "worldbook:zero-ignore",
+          "kind": "worldbook",
+          "estimatedTokens": 0,
+          "mandatory": false,
+          "stablePrefix": true,
+          "relevance": 0,
+          "recency": 0.5,
+          "importance": 0.55,
+          "continuity": 0.45,
+          "dedupeKey": "lore:zero-ignore",
+          "originalOrder": 4,
+          "origin": "worldbook:prompt_end"
+        }
+      ]
+    },
+    {
+      "snapshots": [],
+      "described": {
+        "totalCount": 0,
+        "totalTokens": 0,
+        "alwaysCount": 0,
+        "alwaysTokens": 0,
+        "conditionalCount": 0,
+        "detailCount": 0
+      },
+      "keyByCandidateId": {},
+      "priorityByCandidateId": {},
+      "candidates": []
+    },
+    {
+      "snapshots": [
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 10,
+          "kept": false,
+          "key": ""
+        }
+      ],
+      "described": {
+        "totalCount": 0,
+        "totalTokens": 0,
+        "alwaysCount": 0,
+        "alwaysTokens": 0,
+        "conditionalCount": 0,
+        "detailCount": 0
+      },
+      "keyByCandidateId": {},
+      "priorityByCandidateId": {},
+      "candidates": []
+    },
+    {
+      "snapshots": [
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 15,
+          "kept": false,
+          "key": "no-priority",
+          "score": 0.3
+        }
+      ],
+      "described": {
+        "totalCount": 1,
+        "totalTokens": 15,
+        "alwaysCount": 0,
+        "alwaysTokens": 0,
+        "conditionalCount": 1,
+        "detailCount": 0
+      },
+      "keyByCandidateId": {
+        "worldbook:no-priority": "no-priority"
+      },
+      "priorityByCandidateId": {
+        "worldbook:no-priority": "conditional"
+      },
+      "candidates": [
+        {
+          "id": "worldbook:no-priority",
+          "kind": "worldbook",
+          "estimatedTokens": 15,
+          "mandatory": false,
+          "stablePrefix": true,
+          "relevance": 0.3,
+          "recency": 0.5,
+          "importance": 0.55,
+          "continuity": 0.45,
+          "dedupeKey": "lore:no-priority",
+          "originalOrder": 0,
+          "origin": "worldbook:prompt_end"
+        }
+      ]
+    }
+  ],
+  "injectionCases": [
+    {
+      "snapshots": [
+        {
+          "priority": "always",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 100,
+          "kept": true,
+          "key": "a"
+        },
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 50,
+          "kept": true,
+          "key": "b",
+          "usedSummary": true
+        },
+        {
+          "priority": "detail",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 30,
+          "kept": false,
+          "key": "c"
+        },
+        {
+          "priority": "always",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 80,
+          "kept": false,
+          "key": "d"
+        },
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 20,
+          "kept": true,
+          "key": "e"
+        }
+      ],
+      "legacyCapTokens": 300,
+      "stats": {
+        "keptCount": 3,
+        "keptTokens": 170,
+        "droppedCount": 2,
+        "droppedTokens": 110,
+        "alwaysDropped": 1,
+        "legacyCapTokens": 300,
+        "keptAlwaysCount": 1,
+        "keptConditionalCount": 2,
+        "keptDetailCount": 0,
+        "alwaysKeptTokens": 100,
+        "conditionalKeptTokens": 70,
+        "detailKeptTokens": 0,
+        "summaryFallbackCount": 1
+      }
+    },
+    {
+      "snapshots": [
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": -1,
+          "kept": true,
+          "key": "x"
+        }
+      ],
+      "legacyCapTokens": -50,
+      "stats": {
+        "keptCount": 1,
+        "keptTokens": 0,
+        "droppedCount": 0,
+        "droppedTokens": 0,
+        "alwaysDropped": 0,
+        "legacyCapTokens": 0,
+        "keptAlwaysCount": 0,
+        "keptConditionalCount": 1,
+        "keptDetailCount": 0,
+        "alwaysKeptTokens": 0,
+        "conditionalKeptTokens": 0,
+        "detailKeptTokens": 0,
+        "summaryFallbackCount": 0
+      }
+    },
+    {
+      "snapshots": [],
+      "legacyCapTokens": 0,
+      "stats": {
+        "keptCount": 0,
+        "keptTokens": 0,
+        "droppedCount": 0,
+        "droppedTokens": 0,
+        "alwaysDropped": 0,
+        "legacyCapTokens": 0,
+        "keptAlwaysCount": 0,
+        "keptConditionalCount": 0,
+        "keptDetailCount": 0,
+        "alwaysKeptTokens": 0,
+        "conditionalKeptTokens": 0,
+        "detailKeptTokens": 0,
+        "summaryFallbackCount": 0
+      }
+    },
+    {
+      "snapshots": [
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 10.9,
+          "kept": true,
+          "key": "f"
+        }
+      ],
+      "legacyCapTokens": 120.9,
+      "stats": {
+        "keptCount": 1,
+        "keptTokens": 10,
+        "droppedCount": 0,
+        "droppedTokens": 0,
+        "alwaysDropped": 0,
+        "legacyCapTokens": 120,
+        "keptAlwaysCount": 0,
+        "keptConditionalCount": 1,
+        "keptDetailCount": 0,
+        "alwaysKeptTokens": 0,
+        "conditionalKeptTokens": 10,
+        "detailKeptTokens": 0,
+        "summaryFallbackCount": 0
+      }
+    }
+  ],
+  "shadowCases": [
+    {
+      "snapshots": [
+        {
+          "priority": "always",
+          "position": "before_char",
+          "order": 0,
+          "tokens": 100,
+          "kept": true,
+          "key": "a",
+          "score": 0.9
+        },
+        {
+          "priority": "conditional",
+          "position": "before_char",
+          "order": 0,
+          "tokens": 150,
+          "kept": true,
+          "key": "b",
+          "score": 0.6
+        },
+        {
+          "priority": "detail",
+          "position": "at_depth",
+          "order": 0,
+          "tokens": 300,
+          "kept": false,
+          "key": "c",
+          "depth": 2,
+          "score": 0.2
+        }
+      ],
+      "legacyCapTokens": 100,
+      "budgetTokens": 500,
+      "competitors": [],
+      "report": {
+        "mode": "worldbook-shadow",
+        "budgetTokens": 500,
+        "legacyCapTokens": 100,
+        "existing": {
+          "keptCount": 2,
+          "keptTokens": 250,
+          "droppedCount": 1,
+          "droppedTokens": 300,
+          "alwaysDropped": 0,
+          "legacyCapTokens": 100,
+          "keptAlwaysCount": 1,
+          "keptConditionalCount": 1,
+          "keptDetailCount": 0,
+          "alwaysKeptTokens": 100,
+          "conditionalKeptTokens": 150,
+          "detailKeptTokens": 0,
+          "summaryFallbackCount": 0
+        },
+        "candidate": {
+          "selectedCount": 2,
+          "selectedTokens": 250,
+          "droppedCount": 1,
+          "alwaysMandatoryCount": 1,
+          "alwaysSelectedCount": 1,
+          "alwaysDroppedCount": 0,
+          "overBudget": false,
+          "mandatoryOverBudget": false
+        },
+        "deltaTokens": 0,
+        "exceedsLegacyCap": true,
+        "byPriority": [
+          {
+            "priority": "always",
+            "existingCount": 1,
+            "existingTokens": 100,
+            "candidateCount": 1,
+            "candidateTokens": 100,
+            "candidateDroppedCount": 0
+          },
+          {
+            "priority": "conditional",
+            "existingCount": 1,
+            "existingTokens": 150,
+            "candidateCount": 1,
+            "candidateTokens": 150,
+            "candidateDroppedCount": 0
+          },
+          {
+            "priority": "detail",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 1,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 1
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=worldbook-shadow budget=500 cap=100 existing=250 candidate=250 delta=0 exceedsCap=1 alwaysSel=1/1 alwaysDrop=0 mandatoryOver=0 degraded=0 layers=always:100->100/1->1,conditional:150->150/1->1,detail:0->0/0->1"
+    },
+    {
+      "snapshots": [
+        {
+          "priority": "always",
+          "position": "before_char",
+          "order": 0,
+          "tokens": 100,
+          "kept": true,
+          "key": "a",
+          "score": 0.9
+        },
+        {
+          "priority": "conditional",
+          "position": "before_char",
+          "order": 0,
+          "tokens": 150,
+          "kept": true,
+          "key": "b",
+          "score": 0.6
+        }
+      ],
+      "legacyCapTokens": 100,
+      "budgetTokens": 120,
+      "competitors": [],
+      "report": {
+        "mode": "worldbook-shadow",
+        "budgetTokens": 120,
+        "legacyCapTokens": 100,
+        "existing": {
+          "keptCount": 2,
+          "keptTokens": 250,
+          "droppedCount": 0,
+          "droppedTokens": 0,
+          "alwaysDropped": 0,
+          "legacyCapTokens": 100,
+          "keptAlwaysCount": 1,
+          "keptConditionalCount": 1,
+          "keptDetailCount": 0,
+          "alwaysKeptTokens": 100,
+          "conditionalKeptTokens": 150,
+          "detailKeptTokens": 0,
+          "summaryFallbackCount": 0
+        },
+        "candidate": {
+          "selectedCount": 1,
+          "selectedTokens": 100,
+          "droppedCount": 1,
+          "alwaysMandatoryCount": 1,
+          "alwaysSelectedCount": 1,
+          "alwaysDroppedCount": 0,
+          "overBudget": false,
+          "mandatoryOverBudget": false
+        },
+        "deltaTokens": -150,
+        "exceedsLegacyCap": false,
+        "byPriority": [
+          {
+            "priority": "always",
+            "existingCount": 1,
+            "existingTokens": 100,
+            "candidateCount": 1,
+            "candidateTokens": 100,
+            "candidateDroppedCount": 0
+          },
+          {
+            "priority": "conditional",
+            "existingCount": 1,
+            "existingTokens": 150,
+            "candidateCount": 1,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 1
+          },
+          {
+            "priority": "detail",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=worldbook-shadow budget=120 cap=100 existing=250 candidate=100 delta=-150 exceedsCap=0 alwaysSel=1/1 alwaysDrop=0 mandatoryOver=0 degraded=0 layers=always:100->100/1->1,conditional:150->0/1->1,detail:0->0/0->0"
+    },
+    {
+      "snapshots": [
+        {
+          "priority": "always",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 100,
+          "kept": true,
+          "key": "a"
+        }
+      ],
+      "legacyCapTokens": 50,
+      "budgetTokens": 40,
+      "competitors": [],
+      "report": {
+        "mode": "worldbook-shadow",
+        "budgetTokens": 40,
+        "legacyCapTokens": 50,
+        "existing": {
+          "keptCount": 1,
+          "keptTokens": 100,
+          "droppedCount": 0,
+          "droppedTokens": 0,
+          "alwaysDropped": 0,
+          "legacyCapTokens": 50,
+          "keptAlwaysCount": 1,
+          "keptConditionalCount": 0,
+          "keptDetailCount": 0,
+          "alwaysKeptTokens": 100,
+          "conditionalKeptTokens": 0,
+          "detailKeptTokens": 0,
+          "summaryFallbackCount": 0
+        },
+        "candidate": {
+          "selectedCount": 1,
+          "selectedTokens": 100,
+          "droppedCount": 0,
+          "alwaysMandatoryCount": 1,
+          "alwaysSelectedCount": 1,
+          "alwaysDroppedCount": 0,
+          "overBudget": true,
+          "mandatoryOverBudget": true
+        },
+        "deltaTokens": 0,
+        "exceedsLegacyCap": true,
+        "byPriority": [
+          {
+            "priority": "always",
+            "existingCount": 1,
+            "existingTokens": 100,
+            "candidateCount": 1,
+            "candidateTokens": 100,
+            "candidateDroppedCount": 0
+          },
+          {
+            "priority": "conditional",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          },
+          {
+            "priority": "detail",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=worldbook-shadow budget=40 cap=50 existing=100 candidate=100 delta=0 exceedsCap=1 alwaysSel=1/1 alwaysDrop=0 mandatoryOver=1 degraded=0 layers=always:100->100/1->1,conditional:0->0/0->0,detail:0->0/0->0"
+    },
+    {
+      "snapshots": [
+        {
+          "priority": "conditional",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 100,
+          "kept": true,
+          "key": "a",
+          "score": 0.9
+        },
+        {
+          "priority": "detail",
+          "position": "at_end",
+          "order": 0,
+          "tokens": 100,
+          "kept": false,
+          "key": "b",
+          "score": 0.3
+        }
+      ],
+      "legacyCapTokens": 200,
+      "budgetTokens": 150,
+      "competitors": [
+        {
+          "mandatory": true,
+          "stablePrefix": false,
+          "relevance": 0,
+          "recency": 0,
+          "importance": 1,
+          "continuity": 0,
+          "id": "character:core",
+          "kind": "character",
+          "estimatedTokens": 100,
+          "originalOrder": 0
+        },
+        {
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.9,
+          "recency": 0.9,
+          "importance": 0.5,
+          "continuity": 0.9,
+          "id": "history:recent",
+          "kind": "history",
+          "estimatedTokens": 40,
+          "originalOrder": 1
+        }
+      ],
+      "report": {
+        "mode": "worldbook-shadow",
+        "budgetTokens": 150,
+        "legacyCapTokens": 200,
+        "existing": {
+          "keptCount": 1,
+          "keptTokens": 100,
+          "droppedCount": 1,
+          "droppedTokens": 100,
+          "alwaysDropped": 0,
+          "legacyCapTokens": 200,
+          "keptAlwaysCount": 0,
+          "keptConditionalCount": 1,
+          "keptDetailCount": 0,
+          "alwaysKeptTokens": 0,
+          "conditionalKeptTokens": 100,
+          "detailKeptTokens": 0,
+          "summaryFallbackCount": 0
+        },
+        "candidate": {
+          "selectedCount": 0,
+          "selectedTokens": 0,
+          "droppedCount": 2,
+          "alwaysMandatoryCount": 0,
+          "alwaysSelectedCount": 0,
+          "alwaysDroppedCount": 0,
+          "overBudget": false,
+          "mandatoryOverBudget": false
+        },
+        "deltaTokens": -100,
+        "exceedsLegacyCap": false,
+        "byPriority": [
+          {
+            "priority": "always",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          },
+          {
+            "priority": "conditional",
+            "existingCount": 1,
+            "existingTokens": 100,
+            "candidateCount": 1,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 1
+          },
+          {
+            "priority": "detail",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 1,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 1
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=worldbook-shadow budget=150 cap=200 existing=100 candidate=0 delta=-100 exceedsCap=0 alwaysSel=0/0 alwaysDrop=0 mandatoryOver=0 degraded=0 layers=always:0->0/0->0,conditional:100->0/1->1,detail:0->0/0->1"
+    },
+    {
+      "snapshots": [],
+      "legacyCapTokens": 0,
+      "budgetTokens": 0,
+      "competitors": [],
+      "report": {
+        "mode": "worldbook-shadow",
+        "budgetTokens": 0,
+        "legacyCapTokens": 0,
+        "existing": {
+          "keptCount": 0,
+          "keptTokens": 0,
+          "droppedCount": 0,
+          "droppedTokens": 0,
+          "alwaysDropped": 0,
+          "legacyCapTokens": 0,
+          "keptAlwaysCount": 0,
+          "keptConditionalCount": 0,
+          "keptDetailCount": 0,
+          "alwaysKeptTokens": 0,
+          "conditionalKeptTokens": 0,
+          "detailKeptTokens": 0,
+          "summaryFallbackCount": 0
+        },
+        "candidate": {
+          "selectedCount": 0,
+          "selectedTokens": 0,
+          "droppedCount": 0,
+          "alwaysMandatoryCount": 0,
+          "alwaysSelectedCount": 0,
+          "alwaysDroppedCount": 0,
+          "overBudget": false,
+          "mandatoryOverBudget": false
+        },
+        "deltaTokens": 0,
+        "exceedsLegacyCap": false,
+        "byPriority": [
+          {
+            "priority": "always",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          },
+          {
+            "priority": "conditional",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          },
+          {
+            "priority": "detail",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=worldbook-shadow budget=0 cap=0 existing=0 candidate=0 delta=0 exceedsCap=0 alwaysSel=0/0 alwaysDrop=0 mandatoryOver=0 degraded=0 layers=always:0->0/0->0,conditional:0->0/0->0,detail:0->0/0->0"
+    }
+  ]
+}

@@ -1,0 +1,482 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "input": {
+        "id": "plain",
+        "content": "码头在雨里。"
+      },
+      "eligible": true,
+      "document": "正文：码头在雨里。"
+    },
+    {
+      "input": {
+        "id": "full",
+        "content": "码头在雨里。灯塔亮着。",
+        "keywords": [
+          "码头",
+          "灯塔"
+        ],
+        "secondaryKeywords": [
+          "雨",
+          "码头"
+        ],
+        "summary": "雨夜的海港。",
+        "title": "海港"
+      },
+      "eligible": true,
+      "document": "标题：海港\n关键词：码头、灯塔、雨\n摘要：雨夜的海港。\n正文：码头在雨里。灯塔亮着。"
+    },
+    {
+      "input": {
+        "id": "dup-keys",
+        "content": "正文。",
+        "keywords": [
+          "乙",
+          "甲",
+          "乙"
+        ],
+        "secondaryKeywords": [
+          "甲"
+        ]
+      },
+      "eligible": true,
+      "document": "关键词：乙、甲\n正文：正文。"
+    },
+    {
+      "input": {
+        "id": "only-content",
+        "content": "  只有正文  "
+      },
+      "eligible": true,
+      "document": "正文：只有正文"
+    },
+    {
+      "input": {
+        "id": "disabled",
+        "content": "停用条目。",
+        "enabled": false
+      },
+      "eligible": false,
+      "document": "正文：停用条目。"
+    },
+    {
+      "input": {
+        "id": "always",
+        "content": "常驻条目。",
+        "priority": "always"
+      },
+      "eligible": false,
+      "document": "正文：常驻条目。"
+    },
+    {
+      "input": {
+        "id": "keyword-mode",
+        "content": "仅关键词。",
+        "matchMode": "keyword"
+      },
+      "eligible": false,
+      "document": "正文：仅关键词。"
+    },
+    {
+      "input": {
+        "id": "semantic-empty",
+        "content": "   ",
+        "matchMode": "semantic"
+      },
+      "eligible": false,
+      "document": ""
+    },
+    {
+      "input": {
+        "id": "semantic-ok",
+        "content": "语义条目。",
+        "matchMode": "semantic"
+      },
+      "eligible": true,
+      "document": "正文：语义条目。"
+    }
+  ],
+  "splitCases": [
+    {
+      "text": "",
+      "maxChars": 100,
+      "maxChunks": null,
+      "overlapRatio": null,
+      "chunks": []
+    },
+    {
+      "text": "   ",
+      "maxChars": 100,
+      "maxChunks": null,
+      "overlapRatio": null,
+      "chunks": []
+    },
+    {
+      "text": "短文。",
+      "maxChars": 100,
+      "maxChunks": null,
+      "overlapRatio": null,
+      "chunks": [
+        "短文。"
+      ]
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "maxChars": 10,
+      "maxChunks": null,
+      "overlapRatio": null,
+      "chunks": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "maxChars": 64,
+      "maxChunks": null,
+      "overlapRatio": null,
+      "chunks": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "maxChars": 64,
+      "maxChunks": null,
+      "overlapRatio": null,
+      "chunks": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "maxChars": 100,
+      "maxChunks": null,
+      "overlapRatio": null,
+      "chunks": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "maxChars": 100,
+      "maxChunks": 3,
+      "overlapRatio": null,
+      "chunks": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "text": "一丁丂七丄丅丆万丈三上下丌不与丏丐丑丒专且丕世丗丘丙业丛东丝丞丟丠両丢丣两严並丧丨丩个丫丬中丮丯丰丱串丳临丵丶丷丸丹为主丼丽举丿乀乁乂乃乄久乆乇么义乊之乌乍乎乏乐乑乒乓乔乕乖乗乘乙乚乛乜九乞也习乡乢乣乤乥书乧乨乩乪乫乬乭乮乯买乱乲乳乴乵乶乷乸乹乺乻乼乽乾乿亀亁亂亃亄亅了亇予争亊事二亍于亏亐云互亓五井亖亗亘亙亚些亜亝亞亟亠亡亢亣交亥亦产亨亩亪享京亭亮亯亰亱亲亳亴亵亶亷亸亹人亻亼亽亾亿什仁仂仃仄仅仆仇",
+      "maxChars": 80,
+      "maxChunks": 4,
+      "overlapRatio": null,
+      "chunks": [
+        "一丁丂七丄丅丆万丈三上下丌不与丏丐丑丒专且丕世丗丘丙业丛东丝丞丟丠両丢丣两严並丧丨丩个丫丬中丮丯丰丱串丳临丵丶丷丸丹为主丼丽举丿乀乁乂乃乄久乆乇么义乊之乌乍乎乏",
+        "乄久乆乇么义乊之乌乍乎乏乐乑乒乓乔乕乖乗乘乙乚乛乜九乞也习乡乢乣乤乥书乧乨乩乪乫乬乭乮乯买乱乲乳乴乵乶乷乸乹乺乻乼乽乾乿亀亁亂亃亄亅了亇予争亊事二亍于亏亐云互亓",
+        "予争亊事二亍于亏亐云互亓五井亖亗亘亙亚些亜亝亞亟亠亡亢亣交亥亦产亨亩亪享京亭亮亯亰亱亲亳亴亵亶亷亸亹人亻亼亽亾亿什仁仂仃仄仅仆仇",
+        "乸乹乺乻乼乽乾乿亀亁亂亃亄亅了亇予争亊事二亍于亏亐云互亓五井亖亗亘亙亚些亜亝亞亟亠亡亢亣交亥亦产亨亩亪享京亭亮亯亰亱亲亳亴亵亶亷亸亹人亻亼亽亾亿什仁仂仃仄仅仆仇"
+      ]
+    },
+    {
+      "text": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "maxChars": 100,
+      "maxChunks": null,
+      "overlapRatio": 0,
+      "chunks": [
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ]
+    },
+    {
+      "text": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "maxChars": 100,
+      "maxChunks": null,
+      "overlapRatio": 0.9,
+      "chunks": [
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      ]
+    }
+  ],
+  "mergeCases": [
+    {
+      "vectors": [],
+      "merged": []
+    },
+    {
+      "vectors": [
+        []
+      ],
+      "merged": []
+    },
+    {
+      "vectors": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "merged": [
+        0.5547001962252291,
+        0.8320502943378437
+      ]
+    },
+    {
+      "vectors": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          4,
+          5
+        ]
+      ],
+      "merged": [
+        0.4472135954999579,
+        0.8944271909999159
+      ]
+    },
+    {
+      "vectors": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "merged": [
+        0,
+        0
+      ]
+    },
+    {
+      "vectors": [
+        [
+          -1,
+          -1
+        ],
+        [
+          -1,
+          -1
+        ]
+      ],
+      "merged": [
+        -0.7071067811865475,
+        -0.7071067811865475
+      ]
+    }
+  ],
+  "diffCases": [
+    {
+      "prev": [],
+      "next": [],
+      "changed": []
+    },
+    {
+      "prev": [],
+      "next": [
+        {
+          "id": "a",
+          "content": "新增。"
+        }
+      ],
+      "changed": [
+        "a"
+      ]
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "旧。"
+        }
+      ],
+      "next": [],
+      "changed": [
+        "a"
+      ]
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "旧。"
+        }
+      ],
+      "next": [
+        {
+          "id": "a",
+          "content": "新。"
+        }
+      ],
+      "changed": [
+        "a"
+      ]
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "同。"
+        }
+      ],
+      "next": [
+        {
+          "id": "a",
+          "content": "同。"
+        }
+      ],
+      "changed": []
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "同。"
+        }
+      ],
+      "next": [
+        {
+          "id": "a",
+          "content": "同。",
+          "enabled": false
+        }
+      ],
+      "changed": [
+        "a"
+      ]
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "同。"
+        }
+      ],
+      "next": [
+        {
+          "id": "a",
+          "content": "同。",
+          "priority": "always"
+        }
+      ],
+      "changed": [
+        "a"
+      ]
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "同。"
+        }
+      ],
+      "next": [
+        {
+          "id": "a",
+          "content": "同。",
+          "matchMode": "keyword"
+        }
+      ],
+      "changed": [
+        "a"
+      ]
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "同。"
+        }
+      ],
+      "next": [
+        {
+          "id": "a",
+          "content": "同。",
+          "title": "新标题"
+        }
+      ],
+      "changed": [
+        "a"
+      ]
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "同。"
+        }
+      ],
+      "next": [
+        {
+          "id": "a",
+          "content": "同。",
+          "keywords": [
+            "新"
+          ]
+        }
+      ],
+      "changed": [
+        "a"
+      ]
+    },
+    {
+      "prev": [
+        {
+          "id": "a",
+          "content": "A。"
+        },
+        {
+          "id": "b",
+          "content": "B。"
+        }
+      ],
+      "next": [
+        {
+          "id": "b",
+          "content": "B。"
+        },
+        {
+          "id": "a",
+          "content": "A。"
+        }
+      ],
+      "changed": []
+    }
+  ]
+}

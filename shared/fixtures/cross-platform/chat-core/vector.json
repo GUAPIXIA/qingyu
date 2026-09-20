@@ -1,0 +1,528 @@
+{
+  "version": 1,
+  "cosineCases": [
+    {
+      "a": [],
+      "b": [],
+      "score": 0
+    },
+    {
+      "a": [],
+      "b": [
+        1,
+        2
+      ],
+      "score": 0
+    },
+    {
+      "a": [
+        1,
+        2
+      ],
+      "b": [
+        1,
+        2,
+        3
+      ],
+      "score": 0
+    },
+    {
+      "a": [
+        0,
+        0
+      ],
+      "b": [
+        1,
+        2
+      ],
+      "score": 0
+    },
+    {
+      "a": [
+        1,
+        2
+      ],
+      "b": [
+        0,
+        0
+      ],
+      "score": 0
+    },
+    {
+      "a": [
+        1,
+        2
+      ],
+      "b": [
+        2,
+        4
+      ],
+      "score": 0.9999999999999998
+    },
+    {
+      "a": [
+        1,
+        2
+      ],
+      "b": [
+        -2,
+        -4
+      ],
+      "score": -0.9999999999999998
+    },
+    {
+      "a": [
+        1,
+        0
+      ],
+      "b": [
+        0,
+        1
+      ],
+      "score": 0
+    },
+    {
+      "a": [
+        -1,
+        -2,
+        -3
+      ],
+      "b": [
+        -3,
+        -2,
+        -1
+      ],
+      "score": 0.7142857142857143
+    },
+    {
+      "a": [
+        0.1,
+        0.2,
+        0.3
+      ],
+      "b": [
+        0.3,
+        0.2,
+        0.1
+      ],
+      "score": 0.7142857142857143
+    },
+    {
+      "a": [
+        1.5,
+        -2.5,
+        3.5,
+        4.5
+      ],
+      "b": [
+        -1.5,
+        2.5,
+        -3.5,
+        4.5
+      ],
+      "score": -0.012195121951219513
+    }
+  ],
+  "normalizeCases": [
+    {
+      "input": [],
+      "normalized": []
+    },
+    {
+      "input": [
+        0
+      ],
+      "normalized": [
+        0
+      ]
+    },
+    {
+      "input": [
+        0,
+        0,
+        0
+      ],
+      "normalized": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "input": [
+        1
+      ],
+      "normalized": [
+        1
+      ]
+    },
+    {
+      "input": [
+        3,
+        4
+      ],
+      "normalized": [
+        0.6,
+        0.8
+      ]
+    },
+    {
+      "input": [
+        -3,
+        -4
+      ],
+      "normalized": [
+        -0.6,
+        -0.8
+      ]
+    },
+    {
+      "input": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "normalized": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "input": [
+        1e-300,
+        1e-300
+      ],
+      "normalized": [
+        1e-300,
+        1e-300
+      ]
+    }
+  ],
+  "dotCases": [
+    {
+      "a": [],
+      "b": [],
+      "dot": 0
+    },
+    {
+      "a": [
+        1,
+        2
+      ],
+      "b": [
+        1,
+        2,
+        3
+      ],
+      "dot": 0
+    },
+    {
+      "a": [
+        0.6,
+        0.8
+      ],
+      "b": [
+        0.6,
+        0.8
+      ],
+      "dot": 1
+    },
+    {
+      "a": [
+        -1,
+        2
+      ],
+      "b": [
+        3,
+        -4
+      ],
+      "dot": -11
+    }
+  ],
+  "topKCases": [
+    {
+      "query": [],
+      "items": [],
+      "k": 3,
+      "minScore": null,
+      "hits": []
+    },
+    {
+      "query": [
+        1,
+        0
+      ],
+      "items": [],
+      "k": 3,
+      "minScore": null,
+      "hits": []
+    },
+    {
+      "query": [
+        1,
+        0
+      ],
+      "items": [
+        {
+          "id": "a",
+          "vector": [
+            1,
+            0
+          ]
+        }
+      ],
+      "k": 0,
+      "minScore": null,
+      "hits": []
+    },
+    {
+      "query": [
+        1,
+        0
+      ],
+      "items": [
+        {
+          "id": "match",
+          "vector": [
+            1,
+            0
+          ]
+        },
+        {
+          "id": "wrong-dim",
+          "vector": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "shorter",
+          "vector": [
+            1
+          ]
+        }
+      ],
+      "k": 5,
+      "minScore": null,
+      "hits": [
+        {
+          "id": "match",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "query": [
+        1,
+        0
+      ],
+      "items": [
+        {
+          "id": "orthogonal",
+          "vector": [
+            0,
+            1
+          ]
+        },
+        {
+          "id": "same",
+          "vector": [
+            1,
+            0
+          ]
+        },
+        {
+          "id": "opposite",
+          "vector": [
+            -1,
+            0
+          ]
+        },
+        {
+          "id": "diagonal",
+          "vector": [
+            1,
+            1
+          ]
+        }
+      ],
+      "k": 5,
+      "minScore": null,
+      "hits": [
+        {
+          "id": "same",
+          "score": 1
+        },
+        {
+          "id": "diagonal",
+          "score": 0.7071067811865475
+        },
+        {
+          "id": "orthogonal",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "query": [
+        1,
+        0
+      ],
+      "items": [
+        {
+          "id": "orthogonal",
+          "vector": [
+            0,
+            1
+          ]
+        },
+        {
+          "id": "same",
+          "vector": [
+            1,
+            0
+          ]
+        },
+        {
+          "id": "opposite",
+          "vector": [
+            -1,
+            0
+          ]
+        }
+      ],
+      "k": 5,
+      "minScore": 0.5,
+      "hits": [
+        {
+          "id": "same",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "query": [
+        1,
+        0
+      ],
+      "items": [
+        {
+          "id": "first",
+          "vector": [
+            2,
+            0
+          ]
+        },
+        {
+          "id": "second",
+          "vector": [
+            3,
+            0
+          ]
+        },
+        {
+          "id": "third",
+          "vector": [
+            4,
+            0
+          ]
+        }
+      ],
+      "k": 5,
+      "minScore": null,
+      "hits": [
+        {
+          "id": "first",
+          "score": 1
+        },
+        {
+          "id": "second",
+          "score": 1
+        },
+        {
+          "id": "third",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "query": [
+        1,
+        0
+      ],
+      "items": [
+        {
+          "id": "exact",
+          "vector": [
+            1,
+            0
+          ]
+        },
+        {
+          "id": "diagonal",
+          "vector": [
+            1,
+            1
+          ]
+        },
+        {
+          "id": "orthogonal",
+          "vector": [
+            0,
+            1
+          ]
+        }
+      ],
+      "k": 2,
+      "minScore": null,
+      "hits": [
+        {
+          "id": "exact",
+          "score": 1
+        },
+        {
+          "id": "diagonal",
+          "score": 0.7071067811865475
+        }
+      ]
+    },
+    {
+      "query": [
+        1,
+        0
+      ],
+      "items": [
+        {
+          "id": "zero",
+          "vector": [
+            0,
+            0
+          ]
+        },
+        {
+          "id": "unit",
+          "vector": [
+            1,
+            0
+          ]
+        }
+      ],
+      "k": 5,
+      "minScore": null,
+      "hits": [
+        {
+          "id": "unit",
+          "score": 1
+        },
+        {
+          "id": "zero",
+          "score": 0
+        }
+      ]
+    }
+  ]
+}

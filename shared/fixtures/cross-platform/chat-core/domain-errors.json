@@ -1,0 +1,370 @@
+{
+  "version": 1,
+  "codes": [
+    "INVALID_COMMAND",
+    "UNAUTHORIZED",
+    "VERSION_INCOMPATIBLE",
+    "SESSION_NOT_FOUND",
+    "CHARACTER_NOT_FOUND",
+    "TASK_CONFLICT",
+    "TASK_NOT_FOUND",
+    "PROVIDER_TIMEOUT",
+    "PROVIDER_RATE_LIMITED",
+    "PROVIDER_UNAVAILABLE",
+    "CONTEXT_TOO_LARGE",
+    "INVALID_MODEL_RESPONSE",
+    "TOOL_PERMISSION_DENIED",
+    "TOOL_FAILED",
+    "PERSISTENCE_FAILED",
+    "TASK_INTERRUPTED",
+    "UNKNOWN"
+  ],
+  "retryableCodes": [
+    "PERSISTENCE_FAILED",
+    "PROVIDER_RATE_LIMITED",
+    "PROVIDER_TIMEOUT",
+    "PROVIDER_UNAVAILABLE"
+  ],
+  "createCases": [
+    {
+      "code": "INVALID_COMMAND",
+      "created": {
+        "code": "INVALID_COMMAND",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "INVALID_COMMAND",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "INVALID_COMMAND",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "UNAUTHORIZED",
+      "created": {
+        "code": "UNAUTHORIZED",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "UNAUTHORIZED",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "UNAUTHORIZED",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "VERSION_INCOMPATIBLE",
+      "created": {
+        "code": "VERSION_INCOMPATIBLE",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "VERSION_INCOMPATIBLE",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "VERSION_INCOMPATIBLE",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "SESSION_NOT_FOUND",
+      "created": {
+        "code": "SESSION_NOT_FOUND",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "SESSION_NOT_FOUND",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "SESSION_NOT_FOUND",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "CHARACTER_NOT_FOUND",
+      "created": {
+        "code": "CHARACTER_NOT_FOUND",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "CHARACTER_NOT_FOUND",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "CHARACTER_NOT_FOUND",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "TASK_CONFLICT",
+      "created": {
+        "code": "TASK_CONFLICT",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "TASK_CONFLICT",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "TASK_CONFLICT",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "TASK_NOT_FOUND",
+      "created": {
+        "code": "TASK_NOT_FOUND",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "TASK_NOT_FOUND",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "TASK_NOT_FOUND",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "PROVIDER_TIMEOUT",
+      "created": {
+        "code": "PROVIDER_TIMEOUT",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableTrue": {
+        "code": "PROVIDER_TIMEOUT",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "PROVIDER_TIMEOUT",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "PROVIDER_RATE_LIMITED",
+      "created": {
+        "code": "PROVIDER_RATE_LIMITED",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableTrue": {
+        "code": "PROVIDER_RATE_LIMITED",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "PROVIDER_RATE_LIMITED",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "PROVIDER_UNAVAILABLE",
+      "created": {
+        "code": "PROVIDER_UNAVAILABLE",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableTrue": {
+        "code": "PROVIDER_UNAVAILABLE",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "PROVIDER_UNAVAILABLE",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "CONTEXT_TOO_LARGE",
+      "created": {
+        "code": "CONTEXT_TOO_LARGE",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "CONTEXT_TOO_LARGE",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "CONTEXT_TOO_LARGE",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "INVALID_MODEL_RESPONSE",
+      "created": {
+        "code": "INVALID_MODEL_RESPONSE",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "INVALID_MODEL_RESPONSE",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "INVALID_MODEL_RESPONSE",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "TOOL_PERMISSION_DENIED",
+      "created": {
+        "code": "TOOL_PERMISSION_DENIED",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "TOOL_PERMISSION_DENIED",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "TOOL_PERMISSION_DENIED",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "TOOL_FAILED",
+      "created": {
+        "code": "TOOL_FAILED",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "TOOL_FAILED",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "TOOL_FAILED",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "PERSISTENCE_FAILED",
+      "created": {
+        "code": "PERSISTENCE_FAILED",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableTrue": {
+        "code": "PERSISTENCE_FAILED",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "PERSISTENCE_FAILED",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "TASK_INTERRUPTED",
+      "created": {
+        "code": "TASK_INTERRUPTED",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "TASK_INTERRUPTED",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "TASK_INTERRUPTED",
+        "message": "msg",
+        "retryable": false
+      }
+    },
+    {
+      "code": "UNKNOWN",
+      "created": {
+        "code": "UNKNOWN",
+        "message": "msg",
+        "retryable": false
+      },
+      "createdRetryableTrue": {
+        "code": "UNKNOWN",
+        "message": "msg",
+        "retryable": true
+      },
+      "createdRetryableFalse": {
+        "code": "UNKNOWN",
+        "message": "msg",
+        "retryable": false
+      }
+    }
+  ],
+  "sanitizeCases": [
+    {
+      "raw": "plain error message",
+      "sanitized": "plain error message"
+    },
+    {
+      "raw": "sk-abcdefghijklmnopqrstuvwxyz123456",
+      "sanitized": "sk-***"
+    },
+    {
+      "raw": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+      "sanitized": "Bearer ***"
+    },
+    {
+      "raw": "failed at C:\\Users\\Administrator\\AppData\\Local\\qingyu\\config.json while saving",
+      "sanitized": "failed at <path> while saving"
+    },
+    {
+      "raw": "open /home/user/data/session.json failed",
+      "sanitized": "open <path> failed"
+    },
+    {
+      "raw": "no secrets here /tmp/plain.txt",
+      "sanitized": "no secrets here /tmp/plain.txt"
+    },
+    {
+      "raw": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sanitized": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "raw": "",
+      "sanitized": ""
+    }
+  ]
+}

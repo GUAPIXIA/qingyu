@@ -89,7 +89,7 @@ export function LocalModelsSection({ settings, updateSettings, embedded = false 
     if (!result.ok) throw new Error(result.error ?? '启用失败')
     updateSettings({
       semanticTrigger: {
-        ...(settings.semanticTrigger ?? { enabled: true, threshold: 0.3, maxResults: 3, provider: 'local', baseUrl: '', apiKey: '', model: '' }),
+        ...(settings.semanticTrigger ?? { enabled: true, thresholdMode: 'auto', threshold: 0.3, maxResults: 3, provider: 'local', baseUrl: '', apiKey: '', model: '' }),
         enabled: true, provider: 'local', baseUrl: '', apiKey: '', profileId: null,
         model: `${item.manifest.id}@${item.manifest.version}`,
       },
@@ -103,7 +103,7 @@ export function LocalModelsSection({ settings, updateSettings, embedded = false 
       if (preferences.idleOnly) whenIdle(rebuild)
       else rebuild()
     }
-  }, '已设为默认本地模型；尚未生成的世界书索引会继续使用词法检索。')
+  }, '已设为默认本地模型；世界书索引正在后台更新，期间继续使用词法检索。')
 
   const prepareUninstall = async (record: InstalledLocalModel) => {
     setBusy(`impact:${record.manifest.id}`)
@@ -149,8 +149,8 @@ export function LocalModelsSection({ settings, updateSettings, embedded = false 
 
         <div className="grid sm:grid-cols-2 gap-3 text-sm">
           <label>模型更新<select className="input text-sm mt-1" value={preferences.updatePolicy} onChange={(event) => updatePreferences({ updatePolicy: event.target.value as typeof preferences.updatePolicy })}><option value="notify">仅提醒（推荐）</option><option value="download">自动下载但不切换</option><option value="auto">自动更新</option></select></label>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={preferences.autoIndex} onChange={(event) => updatePreferences({ autoIndex: event.target.checked })} />后台自动建立索引</label>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={preferences.idleOnly} onChange={(event) => updatePreferences({ idleOnly: event.target.checked })} />仅空闲时运行后台索引</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={preferences.autoIndex} onChange={(event) => updatePreferences({ autoIndex: event.target.checked })} />保存世界书后自动更新索引</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={preferences.idleOnly} onChange={(event) => updatePreferences({ idleOnly: event.target.checked })} />仅空闲时运行全量重建</label>
         </div>
 
         <div className="flex flex-wrap gap-2">

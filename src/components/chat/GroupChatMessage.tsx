@@ -24,6 +24,8 @@ interface GroupChatMessageProps {
   onTranslate?: () => void
   onReply?: () => void
   isLast?: boolean
+  /** 当前消息是否是最新可操作的方向消息；未传时兼容旧调用，沿用 isLast。 */
+  canRegenerateDirections?: boolean
   dialogueDirectionsEnabled?: boolean
   onRegenerateDirections?: () => void | Promise<void>
   directionsError?: string | null
@@ -40,6 +42,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
   onTranslate,
   onReply,
   isLast,
+  canRegenerateDirections,
   dialogueDirectionsEnabled,
   onRegenerateDirections,
   directionsError,
@@ -339,7 +342,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
             && message.dialogueDirections && (
               <DialogueDirectionCard
                 directions={message.dialogueDirections}
-                canRegenerate={!!isLast && !!onRegenerateDirections}
+                canRegenerate={(canRegenerateDirections ?? !!isLast) && !!onRegenerateDirections}
                 onRegenerate={() => onRegenerateDirections?.()}
                 error={directionsError}
                 scope="group"

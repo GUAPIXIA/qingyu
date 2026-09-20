@@ -382,7 +382,7 @@ describe('群聊超时统一收尾（S2）', () => {
 
       const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
       expect(saved.content).toBe('她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。')
-      expect(saved.generationNotice).toBe('内容已在完整句处收束')
+      expect(saved.generationNotice).toBeUndefined()
       expect(saved.generationError).toBeUndefined()
       // provider_length 且稳定正文足够：只做边界收束，不发起补尾（无 stream=false 请求）
       expect(vi.mocked(window.api.ai.chat)).toHaveBeenCalledTimes(1)

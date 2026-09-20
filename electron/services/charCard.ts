@@ -23,7 +23,7 @@ const log = createLogger('charCard')
  * 只写入 schema 允许且已定义的字段；avatarBlobId 需要 blob 存储（媒体通道）支撑，
  * 当前未实现，故不下发悬空引用（S2-05 bootstrap 扫描器同样不下发）。
  */
-function characterEntityPayload(character: Character): Record<string, unknown> {
+export function characterEntityPayload(character: Character): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     // name 为 schema 必填（minLength 1）；与导入归一化一致的兜底名
     name: typeof character.name === 'string' && character.name.length > 0 ? character.name : '未命名角色',
@@ -57,7 +57,7 @@ function stringArray(value: unknown, max: number): string[] | null {
 }
 
 /** regex_rule 实体 payload：与 S2-05 bootstrap 扫描器一致（条目去掉 id） */
-function regexRulePayload(rule: RegexRule): Record<string, unknown> {
+export function regexRulePayload(rule: RegexRule): Record<string, unknown> {
   const payload: Record<string, unknown> = { ...rule }
   delete payload.id
   return payload
@@ -78,7 +78,7 @@ function canonicalLorebookDocument(value: unknown, now = Date.now()): CanonicalL
 }
 
 /** lorebook 实体 payload：与 S2-05 bootstrap 扫描器一致（文件正文去掉 id 字段） */
-function lorebookEntityPayload(document: CanonicalLorebookDocumentV2): Record<string, unknown> {
+export function lorebookEntityPayload(document: CanonicalLorebookDocumentV2): Record<string, unknown> {
   const payload: Record<string, unknown> = { ...document }
   delete payload.id
   return payload
@@ -300,21 +300,27 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
 }
 
 /** 导出角色卡为 PNG */
+/**
+ * 1x1 透明 PNG：角色头像不是 PNG（JPG/WebP）或没有头像时的导出基底。
+ *
+ * 修正记录（阶段 5 发现，PC 独立缺陷单独立项）：这里原本的 base64 少了一个长度字节，
+ * 声明 `IDAT = 11` 而实际数据是 13 字节，于是按块遍历会在 `IEND` 之前错位脱轨。
+ * 后果不是「图片不好看」而是**卡内角色卡数据读不回来**：`readPngTextChunks` 走块时
+ * 找不到 `chara` 段，`importCharacterFromPng` 直接报「不包含角色卡数据」，
+ * 即 PC 自己导出的这类 PNG 角色卡，PC 自己也导不进去；Android 更不可能。
+ * 修复只动常量，不改任何导出逻辑；回归证据见
+ * `electron/services/__tests__/charCardPngBase.test.ts`。
+ */
+const BLANK_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
 export function exportCharacterToPng(character: Character, savePath: string): void {
   let pngBuffer: Buffer
   if (character.avatar.startsWith('data:image/png;base64,')) {
     pngBuffer = Buffer.from(character.avatar.split(',')[1], 'base64')
-  } else if (character.avatar.startsWith('data:image/')) {
-    // 非 PNG 图片，创建 1x1 透明 PNG 作为基底
-    pngBuffer = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
-      'base64'
-    )
   } else {
-    pngBuffer = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
-      'base64'
-    )
+    // 非 PNG 图片（或无头像）：统一用 1x1 透明 PNG 作为基底
+    pngBuffer = Buffer.from(BLANK_PNG_BASE64, 'base64')
   }
 
   const charaJson = JSON.stringify({

@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "text": "{{user}} 对 {{char}} 说",
+      "userName": "小明",
+      "charName": "苏晚",
+      "original": null,
+      "replaced": "小明 对 苏晚 说"
+    },
+    {
+      "text": "{{USER}} 与 {{CHAR}}",
+      "userName": "a",
+      "charName": "b",
+      "original": null,
+      "replaced": "a 与 b"
+    },
+    {
+      "text": "原名 {{original}}",
+      "userName": "u",
+      "charName": "译名",
+      "original": "Original",
+      "replaced": "原名 Original"
+    },
+    {
+      "text": "",
+      "userName": "u",
+      "charName": "c",
+      "original": null,
+      "replaced": ""
+    },
+    {
+      "text": "没有变量的文本",
+      "userName": "u",
+      "charName": "c",
+      "original": null,
+      "replaced": "没有变量的文本"
+    },
+    {
+      "text": "{{user}}{{char}}{{original}}",
+      "userName": "",
+      "charName": "",
+      "original": null,
+      "replaced": ""
+    },
+    {
+      "text": "嵌套 {{{{user}}}}",
+      "userName": "u",
+      "charName": "c",
+      "original": null,
+      "replaced": "嵌套 {{u}}"
+    }
+  ]
+}

@@ -1,0 +1,3829 @@
+{
+  "version": 1,
+  "constants": {
+    "defaultSystemPrompt": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。",
+    "defaultUserName": "用户",
+    "defaultModel": "gpt-4o-mini",
+    "continuationInstruction": "请直接接续上一段内容的结尾继续写作，保持相同的风格、语气和叙事视角。不要重复已有内容，直接输出续写部分。"
+  },
+  "planCases": [
+    {
+      "caseIndex": 0,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "bodyReserve": 889,
+      "reasoningReserve": 8192
+    },
+    {
+      "caseIndex": 1,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-在吗-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "在吗"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "bodyReserve": 889,
+      "reasoningReserve": 8192
+    },
+    {
+      "caseIndex": 2,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-你好-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "你好"
+            },
+            {
+              "id": "m-夜安。-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 2,
+              "role": "assistant",
+              "content": "夜安。"
+            },
+            {
+              "id": "m-在吗？-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 3,
+              "role": "user",
+              "content": "在吗？"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8518,
+      "responseIntent": null,
+      "sceneFactor": 0.85,
+      "bodyReserve": 326,
+      "reasoningReserve": 8192
+    },
+    {
+      "caseIndex": 3,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": "",
+              "responseLengthMode": "detailed"
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "responsePolicy": {
+        "mode": "detailed",
+        "source": "session",
+        "preferredMinChars": 300,
+        "preferredMaxChars": 700,
+        "hardMaxChars": 1100,
+        "targetParagraphs": {
+          "min": 2,
+          "max": 6
+        },
+        "maxNewBeats": 2
+      },
+      "requestMaxTokens": 9663,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "bodyReserve": 1471,
+      "reasoningReserve": 8192
+    },
+    {
+      "caseIndex": 4,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-简短回答-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "简短回答我"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": "",
+              "responseLengthMode": "detailed"
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "responsePolicy": {
+        "mode": "brief",
+        "source": "user",
+        "preferredMinChars": 40,
+        "preferredMaxChars": 140,
+        "hardMaxChars": 260,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 2
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8613,
+      "responseIntent": "brief",
+      "sceneFactor": 1.15,
+      "bodyReserve": 421,
+      "reasoningReserve": 8192
+    },
+    {
+      "caseIndex": 5,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": {
+          "id": "p1",
+          "name": "默认",
+          "description": "",
+          "systemPrompt": "",
+          "jailbreak": "",
+          "maxContext": 0,
+          "temperature": 0.8,
+          "topP": 0.95,
+          "maxTokens": 4096,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "isBuiltin": true
+        },
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 4096,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "bodyReserve": 889,
+      "reasoningReserve": 8192
+    },
+    {
+      "caseIndex": 6,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-【场景】-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "【场景】码头"
+            },
+            {
+              "id": "m-风很大。-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 2,
+              "role": "assistant",
+              "content": "风很大。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8518,
+      "responseIntent": null,
+      "sceneFactor": 1.25,
+      "bodyReserve": 326,
+      "reasoningReserve": 8192
+    }
+  ],
+  "buildCases": [
+    {
+      "caseIndex": 0,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 790,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 1,
+      "data": {
+        "character": {
+          "id": "",
+          "name": "",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 ，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持  的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写  的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 该角色 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 该角色 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 786,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 2,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "旧书店的店主。",
+          "personality": "冷静",
+          "scenario": "深夜的旧书店",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": [],
+          "systemPrompt": "你是{{char}}，书店店主。"
+        },
+        "preset": {
+          "id": "p1",
+          "name": "默认",
+          "description": "",
+          "systemPrompt": "预设系统提示",
+          "jailbreak": "越狱段 {{user}}",
+          "maxContext": 0,
+          "temperature": 0.8,
+          "topP": 0.95,
+          "maxTokens": 0,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "isBuiltin": true,
+          "enableThoughtFormat": true
+        },
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            },
+            {
+              "id": "m-夜安，要-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 2,
+              "role": "assistant",
+              "content": "夜安，要坐一会儿吗？"
+            },
+            {
+              "id": "m-好。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 3,
+              "role": "user",
+              "content": "好。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true,
+            "userDescription": "一名旅人。",
+            "userPersona": "寡言"
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是苏晚，书店店主。\n\n越狱段 旅人\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n描述：一名旅人。\n性格：寡言\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。\n\n【角色设定】\n旧书店的店主。\n性格：冷静\n场景：深夜的旧书店\n",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "夜安，要坐一会儿吗？",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "好。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 44–108 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 801,
+        "max": 113507
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8518,
+      "responseIntent": null,
+      "sceneFactor": 1,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 3,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": [],
+          "authorNote": {
+            "enabled": true,
+            "text": "注意节奏。",
+            "position": "top",
+            "depth": 0
+          },
+          "defaultNarrativeMode": "omniscient"
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true,
+            "omniscientNarrativeRules": "只叙述 {{char}} 所见，面向 {{user}}。",
+            "personaInjection": {
+              "enabled": true,
+              "position": "separate",
+              "includeDescription": true,
+              "includePersona": false
+            }
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【用户人设】\n用户名：旅人",
+          "images": null,
+          "keepSeparate": true
+        },
+        {
+          "role": "system",
+          "content": "注意节奏。",
+          "images": null,
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 794,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 4,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": [],
+          "authorNote": {
+            "enabled": true,
+            "text": "中段注释",
+            "position": "middle",
+            "depth": 1
+          }
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-第一句-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "第一句"
+            },
+            {
+              "id": "m-第二句-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 2,
+              "role": "assistant",
+              "content": "第二句"
+            },
+            {
+              "id": "m-第三句-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 3,
+              "role": "user",
+              "content": "第三句"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第一句",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第二句",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "中段注释",
+          "images": null,
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "第三句",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 44–108 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 794,
+        "max": 113507
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8518,
+      "responseIntent": null,
+      "sceneFactor": 1,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 5,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "示例对白",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": {
+          "id": "p1",
+          "name": "默认",
+          "description": "",
+          "systemPrompt": "",
+          "jailbreak": "",
+          "maxContext": 0,
+          "temperature": 0.8,
+          "topP": 0.95,
+          "maxTokens": 0,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "isBuiltin": true,
+          "exampleDialogMode": "first_turn"
+        },
+        "chat": {
+          "messages": [
+            {
+              "id": "m-一-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "一"
+            },
+            {
+              "id": "m-二-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 2,
+              "role": "assistant",
+              "content": "二"
+            },
+            {
+              "id": "m-三-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 3,
+              "role": "user",
+              "content": "三"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "一",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "二",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "三",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 44–108 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 790,
+        "max": 113507
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8518,
+      "responseIntent": null,
+      "sceneFactor": 1,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 6,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "示例对白",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true,
+            "exampleDialogPosition": "after_history"
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。\n\n【对话示例】\n示例对白",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 798,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 7,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": true,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "她送走了最后一位客人。",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": "",
+              "memoryCurrentState": "深夜的旧书店",
+              "memoryFacts": [
+                "苏晚的职业：书店店主"
+              ]
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。\n\n【当前状态】\n深夜的旧书店\n\n【关键事实】\n1. 苏晚的职业：书店店主\n\n【对话时间线】\n她送走了最后一位客人。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 829,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 8,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "不应注入",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": "",
+              "memoryCurrentState": "不应注入"
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 790,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 9,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": {
+        "continuation": true
+      },
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "请直接接续上一段内容的结尾继续写作，保持相同的风格、语气和叙事视角。不要重复已有内容，直接输出续写部分。",
+          "images": null,
+          "keepSeparate": false
+        }
+      ],
+      "lastContextUsage": {
+        "used": 790,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 10,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": {
+          "id": "p1",
+          "name": "默认",
+          "description": "",
+          "systemPrompt": "",
+          "jailbreak": "",
+          "maxContext": 0,
+          "temperature": 0.8,
+          "topP": 0.95,
+          "maxTokens": 0,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "isBuiltin": true,
+          "contextTemplate": "chatml"
+        },
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "images": null,
+          "keepSeparate": false
+        }
+      ],
+      "lastContextUsage": {
+        "used": 790,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 11,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": [],
+          "postHistoryInstructions": "记住保持简短。"
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-夜安。-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "夜安。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "夜安。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 152–373 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        },
+        {
+          "role": "system",
+          "content": "记住保持简短。",
+          "images": null,
+          "keepSeparate": false
+        }
+      ],
+      "lastContextUsage": {
+        "used": 796,
+        "max": 112973
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 152,
+        "preferredMaxChars": 373,
+        "hardMaxChars": 634,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 9081,
+      "responseIntent": null,
+      "sceneFactor": 1.15,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 12,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-第0条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 0,
+              "role": "user",
+              "content": "第0条较长内容第0条较长内容第0条较长内容第0条较长内容第0条较长内容第0条较长内容"
+            },
+            {
+              "id": "m-第1条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "assistant",
+              "content": "第1条较长内容第1条较长内容第1条较长内容第1条较长内容第1条较长内容第1条较长内容"
+            },
+            {
+              "id": "m-第2条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 2,
+              "role": "user",
+              "content": "第2条较长内容第2条较长内容第2条较长内容第2条较长内容第2条较长内容第2条较长内容"
+            },
+            {
+              "id": "m-第3条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 3,
+              "role": "assistant",
+              "content": "第3条较长内容第3条较长内容第3条较长内容第3条较长内容第3条较长内容第3条较长内容"
+            },
+            {
+              "id": "m-第4条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 4,
+              "role": "user",
+              "content": "第4条较长内容第4条较长内容第4条较长内容第4条较长内容第4条较长内容第4条较长内容"
+            },
+            {
+              "id": "m-第5条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 5,
+              "role": "assistant",
+              "content": "第5条较长内容第5条较长内容第5条较长内容第5条较长内容第5条较长内容第5条较长内容"
+            },
+            {
+              "id": "m-第6条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 6,
+              "role": "user",
+              "content": "第6条较长内容第6条较长内容第6条较长内容第6条较长内容第6条较长内容第6条较长内容"
+            },
+            {
+              "id": "m-第7条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 7,
+              "role": "assistant",
+              "content": "第7条较长内容第7条较长内容第7条较长内容第7条较长内容第7条较长内容第7条较长内容"
+            },
+            {
+              "id": "m-第8条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 8,
+              "role": "user",
+              "content": "第8条较长内容第8条较长内容第8条较长内容第8条较长内容第8条较长内容第8条较长内容"
+            },
+            {
+              "id": "m-第9条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 9,
+              "role": "assistant",
+              "content": "第9条较长内容第9条较长内容第9条较长内容第9条较长内容第9条较长内容第9条较长内容"
+            },
+            {
+              "id": "m-第10条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 10,
+              "role": "user",
+              "content": "第10条较长内容第10条较长内容第10条较长内容第10条较长内容第10条较长内容第10条较长内容"
+            },
+            {
+              "id": "m-第11条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 11,
+              "role": "assistant",
+              "content": "第11条较长内容第11条较长内容第11条较长内容第11条较长内容第11条较长内容第11条较长内容"
+            },
+            {
+              "id": "m-第12条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 12,
+              "role": "user",
+              "content": "第12条较长内容第12条较长内容第12条较长内容第12条较长内容第12条较长内容第12条较长内容"
+            },
+            {
+              "id": "m-第13条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 13,
+              "role": "assistant",
+              "content": "第13条较长内容第13条较长内容第13条较长内容第13条较长内容第13条较长内容第13条较长内容"
+            },
+            {
+              "id": "m-第14条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 14,
+              "role": "user",
+              "content": "第14条较长内容第14条较长内容第14条较长内容第14条较长内容第14条较长内容第14条较长内容"
+            },
+            {
+              "id": "m-第15条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 15,
+              "role": "assistant",
+              "content": "第15条较长内容第15条较长内容第15条较长内容第15条较长内容第15条较长内容第15条较长内容"
+            },
+            {
+              "id": "m-第16条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 16,
+              "role": "user",
+              "content": "第16条较长内容第16条较长内容第16条较长内容第16条较长内容第16条较长内容第16条较长内容"
+            },
+            {
+              "id": "m-第17条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 17,
+              "role": "assistant",
+              "content": "第17条较长内容第17条较长内容第17条较长内容第17条较长内容第17条较长内容第17条较长内容"
+            },
+            {
+              "id": "m-第18条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 18,
+              "role": "user",
+              "content": "第18条较长内容第18条较长内容第18条较长内容第18条较长内容第18条较长内容第18条较长内容"
+            },
+            {
+              "id": "m-第19条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 19,
+              "role": "assistant",
+              "content": "第19条较长内容第19条较长内容第19条较长内容第19条较长内容第19条较长内容第19条较长内容"
+            },
+            {
+              "id": "m-第20条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 20,
+              "role": "user",
+              "content": "第20条较长内容第20条较长内容第20条较长内容第20条较长内容第20条较长内容第20条较长内容"
+            },
+            {
+              "id": "m-第21条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 21,
+              "role": "assistant",
+              "content": "第21条较长内容第21条较长内容第21条较长内容第21条较长内容第21条较长内容第21条较长内容"
+            },
+            {
+              "id": "m-第22条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 22,
+              "role": "user",
+              "content": "第22条较长内容第22条较长内容第22条较长内容第22条较长内容第22条较长内容第22条较长内容"
+            },
+            {
+              "id": "m-第23条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 23,
+              "role": "assistant",
+              "content": "第23条较长内容第23条较长内容第23条较长内容第23条较长内容第23条较长内容第23条较长内容"
+            },
+            {
+              "id": "m-第24条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 24,
+              "role": "user",
+              "content": "第24条较长内容第24条较长内容第24条较长内容第24条较长内容第24条较长内容第24条较长内容"
+            },
+            {
+              "id": "m-第25条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 25,
+              "role": "assistant",
+              "content": "第25条较长内容第25条较长内容第25条较长内容第25条较长内容第25条较长内容第25条较长内容"
+            },
+            {
+              "id": "m-第26条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 26,
+              "role": "user",
+              "content": "第26条较长内容第26条较长内容第26条较长内容第26条较长内容第26条较长内容第26条较长内容"
+            },
+            {
+              "id": "m-第27条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 27,
+              "role": "assistant",
+              "content": "第27条较长内容第27条较长内容第27条较长内容第27条较长内容第27条较长内容第27条较长内容"
+            },
+            {
+              "id": "m-第28条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 28,
+              "role": "user",
+              "content": "第28条较长内容第28条较长内容第28条较长内容第28条较长内容第28条较长内容第28条较长内容"
+            },
+            {
+              "id": "m-第29条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 29,
+              "role": "assistant",
+              "content": "第29条较长内容第29条较长内容第29条较长内容第29条较长内容第29条较长内容第29条较长内容"
+            },
+            {
+              "id": "m-第30条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 30,
+              "role": "user",
+              "content": "第30条较长内容第30条较长内容第30条较长内容第30条较长内容第30条较长内容第30条较长内容"
+            },
+            {
+              "id": "m-第31条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 31,
+              "role": "assistant",
+              "content": "第31条较长内容第31条较长内容第31条较长内容第31条较长内容第31条较长内容第31条较长内容"
+            },
+            {
+              "id": "m-第32条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 32,
+              "role": "user",
+              "content": "第32条较长内容第32条较长内容第32条较长内容第32条较长内容第32条较长内容第32条较长内容"
+            },
+            {
+              "id": "m-第33条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 33,
+              "role": "assistant",
+              "content": "第33条较长内容第33条较长内容第33条较长内容第33条较长内容第33条较长内容第33条较长内容"
+            },
+            {
+              "id": "m-第34条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 34,
+              "role": "user",
+              "content": "第34条较长内容第34条较长内容第34条较长内容第34条较长内容第34条较长内容第34条较长内容"
+            },
+            {
+              "id": "m-第35条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 35,
+              "role": "assistant",
+              "content": "第35条较长内容第35条较长内容第35条较长内容第35条较长内容第35条较长内容第35条较长内容"
+            },
+            {
+              "id": "m-第36条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 36,
+              "role": "user",
+              "content": "第36条较长内容第36条较长内容第36条较长内容第36条较长内容第36条较长内容第36条较长内容"
+            },
+            {
+              "id": "m-第37条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 37,
+              "role": "assistant",
+              "content": "第37条较长内容第37条较长内容第37条较长内容第37条较长内容第37条较长内容第37条较长内容"
+            },
+            {
+              "id": "m-第38条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 38,
+              "role": "user",
+              "content": "第38条较长内容第38条较长内容第38条较长内容第38条较长内容第38条较长内容第38条较长内容"
+            },
+            {
+              "id": "m-第39条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 39,
+              "role": "assistant",
+              "content": "第39条较长内容第39条较长内容第39条较长内容第39条较长内容第39条较长内容第39条较长内容"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第0条较长内容第0条较长内容第0条较长内容第0条较长内容第0条较长内容第0条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第1条较长内容第1条较长内容第1条较长内容第1条较长内容第1条较长内容第1条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第2条较长内容第2条较长内容第2条较长内容第2条较长内容第2条较长内容第2条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第3条较长内容第3条较长内容第3条较长内容第3条较长内容第3条较长内容第3条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第4条较长内容第4条较长内容第4条较长内容第4条较长内容第4条较长内容第4条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第5条较长内容第5条较长内容第5条较长内容第5条较长内容第5条较长内容第5条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第6条较长内容第6条较长内容第6条较长内容第6条较长内容第6条较长内容第6条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第7条较长内容第7条较长内容第7条较长内容第7条较长内容第7条较长内容第7条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第8条较长内容第8条较长内容第8条较长内容第8条较长内容第8条较长内容第8条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第9条较长内容第9条较长内容第9条较长内容第9条较长内容第9条较长内容第9条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第10条较长内容第10条较长内容第10条较长内容第10条较长内容第10条较长内容第10条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第11条较长内容第11条较长内容第11条较长内容第11条较长内容第11条较长内容第11条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第12条较长内容第12条较长内容第12条较长内容第12条较长内容第12条较长内容第12条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第13条较长内容第13条较长内容第13条较长内容第13条较长内容第13条较长内容第13条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第14条较长内容第14条较长内容第14条较长内容第14条较长内容第14条较长内容第14条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第15条较长内容第15条较长内容第15条较长内容第15条较长内容第15条较长内容第15条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第16条较长内容第16条较长内容第16条较长内容第16条较长内容第16条较长内容第16条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第17条较长内容第17条较长内容第17条较长内容第17条较长内容第17条较长内容第17条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第18条较长内容第18条较长内容第18条较长内容第18条较长内容第18条较长内容第18条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第19条较长内容第19条较长内容第19条较长内容第19条较长内容第19条较长内容第19条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第20条较长内容第20条较长内容第20条较长内容第20条较长内容第20条较长内容第20条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第21条较长内容第21条较长内容第21条较长内容第21条较长内容第21条较长内容第21条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第22条较长内容第22条较长内容第22条较长内容第22条较长内容第22条较长内容第22条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第23条较长内容第23条较长内容第23条较长内容第23条较长内容第23条较长内容第23条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第24条较长内容第24条较长内容第24条较长内容第24条较长内容第24条较长内容第24条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第25条较长内容第25条较长内容第25条较长内容第25条较长内容第25条较长内容第25条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第26条较长内容第26条较长内容第26条较长内容第26条较长内容第26条较长内容第26条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第27条较长内容第27条较长内容第27条较长内容第27条较长内容第27条较长内容第27条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第28条较长内容第28条较长内容第28条较长内容第28条较长内容第28条较长内容第28条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第29条较长内容第29条较长内容第29条较长内容第29条较长内容第29条较长内容第29条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第30条较长内容第30条较长内容第30条较长内容第30条较长内容第30条较长内容第30条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第31条较长内容第31条较长内容第31条较长内容第31条较长内容第31条较长内容第31条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第32条较长内容第32条较长内容第32条较长内容第32条较长内容第32条较长内容第32条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第33条较长内容第33条较长内容第33条较长内容第33条较长内容第33条较长内容第33条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第34条较长内容第34条较长内容第34条较长内容第34条较长内容第34条较长内容第34条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第35条较长内容第35条较长内容第35条较长内容第35条较长内容第35条较长内容第35条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第36条较长内容第36条较长内容第36条较长内容第36条较长内容第36条较长内容第36条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第37条较长内容第37条较长内容第37条较长内容第37条较长内容第37条较长内容第37条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第38条较长内容第38条较长内容第38条较长内容第38条较长内容第38条较长内容第38条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第39条较长内容第39条较长内容第39条较长内容第39条较长内容第39条较长内容第39条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 44–108 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 790,
+        "max": 113507
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8518,
+      "responseIntent": null,
+      "sceneFactor": 1,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 13,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "旧书店的店主。",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-我们到码-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "user",
+              "content": "我们到码头了。"
+            },
+            {
+              "id": "m-雨还在下-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 2,
+              "role": "assistant",
+              "content": "雨还在下。"
+            },
+            {
+              "id": "m-进去看看-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 3,
+              "role": "user",
+              "content": "进去看看。"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": ""
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [
+            "lb1"
+          ],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [
+          {
+            "id": "lb1",
+            "name": "城市设定",
+            "description": "",
+            "enabled": true,
+            "scanDepth": 4,
+            "entries": [
+              {
+                "id": "e1",
+                "content": "【世界书·角色前】码头在雨里。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "before_char",
+                "enabled": true,
+                "order": 0
+              },
+              {
+                "id": "e2",
+                "content": "【世界书·角色后】灯塔管理员。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "after_char",
+                "enabled": true,
+                "order": 1
+              },
+              {
+                "id": "e3",
+                "content": "【世界书·末尾】雨夜封航。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "at_end",
+                "enabled": true,
+                "order": 2
+              },
+              {
+                "id": "e4",
+                "content": "【世界书·深度】待补充细节。",
+                "keywords": [
+                  "码头"
+                ],
+                "position": "at_depth",
+                "depth": 1,
+                "enabled": true,
+                "order": 3
+              }
+            ]
+          }
+        ],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [
+        {
+          "id": "lb1",
+          "name": "城市设定",
+          "description": "",
+          "enabled": true,
+          "scanDepth": 4,
+          "entries": [
+            {
+              "id": "e1",
+              "content": "【世界书·角色前】码头在雨里。",
+              "keywords": [
+                "码头"
+              ],
+              "position": "before_char",
+              "enabled": true,
+              "order": 0
+            },
+            {
+              "id": "e2",
+              "content": "【世界书·角色后】灯塔管理员。",
+              "keywords": [
+                "码头"
+              ],
+              "position": "after_char",
+              "enabled": true,
+              "order": 1
+            },
+            {
+              "id": "e3",
+              "content": "【世界书·末尾】雨夜封航。",
+              "keywords": [
+                "码头"
+              ],
+              "position": "at_end",
+              "enabled": true,
+              "order": 2
+            },
+            {
+              "id": "e4",
+              "content": "【世界书·深度】待补充细节。",
+              "keywords": [
+                "码头"
+              ],
+              "position": "at_depth",
+              "depth": 1,
+              "enabled": true,
+              "order": 3
+            }
+          ]
+        }
+      ],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。\n\n【世界书·末尾】雨夜封航。\n\n【角色设定】\n【世界书·角色前】码头在雨里。\n旧书店的店主。\n【世界书·角色后】灯塔管理员。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "我们到码头了。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "雨还在下。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【世界书·深度】待补充细节。",
+          "images": null,
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "进去看看。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 44–108 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 843,
+        "max": 113507
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8518,
+      "responseIntent": null,
+      "sceneFactor": 1,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    },
+    {
+      "caseIndex": 14,
+      "data": {
+        "character": {
+          "id": "c1",
+          "name": "苏晚",
+          "avatar": "",
+          "description": "",
+          "personality": "",
+          "scenario": "",
+          "firstMessage": "",
+          "exampleDialog": "",
+          "tags": [],
+          "lorebookId": null,
+          "creator": "",
+          "createdAt": 0,
+          "updatedAt": 0,
+          "alternateGreetings": []
+        },
+        "preset": null,
+        "chat": {
+          "messages": [
+            {
+              "id": "m-第0条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 0,
+              "role": "user",
+              "content": "第0条较长内容第0条较长内容第0条较长内容第0条较长内容第0条较长内容第0条较长内容"
+            },
+            {
+              "id": "m-第1条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 1,
+              "role": "assistant",
+              "content": "第1条较长内容第1条较长内容第1条较长内容第1条较长内容第1条较长内容第1条较长内容"
+            },
+            {
+              "id": "m-第2条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 2,
+              "role": "user",
+              "content": "第2条较长内容第2条较长内容第2条较长内容第2条较长内容第2条较长内容第2条较长内容"
+            },
+            {
+              "id": "m-第3条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 3,
+              "role": "assistant",
+              "content": "第3条较长内容第3条较长内容第3条较长内容第3条较长内容第3条较长内容第3条较长内容"
+            },
+            {
+              "id": "m-第4条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 4,
+              "role": "user",
+              "content": "第4条较长内容第4条较长内容第4条较长内容第4条较长内容第4条较长内容第4条较长内容"
+            },
+            {
+              "id": "m-第5条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 5,
+              "role": "assistant",
+              "content": "第5条较长内容第5条较长内容第5条较长内容第5条较长内容第5条较长内容第5条较长内容"
+            },
+            {
+              "id": "m-第6条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 6,
+              "role": "user",
+              "content": "第6条较长内容第6条较长内容第6条较长内容第6条较长内容第6条较长内容第6条较长内容"
+            },
+            {
+              "id": "m-第7条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 7,
+              "role": "assistant",
+              "content": "第7条较长内容第7条较长内容第7条较长内容第7条较长内容第7条较长内容第7条较长内容"
+            },
+            {
+              "id": "m-第8条较-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 8,
+              "role": "user",
+              "content": "第8条较长内容第8条较长内容第8条较长内容第8条较长内容第8条较长内容第8条较长内容"
+            },
+            {
+              "id": "m-第9条较-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 9,
+              "role": "assistant",
+              "content": "第9条较长内容第9条较长内容第9条较长内容第9条较长内容第9条较长内容第9条较长内容"
+            },
+            {
+              "id": "m-第10条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 10,
+              "role": "user",
+              "content": "第10条较长内容第10条较长内容第10条较长内容第10条较长内容第10条较长内容第10条较长内容"
+            },
+            {
+              "id": "m-第11条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 11,
+              "role": "assistant",
+              "content": "第11条较长内容第11条较长内容第11条较长内容第11条较长内容第11条较长内容第11条较长内容"
+            },
+            {
+              "id": "m-第12条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 12,
+              "role": "user",
+              "content": "第12条较长内容第12条较长内容第12条较长内容第12条较长内容第12条较长内容第12条较长内容"
+            },
+            {
+              "id": "m-第13条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 13,
+              "role": "assistant",
+              "content": "第13条较长内容第13条较长内容第13条较长内容第13条较长内容第13条较长内容第13条较长内容"
+            },
+            {
+              "id": "m-第14条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 14,
+              "role": "user",
+              "content": "第14条较长内容第14条较长内容第14条较长内容第14条较长内容第14条较长内容第14条较长内容"
+            },
+            {
+              "id": "m-第15条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 15,
+              "role": "assistant",
+              "content": "第15条较长内容第15条较长内容第15条较长内容第15条较长内容第15条较长内容第15条较长内容"
+            },
+            {
+              "id": "m-第16条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 16,
+              "role": "user",
+              "content": "第16条较长内容第16条较长内容第16条较长内容第16条较长内容第16条较长内容第16条较长内容"
+            },
+            {
+              "id": "m-第17条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 17,
+              "role": "assistant",
+              "content": "第17条较长内容第17条较长内容第17条较长内容第17条较长内容第17条较长内容第17条较长内容"
+            },
+            {
+              "id": "m-第18条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 18,
+              "role": "user",
+              "content": "第18条较长内容第18条较长内容第18条较长内容第18条较长内容第18条较长内容第18条较长内容"
+            },
+            {
+              "id": "m-第19条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 19,
+              "role": "assistant",
+              "content": "第19条较长内容第19条较长内容第19条较长内容第19条较长内容第19条较长内容第19条较长内容"
+            },
+            {
+              "id": "m-第20条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 20,
+              "role": "user",
+              "content": "第20条较长内容第20条较长内容第20条较长内容第20条较长内容第20条较长内容第20条较长内容"
+            },
+            {
+              "id": "m-第21条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 21,
+              "role": "assistant",
+              "content": "第21条较长内容第21条较长内容第21条较长内容第21条较长内容第21条较长内容第21条较长内容"
+            },
+            {
+              "id": "m-第22条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 22,
+              "role": "user",
+              "content": "第22条较长内容第22条较长内容第22条较长内容第22条较长内容第22条较长内容第22条较长内容"
+            },
+            {
+              "id": "m-第23条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 23,
+              "role": "assistant",
+              "content": "第23条较长内容第23条较长内容第23条较长内容第23条较长内容第23条较长内容第23条较长内容"
+            },
+            {
+              "id": "m-第24条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 24,
+              "role": "user",
+              "content": "第24条较长内容第24条较长内容第24条较长内容第24条较长内容第24条较长内容第24条较长内容"
+            },
+            {
+              "id": "m-第25条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 25,
+              "role": "assistant",
+              "content": "第25条较长内容第25条较长内容第25条较长内容第25条较长内容第25条较长内容第25条较长内容"
+            },
+            {
+              "id": "m-第26条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 26,
+              "role": "user",
+              "content": "第26条较长内容第26条较长内容第26条较长内容第26条较长内容第26条较长内容第26条较长内容"
+            },
+            {
+              "id": "m-第27条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 27,
+              "role": "assistant",
+              "content": "第27条较长内容第27条较长内容第27条较长内容第27条较长内容第27条较长内容第27条较长内容"
+            },
+            {
+              "id": "m-第28条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 28,
+              "role": "user",
+              "content": "第28条较长内容第28条较长内容第28条较长内容第28条较长内容第28条较长内容第28条较长内容"
+            },
+            {
+              "id": "m-第29条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 29,
+              "role": "assistant",
+              "content": "第29条较长内容第29条较长内容第29条较长内容第29条较长内容第29条较长内容第29条较长内容"
+            },
+            {
+              "id": "m-第30条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 30,
+              "role": "user",
+              "content": "第30条较长内容第30条较长内容第30条较长内容第30条较长内容第30条较长内容第30条较长内容"
+            },
+            {
+              "id": "m-第31条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 31,
+              "role": "assistant",
+              "content": "第31条较长内容第31条较长内容第31条较长内容第31条较长内容第31条较长内容第31条较长内容"
+            },
+            {
+              "id": "m-第32条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 32,
+              "role": "user",
+              "content": "第32条较长内容第32条较长内容第32条较长内容第32条较长内容第32条较长内容第32条较长内容"
+            },
+            {
+              "id": "m-第33条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 33,
+              "role": "assistant",
+              "content": "第33条较长内容第33条较长内容第33条较长内容第33条较长内容第33条较长内容第33条较长内容"
+            },
+            {
+              "id": "m-第34条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 34,
+              "role": "user",
+              "content": "第34条较长内容第34条较长内容第34条较长内容第34条较长内容第34条较长内容第34条较长内容"
+            },
+            {
+              "id": "m-第35条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 35,
+              "role": "assistant",
+              "content": "第35条较长内容第35条较长内容第35条较长内容第35条较长内容第35条较长内容第35条较长内容"
+            },
+            {
+              "id": "m-第36条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 36,
+              "role": "user",
+              "content": "第36条较长内容第36条较长内容第36条较长内容第36条较长内容第36条较长内容第36条较长内容"
+            },
+            {
+              "id": "m-第37条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 37,
+              "role": "assistant",
+              "content": "第37条较长内容第37条较长内容第37条较长内容第37条较长内容第37条较长内容第37条较长内容"
+            },
+            {
+              "id": "m-第38条-user",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 38,
+              "role": "user",
+              "content": "第38条较长内容第38条较长内容第38条较长内容第38条较长内容第38条较长内容第38条较长内容"
+            },
+            {
+              "id": "m-第39条-assistant",
+              "sessionId": "s1",
+              "characterId": "c1",
+              "timestamp": 39,
+              "role": "assistant",
+              "content": "第39条较长内容第39条较长内容第39条较长内容第39条较长内容第39条较长内容第39条较长内容"
+            }
+          ],
+          "sessions": [
+            {
+              "id": "s1",
+              "characterId": "c1",
+              "title": "T",
+              "createdAt": 0,
+              "updatedAt": 0,
+              "memoryEnabled": false,
+              "memoryMode": "manual",
+              "autoMemoryInterval": 10,
+              "memory": "",
+              "memoryUpdatedAt": 0,
+              "messageCount": 0,
+              "lastMessage": "",
+              "compressedSummary": "早期摘要",
+              "compressedRange": {
+                "startTs": 0,
+                "endTs": 1000
+              }
+            }
+          ],
+          "currentSessionId": "s1",
+          "activeLorebookIds": [],
+          "semanticFactsHits": [],
+          "semanticLoreHits": [],
+          "semanticLoreAvailable": false
+        },
+        "settings": {
+          "settings": {
+            "userName": "旅人",
+            "activeModel": "gpt-4o-mini",
+            "streamOutput": true
+          },
+          "profile": {
+            "name": "p",
+            "provider": "openai",
+            "apiKey": "k",
+            "baseUrl": "",
+            "model": "gpt-4o-mini",
+            "maxContext": 0
+          }
+        },
+        "lorebooks": [],
+        "regexRules": []
+      },
+      "opts": null,
+      "lorebooks": [],
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个沉浸式互动叙事助手。请根据角色与世界设定持续创作，保持人物和情节的一致性。\n\n【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。\n\n【用户人设】\n用户名：旅人\n\n【输出格式要求】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第0条较长内容第0条较长内容第0条较长内容第0条较长内容第0条较长内容第0条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第1条较长内容第1条较长内容第1条较长内容第1条较长内容第1条较长内容第1条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第2条较长内容第2条较长内容第2条较长内容第2条较长内容第2条较长内容第2条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第3条较长内容第3条较长内容第3条较长内容第3条较长内容第3条较长内容第3条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第4条较长内容第4条较长内容第4条较长内容第4条较长内容第4条较长内容第4条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第5条较长内容第5条较长内容第5条较长内容第5条较长内容第5条较长内容第5条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第6条较长内容第6条较长内容第6条较长内容第6条较长内容第6条较长内容第6条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第7条较长内容第7条较长内容第7条较长内容第7条较长内容第7条较长内容第7条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第8条较长内容第8条较长内容第8条较长内容第8条较长内容第8条较长内容第8条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第9条较长内容第9条较长内容第9条较长内容第9条较长内容第9条较长内容第9条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第10条较长内容第10条较长内容第10条较长内容第10条较长内容第10条较长内容第10条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第11条较长内容第11条较长内容第11条较长内容第11条较长内容第11条较长内容第11条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第12条较长内容第12条较长内容第12条较长内容第12条较长内容第12条较长内容第12条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第13条较长内容第13条较长内容第13条较长内容第13条较长内容第13条较长内容第13条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第14条较长内容第14条较长内容第14条较长内容第14条较长内容第14条较长内容第14条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第15条较长内容第15条较长内容第15条较长内容第15条较长内容第15条较长内容第15条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第16条较长内容第16条较长内容第16条较长内容第16条较长内容第16条较长内容第16条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第17条较长内容第17条较长内容第17条较长内容第17条较长内容第17条较长内容第17条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第18条较长内容第18条较长内容第18条较长内容第18条较长内容第18条较长内容第18条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第19条较长内容第19条较长内容第19条较长内容第19条较长内容第19条较长内容第19条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第20条较长内容第20条较长内容第20条较长内容第20条较长内容第20条较长内容第20条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第21条较长内容第21条较长内容第21条较长内容第21条较长内容第21条较长内容第21条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第22条较长内容第22条较长内容第22条较长内容第22条较长内容第22条较长内容第22条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第23条较长内容第23条较长内容第23条较长内容第23条较长内容第23条较长内容第23条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第24条较长内容第24条较长内容第24条较长内容第24条较长内容第24条较长内容第24条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第25条较长内容第25条较长内容第25条较长内容第25条较长内容第25条较长内容第25条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第26条较长内容第26条较长内容第26条较长内容第26条较长内容第26条较长内容第26条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第27条较长内容第27条较长内容第27条较长内容第27条较长内容第27条较长内容第27条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第28条较长内容第28条较长内容第28条较长内容第28条较长内容第28条较长内容第28条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第29条较长内容第29条较长内容第29条较长内容第29条较长内容第29条较长内容第29条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第30条较长内容第30条较长内容第30条较长内容第30条较长内容第30条较长内容第30条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第31条较长内容第31条较长内容第31条较长内容第31条较长内容第31条较长内容第31条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第32条较长内容第32条较长内容第32条较长内容第32条较长内容第32条较长内容第32条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第33条较长内容第33条较长内容第33条较长内容第33条较长内容第33条较长内容第33条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第34条较长内容第34条较长内容第34条较长内容第34条较长内容第34条较长内容第34条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第35条较长内容第35条较长内容第35条较长内容第35条较长内容第35条较长内容第35条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第36条较长内容第36条较长内容第36条较长内容第36条较长内容第36条较长内容第36条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第37条较长内容第37条较长内容第37条较长内容第37条较长内容第37条较长内容第37条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "user",
+          "content": "第38条较长内容第38条较长内容第38条较长内容第38条较长内容第38条较长内容第38条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "assistant",
+          "content": "第39条较长内容第39条较长内容第39条较长内容第39条较长内容第39条较长内容第39条较长内容",
+          "images": null,
+          "keepSeparate": false
+        },
+        {
+          "role": "system",
+          "content": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 44–108 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。\n\n【内心想法契约】\n每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。",
+          "images": null,
+          "keepSeparate": true
+        }
+      ],
+      "lastContextUsage": {
+        "used": 790,
+        "max": 113507
+      },
+      "responsePolicy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      },
+      "requestMaxTokens": 8518,
+      "responseIntent": null,
+      "sceneFactor": 1,
+      "narrativeMode": "immersive",
+      "pendingCompression": null
+    }
+  ]
+}

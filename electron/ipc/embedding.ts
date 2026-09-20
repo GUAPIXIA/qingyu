@@ -13,60 +13,161 @@ import { join } from 'node:path'
 import { DIRS } from '../services/storage'
 import { readLorebookView } from '../services/lorebookDocumentStore'
 import { embedTexts, testEmbedding, isEmbeddingConfigured, type EmbeddingConfig } from '../services/embedding'
-import { getVectorIndex, saveVectorIndex, removeVectorIndex, countIndexedEntries, countStaleEntries, clearStaleEntries } from '../services/vectorStore'
+import { getVectorIndex, saveVectorIndex, patchVectorIndex, removeVectorIndex, countIndexedEntries, countStaleEntries } from '../services/vectorStore'
 import { safeId } from '../utils/pathGuard'
 import { createLogger } from '../services/logger'
 import type { Lorebook, LoreEntry } from '../../shared/types'
 import type { VectorIndex, VectorSpace } from '../services/vectorStore'
 import { topKSimilar } from '../../shared/chat-core/vector'
 import { getLocalModelManager } from './localModels'
+import { readSettingsFromDisk, restoreSecrets } from './settings'
+import { LOCAL_MODEL_RETRIEVAL_PROFILES } from '../services/localModels/catalog'
+import { embedLorebookEntries } from '../services/lorebookEmbeddingIndex'
+import { isLoreEntrySemanticEligible } from '../../shared/lorebookEmbedding'
+import {
+  DEFAULT_SIMILARITY_THRESHOLD as SHARED_DEFAULT_SIMILARITY_THRESHOLD,
+  REMOTE_INDEX_CHUNK_CHARS as SHARED_REMOTE_INDEX_CHUNK_CHARS,
+  mapFactSearchHits as mapFactSearchHitsShared,
+  isSemanticEligible as isSemanticEligibleShared,
+  vectorSpaceFromConfig as vectorSpaceFromConfigShared,
+  isVectorIndexCompatible as isVectorIndexCompatibleShared,
+  resolveSemanticThreshold as resolveSemanticThresholdShared,
+} from '../../shared/chat-core/embeddingPolicy'
 
 const log = createLogger('embedding-ipc')
 
 async function embedWithProvider(config: EmbeddingConfig, texts: string[], inputKind: 'query' | 'passage'): Promise<number[][]> {
   if (config.provider === 'local') return getLocalModelManager().embed(texts, inputKind)
-  return embedTexts(config, texts)
+  return embedTexts(config, texts, inputKind)
 }
 
 export function mapFactSearchHits(
   hits: Array<{ id: string; score: number }>,
   facts: string[],
 ): Array<{ text: string; index: number; score: number }> {
-  return hits
-    .map((hit) => ({ text: facts[Number(hit.id)], index: Number(hit.id), score: hit.score }))
-    .filter((hit) => Boolean(hit.text))
+  return mapFactSearchHitsShared(hits, facts)
 }
 
 /** 条目是否参与语义匹配 */
 export function isSemanticEligible(entry: LoreEntry): boolean {
-  if (entry.priority === 'always') return false
-  const mode = entry.matchMode ?? 'both'
-  return mode === 'semantic' || mode === 'both'
+  return isSemanticEligibleShared(entry)
 }
 
 /** 查询向量与索引必须由同一模型生成，否则维度即使碰巧一致，相似度也没有意义。 */
 export function vectorSpaceFromConfig(config: EmbeddingConfig): VectorSpace {
-  if (config.provider === 'local') {
-    const splitAt = config.model.lastIndexOf('@')
-    return { provider: 'local', model: config.model, modelId: config.model.slice(0, splitAt), modelVersion: config.model.slice(splitAt + 1) }
-  }
-  return { provider: config.provider, model: config.model }
+  // 判定逻辑在 shared（两端共用）；返回结构一致，此处仅按 Electron 侧类型收窄
+  return vectorSpaceFromConfigShared(config) as VectorSpace
 }
 
 export function isVectorIndexCompatible(index: Pick<VectorIndex, 'model' | 'provider' | 'modelId' | 'modelVersion'>, config: Pick<EmbeddingConfig, 'model'> & Partial<Pick<EmbeddingConfig, 'provider'>>): boolean {
-  if (index.model.trim() !== config.model.trim()) return false
-  if (index.provider && config.provider && index.provider !== config.provider) return false
-  if (config.provider === 'local') {
-    const space = vectorSpaceFromConfig(config as EmbeddingConfig)
-    return index.modelId === space.modelId && index.modelVersion === space.modelVersion
-  }
-  return true
+  return isVectorIndexCompatibleShared(index, config)
 }
 
 /** 读取单个世界书 */
 function readLorebook(id: string): Lorebook | null {
   safeId(id)
   return readLorebookView(join(DIRS.lorebooks(), `${id}.json`))
+}
+
+const DEFAULT_SIMILARITY_THRESHOLD = SHARED_DEFAULT_SIMILARITY_THRESHOLD
+const REMOTE_INDEX_CHUNK_CHARS = SHARED_REMOTE_INDEX_CHUNK_CHARS
+
+/** 手动阈值优先；自动模式按已评测的本地模型校准，未知模型使用保守通用值。 */
+export function resolveSemanticThreshold(config: EmbeddingConfig, requested?: number): number {
+  return resolveSemanticThresholdShared(config, requested, LOCAL_MODEL_RETRIEVAL_PROFILES)
+}
+
+function resolveIndexChunkChars(config: EmbeddingConfig): number {
+  if (config.provider !== 'local') return REMOTE_INDEX_CHUNK_CHARS
+  const manifest = getLocalModelManager().activeManifest()
+  if (!manifest || `${manifest.id}@${manifest.version}` !== config.model) {
+    throw new Error('当前启用的本地向量模型与语义检索配置不一致')
+  }
+  // 字符只是切片单位；worker 仍会按 manifest.maxTokens 做真实 tokenizer 截断。
+  return Math.max(256, manifest.maxTokens * 2)
+}
+
+export async function indexLorebookWithConfig(
+  lorebookId: string,
+  config: EmbeddingConfig,
+  changedIds?: string[],
+): Promise<import('../../shared/ipc-api').IndexResult> {
+  const lb = readLorebook(lorebookId)
+  if (!lb) return { ok: false, error: '世界书不存在' }
+  if (!isEmbeddingConfigured(config)) return { ok: false, error: '嵌入服务未配置（需填写模型及有效连接）' }
+
+  const space = vectorSpaceFromConfig(config)
+  const current = getVectorIndex(lorebookId, space)
+  const incremental = Boolean(changedIds?.length && current && isVectorIndexCompatible(current, config))
+  const changed = new Set(changedIds ?? [])
+  const sourceEntries = incremental ? lb.entries.filter((entry) => changed.has(entry.id)) : lb.entries
+  const allEligible = lb.entries.filter(isLoreEntrySemanticEligible)
+  if (!incremental && allEligible.length === 0) return { ok: false, error: '没有可索引的条目（需启用且匹配模式包含“语义”）' }
+
+  try {
+    const embedded = await embedLorebookEntries(
+      sourceEntries,
+      (texts, inputKind) => embedWithProvider(config, texts, inputKind),
+      resolveIndexChunkChars(config),
+    )
+    if (incremental) {
+      const patched = patchVectorIndex(
+        lorebookId,
+        config.model,
+        embedded.vectors,
+        [...changed],
+        space,
+        lb.runtime?.revision,
+      )
+      if (!patched) throw new Error('增量索引的向量空间已变化，请重建索引')
+    } else {
+      saveVectorIndex(lorebookId, config.model, embedded.vectors, space, lb.runtime?.revision)
+    }
+    log.info(incremental ? '世界书向量索引已增量更新' : '世界书向量索引完成', {
+      lorebookId,
+      name: lb.name,
+      total: allEligible.length,
+      indexed: Object.keys(embedded.vectors).length,
+      chunks: embedded.chunkCount,
+      revision: lb.runtime?.revision,
+    })
+    return { ok: true, total: allEligible.length, indexed: Object.keys(embedded.vectors).length, failed: embedded.failed }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+const autoIndexQueues = new Map<string, Promise<void>>()
+const pendingAutoIndexIds = new Map<string, Set<string>>()
+
+/** 保存世界书后的真实自动索引：同一本书串行收敛到磁盘最新修订，不阻塞保存返回。 */
+export function scheduleLorebookAutoIndex(lorebookId: string, changedIds: string[]): void {
+  if (changedIds.length === 0) return
+  const pending = pendingAutoIndexIds.get(lorebookId) ?? new Set<string>()
+  for (const id of changedIds) pending.add(id)
+  pendingAutoIndexIds.set(lorebookId, pending)
+  if (autoIndexQueues.has(lorebookId)) return
+
+  const run = Promise.resolve().then(async () => {
+    while (pending.size > 0) {
+      const batch = [...pending]
+      pending.clear()
+      const settings = readSettingsFromDisk()
+      restoreSecrets(settings)
+      const config = settings.semanticTrigger
+      if (settings.localModels?.autoIndex === false || !config?.enabled || !isEmbeddingConfigured(config)) continue
+      const result = await indexLorebookWithConfig(lorebookId, config, batch)
+      if (!result.ok) log.warn('世界书自动增量索引失败', { lorebookId, error: result.error })
+    }
+  })
+  const settled = run.catch((error) => {
+    log.warn('世界书自动增量索引异常', { lorebookId, error: error instanceof Error ? error.message : String(error) })
+  })
+  const tracked = settled.finally(() => {
+    pendingAutoIndexIds.delete(lorebookId)
+    if (autoIndexQueues.get(lorebookId) === tracked) autoIndexQueues.delete(lorebookId)
+  })
+  autoIndexQueues.set(lorebookId, tracked)
 }
 
 /** 语义检索命中项（主进程 → 渲染进程） */
@@ -96,39 +197,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
 
   // 为世界书生成/重建向量索引
   ipcMain.handle('embedding:indexLorebook', async (_e, lorebookId: string, config: EmbeddingConfig) => {
-    const lb = readLorebook(lorebookId)
-    if (!lb) return { ok: false, error: '世界书不存在' }
-    if (!isEmbeddingConfigured(config)) {
-      return { ok: false, error: '嵌入服务未配置（需填写 baseUrl 与 model）' }
-    }
-
-    const targets: { id: string; content: string }[] = []
-    for (const entry of lb.entries) {
-      if (!entry.enabled || !isSemanticEligible(entry)) continue
-      if (!entry.content?.trim()) continue
-      targets.push({ id: entry.id, content: entry.content })
-    }
-    if (targets.length === 0) {
-      return { ok: false, error: '没有可索引的条目（需启用且匹配模式包含"语义"）' }
-    }
-
-    try {
-      const vectors = await embedWithProvider(config, targets.map((t) => t.content), 'passage')
-      const map: Record<string, number[]> = {}
-      let failed = 0
-      targets.forEach((t, i) => {
-        const v = vectors[i]
-        if (v && v.length > 0) map[t.id] = v
-        else failed++
-      })
-      const space = vectorSpaceFromConfig(config)
-      saveVectorIndex(lorebookId, config.model, map, space)
-      clearStaleEntries(lorebookId, space)
-      log.info('世界书向量索引完成', { lorebookId, name: lb.name, total: targets.length, indexed: Object.keys(map).length })
-      return { ok: true, total: targets.length, indexed: Object.keys(map).length, failed }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
+    return indexLorebookWithConfig(lorebookId, config)
   })
 
   // 查询索引状态
@@ -173,7 +242,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
     maxResults?: number
   }) => {
     const { query, facts, vectors, config } = payload
-    const threshold = typeof payload.threshold === 'number' ? payload.threshold : 0.3
+    const threshold = resolveSemanticThreshold(config, payload.threshold)
     const maxResults = typeof payload.maxResults === 'number' ? payload.maxResults : 3
     if (!query?.trim() || !isEmbeddingConfigured(config)) return []
     if (!Array.isArray(facts) || facts.length === 0 || !Array.isArray(vectors) || vectors.length !== facts.length) return []
@@ -201,7 +270,7 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
     },
   ) => {
     const { scanText, lorebookIds, config } = payload
-    const threshold = typeof payload.threshold === 'number' ? payload.threshold : 0.3
+    const threshold = resolveSemanticThreshold(config, payload.threshold)
     const maxResults = typeof payload.maxResults === 'number' ? payload.maxResults : 3
 
     if (!scanText?.trim()) return []

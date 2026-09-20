@@ -11,7 +11,11 @@ interface WorkerRequest {
 }
 
 let loadedKey = ''
-let extractor: ((texts: string[], options: Record<string, unknown>) => Promise<unknown>) | null = null
+type FeatureExtractor = ((texts: string[], options: Record<string, unknown>) => Promise<unknown>) & {
+  tokenizer?: { truncation_side?: 'left' | 'right' }
+}
+
+let extractor: FeatureExtractor | null = null
 
 async function load(modelsRoot: string, manifest: LocalEmbeddingModelManifest) {
   const key = `${manifest.id}@${manifest.version}`
@@ -25,7 +29,7 @@ async function load(modelsRoot: string, manifest: LocalEmbeddingModelManifest) {
     'feature-extraction',
     `${manifest.id}/${manifest.version}`,
     { dtype: manifest.dtype },
-  ) as unknown as typeof extractor
+  ) as unknown as FeatureExtractor
   loadedKey = key
   return extractor!
 }
@@ -49,9 +53,14 @@ parentPort?.on('message', async (request: WorkerRequest) => {
     const pipe = await load(request.modelsRoot, request.manifest)
     const prefix = request.inputKind === 'query' ? request.manifest.queryPrefix : request.manifest.passagePrefix
     const texts = request.texts.map((text) => `${prefix ?? ''}${text}`)
+    // 查询保留最新对话尾部；索引文档保留标题/关键词所在的开头。transformers.js
+    // 的 tokenizer 负责按真实 token 数截断，manifest.maxTokens 不再只是展示字段。
+    if (pipe.tokenizer) pipe.tokenizer.truncation_side = request.inputKind === 'query' ? 'left' : 'right'
     const output = await pipe(texts, {
       pooling: request.manifest.pooling,
       normalize: request.manifest.normalize,
+      truncation: true,
+      max_length: request.manifest.maxTokens,
     })
     const vectors = toVectors(output)
     if (vectors.length !== texts.length || vectors.some((v) => v.length !== request.manifest!.dimensions || v.some((n) => !Number.isFinite(n)))) {

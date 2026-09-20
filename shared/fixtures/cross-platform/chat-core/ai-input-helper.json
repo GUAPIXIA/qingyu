@@ -1,0 +1,509 @@
+{
+  "version": 1,
+  "constants": {
+    "defaultIntensity": "active",
+    "defaultLength": "standard",
+    "intensityTemperatures": {
+      "subtle": {
+        "temperature": 0.45
+      },
+      "steady": {
+        "temperature": 0.55
+      },
+      "active": {
+        "temperature": 0.65
+      },
+      "bold": {
+        "temperature": 0.75
+      }
+    },
+    "lengthParams": {
+      "brief": {
+        "minChars": 20,
+        "maxChars": 60,
+        "structure": "1–2 句"
+      },
+      "standard": {
+        "minChars": 80,
+        "maxChars": 180,
+        "structure": "形成 1 个完整自然段"
+      },
+      "detailed": {
+        "minChars": 220,
+        "maxChars": 420,
+        "structure": "形成 2–3 个自然段"
+      },
+      "extended": {
+        "minChars": 500,
+        "maxChars": 900,
+        "structure": "形成 4–6 个自然段"
+      }
+    },
+    "tolerance": {
+      "acceptLowerRatio": 0.8,
+      "repairCeilingRatio": 1.2,
+      "softLowerRatio": 0.6,
+      "softUpperRatio": 1.5
+    }
+  },
+  "perspectiveCases": [
+    {
+      "raw": "",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": ""
+    },
+    {
+      "raw": "   ",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": ""
+    },
+    {
+      "raw": "那我们走吧。",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": "那我们走吧。"
+    },
+    {
+      "raw": "苏晚：你先坐。\n旅人：好，我坐一会儿。",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": "好，我坐一会儿。"
+    },
+    {
+      "raw": "苏晚: 你先坐。\n旅人: 好。",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": "好。"
+    },
+    {
+      "raw": "**苏晚**：你先坐。\n旅人：好。",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": "好。"
+    },
+    {
+      "raw": "***苏晚***：你先坐。\n旅人：好。",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": "好。"
+    },
+    {
+      "raw": "苏晚：你先坐。",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": ""
+    },
+    {
+      "raw": "苏晚：先坐。\n旅人：好。\n苏晚：喝茶吗？",
+      "userName": "旅人",
+      "charName": "苏晚",
+      "result": "好。"
+    }
+  ],
+  "normalizeCases": [
+    {
+      "raw": "苏晚：你先坐。",
+      "narrativeMode": "omniscient",
+      "result": "苏晚：你先坐。"
+    },
+    {
+      "raw": "苏晚：你先坐。\n旅人：好。",
+      "narrativeMode": "immersive",
+      "result": "好。"
+    },
+    {
+      "raw": "  旁白内容  ",
+      "narrativeMode": "omniscient",
+      "result": "旁白内容"
+    }
+  ],
+  "tagCases": [
+    {
+      "raw": "<continuation>那我们走吧。</continuation>",
+      "tag": "continuation",
+      "result": "那我们走吧。"
+    },
+    {
+      "raw": "<continuation>甲</continuation><continuation>乙</continuation>",
+      "tag": "continuation",
+      "result": ""
+    },
+    {
+      "raw": "<thought><continuation>在思考里</continuation></thought>",
+      "tag": "continuation",
+      "result": ""
+    },
+    {
+      "raw": "<prompt>best quality</prompt>",
+      "tag": "prompt",
+      "result": "best quality"
+    },
+    {
+      "raw": "<prompt> 前后空白 </prompt>",
+      "tag": "prompt",
+      "result": "前后空白"
+    },
+    {
+      "raw": "没有标签",
+      "tag": "continuation",
+      "result": ""
+    }
+  ],
+  "parseCases": [
+    {
+      "raw": "<continuation>那我们走吧。</continuation>",
+      "charName": "苏晚",
+      "narrativeMode": "immersive",
+      "result": "那我们走吧。"
+    },
+    {
+      "raw": "<continuation>那我们走吧。",
+      "charName": "苏晚",
+      "narrativeMode": "immersive",
+      "result": "那我们走吧。"
+    },
+    {
+      "raw": "<continuation>以下是续写：\n那我们走吧。</continuation>",
+      "charName": "苏晚",
+      "narrativeMode": "immersive",
+      "result": "以下是续写：\n那我们走吧。"
+    },
+    {
+      "raw": "Need final only. 应该继续推进剧情。",
+      "charName": "苏晚",
+      "narrativeMode": "immersive",
+      "result": ""
+    },
+    {
+      "raw": "那我们走吧，去码头看看。",
+      "charName": "苏晚",
+      "narrativeMode": "immersive",
+      "result": "那我们走吧，去码头看看。"
+    },
+    {
+      "raw": "<thought>只是思考</thought>",
+      "charName": "苏晚",
+      "narrativeMode": "immersive",
+      "result": ""
+    },
+    {
+      "raw": "<continuation>苏晚：你先坐。\n旅人：好。</continuation>",
+      "charName": "苏晚",
+      "narrativeMode": "immersive",
+      "result": ""
+    },
+    {
+      "raw": "<continuation>苏晚：你先坐。</continuation>",
+      "charName": "苏晚",
+      "narrativeMode": "omniscient",
+      "result": "苏晚：你先坐。"
+    }
+  ],
+  "failureCases": [
+    {
+      "raw": "",
+      "kind": "empty",
+      "shouldRetry": false
+    },
+    {
+      "raw": "   ",
+      "kind": "empty",
+      "shouldRetry": false
+    },
+    {
+      "raw": "<thought>只有思考</thought>",
+      "kind": "empty",
+      "shouldRetry": false
+    },
+    {
+      "raw": "<continuation>写了但没闭合",
+      "kind": "truncated",
+      "shouldRetry": true
+    },
+    {
+      "raw": "English analysis only.",
+      "kind": "invalid-content",
+      "shouldRetry": true
+    }
+  ],
+  "lengthCases": [
+    {
+      "text": "短句一句。",
+      "length": "brief",
+      "chars": 5,
+      "truncated": false,
+      "action": "supplement",
+      "trimmedText": null,
+      "acceptableAfterRepair": false
+    },
+    {
+      "text": "那我们走吧，去码头看看。",
+      "length": "standard",
+      "chars": 12,
+      "truncated": false,
+      "action": "supplement",
+      "trimmedText": null,
+      "acceptableAfterRepair": false
+    },
+    {
+      "text": "那我们走吧，去码头看看",
+      "length": "standard",
+      "chars": 11,
+      "truncated": true,
+      "action": "supplement",
+      "trimmedText": null,
+      "acceptableAfterRepair": false
+    },
+    {
+      "text": "很短。",
+      "length": "standard",
+      "chars": 3,
+      "truncated": false,
+      "action": "supplement",
+      "trimmedText": null,
+      "acceptableAfterRepair": false
+    },
+    {
+      "text": "一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。一句完整的话。",
+      "length": "brief",
+      "chars": 280,
+      "truncated": false,
+      "action": "compress",
+      "trimmedText": null,
+      "acceptableAfterRepair": false
+    },
+    {
+      "text": "目标区间内的完整句子。目标区间内的完整句子。目标区间内的完整句子。",
+      "length": "brief",
+      "chars": 33,
+      "truncated": false,
+      "action": "accept",
+      "trimmedText": null,
+      "acceptableAfterRepair": true
+    },
+    {
+      "text": "第一句。第二句。第三句。",
+      "length": "brief",
+      "chars": 12,
+      "truncated": false,
+      "action": "supplement",
+      "trimmedText": null,
+      "acceptableAfterRepair": true
+    },
+    {
+      "text": "",
+      "length": "standard",
+      "chars": 0,
+      "truncated": true,
+      "action": "supplement",
+      "trimmedText": null,
+      "acceptableAfterRepair": false
+    }
+  ],
+  "repairInstructionCases": [
+    {
+      "mode": "supplement",
+      "length": "standard",
+      "chars": 10,
+      "truncated": false,
+      "instruction": "上一次输出约 10 个可见字符，低于本次目标 80–180 字。请补足到目标区间（80–180 个可见字符），以完整句收尾；不要复述已有内容，也不要增加无关支线。"
+    },
+    {
+      "mode": "supplement",
+      "length": "standard",
+      "chars": 30,
+      "truncated": true,
+      "instruction": "上一次输出未能写完就中断了。请补足到目标区间（80–180 个可见字符），以完整句收尾；不要复述已有内容，也不要增加无关支线。"
+    },
+    {
+      "mode": "compress",
+      "length": "brief",
+      "chars": 200,
+      "truncated": false,
+      "instruction": "上一次输出约 200 个可见字符，超出本次目标 20–60 字。请压缩重写：保留关键信息与因果，删去重复、铺陈与次要细节，必须在目标区间内以完整句收尾。"
+    },
+    {
+      "mode": "compress",
+      "length": "extended",
+      "chars": 2000,
+      "truncated": true,
+      "instruction": "上一次输出约 2000 个可见字符，超出本次目标 500–900 字。请压缩重写：保留关键信息与因果，删去重复、铺陈与次要细节，必须在目标区间内以完整句收尾。"
+    }
+  ],
+  "systemPromptCases": [
+    {
+      "userName": "旅人",
+      "charName": "苏晚",
+      "hasInput": true,
+      "narrativeMode": "immersive",
+      "intensity": "active",
+      "length": "standard",
+      "prompt": "你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 旅人】的身份和口吻，续写用户未完成的消息。\n\n严格要求：\n- 必须使用简体中文输出\n- 只输出 旅人 的话语，绝对不要输出 苏晚 的话语\n- 不要以 苏晚 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格\n- 引入有因果依据的事件、压力或线索，把情节推到下一个反应点\n- 篇幅由本指令控制：本次只输出直接接在原文之后的新内容，不要复述原文，写 80–180 个可见中文字符，形成 1 个完整自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 不得重复原文末尾已经出现的词语、动作或句式\n- 从完成原文所需的下一个新词或下一句直接写起，确保与原文拼接后语法通顺\n- 保持动作与事件时序；不得把尚未发生的动作写成已经完成，也不得凭空倒叙为“刚才已经做过”\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容"
+    },
+    {
+      "userName": "旅人",
+      "charName": "苏晚",
+      "hasInput": false,
+      "narrativeMode": "immersive",
+      "intensity": "active",
+      "length": "standard",
+      "prompt": "你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 旅人】的身份和口吻，生成一条合适的用户回复。\n\n严格要求：\n- 必须使用简体中文输出\n- 只输出 旅人 的话语，绝对不要输出 苏晚 的话语\n- 不要以 苏晚 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格\n- 引入有因果依据的事件、压力或线索，把情节推到下一个反应点\n- 篇幅由本指令控制：本次只输出用户接下来要说的新内容，写 80–180 个可见中文字符，形成 1 个完整自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 优先回应最近一条尚未解决的问题、呼喊、威胁、承诺或悬念，处理后再补充次要细节\n- 保持最近对话的时序与因果，不要绕开当前矛盾另起无关话题\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容"
+    },
+    {
+      "userName": "旅人",
+      "charName": "苏晚",
+      "hasInput": true,
+      "narrativeMode": "immersive",
+      "intensity": "subtle",
+      "length": "brief",
+      "prompt": "你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 旅人】的身份和口吻，续写用户未完成的消息。\n\n严格要求：\n- 必须使用简体中文输出\n- 只输出 旅人 的话语，绝对不要输出 苏晚 的话语\n- 不要以 苏晚 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格\n- 只补完当前表达或添加细微变化，不引入新的剧情发展\n- 篇幅由本指令控制：本次只输出直接接在原文之后的新内容，不要复述原文，写 20–60 个可见中文字符，1–2 句\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 不得重复原文末尾已经出现的词语、动作或句式\n- 从完成原文所需的下一个新词或下一句直接写起，确保与原文拼接后语法通顺\n- 保持动作与事件时序；不得把尚未发生的动作写成已经完成，也不得凭空倒叙为“刚才已经做过”\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容"
+    },
+    {
+      "userName": "旅人",
+      "charName": "苏晚",
+      "hasInput": true,
+      "narrativeMode": "immersive",
+      "intensity": "bold",
+      "length": "extended",
+      "prompt": "你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 旅人】的身份和口吻，续写用户未完成的消息。\n\n严格要求：\n- 必须使用简体中文输出\n- 只输出 旅人 的话语，绝对不要输出 苏晚 的话语\n- 不要以 苏晚 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格\n- 可以引入重大转折、场景变化或新的冲突方向，但保持因果可信\n- 篇幅由本指令控制：本次只输出直接接在原文之后的新内容，不要复述原文，写 500–900 个可见中文字符，形成 4–6 个自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 不得重复原文末尾已经出现的词语、动作或句式\n- 从完成原文所需的下一个新词或下一句直接写起，确保与原文拼接后语法通顺\n- 保持动作与事件时序；不得把尚未发生的动作写成已经完成，也不得凭空倒叙为“刚才已经做过”\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容"
+    },
+    {
+      "userName": "旅人",
+      "charName": "苏晚",
+      "hasInput": true,
+      "narrativeMode": "omniscient",
+      "intensity": "active",
+      "length": "standard",
+      "prompt": "你是用户侧的剧情推进助手。请续写用户尚未完成的旁白推动，使其成为可直接发送、自然完整的剧情变化。\n\n严格要求：\n- 必须使用简体中文输出\n- 只以故事外部旁白的身份输出第三人称叙事，以角色名、“他”或“她”指代人物\n- 不以 苏晚 或任何角色的第一人称视角回应，不生成角色对白、角色名前缀或整段对话\n- 写到本次剧情推动自然完成；可按叙事节奏分段\n- 必须以完整句收尾，不要在动作、对白或因果关系尚未写完时停止\n- 推动局势发生变化，优先加入事件、压力、线索、阻碍或转折\n- 只提出变化并把故事推到下一个反应点，不展开完整场景，不替对方角色完成详细反应\n- 篇幅由本指令控制：本次只输出直接接在原文之后的新内容，不要复述原文，写 80–180 个可见中文字符，形成 1 个完整自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 不得重复原文末尾已经出现的词语、动作或句式\n- 从完成原文所需的下一个新词或下一句直接写起，确保与原文拼接后语法通顺\n- 保持动作与事件时序；不得把尚未发生的动作写成已经完成，也不得凭空倒叙为“刚才已经做过”\n- 苏晚 是当前故事焦点之一，但不要替 苏晚 说话或完成详细心理与连续动作\n- 不替 旅人 控制的玩家角色作重大选择，不一次解决当前冲突\n- 保持既有时序、因果和叙述风格，不随机引入无关事件\n- 不添加标题、“剧情建议”或解释\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容"
+    },
+    {
+      "userName": "旅人",
+      "charName": "苏晚",
+      "hasInput": false,
+      "narrativeMode": "omniscient",
+      "intensity": "steady",
+      "length": "detailed",
+      "prompt": "你是用户侧的剧情推进助手。请根据最近对话中尚未解决的矛盾，生成可由用户直接发送、自然完整的旁白推动。\n\n严格要求：\n- 必须使用简体中文输出\n- 只以故事外部旁白的身份输出第三人称叙事，以角色名、“他”或“她”指代人物\n- 不以 苏晚 或任何角色的第一人称视角回应，不生成角色对白、角色名前缀或整段对话\n- 写到本次剧情推动自然完成；可按叙事节奏分段\n- 必须以完整句收尾，不要在动作、对白或因果关系尚未写完时停止\n- 顺着当前场景与最近矛盾做小幅推进，只加入小阻碍或新信息，不改变当前主线；不替对方角色完成详细反应\n- 篇幅由本指令控制：本次只输出用户接下来要说的新内容，写 220–420 个可见中文字符，形成 2–3 个自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 优先回应最近一条尚未解决的问题、呼喊、威胁、承诺或悬念，处理后再补充次要细节\n- 保持最近对话的时序与因果，不要绕开当前矛盾另起无关话题\n- 苏晚 是当前故事焦点之一，但不要替 苏晚 说话或完成详细心理与连续动作\n- 不替 旅人 控制的玩家角色作重大选择，不一次解决当前冲突\n- 保持既有时序、因果和叙述风格，不随机引入无关事件\n- 不添加标题、“剧情建议”或解释\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容"
+    }
+  ],
+  "contextCases": [
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "hasInput": true,
+        "narrativeMode": "immersive",
+        "originalInput": "那我们",
+        "intensity": null,
+        "length": null
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 旅人】的身份和口吻，续写用户未完成的消息。\n\n严格要求：\n- 必须使用简体中文输出\n- 只输出 旅人 的话语，绝对不要输出 苏晚 的话语\n- 不要以 苏晚 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格\n- 引入有因果依据的事件、压力或线索，把情节推到下一个反应点\n- 篇幅由本指令控制：本次只输出直接接在原文之后的新内容，不要复述原文，写 80–180 个可见中文字符，形成 1 个完整自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 不得重复原文末尾已经出现的词语、动作或句式\n- 从完成原文所需的下一个新词或下一句直接写起，确保与原文拼接后语法通顺\n- 保持动作与事件时序；不得把尚未发生的动作写成已经完成，也不得凭空倒叙为“刚才已经做过”\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容\n\n当前角色：苏晚\n角色设定：旧书店的店主。\n场景：深夜的旧书店"
+        },
+        {
+          "role": "user",
+          "content": "夜安。"
+        },
+        {
+          "role": "assistant",
+          "content": "夜安，要坐一会儿吗？"
+        },
+        {
+          "role": "user",
+          "content": "请以 旅人 的身份续写以下未完成的消息（直接接在后面的部分；不得重复末尾措辞，从下一个必要的新词或下一句写起）：\n那我们"
+        }
+      ]
+    },
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "hasInput": false,
+        "narrativeMode": "immersive",
+        "originalInput": "",
+        "intensity": null,
+        "length": null
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是一个角色扮演对话的用户视角续写助手。你的任务是以【用户 旅人】的身份和口吻，生成一条合适的用户回复。\n\n严格要求：\n- 必须使用简体中文输出\n- 只输出 旅人 的话语，绝对不要输出 苏晚 的话语\n- 不要以 苏晚 的身份说话或行动\n- 不要包含角色名前缀，直接输出对话内容\n- 保持用户一贯的语气和风格\n- 引入有因果依据的事件、压力或线索，把情节推到下一个反应点\n- 篇幅由本指令控制：本次只输出用户接下来要说的新内容，写 80–180 个可见中文字符，形成 1 个完整自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 优先回应最近一条尚未解决的问题、呼喊、威胁、承诺或悬念，处理后再补充次要细节\n- 保持最近对话的时序与因果，不要绕开当前矛盾另起无关话题\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容\n\n当前角色：苏晚\n角色设定：旧书店的店主。\n场景：深夜的旧书店"
+        },
+        {
+          "role": "user",
+          "content": "夜安。"
+        },
+        {
+          "role": "assistant",
+          "content": "夜安，要坐一会儿吗？"
+        },
+        {
+          "role": "user",
+          "content": "请以 旅人 的身份根据上下文生成一条回复；优先回应最近一条尚未解决的问题或悬念"
+        }
+      ]
+    },
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "hasInput": true,
+        "narrativeMode": "omniscient",
+        "originalInput": "他推开门，",
+        "intensity": null,
+        "length": null
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是用户侧的剧情推进助手。请续写用户尚未完成的旁白推动，使其成为可直接发送、自然完整的剧情变化。\n\n严格要求：\n- 必须使用简体中文输出\n- 只以故事外部旁白的身份输出第三人称叙事，以角色名、“他”或“她”指代人物\n- 不以 苏晚 或任何角色的第一人称视角回应，不生成角色对白、角色名前缀或整段对话\n- 写到本次剧情推动自然完成；可按叙事节奏分段\n- 必须以完整句收尾，不要在动作、对白或因果关系尚未写完时停止\n- 推动局势发生变化，优先加入事件、压力、线索、阻碍或转折\n- 只提出变化并把故事推到下一个反应点，不展开完整场景，不替对方角色完成详细反应\n- 篇幅由本指令控制：本次只输出直接接在原文之后的新内容，不要复述原文，写 80–180 个可见中文字符，形成 1 个完整自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 不得重复原文末尾已经出现的词语、动作或句式\n- 从完成原文所需的下一个新词或下一句直接写起，确保与原文拼接后语法通顺\n- 保持动作与事件时序；不得把尚未发生的动作写成已经完成，也不得凭空倒叙为“刚才已经做过”\n- 苏晚 是当前故事焦点之一，但不要替 苏晚 说话或完成详细心理与连续动作\n- 不替 旅人 控制的玩家角色作重大选择，不一次解决当前冲突\n- 保持既有时序、因果和叙述风格，不随机引入无关事件\n- 不添加标题、“剧情建议”或解释\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容\n\n当前角色：苏晚\n角色设定：旧书店的店主。\n场景：深夜的旧书店"
+        },
+        {
+          "role": "user",
+          "content": "夜安。"
+        },
+        {
+          "role": "assistant",
+          "content": "夜安，要坐一会儿吗？"
+        },
+        {
+          "role": "user",
+          "content": "请只补写直接接在原文后面的部分，不要复述原文；形成自然完整的剧情推动，并写完最后一句：\n他推开门，"
+        }
+      ]
+    },
+    {
+      "input": {
+        "userName": "旅人",
+        "charName": "苏晚",
+        "hasInput": false,
+        "narrativeMode": "omniscient",
+        "originalInput": "",
+        "intensity": "bold",
+        "length": "extended"
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是用户侧的剧情推进助手。请根据最近对话中尚未解决的矛盾，生成可由用户直接发送、自然完整的旁白推动。\n\n严格要求：\n- 必须使用简体中文输出\n- 只以故事外部旁白的身份输出第三人称叙事，以角色名、“他”或“她”指代人物\n- 不以 苏晚 或任何角色的第一人称视角回应，不生成角色对白、角色名前缀或整段对话\n- 写到本次剧情推动自然完成；可按叙事节奏分段\n- 必须以完整句收尾，不要在动作、对白或因果关系尚未写完时停止\n- 可引入重大转折、场景切换、时间推进或新的冲突线；不替对方角色完成详细反应\n- 篇幅由本指令控制：本次只输出用户接下来要说的新内容，写 500–900 个可见中文字符，形成 4–6 个自然段\n- 一次把目标篇幅写完，不要只写开头就收尾，也不要大幅超出上限\n- 必须在完整句处结束，不要为了凑字数重复信息\n- 如果情节已经自然完成，宁可接近下限，也不得增加无关支线\n- 优先回应最近一条尚未解决的问题、呼喊、威胁、承诺或悬念，处理后再补充次要细节\n- 保持最近对话的时序与因果，不要绕开当前矛盾另起无关话题\n- 苏晚 是当前故事焦点之一，但不要替 苏晚 说话或完成详细心理与连续动作\n- 不替 旅人 控制的玩家角色作重大选择，不一次解决当前冲突\n- 保持既有时序、因果和叙述风格，不随机引入无关事件\n- 不添加标题、“剧情建议”或解释\n- 最终正文必须且只能放在一组 <continuation>...</continuation> 标签内，标签外不要输出任何内容\n\n当前角色：苏晚\n角色设定：旧书店的店主。\n场景：深夜的旧书店"
+        },
+        {
+          "role": "user",
+          "content": "夜安。"
+        },
+        {
+          "role": "assistant",
+          "content": "夜安，要坐一会儿吗？"
+        },
+        {
+          "role": "user",
+          "content": "请基于最近对话中的矛盾，生成一次幅度较大的剧情转折或场景变化，写完最后一句，保留角色反应空间"
+        }
+      ]
+    }
+  ]
+}

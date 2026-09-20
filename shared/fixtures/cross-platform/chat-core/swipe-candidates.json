@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "regenerateCases": [
+    {
+      "target": {
+        "content": "初版正文。"
+      },
+      "newContent": "新的候选正文。",
+      "result": {
+        "swipes": [
+          "初版正文。",
+          "新的候选正文。"
+        ],
+        "swipeIndex": 1,
+        "content": "新的候选正文。"
+      }
+    },
+    {
+      "target": {
+        "content": "初版正文。",
+        "swipes": null,
+        "swipeIndex": null
+      },
+      "newContent": "新的候选正文。",
+      "result": {
+        "swipes": [
+          "初版正文。",
+          "新的候选正文。"
+        ],
+        "swipeIndex": 1,
+        "content": "新的候选正文。"
+      }
+    },
+    {
+      "target": {
+        "content": "第二版。",
+        "swipes": [
+          "初版正文。",
+          "第二版。"
+        ],
+        "swipeIndex": 1
+      },
+      "newContent": "新的候选正文。",
+      "result": {
+        "swipes": [
+          "初版正文。",
+          "第二版。",
+          "新的候选正文。"
+        ],
+        "swipeIndex": 2,
+        "content": "新的候选正文。"
+      }
+    },
+    {
+      "target": {
+        "content": "初版正文。",
+        "swipes": [
+          "初版正文。",
+          "第二版。"
+        ],
+        "swipeIndex": 0
+      },
+      "newContent": "新的候选正文。",
+      "result": {
+        "swipes": [
+          "初版正文。",
+          "第二版。",
+          "新的候选正文。"
+        ],
+        "swipeIndex": 2,
+        "content": "新的候选正文。"
+      }
+    },
+    {
+      "target": {
+        "content": "越界。",
+        "swipes": [
+          "甲",
+          "乙"
+        ],
+        "swipeIndex": 9
+      },
+      "newContent": "新的候选正文。",
+      "result": {
+        "swipes": [
+          "甲",
+          "乙",
+          "新的候选正文。"
+        ],
+        "swipeIndex": 2,
+        "content": "新的候选正文。"
+      }
+    }
+  ],
+  "rotateCases": [
+    {
+      "target": {
+        "content": "甲",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 0
+      },
+      "direction": 1,
+      "result": {
+        "content": "乙",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 1
+      }
+    },
+    {
+      "target": {
+        "content": "乙",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 1
+      },
+      "direction": 1,
+      "result": {
+        "content": "丙",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 2
+      }
+    },
+    {
+      "target": {
+        "content": "丙",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 2
+      },
+      "direction": 1,
+      "result": {
+        "content": "甲",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 0
+      }
+    },
+    {
+      "target": {
+        "content": "甲",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 0
+      },
+      "direction": -1,
+      "result": {
+        "content": "丙",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 2
+      }
+    },
+    {
+      "target": {
+        "content": "甲",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 0
+      },
+      "direction": 5,
+      "result": {
+        "content": "丙",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 2
+      }
+    },
+    {
+      "target": {
+        "content": "唯一。"
+      },
+      "direction": 1,
+      "result": {
+        "content": "唯一。",
+        "swipes": [
+          "唯一。"
+        ],
+        "swipeIndex": 0
+      }
+    },
+    {
+      "target": {
+        "content": "唯一。",
+        "swipes": [
+          "唯一。"
+        ],
+        "swipeIndex": 0
+      },
+      "direction": -1,
+      "result": {
+        "content": "唯一。",
+        "swipes": [
+          "唯一。"
+        ],
+        "swipeIndex": 0
+      }
+    },
+    {
+      "target": {
+        "content": "越界。",
+        "swipes": [
+          "甲",
+          "乙"
+        ],
+        "swipeIndex": 9
+      },
+      "direction": 1,
+      "result": {
+        "content": "甲",
+        "swipes": [
+          "甲",
+          "乙"
+        ],
+        "swipeIndex": 0
+      }
+    }
+  ],
+  "positionCases": [
+    {
+      "target": {
+        "content": "初版正文。"
+      },
+      "position": {
+        "index": 0,
+        "count": 1
+      }
+    },
+    {
+      "target": {
+        "content": "初版正文。",
+        "swipes": null,
+        "swipeIndex": null
+      },
+      "position": {
+        "index": 0,
+        "count": 1
+      }
+    },
+    {
+      "target": {
+        "content": "第二版。",
+        "swipes": [
+          "初版正文。",
+          "第二版。"
+        ],
+        "swipeIndex": 1
+      },
+      "position": {
+        "index": 1,
+        "count": 2
+      }
+    },
+    {
+      "target": {
+        "content": "初版正文。",
+        "swipes": [
+          "初版正文。",
+          "第二版。"
+        ],
+        "swipeIndex": 0
+      },
+      "position": {
+        "index": 0,
+        "count": 2
+      }
+    },
+    {
+      "target": {
+        "content": "越界。",
+        "swipes": [
+          "甲",
+          "乙"
+        ],
+        "swipeIndex": 9
+      },
+      "position": {
+        "index": 1,
+        "count": 2
+      }
+    },
+    {
+      "target": {
+        "content": "甲",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 0
+      },
+      "position": {
+        "index": 0,
+        "count": 3
+      }
+    },
+    {
+      "target": {
+        "content": "乙",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 1
+      },
+      "position": {
+        "index": 1,
+        "count": 3
+      }
+    },
+    {
+      "target": {
+        "content": "丙",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 2
+      },
+      "position": {
+        "index": 2,
+        "count": 3
+      }
+    },
+    {
+      "target": {
+        "content": "甲",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 0
+      },
+      "position": {
+        "index": 0,
+        "count": 3
+      }
+    },
+    {
+      "target": {
+        "content": "甲",
+        "swipes": [
+          "甲",
+          "乙",
+          "丙"
+        ],
+        "swipeIndex": 0
+      },
+      "position": {
+        "index": 0,
+        "count": 3
+      }
+    },
+    {
+      "target": {
+        "content": "唯一。"
+      },
+      "position": {
+        "index": 0,
+        "count": 1
+      }
+    },
+    {
+      "target": {
+        "content": "唯一。",
+        "swipes": [
+          "唯一。"
+        ],
+        "swipeIndex": 0
+      },
+      "position": {
+        "index": 0,
+        "count": 1
+      }
+    },
+    {
+      "target": {
+        "content": "越界。",
+        "swipes": [
+          "甲",
+          "乙"
+        ],
+        "swipeIndex": 9
+      },
+      "position": {
+        "index": 1,
+        "count": 2
+      }
+    }
+  ]
+}

@@ -95,13 +95,13 @@ export function Toggle({
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+        'toggle-track relative inline-flex h-5 w-9 items-center rounded-full',
         checked ? 'bg-tavern-accent' : 'bg-tavern-bg-hover'
       )}
     >
       <span
         className={cn(
-          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          'toggle-thumb inline-block h-4 w-4 transform rounded-full bg-white shadow',
           checked ? 'translate-x-4' : 'translate-x-0.5'
         )}
       />

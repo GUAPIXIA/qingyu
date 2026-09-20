@@ -1,0 +1,379 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "items": [
+        {
+          "content": "角色之前",
+          "order": 1,
+          "insertion": {
+            "kind": "prompt",
+            "anchor": "before_character"
+          },
+          "key": "a"
+        },
+        {
+          "content": "角色之后",
+          "order": 2,
+          "insertion": {
+            "kind": "prompt",
+            "anchor": "after_character"
+          },
+          "key": "b"
+        },
+        {
+          "content": "示例前",
+          "order": 3,
+          "insertion": {
+            "kind": "prompt",
+            "anchor": "before_examples"
+          },
+          "key": "c"
+        },
+        {
+          "content": "示例后",
+          "order": 4,
+          "insertion": {
+            "kind": "prompt",
+            "anchor": "after_examples"
+          },
+          "key": "d"
+        },
+        {
+          "content": "注释顶",
+          "order": 5,
+          "insertion": {
+            "kind": "prompt",
+            "anchor": "authors_note_top"
+          },
+          "key": "e"
+        },
+        {
+          "content": "注释底",
+          "order": 6,
+          "insertion": {
+            "kind": "prompt",
+            "anchor": "authors_note_bottom"
+          },
+          "key": "f"
+        },
+        {
+          "content": "提示末尾",
+          "order": 7,
+          "insertion": {
+            "kind": "prompt",
+            "anchor": "prompt_end"
+          },
+          "key": "g"
+        }
+      ],
+      "plan": {
+        "beforeCharacter": [
+          "角色之前"
+        ],
+        "afterCharacter": [
+          "角色之后"
+        ],
+        "beforeExamples": [
+          "示例前"
+        ],
+        "afterExamples": [
+          "示例后"
+        ],
+        "authorsNoteTop": [
+          "注释顶"
+        ],
+        "authorsNoteBottom": [
+          "注释底"
+        ],
+        "promptEnd": [
+          "提示末尾"
+        ],
+        "chat": [],
+        "outlets": {},
+        "fallbacks": [],
+        "decisions": [
+          {
+            "key": "a",
+            "status": "exact",
+            "target": "before_character"
+          },
+          {
+            "key": "b",
+            "status": "exact",
+            "target": "after_character"
+          },
+          {
+            "key": "c",
+            "status": "exact",
+            "target": "before_examples"
+          },
+          {
+            "key": "d",
+            "status": "exact",
+            "target": "after_examples"
+          },
+          {
+            "key": "e",
+            "status": "exact",
+            "target": "authors_note_top"
+          },
+          {
+            "key": "f",
+            "status": "exact",
+            "target": "authors_note_bottom"
+          },
+          {
+            "key": "g",
+            "status": "exact",
+            "target": "prompt_end"
+          }
+        ]
+      }
+    },
+    {
+      "items": [
+        {
+          "content": "深度注入",
+          "order": 1,
+          "insertion": {
+            "kind": "chat",
+            "depth": 2,
+            "role": "system"
+          },
+          "key": "deep"
+        },
+        {
+          "content": "默认角色深度注入",
+          "order": 2,
+          "insertion": {
+            "kind": "chat",
+            "depth": 0
+          },
+          "key": "deep2"
+        },
+        {
+          "content": "负数深度钳制",
+          "order": 3,
+          "insertion": {
+            "kind": "chat",
+            "depth": -2.7,
+            "role": "user"
+          },
+          "key": "neg"
+        }
+      ],
+      "plan": {
+        "beforeCharacter": [],
+        "afterCharacter": [],
+        "beforeExamples": [],
+        "afterExamples": [],
+        "authorsNoteTop": [],
+        "authorsNoteBottom": [],
+        "promptEnd": [],
+        "chat": [
+          {
+            "content": "深度注入",
+            "order": 1,
+            "depth": 2,
+            "role": "system"
+          },
+          {
+            "content": "默认角色深度注入",
+            "order": 2,
+            "depth": 0
+          },
+          {
+            "content": "负数深度钳制",
+            "order": 3,
+            "depth": 0,
+            "role": "user"
+          }
+        ],
+        "outlets": {},
+        "fallbacks": [],
+        "decisions": [
+          {
+            "key": "deep",
+            "status": "exact",
+            "target": "chat:2"
+          },
+          {
+            "key": "deep2",
+            "status": "exact",
+            "target": "chat:0"
+          },
+          {
+            "key": "neg",
+            "status": "exact",
+            "target": "chat:0"
+          }
+        ]
+      }
+    },
+    {
+      "items": [
+        {
+          "content": "命名出口",
+          "order": 1,
+          "insertion": {
+            "kind": "outlet",
+            "name": "sidebar"
+          },
+          "key": "o1"
+        },
+        {
+          "content": "空名出口",
+          "order": 2,
+          "insertion": {
+            "kind": "outlet",
+            "name": "   "
+          },
+          "key": "o2"
+        },
+        {
+          "content": "同名出口追加",
+          "order": 3,
+          "insertion": {
+            "kind": "outlet",
+            "name": "sidebar"
+          },
+          "key": "o3"
+        }
+      ],
+      "plan": {
+        "beforeCharacter": [],
+        "afterCharacter": [],
+        "beforeExamples": [],
+        "afterExamples": [],
+        "authorsNoteTop": [],
+        "authorsNoteBottom": [],
+        "promptEnd": [
+          "命名出口",
+          "空名出口",
+          "同名出口追加"
+        ],
+        "chat": [],
+        "outlets": {
+          "sidebar": [
+            "命名出口",
+            "同名出口追加"
+          ],
+          "default": [
+            "空名出口"
+          ]
+        },
+        "fallbacks": [
+          {
+            "key": "o1",
+            "source": "outlet",
+            "target": "outlet:sidebar",
+            "reason": "当前聊天协议没有命名 outlet「sidebar」，已回退到 prompt_end"
+          },
+          {
+            "key": "o2",
+            "source": "outlet",
+            "target": "outlet:default",
+            "reason": "当前聊天协议没有命名 outlet「default」，已回退到 prompt_end"
+          },
+          {
+            "key": "o3",
+            "source": "outlet",
+            "target": "outlet:sidebar",
+            "reason": "当前聊天协议没有命名 outlet「sidebar」，已回退到 prompt_end"
+          }
+        ],
+        "decisions": [
+          {
+            "key": "o1",
+            "status": "fallback",
+            "target": "outlet:sidebar → prompt_end",
+            "reason": "当前聊天协议没有命名 outlet「sidebar」，已回退到 prompt_end"
+          },
+          {
+            "key": "o2",
+            "status": "fallback",
+            "target": "outlet:default → prompt_end",
+            "reason": "当前聊天协议没有命名 outlet「default」，已回退到 prompt_end"
+          },
+          {
+            "key": "o3",
+            "status": "fallback",
+            "target": "outlet:sidebar → prompt_end",
+            "reason": "当前聊天协议没有命名 outlet「sidebar」，已回退到 prompt_end"
+          }
+        ]
+      }
+    },
+    {
+      "items": [
+        {
+          "content": "自定义插入",
+          "order": 1,
+          "insertion": {
+            "kind": "custom",
+            "source": "plugin-x",
+            "value": {
+              "a": 1,
+              "b": [
+                "x"
+              ]
+            }
+          },
+          "key": "c1"
+        }
+      ],
+      "plan": {
+        "beforeCharacter": [],
+        "afterCharacter": [],
+        "beforeExamples": [],
+        "afterExamples": [],
+        "authorsNoteTop": [],
+        "authorsNoteBottom": [],
+        "promptEnd": [
+          "自定义插入"
+        ],
+        "chat": [],
+        "outlets": {},
+        "fallbacks": [
+          {
+            "key": "c1",
+            "source": "custom",
+            "target": "plugin-x",
+            "value": {
+              "a": 1,
+              "b": [
+                "x"
+              ]
+            },
+            "reason": "当前 renderer 不认识 plugin-x 的 custom insertion，已回退到 prompt_end"
+          }
+        ],
+        "decisions": [
+          {
+            "key": "c1",
+            "status": "fallback",
+            "target": "plugin-x → prompt_end",
+            "reason": "当前 renderer 不认识 plugin-x 的 custom insertion，已回退到 prompt_end"
+          }
+        ]
+      }
+    },
+    {
+      "items": [],
+      "plan": {
+        "beforeCharacter": [],
+        "afterCharacter": [],
+        "beforeExamples": [],
+        "afterExamples": [],
+        "authorsNoteTop": [],
+        "authorsNoteBottom": [],
+        "promptEnd": [],
+        "chat": [],
+        "outlets": {},
+        "fallbacks": [],
+        "decisions": []
+      }
+    }
+  ]
+}

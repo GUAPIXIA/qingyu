@@ -1,0 +1,535 @@
+{
+  "version": 1,
+  "constants": {
+    "defaultSimilarityThreshold": 0.3,
+    "remoteIndexChunkChars": 4000
+  },
+  "localProfiles": {
+    "bge-small-zh-v1.5@1.0.0": {
+      "similarityThreshold": 0.3
+    },
+    "multilingual-e5-small@1.0.0": {
+      "similarityThreshold": 0.8
+    }
+  },
+  "factHitCases": [
+    {
+      "hits": [],
+      "facts": [],
+      "mapped": []
+    },
+    {
+      "hits": [
+        {
+          "id": "0",
+          "score": 0.9
+        }
+      ],
+      "facts": [
+        "甲事实"
+      ],
+      "mapped": [
+        {
+          "text": "甲事实",
+          "index": 0,
+          "score": 0.9
+        }
+      ]
+    },
+    {
+      "hits": [
+        {
+          "id": "5",
+          "score": 0.9
+        }
+      ],
+      "facts": [
+        "甲事实"
+      ],
+      "mapped": []
+    },
+    {
+      "hits": [
+        {
+          "id": "abc",
+          "score": 0.9
+        }
+      ],
+      "facts": [
+        "甲事实"
+      ],
+      "mapped": []
+    },
+    {
+      "hits": [
+        {
+          "id": "-1",
+          "score": 0.9
+        }
+      ],
+      "facts": [
+        "甲事实"
+      ],
+      "mapped": []
+    },
+    {
+      "hits": [
+        {
+          "id": " 1 ",
+          "score": 0.5
+        }
+      ],
+      "facts": [
+        "甲事实",
+        "乙事实"
+      ],
+      "mapped": [
+        {
+          "text": "乙事实",
+          "index": 1,
+          "score": 0.5
+        }
+      ]
+    },
+    {
+      "hits": [
+        {
+          "id": "0",
+          "score": 0.5
+        },
+        {
+          "id": "1",
+          "score": 0.4
+        }
+      ],
+      "facts": [
+        "",
+        "乙事实"
+      ],
+      "mapped": [
+        {
+          "text": "乙事实",
+          "index": 1,
+          "score": 0.4
+        }
+      ]
+    },
+    {
+      "hits": [
+        {
+          "id": "2",
+          "score": 0.1
+        },
+        {
+          "id": "0",
+          "score": 0.9
+        }
+      ],
+      "facts": [
+        "甲",
+        "乙",
+        "丙"
+      ],
+      "mapped": [
+        {
+          "text": "丙",
+          "index": 2,
+          "score": 0.1
+        },
+        {
+          "text": "甲",
+          "index": 0,
+          "score": 0.9
+        }
+      ]
+    }
+  ],
+  "vectorSpaceCases": [
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small"
+      },
+      "space": {
+        "provider": "openai",
+        "model": "text-embedding-3-small"
+      }
+    },
+    {
+      "config": {
+        "provider": "ollama",
+        "model": "nomic-embed-text"
+      },
+      "space": {
+        "provider": "ollama",
+        "model": "nomic-embed-text"
+      }
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5@1.0.0"
+      },
+      "space": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5@1.0.0",
+        "modelId": "bge-small-zh-v1.5",
+        "modelVersion": "1.0.0"
+      }
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "multilingual-e5-small@1.0.0"
+      },
+      "space": {
+        "provider": "local",
+        "model": "multilingual-e5-small@1.0.0",
+        "modelId": "multilingual-e5-small",
+        "modelVersion": "1.0.0"
+      }
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "weird"
+      },
+      "space": {
+        "provider": "local",
+        "model": "weird",
+        "modelId": "weir",
+        "modelVersion": "weird"
+      }
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "a"
+      },
+      "space": {
+        "provider": "local",
+        "model": "a",
+        "modelId": "",
+        "modelVersion": "a"
+      }
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "name@scope@1.2.3"
+      },
+      "space": {
+        "provider": "local",
+        "model": "name@scope@1.2.3",
+        "modelId": "name@scope",
+        "modelVersion": "1.2.3"
+      }
+    }
+  ],
+  "indexCompatCases": [
+    {
+      "index": {
+        "model": "text-embedding-3-small",
+        "provider": "openai"
+      },
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small"
+      },
+      "compatible": true
+    },
+    {
+      "index": {
+        "model": "a",
+        "provider": "openai"
+      },
+      "config": {
+        "provider": "openai",
+        "model": "b"
+      },
+      "compatible": false
+    },
+    {
+      "index": {
+        "model": " a ",
+        "provider": "openai"
+      },
+      "config": {
+        "provider": "openai",
+        "model": "a"
+      },
+      "compatible": true
+    },
+    {
+      "index": {
+        "model": "a",
+        "provider": "openai"
+      },
+      "config": {
+        "provider": "ollama",
+        "model": "a"
+      },
+      "compatible": false
+    },
+    {
+      "index": {
+        "model": "a"
+      },
+      "config": {
+        "provider": "ollama",
+        "model": "a"
+      },
+      "compatible": true
+    },
+    {
+      "index": {
+        "model": "bge-small-zh-v1.5@1.0.0",
+        "provider": "local",
+        "modelId": "bge-small-zh-v1.5",
+        "modelVersion": "1.0.0"
+      },
+      "config": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5@1.0.0"
+      },
+      "compatible": true
+    },
+    {
+      "index": {
+        "model": "bge-small-zh-v1.5@1.0.0",
+        "provider": "local",
+        "modelId": "bge-small-zh-v1.5",
+        "modelVersion": "0.9.0"
+      },
+      "config": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5@1.0.0"
+      },
+      "compatible": false
+    },
+    {
+      "index": {
+        "model": "bge-small-zh-v1.5@1.0.0",
+        "provider": "local",
+        "modelId": "other",
+        "modelVersion": "1.0.0"
+      },
+      "config": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5@1.0.0"
+      },
+      "compatible": false
+    }
+  ],
+  "thresholdCases": [
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small"
+      },
+      "requested": null,
+      "threshold": 0.3
+    },
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small"
+      },
+      "requested": 0.75,
+      "threshold": 0.75
+    },
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small"
+      },
+      "requested": 0,
+      "threshold": 0
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5@1.0.0"
+      },
+      "requested": null,
+      "threshold": 0.3
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "multilingual-e5-small@1.0.0"
+      },
+      "requested": null,
+      "threshold": 0.8
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "unknown@1.0.0"
+      },
+      "requested": null,
+      "threshold": 0.3
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5@1.0.0"
+      },
+      "requested": 0.1,
+      "threshold": 0.1
+    }
+  ],
+  "configuredCases": [
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "sk-x"
+      },
+      "configured": true
+    },
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small",
+        "baseUrl": "https://api.openai.com/v1"
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "   "
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small",
+        "apiKey": "sk-x"
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "openai",
+        "model": "text-embedding-3-small",
+        "baseUrl": "  ",
+        "apiKey": "sk-x"
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "openai",
+        "model": "  ",
+        "baseUrl": "https://x/v1",
+        "apiKey": "sk-x"
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "ollama",
+        "model": "nomic-embed-text",
+        "baseUrl": "http://127.0.0.1:11434"
+      },
+      "configured": true
+    },
+    {
+      "config": {
+        "provider": "ollama",
+        "model": "nomic-embed-text"
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5@1.0.0"
+      },
+      "configured": true
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "bge-small-zh-v1.5"
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "BGE@1.0.0"
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "ab@1.0.0"
+      },
+      "configured": true
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "bge@1.0"
+      },
+      "configured": false
+    },
+    {
+      "config": {
+        "provider": "local",
+        "model": "bge@1.0.0-rc.1"
+      },
+      "configured": true
+    }
+  ],
+  "semanticEligibleCases": [
+    {
+      "priority": null,
+      "matchMode": null,
+      "eligible": true
+    },
+    {
+      "priority": null,
+      "matchMode": "semantic",
+      "eligible": true
+    },
+    {
+      "priority": null,
+      "matchMode": "both",
+      "eligible": true
+    },
+    {
+      "priority": null,
+      "matchMode": "keyword",
+      "eligible": false
+    },
+    {
+      "priority": "always",
+      "matchMode": null,
+      "eligible": false
+    },
+    {
+      "priority": "always",
+      "matchMode": "semantic",
+      "eligible": false
+    },
+    {
+      "priority": "detail",
+      "matchMode": "semantic",
+      "eligible": true
+    },
+    {
+      "priority": "conditional",
+      "matchMode": "keyword",
+      "eligible": false
+    }
+  ]
+}

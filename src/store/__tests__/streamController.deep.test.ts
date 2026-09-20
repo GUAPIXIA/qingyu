@@ -104,6 +104,7 @@ vi.mock('../chatConstants', () => ({
 }))
 
 vi.mock('../chatUtils', () => ({
+  buildLorebookRevisionCorpus: vi.fn((ids: string[]) => ids.sort().map((id) => `${id}@0`).join(',')),
   buildSemanticCacheKey: vi.fn(() => 'semantic-cache-key'),
   friendlyError: vi.fn((e: string) => e),
   semanticCacheGet: vi.fn(() => null),

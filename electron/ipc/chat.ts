@@ -2,7 +2,7 @@ import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, renameSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { DIRS, readJson, withFileLock, serializeJson } from '../services/storage'
-import { escapeMarkdownContent } from '../utils/markdown'
+import { exportSessionJson, exportSessionMarkdown } from '../../shared/chat-core/sessionExport'
 import { getDefaultSettings } from '../../shared/defaults'
 import { createLogger } from '../services/logger'
 import type { Message, ChatSession, SessionPreview, Character, NarrativeMode } from '../../shared/types'
@@ -1024,25 +1024,12 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     safeId(characterId)
     safeId(sessionId)
     const messages = readMessages(characterId, sessionId)
+    // 导出逻辑已抽到 shared/chat-core/sessionExport.ts：Android 侧消费**同一份**实现，
+    // 保证同一会话在两端导出得到同一个文件（阶段 4 S4-04）。
     if (format === 'json') {
-      return JSON.stringify(messages, null, 2)
+      return exportSessionJson(messages as unknown as Array<Record<string, unknown>>)
     }
-    // Markdown 格式（含图片）
-    // 修复：对话内容转义 Markdown 特殊字符，防止内容中的 # 标题 / *斜体* / `代码` / ![图片] 破坏导出格式
-    let md = `# 对话记录\n\n`
-    for (const msg of messages) {
-      const role = msg.role === 'user' ? '🧑 用户' : msg.role === 'assistant' ? '🎭 AI' : '系统'
-      const time = new Date(msg.timestamp).toLocaleString('zh-CN')
-      md += `### ${role} · ${time}\n\n`
-      // 插入图片（base64 data URI，不转义以保留图片语法）
-      if (msg.images && msg.images.length > 0) {
-        for (const img of msg.images) {
-          md += `![图片](${img})\n\n`
-        }
-      }
-      md += `${escapeMarkdownContent(msg.content)}\n\n---\n\n`
-    }
-    return md
+    return exportSessionMarkdown(messages)
   })
 
   // ===== 长记忆 =====

@@ -23,6 +23,13 @@ export interface GenerationOutcomeNoticeInput {
   repairFailed?: boolean
 }
 
+const LEGACY_PASSIVE_TRIM_NOTICE = '内容已在完整句处收束'
+
+/** 普通句界收束属于内部完成细节，不再作为用户提示；兼容过滤历史已落盘值。 */
+export function shouldDisplayGenerationNotice(notice?: string): boolean {
+  return !!notice && notice !== LEGACY_PASSIVE_TRIM_NOTICE
+}
+
 /** 把收尾元数据映射为消息提示字段——"已恢复"走中性提示，失败走 generationError */
 export function finalizeNoticeFields(
   meta: GenerationOutcomeNoticeInput,
@@ -33,7 +40,7 @@ export function finalizeNoticeFields(
   if (meta.notice === 'trimmed_to_boundary') {
     return meta.finishReason === 'network_error'
       ? { generationNotice: '生成中断，已在完整句处收束' }
-      : { generationNotice: '内容已在完整句处收束' }
+      : {}
   }
   if (meta.notice === 'partial_network_output') return { generationNotice: '生成中断，已保留完整部分' }
   return {}

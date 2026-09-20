@@ -1,0 +1,1336 @@
+{
+  "version": 1,
+  "constants": {
+    "timelineTargetChunkTokens": 90,
+    "timelineMaxChunkTokens": 180,
+    "timelineMaxChunks": 48,
+    "stateScores": {
+      "relevance": 0.9,
+      "recency": 1,
+      "importance": 0.9,
+      "continuity": 0.9
+    },
+    "timelineRelevance": 0.6,
+    "timelineImportance": 0.6,
+    "factContinuity": 0.4
+  },
+  "splitCases": [
+    {
+      "timeline": null,
+      "chunks": []
+    },
+    {
+      "timeline": "",
+      "chunks": []
+    },
+    {
+      "timeline": "   ",
+      "chunks": []
+    },
+    {
+      "timeline": "单行事件",
+      "chunks": [
+        {
+          "id": "memory:timeline:0",
+          "index": 0,
+          "text": "单行事件",
+          "tokens": 4
+        }
+      ]
+    },
+    {
+      "timeline": "事件一\n事件二\n事件三",
+      "chunks": [
+        {
+          "id": "memory:timeline:0",
+          "index": 0,
+          "text": "事件一\n事件二\n事件三",
+          "tokens": 9
+        }
+      ]
+    },
+    {
+      "timeline": "  事件一  \n\n  事件二  ",
+      "chunks": [
+        {
+          "id": "memory:timeline:0",
+          "index": 0,
+          "text": "事件一\n事件二",
+          "tokens": 6
+        }
+      ]
+    },
+    {
+      "timeline": "事件一\r\n事件二",
+      "chunks": [
+        {
+          "id": "memory:timeline:0",
+          "index": 0,
+          "text": "事件一\n事件二",
+          "tokens": 6
+        }
+      ]
+    },
+    {
+      "timeline": "他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。",
+      "chunks": [
+        {
+          "id": "memory:timeline:0",
+          "index": 0,
+          "text": "他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。",
+          "tokens": 82
+        },
+        {
+          "id": "memory:timeline:1",
+          "index": 1,
+          "text": "她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。",
+          "tokens": 73
+        },
+        {
+          "id": "memory:timeline:2",
+          "index": 2,
+          "text": "他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。",
+          "tokens": 82
+        },
+        {
+          "id": "memory:timeline:3",
+          "index": 3,
+          "text": "她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。",
+          "tokens": 73
+        },
+        {
+          "id": "memory:timeline:4",
+          "index": 4,
+          "text": "他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。",
+          "tokens": 82
+        },
+        {
+          "id": "memory:timeline:5",
+          "index": 5,
+          "text": "她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。",
+          "tokens": 73
+        },
+        {
+          "id": "memory:timeline:6",
+          "index": 6,
+          "text": "他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。",
+          "tokens": 82
+        },
+        {
+          "id": "memory:timeline:7",
+          "index": 7,
+          "text": "她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。",
+          "tokens": 73
+        },
+        {
+          "id": "memory:timeline:8",
+          "index": 8,
+          "text": "他在旧书店里翻到一本没有书名的册子。她把它推回原处。他在旧书店里翻到一本没有书名的册子。她把它推回原处。",
+          "tokens": 45
+        }
+      ]
+    },
+    {
+      "timeline": "第1件小事\n第2件小事\n第3件小事\n第4件小事\n第5件小事\n第6件小事\n第7件小事\n第8件小事\n第9件小事\n第10件小事\n第11件小事\n第12件小事\n第13件小事\n第14件小事\n第15件小事\n第16件小事\n第17件小事\n第18件小事\n第19件小事\n第20件小事\n第21件小事\n第22件小事\n第23件小事\n第24件小事\n第25件小事\n第26件小事\n第27件小事\n第28件小事\n第29件小事\n第30件小事\n第31件小事\n第32件小事\n第33件小事\n第34件小事\n第35件小事\n第36件小事\n第37件小事\n第38件小事\n第39件小事\n第40件小事\n第41件小事\n第42件小事\n第43件小事\n第44件小事\n第45件小事\n第46件小事\n第47件小事\n第48件小事\n第49件小事\n第50件小事\n第51件小事\n第52件小事\n第53件小事\n第54件小事\n第55件小事\n第56件小事\n第57件小事\n第58件小事\n第59件小事\n第60件小事",
+      "chunks": [
+        {
+          "id": "memory:timeline:0",
+          "index": 0,
+          "text": "第1件小事\n第2件小事\n第3件小事\n第4件小事\n第5件小事\n第6件小事\n第7件小事\n第8件小事\n第9件小事\n第10件小事\n第11件小事\n第12件小事\n第13件小事\n第14件小事\n第15件小事\n第16件小事\n第17件小事\n第18件小事\n第19件小事",
+          "tokens": 82
+        },
+        {
+          "id": "memory:timeline:1",
+          "index": 1,
+          "text": "第20件小事\n第21件小事\n第22件小事\n第23件小事\n第24件小事\n第25件小事\n第26件小事\n第27件小事\n第28件小事\n第29件小事\n第30件小事\n第31件小事\n第32件小事\n第33件小事\n第34件小事\n第35件小事\n第36件小事\n第37件小事",
+          "tokens": 80
+        },
+        {
+          "id": "memory:timeline:2",
+          "index": 2,
+          "text": "第38件小事\n第39件小事\n第40件小事\n第41件小事\n第42件小事\n第43件小事\n第44件小事\n第45件小事\n第46件小事\n第47件小事\n第48件小事\n第49件小事\n第50件小事\n第51件小事\n第52件小事\n第53件小事\n第54件小事\n第55件小事",
+          "tokens": 80
+        },
+        {
+          "id": "memory:timeline:3",
+          "index": 3,
+          "text": "第56件小事\n第57件小事\n第58件小事\n第59件小事\n第60件小事",
+          "tokens": 22
+        }
+      ]
+    }
+  ],
+  "buildCases": [
+    {
+      "caseIndex": 0,
+      "input": {
+        "currentState": "深夜的旧书店，灯还亮着",
+        "timeline": null,
+        "facts": [],
+        "semanticScores": null,
+        "model": null
+      },
+      "retrievalMode": "fallback",
+      "described": {
+        "stateTokens": 10,
+        "factCount": 0,
+        "factTokens": 0,
+        "timelineChunkCount": 0,
+        "timelineTokens": 0,
+        "totalTokens": 10
+      },
+      "layerByCandidateId": {
+        "memory:current-state": "current-state"
+      },
+      "candidates": [
+        {
+          "id": "memory:current-state",
+          "kind": "current-state",
+          "estimatedTokens": 10,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.9,
+          "recency": 1,
+          "importance": 0.9,
+          "continuity": 0.9,
+          "dedupeKey": "memory:state",
+          "originalOrder": 0,
+          "origin": "memory:state"
+        }
+      ]
+    },
+    {
+      "caseIndex": 1,
+      "input": {
+        "currentState": null,
+        "timeline": "她送走了最后一位客人\n然后开始整理书架",
+        "facts": [],
+        "semanticScores": null,
+        "model": null
+      },
+      "retrievalMode": "fallback",
+      "described": {
+        "stateTokens": 0,
+        "factCount": 0,
+        "factTokens": 0,
+        "timelineChunkCount": 1,
+        "timelineTokens": 17,
+        "totalTokens": 17
+      },
+      "layerByCandidateId": {
+        "memory:timeline:0": "timeline"
+      },
+      "candidates": [
+        {
+          "id": "memory:timeline:0",
+          "kind": "memory",
+          "estimatedTokens": 17,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.6,
+          "recency": 1,
+          "importance": 0.6,
+          "continuity": 0.7,
+          "dedupeKey": "timeline:0",
+          "originalOrder": 0,
+          "origin": "memory:timeline"
+        }
+      ]
+    },
+    {
+      "caseIndex": 2,
+      "input": {
+        "currentState": "",
+        "timeline": "   ",
+        "facts": [],
+        "semanticScores": null,
+        "model": null
+      },
+      "retrievalMode": "fallback",
+      "described": {
+        "stateTokens": 0,
+        "factCount": 0,
+        "factTokens": 0,
+        "timelineChunkCount": 0,
+        "timelineTokens": 0,
+        "totalTokens": 0
+      },
+      "layerByCandidateId": {},
+      "candidates": []
+    },
+    {
+      "caseIndex": 3,
+      "input": {
+        "currentState": "状态",
+        "timeline": "事件一\n事件二",
+        "facts": [
+          {
+            "text": "苏晚的职业：书店店主"
+          },
+          {
+            "text": "苏晚的喜好：旧书"
+          }
+        ],
+        "semanticScores": null,
+        "model": null
+      },
+      "retrievalMode": "fallback",
+      "described": {
+        "stateTokens": 2,
+        "factCount": 2,
+        "factTokens": 16,
+        "timelineChunkCount": 1,
+        "timelineTokens": 6,
+        "totalTokens": 24
+      },
+      "layerByCandidateId": {
+        "memory:current-state": "current-state",
+        "memory:fact:legacy-0": "fact",
+        "memory:fact:legacy-1": "fact",
+        "memory:timeline:0": "timeline"
+      },
+      "candidates": [
+        {
+          "id": "memory:current-state",
+          "kind": "current-state",
+          "estimatedTokens": 2,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.9,
+          "recency": 1,
+          "importance": 0.9,
+          "continuity": 0.9,
+          "dedupeKey": "memory:state",
+          "originalOrder": 0,
+          "origin": "memory:state"
+        },
+        {
+          "id": "memory:fact:legacy-0",
+          "kind": "memory",
+          "estimatedTokens": 9,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.59,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-0",
+          "originalOrder": 1,
+          "origin": "memory:fact:fallback"
+        },
+        {
+          "id": "memory:fact:legacy-1",
+          "kind": "memory",
+          "estimatedTokens": 7,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.59,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-1",
+          "originalOrder": 2,
+          "origin": "memory:fact:fallback"
+        },
+        {
+          "id": "memory:timeline:0",
+          "kind": "memory",
+          "estimatedTokens": 6,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.6,
+          "recency": 1,
+          "importance": 0.6,
+          "continuity": 0.7,
+          "dedupeKey": "timeline:0",
+          "originalOrder": 3,
+          "origin": "memory:timeline"
+        }
+      ]
+    },
+    {
+      "caseIndex": 4,
+      "input": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9,
+          0.1
+        ],
+        "model": null
+      },
+      "retrievalMode": "semantic",
+      "described": {
+        "stateTokens": 0,
+        "factCount": 2,
+        "factTokens": 6,
+        "timelineChunkCount": 0,
+        "timelineTokens": 0,
+        "totalTokens": 6
+      },
+      "layerByCandidateId": {
+        "memory:fact:legacy-0": "fact",
+        "memory:fact:legacy-1": "fact"
+      },
+      "candidates": [
+        {
+          "id": "memory:fact:legacy-0",
+          "kind": "memory",
+          "estimatedTokens": 3,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.78,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-0",
+          "originalOrder": 0,
+          "origin": "memory:fact:semantic"
+        },
+        {
+          "id": "memory:fact:legacy-1",
+          "kind": "memory",
+          "estimatedTokens": 3,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.21999999999999997,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-1",
+          "originalOrder": 1,
+          "origin": "memory:fact:semantic"
+        }
+      ]
+    },
+    {
+      "caseIndex": 5,
+      "input": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0,
+          0
+        ],
+        "model": null
+      },
+      "retrievalMode": "fallback",
+      "described": {
+        "stateTokens": 0,
+        "factCount": 2,
+        "factTokens": 6,
+        "timelineChunkCount": 0,
+        "timelineTokens": 0,
+        "totalTokens": 6
+      },
+      "layerByCandidateId": {
+        "memory:fact:legacy-0": "fact",
+        "memory:fact:legacy-1": "fact"
+      },
+      "candidates": [
+        {
+          "id": "memory:fact:legacy-0",
+          "kind": "memory",
+          "estimatedTokens": 3,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.59,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-0",
+          "originalOrder": 0,
+          "origin": "memory:fact:fallback"
+        },
+        {
+          "id": "memory:fact:legacy-1",
+          "kind": "memory",
+          "estimatedTokens": 3,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.59,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-1",
+          "originalOrder": 1,
+          "origin": "memory:fact:fallback"
+        }
+      ]
+    },
+    {
+      "caseIndex": 6,
+      "input": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9
+        ],
+        "model": null
+      },
+      "retrievalMode": "fallback",
+      "described": {
+        "stateTokens": 0,
+        "factCount": 2,
+        "factTokens": 6,
+        "timelineChunkCount": 0,
+        "timelineTokens": 0,
+        "totalTokens": 6
+      },
+      "layerByCandidateId": {
+        "memory:fact:legacy-0": "fact",
+        "memory:fact:legacy-1": "fact"
+      },
+      "candidates": [
+        {
+          "id": "memory:fact:legacy-0",
+          "kind": "memory",
+          "estimatedTokens": 3,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.59,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-0",
+          "originalOrder": 0,
+          "origin": "memory:fact:fallback"
+        },
+        {
+          "id": "memory:fact:legacy-1",
+          "kind": "memory",
+          "estimatedTokens": 3,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.59,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-1",
+          "originalOrder": 1,
+          "origin": "memory:fact:fallback"
+        }
+      ]
+    },
+    {
+      "caseIndex": 7,
+      "input": {
+        "currentState": "状态",
+        "timeline": null,
+        "facts": [
+          {
+            "text": "没有冒号分隔的旧事实"
+          }
+        ],
+        "semanticScores": null,
+        "model": null
+      },
+      "retrievalMode": "fallback",
+      "described": {
+        "stateTokens": 2,
+        "factCount": 1,
+        "factTokens": 9,
+        "timelineChunkCount": 0,
+        "timelineTokens": 0,
+        "totalTokens": 11
+      },
+      "layerByCandidateId": {
+        "memory:current-state": "current-state",
+        "memory:fact:legacy-0": "fact"
+      },
+      "candidates": [
+        {
+          "id": "memory:current-state",
+          "kind": "current-state",
+          "estimatedTokens": 2,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.9,
+          "recency": 1,
+          "importance": 0.9,
+          "continuity": 0.9,
+          "dedupeKey": "memory:state",
+          "originalOrder": 0,
+          "origin": "memory:state"
+        },
+        {
+          "id": "memory:fact:legacy-0",
+          "kind": "memory",
+          "estimatedTokens": 9,
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.59,
+          "recency": 0.5,
+          "importance": 0.6,
+          "continuity": 0.4,
+          "dedupeKey": "fact:legacy-0",
+          "originalOrder": 1,
+          "origin": "memory:fact:fallback"
+        }
+      ]
+    }
+  ],
+  "selectCases": [
+    {
+      "caseIndex": 0,
+      "build": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9,
+          0.1
+        ],
+        "model": null
+      },
+      "budgetTokens": 1000,
+      "competitors": [],
+      "selection": {
+        "budgetTokens": 1000,
+        "selectedTokens": 6,
+        "byLayer": {
+          "current-state": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          },
+          "fact": {
+            "selected": {
+              "count": 2,
+              "tokens": 6
+            },
+            "dropped": 0
+          },
+          "timeline": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          }
+        },
+        "overBudget": false,
+        "competitor": {
+          "describedTokens": 0,
+          "selectedTokens": 0,
+          "deltaTokens": 0
+        }
+      }
+    },
+    {
+      "caseIndex": 1,
+      "build": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9,
+          0.1
+        ],
+        "model": null
+      },
+      "budgetTokens": 20,
+      "competitors": [],
+      "selection": {
+        "budgetTokens": 20,
+        "selectedTokens": 6,
+        "byLayer": {
+          "current-state": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          },
+          "fact": {
+            "selected": {
+              "count": 2,
+              "tokens": 6
+            },
+            "dropped": 0
+          },
+          "timeline": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          }
+        },
+        "overBudget": false,
+        "competitor": {
+          "describedTokens": 0,
+          "selectedTokens": 0,
+          "deltaTokens": 0
+        }
+      }
+    },
+    {
+      "caseIndex": 2,
+      "build": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9,
+          0.1
+        ],
+        "model": null
+      },
+      "budgetTokens": 0,
+      "competitors": [],
+      "selection": {
+        "budgetTokens": 0,
+        "selectedTokens": 0,
+        "byLayer": {
+          "current-state": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          },
+          "fact": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 2
+          },
+          "timeline": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          }
+        },
+        "overBudget": false,
+        "competitor": {
+          "describedTokens": 0,
+          "selectedTokens": 0,
+          "deltaTokens": 0
+        }
+      }
+    },
+    {
+      "caseIndex": 3,
+      "build": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9,
+          0.1
+        ],
+        "model": null
+      },
+      "budgetTokens": 120,
+      "competitors": [
+        {
+          "mandatory": true,
+          "stablePrefix": false,
+          "relevance": 0,
+          "recency": 0,
+          "importance": 1,
+          "continuity": 0,
+          "id": "character:core",
+          "kind": "character",
+          "estimatedTokens": 100,
+          "originalOrder": 0
+        }
+      ],
+      "selection": {
+        "budgetTokens": 120,
+        "selectedTokens": 6,
+        "byLayer": {
+          "current-state": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          },
+          "fact": {
+            "selected": {
+              "count": 2,
+              "tokens": 6
+            },
+            "dropped": 0
+          },
+          "timeline": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          }
+        },
+        "overBudget": false,
+        "competitor": {
+          "describedTokens": 100,
+          "selectedTokens": 100,
+          "deltaTokens": 0
+        }
+      }
+    },
+    {
+      "caseIndex": 4,
+      "build": {
+        "currentState": "",
+        "timeline": "   ",
+        "facts": [],
+        "semanticScores": null,
+        "model": null
+      },
+      "budgetTokens": 100,
+      "competitors": [],
+      "selection": {
+        "budgetTokens": 100,
+        "selectedTokens": 0,
+        "byLayer": {
+          "current-state": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          },
+          "fact": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          },
+          "timeline": {
+            "selected": {
+              "count": 0,
+              "tokens": 0
+            },
+            "dropped": 0
+          }
+        },
+        "overBudget": false,
+        "competitor": {
+          "describedTokens": 0,
+          "selectedTokens": 0,
+          "deltaTokens": 0
+        }
+      }
+    }
+  ],
+  "shadowCases": [
+    {
+      "caseIndex": 0,
+      "build": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9,
+          0.1
+        ],
+        "model": null
+      },
+      "existing": {
+        "capTokens": 800,
+        "stateTokens": 0,
+        "factCount": 2,
+        "factTokens": 20,
+        "timelineChunkCount": 0,
+        "timelineTokens": 0,
+        "totalTokens": 20,
+        "retrievalMode": "semantic"
+      },
+      "budgetTokens": 500,
+      "competitors": [],
+      "report": {
+        "mode": "memory-shadow",
+        "budgetTokens": 500,
+        "legacyCapTokens": 800,
+        "retrievalMode": "semantic",
+        "existing": {
+          "capTokens": 800,
+          "stateTokens": 0,
+          "factCount": 2,
+          "factTokens": 20,
+          "timelineChunkCount": 0,
+          "timelineTokens": 0,
+          "totalTokens": 20,
+          "retrievalMode": "semantic"
+        },
+        "candidate": {
+          "stateTokens": 0,
+          "factCount": 2,
+          "factTokens": 6,
+          "timelineChunkCount": 0,
+          "timelineTokens": 0,
+          "totalTokens": 6,
+          "retrievalMode": "semantic",
+          "droppedFactCount": 0,
+          "droppedTimelineChunkCount": 0,
+          "overBudget": false
+        },
+        "deltaTokens": -14,
+        "exceedsLegacyCap": false,
+        "competitor": {
+          "describedTokens": 0,
+          "selectedTokens": 0,
+          "deltaTokens": 0
+        },
+        "byLayer": [
+          {
+            "layer": "current-state",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          },
+          {
+            "layer": "fact",
+            "existingCount": 2,
+            "existingTokens": 20,
+            "candidateCount": 2,
+            "candidateTokens": 6,
+            "candidateDroppedCount": 0
+          },
+          {
+            "layer": "timeline",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=memory-shadow budget=500 cap=800 existing=20 candidate=6 delta=-14 exceedsCap=0 droppedFacts=0 droppedTimeline=0 retrieval=semantic degraded=0 layers=current-state:0->0/0->0,fact:20->6/2->2,timeline:0->0/0->0"
+    },
+    {
+      "caseIndex": 1,
+      "build": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0,
+          0
+        ],
+        "model": null
+      },
+      "existing": {
+        "capTokens": 400,
+        "stateTokens": 10,
+        "factCount": 1,
+        "factTokens": 6,
+        "timelineChunkCount": 2,
+        "timelineTokens": 30,
+        "totalTokens": 46,
+        "retrievalMode": "fallback"
+      },
+      "budgetTokens": 60,
+      "competitors": [],
+      "report": {
+        "mode": "memory-shadow",
+        "budgetTokens": 60,
+        "legacyCapTokens": 400,
+        "retrievalMode": "fallback",
+        "existing": {
+          "capTokens": 400,
+          "stateTokens": 10,
+          "factCount": 1,
+          "factTokens": 6,
+          "timelineChunkCount": 2,
+          "timelineTokens": 30,
+          "totalTokens": 46,
+          "retrievalMode": "fallback"
+        },
+        "candidate": {
+          "stateTokens": 0,
+          "factCount": 2,
+          "factTokens": 6,
+          "timelineChunkCount": 0,
+          "timelineTokens": 0,
+          "totalTokens": 6,
+          "retrievalMode": "fallback",
+          "droppedFactCount": 0,
+          "droppedTimelineChunkCount": 0,
+          "overBudget": false
+        },
+        "deltaTokens": -40,
+        "exceedsLegacyCap": false,
+        "competitor": {
+          "describedTokens": 0,
+          "selectedTokens": 0,
+          "deltaTokens": 0
+        },
+        "byLayer": [
+          {
+            "layer": "current-state",
+            "existingCount": 1,
+            "existingTokens": 10,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          },
+          {
+            "layer": "fact",
+            "existingCount": 1,
+            "existingTokens": 6,
+            "candidateCount": 2,
+            "candidateTokens": 6,
+            "candidateDroppedCount": 0
+          },
+          {
+            "layer": "timeline",
+            "existingCount": 2,
+            "existingTokens": 30,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=memory-shadow budget=60 cap=400 existing=46 candidate=6 delta=-40 exceedsCap=0 droppedFacts=0 droppedTimeline=0 retrieval=fallback degraded=0 layers=current-state:10->0/1->0,fact:6->6/1->2,timeline:30->0/2->0"
+    },
+    {
+      "caseIndex": 2,
+      "build": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9,
+          0.1
+        ],
+        "model": null
+      },
+      "existing": {
+        "capTokens": 0,
+        "stateTokens": 0,
+        "factCount": 2,
+        "factTokens": 20,
+        "timelineChunkCount": 0,
+        "timelineTokens": 0,
+        "totalTokens": 20,
+        "retrievalMode": "semantic"
+      },
+      "budgetTokens": 200,
+      "competitors": [
+        {
+          "mandatory": false,
+          "stablePrefix": false,
+          "relevance": 0.9,
+          "recency": 0.9,
+          "importance": 0.5,
+          "continuity": 0.9,
+          "id": "history:recent",
+          "kind": "history",
+          "estimatedTokens": 60,
+          "originalOrder": 0
+        }
+      ],
+      "report": {
+        "mode": "memory-shadow",
+        "budgetTokens": 200,
+        "legacyCapTokens": 0,
+        "retrievalMode": "semantic",
+        "existing": {
+          "capTokens": 0,
+          "stateTokens": 0,
+          "factCount": 2,
+          "factTokens": 20,
+          "timelineChunkCount": 0,
+          "timelineTokens": 0,
+          "totalTokens": 20,
+          "retrievalMode": "semantic"
+        },
+        "candidate": {
+          "stateTokens": 0,
+          "factCount": 2,
+          "factTokens": 6,
+          "timelineChunkCount": 0,
+          "timelineTokens": 0,
+          "totalTokens": 6,
+          "retrievalMode": "semantic",
+          "droppedFactCount": 0,
+          "droppedTimelineChunkCount": 0,
+          "overBudget": false
+        },
+        "deltaTokens": -14,
+        "exceedsLegacyCap": true,
+        "competitor": {
+          "describedTokens": 60,
+          "selectedTokens": 60,
+          "deltaTokens": 0
+        },
+        "byLayer": [
+          {
+            "layer": "current-state",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          },
+          {
+            "layer": "fact",
+            "existingCount": 2,
+            "existingTokens": 20,
+            "candidateCount": 2,
+            "candidateTokens": 6,
+            "candidateDroppedCount": 0
+          },
+          {
+            "layer": "timeline",
+            "existingCount": 0,
+            "existingTokens": 0,
+            "candidateCount": 0,
+            "candidateTokens": 0,
+            "candidateDroppedCount": 0
+          }
+        ],
+        "degraded": false
+      },
+      "formatted": "mode=memory-shadow budget=200 cap=0 existing=20 candidate=6 delta=-14 exceedsCap=1 droppedFacts=0 droppedTimeline=0 retrieval=semantic degraded=0 layers=current-state:0->0/0->0,fact:20->6/2->2,timeline:0->0/0->0"
+    }
+  ],
+  "materializeCases": [
+    {
+      "caseIndex": 0,
+      "build": {
+        "currentState": "",
+        "timeline": "   ",
+        "facts": [],
+        "semanticScores": null,
+        "model": null
+      },
+      "selectedIds": [],
+      "currentState": "",
+      "facts": [],
+      "timeline": "",
+      "retrievalMode": "fallback"
+    },
+    {
+      "caseIndex": 1,
+      "build": {
+        "currentState": "状态",
+        "timeline": "事件一\n事件二",
+        "facts": [
+          {
+            "text": "苏晚的职业：书店店主"
+          },
+          {
+            "text": "苏晚的喜好：旧书"
+          }
+        ],
+        "semanticScores": null,
+        "model": null
+      },
+      "selectedIds": [
+        "memory:current-state",
+        "memory:fact:legacy-0",
+        "memory:fact:legacy-1",
+        "memory:timeline:0"
+      ],
+      "currentState": "状态",
+      "facts": [
+        {
+          "text": "苏晚的职业：书店店主"
+        },
+        {
+          "text": "苏晚的喜好：旧书"
+        }
+      ],
+      "timeline": "事件一\n事件二",
+      "retrievalMode": "fallback"
+    },
+    {
+      "caseIndex": 2,
+      "build": {
+        "currentState": "状态",
+        "timeline": "事件一\n事件二",
+        "facts": [
+          {
+            "text": "苏晚的职业：书店店主"
+          },
+          {
+            "text": "苏晚的喜好：旧书"
+          }
+        ],
+        "semanticScores": null,
+        "model": null
+      },
+      "selectedIds": [
+        "memory:current-state"
+      ],
+      "currentState": "状态",
+      "facts": [],
+      "timeline": "",
+      "retrievalMode": "fallback"
+    },
+    {
+      "caseIndex": 3,
+      "build": {
+        "currentState": null,
+        "timeline": "她送走了最后一位客人\n然后开始整理书架",
+        "facts": [],
+        "semanticScores": null,
+        "model": null
+      },
+      "selectedIds": [
+        "memory:timeline:0"
+      ],
+      "currentState": "",
+      "facts": [],
+      "timeline": "她送走了最后一位客人\n然后开始整理书架",
+      "retrievalMode": "fallback"
+    },
+    {
+      "caseIndex": 4,
+      "build": {
+        "currentState": null,
+        "timeline": null,
+        "facts": [
+          {
+            "text": "A的a：1"
+          },
+          {
+            "text": "B的b：2"
+          }
+        ],
+        "semanticScores": [
+          0.9,
+          0.1
+        ],
+        "model": null
+      },
+      "selectedIds": [
+        "memory:fact:legacy-0",
+        "memory:fact:legacy-1"
+      ],
+      "currentState": "",
+      "facts": [
+        {
+          "text": "A的a：1"
+        },
+        {
+          "text": "B的b：2"
+        }
+      ],
+      "timeline": "",
+      "retrievalMode": "semantic"
+    },
+    {
+      "caseIndex": 5,
+      "build": {
+        "currentState": "状态",
+        "timeline": "事件一\n事件二",
+        "facts": [
+          {
+            "text": "苏晚的职业：书店店主"
+          },
+          {
+            "text": "苏晚的喜好：旧书"
+          }
+        ],
+        "semanticScores": null,
+        "model": null
+      },
+      "selectedIds": [
+        "memory:fact:legacy-0",
+        "memory:fact:legacy-1"
+      ],
+      "currentState": "",
+      "facts": [
+        {
+          "text": "苏晚的职业：书店店主"
+        },
+        {
+          "text": "苏晚的喜好：旧书"
+        }
+      ],
+      "timeline": "",
+      "retrievalMode": "fallback"
+    }
+  ]
+}

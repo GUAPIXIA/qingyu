@@ -1,0 +1,884 @@
+{
+  "version": 1,
+  "constants": {
+    "alwaysRatio": 0.4,
+    "alwaysPlusConditionalRatio": 0.9,
+    "minCompressTargetTokens": 32,
+    "compressionCacheMaxEntries": 10
+  },
+  "hashCases": [
+    {
+      "text": "",
+      "hash": "ztntfp"
+    },
+    {
+      "text": "a",
+      "hash": "1r9wi7g"
+    },
+    {
+      "text": "城市设定",
+      "hash": "1t875a5"
+    },
+    {
+      "text": "条目内容：码头在雨里。",
+      "hash": "19iy2el"
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "lpxhrh"
+    },
+    {
+      "text": "emoji 😀 与中文",
+      "hash": "1jdfnk"
+    }
+  ],
+  "compressionKeyCases": [
+    {
+      "items": [],
+      "key": ""
+    },
+    {
+      "items": [
+        {
+          "key": "lb1:e1",
+          "content": "甲"
+        }
+      ],
+      "key": "lb1:e1:fehb6d"
+    },
+    {
+      "items": [
+        {
+          "key": "lb1:e2",
+          "content": "乙"
+        },
+        {
+          "key": "lb1:e1",
+          "content": "甲"
+        }
+      ],
+      "key": "lb1:e1:fehb6d;lb1:e2:1p5b3bo"
+    },
+    {
+      "items": [
+        {
+          "key": "lb1:e1",
+          "content": "甲"
+        },
+        {
+          "key": "lb1:e2",
+          "content": "乙"
+        }
+      ],
+      "key": "lb1:e1:fehb6d;lb1:e2:1p5b3bo"
+    },
+    {
+      "items": [
+        {
+          "content": "无键条目"
+        }
+      ],
+      "key": ":t7gpiw"
+    },
+    {
+      "items": [
+        {
+          "key": "lb1:e1",
+          "content": "同一段话"
+        },
+        {
+          "key": "lb1:e2",
+          "content": "同一段话"
+        }
+      ],
+      "key": "lb1:e1:1nlp1fn;lb1:e2:1nlp1fn"
+    }
+  ],
+  "allocateCases": [
+    {
+      "globalBudget": 1000,
+      "bookBudgets": {},
+      "result": null
+    },
+    {
+      "globalBudget": 1000,
+      "bookBudgets": {
+        "a": 300,
+        "b": 400
+      },
+      "result": {
+        "a": 300,
+        "b": 400
+      }
+    },
+    {
+      "globalBudget": 500,
+      "bookBudgets": {
+        "a": 300,
+        "b": 400
+      },
+      "result": {
+        "a": 214,
+        "b": 286
+      }
+    },
+    {
+      "globalBudget": 1000,
+      "bookBudgets": {
+        "a": 300,
+        "b": 0
+      },
+      "result": {
+        "a": 300,
+        "b": 300
+      }
+    },
+    {
+      "globalBudget": 200,
+      "bookBudgets": {
+        "a": 300,
+        "b": 0,
+        "c": 0
+      },
+      "result": {
+        "a": 66,
+        "b": 66,
+        "c": 68
+      }
+    },
+    {
+      "globalBudget": 1000,
+      "bookBudgets": {
+        "a": 0,
+        "b": 0
+      },
+      "result": {
+        "a": 0,
+        "b": 0
+      }
+    }
+  ],
+  "enforceCases": [
+    {
+      "items": [
+        {
+          "key": "lb1:e1",
+          "content": "短条目。",
+          "order": 0,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.9
+        },
+        {
+          "key": "lb1:e2",
+          "content": "另一条。",
+          "order": 1,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.5
+        }
+      ],
+      "bookCaps": {},
+      "lbIdByKey": {
+        "lb1:e1": "lb1",
+        "lb1:e2": "lb1"
+      },
+      "model": "gpt-4o-mini",
+      "kept": [
+        {
+          "key": "lb1:e1",
+          "content": "短条目。"
+        },
+        {
+          "key": "lb1:e2",
+          "content": "另一条。"
+        }
+      ],
+      "dropped": 0
+    },
+    {
+      "items": [
+        {
+          "key": "lb1:e1",
+          "content": "高分短文。",
+          "order": 0,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.9
+        },
+        {
+          "key": "lb1:e2",
+          "content": "低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文低分长文",
+          "order": 1,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.2
+        },
+        {
+          "key": "lb1:e3",
+          "content": "带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文带摘要的长文",
+          "summary": "摘要很短。",
+          "order": 2,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.3
+        }
+      ],
+      "bookCaps": {
+        "lb1": 30
+      },
+      "lbIdByKey": {
+        "lb1:e1": "lb1",
+        "lb1:e2": "lb1",
+        "lb1:e3": "lb1"
+      },
+      "model": "gpt-4o-mini",
+      "kept": [
+        {
+          "key": "lb1:e1",
+          "content": "高分短文。"
+        },
+        {
+          "key": "lb1:e3",
+          "content": "摘要很短。"
+        }
+      ],
+      "dropped": 1
+    },
+    {
+      "items": [
+        {
+          "key": "lb1:e1",
+          "content": "不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目",
+          "order": 0,
+          "position": "at_end",
+          "ignoreBudget": true
+        },
+        {
+          "key": "lb1:e2",
+          "content": "普通条目。",
+          "order": 1,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.5
+        }
+      ],
+      "bookCaps": {
+        "lb1": 10
+      },
+      "lbIdByKey": {
+        "lb1:e1": "lb1",
+        "lb1:e2": "lb1"
+      },
+      "model": "gpt-4o-mini",
+      "kept": [
+        {
+          "key": "lb1:e1",
+          "content": "不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目不计预算的条目"
+        },
+        {
+          "key": "lb1:e2",
+          "content": "普通条目。"
+        }
+      ],
+      "dropped": 0
+    },
+    {
+      "items": [
+        {
+          "key": "lb9:e1",
+          "content": "外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目",
+          "order": 0,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.5
+        }
+      ],
+      "bookCaps": {
+        "lb1": 10
+      },
+      "lbIdByKey": {
+        "lb9:e1": "lb9"
+      },
+      "model": "gpt-4o-mini",
+      "kept": [
+        {
+          "key": "lb9:e1",
+          "content": "外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目外部条目"
+        }
+      ],
+      "dropped": 0
+    }
+  ],
+  "fitCases": [
+    {
+      "items": [],
+      "budget": 100,
+      "model": "gpt-4o-mini",
+      "compressionCache": null,
+      "keptKeys": [],
+      "keptContents": [],
+      "droppedKeys": [],
+      "usedTokens": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "compressionRequests": null,
+      "compressionCacheHitKeys": null,
+      "compressionCoveredKeys": []
+    },
+    {
+      "items": [
+        {
+          "key": "a1",
+          "content": "常驻内容甲。常驻内容甲。常驻内容甲。",
+          "order": 0,
+          "position": "before_char",
+          "priority": "always"
+        },
+        {
+          "key": "a2",
+          "content": "常驻内容乙。常驻内容乙。常驻内容乙。",
+          "order": 1,
+          "position": "before_char",
+          "priority": "always"
+        },
+        {
+          "key": "a3",
+          "content": "常驻内容丙。常驻内容丙。常驻内容丙。",
+          "order": 2,
+          "position": "before_char",
+          "priority": "always"
+        }
+      ],
+      "budget": 40,
+      "model": "gpt-4o-mini",
+      "compressionCache": null,
+      "keptKeys": [
+        "a1"
+      ],
+      "keptContents": [
+        "常驻内容甲。常驻内容甲。常驻内容甲。"
+      ],
+      "droppedKeys": [],
+      "usedTokens": 15,
+      "alwaysDropped": 2,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "compressionRequests": null,
+      "compressionCacheHitKeys": null,
+      "compressionCoveredKeys": []
+    },
+    {
+      "items": [
+        {
+          "key": "c1",
+          "content": "条件条目甲。",
+          "order": 0,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.9
+        },
+        {
+          "key": "c2",
+          "content": "条件条目乙。",
+          "order": 1,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.5
+        }
+      ],
+      "budget": 200,
+      "model": "gpt-4o-mini",
+      "compressionCache": null,
+      "keptKeys": [
+        "c1",
+        "c2"
+      ],
+      "keptContents": [
+        "条件条目甲。",
+        "条件条目乙。"
+      ],
+      "droppedKeys": [],
+      "usedTokens": 10,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "compressionRequests": null,
+      "compressionCacheHitKeys": null,
+      "compressionCoveredKeys": []
+    },
+    {
+      "items": [
+        {
+          "key": "a1",
+          "content": "常驻。",
+          "order": 0,
+          "position": "before_char",
+          "priority": "always"
+        },
+        {
+          "key": "c1",
+          "content": "条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。",
+          "order": 1,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.9
+        },
+        {
+          "key": "d1",
+          "content": "细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。",
+          "order": 2,
+          "position": "at_depth",
+          "depth": 1,
+          "priority": "detail",
+          "score": 0.8
+        }
+      ],
+      "budget": 80,
+      "model": "gpt-4o-mini",
+      "compressionCache": null,
+      "keptKeys": [
+        "a1",
+        "c1"
+      ],
+      "keptContents": [
+        "常驻。",
+        "条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。条件内容。"
+      ],
+      "droppedKeys": [
+        "d1"
+      ],
+      "usedTokens": 42,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 1,
+      "compressionRequests": [
+        {
+          "key": "d1:mmmqx",
+          "entryKeys": [
+            "d1"
+          ],
+          "contents": [
+            "细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。细节内容。"
+          ],
+          "targetTokens": 38,
+          "placement": {
+            "position": "at_depth",
+            "depth": 1
+          }
+        }
+      ],
+      "compressionCacheHitKeys": null,
+      "compressionCoveredKeys": []
+    },
+    {
+      "items": [
+        {
+          "key": "c1",
+          "content": "低分短文。",
+          "order": 0,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.2
+        },
+        {
+          "key": "c2",
+          "content": "高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文高分长文",
+          "summary": "高分摘要。",
+          "order": 1,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.9
+        }
+      ],
+      "budget": 30,
+      "model": "gpt-4o-mini",
+      "compressionCache": null,
+      "keptKeys": [
+        "c2",
+        "c1"
+      ],
+      "keptContents": [
+        "高分摘要。",
+        "低分短文。"
+      ],
+      "droppedKeys": [],
+      "usedTokens": 8,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "compressionRequests": null,
+      "compressionCacheHitKeys": null,
+      "compressionCoveredKeys": []
+    },
+    {
+      "items": [
+        {
+          "key": "c1",
+          "content": "位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容位置甲的内容",
+          "order": 0,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.5
+        },
+        {
+          "key": "c2",
+          "content": "位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容",
+          "order": 1,
+          "position": "at_depth",
+          "depth": 2,
+          "priority": "conditional",
+          "score": 0.4
+        }
+      ],
+      "budget": 40,
+      "model": "gpt-4o-mini",
+      "compressionCache": null,
+      "keptKeys": [],
+      "keptContents": [],
+      "droppedKeys": [
+        "c1",
+        "c2"
+      ],
+      "usedTokens": 0,
+      "alwaysDropped": 0,
+      "conditionalDropped": 2,
+      "detailDropped": 0,
+      "compressionRequests": [
+        {
+          "key": "c2:zt80lh",
+          "entryKeys": [
+            "c2"
+          ],
+          "contents": [
+            "位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容位置乙的内容"
+          ],
+          "targetTokens": 40,
+          "placement": {
+            "position": "at_depth",
+            "depth": 2
+          }
+        }
+      ],
+      "compressionCacheHitKeys": null,
+      "compressionCoveredKeys": []
+    },
+    {
+      "items": [
+        {
+          "key": "c1",
+          "content": "待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容",
+          "order": 0,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.5
+        }
+      ],
+      "budget": 200,
+      "model": "gpt-4o-mini",
+      "compressionCache": {
+        "c1:1wigw5d": {
+          "summary": "缓存摘要。",
+          "entryKeys": [
+            "lb1:0"
+          ],
+          "createdAt": 1
+        }
+      },
+      "keptKeys": [
+        "c1"
+      ],
+      "keptContents": [
+        "待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容待压缩内容"
+      ],
+      "droppedKeys": [],
+      "usedTokens": 90,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "compressionRequests": null,
+      "compressionCacheHitKeys": null,
+      "compressionCoveredKeys": []
+    },
+    {
+      "items": [
+        {
+          "key": "i1",
+          "content": "不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算",
+          "order": 0,
+          "position": "at_end",
+          "ignoreBudget": true,
+          "score": 0.9
+        },
+        {
+          "key": "c1",
+          "content": "普通条件条目。",
+          "order": 1,
+          "position": "before_char",
+          "priority": "conditional",
+          "score": 0.5
+        }
+      ],
+      "budget": 20,
+      "model": "gpt-4o-mini",
+      "compressionCache": null,
+      "keptKeys": [
+        "i1",
+        "c1"
+      ],
+      "keptContents": [
+        "不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算不占预算",
+        "普通条件条目。"
+      ],
+      "droppedKeys": [],
+      "usedTokens": 6,
+      "alwaysDropped": 0,
+      "conditionalDropped": 0,
+      "detailDropped": 0,
+      "compressionRequests": null,
+      "compressionCacheHitKeys": null,
+      "compressionCoveredKeys": []
+    }
+  ],
+  "cacheCases": [
+    {
+      "initial": null,
+      "key": "k1",
+      "entry": {
+        "summary": "甲",
+        "entryKeys": [],
+        "createdAt": 1
+      },
+      "maxEntries": null,
+      "result": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      }
+    },
+    {
+      "initial": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      },
+      "key": "k2",
+      "entry": {
+        "summary": "乙",
+        "entryKeys": [],
+        "createdAt": 2
+      },
+      "maxEntries": null,
+      "result": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        },
+        "k2": {
+          "summary": "乙",
+          "entryKeys": [],
+          "createdAt": 2
+        }
+      }
+    },
+    {
+      "initial": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      },
+      "key": "k1",
+      "entry": {
+        "summary": "甲改",
+        "entryKeys": [],
+        "createdAt": 2
+      },
+      "maxEntries": null,
+      "result": {
+        "k1": {
+          "summary": "甲改",
+          "entryKeys": [],
+          "createdAt": 2
+        }
+      }
+    },
+    {
+      "initial": {
+        "a": {
+          "summary": "a",
+          "entryKeys": [],
+          "createdAt": 1,
+          "lastUsedAt": 100
+        },
+        "b": {
+          "summary": "b",
+          "entryKeys": [],
+          "createdAt": 2,
+          "lastUsedAt": 2
+        },
+        "c": {
+          "summary": "c",
+          "entryKeys": [],
+          "createdAt": 3,
+          "lastUsedAt": 3
+        }
+      },
+      "key": "d",
+      "entry": {
+        "summary": "d",
+        "entryKeys": [],
+        "createdAt": 4
+      },
+      "maxEntries": 3,
+      "result": {
+        "a": {
+          "summary": "a",
+          "entryKeys": [],
+          "createdAt": 1,
+          "lastUsedAt": 100
+        },
+        "c": {
+          "summary": "c",
+          "entryKeys": [],
+          "createdAt": 3,
+          "lastUsedAt": 3
+        },
+        "d": {
+          "summary": "d",
+          "entryKeys": [],
+          "createdAt": 4
+        }
+      }
+    },
+    {
+      "initial": {
+        "a": {
+          "summary": "a",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      },
+      "key": "b",
+      "entry": {
+        "summary": "b",
+        "entryKeys": [],
+        "createdAt": 2
+      },
+      "maxEntries": 1,
+      "result": {
+        "b": {
+          "summary": "b",
+          "entryKeys": [],
+          "createdAt": 2
+        }
+      }
+    }
+  ],
+  "touchCases": [
+    {
+      "cache": null,
+      "keys": [],
+      "usedAt": 10,
+      "result": null
+    },
+    {
+      "cache": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      },
+      "keys": [],
+      "usedAt": 10,
+      "result": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      }
+    },
+    {
+      "cache": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      },
+      "keys": [
+        "k1"
+      ],
+      "usedAt": 10,
+      "result": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1,
+          "lastUsedAt": 10
+        }
+      }
+    },
+    {
+      "cache": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      },
+      "keys": [
+        "missing"
+      ],
+      "usedAt": 10,
+      "result": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        }
+      }
+    },
+    {
+      "cache": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        },
+        "k2": {
+          "summary": "乙",
+          "entryKeys": [],
+          "createdAt": 2,
+          "lastUsedAt": 5
+        }
+      },
+      "keys": [
+        "k2"
+      ],
+      "usedAt": 99,
+      "result": {
+        "k1": {
+          "summary": "甲",
+          "entryKeys": [],
+          "createdAt": 1
+        },
+        "k2": {
+          "summary": "乙",
+          "entryKeys": [],
+          "createdAt": 2,
+          "lastUsedAt": 99
+        }
+      }
+    }
+  ]
+}

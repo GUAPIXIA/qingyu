@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "constants": {
+    "tokenBudgetSafety": 0.95,
+    "imageTokenEstimateForCrop": 200
+  },
+  "cases": [
+    {
+      "corpus": [
+        {
+          "id": "h1",
+          "content": "第一条",
+          "timestamp": 10
+        },
+        {
+          "id": "h2",
+          "content": "第二条消息内容",
+          "timestamp": 20
+        },
+        {
+          "id": "h3",
+          "content": "第三条",
+          "timestamp": 30
+        },
+        {
+          "id": "h4",
+          "content": "第四条消息内容比较长一些",
+          "timestamp": 40
+        }
+      ],
+      "usedTokens": 0,
+      "budgetBase": 1000,
+      "model": "gpt-4o",
+      "recentIds": [
+        "h1",
+        "h2",
+        "h3",
+        "h4"
+      ],
+      "droppedStartTs": 0,
+      "droppedEndTs": 0,
+      "droppedTokens": 0,
+      "droppedEndIndex": -1
+    },
+    {
+      "corpus": [
+        {
+          "id": "h1",
+          "content": "第一条",
+          "timestamp": 10
+        },
+        {
+          "id": "h2",
+          "content": "第二条消息内容",
+          "timestamp": 20
+        },
+        {
+          "id": "h3",
+          "content": "第三条",
+          "timestamp": 30
+        },
+        {
+          "id": "h4",
+          "content": "第四条消息内容比较长一些",
+          "timestamp": 40
+        }
+      ],
+      "usedTokens": 0,
+      "budgetBase": 10,
+      "model": "gpt-4o",
+      "recentIds": [],
+      "droppedStartTs": 10,
+      "droppedEndTs": 40,
+      "droppedTokens": 24,
+      "droppedEndIndex": 3
+    },
+    {
+      "corpus": [
+        {
+          "id": "h1",
+          "content": "第一条",
+          "timestamp": 10
+        },
+        {
+          "id": "h2",
+          "content": "第二条消息内容",
+          "timestamp": 20
+        },
+        {
+          "id": "h3",
+          "content": "第三条",
+          "timestamp": 30
+        },
+        {
+          "id": "h4",
+          "content": "带图消息",
+          "images": [
+            "a",
+            "b",
+            "c"
+          ],
+          "timestamp": 40
+        }
+      ],
+      "usedTokens": 0,
+      "budgetBase": 400,
+      "model": "claude-3-5-sonnet",
+      "recentIds": [],
+      "droppedStartTs": 10,
+      "droppedEndTs": 40,
+      "droppedTokens": 16,
+      "droppedEndIndex": 3
+    },
+    {
+      "corpus": [
+        {
+          "id": "h1",
+          "content": "中文内容，。！",
+          "timestamp": 10
+        },
+        {
+          "id": "h2",
+          "content": "english content here",
+          "timestamp": 20
+        }
+      ],
+      "usedTokens": 50,
+      "budgetBase": 60,
+      "model": "gpt-4o",
+      "recentIds": [
+        "h2"
+      ],
+      "droppedStartTs": 10,
+      "droppedEndTs": 10,
+      "droppedTokens": 5,
+      "droppedEndIndex": 0
+    },
+    {
+      "corpus": [],
+      "usedTokens": 0,
+      "budgetBase": 100,
+      "model": "gpt-4o",
+      "recentIds": [],
+      "droppedStartTs": 0,
+      "droppedEndTs": 0,
+      "droppedTokens": 0,
+      "droppedEndIndex": -1
+    },
+    {
+      "corpus": [
+        {
+          "id": "only",
+          "content": "唯一一条但超预算",
+          "timestamp": 5
+        }
+      ],
+      "usedTokens": 0,
+      "budgetBase": 1,
+      "model": "gpt-4o",
+      "recentIds": [],
+      "droppedStartTs": 5,
+      "droppedEndTs": 5,
+      "droppedTokens": 8,
+      "droppedEndIndex": 0
+    }
+  ]
+}

@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "text": "你好世界",
+      "model": "gpt-4o",
+      "tokens": 4,
+      "formatted": "4"
+    },
+    {
+      "text": "hello world",
+      "model": "gpt-4o",
+      "tokens": 4,
+      "formatted": "4"
+    },
+    {
+      "text": "你好 hello，世界 world！",
+      "model": "claude-3-5-sonnet",
+      "tokens": 8,
+      "formatted": "8"
+    },
+    {
+      "text": "你好 hello，世界 world！",
+      "model": "gemini-1.5-pro",
+      "tokens": 8,
+      "formatted": "8"
+    },
+    {
+      "text": "你好 hello，世界 world！",
+      "model": null,
+      "tokens": 8,
+      "formatted": "8"
+    },
+    {
+      "text": "",
+      "model": "gpt-4o",
+      "tokens": 0,
+      "formatted": "0"
+    },
+    {
+      "text": "中文标点，。！？；：\"\"''（）【】《》、 和空格",
+      "model": "gpt-4o",
+      "tokens": 11,
+      "formatted": "11"
+    },
+    {
+      "text": "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"",
+      "model": "gpt-4o",
+      "tokens": 10,
+      "formatted": "10"
+    },
+    {
+      "text": "''''''''''''''''''''''''''''''''''''''''",
+      "model": "gpt-4o",
+      "tokens": 10,
+      "formatted": "10"
+    },
+    {
+      "text": "“中文引号”与‘单引号’",
+      "model": "gpt-4o",
+      "tokens": 9,
+      "formatted": "9"
+    },
+    {
+      "text": "混合：\"直引号\" 与“弯引号”",
+      "model": "gpt-4o",
+      "tokens": 10,
+      "formatted": "10"
+    },
+    {
+      "text": "全角　空格与 不换行空格",
+      "model": "gpt-4o",
+      "tokens": 10,
+      "formatted": "10"
+    },
+    {
+      "text": "🙂 emoji 与 汉字",
+      "model": "gpt-4o",
+      "tokens": 6,
+      "formatted": "6"
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "model": "gpt-4o",
+      "tokens": 148,
+      "formatted": "148"
+    }
+  ],
+  "imageTokens": [
+    {
+      "count": 0,
+      "tokens": 0
+    },
+    {
+      "count": 1,
+      "tokens": 500
+    },
+    {
+      "count": 3,
+      "tokens": 1500
+    },
+    {
+      "count": -1,
+      "tokens": 0
+    }
+  ],
+  "formats": [
+    {
+      "tokens": 0,
+      "text": "0"
+    },
+    {
+      "tokens": 1,
+      "text": "1"
+    },
+    {
+      "tokens": 999,
+      "text": "999"
+    },
+    {
+      "tokens": 1000,
+      "text": "1.0K"
+    },
+    {
+      "tokens": 1500,
+      "text": "1.5K"
+    },
+    {
+      "tokens": 9999,
+      "text": "10.0K"
+    },
+    {
+      "tokens": 10000,
+      "text": "10K"
+    },
+    {
+      "tokens": 123456,
+      "text": "123K"
+    }
+  ]
+}

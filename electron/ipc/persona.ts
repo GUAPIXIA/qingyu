@@ -26,7 +26,7 @@ function readPersonas(): Persona[] {
 }
 
 /** 人设实体的规范 payload：与阶段 1 冻结字段及 S2-05 扫描器一致（不含 id/头像/时间戳） */
-function personaEntityPayload(persona: Persona): Record<string, unknown> {
+export function personaEntityPayload(persona: Persona): Record<string, unknown> {
   return {
     name: persona.name,
     description: persona.description,

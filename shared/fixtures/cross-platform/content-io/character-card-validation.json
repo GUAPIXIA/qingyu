@@ -1,0 +1,67 @@
+{
+  "algorithm": "electron/services/charCardValidator.ts",
+  "cases": [
+    {
+      "label": "v1-bare",
+      "parseError": null,
+      "ok": true,
+      "format": "bare",
+      "errors": [],
+      "message": ""
+    },
+    {
+      "label": "v2-wrapped",
+      "parseError": null,
+      "ok": true,
+      "format": "v3",
+      "errors": [],
+      "message": ""
+    },
+    {
+      "label": "v3-wrapped",
+      "parseError": null,
+      "ok": true,
+      "format": "v3",
+      "errors": [],
+      "message": ""
+    },
+    {
+      "label": "v2-missing-data",
+      "parseError": null,
+      "ok": false,
+      "format": "unknown",
+      "errors": [
+        "缺少角色名（name 字段为空）"
+      ],
+      "message": "未能识别角色卡格式（非标准 V2/V3）\n缺少角色名（name 字段为空）"
+    },
+    {
+      "label": "no-name",
+      "parseError": null,
+      "ok": false,
+      "format": "bare",
+      "errors": [
+        "缺少角色名（name 字段为空）"
+      ],
+      "message": "缺少角色名（name 字段为空）"
+    },
+    {
+      "label": "not-object",
+      "parseError": null,
+      "ok": false,
+      "format": "unknown",
+      "errors": [
+        "角色卡 JSON 顶层必须是对象"
+      ],
+      "message": "未能识别角色卡格式（非标准 V2/V3）\n角色卡 JSON 顶层必须是对象"
+    },
+    {
+      "label": "unknown-spec",
+      "parseError": null,
+      "ok": true,
+      "format": "v3",
+      "errors": [],
+      "message": ""
+    }
+  ]
+}

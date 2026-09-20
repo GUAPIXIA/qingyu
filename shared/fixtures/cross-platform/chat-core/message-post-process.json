@@ -1,0 +1,785 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "messages": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "merged": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "strict": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "semi": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "dialogue": [
+        {
+          "text": "“我没应。”\n他说。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：“我没应。”\n他说。"
+        },
+        {
+          "text": "“我没应。”苏晚顿了顿。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“我没应。”苏晚顿了顿。"
+        },
+        {
+          "text": "「你好」\n“第二行”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：「你好」\n苏晚：“第二行”"
+        },
+        {
+          "text": "“我不补”",
+          "name": "苏晚",
+          "mode": "omniscient",
+          "result": "“我不补”"
+        },
+        {
+          "text": "  “带缩进”  ",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "  苏晚：“带缩进”  "
+        },
+        {
+          "text": "普通叙述没有引号",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "普通叙述没有引号"
+        },
+        {
+          "text": "<thought>内心“不补”</thought>\n“外面补”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "<thought>内心“不补”</thought>\n苏晚：“外面补”"
+        },
+        {
+          "text": "“名字在行内”苏晚说",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“名字在行内”苏晚说"
+        },
+        {
+          "text": "",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": ""
+        },
+        {
+          "text": "“空名字”",
+          "name": "   ",
+          "mode": "immersive",
+          "result": "“空名字”"
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "system",
+          "content": "S2"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "merged": [
+        {
+          "role": "system",
+          "content": "S1\n\nS2"
+        },
+        {
+          "role": "user",
+          "content": "U1\n\nU2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "strict": [
+        {
+          "role": "system",
+          "content": "S1\n\nS2"
+        },
+        {
+          "role": "user",
+          "content": "U1\n\nU2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "semi": [
+        {
+          "role": "system",
+          "content": "S1\n\nS2"
+        },
+        {
+          "role": "user",
+          "content": "U1\n\nU2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "dialogue": [
+        {
+          "text": "“我没应。”\n他说。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：“我没应。”\n他说。"
+        },
+        {
+          "text": "“我没应。”苏晚顿了顿。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“我没应。”苏晚顿了顿。"
+        },
+        {
+          "text": "「你好」\n“第二行”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：「你好」\n苏晚：“第二行”"
+        },
+        {
+          "text": "“我不补”",
+          "name": "苏晚",
+          "mode": "omniscient",
+          "result": "“我不补”"
+        },
+        {
+          "text": "  “带缩进”  ",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "  苏晚：“带缩进”  "
+        },
+        {
+          "text": "普通叙述没有引号",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "普通叙述没有引号"
+        },
+        {
+          "text": "<thought>内心“不补”</thought>\n“外面补”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "<thought>内心“不补”</thought>\n苏晚：“外面补”"
+        },
+        {
+          "text": "“名字在行内”苏晚说",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“名字在行内”苏晚说"
+        },
+        {
+          "text": "",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": ""
+        },
+        {
+          "text": "“空名字”",
+          "name": "   ",
+          "mode": "immersive",
+          "result": "“空名字”"
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "merged": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "strict": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "semi": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "dialogue": [
+        {
+          "text": "“我没应。”\n他说。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：“我没应。”\n他说。"
+        },
+        {
+          "text": "“我没应。”苏晚顿了顿。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“我没应。”苏晚顿了顿。"
+        },
+        {
+          "text": "「你好」\n“第二行”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：「你好」\n苏晚：“第二行”"
+        },
+        {
+          "text": "“我不补”",
+          "name": "苏晚",
+          "mode": "omniscient",
+          "result": "“我不补”"
+        },
+        {
+          "text": "  “带缩进”  ",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "  苏晚：“带缩进”  "
+        },
+        {
+          "text": "普通叙述没有引号",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "普通叙述没有引号"
+        },
+        {
+          "text": "<thought>内心“不补”</thought>\n“外面补”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "<thought>内心“不补”</thought>\n苏晚：“外面补”"
+        },
+        {
+          "text": "“名字在行内”苏晚说",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“名字在行内”苏晚说"
+        },
+        {
+          "text": "",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": ""
+        },
+        {
+          "text": "“空名字”",
+          "name": "   ",
+          "mode": "immersive",
+          "result": "“空名字”"
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "merged": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "strict": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "semi": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "dialogue": [
+        {
+          "text": "“我没应。”\n他说。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：“我没应。”\n他说。"
+        },
+        {
+          "text": "“我没应。”苏晚顿了顿。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“我没应。”苏晚顿了顿。"
+        },
+        {
+          "text": "「你好」\n“第二行”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：「你好」\n苏晚：“第二行”"
+        },
+        {
+          "text": "“我不补”",
+          "name": "苏晚",
+          "mode": "omniscient",
+          "result": "“我不补”"
+        },
+        {
+          "text": "  “带缩进”  ",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "  苏晚：“带缩进”  "
+        },
+        {
+          "text": "普通叙述没有引号",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "普通叙述没有引号"
+        },
+        {
+          "text": "<thought>内心“不补”</thought>\n“外面补”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "<thought>内心“不补”</thought>\n苏晚：“外面补”"
+        },
+        {
+          "text": "“名字在行内”苏晚说",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“名字在行内”苏晚说"
+        },
+        {
+          "text": "",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": ""
+        },
+        {
+          "text": "“空名字”",
+          "name": "   ",
+          "mode": "immersive",
+          "result": "“空名字”"
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "user",
+          "content": "U1",
+          "images": [
+            "img:1"
+          ]
+        },
+        {
+          "role": "user",
+          "content": "U2",
+          "images": [
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "merged": [
+        {
+          "role": "user",
+          "content": "U1\n\nU2",
+          "images": [
+            "img:1",
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "strict": [
+        {
+          "role": "user",
+          "content": "U1\n\nU2",
+          "images": [
+            "img:1",
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "semi": [
+        {
+          "role": "user",
+          "content": "U1\n\nU2",
+          "images": [
+            "img:1"
+          ]
+        }
+      ],
+      "dialogue": [
+        {
+          "text": "“我没应。”\n他说。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：“我没应。”\n他说。"
+        },
+        {
+          "text": "“我没应。”苏晚顿了顿。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“我没应。”苏晚顿了顿。"
+        },
+        {
+          "text": "「你好」\n“第二行”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：「你好」\n苏晚：“第二行”"
+        },
+        {
+          "text": "“我不补”",
+          "name": "苏晚",
+          "mode": "omniscient",
+          "result": "“我不补”"
+        },
+        {
+          "text": "  “带缩进”  ",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "  苏晚：“带缩进”  "
+        },
+        {
+          "text": "普通叙述没有引号",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "普通叙述没有引号"
+        },
+        {
+          "text": "<thought>内心“不补”</thought>\n“外面补”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "<thought>内心“不补”</thought>\n苏晚：“外面补”"
+        },
+        {
+          "text": "“名字在行内”苏晚说",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“名字在行内”苏晚说"
+        },
+        {
+          "text": "",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": ""
+        },
+        {
+          "text": "“空名字”",
+          "name": "   ",
+          "mode": "immersive",
+          "result": "“空名字”"
+        }
+      ]
+    },
+    {
+      "messages": [],
+      "merged": [],
+      "strict": [],
+      "semi": [],
+      "dialogue": [
+        {
+          "text": "“我没应。”\n他说。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：“我没应。”\n他说。"
+        },
+        {
+          "text": "“我没应。”苏晚顿了顿。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“我没应。”苏晚顿了顿。"
+        },
+        {
+          "text": "「你好」\n“第二行”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：「你好」\n苏晚：“第二行”"
+        },
+        {
+          "text": "“我不补”",
+          "name": "苏晚",
+          "mode": "omniscient",
+          "result": "“我不补”"
+        },
+        {
+          "text": "  “带缩进”  ",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "  苏晚：“带缩进”  "
+        },
+        {
+          "text": "普通叙述没有引号",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "普通叙述没有引号"
+        },
+        {
+          "text": "<thought>内心“不补”</thought>\n“外面补”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "<thought>内心“不补”</thought>\n苏晚：“外面补”"
+        },
+        {
+          "text": "“名字在行内”苏晚说",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“名字在行内”苏晚说"
+        },
+        {
+          "text": "",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": ""
+        },
+        {
+          "text": "“空名字”",
+          "name": "   ",
+          "mode": "immersive",
+          "result": "“空名字”"
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "merged": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "strict": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "semi": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "dialogue": [
+        {
+          "text": "“我没应。”\n他说。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：“我没应。”\n他说。"
+        },
+        {
+          "text": "“我没应。”苏晚顿了顿。",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“我没应。”苏晚顿了顿。"
+        },
+        {
+          "text": "「你好」\n“第二行”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "苏晚：「你好」\n苏晚：“第二行”"
+        },
+        {
+          "text": "“我不补”",
+          "name": "苏晚",
+          "mode": "omniscient",
+          "result": "“我不补”"
+        },
+        {
+          "text": "  “带缩进”  ",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "  苏晚：“带缩进”  "
+        },
+        {
+          "text": "普通叙述没有引号",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "普通叙述没有引号"
+        },
+        {
+          "text": "<thought>内心“不补”</thought>\n“外面补”",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "<thought>内心“不补”</thought>\n苏晚：“外面补”"
+        },
+        {
+          "text": "“名字在行内”苏晚说",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": "“名字在行内”苏晚说"
+        },
+        {
+          "text": "",
+          "name": "苏晚",
+          "mode": "immersive",
+          "result": ""
+        },
+        {
+          "text": "“空名字”",
+          "name": "   ",
+          "mode": "immersive",
+          "result": "“空名字”"
+        }
+      ]
+    }
+  ]
+}

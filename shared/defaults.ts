@@ -69,6 +69,7 @@ export function getDefaultSettings(): Settings {
       baseUrl: 'http://localhost:11434',
       model: 'nomic-embed-text',
       apiKey: '',
+      thresholdMode: 'auto',
       threshold: 0.3,
       maxResults: 3,
     },

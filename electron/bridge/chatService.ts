@@ -40,6 +40,7 @@ import { getCharacter } from '../services/charCard'
 import type { DialogueDirection, Settings } from '../../shared/types'
 import { trimContinuationOverlap } from '../../shared/chat-core/messagePostProcess'
 import { mergeTailRepair, type FinalizedAssistantOutput } from '../../shared/assistantOutputFinalizer'
+import { appendRegeneratedCandidate, rotateSwipe } from '../../shared/chat-core/swipeCandidates'
 import { enabledProfileOverride, formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
 import { finalizeGenerationTerminalResult } from '../../shared/chat-core/generatedReplyPipeline'
 import { finalizeNoticeFields } from '../../shared/generationNotice'
@@ -374,9 +375,10 @@ export class BridgeChatService {
 
     const swipes = target.swipes ?? [target.content]
     if (swipes.length < 2) return target
-    const current = target.swipeIndex ?? 0
-    const next = (current + direction + swipes.length) % swipes.length
-    const updated: Message = { ...target, content: swipes[next], swipeIndex: next }
+    // 候选切换语义已抽到 shared/chat-core/swipeCandidates.ts：Android 消费同一份实现，
+    // 避免一端把「切换候选」实现成「新建消息」而让两端消息数量不同。
+    const rotated = rotateSwipe(target, direction)
+    const updated: Message = { ...target, content: rotated.content, swipeIndex: rotated.swipeIndex }
     chatData.saveMessage(characterId, updated)
     this.notifySessionChanged(sessionId, 'swiped')
     return updated
@@ -529,12 +531,12 @@ export class BridgeChatService {
         // 矩阵末行：无可用正文不追加快照候选（不创建空 AI 内容）
         throw new Error(finalizedReply.noticeFields.generationError || '模型未返回可用内容，请重试')
       }
-      const swipes = target.swipes ?? [target.content]
+      const candidate = appendRegeneratedCandidate(target, finalContent)
       const updated: Message = {
         ...target,
-        swipes: [...swipes, finalContent],
-        swipeIndex: swipes.length,
-        content: finalContent,
+        swipes: candidate.swipes,
+        swipeIndex: candidate.swipeIndex,
+        content: candidate.content,
         narrativeMode,
         speakerKind: 'character',
         generationKind: 'regenerate',

@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "constants": {
+    "inputTokenBudget": 6000,
+    "minInputTokenBudget": 128,
+    "overlapCount": 2
+  },
+  "cases": [
+    {
+      "maxContext": 8192,
+      "systemPromptTokens": 1200,
+      "reservedOutputTokens": 800,
+      "resolved": 5783
+    },
+    {
+      "maxContext": 32768,
+      "systemPromptTokens": 2000,
+      "reservedOutputTokens": 4000,
+      "resolved": 6000
+    },
+    {
+      "maxContext": 128000,
+      "systemPromptTokens": 1000,
+      "reservedOutputTokens": 1000,
+      "resolved": 6000
+    },
+    {
+      "maxContext": 0,
+      "systemPromptTokens": 0,
+      "reservedOutputTokens": 0,
+      "resolved": 6000
+    },
+    {
+      "maxContext": -1,
+      "systemPromptTokens": -5,
+      "reservedOutputTokens": -5,
+      "resolved": 6000
+    },
+    {
+      "maxContext": 2048,
+      "systemPromptTokens": 0,
+      "reservedOutputTokens": 0,
+      "resolved": 1920
+    },
+    {
+      "maxContext": 4096.9,
+      "systemPromptTokens": 100.9,
+      "reservedOutputTokens": 50.9,
+      "resolved": 3742
+    },
+    {
+      "maxContext": "NaN",
+      "systemPromptTokens": "Infinity",
+      "reservedOutputTokens": "NaN",
+      "resolved": 6000
+    },
+    {
+      "maxContext": 600,
+      "systemPromptTokens": 100,
+      "reservedOutputTokens": 100,
+      "resolved": 272
+    }
+  ],
+  "oversized": [
+    {
+      "text": "短消息",
+      "tokenBudget": 100,
+      "fitted": "短消息"
+    },
+    {
+      "text": "这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消息",
+      "tokenBudget": 60,
+      "fitted": "这是一条很长很长的消息这是一条很长很长的消息这是一条很长很长的消\n…【消息过长，中间内容已省略】…\n是一条很长很长的消息这是一条很长很长的消息"
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "tokenBudget": 20,
+      "fitted": "aaaaaaaaaaaaaaaaa\n…【消息过长，中间内容已省略】…\naaaaaaaaaaa"
+    },
+    {
+      "text": "中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中中",
+      "tokenBudget": 5,
+      "fitted": "\n…【消息过长，中间内容已省略】…\n"
+    },
+    {
+      "text": "边界边界边界边界边界边界边界边界边界边界边界边界边界边界边界边界边界边界边界边界",
+      "tokenBudget": 1,
+      "fitted": "\n…【消息过长，中间内容已省略】…\n"
+    }
+  ]
+}

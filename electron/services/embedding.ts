@@ -8,6 +8,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createLogger } from './logger'
+import { isEmbeddingConfigured as isEmbeddingConfiguredShared } from '../../shared/chat-core/embeddingPolicy'
 
 const log = createLogger('embedding')
 
@@ -27,10 +28,14 @@ const BATCH_SIZE = 32
 /** 请求超时（毫秒） */
 const TIMEOUT_MS = 60_000
 
-/** 截断过长的文本 */
-function truncate(text: string, max = MAX_INPUT_CHARS): string {
+/** 截断过长的文本：查询保留最新尾部，索引文档保留开头。 */
+export function truncateEmbeddingInput(
+  text: string,
+  inputKind: 'query' | 'passage',
+  max = MAX_INPUT_CHARS,
+): string {
   if (text.length <= max) return text
-  return text.slice(0, max)
+  return inputKind === 'query' ? text.slice(-max) : text.slice(0, max)
 }
 
 /** OpenAI 兼容 /embeddings 接口 */
@@ -96,10 +101,14 @@ async function embedOllama(config: EmbeddingConfig, inputs: string[]): Promise<n
 }
 
 /** 批量嵌入文本（自动分批 + 截断，任一批失败即抛错） */
-export async function embedTexts(config: EmbeddingConfig, texts: string[]): Promise<number[][]> {
+export async function embedTexts(
+  config: EmbeddingConfig,
+  texts: string[],
+  inputKind: 'query' | 'passage' = 'passage',
+): Promise<number[][]> {
   if (texts.length === 0) return []
   if (config.provider === 'local') throw new Error('local provider 必须通过本地模型 worker 调用')
-  const clean = texts.map((t) => truncate(t ?? ''))
+  const clean = texts.map((t) => truncateEmbeddingInput(t ?? '', inputKind))
   const results: number[][] = []
   const embed = config.provider === 'ollama' ? embedOllama : embedOpenAI
   for (let i = 0; i < clean.length; i += BATCH_SIZE) {
@@ -130,12 +139,7 @@ export async function testEmbedding(config: EmbeddingConfig): Promise<{ ok: bool
   }
 }
 
-/** 检查配置是否可发起嵌入请求 */
+/** 检查配置是否可发起嵌入请求（判定逻辑在 `shared/chat-core/embeddingPolicy.ts`，两端共用） */
 export function isEmbeddingConfigured(config: EmbeddingConfig): boolean {
-  if (!config.model?.trim()) return false
-  if (config.provider === 'local') return /^[a-z0-9][a-z0-9._-]{1,63}@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(config.model)
-  if (!config?.baseUrl?.trim()) return false
-  // OpenAI 兼容服务需要 apiKey；Ollama 不需要
-  if (config.provider === 'openai' && !config.apiKey?.trim()) return false
-  return true
+  return isEmbeddingConfiguredShared(config)
 }

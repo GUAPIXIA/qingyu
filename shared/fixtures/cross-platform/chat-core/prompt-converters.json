@@ -1,0 +1,833 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "messages": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "openai": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "claude": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "gemini": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "viaClaude": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "viaGemini": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "viaOpenai": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        }
+      ],
+      "withPrefix": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        },
+        {
+          "role": "assistant",
+          "content": "前缀"
+        }
+      ],
+      "withPrefixNoArg": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "system",
+          "content": "S2"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "openai": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "system",
+          "content": "S2"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "claude": [
+        {
+          "role": "system",
+          "content": "S1\n\nS2"
+        },
+        {
+          "role": "user",
+          "content": "U1\n\nU2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "[Continue]"
+        }
+      ],
+      "gemini": [
+        {
+          "role": "system",
+          "content": "S1\n\nS2"
+        },
+        {
+          "role": "user",
+          "content": "U1\n\nU2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "viaClaude": [
+        {
+          "role": "system",
+          "content": "S1\n\nS2"
+        },
+        {
+          "role": "user",
+          "content": "U1\n\nU2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "[Continue]"
+        }
+      ],
+      "viaGemini": [
+        {
+          "role": "system",
+          "content": "S1\n\nS2"
+        },
+        {
+          "role": "user",
+          "content": "U1\n\nU2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "viaOpenai": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "system",
+          "content": "S2"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "withPrefix": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "system",
+          "content": "S2"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "withPrefixNoArg": [
+        {
+          "role": "system",
+          "content": "S1"
+        },
+        {
+          "role": "system",
+          "content": "S2"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "user",
+          "content": "U2"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "openai": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "claude": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "[Continue]"
+        }
+      ],
+      "gemini": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "viaClaude": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "[Continue]"
+        }
+      ],
+      "viaGemini": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "viaOpenai": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "withPrefix": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "withPrefixNoArg": [
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "openai": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "claude": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "[Continue]"
+        }
+      ],
+      "gemini": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "viaClaude": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "[Continue]"
+        }
+      ],
+      "viaGemini": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "viaOpenai": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "withPrefix": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "withPrefixNoArg": [
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ]
+    },
+    {
+      "messages": [
+        {
+          "role": "user",
+          "content": "U1",
+          "images": [
+            "img:1"
+          ]
+        },
+        {
+          "role": "user",
+          "content": "U2",
+          "images": [
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "openai": [
+        {
+          "role": "user",
+          "content": "U1",
+          "images": [
+            "img:1"
+          ]
+        },
+        {
+          "role": "user",
+          "content": "U2",
+          "images": [
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "claude": [
+        {
+          "role": "user",
+          "content": "U1\n\nU2",
+          "images": [
+            "img:1",
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "gemini": [
+        {
+          "role": "user",
+          "content": "U1\n\nU2",
+          "images": [
+            "img:1",
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "viaClaude": [
+        {
+          "role": "user",
+          "content": "U1\n\nU2",
+          "images": [
+            "img:1",
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "viaGemini": [
+        {
+          "role": "user",
+          "content": "U1\n\nU2",
+          "images": [
+            "img:1",
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "viaOpenai": [
+        {
+          "role": "user",
+          "content": "U1",
+          "images": [
+            "img:1"
+          ]
+        },
+        {
+          "role": "user",
+          "content": "U2",
+          "images": [
+            "img:2",
+            "img:3"
+          ]
+        }
+      ],
+      "withPrefix": [
+        {
+          "role": "user",
+          "content": "U1",
+          "images": [
+            "img:1"
+          ]
+        },
+        {
+          "role": "user",
+          "content": "U2",
+          "images": [
+            "img:2",
+            "img:3"
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "前缀"
+        }
+      ],
+      "withPrefixNoArg": [
+        {
+          "role": "user",
+          "content": "U1",
+          "images": [
+            "img:1"
+          ]
+        },
+        {
+          "role": "user",
+          "content": "U2",
+          "images": [
+            "img:2",
+            "img:3"
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        }
+      ]
+    },
+    {
+      "messages": [],
+      "openai": [],
+      "claude": [],
+      "gemini": [],
+      "viaClaude": [],
+      "viaGemini": [],
+      "viaOpenai": [],
+      "withPrefix": [],
+      "withPrefixNoArg": []
+    },
+    {
+      "messages": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "openai": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "claude": [
+        {
+          "role": "system",
+          "content": "keep\n\ninjected"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "[Continue]"
+        }
+      ],
+      "gemini": [
+        {
+          "role": "system",
+          "content": "keep\n\ninjected"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "viaClaude": [
+        {
+          "role": "system",
+          "content": "keep\n\ninjected"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        },
+        {
+          "role": "user",
+          "content": "[Continue]"
+        }
+      ],
+      "viaGemini": [
+        {
+          "role": "system",
+          "content": "keep\n\ninjected"
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "viaOpenai": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "withPrefix": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ],
+      "withPrefixNoArg": [
+        {
+          "role": "system",
+          "content": "keep",
+          "keepSeparate": true
+        },
+        {
+          "role": "user",
+          "content": "U1"
+        },
+        {
+          "role": "system",
+          "content": "injected",
+          "keepSeparate": true
+        },
+        {
+          "role": "assistant",
+          "content": "A1"
+        }
+      ]
+    }
+  ]
+}

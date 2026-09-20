@@ -1,5 +1,16 @@
 import type { LocalEmbeddingModelFile, LocalModelCatalog } from '../../../shared/localModels'
 
+/**
+ * 与已签名模型包分离的检索校准参数。模型包签名描述供应链内容；这里描述应用侧评测结果，
+ * 可随召回评测迭代而不破坏既有离线包签名。
+ */
+export const LOCAL_MODEL_RETRIEVAL_PROFILES: Readonly<Record<string, {
+  similarityThreshold: number
+}>> = {
+  'bge-small-zh-v1.5@1.0.0': { similarityThreshold: 0.3 },
+  'multilingual-e5-small@1.0.0': { similarityThreshold: 0.8 },
+}
+
 /** 发布目录公钥；私钥只存在于发布流程，不进入仓库。 */
 export const MODEL_CATALOG_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAcbxzixM4KdNvnVdmVo5tr92qyzU0VAa8M8hkqLLgRDk=

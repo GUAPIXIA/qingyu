@@ -13,7 +13,7 @@ import { collectStopStrings, findStopIndex } from '../utils/regex'
 import { logError, logInfo, logWarn } from '../lib/logger'
 import { safeSave } from '../lib/safeOps'
 import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS, DEFAULT_LOREBOOK_SCAN_DEPTH, resolveLorebookScanDepth } from './chatConstants'
-import { buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
+import { buildLorebookRevisionCorpus, buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
 import { resolveVisionModel } from '../utils/visionModel'
 import { memoryFactsToTexts } from '../utils/memory'
 import { stripVendorThinking } from '../utils/messagePostProcess'
@@ -322,12 +322,12 @@ async function fetchGroupSemanticLoreHits(get: GroupStoreGet, set: GroupStoreSet
   // 缓存：同一轮对话扫描文本不变时复用命中（省嵌入 API 调用）
   const cacheKey = buildSemanticCacheKey({
     scope: 'group-lore',
-    corpus: [...lorebookIds].sort().join(','),
+    corpus: buildLorebookRevisionCorpus(lorebookIds, (id) => lorebookCache.get(id)?.runtime?.revision),
     query: scanText,
     provider: st.provider,
     baseUrl: st.baseUrl,
     model: st.model,
-    threshold: st.threshold,
+    threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
     maxResults: st.maxResults,
   })
   const cached = semanticCacheGet<BudgetLoreItem[]>(cacheKey)
@@ -346,7 +346,7 @@ async function fetchGroupSemanticLoreHits(get: GroupStoreGet, set: GroupStoreSet
         model: st.model,
         apiKey: st.apiKey ?? '',
       },
-      threshold: st.threshold,
+      threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
       maxResults: st.maxResults,
     })
     const items: BudgetLoreItem[] = (hits ?? []).map((h) => ({
@@ -401,7 +401,7 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
     provider: st.provider,
     baseUrl: st.baseUrl,
     model: st.model,
-    threshold: st.threshold,
+    threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
     maxResults: st.maxResults,
   })
   const cached = semanticCacheGet<import('../../shared/ipc-api').FactSearchHit[]>(cacheKey)
@@ -421,7 +421,7 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
         model: st.model,
         apiKey: st.apiKey ?? '',
       },
-      threshold: st.threshold,
+      threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
       maxResults: st.maxResults ?? 3,
     })
     const scoredHits = (hits ?? []).map((hit, index) => typeof hit === 'string'
@@ -602,17 +602,16 @@ export async function streamGroupAI(
     await get().ensureLorebooksLoaded(speaker.boundLorebookIds)
   }
 
-  // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
-  await fetchGroupSemanticLoreHits(get, set, group, speaker.name)
-  // 记忆事实语义检索预取（P0-2）：失败回退全量注入
-  await fetchGroupSemanticFacts(get, set)
-
-  // W1（主计划 §7.3）：构建前异步预取该端点/模型的近期推理样本（失败静默降级）
-  await prefetchUsageProfile({
-    provider: profile.provider,
-    baseUrl: profile.baseUrl,
-    model: settingsStore.settings.activeModel || profile.model,
-  })
+  // 世界书、记忆事实与用量画像互不依赖，并行预取，缩短首 token 前等待。
+  await Promise.all([
+    fetchGroupSemanticLoreHits(get, set, group, speaker.name),
+    fetchGroupSemanticFacts(get, set),
+    prefetchUsageProfile({
+      provider: profile.provider,
+      baseUrl: profile.baseUrl,
+      model: settingsStore.settings.activeModel || profile.model,
+    }),
+  ])
   // 阶段8（§4.2/§4.5）：本轮门控（恢复时用覆盖档位）；档位在 done 处理里用于判定降档
   const groupGate = withReasoningGate(profile, settingsStore.settings.activeModel, recovery?.gateLevel)
   const requestPlan = resolveGroupRequestPlan({
@@ -969,17 +968,15 @@ export async function streamGroupAIFree(
     await get().ensureLorebooksLoaded([...new Set(allBoundLbIds)])
   }
 
-  // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
-  await fetchGroupSemanticLoreHits(get, set, group, '')
-  // 记忆事实语义检索预取（P0-2）
-  await fetchGroupSemanticFacts(get, set)
-
-  // W1（主计划 §7.3）：与点名路径同一分桶的近期推理样本
-  await prefetchUsageProfile({
-    provider: profile.provider,
-    baseUrl: profile.baseUrl,
-    model: settingsStore.settings.activeModel || profile.model,
-  })
+  await Promise.all([
+    fetchGroupSemanticLoreHits(get, set, group, ''),
+    fetchGroupSemanticFacts(get, set),
+    prefetchUsageProfile({
+      provider: profile.provider,
+      baseUrl: profile.baseUrl,
+      model: settingsStore.settings.activeModel || profile.model,
+    }),
+  ])
   // 阶段8（§4.2/§4.5）：本轮门控（恢复时用覆盖档位）；档位在 done 处理里用于判定降档
   const groupGate = withReasoningGate(profile, settingsStore.settings.activeModel, recovery?.gateLevel)
   const requestPlan = resolveGroupRequestPlan({

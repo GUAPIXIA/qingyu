@@ -26,6 +26,7 @@ import { downloadFile } from '../utils/download'
 import { charAssetUrl } from '../utils/asset'
 import type { Message } from '../../shared/types'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
+import { findLatestActionableSingleDirectionMessageId } from '../components/chat/dialogueDirectionView'
 import {
   MessageSquare,
   Users,
@@ -421,6 +422,10 @@ export function ChatPage() {
     for (const m of messages) map.set(m.id, m)
     return map
   }, [messages])
+  const regeneratableDirectionMessageId = useMemo(
+    () => findLatestActionableSingleDirectionMessageId(messages),
+    [messages],
+  )
 
   const effectiveBg = useMemo(() => {
     const params = currentCharacter?.chatBackgroundParams
@@ -615,6 +620,7 @@ export function ChatPage() {
                   message={msg}
                   character={currentCharacter}
                   isLast={index === messages.length - 1}
+                  canRegenerateDirections={msg.id === regeneratableDirectionMessageId}
                   repliedMessage={replied}
                   onReply={() => setReplyToMessage(msg)}
                 />

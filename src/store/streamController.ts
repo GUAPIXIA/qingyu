@@ -43,7 +43,7 @@ import {
   SEMANTIC_SCAN_MAX_TOKENS,
   resolveLorebookScanDepth,
 } from './chatConstants'
-import { buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
+import { buildLorebookRevisionCorpus, buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
 import { resolveVisionModel } from '../utils/visionModel'
 import { memoryFactsToTexts } from '../utils/memory'
 import type { ChatState, StoreGet, StoreSet } from './chatTypes'
@@ -204,12 +204,12 @@ async function fetchSemanticLoreHits(get: StoreGet, set: StoreSet, character: Ch
   // 缓存：同一轮对话扫描文本不变时复用命中（省嵌入 API 调用）
   const cacheKey = buildSemanticCacheKey({
     scope: 'lore',
-    corpus: [...lorebookIds].sort().join(','),
+    corpus: buildLorebookRevisionCorpus(lorebookIds, (id) => lorebookCache.get(id)?.runtime?.revision),
     query: scanText,
     provider: st.provider,
     baseUrl: st.baseUrl,
     model: st.model,
-    threshold: st.threshold,
+    threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
     maxResults: st.maxResults,
   })
   const cached = semanticCacheGet<BudgetLoreItem[]>(cacheKey)
@@ -228,7 +228,7 @@ async function fetchSemanticLoreHits(get: StoreGet, set: StoreSet, character: Ch
         model: st.model,
         apiKey: st.apiKey ?? '',
       },
-      threshold: st.threshold,
+      threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
       maxResults: st.maxResults,
     })
     const items: BudgetLoreItem[] = (hits ?? []).map((h) => ({
@@ -287,7 +287,7 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
     provider: st.provider,
     baseUrl: st.baseUrl,
     model: st.model,
-    threshold: st.threshold,
+    threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
     maxResults: st.maxResults,
   })
   const cached = semanticCacheGet<import('../../shared/ipc-api').FactSearchHit[]>(cacheKey)
@@ -307,7 +307,7 @@ async function fetchSemanticFacts(get: StoreGet, set: StoreSet): Promise<void> {
         model: st.model,
         apiKey: st.apiKey ?? '',
       },
-      threshold: st.threshold,
+      threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
       maxResults: st.maxResults ?? 3,
     })
     // 阶段三：检索排序（0.5语义+0.3新近+0.2重要性）
@@ -749,10 +749,20 @@ export async function streamAIResponse(
   // 如果已有进行中的流，先清理（防止状态泄漏）
   cleanupActiveStream()
 
-  // 语义触发预取（向量 RAG）：失败静默降级为纯关键词
-  await fetchSemanticLoreHits(get, set, character)
-  // 记忆事实语义检索预取（P0-2）：失败回退全量注入
-  await fetchSemanticFacts(get, set)
+  const budgetModel = settings.activeModel || profile.model
+  // 世界书、记忆事实与用量画像互不依赖，并行预取，避免把两次嵌入往返串在主请求前。
+  const prefetches: Promise<unknown>[] = [
+    fetchSemanticLoreHits(get, set, character),
+    fetchSemanticFacts(get, set),
+  ]
+  if (!opts.prebuilt) {
+    prefetches.push(prefetchUsageProfile({
+      provider: profile.provider,
+      baseUrl: profile.baseUrl,
+      model: budgetModel,
+    }))
+  }
+  await Promise.all(prefetches)
 
   // 停止字符串（output 正则规则）：流式命中后截断 + 提前终止，省 token
   let stopStrings: string[] = []
@@ -766,23 +776,12 @@ export async function streamAIResponse(
   // requestMaxTokens 同时作为上下文输出预留与请求 max_tokens，禁止二次推导。
   // 阶段8（§4.2/§4.5）：主对话档位（kill switch 默认关闭；熔断后从更低档起步）；
   // 传入预算后推理项取 gateTokens，正文空间获得可预期的保证。
-  const budgetModel = settings.activeModel || profile.model
   const chatGateLevel = opts.gateLevel
     ?? resolveChatGateLevel({ settings, provider: profile.provider, baseUrl: profile.baseUrl, model: budgetModel })
   const chatGate = chatGateLevel
     ? resolveReasoningGate({ model: budgetModel, requestedLevel: chatGateLevel, enabled: true })
     : undefined
   const gateScope = { provider: profile.provider, baseUrl: profile.baseUrl, model: budgetModel }
-  // W1（主计划 §7.3）：构建前异步预取该端点/模型的近期推理样本；失败静默，
-  // 预算退回档案默认余量（不阻塞、不改变请求可发送性）。
-  // 降档恢复（prebuilt 在场）复用同一上下文快照，不再预取与重建。
-  if (!opts.prebuilt) {
-    await prefetchUsageProfile({
-      provider: profile.provider,
-      baseUrl: profile.baseUrl,
-      model: budgetModel,
-    })
-  }
   const builtContext: BuiltChatContext = opts.prebuilt ?? get().buildContext(character, preset, {
     continuation: opts.continuation,
     narrativeMode: opts.narrativeMode,

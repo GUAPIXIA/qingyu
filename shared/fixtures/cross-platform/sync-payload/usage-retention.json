@@ -1,0 +1,4 @@
+{
+  "algorithm": "electron/services/usage.ts#MAX_RECORDS",
+  "maxRecords": 10000
+}

@@ -12,7 +12,7 @@ import { writeFileAtomic } from '../domain/pcRepository'
 const log = createLogger('preset')
 
 /** 预设实体的规范 payload：与 S2-05 扫描器一致（全部业务字段，不含 id） */
-function presetEntityPayload(preset: Preset): Record<string, unknown> {
+export function presetEntityPayload(preset: Preset): Record<string, unknown> {
   const payload: Record<string, unknown> = { ...preset }
   delete payload.id
   return payload

@@ -1,0 +1,1710 @@
+{
+  "algorithm": "electron/services/lorebookAdapters/registry.ts#import+export",
+  "volatileSentinels": {
+    "timestamp": "<volatile:timestamp>",
+    "hash": "<volatile:sha256>",
+    "entryId": "<volatile:entry-id>"
+  },
+  "cases": [
+    {
+      "label": "embedded-character-book",
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.character-book",
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-embedded-character-book",
+        "revision": 1,
+        "name": "卡内世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 2,
+          "recursiveScanning": true,
+          "tokenBudget": 1024
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": "0",
+            "enabled": true,
+            "content": "正文一",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "阿尔法",
+                "贝塔"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "标题一"
+          },
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": "1",
+            "enabled": true,
+            "content": "正文二",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [
+                "伽马"
+              ],
+              "secondaryKeys": [
+                "次要"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "not_all",
+              "caseSensitive": true,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "after_character"
+            },
+            "scheduling": {
+              "order": 5,
+              "probability": 80,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.character-book",
+          "formatVersion": "2/3",
+          "originalName": "卡内世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "report": {
+        "adapterId": "character-card.character-book",
+        "formatLabel": "CCv2/CCv3 character_book",
+        "formatVersion": "2/3",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "exported": {
+        "name": "卡内世界书",
+        "description": "",
+        "scan_depth": 2,
+        "recursive_scanning": true,
+        "token_budget": 1024,
+        "entries": [
+          {
+            "id": "0",
+            "keys": [
+              "阿尔法",
+              "贝塔"
+            ],
+            "secondary_keys": [],
+            "content": "正文一",
+            "enabled": true,
+            "insertion_order": 100,
+            "position": "before_char",
+            "constant": false,
+            "use_regex": false,
+            "extensions": {
+              "probability": 100,
+              "use_probability": false,
+              "vectorized": false,
+              "selective": false,
+              "case_sensitive": false,
+              "match_whole_words": true,
+              "exclude_recursion": false,
+              "prevent_recursion": false,
+              "ignore_budget": false,
+              "use_group_scoring": false
+            }
+          },
+          {
+            "id": "1",
+            "keys": [
+              "伽马"
+            ],
+            "secondary_keys": [
+              "次要"
+            ],
+            "content": "正文二",
+            "enabled": true,
+            "insertion_order": 5,
+            "position": "after_char",
+            "constant": true,
+            "use_regex": false,
+            "extensions": {
+              "probability": 80,
+              "use_probability": true,
+              "vectorized": false,
+              "selective": true,
+              "selective_logic": "not_all",
+              "case_sensitive": true,
+              "match_whole_words": true,
+              "exclude_recursion": false,
+              "prevent_recursion": false,
+              "ignore_budget": false,
+              "use_group_scoring": false
+            }
+          }
+        ]
+      },
+      "exportError": null,
+      "roundTripDocument": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-embedded-character-book",
+        "revision": 1,
+        "name": "卡内世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 2,
+          "recursiveScanning": true,
+          "tokenBudget": 1024
+        },
+        "entries": [
+          {
+            "id": "0",
+            "sourceId": "0",
+            "enabled": true,
+            "content": "正文一",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "阿尔法",
+                "贝塔"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          },
+          {
+            "id": "1",
+            "sourceId": "1",
+            "enabled": true,
+            "content": "正文二",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [
+                "伽马"
+              ],
+              "secondaryKeys": [
+                "次要"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "not_all",
+              "caseSensitive": true,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "after_character"
+            },
+            "scheduling": {
+              "order": 5,
+              "probability": 80,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.character-book",
+          "formatVersion": "2/3",
+          "originalName": "卡内世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "roundTripError": null
+    },
+    {
+      "label": "sillytavern-world-info",
+      "ok": true,
+      "error": null,
+      "adapterId": "sillytavern.world-info",
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-sillytavern-world-info",
+        "revision": 1,
+        "name": "回退名",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 1,
+          "recursiveScanning": false,
+          "tokenBudget": 512
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 0,
+            "enabled": true,
+            "content": "ST 正文",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "主键"
+              ],
+              "secondaryKeys": [
+                "次"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 10,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [
+                {
+                  "name": "A组",
+                  "weight": 100,
+                  "prioritized": false
+                }
+              ],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "sillytavern.world-info": {
+                "fields": {
+                  "disabled": false
+                }
+              }
+            },
+            "title": "ST 条目标题"
+          },
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 1,
+            "enabled": true,
+            "content": "B 正文",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [
+                "单串"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "B"
+          }
+        ],
+        "source": {
+          "adapterId": "sillytavern.world-info",
+          "formatVersion": "2026-07",
+          "originalName": "回退名",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "sillytavern.world-info": {
+            "payload": {
+              "fields": {
+                "extension_prompt": "前缀",
+                "unknown_wrapper_field": {
+                  "keep": "me"
+                }
+              }
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "report": {
+        "adapterId": "sillytavern.world-info",
+        "formatLabel": "SillyTavern World Info",
+        "formatVersion": "2026-07",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "warning",
+            "action": "mapped",
+            "code": "format_conflict",
+            "path": "$",
+            "message": "同时检测到 character_book 的 keys/insertion_order 字段"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.extension_prompt",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.unknown_wrapper_field",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].disabled",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 1,
+          "preserved": 3,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 1,
+          "errors": 0
+        }
+      },
+      "exported": {
+        "extension_prompt": "前缀",
+        "unknown_wrapper_field": {
+          "keep": "me"
+        },
+        "name": "回退名",
+        "description": "",
+        "scan_depth": 1,
+        "recursive_scanning": false,
+        "token_budget": 512,
+        "entries": {
+          "0": {
+            "disabled": false,
+            "uid": 0,
+            "key": [
+              "主键"
+            ],
+            "keysecondary": [
+              "次"
+            ],
+            "selective": true,
+            "selectiveLogic": "and_any",
+            "content": "ST 正文",
+            "position": 0,
+            "order": 10,
+            "probability": 100,
+            "useProbability": false,
+            "disable": false,
+            "constant": false,
+            "vectorized": false,
+            "caseSensitive": false,
+            "matchWholeWords": true,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "group": "A组",
+            "groupWeight": 100,
+            "useGroupScoring": false
+          },
+          "1": {
+            "uid": 1,
+            "key": [
+              "单串"
+            ],
+            "keysecondary": [],
+            "selective": false,
+            "content": "B 正文",
+            "position": "at_end",
+            "order": 1,
+            "probability": 100,
+            "useProbability": false,
+            "disable": false,
+            "constant": true,
+            "vectorized": false,
+            "caseSensitive": false,
+            "matchWholeWords": true,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "useGroupScoring": false
+          }
+        }
+      },
+      "exportError": null,
+      "roundTripDocument": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-sillytavern-world-info",
+        "revision": 1,
+        "name": "回退名",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 1,
+          "recursiveScanning": false,
+          "tokenBudget": 512
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 0,
+            "enabled": true,
+            "content": "ST 正文",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "主键"
+              ],
+              "secondaryKeys": [
+                "次"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 10,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [
+                {
+                  "name": "A组",
+                  "weight": 100,
+                  "prioritized": false
+                }
+              ],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "sillytavern.world-info": {
+                "fields": {
+                  "disabled": false
+                }
+              }
+            }
+          },
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 1,
+            "enabled": true,
+            "content": "B 正文",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [
+                "单串"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "sillytavern.world-info",
+          "formatVersion": "2026-07",
+          "originalName": "回退名",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "sillytavern.world-info": {
+            "payload": {
+              "fields": {
+                "extension_prompt": "前缀",
+                "unknown_wrapper_field": {
+                  "keep": "me"
+                }
+              }
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "roundTripError": null
+    },
+    {
+      "label": "lorebook-v3",
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.lorebook-v3",
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-lorebook-v3",
+        "revision": 1,
+        "name": "v3 书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "e1",
+            "sourceId": "e1",
+            "enabled": true,
+            "content": "v3 正文",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "k1"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "v3 标题"
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.lorebook-v3",
+          "formatVersion": "3.0",
+          "originalName": "v3 书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "report": {
+        "adapterId": "character-card.lorebook-v3",
+        "formatLabel": "Character Card lorebook_v3",
+        "formatVersion": "3.0",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "exported": {
+        "spec": "lorebook_v3",
+        "spec_version": "3.0",
+        "data": {
+          "name": "v3 书",
+          "description": "",
+          "scan_depth": 4,
+          "recursive_scanning": true,
+          "entries": [
+            {
+              "id": "e1",
+              "keys": [
+                "k1"
+              ],
+              "secondary_keys": [],
+              "content": "v3 正文",
+              "enabled": true,
+              "insertion_order": 1,
+              "position": "before_char",
+              "constant": false,
+              "use_regex": false,
+              "extensions": {
+                "position": "at_end",
+                "probability": 100,
+                "use_probability": false,
+                "vectorized": false,
+                "selective": false,
+                "case_sensitive": false,
+                "match_whole_words": true,
+                "exclude_recursion": false,
+                "prevent_recursion": false,
+                "ignore_budget": false,
+                "use_group_scoring": false
+              }
+            }
+          ]
+        }
+      },
+      "exportError": null,
+      "roundTripDocument": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-lorebook-v3",
+        "revision": 1,
+        "name": "v3 书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "e1",
+            "sourceId": "e1",
+            "enabled": true,
+            "content": "v3 正文",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "k1"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.lorebook-v3",
+          "formatVersion": "3.0",
+          "originalName": "v3 书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "roundTripError": null
+    },
+    {
+      "label": "risu",
+      "ok": true,
+      "error": null,
+      "adapterId": "risu.lorebook",
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-risu",
+        "revision": 1,
+        "name": "回退名",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": "0",
+            "enabled": true,
+            "content": "",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "rk"
+              ],
+              "secondaryKeys": [
+                "rk2"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 7,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "risu.lorebook": {
+                "fields": {
+                  "text": "risu 正文"
+                }
+              }
+            },
+            "title": "risu 标题"
+          }
+        ],
+        "source": {
+          "adapterId": "risu.lorebook",
+          "formatVersion": "1",
+          "originalName": "回退名",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "report": {
+        "adapterId": "risu.lorebook",
+        "formatLabel": "Risu Lorebook",
+        "formatVersion": "1",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].text",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 1,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "exported": {
+        "type": "risu",
+        "ver": 1,
+        "data": [
+          {
+            "text": "risu 正文",
+            "id": "0",
+            "comment": "risu 标题",
+            "key": "rk",
+            "secondkey": "rk2",
+            "content": "",
+            "insertorder": 7,
+            "mode": "normal",
+            "alwaysActive": false,
+            "selective": true,
+            "useRegex": false,
+            "extentions": {
+              "risu_case_sensitive": false
+            }
+          }
+        ]
+      },
+      "exportError": null,
+      "roundTripDocument": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-risu",
+        "revision": 1,
+        "name": "回退名",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "0",
+            "sourceId": "0",
+            "enabled": true,
+            "content": "",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "rk"
+              ],
+              "secondaryKeys": [
+                "rk2"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 7,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "risu.lorebook": {
+                "fields": {
+                  "text": "risu 正文",
+                  "extentions": {
+                    "risu_case_sensitive": false
+                  }
+                }
+              }
+            },
+            "title": "risu 标题"
+          }
+        ],
+        "source": {
+          "adapterId": "risu.lorebook",
+          "formatVersion": "1",
+          "originalName": "回退名",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "roundTripError": null
+    },
+    {
+      "label": "agnai",
+      "ok": true,
+      "error": null,
+      "adapterId": "agnai.memory-book",
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-agnai",
+        "revision": 1,
+        "name": "agnai 书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "a1",
+            "sourceId": "a1",
+            "enabled": true,
+            "content": "agnai 正文",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "ak"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "agnai 名"
+          }
+        ],
+        "source": {
+          "adapterId": "agnai.memory-book",
+          "formatVersion": "1",
+          "originalName": "agnai 书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "report": {
+        "adapterId": "agnai.memory-book",
+        "formatLabel": "Agnai Memory Book",
+        "formatVersion": "1",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "exported": {
+        "name": "agnai 书",
+        "description": "",
+        "entries": [
+          {
+            "id": "a1",
+            "name": "agnai 名",
+            "entry": "agnai 正文",
+            "keywords": [
+              "ak"
+            ],
+            "priority": 1,
+            "enabled": true
+          }
+        ]
+      },
+      "exportError": null,
+      "roundTripDocument": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-agnai",
+        "revision": 1,
+        "name": "agnai 书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "a1",
+            "sourceId": "a1",
+            "enabled": true,
+            "content": "agnai 正文",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "ak"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "agnai 名"
+          }
+        ],
+        "source": {
+          "adapterId": "agnai.memory-book",
+          "formatVersion": "1",
+          "originalName": "agnai 书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "roundTripError": null
+    },
+    {
+      "label": "novelai",
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.character-book",
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-novelai",
+        "revision": 1,
+        "name": "novelai 书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "n1",
+            "sourceId": "n1",
+            "enabled": true,
+            "content": "",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "nk"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 0,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "character-card.character-book": {
+                "fields": {
+                  "text": "nai 正文",
+                  "secondKey": "nai2",
+                  "forceActivation": true
+                }
+              }
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.character-book",
+          "formatVersion": "2/3",
+          "originalName": "novelai 书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "report": {
+        "adapterId": "character-card.character-book",
+        "formatLabel": "CCv2/CCv3 character_book",
+        "formatVersion": "2/3",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].text",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].secondKey",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].forceActivation",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 3,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "exported": {
+        "name": "novelai 书",
+        "description": "",
+        "scan_depth": 4,
+        "recursive_scanning": true,
+        "entries": [
+          {
+            "text": "nai 正文",
+            "secondKey": "nai2",
+            "forceActivation": true,
+            "id": "n1",
+            "keys": [
+              "nk"
+            ],
+            "secondary_keys": [],
+            "content": "",
+            "enabled": true,
+            "insertion_order": 0,
+            "position": "before_char",
+            "constant": false,
+            "use_regex": false,
+            "extensions": {
+              "position": "at_end",
+              "probability": 100,
+              "use_probability": false,
+              "vectorized": false,
+              "selective": false,
+              "case_sensitive": false,
+              "match_whole_words": true,
+              "exclude_recursion": false,
+              "prevent_recursion": false,
+              "ignore_budget": false,
+              "use_group_scoring": false
+            }
+          }
+        ]
+      },
+      "exportError": null,
+      "roundTripDocument": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-novelai",
+        "revision": 1,
+        "name": "novelai 书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "n1",
+            "sourceId": "n1",
+            "enabled": true,
+            "content": "",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "nk"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 0,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "character-card.character-book": {
+                "fields": {
+                  "text": "nai 正文",
+                  "secondKey": "nai2",
+                  "forceActivation": true
+                }
+              }
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.character-book",
+          "formatVersion": "2/3",
+          "originalName": "novelai 书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "roundTripError": null
+    },
+    {
+      "label": "native-v1",
+      "ok": true,
+      "error": null,
+      "adapterId": "qingyu.native-v1",
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-native-v1",
+        "revision": 1,
+        "name": "原生 v1",
+        "description": "阶段 3 之前的落盘形状",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 2,
+          "recursiveScanning": true,
+          "tokenBudget": 700
+        },
+        "entries": [
+          {
+            "id": "v1e",
+            "sourceId": "v1e",
+            "enabled": true,
+            "content": "v1 正文",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "vk"
+              ],
+              "secondaryKeys": [
+                "vk2"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_any",
+              "caseSensitive": true,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "hybrid"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1",
+          "originalName": "原生 v1",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "report": {
+        "adapterId": "qingyu.native-v1",
+        "formatLabel": "轻语原生世界书 v1",
+        "formatVersion": "1",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "exported": {
+        "id": "book-native-v1",
+        "name": "原生 v1",
+        "description": "阶段 3 之前的落盘形状",
+        "enabled": true,
+        "scanDepth": 2,
+        "recursiveScanning": true,
+        "tokenBudget": 700,
+        "entries": [
+          {
+            "id": "v1e",
+            "keywords": [
+              "vk"
+            ],
+            "content": "v1 正文",
+            "position": "before_char",
+            "order": 100,
+            "probability": 100,
+            "enabled": true,
+            "useRegex": false,
+            "regexFlags": "i",
+            "secondaryKeywords": [
+              "vk2"
+            ],
+            "selectiveLogic": "and_any",
+            "caseSensitive": true,
+            "matchWholeWords": true,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "useGroupScoring": false,
+            "ignoreBudget": false,
+            "matchMode": "both",
+            "priority": "conditional",
+            "runtime": {
+              "insertion": {
+                "kind": "prompt",
+                "anchor": "before_character"
+              },
+              "retrieval": "hybrid",
+              "adapterId": "qingyu.native-v1"
+            }
+          }
+        ],
+        "runtime": {
+          "schemaVersion": 2,
+          "revision": 1,
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1"
+        }
+      },
+      "exportError": null,
+      "roundTripDocument": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "book-native-v1",
+        "revision": 1,
+        "name": "原生 v1",
+        "description": "阶段 3 之前的落盘形状",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 2,
+          "recursiveScanning": true,
+          "tokenBudget": 700
+        },
+        "entries": [
+          {
+            "id": "v1e",
+            "sourceId": "v1e",
+            "enabled": true,
+            "content": "v1 正文",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "vk"
+              ],
+              "secondaryKeys": [
+                "vk2"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_any",
+              "caseSensitive": true,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "hybrid"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1",
+          "originalName": "原生 v1",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "roundTripError": null
+    },
+    {
+      "label": "empty-object",
+      "ok": false,
+      "error": "无法识别世界书格式；如果知道文件结构，可使用「映射向导导入」手动指定字段路径",
+      "adapterId": null,
+      "document": null,
+      "report": null,
+      "exported": null,
+      "exportError": null,
+      "roundTripDocument": null,
+      "roundTripError": null
+    },
+    {
+      "label": "array-input",
+      "ok": false,
+      "error": "无法识别世界书格式；如果知道文件结构，可使用「映射向导导入」手动指定字段路径",
+      "adapterId": null,
+      "document": null,
+      "report": null,
+      "exported": null,
+      "exportError": null,
+      "roundTripDocument": null,
+      "roundTripError": null
+    }
+  ]
+}

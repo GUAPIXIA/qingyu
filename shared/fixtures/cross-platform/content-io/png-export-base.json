@@ -1,0 +1,5 @@
+{
+  "algorithm": "electron/services/charCard.ts#exportCharacterToPng base",
+  "blankPngBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "embeddedBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAAp0RVh0Y2hhcmEAZTMwPSLYba8AAAAASUVORK5CYII="
+}

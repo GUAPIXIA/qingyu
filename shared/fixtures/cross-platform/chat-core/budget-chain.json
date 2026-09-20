@@ -1,0 +1,2221 @@
+{
+  "version": 1,
+  "constants": {
+    "protocolReserveTokens": 192,
+    "defaultAutomaticOutputLimit": 32768,
+    "defaultAutomaticReasoningReserve": 8192,
+    "bodyReserveMultiplier": 1.25,
+    "bodyReserveOverheadTokens": 96,
+    "minUsableBodyTokens": 256,
+    "lowGateTokens": 1024,
+    "gateProbeMaxSamples": 32,
+    "taskBodyDefaults": {
+      "main": 600,
+      "translation": 256,
+      "continuation": 180,
+      "tail_repair": 200,
+      "polish": 600,
+      "memory": 2500,
+      "compression": 600,
+      "title": 20,
+      "direction": 800,
+      "character_expand": 1800,
+      "character_field": 800,
+      "greeting": 900,
+      "preset_draft": 900,
+      "image_prompt": 1200,
+      "image_prompt_translation": 256,
+      "lorebook_keywords": 600,
+      "group_reply": 600,
+      "generic": 600
+    },
+    "tasks": [
+      "main",
+      "translation",
+      "continuation",
+      "tail_repair",
+      "polish",
+      "memory",
+      "compression",
+      "title",
+      "direction",
+      "character_expand",
+      "character_field",
+      "greeting",
+      "preset_draft",
+      "image_prompt",
+      "image_prompt_translation",
+      "lorebook_keywords",
+      "group_reply",
+      "generic"
+    ]
+  },
+  "profileCases": [
+    {
+      "model": "",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 32768,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "fallback",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "deepseek-v4",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 65536,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "thinking-disable",
+          "reasoning-effort",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "deepseek-reasoner",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 65536,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "deepseek-r1",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 65536,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "claude-3-7-sonnet",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 200000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "thinking-budget",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "claude-3.7-sonnet",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 200000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "thinking-budget",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "claude-4-opus",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 200000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "thinking-budget",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "claude-3-5-haiku",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 200000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "gemini-2.5-pro",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 1048576,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "gemini-thinking-config",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "gemini-3-flash",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 1048576,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "gemini-thinking-config",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "o1-preview",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 200000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "reasoning-effort",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "gpt-5",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 200000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "reasoning-effort",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "kimi-k2",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 131072,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "glm-4",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 131072,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "qwen2.5",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 32768,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "llama3.1",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 32768,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "unknown-model-xyz",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 32768,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "fallback",
+        "confidence": "low"
+      }
+    }
+  ],
+  "resolveProfileCases": [
+    {
+      "model": "gpt-4o-mini",
+      "userOverride": null,
+      "runtimeCorrection": null,
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "gpt-4o-mini",
+      "userOverride": {
+        "outputLimit": 4096
+      },
+      "runtimeCorrection": null,
+      "profile": {
+        "outputLimit": 4096,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "runtime",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "gpt-4o-mini",
+      "userOverride": {
+        "contextLimit": 8000,
+        "outputLimit": 0
+      },
+      "runtimeCorrection": null,
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 8000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "runtime",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "gpt-4o-mini",
+      "userOverride": {
+        "outputLimit": 65536,
+        "contextLimit": 300000
+      },
+      "runtimeCorrection": null,
+      "profile": {
+        "outputLimit": 65536,
+        "contextLimit": 300000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "runtime",
+        "confidence": "high"
+      }
+    },
+    {
+      "model": "gpt-4o-mini",
+      "userOverride": null,
+      "runtimeCorrection": {
+        "outputLimit": 1024,
+        "reason": "output_limit",
+        "updatedAt": 1
+      },
+      "profile": {
+        "outputLimit": 1024,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "runtime",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "gpt-4o-mini",
+      "userOverride": null,
+      "runtimeCorrection": {
+        "contextLimit": 4096,
+        "reason": "context_limit",
+        "updatedAt": 2
+      },
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 4096,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "runtime",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "gpt-4o-mini",
+      "userOverride": {
+        "outputLimit": 8192,
+        "contextLimit": 200000
+      },
+      "runtimeCorrection": {
+        "outputLimit": 4096,
+        "reason": "output_limit",
+        "updatedAt": 3
+      },
+      "profile": {
+        "outputLimit": 4096,
+        "contextLimit": 200000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "runtime",
+        "confidence": "low"
+      }
+    },
+    {
+      "model": "deepseek-v4",
+      "userOverride": null,
+      "runtimeCorrection": {
+        "outputLimit": 999999,
+        "contextLimit": 999999,
+        "reason": "output_limit",
+        "updatedAt": 4
+      },
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 65536,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "thinking-disable",
+          "reasoning-effort",
+          "none"
+        ],
+        "matchedBy": "runtime",
+        "confidence": "low"
+      }
+    }
+  ],
+  "percentileCases": [
+    {
+      "values": [],
+      "p90": 0
+    },
+    {
+      "values": [
+        5
+      ],
+      "p90": 5
+    },
+    {
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "p90": 9
+    },
+    {
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "p90": 9
+    },
+    {
+      "values": [
+        100,
+        200,
+        300,
+        400,
+        500,
+        600,
+        700,
+        800,
+        900,
+        1000,
+        1100
+      ],
+      "p90": 1000
+    },
+    {
+      "values": [
+        -1,
+        5
+      ],
+      "p90": 5
+    },
+    {
+      "values": [
+        "NaN",
+        5,
+        7
+      ],
+      "p90": 7
+    },
+    {
+      "values": [
+        0,
+        0,
+        0
+      ],
+      "p90": 0
+    }
+  ],
+  "reserveCases": [
+    {
+      "model": "gpt-4o-mini",
+      "recentReasoningTokens": null,
+      "reserve": 8192
+    },
+    {
+      "model": "gpt-4o-mini",
+      "recentReasoningTokens": [
+        100,
+        200,
+        300
+      ],
+      "reserve": 360
+    },
+    {
+      "model": "gpt-4o-mini",
+      "recentReasoningTokens": [
+        0,
+        0,
+        0
+      ],
+      "reserve": 8192
+    },
+    {
+      "model": "gpt-4o-mini",
+      "recentReasoningTokens": [
+        -5,
+        -1
+      ],
+      "reserve": 8192
+    },
+    {
+      "model": "deepseek-v4",
+      "recentReasoningTokens": [
+        1000,
+        2000,
+        3000
+      ],
+      "reserve": 3600
+    },
+    {
+      "model": "deepseek-v4",
+      "recentReasoningTokens": [
+        999999
+      ],
+      "reserve": 32512
+    }
+  ],
+  "hardCapCases": [
+    {
+      "value": null,
+      "cap": null
+    },
+    {
+      "value": null,
+      "cap": null
+    },
+    {
+      "value": 0,
+      "cap": null
+    },
+    {
+      "value": -1,
+      "cap": null
+    },
+    {
+      "value": 100,
+      "cap": 100
+    },
+    {
+      "value": 4096.7,
+      "cap": 4096
+    },
+    {
+      "value": "NaN",
+      "cap": null
+    }
+  ],
+  "overrideCases": [
+    {
+      "enabled": false,
+      "contextLimit": 1000,
+      "outputLimit": null,
+      "override": null
+    },
+    {
+      "enabled": true,
+      "contextLimit": null,
+      "outputLimit": null,
+      "override": null
+    },
+    {
+      "enabled": true,
+      "contextLimit": 0,
+      "outputLimit": null,
+      "override": null
+    },
+    {
+      "enabled": true,
+      "contextLimit": 8000,
+      "outputLimit": null,
+      "override": {
+        "contextLimit": 8000
+      }
+    },
+    {
+      "enabled": true,
+      "contextLimit": null,
+      "outputLimit": 4096,
+      "override": {
+        "outputLimit": 4096
+      }
+    },
+    {
+      "enabled": true,
+      "contextLimit": 8000,
+      "outputLimit": 4096,
+      "override": {
+        "contextLimit": 8000,
+        "outputLimit": 4096
+      }
+    }
+  ],
+  "contextLimitCases": [
+    {
+      "model": "gpt-4o-mini",
+      "profileMaxContext": null,
+      "presetMaxContext": null,
+      "capabilityOverride": null,
+      "limit": 128000
+    },
+    {
+      "model": "gpt-4o-mini",
+      "profileMaxContext": 8000,
+      "presetMaxContext": null,
+      "capabilityOverride": null,
+      "limit": 8000
+    },
+    {
+      "model": "gpt-4o-mini",
+      "profileMaxContext": 999999,
+      "presetMaxContext": null,
+      "capabilityOverride": null,
+      "limit": 128000
+    },
+    {
+      "model": "gpt-4o-mini",
+      "profileMaxContext": null,
+      "presetMaxContext": 4000,
+      "capabilityOverride": null,
+      "limit": 4000
+    },
+    {
+      "model": "gpt-4o-mini",
+      "profileMaxContext": null,
+      "presetMaxContext": null,
+      "capabilityOverride": {
+        "enabled": true,
+        "contextLimit": 64000
+      },
+      "limit": 64000
+    },
+    {
+      "model": "gpt-4o-mini",
+      "profileMaxContext": null,
+      "presetMaxContext": null,
+      "capabilityOverride": {
+        "enabled": false,
+        "contextLimit": 64000
+      },
+      "limit": 128000
+    },
+    {
+      "model": "unknown-model-xyz",
+      "profileMaxContext": 8000,
+      "presetMaxContext": 6000,
+      "capabilityOverride": null,
+      "limit": 6000
+    }
+  ],
+  "requestBudgetCases": [
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 600,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningGate": null,
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 846,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "requestMaxTokens": 9038,
+      "gate": null,
+      "riskNotice": null,
+      "formattedRisk": null
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 0,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningGate": null,
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 0,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8192,
+      "requestMaxTokens": 8192,
+      "gate": null,
+      "riskNotice": null,
+      "formattedRisk": null
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": -5,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningGate": null,
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 0,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8192,
+      "requestMaxTokens": 8192,
+      "gate": null,
+      "riskNotice": null,
+      "formattedRisk": null
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 600,
+        "userHardCap": 4096,
+        "recentReasoningTokens": null,
+        "reasoningGate": null,
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 846,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "requestMaxTokens": 4096,
+      "gate": null,
+      "riskNotice": "user_cap_below_reasoning_reserve",
+      "formattedRisk": "当前模型输出硬上限为 4096 Token，低于该推理模型稳定输出正文所需的约 8448 Token。请提高硬上限，或设为 0 使用自动预算。"
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 600,
+        "userHardCap": 100,
+        "recentReasoningTokens": null,
+        "reasoningGate": null,
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 846,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "requestMaxTokens": 100,
+      "gate": null,
+      "riskNotice": "user_cap_below_reasoning_reserve",
+      "formattedRisk": "当前模型输出硬上限为 100 Token，低于该推理模型稳定输出正文所需的约 8448 Token。请提高硬上限，或设为 0 使用自动预算。"
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 600,
+        "userHardCap": null,
+        "recentReasoningTokens": [
+          1000,
+          2000,
+          3000
+        ],
+        "reasoningGate": null,
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 846,
+      "reasoningReserve": 3600,
+      "minimumViableOutputTokens": 3856,
+      "requestMaxTokens": 4446,
+      "gate": null,
+      "riskNotice": null,
+      "formattedRisk": null
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 600,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningGate": {
+          "level": "low",
+          "knob": "thinking-budget",
+          "enforced": true,
+          "gateTokens": 1024,
+          "source": "gate"
+        },
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 846,
+      "reasoningReserve": 1024,
+      "minimumViableOutputTokens": 1280,
+      "requestMaxTokens": 1870,
+      "gate": {
+        "level": "low",
+        "knob": "thinking-budget",
+        "enforced": true,
+        "source": "gate"
+      },
+      "riskNotice": null,
+      "formattedRisk": null
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 600,
+        "userHardCap": null,
+        "recentReasoningTokens": [
+          3000
+        ],
+        "reasoningGate": {
+          "level": "low",
+          "knob": "thinking-budget",
+          "enforced": false,
+          "gateTokens": 1024,
+          "source": "conservative"
+        },
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 846,
+      "reasoningReserve": 3600,
+      "minimumViableOutputTokens": 3856,
+      "requestMaxTokens": 4446,
+      "gate": {
+        "level": "low",
+        "knob": "thinking-budget",
+        "enforced": false,
+        "source": "conservative"
+      },
+      "riskNotice": null,
+      "formattedRisk": null
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 600,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningGate": {
+          "level": "off",
+          "knob": "thinking-disable",
+          "enforced": true,
+          "gateTokens": 0,
+          "source": "gate"
+        },
+        "profileOverride": null
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "family",
+        "confidence": "low"
+      },
+      "bodyReserve": 846,
+      "reasoningReserve": 0,
+      "minimumViableOutputTokens": 256,
+      "requestMaxTokens": 846,
+      "gate": {
+        "level": "off",
+        "knob": "thinking-disable",
+        "enforced": true,
+        "source": "gate"
+      },
+      "riskNotice": null,
+      "formattedRisk": null
+    },
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "hardMaxChars": 600,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningGate": null,
+        "profileOverride": {
+          "outputLimit": 3000
+        }
+      },
+      "model": "gpt-4o-mini",
+      "profile": {
+        "outputLimit": 3000,
+        "contextLimit": 128000,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "none"
+        ],
+        "matchedBy": "runtime",
+        "confidence": "high"
+      },
+      "bodyReserve": 846,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "requestMaxTokens": 3000,
+      "gate": null,
+      "riskNotice": null,
+      "formattedRisk": null
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "hardMaxChars": 1100,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningGate": null,
+        "profileOverride": null
+      },
+      "model": "deepseek-v4",
+      "profile": {
+        "outputLimit": 32768,
+        "contextLimit": 65536,
+        "reasoningMode": "shared-unknown",
+        "defaultReasoningReserve": 8192,
+        "maxReasoningReserve": 32512,
+        "defaultGate": "standard",
+        "gateKnobs": [
+          "thinking-disable",
+          "reasoning-effort",
+          "none"
+        ],
+        "matchedBy": "exact",
+        "confidence": "high"
+      },
+      "bodyReserve": 1471,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "requestMaxTokens": 9663,
+      "gate": null,
+      "riskNotice": null,
+      "formattedRisk": null
+    }
+  ],
+  "gateCases": [
+    {
+      "input": {
+        "model": "gpt-4o-mini",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": null,
+        "startLevel": null,
+        "probe": null,
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "standard",
+        "knob": "none",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": null,
+        "startLevel": null,
+        "probe": null,
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "standard",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": null,
+        "auxiliary": true,
+        "requestedLevel": null,
+        "startLevel": null,
+        "probe": null,
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "off",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": false,
+        "auxiliary": null,
+        "requestedLevel": null,
+        "startLevel": null,
+        "probe": null,
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "standard",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "disabled"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": "low",
+        "startLevel": null,
+        "probe": null,
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "low",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": null,
+        "startLevel": "off",
+        "probe": null,
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "off",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": null,
+        "startLevel": null,
+        "probe": {
+          "knob": "thinking-disable",
+          "knobAccepted": true,
+          "recentReasoningTokens": [],
+          "updatedAt": 1
+        },
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "standard",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": null,
+        "startLevel": null,
+        "probe": {
+          "knob": "thinking-disable",
+          "knobAccepted": false,
+          "recentReasoningTokens": [],
+          "updatedAt": 1
+        },
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "standard",
+        "knob": "reasoning-effort",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": null,
+        "startLevel": null,
+        "probe": {
+          "knob": "thinking-disable",
+          "disableIgnored": true,
+          "recentReasoningTokens": [],
+          "updatedAt": 1
+        },
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "standard",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "deepseek-v4",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": null,
+        "startLevel": null,
+        "probe": null,
+        "recentReasoningTokens": [
+          2000,
+          4000
+        ]
+      },
+      "resolved": {
+        "level": "standard",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 4800,
+        "source": "conservative"
+      }
+    },
+    {
+      "input": {
+        "model": "unknown-model-xyz",
+        "enabled": null,
+        "auxiliary": null,
+        "requestedLevel": "full",
+        "startLevel": null,
+        "probe": null,
+        "recentReasoningTokens": null
+      },
+      "resolved": {
+        "level": "full",
+        "knob": "none",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      }
+    }
+  ],
+  "levelCases": [
+    {
+      "level": "off",
+      "knob": "thinking-disable",
+      "tokens": 0
+    },
+    {
+      "level": "off",
+      "knob": "reasoning-effort",
+      "tokens": 0
+    },
+    {
+      "level": "off",
+      "knob": "thinking-budget",
+      "tokens": 0
+    },
+    {
+      "level": "off",
+      "knob": "gemini-thinking-config",
+      "tokens": 0
+    },
+    {
+      "level": "off",
+      "knob": "none",
+      "tokens": null
+    },
+    {
+      "level": "off",
+      "knob": "unknown",
+      "tokens": null
+    },
+    {
+      "level": "low",
+      "knob": "thinking-disable",
+      "tokens": 1024
+    },
+    {
+      "level": "low",
+      "knob": "reasoning-effort",
+      "tokens": 1024
+    },
+    {
+      "level": "low",
+      "knob": "thinking-budget",
+      "tokens": 1024
+    },
+    {
+      "level": "low",
+      "knob": "gemini-thinking-config",
+      "tokens": 1024
+    },
+    {
+      "level": "low",
+      "knob": "none",
+      "tokens": null
+    },
+    {
+      "level": "low",
+      "knob": "unknown",
+      "tokens": null
+    },
+    {
+      "level": "standard",
+      "knob": "thinking-disable",
+      "tokens": null
+    },
+    {
+      "level": "standard",
+      "knob": "reasoning-effort",
+      "tokens": null
+    },
+    {
+      "level": "standard",
+      "knob": "thinking-budget",
+      "tokens": null
+    },
+    {
+      "level": "standard",
+      "knob": "gemini-thinking-config",
+      "tokens": null
+    },
+    {
+      "level": "standard",
+      "knob": "none",
+      "tokens": null
+    },
+    {
+      "level": "standard",
+      "knob": "unknown",
+      "tokens": null
+    },
+    {
+      "level": "full",
+      "knob": "thinking-disable",
+      "tokens": null
+    },
+    {
+      "level": "full",
+      "knob": "reasoning-effort",
+      "tokens": null
+    },
+    {
+      "level": "full",
+      "knob": "thinking-budget",
+      "tokens": null
+    },
+    {
+      "level": "full",
+      "knob": "gemini-thinking-config",
+      "tokens": null
+    },
+    {
+      "level": "full",
+      "knob": "none",
+      "tokens": null
+    },
+    {
+      "level": "full",
+      "knob": "unknown",
+      "tokens": null
+    }
+  ],
+  "nextLowerCases": [
+    {
+      "level": "off",
+      "next": null
+    },
+    {
+      "level": "low",
+      "next": "off"
+    },
+    {
+      "level": "standard",
+      "next": "low"
+    },
+    {
+      "level": "full",
+      "next": "standard"
+    }
+  ],
+  "knobCases": [
+    {
+      "model": "deepseek-v4",
+      "level": "standard",
+      "probe": null,
+      "knob": "thinking-disable"
+    },
+    {
+      "model": "deepseek-v4",
+      "level": "standard",
+      "probe": {
+        "knob": "thinking-disable",
+        "knobAccepted": false,
+        "recentReasoningTokens": [],
+        "updatedAt": 1
+      },
+      "knob": "reasoning-effort"
+    },
+    {
+      "model": "deepseek-v4",
+      "level": "off",
+      "probe": {
+        "knob": "thinking-disable",
+        "disableIgnored": true,
+        "recentReasoningTokens": [],
+        "updatedAt": 1
+      },
+      "knob": "none"
+    },
+    {
+      "model": "deepseek-reasoner",
+      "level": "off",
+      "probe": null,
+      "knob": "none"
+    },
+    {
+      "model": "unknown-model-xyz",
+      "level": "low",
+      "probe": null,
+      "knob": "none"
+    }
+  ],
+  "defaultLevelCases": [
+    {
+      "model": "gpt-4o-mini",
+      "enabled": true,
+      "auxiliary": null,
+      "level": "standard"
+    },
+    {
+      "model": "gpt-4o-mini",
+      "enabled": false,
+      "auxiliary": null,
+      "level": null
+    },
+    {
+      "model": "gpt-4o-mini",
+      "enabled": true,
+      "auxiliary": true,
+      "level": "off"
+    },
+    {
+      "model": "",
+      "enabled": true,
+      "auxiliary": null,
+      "level": null
+    }
+  ],
+  "probeMergeCases": [
+    {
+      "current": null,
+      "update": {
+        "knob": "thinking-disable",
+        "updatedAt": 1
+      },
+      "merged": {
+        "knob": "thinking-disable",
+        "knobAccepted": null,
+        "disableIgnored": null,
+        "reportsReasoningUsage": null,
+        "recentReasoningTokens": [],
+        "updatedAt": 1
+      }
+    },
+    {
+      "current": {
+        "knob": "unknown",
+        "recentReasoningTokens": [],
+        "updatedAt": 0
+      },
+      "update": {
+        "knobAccepted": false,
+        "updatedAt": 2
+      },
+      "merged": {
+        "knob": "unknown",
+        "knobAccepted": false,
+        "disableIgnored": null,
+        "reportsReasoningUsage": null,
+        "recentReasoningTokens": [],
+        "updatedAt": 2
+      }
+    },
+    {
+      "current": {
+        "knob": "thinking-disable",
+        "knobAccepted": false,
+        "recentReasoningTokens": [
+          100
+        ],
+        "updatedAt": 1
+      },
+      "update": {
+        "knobAccepted": true,
+        "updatedAt": 3
+      },
+      "merged": {
+        "knob": "thinking-disable",
+        "knobAccepted": true,
+        "disableIgnored": null,
+        "reportsReasoningUsage": null,
+        "recentReasoningTokens": [
+          100
+        ],
+        "updatedAt": 3
+      }
+    },
+    {
+      "current": {
+        "knob": "none",
+        "recentReasoningTokens": [
+          1,
+          2
+        ],
+        "updatedAt": 1
+      },
+      "update": {
+        "reasoningTokens": 500,
+        "updatedAt": 4
+      },
+      "merged": {
+        "knob": "none",
+        "knobAccepted": null,
+        "disableIgnored": null,
+        "reportsReasoningUsage": null,
+        "recentReasoningTokens": [
+          1,
+          2,
+          500
+        ],
+        "updatedAt": 4
+      }
+    },
+    {
+      "current": {
+        "knob": "none",
+        "recentReasoningTokens": [
+          1
+        ],
+        "updatedAt": 1
+      },
+      "update": {
+        "reasoningTokens": -5,
+        "updatedAt": 5
+      },
+      "merged": {
+        "knob": "none",
+        "knobAccepted": null,
+        "disableIgnored": null,
+        "reportsReasoningUsage": null,
+        "recentReasoningTokens": [
+          1
+        ],
+        "updatedAt": 5
+      }
+    },
+    {
+      "current": {
+        "knob": "none",
+        "recentReasoningTokens": [
+          1
+        ],
+        "updatedAt": 1
+      },
+      "update": {
+        "reasoningTokens": "NaN",
+        "updatedAt": 6
+      },
+      "merged": {
+        "knob": "none",
+        "knobAccepted": null,
+        "disableIgnored": null,
+        "reportsReasoningUsage": null,
+        "recentReasoningTokens": [
+          1
+        ],
+        "updatedAt": 6
+      }
+    },
+    {
+      "current": {
+        "knob": "none",
+        "recentReasoningTokens": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39
+        ],
+        "updatedAt": 1
+      },
+      "update": {
+        "reasoningTokens": 999,
+        "updatedAt": 7
+      },
+      "merged": {
+        "knob": "none",
+        "knobAccepted": null,
+        "disableIgnored": null,
+        "reportsReasoningUsage": null,
+        "recentReasoningTokens": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          999
+        ],
+        "updatedAt": 7
+      }
+    }
+  ],
+  "clampCases": [
+    {
+      "gateTokens": 1024,
+      "requestMaxTokens": 2000,
+      "clamped": 1024
+    },
+    {
+      "gateTokens": 1024,
+      "requestMaxTokens": 300,
+      "clamped": 44
+    },
+    {
+      "gateTokens": 0,
+      "requestMaxTokens": 2000,
+      "clamped": 0
+    },
+    {
+      "gateTokens": -10,
+      "requestMaxTokens": 2000,
+      "clamped": 0
+    },
+    {
+      "gateTokens": "NaN",
+      "requestMaxTokens": 2000,
+      "clamped": 0
+    },
+    {
+      "gateTokens": 1024,
+      "requestMaxTokens": "NaN",
+      "clamped": 0
+    },
+    {
+      "gateTokens": 5000,
+      "requestMaxTokens": 256,
+      "clamped": 0
+    }
+  ],
+  "bodyCharsCases": [
+    {
+      "task": "main",
+      "inputChars": null,
+      "expectedBodyChars": null,
+      "chars": 600
+    },
+    {
+      "task": "main",
+      "inputChars": null,
+      "expectedBodyChars": 1234,
+      "chars": 1234
+    },
+    {
+      "task": "main",
+      "inputChars": null,
+      "expectedBodyChars": 0,
+      "chars": 600
+    },
+    {
+      "task": "translation",
+      "inputChars": 100,
+      "expectedBodyChars": null,
+      "chars": 256
+    },
+    {
+      "task": "translation",
+      "inputChars": 1000,
+      "expectedBodyChars": null,
+      "chars": 1500
+    },
+    {
+      "task": "image_prompt_translation",
+      "inputChars": 0,
+      "expectedBodyChars": null,
+      "chars": 256
+    },
+    {
+      "task": "polish",
+      "inputChars": 100,
+      "expectedBodyChars": null,
+      "chars": 256
+    },
+    {
+      "task": "polish",
+      "inputChars": 1000,
+      "expectedBodyChars": null,
+      "chars": 1100
+    },
+    {
+      "task": "memory",
+      "inputChars": null,
+      "expectedBodyChars": null,
+      "chars": 2500
+    },
+    {
+      "task": "title",
+      "inputChars": null,
+      "expectedBodyChars": null,
+      "chars": 20
+    },
+    {
+      "task": "generic",
+      "inputChars": -5,
+      "expectedBodyChars": null,
+      "chars": 600
+    }
+  ],
+  "expandCases": [
+    {
+      "currentMaxTokens": 1000,
+      "budget": {
+        "ceilingTokens": 4096,
+        "bodyReserveTokens": 800
+      },
+      "observedReasoningTokens": null,
+      "next": 2000
+    },
+    {
+      "currentMaxTokens": 1000,
+      "budget": {
+        "ceilingTokens": 4096,
+        "bodyReserveTokens": 800
+      },
+      "observedReasoningTokens": 3000,
+      "next": 3800
+    },
+    {
+      "currentMaxTokens": 4096,
+      "budget": {
+        "ceilingTokens": 4096,
+        "bodyReserveTokens": 800
+      },
+      "observedReasoningTokens": null,
+      "next": null
+    },
+    {
+      "currentMaxTokens": 4000,
+      "budget": {
+        "ceilingTokens": 4096,
+        "bodyReserveTokens": 0
+      },
+      "observedReasoningTokens": null,
+      "next": 4096
+    },
+    {
+      "currentMaxTokens": 0,
+      "budget": {
+        "ceilingTokens": 10,
+        "bodyReserveTokens": 0
+      },
+      "observedReasoningTokens": null,
+      "next": 2
+    },
+    {
+      "currentMaxTokens": 1000,
+      "budget": {
+        "ceilingTokens": 4096,
+        "bodyReserveTokens": 800
+      },
+      "observedReasoningTokens": "NaN",
+      "next": 2000
+    }
+  ],
+  "taskBudgetCases": [
+    {
+      "input": {
+        "task": "main",
+        "model": "gpt-4o-mini",
+        "inputChars": null,
+        "expectedBodyChars": null,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningLevel": null
+      },
+      "task": "main",
+      "expectedBodyChars": 600,
+      "reasoningGate": {
+        "level": "standard",
+        "knob": "none",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      },
+      "requestMaxTokens": 9038,
+      "bodyReserve": 846,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "profileOutputLimit": 32768,
+      "adaptiveOutputBudget": {
+        "ceilingTokens": 32768,
+        "bodyReserveTokens": 846
+      }
+    },
+    {
+      "input": {
+        "task": "main",
+        "model": "deepseek-v4",
+        "inputChars": null,
+        "expectedBodyChars": null,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningLevel": null
+      },
+      "task": "main",
+      "expectedBodyChars": 600,
+      "reasoningGate": {
+        "level": "standard",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      },
+      "requestMaxTokens": 9038,
+      "bodyReserve": 846,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "profileOutputLimit": 32768,
+      "adaptiveOutputBudget": {
+        "ceilingTokens": 32768,
+        "bodyReserveTokens": 846
+      }
+    },
+    {
+      "input": {
+        "task": "main",
+        "model": "deepseek-v4",
+        "inputChars": null,
+        "expectedBodyChars": null,
+        "userHardCap": 4096,
+        "recentReasoningTokens": null,
+        "reasoningLevel": null
+      },
+      "task": "main",
+      "expectedBodyChars": 600,
+      "reasoningGate": {
+        "level": "standard",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      },
+      "requestMaxTokens": 4096,
+      "bodyReserve": 846,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "profileOutputLimit": 32768,
+      "adaptiveOutputBudget": null
+    },
+    {
+      "input": {
+        "task": "memory",
+        "model": "gpt-4o-mini",
+        "inputChars": null,
+        "expectedBodyChars": null,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningLevel": null
+      },
+      "task": "memory",
+      "expectedBodyChars": 2500,
+      "reasoningGate": {
+        "level": "off",
+        "knob": "none",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      },
+      "requestMaxTokens": 11413,
+      "bodyReserve": 3221,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "profileOutputLimit": 32768,
+      "adaptiveOutputBudget": {
+        "ceilingTokens": 32768,
+        "bodyReserveTokens": 3221
+      }
+    },
+    {
+      "input": {
+        "task": "translation",
+        "model": "gpt-4o-mini",
+        "inputChars": 500,
+        "expectedBodyChars": null,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningLevel": null
+      },
+      "task": "translation",
+      "expectedBodyChars": 750,
+      "reasoningGate": {
+        "level": "off",
+        "knob": "none",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      },
+      "requestMaxTokens": 9226,
+      "bodyReserve": 1034,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "profileOutputLimit": 32768,
+      "adaptiveOutputBudget": {
+        "ceilingTokens": 32768,
+        "bodyReserveTokens": 1034
+      }
+    },
+    {
+      "input": {
+        "task": "title",
+        "model": "gpt-4o-mini",
+        "inputChars": null,
+        "expectedBodyChars": null,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningLevel": "off"
+      },
+      "task": "title",
+      "expectedBodyChars": 20,
+      "reasoningGate": {
+        "level": "off",
+        "knob": "none",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      },
+      "requestMaxTokens": 8313,
+      "bodyReserve": 121,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8313,
+      "profileOutputLimit": 32768,
+      "adaptiveOutputBudget": {
+        "ceilingTokens": 32768,
+        "bodyReserveTokens": 121
+      }
+    },
+    {
+      "input": {
+        "task": "main",
+        "model": "gpt-4o-mini",
+        "inputChars": null,
+        "expectedBodyChars": null,
+        "userHardCap": null,
+        "recentReasoningTokens": [
+          1000,
+          2000
+        ],
+        "reasoningLevel": null
+      },
+      "task": "main",
+      "expectedBodyChars": 600,
+      "reasoningGate": {
+        "level": "standard",
+        "knob": "none",
+        "enforced": false,
+        "gateTokens": 2400,
+        "source": "conservative"
+      },
+      "requestMaxTokens": 3246,
+      "bodyReserve": 846,
+      "reasoningReserve": 2400,
+      "minimumViableOutputTokens": 2656,
+      "profileOutputLimit": 32768,
+      "adaptiveOutputBudget": {
+        "ceilingTokens": 32768,
+        "bodyReserveTokens": 846
+      }
+    },
+    {
+      "input": {
+        "task": "main",
+        "model": "deepseek-v4",
+        "inputChars": null,
+        "expectedBodyChars": null,
+        "userHardCap": null,
+        "recentReasoningTokens": null,
+        "reasoningLevel": "low"
+      },
+      "task": "main",
+      "expectedBodyChars": 600,
+      "reasoningGate": {
+        "level": "low",
+        "knob": "thinking-disable",
+        "enforced": false,
+        "gateTokens": 8192,
+        "source": "conservative"
+      },
+      "requestMaxTokens": 9038,
+      "bodyReserve": 846,
+      "reasoningReserve": 8192,
+      "minimumViableOutputTokens": 8448,
+      "profileOutputLimit": 32768,
+      "adaptiveOutputBudget": {
+        "ceilingTokens": 32768,
+        "bodyReserveTokens": 846
+      }
+    }
+  ]
+}

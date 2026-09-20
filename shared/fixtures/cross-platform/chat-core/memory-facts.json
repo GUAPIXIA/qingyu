@@ -1,0 +1,2194 @@
+{
+  "version": 1,
+  "constants": {
+    "maxFacts": 30,
+    "maxFactHistory": 200
+  },
+  "parseCases": [
+    {
+      "text": "【摘要】她开了家书店\n【事实】\n1. 苏晚的职业：书店店主\n2. 苏晚的喜好：旧书",
+      "currentState": "",
+      "summary": "她开了家书店",
+      "facts": [
+        "苏晚的职业：书店店主",
+        "苏晚的喜好：旧书"
+      ],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "【当前状态】深夜书店，灯还亮着\n【时间线】她刚送走最后一位客人\n【事实】\n- 苏晚的职业：书店店主",
+      "currentState": "深夜书店，灯还亮着",
+      "summary": "她刚送走最后一位客人",
+      "facts": [
+        "苏晚的职业：书店店主"
+      ],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "【当前状态】状态文本\n【摘要】摘要文本\n【事实】\n３、全角编号事实",
+      "currentState": "状态文本",
+      "summary": "摘要文本",
+      "facts": [
+        "３、全角编号事实"
+      ],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "【事实】\n* 星号事实\n(1) 括号编号",
+      "currentState": "",
+      "summary": "",
+      "facts": [
+        "星号事实",
+        "(1) 括号编号"
+      ],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "只有自由文本，没有任何标记",
+      "currentState": "",
+      "summary": "只有自由文本，没有任何标记",
+      "facts": [],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "<thought>思考不应出现</thought>【摘要】剥离思考后的摘要",
+      "currentState": "",
+      "summary": "剥离思考后的摘要",
+      "facts": [],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "【摘要】带事实变更\n【事实变更】\n```json\n[{\"action\":\"add\",\"fact\":{\"subject\":\"苏晚\",\"predicate\":\"职业\",\"value\":\"店主\"}}]\n```",
+      "currentState": "",
+      "summary": "带事实变更",
+      "facts": [],
+      "factChangesPresent": true,
+      "factChanges": [
+        {
+          "action": "add",
+          "fact": {
+            "subject": "苏晚",
+            "predicate": "职业",
+            "value": "店主"
+          }
+        }
+      ],
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "【摘要】变更格式错误\n【事实变更】not json",
+      "currentState": "",
+      "summary": "变更格式错误",
+      "facts": [],
+      "factChangesPresent": true,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "【摘要】提案\n【事实提案】[{\"changeType\":\"set\",\"subject\":\"苏晚\",\"predicate\":\"心情\",\"value\":\"平静\"},{\"changeType\":\"bad\"}]",
+      "currentState": "",
+      "summary": "提案",
+      "facts": [],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": true,
+      "factProposals": [
+        {
+          "subject": "苏晚",
+          "predicate": "心情",
+          "value": "平静",
+          "changeType": "set"
+        }
+      ]
+    },
+    {
+      "text": "【事实提案】[{\"changeType\":\"bad\"}]",
+      "currentState": "",
+      "summary": "",
+      "facts": [],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": true,
+      "factProposals": null
+    },
+    {
+      "text": "",
+      "currentState": "",
+      "summary": "",
+      "facts": [],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    },
+    {
+      "text": "   ",
+      "currentState": "",
+      "summary": "",
+      "facts": [],
+      "factChangesPresent": false,
+      "factChanges": null,
+      "factProposalsPresent": false,
+      "factProposals": null
+    }
+  ],
+  "applyCases": [
+    {
+      "caseIndex": 0,
+      "kind": "changes",
+      "previousFacts": [
+        {
+          "text": "苏晚的职业：书店店主"
+        }
+      ],
+      "previousHistory": [],
+      "changes": null,
+      "proposals": null,
+      "sourceMessageId": "m1",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "legacy-ahxdy0-0",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.7,
+          "sourceMessageIds": [],
+          "updatedAt": 1700000000000
+        }
+      ],
+      "history": []
+    },
+    {
+      "caseIndex": 1,
+      "kind": "changes",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "previousHistory": [],
+      "changes": [
+        {
+          "action": "add",
+          "fact": {
+            "subject": "苏晚",
+            "predicate": "职业",
+            "value": "咖啡店主"
+          }
+        }
+      ],
+      "proposals": null,
+      "sourceMessageId": "m2",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "fact-loyw3v28-0",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "咖啡店主",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.8,
+          "sourceMessageIds": [
+            "m2"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ],
+      "history": [
+        {
+          "id": "f1:history:1700000000000:0",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "superseded",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1",
+            "m2"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ]
+    },
+    {
+      "caseIndex": 2,
+      "kind": "changes",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "previousHistory": [],
+      "changes": [
+        {
+          "action": "update",
+          "id": "f1",
+          "patch": {
+            "value": "图书馆员",
+            "importance": 5
+          }
+        }
+      ],
+      "proposals": null,
+      "sourceMessageId": "m3",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "图书馆员",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1",
+            "m3"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ],
+      "history": [
+        {
+          "id": "f1:history:1700000000000:0",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "superseded",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1",
+            "m3"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ]
+    },
+    {
+      "caseIndex": 3,
+      "kind": "changes",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "previousHistory": [],
+      "changes": [
+        {
+          "action": "update",
+          "id": "f1",
+          "patch": {
+            "importance": 2
+          }
+        }
+      ],
+      "proposals": null,
+      "sourceMessageId": "m4",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1",
+            "m4"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ],
+      "history": []
+    },
+    {
+      "caseIndex": 4,
+      "kind": "changes",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "previousHistory": [],
+      "changes": [
+        {
+          "action": "deactivate",
+          "id": "f1"
+        }
+      ],
+      "proposals": null,
+      "sourceMessageId": "m5",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "history": [
+        {
+          "id": "f1:history:1700000000000:0",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "inactive",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1",
+            "m5"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ]
+    },
+    {
+      "caseIndex": 5,
+      "kind": "changes",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "previousHistory": [],
+      "changes": [
+        {
+          "action": "deactivate",
+          "id": "missing"
+        }
+      ],
+      "proposals": null,
+      "sourceMessageId": "m6",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "history": []
+    },
+    {
+      "caseIndex": 6,
+      "kind": "changes",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f3",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "已废弃",
+          "status": "inactive",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "previousHistory": [
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "changes": [],
+      "proposals": null,
+      "sourceMessageId": "m7",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "history": [
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ]
+    },
+    {
+      "caseIndex": 7,
+      "kind": "proposals",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "previousHistory": [],
+      "changes": null,
+      "proposals": [
+        {
+          "changeType": "set",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "花店主"
+        }
+      ],
+      "sourceMessageId": "m8",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "花店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1",
+            "m8"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ],
+      "history": [
+        {
+          "id": "f1:history:1700000000000:0",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "superseded",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1",
+            "m8"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ]
+    },
+    {
+      "caseIndex": 8,
+      "kind": "proposals",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "previousHistory": [],
+      "changes": null,
+      "proposals": [
+        {
+          "changeType": "set",
+          "subject": "苏晚",
+          "predicate": "心情",
+          "value": "平静"
+        },
+        {
+          "changeType": "clear",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": ""
+        }
+      ],
+      "sourceMessageId": "m9",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "fact-loyw3v28-0",
+          "subject": "苏晚",
+          "predicate": "心情",
+          "value": "平静",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.8,
+          "sourceMessageIds": [
+            "m9"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ],
+      "history": [
+        {
+          "id": "f2:history:1700000000000:0",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "inactive",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [
+            "m9"
+          ],
+          "updatedAt": 1700000000000
+        }
+      ]
+    },
+    {
+      "caseIndex": 9,
+      "kind": "proposals",
+      "previousFacts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "previousHistory": [],
+      "changes": null,
+      "proposals": [
+        {
+          "changeType": "clear",
+          "subject": "他人",
+          "predicate": "未知",
+          "value": ""
+        }
+      ],
+      "sourceMessageId": "m10",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "history": []
+    },
+    {
+      "caseIndex": 10,
+      "kind": "proposals",
+      "previousFacts": [
+        {
+          "id": "f4",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000,
+          "scope": "session",
+          "entityId": "e1"
+        }
+      ],
+      "previousHistory": [],
+      "changes": null,
+      "proposals": [
+        {
+          "changeType": "clear",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": ""
+        }
+      ],
+      "sourceMessageId": "m11",
+      "updatedAt": 1700000000000,
+      "facts": [],
+      "history": [
+        {
+          "id": "f4:history:1700000000000:0",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "inactive",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1",
+            "m11"
+          ],
+          "updatedAt": 1700000000000,
+          "scope": "session",
+          "entityId": "e1"
+        }
+      ]
+    },
+    {
+      "caseIndex": 11,
+      "kind": "changes",
+      "previousFacts": [
+        {
+          "id": "bulk-0",
+          "subject": "主体0",
+          "predicate": "属性",
+          "value": "值0",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1700000000000
+        },
+        {
+          "id": "bulk-1",
+          "subject": "主体1",
+          "predicate": "属性",
+          "value": "值1",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999999
+        },
+        {
+          "id": "bulk-2",
+          "subject": "主体2",
+          "predicate": "属性",
+          "value": "值2",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999998
+        },
+        {
+          "id": "bulk-3",
+          "subject": "主体3",
+          "predicate": "属性",
+          "value": "值3",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999997
+        },
+        {
+          "id": "bulk-4",
+          "subject": "主体4",
+          "predicate": "属性",
+          "value": "值4",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999996
+        },
+        {
+          "id": "bulk-5",
+          "subject": "主体5",
+          "predicate": "属性",
+          "value": "值5",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999995
+        },
+        {
+          "id": "bulk-6",
+          "subject": "主体6",
+          "predicate": "属性",
+          "value": "值6",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999994
+        },
+        {
+          "id": "bulk-7",
+          "subject": "主体7",
+          "predicate": "属性",
+          "value": "值7",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999993
+        },
+        {
+          "id": "bulk-8",
+          "subject": "主体8",
+          "predicate": "属性",
+          "value": "值8",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999992
+        },
+        {
+          "id": "bulk-9",
+          "subject": "主体9",
+          "predicate": "属性",
+          "value": "值9",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999991
+        },
+        {
+          "id": "bulk-10",
+          "subject": "主体10",
+          "predicate": "属性",
+          "value": "值10",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999990
+        },
+        {
+          "id": "bulk-11",
+          "subject": "主体11",
+          "predicate": "属性",
+          "value": "值11",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999989
+        },
+        {
+          "id": "bulk-12",
+          "subject": "主体12",
+          "predicate": "属性",
+          "value": "值12",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999988
+        },
+        {
+          "id": "bulk-13",
+          "subject": "主体13",
+          "predicate": "属性",
+          "value": "值13",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999987
+        },
+        {
+          "id": "bulk-14",
+          "subject": "主体14",
+          "predicate": "属性",
+          "value": "值14",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999986
+        },
+        {
+          "id": "bulk-15",
+          "subject": "主体15",
+          "predicate": "属性",
+          "value": "值15",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999985
+        },
+        {
+          "id": "bulk-16",
+          "subject": "主体16",
+          "predicate": "属性",
+          "value": "值16",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999984
+        },
+        {
+          "id": "bulk-17",
+          "subject": "主体17",
+          "predicate": "属性",
+          "value": "值17",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999983
+        },
+        {
+          "id": "bulk-18",
+          "subject": "主体18",
+          "predicate": "属性",
+          "value": "值18",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999982
+        },
+        {
+          "id": "bulk-19",
+          "subject": "主体19",
+          "predicate": "属性",
+          "value": "值19",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999981
+        },
+        {
+          "id": "bulk-20",
+          "subject": "主体20",
+          "predicate": "属性",
+          "value": "值20",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999980
+        },
+        {
+          "id": "bulk-21",
+          "subject": "主体21",
+          "predicate": "属性",
+          "value": "值21",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999979
+        },
+        {
+          "id": "bulk-22",
+          "subject": "主体22",
+          "predicate": "属性",
+          "value": "值22",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999978
+        },
+        {
+          "id": "bulk-23",
+          "subject": "主体23",
+          "predicate": "属性",
+          "value": "值23",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999977
+        },
+        {
+          "id": "bulk-24",
+          "subject": "主体24",
+          "predicate": "属性",
+          "value": "值24",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999976
+        },
+        {
+          "id": "bulk-25",
+          "subject": "主体25",
+          "predicate": "属性",
+          "value": "值25",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999975
+        },
+        {
+          "id": "bulk-26",
+          "subject": "主体26",
+          "predicate": "属性",
+          "value": "值26",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999974
+        },
+        {
+          "id": "bulk-27",
+          "subject": "主体27",
+          "predicate": "属性",
+          "value": "值27",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999973
+        },
+        {
+          "id": "bulk-28",
+          "subject": "主体28",
+          "predicate": "属性",
+          "value": "值28",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999972
+        },
+        {
+          "id": "bulk-29",
+          "subject": "主体29",
+          "predicate": "属性",
+          "value": "值29",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999971
+        },
+        {
+          "id": "bulk-30",
+          "subject": "主体30",
+          "predicate": "属性",
+          "value": "值30",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999970
+        },
+        {
+          "id": "bulk-31",
+          "subject": "主体31",
+          "predicate": "属性",
+          "value": "值31",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999969
+        },
+        {
+          "id": "bulk-32",
+          "subject": "主体32",
+          "predicate": "属性",
+          "value": "值32",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999968
+        },
+        {
+          "id": "bulk-33",
+          "subject": "主体33",
+          "predicate": "属性",
+          "value": "值33",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999967
+        },
+        {
+          "id": "bulk-34",
+          "subject": "主体34",
+          "predicate": "属性",
+          "value": "值34",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999966
+        }
+      ],
+      "previousHistory": [],
+      "changes": null,
+      "proposals": null,
+      "sourceMessageId": "m12",
+      "updatedAt": 1700000000000,
+      "facts": [
+        {
+          "id": "bulk-0",
+          "subject": "主体0",
+          "predicate": "属性",
+          "value": "值0",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1700000000000
+        },
+        {
+          "id": "bulk-1",
+          "subject": "主体1",
+          "predicate": "属性",
+          "value": "值1",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999999
+        },
+        {
+          "id": "bulk-2",
+          "subject": "主体2",
+          "predicate": "属性",
+          "value": "值2",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999998
+        },
+        {
+          "id": "bulk-3",
+          "subject": "主体3",
+          "predicate": "属性",
+          "value": "值3",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999997
+        },
+        {
+          "id": "bulk-4",
+          "subject": "主体4",
+          "predicate": "属性",
+          "value": "值4",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999996
+        },
+        {
+          "id": "bulk-5",
+          "subject": "主体5",
+          "predicate": "属性",
+          "value": "值5",
+          "status": "active",
+          "importance": 1,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999995
+        },
+        {
+          "id": "bulk-6",
+          "subject": "主体6",
+          "predicate": "属性",
+          "value": "值6",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999994
+        },
+        {
+          "id": "bulk-7",
+          "subject": "主体7",
+          "predicate": "属性",
+          "value": "值7",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999993
+        },
+        {
+          "id": "bulk-8",
+          "subject": "主体8",
+          "predicate": "属性",
+          "value": "值8",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999992
+        },
+        {
+          "id": "bulk-9",
+          "subject": "主体9",
+          "predicate": "属性",
+          "value": "值9",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999991
+        },
+        {
+          "id": "bulk-11",
+          "subject": "主体11",
+          "predicate": "属性",
+          "value": "值11",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999989
+        },
+        {
+          "id": "bulk-12",
+          "subject": "主体12",
+          "predicate": "属性",
+          "value": "值12",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999988
+        },
+        {
+          "id": "bulk-13",
+          "subject": "主体13",
+          "predicate": "属性",
+          "value": "值13",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999987
+        },
+        {
+          "id": "bulk-14",
+          "subject": "主体14",
+          "predicate": "属性",
+          "value": "值14",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999986
+        },
+        {
+          "id": "bulk-16",
+          "subject": "主体16",
+          "predicate": "属性",
+          "value": "值16",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999984
+        },
+        {
+          "id": "bulk-17",
+          "subject": "主体17",
+          "predicate": "属性",
+          "value": "值17",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999983
+        },
+        {
+          "id": "bulk-18",
+          "subject": "主体18",
+          "predicate": "属性",
+          "value": "值18",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999982
+        },
+        {
+          "id": "bulk-19",
+          "subject": "主体19",
+          "predicate": "属性",
+          "value": "值19",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999981
+        },
+        {
+          "id": "bulk-21",
+          "subject": "主体21",
+          "predicate": "属性",
+          "value": "值21",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999979
+        },
+        {
+          "id": "bulk-22",
+          "subject": "主体22",
+          "predicate": "属性",
+          "value": "值22",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999978
+        },
+        {
+          "id": "bulk-23",
+          "subject": "主体23",
+          "predicate": "属性",
+          "value": "值23",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999977
+        },
+        {
+          "id": "bulk-24",
+          "subject": "主体24",
+          "predicate": "属性",
+          "value": "值24",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999976
+        },
+        {
+          "id": "bulk-26",
+          "subject": "主体26",
+          "predicate": "属性",
+          "value": "值26",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999974
+        },
+        {
+          "id": "bulk-27",
+          "subject": "主体27",
+          "predicate": "属性",
+          "value": "值27",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999973
+        },
+        {
+          "id": "bulk-28",
+          "subject": "主体28",
+          "predicate": "属性",
+          "value": "值28",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999972
+        },
+        {
+          "id": "bulk-29",
+          "subject": "主体29",
+          "predicate": "属性",
+          "value": "值29",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999971
+        },
+        {
+          "id": "bulk-31",
+          "subject": "主体31",
+          "predicate": "属性",
+          "value": "值31",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999969
+        },
+        {
+          "id": "bulk-32",
+          "subject": "主体32",
+          "predicate": "属性",
+          "value": "值32",
+          "status": "active",
+          "importance": 3,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999968
+        },
+        {
+          "id": "bulk-33",
+          "subject": "主体33",
+          "predicate": "属性",
+          "value": "值33",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999967
+        },
+        {
+          "id": "bulk-34",
+          "subject": "主体34",
+          "predicate": "属性",
+          "value": "值34",
+          "status": "active",
+          "importance": 5,
+          "confidence": 0.5,
+          "sourceMessageIds": [],
+          "updatedAt": 1699999999966
+        }
+      ],
+      "history": []
+    }
+  ],
+  "recencyCases": [
+    {
+      "updatedAt": 1700000000000,
+      "now": 1700000000000,
+      "score": 1
+    },
+    {
+      "updatedAt": 1699913600000,
+      "now": 1700000000000,
+      "score": 0.9666666666666667
+    },
+    {
+      "updatedAt": 1697408000000,
+      "now": 1700000000000,
+      "score": 0
+    },
+    {
+      "updatedAt": 1700000001000,
+      "now": 1700000000000,
+      "score": 1
+    },
+    {
+      "updatedAt": 0,
+      "now": 1700000000000,
+      "score": 0.5
+    },
+    {
+      "updatedAt": null,
+      "now": 1700000000000,
+      "score": 0.5
+    }
+  ],
+  "rankCases": [
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "semanticScores": null,
+      "now": 1700000000000,
+      "ranked": [
+        {
+          "text": "苏晚的职业：书店店主",
+          "score": 0.8799998842592593,
+          "semantic": 0,
+          "recency": 0.9999996141975309,
+          "importance": 4,
+          "confidence": 0.9
+        },
+        {
+          "text": "苏晚的喜好：喜欢旧书",
+          "score": 0.61,
+          "semantic": 0,
+          "recency": 0.9666666666666667,
+          "importance": 2,
+          "confidence": 0.6
+        }
+      ]
+    },
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "semanticScores": [
+        0.9,
+        0.1
+      ],
+      "now": 1700000000000,
+      "ranked": [
+        {
+          "text": "苏晚的职业：书店店主",
+          "score": 0.8999999228395061,
+          "semantic": 0.9,
+          "recency": 0.9999996141975309,
+          "importance": 4,
+          "confidence": 0.9
+        },
+        {
+          "text": "苏晚的喜好：喜欢旧书",
+          "score": 0.38333333333333336,
+          "semantic": 0.1,
+          "recency": 0.9666666666666667,
+          "importance": 2,
+          "confidence": 0.6
+        }
+      ]
+    },
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "semanticScores": [
+        0,
+        0
+      ],
+      "now": 1700000000000,
+      "ranked": [
+        {
+          "text": "苏晚的职业：书店店主",
+          "score": 0.8799998842592593,
+          "semantic": 0,
+          "recency": 0.9999996141975309,
+          "importance": 4,
+          "confidence": 0.9
+        },
+        {
+          "text": "苏晚的喜好：喜欢旧书",
+          "score": 0.61,
+          "semantic": 0,
+          "recency": 0.9666666666666667,
+          "importance": 2,
+          "confidence": 0.6
+        }
+      ]
+    },
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "semanticScores": [
+        0.5
+      ],
+      "now": 1700000000000,
+      "ranked": [
+        {
+          "text": "苏晚的职业：书店店主",
+          "score": 0.8799998842592593,
+          "semantic": 0,
+          "recency": 0.9999996141975309,
+          "importance": 4,
+          "confidence": 0.9
+        },
+        {
+          "text": "苏晚的喜好：喜欢旧书",
+          "score": 0.61,
+          "semantic": 0,
+          "recency": 0.9666666666666667,
+          "importance": 2,
+          "confidence": 0.6
+        }
+      ]
+    },
+    {
+      "facts": [
+        {
+          "text": "苏晚的职业：书店店主"
+        },
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "semanticScores": [
+        0.8,
+        0.4
+      ],
+      "now": 1700000000000,
+      "ranked": [
+        {
+          "text": "苏晚的职业：书店店主",
+          "score": 0.71,
+          "semantic": 0.8,
+          "recency": 0.5,
+          "importance": 3,
+          "confidence": 0.7
+        },
+        {
+          "text": "苏晚的职业：书店店主",
+          "score": 0.6499999228395063,
+          "semantic": 0.4,
+          "recency": 0.9999996141975309,
+          "importance": 4,
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "facts": [],
+      "semanticScores": null,
+      "now": 1700000000000,
+      "ranked": []
+    }
+  ],
+  "budgetCases": [
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "semanticScores": null,
+      "now": 1700000000000,
+      "budget": 1000,
+      "selected": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ]
+    },
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "semanticScores": null,
+      "now": 1700000000000,
+      "budget": 10,
+      "selected": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ]
+    },
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "semanticScores": null,
+      "now": 1700000000000,
+      "budget": 0,
+      "selected": []
+    },
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f3",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "已废弃",
+          "status": "inactive",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "semanticScores": null,
+      "now": 1700000000000,
+      "budget": 1000,
+      "selected": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ]
+    }
+  ],
+  "layeredCases": [
+    {
+      "currentState": "深夜的旧书店，灯还亮着",
+      "timeline": "她送走了最后一位客人，然后开始整理书架。她送走了最后一位客人，然后开始整理书架。她送走了最后一位客人，然后开始整理书架。",
+      "facts": [
+        {
+          "text": "苏晚的职业：书店店主"
+        },
+        {
+          "text": "苏晚的喜好：旧书"
+        }
+      ],
+      "budget": 500,
+      "semanticScores": null,
+      "now": 1700000000000,
+      "fittedCurrentState": "深夜的旧书店，灯还亮着",
+      "fittedTimeline": "她送走了最后一位客人，然后开始整理书架。她送走了最后一位客人，然后开始整理书架。她送走了最后一位客人，然后开始整理书架。",
+      "fittedFacts": [
+        {
+          "text": "苏晚的职业：书店店主"
+        },
+        {
+          "text": "苏晚的喜好：旧书"
+        }
+      ],
+      "retrievalMode": "fallback"
+    },
+    {
+      "currentState": null,
+      "timeline": "没有当前状态的旧会话摘要。没有当前状态的旧会话摘要。",
+      "facts": [
+        {
+          "text": "旧事实一"
+        }
+      ],
+      "budget": 200,
+      "semanticScores": null,
+      "now": 1700000000000,
+      "fittedCurrentState": "",
+      "fittedTimeline": "没有当前状态的旧会话摘要。没有当前状态的旧会话摘要。",
+      "fittedFacts": [
+        {
+          "text": "旧事实一"
+        }
+      ],
+      "retrievalMode": "fallback"
+    },
+    {
+      "currentState": "很短",
+      "timeline": "时间线",
+      "facts": [],
+      "budget": 60,
+      "semanticScores": null,
+      "now": 1700000000000,
+      "fittedCurrentState": "很短",
+      "fittedTimeline": "时间线",
+      "fittedFacts": [],
+      "retrievalMode": "fallback"
+    },
+    {
+      "currentState": "",
+      "timeline": "时间线文本",
+      "facts": [
+        {
+          "text": "无状态的旧事实"
+        }
+      ],
+      "budget": 300,
+      "semanticScores": [
+        0.7
+      ],
+      "now": 1700000000000,
+      "fittedCurrentState": "",
+      "fittedTimeline": "时间线文本",
+      "fittedFacts": [
+        {
+          "text": "无状态的旧事实"
+        }
+      ],
+      "retrievalMode": "semantic"
+    },
+    {
+      "currentState": null,
+      "timeline": "",
+      "facts": [],
+      "budget": 100,
+      "semanticScores": null,
+      "now": 1700000000000,
+      "fittedCurrentState": "",
+      "fittedTimeline": "",
+      "fittedFacts": [],
+      "retrievalMode": "fallback"
+    }
+  ],
+  "formatCases": [
+    {
+      "facts": [
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        },
+        {
+          "id": "f2",
+          "subject": "苏晚",
+          "predicate": "喜好",
+          "value": "喜欢旧书",
+          "status": "active",
+          "importance": 2,
+          "confidence": 0.6,
+          "sourceMessageIds": [],
+          "updatedAt": 1699913600000
+        }
+      ],
+      "text": "1. 苏晚的职业：书店店主\n2. 苏晚的喜好：喜欢旧书"
+    },
+    {
+      "facts": [
+        {
+          "text": "旧文本事实"
+        },
+        {
+          "id": "f1",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "书店店主",
+          "status": "active",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "text": "1. 旧文本事实\n2. 苏晚的职业：书店店主"
+    },
+    {
+      "facts": [
+        {
+          "id": "f3",
+          "subject": "苏晚",
+          "predicate": "职业",
+          "value": "已废弃",
+          "status": "inactive",
+          "importance": 4,
+          "confidence": 0.9,
+          "sourceMessageIds": [
+            "m1"
+          ],
+          "updatedAt": 1699999999000
+        }
+      ],
+      "text": ""
+    },
+    {
+      "facts": [],
+      "text": ""
+    }
+  ]
+}

@@ -1,0 +1,991 @@
+{
+  "version": 1,
+  "metrics": {
+    "sentenceEndChars": [
+      "!",
+      "?",
+      "…",
+      "。",
+      "！",
+      "？"
+    ],
+    "tailSampleMaxChars": 80,
+    "visibleCases": [
+      {
+        "text": "",
+        "visible": 0
+      },
+      {
+        "text": "普通正文",
+        "visible": 4
+      },
+      {
+        "text": "含 空格\t与\n换行",
+        "visible": 6
+      },
+      {
+        "text": "全角　空格",
+        "visible": 4
+      },
+      {
+        "text": "不换行 空格",
+        "visible": 5
+      },
+      {
+        "text": "行分隔 符",
+        "visible": 4
+      },
+      {
+        "text": "BOM﻿残留",
+        "visible": 5
+      },
+      {
+        "text": "emoji😀计数",
+        "visible": 8
+      },
+      {
+        "text": "👨‍👩‍👧‍👦 家庭组合",
+        "visible": 11
+      },
+      {
+        "text": "   ",
+        "visible": 0
+      }
+    ],
+    "completeSentenceCases": [
+      {
+        "text": "",
+        "complete": false
+      },
+      {
+        "text": "   ",
+        "complete": false
+      },
+      {
+        "text": "完整句。",
+        "complete": true
+      },
+      {
+        "text": "带引号收尾。”",
+        "complete": true
+      },
+      {
+        "text": "带括号收尾。）",
+        "complete": true
+      },
+      {
+        "text": "带空格收尾。   ",
+        "complete": true
+      },
+      {
+        "text": "英文收尾!",
+        "complete": true
+      },
+      {
+        "text": "问句？",
+        "complete": true
+      },
+      {
+        "text": "省略号…",
+        "complete": true
+      },
+      {
+        "text": "未完成，",
+        "complete": false
+      },
+      {
+        "text": "悬空动作*",
+        "complete": false
+      },
+      {
+        "text": "“引号里的话。”",
+        "complete": true
+      },
+      {
+        "text": "emoji 收尾😀",
+        "complete": false
+      },
+      {
+        "text": "逗号收尾，",
+        "complete": false
+      }
+    ],
+    "trimBoundaryCases": [
+      {
+        "text": "第一句。第二句。第三句。",
+        "minChars": 1,
+        "maxChars": 8,
+        "result": "第一句。第二句。"
+      },
+      {
+        "text": "第一句。第二句。第三句。",
+        "minChars": 10,
+        "maxChars": 8,
+        "result": null
+      },
+      {
+        "text": "没有句末标点的文本",
+        "minChars": 1,
+        "maxChars": 100,
+        "result": null
+      },
+      {
+        "text": "短。",
+        "minChars": 5,
+        "maxChars": 100,
+        "result": null
+      },
+      {
+        "text": "刚好。",
+        "minChars": 1,
+        "maxChars": 2,
+        "result": null
+      },
+      {
+        "text": "",
+        "minChars": 1,
+        "maxChars": 10,
+        "result": null
+      }
+    ],
+    "tailSampleCases": [
+      {
+        "text": "",
+        "maxChars": null,
+        "sample": ""
+      },
+      {
+        "text": "短文本",
+        "maxChars": null,
+        "sample": "短文本"
+      },
+      {
+        "text": "含 多个   空白\n与换行 的文本",
+        "maxChars": null,
+        "sample": "含 多个 空白 与换行 的文本"
+      },
+      {
+        "text": "长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本",
+        "maxChars": null,
+        "sample": "文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本"
+      },
+      {
+        "text": "长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本长文本",
+        "maxChars": 10,
+        "sample": "本长文本长文本长文本"
+      },
+      {
+        "text": "emoji😀结尾",
+        "maxChars": null,
+        "sample": "emoji😀结尾"
+      }
+    ],
+    "closureCases": [
+      {
+        "text": "",
+        "closure": {
+          "balancedQuotes": true,
+          "balancedAsterisks": true,
+          "closedThought": true,
+          "unclosed": false
+        }
+      },
+      {
+        "text": "正常文本。",
+        "closure": {
+          "balancedQuotes": true,
+          "balancedAsterisks": true,
+          "closedThought": true,
+          "unclosed": false
+        }
+      },
+      {
+        "text": "未闭合“引号",
+        "closure": {
+          "balancedQuotes": false,
+          "balancedAsterisks": true,
+          "closedThought": true,
+          "unclosed": true
+        }
+      },
+      {
+        "text": "未闭合（括号",
+        "closure": {
+          "balancedQuotes": false,
+          "balancedAsterisks": true,
+          "closedThought": true,
+          "unclosed": true
+        }
+      },
+      {
+        "text": "成对“引号”与（括号）",
+        "closure": {
+          "balancedQuotes": true,
+          "balancedAsterisks": true,
+          "closedThought": true,
+          "unclosed": false
+        }
+      },
+      {
+        "text": "奇数*星号",
+        "closure": {
+          "balancedQuotes": true,
+          "balancedAsterisks": false,
+          "closedThought": true,
+          "unclosed": true
+        }
+      },
+      {
+        "text": "偶数**星号**",
+        "closure": {
+          "balancedQuotes": true,
+          "balancedAsterisks": true,
+          "closedThought": true,
+          "unclosed": false
+        }
+      },
+      {
+        "text": "未闭合<thought>内容",
+        "closure": {
+          "balancedQuotes": true,
+          "balancedAsterisks": true,
+          "closedThought": false,
+          "unclosed": true
+        }
+      },
+      {
+        "text": "<thought>闭合了</thought>正文",
+        "closure": {
+          "balancedQuotes": true,
+          "balancedAsterisks": true,
+          "closedThought": true,
+          "unclosed": false
+        }
+      },
+      {
+        "text": "<thought>a</thought>未闭合<thought>b",
+        "closure": {
+          "balancedQuotes": true,
+          "balancedAsterisks": true,
+          "closedThought": false,
+          "unclosed": true
+        }
+      }
+    ]
+  },
+  "finalizer": {
+    "repairContextCases": [
+      {
+        "rawText": "",
+        "context": ""
+      },
+      {
+        "rawText": "只有一个段落。",
+        "context": "只有一个段落。"
+      },
+      {
+        "rawText": "第一段。\n\n第二段。\n\n第三段。",
+        "context": "第二段。\n\n第三段。"
+      },
+      {
+        "rawText": "长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落",
+        "context": "长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落长段落"
+      },
+      {
+        "rawText": "第一段。\n\n很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长",
+        "context": "很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长"
+      }
+    ],
+    "finalizeCases": [
+      {
+        "rawText": "",
+        "finishReason": "stop",
+        "content": "",
+        "status": "failed",
+        "notice": null,
+        "repairContext": null,
+        "brokenTail": null,
+        "diagnostics": {
+          "completeSentence": false,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 0
+        }
+      },
+      {
+        "rawText": "   ",
+        "finishReason": "stop",
+        "content": "",
+        "status": "failed",
+        "notice": null,
+        "repairContext": null,
+        "brokenTail": null,
+        "diagnostics": {
+          "completeSentence": false,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 0
+        }
+      },
+      {
+        "rawText": "完整回复。",
+        "finishReason": "stop",
+        "content": "完整回复。",
+        "status": "complete",
+        "notice": null,
+        "repairContext": null,
+        "brokenTail": null,
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 5
+        }
+      },
+      {
+        "rawText": "完整回复。",
+        "finishReason": "length",
+        "content": "完整回复。",
+        "status": "complete",
+        "notice": null,
+        "repairContext": null,
+        "brokenTail": null,
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 5
+        }
+      },
+      {
+        "rawText": "完整回复。",
+        "finishReason": "network_error",
+        "content": "完整回复。",
+        "status": "complete",
+        "notice": "partial_network_output",
+        "repairContext": null,
+        "brokenTail": null,
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 5
+        }
+      },
+      {
+        "rawText": "完整回复。",
+        "finishReason": "content_filter",
+        "content": "完整回复。",
+        "status": "needs_tail_repair",
+        "notice": null,
+        "repairContext": "完整回复。",
+        "brokenTail": "",
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 5
+        }
+      },
+      {
+        "rawText": "第一句完整。第二句被截断在",
+        "finishReason": "length",
+        "content": "第一句完整。",
+        "status": "needs_tail_repair",
+        "notice": null,
+        "repairContext": "第一句完整。第二句被截断在",
+        "brokenTail": "第二句被截断在",
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 6
+        }
+      },
+      {
+        "rawText": "好。然后继续说了一大段没有结束的话",
+        "finishReason": "length",
+        "content": "好。",
+        "status": "needs_tail_repair",
+        "notice": null,
+        "repairContext": "好。然后继续说了一大段没有结束的话",
+        "brokenTail": "然后继续说了一大段没有结束的话",
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 2
+        }
+      },
+      {
+        "rawText": "没有任何句末标点的一整段话",
+        "finishReason": "length",
+        "content": "",
+        "status": "needs_tail_repair",
+        "notice": null,
+        "repairContext": "没有任何句末标点的一整段话",
+        "brokenTail": "没有任何句末标点的一整段话",
+        "diagnostics": {
+          "completeSentence": false,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 0
+        }
+      },
+      {
+        "rawText": "完全没有标点",
+        "finishReason": "network_error",
+        "content": "",
+        "status": "needs_tail_repair",
+        "notice": "partial_network_output",
+        "repairContext": "完全没有标点",
+        "brokenTail": "完全没有标点",
+        "diagnostics": {
+          "completeSentence": false,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 0
+        }
+      },
+      {
+        "rawText": "正文结束。<thought>未闭合的思考",
+        "finishReason": "length",
+        "content": "正文结束。",
+        "status": "complete",
+        "notice": null,
+        "repairContext": null,
+        "brokenTail": null,
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 5
+        }
+      },
+      {
+        "rawText": "<thought>只有思考",
+        "finishReason": "length",
+        "content": "",
+        "status": "needs_tail_repair",
+        "notice": null,
+        "repairContext": "<thought>只有思考",
+        "brokenTail": "<thought>只有思考",
+        "diagnostics": {
+          "completeSentence": false,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 0
+        }
+      },
+      {
+        "rawText": "<thought></thought>正文。",
+        "finishReason": "stop",
+        "content": "正文。",
+        "status": "complete",
+        "notice": null,
+        "repairContext": null,
+        "brokenTail": null,
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 3
+        }
+      },
+      {
+        "rawText": "正文。[TOOL_CALL: x]",
+        "finishReason": "stop",
+        "content": "正文。",
+        "status": "complete",
+        "notice": null,
+        "repairContext": null,
+        "brokenTail": null,
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 3
+        }
+      },
+      {
+        "rawText": "动作描写。*",
+        "finishReason": "length",
+        "content": "动作描写。",
+        "status": "needs_tail_repair",
+        "notice": null,
+        "repairContext": "动作描写。*",
+        "brokenTail": "",
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 5
+        }
+      },
+      {
+        "rawText": "第一段。\n\n第二段被截",
+        "finishReason": "length",
+        "content": "第一段。",
+        "status": "needs_tail_repair",
+        "notice": null,
+        "repairContext": "第一段。\n\n第二段被截",
+        "brokenTail": "第二段被截",
+        "diagnostics": {
+          "completeSentence": true,
+          "balancedQuotes": true,
+          "balancedMarkup": true,
+          "visibleChars": 4
+        }
+      }
+    ],
+    "mergeCases": [
+      {
+        "rawText": "稳定前缀。",
+        "finishReason": "length",
+        "repairText": "",
+        "mergeFinishReason": "stop",
+        "baseStatus": "complete",
+        "baseContent": "稳定前缀。",
+        "content": "稳定前缀。",
+        "status": "recovered",
+        "notice": null
+      },
+      {
+        "rawText": "稳定前缀。",
+        "finishReason": "length",
+        "repairText": "补尾内容。",
+        "mergeFinishReason": "stop",
+        "baseStatus": "complete",
+        "baseContent": "稳定前缀。",
+        "content": "稳定前缀。补尾内容。",
+        "status": "complete",
+        "notice": "tail_repaired"
+      },
+      {
+        "rawText": "她说：“走吧。”",
+        "finishReason": "length",
+        "repairText": "走吧。”那我们出发。",
+        "mergeFinishReason": "stop",
+        "baseStatus": "complete",
+        "baseContent": "她说：“走吧。”",
+        "content": "她说：“走吧。”那我们出发。",
+        "status": "complete",
+        "notice": "tail_repaired"
+      },
+      {
+        "rawText": "稳定前缀。",
+        "finishReason": "length",
+        "repairText": "仍然没有句末标点",
+        "mergeFinishReason": "length",
+        "baseStatus": "complete",
+        "baseContent": "稳定前缀。",
+        "content": "稳定前缀。",
+        "status": "recovered",
+        "notice": null
+      }
+    ]
+  },
+  "pipeline": {
+    "runCases": [
+      {
+        "rawText": "完整回复。",
+        "finishReason": "stop",
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "allowEmptyTailPassthrough": null,
+        "content": "完整回复。",
+        "status": "complete",
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "完整回复。",
+        "finishReason": "length",
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "allowEmptyTailPassthrough": null,
+        "content": "完整回复。",
+        "status": "complete",
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "带<em>标签</em>的完整回复。",
+        "finishReason": "stop",
+        "regexRules": [
+          {
+            "id": "strip-tags",
+            "name": "r",
+            "replacement": "",
+            "enabled": true,
+            "scope": "output",
+            "pattern": "<[^>]+>",
+            "flags": "g"
+          },
+          {
+            "id": "stop-x",
+            "name": "r",
+            "replacement": "",
+            "enabled": true,
+            "scope": "output",
+            "pattern": "\\[STOP\\]",
+            "stopStrings": [
+              "[STOP]"
+            ]
+          }
+        ],
+        "repairText": null,
+        "hasRepair": false,
+        "allowEmptyTailPassthrough": null,
+        "content": "带标签的完整回复。",
+        "status": "complete",
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "前半句。[STOP]这部分应被截掉。",
+        "finishReason": "stop",
+        "regexRules": [
+          {
+            "id": "strip-tags",
+            "name": "r",
+            "replacement": "",
+            "enabled": true,
+            "scope": "output",
+            "pattern": "<[^>]+>",
+            "flags": "g"
+          },
+          {
+            "id": "stop-x",
+            "name": "r",
+            "replacement": "",
+            "enabled": true,
+            "scope": "output",
+            "pattern": "\\[STOP\\]",
+            "stopStrings": [
+              "[STOP]"
+            ]
+          }
+        ],
+        "repairText": null,
+        "hasRepair": false,
+        "allowEmptyTailPassthrough": null,
+        "content": "前半句。这部分应被截掉。",
+        "status": "complete",
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "半句被截断在",
+        "finishReason": "length",
+        "regexRules": [],
+        "repairText": "补尾结果。",
+        "hasRepair": true,
+        "allowEmptyTailPassthrough": null,
+        "content": "补尾结果。",
+        "status": "recovered",
+        "notice": "tail_repaired",
+        "repairFailed": false
+      },
+      {
+        "rawText": "半句被截断在",
+        "finishReason": "length",
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": true,
+        "allowEmptyTailPassthrough": null,
+        "content": "",
+        "status": "failed",
+        "notice": null,
+        "repairFailed": true
+      },
+      {
+        "rawText": "半句被截断在",
+        "finishReason": "length",
+        "regexRules": [],
+        "repairText": "",
+        "hasRepair": true,
+        "allowEmptyTailPassthrough": null,
+        "content": "",
+        "status": "failed",
+        "notice": null,
+        "repairFailed": true
+      },
+      {
+        "rawText": "没有任何标点",
+        "finishReason": "stop",
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "allowEmptyTailPassthrough": true,
+        "content": "没有任何标点",
+        "status": "recovered",
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "没有任何标点",
+        "finishReason": "stop",
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "allowEmptyTailPassthrough": false,
+        "content": "",
+        "status": "failed",
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "",
+        "finishReason": "stop",
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "allowEmptyTailPassthrough": null,
+        "content": "",
+        "status": "failed",
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "[STOP]只剩停止串",
+        "finishReason": "stop",
+        "regexRules": [
+          {
+            "id": "strip-tags",
+            "name": "r",
+            "replacement": "",
+            "enabled": true,
+            "scope": "output",
+            "pattern": "<[^>]+>",
+            "flags": "g"
+          },
+          {
+            "id": "stop-x",
+            "name": "r",
+            "replacement": "",
+            "enabled": true,
+            "scope": "output",
+            "pattern": "\\[STOP\\]",
+            "stopStrings": [
+              "[STOP]"
+            ]
+          }
+        ],
+        "repairText": null,
+        "hasRepair": false,
+        "allowEmptyTailPassthrough": null,
+        "content": "",
+        "status": "failed",
+        "notice": null,
+        "repairFailed": false
+      }
+    ],
+    "terminalCases": [
+      {
+        "rawText": "已看到的内容",
+        "finishReason": "cancelled",
+        "terminationCause": "user_cancel",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "已看到的内容",
+        "status": "raw",
+        "persistable": true,
+        "noticeFields": {
+          "generationNotice": "已停止生成"
+        },
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "   ",
+        "finishReason": "cancelled",
+        "terminationCause": "user_cancel",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "",
+        "status": "empty",
+        "persistable": false,
+        "noticeFields": {},
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "被拦截的正文",
+        "finishReason": "content_filter",
+        "terminationCause": "provider_content_filter",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "",
+        "status": "empty",
+        "persistable": false,
+        "noticeFields": {
+          "generationError": "回复被内容审核拦截"
+        },
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "被拦截的正文",
+        "finishReason": "content_filter",
+        "terminationCause": "provider_content_filter",
+        "errorMessage": "供应商原文",
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "",
+        "status": "empty",
+        "persistable": false,
+        "noticeFields": {
+          "generationError": "供应商原文"
+        },
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "第一句完整。第二句被截",
+        "finishReason": "network_error",
+        "terminationCause": "transport_error",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "第一句完整。",
+        "status": "needs_tail_repair",
+        "persistable": true,
+        "noticeFields": {
+          "generationError": "生成中断，已保留完整部分"
+        },
+        "notice": "partial_network_output",
+        "repairFailed": false
+      },
+      {
+        "rawText": "完整正文。",
+        "finishReason": "stop",
+        "terminationCause": "provider_stop",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "完整正文。",
+        "status": "complete",
+        "persistable": true,
+        "noticeFields": {},
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "没有标点的完整正文",
+        "finishReason": "stop",
+        "terminationCause": "provider_stop",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "没有标点的完整正文",
+        "status": "recovered",
+        "persistable": true,
+        "noticeFields": {},
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "半句被截断在",
+        "finishReason": "length",
+        "terminationCause": "provider_length",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": "补尾结果。",
+        "hasRepair": true,
+        "content": "补尾结果。",
+        "status": "recovered",
+        "persistable": true,
+        "noticeFields": {
+          "generationNotice": "已自动补全结尾"
+        },
+        "notice": "tail_repaired",
+        "repairFailed": false
+      },
+      {
+        "rawText": "半句被截断在",
+        "finishReason": "length",
+        "terminationCause": "provider_length",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": true,
+        "content": "",
+        "status": "empty",
+        "persistable": false,
+        "noticeFields": {
+          "generationError": "模型未返回可用内容，请重试"
+        },
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "",
+        "finishReason": "network_error",
+        "terminationCause": "transport_error",
+        "errorMessage": null,
+        "regexRules": [],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "",
+        "status": "empty",
+        "persistable": false,
+        "noticeFields": {
+          "generationError": "生成中断，请重试"
+        },
+        "notice": null,
+        "repairFailed": false
+      },
+      {
+        "rawText": "[STOP]",
+        "finishReason": "stop",
+        "terminationCause": "provider_stop",
+        "errorMessage": null,
+        "regexRules": [
+          {
+            "id": "strip-tags",
+            "name": "r",
+            "replacement": "",
+            "enabled": true,
+            "scope": "output",
+            "pattern": "<[^>]+>",
+            "flags": "g"
+          },
+          {
+            "id": "stop-x",
+            "name": "r",
+            "replacement": "",
+            "enabled": true,
+            "scope": "output",
+            "pattern": "\\[STOP\\]",
+            "stopStrings": [
+              "[STOP]"
+            ]
+          }
+        ],
+        "repairText": null,
+        "hasRepair": false,
+        "content": "",
+        "status": "empty",
+        "persistable": false,
+        "noticeFields": {
+          "generationError": "模型未返回可用内容，请重试"
+        },
+        "notice": null,
+        "repairFailed": false
+      }
+    ]
+  }
+}

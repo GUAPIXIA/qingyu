@@ -1,0 +1,273 @@
+{
+  "version": 1,
+  "maxReallocations": 1,
+  "cases": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "parts": [
+        {
+          "id": "p0:system",
+          "role": "system",
+          "tokens": 1200,
+          "confidence": "estimated"
+        },
+        {
+          "id": "p1:user",
+          "role": "user",
+          "tokens": 300,
+          "confidence": "estimated"
+        }
+      ],
+      "reservedOutputTokens": 800,
+      "contextLimit": 8192,
+      "protocolSafetyRatio": null,
+      "serialized": false,
+      "audit": {
+        "inputTokens": 1500,
+        "reservedOutputTokens": 800,
+        "protocolSafetyTokens": 410,
+        "totalTokens": 2710,
+        "contextLimit": 8192,
+        "overBudget": false,
+        "remainingReallocations": 1,
+        "accountingConfidence": "estimated",
+        "serializedViewMissing": true,
+        "byRole": [
+          {
+            "role": "system",
+            "parts": 1,
+            "tokens": 1200
+          },
+          {
+            "role": "user",
+            "parts": 1,
+            "tokens": 300
+          }
+        ]
+      }
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "parts": [
+        {
+          "id": "p0:system",
+          "role": "system",
+          "tokens": 100,
+          "confidence": "exact"
+        },
+        {
+          "id": "p1:user",
+          "role": "user",
+          "tokens": 100,
+          "confidence": "provider-reported"
+        }
+      ],
+      "reservedOutputTokens": 100,
+      "contextLimit": 1000,
+      "protocolSafetyRatio": null,
+      "serialized": true,
+      "audit": {
+        "inputTokens": 200,
+        "reservedOutputTokens": 100,
+        "protocolSafetyTokens": 51,
+        "totalTokens": 351,
+        "contextLimit": 1000,
+        "overBudget": false,
+        "remainingReallocations": 1,
+        "accountingConfidence": "provider-reported",
+        "serializedViewMissing": false,
+        "byRole": [
+          {
+            "role": "system",
+            "parts": 1,
+            "tokens": 100
+          },
+          {
+            "role": "user",
+            "parts": 1,
+            "tokens": 100
+          }
+        ]
+      }
+    },
+    {
+      "provider": "x",
+      "model": "m",
+      "parts": [],
+      "reservedOutputTokens": 0,
+      "contextLimit": 0,
+      "protocolSafetyRatio": null,
+      "serialized": false,
+      "audit": {
+        "inputTokens": 0,
+        "reservedOutputTokens": 0,
+        "protocolSafetyTokens": 0,
+        "totalTokens": 0,
+        "contextLimit": 0,
+        "overBudget": false,
+        "remainingReallocations": 1,
+        "accountingConfidence": "estimated",
+        "serializedViewMissing": true,
+        "byRole": []
+      }
+    },
+    {
+      "provider": "x",
+      "model": "m",
+      "parts": [
+        {
+          "id": "bad-role",
+          "role": "tool",
+          "tokens": -5,
+          "confidence": "estimated"
+        }
+      ],
+      "reservedOutputTokens": "NaN",
+      "contextLimit": 100,
+      "protocolSafetyRatio": null,
+      "serialized": false,
+      "audit": {
+        "inputTokens": 0,
+        "reservedOutputTokens": 0,
+        "protocolSafetyTokens": 6,
+        "totalTokens": 6,
+        "contextLimit": 100,
+        "overBudget": false,
+        "remainingReallocations": 1,
+        "accountingConfidence": "estimated",
+        "serializedViewMissing": true,
+        "byRole": [
+          {
+            "role": "tool",
+            "parts": 1,
+            "tokens": 0
+          }
+        ]
+      }
+    },
+    {
+      "provider": "x",
+      "model": "m",
+      "parts": [
+        {
+          "id": "p",
+          "role": "user",
+          "tokens": 10,
+          "confidence": "estimated"
+        }
+      ],
+      "reservedOutputTokens": 10,
+      "contextLimit": 200,
+      "protocolSafetyRatio": 0,
+      "serialized": false,
+      "audit": {
+        "inputTokens": 10,
+        "reservedOutputTokens": 10,
+        "protocolSafetyTokens": 11,
+        "totalTokens": 31,
+        "contextLimit": 200,
+        "overBudget": false,
+        "remainingReallocations": 1,
+        "accountingConfidence": "estimated",
+        "serializedViewMissing": true,
+        "byRole": [
+          {
+            "role": "user",
+            "parts": 1,
+            "tokens": 10
+          }
+        ]
+      }
+    },
+    {
+      "provider": "x",
+      "model": "m",
+      "parts": [],
+      "reservedOutputTokens": 0,
+      "contextLimit": 0,
+      "protocolSafetyRatio": null,
+      "serialized": true,
+      "audit": {
+        "inputTokens": 0,
+        "reservedOutputTokens": 0,
+        "protocolSafetyTokens": 0,
+        "totalTokens": 0,
+        "contextLimit": 0,
+        "overBudget": false,
+        "remainingReallocations": 1,
+        "accountingConfidence": "estimated",
+        "serializedViewMissing": false,
+        "byRole": []
+      }
+    },
+    {
+      "provider": "x",
+      "model": "m",
+      "parts": [
+        {
+          "id": "a",
+          "role": "assistant",
+          "tokens": 10,
+          "confidence": "exact"
+        },
+        {
+          "id": "b",
+          "role": "tool",
+          "tokens": 20,
+          "confidence": "exact"
+        },
+        {
+          "id": "c",
+          "role": "user",
+          "tokens": 30,
+          "confidence": "exact"
+        },
+        {
+          "id": "d",
+          "role": "system",
+          "tokens": 40,
+          "confidence": "exact"
+        }
+      ],
+      "reservedOutputTokens": 5,
+      "contextLimit": 500,
+      "protocolSafetyRatio": null,
+      "serialized": true,
+      "audit": {
+        "inputTokens": 100,
+        "reservedOutputTokens": 5,
+        "protocolSafetyTokens": 26,
+        "totalTokens": 131,
+        "contextLimit": 500,
+        "overBudget": false,
+        "remainingReallocations": 1,
+        "accountingConfidence": "exact",
+        "serializedViewMissing": false,
+        "byRole": [
+          {
+            "role": "system",
+            "parts": 1,
+            "tokens": 40
+          },
+          {
+            "role": "user",
+            "parts": 1,
+            "tokens": 30
+          },
+          {
+            "role": "assistant",
+            "parts": 1,
+            "tokens": 10
+          },
+          {
+            "role": "tool",
+            "parts": 1,
+            "tokens": 20
+          }
+        ]
+      }
+    }
+  ]
+}

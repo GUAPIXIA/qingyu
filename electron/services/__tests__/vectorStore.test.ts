@@ -12,7 +12,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-vector-store-test' },
 }))
 
-import { saveVectorIndex, getVectorIndex, markStaleEntries, clearStaleEntries, countStaleEntries, countIndexedEntries, removeVectorIndex } from '../vectorStore'
+import { saveVectorIndex, patchVectorIndex, getVectorIndex, markStaleEntries, clearStaleEntries, countStaleEntries, countIndexedEntries, removeVectorIndex } from '../vectorStore'
 
 const TEST_ID = 'lb-test-001'
 
@@ -103,5 +103,14 @@ describe('vectorStore 本地模型索引空间', () => {
     expect(getVectorIndex(TEST_ID, space)).toMatchObject({ provider: 'local', modelId: 'tiny', modelVersion: '1.0.0', dimensions: 3 })
     markStaleEntries(TEST_ID, ['e1'])
     expect(countStaleEntries(TEST_ID, space)).toBe(1)
+  })
+
+  it('本地命名空间支持增量更新、删除与修订号推进', () => {
+    const space = { provider: 'local' as const, model: 'tiny@1.0.0', modelId: 'tiny', modelVersion: '1.0.0' }
+    saveVectorIndex(TEST_ID, space.model, { e1: vec(1, 0), e2: vec(0, 1) }, space, 1)
+    markStaleEntries(TEST_ID, ['e1', 'e2'])
+    patchVectorIndex(TEST_ID, space.model, { e1: vec(0.5, 0.5) }, ['e2'], space, 2)
+    expect(getVectorIndex(TEST_ID, space)).toMatchObject({ sourceRevision: 2, stale: [], entries: { e1: expect.any(Array) } })
+    expect(getVectorIndex(TEST_ID, space)?.entries.e2).toBeUndefined()
   })
 })

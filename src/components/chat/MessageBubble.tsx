@@ -18,6 +18,8 @@ interface MessageBubbleProps {
   message: Message
   character: Character | null
   isLast: boolean
+  /** 当前消息是否是最新可操作的方向消息；未传时兼容旧调用，沿用 isLast。 */
+  canRegenerateDirections?: boolean
   /** 被引用消息（P1-5 引用回复） */
   repliedMessage?: Message | null
   /** 触发引用该消息 */
@@ -29,6 +31,7 @@ import { DialogueDirectionCard } from './DialogueDirectionCard'
 import { shouldShowDialogueDirections } from './dialogueDirectionView'
 import { generateSingleDialogueDirections } from '../../store/dialogueDirectionRunner'
 import { resolveDialogueDirectionsEnabled } from '../../../shared/dialogueDirections'
+import { shouldDisplayGenerationNotice } from '../../../shared/generationNotice'
 import { Modal } from '../common/Modal'
 
 // B-05：已播放过入场动画的消息 ID，避免虚拟滚动时反复播放
@@ -43,7 +46,7 @@ function markAnimated(id: string): void {
   animatedIds.add(id)
 }
 
-export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast, repliedMessage, onReply }: MessageBubbleProps) {
+export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast, canRegenerateDirections, repliedMessage, onReply }: MessageBubbleProps) {
   const shouldAnimate = !animatedIds.has(message.id)
   // NEW-L7 修复：标记移入 effect，避免渲染阶段执行副作用（React 并发/严格模式下的不纯渲染）
   useEffect(() => {
@@ -552,8 +555,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                 ⚠️ 生成中断：{message.generationError}
               </div>
             )}
-            {/* 阶段3：非失败性收尾提示（已在完整句处收束/已自动补全/已停止），与失败提示区分 */}
-            {!isStreamingThis && !message.generationError && message.generationNotice && (
+            {/* 仅展示需要用户知晓的收尾状态；普通句界收束属于内部细节。 */}
+            {!isStreamingThis && !message.generationError && shouldDisplayGenerationNotice(message.generationNotice) && (
               <div className="mt-2 text-xs text-tavern-text-muted/80">
                 ℹ️ {message.generationNotice}
               </div>
@@ -591,7 +594,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           }) && message.dialogueDirections && (
             <DialogueDirectionCard
               directions={message.dialogueDirections}
-              canRegenerate={isLast && !isStreaming}
+              canRegenerate={(canRegenerateDirections ?? isLast) && !isStreaming}
               error={directionError}
               onRegenerate={async () => {
                 if (!character) return

@@ -1,0 +1,347 @@
+{
+  "algorithms": {
+    "persona": "electron/ipc/persona.ts#personaEntityPayload",
+    "preset": "electron/ipc/preset.ts#presetEntityPayload",
+    "regex_rule": "electron/services/charCard.ts#regexRulePayload + electron/ipc/regex.ts#ruleEntityPayload",
+    "quick_reply_set": "electron/ipc/quickReply.ts#quickReplyStorePayload (整库单实体 quick-replies-root)",
+    "usage_record": "electron/services/usage.ts#usageRecordPayload",
+    "settings_public": "electron/ipc/settings.ts#settingsPublicPayload (整份设置单实体 settings-public)",
+    "lorebook": "electron/services/charCard.ts#lorebookEntityPayload"
+  },
+  "persona": [
+    {
+      "label": "full",
+      "payload": {
+        "name": "小明",
+        "description": "说明",
+        "persona": "正文"
+      }
+    },
+    {
+      "label": "empty-optional",
+      "payload": {
+        "name": "",
+        "description": "",
+        "persona": ""
+      }
+    }
+  ],
+  "preset": [
+    {
+      "label": "min-normalized",
+      "payload": {
+        "name": "默认",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      }
+    },
+    {
+      "label": "all-optional",
+      "payload": {
+        "name": "全字段",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 1.1,
+        "topP": 0.9,
+        "maxTokens": 1024,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": true,
+        "contextTemplate": "chatml",
+        "group": "风格",
+        "exampleDialogMode": "first_turn",
+        "enableThoughtFormat": true,
+        "responseLengthHint": "balanced"
+      }
+    }
+  ],
+  "regex_rule": [
+    {
+      "label": "minimal",
+      "payload": {
+        "name": "清理",
+        "pattern": "a+",
+        "replacement": "b",
+        "enabled": true,
+        "scope": "output"
+      },
+      "alsoViaIpc": {
+        "name": "清理",
+        "pattern": "a+",
+        "replacement": "b",
+        "enabled": true,
+        "scope": "output"
+      }
+    },
+    {
+      "label": "full",
+      "payload": {
+        "name": "全字段",
+        "pattern": "x",
+        "replacement": "y",
+        "flags": "gi",
+        "enabled": true,
+        "scope": "both",
+        "group": "格式清理",
+        "stage": "markdown",
+        "triggerPattern": "触发",
+        "triggerFlags": "i",
+        "stopStrings": [
+          "\\n\\n",
+          "END"
+        ]
+      },
+      "alsoViaIpc": {
+        "name": "全字段",
+        "pattern": "x",
+        "replacement": "y",
+        "flags": "gi",
+        "enabled": true,
+        "scope": "both",
+        "group": "格式清理",
+        "stage": "markdown",
+        "triggerPattern": "触发",
+        "triggerFlags": "i",
+        "stopStrings": [
+          "\\n\\n",
+          "END"
+        ]
+      }
+    }
+  ],
+  "quick_reply_set": [
+    {
+      "label": "empty-store",
+      "payload": {
+        "global": [],
+        "byCharacter": {}
+      }
+    },
+    {
+      "label": "global-and-character",
+      "payload": {
+        "global": [
+          {
+            "id": "q1",
+            "label": "甲",
+            "content": "你好",
+            "action": "text",
+            "sendWithAI": true,
+            "order": 0,
+            "enabled": true
+          },
+          {
+            "id": "q2",
+            "label": "切预设",
+            "content": "",
+            "action": "preset",
+            "presetId": "pre-1",
+            "sendWithAI": false,
+            "order": 1,
+            "enabled": true,
+            "hotkey": 3
+          }
+        ],
+        "byCharacter": {
+          "char-full": [
+            {
+              "id": "q3",
+              "label": "命令",
+              "content": "",
+              "action": "command",
+              "command": "/continue",
+              "sendWithAI": false,
+              "order": 0,
+              "enabled": false
+            }
+          ],
+          "char-empty": []
+        }
+      }
+    }
+  ],
+  "usage_record": [
+    {
+      "label": "typical",
+      "payload": {
+        "timestamp": 1700000000000,
+        "characterId": "char-full",
+        "sessionId": "s1",
+        "model": "gpt-x",
+        "inputChars": 120,
+        "outputChars": 340,
+        "totalChars": 460
+      },
+      "containsId": false
+    },
+    {
+      "label": "no-session",
+      "payload": {
+        "timestamp": 1700000000001,
+        "model": "claude-y",
+        "inputChars": 0,
+        "outputChars": 0,
+        "totalChars": 0
+      },
+      "containsId": false
+    }
+  ],
+  "settings_public": [
+    {
+      "label": "empty",
+      "payload": {}
+    },
+    {
+      "label": "unknown-theme-dropped",
+      "payload": {
+        "language": "zh-CN"
+      }
+    },
+    {
+      "label": "valid-theme",
+      "payload": {
+        "theme": "dark",
+        "language": "en"
+      }
+    },
+    {
+      "label": "long-language-dropped",
+      "payload": {}
+    },
+    {
+      "label": "active-ids-null-preserved",
+      "payload": {
+        "activePersonaId": null,
+        "activePresetId": "p-1"
+      }
+    },
+    {
+      "label": "response-length-invalid",
+      "payload": {}
+    }
+  ],
+  "lorebook": [
+    {
+      "label": "canonical-v2-minimal",
+      "keys": [
+        "createdAt",
+        "defaults",
+        "description",
+        "enabled",
+        "entries",
+        "name",
+        "revision",
+        "schema",
+        "schemaVersion",
+        "updatedAt"
+      ],
+      "payload": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "revision": 1,
+        "name": "书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 2,
+          "recursiveScanning": true
+        },
+        "entries": [],
+        "createdAt": 1,
+        "updatedAt": 2
+      },
+      "hasEntries": true,
+      "hasForeign": false
+    },
+    {
+      "label": "with-foreign",
+      "keys": [
+        "createdAt",
+        "defaults",
+        "description",
+        "enabled",
+        "entries",
+        "foreign",
+        "name",
+        "revision",
+        "schema",
+        "schemaVersion",
+        "updatedAt"
+      ],
+      "payload": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "revision": 3,
+        "name": "带未知字段",
+        "description": "d",
+        "enabled": false,
+        "defaults": {
+          "scanDepth": 1,
+          "recursiveScanning": false,
+          "tokenBudget": 300
+        },
+        "entries": [
+          {
+            "id": "e1",
+            "enabled": true,
+            "content": "c",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "k"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": false,
+              "regex": {
+                "enabled": false,
+                "flags": ""
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 0,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "someUnknownField": {
+              "keep": "me"
+            }
+          }
+        ],
+        "foreign": {
+          "vendorExtras": 1
+        },
+        "createdAt": 1,
+        "updatedAt": 2
+      },
+      "hasEntries": true,
+      "hasForeign": true
+    }
+  ]
+}

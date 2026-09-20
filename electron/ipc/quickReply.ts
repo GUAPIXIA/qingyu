@@ -38,7 +38,7 @@ function readStore(): QuickReplyStore {
 export { readStore }
 
 /** 整库规范 payload：真实内容（替代旧实现的条数骨架 payload） */
-function quickReplyStorePayload(store: QuickReplyStore): Record<string, unknown> {
+export function quickReplyStorePayload(store: QuickReplyStore): Record<string, unknown> {
   return {
     global: store.global,
     byCharacter: store.byCharacter,

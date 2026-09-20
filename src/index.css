@@ -19,6 +19,13 @@
 /* 浅色主题（默认） */
 :root {
   --font-size-base: 16px;
+  /* PC 动效节奏：短反馈更快，页面与面板稍缓，统一使用 GPU 友好的属性 */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 240ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-spring: cubic-bezier(0.22, 1.18, 0.36, 1);
   /* 背景层级 */
   --tavern-bg: #f8f7fa;
   --tavern-bg-soft: #f0eef5;
@@ -170,7 +177,15 @@ body {
 /* ===================== 通用组件 ===================== */
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer select-none;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer select-none;
+    transition: color var(--motion-fast) ease,
+      background-color var(--motion-fast) ease,
+      border-color var(--motion-fast) ease,
+      opacity var(--motion-fast) ease,
+      transform var(--motion-fast) var(--motion-ease-standard);
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.98);
   }
   .btn-primary {
     @apply btn text-tavern-bg;
@@ -267,6 +282,23 @@ body {
   .card {
     @apply bg-tavern-bg-card border border-tavern-border-soft rounded-xl;
   }
+  .toggle-track {
+    transition: background-color var(--motion-base) ease;
+  }
+  .toggle-thumb {
+    transition: transform var(--motion-slow) var(--motion-ease-spring);
+  }
+
+  button[role='switch'] {
+    transition-property: background-color, border-color, box-shadow;
+    transition-duration: var(--motion-base);
+    transition-timing-function: ease;
+  }
+  button[role='switch'] > span {
+    transition-property: transform, opacity;
+    transition-duration: var(--motion-slow);
+    transition-timing-function: var(--motion-ease-spring);
+  }
 
   /* 编辑器字段卡片：独立圆角面板，分隔清晰 */
   .field-card {
@@ -340,8 +372,77 @@ body {
 }
 
 /* ===================== 动画 ===================== */
+.route-enter {
+  animation: routeEnter var(--motion-base) var(--motion-ease-out) both;
+}
+
+@keyframes modalPopIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dropdownPopIn {
+  from { opacity: 0; transform: translateY(-3px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes routeEnter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { transform: translate3d(24px, 0, 0); opacity: 0.85; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+.modal-pop {
+  animation: modalPopIn var(--motion-slow) var(--motion-ease-out) both;
+  transform-origin: center;
+}
+
+.dropdown-pop {
+  animation: dropdownPopIn var(--motion-base) var(--motion-ease-out) both;
+  transform-origin: top;
+}
+
+.motion-overlay {
+  animation: fadeIn var(--motion-base) ease-out both;
+}
+
+.motion-command-palette {
+  animation: modalPopIn var(--motion-slow) var(--motion-ease-out) both;
+  transform-origin: top center;
+}
+
+.motion-drawer {
+  animation: slideInRight var(--motion-slow) var(--motion-ease-out) both;
+}
+
+.motion-disclosure {
+  animation: fadeInUp var(--motion-base) var(--motion-ease-out) both;
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--motion-base) ease-out both;
+}
+
 .animate-fade-in-up {
-  animation: fadeInUp 0.3s ease-out;
+  animation: fadeInUp var(--motion-base) var(--motion-ease-out) both;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight var(--motion-slow) var(--motion-ease-out) both;
 }
 
 /* 打字光标 */
@@ -353,7 +454,36 @@ body {
 
 /* 消息气泡渐入 */
 .message-enter {
-  animation: fadeInUp 0.3s ease-out;
+  animation: fadeInUp var(--motion-base) var(--motion-ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-enter,
+  .modal-pop,
+  .dropdown-pop,
+  .motion-overlay,
+  .motion-command-palette,
+  .motion-drawer,
+  .motion-disclosure,
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-slide-in-right,
+  .message-enter {
+    animation: none;
+  }
+
+  .btn,
+  .toggle-track,
+  .toggle-thumb,
+  button[role='switch'],
+  button[role='switch'] > span {
+    transition-duration: 0.01ms;
+  }
+
+  .btn:active:not(:disabled),
+  .btn-primary:hover {
+    transform: none;
+  }
 }
 
 /* ===================== 对话片段样式（remark-roleplay 与 blocks 路径共用） ===================== */

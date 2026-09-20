@@ -522,5 +522,19 @@ describe('GroupChatMessage', () => {
       expect(history.getByText('选择下一步方向')).toBeTruthy()
       expect(history.queryByRole('button', { name: /换一批/ })).toBeNull()
     })
+
+    it('尾随隐藏消息存在时，最新可操作回复仍显示换一批', () => {
+      const latestActionable = render(
+        <GroupChatMessage
+          message={createMessage({ dialogueDirections: directions })}
+          isLast={false}
+          canRegenerateDirections
+          dialogueDirectionsEnabled
+          onRegenerateDirections={() => {}}
+        />,
+      )
+
+      expect(latestActionable.getByRole('button', { name: /换一批/ })).toBeTruthy()
+    })
   })
 })

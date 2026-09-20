@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "text": "前段 END 后段",
+      "stops": [
+        "END",
+        "STOP"
+      ],
+      "findStopIndex": 3,
+      "truncated": {
+        "text": "前段",
+        "stopped": true
+      }
+    },
+    {
+      "text": "前段 STOP 后段",
+      "stops": [
+        "END",
+        "STOP"
+      ],
+      "findStopIndex": 3,
+      "truncated": {
+        "text": "前段",
+        "stopped": true
+      }
+    },
+    {
+      "text": "前段 STOP 后面还有 END",
+      "stops": [
+        "END",
+        "STOP"
+      ],
+      "findStopIndex": 3,
+      "truncated": {
+        "text": "前段",
+        "stopped": true
+      }
+    },
+    {
+      "text": "无终止符",
+      "stops": [
+        "END"
+      ],
+      "findStopIndex": -1,
+      "truncated": {
+        "text": "无终止符",
+        "stopped": false
+      }
+    },
+    {
+      "text": "尾巴在最后",
+      "stops": [
+        "尾巴"
+      ],
+      "findStopIndex": 0,
+      "truncated": {
+        "text": "",
+        "stopped": true
+      }
+    },
+    {
+      "text": "末尾有空白   ",
+      "stops": [
+        "空白"
+      ],
+      "findStopIndex": 3,
+      "truncated": {
+        "text": "末尾有",
+        "stopped": true
+      }
+    },
+    {
+      "text": "",
+      "stops": [
+        "END"
+      ],
+      "findStopIndex": -1,
+      "truncated": {
+        "text": "",
+        "stopped": false
+      }
+    },
+    {
+      "text": "文本",
+      "stops": [],
+      "findStopIndex": -1,
+      "truncated": {
+        "text": "文本",
+        "stopped": false
+      }
+    }
+  ],
+  "collectedStops": [
+    "END",
+    "STOP",
+    "尾巴"
+  ]
+}

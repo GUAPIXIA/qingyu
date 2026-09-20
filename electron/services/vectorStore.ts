@@ -23,6 +23,8 @@ export interface VectorIndex {
   /** 条目 id → 归一化向量 */
   entries: Record<string, number[]>
   updatedAt: number
+  /** 生成该索引时读取到的世界书修订号；增量更新完成后同步推进。 */
+  sourceRevision?: number
   /** 内容已变化、向量过期的条目 id（世界书保存时对比标记，重建索引后清空） */
   stale?: string[]
 }
@@ -113,6 +115,7 @@ export function saveVectorIndex(
   model: string,
   vectors: Record<string, number[]>,
   space?: VectorSpace,
+  sourceRevision?: number,
 ): VectorIndex {
   const normalized: Record<string, number[]> = {}
   let dim: number | null = null
@@ -136,12 +139,53 @@ export function saveVectorIndex(
     dimensions: dim ?? undefined,
     entries: normalized,
     updatedAt: Date.now(),
+    sourceRevision,
     stale: [],
   }
   const path = indexPath(lorebookId, space)
   writeJson(path, index)
   cacheSet(path, index)
   return index
+}
+
+/**
+ * 增量写入同一向量空间：更新变化条目、删除已失去语义资格的条目，并只清理这些条目的 stale 标记。
+ * 调用方在索引不存在或向量空间变化时应执行全量 saveVectorIndex。
+ */
+export function patchVectorIndex(
+  lorebookId: string,
+  model: string,
+  vectors: Record<string, number[]>,
+  removeIds: string[],
+  space?: VectorSpace,
+  sourceRevision?: number,
+): VectorIndex | null {
+  const current = getVectorIndex(lorebookId, space)
+  if (!current || current.model !== model) return null
+  const entries = { ...current.entries }
+  for (const id of removeIds) delete entries[id]
+  const expectedDimensions = current.dimensions
+  for (const [id, vector] of Object.entries(vectors)) {
+    if (!Array.isArray(vector) || vector.length === 0) continue
+    if (expectedDimensions && vector.length !== expectedDimensions) {
+      log.warn('增量向量维度不一致，已跳过该条目', { lorebookId, id, dimensions: vector.length, expectedDimensions })
+      continue
+    }
+    entries[id] = l2Normalize(vector)
+  }
+  const touched = new Set([...removeIds, ...Object.keys(vectors)])
+  const updated: VectorIndex = {
+    ...current,
+    entries,
+    dimensions: current.dimensions ?? Object.values(entries)[0]?.length,
+    updatedAt: Date.now(),
+    sourceRevision,
+    stale: (current.stale ?? []).filter((id) => !touched.has(id)),
+  }
+  const path = indexPath(lorebookId, space)
+  writeJson(path, updated)
+  cacheSet(path, updated)
+  return updated
 }
 
 /** 删除向量索引（世界书删除时调用） */

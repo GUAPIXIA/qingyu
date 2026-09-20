@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "r1",
+      "name": "r",
+      "replacement": "$1",
+      "enabled": true,
+      "scope": "output",
+      "pattern": "\\*\\*(.+?)\\*\\*",
+      "flags": "g"
+    },
+    {
+      "id": "r2",
+      "name": "r",
+      "replacement": "bar",
+      "enabled": true,
+      "scope": "input",
+      "pattern": "foo",
+      "flags": "gi"
+    },
+    {
+      "id": "r3",
+      "name": "r",
+      "replacement": "baz",
+      "enabled": true,
+      "scope": "both",
+      "pattern": "bar",
+      "flags": "g"
+    },
+    {
+      "id": "r4",
+      "name": "r",
+      "replacement": "[已隐藏]",
+      "enabled": true,
+      "scope": "output",
+      "pattern": "秘密",
+      "triggerPattern": "包含触发词",
+      "triggerFlags": "i"
+    },
+    {
+      "id": "r5",
+      "name": "r",
+      "replacement": "MD",
+      "enabled": true,
+      "scope": "output",
+      "pattern": "markdown",
+      "stage": "markdown"
+    },
+    {
+      "id": "r6",
+      "name": "r",
+      "replacement": "y",
+      "enabled": false,
+      "scope": "output",
+      "pattern": "x"
+    },
+    {
+      "id": "r7",
+      "name": "r",
+      "replacement": "z",
+      "enabled": true,
+      "scope": "output",
+      "pattern": "坏["
+    },
+    {
+      "id": "r8",
+      "name": "r",
+      "replacement": "b",
+      "enabled": true,
+      "scope": "output",
+      "pattern": "a",
+      "stopStrings": [
+        "END",
+        "  END  ",
+        "STOP",
+        ""
+      ]
+    },
+    {
+      "id": "r9",
+      "name": "r",
+      "replacement": "d",
+      "enabled": true,
+      "scope": "output",
+      "pattern": "c",
+      "stage": "markdown",
+      "stopStrings": [
+        "IGNORED"
+      ]
+    },
+    {
+      "id": "r10",
+      "name": "r",
+      "replacement": "",
+      "enabled": true,
+      "scope": "both",
+      "pattern": "长停",
+      "stopStrings": [
+        "尾巴"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "scope": "input",
+      "stage": "text",
+      "result": {
+        "text": "**加粗** 与 baz 与 秘密 与 markdown",
+        "applied": 3,
+        "matched": 2
+      }
+    },
+    {
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "scope": "input",
+      "stage": "markdown",
+      "result": {
+        "text": "**加粗** 与 foo 与 秘密 与 markdown",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "scope": "output",
+      "stage": "text",
+      "result": {
+        "text": "加粗 与 foo 与 秘密 与 mbrkdown",
+        "applied": 6,
+        "matched": 2
+      }
+    },
+    {
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "scope": "output",
+      "stage": "markdown",
+      "result": {
+        "text": "**加粗** 与 foo 与 秘密 与 MD",
+        "applied": 2,
+        "matched": 1
+      }
+    },
+    {
+      "text": "包含触发词里面有秘密",
+      "scope": "input",
+      "stage": "text",
+      "result": {
+        "text": "包含触发词里面有秘密",
+        "applied": 3,
+        "matched": 0
+      }
+    },
+    {
+      "text": "包含触发词里面有秘密",
+      "scope": "input",
+      "stage": "markdown",
+      "result": {
+        "text": "包含触发词里面有秘密",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "包含触发词里面有秘密",
+      "scope": "output",
+      "stage": "text",
+      "result": {
+        "text": "包含触发词里面有[已隐藏]",
+        "applied": 6,
+        "matched": 1
+      }
+    },
+    {
+      "text": "包含触发词里面有秘密",
+      "scope": "output",
+      "stage": "markdown",
+      "result": {
+        "text": "包含触发词里面有秘密",
+        "applied": 2,
+        "matched": 0
+      }
+    },
+    {
+      "text": "没有触发词但有秘密",
+      "scope": "input",
+      "stage": "text",
+      "result": {
+        "text": "没有触发词但有秘密",
+        "applied": 3,
+        "matched": 0
+      }
+    },
+    {
+      "text": "没有触发词但有秘密",
+      "scope": "input",
+      "stage": "markdown",
+      "result": {
+        "text": "没有触发词但有秘密",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "没有触发词但有秘密",
+      "scope": "output",
+      "stage": "text",
+      "result": {
+        "text": "没有触发词但有秘密",
+        "applied": 6,
+        "matched": 0
+      }
+    },
+    {
+      "text": "没有触发词但有秘密",
+      "scope": "output",
+      "stage": "markdown",
+      "result": {
+        "text": "没有触发词但有秘密",
+        "applied": 2,
+        "matched": 0
+      }
+    },
+    {
+      "text": "**未闭合 加粗",
+      "scope": "input",
+      "stage": "text",
+      "result": {
+        "text": "**未闭合 加粗",
+        "applied": 3,
+        "matched": 0
+      }
+    },
+    {
+      "text": "**未闭合 加粗",
+      "scope": "input",
+      "stage": "markdown",
+      "result": {
+        "text": "**未闭合 加粗",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "**未闭合 加粗",
+      "scope": "output",
+      "stage": "text",
+      "result": {
+        "text": "**未闭合 加粗",
+        "applied": 6,
+        "matched": 0
+      }
+    },
+    {
+      "text": "**未闭合 加粗",
+      "scope": "output",
+      "stage": "markdown",
+      "result": {
+        "text": "**未闭合 加粗",
+        "applied": 2,
+        "matched": 0
+      }
+    },
+    {
+      "text": "foo foo FOO",
+      "scope": "input",
+      "stage": "text",
+      "result": {
+        "text": "baz baz baz",
+        "applied": 3,
+        "matched": 2
+      }
+    },
+    {
+      "text": "foo foo FOO",
+      "scope": "input",
+      "stage": "markdown",
+      "result": {
+        "text": "foo foo FOO",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "foo foo FOO",
+      "scope": "output",
+      "stage": "text",
+      "result": {
+        "text": "foo foo FOO",
+        "applied": 6,
+        "matched": 0
+      }
+    },
+    {
+      "text": "foo foo FOO",
+      "scope": "output",
+      "stage": "markdown",
+      "result": {
+        "text": "foo foo FOO",
+        "applied": 2,
+        "matched": 0
+      }
+    },
+    {
+      "text": "markdown markdown",
+      "scope": "input",
+      "stage": "text",
+      "result": {
+        "text": "markdown markdown",
+        "applied": 3,
+        "matched": 0
+      }
+    },
+    {
+      "text": "markdown markdown",
+      "scope": "input",
+      "stage": "markdown",
+      "result": {
+        "text": "markdown markdown",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "markdown markdown",
+      "scope": "output",
+      "stage": "text",
+      "result": {
+        "text": "mbrkdown mbrkdown",
+        "applied": 6,
+        "matched": 1
+      }
+    },
+    {
+      "text": "markdown markdown",
+      "scope": "output",
+      "stage": "markdown",
+      "result": {
+        "text": "MD MD",
+        "applied": 2,
+        "matched": 1
+      }
+    },
+    {
+      "text": "普通文本没有规则命中",
+      "scope": "input",
+      "stage": "text",
+      "result": {
+        "text": "普通文本没有规则命中",
+        "applied": 3,
+        "matched": 0
+      }
+    },
+    {
+      "text": "普通文本没有规则命中",
+      "scope": "input",
+      "stage": "markdown",
+      "result": {
+        "text": "普通文本没有规则命中",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "普通文本没有规则命中",
+      "scope": "output",
+      "stage": "text",
+      "result": {
+        "text": "普通文本没有规则命中",
+        "applied": 6,
+        "matched": 0
+      }
+    },
+    {
+      "text": "普通文本没有规则命中",
+      "scope": "output",
+      "stage": "markdown",
+      "result": {
+        "text": "普通文本没有规则命中",
+        "applied": 2,
+        "matched": 0
+      }
+    },
+    {
+      "text": "",
+      "scope": "input",
+      "stage": "text",
+      "result": {
+        "text": "",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "",
+      "scope": "input",
+      "stage": "markdown",
+      "result": {
+        "text": "",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "",
+      "scope": "output",
+      "stage": "text",
+      "result": {
+        "text": "",
+        "applied": 0,
+        "matched": 0
+      }
+    },
+    {
+      "text": "",
+      "scope": "output",
+      "stage": "markdown",
+      "result": {
+        "text": "",
+        "applied": 0,
+        "matched": 0
+      }
+    }
+  ]
+}

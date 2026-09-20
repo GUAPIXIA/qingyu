@@ -32,7 +32,7 @@ function readRules(): RegexRule[] {
 export { readRules }
 
 /** 规则实体的规范 payload：与 S2-05 扫描器一致（全部业务字段，不含 id） */
-function ruleEntityPayload(rule: RegexRule): Record<string, unknown> {
+export function ruleEntityPayload(rule: RegexRule): Record<string, unknown> {
   const payload: Record<string, unknown> = { ...rule }
   delete payload.id
   return payload

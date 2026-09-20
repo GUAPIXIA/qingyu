@@ -1,0 +1,924 @@
+{
+  "version": 1,
+  "constants": {
+    "ranges": {
+      "brief": {
+        "preferredMinChars": 40,
+        "preferredMaxChars": 140,
+        "hardMaxChars": 260,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 2
+        },
+        "maxNewBeats": 1
+      },
+      "balanced": {
+        "preferredMinChars": 120,
+        "preferredMaxChars": 360,
+        "hardMaxChars": 600,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 4
+        },
+        "maxNewBeats": 1
+      },
+      "detailed": {
+        "preferredMinChars": 300,
+        "preferredMaxChars": 700,
+        "hardMaxChars": 1100,
+        "targetParagraphs": {
+          "min": 2,
+          "max": 6
+        },
+        "maxNewBeats": 2
+      }
+    },
+    "labels": {
+      "auto": "自动",
+      "brief": "简短",
+      "balanced": "适中",
+      "detailed": "展开"
+    },
+    "autoHardMaxChars": 900,
+    "autoDefaultBaselineChars": 240,
+    "autoTargetMinChars": 80,
+    "autoTargetMaxChars": 700,
+    "autoBaselineWindow": 5,
+    "autoTargetParagraphs": {
+      "min": 1,
+      "max": 5
+    },
+    "autoMaxNewBeats": 1
+  },
+  "visibleCharCases": [
+    {
+      "text": "普通正文",
+      "count": 4
+    },
+    {
+      "text": "",
+      "count": 0
+    },
+    {
+      "text": "带 <thought>内心想法不应该计入</thought> 正文",
+      "count": 3
+    },
+    {
+      "text": "<thought>a</thought><thought>b</thought>",
+      "count": 0
+    },
+    {
+      "text": "含 空格\t与\n换行",
+      "count": 6
+    },
+    {
+      "text": "**加粗** 与 “引号”",
+      "count": 11
+    },
+    {
+      "text": "<THOUGHT>大写标签</THOUGHT>正文",
+      "count": 2
+    },
+    {
+      "text": "未闭合 <thought>abc",
+      "count": 15
+    },
+    {
+      "text": "全角　空格",
+      "count": 4
+    }
+  ],
+  "medianCases": [
+    {
+      "values": [],
+      "median": null
+    },
+    {
+      "values": [
+        5
+      ],
+      "median": 5
+    },
+    {
+      "values": [
+        1,
+        2
+      ],
+      "median": 2
+    },
+    {
+      "values": [
+        1,
+        2,
+        3
+      ],
+      "median": 2
+    },
+    {
+      "values": [
+        3,
+        1,
+        2
+      ],
+      "median": 2
+    },
+    {
+      "values": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "median": 3
+    },
+    {
+      "values": [
+        10,
+        20,
+        31
+      ],
+      "median": 20
+    },
+    {
+      "values": [
+        "NaN",
+        5,
+        7
+      ],
+      "median": 6
+    },
+    {
+      "values": [
+        "Infinity"
+      ],
+      "median": null
+    },
+    {
+      "values": [
+        0,
+        0
+      ],
+      "median": 0
+    }
+  ],
+  "collectCases": [
+    {
+      "messages": [
+        {
+          "role": "user",
+          "content": "问题"
+        },
+        {
+          "role": "assistant",
+          "content": "答案一"
+        },
+        {
+          "role": "user",
+          "content": "追问"
+        },
+        {
+          "role": "assistant",
+          "content": "答案二更长一些"
+        }
+      ],
+      "window": null,
+      "samples": [
+        7,
+        3
+      ]
+    },
+    {
+      "messages": [],
+      "window": 3,
+      "samples": []
+    },
+    {
+      "messages": [
+        {
+          "role": "assistant",
+          "content": null
+        }
+      ],
+      "window": 3,
+      "samples": []
+    },
+    {
+      "messages": [
+        {
+          "role": "assistant",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "b"
+        },
+        {
+          "role": "assistant",
+          "content": "c"
+        },
+        {
+          "role": "assistant",
+          "content": "d"
+        },
+        {
+          "role": "assistant",
+          "content": "e"
+        },
+        {
+          "role": "assistant",
+          "content": "f"
+        }
+      ],
+      "window": 3,
+      "samples": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "intentCases": [
+    {
+      "text": "简短回答我",
+      "intent": "brief"
+    },
+    {
+      "text": "简洁点",
+      "intent": "brief"
+    },
+    {
+      "text": "精简一下",
+      "intent": "brief"
+    },
+    {
+      "text": "言简意赅",
+      "intent": "brief"
+    },
+    {
+      "text": "长话短说",
+      "intent": "brief"
+    },
+    {
+      "text": "简单说说",
+      "intent": "brief"
+    },
+    {
+      "text": "简单一点讲",
+      "intent": "brief"
+    },
+    {
+      "text": "请回答一句",
+      "intent": "brief"
+    },
+    {
+      "text": "回答一句话",
+      "intent": "brief"
+    },
+    {
+      "text": "用一句话概括",
+      "intent": "brief"
+    },
+    {
+      "text": "1句话说明",
+      "intent": "brief"
+    },
+    {
+      "text": "短一点说",
+      "intent": "brief"
+    },
+    {
+      "text": "少一些写",
+      "intent": "brief"
+    },
+    {
+      "text": "别写太长",
+      "intent": "brief"
+    },
+    {
+      "text": "不要太长",
+      "intent": "brief"
+    },
+    {
+      "text": "无需太多",
+      "intent": "brief"
+    },
+    {
+      "text": "详细说说",
+      "intent": "detailed"
+    },
+    {
+      "text": "写得详细一点",
+      "intent": "detailed"
+    },
+    {
+      "text": "再详细一些",
+      "intent": "detailed"
+    },
+    {
+      "text": "展开一点",
+      "intent": "detailed"
+    },
+    {
+      "text": "扩写一下",
+      "intent": null
+    },
+    {
+      "text": "具体说说",
+      "intent": "detailed"
+    },
+    {
+      "text": "多写一点",
+      "intent": "detailed"
+    },
+    {
+      "text": "描写细致一点",
+      "intent": "detailed"
+    },
+    {
+      "text": "写长一点",
+      "intent": "detailed"
+    },
+    {
+      "text": "这本书写得很详细",
+      "intent": null
+    },
+    {
+      "text": "我要详细的资料",
+      "intent": null
+    },
+    {
+      "text": "今天天气不错",
+      "intent": null
+    },
+    {
+      "text": "",
+      "intent": null
+    },
+    {
+      "text": null,
+      "intent": null
+    },
+    {
+      "text": "   ",
+      "intent": null
+    },
+    {
+      "text": "简短一点，但详细说说场景",
+      "intent": "brief"
+    }
+  ],
+  "sceneCases": [
+    {
+      "latestUserText": "【场景】新的城市",
+      "hasAssistantReply": true,
+      "factor": 1.25
+    },
+    {
+      "latestUserText": "场景切换了",
+      "hasAssistantReply": true,
+      "factor": 1.25
+    },
+    {
+      "latestUserText": "转场到教室",
+      "hasAssistantReply": true,
+      "factor": 1.25
+    },
+    {
+      "latestUserText": "换个地方吧",
+      "hasAssistantReply": true,
+      "factor": 1.25
+    },
+    {
+      "latestUserText": "你好",
+      "hasAssistantReply": false,
+      "factor": 1.15
+    },
+    {
+      "latestUserText": "你好",
+      "hasAssistantReply": true,
+      "factor": 1
+    },
+    {
+      "latestUserText": "在吗？",
+      "hasAssistantReply": true,
+      "factor": 0.85
+    },
+    {
+      "latestUserText": "这是一个超过十二个字符的长问句吗？",
+      "hasAssistantReply": true,
+      "factor": 1
+    },
+    {
+      "latestUserText": "  问 ？",
+      "hasAssistantReply": true,
+      "factor": 0.85
+    },
+    {
+      "latestUserText": "",
+      "hasAssistantReply": true,
+      "factor": 1
+    },
+    {
+      "latestUserText": null,
+      "hasAssistantReply": true,
+      "factor": 1
+    },
+    {
+      "latestUserText": "【地点】码头",
+      "hasAssistantReply": false,
+      "factor": 1.25
+    }
+  ],
+  "modeCases": [
+    {
+      "sessionMode": null,
+      "presetHint": null,
+      "defaultMode": null,
+      "userIntent": null,
+      "resolution": {
+        "mode": "auto",
+        "source": "auto"
+      }
+    },
+    {
+      "sessionMode": null,
+      "presetHint": null,
+      "defaultMode": null,
+      "userIntent": "brief",
+      "resolution": {
+        "mode": "brief",
+        "source": "user"
+      }
+    },
+    {
+      "sessionMode": "detailed",
+      "presetHint": null,
+      "defaultMode": null,
+      "userIntent": "auto",
+      "resolution": {
+        "mode": "detailed",
+        "source": "session"
+      }
+    },
+    {
+      "sessionMode": "brief",
+      "presetHint": null,
+      "defaultMode": null,
+      "userIntent": "invalid",
+      "resolution": {
+        "mode": "brief",
+        "source": "session"
+      }
+    },
+    {
+      "sessionMode": "auto",
+      "presetHint": "detailed",
+      "defaultMode": null,
+      "userIntent": null,
+      "resolution": {
+        "mode": "detailed",
+        "source": "preset"
+      }
+    },
+    {
+      "sessionMode": null,
+      "presetHint": "balanced",
+      "defaultMode": null,
+      "userIntent": null,
+      "resolution": {
+        "mode": "balanced",
+        "source": "preset"
+      }
+    },
+    {
+      "sessionMode": null,
+      "presetHint": null,
+      "defaultMode": "brief",
+      "userIntent": null,
+      "resolution": {
+        "mode": "brief",
+        "source": "settings"
+      }
+    },
+    {
+      "sessionMode": "nonsense",
+      "presetHint": null,
+      "defaultMode": null,
+      "userIntent": null,
+      "resolution": {
+        "mode": "auto",
+        "source": "auto"
+      }
+    },
+    {
+      "sessionMode": "detailed",
+      "presetHint": "brief",
+      "defaultMode": "balanced",
+      "userIntent": null,
+      "resolution": {
+        "mode": "detailed",
+        "source": "session"
+      }
+    },
+    {
+      "sessionMode": null,
+      "presetHint": null,
+      "defaultMode": null,
+      "userIntent": null,
+      "resolution": {
+        "mode": "auto",
+        "source": "auto"
+      }
+    }
+  ],
+  "policyCases": [
+    {
+      "input": {
+        "sessionMode": "brief",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "brief",
+        "source": "session",
+        "preferredMinChars": 40,
+        "preferredMaxChars": 140,
+        "hardMaxChars": 260,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 2
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "balanced",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "balanced",
+        "source": "session",
+        "preferredMinChars": 120,
+        "preferredMaxChars": 360,
+        "hardMaxChars": 600,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 4
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "detailed",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "detailed",
+        "source": "session",
+        "preferredMinChars": 300,
+        "preferredMaxChars": 700,
+        "hardMaxChars": 1100,
+        "targetParagraphs": {
+          "min": 2,
+          "max": 6
+        },
+        "maxNewBeats": 2
+      }
+    },
+    {
+      "input": {
+        "sessionMode": null,
+        "presetHint": "brief",
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "brief",
+        "source": "preset",
+        "preferredMinChars": 40,
+        "preferredMaxChars": 140,
+        "hardMaxChars": 260,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 2
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": null,
+        "presetHint": null,
+        "defaultMode": "detailed",
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "detailed",
+        "source": "settings",
+        "preferredMinChars": 300,
+        "preferredMaxChars": 700,
+        "hardMaxChars": 1100,
+        "targetParagraphs": {
+          "min": 2,
+          "max": 6
+        },
+        "maxNewBeats": 2
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "detailed",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": "brief",
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "brief",
+        "source": "user",
+        "preferredMinChars": 40,
+        "preferredMaxChars": 140,
+        "hardMaxChars": 260,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 2
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 132,
+        "preferredMaxChars": 324,
+        "hardMaxChars": 551,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": [
+          100,
+          200,
+          300
+        ],
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 110,
+        "preferredMaxChars": 270,
+        "hardMaxChars": 459,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": [
+          100,
+          200
+        ],
+        "sceneFactor": 1.25
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 103,
+        "preferredMaxChars": 254,
+        "hardMaxChars": 432,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": [
+          100,
+          200
+        ],
+        "sceneFactor": 0.85
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 70,
+        "preferredMaxChars": 173,
+        "hardMaxChars": 294,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": 0.1
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 66,
+        "preferredMaxChars": 162,
+        "hardMaxChars": 275,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": 5
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 264,
+        "preferredMaxChars": 648,
+        "hardMaxChars": 900,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": null,
+        "sceneFactor": "NaN"
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 132,
+        "preferredMaxChars": 324,
+        "hardMaxChars": 551,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": [
+          0
+        ],
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 44,
+        "preferredMaxChars": 108,
+        "hardMaxChars": 184,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": [
+          10000
+        ],
+        "sceneFactor": null
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 385,
+        "preferredMaxChars": 945,
+        "hardMaxChars": 900,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    },
+    {
+      "input": {
+        "sessionMode": "auto",
+        "presetHint": null,
+        "defaultMode": null,
+        "userIntent": null,
+        "recentAssistantVisibleChars": [
+          500,
+          500,
+          500
+        ],
+        "sceneFactor": 2
+      },
+      "policy": {
+        "mode": "auto",
+        "source": "auto",
+        "preferredMinChars": 385,
+        "preferredMaxChars": 945,
+        "hardMaxChars": 900,
+        "targetParagraphs": {
+          "min": 1,
+          "max": 5
+        },
+        "maxNewBeats": 1
+      }
+    }
+  ],
+  "promptCases": [
+    {
+      "mode": "auto",
+      "prompt": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 132–324 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。"
+    },
+    {
+      "mode": "brief",
+      "prompt": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 40–140 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。"
+    },
+    {
+      "mode": "balanced",
+      "prompt": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进一个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 120–360 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。"
+    },
+    {
+      "mode": "detailed",
+      "prompt": "【本轮回应范围】\n- 只完成一个自然互动回合：先回应最近输入，再最多推进两个主要事件、信息或情绪变化。\n- 推进到需要用户回应、选择或行动的位置就停止；不要连续代写下一轮，也不要自动写完整个场景。\n- 本轮正文通常为 300–700 个可见字符；语义完整和自然收尾优先，不为凑字数重复。\n- 不得与最近对话的既有事实、已完成动作或已说过的信息矛盾或重复；新引入的信息要能从当前场景自然推出。\n- 接近篇幅上限时停止引入新信息，完成当前句，并在完整对白、动作或观察后结束。\n- 除非用户明确要求，不做总结、尾声、未来预告，也不同时开启第二条支线。\n\n【正文结构】\n- 按说话、动作或叙事焦点的自然变化分段；短回应可以只有一个段落。\n- 对白使用中文引号；动作和环境用普通叙述段落。不要为了排版重复角色名。\n- 不输出标题、列表、代码块、创作说明或写作计划。\n- 不把角色心理活动混入正文；启用 <thought> 时严格遵循单独的内心想法契约。"
+    }
+  ]
+}

@@ -4,9 +4,10 @@ import { BUILTIN_MODEL_CATALOG, MODEL_CATALOG_PUBLIC_KEY } from '../services/loc
 import { LocalModelManager } from '../services/localModels/manager'
 import type { LocalModelUninstallRequest } from '../../shared/localModels'
 import { listLorebookViews } from '../services/lorebookDocumentStore'
-import { saveVectorIndex, clearStaleEntries, type VectorSpace } from '../services/vectorStore'
+import { saveVectorIndex, type VectorSpace } from '../services/vectorStore'
 import { readSettingsFromDisk } from './settings'
 import { resolveEmbeddingModelsRoot } from '../services/localModels/paths'
+import { embedLorebookEntries } from '../services/lorebookEmbeddingIndex'
 
 let manager: LocalModelManager | null = null
 
@@ -86,14 +87,14 @@ export function registerLocalModelIPC(
         indexBook: async (manifest, bookIndex) => {
           const book = books[bookIndex]
           if (!book) return
-          const targets = book.entries.filter((entry) => entry.enabled && entry.priority !== 'always' && ['semantic', 'both'].includes(entry.matchMode ?? 'both') && entry.content?.trim())
-          const vectors = targets.length ? await service.embed(targets.map((entry) => entry.content), 'passage') : []
-          const mapped: Record<string, number[]> = {}
-          targets.forEach((entry, index) => { if (vectors[index]?.length) mapped[entry.id] = vectors[index] })
+          const embedded = await embedLorebookEntries(
+            book.entries,
+            (texts, inputKind) => service.embed(texts, inputKind),
+            Math.max(256, manifest.maxTokens * 2),
+          )
           const model = `${manifest.id}@${manifest.version}`
           const space: VectorSpace = { provider: 'local', model, modelId: manifest.id, modelVersion: manifest.version }
-          saveVectorIndex(book.id, model, mapped, space)
-          clearStaleEntries(book.id, space)
+          saveVectorIndex(book.id, model, embedded.vectors, space, book.runtime?.revision)
         },
       }
     })

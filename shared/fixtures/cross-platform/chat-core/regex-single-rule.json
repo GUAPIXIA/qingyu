@@ -1,0 +1,445 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "applied": [
+        {
+          "id": "r1",
+          "text": "加粗 与 foo 与 秘密 与 markdown",
+          "replaced": true
+        },
+        {
+          "id": "r2",
+          "text": "**加粗** 与 bar 与 秘密 与 markdown",
+          "replaced": true
+        },
+        {
+          "id": "r3",
+          "text": "**加粗** 与 foo 与 秘密 与 markdown",
+          "replaced": false
+        },
+        {
+          "id": "r4",
+          "text": "**加粗** 与 foo 与 秘密 与 markdown",
+          "replaced": false
+        },
+        {
+          "id": "r5",
+          "text": "**加粗** 与 foo 与 秘密 与 MD",
+          "replaced": true
+        },
+        {
+          "id": "r6",
+          "text": "**加粗** 与 foo 与 秘密 与 markdown",
+          "replaced": false
+        },
+        {
+          "id": "r7",
+          "text": "**加粗** 与 foo 与 秘密 与 markdown",
+          "replaced": false
+        },
+        {
+          "id": "r8",
+          "text": "**加粗** 与 foo 与 秘密 与 mbrkdown",
+          "replaced": true
+        },
+        {
+          "id": "r9",
+          "text": "**加粗** 与 foo 与 秘密 与 markdown",
+          "replaced": false
+        },
+        {
+          "id": "r10",
+          "text": "**加粗** 与 foo 与 秘密 与 markdown",
+          "replaced": false
+        }
+      ]
+    },
+    {
+      "text": "包含触发词里面有秘密",
+      "applied": [
+        {
+          "id": "r1",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r2",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r3",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r4",
+          "text": "包含触发词里面有[已隐藏]",
+          "replaced": true
+        },
+        {
+          "id": "r5",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r6",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r7",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r8",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r9",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r10",
+          "text": "包含触发词里面有秘密",
+          "replaced": false
+        }
+      ]
+    },
+    {
+      "text": "没有触发词但有秘密",
+      "applied": [
+        {
+          "id": "r1",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r2",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r3",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r4",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r5",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r6",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r7",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r8",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r9",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        },
+        {
+          "id": "r10",
+          "text": "没有触发词但有秘密",
+          "replaced": false
+        }
+      ]
+    },
+    {
+      "text": "**未闭合 加粗",
+      "applied": [
+        {
+          "id": "r1",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r2",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r3",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r4",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r5",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r6",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r7",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r8",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r9",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        },
+        {
+          "id": "r10",
+          "text": "**未闭合 加粗",
+          "replaced": false
+        }
+      ]
+    },
+    {
+      "text": "foo foo FOO",
+      "applied": [
+        {
+          "id": "r1",
+          "text": "foo foo FOO",
+          "replaced": false
+        },
+        {
+          "id": "r2",
+          "text": "bar bar bar",
+          "replaced": true
+        },
+        {
+          "id": "r3",
+          "text": "foo foo FOO",
+          "replaced": false
+        },
+        {
+          "id": "r4",
+          "text": "foo foo FOO",
+          "replaced": false
+        },
+        {
+          "id": "r5",
+          "text": "foo foo FOO",
+          "replaced": false
+        },
+        {
+          "id": "r6",
+          "text": "foo foo FOO",
+          "replaced": false
+        },
+        {
+          "id": "r7",
+          "text": "foo foo FOO",
+          "replaced": false
+        },
+        {
+          "id": "r8",
+          "text": "foo foo FOO",
+          "replaced": false
+        },
+        {
+          "id": "r9",
+          "text": "foo foo FOO",
+          "replaced": false
+        },
+        {
+          "id": "r10",
+          "text": "foo foo FOO",
+          "replaced": false
+        }
+      ]
+    },
+    {
+      "text": "markdown markdown",
+      "applied": [
+        {
+          "id": "r1",
+          "text": "markdown markdown",
+          "replaced": false
+        },
+        {
+          "id": "r2",
+          "text": "markdown markdown",
+          "replaced": false
+        },
+        {
+          "id": "r3",
+          "text": "markdown markdown",
+          "replaced": false
+        },
+        {
+          "id": "r4",
+          "text": "markdown markdown",
+          "replaced": false
+        },
+        {
+          "id": "r5",
+          "text": "MD MD",
+          "replaced": true
+        },
+        {
+          "id": "r6",
+          "text": "markdown markdown",
+          "replaced": false
+        },
+        {
+          "id": "r7",
+          "text": "markdown markdown",
+          "replaced": false
+        },
+        {
+          "id": "r8",
+          "text": "mbrkdown mbrkdown",
+          "replaced": true
+        },
+        {
+          "id": "r9",
+          "text": "markdown markdown",
+          "replaced": false
+        },
+        {
+          "id": "r10",
+          "text": "markdown markdown",
+          "replaced": false
+        }
+      ]
+    },
+    {
+      "text": "普通文本没有规则命中",
+      "applied": [
+        {
+          "id": "r1",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r2",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r3",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r4",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r5",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r6",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r7",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r8",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r9",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        },
+        {
+          "id": "r10",
+          "text": "普通文本没有规则命中",
+          "replaced": false
+        }
+      ]
+    },
+    {
+      "text": "",
+      "applied": [
+        {
+          "id": "r1",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r2",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r3",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r4",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r5",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r6",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r7",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r8",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r9",
+          "text": "",
+          "replaced": false
+        },
+        {
+          "id": "r10",
+          "text": "",
+          "replaced": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "algorithm": "electron/services/charCardPng.ts",
+  "cases": [
+    {
+      "label": "plain-text-chara",
+      "bytesBase64": "iVBORw0KGgoAAAASdEVYdGNoYXJhAGV5SmhJam94ZlE9PTysgVIAAAAASUVORK5CYII=",
+      "mimeType": "image/png",
+      "chunks": {
+        "chara": "eyJhIjoxfQ=="
+      },
+      "chara": "eyJhIjoxfQ==",
+      "ccv3": null,
+      "afterWriteBase64": "iVBORw0KGgoAAAASdEVYdGNoYXJhAGV5SmhJam94ZlE9PTysgVIAAAAadEVYdGNoYXJhAGV5SjNhV1JsSWpwMGNuVmxmUT09LGuDfgAAAABJRU5ErkJggg==",
+      "roundTripsAfterWrite": "eyJ3aWRlIjp0cnVlfQ=="
+    },
+    {
+      "label": "ccv3-and-unknown-chunks-preserved",
+      "bytesBase64": "iVBORw0KGgoAAAAVY2FHWHVua25vd24tcHJpdmF0ZS1jaHVuazny4mEAAAARdEVYdGNjdjMAZXlKaUlqb3lmUT09Ko/SiAAAAABJRU5ErkJggg==",
+      "mimeType": "image/png",
+      "chunks": {
+        "ccv3": "eyJiIjoyfQ=="
+      },
+      "chara": null,
+      "ccv3": "eyJiIjoyfQ==",
+      "afterWriteBase64": "iVBORw0KGgoAAAAVY2FHWHVua25vd24tcHJpdmF0ZS1jaHVuazny4mEAAAARdEVYdGNjdjMAZXlKaUlqb3lmUT09Ko/SiAAAABp0RVh0Y2hhcmEAZXlKM2FXUmxJanAwY25WbGZRPT0sa4N+AAAAAElFTkSuQmCC",
+      "roundTripsAfterWrite": "eyJ3aWRlIjp0cnVlfQ=="
+    },
+    {
+      "label": "itxt-uncompressed",
+      "bytesBase64": "iVBORw0KGgoAAAAWaVRYdGNoYXJhAAAAAABleUpqSWpvemZRPT3XNXzWAAAAAElFTkSuQmCC",
+      "mimeType": "image/png",
+      "chunks": {
+        "chara": "eyJjIjozfQ=="
+      },
+      "chara": "eyJjIjozfQ==",
+      "ccv3": null,
+      "afterWriteBase64": "iVBORw0KGgoAAAAWaVRYdGNoYXJhAAAAAABleUpqSWpvemZRPT3XNXzWAAAAGnRFWHRjaGFyYQBleUozYVdSbElqcDBjblZsZlE9PSxrg34AAAAASUVORK5CYII=",
+      "roundTripsAfterWrite": "eyJ3aWRlIjp0cnVlfQ=="
+    },
+    {
+      "label": "itxt-compressed-skipped",
+      "bytesBase64": "iVBORw0KGgoAAAASaVRYdGNoYXJhAAEAAABZV0pqWkE9PS0iRcIAAAAASUVORK5CYII=",
+      "mimeType": "image/png",
+      "chunks": {
+        "chara": "YWJjZA=="
+      },
+      "chara": "YWJjZA==",
+      "ccv3": null,
+      "afterWriteBase64": "iVBORw0KGgoAAAASaVRYdGNoYXJhAAEAAABZV0pqWkE9PS0iRcIAAAAadEVYdGNoYXJhAGV5SjNhV1JsSWpwMGNuVmxmUT09LGuDfgAAAABJRU5ErkJggg==",
+      "roundTripsAfterWrite": "eyJ3aWRlIjp0cnVlfQ=="
+    },
+    {
+      "label": "both-chara-and-ccv3",
+      "bytesBase64": "iVBORw0KGgoAAAAOdEVYdGNoYXJhAFkyaGhjbUU9MAPwpwAAAA10RVh0Y2N2MwBZMk4yTXc9PdBnqBMAAAAASUVORK5CYII=",
+      "mimeType": "image/png",
+      "chunks": {
+        "chara": "Y2hhcmE=",
+        "ccv3": "Y2N2Mw=="
+      },
+      "chara": "Y2hhcmE=",
+      "ccv3": "Y2N2Mw==",
+      "afterWriteBase64": "iVBORw0KGgoAAAAOdEVYdGNoYXJhAFkyaGhjbUU9MAPwpwAAAA10RVh0Y2N2MwBZMk4yTXc9PdBnqBMAAAAadEVYdGNoYXJhAGV5SjNhV1JsSWpwMGNuVmxmUT09LGuDfgAAAABJRU5ErkJggg==",
+      "roundTripsAfterWrite": "eyJ3aWRlIjp0cnVlfQ=="
+    },
+    {
+      "label": "no-text-chunks",
+      "bytesBase64": "iVBORw0KGgoAAAAASUVORK5CYII=",
+      "mimeType": "image/png",
+      "chunks": {},
+      "chara": null,
+      "ccv3": null,
+      "afterWriteBase64": "iVBORw0KGgoAAAAadEVYdGNoYXJhAGV5SjNhV1JsSWpwMGNuVmxmUT09LGuDfgAAAABJRU5ErkJggg==",
+      "roundTripsAfterWrite": "eyJ3aWRlIjp0cnVlfQ=="
+    },
+    {
+      "label": "truncated-before-chunk-end",
+      "bytesBase64": "iVBORw0KGgoAAAASdEVYdGNoYX",
+      "mimeType": "image/png",
+      "chunks": {},
+      "chara": null,
+      "ccv3": null,
+      "afterWriteBase64": "iVBORw0KGgoAAAASdEVYdGNoYQ==",
+      "roundTripsAfterWrite": null
+    },
+    {
+      "label": "not-a-png",
+      "bytesBase64": "R0lGODlhLi4uLi4uLi4=",
+      "mimeType": "image/gif",
+      "chunks": {},
+      "chara": null,
+      "ccv3": null,
+      "afterWriteBase64": "R0lGODlhLi4uLi4uLi4=",
+      "roundTripsAfterWrite": null
+    },
+    {
+      "label": "empty-key-is-ignored",
+      "bytesBase64": "iVBORw0KGgoAAAACdEVYdAB4sv0nggAAAABJRU5ErkJggg==",
+      "mimeType": "image/png",
+      "chunks": {},
+      "chara": null,
+      "ccv3": null,
+      "afterWriteBase64": "iVBORw0KGgoAAAACdEVYdAB4sv0nggAAABp0RVh0Y2hhcmEAZXlKM2FXUmxJanAwY25WbGZRPT0sa4N+AAAAAElFTkSuQmCC",
+      "roundTripsAfterWrite": "eyJ3aWRlIjp0cnVlfQ=="
+    }
+  ]
+}

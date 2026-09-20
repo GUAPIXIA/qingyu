@@ -12,7 +12,9 @@ import {
   LOREBOOK_ADAPTER_AMBIGUITY_MARGIN,
   LOREBOOK_ADAPTER_MIN_CONFIDENCE,
 } from '../services/lorebookAdapters/registry'
-import { getVectorIndex, markStaleEntries, removeVectorIndex } from '../services/vectorStore'
+import { markStaleEntries, removeVectorIndex } from '../services/vectorStore'
+import { diffLoreEntryEmbeddingIds } from '../../shared/lorebookEmbedding'
+import { scheduleLorebookAutoIndex } from './embedding'
 import { safeId } from '../utils/pathGuard'
 import { unwrapLorebookPayload } from '../services/lorebookImport'
 import { listLorebookViews, readLorebookDocument, readLorebookView, buildLorebookDocumentInput, buildLorebookViewDocument, commitLorebookDocument } from '../services/lorebookDocumentStore'
@@ -36,6 +38,7 @@ const log = createLogger('lorebook')
 function saveImportedLorebookDocument(document: CanonicalLorebookDocumentV2): void {
   const filePath = join(DIRS.lorebooks(), `${document.id}.json`)
   commitLorebookDocument(filePath, buildLorebookDocumentInput(filePath, document))
+  scheduleLorebookAutoIndex(document.id, document.entries.map((entry) => entry.id))
 }
 
 export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
@@ -50,6 +53,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     safeId(lorebook.id)
     const filePath = join(DIRS.lorebooks(), `${lorebook.id}.json`)
     let savedRevision = 1
+    let changedIds: string[] = []
     // NEW-M5：读-改-写整体持锁，避免并发保存互相覆盖
     await withFileLock(filePath, () => {
       const prev = readLorebookView(filePath)
@@ -58,14 +62,11 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
       const document = buildLorebookViewDocument(filePath, lorebook, Date.now(), expectedRevision)
       commitLorebookDocument(filePath, document)
       savedRevision = document.revision
-      // 有向量索引时，对比语义相关字段，标记变化的条目
-      if (getVectorIndex(lorebook.id)) {
-        const changedIds = diffSemanticEntries(prev?.entries ?? [], lorebook.entries)
-        if (changedIds.length > 0) {
-          markStaleEntries(lorebook.id, changedIds)
-        }
-      }
+      // 对所有向量空间统一失效；不能用默认远程路径是否存在作为本地索引的前置条件。
+      changedIds = diffSemanticEntries(prev?.entries ?? [], lorebook.entries)
+      markStaleEntries(lorebook.id, changedIds)
     })
+    scheduleLorebookAutoIndex(lorebook.id, changedIds)
     log.info('世界书已保存', {
       id: lorebook.id,
       name: lorebook.name,
@@ -336,25 +337,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
   })
 }
 
-/** 对比新旧条目，找出语义相关字段（内容/启用/匹配模式）变化的条目 id */
-function diffSemanticEntries(prev: LoreEntry[], next: LoreEntry[]): string[] {
-  const nextMap = new Map(next.map((e) => [e.id, e]))
-  const changed = new Set<string>()
-  for (const oldEntry of prev) {
-    const newEntry = nextMap.get(oldEntry.id)
-    if (!newEntry) {
-      // 条目被删除：其向量自然失效
-      changed.add(oldEntry.id)
-      continue
-    }
-    if (
-      oldEntry.content !== newEntry.content ||
-      oldEntry.enabled !== newEntry.enabled ||
-      (oldEntry.matchMode ?? 'both') !== (newEntry.matchMode ?? 'both')
-    ) {
-      changed.add(oldEntry.id)
-    }
-  }
-  // 新增条目没有向量，无需标记
-  return [...changed]
+/** 对比新旧条目的完整向量文档与语义资格，包含标题、关键词、摘要、正文及新增/删除。 */
+export function diffSemanticEntries(prev: LoreEntry[], next: LoreEntry[]): string[] {
+  return diffLoreEntryEmbeddingIds(prev, next)
 }

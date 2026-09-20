@@ -1,0 +1,713 @@
+{
+  "version": 1,
+  "narrative": {
+    "defaultMode": "immersive",
+    "options": [
+      {
+        "value": "immersive",
+        "label": "代入式角色扮演",
+        "shortLabel": "代入角色",
+        "description": "角色限知互动，适合对话与第一人称叙事"
+      },
+      {
+        "value": "omniscient",
+        "label": "全局叙事",
+        "shortLabel": "全局叙事",
+        "description": "第三人称旁白统筹世界，适合游戏、模拟与小说叙事"
+      }
+    ],
+    "memoryGuidance": [
+      {
+        "mode": "immersive",
+        "guidance": "摘要优先保留当前场景、人物关系、角色亲历事件和角色已经知晓的信息；不要把未被角色感知的幕后信息写成角色知识。"
+      },
+      {
+        "mode": "omniscient",
+        "guidance": "摘要需额外保留阵营与势力变化、异地或幕后事件、世界状态，以及尚未解决的全局因果链。区分角色亲历信息与旁白已知信息，不能让角色凭空获得全局知识。"
+      }
+    ],
+    "isModeCases": [
+      {
+        "value": {
+          "kind": "string",
+          "value": "immersive"
+        },
+        "valid": true
+      },
+      {
+        "value": {
+          "kind": "string",
+          "value": "omniscient"
+        },
+        "valid": true
+      },
+      {
+        "value": {
+          "kind": "string",
+          "value": "unknown"
+        },
+        "valid": false
+      },
+      {
+        "value": {
+          "kind": "string",
+          "value": ""
+        },
+        "valid": false
+      },
+      {
+        "value": {
+          "kind": "null"
+        },
+        "valid": false
+      },
+      {
+        "value": {
+          "kind": "undefined"
+        },
+        "valid": false
+      }
+    ],
+    "resolveCases": [
+      {
+        "candidates": [],
+        "resolved": "immersive"
+      },
+      {
+        "candidates": [
+          {
+            "kind": "string",
+            "value": "omniscient"
+          }
+        ],
+        "resolved": "omniscient"
+      },
+      {
+        "candidates": [
+          {
+            "kind": "string",
+            "value": "immersive"
+          }
+        ],
+        "resolved": "immersive"
+      },
+      {
+        "candidates": [
+          {
+            "kind": "string",
+            "value": "bad"
+          },
+          {
+            "kind": "string",
+            "value": "omniscient"
+          }
+        ],
+        "resolved": "omniscient"
+      },
+      {
+        "candidates": [
+          {
+            "kind": "null"
+          },
+          {
+            "kind": "undefined"
+          },
+          {
+            "kind": "string",
+            "value": "immersive"
+          }
+        ],
+        "resolved": "immersive"
+      },
+      {
+        "candidates": [
+          {
+            "kind": "string",
+            "value": "bad"
+          }
+        ],
+        "resolved": "immersive"
+      }
+    ],
+    "labelCases": [
+      {
+        "mode": "immersive",
+        "label": "代入式角色扮演"
+      },
+      {
+        "mode": "omniscient",
+        "label": "全局叙事"
+      },
+      {
+        "mode": "unknown",
+        "label": "代入式角色扮演"
+      }
+    ],
+    "promptCases": [
+      {
+        "mode": "immersive",
+        "userName": "旅人",
+        "characterName": "苏晚",
+        "omniscientRules": null,
+        "prompt": "【叙事模式：代入式角色扮演】\n你当前代入 苏晚，以角色可感知、可理解的信息与 旅人 互动。\n1. 保持 苏晚 的身份、性格、记忆、知识边界和说话方式一致。\n2. 主要书写 苏晚 的对白、动作、感受，以及维持场景所需的少量环境和配角反应。\n3. 不替 旅人 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。"
+      },
+      {
+        "mode": "omniscient",
+        "userName": "旅人",
+        "characterName": "苏晚",
+        "omniscientRules": null,
+        "prompt": "【叙事模式：全局叙事】\n你当前是位于故事外部的第三人称旁白、导演和世界运行者，不局限于扮演 苏晚。\n1. 以角色名、“他”或“她”指代人物，从外部观察并叙述事件；不要以 苏晚 或其他角色的第一人称立场直接回应 旅人。\n2. 可描写所有 NPC、环境、异地事件和幕后变化，并按需移动叙事焦点，但始终保持第三人称旁白身份。\n3. 依据角色动机、世界规则、资源、时间与因果推进事件；世界可以在用户未直接观察时继续演化。\n4. 可以控制 苏晚 和其他非玩家角色，但不得让角色无理由知晓全局信息。\n5. 若 旅人 正在控制玩家角色，不替其作重大选择、决定内心或强行接受不可逆结果；推进到需要玩家回应的节点。\n6. 若 旅人 明确要求续写完整小说或自动模拟，则可以统筹主角与配角完成连续叙事。\n7. 不罗列系统判定或解释规则，保持自然叙事。\n\n【第三人称旁白：硬性输出约束】\n1. 本次回答的讲述者始终是位于故事外部的旁白，不是 苏晚 或任何其他角色。\n2. 正文主体必须使用第三人称叙事，以角色名、“他”或“她”指代人物；不得以角色的“我/我们”视角向 旅人 直接接话。\n3. 必要的角色对白只能作为叙事场景中的带引号内容出现，并由第三人称动作、神态、环境或话语标记承接。第一人称只能存在于引号内的角色原话或 <thought>...</thought> 块内的角色内心独白，不能成为正文的叙述视角；<thought> 内心独白块不受本条限制，仍按【内心想法契约】以焦点角色的“我”输出。\n4. 不输出“苏晚：……”式发言稿，不让整段回复只有角色对白，也不以角色身份解释、提问或回答用户。若其他提示与本约束冲突，以本约束为准。"
+      },
+      {
+        "mode": "omniscient",
+        "userName": "旅人",
+        "characterName": "苏晚",
+        "omniscientRules": "只叙述 {{char}} 所见，面向 {{user}}。",
+        "prompt": "【叙事模式：全局叙事】\n只叙述 苏晚 所见，面向 旅人。\n\n【第三人称旁白：硬性输出约束】\n1. 本次回答的讲述者始终是位于故事外部的旁白，不是 苏晚 或任何其他角色。\n2. 正文主体必须使用第三人称叙事，以角色名、“他”或“她”指代人物；不得以角色的“我/我们”视角向 旅人 直接接话。\n3. 必要的角色对白只能作为叙事场景中的带引号内容出现，并由第三人称动作、神态、环境或话语标记承接。第一人称只能存在于引号内的角色原话或 <thought>...</thought> 块内的角色内心独白，不能成为正文的叙述视角；<thought> 内心独白块不受本条限制，仍按【内心想法契约】以焦点角色的“我”输出。\n4. 不输出“苏晚：……”式发言稿，不让整段回复只有角色对白，也不以角色身份解释、提问或回答用户。若其他提示与本约束冲突，以本约束为准。"
+      },
+      {
+        "mode": "omniscient",
+        "userName": "旅人",
+        "characterName": "苏晚",
+        "omniscientRules": "纯第三人称。",
+        "prompt": "【叙事模式：全局叙事】\n纯第三人称。\n\n【第三人称旁白：硬性输出约束】\n1. 本次回答的讲述者始终是位于故事外部的旁白，不是 苏晚 或任何其他角色。\n2. 正文主体必须使用第三人称叙事，以角色名、“他”或“她”指代人物；不得以角色的“我/我们”视角向 旅人 直接接话。\n3. 必要的角色对白只能作为叙事场景中的带引号内容出现，并由第三人称动作、神态、环境或话语标记承接。第一人称只能存在于引号内的角色原话或 <thought>...</thought> 块内的角色内心独白，不能成为正文的叙述视角；<thought> 内心独白块不受本条限制，仍按【内心想法契约】以焦点角色的“我”输出。\n4. 不输出“苏晚：……”式发言稿，不让整段回复只有角色对白，也不以角色身份解释、提问或回答用户。若其他提示与本约束冲突，以本约束为准。"
+      },
+      {
+        "mode": "omniscient",
+        "userName": "旅人",
+        "characterName": "苏晚",
+        "omniscientRules": "   ",
+        "prompt": "【叙事模式：全局叙事】\n你当前是位于故事外部的第三人称旁白、导演和世界运行者，不局限于扮演 苏晚。\n1. 以角色名、“他”或“她”指代人物，从外部观察并叙述事件；不要以 苏晚 或其他角色的第一人称立场直接回应 旅人。\n2. 可描写所有 NPC、环境、异地事件和幕后变化，并按需移动叙事焦点，但始终保持第三人称旁白身份。\n3. 依据角色动机、世界规则、资源、时间与因果推进事件；世界可以在用户未直接观察时继续演化。\n4. 可以控制 苏晚 和其他非玩家角色，但不得让角色无理由知晓全局信息。\n5. 若 旅人 正在控制玩家角色，不替其作重大选择、决定内心或强行接受不可逆结果；推进到需要玩家回应的节点。\n6. 若 旅人 明确要求续写完整小说或自动模拟，则可以统筹主角与配角完成连续叙事。\n7. 不罗列系统判定或解释规则，保持自然叙事。\n\n【第三人称旁白：硬性输出约束】\n1. 本次回答的讲述者始终是位于故事外部的旁白，不是 苏晚 或任何其他角色。\n2. 正文主体必须使用第三人称叙事，以角色名、“他”或“她”指代人物；不得以角色的“我/我们”视角向 旅人 直接接话。\n3. 必要的角色对白只能作为叙事场景中的带引号内容出现，并由第三人称动作、神态、环境或话语标记承接。第一人称只能存在于引号内的角色原话或 <thought>...</thought> 块内的角色内心独白，不能成为正文的叙述视角；<thought> 内心独白块不受本条限制，仍按【内心想法契约】以焦点角色的“我”输出。\n4. 不输出“苏晚：……”式发言稿，不让整段回复只有角色对白，也不以角色身份解释、提问或回答用户。若其他提示与本约束冲突，以本约束为准。"
+      },
+      {
+        "mode": "omniscient",
+        "userName": "",
+        "characterName": "",
+        "omniscientRules": null,
+        "prompt": "【叙事模式：全局叙事】\n你当前是位于故事外部的第三人称旁白、导演和世界运行者，不局限于扮演 。\n1. 以角色名、“他”或“她”指代人物，从外部观察并叙述事件；不要以  或其他角色的第一人称立场直接回应 。\n2. 可描写所有 NPC、环境、异地事件和幕后变化，并按需移动叙事焦点，但始终保持第三人称旁白身份。\n3. 依据角色动机、世界规则、资源、时间与因果推进事件；世界可以在用户未直接观察时继续演化。\n4. 可以控制  和其他非玩家角色，但不得让角色无理由知晓全局信息。\n5. 若  正在控制玩家角色，不替其作重大选择、决定内心或强行接受不可逆结果；推进到需要玩家回应的节点。\n6. 若  明确要求续写完整小说或自动模拟，则可以统筹主角与配角完成连续叙事。\n7. 不罗列系统判定或解释规则，保持自然叙事。\n\n【第三人称旁白：硬性输出约束】\n1. 本次回答的讲述者始终是位于故事外部的旁白，不是  或任何其他角色。\n2. 正文主体必须使用第三人称叙事，以角色名、“他”或“她”指代人物；不得以角色的“我/我们”视角向  直接接话。\n3. 必要的角色对白只能作为叙事场景中的带引号内容出现，并由第三人称动作、神态、环境或话语标记承接。第一人称只能存在于引号内的角色原话或 <thought>...</thought> 块内的角色内心独白，不能成为正文的叙述视角；<thought> 内心独白块不受本条限制，仍按【内心想法契约】以焦点角色的“我”输出。\n4. 不输出“：……”式发言稿，不让整段回复只有角色对白，也不以角色身份解释、提问或回答用户。若其他提示与本约束冲突，以本约束为准。"
+      }
+    ]
+  },
+  "thought": {
+    "clauses": [
+      "第一人称",
+      "不超过 3 句",
+      "不得包含模型推理",
+      "写作计划",
+      "规则分析",
+      "上下文复述",
+      "标签外"
+    ],
+    "cases": [
+      {
+        "narrativeMode": "immersive",
+        "subjectName": null,
+        "body": "每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 该角色 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。"
+      },
+      {
+        "narrativeMode": "immersive",
+        "subjectName": "苏晚",
+        "body": "每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前回应角色的第一人称私密内心独白，必须使用 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。完整的实际对话和行动必须放在标签外。"
+      },
+      {
+        "narrativeMode": "omniscient",
+        "subjectName": null,
+        "body": "正文仍保持第三人称叙事。每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前焦点角色当前对话角色的第一人称内心独白，必须切换到 当前对话角色 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。不要一次泄露所有人物的隐私想法。完整的实际叙事必须放在标签外。"
+      },
+      {
+        "narrativeMode": "omniscient",
+        "subjectName": "苏晚",
+        "body": "正文仍保持第三人称叙事。每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前焦点角色苏晚的第一人称内心独白，必须切换到 苏晚 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。不要一次泄露所有人物的隐私想法。完整的实际叙事必须放在标签外。"
+      },
+      {
+        "narrativeMode": "omniscient",
+        "subjectName": "",
+        "body": "正文仍保持第三人称叙事。每轮必须输出且只输出一组 <thought>...</thought>，它仅表示当前焦点角色当前对话角色的第一人称内心独白，必须切换到 当前对话角色 自己的“我”来思考（禁止用旁白/第三人称“他/她”写这段心理），保持简短且不超过 3 句；不得包含模型推理、写作计划、规则分析、上下文复述或正文草稿。不要一次泄露所有人物的隐私想法。完整的实际叙事必须放在标签外。"
+      }
+    ]
+  },
+  "templates": {
+    "builtinNames": [
+      "alpaca",
+      "chatml",
+      "command-r",
+      "deepseek",
+      "gemma",
+      "llama2",
+      "llama3",
+      "mistral",
+      "phi3",
+      "qwen"
+    ],
+    "byNameCases": [
+      {
+        "name": "chatml",
+        "template": {
+          "systemPrefix": "<|im_start|>system\n",
+          "systemSuffix": "<|im_end|>\n",
+          "userPrefix": "<|im_start|>user\n",
+          "userSuffix": "<|im_end|>\n",
+          "assistantPrefix": "<|im_start|>assistant\n",
+          "assistantSuffix": "<|im_end|>\n",
+          "stopSequences": [
+            "<|im_end|>",
+            "<|im_start|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "name": "CHATML",
+        "template": {
+          "systemPrefix": "<|im_start|>system\n",
+          "systemSuffix": "<|im_end|>\n",
+          "userPrefix": "<|im_start|>user\n",
+          "userSuffix": "<|im_end|>\n",
+          "assistantPrefix": "<|im_start|>assistant\n",
+          "assistantSuffix": "<|im_end|>\n",
+          "stopSequences": [
+            "<|im_end|>",
+            "<|im_start|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "name": "  qwen  ",
+        "template": {
+          "systemPrefix": "<|im_start|>system\n",
+          "systemSuffix": "<|im_end|>\n",
+          "userPrefix": "<|im_start|>user\n",
+          "userSuffix": "<|im_end|>\n",
+          "assistantPrefix": "<|im_start|>assistant\n",
+          "assistantSuffix": "<|im_end|>\n",
+          "stopSequences": [
+            "<|im_end|>",
+            "<|im_start|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "name": "llama3",
+        "template": {
+          "systemPrefix": "<|start_header_id|>system<|end_header_id|>\n\n",
+          "systemSuffix": "<|eot_id|>",
+          "userPrefix": "<|start_header_id|>user<|end_header_id|>\n\n",
+          "userSuffix": "<|eot_id|>",
+          "assistantPrefix": "<|start_header_id|>assistant<|end_header_id|>\n\n",
+          "assistantSuffix": "<|eot_id|>",
+          "stopSequences": [
+            "<|eot_id|>",
+            "<|start_header_id|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "name": "command-r",
+        "template": {
+          "systemPrefix": "<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>",
+          "systemSuffix": "<|END_OF_TURN_TOKEN|>",
+          "userPrefix": "<|START_OF_TURN_TOKEN|><|USER_TOKEN|>",
+          "userSuffix": "<|END_OF_TURN_TOKEN|>",
+          "assistantPrefix": "<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>",
+          "assistantSuffix": "<|END_OF_TURN_TOKEN|>",
+          "stopSequences": [
+            "<|END_OF_TURN_TOKEN|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "name": "gemma",
+        "template": {
+          "systemPrefix": "",
+          "systemSuffix": "",
+          "userPrefix": "<start_of_turn>user\n",
+          "userSuffix": "<end_of_turn>\n",
+          "assistantPrefix": "<start_of_turn>model\n",
+          "assistantSuffix": "<end_of_turn>\n",
+          "stopSequences": [
+            "<end_of_turn>",
+            "<start_of_turn>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "name": "unknown",
+        "template": null
+      },
+      {
+        "name": "",
+        "template": null
+      },
+      {
+        "name": null,
+        "template": null
+      },
+      {
+        "name": null,
+        "template": null
+      }
+    ],
+    "inferCases": [
+      {
+        "provider": "ollama",
+        "model": "qwen2.5:7b",
+        "template": {
+          "systemPrefix": "<|im_start|>system\n",
+          "systemSuffix": "<|im_end|>\n",
+          "userPrefix": "<|im_start|>user\n",
+          "userSuffix": "<|im_end|>\n",
+          "assistantPrefix": "<|im_start|>assistant\n",
+          "assistantSuffix": "<|im_end|>\n",
+          "stopSequences": [
+            "<|im_end|>",
+            "<|im_start|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "provider": "ollama",
+        "model": "deepseek-r1",
+        "template": {
+          "systemPrefix": "<|im_start|>system\n",
+          "systemSuffix": "<|im_end|>\n",
+          "userPrefix": "<|im_start|>user\n",
+          "userSuffix": "<|im_end|>\n",
+          "assistantPrefix": "<|im_start|>assistant\n",
+          "assistantSuffix": "<|im_end|>\n",
+          "stopSequences": [
+            "<|im_end|>",
+            "<|im_start|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "provider": "ollama",
+        "model": "llama3.1",
+        "template": {
+          "systemPrefix": "<|start_header_id|>system<|end_header_id|>\n\n",
+          "systemSuffix": "<|eot_id|>",
+          "userPrefix": "<|start_header_id|>user<|end_header_id|>\n\n",
+          "userSuffix": "<|eot_id|>",
+          "assistantPrefix": "<|start_header_id|>assistant<|end_header_id|>\n\n",
+          "assistantSuffix": "<|eot_id|>",
+          "stopSequences": [
+            "<|eot_id|>",
+            "<|start_header_id|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "provider": "ollama",
+        "model": "llama2:13b",
+        "template": {
+          "systemPrefix": "[INST] <<SYS>>\n",
+          "systemSuffix": "\n<</SYS>>\n\n",
+          "userPrefix": "[INST] ",
+          "userSuffix": " [/INST]",
+          "assistantPrefix": "",
+          "assistantSuffix": "</s>",
+          "stopSequences": [
+            "</s>",
+            "[INST]"
+          ],
+          "appendAssistantPrefix": false
+        }
+      },
+      {
+        "provider": "ollama",
+        "model": "mistral",
+        "template": {
+          "systemPrefix": "",
+          "systemSuffix": "",
+          "userPrefix": "[INST] ",
+          "userSuffix": " [/INST]",
+          "assistantPrefix": "",
+          "assistantSuffix": "</s>",
+          "stopSequences": [
+            "</s>",
+            "[INST]"
+          ],
+          "appendAssistantPrefix": false
+        }
+      },
+      {
+        "provider": "ollama",
+        "model": "phi3",
+        "template": {
+          "systemPrefix": "<|system|>\n",
+          "systemSuffix": "<|end|>\n",
+          "userPrefix": "<|user|>\n",
+          "userSuffix": "<|end|>\n",
+          "assistantPrefix": "<|assistant|>\n",
+          "assistantSuffix": "<|end|>\n",
+          "stopSequences": [
+            "<|end|>",
+            "<|user|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "provider": "ollama",
+        "model": "gemma2",
+        "template": {
+          "systemPrefix": "",
+          "systemSuffix": "",
+          "userPrefix": "<start_of_turn>user\n",
+          "userSuffix": "<end_of_turn>\n",
+          "assistantPrefix": "<start_of_turn>model\n",
+          "assistantSuffix": "<end_of_turn>\n",
+          "stopSequences": [
+            "<end_of_turn>",
+            "<start_of_turn>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "provider": "ollama",
+        "model": "command-r-plus",
+        "template": {
+          "systemPrefix": "<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>",
+          "systemSuffix": "<|END_OF_TURN_TOKEN|>",
+          "userPrefix": "<|START_OF_TURN_TOKEN|><|USER_TOKEN|>",
+          "userSuffix": "<|END_OF_TURN_TOKEN|>",
+          "assistantPrefix": "<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>",
+          "assistantSuffix": "<|END_OF_TURN_TOKEN|>",
+          "stopSequences": [
+            "<|END_OF_TURN_TOKEN|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "provider": "ollama",
+        "model": "totally-unknown-model",
+        "template": {
+          "systemPrefix": "",
+          "systemSuffix": "",
+          "userPrefix": "",
+          "userSuffix": "",
+          "assistantPrefix": "",
+          "assistantSuffix": "",
+          "stopSequences": [],
+          "appendAssistantPrefix": false
+        }
+      },
+      {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "template": {
+          "systemPrefix": "",
+          "systemSuffix": "",
+          "userPrefix": "",
+          "userSuffix": "",
+          "assistantPrefix": "",
+          "assistantSuffix": "",
+          "stopSequences": [],
+          "appendAssistantPrefix": false
+        }
+      },
+      {
+        "provider": "claude",
+        "model": "claude-3-5-sonnet",
+        "template": {
+          "systemPrefix": "",
+          "systemSuffix": "",
+          "userPrefix": "",
+          "userSuffix": "",
+          "assistantPrefix": "",
+          "assistantSuffix": "",
+          "stopSequences": [],
+          "appendAssistantPrefix": false,
+          "systemAsTopLevel": true
+        }
+      },
+      {
+        "provider": "gemini",
+        "model": "gemini-1.5-pro",
+        "template": {
+          "systemPrefix": "",
+          "systemSuffix": "",
+          "userPrefix": "",
+          "userSuffix": "",
+          "assistantPrefix": "",
+          "assistantSuffix": "",
+          "stopSequences": [],
+          "appendAssistantPrefix": false,
+          "systemAsTopLevel": true
+        }
+      },
+      {
+        "provider": "anthropic",
+        "model": "claude-3-5-sonnet",
+        "template": {
+          "systemPrefix": "",
+          "systemSuffix": "",
+          "userPrefix": "",
+          "userSuffix": "",
+          "assistantPrefix": "",
+          "assistantSuffix": "",
+          "stopSequences": [],
+          "appendAssistantPrefix": false
+        }
+      }
+    ],
+    "effectiveCases": [
+      {
+        "contextTemplate": "chatml",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "useInstructTemplate": null,
+        "template": {
+          "systemPrefix": "<|im_start|>system\n",
+          "systemSuffix": "<|im_end|>\n",
+          "userPrefix": "<|im_start|>user\n",
+          "userSuffix": "<|im_end|>\n",
+          "assistantPrefix": "<|im_start|>assistant\n",
+          "assistantSuffix": "<|im_end|>\n",
+          "stopSequences": [
+            "<|im_end|>",
+            "<|im_start|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "contextTemplate": "unknown",
+        "provider": "ollama",
+        "model": "llama3.1",
+        "useInstructTemplate": null,
+        "template": null
+      },
+      {
+        "contextTemplate": null,
+        "provider": "ollama",
+        "model": "llama3.1",
+        "useInstructTemplate": true,
+        "template": {
+          "systemPrefix": "<|start_header_id|>system<|end_header_id|>\n\n",
+          "systemSuffix": "<|eot_id|>",
+          "userPrefix": "<|start_header_id|>user<|end_header_id|>\n\n",
+          "userSuffix": "<|eot_id|>",
+          "assistantPrefix": "<|start_header_id|>assistant<|end_header_id|>\n\n",
+          "assistantSuffix": "<|eot_id|>",
+          "stopSequences": [
+            "<|eot_id|>",
+            "<|start_header_id|>"
+          ],
+          "appendAssistantPrefix": true
+        }
+      },
+      {
+        "contextTemplate": null,
+        "provider": "ollama",
+        "model": "llama3.1",
+        "useInstructTemplate": false,
+        "template": null
+      },
+      {
+        "contextTemplate": null,
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "useInstructTemplate": null,
+        "template": null
+      }
+    ],
+    "applyCases": [
+      {
+        "templateName": "chatml",
+        "messages": [
+          {
+            "role": "system",
+            "content": "你是苏晚。"
+          },
+          {
+            "role": "user",
+            "content": "夜安"
+          },
+          {
+            "role": "assistant",
+            "content": "夜安。"
+          },
+          {
+            "role": "user",
+            "content": "还在营业吗"
+          }
+        ],
+        "text": "<|im_start|>system\n你是苏晚。<|im_end|>\n<|im_start|>user\n夜安<|im_end|>\n<|im_start|>assistant\n夜安。<|im_end|>\n<|im_start|>user\n还在营业吗<|im_end|>\n<|im_start|>assistant\n",
+        "stopSequences": [
+          "<|im_end|>",
+          "<|im_start|>"
+        ]
+      },
+      {
+        "templateName": "llama2",
+        "messages": [
+          {
+            "role": "user",
+            "content": "你好"
+          }
+        ],
+        "text": "[INST] 你好 [/INST]",
+        "stopSequences": [
+          "</s>",
+          "[INST]"
+        ]
+      },
+      {
+        "templateName": "alpaca",
+        "messages": [
+          {
+            "role": "system",
+            "content": "S"
+          },
+          {
+            "role": "user",
+            "content": "U"
+          }
+        ],
+        "text": "S\n\n### Instruction:\nU\n\n### Response:\n",
+        "stopSequences": [
+          "### Instruction:",
+          "### Response:"
+        ]
+      },
+      {
+        "templateName": "chatml",
+        "messages": [
+          {
+            "role": "tool",
+            "content": "T"
+          },
+          {
+            "role": "user",
+            "content": "U"
+          }
+        ],
+        "text": "<|im_start|>user\nU<|im_end|>\n<|im_start|>assistant\n",
+        "stopSequences": [
+          "<|im_end|>",
+          "<|im_start|>"
+        ]
+      },
+      {
+        "templateName": "chatml",
+        "messages": [],
+        "text": "<|im_start|>assistant\n",
+        "stopSequences": [
+          "<|im_end|>",
+          "<|im_start|>"
+        ]
+      }
+    ]
+  }
+}

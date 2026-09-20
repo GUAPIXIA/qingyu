@@ -1,0 +1,251 @@
+{
+  "algorithm": "shared/preset.ts#normalizeImportedPreset → electron/ipc/preset.ts#presetEntityPayload → JSON.stringify(preset, null, 2) → normalizeImportedPreset（PC 自己的往返）",
+  "cases": [
+    {
+      "label": "standard-snake-case",
+      "input": {
+        "name": "酒馆",
+        "main_prompt": "sys",
+        "max_context": "8192",
+        "top_p": 0.9,
+        "temperature": 1.1,
+        "unknown_field": 1
+      },
+      "options": {
+        "id": "chain1",
+        "fallbackName": "导入预设"
+      },
+      "sourceFormat": "standard",
+      "unsupportedFields": [
+        "unknown_field"
+      ],
+      "importedPreset": {
+        "id": "chain1",
+        "name": "酒馆",
+        "description": "",
+        "systemPrompt": "sys",
+        "jailbreak": "",
+        "maxContext": 8192,
+        "temperature": 1.1,
+        "topP": 0.9,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "importedPayload": {
+        "name": "酒馆",
+        "description": "",
+        "systemPrompt": "sys",
+        "jailbreak": "",
+        "maxContext": 8192,
+        "temperature": 1.1,
+        "topP": 0.9,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "reimportedPayload": {
+        "name": "酒馆",
+        "description": "",
+        "systemPrompt": "sys",
+        "jailbreak": "",
+        "maxContext": 8192,
+        "temperature": 1.1,
+        "topP": 0.9,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "reimportedUnsupportedFields": []
+    },
+    {
+      "label": "mixed-native-wins",
+      "input": {
+        "name": "混合",
+        "main_prompt": "from-snake",
+        "systemPrompt": "from-native"
+      },
+      "options": {
+        "id": "chain2",
+        "fallbackName": "导入预设"
+      },
+      "sourceFormat": "standard",
+      "unsupportedFields": [],
+      "importedPreset": {
+        "id": "chain2",
+        "name": "混合",
+        "description": "",
+        "systemPrompt": "from-native",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "importedPayload": {
+        "name": "混合",
+        "description": "",
+        "systemPrompt": "from-native",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "reimportedPayload": {
+        "name": "混合",
+        "description": "",
+        "systemPrompt": "from-native",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "reimportedUnsupportedFields": []
+    },
+    {
+      "label": "clamped-and-defaulted",
+      "input": {
+        "name": "越界",
+        "temperature": 99,
+        "topP": -5,
+        "maxTokens": 1000000000,
+        "prompt_set": [
+          {
+            "role": "system",
+            "content": "x"
+          }
+        ]
+      },
+      "options": {
+        "id": "chain3",
+        "fallbackName": "导入预设"
+      },
+      "sourceFormat": "qingyu",
+      "unsupportedFields": [
+        "prompt_set"
+      ],
+      "importedPreset": {
+        "id": "chain3",
+        "name": "越界",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 2,
+        "topP": 0.01,
+        "maxTokens": 262144,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "importedPayload": {
+        "name": "越界",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 2,
+        "topP": 0.01,
+        "maxTokens": 262144,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "reimportedPayload": {
+        "name": "越界",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 2,
+        "topP": 0.01,
+        "maxTokens": 262144,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "reimportedUnsupportedFields": []
+    },
+    {
+      "label": "no-name-falls-back",
+      "input": {
+        "prompt_set": []
+      },
+      "options": {
+        "id": "chain4",
+        "fallbackName": " 回退名 "
+      },
+      "sourceFormat": "qingyu",
+      "unsupportedFields": [
+        "prompt_set"
+      ],
+      "importedPreset": {
+        "id": "chain4",
+        "name": "回退名",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "importedPayload": {
+        "name": "回退名",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "reimportedPayload": {
+        "name": "回退名",
+        "description": "",
+        "systemPrompt": "",
+        "jailbreak": "",
+        "maxContext": 0,
+        "temperature": 0.8,
+        "topP": 0.95,
+        "maxTokens": 0,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0,
+        "isBuiltin": false,
+        "responseLengthHint": "auto"
+      },
+      "reimportedUnsupportedFields": []
+    }
+  ]
+}

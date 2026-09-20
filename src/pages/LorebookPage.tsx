@@ -44,6 +44,7 @@ import { LorebookMappingWizardModal } from './lorebook/LorebookMappingWizardModa
 import { LorebookHealthReportModal } from './lorebook/LorebookHealthReportModal'
 import { LorebookBatchSemanticModal } from './lorebook/LorebookBatchSemanticModal'
 import { appendLocalizedKeywords } from '../utils/lorebookLocalization'
+import { lorebookCache } from '../utils/lorebook'
 import { Toggle } from './lorebook/lorebookComponents'
 import { POSITION_LABELS, MATCH_MODE_LABELS, PRIORITY_LABELS } from './lorebook/lorebookConstants'
 
@@ -140,6 +141,7 @@ export function LorebookPage() {
       setLorebooks(list)
       list.forEach((book) => {
         if (book.runtime?.revision !== undefined) revisionRef.current.set(book.id, book.runtime.revision)
+        lorebookCache.set(book.id, book)
       })
       if (list.length > 0) setSelectedId(list[0].id)
     })
@@ -183,6 +185,7 @@ export function LorebookPage() {
     try {
       const { revision } = await window.api.lorebook.save(payload, expected)
       revisionRef.current.set(payload.id, revision)
+      lorebookCache.set(payload.id, { ...payload, runtime: { ...(payload.runtime ?? { schemaVersion: 2 }), revision } })
       setLorebooks((prev) => prev.map((l) => (
         l.id === payload.id ? { ...l, runtime: { ...(l.runtime ?? { schemaVersion: 2 }), revision } } : l
       )))
@@ -192,6 +195,7 @@ export function LorebookPage() {
         revisionRef.current.clear()
         list.forEach((book) => {
           if (book.runtime?.revision !== undefined) revisionRef.current.set(book.id, book.runtime.revision)
+          lorebookCache.set(book.id, book)
         })
         setLorebooks(list)
         setOperationError({

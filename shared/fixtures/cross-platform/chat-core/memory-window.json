@@ -1,0 +1,251 @@
+{
+  "version": 1,
+  "messages": [
+    {
+      "id": "m1",
+      "content": "第一条消息"
+    },
+    {
+      "id": "m2",
+      "content": "第二条消息，稍微长一点用于占位"
+    },
+    {
+      "id": "m3",
+      "content": "第三条"
+    },
+    {
+      "id": "m4",
+      "content": "第四条消息内容"
+    },
+    {
+      "id": "m5",
+      "content": "第五条消息"
+    },
+    {
+      "id": "m6",
+      "content": "第六条消息，再来一些文字"
+    },
+    {
+      "id": "m7",
+      "content": "第七条"
+    }
+  ],
+  "cases": [
+    {
+      "cursorId": null,
+      "options": {},
+      "pendingIds": [
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [],
+      "selectedIds": [
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "processedThroughMessageId": "m7"
+    },
+    {
+      "cursorId": "m1",
+      "options": {},
+      "pendingIds": [
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [
+        "m1"
+      ],
+      "selectedIds": [
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "processedThroughMessageId": "m7"
+    },
+    {
+      "cursorId": "m4",
+      "options": {},
+      "pendingIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [
+        "m3",
+        "m4"
+      ],
+      "selectedIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "processedThroughMessageId": "m7"
+    },
+    {
+      "cursorId": "m7",
+      "options": {},
+      "pendingIds": [],
+      "overlapIds": [
+        "m6",
+        "m7"
+      ],
+      "selectedIds": [],
+      "processedThroughMessageId": null
+    },
+    {
+      "cursorId": "not-exist",
+      "options": {},
+      "pendingIds": [
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [],
+      "selectedIds": [
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "processedThroughMessageId": "m7"
+    },
+    {
+      "cursorId": null,
+      "options": {},
+      "pendingIds": [
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [],
+      "selectedIds": [
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "processedThroughMessageId": "m7"
+    },
+    {
+      "cursorId": "m4",
+      "options": {
+        "tokenBudget": 1
+      },
+      "pendingIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [],
+      "selectedIds": [
+        "m5"
+      ],
+      "processedThroughMessageId": "m5"
+    },
+    {
+      "cursorId": "m4",
+      "options": {
+        "tokenBudget": 10
+      },
+      "pendingIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [],
+      "selectedIds": [
+        "m5"
+      ],
+      "processedThroughMessageId": "m5"
+    },
+    {
+      "cursorId": "m4",
+      "options": {
+        "tokenBudget": 30,
+        "overlapCount": 0
+      },
+      "pendingIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [],
+      "selectedIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "processedThroughMessageId": "m7"
+    },
+    {
+      "cursorId": "m4",
+      "options": {
+        "tokenBudget": 30,
+        "overlapCount": 3
+      },
+      "pendingIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [
+        "m3"
+      ],
+      "selectedIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "processedThroughMessageId": "m7"
+    },
+    {
+      "cursorId": "m4",
+      "options": {
+        "overlapCount": -1
+      },
+      "pendingIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "overlapIds": [],
+      "selectedIds": [
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "processedThroughMessageId": "m7"
+    }
+  ]
+}

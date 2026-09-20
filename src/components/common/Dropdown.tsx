@@ -57,7 +57,7 @@ export function Dropdown({
             ref={panelRef}
             onClick={closeOnContentClick ? undefined : (e) => e.stopPropagation()}
             className={cn(
-              'absolute top-full mt-1 z-50 bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl py-1',
+              'dropdown-pop absolute top-full mt-1 z-50 bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl py-1',
               align === 'right' ? 'right-0' : 'left-0',
               panelClassName,
             )}

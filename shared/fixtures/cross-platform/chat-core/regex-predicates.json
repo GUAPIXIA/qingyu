@@ -1,0 +1,687 @@
+{
+  "version": 1,
+  "predicateCases": [
+    {
+      "id": "r1",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": false,
+      "matchesStage": true
+    },
+    {
+      "id": "r1",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r1",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r1",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r2",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r2",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r2",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": false,
+      "matchesStage": true
+    },
+    {
+      "id": "r2",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r3",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r3",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r3",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r3",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r4",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": false,
+      "matchesStage": true
+    },
+    {
+      "id": "r4",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r4",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r4",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r5",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r5",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r5",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r5",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r6",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": false,
+      "matchesStage": true
+    },
+    {
+      "id": "r6",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r6",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r6",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r7",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": false,
+      "matchesStage": true
+    },
+    {
+      "id": "r7",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r7",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r7",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r8",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": false,
+      "matchesStage": true
+    },
+    {
+      "id": "r8",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r8",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r8",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r9",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r9",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": false,
+      "matchesStage": false
+    },
+    {
+      "id": "r9",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r9",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r10",
+      "scope": "input",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r10",
+      "scope": "input",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    },
+    {
+      "id": "r10",
+      "scope": "output",
+      "stage": "text",
+      "matchesScope": true,
+      "matchesStage": true
+    },
+    {
+      "id": "r10",
+      "scope": "output",
+      "stage": "markdown",
+      "matchesScope": true,
+      "matchesStage": false
+    }
+  ],
+  "triggerCases": [
+    {
+      "id": "r1",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r1",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r1",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r1",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r1",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r1",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r1",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r1",
+      "text": "",
+      "triggers": true
+    },
+    {
+      "id": "r2",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r2",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r2",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r2",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r2",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r2",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r2",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r2",
+      "text": "",
+      "triggers": true
+    },
+    {
+      "id": "r3",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r3",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r3",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r3",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r3",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r3",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r3",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r3",
+      "text": "",
+      "triggers": true
+    },
+    {
+      "id": "r4",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": false
+    },
+    {
+      "id": "r4",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r4",
+      "text": "没有触发词但有秘密",
+      "triggers": false
+    },
+    {
+      "id": "r4",
+      "text": "**未闭合 加粗",
+      "triggers": false
+    },
+    {
+      "id": "r4",
+      "text": "foo foo FOO",
+      "triggers": false
+    },
+    {
+      "id": "r4",
+      "text": "markdown markdown",
+      "triggers": false
+    },
+    {
+      "id": "r4",
+      "text": "普通文本没有规则命中",
+      "triggers": false
+    },
+    {
+      "id": "r4",
+      "text": "",
+      "triggers": false
+    },
+    {
+      "id": "r5",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r5",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r5",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r5",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r5",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r5",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r5",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r5",
+      "text": "",
+      "triggers": true
+    },
+    {
+      "id": "r6",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r6",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r6",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r6",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r6",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r6",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r6",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r6",
+      "text": "",
+      "triggers": true
+    },
+    {
+      "id": "r7",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r7",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r7",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r7",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r7",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r7",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r7",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r7",
+      "text": "",
+      "triggers": true
+    },
+    {
+      "id": "r8",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r8",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r8",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r8",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r8",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r8",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r8",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r8",
+      "text": "",
+      "triggers": true
+    },
+    {
+      "id": "r9",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r9",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r9",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r9",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r9",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r9",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r9",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r9",
+      "text": "",
+      "triggers": true
+    },
+    {
+      "id": "r10",
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "triggers": true
+    },
+    {
+      "id": "r10",
+      "text": "包含触发词里面有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r10",
+      "text": "没有触发词但有秘密",
+      "triggers": true
+    },
+    {
+      "id": "r10",
+      "text": "**未闭合 加粗",
+      "triggers": true
+    },
+    {
+      "id": "r10",
+      "text": "foo foo FOO",
+      "triggers": true
+    },
+    {
+      "id": "r10",
+      "text": "markdown markdown",
+      "triggers": true
+    },
+    {
+      "id": "r10",
+      "text": "普通文本没有规则命中",
+      "triggers": true
+    },
+    {
+      "id": "r10",
+      "text": "",
+      "triggers": true
+    }
+  ]
+}

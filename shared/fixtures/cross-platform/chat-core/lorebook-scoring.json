@@ -1,0 +1,692 @@
+{
+  "version": 1,
+  "constants": {
+    "weights": {
+      "keyword": 0.35,
+      "semantic": 0.35,
+      "entity": 0.15,
+      "recency": 0.15
+    },
+    "recencyWindow": 5
+  },
+  "stripCases": [
+    {
+      "text": "",
+      "stripped": ""
+    },
+    {
+      "text": "普通正文",
+      "stripped": "普通正文"
+    },
+    {
+      "text": "带 `行内代码` 的文本",
+      "stripped": "带 行内代码 的文本"
+    },
+    {
+      "text": "```\n代码块\n``` 之后的正文",
+      "stripped": "  之后的正文"
+    },
+    {
+      "text": "![图片](http://x/y.png) 说明",
+      "stripped": "  说明"
+    },
+    {
+      "text": "[链接文字](http://x) 之后",
+      "stripped": "链接文字 之后"
+    },
+    {
+      "text": "<b>粗体标签</b>内容",
+      "stripped": " 粗体标签 内容"
+    },
+    {
+      "text": "**加粗** 与 __下划线__ 与 ~~删除线~~",
+      "stripped": "加粗 与 下划线 与 删除线"
+    },
+    {
+      "text": "*斜体* 与 _下划线斜体_",
+      "stripped": "斜体 与 下划线斜体"
+    },
+    {
+      "text": "# 标题\n> 引用\n- 列表\n1. 有序",
+      "stripped": "标题\n引用\n列表\n有序"
+    },
+    {
+      "text": "---\n分割线之后",
+      "stripped": " \n分割线之后"
+    }
+  ],
+  "escapeCases": [
+    {
+      "text": "",
+      "escaped": ""
+    },
+    {
+      "text": "普通",
+      "escaped": "普通"
+    },
+    {
+      "text": "a.b*c",
+      "escaped": "a\\.b\\*c"
+    },
+    {
+      "text": "[](){}",
+      "escaped": "\\[\\]\\(\\)\\{\\}"
+    },
+    {
+      "text": "a|b\\c",
+      "escaped": "a\\|b\\\\c"
+    },
+    {
+      "text": "$^+?",
+      "escaped": "\\$\\^\\+\\?"
+    }
+  ],
+  "keywordCases": [
+    {
+      "keyword": "",
+      "text": "任意文本",
+      "matched": false
+    },
+    {
+      "keyword": "   ",
+      "text": "任意文本",
+      "matched": false
+    },
+    {
+      "keyword": "cat",
+      "text": "a category here",
+      "matched": false
+    },
+    {
+      "keyword": "cat",
+      "text": "a cat here",
+      "matched": true
+    },
+    {
+      "keyword": "CAT",
+      "text": "a cat here",
+      "matched": true
+    },
+    {
+      "keyword": ".txt",
+      "text": "file.txt",
+      "matched": true
+    },
+    {
+      "keyword": "码头",
+      "text": "他们在码头边等了很久。",
+      "matched": true
+    },
+    {
+      "keyword": "码头",
+      "text": "他们在码 头边等了很久。",
+      "matched": false
+    },
+    {
+      "keyword": "雨",
+      "text": "下雨了。",
+      "matched": false
+    },
+    {
+      "keyword": "雨",
+      "text": "大雨纷飞。",
+      "matched": false
+    },
+    {
+      "keyword": "雨",
+      "text": "雨。",
+      "matched": true
+    }
+  ],
+  "overlapCases": [
+    {
+      "keywords": [
+        "码头"
+      ],
+      "content": "码头在雨里。",
+      "dialogue": "",
+      "score": 0
+    },
+    {
+      "keywords": [
+        "码头"
+      ],
+      "content": "码头在雨里。",
+      "dialogue": "他们在码头边等了很久。",
+      "score": 0.06192307692307692
+    },
+    {
+      "keywords": [],
+      "content": "码头在雨里。",
+      "dialogue": "他们在码头边等了很久。",
+      "score": 0.026923076923076925
+    },
+    {
+      "keywords": [
+        "码头",
+        "雨"
+      ],
+      "content": "码头在雨里。还有雨。",
+      "dialogue": "雨下得很大，码头空无一人。",
+      "score": 0.058333333333333334
+    },
+    {
+      "keywords": [
+        "lighthouse"
+      ],
+      "content": "the lighthouse keeper",
+      "dialogue": "the lighthouse is dark",
+      "score": 0.16999999999999998
+    },
+    {
+      "keywords": [
+        "灯塔"
+      ],
+      "content": "灯塔管理员",
+      "dialogue": "他们在码头边等了很久。",
+      "score": 0
+    }
+  ],
+  "overlapApproxCases": [
+    {
+      "itemScore": null,
+      "content": "甲",
+      "semanticByContent": {},
+      "useApprox": true
+    },
+    {
+      "itemScore": 0.5,
+      "content": "甲",
+      "semanticByContent": {},
+      "useApprox": false
+    },
+    {
+      "itemScore": null,
+      "content": "甲",
+      "semanticByContent": {
+        "甲": 0.8
+      },
+      "useApprox": false
+    }
+  ],
+  "entityCases": [
+    {
+      "scanTextLower": "",
+      "charName": "苏晚",
+      "entityVocabulary": [],
+      "entries": [],
+      "entities": []
+    },
+    {
+      "scanTextLower": "苏晚把茶推过来。",
+      "charName": "苏晚",
+      "entityVocabulary": [],
+      "entries": [],
+      "entities": [
+        "苏晚"
+      ]
+    },
+    {
+      "scanTextLower": "苏晚把茶推过来。",
+      "charName": "苏晚",
+      "entityVocabulary": [
+        "旅人"
+      ],
+      "entries": [],
+      "entities": [
+        "苏晚"
+      ]
+    },
+    {
+      "scanTextLower": "码头那边传来汽笛声。",
+      "charName": "苏晚",
+      "entityVocabulary": [],
+      "entries": [
+        {
+          "key": "lb1:e1",
+          "keywords": [
+            "码头",
+            "灯塔"
+          ]
+        }
+      ],
+      "entities": [
+        "码头"
+      ]
+    },
+    {
+      "scanTextLower": "码头那边传来汽笛声。",
+      "charName": "苏晚",
+      "entityVocabulary": [],
+      "entries": [
+        {
+          "key": "lb1:e1",
+          "keywords": [
+            "码头"
+          ],
+          "enabled": false
+        }
+      ],
+      "entities": []
+    }
+  ],
+  "entityBoostCases": [
+    {
+      "keywords": [
+        "码头"
+      ],
+      "content": "无关内容",
+      "recentEntities": [],
+      "boosted": false
+    },
+    {
+      "keywords": [
+        "码头"
+      ],
+      "content": "无关内容",
+      "recentEntities": [
+        "码头"
+      ],
+      "boosted": true
+    },
+    {
+      "keywords": [
+        "  码头  "
+      ],
+      "content": "无关内容",
+      "recentEntities": [
+        "码头"
+      ],
+      "boosted": true
+    },
+    {
+      "keywords": [],
+      "content": "他走向码头。",
+      "recentEntities": [
+        "码头"
+      ],
+      "boosted": true
+    },
+    {
+      "keywords": [],
+      "content": "他走向码头。",
+      "recentEntities": [
+        "码"
+      ],
+      "boosted": false
+    }
+  ],
+  "recencyCases": [
+    {
+      "previous": null,
+      "ids": [],
+      "result": []
+    },
+    {
+      "previous": [],
+      "ids": [],
+      "result": []
+    },
+    {
+      "previous": null,
+      "ids": [
+        "k1"
+      ],
+      "result": [
+        [
+          "k1"
+        ]
+      ]
+    },
+    {
+      "previous": [
+        [
+          "k1"
+        ]
+      ],
+      "ids": [
+        "k2"
+      ],
+      "result": [
+        [
+          "k1"
+        ],
+        [
+          "k2"
+        ]
+      ]
+    },
+    {
+      "previous": [
+        [
+          "a"
+        ],
+        [
+          "b"
+        ],
+        [
+          "c"
+        ],
+        [
+          "d"
+        ],
+        [
+          "e"
+        ]
+      ],
+      "ids": [
+        "f"
+      ],
+      "result": [
+        [
+          "b"
+        ],
+        [
+          "c"
+        ],
+        [
+          "d"
+        ],
+        [
+          "e"
+        ],
+        [
+          "f"
+        ]
+      ]
+    }
+  ],
+  "scoreCases": [
+    {
+      "input": {
+        "items": [
+          {
+            "key": "lb1:e1",
+            "content": "码头在雨里。",
+            "order": 0,
+            "position": "before_char"
+          }
+        ],
+        "entries": {
+          "lb1:e1": {
+            "key": "lb1:e1",
+            "keywords": [],
+            "content": "码头在雨里。"
+          }
+        },
+        "scanText": "雨",
+        "dialogueText": "雨",
+        "semanticByContent": {}
+      },
+      "scored": [
+        {
+          "key": "lb1:e1",
+          "keywordHits": 0,
+          "semanticScore": 0,
+          "semanticSource": "none",
+          "entityHit": false,
+          "recencyHit": false,
+          "score": 0
+        }
+      ]
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "key": "lb1:e1",
+            "content": "码头条目。",
+            "order": 0,
+            "position": "before_char"
+          }
+        ],
+        "entries": {
+          "lb1:e1": {
+            "key": "lb1:e1",
+            "keywords": [
+              "码头",
+              "灯塔"
+            ],
+            "content": "码头条目。"
+          }
+        },
+        "scanText": "码头",
+        "dialogueText": "码头",
+        "semanticByContent": {}
+      },
+      "scored": [
+        {
+          "key": "lb1:e1",
+          "keywordHits": 0.5660602794142788,
+          "semanticScore": 0.20416666666666664,
+          "semanticSource": "approx",
+          "entityHit": false,
+          "recencyHit": false,
+          "score": 0.26957943112833094
+        }
+      ]
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "key": "lb1:e1",
+            "content": "码头条目。",
+            "order": 0,
+            "position": "before_char"
+          }
+        ],
+        "entries": {
+          "lb1:e1": {
+            "key": "lb1:e1",
+            "keywords": [
+              "码头",
+              "灯塔"
+            ],
+            "content": "码头条目。"
+          }
+        },
+        "scanText": "码头码头码头码头码头",
+        "dialogueText": "码头码头码头码头码头",
+        "semanticByContent": {}
+      },
+      "scored": [
+        {
+          "key": "lb1:e1",
+          "keywordHits": 0.725106465816068,
+          "semanticScore": 0.06098484848484848,
+          "semanticSource": "approx",
+          "entityHit": false,
+          "recencyHit": false,
+          "score": 0.27513196000532075
+        }
+      ]
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "key": "lb1:e1",
+            "content": "码头在雨里。",
+            "order": 0,
+            "position": "before_char"
+          }
+        ],
+        "entries": {
+          "lb1:e1": {
+            "key": "lb1:e1",
+            "keywords": [
+              "码头"
+            ],
+            "content": "码头在雨里。"
+          }
+        },
+        "scanText": "码头",
+        "dialogueText": "码头",
+        "semanticByContent": {
+          "码头在雨里。": 0.7
+        }
+      },
+      "scored": [
+        {
+          "key": "lb1:e1",
+          "keywordHits": 0.8160602794142788,
+          "semanticScore": 0.7,
+          "semanticSource": "real",
+          "entityHit": false,
+          "recencyHit": false,
+          "score": 0.5306210977949976
+        }
+      ]
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "key": "lb1:e1",
+            "content": "码头在雨里。",
+            "order": 0,
+            "position": "before_char"
+          }
+        ],
+        "entries": {
+          "lb1:e1": {
+            "key": "lb1:e1",
+            "keywords": [
+              "码头"
+            ],
+            "content": "码头在雨里。"
+          }
+        },
+        "scanText": "码头",
+        "dialogueText": "他们在码头边等了很久。",
+        "semanticByContent": {}
+      },
+      "scored": [
+        {
+          "key": "lb1:e1",
+          "keywordHits": 0.8160602794142788,
+          "semanticScore": 0.06192307692307692,
+          "semanticSource": "approx",
+          "entityHit": false,
+          "recencyHit": false,
+          "score": 0.30729417471807446
+        }
+      ]
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "key": "lb1:e1",
+            "content": "他走向码头。",
+            "order": 0,
+            "position": "before_char"
+          }
+        ],
+        "entries": {
+          "lb1:e1": {
+            "key": "lb1:e1",
+            "keywords": [
+              "无名"
+            ],
+            "content": "他走向码头。"
+          }
+        },
+        "scanText": "码头",
+        "dialogueText": "码头",
+        "recentEntities": [
+          "码头"
+        ],
+        "recentTriggered": [
+          "lb1:e1"
+        ],
+        "semanticByContent": {}
+      },
+      "scored": [
+        {
+          "key": "lb1:e1",
+          "keywordHits": 0,
+          "semanticScore": 0.06999999999999999,
+          "semanticSource": "approx",
+          "entityHit": true,
+          "recencyHit": true,
+          "score": 0.3245
+        }
+      ]
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "key": "lb1:e1",
+            "content": "正则条目。",
+            "order": 0,
+            "position": "before_char"
+          }
+        ],
+        "entries": {
+          "lb1:e1": {
+            "key": "lb1:e1",
+            "keywords": [
+              "碼|码"
+            ],
+            "useRegex": true,
+            "regexFlags": "i",
+            "content": "正则条目。"
+          }
+        },
+        "scanText": "码头",
+        "dialogueText": "码头",
+        "semanticByContent": {}
+      },
+      "scored": [
+        {
+          "key": "lb1:e1",
+          "keywordHits": 0.8160602794142788,
+          "semanticScore": 0,
+          "semanticSource": "none",
+          "entityHit": false,
+          "recencyHit": false,
+          "score": 0.28562109779499756
+        }
+      ]
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "key": "lb1:e1",
+            "content": "Case 条目。",
+            "order": 0,
+            "position": "before_char"
+          }
+        ],
+        "entries": {
+          "lb1:e1": {
+            "key": "lb1:e1",
+            "keywords": [
+              "Cat"
+            ],
+            "caseSensitive": true,
+            "content": "Case 条目。"
+          }
+        },
+        "scanText": "cat",
+        "dialogueText": "cat",
+        "semanticByContent": {}
+      },
+      "scored": [
+        {
+          "key": "lb1:e1",
+          "keywordHits": 0,
+          "semanticScore": 0.175,
+          "semanticSource": "approx",
+          "entityHit": false,
+          "recencyHit": false,
+          "score": 0.06124999999999999
+        }
+      ]
+    }
+  ]
+}

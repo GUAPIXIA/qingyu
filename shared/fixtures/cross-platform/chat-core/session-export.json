@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "formatterNote": "fixture 使用 formatTime=ts=>`T${ts}` 注入固定时间，锁定结构与转义",
+  "escapeCases": [
+    {
+      "text": "",
+      "escaped": ""
+    },
+    {
+      "text": "普通正文",
+      "escaped": "普通正文"
+    },
+    {
+      "text": "# 标题",
+      "escaped": "\\# 标题"
+    },
+    {
+      "text": "*斜体* 与 _下划线_",
+      "escaped": "\\*斜体\\* 与 \\_下划线\\_"
+    },
+    {
+      "text": "`代码` 与 ```围栏```",
+      "escaped": "\\`代码\\` 与 \\`\\`\\`围栏\\`\\`\\`"
+    },
+    {
+      "text": "[链接](x)",
+      "escaped": "\\[链接\\](x)"
+    },
+    {
+      "text": "![图片](x)",
+      "escaped": "\\!\\[图片\\](x)"
+    },
+    {
+      "text": "反斜杠 \\ 与 {花括号}",
+      "escaped": "反斜杠 \\\\ 与 \\{花括号\\}"
+    },
+    {
+      "text": "混合：**粗体** 和 [引用] 和 ![图](y)",
+      "escaped": "混合：\\*\\*粗体\\*\\* 和 \\[引用\\] 和 \\!\\[图\\](y)"
+    },
+    {
+      "text": "emoji 😀 与中文。",
+      "escaped": "emoji 😀 与中文。"
+    }
+  ],
+  "roleLabelCases": [
+    {
+      "role": "user",
+      "label": "🧑 用户"
+    },
+    {
+      "role": "assistant",
+      "label": "🎭 AI"
+    },
+    {
+      "role": "system",
+      "label": "系统"
+    },
+    {
+      "role": "other",
+      "label": "系统"
+    }
+  ],
+  "markdownCases": [
+    {
+      "caseIndex": 0,
+      "messages": [],
+      "markdown": "# 对话记录\n\n"
+    },
+    {
+      "caseIndex": 1,
+      "messages": [
+        {
+          "role": "user",
+          "content": "夜安。",
+          "timestamp": 1
+        },
+        {
+          "role": "assistant",
+          "content": "夜安，要坐一会儿吗？",
+          "timestamp": 2
+        }
+      ],
+      "markdown": "# 对话记录\n\n### 🧑 用户 · T1\n\n夜安。\n\n---\n\n### 🎭 AI · T2\n\n夜安，要坐一会儿吗？\n\n---\n\n"
+    },
+    {
+      "caseIndex": 2,
+      "messages": [
+        {
+          "role": "user",
+          "content": "# 这是标题\n*斜体* 与 [链接](x)",
+          "timestamp": 10
+        },
+        {
+          "role": "assistant",
+          "content": "![图片](http://x/y.png)\n`代码`",
+          "timestamp": 20
+        }
+      ],
+      "markdown": "# 对话记录\n\n### 🧑 用户 · T10\n\n\\# 这是标题\n\\*斜体\\* 与 \\[链接\\](x)\n\n---\n\n### 🎭 AI · T20\n\n\\!\\[图片\\](http://x/y.png)\n\\`代码\\`\n\n---\n\n"
+    },
+    {
+      "caseIndex": 3,
+      "messages": [
+        {
+          "role": "user",
+          "content": "看这张图",
+          "timestamp": 100,
+          "images": [
+            "data:image/png;base64,AAAA"
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "看到了",
+          "timestamp": 200,
+          "images": [
+            "data:image/png;base64,BBBB",
+            "data:image/png;base64,CCCC"
+          ]
+        }
+      ],
+      "markdown": "# 对话记录\n\n### 🧑 用户 · T100\n\n![图片](data:image/png;base64,AAAA)\n\n看这张图\n\n---\n\n### 🎭 AI · T200\n\n![图片](data:image/png;base64,BBBB)\n\n![图片](data:image/png;base64,CCCC)\n\n看到了\n\n---\n\n"
+    },
+    {
+      "caseIndex": 4,
+      "messages": [
+        {
+          "role": "system",
+          "content": "系统提示",
+          "timestamp": 5
+        },
+        {
+          "role": "other",
+          "content": "未知角色",
+          "timestamp": 6
+        }
+      ],
+      "markdown": "# 对话记录\n\n### 系统 · T5\n\n系统提示\n\n---\n\n### 系统 · T6\n\n未知角色\n\n---\n\n"
+    }
+  ],
+  "jsonCases": [
+    {
+      "caseIndex": 0,
+      "messages": [],
+      "json": "[]"
+    },
+    {
+      "caseIndex": 1,
+      "messages": [
+        {
+          "role": "user",
+          "content": "夜安。",
+          "timestamp": 1
+        },
+        {
+          "role": "assistant",
+          "content": "夜安，要坐一会儿吗？",
+          "timestamp": 2
+        }
+      ],
+      "json": "[\n  {\n    \"role\": \"user\",\n    \"content\": \"夜安。\",\n    \"timestamp\": 1\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": \"夜安，要坐一会儿吗？\",\n    \"timestamp\": 2\n  }\n]"
+    },
+    {
+      "caseIndex": 2,
+      "messages": [
+        {
+          "role": "user",
+          "content": "# 这是标题\n*斜体* 与 [链接](x)",
+          "timestamp": 10
+        },
+        {
+          "role": "assistant",
+          "content": "![图片](http://x/y.png)\n`代码`",
+          "timestamp": 20
+        }
+      ],
+      "json": "[\n  {\n    \"role\": \"user\",\n    \"content\": \"# 这是标题\\n*斜体* 与 [链接](x)\",\n    \"timestamp\": 10\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": \"![图片](http://x/y.png)\\n`代码`\",\n    \"timestamp\": 20\n  }\n]"
+    },
+    {
+      "caseIndex": 3,
+      "messages": [
+        {
+          "role": "user",
+          "content": "看这张图",
+          "timestamp": 100,
+          "images": [
+            "data:image/png;base64,AAAA"
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "看到了",
+          "timestamp": 200,
+          "images": [
+            "data:image/png;base64,BBBB",
+            "data:image/png;base64,CCCC"
+          ]
+        }
+      ],
+      "json": "[\n  {\n    \"role\": \"user\",\n    \"content\": \"看这张图\",\n    \"images\": [\n      \"data:image/png;base64,AAAA\"\n    ],\n    \"timestamp\": 100\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": \"看到了\",\n    \"images\": [\n      \"data:image/png;base64,BBBB\",\n      \"data:image/png;base64,CCCC\"\n    ],\n    \"timestamp\": 200\n  }\n]"
+    },
+    {
+      "caseIndex": 4,
+      "messages": [
+        {
+          "role": "system",
+          "content": "系统提示",
+          "timestamp": 5
+        },
+        {
+          "role": "other",
+          "content": "未知角色",
+          "timestamp": 6
+        }
+      ],
+      "json": "[\n  {\n    \"role\": \"system\",\n    \"content\": \"系统提示\",\n    \"timestamp\": 5\n  },\n  {\n    \"role\": \"other\",\n    \"content\": \"未知角色\",\n    \"timestamp\": 6\n  }\n]"
+    }
+  ]
+}

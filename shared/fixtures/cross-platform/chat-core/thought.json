@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "text": "正文<thought>内心</thought>结尾",
+      "extract": {
+        "thought": "内心",
+        "content": "正文结尾",
+        "isFallback": false
+      },
+      "stripped": "正文结尾",
+      "tagsOnly": "正文内心结尾"
+    },
+    {
+      "text": "<thought>只有思考</thought>",
+      "extract": {
+        "thought": "只有思考",
+        "content": "只有思考",
+        "isFallback": true
+      },
+      "stripped": "",
+      "tagsOnly": "只有思考"
+    },
+    {
+      "text": "正文</thought>",
+      "extract": {
+        "thought": "正文",
+        "content": "正文",
+        "isFallback": true
+      },
+      "stripped": "",
+      "tagsOnly": "正文"
+    },
+    {
+      "text": "<thought>未闭合",
+      "extract": {
+        "thought": "未闭合",
+        "content": "未闭合",
+        "isFallback": true
+      },
+      "stripped": "",
+      "tagsOnly": "未闭合"
+    },
+    {
+      "text": "<thought>A</thought>中间<thought>B</thought>",
+      "extract": {
+        "thought": "A\n\nB",
+        "content": "中间",
+        "isFallback": false
+      },
+      "stripped": "中间",
+      "tagsOnly": "A中间B"
+    },
+    {
+      "text": "\\</ thought >容忍",
+      "extract": {
+        "thought": null,
+        "content": "容忍",
+        "isFallback": false
+      },
+      "stripped": "容忍",
+      "tagsOnly": "容忍"
+    },
+    {
+      "text": "<thought class=\"x\">带属性</thought>",
+      "extract": {
+        "thought": "带属性",
+        "content": "带属性",
+        "isFallback": true
+      },
+      "stripped": "",
+      "tagsOnly": "带属性"
+    },
+    {
+      "text": "无思考标签",
+      "extract": {
+        "thought": null,
+        "content": "无思考标签",
+        "isFallback": false
+      },
+      "stripped": "无思考标签",
+      "tagsOnly": "无思考标签"
+    },
+    {
+      "text": "",
+      "extract": {
+        "thought": null,
+        "content": "",
+        "isFallback": false
+      },
+      "stripped": "",
+      "tagsOnly": ""
+    },
+    {
+      "text": "<thinking>供应商推理</thinking>正文",
+      "extract": {
+        "thought": null,
+        "content": "正文",
+        "isFallback": false
+      },
+      "stripped": "正文",
+      "tagsOnly": "正文"
+    },
+    {
+      "text": "<thought>一</thought><thought>二</thought>",
+      "extract": {
+        "thought": "一\n\n二",
+        "content": "一\n\n二",
+        "isFallback": true
+      },
+      "stripped": "",
+      "tagsOnly": "一二"
+    },
+    {
+      "text": "尾随空白   <thought> t </thought>   ",
+      "extract": {
+        "thought": "t",
+        "content": "尾随空白",
+        "isFallback": false
+      },
+      "stripped": "尾随空白",
+      "tagsOnly": "尾随空白    t"
+    }
+  ]
+}

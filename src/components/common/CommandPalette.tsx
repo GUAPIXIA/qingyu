@@ -191,9 +191,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const groups = ['操作', '指令', '页面'] as const
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4 animate-fade-in">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-tavern-bg-card border border-tavern-border rounded-2xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4">
+      <div className="motion-overlay absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="motion-command-palette relative w-full max-w-lg bg-tavern-bg-card border border-tavern-border rounded-2xl shadow-2xl overflow-hidden">
         {/* 搜索框 */}
         <div className="flex items-center gap-2.5 px-4 py-3 border-b border-tavern-border-soft">
           <Search className="w-4 h-4 text-tavern-text-muted shrink-0" />

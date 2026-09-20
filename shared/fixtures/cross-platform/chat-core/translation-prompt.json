@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "constants": {
+    "defaultTargetLang": "中文"
+  },
+  "promptCases": [
+    {
+      "targetLang": "中文",
+      "prompt": "你是一个翻译助手。请将以下文本翻译成中文。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。"
+    },
+    {
+      "targetLang": "English",
+      "prompt": "你是一个翻译助手。请将以下文本翻译成English。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。"
+    },
+    {
+      "targetLang": "日本語",
+      "prompt": "你是一个翻译助手。请将以下文本翻译成日本語。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。"
+    },
+    {
+      "targetLang": "繁體中文",
+      "prompt": "你是一个翻译助手。请将以下文本翻译成繁體中文。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。"
+    },
+    {
+      "targetLang": "",
+      "prompt": "你是一个翻译助手。请将以下文本翻译成。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的 Markdown 格式、HTML 标签和特殊符号不变。"
+    }
+  ]
+}

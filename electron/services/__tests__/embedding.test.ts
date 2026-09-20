@@ -95,6 +95,17 @@ describe('embedTexts - OpenAI 兼容', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body.input[0].length).toBeLessThanOrEqual(8000)
   })
+
+  it('超长查询保留最新尾部，避免丢掉最后一条用户消息', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ data: [{ index: 0, embedding: [1] }] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const oldContext = '旧'.repeat(9000)
+    await embedTexts(makeConfig(), [`${oldContext}LATEST_USER_MESSAGE`], 'query')
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.input[0]).toHaveLength(8000)
+    expect(body.input[0]).toContain('LATEST_USER_MESSAGE')
+    expect(body.input[0]).not.toBe(`${oldContext}LATEST_USER_MESSAGE`.slice(0, 8000))
+  })
 })
 
 describe('embedTexts - Ollama', () => {

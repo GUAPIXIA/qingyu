@@ -1,0 +1,3609 @@
+{
+  "algorithm": "electron/services/lorebookAdapters/registry.ts#import + exportLorebookWithAdapter",
+  "consumedBy": "android/app/src/test/java/com/qingyu/companion/content/lorebook/LorebookCrossLanguageGoldenTest.kt",
+  "sourceCatalog": "tests/lorebook/fixtures/catalog.json",
+  "volatileSentinels": {
+    "timestamp": "<volatile:timestamp>",
+    "hash": "<volatile:sha256>",
+    "entryId": "<volatile:entry-id>"
+  },
+  "cases": [
+    {
+      "id": "native-v1-minimal",
+      "path": "native-v1/minimal.json",
+      "format": "qingyu-native-v1",
+      "kind": "minimal",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "qingyu.native-v1",
+      "detection": {
+        "adapterId": "qingyu.native-v1",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "qingyu.native-v1",
+        "formatLabel": "轻语原生世界书 v1",
+        "formatVersion": "1",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-native-v1-minimal",
+        "revision": 1,
+        "name": "最小原生世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "entry-1",
+            "sourceId": "entry-1",
+            "enabled": true,
+            "content": "王城是帝国首都。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "王城"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "hybrid"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1",
+          "originalName": "最小原生世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "id": "adapter-native-v1-minimal",
+        "name": "最小原生世界书",
+        "description": "",
+        "enabled": true,
+        "scanDepth": 4,
+        "recursiveScanning": true,
+        "entries": [
+          {
+            "id": "entry-1",
+            "keywords": [
+              "王城"
+            ],
+            "content": "王城是帝国首都。",
+            "position": "before_char",
+            "order": 100,
+            "probability": 100,
+            "enabled": true,
+            "useRegex": false,
+            "regexFlags": "i",
+            "caseSensitive": false,
+            "matchWholeWords": true,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "useGroupScoring": false,
+            "ignoreBudget": false,
+            "matchMode": "both",
+            "priority": "conditional",
+            "runtime": {
+              "insertion": {
+                "kind": "prompt",
+                "anchor": "before_character"
+              },
+              "retrieval": "hybrid",
+              "adapterId": "qingyu.native-v1"
+            }
+          }
+        ],
+        "runtime": {
+          "schemaVersion": 2,
+          "revision": 1,
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1"
+        }
+      }
+    },
+    {
+      "id": "native-v1-full",
+      "path": "native-v1/full.json",
+      "format": "qingyu-native-v1",
+      "kind": "full",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "qingyu.native-v1",
+      "detection": {
+        "adapterId": "qingyu.native-v1",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "qingyu.native-v1",
+        "formatLabel": "轻语原生世界书 v1",
+        "formatVersion": "1",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-native-v1-full",
+        "revision": 1,
+        "name": "完整原生世界书",
+        "description": "覆盖轻语 native v1 已知字段",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 8,
+          "recursiveScanning": false,
+          "tokenBudget": 2048
+        },
+        "entries": [
+          {
+            "id": "entry-full",
+            "sourceId": "entry-full",
+            "enabled": true,
+            "content": "公主居住在王城。",
+            "summary": "王城公主设定",
+            "translation": "Princess lives in the capital.",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "supplemental",
+              "primaryKeys": [
+                "公主",
+                "/王(城|都)/iu"
+              ],
+              "secondaryKeys": [
+                "帝国"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_any",
+              "caseSensitive": false,
+              "wholeWords": false,
+              "regex": {
+                "enabled": false,
+                "flags": "iu"
+              },
+              "retrieval": "hybrid"
+            },
+            "insertion": {
+              "kind": "chat",
+              "depth": 2,
+              "role": "system"
+            },
+            "scheduling": {
+              "order": 42,
+              "probability": 85,
+              "scanDepth": 3,
+              "recursion": {
+                "exclude": true,
+                "prevent": true,
+                "minDepth": 2
+              },
+              "groups": [
+                {
+                  "name": "royal",
+                  "weight": 150,
+                  "prioritized": true
+                }
+              ],
+              "groupScoring": true,
+              "sticky": 2,
+              "cooldown": 3,
+              "delay": 1,
+              "ignoreBudget": true,
+              "characterFilter": {
+                "exclude": false,
+                "names": [
+                  "Alice"
+                ],
+                "tags": [
+                  "royal"
+                ]
+              },
+              "generationTriggers": [
+                "normal",
+                "continue"
+              ]
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1",
+          "originalName": "完整原生世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "id": "adapter-native-v1-full",
+        "name": "完整原生世界书",
+        "description": "覆盖轻语 native v1 已知字段",
+        "enabled": true,
+        "scanDepth": 8,
+        "recursiveScanning": false,
+        "tokenBudget": 2048,
+        "entries": [
+          {
+            "id": "entry-full",
+            "keywords": [
+              "公主",
+              "/王(城|都)/iu"
+            ],
+            "content": "公主居住在王城。",
+            "position": "at_depth",
+            "depth": 2,
+            "role": "system",
+            "order": 42,
+            "probability": 85,
+            "enabled": true,
+            "useRegex": false,
+            "regexFlags": "iu",
+            "secondaryKeywords": [
+              "帝国"
+            ],
+            "selectiveLogic": "and_any",
+            "caseSensitive": false,
+            "matchWholeWords": false,
+            "excludeRecursion": true,
+            "preventRecursion": true,
+            "scanDepth": 3,
+            "delayUntilRecursion": 2,
+            "inclusionGroups": [
+              "royal"
+            ],
+            "inclusionGroupPrioritized": true,
+            "inclusionGroupWeight": 150,
+            "useGroupScoring": true,
+            "characterFilter": {
+              "exclude": false,
+              "names": [
+                "Alice"
+              ],
+              "tags": [
+                "royal"
+              ]
+            },
+            "generationTriggers": [
+              "normal",
+              "continue"
+            ],
+            "sticky": 2,
+            "cooldown": 3,
+            "delay": 1,
+            "ignoreBudget": true,
+            "matchMode": "both",
+            "priority": "detail",
+            "summary": "王城公主设定",
+            "translation": "Princess lives in the capital.",
+            "runtime": {
+              "insertion": {
+                "kind": "chat",
+                "depth": 2,
+                "role": "system"
+              },
+              "retrieval": "hybrid",
+              "adapterId": "qingyu.native-v1"
+            }
+          }
+        ],
+        "runtime": {
+          "schemaVersion": 2,
+          "revision": 1,
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1"
+        }
+      }
+    },
+    {
+      "id": "native-v1-invalid",
+      "path": "native-v1/invalid.json",
+      "format": "qingyu-native-v1",
+      "kind": "invalid",
+      "importable": true,
+      "ok": false,
+      "error": "轻语原生世界书 v1 校验失败",
+      "adapterId": null,
+      "detection": null,
+      "report": null,
+      "document": null,
+      "exported": null
+    },
+    {
+      "id": "native-v1-unknown-extensions",
+      "path": "native-v1/unknown-extensions.json",
+      "format": "qingyu-native-v1",
+      "kind": "unknown_extensions",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "qingyu.native-v1",
+      "detection": {
+        "adapterId": "qingyu.native-v1",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "qingyu.native-v1",
+        "formatLabel": "轻语原生世界书 v1",
+        "formatVersion": "1",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$",
+            "message": "2 个未知原生字段已保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 1,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-native-v1-unknown-extensions",
+        "revision": 1,
+        "name": "带未来字段的原生世界书",
+        "description": "验证 v1 对未知字段前向兼容",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "entry-future",
+            "sourceId": "entry-future",
+            "enabled": true,
+            "content": "未来字段不参与当前运行时。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "未来"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "hybrid"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 10,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "qingyu.native-v1": {
+                "futureEntryOption": {
+                  "mode": "opaque"
+                }
+              }
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1",
+          "originalName": "带未来字段的原生世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "qingyu.native-v1": {
+            "futureBookOption": {
+              "revision": 2
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "futureBookOption": {
+          "revision": 2
+        },
+        "id": "adapter-native-v1-unknown-extensions",
+        "name": "带未来字段的原生世界书",
+        "description": "验证 v1 对未知字段前向兼容",
+        "enabled": true,
+        "scanDepth": 4,
+        "recursiveScanning": true,
+        "entries": [
+          {
+            "futureEntryOption": {
+              "mode": "opaque"
+            },
+            "id": "entry-future",
+            "keywords": [
+              "未来"
+            ],
+            "content": "未来字段不参与当前运行时。",
+            "position": "at_end",
+            "order": 10,
+            "probability": 100,
+            "enabled": true,
+            "useRegex": false,
+            "regexFlags": "i",
+            "caseSensitive": false,
+            "matchWholeWords": true,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "useGroupScoring": false,
+            "ignoreBudget": false,
+            "matchMode": "both",
+            "priority": "conditional",
+            "runtime": {
+              "insertion": {
+                "kind": "prompt",
+                "anchor": "prompt_end"
+              },
+              "retrieval": "hybrid",
+              "adapterId": "qingyu.native-v1"
+            }
+          }
+        ],
+        "runtime": {
+          "schemaVersion": 2,
+          "revision": 1,
+          "adapterId": "qingyu.native-v1",
+          "formatVersion": "1"
+        }
+      }
+    },
+    {
+      "id": "sillytavern-minimal",
+      "path": "sillytavern-world-info/minimal.json",
+      "format": "sillytavern-world-info",
+      "kind": "minimal",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "sillytavern.world-info",
+      "detection": {
+        "adapterId": "sillytavern.world-info",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "sillytavern.world-info",
+        "formatLabel": "SillyTavern World Info",
+        "formatVersion": "2026-07",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-sillytavern-minimal",
+        "revision": 1,
+        "name": "ST 最小世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 0,
+            "enabled": true,
+            "content": "王城是帝国首都。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "王城"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "sillytavern.world-info",
+          "formatVersion": "2026-07",
+          "originalName": "ST 最小世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "name": "ST 最小世界书",
+        "description": "",
+        "scan_depth": 4,
+        "recursive_scanning": true,
+        "entries": {
+          "0": {
+            "uid": 0,
+            "key": [
+              "王城"
+            ],
+            "keysecondary": [],
+            "selective": false,
+            "content": "王城是帝国首都。",
+            "position": 0,
+            "order": 100,
+            "probability": 100,
+            "useProbability": false,
+            "disable": false,
+            "constant": false,
+            "vectorized": false,
+            "caseSensitive": false,
+            "matchWholeWords": true,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "useGroupScoring": false
+          }
+        }
+      }
+    },
+    {
+      "id": "sillytavern-full",
+      "path": "sillytavern-world-info/full.json",
+      "format": "sillytavern-world-info",
+      "kind": "full",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "sillytavern.world-info",
+      "detection": {
+        "adapterId": "sillytavern.world-info",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "sillytavern.world-info",
+        "formatLabel": "SillyTavern World Info",
+        "formatVersion": "2026-07",
+        "status": "exact",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "mapped",
+            "code": "insertion_anchor",
+            "path": "$.entries[11].position",
+            "message": "插入位置已保留；运行时将按作者注释/示例区锚点原位渲染"
+          }
+        ],
+        "summary": {
+          "mapped": 1,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-sillytavern-full",
+        "revision": 1,
+        "name": "ST 完整世界书",
+        "description": "覆盖当前 ST World Info 映射",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 6,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 10,
+            "enabled": true,
+            "content": "王城是帝国首都。",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [
+                "王城",
+                "首都"
+              ],
+              "secondaryKeys": [
+                "帝国",
+                "皇帝"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_all",
+              "caseSensitive": true,
+              "wholeWords": false,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "hybrid"
+            },
+            "insertion": {
+              "kind": "chat",
+              "depth": 2,
+              "role": "system"
+            },
+            "scheduling": {
+              "order": 250,
+              "probability": 80,
+              "scanDepth": 1,
+              "recursion": {
+                "exclude": true,
+                "prevent": true,
+                "minDepth": 2
+              },
+              "groups": [
+                {
+                  "name": "王族",
+                  "weight": 250,
+                  "prioritized": true
+                },
+                {
+                  "name": "地点",
+                  "weight": 250,
+                  "prioritized": true
+                }
+              ],
+              "groupScoring": true,
+              "sticky": 3,
+              "cooldown": 2,
+              "delay": 1,
+              "ignoreBudget": false,
+              "characterFilter": {
+                "exclude": false,
+                "names": [
+                  "Alice"
+                ],
+                "tags": [
+                  "royal"
+                ]
+              },
+              "generationTriggers": [
+                "normal",
+                "continue"
+              ]
+            }
+          },
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 11,
+            "enabled": true,
+            "content": "与当前对话语义相关时出现。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "semanticPreferred"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "authors_note_top"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "sillytavern.world-info",
+          "formatVersion": "2026-07",
+          "originalName": "ST 完整世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "name": "ST 完整世界书",
+        "description": "覆盖当前 ST World Info 映射",
+        "scan_depth": 6,
+        "recursive_scanning": true,
+        "entries": {
+          "10": {
+            "uid": 10,
+            "key": [
+              "王城",
+              "首都"
+            ],
+            "keysecondary": [
+              "帝国",
+              "皇帝"
+            ],
+            "selective": true,
+            "selectiveLogic": "and_all",
+            "content": "王城是帝国首都。",
+            "position": 4,
+            "depth": 2,
+            "role": 0,
+            "order": 250,
+            "probability": 80,
+            "useProbability": true,
+            "disable": false,
+            "constant": true,
+            "vectorized": true,
+            "caseSensitive": true,
+            "matchWholeWords": false,
+            "excludeRecursion": true,
+            "preventRecursion": true,
+            "delayUntilRecursion": 2,
+            "scanDepth": 1,
+            "group": "王族, 地点",
+            "groupOverride": true,
+            "groupWeight": 250,
+            "useGroupScoring": true,
+            "characterFilter": {
+              "isExclude": false,
+              "names": [
+                "Alice"
+              ],
+              "tags": [
+                "royal"
+              ]
+            },
+            "triggers": [
+              "normal",
+              "continue"
+            ],
+            "sticky": 3,
+            "cooldown": 2,
+            "delay": 1
+          },
+          "11": {
+            "uid": 11,
+            "key": [],
+            "keysecondary": [],
+            "selective": false,
+            "content": "与当前对话语义相关时出现。",
+            "position": 2,
+            "order": 100,
+            "probability": 100,
+            "useProbability": false,
+            "disable": false,
+            "constant": false,
+            "vectorized": true,
+            "caseSensitive": false,
+            "matchWholeWords": true,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "useGroupScoring": false
+          }
+        }
+      }
+    },
+    {
+      "id": "sillytavern-invalid",
+      "path": "sillytavern-world-info/invalid.json",
+      "format": "sillytavern-world-info",
+      "kind": "invalid",
+      "importable": false,
+      "ok": false,
+      "error": "世界书包含无法导入的结构：没有可导入的世界书条目",
+      "adapterId": null,
+      "detection": null,
+      "report": null,
+      "document": null,
+      "exported": null
+    },
+    {
+      "id": "sillytavern-unknown-extensions",
+      "path": "sillytavern-world-info/unknown-extensions.json",
+      "format": "sillytavern-world-info",
+      "kind": "unknown_extensions",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "sillytavern.world-info",
+      "detection": {
+        "adapterId": "sillytavern.world-info",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "sillytavern.world-info",
+        "formatLabel": "SillyTavern World Info",
+        "formatVersion": "2026-07",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.futureBookOption",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[1].extensions.future_trigger",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 2,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-sillytavern-unknown-extensions",
+        "revision": 1,
+        "name": "ST 未知扩展世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 1,
+            "enabled": true,
+            "content": "未知扩展测试。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "扩展"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "sillytavern.world-info": {
+                "extensions": {
+                  "future_trigger": "vNext"
+                }
+              }
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "sillytavern.world-info",
+          "formatVersion": "2026-07",
+          "originalName": "ST 未知扩展世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "sillytavern.world-info": {
+            "payload": {
+              "fields": {
+                "futureBookOption": {
+                  "enabled": true
+                }
+              }
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "futureBookOption": {
+          "enabled": true
+        },
+        "name": "ST 未知扩展世界书",
+        "description": "",
+        "scan_depth": 4,
+        "recursive_scanning": true,
+        "entries": {
+          "1": {
+            "uid": 1,
+            "key": [
+              "扩展"
+            ],
+            "keysecondary": [],
+            "selective": false,
+            "content": "未知扩展测试。",
+            "position": 0,
+            "order": 1,
+            "probability": 100,
+            "useProbability": false,
+            "disable": false,
+            "constant": false,
+            "vectorized": false,
+            "caseSensitive": false,
+            "matchWholeWords": true,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "useGroupScoring": false,
+            "extensions": {
+              "future_trigger": "vNext"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "character-book-minimal",
+      "path": "character-book-v2-v3/minimal.json",
+      "format": "character-book-v2-v3",
+      "kind": "minimal",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.character-book",
+      "detection": {
+        "adapterId": "character-card.character-book",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "character-card.character-book",
+        "formatLabel": "CCv2/CCv3 character_book",
+        "formatVersion": "2/3",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-character-book-minimal",
+        "revision": 1,
+        "name": "角色内嵌最小世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "capital",
+            "sourceId": "capital",
+            "enabled": true,
+            "content": "王城是帝国首都。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "王城"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.character-book",
+          "formatVersion": "2/3",
+          "originalName": "角色内嵌最小世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "name": "角色内嵌最小世界书",
+        "description": "",
+        "scan_depth": 4,
+        "recursive_scanning": true,
+        "entries": [
+          {
+            "id": "capital",
+            "keys": [
+              "王城"
+            ],
+            "secondary_keys": [],
+            "content": "王城是帝国首都。",
+            "enabled": true,
+            "insertion_order": 100,
+            "position": "before_char",
+            "constant": false,
+            "use_regex": false,
+            "extensions": {
+              "probability": 100,
+              "use_probability": false,
+              "vectorized": false,
+              "selective": false,
+              "case_sensitive": false,
+              "match_whole_words": true,
+              "exclude_recursion": false,
+              "prevent_recursion": false,
+              "ignore_budget": false,
+              "use_group_scoring": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "character-book-full",
+      "path": "character-book-v2-v3/full.json",
+      "format": "character-book-v2-v3",
+      "kind": "full",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.character-book",
+      "detection": {
+        "adapterId": "character-card.character-book",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "character-card.character-book",
+        "formatLabel": "CCv2/CCv3 character_book",
+        "formatVersion": "2/3",
+        "status": "exact",
+        "issues": [
+          {
+            "severity": "warning",
+            "action": "mapped",
+            "code": "position_conflict",
+            "path": "$.entries[0].extensions.position",
+            "message": "顶层 position 与 extensions.position 冲突；按 character_book 扩展规则采用 extensions.position"
+          }
+        ],
+        "summary": {
+          "mapped": 1,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 1,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-character-book-full",
+        "revision": 1,
+        "name": "角色内嵌完整世界书",
+        "description": "CCv2/CCv3 character_book 字段基线",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 6,
+          "recursiveScanning": false,
+          "tokenBudget": 1024
+        },
+        "entries": [
+          {
+            "id": "capital",
+            "sourceId": "capital",
+            "enabled": true,
+            "content": "王城设定",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "王城"
+              ],
+              "secondaryKeys": [
+                "帝国"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_any",
+              "caseSensitive": false,
+              "wholeWords": false,
+              "regex": {
+                "enabled": true,
+                "flags": "i"
+              },
+              "retrieval": "hybrid"
+            },
+            "insertion": {
+              "kind": "chat",
+              "depth": 3,
+              "role": "user"
+            },
+            "scheduling": {
+              "order": 42,
+              "probability": 65,
+              "scanDepth": 2,
+              "recursion": {
+                "exclude": true,
+                "prevent": true,
+                "minDepth": 1
+              },
+              "groups": [
+                {
+                  "name": "capital",
+                  "weight": 180,
+                  "prioritized": true
+                }
+              ],
+              "groupScoring": true,
+              "sticky": 4,
+              "cooldown": 3,
+              "delay": 2,
+              "ignoreBudget": true,
+              "characterFilter": {
+                "exclude": true,
+                "names": [
+                  "Bob"
+                ],
+                "tags": [
+                  "blocked"
+                ]
+              },
+              "generationTriggers": [
+                "continue"
+              ]
+            }
+          },
+          {
+            "id": "law",
+            "sourceId": "law",
+            "enabled": true,
+            "content": "魔法守恒定律。",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 10,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.character-book",
+          "formatVersion": "2/3",
+          "originalName": "角色内嵌完整世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "name": "角色内嵌完整世界书",
+        "description": "CCv2/CCv3 character_book 字段基线",
+        "scan_depth": 6,
+        "recursive_scanning": false,
+        "token_budget": 1024,
+        "entries": [
+          {
+            "id": "capital",
+            "keys": [
+              "王城"
+            ],
+            "secondary_keys": [
+              "帝国"
+            ],
+            "content": "王城设定",
+            "enabled": true,
+            "insertion_order": 42,
+            "position": "before_char",
+            "constant": false,
+            "use_regex": true,
+            "extensions": {
+              "position": 4,
+              "depth": 3,
+              "role": 1,
+              "probability": 65,
+              "use_probability": true,
+              "vectorized": true,
+              "selective": true,
+              "selective_logic": "and_any",
+              "case_sensitive": false,
+              "match_whole_words": false,
+              "exclude_recursion": true,
+              "prevent_recursion": true,
+              "ignore_budget": true,
+              "scan_depth": 2,
+              "delay_until_recursion": 1,
+              "group": "capital",
+              "group_override": true,
+              "group_weight": 180,
+              "use_group_scoring": true,
+              "character_filter": {
+                "isExclude": true,
+                "names": [
+                  "Bob"
+                ],
+                "tags": [
+                  "blocked"
+                ]
+              },
+              "triggers": [
+                "continue"
+              ],
+              "sticky": 4,
+              "cooldown": 3,
+              "delay": 2
+            }
+          },
+          {
+            "id": "law",
+            "keys": [],
+            "secondary_keys": [],
+            "content": "魔法守恒定律。",
+            "enabled": true,
+            "insertion_order": 10,
+            "position": "before_char",
+            "constant": true,
+            "use_regex": false,
+            "extensions": {
+              "probability": 100,
+              "use_probability": false,
+              "vectorized": false,
+              "selective": false,
+              "case_sensitive": false,
+              "match_whole_words": true,
+              "exclude_recursion": false,
+              "prevent_recursion": false,
+              "ignore_budget": false,
+              "use_group_scoring": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "character-book-invalid",
+      "path": "character-book-v2-v3/invalid.json",
+      "format": "character-book-v2-v3",
+      "kind": "invalid",
+      "importable": false,
+      "ok": false,
+      "error": "世界书包含无法导入的结构：没有可导入的世界书条目",
+      "adapterId": null,
+      "detection": null,
+      "report": null,
+      "document": null,
+      "exported": null
+    },
+    {
+      "id": "character-book-unknown-extensions",
+      "path": "character-book-v2-v3/unknown-extensions.json",
+      "format": "character-book-v2-v3",
+      "kind": "unknown_extensions",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.character-book",
+      "detection": {
+        "adapterId": "character-card.character-book",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "character-card.character-book",
+        "formatLabel": "CCv2/CCv3 character_book",
+        "formatVersion": "2/3",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.extensions.future_book_field",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].extensions.future_entry_field",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 2,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-character-book-unknown-extensions",
+        "revision": 1,
+        "name": "角色卡未知扩展世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "future",
+            "sourceId": "future",
+            "enabled": true,
+            "content": "角色卡未来扩展测试。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "未来"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "character-card.character-book": {
+                "extensions": {
+                  "future_entry_field": {
+                    "version": 4
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.character-book",
+          "formatVersion": "2/3",
+          "originalName": "角色卡未知扩展世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "character-card.character-book": {
+            "payload": {
+              "extensions": {
+                "future_book_field": 1
+              }
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "name": "角色卡未知扩展世界书",
+        "description": "",
+        "scan_depth": 4,
+        "recursive_scanning": true,
+        "extensions": {
+          "future_book_field": 1
+        },
+        "entries": [
+          {
+            "id": "future",
+            "keys": [
+              "未来"
+            ],
+            "secondary_keys": [],
+            "content": "角色卡未来扩展测试。",
+            "enabled": true,
+            "insertion_order": 1,
+            "position": "before_char",
+            "constant": false,
+            "use_regex": false,
+            "extensions": {
+              "future_entry_field": {
+                "version": 4
+              },
+              "probability": 100,
+              "use_probability": false,
+              "vectorized": false,
+              "selective": false,
+              "case_sensitive": false,
+              "match_whole_words": true,
+              "exclude_recursion": false,
+              "prevent_recursion": false,
+              "ignore_budget": false,
+              "use_group_scoring": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "lorebook-v3-minimal",
+      "path": "lorebook-v3/minimal.json",
+      "format": "lorebook-v3",
+      "kind": "minimal",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.lorebook-v3",
+      "detection": {
+        "adapterId": "character-card.lorebook-v3",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "character-card.lorebook-v3",
+        "formatLabel": "Character Card lorebook_v3",
+        "formatVersion": "3.0",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-lorebook-v3-minimal",
+        "revision": 1,
+        "name": "V3 最小世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 1,
+            "enabled": true,
+            "content": "遗迹位于北方。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "遗迹"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 90,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.lorebook-v3",
+          "formatVersion": "3.0",
+          "originalName": "V3 最小世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "spec": "lorebook_v3",
+        "spec_version": "3.0",
+        "data": {
+          "name": "V3 最小世界书",
+          "description": "",
+          "scan_depth": 4,
+          "recursive_scanning": true,
+          "entries": [
+            {
+              "id": 1,
+              "keys": [
+                "遗迹"
+              ],
+              "secondary_keys": [],
+              "content": "遗迹位于北方。",
+              "enabled": true,
+              "insertion_order": 90,
+              "position": "before_char",
+              "constant": false,
+              "use_regex": false,
+              "extensions": {
+                "probability": 100,
+                "use_probability": false,
+                "vectorized": false,
+                "selective": false,
+                "case_sensitive": false,
+                "match_whole_words": true,
+                "exclude_recursion": false,
+                "prevent_recursion": false,
+                "ignore_budget": false,
+                "use_group_scoring": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "lorebook-v3-full",
+      "path": "lorebook-v3/full.json",
+      "format": "lorebook-v3",
+      "kind": "full",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.lorebook-v3",
+      "detection": {
+        "adapterId": "character-card.lorebook-v3",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "character-card.lorebook-v3",
+        "formatLabel": "Character Card lorebook_v3",
+        "formatVersion": "3.0",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-lorebook-v3-full",
+        "revision": 1,
+        "name": "V3 完整世界书",
+        "description": "lorebook_v3 包装与 character_book 字段基线",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 8,
+          "recursiveScanning": true,
+          "tokenBudget": 2048
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 7,
+            "enabled": true,
+            "content": "遗迹位于北方。",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [
+                "遗迹"
+              ],
+              "secondaryKeys": [
+                "北方"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "secondaryLogic": "and_any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "before_character"
+            },
+            "scheduling": {
+              "order": 90,
+              "probability": 90,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          },
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 8,
+            "enabled": false,
+            "content": "守门人持有钥匙。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "守门人"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "after_character"
+            },
+            "scheduling": {
+              "order": 80,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.lorebook-v3",
+          "formatVersion": "3.0",
+          "originalName": "V3 完整世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "spec": "lorebook_v3",
+        "spec_version": "3.0",
+        "data": {
+          "name": "V3 完整世界书",
+          "description": "lorebook_v3 包装与 character_book 字段基线",
+          "scan_depth": 8,
+          "recursive_scanning": true,
+          "token_budget": 2048,
+          "entries": [
+            {
+              "id": 7,
+              "keys": [
+                "遗迹"
+              ],
+              "secondary_keys": [
+                "北方"
+              ],
+              "content": "遗迹位于北方。",
+              "enabled": true,
+              "insertion_order": 90,
+              "position": "before_char",
+              "constant": true,
+              "use_regex": false,
+              "extensions": {
+                "probability": 90,
+                "use_probability": true,
+                "vectorized": false,
+                "selective": true,
+                "selective_logic": "and_any",
+                "case_sensitive": false,
+                "match_whole_words": true,
+                "exclude_recursion": false,
+                "prevent_recursion": false,
+                "ignore_budget": false,
+                "use_group_scoring": false
+              }
+            },
+            {
+              "id": 8,
+              "keys": [
+                "守门人"
+              ],
+              "secondary_keys": [],
+              "content": "守门人持有钥匙。",
+              "enabled": false,
+              "insertion_order": 80,
+              "position": "after_char",
+              "constant": false,
+              "use_regex": false,
+              "extensions": {
+                "probability": 100,
+                "use_probability": false,
+                "vectorized": false,
+                "selective": false,
+                "case_sensitive": false,
+                "match_whole_words": true,
+                "exclude_recursion": false,
+                "prevent_recursion": false,
+                "ignore_budget": false,
+                "use_group_scoring": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "lorebook-v3-invalid",
+      "path": "lorebook-v3/invalid.json",
+      "format": "lorebook-v3",
+      "kind": "invalid",
+      "importable": false,
+      "ok": false,
+      "error": "世界书包含无法导入的结构：没有可导入的世界书条目",
+      "adapterId": null,
+      "detection": null,
+      "report": null,
+      "document": null,
+      "exported": null
+    },
+    {
+      "id": "lorebook-v3-unknown-extensions",
+      "path": "lorebook-v3/unknown-extensions.json",
+      "format": "lorebook-v3",
+      "kind": "unknown_extensions",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "character-card.lorebook-v3",
+      "detection": {
+        "adapterId": "character-card.lorebook-v3",
+        "confidence": 100,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "character-card.lorebook-v3",
+        "formatLabel": "Character Card lorebook_v3",
+        "formatVersion": "3.0",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.extensions.future_book_field",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].extensions.future_entry_field",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 2,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-lorebook-v3-unknown-extensions",
+        "revision": 1,
+        "name": "V3 未知扩展世界书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "future-v3",
+            "sourceId": "future-v3",
+            "enabled": true,
+            "content": "V3 未知扩展测试。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "扩展"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "after_character"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "character-card.lorebook-v3": {
+                "extensions": {
+                  "future_entry_field": [
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "character-card.lorebook-v3",
+          "formatVersion": "3.0",
+          "originalName": "V3 未知扩展世界书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "character-card.lorebook-v3": {
+            "payload": {
+              "extensions": {
+                "future_book_field": "opaque"
+              }
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "spec": "lorebook_v3",
+        "spec_version": "3.0",
+        "data": {
+          "name": "V3 未知扩展世界书",
+          "description": "",
+          "scan_depth": 4,
+          "recursive_scanning": true,
+          "extensions": {
+            "future_book_field": "opaque"
+          },
+          "entries": [
+            {
+              "id": "future-v3",
+              "keys": [
+                "扩展"
+              ],
+              "secondary_keys": [],
+              "content": "V3 未知扩展测试。",
+              "enabled": true,
+              "insertion_order": 1,
+              "position": "after_char",
+              "constant": false,
+              "use_regex": false,
+              "extensions": {
+                "future_entry_field": [
+                  1,
+                  2,
+                  3
+                ],
+                "probability": 100,
+                "use_probability": false,
+                "vectorized": false,
+                "selective": false,
+                "case_sensitive": false,
+                "match_whole_words": true,
+                "exclude_recursion": false,
+                "prevent_recursion": false,
+                "ignore_budget": false,
+                "use_group_scoring": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "risu-minimal",
+      "path": "risu/minimal.json",
+      "format": "risu-lorebook",
+      "kind": "minimal",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "risu.lorebook",
+      "detection": {
+        "adapterId": "risu.lorebook",
+        "confidence": 98,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "risu.lorebook",
+        "formatLabel": "Risu Lorebook",
+        "formatVersion": "1",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-risu-minimal",
+        "revision": 1,
+        "name": "fallback-risu-minimal",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": "0",
+            "enabled": true,
+            "content": "主角是一位流浪的剑客，随身带着一把旧刀。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "主角"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 100,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "主角条目"
+          }
+        ],
+        "source": {
+          "adapterId": "risu.lorebook",
+          "formatVersion": "1",
+          "originalName": "fallback-risu-minimal",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "type": "risu",
+        "ver": 1,
+        "data": [
+          {
+            "id": "0",
+            "comment": "主角条目",
+            "key": "主角",
+            "secondkey": "",
+            "content": "主角是一位流浪的剑客，随身带着一把旧刀。",
+            "insertorder": 100,
+            "mode": "normal",
+            "alwaysActive": false,
+            "selective": false,
+            "useRegex": false,
+            "extentions": {
+              "risu_case_sensitive": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "risu-full",
+      "path": "risu/full.json",
+      "format": "risu-lorebook",
+      "kind": "full",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "risu.lorebook",
+      "detection": {
+        "adapterId": "risu.lorebook",
+        "confidence": 98,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "risu.lorebook",
+        "formatLabel": "Risu Lorebook",
+        "formatVersion": "1",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].extentions",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 1,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-risu-full",
+        "revision": 1,
+        "name": "fallback-risu-full",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "r1",
+            "sourceId": "r1",
+            "enabled": true,
+            "content": "星陨峡谷每逢秋夜会出现流星雨。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "星陨峡谷",
+                "流星"
+              ],
+              "secondaryKeys": [
+                "夜晚"
+              ],
+              "aliases": [],
+              "keyLogic": "all",
+              "secondaryLogic": "and_any",
+              "caseSensitive": true,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 5,
+              "probability": 80,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "risu.lorebook": {
+                "fields": {
+                  "extentions": {
+                    "risu_case_sensitive": true
+                  }
+                }
+              }
+            },
+            "title": "多重条件条目"
+          },
+          {
+            "id": "r2",
+            "sourceId": "r2",
+            "enabled": true,
+            "content": "这是一个魔法与蒸汽并存的大陆。",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [
+                "世界设定"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": -10,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "常驻设定"
+          }
+        ],
+        "source": {
+          "adapterId": "risu.lorebook",
+          "formatVersion": "1",
+          "originalName": "fallback-risu-full",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "type": "risu",
+        "ver": 1,
+        "data": [
+          {
+            "extentions": {
+              "risu_case_sensitive": true
+            },
+            "id": "r1",
+            "comment": "多重条件条目",
+            "key": "星陨峡谷, 流星",
+            "secondkey": "夜晚",
+            "content": "星陨峡谷每逢秋夜会出现流星雨。",
+            "insertorder": 5,
+            "mode": "multiple",
+            "alwaysActive": false,
+            "selective": true,
+            "activationPercent": 80,
+            "useRegex": false
+          },
+          {
+            "id": "r2",
+            "comment": "常驻设定",
+            "key": "世界设定",
+            "secondkey": "",
+            "content": "这是一个魔法与蒸汽并存的大陆。",
+            "insertorder": -10,
+            "mode": "constant",
+            "alwaysActive": true,
+            "selective": false,
+            "useRegex": false,
+            "extentions": {
+              "risu_case_sensitive": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "risu-invalid",
+      "path": "risu/invalid.json",
+      "format": "risu-lorebook",
+      "kind": "invalid",
+      "importable": false,
+      "ok": false,
+      "error": "世界书包含无法导入的结构：没有可导入的世界书条目",
+      "adapterId": null,
+      "detection": null,
+      "report": null,
+      "document": null,
+      "exported": null
+    },
+    {
+      "id": "risu-unknown-extensions",
+      "path": "risu/unknown-extensions.json",
+      "format": "risu-lorebook",
+      "kind": "unknown_extensions",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "risu.lorebook",
+      "detection": {
+        "adapterId": "risu.lorebook",
+        "confidence": 98,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "risu.lorebook",
+        "formatLabel": "Risu Lorebook",
+        "formatVersion": "1",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].futureEntryTrigger",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 1,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-risu-unknown-extensions",
+        "revision": 1,
+        "name": "fallback-risu-unknown-extensions",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": "0",
+            "enabled": true,
+            "content": "这座遗迹沉睡在沙漠深处。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "遗迹"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 20,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "risu.lorebook": {
+                "fields": {
+                  "futureEntryTrigger": {
+                    "clamp": 2
+                  }
+                }
+              }
+            },
+            "title": "未来字段条目"
+          }
+        ],
+        "source": {
+          "adapterId": "risu.lorebook",
+          "formatVersion": "1",
+          "originalName": "fallback-risu-unknown-extensions",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "risu.lorebook": {
+            "wrapper": {
+              "futureBookOption": "keep"
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "futureBookOption": "keep",
+        "type": "risu",
+        "ver": 1,
+        "data": [
+          {
+            "futureEntryTrigger": {
+              "clamp": 2
+            },
+            "id": "0",
+            "comment": "未来字段条目",
+            "key": "遗迹",
+            "secondkey": "",
+            "content": "这座遗迹沉睡在沙漠深处。",
+            "insertorder": 20,
+            "mode": "normal",
+            "alwaysActive": false,
+            "selective": false,
+            "useRegex": false,
+            "extentions": {
+              "risu_case_sensitive": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "novelai-minimal",
+      "path": "novelai/minimal.json",
+      "format": "novelai-lorebook",
+      "kind": "minimal",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "novelai.lorebook",
+      "detection": {
+        "adapterId": "novelai.lorebook",
+        "confidence": 98,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "novelai.lorebook",
+        "formatLabel": "NovelAI Lorebook",
+        "formatVersion": "4",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "warning",
+            "action": "mapped",
+            "code": "ambiguous_format",
+            "path": "$",
+            "message": "格式也接近「CCv2/CCv3 character_book」(96%)，已按优先级选择「NovelAI Lorebook」"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].displayName",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].searchRange",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 1,
+          "preserved": 2,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 1,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-novelai-minimal",
+        "revision": 1,
+        "name": "fallback-novelai-minimal",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 101,
+            "enabled": true,
+            "content": "主角是一位流浪的剑客。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "主角"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 10,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "novelai.lorebook": {
+                "fields": {
+                  "displayName": "主角",
+                  "searchRange": 1000
+                }
+              }
+            },
+            "title": "主角条目"
+          }
+        ],
+        "source": {
+          "adapterId": "novelai.lorebook",
+          "formatVersion": "4",
+          "originalName": "fallback-novelai-minimal",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "novelai.lorebook": {
+            "wrapper": {
+              "lorebookVersion": 4
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "lorebookVersion": 4,
+        "entries": [
+          {
+            "displayName": "主角",
+            "searchRange": 1000,
+            "id": 101,
+            "text": "主角是一位流浪的剑客。",
+            "keys": [
+              "主角"
+            ],
+            "secondKey": "",
+            "comment": "主角条目",
+            "enabled": true,
+            "forceActivation": false,
+            "vectorized": false,
+            "caseSensitive": false,
+            "useProbability": false,
+            "probability": 100,
+            "priority": 10,
+            "useRegExp": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "novelai-full",
+      "path": "novelai/full.json",
+      "format": "novelai-lorebook",
+      "kind": "full",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "novelai.lorebook",
+      "detection": {
+        "adapterId": "novelai.lorebook",
+        "confidence": 98,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "novelai.lorebook",
+        "formatLabel": "NovelAI Lorebook",
+        "formatVersion": "4",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "warning",
+            "action": "mapped",
+            "code": "ambiguous_format",
+            "path": "$",
+            "message": "格式也接近「CCv2/CCv3 character_book」(96%)，已按优先级选择「NovelAI Lorebook」"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].displayName",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].category",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].searchRange",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 1,
+          "preserved": 3,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 1,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-novelai-full",
+        "revision": 1,
+        "name": "fallback-novelai-full",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 201,
+            "enabled": true,
+            "content": "星陨峡谷每逢秋夜会出现流星雨。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "星陨峡谷"
+              ],
+              "secondaryKeys": [
+                "峡谷"
+              ],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "hybrid"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 3,
+              "probability": 65,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "novelai.lorebook": {
+                "fields": {
+                  "displayName": "星陨峡谷",
+                  "category": "地点",
+                  "searchRange": 1000
+                }
+              }
+            },
+            "title": "星陨峡谷"
+          },
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 202,
+            "enabled": true,
+            "content": "这是一个魔法与蒸汽并存的大陆。",
+            "activation": {
+              "mode": "constant",
+              "budgetTier": "protected",
+              "primaryKeys": [
+                "世界设定"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": true,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "常驻设定"
+          }
+        ],
+        "source": {
+          "adapterId": "novelai.lorebook",
+          "formatVersion": "4",
+          "originalName": "fallback-novelai-full",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "novelai.lorebook": {
+            "wrapper": {
+              "lorebookVersion": 4,
+              "entryDisplay": 0
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "lorebookVersion": 4,
+        "entryDisplay": 0,
+        "entries": [
+          {
+            "displayName": "星陨峡谷",
+            "category": "地点",
+            "searchRange": 1000,
+            "id": 201,
+            "text": "星陨峡谷每逢秋夜会出现流星雨。",
+            "keys": [
+              "星陨峡谷"
+            ],
+            "secondKey": "峡谷",
+            "comment": "星陨峡谷",
+            "enabled": true,
+            "forceActivation": false,
+            "vectorized": true,
+            "caseSensitive": false,
+            "useProbability": true,
+            "probability": 65,
+            "priority": 3,
+            "useRegExp": false
+          },
+          {
+            "id": 202,
+            "text": "这是一个魔法与蒸汽并存的大陆。",
+            "keys": [
+              "世界设定"
+            ],
+            "secondKey": "",
+            "comment": "常驻设定",
+            "enabled": true,
+            "forceActivation": true,
+            "vectorized": false,
+            "caseSensitive": true,
+            "useProbability": false,
+            "probability": 100,
+            "priority": 1,
+            "useRegExp": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "novelai-invalid",
+      "path": "novelai/invalid.json",
+      "format": "novelai-lorebook",
+      "kind": "invalid",
+      "importable": false,
+      "ok": false,
+      "error": "世界书包含无法导入的结构：1 个条目不是对象，无法导入",
+      "adapterId": null,
+      "detection": null,
+      "report": null,
+      "document": null,
+      "exported": null
+    },
+    {
+      "id": "novelai-unknown-extensions",
+      "path": "novelai/unknown-extensions.json",
+      "format": "novelai-lorebook",
+      "kind": "unknown_extensions",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "novelai.lorebook",
+      "detection": {
+        "adapterId": "novelai.lorebook",
+        "confidence": 98,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "novelai.lorebook",
+        "formatLabel": "NovelAI Lorebook",
+        "formatVersion": "4",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "warning",
+            "action": "mapped",
+            "code": "ambiguous_format",
+            "path": "$",
+            "message": "格式也接近「CCv2/CCv3 character_book」(96%)，已按优先级选择「NovelAI Lorebook」"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].futureEntryFlag",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 1,
+          "preserved": 1,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 1,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-novelai-unknown-extensions",
+        "revision": 1,
+        "name": "fallback-novelai-unknown-extensions",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "<volatile:entry-id>",
+            "sourceId": 301,
+            "enabled": true,
+            "content": "这座遗迹沉睡在沙漠深处。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "遗迹"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 5,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "novelai.lorebook": {
+                "fields": {
+                  "futureEntryFlag": true
+                }
+              }
+            }
+          }
+        ],
+        "source": {
+          "adapterId": "novelai.lorebook",
+          "formatVersion": "4",
+          "originalName": "fallback-novelai-unknown-extensions",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "novelai.lorebook": {
+            "wrapper": {
+              "lorebookVersion": 4,
+              "futureBookMeta": {
+                "tuned": true
+              }
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "lorebookVersion": 4,
+        "futureBookMeta": {
+          "tuned": true
+        },
+        "entries": [
+          {
+            "futureEntryFlag": true,
+            "id": 301,
+            "text": "这座遗迹沉睡在沙漠深处。",
+            "keys": [
+              "遗迹"
+            ],
+            "secondKey": "",
+            "comment": "",
+            "enabled": true,
+            "forceActivation": false,
+            "vectorized": false,
+            "caseSensitive": false,
+            "useProbability": false,
+            "probability": 100,
+            "priority": 5,
+            "useRegExp": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "agnai-minimal",
+      "path": "agnai/minimal.json",
+      "format": "agnai-memory-book",
+      "kind": "minimal",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "agnai.memory-book",
+      "detection": {
+        "adapterId": "agnai.memory-book",
+        "confidence": 92,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "agnai.memory-book",
+        "formatLabel": "Agnai Memory Book",
+        "formatVersion": "1",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-agnai-minimal",
+        "revision": 1,
+        "name": "Agnai 最小记忆书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "agn-1",
+            "sourceId": "agn-1",
+            "enabled": true,
+            "content": "主角是一位流浪的剑客。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "主角"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 10,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "主角条目"
+          }
+        ],
+        "source": {
+          "adapterId": "agnai.memory-book",
+          "formatVersion": "1",
+          "originalName": "Agnai 最小记忆书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "name": "Agnai 最小记忆书",
+        "description": "",
+        "entries": [
+          {
+            "id": "agn-1",
+            "name": "主角条目",
+            "entry": "主角是一位流浪的剑客。",
+            "keywords": [
+              "主角"
+            ],
+            "priority": 10,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "agnai-full",
+      "path": "agnai/full.json",
+      "format": "agnai-memory-book",
+      "kind": "full",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "agnai.memory-book",
+      "detection": {
+        "adapterId": "agnai.memory-book",
+        "confidence": 92,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "agnai.memory-book",
+        "formatLabel": "Agnai Memory Book",
+        "formatVersion": "1",
+        "status": "exact",
+        "issues": [],
+        "summary": {
+          "mapped": 0,
+          "preserved": 0,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-agnai-full",
+        "revision": 1,
+        "name": "Agnai 完整记忆书",
+        "description": "由 Agnai 记忆书导出的完整样本。",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "agn-201",
+            "sourceId": "agn-201",
+            "enabled": true,
+            "content": "星陨峡谷每逢秋夜会出现流星雨。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "星陨峡谷",
+                "峡谷"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 3,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "星陨峡谷"
+          },
+          {
+            "id": "agn-202",
+            "sourceId": "agn-202",
+            "enabled": false,
+            "content": "这是一个魔法与蒸汽并存的大陆。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "世界设定"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 1,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "title": "常驻设定"
+          }
+        ],
+        "source": {
+          "adapterId": "agnai.memory-book",
+          "formatVersion": "1",
+          "originalName": "Agnai 完整记忆书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "name": "Agnai 完整记忆书",
+        "description": "由 Agnai 记忆书导出的完整样本。",
+        "entries": [
+          {
+            "id": "agn-201",
+            "name": "星陨峡谷",
+            "entry": "星陨峡谷每逢秋夜会出现流星雨。",
+            "keywords": [
+              "星陨峡谷",
+              "峡谷"
+            ],
+            "priority": 3,
+            "enabled": true
+          },
+          {
+            "id": "agn-202",
+            "name": "常驻设定",
+            "entry": "这是一个魔法与蒸汽并存的大陆。",
+            "keywords": [
+              "世界设定"
+            ],
+            "priority": 1,
+            "enabled": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "agnai-invalid",
+      "path": "agnai/invalid.json",
+      "format": "agnai-memory-book",
+      "kind": "invalid",
+      "importable": false,
+      "ok": false,
+      "error": "世界书包含无法导入的结构：1 个条目不是对象，无法导入",
+      "adapterId": null,
+      "detection": null,
+      "report": null,
+      "document": null,
+      "exported": null
+    },
+    {
+      "id": "agnai-unknown-extensions",
+      "path": "agnai/unknown-extensions.json",
+      "format": "agnai-memory-book",
+      "kind": "unknown_extensions",
+      "importable": true,
+      "ok": true,
+      "error": null,
+      "adapterId": "agnai.memory-book",
+      "detection": {
+        "adapterId": "agnai.memory-book",
+        "confidence": 92,
+        "conflicts": []
+      },
+      "report": {
+        "adapterId": "agnai.memory-book",
+        "formatLabel": "Agnai Memory Book",
+        "formatVersion": "1",
+        "status": "preserved",
+        "issues": [
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.futureBookKind",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          },
+          {
+            "severity": "info",
+            "action": "preserved",
+            "code": "unknown_field",
+            "path": "$.entries[0].futureEntryWeight",
+            "message": "未知字段已原样保留在 namespaced foreign 中"
+          }
+        ],
+        "summary": {
+          "mapped": 0,
+          "preserved": 2,
+          "approximated": 0,
+          "dropped": 0,
+          "rejected": 0,
+          "warnings": 0,
+          "errors": 0
+        }
+      },
+      "document": {
+        "schema": "qingyu_lorebook",
+        "schemaVersion": 2,
+        "id": "adapter-agnai-unknown-extensions",
+        "revision": 1,
+        "name": "Agnai 未知扩展记忆书",
+        "description": "",
+        "enabled": true,
+        "defaults": {
+          "scanDepth": 4,
+          "recursiveScanning": true
+        },
+        "entries": [
+          {
+            "id": "agn-401",
+            "sourceId": "agn-401",
+            "enabled": true,
+            "content": "这座遗迹沉睡在沙漠深处。",
+            "activation": {
+              "mode": "conditional",
+              "budgetTier": "standard",
+              "primaryKeys": [
+                "遗迹"
+              ],
+              "secondaryKeys": [],
+              "aliases": [],
+              "keyLogic": "any",
+              "caseSensitive": false,
+              "wholeWords": true,
+              "regex": {
+                "enabled": false,
+                "flags": "i"
+              },
+              "retrieval": "keyword"
+            },
+            "insertion": {
+              "kind": "prompt",
+              "anchor": "prompt_end"
+            },
+            "scheduling": {
+              "order": 5,
+              "probability": 100,
+              "recursion": {
+                "exclude": false,
+                "prevent": false,
+                "minDepth": 0
+              },
+              "groups": [],
+              "groupScoring": false,
+              "ignoreBudget": false
+            },
+            "foreign": {
+              "agnai.memory-book": {
+                "fields": {
+                  "futureEntryWeight": 3
+                }
+              }
+            },
+            "title": "未来字段条目"
+          }
+        ],
+        "source": {
+          "adapterId": "agnai.memory-book",
+          "formatVersion": "1",
+          "originalName": "Agnai 未知扩展记忆书",
+          "importedAt": "<volatile:timestamp>",
+          "contentHash": "<volatile:sha256>"
+        },
+        "foreign": {
+          "agnai.memory-book": {
+            "payload": {
+              "fields": {
+                "futureBookKind": "manual"
+              }
+            }
+          }
+        },
+        "createdAt": "<volatile:timestamp>",
+        "updatedAt": "<volatile:timestamp>"
+      },
+      "exported": {
+        "futureBookKind": "manual",
+        "name": "Agnai 未知扩展记忆书",
+        "description": "",
+        "entries": [
+          {
+            "futureEntryWeight": 3,
+            "id": "agn-401",
+            "name": "未来字段条目",
+            "entry": "这座遗迹沉睡在沙漠深处。",
+            "keywords": [
+              "遗迹"
+            ],
+            "priority": 5,
+            "enabled": true
+          }
+        ]
+      }
+    }
+  ]
+}

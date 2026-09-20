@@ -619,7 +619,7 @@ export interface LorebookCompressionRequest {
  * 单桶内贪心填充：按传入顺序注入（调用方已排序），超出预算的条目丢弃
  * （继续尝试后面更小的条目）。内容去重由调用方在合并阶段全局完成。
  */
-function fitGreedy(
+export function fitGreedy(
   items: BudgetLoreItem[],
   budget: number,
   model: string,
@@ -647,7 +647,7 @@ function fitGreedy(
  * 相关度优先填充：每个条目按排序依次尝试“全文 → 手写摘要”。
  * 避免低分短全文先占满预算，导致更高分条目的摘要反而无法注入。
  */
-function fitRankedWithSummaries(
+export function fitRankedWithSummaries(
   items: BudgetLoreItem[],
   budget: number,
   model: string,
@@ -728,7 +728,8 @@ function placementKey(item: BudgetLoreItem): string {
  * 桶内排序：always 按 order 升序（全量注入，输出顺序稳定）；
  * conditional / detail 按统一 score 降序、同分按 order 升序（稳定排序）。
  */
-function fitLorebookBudgetByPriority(
+// 导出以便跨语言 fixture 直接以生产实现为 oracle（Android 侧逐字节对齐）
+export function fitLorebookBudgetByPriority(
   items: ScoredLoreItem[],
   budget: number,
   model: string,
@@ -916,7 +917,7 @@ export function allocateGlobalBudgetByBooks(
  * - ignoreBudget 条目不占书级预算（与全局预算行为一致）
  * - 保留原始条目顺序（仅替换/移除，不重排）
  */
-function enforceBookBudgets(
+export function enforceBookBudgets(
   items: ScoredLoreItem[],
   bookCaps: Map<string, number>,
   lbIdByKey: Map<string, string>,
@@ -965,7 +966,7 @@ function enforceBookBudgets(
 }
 
 /** FNV-1a 32 位字符串哈希（压缩缓存 key 用，无需密码学强度） */
-function hashString(s: string): string {
+export function hashString(s: string): string {
   let h = 0x811c9dc5
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i)
@@ -1171,7 +1172,8 @@ export function checkEntityBoost(
  *   权重 R = W.semantic / W.semantic满配 = 0.35/1.0，保证与真实语义命中可比
  * - 关键词通过条目 key 反查，评分沿用条目级大小写/整词/正则语义
  */
-function scoreItems(
+// 导出以便跨语言 fixture 直接以生产实现为 oracle（Android 侧逐字节对齐）
+export function scoreItems(
   items: BudgetLoreItem[],
   ctx: {
     scanText: string

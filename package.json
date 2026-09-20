@@ -95,6 +95,7 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "png/2048圆角.png",
       "!models/**/*",
       "node_modules/tiktoken/**/*",
       "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**/*",
@@ -120,7 +121,8 @@
       "target": [
         "nsis"
       ],
-      "signAndEditExecutable": false
+      "icon": "png/2048圆角.png",
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,

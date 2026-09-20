@@ -195,10 +195,9 @@ export async function finalizeGenerationTerminalResult(
   const noticeFields: GenerationTerminalOutcome['noticeFields'] = {}
   const prompt = terminationPromptWithContent(cause)
   if (prompt) noticeFields[prompt.field] = prompt.text
-  // provider_length 的轻提示由收尾器 notice 决定（已在完整句处收束/已自动补全结尾），
+  // provider_length 的普通句界收束静默处理；只有实际补尾或补尾失败需要提示。
   // 与异常类提示互斥：异常类优先展示 generationError。
   if (!prompt && cause === 'provider_length') {
-    if (outcome.notice === 'trimmed_to_boundary') noticeFields.generationNotice = '内容已在完整句处收束'
     if (outcome.notice === 'tail_repaired') noticeFields.generationNotice = '已自动补全结尾'
     if (outcome.repairFailed) {
       delete noticeFields.generationNotice

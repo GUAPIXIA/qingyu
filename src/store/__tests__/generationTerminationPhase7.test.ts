@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Character, ConnectionProfile, Message } from '../../../shared/types'
 import { getDefaultSettings } from '../../../shared/defaults'
+import { finalizeNoticeFields } from '../../../shared/generationNotice'
 import {
   createGenerationTerminationLatch,
   terminationCauseFromFinishReason,
@@ -151,6 +152,21 @@ describe('终止协调入口行为矩阵（§4.1）', () => {
       })
     }
     expect(repair).not.toHaveBeenCalled()
+  })
+
+  it('provider_length 在完整句边界静默收束，不生成普通提示', async () => {
+    const result = await finalizeGenerationTerminalResult({
+      terminalResult: makeTerminal('provider_length', RAW),
+      regexRules: [],
+      characterName: '艾琳',
+    })
+
+    expect(result.content).toBe(STABLE)
+    expect(result.notice).toBe('trimmed_to_boundary')
+    expect(result.noticeFields).toEqual({})
+    expect(finalizeNoticeFields({ finishReason: 'length', notice: 'trimmed_to_boundary' })).toEqual({})
+    expect(finalizeNoticeFields({ finishReason: 'network_error', notice: 'trimmed_to_boundary' }))
+      .toEqual({ generationNotice: '生成中断，已在完整句处收束' })
   })
 
   it('stop 明确结束但无稳定边界时透传保存，不整条丢弃；timeout 无边界则不落盘', async () => {

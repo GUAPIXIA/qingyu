@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "text": "**加粗** 与 foo 与 秘密 与 markdown",
+      "result": "加粗 与 foo 与 秘密 与 mbrkdown"
+    },
+    {
+      "text": "包含触发词里面有秘密",
+      "result": "包含触发词里面有[已隐藏]"
+    },
+    {
+      "text": "没有触发词但有秘密",
+      "result": "没有触发词但有秘密"
+    },
+    {
+      "text": "**未闭合 加粗",
+      "result": "**未闭合 加粗"
+    },
+    {
+      "text": "foo foo FOO",
+      "result": "foo foo FOO"
+    },
+    {
+      "text": "markdown markdown",
+      "result": "mbrkdown mbrkdown"
+    },
+    {
+      "text": "普通文本没有规则命中",
+      "result": "普通文本没有规则命中"
+    },
+    {
+      "text": "",
+      "result": ""
+    }
+  ]
+}

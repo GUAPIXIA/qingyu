@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { Character } from '../../../shared/types'
 import { useSettingsStore } from '../useSettingsStore'
-import { applyDefaultMemory, buildSemanticCacheKey, compressLorebookOverflow, friendlyError } from '../chatUtils'
+import { applyDefaultMemory, buildLorebookRevisionCorpus, buildSemanticCacheKey, compressLorebookOverflow, friendlyError } from '../chatUtils'
 
 const character = {
   id: 'char-1',
@@ -127,6 +127,15 @@ describe('compressLorebookOverflow（阶段三：世界书超限压缩）', () =
 })
 
 describe('buildSemanticCacheKey', () => {
+  it('世界书修订号变化会改变语料标识，旧语义命中不会跨修订复用', () => {
+    const revisions = new Map([['a', 1], ['b', 2]])
+    const first = buildLorebookRevisionCorpus(['b', 'a'], (id) => revisions.get(id))
+    revisions.set('a', 3)
+    const second = buildLorebookRevisionCorpus(['a', 'b'], (id) => revisions.get(id))
+    expect(first).toBe('a@1,b@2')
+    expect(second).toBe('a@3,b@2')
+  })
+
   const base = {
     scope: 'lore' as const,
     corpus: 'lb-1',

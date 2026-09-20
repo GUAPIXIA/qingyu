@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "channels": {
+        "keyword": [
+          {
+            "key": "k1",
+            "score": 10
+          },
+          {
+            "key": "k2",
+            "score": 8
+          }
+        ],
+        "lexical": [
+          {
+            "key": "k2",
+            "score": 0.9
+          },
+          {
+            "key": "k3",
+            "score": 0.5
+          }
+        ],
+        "vector": [
+          {
+            "key": "k3",
+            "score": 0.8
+          },
+          {
+            "key": "k1",
+            "score": 0.4
+          }
+        ]
+      },
+      "fused": [
+        {
+          "key": "k1",
+          "score": 0.08143839238498149,
+          "normalizedScore": 0.7642679900744417,
+          "ranks": {
+            "keyword": 1,
+            "vector": 2
+          },
+          "scores": {
+            "keyword": 10,
+            "vector": 0.4
+          }
+        },
+        {
+          "key": "k2",
+          "score": 0.07297726070861978,
+          "normalizedScore": 0.684863523573201,
+          "ranks": {
+            "keyword": 2,
+            "lexical": 1
+          },
+          "scores": {
+            "keyword": 8,
+            "lexical": 0.9
+          }
+        },
+        {
+          "key": "k3",
+          "score": 0.056980433632998415,
+          "normalizedScore": 0.5347394540942928,
+          "ranks": {
+            "lexical": 2,
+            "vector": 1
+          },
+          "scores": {
+            "lexical": 0.5,
+            "vector": 0.8
+          }
+        }
+      ]
+    },
+    {
+      "channels": {
+        "keyword": [
+          {
+            "key": "only",
+            "score": 1
+          }
+        ]
+      },
+      "fused": [
+        {
+          "key": "only",
+          "score": 0.04918032786885246,
+          "normalizedScore": 0.46153846153846156,
+          "ranks": {
+            "keyword": 1
+          },
+          "scores": {
+            "keyword": 1
+          }
+        }
+      ]
+    },
+    {
+      "channels": {},
+      "fused": []
+    },
+    {
+      "channels": {
+        "lexical": [
+          {
+            "key": "a",
+            "score": 0.1
+          },
+          {
+            "key": "b",
+            "score": 0.1
+          }
+        ]
+      },
+      "options": {
+        "k": 1,
+        "weights": {
+          "keyword": 5,
+          "lexical": 2,
+          "vector": 0
+        }
+      },
+      "fused": [
+        {
+          "key": "a",
+          "score": 1,
+          "normalizedScore": 0.2857142857142857,
+          "ranks": {
+            "lexical": 1
+          },
+          "scores": {
+            "lexical": 0.1
+          }
+        },
+        {
+          "key": "b",
+          "score": 0.6666666666666666,
+          "normalizedScore": 0.19047619047619047,
+          "ranks": {
+            "lexical": 2
+          },
+          "scores": {
+            "lexical": 0.1
+          }
+        }
+      ]
+    }
+  ]
+}

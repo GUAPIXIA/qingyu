@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "prev": "外面下着雨，我推开",
+      "next": "我推开门走了出去",
+      "seam": "门走了出去",
+      "overlapDefault8": "我推开门走了出去",
+      "overlapCustom4": "我推开门走了出去",
+      "overlapCustom3": "门走了出去"
+    },
+    {
+      "prev": "今天其实",
+      "next": "今天其实很好",
+      "seam": "很好",
+      "overlapDefault8": "今天其实很好",
+      "overlapCustom4": "很好",
+      "overlapCustom3": "很好"
+    },
+    {
+      "prev": "楼下的",
+      "next": "楼下的猫叫了",
+      "seam": "猫叫了",
+      "overlapDefault8": "楼下的猫叫了",
+      "overlapCustom4": "楼下的猫叫了",
+      "overlapCustom3": "猫叫了"
+    },
+    {
+      "prev": "你的",
+      "next": "你的东西",
+      "seam": "你的东西",
+      "overlapDefault8": "你的东西",
+      "overlapCustom4": "你的东西",
+      "overlapCustom3": "你的东西"
+    },
+    {
+      "prev": "abc",
+      "next": "abc",
+      "seam": "abc",
+      "overlapDefault8": "abc",
+      "overlapCustom4": "abc",
+      "overlapCustom3": "abc"
+    },
+    {
+      "prev": "",
+      "next": "内容",
+      "seam": "内容",
+      "overlapDefault8": "内容",
+      "overlapCustom4": "内容",
+      "overlapCustom3": "内容"
+    },
+    {
+      "prev": "内容",
+      "next": "",
+      "seam": "",
+      "overlapDefault8": "",
+      "overlapCustom4": "",
+      "overlapCustom3": ""
+    },
+    {
+      "prev": "结尾。",
+      "next": "  开头",
+      "seam": "  开头",
+      "overlapDefault8": "  开头",
+      "overlapCustom4": "  开头",
+      "overlapCustom3": "  开头"
+    },
+    {
+      "prev": "一二三四五六七八九十",
+      "next": "八九十继续",
+      "seam": "八九十继续",
+      "overlapDefault8": "八九十继续",
+      "overlapCustom4": "八九十继续",
+      "overlapCustom3": "继续"
+    },
+    {
+      "prev": "短",
+      "next": "短",
+      "seam": "短",
+      "overlapDefault8": "短",
+      "overlapCustom4": "短",
+      "overlapCustom3": "短"
+    }
+  ]
+}
