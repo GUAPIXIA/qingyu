@@ -102,6 +102,35 @@ interface ChatRepository {
         characterId: String? = null,
     )
 
+    /**
+     * 修改会话级生成状态（阶段 4 S4-04，本地库 v3 列）。
+     *
+     * 默认实现**明确失败**而不是静默成功：PC 伴侣模式没有这两个会话级端点，
+     * 若默默当成保存成功，用户会以为设置生效了——那正是本阶段反复出现的
+     * 「按钮在、功能不在」。只有本地权威库覆写它。
+     *
+     * @param narrativeMode `immersive` | `omniscient`；null 表示不改
+     * @param responseLengthMode `auto` | `brief` | `balanced` | `detailed`；null 表示不改
+     */
+    suspend fun patchSessionRuntimeState(
+        sessionId: String,
+        narrativeMode: String? = null,
+        responseLengthMode: String? = null,
+    ) {
+        throw CompanionError.ServerRejected(
+            code = 501,
+            message = "当前数据源不支持会话级叙事模式/篇幅模式，请在本地模式下使用",
+        )
+    }
+
+    /**
+     * 读取会话级叙事模式；空串表示**未设置**（由装配器回退到默认 `immersive`）。
+     *
+     * 默认实现返回空串而不是抛错：这是读操作，「这个数据源没有该概念」与「未设置」
+     * 对 UI 的表现相同（都显示未设置）。
+     */
+    suspend fun getSessionNarrativeMode(sessionId: String): String = ""
+
     /** 立即触发长记忆总结，返回 (摘要, 事实) */
     suspend fun summarizeMemory(sessionId: String, characterId: String? = null): Pair<String, List<com.qingyu.companion.model.MemoryFactDto>>
 
@@ -165,6 +194,25 @@ interface ChatRepository {
 
     /** 获取服务器最新版本信息（阶段三：走 PC 桥接层转发公告服务器；失败返回 null 不抛错） */
     suspend fun fetchVersionInfo(): com.qingyu.companion.model.VersionInfo?
+
+    /**
+     * 阶段 4 S4-06：**数据源与模型连接状态**，供 UI 显示清晰标签。
+     *
+     * 为什么放在 UI 契约上：阶段 4 把单聊数据源从「PC 远程」切到「本地权威库」后，
+     * `connectionState == CONNECTED` 的含义从「已连上 PC」变成「本地数据源可用」，
+     * 直接展示会误导用户。UI 必须能区分「本地直连 + 具体模型」与「未配置模型」。
+     */
+    val dataSourceStatus: StateFlow<DataSourceStatus> get() = defaultDataSourceStatus
+
+    /** 数据源状态：`local` 为 true 表示生成在本机完成，不依赖 PC。 */
+    data class DataSourceStatus(
+        val local: Boolean = false,
+        /** 是否已配置可用的模型连接档案（未配置则无法本地生成） */
+        val modelConfigured: Boolean = false,
+        val provider: String? = null,
+        val model: String? = null,
+        val baseUrl: String? = null,
+    )
 
     // ---------- 群聊（阶段二：查看与发言） ----------
 
@@ -274,4 +322,12 @@ interface ChatRepository {
 
 private val _defaultFalseStateFlow: StateFlow<Boolean> by lazy {
     kotlinx.coroutines.flow.MutableStateFlow(false)
+}
+
+/**
+ * 未声明数据源状态的实现（如在线实现与测试替身）默认返回「远程且未配置」，
+ * 避免 UI 误报「本地直连」。
+ */
+private val defaultDataSourceStatus: StateFlow<ChatRepository.DataSourceStatus> by lazy {
+    kotlinx.coroutines.flow.MutableStateFlow(ChatRepository.DataSourceStatus())
 }

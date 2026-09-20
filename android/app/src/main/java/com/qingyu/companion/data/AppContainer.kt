@@ -65,6 +65,9 @@ class AppContainer(context: Context) {
     /** 本地 UI 偏好（字体缩放/消息间距，纯显示不回写 PC） */
     val uiPrefsStore: UiPrefsStore = UiPrefsStore(appContext)
     val draftStore: DraftStore = DraftStore(appContext)
+
+    /** 阶段 5 §2：内容编辑器（角色/世界书/预设/人设/正则/快捷回复）的草稿区。 */
+    val contentDraftStore: ContentDraftStore = PreferencesContentDraftStore(appContext)
     val deviceIdentity: DeviceIdentity = DeviceIdentity(appContext)
     val relayCredentialStore: RelayCredentialStore = RelayCredentialStore(appContext)
 
@@ -87,26 +90,105 @@ class AppContainer(context: Context) {
         .build()
 
     // ---------- 阶段 3：本地权威库（独立文件，不升级 companion-cache） ----------
+
+    /**
+     * `qingyu-local.db`：
+     * - 独立文件，**绝不**原地升级 `qingyu-companion-cache`（旧库只读导入）；
+     * - 不注册任何 destructive fallback：迁移缺失时抛异常并停留在迁移修复页（阶段 3 §5）；
+     * - 每次打开显式开启外键（删除策略见 LocalEntities 的 ForeignKey 声明）。
+     */
     val localDatabase: com.qingyu.companion.local.db.QingyuLocalDatabase = Room.databaseBuilder(
         appContext,
         com.qingyu.companion.local.db.QingyuLocalDatabase::class.java,
         com.qingyu.companion.local.db.QingyuLocalDatabase.NAME,
     )
-        .fallbackToDestructiveMigrationOnDowngrade()
+        // 阶段 4 S4-05：v1→v2（记忆版本/CAS 与任务类型）为显式迁移，只增列、不重建表。
+        // 不注册任何 destructive fallback：缺迁移时抛异常并停留在迁移修复页（阶段 3 §5）。
+        .addMigrations(*com.qingyu.companion.local.db.QingyuLocalDatabase.MIGRATIONS)
+        .addCallback(com.qingyu.companion.local.db.QingyuLocalDatabase.FOREIGN_KEYS_CALLBACK)
         .build()
 
-    val secretStore: com.qingyu.companion.security.SecretStore =
-        com.qingyu.companion.security.InMemorySecretStore() // Keystore 包装在后续实机接入
+    /**
+     * S3-04：秘密存储。Keystore 不可用（无安全硬件/测试环境）时降级为内存实现，
+     * **绝不**回退为明文落盘；`TokenCrypto`/EncryptedSharedPreferences 另有独立封装。
+     */
+    val secretStore: com.qingyu.companion.security.SecretStore = runCatching {
+        com.qingyu.companion.security.KeystoreSecretStore(appContext)
+    }.getOrElse {
+        com.qingyu.companion.security.InMemorySecretStore()
+    }
 
-    val connectionProfileStore: com.qingyu.companion.security.ConnectionProfileStore =
-        com.qingyu.companion.security.ConnectionProfileStore(secretStore)
-
-    /** 阶段 3：本地权威 Repository（Room） */
+    /** S3-01：本地权威 Repository（Room 实现；业务表/journal/head 同事务） */
     val localSyncRepository: com.qingyu.companion.local.domain.RoomLocalSyncRepository =
         com.qingyu.companion.local.domain.RoomLocalSyncRepository(
             db = localDatabase,
             deviceId = deviceIdentity.deviceInstallationId,
         )
+
+    /** S3-06：连接档案 public/secret 双事务仓库（UI 只见掩码）。 */
+    val connectionProfileRepository: com.qingyu.companion.security.ConnectionProfileRepository =
+        com.qingyu.companion.security.ConnectionProfileRepository(localSyncRepository, secretStore)
+
+    /** S3-04：设置分区（public 进同步 envelope；device 仅本机）。 */
+    val localSettingsRepository: com.qingyu.companion.local.settings.LocalSettingsRepository =
+        com.qingyu.companion.local.settings.LocalSettingsRepository(localSyncRepository)
+
+    /** S3-05：模型直连执行层（不依赖 PC）。 */
+    val modelClient: com.qingyu.companion.network.models.ModelClient =
+        com.qingyu.companion.network.models.ModelClient()
+
+    /** S3-02：旧伴侣缓存只读快照读取器与迁移导入器 */
+    val legacyCacheReader: com.qingyu.companion.local.migration.LegacyCacheReader =
+        com.qingyu.companion.local.migration.LegacyCacheReader(appContext)
+    val legacyCacheImporter: com.qingyu.companion.local.migration.LegacyCacheImporter =
+        com.qingyu.companion.local.migration.LegacyCacheImporter(legacyCacheReader)
+
+    /** 阶段 3 本地初始化只做一次（设备状态 + 默认更新检查偏好） */
+    @Volatile
+    private var localBootstrapDone = false
+
+    /**
+     * S3-07：启动决策所需的本地快照（只读，不访问网络）。
+     *
+     * - `hasLocalDb`：`qingyu-local.db` 已有内容或已初始化设备状态 → 可直接进主界面；
+     * - `hasLegacyCache`：存在旧伴侣缓存（或已被扫描过的快照）→ 需要用户显式选择迁移方式；
+     * - `connectionCount`：仅用于「同步中心」入口，不再是进入主界面的前提。
+     */
+    suspend fun localStartupSnapshot(): com.qingyu.companion.ui.startup.LocalStartupSnapshot {
+        val counts = runCatching { localSyncRepository.localCounts() }.getOrNull()
+        val genesis = runCatching { localSyncRepository.migrationGenesisId() }.getOrNull()
+        val connectionCount = runCatching { connectionStore.loadAll().size }.getOrDefault(0)
+        val hasLocalDb = counts != null && (!counts.isEmpty || counts.heads > 0 || genesis != null)
+        val hasLegacyCache = legacyCacheReader.legacyDatabaseExists() || legacyCacheReader.snapshotExists()
+        return com.qingyu.companion.ui.startup.LocalStartupSnapshot(
+            hasLocalProfile = hasLocalDb,
+            hasLocalDb = hasLocalDb,
+            hasLegacyCache = hasLegacyCache,
+            connectionCount = connectionCount,
+        )
+    }
+
+    /**
+     * 本地启动 bootstrap（幂等）：
+     * 首次启动创建本地资料并写入设备 dot 起点；**不**自动同步、不连接 PC。
+     * 返回 true 表示本地已可用（无需配对即可进入主界面）。
+     */
+    suspend fun ensureLocalBootstrapped(): Boolean {
+        if (localBootstrapDone) return true
+        return runCatching {
+            localSyncRepository.initDeviceState()
+            if (localSyncRepository.listConnectionProfiles().isEmpty() &&
+                localSyncRepository.journalCount("local") == 0
+            ) {
+                localSyncRepository.putDeviceSetting(
+                    com.qingyu.companion.local.settings.DeviceSettingKey.ThemeMode.key,
+                    "\"system\"",
+                )
+            }
+            localBootstrapDone = true
+            true
+        }.getOrElse { false }
+    }
 
     // ---------- 阶段 B：共享网络栈 / 协调器 / 连接观察者 ----------
 
@@ -144,8 +226,65 @@ class AppContainer(context: Context) {
 
     /** 过渡期门面：调用方（ViewModel/Repository/TTS）仍按 ConnectionManager 使用 */
     val connectionManager: ConnectionManager = ConnectionManagerImpl.create(connectionCoordinator)
-    val repository: ChatRepository =
-        OnlineChatRepository(connectionManager, connectionStore, wsClient, database, json)
+
+    /**
+     * 阶段 4 S4-06：**单聊数据源已切到本地权威库**。
+     *
+     * 依据阶段 4 §S4-06「界面不得出现旧远程运行模式或回退入口」与完成定义
+     * 「关闭 PC 和 Relay 后仍能连续多轮聊天」：
+     * - 会话、消息、生成全部走 `qingyu-local.db` + 本地直连模型；
+     * - PC 仅作为**可选**的同步/管理对端，不再是聊天前提；
+     * - 因此这里不再提供「切回远程聊天」的开关——回退入口本身就是禁止项。
+     *
+     * 尚未迁移到本地的能力（世界书/预设编辑、翻译、快捷回复、群聊、公告、用量汇总、长记忆总结）
+     * 由 [LocalChatRepository] 返回可行动的空结果，UI 不应崩溃或静默失败。
+     */
+    val chatRepository: com.qingyu.companion.data.local.LocalChatRepository =
+        com.qingyu.companion.data.local.LocalChatRepository(
+            store = localSyncRepository,
+            generation = com.qingyu.companion.chatcore.LocalChatGenerationUseCase(
+                store = localSyncRepository,
+                gateway = com.qingyu.companion.chatcore.ModelClientGateway(modelClient),
+                profileProvider = { activeLocalProfile() },
+                apiKeyProvider = { activeLocalProfileId()?.let { profileId -> readSecretOrNull(profileId) } },
+            ),
+            requestIdFactory = { com.qingyu.companion.chatcore.Ulid.newId() },
+            // S4-05：长记忆总结（自动触发）。与生成本身共用同一档案与密钥来源。
+            memorySummary = com.qingyu.companion.chatcore.LocalMemorySummaryService(
+                store = localSyncRepository,
+                gateway = com.qingyu.companion.chatcore.ModelClientGateway(modelClient),
+            ),
+            activeProfileAndKey = {
+                activeLocalProfile() to activeLocalProfileId()?.let { profileId -> readSecretOrNull(profileId) }
+            },
+            // 辅助任务（翻译等一次性补全）与主生成共用同一执行层
+            auxGateway = com.qingyu.companion.chatcore.ModelClientGateway(modelClient),
+        )
+
+    val repository: ChatRepository = chatRepository
+
+    /**
+     * 当前用于本地生成的连接档案（取排序最靠前的一份）。
+     * 档案选择 UI（多档案切换）属阶段 5；阶段 4 先保证「有档案即可直连」。
+     */
+    private suspend fun activeLocalProfile(): com.qingyu.companion.network.models.ConnectionProfilePublic? {
+        val profile = runCatching { connectionProfileRepository.listProfiles().firstOrNull() }.getOrNull()
+            ?: return null
+        return com.qingyu.companion.network.models.ConnectionProfilePublic(
+            id = profile.id,
+            provider = com.qingyu.companion.network.models.ModelProvider.fromWire(profile.provider)
+                ?: com.qingyu.companion.network.models.ModelProvider.OpenAI,
+            baseUrl = profile.baseUrl,
+            model = profile.model,
+            allowHttp = profile.allowHttp,
+        )
+    }
+
+    private suspend fun activeLocalProfileId(): String? =
+        runCatching { connectionProfileRepository.listProfiles().firstOrNull()?.id }.getOrNull()
+
+    private suspend fun readSecretOrNull(profileId: String): String? =
+        runCatching { connectionProfileRepository.readSecret(profileId) }.getOrNull()
 
     // ---------- 阶段 C：PC 设置同步（接线①②③：共享仓库，SettingsViewModel 不再自建） ----------
 

@@ -9,8 +9,11 @@ import org.junit.Test
 /**
  * A-03 通知 deep link 纯函数单测：只验证 extras 解析与"通知目标 × 启动决策 → 落地路由"映射，
  * 不涉及 Intent/NavController（依赖 android.os 的适配层不做本地单测）。
- * 覆盖：无目标、blank sessionId、openPairing 优先、决策未完成不消费、
- * 三种启动决策 × 两类通知目标的全部组合。
+ * 覆盖：无目标、blank sessionId、openPairing 优先、决策未完成不消费，
+ * 以及两种启动决策 × 两类通知目标的全部组合。
+ *
+ * 阶段 4 收口：启动决策只剩 PENDING / READY，且**不再有「会话通知落到配对页」的分支**——
+ * 会话通知在决策就绪时直达会话；配对只由通知里显式选择的 OpenPairing 触发。
  */
 class NotificationRoutePolicyTest {
 
@@ -74,34 +77,10 @@ class NotificationRoutePolicyTest {
     }
 
     @Test
-    fun `ReadyWithoutActive + OpenSession → 忽略会话目标去 CONNECTION_PICKER 不擅自猜 PC`() {
-        assertEquals(
-            NotificationRoute.ConnectionPicker,
-            notificationRouteFor(NotificationTarget.OpenSession("s1"), StartupDecision.READY_WITHOUT_ACTIVE),
-        )
-    }
-
-    @Test
-    fun `NeedsPairing + OpenSession → 忽略会话目标去 PAIRING`() {
-        assertEquals(
-            NotificationRoute.Pairing,
-            notificationRouteFor(NotificationTarget.OpenSession("s1"), StartupDecision.NEEDS_PAIRING),
-        )
-    }
-
-    @Test
-    fun `OpenPairing → 任何已决状态都去 PAIRING`() {
+    fun `OpenPairing → 已决状态去 PAIRING（仅由显式配对目标触发）`() {
         assertEquals(
             NotificationRoute.Pairing,
             notificationRouteFor(NotificationTarget.OpenPairing, StartupDecision.READY),
-        )
-        assertEquals(
-            NotificationRoute.Pairing,
-            notificationRouteFor(NotificationTarget.OpenPairing, StartupDecision.READY_WITHOUT_ACTIVE),
-        )
-        assertEquals(
-            NotificationRoute.Pairing,
-            notificationRouteFor(NotificationTarget.OpenPairing, StartupDecision.NEEDS_PAIRING),
         )
     }
 }

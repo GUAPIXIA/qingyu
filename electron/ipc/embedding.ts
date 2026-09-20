@@ -25,7 +25,6 @@ import { LOCAL_MODEL_RETRIEVAL_PROFILES } from '../services/localModels/catalog'
 import { embedLorebookEntries } from '../services/lorebookEmbeddingIndex'
 import { isLoreEntrySemanticEligible } from '../../shared/lorebookEmbedding'
 import {
-  DEFAULT_SIMILARITY_THRESHOLD as SHARED_DEFAULT_SIMILARITY_THRESHOLD,
   REMOTE_INDEX_CHUNK_CHARS as SHARED_REMOTE_INDEX_CHUNK_CHARS,
   mapFactSearchHits as mapFactSearchHitsShared,
   isSemanticEligible as isSemanticEligibleShared,
@@ -69,7 +68,6 @@ function readLorebook(id: string): Lorebook | null {
   return readLorebookView(join(DIRS.lorebooks(), `${id}.json`))
 }
 
-const DEFAULT_SIMILARITY_THRESHOLD = SHARED_DEFAULT_SIMILARITY_THRESHOLD
 const REMOTE_INDEX_CHUNK_CHARS = SHARED_REMOTE_INDEX_CHUNK_CHARS
 
 /** 手动阈值优先；自动模式按已评测的本地模型校准，未知模型使用保守通用值。 */

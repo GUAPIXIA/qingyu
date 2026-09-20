@@ -2,80 +2,59 @@ package com.qingyu.companion.ui.startup
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.qingyu.companion.data.StartupRepository
-import com.qingyu.companion.data.StartupSnapshot
-import com.qingyu.companion.model.ServerConnection
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 启动决策四态（A-03）。
- * [StartupState.Ready.needsRepair]：active 命中但其 token 解密失败（EncryptedPrefs 丢失），
- * 不删数据；导航层将其引导至 CONNECTION_PICKER 作为"需要修复连接"入口（保持简单）。
+ * 启动决策状态。
+ *
+ * **阶段 4 收口：这里只依据本地状态决策，不存在任何「回退到 PC 伴侣模式」的状态。**
+ * 旧的四态（`NeedsPairing` / `Ready` / `ReadyWithoutActive`）此前是伴侣模式时代的产物，
+ * 在本地优先决策落地后**永远不会被产出**——但导航层仍在渲染它们，
+ * 构成一条「代码与导航中的旧伴侣模式回退入口」（阶段 4 完成定义明确禁止）。
+ * 现已删除；PC 连接仅作为**用户主动**入口保留在设置/会话页（阶段 7 主动同步需要）。
  */
 sealed interface StartupState {
     data object LoadingLocalState : StartupState
-    data object NeedsPairing : StartupState
-    /** 阶段 3 本地优先：已有本地资料/主库，无需 PC 即可进入主界面 */
+    /** 已有本地资料/主库：无需 PC 即可进入主界面 */
     data object LocalReady : StartupState
-    /** 本地资料未初始化且无可用连接：引导创建本地资料 */
+    /** 本地资料未初始化：引导创建本地资料（不是配对页） */
     data object NeedsLocalSetup : StartupState
-    data class Ready(val activeDeviceId: String, val needsRepair: Boolean = false) : StartupState
-    data class ReadyWithoutActive(val connections: List<ServerConnection>) : StartupState
 }
 
 /**
- * 阶段 3 本地优先启动决策（纯函数）：
- * - hasLocalProfile → LocalReady
- * - 无本地资料且有可用 PC 连接 → 旧四态（兼容伴侣场景）
- * - 无本地资料且无连接 → NeedsLocalSetup（不再强制 NeedsPairing 作为唯一入口）
+ * 阶段 3 本地优先启动决策（纯函数）。
+ *
+ * 规则（S3-07）：
+ * - 已有本地资料或本地主库 → `LocalReady`，直接进主界面；
+ * - 其余（含旧伴侣缓存、什么都没有）→ `NeedsLocalSetup` 走本地初始化向导；
+ * - 连接数**不参与**进入主界面的判定。
  */
 data class LocalStartupSnapshot(
     val hasLocalProfile: Boolean = false,
     val hasLocalDb: Boolean = false,
+    val hasLegacyCache: Boolean = false,
     val connectionCount: Int = 0,
 )
 
 fun decideStartupStateLocal(snapshot: LocalStartupSnapshot): StartupState {
     if (snapshot.hasLocalProfile || snapshot.hasLocalDb) return StartupState.LocalReady
-    // 无本地资料：若有 PC 连接则保留旧伴侣路径，否则引导本地资料
-    if (snapshot.connectionCount > 0) {
-        return StartupState.ReadyWithoutActive(emptyList())
-    }
     return StartupState.NeedsLocalSetup
-}
-
-/**
- * 启动决策纯函数（单测目标）：只依据本地快照，不做任何网络判断。
- * - 空 store -> NeedsPairing
- * - active 命中现存连接 -> Ready(activeDeviceId)；token 为 ENC: 占位（解密失败）时 needsRepair=true
- * - 有连接但 active id 丢失 / 指向已删除设备 / active token 损坏 -> ReadyWithoutActive（不自动选、不删数据）
- * - active id 存在但列表为空 -> NeedsPairing（视为无连接）
- */
-fun decideStartupState(snapshot: StartupSnapshot): StartupState {
-    val connections = snapshot.connections
-    if (connections.isEmpty()) return StartupState.NeedsPairing
-    val active = snapshot.activeConnection
-    if (active != null && connections.any { it.deviceId == active.deviceId }) {
-        val repair = active.token.startsWith(ENCRYPTED_PLACEHOLDER_PREFIX) ||
-            active.deviceId in snapshot.corruptedDeviceIds
-        return StartupState.Ready(activeDeviceId = active.deviceId, needsRepair = repair)
-    }
-    // active 为 null（无记录或记录指向已删除设备）或交叉比对不命中：展示设备选择，不擅自选错 PC
-    return StartupState.ReadyWithoutActive(connections)
 }
 
 private const val ENCRYPTED_PLACEHOLDER_PREFIX = "ENC:"
 
 /**
  * 启动页 ViewModel：进入即读取一次本地快照并决策。
- * 只读 DataStore（[StartupRepository.loadStartupSnapshot]），不等待 DNS/REST/WS；
- * 网络恢复仍由 AppContainer.start() 的异步 restore() 并行进行。
+ *
+ * 决策**只看本地**（`localSnapshotProvider`），不读连接列表、不做网络判断；
+ * 因此启动路径上不可能出现「需要配对 PC」这一结果。
+ * 网络恢复由 AppContainer.start() 的异步 restore() 并行进行。
  */
 class StartupViewModel(
-    private val startupRepository: StartupRepository,
+    private val localSnapshotProvider: suspend () -> LocalStartupSnapshot = { LocalStartupSnapshot() },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<StartupState>(StartupState.LoadingLocalState)
@@ -83,10 +62,9 @@ class StartupViewModel(
 
     init {
         viewModelScope.launch {
-            // 快照读取失败兜底为 NeedsPairing：仅 DataStore IO 异常才会发生，不吞诊断
-            val snapshot = runCatching { startupRepository.loadStartupSnapshot() }
-                .getOrDefault(StartupSnapshot())
-            _state.value = decideStartupState(snapshot)
+            // 本地快照读取失败兜底为「需要本地初始化」：仅存储 IO 异常才会发生，不吞诊断
+            val local = runCatching { localSnapshotProvider() }.getOrDefault(LocalStartupSnapshot())
+            _state.value = decideStartupStateLocal(local)
         }
     }
 }

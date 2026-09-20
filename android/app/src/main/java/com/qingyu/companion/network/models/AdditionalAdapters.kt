@@ -1,141 +1,47 @@
 package com.qingyu.companion.network.models
 
 /**
- * Anthropic Messages / Gemini / Ollama 适配器（阶段 3 请求构造与 SSE 解析）。
- * HTTP 执行层由后续 OkHttp 接线；此处冻结请求形状与解析，便于 MockWebServer 扩展。
+ * 阶段 3 S3-05：模型适配器的**实际 HTTP 执行层**。
+ *
+ * 统一接口（阶段 3 §2 S3-05）至少返回：chunk、结构化完成原因、用量、供应商错误、
+ * 可取消句柄和能力探测结果。
+ *
+ * 安全要求：
+ * - 默认只允许 HTTPS；用户在该连接档案中显式启用后才允许 LAN HTTP/Ollama；
+ * - 证书错误不提供全局「忽略所有证书」开关；
+ * - base URL 经 [requireSafeBaseUrl] 规范化，认证头由 adapter 构造，
+ *   重定向不会把凭据带到非预期主机（OkHttp 关闭自动重定向，本层不跟随）。
  */
-class AnthropicAdapter(
-    private val allowHttp: Boolean = false,
-) : ModelAdapter {
-    override val provider: ModelProvider = ModelProvider.Anthropic
-
-    override fun buildChatRequest(request: ModelChatRequest): BuiltHttpRequest {
-        throw IllegalStateException("use buildChatRequest(profile, request)")
-    }
-
-    fun buildChatRequest(profile: ConnectionProfilePublic, request: ModelChatRequest): BuiltHttpRequest {
-        val base = requireSafeBaseUrl(profile.baseUrl, allowHttp)
-        val url = joinUrl(base, "v1/messages")
-        val system = request.messages.filter { it.role == "system" }.joinToString("\n") { it.content }
-        val messages = request.messages.filter { it.role != "system" }
-            .joinToString(",") { m ->
-                val c = m.content.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-                """{"role":"${m.role}","content":"$c"}"""
-            }
-        val sb = StringBuilder()
-        sb.append("{\"model\":\"").append(request.model.ifBlank { profile.model }).append("\",")
-        if (system.isNotEmpty()) {
-            val s = system.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-            sb.append("\"system\":\"").append(s).append("\",")
-        }
-        sb.append("\"messages\":[").append(messages).append("]")
-        request.maxTokens?.let { sb.append(",\"max_tokens\":").append(it) }
-        sb.append(",\"stream\":").append(request.stream)
-        sb.append("}")
-        return BuiltHttpRequest(
-            method = "POST",
-            url = url,
-            headers = mapOf("Content-Type" to "application/json", "anthropic-version" to "2023-06-01"),
-            body = sb.toString(),
-        )
-    }
-
-    override fun parseSseLine(line: String): ModelStreamEvent? {
-        val raw = line.trim()
-        if (!raw.startsWith("data:")) return null
-        val payload = raw.removePrefix("data:").trim()
-        if (payload.isEmpty()) return null
-        if (payload.contains("\"type\":\"message_stop\"")) {
-            return ModelStreamEvent.Completed(finishReason = "stop", usage = null)
-        }
-        val text = extractJsonString(payload, "text")
-        val type = extractJsonString(payload, "type")
-        return when {
-            type == "content_block_delta" && !text.isNullOrEmpty() ->
-                ModelStreamEvent.Chunk(ModelChunk(deltaText = text))
-            type == "error" -> ModelStreamEvent.Failure(
-                ModelError(code = "ANTHROPIC_ERROR", message = text ?: "stream error", retryable = false),
-            )
-            else -> null
-        }
-    }
+data class ModelUsage(
+    val promptTokens: Int?,
+    val completionTokens: Int?,
+) {
+    val total: Int?
+        get() = if (promptTokens == null && completionTokens == null) null else
+            (promptTokens ?: 0) + (completionTokens ?: 0)
 }
 
-class GeminiAdapter(
-    private val allowHttp: Boolean = false,
-) : ModelAdapter {
-    override val provider: ModelProvider = ModelProvider.Gemini
+data class ModelStreamResult(
+    val finishReason: String,
+    val usage: ModelUsage,
+)
 
-    override fun buildChatRequest(request: ModelChatRequest): BuiltHttpRequest {
-        throw IllegalStateException("use buildChatRequest(profile, request)")
-    }
+/**
+ * 可取消句柄：调用方在 ViewModel 取消时调用 [cancel]；
+ * 底层 OkHttp `Call.cancel()` 会同步中止 socket 读取。
+ */
+interface ModelRequestHandle {
+    fun cancel()
 
-    fun buildChatRequest(profile: ConnectionProfilePublic, request: ModelChatRequest): BuiltHttpRequest {
-        val base = requireSafeBaseUrl(profile.baseUrl, allowHttp)
-        val model = request.model.ifBlank { profile.model }
-        val url = joinUrl(base, "v1beta/models/${model}:streamGenerateContent?alt=sse")
-        val contents = request.messages.filter { it.role != "system" }.joinToString(",") { m ->
-            val c = m.content.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-            """{"role":"${if (m.role == "assistant") "model" else "user"}","parts":[{"text":"$c"}]}"""
-        }
-        return BuiltHttpRequest(
-            method = "POST",
-            url = url,
-            headers = mapOf("Content-Type" to "application/json"),
-            body = """{"contents":[$contents],"generationConfig":{"stream":true}}""",
-        )
-    }
-
-    override fun parseSseLine(line: String): ModelStreamEvent? {
-        val raw = line.trim()
-        if (!raw.startsWith("data:")) return null
-        val payload = raw.removePrefix("data:").trim()
-        if (payload.isEmpty()) return null
-        val text = extractJsonString(payload, "text")
-        return if (!text.isNullOrEmpty()) {
-            ModelStreamEvent.Chunk(ModelChunk(deltaText = text))
-        } else {
-            null
-        }
-    }
+    val isCancelled: Boolean
 }
 
-class OllamaAdapter(
-    private val allowHttp: Boolean = true,
-) : ModelAdapter {
-    override val provider: ModelProvider = ModelProvider.Ollama
-
-    override fun buildChatRequest(request: ModelChatRequest): BuiltHttpRequest {
-        throw IllegalStateException("use buildChatRequest(profile, request)")
-    }
-
-    fun buildChatRequest(profile: ConnectionProfilePublic, request: ModelChatRequest): BuiltHttpRequest {
-        val base = requireSafeBaseUrl(profile.baseUrl, allowHttp)
-        val url = joinUrl(base, "api/chat")
-        val messages = request.messages.joinToString(",") { m ->
-            val c = m.content.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-            """{"role":"${m.role}","content":"$c"}"""
-        }
-        return BuiltHttpRequest(
-            method = "POST",
-            url = url,
-            headers = mapOf("Content-Type" to "application/json"),
-            body = """{"model":"${request.model.ifBlank { profile.model }}","messages":[$messages],"stream":true}""",
-        )
-    }
-
-    override fun parseSseLine(line: String): ModelStreamEvent? {
-        val raw = line.trim()
-        if (raw.isEmpty()) return null
-        // Ollama NDJSON：整行 JSON
-        val content = extractJsonString(raw, "content")
-        val done = raw.contains("\"done\":true")
-        return when {
-            done -> ModelStreamEvent.Chunk(
-                ModelChunk(deltaText = content.orEmpty(), finished = true, finishReason = "stop"),
-            )
-            !content.isNullOrEmpty() -> ModelStreamEvent.Chunk(ModelChunk(deltaText = content))
-            else -> null
-        }
-    }
+/** 连接测试结果（与真实生成共用同一 adapter 与认证头构造）。 */
+data class ConnectionTestResult(
+    val ok: Boolean,
+    val latencyMs: Long,
+    val capabilities: ModelCapabilities,
+    val error: ModelError? = null,
+) {
+    override fun toString(): String = "ConnectionTestResult(ok=$ok, latencyMs=$latencyMs, error=$error)"
 }

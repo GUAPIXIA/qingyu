@@ -235,12 +235,25 @@ fun skeletonTick(
  * 骨架屏防抖可见性（调用方唯一入口）：
  * `if (rememberSkeletonVisible(loadState is LoadState.Loading)) QySkeletonList()`
  * 帧驱动（withFrameMillis），无额外线程/协程依赖。
+ *
+ * **起表必须也用帧时钟**。之前这里写的是 `System.currentTimeMillis()`，而停表那一侧
+ * 用的是 `withFrameMillis` 的帧时间——两者**不是同一个时间基准**（帧时钟是自启动以来的
+ * 单调纳秒换算成毫秒，量级 ~1e4–1e7；墙上时间 ~1.7e12）。于是
+ * `now - shownSinceMs` 恒为一个大负数，永远 `< minShowMs`，
+ * [skeletonTick] 就一直返回 `previous`（继续可见）——**骨架屏再也不会消失，列表内容永远不出现**。
+ * 真机与模拟器都一样，纯函数单测也抓不到（它两个参数都是调用方给的，喂对了就绿）。
+ * 这是本文件第一版 Compose 交互测试（`phase5/ContentUiWalkthroughInstrumentedTest`）
+ * 在真机模拟器上跑出来的第一个缺陷：角色管理页一直停在骨架屏。
  */
 @Composable
 fun rememberSkeletonVisible(loading: Boolean, minShowMs: Long = SKELETON_MIN_SHOW_MS): Boolean {
     var clock by remember { mutableStateOf(SkeletonClock(loading, null)) }
     LaunchedEffect(loading) {
-        if (loading) clock = skeletonTick(true, clock, System.currentTimeMillis(), minShowMs)
+        if (loading) {
+            // 与停表那一侧同一个基准：先取一帧的时间，再喂给状态机
+            val frameMs = withFrameMillis { it }
+            clock = skeletonTick(true, clock, frameMs, minShowMs)
+        }
     }
     LaunchedEffect(clock.visible) {
         while (clock.visible && !loading) {
@@ -618,6 +631,12 @@ fun QyConnectionChip(
     state: ConnectionState,
     onTap: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /**
+     * 阶段 4 S4-06：单聊数据源在本地权威库。
+     * 本地模式下「未连 PC」不是故障，显示红色「未连接」会把用户误导向「必须连 PC 才能用」，
+     * 因此未连接时改显示「本地模式」；已连接 PC 时仍如实显示「已连接」。
+     */
+    localMode: Boolean = false,
 ) {
     val qy = qyColors()
     val reconnecting = state is ConnectionState.Reconnecting
@@ -628,7 +647,12 @@ fun QyConnectionChip(
             delay(500)
         }
     }
-    val model = remember(state, nowMs) { connectionChipUi(state, nowMs) }
+    val rawModel = remember(state, nowMs) { connectionChipUi(state, nowMs) }
+    val model = if (localMode && rawModel.tone == ConnectionChipTone.Offline) {
+        ConnectionChipUi(R.string.connection_chip_local, tone = ConnectionChipTone.Connected)
+    } else {
+        rawModel
+    }
     val fg = when (model.tone) {
         ConnectionChipTone.Connected -> qy.accent
         ConnectionChipTone.Busy -> qy.soft

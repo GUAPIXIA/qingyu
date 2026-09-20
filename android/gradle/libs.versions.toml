@@ -25,6 +25,8 @@ zxing = "4.3.0"
 securityCrypto = "1.1.0-alpha06"
 biometric = "1.1.0"
 junit = "4.13.2"
+robolectric = "4.13"
+androidxTestCore = "1.6.1"
 androidxTestExt = "1.2.1"
 espresso = "3.6.1"
 benchmark = "1.2.4"
@@ -43,6 +45,8 @@ androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", versi
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core" }
@@ -66,7 +70,11 @@ media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", versi
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxing" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
-androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
+    # 阶段3：Room migration / 外键 / Repository 契约测试在 JVM 上跑（Robolectric）
+    robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+    androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+    androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+    androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmark" }
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }

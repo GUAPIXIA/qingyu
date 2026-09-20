@@ -22,36 +22,37 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qingyu.companion.data.LocalAppContainer
-import com.qingyu.companion.data.StartupRepositoryImpl
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.theme.qyColors
 
 /**
- * 启动决策页（A-03）：冷启动唯一的透明入口，只做本地快照读取与一次性导航分发。
- * 决策完成前不进入任何业务页，避免已配对用户闪现配对页；
- * 网络恢复由 AppContainer.start() 的异步 restore() 并行进行，本页不等待。
+ * 启动决策页：冷启动唯一的透明入口，只做**本地**快照读取与一次性导航分发。
+ *
+ * 决策完成前不进入任何业务页；网络恢复由 AppContainer.start() 的异步 restore() 并行进行。
+ * **本页不存在「需要配对 PC」的分支**（阶段 4 完成定义：导航中不得留有旧伴侣模式回退入口）：
+ * 本地就绪进主界面，否则进本地初始化向导。PC 连接只由用户在设置/会话页主动发起。
  */
 @Composable
 fun StartupScreen(
-    onNeedsPairing: () -> Unit,
-    onReady: (needsRepair: Boolean) -> Unit,
-    onReadyWithoutActive: () -> Unit,
+    onReady: () -> Unit,
+    onNeedsLocalSetup: () -> Unit,
 ) {
     val container = LocalAppContainer.current
     val vm: StartupViewModel = viewModel(factory = viewModelFactory {
-        initializer { StartupViewModel(StartupRepositoryImpl(container.connectionStore)) }
+        initializer {
+            StartupViewModel(
+                localSnapshotProvider = { container.localStartupSnapshot() },
+            )
+        }
     })
     val state by vm.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(state) {
-        when (val s = state) {
+        when (state) {
             StartupState.LoadingLocalState -> Unit
-            StartupState.NeedsPairing -> onNeedsPairing()
-            // 阶段 3：本地资料就绪可直接进主界面；本地向导 UI 未就绪前暂回配对入口
-            StartupState.LocalReady -> onReady(false)
-            StartupState.NeedsLocalSetup -> onNeedsPairing()
-            is StartupState.Ready -> onReady(s.needsRepair)
-            is StartupState.ReadyWithoutActive -> onReadyWithoutActive()
+            // 本地资料就绪不再依赖 PC；未初始化时进入本地向导
+            StartupState.LocalReady -> onReady()
+            StartupState.NeedsLocalSetup -> onNeedsLocalSetup()
         }
     }
 

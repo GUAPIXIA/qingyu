@@ -223,7 +223,7 @@ fun SessionsScreen(
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
-                    QyConnectionChip(state = connectionState, onTap = onOpenPairing)
+                    QyConnectionChip(state = connectionState, onTap = onOpenPairing, localMode = ui.localMode)
                     SessionsSortChip(sortMode = ui.sortMode, onToggle = vm::toggleSort)
                     IconButton(onClick = vm::refresh) {
                         Icon(
@@ -259,7 +259,7 @@ fun SessionsScreen(
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        QyConnectionChip(state = connectionState, onTap = onOpenPairing)
+                        QyConnectionChip(state = connectionState, onTap = onOpenPairing, localMode = ui.localMode)
                         Spacer(Modifier.weight(1f))
                         SessionsSortChip(sortMode = ui.sortMode, onToggle = vm::toggleSort)
                     }
@@ -309,15 +309,22 @@ fun SessionsScreen(
                         }
 
                         is LoadState.Empty -> {
+                            // 阶段 4 S4-06：本地模式下不得出现「去 PC 端开始对话」这类旧伴侣模式入口，
+                            // 且动作应从「重试连接」改为「新建会话」——本地模式没有需要重试的连接。
                             QyEmptyState(
                                 title = stringResource(R.string.sessions_empty_title),
                                 description = stringResource(
-                                    if (ui.offline) R.string.sessions_empty_desc_offline
-                                    else R.string.sessions_empty_desc_online
+                                    when {
+                                        ui.localMode -> R.string.sessions_empty_desc_local
+                                        ui.offline -> R.string.sessions_empty_desc_offline
+                                        else -> R.string.sessions_empty_desc_online
+                                    }
                                 ),
                                 leading = { SessionsEmptyBadge() },
-                                actionLabel = stringResource(R.string.action_retry),
-                                onAction = vm::refresh,
+                                actionLabel = stringResource(
+                                    if (ui.localMode) R.string.action_new_session else R.string.action_retry
+                                ),
+                                onAction = if (ui.localMode) onOpenCharacters else vm::refresh,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }

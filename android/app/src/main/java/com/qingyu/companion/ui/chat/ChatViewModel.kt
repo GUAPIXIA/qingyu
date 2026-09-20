@@ -89,7 +89,28 @@ class ChatViewModel(
         val characterCoverUrl: String? = null,
         /** 会话是否开启“下一步方向”；旧响应缺省 false。 */
         val dialogueDirectionsEnabled: Boolean = false,
-    )
+        /** 阶段 4 S4-06：数据源与模型连接状态（本地直连 / PC 远程 / 未配置模型） */
+        val dataSource: ChatRepository.DataSourceStatus = ChatRepository.DataSourceStatus(),
+        /** 阶段 4 S4-06：未迁移能力的可行动提示；为空时不显示 */
+        val unsupportedNote: String? = null,
+    ) {
+        /** 阶段 4 S4-06：常驻数据源标签（本地直连 · 模型名） */
+        val sourceLabel: String get() = ChatStatusLabel.source(dataSource)
+
+        /** 阶段 4 S4-06：生成中标签；空闲为 null */
+        val generatingLabel: String? get() = ChatStatusLabel.generating(streaming !is Streaming.Idle)
+
+        /** 阶段 4 S4-06：缺少模型配置时的可行动作提示 */
+        val actionHint: String? get() = ChatStatusLabel.actionHint(dataSource)
+
+        /** 阶段 4 S4-06：顶栏副标题行（会话标题 + 数据源/生成状态） */
+        val secondaryLine: String
+            get() = ChatStatusLabel.secondaryLine(
+                sessionTitle = sessionTitle,
+                status = dataSource,
+                isGenerating = streaming !is Streaming.Idle,
+            )
+    }
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
@@ -132,6 +153,24 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             repository.events.collect(::handleEvent)
+        }
+        // 阶段 4 S4-06：数据源/模型状态标签。
+        // 先用本地快捷键刷新一次（档案存在本地库），再订阅变更。
+        viewModelScope.launch {
+            (repository as? com.qingyu.companion.data.local.LocalChatRepository)?.refreshDataSourceStatus()
+        }
+        viewModelScope.launch {
+            repository.dataSourceStatus.collect { status ->
+                _ui.update { it.copy(dataSource = status) }
+            }
+        }
+        // 未迁移能力的可行动提示（世界书/预设/翻译等）——本地模式下必须显式告知，
+        // 不能让用户面对一个静默返回空列表的功能。
+        viewModelScope.launch {
+            val local = repository as? com.qingyu.companion.data.local.LocalChatRepository ?: return@launch
+            local.unsupportedNotice.collect { notice ->
+                _ui.update { it.copy(unsupportedNote = ChatStatusLabel.unsupportedNote(notice)) }
+            }
         }
         // P1-4.1 B1-2：观察持久化发件箱，App 重启后可恢复（替代纯内存 pending）
         // F-06：经 ObserveOutboxUseCase 观察（仅当前活跃 PC 的未完成行）

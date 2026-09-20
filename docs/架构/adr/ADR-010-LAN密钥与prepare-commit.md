@@ -1,7 +1,8 @@
 # ADR-010: LAN 持久化 prepare/commit 与 X25519+一次性 secret；服务器新设备带外二维码/SAS
 
-- 状态：已接受（**API 35 模拟器实机 spike 已通过**；Android 8/12/14 真机矩阵仍待补）
+- 状态：已接受（**API 26/31/34 default 镜像矩阵已通过：21/21**；Android 8/12/14 **真机**矩阵仍待补，但已不再依赖系统 provider）
 - 日期：2026-09-16
+- 最近修订：2026-09-17（阶段 3 复核：X25519 改为自带 provider，见「重新评估条件」）
 - 决策阶段：阶段 0（关联总方案决策门 5、6）
 
 ## 背景
@@ -48,5 +49,29 @@ LAN 同步需防不可信 Wi-Fi 与中间人；commit 丢失/进程重启不得�
 ## 重新评估条件
 
 - 实机证明选定 Provider 在目标 API 级别无法满足 X25519/Ed25519 时，**必须修订本 ADR** 再进入阶段 7/8 编码，不得实现期偷偷换算法。
-- 已在 API 35 模拟器确认：Keystore 无 X25519/完整 Ed25519 JCA；阶段 7/8 编码以「Keystore wrap spaceKey + 软件身份密钥（Conscrypt/BC）」为基线，除非 Android 8/12 真机或产品要求推翻。
-- Android 8（API 26）矩阵未跑；若 API 26 上连软件 X25519 都不可用，回退本 ADR。
+- 已在 API 35 模拟器确认：Keystore 无 X25519/完整 Ed25519 JCA；阶段 7/8 编码以「Keystore wrap spaceKey + 软件身份密钥」为基线，除非真机或产品要求推翻。
+
+### 阶段 3 复核（2026-09-17）：X25519 必须**自带** provider，Conscrypt 不可依赖
+
+在 **default 系（非 Google APIs）x86_64** 镜像上补测 API 26/31/34 三档，结论取代上一条的「Conscrypt/BC」措辞：
+
+| 环境 | 软件 X25519（`AndroidOpenSSL`/Conscrypt） | 软件 X25519（**自带 BouncyCastle**） | AndroidKeyStore X25519 |
+|---|---|---|---|
+| API 26 / 31 / 34 default 镜像 | **不可用**（`NoSuchAlgorithmException`） | **可用**（ECDH 双方共享密钥一致，32 字节） | 不可用（测试按 `IfSupported` 语义回退） |
+| MuMu API 35（阶段 0） | 可用 | 未测 | 不可用 |
+
+**修订后的基线（阶段 7/8 必须按此实现）**：
+
+1. **软件身份密钥的 X25519/Ed25519 一律由 APK 自带的 BouncyCastle 提供**，
+   依赖坐标 `org.bouncycastle:bcprov-jdk18on:1.78.1`（已在 `libs.versions.toml` 的
+   `bouncycastle-prov` 中声明）。**不得**依赖 Conscrypt/`AndroidOpenSSL` 是否提供该算法。
+2. **必须持有 provider 实例，而不是用名字 `"BC"`**：Android 平台自带一个名为 `BC` 的旧
+   BouncyCastle 变体，`Security.addProvider(BouncyCastleProvider())` 会因同名被拒绝，
+   于是 `getInstance(alg, "BC")` 落回平台那个**不含 X25519** 的实现。实现须直接引用
+   `BouncyCastleProvider()` 实例传给 `getInstance(alg, provider)`。
+3. **当前依赖范围仍为 `androidTestImplementation`**：本轮只把「验证」做实，未把 bcprov
+   提为生产依赖——因为主源码尚未使用它，提前引入会无谓增大 APK。**阶段 7/8 的第一步**
+   即把该依赖提升为 `implementation` 并落生产实现；在那之前不得声称「APK 已自带 BC」。
+4. 回退条件已由实测取代：原先「若 API 26 上连软件 X25519 都不可用则回退本 ADR」不再适用——
+   软件 X25519 经自带 BC 在三档镜像上均可用；仍待补的是**真机**（Android 8/12/14 物理设备）复核，
+   属环境复核而非依赖风险。

@@ -112,21 +112,62 @@ object CryptoSpike {
     const val SOFTWARE_PROVIDER = "AndroidOpenSSL"
     const val BC_PROVIDER = "BC"
 
+    /**
+     * **APK 自带**的 BouncyCastle provider 实例（bcprov-jdk18on）。
+     *
+     * 为什么必须用实例而不是名字 `"BC"`：Android 平台**自带**一个名为 `BC` 的旧 BouncyCastle 变体，
+     * `Security.addProvider(BouncyCastleProvider())` 会因同名被拒绝，`getInstance(alg, "BC")`
+     * 于是落到平台那个**不含 X25519** 的实现上——这正是 default 镜像上软件 X25519 失败的原因之一。
+     * 直接持有 provider 实例可完全绕开名字冲突。
+     *
+     * 该结论是阶段 3 §0.3 要求固化的「不得依赖系统 provider」的具体落地：
+     * 阶段 7/8 的 X25519/Ed25519 必须走本 provider（或等价的 BC 低层 API），
+     * 而不是依赖 Conscrypt/AndroidKeyStore 是否提供该算法。
+     */
+    val bundledBcProvider: java.security.Provider? by lazy {
+        runCatching { org.bouncycastle.jce.provider.BouncyCastleProvider() }.getOrNull()
+    }
+
+    /** 生成软件 X25519 密钥对：优先自带 BC，回退到系统 provider（Conscrypt 等）。 */
     fun generateSoftwareX25519(): KeyPair {
-        // Conscrypt X25519 不接受 NamedParameterSpec；直接 generateKeyPair()
-        val kpg = KeyPairGenerator.getInstance(ALGO_X25519, SOFTWARE_PROVIDER)
-        return kpg.generateKeyPair()
+        // BC 的 X25519 不接受 NamedParameterSpec；直接 generateKeyPair()
+        bundledBcProvider?.let { provider ->
+            runCatching { KeyPairGenerator.getInstance(ALGO_X25519, provider).generateKeyPair() }
+                .onSuccess { return it }
+        }
+        var last: Exception? = null
+        for (provider in softwareProviders()) {
+            try {
+                return KeyPairGenerator.getInstance(ALGO_X25519, provider).generateKeyPair()
+            } catch (e: Exception) {
+                last = e
+            }
+        }
+        throw NoSuchAlgorithmException("无可用软件 X25519 KeyPairGenerator Provider", last)
     }
 
     fun agree(shared: KeyPair, peerPublic: PublicKey): AgreementResult {
-        val ka = try {
-            KeyAgreement.getInstance(ALGO_X25519, SOFTWARE_PROVIDER)
-        } catch (_: Exception) {
-            KeyAgreement.getInstance(ALGO_X25519, BC_PROVIDER)
+        // 同 generateSoftwareX25519：自带 provider 优先，避免依赖平台是否提供 X25519
+        bundledBcProvider?.let { provider ->
+            runCatching {
+                val ka = KeyAgreement.getInstance(ALGO_X25519, provider)
+                ka.init(shared.private)
+                ka.doPhase(peerPublic, true)
+                AgreementResult(ka.generateSecret(), "${ALGO_X25519}/${ka.provider.name}")
+            }.onSuccess { return it }
         }
-        ka.init(shared.private)
-        ka.doPhase(peerPublic, true)
-        return AgreementResult(ka.generateSecret(), "${ALGO_X25519}/${ka.provider.name}")
+        var last: Exception? = null
+        for (provider in softwareProviders()) {
+            try {
+                val ka = KeyAgreement.getInstance(ALGO_X25519, provider)
+                ka.init(shared.private)
+                ka.doPhase(peerPublic, true)
+                return AgreementResult(ka.generateSecret(), "${ALGO_X25519}/${ka.provider.name}")
+            } catch (e: Exception) {
+                last = e
+            }
+        }
+        throw NoSuchAlgorithmException("无可用 X25519 KeyAgreement Provider", last)
     }
 
     fun generateKeystoreEd25519(): KeyPair {

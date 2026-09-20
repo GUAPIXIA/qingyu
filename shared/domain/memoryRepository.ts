@@ -25,10 +25,6 @@ import type {
   RepositoryTx,
 } from './repositories'
 
-interface EntityRow {
-  envelope: SyncEnvelope
-}
-
 interface Snapshot {
   entities: Map<string, SyncEnvelope>
   journal: JournalEntry[]

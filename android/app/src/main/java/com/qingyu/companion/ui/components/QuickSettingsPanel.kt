@@ -80,6 +80,8 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
     var activeModel by remember { mutableStateOf("") }
     var modelsLoading by remember { mutableStateOf(false) }
     var memory by remember { mutableStateOf<com.qingyu.companion.model.MemoryDto?>(null) }
+    // 会话级叙事模式（v3 列；面板是它的唯一入口）
+    var narrativeMode by remember { mutableStateOf("") }
     var summarizingMemory by remember { mutableStateOf(false) }
     var translationLang by remember { mutableStateOf("") }
 
@@ -99,12 +101,15 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
             val activePs = container.repository.getSessionPreset(sessionId)
             val settings = container.repository.getSettings()
             val mem = container.repository.getSessionMemory(sessionId, characterId)
+            // 会话级叙事模式（v3 列）：必须读出来，否则选择器会永远显示未选中
+            val narrative = container.repository.getSessionNarrativeMode(sessionId)
             lorebooks = lb
             presets = ps
             activeLorebookIds = activeLb.toSet()
             activePresetId = activePs
             activeModel = settings.activeModel
             memory = mem
+            narrativeMode = narrative
             translationLang = settings.translationTargetLang
         }
             .onSuccess { loading = false }
@@ -458,7 +463,57 @@ fun QuickSettingsPanel(sessionId: String, characterId: String? = null, onDismiss
                                         }
                                     }
                                 }
-                                // 自动模式：间隔（卡片行）
+                                Spacer(Modifier.height(6.dp))
+                                // 叙事模式（会话级，v3 列）。空串 = 未设置（装配器回退 immersive）
+                                CardRow(verticalPadding = 10) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            stringResource(R.string.qs_narrative_mode),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = qy.text,
+                                        )
+                                        Text(
+                                            stringResource(R.string.qs_narrative_mode_desc),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = qy.muted,
+                                        )
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf(
+                                            "immersive" to stringResource(R.string.qs_narrative_mode_immersive),
+                                            "omniscient" to stringResource(R.string.qs_narrative_mode_omniscient),
+                                        ).forEach { (mode, label) ->
+                                            val selected = narrativeMode == mode
+                                            Surface(
+                                                onClick = {
+                                                    narrativeMode = mode
+                                                    scope.launch {
+                                                        runCatching {
+                                                            container.repository.patchSessionRuntimeState(
+                                                                sessionId = sessionId,
+                                                                narrativeMode = mode,
+                                                            )
+                                                        }.onFailure { error = it.message ?: saveFailedLabel }
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(50),
+                                                color = if (selected) qy.accentSoft else qy.bg,
+                                                border = if (selected) {
+                                                    androidx.compose.foundation.BorderStroke(1.dp, qy.accent.copy(alpha = 0.6f))
+                                                } else {
+                                                    null
+                                                },
+                                            ) {
+                                                Text(
+                                                    label,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = if (selected) qy.accent else qy.soft,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }                                // 自动模式：间隔（卡片行）
                                 if (mem.memoryMode == "auto") {
                                     Spacer(Modifier.height(6.dp))
                                     CardRow(verticalPadding = 10) {

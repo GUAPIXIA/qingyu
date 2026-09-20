@@ -1,30 +1,33 @@
 package com.qingyu.companion.local.domain
 
-import com.qingyu.companion.network.models.ConnectionProfilePublic
-import com.qingyu.companion.network.models.ModelProvider
-import com.qingyu.companion.network.models.OpenAiCompatibleAdapter
-import com.qingyu.companion.network.models.ModelChatRequest
+import com.qingyu.companion.local.db.LocalCharacterEntity
+import com.qingyu.companion.local.testing.FakeLocalStore
 import com.qingyu.companion.network.models.ChatMessageDto
+import com.qingyu.companion.network.models.ConnectionProfilePublic
+import com.qingyu.companion.network.models.ModelChatRequest
+import com.qingyu.companion.network.models.ModelProvider
 import com.qingyu.companion.network.models.ModelStreamEvent
+import com.qingyu.companion.network.models.OpenAiCompatibleAdapter
 import com.qingyu.companion.security.ConnectionProfileStore
 import com.qingyu.companion.security.InMemorySecretStore
 import com.qingyu.companion.ui.startup.LocalStartupSnapshot
 import com.qingyu.companion.ui.startup.StartupState
 import com.qingyu.companion.ui.startup.decideStartupStateLocal
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class Phase3LocalDomainTest {
 
     @Test
-    fun `local repository journals character put`() {
-        val repo = InMemoryLocalSyncRepository("android-a")
-        repo.putCharacter("c1", "角色A", "desc")
-        assertEquals(1, repo.journalCount("local"))
-        assertTrue(repo.listHeads().contains("character" to "c1"))
-        assertEquals("角色A", repo.getCharacter("c1")?.get("name"))
+    fun `local repository journals character put`() = runBlocking {
+        val store = FakeLocalStore("android-a")
+        store.putCharacter(LocalCharacterEntity(id = "c1", name = "角色A", description = "desc", createdAt = 0, updatedAt = 0))
+        assertEquals(1, store.journalCount("local"))
+        assertTrue(store.headCount() == 1)
+        assertEquals("角色A", store.getCharacter("c1")?.name)
+        assertEquals("1", store.versionVectorOf("character", "c1")["android-a"])
     }
 
     @Test
@@ -54,11 +57,13 @@ class Phase3LocalDomainTest {
                 messages = listOf(ChatMessageDto("user", "你好")),
                 stream = true,
             ),
+            apiKey = "sk-test",
         )
         assertTrue(req.url.startsWith("https://"))
         assertTrue(req.url.endsWith("/chat/completions"))
         assertTrue(req.body.contains("\"stream\":true"))
         assertTrue(req.body.contains("你好"))
+        assertEquals("Bearer sk-test", req.headers["Authorization"])
 
         val chunk = adapter.parseSseLine("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}")
         assertTrue(chunk is ModelStreamEvent.Chunk)
@@ -77,29 +82,43 @@ class Phase3LocalDomainTest {
         val loose = OpenAiCompatibleAdapter(allowHttp = true)
         val httpProfile = ConnectionProfilePublic("p", ModelProvider.Ollama, "http://192.168.1.10:11434/v1", "llama")
         try {
-            strict.buildChatRequest(httpProfile, ModelChatRequest("m", listOf(ChatMessageDto("user", "x"))))
+            strict.buildChatRequest(httpProfile, ModelChatRequest("m", listOf(ChatMessageDto("user", "x"))), null)
             throw AssertionError("should reject http")
         } catch (_: IllegalArgumentException) {
             // expected
         }
-        val ok = loose.buildChatRequest(httpProfile, ModelChatRequest("m", listOf(ChatMessageDto("user", "x"))))
+        val ok = loose.buildChatRequest(httpProfile, ModelChatRequest("m", listOf(ChatMessageDto("user", "x"))), null)
         assertTrue(ok.url.startsWith("http://"))
     }
 
     @Test
     fun `startup local ready without pairing`() {
-        val localReady = decideStartupStateLocal(LocalStartupSnapshot(hasLocalProfile = true))
+        // 本地库已有内容 -> 直接进主界面（不需要任何 PC 连接）
+        val localReady = decideStartupStateLocal(LocalStartupSnapshot(hasLocalDb = true, connectionCount = 0))
         assertEquals(StartupState.LocalReady, localReady)
 
-        val needsSetup = decideStartupStateLocal(LocalStartupSnapshot(hasLocalProfile = false))
+        // 全新安装 -> 本地初始化向导（不是配对页）
+        val needsSetup = decideStartupStateLocal(LocalStartupSnapshot(hasLocalDb = false, connectionCount = 0))
         assertEquals(StartupState.NeedsLocalSetup, needsSetup)
+
+        // 有旧缓存但没有本地库 -> 仍需显式迁移选择
+        val legacy = decideStartupStateLocal(
+            LocalStartupSnapshot(hasLocalDb = false, hasLegacyCache = true, connectionCount = 3),
+        )
+        assertEquals(StartupState.NeedsLocalSetup, legacy)
+
+        // 有 PC 连接但本地库为空：本地优先，仍走本地初始化（连接只影响同步中心）
+        val pairedButNoLocal = decideStartupStateLocal(
+            LocalStartupSnapshot(hasLocalDb = false, connectionCount = 2),
+        )
+        assertEquals(StartupState.NeedsLocalSetup, pairedButNoLocal)
     }
 
     @Test
     fun `canonical hash stable for same payload`() {
         val a = sha256Hex(com.qingyu.companion.domain.contracts.CanonicalJson.encode(mapOf("b" to 1, "a" to 2)))
         val b = sha256Hex(com.qingyu.companion.domain.contracts.CanonicalJson.encode(mapOf("a" to 2, "b" to 1)))
-        // Kotlin LinkedHashMap preserve insert order - CanonicalJson sorts keys
+        // Kotlin LinkedHashMap 保留插入顺序，CanonicalJson 按 key 排序后必须一致
         assertEquals(a, b)
     }
 
@@ -120,9 +139,11 @@ class Phase3LocalDomainTest {
                     com.qingyu.companion.network.models.ChatMessageDto("user", "hi"),
                 ),
             ),
+            apiKey = "sk-ant",
         )
         assertTrue(aReq.url.contains("/v1/messages"))
         assertTrue(aReq.body.contains("\"system\""))
+        assertEquals("sk-ant", aReq.headers["x-api-key"])
         val aChunk = anthropic.parseSseLine(
             "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"He\"}}",
         )
@@ -140,9 +161,11 @@ class Phase3LocalDomainTest {
                 "gemini-pro",
                 listOf(com.qingyu.companion.network.models.ChatMessageDto("user", "你好")),
             ),
+            apiKey = "gk",
         )
         assertTrue(gReq.url.contains("streamGenerateContent"))
         assertTrue(gReq.body.contains("\"contents\""))
+        assertEquals("gk", gReq.headers["x-goog-api-key"])
 
         val ollama = com.qingyu.companion.network.models.OllamaAdapter()
         val oReq = ollama.buildChatRequest(
@@ -156,6 +179,7 @@ class Phase3LocalDomainTest {
                 "llama3",
                 listOf(com.qingyu.companion.network.models.ChatMessageDto("user", "x")),
             ),
+            apiKey = null,
         )
         assertTrue(oReq.url.contains("/api/chat"))
         val oDone = ollama.parseSseLine("{\"content\":\"ok\",\"done\":true}")
@@ -166,6 +190,7 @@ class Phase3LocalDomainTest {
     fun `legacy importer classifies choices without rewriting`() {
         val importer = com.qingyu.companion.local.migration.LegacyCacheImporter()
         val scan = com.qingyu.companion.local.migration.LegacyCacheScan(
+            schemaVersion = 7,
             hasAnyData = true,
             characterCount = 2,
             sessionCount = 3,
@@ -178,5 +203,19 @@ class Phase3LocalDomainTest {
         assertTrue(import.warnings.isNotEmpty())
         val skip = importer.plan(scan, com.qingyu.companion.local.migration.LegacyImportChoice.BackupAndSkip)
         assertEquals(0, skip.importedCharacters)
+
+        // outbox 三分类：已确认对账 / 本地草稿 / 仅诊断
+        assertTrue(
+            importer.classifyOutboxRow("r1", "awaiting_ai", "m-9") is
+                com.qingyu.companion.local.migration.OutboxClassification.Reconciled,
+        )
+        assertTrue(
+            importer.classifyOutboxRow("r2", "queued", null) is
+                com.qingyu.companion.local.migration.OutboxClassification.Draft,
+        )
+        assertTrue(
+            importer.classifyOutboxRow("r3", "completed", null) is
+                com.qingyu.companion.local.migration.OutboxClassification.DiagnosticOnly,
+        )
     }
 }

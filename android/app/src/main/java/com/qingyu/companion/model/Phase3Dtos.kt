@@ -33,6 +33,13 @@ data class UsageRecordDto(
     val inputChars: Int,
     val outputChars: Int,
     val totalChars: Int,
+    /**
+     * 任务类型：`main`（正常聊天）/ `memory`（长记忆总结）/ `translation`（翻译）。
+     *
+     * 安卓侧独有（PC 的用量只来自聊天流，没有这个字段）——因此**必须给默认值**，
+     * 否则解析 PC 返回的记录会因缺字段直接失败。
+     */
+    val taskType: String = "main",
 )
 
 /** 公告（对齐 shared/types.ts Announcement） */

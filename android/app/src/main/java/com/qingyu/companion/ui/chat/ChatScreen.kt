@@ -46,6 +46,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -244,9 +246,10 @@ fun ChatScreen(
                         }
                     }
                 }
-                // 分享整段会话：纯文本/Markdown via Share Sheet
+                // 分享整段会话：纯文本 / Markdown（与 PC 同契约）/ JSON（与 PC 同契约）
                 val shareSessionLabel = stringResource(R.string.chat_share_session)
                 val shareSessionMarkdownLabel = stringResource(R.string.chat_share_session_markdown)
+                val shareSessionJsonLabel = stringResource(R.string.chat_share_session_json)
                 fun shareSession(asMarkdown: Boolean) {
                     val text = ShareUtils.sessionExportText(ui.messages, asMarkdown)
                     if (text.isBlank()) return
@@ -257,6 +260,16 @@ fun ChatScreen(
                     context.startActivity(
                         Intent.createChooser(intent, if (asMarkdown) shareSessionMarkdownLabel else shareSessionLabel)
                     )
+                }
+                // S4-04：JSON 导出与 PC 的 `/export json` 共用同一份规范化投影
+                fun shareSessionJson() {
+                    val text = ShareUtils.sessionExportJson(ui.messages)
+                    if (text.isBlank()) return
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/json"
+                        putExtra(Intent.EXTRA_TEXT, text)
+                    }
+                    context.startActivity(Intent.createChooser(intent, shareSessionJsonLabel))
                 }
                 val messageListState = rememberLazyListState(initialFirstVisibleItemIndex = 0)
                 // 历史消息异步加载完成后明确定位 index 0；时间线保证 index 0 是最新消息。
@@ -306,7 +319,8 @@ fun ChatScreen(
                 ) {
                     val streaming = ui.streaming as? ChatViewModel.Streaming.Generating
                     if (streaming != null && streaming.text.isNotEmpty()) {
-                        item(key = "streaming") {
+                        // 草稿是独立 item：更新它不会触碰任何消息条目（key 计算见 ChatTimelineKeys）
+                        item(key = ChatTimelineKeys.STREAMING_DRAFT) {
                             StreamingBubble(
                                 text = streaming.text,
                                 fontScale = fontScale,
@@ -315,13 +329,7 @@ fun ChatScreen(
                         }
                     }
 
-                    items(filteredTimeline, key = { item ->
-                        when (item) {
-                            is TimelineItem.DateHeader -> "date:${item.label}"
-                            is TimelineItem.Entry -> "${item.message.sessionId}:${item.message.id}"
-                            is TimelineItem.PendingEntry -> "pending:${item.pending.requestId}"
-                        }
-                    }) { item ->
+                    items(filteredTimeline, key = { item -> ChatTimelineKeys.of(item) }) { item ->
                         when (item) {
                             is TimelineItem.DateHeader -> DateHeaderRow(item.label)
 
@@ -615,7 +623,8 @@ fun ChatScreen(
                         }
                         Spacer(Modifier.width(6.dp))
                     }
-                    // 角色名（+ 会话标题小字）
+                    // 角色名（+ 会话标题与数据源/生成状态：阶段 4 S4-06 本地直连标签）
+                    val isGeneratingNow = ui.streaming !is ChatViewModel.Streaming.Idle
                     Column(Modifier.weight(1f)) {
                         Text(
                             ui.characterName.ifBlank { stringResource(R.string.chat_default_title) },
@@ -624,11 +633,17 @@ fun ChatScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (ui.sessionTitle.isNotBlank()) {
+                        val secondary = ui.secondaryLine
+                        if (secondary.isNotBlank()) {
                             Text(
-                                ui.sessionTitle,
+                                secondary,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = qy.muted,
+                                // 生成中与「缺少模型配置」需要被注意到，常态数据源标签保持弱化
+                                color = when {
+                                    isGeneratingNow -> qy.accent
+                                    ui.actionHint != null -> qy.warn
+                                    else -> qy.muted
+                                },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -643,13 +658,40 @@ fun ChatScreen(
                             modifier = Modifier.size(17.dp),
                         )
                     }
-                    IconButton(onClick = { shareSession(false) }, modifier = Modifier.size(34.dp)) {
-                        Icon(
-                            Icons.Filled.Share,
-                            contentDescription = stringResource(R.string.chat_share_session),
-                            tint = qy.soft,
-                            modifier = Modifier.size(17.dp),
-                        )
+                    // S4-04：导出入口必须让三种格式都可达（此前只有纯文本）
+                    var showShareMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showShareMenu = true }, modifier = Modifier.size(34.dp)) {
+                            Icon(
+                                Icons.Filled.Share,
+                                contentDescription = stringResource(R.string.chat_share_session),
+                                tint = qy.soft,
+                                modifier = Modifier.size(17.dp),
+                            )
+                        }
+                        DropdownMenu(expanded = showShareMenu, onDismissRequest = { showShareMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(shareSessionLabel) },
+                                onClick = {
+                                    showShareMenu = false
+                                    shareSession(false)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(shareSessionMarkdownLabel) },
+                                onClick = {
+                                    showShareMenu = false
+                                    shareSession(true)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(shareSessionJsonLabel) },
+                                onClick = {
+                                    showShareMenu = false
+                                    shareSessionJson()
+                                },
+                            )
+                        }
                     }
                     IconButton(
                         onClick = { showClearConfirm = true },

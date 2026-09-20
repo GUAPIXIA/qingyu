@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,6 +92,11 @@ fun CharactersScreen(
     onBack: () -> Unit,
     onOpenCharacterSessions: (characterId: String, characterName: String) -> Unit,
     onOpenChat: (sessionId: String, characterId: String) -> Unit,
+    /**
+     * 阶段 5 S5-01：进入角色管理页。默认空实现，使已验收的只读调用点与既有测试
+     * 不必因为新增入口而改动签名。
+     */
+    onOpenCharacterManager: () -> Unit = {},
 ) {
     val qy = qyColors()
     val container = LocalAppContainer.current
@@ -134,6 +140,16 @@ fun CharactersScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.cd_back),
+                            tint = qy.text,
+                        )
+                    }
+                },
+                actions = {
+                    // 阶段 5 S5-01：只读浏览页保留原样，编辑能力从这个入口进入管理页
+                    IconButton(onClick = onOpenCharacterManager) {
+                        Icon(
+                            Icons.Filled.Settings,
+                            contentDescription = "管理角色",
                             tint = qy.text,
                         )
                     }

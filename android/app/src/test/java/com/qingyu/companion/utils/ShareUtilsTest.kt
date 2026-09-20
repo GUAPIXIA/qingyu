@@ -60,7 +60,28 @@ class ShareUtilsTest {
     @Test
     fun `sessionExportText 按 markdown 开关`() {
         val msgs = listOf(msg("hi"))
+        // 纯文本分支仍是本地格式
         assertEquals(ShareUtils.sessionToPlainText(msgs), ShareUtils.sessionExportText(msgs, false))
-        assertEquals(ShareUtils.sessionToMarkdown(msgs), ShareUtils.sessionExportText(msgs, true))
+        // Markdown 分支已切到与 PC 共用的导出契约：不再等于本地简化格式，
+        // 而是 `# 对话记录` + 角色标签 + 时间 + 转义正文（结构由 fixture 锁定）
+        val markdown = ShareUtils.sessionExportText(msgs, true)
+        assertTrue(markdown.startsWith("# 对话记录\n\n"))
+        assertTrue(markdown.contains("### 🧑 用户 · "))
+        assertTrue(markdown.endsWith("\n\n---\n\n"))
+        // 本地简化格式仍在（供其他用途），但导出不再使用它
+        assertTrue(ShareUtils.sessionToMarkdown(msgs).isNotEmpty())
+        assertTrue(markdown != ShareUtils.sessionToMarkdown(msgs))
+    }
+
+    @Test
+    fun `sessionExportJson 与 PC 的规范键序一致`() {
+        val msgs = listOf(msg("hi"))
+        val json = ShareUtils.sessionExportJson(msgs)
+        // 键序 id → role → content → timestamp；斜杠不转义（org.json 会转义，故不能用它）
+        assertTrue(json.contains("\"id\""))
+        assertTrue(json.indexOf("\"id\"") < json.indexOf("\"role\""))
+        assertTrue(json.indexOf("\"role\"") < json.indexOf("\"content\""))
+        assertTrue(json.indexOf("\"content\"") < json.indexOf("\"timestamp\""))
+        assertTrue(!json.contains("\\/"))
     }
 }

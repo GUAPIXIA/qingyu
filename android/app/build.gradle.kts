@@ -66,7 +66,64 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // 阶段 3：Room migration / 外键 / Repository 契约测试在 JVM 上执行（不依赖模拟器）。
+    // androidTest 仍负责 API 26/31/34 的 Keystore 与网络安全 instrumentation。
+    //
+    // 阶段 5 U-10：本机 SDK 已装 android-26/31/34 的 **aosp x86_64** 镜像，
+    // 因此用 Gradle Managed Devices 声明总方案 §11.1/§11.2 要求的三档设备。
+    // 为什么必须声明在构建里而不是「手点模拟器再 connectedAndroidTest」：
+    // 后者依赖某个人的机器状态，别人和 CI 都无法复现，门禁就会退化成口头承诺。
+    testOptions {
+        managedDevices {
+            localDevices {
+                // API 26（Android 8）：Minikin/Keystore 行为最旧的一档
+                // 设备档位 2026-09-20 由 `Nexus 5` 改为 `Pixel 2`：两者同为 1080x1920 xxhdpi
+                // （所以 Compose 点击坐标那类用例不受影响），差别在硬件档位的存储。
+                // 原档位下**全量 59 条同实例**跑完时，后段的交互走查用例会稳定红在
+                // `SQLiteDiskIOException: disk I/O error (code 522) … PRAGMA journal_mode`
+                // （打开数据库阶段，不是断言失败）；同类单跑与任意两类子集同跑都绿。
+                // 与 api31/api34 对齐到 Pixel 2 后该失败消失（见阶段 5 报告 §3.4），
+                // 因此这不是「换个设备把红灯藏起来」，而是把已被证明不够用的档位换掉，
+                // 并让构建文件与报告里一直写的「三档都是 Pixel 2」对齐。
+                create("pixel2Api26") {
+                    device = "Pixel 2"
+                    apiLevel = 26
+                    systemImageSource = "aosp"
+                }
+                create("pixel2Api31") {
+                    device = "Pixel 2"
+                    apiLevel = 31
+                    systemImageSource = "aosp"
+                }
+                create("pixel2Api34") {
+                    device = "Pixel 2"
+                    apiLevel = 34
+                    systemImageSource = "aosp"
+                }
+            }
+            groups {
+                // 一次跑齐三档：`./gradlew :app:deviceMatrixAndroidTest`
+                create("deviceMatrix") {
+                    targetDevices.add(devices["pixel2Api26"])
+                    targetDevices.add(devices["pixel2Api31"])
+                    targetDevices.add(devices["pixel2Api34"])
+                }
+            }
+        }
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
+
+// S3-01 要求用「保存的历史 schema」做 MigrationTestHelper 校验，
+// 因此把导出的 schemas 目录作为单元测试 assets（只影响测试 APK，不进生产包）。
+android.sourceSets.getByName("test").assets.srcDir("$projectDir/schemas")
+// 阶段 4 S4-05：真机迁移测试同样需要历史 schema（MigrationTestHelper 从 assets 读取）。
+// 这一行同时把「app/schemas 必须提交入库」从提交卫生提升为**测试前置**：
+// 缺少 <version>.json 时迁移测试一定会失败，而不是静默跳过。
+android.sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 
 // Room schema 导出（F-05）：KSP 参数指定 schemas 目录。
 // 每次 version 升级生成 app/schemas/com.qingyu.companion.data.CacheDatabase/<version>.json，
@@ -123,11 +180,39 @@ dependencies {
     implementation(libs.zxing.android.embedded)
 
     testImplementation(libs.junit)
+    // 阶段 5：非 Robolectric 的纯 JVM 单测里 `org.json` 是 android.jar 的**未实现桩**
+    // （调用即抛 "Method ... not mocked"）。规范 payload 现在会在写实体时解析
+    // extensions / canonicalJson 等 JSON 列，因此测试类路径需要真正的 org.json 实现。
+    // 不加这条，阶段 4 的 LocalChatRepository/GenerationUseCase 全套会因此变红。
+    testImplementation("org.json:json:20240303")
+    // 阶段 5：内容管理编解码测试使用 kotlin.test 的断言签名
+    // （assertEquals(expected, actual, message)），消息参数在最后，便于把「哪个字段与 PC 不一致」
+    // 写进断言消息；JUnit 的 assertEquals 把消息放首位，批量改写断言参数顺序更容易出错。
+    testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.test.ext.junit)
+    // 阶段 4 S4-05：迁移测试需要 MigrationTestHelper（真实 SQLite）
+    androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)
     // 阶段0 spike：系统 Provider 无 Ed25519 时用 BC 实现验证（仅测试 APK）
     androidTestImplementation(libs.bouncycastle.prov)
+    // 阶段 5 §11.1：内容管理八条入口的 Compose 交互层走查。BOM 只管 implementation 那条链，
+    // androidTest 必须自己再 platform() 一次，否则 ui-test 的传递依赖会脱离 BOM 版本约束。
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // createComposeRule 需要一个承载 ComposeHost 的 Activity，由 ui-test-manifest 在 debug 变体里注入。
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+// 阶段 4：文案守卫测试直接读取 res/values/strings.xml（Gradle 不知道这个依赖）。
+// 不声明输入的话，只改资源时该测试会被判定 UP-TO-DATE 而**静默跳过**——
+// 「守卫看起来在跑，其实没跑」比没有守卫更危险。这里显式声明文件输入。
+tasks.withType<Test>().configureEach {
+    // 声明输入即可：Gradle 会在 strings.xml 变化时让测试重跑，其余情况保持增量。
+    inputs.file("src/main/res/values/strings.xml").withPropertyName("stringsXmlForCopyGuard")
 }

@@ -35,7 +35,7 @@
     <string name="msg_image_load_failed">无法加载图片</string>
     <string name="msg_enable_long_memory">启用长记忆</string>
     <string name="msg_current">当前</string>
-    <string name="msg_delete_session_confirm">确定删除「%1$s」？此操作会同步删除 PC 端数据。</string>
+    <string name="msg_delete_session_confirm">确定删除「%1$s」？此操作会删除本机上的该会话及其全部消息，且不可恢复。</string>
     <string name="msg_rename_hint">标题</string>
     <string name="msg_unnamed_session">未命名会话</string>
     <string name="msg_preview_empty">（无可见正文）</string>
@@ -136,6 +136,10 @@
     <string name="sessions_empty_title">暂无会话</string>
     <string name="sessions_empty_desc_online">在 PC 端开始对话，或检查连接状态</string>
     <string name="sessions_empty_desc_offline">未连接 PC，且无本地缓存</string>
+    <!-- 阶段 4 S4-06：本地模式空态。本地可独立运行，禁止出现「去 PC 端开始」这类旧伴侣模式回退入口 -->
+    <string name="sessions_empty_desc_local">本机还没有会话。点「+」选择角色，即可在本机直接开始对话</string>
+    <string name="action_new_session">新建会话</string>
+    <string name="connection_chip_local">本地模式</string>
     <string name="sessions_search_empty">无匹配会话</string>
     <!-- 设置页 E-03：分区标题与行文案 -->
     <string name="settings_title">设置</string>
@@ -275,7 +279,7 @@
     <string name="groups_select_members">选择成员（至少 1 个）</string>
     <!-- 用量页（UsageScreen） -->
     <string name="usage_title">用量统计</string>
-    <string name="usage_empty">暂无用量数据（PC 侧未开启用量统计或未连接）</string>
+    <string name="usage_empty">暂无用量数据（完成一次对话后会出现）</string>
     <string name="usage_today">今日</string>
     <string name="usage_total">累计</string>
     <string name="usage_recent_records">最近记录</string>
@@ -364,15 +368,21 @@
     <string name="chat_swipe_fmt">%1$d/%2$d</string>
     <string name="chat_tts_synthesizing">正在合成语音…（点击停止）</string>
     <string name="chat_tts_playing">正在朗读…（点击停止）</string>
-    <string name="chat_tts_error">朗读失败（PC 侧未实现 TTS 或消息不可合成）</string>
+    <string name="chat_tts_error">朗读失败（当前连接未提供语音合成或消息不可合成）</string>
     <string name="chat_share_session">分享会话</string>
     <string name="chat_share_session_markdown">分享会话 Markdown</string>
+    <string name="chat_share_session_json">分享会话 JSON</string>
     <string name="chat_share_message">分享消息</string>
-    <string name="chat_clear_confirm_desc">清空此会话的所有消息并删除会话，此操作会同步删除 PC 端数据，且不可恢复。</string>
+    <string name="chat_clear_confirm_desc">清空此会话的所有消息并删除会话，此操作不可恢复。</string>
     <!-- 上下文预警（E-06 自适应） -->
-    <string name="chat_context_used_fmt" tools:ignore="PluralsCandidate">上下文已使用 %1$d%%（%2$d/%3$d token）</string>
+    <!--
+      S4-02：未接入精确 tokenizer 时，所有 token 数均为启发式估算，界面必须如实标注
+      （与 PC 的「提示词占用（估算）」同一约定）。
+    -->
+    <string name="chat_context_used_fmt" tools:ignore="PluralsCandidate">上下文已使用 %1$d%%（%2$d/%3$d token，估算）</string>
     <string name="chat_context_trimming">，将裁剪早期历史</string>
     <string name="chat_context_near_limit">，接近上限</string>
+    <string name="chat_token_estimated">估算</string>
     <!-- 滚动与搜索（E-05） -->
     <string name="chat_scroll_to_latest">回到最新</string>
     <string name="chat_new_messages_fmt">%1$d 条新消息</string>
@@ -395,7 +405,7 @@
     <string name="markdown_copied">已复制 ✓</string>
     <!-- 快捷设置面板（QuickSettingsPanel / QuickSettingsRows） -->
     <string name="qs_title">对话设置</string>
-    <string name="qs_subtitle">设置会同步到 PC 端，下次对话生效</string>
+    <string name="qs_subtitle">设置保存在本机，下次对话生效</string>
     <string name="qs_section_lorebook">世界书</string>
     <string name="qs_section_preset">预设</string>
     <string name="qs_section_model">模型</string>
@@ -409,7 +419,7 @@
     <string name="qs_preset_empty">暂无预设</string>
     <string name="qs_preset_params_fmt" tools:ignore="PluralsCandidate">温度 %1$s · TopP %2$s · %3$d tokens</string>
     <string name="qs_translate_lang_default">中文</string>
-    <string name="qs_model_empty_fmt">模型列表加载失败（请确认 PC 端已配置 API 连接）</string>
+    <string name="qs_model_empty_fmt">模型列表为空（请先在本机添加 API 连接档案）</string>
     <string name="qs_model_unset">未设置</string>
     <string name="qs_current_preset">当前预设</string>
     <string name="qs_temp_top_p">温度 / TopP</string>
@@ -434,4 +444,8 @@
     <string name="qs_summarize_failed">总结失败</string>
     <string name="qs_close">关闭</string>
     <string name="qs_save">保存</string>
+    <string name="qs_narrative_mode">叙事模式</string>
+    <string name="qs_narrative_mode_desc">代入式：以角色视角叙述；全局叙事：加入旁白与场景描写</string>
+    <string name="qs_narrative_mode_immersive">代入式</string>
+    <string name="qs_narrative_mode_omniscient">全局叙事</string>
 </resources>

@@ -42,35 +42,41 @@ object AppNotificationHelper {
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= 28) {
-            if (mgr.getNotificationChannelGroup(GROUP_ID) == null) {
-                mgr.createNotificationChannelGroup(NotificationChannelGroup(GROUP_ID, GROUP_NAME))
-            }
+        // 阶段 3 门禁（API 26/31/34 instrumentation）实测：API 26/27 上
+        // NotificationChannel.setGroup 引用不存在的组会让 createNotificationChannel 抛
+        // IllegalArgumentException（"NotificationChannelGroup doesn't exist"），
+        // 导致 CompanionApp.onCreate 崩溃。渠道组 API 自 28 起才有，
+        // 因此 26/27 必须完全跳过组：既不建组也不给渠道赋组。
+        val groupSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+        if (groupSupported && mgr.getNotificationChannelGroup(GROUP_ID) == null) {
+            mgr.createNotificationChannelGroup(NotificationChannelGroup(GROUP_ID, GROUP_NAME))
         }
         val channels = listOf(
             NotificationChannel(CHANNEL_GENERATION, "AI 生成", NotificationManager.IMPORTANCE_LOW).apply {
                 description = "AI 回复完成（可点击回到会话）"
-                group = GROUP_ID
+                if (groupSupported) group = GROUP_ID
                 setShowBadge(false)
             },
             NotificationChannel(CHANNEL_MEMORY, "长记忆", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "长记忆总结完成/失败"
-                group = GROUP_ID
+                if (groupSupported) group = GROUP_ID
                 setShowBadge(false)
             },
             NotificationChannel(CHANNEL_CONNECTION, "连接", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "连接失效，需要重新配对"
-                group = GROUP_ID
+                if (groupSupported) group = GROUP_ID
                 setShowBadge(false)
             },
             NotificationChannel(CHANNEL_SECURITY, "安全确认", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "PC 端需要手机确认的安全事件"
-                group = GROUP_ID
+                if (groupSupported) group = GROUP_ID
                 setShowBadge(true)
             },
         )
         channels.forEach { ch ->
-            if (mgr.getNotificationChannel(ch.id) == null) mgr.createNotificationChannel(ch)
+            runCatching {
+                if (mgr.getNotificationChannel(ch.id) == null) mgr.createNotificationChannel(ch)
+            }
         }
     }
 

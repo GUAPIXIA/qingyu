@@ -44,6 +44,13 @@ class SessionsViewModel(
         val connection: WsClient.State = WsClient.State.DISCONNECTED,
         /** 排序模式：updated = 按时间（最近优先）｜name = 按角色名称 */
         val sortMode: String = "updated",
+        /**
+         * 阶段 4 S4-06：单聊数据源是否为本地权威库。
+         *
+         * 为什么必须有这个标志：本地模式下 `connection == DISCONNECTED`（未连 PC）**不代表不能用**，
+         * 沿用旧文案会出现「在 PC 端开始对话」这种把用户赶回旧伴侣模式的回退入口——S4-06 明确禁止。
+         */
+        val localMode: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -62,6 +69,13 @@ class SessionsViewModel(
         viewModelScope.launch {
             repository.connectionState.collect { state ->
                 _ui.update { it.copy(connection = state) }
+            }
+        }
+        viewModelScope.launch {
+            // 阶段 4 S4-06：数据源状态（本地直连 / PC 远程），决定空态与状态指示的文案
+            (repository as? com.qingyu.companion.data.local.LocalChatRepository)?.refreshDataSourceStatus()
+            repository.dataSourceStatus.collect { status ->
+                _ui.update { it.copy(localMode = status.local) }
             }
         }
         viewModelScope.launch {

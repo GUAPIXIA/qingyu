@@ -17,6 +17,11 @@ import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.ui.notification.NotificationDeepLink
 import com.qingyu.companion.ui.announcements.AnnouncementsScreen
 import com.qingyu.companion.ui.characters.CharactersScreen
+import com.qingyu.companion.ui.characters.CharacterManagerScreen
+import com.qingyu.companion.ui.content.ContentHubScreen
+import com.qingyu.companion.ui.presets.PresetsScreen
+import com.qingyu.companion.ui.personas.PersonasScreen
+import com.qingyu.companion.ui.regex.RegexScreen
 import com.qingyu.companion.ui.chat.ChatScreen
 import com.qingyu.companion.ui.groups.GroupChatScreen
 import com.qingyu.companion.ui.groups.GroupsScreen
@@ -24,8 +29,10 @@ import com.qingyu.companion.ui.pairing.PairingScreen
 import com.qingyu.companion.ui.sessions.CharacterSessionsScreen
 import com.qingyu.companion.ui.sessions.SessionsScreen
 import com.qingyu.companion.ui.settings.SettingsScreen
+import com.qingyu.companion.ui.settings.connection.ConnectionProfilesScreen
 import com.qingyu.companion.ui.shell.MainShell
 import com.qingyu.companion.ui.shell.MainShellPolicy
+import com.qingyu.companion.ui.startup.LocalSetupScreen
 import com.qingyu.companion.ui.startup.StartupConnectionPickerScreen
 import com.qingyu.companion.ui.startup.StartupScreen
 import com.qingyu.companion.ui.usage.UsageScreen
@@ -71,8 +78,6 @@ fun CompanionNavHost(
         when (route) {
             is NotificationRoute.Chat ->
                 navController.navigate(Routes.chat(route.sessionId, "")) { launchSingleTop = true }
-            NotificationRoute.ConnectionPicker ->
-                navController.navigate(Routes.CONNECTION_PICKER) { launchSingleTop = true }
             NotificationRoute.Pairing ->
                 navController.navigate(Routes.PAIRING) { launchSingleTop = true }
         }
@@ -81,30 +86,41 @@ fun CompanionNavHost(
     NavHost(navController = navController, startDestination = Routes.STARTUP) {
         composable(Routes.STARTUP) {
             StartupScreen(
-                onNeedsPairing = {
-                    startupDecision = StartupDecision.NEEDS_PAIRING
-                    navController.navigate(Routes.PAIRING) {
-                        popUpTo(Routes.STARTUP) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
-                onReady = { needsRepair ->
-                    // needsRepair：active token 解密失败，以 CONNECTION_PICKER 作为"需要修复连接"入口（A-03 简化）
+                // 阶段 4 完成定义：启动路径上**不得**存在旧伴侣模式回退入口。
+                // 此前这里还有 onNeedsPairing → PAIRING、onReadyWithoutActive / needsRepair
+                // → CONNECTION_PICKER 三条自动跳转；在本地优先决策落地后它们永远不会被触发
+                // （本地决策只会给出 LocalReady / NeedsLocalSetup），属于死掉的回退入口，已删除。
+                // PC 连接改为仅由用户主动发起：设置/会话/角色页的 onOpenPairing。
+                onReady = {
                     startupDecision = StartupDecision.READY
-                    val target = if (needsRepair) Routes.CONNECTION_PICKER else mainEntryRoute
-                    navController.navigate(target) {
+                    navController.navigate(mainEntryRoute) {
                         popUpTo(Routes.STARTUP) { inclusive = true }
                         launchSingleTop = true
                     }
                 },
-                onReadyWithoutActive = {
-                    startupDecision = StartupDecision.READY_WITHOUT_ACTIVE
-                    navController.navigate(Routes.CONNECTION_PICKER) {
+                onNeedsLocalSetup = {
+                    // 阶段 3 S3-07：首次启动/检测到旧缓存 -> 本地初始化向导（不再强制配对）
+                    startupDecision = StartupDecision.READY
+                    navController.navigate(Routes.LOCAL_SETUP) {
                         popUpTo(Routes.STARTUP) { inclusive = true }
                         launchSingleTop = true
                     }
                 },
             )
+        }
+        composable(Routes.LOCAL_SETUP) {
+            LocalSetupScreen(
+                onDone = {
+                    navController.navigate(mainEntryRoute) {
+                        popUpTo(Routes.LOCAL_SETUP) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onAborted = { /* 停留在本页，由用户重新选择 */ },
+            )
+        }
+        composable(Routes.CONNECTION_PROFILES) {
+            ConnectionProfilesScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.CONNECTION_PICKER) {
             StartupConnectionPickerScreen(
@@ -185,7 +201,53 @@ fun CompanionNavHost(
                 onOpenChat = { sessionId, characterId ->
                     navController.navigate(Routes.chat(sessionId, characterId))
                 },
+                onOpenCharacterManager = { navController.navigate(Routes.CHARACTER_MANAGER) },
             )
+        }
+        composable(Routes.CHARACTER_MANAGER) {
+            CharacterManagerScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.CONTENT_HUB) {
+            ContentHubScreen(
+                onBack = { navController.popBackStack() },
+                onOpenCharacters = { navController.navigate(Routes.CHARACTER_MANAGER) },
+                onOpenRegex = { navController.navigate(Routes.REGEX) },
+                onOpenPersonas = { navController.navigate(Routes.PERSONAS) },
+                onOpenPresets = { navController.navigate(Routes.PRESETS) },
+                onOpenLorebooks = { navController.navigate(Routes.LOREBOOKS) },
+                onOpenQuickReplies = { navController.navigate(Routes.QUICK_REPLIES) },
+                onOpenUsageInsights = { navController.navigate(Routes.USAGE_INSIGHTS) },
+                onOpenBackup = { navController.navigate(Routes.BACKUP) },
+            )
+        }
+        composable(Routes.BACKUP) {
+            com.qingyu.companion.ui.backup.BackupScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Routes.LOREBOOKS) {
+            com.qingyu.companion.ui.lorebooks.LorebookListScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Routes.QUICK_REPLIES) {
+            com.qingyu.companion.ui.quickreplies.QuickRepliesScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Routes.USAGE_INSIGHTS) {
+            com.qingyu.companion.ui.usage.UsageInsightsScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Routes.REGEX) {
+            RegexScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.PRESETS) {
+            PresetsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.PERSONAS) {
+            PersonasScreen(onBack = { navController.popBackStack() })
         }
         composable(
             route = Routes.CHARACTER_SESSIONS,
@@ -209,6 +271,7 @@ fun CompanionNavHost(
                 onOpenPairing = { navController.navigate(Routes.PAIRING) },
                 onOpenUsage = { navController.navigate(Routes.USAGE) },
                 onOpenAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
+                onOpenContentHub = { navController.navigate(Routes.CONTENT_HUB) },
             )
         }
         composable(Routes.USAGE) {

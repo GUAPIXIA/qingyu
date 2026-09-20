@@ -9,6 +9,10 @@ export interface MigrationStep {
   from: number
   to: number
   entityType: string
+  // 迁移注册表对任意 payload 通用，这里的边界类型只能是 any 而不是 unknown：
+  // 各实体注册的 `(payload: X) => X` 在 strictFunctionTypes 下无法赋给
+  // `(payload: unknown) => unknown`（参数逆变），改成 unknown 会让每一处 register() 编译失败。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   migrate: (payload: any) => any
 }
 
@@ -40,6 +44,8 @@ export class MigrationRegistry {
     if (fromVersion === targetVersion) return payload
     const list = this.steps.get(entityType) ?? []
     let current = fromVersion
+    // 同上：payload 在逐步迁移期间是「未知形状的中间值」，出口处已 `as T` 收敛
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let value: any = payload
     while (current < targetVersion) {
       const step = list.find((s) => s.from === current)

@@ -35,6 +35,12 @@ import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.data.ThemeMode
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Divider
+import androidx.compose.ui.Alignment
 import com.qingyu.companion.ui.settings.sections.AboutDiagnosticsSection
 import com.qingyu.companion.ui.settings.sections.ConnectionDataSection
 import com.qingyu.companion.ui.settings.sections.LocalAppearanceSection
@@ -55,6 +61,8 @@ fun SettingsScreen(
     onOpenUsage: () -> Unit = {},
     onOpenAnnouncements: () -> Unit = {},
     onOpenChat: (() -> Unit)? = null,
+    /** 阶段 5：内容管理入口（默认不可点，兼容既有调用点与测试） */
+    onOpenContentHub: () -> Unit = {},
 ) {
     val qy = qyColors()
     val context = LocalContext.current
@@ -143,6 +151,14 @@ fun SettingsScreen(
 
                 ConnectionDataSection(vm = vm, ui = ui, onOpenPairing = onOpenPairing)
 
+                ContentToolsEntry(onOpenContentHub = onOpenContentHub)
+
+                // 阶段 5 S5-07：可同步的公开设置项 + 明确不参与同步的设备级设置分区。
+                // 放在内容管理入口之后，是为了让「这一项会不会同步出去」在页面上的位置就能对上。
+                com.qingyu.companion.ui.settings.sections.ContentSettingsSection(
+                    store = container.localSyncRepository,
+                )
+
                 AboutDiagnosticsSection(vm = vm, ui = ui, onOpenUsage = onOpenUsage, onOpenAnnouncements = onOpenAnnouncements)
 
                 ui.message?.let { message ->
@@ -169,4 +185,28 @@ internal fun openSystemNotificationSettings(context: Context) {
         }
     }
     context.startActivity(intent)
+}
+
+@Composable
+private fun ContentToolsEntry(onOpenContentHub: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenContentHub)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("内容管理", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "角色 / 世界书 / 预设 / 人设 / 正则 / 快捷回复 / 备份",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
+        Divider()
+    }
 }
