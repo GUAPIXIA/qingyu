@@ -996,6 +996,70 @@ PC 那边一直是对的：`shared/contracts/sync-envelope.ts#makeEnvelope` 明�
 
 **新增用例（1 条，但覆盖 10 类实体 + 媒体）**：`BackupFullKindRoundTripTest.everyEntityKindAndMediaSurvivesTheRoundTrip`。
 
+### 2.28 阶段 6 前置审计：逐条查「开工要撞上什么」
+
+目标的第二半句是「达到可实施阶段 6 的水准」，所以本轮把它当**可验证命题**查了一遍——
+按阶段 6 文档的七个任务逐条核对依赖，而不是凭印象说「差不多了」。结论如下（都能落到文件/命令上）：
+
+| S6 任务 | 阶段 5 侧的依赖 | 现状 |
+|---|---|---|
+| **S6-01 群聊核心** | 群实体 + payload（§2.24 已对齐）；**群调度 fixture** | **两处未就绪**：① 实体/载荷形状未定——PC 把群会话/群消息写在 `session`/`message` 的**同一个实体类型**下却用另一套 payload（**D-11**），"群消息是不是独立实体类型"没定就不能开工对齐；② `shared/fixtures/cross-platform/` 下只有 `baseline`/`chat-core`/`content-io`/`sync-payload` **四组，没有任何群调度 fixture**，而 S6-01 要求「对同一 fixture 产生相同发言计划与上下文」——PC 侧只有 electron 的 `groupContext.test.ts`/`groupCas.test.ts`，那是**单端断言、不是跨语言 oracle** |
+| **S6-02 附件与识图** | `MediaImportGate` ✓（先解码验证后落盘）、`local_media_manifests` 表 ✓、`putMediaManifest` ✓ | **部分就绪**：管线在，但 `putMediaManifest` **没有任何生产调用者**（§2.27 记录），所以 manifest 表恒空；且「媒体归属谁」（owner 语义）是 S6-02 自己要定的，并与 **D-12**（PC 尚无 `media_manifest` 落点）绑定 |
+| **S6-03 TTS** | secret store ✓ | **绿地**——仓里没有任何 TTS 代码，符合「阶段 6 才做」的分工 |
+| **S6-04 生图 / ComfyUI** | 网络请求与模型适配层 ✓ | **绿地**（同上） |
+| **S6-05 语义检索** | `ChatEmbeddingPolicy`/`ChatLorebookEmbedding`/`ChatVector`（纯函数 + fixture 锁定）✓、`ChatLorebookChannels`（通道可用性单一口径，§2.21）✓、`Entry.retrieval`（§2.21）✓ | **就绪**——接缝齐备，翻通道常量时 `ChatLorebookChannelsTest` 会变红逼着同步改口径；开工前先定 **D-9** |
+| **S6-06 MCP** | 无 | **绿地**；`mcp_public_config` 在 Android 只有类型常量（无表/无 DAO/无 payload，§7 已记） |
+| **S6-07 公告 / 更新 / 诊断** | 公告 UI ✓、版本检查 ✓ | **本轮修了一半**：`listAnnouncements` 此前**直接返回空页**（而紧挨着的注释就写着「不得静默返回空值」，隔壁 `fetchVersionInfo` 守了、它没守），现已改为 `notMigrated`。**可见性仍未闭环**：`unsupportedNotice` 目前只有 `ChatViewModel` 消费，公告屏/诊断区看不到这句文案——需把提示接进对应 VM |
+
+**结论（说准，别读成「阶段 6 还开不了工」）**：阶段 6 的**功能面本来就是绿地**，这符合计划分工，
+它的实现并不依赖上面任何一项。真正卡住的是**「要对齐什么」**：
+**D-11** 决定实体与载荷形状（群聊第一步就撞上）、**群调度 fixture 尚不存在**、
+**D-12** 决定媒体与记忆的实体模型。所以准确的说法是：
+**阶段 6 可以先做「绿地」部分（TTS/生图/MCP/向量），但 S6-01 群聊与 S6-02 媒体必须先要这两个决策与一份群调度 fixture。**
+
+### 2.29 `.gitignore` 的裸 `data/` 让 9 个**源文件从未入库**（新克隆编译不过）
+
+**怎么发现的**：本轮改完 `LocalChatRepository.listAnnouncements` 后 `git status` **没有列出这个文件**——
+一次「改了却没人看见」的异常。查下去：
+
+```
+$ git check-ignore -v android/app/src/main/java/com/qingyu/companion/data/local/LocalChatRepository.kt
+.gitignore:102:data/   android/.../companion/data/local/LocalChatRepository.kt
+```
+
+`.gitignore` 第 102 行的**裸目录名 `data/`**（本意是封「应用运行时数据目录」）会匹配**任意深度**的同名目录，
+于是 `android/app/src/main/java/com/qingyu/companion/data/` 这个**源码包**也被一起忽略了。
+实测被吞掉的 **9 个 .kt 文件**（`git ls-files --others --ignored --exclude-standard`）：
+
+| 类别 | 文件 |
+|---|---|
+| **生产代码（2）** | `data/ContentDraftStore.kt`、`data/local/LocalChatRepository.kt` |
+| 测试（7） | `data/ContentDraftStoreTest.kt`、`data/OutboxSchemaV7Test.kt`、`data/local/{LocalChatRepositoryTest,LocalQuickSettingsTest,LocalTranslationTest,LocalUsageDiagnosticsTest}.kt`、`local/data/LocalDatabaseRoomTest.kt` |
+
+**为什么这是发布级问题**：`LocalChatRepository.kt` 与 `ContentDraftStore.kt` 是**被 AppContainer 与多个
+ViewModel 依赖的生产代码**——仓库里没有它们，**任何新克隆都编译不过**。也就是说：
+此前所有「门禁全绿」都是**只对这台机器成立**（本机磁盘上有文件，git 里没有），
+阶段 3/4/5 报告里那句「golden 不在仓库里，门禁就只对某台机器成立」在这里以更严重的形式复现了。
+历史成因也对得上：`git add -A`（而不是 `git add -f`）会**静默跳过**被忽略的文件，
+所以这些文件在随后的提交里一次都没被带上，而且**不会有任何提示**。
+
+**修法**：
+1. `.gitignore` 把裸 `data/` 换成**根锚定 + 显式路径**：`/data/` 与 `/server/app/data/`
+   （服务端那个目录是 SQLite 运行时库 `tavern.db`，必须继续忽略——实测它仍被 `server/.gitignore:8: app/data/` 挡住）；
+2. 9 个源文件**全部入库**；
+3. 在 `.gitignore` 原地写下这个坑的经过与「必须根锚定或写显式路径」的规则。
+
+**给下一个人的检查命令**（应当进推送前门禁；本轮先写进备忘）：
+```powershell
+git ls-files --others --ignored --exclude-standard |
+  Select-String '\.(kt|ts|tsx|java|json|toml)$' |
+  Where-Object { $_ -notmatch '^node_modules/|^release-v2/|^\.tmp-archive/|^合并前备份|^output/|^\.qa' }
+# 期望：除 IDE/工具目录（.idea/、.mimosa/、local.properties、app/data/）外**没有输出**
+```
+
+**这一条为什么排在本轮最前**：它不是「功能缺一点」，而是**仓库不自洽**——
+在没有这 9 个文件的机器上，本阶段的任何门禁都跑不起来，更谈不上「可实施阶段 6」。
+
 ### 2.6 迁移
 
 `MIGRATION_3_4` 全部是加列/加表/加索引，无重建、无 destructive fallback；新列都带 DEFAULT。
@@ -1080,6 +1144,9 @@ PC 那边一直是对的：`shared/contracts/sync-envelope.ts#makeEnvelope` 明�
 | 设备（U-14 补齐后） | API 31 经典 AVD **59/0**（1m12s，XML 时间戳为本次） | api26/api34 本轮未复跑 |
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.27 改动后） | **1110 通过 / 0 失败 / 0 跳过 / 142 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1109；**+1 条**（`BackupFullKindRoundTripTest`，覆盖 10 类实体 + 媒体）。改了生产代码（媒体递归收集 + 消息字段表补齐），故设备复跑 |
 | 设备（§2.27 改动后） | API 31 经典 AVD **59/0**（1m8s） | 备份/媒体相关类在套件内，含 `BackupRestoreFailureInstrumentedTest` 4 条 |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.28 改动后） | **1110 通过 / 0 失败 / 0 跳过 / 142 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 条数不变（`listAnnouncements` 改为 `notMigrated` 只改实现，`ContentWiringAuditTest` 里把「公告」加进既有断言） |
+| 设备（§2.28 改动后） | API 31 经典 AVD **59/0**（1m12s） | |
+| `.gitignore` 修复（§2.29） | **9 个源文件入库**；`git ls-files --others --ignored --exclude-standard` 下 `android/app/src` 的 `.kt` **清零**；`server/app/data/tavern.db` 仍被忽略 | 这一条**不改代码**，但它是「新克隆能否编译」的前提——见 §2.29 的检查命令 |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`

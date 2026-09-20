@@ -99,7 +99,14 @@ relay-server/dist/
 
 # === 隐私/凭据防误提交（2026-09-13） ===
 # 应用运行时凭据与诊断（实际常落在 userData；仓库相对路径一并封死）
-data/
+#
+# ⚠️ 这里**必须根锚定或写显式路径**，不能写成裸的 `data/`：
+# 裸目录名会匹配**任意深度**的同名目录，于是
+# `android/app/src/main/java/com/qingyu/companion/data/` 这类**源码包**也被一起忽略——
+# 2026-09-20 实测有 9 个 .kt 源文件（含生产代码 `LocalChatRepository.kt`、`ContentDraftStore.kt`）
+# 因此**从未入库**，新克隆根本编译不过。现在只封真正需要封的两个运行时目录。
+/data/
+/server/app/data/
 **/credentials.json
 **/generation-observations.jsonl
 **/key-file.txt

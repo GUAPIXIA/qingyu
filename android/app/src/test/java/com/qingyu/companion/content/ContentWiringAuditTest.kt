@@ -228,9 +228,10 @@ class ContentWiringAuditTest {
             repository.contains("private fun <T> notMigrated(") &&
                 repository.contains("unsupported.value ="),
         )
-        for (capability in listOf("群聊列表", "群聊 AI 回复", "群聊成员添加", "群聊翻译")) {
+        for (capability in listOf("群聊列表", "群聊 AI 回复", "群聊成员添加", "群聊翻译", "公告")) {
             assertTrue(
-                "群聊能力「$capability」在本地模式下必须显式走 notMigrated（属阶段 6 §S6-01）",
+                "能力「$capability」在本地模式下必须显式走 notMigrated（属阶段 6 §S6-01/S6-07），" +
+                    "静默返回空值会让用户分不清「真的没有」和「还没做」",
                 repository.contains("notMigrated(\"$capability\""),
             )
         }
