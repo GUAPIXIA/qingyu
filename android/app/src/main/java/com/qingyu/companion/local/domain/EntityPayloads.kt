@@ -1,6 +1,7 @@
 package com.qingyu.companion.local.domain
 
 import com.qingyu.companion.local.db.LocalCharacterEntity
+import com.qingyu.companion.local.db.LocalGroupEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
 import com.qingyu.companion.local.db.LocalLorebookMappingTemplateEntity
 import com.qingyu.companion.local.db.LocalMessageEntity
@@ -305,6 +306,26 @@ object EntityPayloads {
         "personaId" to row.personaId,
         "lorebookIds" to (stringArray(row.lorebookIdsJson, Int.MAX_VALUE) ?: emptyList()),
         "narrativeMode" to row.narrativeMode.takeIf { it.isNotBlank() },
+    )
+
+    /**
+     * 群聊实体 payload —— 对齐 `electron/ipc/group.ts#groupEntityPayload`。
+     *
+     * message/session 之后发现的**第三处**同类缺陷：Android 下发 `characterIdsJson`
+     * （Room 列名 + 字符串），而 PC 用的是契约键 `memberIds` 的**数组**，并且要带
+     * `createdAt`/`updatedAt`——这两键本机此前一个都没发。
+     *
+     * 群的调度参数（`mode`/`memoryEnabled`/`avatarPath`）PC 的 payload 里**没有**，
+     * 所以本机也不发：这是**当前契约的口径，不是遗漏**（要同步得先改契约）。
+     * 顺带记一句：PC 自己的 `chatMode`/`maxRounds`/`speakerInterval`/`presetId` 同样没下发，
+     * 也就是说「群的调度方式目前不参与同步」是两端的共同现状，不是单边缺陷。
+     */
+    fun groupPayload(row: LocalGroupEntity): Map<String, Any?> = linkedMapOf(
+        "name" to row.name,
+        // 不截断：PC 是 `memberIds ?? []` 原样透传，单边截断会让成员多的群哈希不同
+        "memberIds" to (stringArray(row.characterIdsJson, Int.MAX_VALUE) ?: emptyList()),
+        "createdAt" to row.createdAt,
+        "updatedAt" to row.updatedAt,
     )
 
     private const val MAX_TAGS = 64

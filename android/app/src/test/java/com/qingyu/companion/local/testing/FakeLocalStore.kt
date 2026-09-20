@@ -644,13 +644,7 @@ class FakeLocalStore(
         journal(
             "group",
             row.id,
-            mapOf(
-                "name" to row.name,
-                "mode" to row.mode,
-                "characterIdsJson" to row.characterIdsJson,
-                "memoryEnabled" to row.memoryEnabled,
-                "avatarPath" to row.avatarPath,
-            ),
+            EntityPayloads.groupPayload(row),
             Origin.Local,
         )
         upsertList(groups, row) { it.id }

@@ -15,8 +15,15 @@ import { commitThroughDomain, type DomainWriteFile } from '../domain/syncDomainS
 
 const log = createLogger('group')
 
-/** 群聊实体的规范 payload */
-function groupEntityPayload(group: GroupChat): Record<string, unknown> {
+/**
+ * 群聊实体的规范 payload
+ *
+ * 为可测性加 `export`（**不改任何行为**）：跨端 sync-payload golden 直接以这个函数为 oracle。
+ * 注意它是**稀疏白名单**：只发 `name`/`memberIds`/`createdAt`/`updatedAt`，
+ * 群聊的调度参数（`chatMode`/`maxRounds`/`speakerInterval`/`presetId`/…）两端都**没有**下发
+ * ——这是当前契约的口径，不是遗漏（要同步得先改契约）。
+ */
+export function groupEntityPayload(group: GroupChat): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     name: group.name,
     memberIds: group.memberIds ?? [],

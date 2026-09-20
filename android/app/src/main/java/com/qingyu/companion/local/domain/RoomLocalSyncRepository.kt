@@ -656,15 +656,7 @@ class RoomLocalSyncRepository(
             "group",
             row.id,
             Origin.Local,
-            payload = {
-                mapOf(
-                    "name" to row.name,
-                    "mode" to row.mode,
-                    "characterIdsJson" to row.characterIdsJson,
-                    "memoryEnabled" to row.memoryEnabled,
-                    "avatarPath" to row.avatarPath,
-                )
-            },
+            payload = { EntityPayloads.groupPayload(row) },
         ) {
             db.groupDao().upsert(row)
         }

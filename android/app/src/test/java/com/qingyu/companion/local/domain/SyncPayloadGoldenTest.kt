@@ -2,6 +2,7 @@ package com.qingyu.companion.local.domain
 
 import com.qingyu.companion.domain.contracts.CanonicalJson
 import com.qingyu.companion.local.db.LocalCharacterEntity
+import com.qingyu.companion.local.db.LocalGroupEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
 import com.qingyu.companion.local.db.LocalMessageEntity
 import com.qingyu.companion.local.db.LocalPersonaEntity
@@ -411,6 +412,39 @@ class SyncPayloadGoldenTest {
         )
     }
 
+    /** 群聊：`memberIds` 要是数组、要带时间戳，且群调度参数一个都不许进信封。 */
+    @Test
+    fun groupPayloadMatchesPcContract() {
+        val seen = mutableListOf<String>()
+        for (case in cases("group-payload")) {
+            val label = "group/${case.getString("label")}"
+            val payload = valueOf(case, "payload") as Map<String, Any?>
+            seen += label
+            assertPayloadMatchesPc(label, "group", payload, EntityPayloads.groupPayload(groupRow(payload)))
+        }
+        assertEquals(4, seen.size, "fixture 用例数变了，请确认覆盖仍然完整：$seen")
+    }
+
+    @Test
+    fun groupPayloadKeepsSchedulingAndLocalColumnsOut() {
+        val row = groupRow(
+            mapOf(
+                "name" to "群一",
+                "memberIds" to listOf("c1", "c2"),
+                "createdAt" to 1L,
+                "updatedAt" to 2L,
+            ),
+        ).copy(mode = "round_robin", memoryEnabled = true, avatarPath = "/media/private/g.png")
+        val payload = EntityPayloads.groupPayload(row)
+        assertEquals(listOf("c1", "c2"), payload["memberIds"], "必须是契约键 memberIds 的数组，而不是 characterIdsJson 字符串")
+        assertEquals(
+            setOf("name", "memberIds", "createdAt", "updatedAt"),
+            payload.keys,
+            "群调度参数（mode/memoryEnabled）与本地头像路径不得进入群 payload——PC 那边也不发，" +
+                "当前契约的口径是「群的调度方式不参与同步」",
+        )
+    }
+
     // ---------------------------------------------------------------- 行构造
 
     @Suppress("UNCHECKED_CAST")
@@ -541,6 +575,15 @@ class SyncPayloadGoldenTest {
     }
 
     @Suppress("UNCHECKED_CAST")
+    private fun groupRow(payload: Map<String, Any?>): LocalGroupEntity = LocalGroupEntity(
+        id = "grp-golden",
+        name = payload["name"] as String,
+        characterIdsJson = JsonValues.stringify(payload["memberIds"] ?: emptyList<String>()),
+        createdAt = (payload["createdAt"] as Number).toLong(),
+        updatedAt = (payload["updatedAt"] as Number).toLong(),
+    )
+
+    @Suppress("UNCHECKED_CAST")
     private fun valueOf(obj: JSONObject, key: String): Any? = when (val raw = obj.get(key)) {
         is JSONObject -> JsonValues.parseObject(raw.toString())
         is org.json.JSONArray -> JsonValues.parseArray(raw.toString())
@@ -579,6 +622,7 @@ class SyncPayloadGoldenTest {
         private val PC_ONLY_KEYS: Map<String, Set<String>> = mapOf(
             "message" to setOf("speakerKind", "generationKind", "narrativeMode"),
             "session" to emptySet(),
+            "group" to emptySet(),
         )
     }
 }

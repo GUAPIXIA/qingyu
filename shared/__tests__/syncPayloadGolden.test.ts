@@ -34,6 +34,7 @@ import {
 import { personaEntityPayload } from '../../electron/ipc/persona'
 import { messageEntityPayload } from '../../electron/ipc/chat'
 import { sessionEntityPayload } from '../../electron/ipc/chat'
+import { groupEntityPayload } from '../../electron/ipc/group'
 import { presetEntityPayload } from '../../electron/ipc/preset'
 import { ruleEntityPayload } from '../../electron/ipc/regex'
 import { quickReplyStorePayload } from '../../electron/ipc/quickReply'
@@ -411,6 +412,55 @@ describe('sync-payload / session', () => {
       deliberatelyExcluded: [
         'id', 'groupId', 'presetId', 'memoryEnabled', 'memoryMode', 'autoMemoryInterval',
         'responseLengthMode', 'recentLoreKeys',
+      ],
+      cases,
+    })
+  })
+})
+
+/**
+ * `group` 与 message/session 是同一批缺陷的第三处：Android 那边下发 `characterIdsJson`
+ * （Room 列名 + 字符串），而 PC 用的是契约键 `memberIds` 的**数组**，并且两端对
+ * 「群调度参数要不要同步」的口径是「都不发」——AI 不能顺手把 `mode`/`memoryEnabled` 塞进去。
+ */
+describe('sync-payload / group', () => {
+  it('pins groupEntityPayload', () => {
+    const group = (overrides: Record<string, unknown> = {}) => ({
+      id: 'grp-1',
+      name: '群一',
+      memberIds: ['char-1', 'char-2'],
+      createdAt: 1700000000000,
+      updatedAt: 1700000000001,
+      ...overrides,
+    })
+
+    const cases = [
+      { label: 'full', input: group() },
+      { label: 'empty-members', input: group({ memberIds: [] }) },
+      {
+        label: 'many-members-not-truncated',
+        input: group({ memberIds: [...Array(40).keys()].map((n) => `c${n}`) }),
+      },
+      {
+        // 群调度参数一端都不发（PC 的 payload 明确规定只有 4 个键）：
+        // 把它们塞进信封会让另一端哈希不同，且属于契约变更而不是实现细节
+        label: 'scheduling-fields-are-not-sent',
+        input: group({
+          chatMode: 'polling', maxRounds: 3, speakerInterval: 1500, presetId: 'pre-1',
+          systemPrompt: 'SP', lorebookIds: ['lb-1'], autoMode: true, currentSpeakerIndex: 2,
+        }),
+      },
+    ].map((entry) => {
+      const payload = groupEntityPayload(entry.input as never) as Record<string, unknown>
+      return { label: entry.label, keys: Object.keys(payload).sort(), payload }
+    })
+
+    writeFixture('group-payload', {
+      algorithm: 'electron/ipc/group.ts#groupEntityPayload',
+      deliberatelyExcluded: [
+        'id', 'chatMode', 'maxRounds', 'speakerInterval', 'presetId', 'systemPrompt',
+        'lorebookIds', 'autoMode', 'currentSpeakerIndex', 'defaultNarrativeMode',
+        'chatBackground', 'chatBackgroundParams',
       ],
       cases,
     })

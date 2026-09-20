@@ -4,13 +4,16 @@
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
-> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1099 / 0**、
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1101 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
 > `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
 > 关闭了 §5 那条悬置的 P1（`retrieval` 从没进过运行时 → §2.21），
 > 把 P1-d 的「诚实失败」那一半修了（OOM 不再被说成「ZIP 解析失败」+ 驻留预算先拒 → §2.22），
-> 并修掉消息/会话 payload 的 P0（三条写路径都在发 Room 列名 → 两端哈希永不相等 → §2.23）。
+> 并修掉 **message / session / group** 三类实体的 payload P0（三条写路径此前都在发 Room 列名 →
+> 两端哈希永不相等 → §2.23、§2.24）。
+> 同时新增 **D-10/D-11/D-12** 三条契约级决策（`usage_clear_marker` 粒度、
+> PC 的群消息 payload 与 `message` 契约不一致、`memory_*`/`media_manifest` 在 PC 无落点）。
 > **注意 §3.2「(2)」**：api26 全量套件的间歇 522 曾被我记成「已用设备档位 A/B 定位」，
 > 第 5 轮已**自我推翻**并撤回该结论。
 > 仍不能签字的两件事：**物理真机走查未做**（模拟器不能顶替，§11.1 两个要求不互替）、
@@ -842,6 +845,32 @@ Room 给 `[delta, epsilon]`、替身给 `[gamma-book, delta]`。同源风险在 
 **回滚**：新增的两个 payload 函数与三条委派可独立回退；两组 fixture 是纯新增
 （删掉会让 Kotlin 用例因缺输入而直接报错，不会静默跳过）。
 
+### 2.24 `group` 的 payload：同一批缺陷的第三处（§2.23 的续）
+
+`group` 的**实体 id 两端一致**，但 payload 还是 Room 列名那一套：
+
+| | PC `groupEntityPayload` | Android 改动前 |
+|---|---|---|
+| 键 | `name` / **`memberIds`（数组）** / `createdAt` / `updatedAt` | `name` / `mode` / **`characterIdsJson`（字符串）** / `memoryEnabled` / `avatarPath` |
+
+也就是说**成员列表这个语义主键的名字与类型两端都不同**（`characterIdsJson` 字符串 vs
+`memberIds` 数组），另外漏了 `createdAt`/`updatedAt`、多了三个键 —— 同一份群聊两端哈希必然不同，
+而且即使哈希相同，对端也**读不出成员**（键名与类型都不同，不是「多一个键」那种软差异）。
+
+改法与前两处完全一致：新增 `EntityPayloads.groupPayload`，仓储与 `FakeLocalStore` 改成委派，
+PC 侧 `groupEntityPayload` 加 `export`（不改行为），新增 fixture `sync-payload/group-payload.json`
+（4 例）与 2 条 Kotlin 用例（不动点 + 「调度/本地列不许进信封」）。
+
+**顺带确认一件事**：「群的调度方式目前不参与同步」是**两端的共同现状**，不是单边缺陷——
+PC 的 `chatMode`/`maxRounds`/`speakerInterval`/`presetId` 同样没进 payload。
+所以 Android 的 `mode`/`memoryEnabled` 正确地**不发**（发了就是单边加键），
+这一条写进了 fixture 的 `deliberatelyExcluded`，将来谁要同步群调度参数就必须先改契约。
+
+**同批记录下来、但**不改**的三条契约级差异**（都属「不该由实现 Agent 单方面定」）：
+见 §5 的 **D-10**（`usage_clear_marker` 的实体粒度）、**D-11**（PC 把群会话/群消息写在
+`session`/`message` 同一实体类型下、却用另一套 payload 构造函数）、**D-12**
+（`memory_state`/`memory_fact`/`media_manifest` 在 PC 侧没有落点）。
+
 ### 2.6 迁移
 
 `MIGRATION_3_4` 全部是加列/加表/加索引，无重建、无 destructive fallback；新列都带 DEFAULT。
@@ -916,6 +945,9 @@ Room 给 `[delta, epsilon]`、替身给 `[gamma-book, delta]`。同源风险在 
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.23 改动后） | **1099 通过 / 0 失败 / 0 跳过 / 139 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1095；本轮 **+4 条**（`SyncPayloadGoldenTest` 的消息/会话不动点 + 两条「本地保真列与平台扩展列不得进信封」）；该文件现 14 条 |
 | `pnpm check` / `pnpm lint` / `pnpm test`（§2.23 改动后） | 通过 / **0 error** / **3047 通过 / 4 跳过**（278 文件 + 1 跳过） | 上一版 3045；**+2 条**（`syncPayloadGolden` 新增 message/session 两组 fixture 的生成与只读校验）。PC 侧只改了 `messageEntityPayload`/`sessionEntityPayload` 各加一个 `export` |
 | 设备矩阵（§2.23 改动后复跑） | API 31 经典 AVD **59/0**；API 26 GMD **59 条 / 2 失败**；API 34 GMD **59 条 / 1 失败** | **三条失败全是已知既有项，与本轮改动无关**：api26 的两条是上面「(2)」那条间歇性 522；api34 的一条是 `Phase4AcceptanceWalkthroughInstrumentedTest.fullWalkthroughRunsEntirelyOnLocalDatabase`（`编辑历史必须使派生记忆失效 expected:<1> but was:<0>`，即 §5-F-1 记的阶段 4 时序脆弱）。两个类**单跑均通过**（`ContentUiWalkthroughInstrumentedTest` 3/3、`Phase4AcceptanceWalkthroughInstrumentedTest` 1/1） |
+| `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.24 改动后） | **1101 通过 / 0 失败 / 0 跳过 / 139 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1099；本轮 **+2 条**（`SyncPayloadGoldenTest` 的群 payload 不动点 + 「调度/本地列不得进信封」）；该文件现 16 条 |
+| `pnpm check` / `lint` / `test`（§2.24 改动后） | 通过 / **0 error** / **3048 通过 / 4 跳过** | 上一版 3047；**+1 条**（`group-payload` fixture 的生成与只读校验）；PC 侧只改了 `groupEntityPayload` 加 `export`（不改行为） |
+| 设备（§2.24 改动后） | API 31 经典 AVD **59/0**（1m15s，XML 时间戳为本次） | 本轮只复跑这一档：改动在 payload 层，已由 JVM 契约套件（含替身 vs Room 同表）与 api31 设备套件覆盖；**api26/api34 本轮未复跑**，不把上一轮的结果当成这一轮的（两档的既有间歇项见上两行） |
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`
@@ -1384,6 +1416,36 @@ instrumentation 侧新增两组：`BackupRestoreFailureInstrumentedTest` 4/0（a
   只有手写 canonical v2 才可能带），所以本阶段只立案不动手。
   但 S6-05 落地时必须**同时**定这一条与 `ChatLorebookChannels` 的两个通道常量——
   翻常量会让 `ChatLorebookChannelsTest` 与 §2.21 那张表一起变红，那正是重新签字的时机。
+- D-10 **`usage_clear_marker` 的实体粒度两端不同**（§2.24 立案）：PC 写**一个固定 id**
+  `usage-clear-marker` 的实体、payload 里带**逐设备**的 `clearedThrough` 映射
+  （`electron/services/usage.ts:162`）；Android 写**每设备一个实体**（`entityId = deviceId`，
+  `RoomLocalSyncRepository.putUsageClearMarker`）。两端的 payload 形状都对
+  （`usage-clear-marker-payload.schema.json` 是 `additionalProperties:false` + 必带 `clearedThrough`，
+  Android 的 `UsageClearMarkerPayload.of` 还做了自校验），**差的只是实体 id**。
+  后果：同一批清理语义落在不同 entityId 上，§6.3「多个 marker 逐设备取最大值」无从跨端成立
+  ——两端各持一半信息且谁都不收敛。两个选项：① Android 收敛到单实体（按 PC 的 id，
+  逐设备映射进 payload）；② PC 改成逐设备实体（要改 §6.3 合并口径与 PC 读取路径）。
+  需契约签字，**不在阶段 5 单方面改**。
+- D-11 **PC 把群会话/群消息写在 `session`/`message` 同一实体类型下，却用另一套 payload 构造函数**
+  （§2.24 立案，属 PC 侧改动）：`electron/ipc/group.ts` 用 `entityType: 'session'` / `'message'`
+  写群会话与群消息，payload 却来自 `groupSessionEntityPayload` / `groupMessageEntityPayload`
+  ——**原始 spread 去掉 id**，与冻结契约（`message-payload.schema.json` 要求 `timestamp`、
+  且 `additionalProperties:false`）完全不同。也就是说**同一个实体类型在 PC 内部就有两种不兼容的
+  payload 形状**：单聊走 schema 那条、群聊走 spread 那条。
+  后果：Android 无论怎么映射都只能对上其中一半——第 5 轮把 Android 的 message/session 对齐到了
+  **单聊**契约，于是 PC 的群消息/群会话与单聊消息在阶段 7 必然互不收敛。
+  三个选项：① 群会话/群消息改用**独立实体类型**（最干净，但要动 §6.1 的实体清单与两端 id 空间）；
+  ② 把群的两个 payload 也收敛到 schema（要改 PC 已发布格式语义，按 §11.3 需 PC 回归证据 + fixture 重生成）；
+  ③ 在信封里加「形状判别」字段（最差，等于把不确定性推给合并层）。**本阶段只立案**。
+- D-12 **`memory_state`/`memory_fact`/`media_manifest` 在 PC 侧没有落点，而 Android 已在写**（§2.24 立案）：
+  PC 自己的物化表写着这条事实——`electron/domain/remoteMaterializers.ts:350-352`：
+  「PC 尚无 `media_manifest` 独立落点（阶段 7 引入 blob 存储后实现）」、
+  「PC 的长记忆内嵌在 session 实体中，无独立落点」、「PC 的事实记录内嵌在 session 实体中，无独立落点」。
+  而 Android 把 `memory_state`/`memory_fact` 当**独立实体**记账（各有本地表与 payload 形状）；
+  `media_manifest` 有表与 `putMediaManifest`、但**没有** payload 构造函数（见 §7）。
+  后果：Android 会产出 PC 明确「不支持物化」的实体类型；反向地 PC 内嵌在 session 里的长记忆
+  Android 也不会去读。§6.1 已把这三类列为同步实体，所以要么 PC 补独立落点、要么契约去掉它们
+  （记忆的同步口径改成「随 session 走」）。属阶段 7/8 的契约决策。
 
 **未开始**
 
