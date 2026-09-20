@@ -1,13 +1,16 @@
 # Android 独立客户端重构阶段 5 实施报告
 
-> 日期：2026-09-18（2026-09-19 复核更新）
+> 日期：2026-09-18（2026-09-19 复核更新；**2026-09-20 收尾**）
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
-> 完成提交：待补（本阶段尚未提交）
-> 结论：**进行中 —— 未到可签字状态**。单元测试门禁已全绿（1071/0）、`lintDebug` 0 Error、
-> `assembleDebug` 通过，六个内容编辑器中五个已接通到用户可达；
-> §11.2 要求的 instrumentation **已用 Gradle Managed Devices 执行**（API 26/31/34 三档，见 §3），
-> 但**物理真机走查未做**（模拟器不能顶替，§11.1 两个要求不互替）、
-> `pnpm lint` 仍有 7 项**属别的阶段**的错误。
+> 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
+> 独立文档提交，故报告里不再自指该提交哈希）
+> 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1091 / 0**、
+> `lintDebug` **0 Error**、`assembleDebug` 通过，设备全量 API 26 / API 34 各 **59 / 0**，
+> `pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），关闭了 §5 那条悬置的 P1
+> （`retrieval` 从没进过运行时 → §2.21）。
+> 仍不能签字的三件事：**物理真机走查未做**（模拟器不能顶替，§11.1 两个要求不互替）、
+> **API 31（Android 12）这一档仍跑不成**（`AdbTimeoutException`，`Finished 0 tests`，§3.2）、
+> 以及 D-1～D-9 那批需要产品签字的决策。
 > 按 §4 看板规则记「进行中」，不记「已完成」。
 
 ## 0. 阅读须知：本阶段的实际边界
@@ -911,14 +914,16 @@ SDK 落在 `D:\Code\android-sdk`（`local.properties` 的 `sdk.dir`，未提交�
 ——**开实验开关是为了保住 API 26 这一档**，而不是把最低支持版本从门禁里悄悄删掉。
 三档并发跑时 api31 会被 install 超时拖垮，逐档单独跑才可靠（api26/api34 单独跑各 <1 分钟）。
 
-**必须随本阶段一起提交的新文件**：`git status` 显示 `shared/fixtures/cross-platform/` 的
-`sync-payload/`、`content-io/`、`chat-core/` 三个目录**整体仍未跟踪**（本轮又往 `content-io/`
+**必须随本阶段一起提交的新文件（2026-09-20 已入库，此处保留为清单）**：`shared/fixtures/cross-platform/` 的
+`sync-payload/`、`content-io/`、`chat-core/` 三个目录当时**整体仍未跟踪**（本轮又往 `content-io/`
 里加了 `lorebook-catalog-canonical.json`，并**重生成**了 `lorebook-detect.json` 与
 `lorebook-import-roundtrip.json`），而 Kotlin 侧 `SyncPayloadGoldenTest`、
 `LorebookCrossLanguageGoldenTest` 的断言全部以它们为输入。
 golden 测试的输入不在仓库里，门禁就只对某台机器成立——这跟阶段 3 报告点过的
-`app/schemas/.../1.json` 未跟踪是同一类问题，提交时必须一起入库。
-本轮新增待入库清单：`shared/__tests__/lorebookCatalogGolden.test.ts`、
+`app/schemas/.../1.json` 未跟踪是同一类问题。
+**现状**：`shared/` 侧（fixtures + `__tests__` + `chat-core` 新模块）已随 `a080a05` 入库；
+Android 侧（含 `app/schemas/.../{1,2,3,4}.json`）已随 **`047e093`** 入库，该提交同时收走了
+阶段 2/3/4/5 交织在一起的工作区改动。清单如下：`shared/__tests__/lorebookCatalogGolden.test.ts`、
 `shared/__tests__/helpers/goldenVolatile.ts`、
 `android/.../content/lorebook/LorebookCrossLanguageGoldenTest.kt`、
 `android/.../phase5/BackupRestoreFailureInstrumentedTest.kt`；本轮再加`android/.../data/ContentDraftStore.kt`、`android/.../ui/content/ContentDraftCodec.kt`、`android/.../test/.../ui/content/ContentDraftCodecTest.kt`、`android/.../androidTest/.../phase5/ContentDraftAreaInstrumentedTest.kt`、`shared/fixtures/cross-platform/content-io/preset-roundtrip.json`（§2.13）、`shared/fixtures/cross-platform/content-io/character-card-roundtrip.json` 与 `android/.../content/CharacterCardChainGoldenTest.kt`（§2.14）。
@@ -1388,8 +1393,10 @@ Compose 层的交互正确性目前**没有任何测试覆盖**——这正是 �
 
 **依赖其他阶段的遗留**
 
-- 阶段 2 的 PCE-01（PC 无感升级与 A/B 性能门禁）仍未补，且阶段 2/3/4/5 的工作区改动
-  交织未提交；阶段 7 的前置（阶段 2 含 PCE-01、3、4、5）因此尚未真正满足。
+- 阶段 2 的 PCE-01（PC 无感升级与 A/B 性能门禁）仍未补；阶段 2/3/4/5 交织的工作区改动
+  已随 **`047e093`** 整体入库（不再是「未提交」），但 PCE-01 本身仍缺，
+  所以阶段 7 的前置（阶段 2 含 PCE-01、3、4、5）**尚未真正满足**。
+- `047e093` 只提交到本地，**尚未推送**到 `origin/main`（推送与否由用户决定）。
 
 ## 6. 回滚方法
 
