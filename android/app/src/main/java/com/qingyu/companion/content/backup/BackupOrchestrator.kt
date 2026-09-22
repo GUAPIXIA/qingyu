@@ -103,6 +103,21 @@ class BackupOrchestrator(
             entries += entry(BackupV3.Paths.CHATS + session.id + ".json", JSONObject(sessionJson(session)).toString())
         }
 
+        // U-6-8：群行（含调度列）与群消息进包。群会话本身已随 chats/{sessionId}.json（带 groupId）出包；
+        // 群消息按群聚成一个数组文件，恢复时在**第三遍**（会话之后）落库——FK 级联要求会话先行。
+        val groups = store.listGroups()
+        var groupMessageCount = 0
+        groups.forEach { group ->
+            entries += entry(BackupV3.Paths.GROUPS + group.id + ".json", groupJson(group))
+            val messages = sessions.filter { it.groupId == group.id }
+                .flatMap { store.listGroupMessages(it.id) }
+            entries += entry(
+                BackupV3.Paths.GROUPS + group.id + GROUP_MESSAGES_SUFFIX,
+                JSONArray(messages.map { groupMessageJson(it) }).toString(),
+            )
+            groupMessageCount += messages.size
+        }
+
         counts["personas"] = personas.size
         counts["regexRules"] = rules.size
         counts["quickReplySets"] = quickReplies.size
@@ -110,6 +125,8 @@ class BackupOrchestrator(
         counts["usageRecords"] = usage.size
         counts["usageClearMarkers"] = clearMarkers.size
         counts["sessions"] = sessions.size
+        counts["groups"] = groups.size
+        counts["groupMessages"] = groupMessageCount
 
         // 媒体：**必须递归**收集。
         //
@@ -149,6 +166,117 @@ class BackupOrchestrator(
     }
 
     private fun entry(path: String, json: String) = BackupV3.Entry(path, json.toByteArray(Charsets.UTF_8))
+
+    // ------------------------------------------------------------ U-6-8 群数据序列化
+    // 字段与 LocalGroupEntity（18 列，含 9 调度列）/LocalGroupMessageEntity（24 列）逐一对称；
+    // 备份是跨版本存档，**显式列字段**而不是反射/序列化器推断——缺列会在 BackupGroupRoundTripTest 变红。
+
+    private val GROUP_MESSAGES_SUFFIX = ".messages.json"
+
+    private fun groupJson(row: com.qingyu.companion.local.db.LocalGroupEntity): String = JSONObject().apply {
+        put("id", row.id)
+        put("name", row.name)
+        put("mode", row.mode)
+        put("characterIdsJson", row.characterIdsJson)
+        put("memoryEnabled", row.memoryEnabled)
+        put("avatarPath", row.avatarPath)
+        put("importedFrom", row.importedFrom)
+        put("createdAt", row.createdAt)
+        put("updatedAt", row.updatedAt)
+        put("chatMode", row.chatMode)
+        put("autoMode", row.autoMode)
+        put("maxRounds", row.maxRounds)
+        put("speakerInterval", row.speakerInterval)
+        put("currentSpeakerIndex", row.currentSpeakerIndex)
+        put("presetId", row.presetId)
+        put("systemPrompt", row.systemPrompt)
+        put("lorebookIdsJson", row.lorebookIdsJson)
+        put("defaultNarrativeMode", row.defaultNarrativeMode)
+    }.toString()
+
+    private fun groupOf(payload: ByteArray): com.qingyu.companion.local.db.LocalGroupEntity? {
+        val obj = JSONObject(String(payload, Charsets.UTF_8))
+        val id = obj.optString("id")
+        if (id.isEmpty()) return null
+        return com.qingyu.companion.local.db.LocalGroupEntity(
+            id = id,
+            name = obj.optString("name"),
+            mode = obj.optString("mode", "group"),
+            characterIdsJson = obj.optString("characterIdsJson", "[]"),
+            memoryEnabled = obj.optBoolean("memoryEnabled", true),
+            avatarPath = if (obj.isNull("avatarPath")) null else obj.optString("avatarPath"),
+            importedFrom = if (obj.isNull("importedFrom")) null else obj.optString("importedFrom"),
+            createdAt = obj.optLong("createdAt"),
+            updatedAt = obj.optLong("updatedAt"),
+            chatMode = obj.optString("chatMode", "mention"),
+            autoMode = obj.optBoolean("autoMode"),
+            maxRounds = obj.optInt("maxRounds", 3),
+            speakerInterval = obj.optInt("speakerInterval", 1500),
+            currentSpeakerIndex = obj.optInt("currentSpeakerIndex"),
+            presetId = if (obj.isNull("presetId")) null else obj.optString("presetId"),
+            systemPrompt = obj.optString("systemPrompt"),
+            lorebookIdsJson = obj.optString("lorebookIdsJson", "[]"),
+            defaultNarrativeMode = obj.optString("defaultNarrativeMode", "immersive"),
+        )
+    }
+
+    private fun groupMessageJson(row: com.qingyu.companion.local.db.LocalGroupMessageEntity): JSONObject = JSONObject().apply {
+        put("id", row.id)
+        put("sessionId", row.sessionId)
+        put("groupId", row.groupId)
+        put("characterId", row.characterId)
+        put("content", row.content)
+        put("imagesJson", row.imagesJson)
+        put("round", row.round)
+        put("translation", row.translation)
+        put("replyToId", row.replyToId)
+        put("status", row.status)
+        put("mentionedIdsJson", row.mentionedIdsJson)
+        put("narrativeMode", row.narrativeMode)
+        put("speakerKind", row.speakerKind)
+        put("generationKind", row.generationKind)
+        put("dialogueDirectionsJson", row.dialogueDirectionsJson)
+        put("dialogueDirectionsGeneratedAt", row.dialogueDirectionsGeneratedAt)
+        put("generationNotice", row.generationNotice)
+        put("generationError", row.generationError)
+        put("contentRenderMode", row.contentRenderMode)
+        put("logicalTime", row.logicalTime)
+        put("seq", row.seq)
+        put("importedFrom", row.importedFrom)
+        put("createdAt", row.createdAt)
+        put("updatedAt", row.updatedAt)
+    }
+
+    private fun groupMessageOf(obj: JSONObject): com.qingyu.companion.local.db.LocalGroupMessageEntity? {
+        val id = obj.optString("id")
+        if (id.isEmpty()) return null
+        return com.qingyu.companion.local.db.LocalGroupMessageEntity(
+            id = id,
+            sessionId = obj.optString("sessionId"),
+            groupId = obj.optString("groupId"),
+            characterId = obj.optString("characterId"),
+            content = obj.optString("content"),
+            imagesJson = obj.optString("imagesJson", "[]"),
+            round = obj.optInt("round", 1),
+            translation = if (obj.isNull("translation")) null else obj.optString("translation"),
+            replyToId = if (obj.isNull("replyToId")) null else obj.optString("replyToId"),
+            status = if (obj.isNull("status")) null else obj.optString("status"),
+            mentionedIdsJson = obj.optString("mentionedIdsJson", "[]"),
+            narrativeMode = if (obj.isNull("narrativeMode")) null else obj.optString("narrativeMode"),
+            speakerKind = if (obj.isNull("speakerKind")) null else obj.optString("speakerKind"),
+            generationKind = if (obj.isNull("generationKind")) null else obj.optString("generationKind"),
+            dialogueDirectionsJson = if (obj.isNull("dialogueDirectionsJson")) null else obj.optString("dialogueDirectionsJson"),
+            dialogueDirectionsGeneratedAt = if (obj.isNull("dialogueDirectionsGeneratedAt")) null else obj.optLong("dialogueDirectionsGeneratedAt"),
+            generationNotice = if (obj.isNull("generationNotice")) null else obj.optString("generationNotice"),
+            generationError = if (obj.isNull("generationError")) null else obj.optString("generationError"),
+            contentRenderMode = if (obj.isNull("contentRenderMode")) null else obj.optString("contentRenderMode"),
+            logicalTime = obj.optLong("logicalTime"),
+            seq = obj.optLong("seq"),
+            importedFrom = if (obj.isNull("importedFrom")) null else obj.optString("importedFrom"),
+            createdAt = obj.optLong("createdAt"),
+            updatedAt = obj.optLong("updatedAt"),
+        )
+    }
 
     // ------------------------------------------------------------ 预检与恢复
 
@@ -217,7 +345,7 @@ class BackupOrchestrator(
                     listOf(
                         "characters", "lorebooks", "presets", "personas", "regexRules",
                         "mappingTemplates", "quickReplySets", "usageRecords",
-                        "usageClearMarkers", "sessions",
+                        "usageClearMarkers", "sessions", "groups", "groupMessages",
                     ).forEach { put(it, 0) }
                 }
                 val quickReplies = ArrayList<LocalQuickReplySetEntity>()
@@ -269,6 +397,10 @@ class BackupOrchestrator(
                             }
                         }
 
+                        // U-6-8：群行是**父实体**（第二遍落库）；群消息文件跳过，第三遍在会话之后处理
+                        path.startsWith(BackupV3.Paths.GROUPS) && !path.endsWith(GROUP_MESSAGES_SUFFIX) ->
+                            groupOf(payload)?.let { store.putGroup(it); counts.bump("groups") }
+
                         path == BackupV3.Paths.SETTINGS ->
                             settingsOf(payload).forEach { (section, key, valueJson) ->
                                 store.putPublicSetting(section, key, valueJson)
@@ -297,6 +429,12 @@ class BackupOrchestrator(
                             store.putSession(session)
                             messages.forEach { store.appendMessage(it) }
                             counts.bump("sessions")
+                        }
+                    }
+                    // U-6-8：群消息是**子实体**，必须在群/会话之后（FK 级联）
+                    if (path.startsWith(BackupV3.Paths.GROUPS) && path.endsWith(GROUP_MESSAGES_SUFFIX)) {
+                        eachIndexed(payload) { _, obj ->
+                            groupMessageOf(obj)?.let { store.appendGroupMessage(it); counts.bump("groupMessages") }
                         }
                     }
                 }?.let { throw IllegalStateException(it) }
