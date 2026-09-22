@@ -236,7 +236,7 @@ describe('useChatStore', () => {
   describe('switchSession', () => {
     const sessions: SessionPreview[] = [
       { id: 's1', characterId: 'c1', title: '会话1', createdAt: 1, updatedAt: 2, personaId: 'p1' } as SessionPreview,
-      { id: 's2', characterId: 'c1', title: '会话2', createdAt: 1, updatedAt: 2, personaId: undefined } as SessionPreview,
+      { id: 's2', characterId: 'c1', title: '会话2', createdAt: 1, updatedAt: 2, personaId: null } as SessionPreview,
     ]
 
     it('switches to session and syncs its persona', async () => {
@@ -251,7 +251,7 @@ describe('useChatStore', () => {
       expect(settings.userName).toBe('测试用户')
     })
 
-    it('falls back to default persona when session has none', async () => {
+    it('does not fall back to default persona when session explicitly disables persona', async () => {
       useSettingsStore.setState({
         settings: { ...getDefaultSettings(), defaultPersonaId: 'p1' },
       })
@@ -262,8 +262,8 @@ describe('useChatStore', () => {
       await useChatStore.getState().switchSession('s2', makeCharacter())
 
       const settings = useSettingsStore.getState().settings
-      expect(settings.activePersonaId).toBe('p1')
-      expect(settings.userName).toBe('测试用户')
+      expect(settings.activePersonaId).toBeNull()
+      expect(settings.userName).toBe('用户')
     })
 
     it('resets to plain user when no persona and no default', async () => {
@@ -291,6 +291,31 @@ describe('useChatStore', () => {
       expect(useChatStore.getState().currentSessionId).toBe('s1')
       expect(settings.activePersonaId).toBe('p1')
       expect(settings.userName).toBe('测试用户')
+    })
+
+    it('clears a stale global persona when the current session explicitly disables persona', async () => {
+      vi.mocked(window.api.chat.listSessions).mockResolvedValue([
+        { id: 's1', characterId: 'c1', title: '无身份会话', createdAt: 1, updatedAt: 2, personaId: null } as SessionPreview,
+      ])
+      usePersonaStore.setState({ personas: [makePersona()], loaded: true })
+      useSettingsStore.setState({
+        settings: {
+          ...getDefaultSettings(),
+          defaultPersonaId: 'p1',
+          activePersonaId: 'p1',
+          userName: '测试用户',
+          userDescription: '一名冒险者',
+          userPersona: '勇敢',
+        },
+      })
+
+      await useChatStore.getState().loadSessions('c1')
+
+      const settings = useSettingsStore.getState().settings
+      expect(settings.activePersonaId).toBeNull()
+      expect(settings.userName).toBe('用户')
+      expect(settings.userDescription).toBe('')
+      expect(settings.userPersona).toBe('')
     })
   })
 

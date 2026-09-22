@@ -316,6 +316,7 @@ export function buildContextMessagesFromData(
   const personaInjection = settings.personaInjection
     ?? { enabled: true, position: 'system' as const, includeDescription: true, includePersona: true }
   let personaText = ''
+  let personaBlock = ''
   if (personaInjection.enabled) {
     personaText += '用户名：' + userName
     if (personaInjection.includeDescription !== false && settings.userDescription) {
@@ -324,13 +325,17 @@ export function buildContextMessagesFromData(
     if (personaInjection.includePersona !== false && settings.userPersona) {
       personaText += '\n性格：' + replaceVariables(settings.userPersona, userName, charNameForVars)
     }
-    if (personaText && personaInjection.position === 'system') {
-      systemContent += '\n\n【用户人设】\n' + personaText
+    if (personaText) {
+      personaBlock = `【用户人设】\n${personaText}\n\n【用户身份使用规则】
+将上述身份视为既定事实：在角色可知且与当前情境相关时，以称呼、判断、态度和反应自然体现；不得忽略、改写、擅自补全或生成冲突信息，也不得替用户说话、行动、思考、感受或决定。`
+    }
+    if (personaBlock && personaInjection.position === 'system') {
+      systemContent += '\n\n' + personaBlock
     }
   }
   if (personaText) {
     noteShadow('character', 'character:user-persona', {
-      text: personaText, relevance: 0.6, recency: 1, importance: 0.7, continuity: 0.8,
+      text: personaBlock, relevance: 0.6, recency: 1, importance: 0.7, continuity: 0.8,
       origin: `persona:${personaInjection.position}`,
     })
   }
@@ -698,7 +703,7 @@ export function buildContextMessagesFromData(
 
   // 用户人设 separate 模式：独立 system 消息（keepSeparate 避免被合并进相邻消息）
   if (personaText && personaInjection.position === 'separate') {
-    context.push({ role: 'system', content: '【用户人设】\n' + personaText, keepSeparate: true })
+    context.push({ role: 'system', content: personaBlock, keepSeparate: true })
   }
 
   // ===== 作者注释（Author's Note）=====

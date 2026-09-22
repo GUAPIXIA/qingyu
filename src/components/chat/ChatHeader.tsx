@@ -17,6 +17,7 @@ import { WorldStatePanel } from './WorldStatePanel'
 import { cn } from '../../lib/utils'
 import type { Character } from '../../../shared/types'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
+import { syncPersonaToSettings } from '../../store/chatUtils'
 
 interface ChatHeaderProps {
   currentCharacter: Character
@@ -53,7 +54,6 @@ export function ChatHeader({
   const characters = useCharacterStore((s) => s.characters)
   const selectCharacter = useCharacterStore((s) => s.selectCharacter)
   const settings = useSettingsStore((s) => s.settings)
-  const updateSettings = useSettingsStore((s) => s.updateSettings)
   const personas = usePersonaStore((s) => s.personas)
   const getPersona = usePersonaStore((s) => s.getPersona)
 
@@ -72,25 +72,10 @@ export function ChatHeader({
     await window.api.chat.updateSession(currentCharacter.id, currentSessionId, { personaId })
     useChatStore.setState(s => ({
       sessions: s.sessions.map(sess =>
-        sess.id === currentSessionId ? { ...sess, personaId: personaId ?? undefined } : sess
+        sess.id === currentSessionId ? { ...sess, personaId } : sess
       ),
     }))
-    const persona = personaId ? getPersona(personaId) : undefined
-    if (persona) {
-      updateSettings({
-        activePersonaId: persona.id,
-        userName: persona.name,
-        userDescription: persona.description,
-        userPersona: persona.persona,
-      })
-    } else {
-      updateSettings({
-        activePersonaId: null,
-        userName: '用户',
-        userDescription: '',
-        userPersona: '',
-      })
-    }
+    syncPersonaToSettings(personaId)
     setShowPersonaMenu(false)
   }
 

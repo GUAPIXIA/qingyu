@@ -57,6 +57,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   editingMessageId: null,
 
   loadSessions: async (characterId) => {
+    const personaStore = usePersonaStore.getState()
+    if (!personaStore.loaded) await personaStore.loadPersonas()
     const sessions = await window.api.chat.listSessions(characterId)
     // 恢复上次打开的会话：直接从磁盘读取，避免与 loadSettings 竞态
     let savedSessionId = useSettingsStore.getState().settings.activeSessionId
@@ -71,21 +73,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     if (currentId && currentId !== savedSessionId) {
       useSettingsStore.getState().updateSettings({ activeSessionId: currentId })
     }
-    // 同步 persona 到 settings
-    if (currentId) {
-      const session = sessions.find(s => s.id === currentId)
-      const personaId = session?.personaId
-      const persona = personaId ? usePersonaStore.getState().getPersona(personaId) : undefined
-      const settingsStore = useSettingsStore.getState()
-      if (persona) {
-        settingsStore.updateSettings({
-          activePersonaId: persona.id,
-          userName: persona.name,
-          userDescription: persona.description,
-          userPersona: persona.persona,
-        })
-      }
-    }
+    // 当前会话身份是唯一来源；null 必须清空，undefined 才回退默认身份。
+    if (currentId) syncPersonaToSettings(sessions.find(s => s.id === currentId)?.personaId)
   },
 
   createSession: async (characterId, title) => {
@@ -225,38 +214,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     set({ messages })
     // 同步世界书：从会话恢复（或回退到角色绑定）
     get().syncLorebooksFromCurrentSession(character)
-    // 同步 persona 到 settings
+    // 同步 persona 到 settings（仅供界面与旧链路；上下文会再次按会话权威解析）
     const session = get().sessions.find(s => s.id === sessionId)
-    const personaId = session?.personaId
-    const persona = personaId ? usePersonaStore.getState().getPersona(personaId) : undefined
-    const settingsStore = useSettingsStore.getState()
-    if (persona) {
-      settingsStore.updateSettings({
-        activePersonaId: persona.id,
-        userName: persona.name,
-        userDescription: persona.description,
-        userPersona: persona.persona,
-      })
-    } else {
-      // 恢复默认 persona
-      const defaultPersonaId = settingsStore.settings.defaultPersonaId
-      const defaultPersona = defaultPersonaId ? usePersonaStore.getState().getPersona(defaultPersonaId) : undefined
-      if (defaultPersona) {
-        settingsStore.updateSettings({
-          activePersonaId: defaultPersona.id,
-          userName: defaultPersona.name,
-          userDescription: defaultPersona.description,
-          userPersona: defaultPersona.persona,
-        })
-      } else {
-        settingsStore.updateSettings({
-          activePersonaId: null,
-          userName: '用户',
-          userDescription: '',
-          userPersona: '',
-        })
-      }
-    }
+    syncPersonaToSettings(session?.personaId)
   },
 
   deleteCurrentSession: async (characterId) => {

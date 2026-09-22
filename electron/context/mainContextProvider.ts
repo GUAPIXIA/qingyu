@@ -32,6 +32,7 @@ import type {
   ChatSession,
   Character,
   Lorebook,
+  Persona,
   Preset,
   RegexRule,
   Settings,
@@ -40,6 +41,7 @@ import { getDefaultSettings } from '../../shared/defaults'
 import { restoreSecrets } from '../ipc/settings'
 import { resolveDefaultGateLevel, resolveReasoningGate } from '../../shared/reasoningGate'
 import { listLorebookViews } from '../services/lorebookDocumentStore'
+import { withResolvedSessionPersona } from '../../shared/personaResolution'
 
 /** 读取设置（含默认值兜底；H1：settings.json 不落 apiKey，需从 safeStorage 回填） */
 function readSettings(): Settings {
@@ -113,9 +115,13 @@ async function buildChatSnapshot(
 export const mainContextProvider: ContextDataProvider = {
   async fetchBuildData(characterId, sessionId, opts): Promise<ContextBuildData> {
     const character = getCharacter(characterId)
-    const settings = readSettings()
-    const profile = resolveActiveProfile(settings)
+    const storedSettings = readSettings()
     const chat = await buildChatSnapshot(character, sessionId)
+    const currentSession = chat.sessions.find((session) => session.id === chat.currentSessionId) ?? null
+    const personas = readJson<Persona[]>(join(DIRS.config(), 'personas.json')) ?? []
+    // 会话身份是唯一可信来源；不再依赖渲染层延迟落盘的全局身份镜像。
+    const settings = withResolvedSessionPersona(storedSettings, currentSession, personas)
+    const profile = resolveActiveProfile(settings)
 
     // 预设优先级：显式覆盖 > 角色绑定 > 设置默认（会话无 presetId 字段，对齐渲染层 activePresetId 语义）
     let presetId = opts?.presetId ?? undefined

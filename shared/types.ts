@@ -372,7 +372,7 @@ export interface ChatSession {
   compressedRange?: { startTs: number; endTs: number } | null
   /** 是否已自动生成标题（防重复调用） */
   titleGenerated?: boolean
-  /** 绑定的用户身份 ID（null/undefined 时使用 Settings 中的默认身份） */
+  /** 绑定的用户身份 ID（null 表示不使用身份；undefined 为旧数据，回退 Settings 默认身份） */
   personaId?: string | null
   /** 当前会话选中的世界书 ID 列表。undefined 表示未设置（回退到角色的 boundLorebookIds） */
   lorebookIds?: string[]

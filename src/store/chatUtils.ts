@@ -6,6 +6,7 @@ import type { LorebookCompressionRequest } from '../utils/lorebook'
 import type { Character, SessionPreview, LorebookCompressionCacheEntry, ProviderType } from '../../shared/types'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { resolveDefaultGroupMemoryConfig, resolveDefaultMemoryConfig } from '../../shared/defaultMemory'
+import { resolveSessionPersonaFields } from '../../shared/personaResolution'
 // 阶段 6 S6-01：派生记忆失效决策的跨端共享纯逻辑（fixture oracle 即此实现）
 import { planDerivedMemoryInvalidation, type DerivedMemorySnapshot } from '../../shared/chat-core/derivedMemory'
 
@@ -46,15 +47,13 @@ export function friendlyError(error: string): string {
 /** 根据 personaId 同步身份到 settings（activePersonaId / userName / userDescription / userPersona）
  *  用于新会话绑定默认身份后立即生效，避免顶栏与发送消息仍使用旧身份 */
 export function syncPersonaToSettings(personaId?: string | null): void {
-  const persona = personaId ? usePersonaStore.getState().getPersona(personaId) : undefined
-  if (persona) {
-    useSettingsStore.getState().updateSettings({
-      activePersonaId: persona.id,
-      userName: persona.name,
-      userDescription: persona.description,
-      userPersona: persona.persona,
-    })
-  }
+  const settingsStore = useSettingsStore.getState()
+  const resolved = resolveSessionPersonaFields(
+    { personaId },
+    settingsStore.settings,
+    usePersonaStore.getState().personas,
+  )
+  settingsStore.updateSettings(resolved)
 }
 
 /**

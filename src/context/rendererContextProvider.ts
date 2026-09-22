@@ -18,8 +18,10 @@ import type { ChatSession, Character, Lorebook, Preset, RegexRule } from '../../
 import { useChatStore } from '../store/useChatStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useCharacterStore } from '../store/useCharacterStore'
+import { usePersonaStore } from '../store/usePersonaStore'
 import { cachedReasoningSamplesFor } from '../store/usageProfileCache'
 import { lorebookCache } from '../utils/lorebook'
+import { withResolvedSessionPersona } from '../../shared/personaResolution'
 /** 渲染层会话快照：直读 useChatStore（含 P0-2 语义检索命中） */
 function buildChatSnapshot(): ContextChatSnapshot {
   const store = useChatStore.getState()
@@ -52,10 +54,14 @@ export const rendererContextProvider: ContextDataProvider = {
       characterStore.characters.find((c) => c.id === characterId) ?? null
 
     const settingsStore = useSettingsStore.getState()
-    const settings = settingsStore.settings
-    const profile = settingsStore.getActiveProfile()
-
     const chat = buildChatSnapshot()
+    const currentSession = chat.sessions.find((session) => session.id === chat.currentSessionId) ?? null
+    const settings = withResolvedSessionPersona(
+      settingsStore.settings,
+      currentSession,
+      usePersonaStore.getState().personas,
+    )
+    const profile = settingsStore.getActiveProfile()
 
     // 预设：显式覆盖 > store 的 activePresetId（对齐 getActiveChatConfig 的读取路径）
     let presetId = opts?.presetId
@@ -107,8 +113,14 @@ export function syncBuildData(
 ): ContextBuildData {
   const settingsStore = useSettingsStore.getState()
   const chat = buildChatSnapshot()
+  const currentSession = chat.sessions.find((session) => session.id === chat.currentSessionId) ?? null
+  const settings = withResolvedSessionPersona(
+    settingsStore.settings,
+    currentSession,
+    usePersonaStore.getState().personas,
+  )
   const profile = settingsStore.getActiveProfile()
-  const model = settingsStore.settings.activeModel || profile?.model || ''
+  const model = settings.activeModel || profile?.model || ''
   const reasoningSamples = profile && model
     ? cachedReasoningSamplesFor({ provider: profile.provider, baseUrl: profile.baseUrl, model })
     : undefined
@@ -117,7 +129,7 @@ export function syncBuildData(
     preset,
     chat,
     settings: {
-      settings: settingsStore.settings,
+      settings,
       profile,
     },
     lorebooks: lorebookCache.getAll(chat.activeLorebookIds),

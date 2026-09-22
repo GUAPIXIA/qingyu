@@ -77,6 +77,17 @@ beforeEach(() => {
       },
     ],
   })
+  writeFile(DIRS.config(), 'personas.json', [
+    {
+      id: 'persona-session',
+      name: '会话用户',
+      description: '会话身份描述',
+      persona: '会话身份性格',
+      avatar: '',
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ])
   // 预设
   writeFile(DIRS.presets(), 'preset-01.json', {
     id: 'preset-01',
@@ -138,7 +149,7 @@ describe('mainContextProvider.fetchBuildData', () => {
     expect(data.character?.name).toBe('测试角色')
     expect(data.preset?.id).toBe('preset-01')
     expect(data.settings.profile?.model).toBe('gpt-4o-mini')
-    expect(data.settings.settings.userName).toBe('用户A')
+    expect(data.settings.settings.userName).toBe('用户')
     expect(data.lorebooks).toHaveLength(1)
     expect(data.lorebooks[0].id).toBe('lb-01')
     expect(data.regexRules).toHaveLength(1)
@@ -150,6 +161,26 @@ describe('mainContextProvider.fetchBuildData', () => {
     // 主进程暂无语义检索
     expect(data.chat.semanticFactsHits).toEqual([])
     expect(data.chat.semanticLoreHits).toEqual([])
+  })
+
+  it('按当前会话 personaId 解析身份，不使用 settings 中的旧镜像', async () => {
+    const session = await chatData.createSession(CHARACTER_ID, '身份会话', 'persona-session')
+    const data = await mainContextProvider.fetchBuildData(CHARACTER_ID, session.id)
+
+    expect(data.settings.settings.activePersonaId).toBe('persona-session')
+    expect(data.settings.settings.userName).toBe('会话用户')
+    expect(data.settings.settings.userDescription).toBe('会话身份描述')
+    expect(data.settings.settings.userPersona).toBe('会话身份性格')
+  })
+
+  it('personaId=null 明确禁用身份，不回退 settings 的旧镜像', async () => {
+    const session = await chatData.createSession(CHARACTER_ID, '无身份会话', null)
+    const data = await mainContextProvider.fetchBuildData(CHARACTER_ID, session.id)
+
+    expect(data.settings.settings.activePersonaId).toBeNull()
+    expect(data.settings.settings.userName).toBe('用户')
+    expect(data.settings.settings.userDescription).toBe('')
+    expect(data.settings.settings.userPersona).toBe('')
   })
 
   it('无会话时自动创建默认会话并返回空消息', async () => {
