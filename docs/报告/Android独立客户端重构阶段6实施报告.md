@@ -377,5 +377,5 @@
 - **决策流**（§5.1 送签中）：D-9 签翻转 → 重生成语义 golden 并迁移条目数据；D-11 签归一化 → 重写群 payload 并补跨端 golden；D-14 签修 PC → Android 同批跟修（4 条不一致清单）；D-16 余两项补签或明确排除。
 - **实机矩阵**（§5.2）：9 场景 × Android 8/12/14 执行结果入档后，阶段 6 方可置「已完成」终态；真机 NNAPI/GPU embedding 项随 S6-05 模型包一并验。
 - **并行流收敛判据**（§0.2）：人格接线流 / PC 体验流收敛后复跑共享 oracle（`shared/__tests__/groupChatCoreGolden.test.ts` 6 例）与 `ContentWiringAuditTest`；红了即按 P1-6-2 先例（`c5e7c94`）重新接线，禁止把共享调用点改回内联实现。
-- **在途合流**：S6-01(f) UI 收尾（`0f9cfcac`）、U-6-8 备份群数据（`9ba86042`）——合流后补 `group.export` 裁定行与各自报告小节。
+- **在途合流**：S6-01(f) UI 收尾（`0f9cfcac`）、U-6-8 备份群数据（`9ba86042`）——合流后补 `group.export` 裁定行与各自报告小节。**S6-01(f) 合流验收清单**（基线勘察 round 20：`ui/groups/` 已有骨架六件 `GroupChatScreen/GroupChatViewModel/GroupMessageActions/GroupMessageRow/GroupsScreen/GroupsViewModel`，ChatScreen 无群分支=分离良好）：①成员添加/删除/排序 ②模式切换（mention|polling|free+autoMode+间隔+四叙事） ③停止按钮+流式 Delta 转发（Chunk 上屏/TurnFinished 落库/Stopped 保正文标「已停止生成」/错误只进提示字段） ④立即接话+续写+群导出（D-14 群口径） ⑤TTS 入口（Windows-only 音色「不适用」） ⑥GroupGenerationSettings 真值化 ⑦记忆面板反馈——逐项对照实现位置+测试名核验后才放行 `group.export` 行定稿。
 - **已知口径**（§3.6）随身带入后续阶段：`sessionPersonaIdDefined` 保留、群生成设置面真值化（S6-01f）、`lorebookPlan` 世界书执行已接入（d)-3）。
