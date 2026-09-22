@@ -179,6 +179,10 @@
 
 3 处夹具花括号笔误（少-多-少）是并行手写 JSON 的高发坑，已在上表逐条留证。
 
+### 2.8 U-6-8 备份 V3 覆盖群数据（`19c091a`，2026-09-22）
+
+补齐 `BackupOrchestrator` 的注释之洞（「groups/ 目前 PC/Android 都还没有群数据」在 S6-01(b) 后已过时）：导出 `groups/{gid}.json`（群行 18 列含 9 调度列）+ `groups/{gid}.messages.json`（群消息 24 列数组）；恢复二遍落群行（父实体）、三遍**会话之后**落群消息（FK 级联序）；`counts` 增 `groups`/`groupMessages`（键总在形状）。`BackupGroupRoundTripTest` 2 例：9 调度列逐一断言 + identity 三键 + logicalTime/图片/译文/提示字段往返 + 合并语义（同 id 覆盖、本地群保留）——`content.backup.*` 全绿。实施备注：该任务子代理四轮未落盘且投递通道失效，按预案中断后本体实施；含一次自踩反引号陷阱的现场修复（陷阱速查第 2 条）。
+
 ## 3. 测试命令与结果
 
 | 命令 | 结果 | 备注 |
