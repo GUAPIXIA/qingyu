@@ -14,6 +14,7 @@
 - **S6-01(c)-1/-2** = **`041bd4b`**（2026-09-22，未推送，哈希补记 `33e4012`）：群上下文提示词段与确定性文本块跨端共享——`shared/chat-core/groupContextBlocks.ts`（从 PC `groupChatContext.ts` 逐字抽出）+ `group-prompts`/`group-context-blocks` golden + Kotlin `ChatGroupPrompts`/`ChatNarrativeMode.buildGroupNarrativeModePrompt`/`ChatGroupContextBlocks` + 12 例逐字 golden。PC 接线暂缺（P1-6-2）。
 - **S6-01(c)-3** = **`73b33f9`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：群上下文完整装配——`shared/chat-core/groupContextBuilder.ts`（组装顺序 1–19）+ `ChatGroupContextBuilder.kt` + `group-context.json`（装配 8 例 + 身份解析 3 例）+ `ChatGroupContextBuilderGoldenTest` 3/3。
 - **S6-01(c)-4（P1-6-2 闭合）** = **`c5e7c94`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：PC `src/store/groupChatContext.ts` 六段内联文本块接线 `shared/chat-core/groupContextBlocks.ts`（等价重构，净删约 80 行副本），漂移窗口关闭。
+- **S6-01(d)-1**（2026-09-22，未推送，提交哈希随后一笔补记）：`ChatGroupTurnMachine.kt` 群轮次调度器状态机（纯 Kotlin 领域状态机，决策不含副作用）+ `ChatGroupTurnMachineTest` 13/13（含归属锁定/接力链全终止条件）。
 - PC 侧接线为**等价重构**：不改任何用户可观察行为（提示词、文案、调度结果、落盘语义均不变），由既有 43 条 `useGroupChatStore` 用例、12 条 `groupMemoryManager` 用例、6 条 checkpoint 用例与全量 `pnpm test` 佐证。
 
 ### 0.2 工作区并存改动（非本轮产物，未触碰）
@@ -42,6 +43,7 @@
 | S6-01(c)-2 Kotlin 端口 | `ChatGroupPrompts.kt`（roster/turnRules）、`ChatNarrativeMode.buildGroupNarrativeModePrompt`（补齐阶段 4 注明的 S6 缺口）、`ChatGroupContextBlocks.kt` | `ChatGroupPromptsGoldenTest` 5 例 + `ChatGroupContextBlocksGoldenTest` 7 例，读同一 fixture 逐字断言 |
 | S6-01(c)-3 群上下文完整装配 | `shared/chat-core/groupContextBuilder.ts`（PC `buildGroupChatContext` 组装顺序 1–19 逐字抽出：roster→turnRules→thought→分层记忆→群 systemPrompt→世界书段→成员卡→人设→at_end→预设→叙事→裁剪→压缩摘要→归属映射→深度插入→后历史→模板前缀→合并/转换→宏）+ `ChatGroupContextBuilder.kt` Kotlin 等价装配 | fixture `group-context.json`（装配 8 例：三模式/场景门控/压缩摘要注入/pendingCompression 归属文本/语义事实；身份解析 3 例）+ `ChatGroupContextBuilderGoldenTest` 3/3 逐字断言。世界书执行与请求预算计划在上游（各自已有跨语言 golden），此处按 PC 位置拼装 render plan 段 |
 | S6-01(c)-4 PC 接线（P1-6-2 闭合） | `src/store/groupChatContext.ts` 六段内联文本块替换为 `groupContextBlocks.ts` 调用（成员卡/人设/历史归属/后历史/场景门控/charName） | 等价重构：定向 61/61（含群聊旅程 43 例）、全量 `pnpm test` 3085/4/0、golden 6/6 只读一致、`pnpm check`/`lint` 0 error |
+| S6-01(d)-1 群轮次调度器状态机 | `ChatGroupTurnMachine.kt`（纯 Kotlin 领域状态机，仿 `ChatGenerationTask.Machine`：显式状态/终态幂等/迟到事件忽略；**决策不含副作用**，定时器/生成/落盘归持有者） | `ChatGroupTurnMachineTest` **13/13**：mention 单轮、polling 接力链（顺序/间隔/索引推进/maxRounds）、非 autoMode 不推进索引、free 不接力、立即接话（不经计划/新轮/一次性/成员校验）、部分失败链继续、生成中删成员/切模式只停续排**不改已开轮归属**、取消/切上下文停链且迟到终局幂等、拒绝不开轮、一链一次 begin |
 
 这补上了阶段 5 §2.28 指认的前置缺口之一：**「一份群调度 fixture」**（此前 `cross-platform` 四组 fixture 中无任何群调度 oracle，PC 的 groupCas/群测试都是单端断言）。
 
@@ -135,6 +137,15 @@
 
 至此阶段 6 §3 第一条「群聊三模式对同一 fixture 产生相同发言计划与上下文」的**双半边**均有跨语言 fixture：发言计划（`group-scheduling.json`）+ 上下文（`group-context.json`，三模式各至少一例）。
 
+### 3.5 S6-01(d)-1 门禁补记（群轮次调度器状态机）
+
+| 命令 | 结果 | 备注 |
+|---|---|---|
+| `.\gradlew.bat :app:testDebugUnitTest --tests …ChatGroupTurnMachineTest` | **13/13 通过**（XML 时间戳 `2026-09-22T08:32:48`） | 表驱动覆盖三模式 + 接力链全部终止条件 + 归属锁定竞态 |
+| `.\gradlew.bat :app:testDebugUnitTest --rerun` | **151 suites / 1156 tests / 0 失败 / 0 跳过** | 本增量纯 Android 侧（PC/shared 零改动，PC 门禁不适用；本轮内 S6-01(c)-4 已另行跑过全量 PC 门禁） |
+
+语义钉子（测试锁定）：**用户消息与其触发的 AI 回复共用同一轮**（`begin(turnRound=)` 由持有者按 `nextGroupRound` 分配后传入，状态机不再 +1）；**立即接话开新轮**且不经发言计划（PC `triggerCharacterReply`）；生成中删成员/切模式只作用于**续排判定**（新鲜 `currentConfig`），已开轮归属不可变。
+
 ## 4. 刻意取舍
 
 1. **oracle = 生产代码**：三个纯模块被 PC 生产路径直接调用（不是"测试专用副本"），符合 swipeCandidates/syncPayload 的既有约定；PC 接线是等价重构，行为差由既有单测守护。
@@ -150,7 +161,7 @@
 
 - **U-6-1 S6-01 余项**（群数据层已落地，剩余为）：`groupAiReply` 本地生成闭环（群调度器状态机 + `LocalGroupGenerationUseCase` 接 ModelGateway + 中断/部分失败终局 + stop）、群记忆接入（默认记忆配置、摘要/事实、CAS、编辑删除失效判定接 `ChatMemoryInvalidation`）；
 - **U-6-2 S6-01 群上下文装配**（**实现完成，待生成闭环接线**）：S6-01(c)-1/-2/-3/-4 已交付文本块/提示词段/完整装配 + PC 接线（TS oracle + Kotlin 端 + `group-context` fixture 双端逐字对齐，P1-6-2 已闭合）。余项一件：Kotlin `ChatGroupContextBuilder` 由 S6-01(d) 的 `LocalGroupGenerationUseCase` 消费（当前是「oracle + 端口先行」状态）。世界书执行与请求预算计划在上游组装（各自已有跨语言 golden）；
-- **U-6-3 S6-01 调度器与生成闭环**：群调度器领域状态机（仿 `ChatGenerationTask.Machine`，禁止进 Compose/VM，消费 `ChatGroupScheduling`）；
+- **U-6-3 S6-01 调度器与生成闭环**（状态机已完成，余生成闭环）：`ChatGroupTurnMachine` + 13 例表驱动测试已交付（S6-01(d)-1）。余：`LocalGroupGenerationUseCase` 消费状态机 + `ChatGroupContextBuilder` 接 ModelGateway（草稿流式 → `ChatGeneratedReplyPipeline` 终局 → 按锁定归属落盘 `LocalGroupMessageEntity`；中断/部分失败终局走 `finalizeGenerationTerminalResult`，free 拆分走 `ChatGroupFreeSplit`）、接力定时器与取消、`LocalChatRepository.groupAiReply` 去 notMigrated（含 `ContentWiringAuditTest` 钉子更新）；
 - **U-6-4 S6-01 群记忆接入**：`LocalMemorySummaryService` 扩群会话、scope=`group:{id}` 事实提案、CAS stale 丢弃；
 - **U-6-5 S6-01 UI 收尾**：群编辑/删除、成员增删排序、模式切换 UI（矩阵 `group.chatModes` notes「缺模式切换 UI」）、停止、续写、导出、TTS 入口；
 - **U-6-6 S6-02～S6-07 全部**（附件/识图、TTS、生图与 ComfyUI、Embedding 三级、MCP 平台策略、公告/更新/诊断）；
