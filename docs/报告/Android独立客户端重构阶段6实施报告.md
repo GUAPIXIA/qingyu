@@ -2,8 +2,8 @@
 
 > 日期：2026-09-22（增量报告，随阶段进度续写）  
 > 基线提交：`af85b9b`（工作区另含阶段 2–5 交织的未推送改动，见 §0.2）  
-> 完成提交：S6-01(a) = `95c1f1e`；S6-01(b) = `b0294ec`；S6-01(c)-1/-2 = `041bd4b`（均**尚未推送**）  
-> 结论：**进行中** — S6-01(a) 跨端契约层、S6-01(b) Android 群数据层、S6-01(c)-1/-2 群上下文提示词段/文本块已落地并通过双端门禁；S6-01 余项（完整装配 c、生成闭环 d、群记忆 e、UI f）与 S6-02～S6-07 未完成（§5）。阶段 6 尚不能签字。
+> 完成提交：S6-01(a) = `95c1f1e`；S6-01(b) = `b0294ec`；S6-01(c)-1/-2 = `041bd4b`；S6-01(c)-3 = `73b33f9`（均**尚未推送**）  
+> 结论：**进行中** — S6-01(a) 跨端契约层、S6-01(b) Android 群数据层、S6-01(c) 群上下文（提示词段/文本块/完整装配）已落地并通过双端门禁；S6-01 余项（生成闭环 d、群记忆 e、UI f）与 S6-02～S6-07 未完成（§5）。阶段 6 尚不能签字。
 
 ## 0. 边界与工作区
 
@@ -12,7 +12,7 @@
 - 提交 **`95c1f1e`**（2026-09-22，未推送）：S6-01(a) 群聊发言调度、free 多角色拆分、派生记忆失效决策的**跨语言契约层**（TS oracle + golden fixture + Kotlin 等价实现 + PC 生产接线），19 files，+3674/−227。
 - **S6-01(b)** = **`b0294ec`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：Android 群数据层补全——本地库 v5（`local_groups` 调度参数列、`local_messages` 身份三键、新表 `local_group_messages`、会话方向开关）、`EntityPayloads` 三处（message 身份键缺口清零 + 群会话/群消息临时 payload）、`LocalStore`/`RoomLocalSyncRepository`/`FakeLocalStore` 群消息记账链、`ChatRepository` 群生命周期接口（默认明确失败）、`LocalChatRepository` 群聊 16 项真实现（`groupAiReply` 除外）、DTO 补字段、v4→v5 instrumented 迁移测试，19 files，+3871/−41。
 - **S6-01(c)-1/-2** = **`041bd4b`**（2026-09-22，未推送，哈希补记 `33e4012`）：群上下文提示词段与确定性文本块跨端共享——`shared/chat-core/groupContextBlocks.ts`（从 PC `groupChatContext.ts` 逐字抽出）+ `group-prompts`/`group-context-blocks` golden + Kotlin `ChatGroupPrompts`/`ChatNarrativeMode.buildGroupNarrativeModePrompt`/`ChatGroupContextBlocks` + 12 例逐字 golden。PC 接线暂缺（P1-6-2）。
-- **S6-01(c)-3**（2026-09-22，未推送，提交哈希随后一笔补记）：群上下文完整装配——`shared/chat-core/groupContextBuilder.ts`（组装顺序 1–19）+ `ChatGroupContextBuilder.kt` + `group-context.json`（装配 8 例 + 身份解析 3 例）+ `ChatGroupContextBuilderGoldenTest` 3/3。
+- **S6-01(c)-3** = **`73b33f9`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：群上下文完整装配——`shared/chat-core/groupContextBuilder.ts`（组装顺序 1–19）+ `ChatGroupContextBuilder.kt` + `group-context.json`（装配 8 例 + 身份解析 3 例）+ `ChatGroupContextBuilderGoldenTest` 3/3。
 - PC 侧接线为**等价重构**：不改任何用户可观察行为（提示词、文案、调度结果、落盘语义均不变），由既有 43 条 `useGroupChatStore` 用例、12 条 `groupMemoryManager` 用例、6 条 checkpoint 用例与全量 `pnpm test` 佐证。
 
 ### 0.2 工作区并存改动（非本轮产物，未触碰）
