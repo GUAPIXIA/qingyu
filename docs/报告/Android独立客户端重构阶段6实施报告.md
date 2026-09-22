@@ -344,6 +344,24 @@
 - F-6-1：`shared/fixtures/cross-platform/chat-core/*.json` 由 `shared/__tests__/chatCoreGolden.test.ts` 生成的 44 份与本轮 3 份共用同一目录与 `ChatCoreFixtures` 读取器；两份生成器共用 `CHAT_CORE_UPDATE_FIXTURES` 开关（README 已注明分别执行）。
 - F-6-2：`ContentWiringAuditTest.unmigratedCapabilitiesKeepAnActionableNoticeThatTheUiConsumes` 的钉子随 S6-01b 更新为**双向守卫**——未迁移能力（群聊 AI 回复/公告/版本信息）必须走 `notMigrated`，已迁移的群能力不得回退成 `notMigrated`（把「已经做了」伪装回「还没做」同样是撒谎）。首跑正是这条守卫把过期钉子顶红的，属守卫按设计工作。
 
+### 5.2 实机验证矩阵（U-6-7，待执行清单——设备到位后逐格填证据）
+
+> 阶段 6 §3 第 6 条 + U-6-7 要求。**执行口径**：Android **8（API 26）/ 12（API 31–32）/ 14（API 34）** 三台物理机各过一遍；每格证据 = 录屏或截图 + 日志片段位（`adb logcat -s TtsQueueController MediaImportGate UpdateService` 等对应 tag）。单元测试已锁逻辑层（各场景列出对应 JVM 用例），本矩阵只验**真机系统行为**。
+
+| # | 场景 | 预期（语义钉子） | 对应 JVM 用例（已绿） | Android 8 | Android 12 | Android 14 |
+|---|---|---|---|---|---|---|
+| 1 | TTS 音频焦点被抢（来电/其他播放器） | 自动暂停、焦点回归后可恢复，不叠音 | `AudioFocusPolicyTest`、`TtsQueueControllerTest` | 待执行 | 待执行 | 待执行 |
+| 2 | 蓝牙/有线耳机插拔 | 路由切换不崩；拔出即暂停 | （真机专属，逻辑层无对手） | 待执行 | 待执行 | 待执行 |
+| 3 | 低存储（blob store/模型包下载中磁盘满） | 明确错误文案、**不留半套产物**（原子写） | `ContentBlobStoreTest`（原子性）、`ModelPackageInstallerTest`（空间预检） | 待执行 | 待执行 | 待执行 |
+| 4 | 权限撤销（存储/通知） | 功能降级不崩、给引导提示 | （真机专属） | 待执行 | 待执行 | 待执行 |
+| 5 | SAF 选图导入全链路（相机/相册来源） | 伪 MIME/超限/损坏在闸口被拒、EXIF 默认剥离、缩略图+双 blob | `AttachmentIngestServiceTest`×9、`SafAttachmentSourceTest` | 待执行 | 待执行 | 待执行 |
+| 6 | 应用更新安装 | hash 校验 + **系统安装确认**（不静默安装） | `UpdateVerifierTest`、`UpdateServiceTest` | 待执行 | 待执行 | 待执行 |
+| 7 | 模型包下载/卸载 | 断点续传拼接、签名不符拒绝、卸载影响提示 | `ModelPackageInstallerTest`、`ManifestSignatureVerifierTest`、`ModelPackageUninstallTest` | 待执行 | 待执行 | 待执行 |
+| 8 | 进程被杀后恢复（TTS/生成/同步） | 不空转、不重复入账；游标语义保底 | `LocalGroupGenerationUseCaseTest`（终局矩阵）、`LocalMemorySummaryServiceTest`（CAS） | 待执行 | 待执行 | 待执行 |
+| 9 | 诊断导出包真机生成 | 泄密红线复扫（原串检索为空） | `DiagnosticsExportServiceTest`、`DiagnosticsRedactorTest` | 待执行 | 待执行 | 待执行 |
+
+**执行前置**：①真机三台（含 Android 8 老机型）；②构建一个 release/签名包（更新流需要真实 PackageInstaller 会话）；③网络 TTS/生图/embedding 的真实端点凭据。执行完毕后本表逐格替换「待执行」为证据位，并把结果并入阶段验收记录。
+
 ## 6. 回滚方法
 
 - S6-01(a)：纯新增 + 等价接线，无数据迁移。回滚 = revert `95c1f1e`：删除 `shared/chat-core/{groupScheduling,groupFreeSplit,derivedMemory}.ts`、三份 fixture、`shared/__tests__/groupChatCoreGolden.test.ts`、Kotlin 三模块 + 三测试，并还原 `src/store/{useGroupChatStore,groupStreamController,chatUtils}.ts`。还原后 PC 行为与基线一致；Android 侧新模块未接入生产路径。
