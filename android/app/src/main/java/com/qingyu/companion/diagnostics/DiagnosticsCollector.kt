@@ -129,6 +129,8 @@ class GenerationDiagnosticsRecorder {
     private var interrupted: Long = 0L
     private var totalDurationMs: Long = 0L
     private var maxDurationMs: Long = 0L
+    /** 有起始时刻、真正进入时长统计的会话数（平均值分母）。 */
+    private var durationSamples: Long = 0L
     private var lastFailure: ErrorRecord? = null
     private val counters = LinkedHashMap<String, Long>()
     private val openStarts = HashMap<String, Long>()
@@ -172,7 +174,9 @@ class GenerationDiagnosticsRecorder {
             interrupted = interrupted,
             totalDurationMs = totalDurationMs,
             maxDurationMs = maxDurationMs,
-            avgDurationMs = if (finished > 0) totalDurationMs / finished else null,
+            // 平均值只对**有起始时刻**的会话计（未开始就结束的会话无时长样本，
+            // 计入分母会得出「平均 0ms」的假读数；无样本时必须是 null）
+            avgDurationMs = if (durationSamples > 0) totalDurationMs / durationSamples else null,
             lastFailure = lastFailure,
             counters = counters.toMap(),
         )
@@ -181,6 +185,7 @@ class GenerationDiagnosticsRecorder {
     private fun closeSession(sessionId: String, atMs: Long) {
         val start = openStarts.remove(sessionId) ?: return
         val duration = (atMs - start).coerceAtLeast(0L)
+        durationSamples += 1
         totalDurationMs += duration
         if (duration > maxDurationMs) maxDurationMs = duration
     }

@@ -31,7 +31,7 @@ object PromptSanitizer {
     }
 
     private val SD_ILLEGAL_CHARS =
-        Regex("[^a-zA-Z0-9.,:_(){}<>\\[\\]/\\-'|#\u00C0-\u024F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF\\s]")
+        Regex("[^a-zA-Z0-9.,:_(){}<>\\[\\]/\\-'|\u00C0-\u024F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF\\s]")
 
     /**
      * OpenAI DALL-E 提示词轻度清洗：DALL-E 支持自然语言，

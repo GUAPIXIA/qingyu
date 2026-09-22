@@ -1,5 +1,7 @@
 package com.qingyu.companion.media
 
+import kotlin.math.roundToInt
+
 /**
  * 缩略图规格与尺寸计算（纯逻辑）。
  *
@@ -42,8 +44,9 @@ object ThumbnailMath {
         val longest = maxOf(width, height)
         if (longest <= maxDimension) return width to height
         val scale = maxDimension.toDouble() / longest
-        val w = maxOf(1, (width * scale).toInt())
-        val h = maxOf(1, (height * scale).toInt())
+        // 四舍五入（非截断）：3x1000@512 的宽度 1.536 必须进到 2，截断会把列表图压成 1 像素
+        val w = maxOf(1, (width * scale).roundToInt())
+        val h = maxOf(1, (height * scale).roundToInt())
         return w to h
     }
 }

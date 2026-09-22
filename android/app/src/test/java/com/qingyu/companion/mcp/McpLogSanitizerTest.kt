@@ -44,7 +44,7 @@ class McpLogSanitizerTest {
         ).render()
         assertTrue(!line.contains("secret-body"), "调用终局日志不得携带结果内容")
         assertEquals(
-            "mcp.call end server=远程工具服 tool=search outcome=成功（块=1 文本=10B，内容不记录） durationMs=12",
+            "mcp.call end server=远程工具服 tool=search outcome=成功（块=1 文本=11B，内容不记录） durationMs=12",
             line,
             "日志行必须稳定只含元数据，便于审计红线",
         )

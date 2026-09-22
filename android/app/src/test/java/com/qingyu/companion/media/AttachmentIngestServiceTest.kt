@@ -37,9 +37,11 @@ class AttachmentIngestServiceTest {
     }
 
     private val codec = FakeCodec()
-    private val storeRoot = File(temp.root, "store")
-    private val store = ContentBlobStore(storeRoot)
-    private val service = AttachmentIngestService(store, codec)
+    // lazy：TemporaryFolder 规则在测试启动后才创建目录，构造期读 temp.root 会报
+    // 「the temporary folder has not yet been created」
+    private val storeRoot by lazy { File(temp.root, "store") }
+    private val store by lazy { ContentBlobStore(storeRoot) }
+    private val service by lazy { AttachmentIngestService(store, codec) }
 
     private fun storedObjectCount(): Int =
         File(storeRoot, "objects").walkTopDown().count { it.isFile }

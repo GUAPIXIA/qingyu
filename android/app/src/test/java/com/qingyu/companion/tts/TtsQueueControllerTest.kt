@@ -76,7 +76,8 @@ class TtsQueueControllerTest {
         controller.enqueue(speakReq("z", "打断项"), EnqueueMode.INTERRUPT)
 
         val snapshot = controller.snapshot.value
-        assertEquals("打断项", snapshot.current?.requestId, "打断必须立即替换当前项")
+        // 打断项的 requestId 是 "z"（文本是「打断项」）：断言当前项已换成打断项
+        assertEquals("z", snapshot.current?.requestId, "打断必须立即替换当前项")
         assertTrue(snapshot.pending.isEmpty(), "打断不清空待播队列会让旧请求在打断项之后继续播放")
         assertEquals(TtsPlayState.PLAYING, snapshot.state, "打断项应立即进入播放")
         assertEquals(

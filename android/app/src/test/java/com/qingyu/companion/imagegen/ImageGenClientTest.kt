@@ -113,7 +113,7 @@ class ImageGenClientTest {
                 200,
                 """{"p-1":{"status":{"completed":true},"outputs":{
                     "9":{"images":[{"filename":"a.png","type":"output"},{"filename":"b.png","type":"output"}]},
-                    "10":{"images":[{"filename":"noise.png","type":"output"}]}}}""",
+                    "10":{"images":[{"filename":"noise.png","type":"output"}]}}}}""",
             ),
         )
         transport.enqueue(ImageGenHttpResponse(200, "image/png", pngBytes()))

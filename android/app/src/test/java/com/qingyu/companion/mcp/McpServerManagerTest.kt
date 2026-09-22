@@ -82,6 +82,8 @@ class McpServerManagerTest {
     @Test
     fun `工具清单与调用路由到已连接客户端`() = runTest {
         val (manager, _, client) = managerWith()
+        // 清单来自**已连接**客户端：必须先建立连接（与 startEnabled 用例同口径）
+        manager.startEnabled()
         val tools = manager.listTools()
         assertEquals(1, tools.size, "工具清单必须来自已连接客户端")
         assertEquals("search", tools[0].name, "工具清单解析错误")

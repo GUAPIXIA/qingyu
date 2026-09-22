@@ -110,7 +110,7 @@ class ComfyUiProtocolTest {
                 200,
                 """{"p-1":{"status":{"completed":true},"outputs":{
                     "9":{"images":[{"filename":"wanted.png","type":"output"}]},
-                    "10":{"images":[{"filename":"noise.png","type":"output"}]}}}""",
+                    "10":{"images":[{"filename":"noise.png","type":"output"}]}}}}""",
             ),
             "p-1",
             selectedOutputNodeIds = listOf("9"),
@@ -176,7 +176,7 @@ class ComfyUiProtocolTest {
         val failed = ComfyUiProtocol.parseObjectInfoResponse(jsonResponse(500, "x"))
         assertEquals("object_info 失败不抛错，只返回失败结果", false, failed.success)
         val ok = ComfyUiProtocol.parseObjectInfoResponse(
-            jsonResponse(200, """{"KSampler":{"input":{"steps":["INT",{"min":1}]}}}}"""),
+            jsonResponse(200, """{"KSampler":{"input":{"steps":["INT",{"min":1}]}}}"""),
         )
         assertEquals("object_info 成功必须解析节点定义", true, ok.success)
         assertTrue("节点定义必须可索引", ok.objectInfo!!.containsKey("KSampler"))

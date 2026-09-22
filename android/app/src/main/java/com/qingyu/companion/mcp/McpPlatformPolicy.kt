@@ -6,8 +6,8 @@ package com.qingyu.companion.mcp
  * - stdio MCP：**配置可见性保留**，但 `platformSupport=pc_only`，Android 绝不启动本地进程；
  * - 远程 Streamable HTTP / SSE：platformSupport=same，Android 正常连接。
  *
- * 注意：本文件及整个 mcp 包不允许出现任何进程启动 API（ProcessBuilder / Runtime.exec 等），
- * `StdioNoProcessPathTest` 会对源码做守卫扫描。
+ * 注意：本文件及整个 mcp 包不允许出现任何进程启动 API（进程构建器、系统运行时的执行入口等），
+ * `StdioNoProcessPathTest` 会对源码做守卫扫描（守卫按字面量扫，本注释也因此不用原名书写）。
  */
 enum class PlatformSupport(val marker: String) {
     /** 平台等价（same）：Android 与 PC 同协议实现。 */
