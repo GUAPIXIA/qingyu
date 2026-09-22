@@ -282,4 +282,67 @@ class LocalGroupGenerationUseCaseTest {
         assertEquals("立即接话开新轮", 2, message.round)
         assertTrue("一次性触发不接力", deltas.filterIsInstance<LocalGroupGenerationUseCase.Delta.TurnStarted>().size == 1)
     }
+
+    // ---------------------------------------------------------------- 世界书接入（U-6-2 余项）
+
+    @Test
+    fun 世界书常驻条目注入上下文并更新近因窗口(): Unit = runBlocking {
+        val f = fixture(listOf(listOf(chunk("好的。"), finish())), chatMode = "mention", autoMode = false)
+        f.store.putLorebook(
+            com.qingyu.companion.local.db.LocalLorebookEntity(
+                id = "lb1", name = "世界书",
+                canonicalJson = """{"entries":[{"id":"e1","content":"<世界书：山口伏击>","activation":{"mode":"constant"}}]}""",
+                createdAt = 0, updatedAt = 0,
+            ),
+        )
+        f.store.putGroup(f.store.getGroup("g1")!!.copy(lorebookIdsJson = """["lb1"]"""))
+
+        f.useCase.generate(
+            groupId = "g1", sessionId = "gs1", requestId = "req-1",
+            targetCharId = "char-a", chainEnabled = false,
+        ).toList()
+
+        val systemPrompt = f.gateway.requests[0].messages.first().content
+        assertTrue("群绑定世界书的常驻条目必须注入 system 提示", systemPrompt.contains("<世界书：山口伏击>"))
+        val session = f.store.getSession("gs1")!!
+        assertTrue(
+            "触发键必须回写会话近因窗口，否则 recency 加权恒为 0",
+            session.recentTriggeredIdsJson.contains("lb1:e1"),
+        )
+    }
+
+    @Test
+    fun 世界书扫描文本带成员名前缀与近因内容(): Unit = runBlocking {
+        val f = fixture(listOf(listOf(chunk("好的。"), finish())), chatMode = "mention", autoMode = false)
+        // 角色消息在扫描文本里带【成员名】前缀：以角色名为关键词的条目因此可触发
+        f.store.appendGroupMessage(
+            com.qingyu.companion.local.db.LocalGroupMessageEntity(
+                id = "a0", sessionId = "gs1", groupId = "g1", characterId = "char-a",
+                content = "我们到山口了。", round = 1, seq = -1, logicalTime = 150, createdAt = 0, updatedAt = 0,
+            ),
+        )
+        f.store.putLorebook(
+            com.qingyu.companion.local.db.LocalLorebookEntity(
+                id = "lb2", name = "角色条目",
+                canonicalJson = """{"entries":[
+                    {"id":"e2","content":"<山口伏击情报>","activation":{"mode":"conditional","primaryKeys":["山口"]},"insertion":{"type":"prompt","anchor":"before_character"}},
+                    {"id":"e3","content":"<小A的秘密>","activation":{"mode":"conditional","primaryKeys":["【小A】"],"regex":{"enabled":true,"flags":"g"},"wholeWords":false}}
+                ]}""",
+                createdAt = 0, updatedAt = 0,
+            ),
+        )
+        f.store.putGroup(f.store.getGroup("g1")!!.copy(lorebookIdsJson = """["lb2"]"""))
+
+        f.useCase.generate(
+            groupId = "g1", sessionId = "gs1", requestId = "req-1",
+            targetCharId = "char-a", chainEnabled = false,
+        ).toList()
+
+        val systemPrompt = f.gateway.requests[0].messages.first().content
+        assertTrue("关键词「山口」在角色消息内容里命中必须注入", systemPrompt.contains("<山口伏击情报>"))
+        assertTrue(
+            "成员名前缀【小A】进扫描文本：以角色名为关键词的条目必须能触发",
+            systemPrompt.contains("<小A的秘密>"),
+        )
+    }
 }

@@ -241,6 +241,42 @@ class LocalGroupGenerationUseCase(
             globalUserPersona = settings.globalUserPersona,
         )
 
+        val targetName = turn.speakerId?.let { id -> blockMembers.firstOrNull { it.id == id }?.name }
+        val charNameForVars = ChatGroupContextBlocks.resolveCharNameForVars(targetName, blockMembers)
+        val requestMax = requestMaxTokensFor(profile.model, storedMessages.sumOf { it.content.length })
+        // 世界书预算基数与装配器口径一致（TOKEN_BUDGET_SAFETY 0.95 / 下限 25%）
+        val budgetBase = maxOf(
+            Math.floor((settings.contextLimit - requestMax) * ChatContextShared.TOKEN_BUDGET_SAFETY).toInt(),
+            Math.floor(settings.contextLimit * 0.25).toInt(),
+        )
+        // ---- 世界书（群绑定 ∪ 成员绑定；PC 口径 scanText 带【名】前缀） ----
+        val lorebook = buildLorebookPlan(
+            group = group,
+            members = members,
+            blockMembers = blockMembers,
+            storedMessages = storedMessages,
+            userName = personaFields.userName,
+            charNameForVars = charNameForVars,
+            budgetBase = budgetBase,
+            model = profile.model,
+            session = session,
+        )
+        // PC 口径：装配后立即回写会话近因窗口（环形 5 轮），否则 recency 加权恒为 0
+        val triggeredKeys = lorebook?.triggeredKeys.orEmpty()
+        if (triggeredKeys.isNotEmpty()) {
+            runCatching {
+                store.putSession(
+                    session.copy(
+                        recentTriggeredIdsJson = appendRecentTriggeredIds(
+                            parseRecentTriggeredIds(session.recentTriggeredIdsJson),
+                            triggeredKeys,
+                            RECENCY_WINDOW,
+                        ),
+                    ),
+                )
+            }
+        }
+
         val built = ChatGroupContextBuilder.build(
             ChatGroupContextBuilder.Input(
                 groupName = group.name,
@@ -290,8 +326,8 @@ class LocalGroupGenerationUseCase(
                 ),
                 model = profile.model,
                 maxContext = settings.contextLimit,
-                requestMaxTokens = requestMaxTokensFor(profile.model, storedMessages.sumOf { it.content.length }),
-                lorebookPlan = null,
+                requestMaxTokens = requestMax,
+                lorebookPlan = lorebook?.plan,
                 trackUsage = false,
             ),
         )
@@ -300,7 +336,7 @@ class LocalGroupGenerationUseCase(
             model = profile.model,
             messages = built.messages.map { ChatMessageDto(it.role, it.content) },
             temperature = presetJson?.optDouble("temperature", 0.8) ?: 0.8,
-            maxTokens = requestMaxTokensFor(profile.model, storedMessages.sumOf { it.content.length }),
+            maxTokens = requestMax,
             stream = true,
         )
         val promptChars = built.messages.sumOf { ChatTextMetrics.countVisibleCharacters(it.content) }
@@ -499,6 +535,91 @@ class LocalGroupGenerationUseCase(
 
     // ---------------------------------------------------------------- 小工具
 
+    private data class LorebookPlanResult(
+        val plan: ChatGroupContextBuilder.LorebookPlan,
+        val triggeredKeys: List<String>,
+    )
+
+    /**
+     * 群世界书执行（PC `buildGroupChatContext` 世界书段口径）：
+     * - 激活集 = 群绑定 ∪ 成员绑定；scanText 的角色消息带 `【成员名】` 前缀
+     *   （以角色名为关键词的条目因此可被触发）；
+     * - characterNames/characterTags 与 entityVocabulary = 成员名 + 成员 tags；
+     * - 渲染走统一渲染器，各桶由装配器按 PC 位置拼装。
+     */
+    private suspend fun buildLorebookPlan(
+        group: com.qingyu.companion.local.db.LocalGroupEntity,
+        members: List<com.qingyu.companion.local.db.LocalCharacterEntity>,
+        blockMembers: List<ChatGroupContextBlocks.Member>,
+        storedMessages: List<LocalGroupMessageEntity>,
+        userName: String,
+        charNameForVars: String,
+        budgetBase: Int,
+        model: String,
+        session: com.qingyu.companion.local.db.LocalSessionEntity,
+    ): LorebookPlanResult? {
+        val boundIds = members.flatMap { parseStringList(it.boundLorebookIdsJson) }
+        val activeIds = (parseStringList(group.lorebookIdsJson) + boundIds).toSet()
+        if (activeIds.isEmpty()) return null
+        val activeBooks = store.listLorebooks()
+            .filter { activeIds.contains(it.id) }
+            .mapNotNull { ChatLorebookCompile.compile(it.canonicalJson, it.id, it.name) }
+        if (activeBooks.isEmpty()) return null
+
+        val scanDepth = ChatLorebookRuntime.resolveScanDepth(
+            activeBooks.flatMap { book -> listOf(book.scanDepth) + book.entries.map { it.scanDepth } },
+        )
+        val nameOf = blockMembers.associate { it.id to it.name }
+        val scanMessages = (if (scanDepth == 0) emptyList() else storedMessages.takeLast(scanDepth)).map {
+            if (it.characterId == "__user__") it.content else "【${nameOf[it.characterId] ?: "未知角色"}】${it.content}"
+        }
+        val memberTags = members.flatMap { parseStringList(it.tagsJson) }
+        val result = ChatLorebookRuntime.execute(
+            ChatLorebookRuntime.Input(
+                lorebooks = activeBooks,
+                scanText = scanMessages.joinToString(" "),
+                scanMessages = scanMessages,
+                userName = userName,
+                charName = charNameForVars,
+                characterNames = blockMembers.map { it.name },
+                characterTags = memberTags,
+                generationType = "normal",
+                messageCount = storedMessages.size,
+                budget = budgetBase,
+                model = model,
+                entityVocabulary = blockMembers.map { it.name } + memberTags,
+                recentTriggeredIds = parseRecentTriggeredIds(session.recentTriggeredIdsJson),
+                compressionCache = parseCompressionCache(session.lorebookCompressionCacheJson),
+                semanticEnabled = false,
+            ),
+        )
+        val plan = ChatLorebookRenderer.render(
+            result.kept.map { item ->
+                ChatLorebookRenderer.RenderItem(
+                    content = item.content,
+                    order = item.order,
+                    insertion = ChatLorebookRenderer.fromBudgetInsertion(ChatLorebookBudget.loreItemInsertion(item)),
+                    key = item.key,
+                )
+            },
+        )
+        return LorebookPlanResult(
+            plan = ChatGroupContextBuilder.LorebookPlan(
+                beforeCharacter = plan.beforeCharacter,
+                afterCharacter = plan.afterCharacter,
+                beforeExamples = plan.beforeExamples,
+                afterExamples = plan.afterExamples,
+                promptEnd = plan.promptEnd,
+                authorsNoteTop = plan.authorsNoteTop,
+                authorsNoteBottom = plan.authorsNoteBottom,
+                chat = plan.chat.map {
+                    ChatContextShared.DepthInsertItem(content = it.content, depth = it.depth, order = it.order, role = it.role)
+                },
+            ),
+            triggeredKeys = result.triggeredEntryKeys,
+        )
+    }
+
     private suspend fun loadMessageRefs(sessionId: String): List<ChatGroupScheduling.MessageRef> =
         store.listGroupMessages(sessionId).map { ChatGroupScheduling.MessageRef(it.characterId, it.round.toLong()) }
 
@@ -528,6 +649,44 @@ class LocalGroupGenerationUseCase(
     }.getOrDefault(emptyList())
 
     private fun imagesOf(json: String): List<String> = parseStringList(json)
+
+    /** 世界书近因窗口：`[[key,...], ...]`（每轮一组，旧在前）；坏数据退化为空窗口。 */
+    private fun parseRecentTriggeredIds(json: String): List<List<String>> = runCatching {
+        val rounds = org.json.JSONArray(json)
+        (0 until rounds.length()).mapNotNull { index ->
+            rounds.optJSONArray(index)?.let { round ->
+                (0 until round.length()).map { round.optString(it) }.filter { it.isNotEmpty() }
+            }
+        }
+    }.getOrDefault(emptyList())
+
+    /** 近因窗口回写：追加本轮触发键并裁到 [window] 轮（PC `appendRecentTriggeredIds` 环形语义）。 */
+    private fun appendRecentTriggeredIds(rounds: List<List<String>>, keys: List<String>, window: Int): String {
+        val next = (rounds + listOf(keys)).takeLast(window)
+        val array = org.json.JSONArray()
+        next.forEach { round -> array.put(org.json.JSONArray(round)) }
+        return array.toString()
+    }
+
+    /** 世界书压缩缓存：`{压缩键: {summary, entryKeys, createdAt, lastUsedAt}}`。 */
+    private fun parseCompressionCache(json: String): Map<String, ChatLorebookBudget.CompressionCacheEntry> =
+        runCatching {
+            val root = org.json.JSONObject(json)
+            root.keys().asSequence().mapNotNull { key ->
+                root.optJSONObject(key)?.let { entry ->
+                    val summary = entry.optString("summary")
+                    if (summary.isEmpty()) {
+                        null
+                    } else {
+                        key to ChatLorebookBudget.CompressionCacheEntry(
+                            summary = summary,
+                            createdAt = entry.optLong("createdAt", 0L),
+                            lastUsedAt = if (entry.has("lastUsedAt")) entry.optLong("lastUsedAt") else null,
+                        )
+                    }
+                }
+            }.toMap()
+        }.getOrDefault(emptyMap())
 
     private fun exampleDialogOf(json: String): String = runCatching {
         val array = org.json.JSONArray(json)
@@ -576,5 +735,8 @@ class LocalGroupGenerationUseCase(
     companion object {
         /** 取消事件的错误码（与 ModelClient 的 CANCELLED 一致）。 */
         const val CANCELLED_CODE = "CANCELLED"
+
+        /** 世界书触发近因窗口（PC `LOREBOOK_RECENCY_WINDOW` 同值）。 */
+        const val RECENCY_WINDOW = 5
     }
 }
