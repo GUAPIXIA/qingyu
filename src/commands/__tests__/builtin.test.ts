@@ -369,7 +369,11 @@ describe('imagine 命令', () => {
     expect(ctx.callAiHelper).toHaveBeenCalled()
     // 生图提示词只描述任务和正文体量，具体 token 由统一规划器解析。
     const options = (ctx.callAiHelper as any).mock.calls[0][2]
-    expect(options).toMatchObject({ task: 'image_prompt', expectedBodyChars: 800 })
+    expect(options).toMatchObject({
+      task: 'image_prompt',
+      expectedBodyChars: 800,
+      includePresetJailbreak: true,
+    })
     expect(ctx.notify).toHaveBeenCalledWith(expect.stringContaining('提示词: best quality'))
     expect(ctx.addImageMessage).toHaveBeenCalledWith(
       ['data:image/png;base64,x'],

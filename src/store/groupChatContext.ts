@@ -106,6 +106,11 @@ export function buildGroupChatContext(
   const members = group.memberIds
     .map(id => charStore.characters.find(c => c.id === id))
     .filter(Boolean) as Character[]
+  // 与单聊一致：本轮用户消息已经入列，用户消息不超过 1 条即为会话首轮。
+  const isFirstTurn = state.messages.filter(m => m.characterId === '__user__').length <= 1
+  const scenarioInjectionMode = settings.scenarioInjectionMode ?? 'first_turn'
+  const shouldSendScenario = scenarioInjectionMode !== 'off'
+    && (scenarioInjectionMode !== 'first_turn' || isFirstTurn)
 
   // 变量替换用的 charName（mention/polling 为目标角色名，free 为成员列表）
   const targetChar = targetCharId ? members.find(m => m.id === targetCharId) : undefined
@@ -293,7 +298,9 @@ export function buildGroupChatContext(
       systemContent += `\n--- ${m.name} ---\n`
       if (m.description) systemContent += `描述：${replaceVariables(m.description, userName, m.name)}\n`
       if (m.personality) systemContent += `性格：${replaceVariables(m.personality, userName, m.name)}\n`
-      if (m.scenario) systemContent += `场景：${replaceVariables(m.scenario, userName, m.name)}\n`
+      if (shouldSendScenario && m.scenario) {
+        systemContent += `场景：${replaceVariables(m.scenario, userName, m.name)}\n`
+      }
       if (m.systemPrompt) systemContent += `\n${replaceVariables(m.systemPrompt, userName, m.name)}\n`
       if (!hasExampleAnchors && m.exampleDialog) {
         systemContent += `\n对话示例：\n${replaceVariables(m.exampleDialog, userName, m.name)}\n`
@@ -319,7 +326,9 @@ export function buildGroupChatContext(
       systemContent += `\n\n${lorebookBefore}【当前发言角色：${target.name}】\n`
       if (target.description) systemContent += `描述：${replaceVariables(target.description, userName, target.name)}\n`
       if (target.personality) systemContent += `性格：${replaceVariables(target.personality, userName, target.name)}\n`
-      if (target.scenario) systemContent += `场景：${replaceVariables(target.scenario, userName, target.name)}\n`
+      if (shouldSendScenario && target.scenario) {
+        systemContent += `场景：${replaceVariables(target.scenario, userName, target.name)}\n`
+      }
       if (target.systemPrompt) systemContent += `\n${replaceVariables(target.systemPrompt, userName, target.name)}\n`
       if (lorebookRenderPlan.beforeExamples.length > 0) {
         systemContent += '\n' + lorebookRenderPlan.beforeExamples.join('\n') + '\n'

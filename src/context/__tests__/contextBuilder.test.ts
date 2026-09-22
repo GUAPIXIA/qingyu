@@ -64,6 +64,8 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     htmlRendering: false,
     showTokenCount: true,
     enableThoughtFormat: true,
+    // 既有快照继续锁定完整角色设定；场景发送三档由独立用例覆盖。
+    scenarioInjectionMode: 'always',
     // 覆盖项
     ...overrides,
   }
@@ -205,6 +207,49 @@ function makeData(overrides: Partial<ContextBuildData> = {}): ContextBuildData {
 // ===== 快照测试 =====
 
 describe('buildContextMessagesFromData 防漂移快照', () => {
+  it.each([
+    {
+      label: '仅首轮在第一条用户消息时发送',
+      mode: 'first_turn' as const,
+      messages: [makeMessage({ id: 'first-user', role: 'user', content: '你好', timestamp: 1 })],
+      expected: true,
+    },
+    {
+      label: '仅首轮在后续轮次停止发送',
+      mode: 'first_turn' as const,
+      messages: [
+        makeMessage({ id: 'u1', role: 'user', content: '你好', timestamp: 1 }),
+        makeMessage({ id: 'a1', role: 'assistant', content: '晚上好', timestamp: 2 }),
+        makeMessage({ id: 'u2', role: 'user', content: '继续', timestamp: 3 }),
+      ],
+      expected: false,
+    },
+    {
+      label: '每轮在后续轮次仍发送',
+      mode: 'always' as const,
+      messages: [
+        makeMessage({ id: 'u1', role: 'user', content: '你好', timestamp: 1 }),
+        makeMessage({ id: 'u2', role: 'user', content: '继续', timestamp: 2 }),
+      ],
+      expected: true,
+    },
+    {
+      label: '关闭时首轮也不发送',
+      mode: 'off' as const,
+      messages: [makeMessage({ id: 'first-user', role: 'user', content: '你好', timestamp: 1 })],
+      expected: false,
+    },
+  ])('$label', ({ mode, messages, expected }) => {
+    const result = buildContextMessagesFromData(makeData({
+      chat: makeChat({ messages, activeLorebookIds: [] }),
+      settings: { settings: makeSettings({ scenarioInjectionMode: mode }), profile: null },
+      lorebooks: [],
+    }))
+    const joined = result.messages.map(message => message.content).join('\n')
+
+    expect(joined.includes('场景：末日后的废土城市')).toBe(expected)
+  })
+
   it('按会话值注入全局叙事规则并报告实际模式', () => {
     const baseChat = makeChat()
     const result = buildContextMessagesFromData(makeData({
@@ -554,6 +599,7 @@ describe('buildContextMessagesFromData 防漂移快照', () => {
       }),
     })
     const result = buildContextMessagesFromData(data, { continuation: true })
+    expect(result.messages[0].content).toContain('不要重复用户的话。')
     const last = result.messages[result.messages.length - 1]
     expect(last.role).toBe('user')
     expect(last.content).toContain('继续写作')

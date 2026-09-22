@@ -268,6 +268,8 @@ export function buildContextMessagesFromData(
   const messages = data.chat.messages.filter(
     (m) => (m.content || (m.images && m.images.length > 0)) && m.role !== 'system',
   )
+  // 首轮口径与示例对话一致：构建请求时本轮用户消息已经入列，因此用户消息不超过 1 条即为首轮。
+  const isFirstTurn = messages.filter(m => m.role === 'user').length <= 1
   const context: ContextMessage[] = []
   const { sessions, currentSessionId } = data.chat
   const currentSession = sessions.find(s => s.id === currentSessionId)
@@ -493,7 +495,13 @@ export function buildContextMessagesFromData(
   let charDesc = ''
   if (character.description) charDesc += replaceVariables(character.description, userName, charNameForVars) + '\n'
   if (character.personality) charDesc += '性格：' + replaceVariables(character.personality, userName, charNameForVars) + '\n'
-  if (character.scenario) charDesc += '场景：' + replaceVariables(character.scenario, userName, charNameForVars) + '\n'
+  const scenarioInjectionMode = settings.scenarioInjectionMode ?? 'first_turn'
+  const shouldSendScenario = !!character.scenario
+    && scenarioInjectionMode !== 'off'
+    && (scenarioInjectionMode !== 'first_turn' || isFirstTurn)
+  if (shouldSendScenario) {
+    charDesc += '场景：' + replaceVariables(character.scenario!, userName, charNameForVars) + '\n'
+  }
   // W7 影子：角色核心（不含世界书 before/after_character——那两段在下方按桶单独登记，避免重复计数）
   if (charDesc) {
     noteShadow('character', 'character:core', {
@@ -714,8 +722,6 @@ export function buildContextMessagesFromData(
   // 对话示例位置与发送模式配置（预设级可覆盖全局）
   const exampleDialogPosition = settings.exampleDialogPosition || 'after_system'
   const exampleDialogMode = (preset?.exampleDialogMode ?? settings.exampleDialogMode) || 'always'
-  // 首轮 = 用户消息不超过 1 条（含刚发送的这条）
-  const isFirstTurn = messages.filter(m => m.role === 'user').length <= 1
   const shouldSendExample = !!character.exampleDialog
     && exampleDialogMode !== 'off'
     && (exampleDialogMode !== 'first_turn' || isFirstTurn)

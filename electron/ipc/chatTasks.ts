@@ -14,6 +14,7 @@ import { contextService } from '../chat/contextService'
 import { RealModelPort } from '../chat/realModel'
 import { FakeModelPort } from '../chat/fakeModel'
 import { memorySummaryService } from '../services/memorySummaryService'
+import { recordUsage } from '../services/usage'
 import { getTaskSnapshot, listActiveTasks, readEvents } from '../chat/taskStore'
 import type { ChatCommand } from '../../shared/chat-core/commands'
 
@@ -26,6 +27,7 @@ function getOrchestrator(): ChatOrchestrator {
     contextPort: contextService,
     modelPort,
     memoryScheduler: memorySummaryService,
+    usageRecorder: { record: recordUsage },
   })
 }
 
@@ -57,7 +59,7 @@ export function registerChatTaskIPC(ipcMain: IpcMain, getWindow: () => BrowserWi
       client: { ...(command.client ?? {}), kind: 'desktop', clientId: 'desktop', protocolVersion: 2 },
     } as ChatCommand
     const orch = getOrchestrator()
-    const task = await orch.handle(cmd)
+    const task = orch.start(cmd)
     // 推送首个事件（accepted）给渲染层
     const win = getWindow()
     win?.webContents.send('chatTask:event', { taskId: task.taskId, type: 'task:accepted', task })
@@ -96,17 +98,14 @@ export function registerChatTaskIPC(ipcMain: IpcMain, getWindow: () => BrowserWi
     const snap = getTaskSnapshot(taskId)
     if (!snap) throw new Error('任务不存在')
     const { nanoid } = await import('nanoid')
-    const retryCmd = {
-      type: 'send',
+    const retryCmd: ChatCommand = {
+      type: 'retry_generation',
       requestId: nanoid(8),
-      sessionId: snap.sessionId,
-      characterId: snap.characterId,
-      content: snap.accumulatedText || 'retry',
       client: { kind: 'desktop' as const, clientId: 'desktop', protocolVersion: 2 as const },
       retryOfTaskId: snap.taskId,
-    } as unknown as ChatCommand
+    }
     const orch = getOrchestrator()
-    const task = await orch.handle(retryCmd)
+    const task = orch.start(retryCmd)
     return { taskId: task.taskId, state: task.state }
   })
 }

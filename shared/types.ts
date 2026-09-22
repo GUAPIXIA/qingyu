@@ -827,6 +827,8 @@ export interface Settings {
   exampleDialogPosition?: 'after_system' | 'after_history'
   /** 对话示例发送模式：always（默认）每轮发送 / first_turn 仅会话首轮 / off 关闭 */
   exampleDialogMode?: 'always' | 'first_turn' | 'off'
+  /** 角色卡场景设定发送模式：first_turn（默认）仅会话首轮 / always 每轮发送 / off 关闭 */
+  scenarioInjectionMode?: 'always' | 'first_turn' | 'off'
   /** 世界书 token 预算占上下文预算的比例（0-1，默认 0.3；1 = 不限制） */
   lorebookRatio?: number
   /** 是否启用字符用量统计 */
@@ -977,10 +979,22 @@ export interface ComfyImageGenConfig extends ImageGenModelBase {
   workflowMeta?: ComfyWorkflowMeta
   /** 仅在自动识别无法唯一确定时保存用户选择 */
   bindings?: ComfyWorkflowBindings
+  /** 负面提示词的写入策略：保留工作流、使用预设或显式清空。 */
+  negativePromptMode?: ComfyNegativePromptMode
+  /** negativePromptMode=preset 时写入所有已选负面入口。 */
+  negativePromptPreset?: string
   /** 节点级覆盖，键为 `节点ID.输入名`，例如 `57:3.steps` */
   overrides?: Record<string, unknown>
   /** @deprecated 导入工作流时的来源名称，仅用于界面展示 */
   workflowName?: string
+}
+
+export type ComfyNegativePromptMode = 'workflow' | 'preset' | 'empty'
+
+/** 提示词精确写入目标；同一节点可同时暴露 text_g / text_l 等多个输入。 */
+export interface ComfyPromptTarget {
+  nodeId: string
+  inputName: string
 }
 
 /** 生图模型配置；按 provider 判别 */
@@ -996,9 +1010,13 @@ export interface ComfyWorkflowMeta {
   analyzerVersion: number
 }
 
-/** 提示词与输出节点的角色绑定；只保存自动识别无法唯一确定的项 */
+/** 提示词与输出节点的角色绑定；用户确认后始终保存，运行时不再重新猜测。 */
 export interface ComfyWorkflowBindings {
-  positivePromptNodeIds: string[]
+  positivePromptTargets?: ComfyPromptTarget[]
+  negativePromptTargets?: ComfyPromptTarget[]
+  /** @deprecated 旧配置兼容，读取时映射为 nodeId + text。 */
+  positivePromptNodeIds?: string[]
+  /** @deprecated 旧配置兼容，读取时映射为 nodeId + text。 */
   negativePromptNodeIds?: string[]
   outputNodeIds: string[]
 }

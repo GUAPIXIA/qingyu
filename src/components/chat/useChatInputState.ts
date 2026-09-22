@@ -4,7 +4,7 @@ import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { logError } from '../../lib/logger'
 import { isConnectionConfigured } from '../../utils/defaults'
-import { getDisplayName } from '../../utils/variables'
+import { getDisplayName, replaceVariables } from '../../utils/variables'
 import { expandMacros, buildMacroContext } from '../../utils/macros'
 import { getEffectiveQuickReplies } from '../../utils/quickReply'
 import type { Character, Preset, Lorebook, QuickReply, QuickReplyStore, Message, ChatParams, MessageGenerationKind } from '../../../shared/types'
@@ -435,6 +435,8 @@ export function useChatInputState(
     inputChars?: number
     expectedBodyChars?: number
     onChunk?: (delta: string, full: string) => void
+    /** 仅显式需要的辅助链路注入当前预设的越狱提示词。 */
+    includePresetJailbreak?: boolean
   }): Promise<string> => {
     const p = getActiveProfile()
     if (!p) throw new Error('未配置 API 连接')
@@ -447,13 +449,38 @@ export function useChatInputState(
       inputChars: opts.inputChars,
       expectedBodyChars: opts.expectedBodyChars,
       userHardCap: preset?.maxTokens,
+      usageTaskType: opts.task ?? 'generic',
     })
+    let messages = opts.messages
+    if (opts.includePresetJailbreak && preset?.jailbreak.trim()) {
+      const jailbreak = replaceVariables(
+        preset.jailbreak,
+        settings.userName || '用户',
+        getDisplayName(character),
+        character.name,
+      )
+      const systemIndex = messages.findIndex((message) => message.role === 'system')
+      messages = systemIndex >= 0
+        ? messages.map((message, index) => index === systemIndex
+          ? { ...message, content: `${message.content}\n\n${jailbreak}` }
+          : message)
+        : [{ role: 'system', content: jailbreak }, ...messages]
+    }
     return callAiHelperCore({
-      messages: opts.messages,
+      messages,
       temperature: opts.temperature,
       onChunk: opts.onChunk,
       maxTokens: plan.requestMaxTokens,
       reasoningGate: plan.reasoningGate,
+      adaptiveOutputBudget: plan.adaptiveOutputBudget,
+      observability: {
+        source: 'aux',
+        taskType: opts.task ?? 'generic',
+        plannedBodyTokens: plan.bodyReserve,
+        plannedReasoningTokens: plan.reasoningReserve,
+        gateLevel: plan.reasoningGate.level,
+        gateKnob: plan.reasoningGate.knob,
+      },
       profile: p,
       activeModel,
       preset,
@@ -506,6 +533,7 @@ export function useChatInputState(
         temperature,
         task: 'continuation',
         expectedBodyChars: CONTINUE_LENGTH_PARAMS[length].maxChars,
+        includePresetJailbreak: true,
       })
 
       /** 在 system 提示词后追加一段指令并重发（格式重试与长度修复共用）。 */

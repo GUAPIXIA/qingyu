@@ -527,6 +527,8 @@ export interface ComfyWorkflowBinding {
   nodeId: string
   inputName?: string
   title?: string
+  /** 工作流中的原始文本，仅用于入口确认和预设初始化。 */
+  workflowValue?: string
 }
 
 /** 单个可调参数；id 即运行时覆盖表的键（`节点ID.输入名`）。 */

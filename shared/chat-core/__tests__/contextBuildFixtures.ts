@@ -50,6 +50,8 @@ export function makeSettings(overrides: Partial<Settings> = {}): Settings {
     htmlRendering: false,
     showTokenCount: true,
     enableThoughtFormat: true,
+    // 跨端基线继续覆盖完整角色核心；PC 的全局场景发送策略由 renderer 集成测试单独锁定。
+    scenarioInjectionMode: 'always',
     ...overrides,
   }
 }

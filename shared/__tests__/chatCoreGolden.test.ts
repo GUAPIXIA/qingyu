@@ -2474,12 +2474,18 @@ function ctxSession(partial: Partial<SessionPreview> = {}): SessionPreview {
 }
 
 function ctxSettings(partial: Partial<Settings> = {}): Settings {
-  return {
+  const settings = {
     userName: '旅人',
     activeModel: 'gpt-4o-mini',
     streamOutput: true,
     ...partial,
   } as Settings
+  // 跨端旧夹具需继续锁定完整角色核心，但不能把 PC 专属设置写入跨端输入契约。
+  // 设为不可枚举，让构建器读取旧行为，同时保持 fixture JSON 字节不变。
+  if (partial.scenarioInjectionMode === undefined) {
+    Object.defineProperty(settings, 'scenarioInjectionMode', { value: 'always', enumerable: false })
+  }
+  return settings
 }
 
 function ctxMessage(partial: Partial<Message> & { role: Message['role']; content: string }): Message {

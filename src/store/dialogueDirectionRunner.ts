@@ -20,7 +20,7 @@ import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
-import { getDisplayName } from '../utils/variables'
+import { getDisplayName, replaceVariables } from '../utils/variables'
 import { logError } from '../lib/logger'
 import type { StoreGet, StoreSet } from './chatTypes'
 import type { GroupStoreGet, GroupStoreSet } from './groupChatTypes'
@@ -68,7 +68,7 @@ export interface DirectionCallResult {
   terminationCause?: import('../../shared/types').GenerationTerminationCause
 }
 
-/** 非流式辅助请求：方向生成专用，不注入 preset，只用显式温度与预算。 */
+/** 非流式辅助请求：方向生成专用；提示词可由调用层追加 preset jailbreak。 */
 function callDirectionHelper(
   requestId: string,
   messages: ChatParams['messages'],
@@ -146,8 +146,12 @@ function callDirectionHelper(
 async function requestDialogueDirections(
   messageId: string,
   input: DirectionGenerationInput,
+  presetJailbreak = '',
 ): Promise<DialogueDirection[]> {
-  const systemPrompt = buildDialogueDirectionSystemPrompt(input)
+  const baseSystemPrompt = buildDialogueDirectionSystemPrompt(input)
+  const systemPrompt = presetJailbreak.trim()
+    ? `${baseSystemPrompt}\n\n${presetJailbreak.trim()}`
+    : baseSystemPrompt
   const userPrompt = buildDialogueDirectionUserPrompt(input)
   const messages: ChatParams['messages'] = [
     { role: 'system', content: systemPrompt },
@@ -224,6 +228,20 @@ function buildInput(context: DirectionContext): DirectionGenerationInput {
   }
 }
 
+/** 按当前单聊/群聊绑定解析预设，只抽取 jailbreak，不带入预设其余正文。 */
+async function loadDirectionPresetJailbreak(
+  presetId: string | null | undefined,
+  input: DirectionGenerationInput,
+  originalCharName: string,
+): Promise<string> {
+  if (!presetId) return ''
+  const presets = await window.api.preset.list()
+  const jailbreak = presets.find((preset) => preset.id === presetId)?.jailbreak?.trim()
+  return jailbreak
+    ? replaceVariables(jailbreak, input.userName, input.charName, originalCharName)
+    : ''
+}
+
 function recentDialogue(
   messages: Array<{ role?: string; characterId?: string; speakerKind?: string; content: string; narrativeMode?: NarrativeMode }>,
   index: number,
@@ -270,12 +288,13 @@ export async function generateSingleDialogueDirections(
     latestReply: stripThought(target.content || ''),
     worldState: session?.memoryCurrentState,
   })
-
   inFlight.set(messageId, messageId)
   latestRequest.set(messageId, messageId)
 
   try {
-    const directions = await requestDialogueDirections(messageId, input)
+    const presetJailbreak = await loadDirectionPresetJailbreak(state.activePresetId, input, character.name)
+    if (!inFlight.has(messageId)) return []
+    const directions = await requestDialogueDirections(messageId, input, presetJailbreak)
     // 过期结果（用户已点“换一批”或已发下一条消息）直接丢弃
     if (latestRequest.get(messageId) !== messageId) return []
     if (directions.length === 0) return []
@@ -358,12 +377,17 @@ export async function generateGroupDialogueDirections(
     latestReply: stripThought(target.content || ''),
     worldState: worldState ?? session?.memoryCurrentState,
   })
-
   inFlight.set(messageId, messageId)
   latestRequest.set(messageId, messageId)
 
   try {
-    const directions = await requestDialogueDirections(messageId, input)
+    const presetJailbreak = await loadDirectionPresetJailbreak(
+      state.currentGroup?.presetId,
+      input,
+      character.name,
+    )
+    if (!inFlight.has(messageId)) return []
+    const directions = await requestDialogueDirections(messageId, input, presetJailbreak)
     if (latestRequest.get(messageId) !== messageId) return []
     if (directions.length === 0) return []
     await persistGroupDirections(set, get, messageId, directions)

@@ -49,6 +49,8 @@ export interface CommandContext {
     task?: GenerationTask
     inputChars?: number
     expectedBodyChars?: number
+    /** 将当前预设的越狱提示词追加到本次辅助请求的 system 消息。 */
+    includePresetJailbreak?: boolean
     /** 生图等解析器可容错的辅助调用：截断时返回已产出正文而非报错 */
   }) => Promise<string>
   /** 获取最近 N 条对话消息（含角色名） */

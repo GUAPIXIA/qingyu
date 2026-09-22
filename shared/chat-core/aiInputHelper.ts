@@ -425,6 +425,10 @@ export interface AiHelperCallOptions {
   maxTokens?: number
   onChunk?: (delta: string, full: string) => void
   reasoningGate?: ReasoningGateDirective
+  /** 自动预算触顶时允许主进程在端点能力范围内扩大后无损重试。 */
+  adaptiveOutputBudget?: ChatParams['adaptiveOutputBudget']
+  /** 辅助任务观测分类，用于隔离各任务的历史推理样本。 */
+  observability?: ChatParams['observability']
   /** 截断时返回已产出正文（仅限解析器自身可容错的辅助调用） */
   profile: { provider: ProviderType; apiKey: string; baseUrl: string }
   activeModel: string
@@ -438,7 +442,19 @@ export interface AiHelperCallOptions {
  * 注册 chunk/done/error 监听，完成后自清理。
  */
 export function callAiHelper(opts: AiHelperCallOptions): Promise<string> {
-  const { messages, temperature, maxTokens, onChunk, reasoningGate, profile, activeModel, preset, activeRequestIds } = opts
+  const {
+    messages,
+    temperature,
+    maxTokens,
+    onChunk,
+    reasoningGate,
+    adaptiveOutputBudget,
+    observability,
+    profile,
+    activeModel,
+    preset,
+    activeRequestIds,
+  } = opts
   const automaticPlan = maxTokens == null
     ? resolveGenerationTaskBudget({ task: 'generic', model: activeModel, userHardCap: preset?.maxTokens })
     : null
@@ -483,6 +499,8 @@ export function callAiHelper(opts: AiHelperCallOptions): Promise<string> {
       presencePenalty: preset?.presencePenalty ?? 0,
       stream: false,
       reasoningGate: reasoningGate ?? automaticPlan?.reasoningGate,
+      adaptiveOutputBudget: adaptiveOutputBudget ?? automaticPlan?.adaptiveOutputBudget,
+      observability,
     }
 
     window.api.ai.chat(params).catch((err) => {

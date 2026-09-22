@@ -11,8 +11,8 @@ const analysis: ComfyWorkflowAnalysis = {
   nodeCount: 9,
   compatible: true,
   promptBindings: [
-    { role: 'positive', nodeId: '4' },
-    { role: 'negative', nodeId: '5' },
+    { role: 'positive', nodeId: '4', inputName: 'text', workflowValue: '' },
+    { role: 'negative', nodeId: '5', inputName: 'text', workflowValue: 'workflow negative' },
   ],
   outputBindings: [{ role: 'output', nodeId: '9' }],
   parameterGroups: [
@@ -181,6 +181,31 @@ describe('ImageGenModelsSection', () => {
     // 检查结论。
     expect(screen.getByText('工作流可用')).toBeTruthy()
     expect(screen.getByText(/文生图 · 9 节点/)).toBeTruthy()
+  })
+
+  it('可选择提示词入口并保存 ComfyUI 负面提示词预设', async () => {
+    await openComfyWithWorkflow({
+      ...mockImportResult(),
+      settings: { negativePrompt: 'workflow negative' },
+    })
+
+    expect(screen.getByText('提示词入口')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '节点 4 text 设为正面提示词' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '节点 5 text 设为负面提示词' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: '使用预设' }))
+    const preset = screen.getByLabelText('负面提示词预设')
+    expect(preset).toHaveValue('workflow negative')
+    fireEvent.change(preset, { target: { value: 'bad hands, watermark' } })
+    fireEvent.click(screen.getByRole('button', { name: /^保存$/ }))
+
+    const saved = useSettingsStore.getState().settings.imageGenModels[0]
+    expect(saved.provider).toBe('comfyui')
+    if (saved.provider !== 'comfyui') throw new Error('预期保存 ComfyUI 配置')
+    expect(saved.bindings?.positivePromptTargets).toEqual([{ nodeId: '4', inputName: 'text' }])
+    expect(saved.bindings?.negativePromptTargets).toEqual([{ nodeId: '5', inputName: 'text' }])
+    expect(saved.negativePromptMode).toBe('preset')
+    expect(saved.negativePromptPreset).toBe('bad hands, watermark')
   })
 
   it('模型依赖卡在 /object_info 可用时校验存在性', async () => {

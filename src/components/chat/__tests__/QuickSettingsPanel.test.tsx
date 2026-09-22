@@ -158,6 +158,55 @@ describe('QuickSettingsPanel', () => {
     expect(hint?.className).not.toContain('left-0')
   })
 
+  it('提供全局场景设定发送三档并即时写入设置', async () => {
+    render(
+      <QuickSettingsPanel
+        open
+        onClose={vi.fn()}
+        messages={[]}
+        onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()}
+        onExport={vi.fn()}
+        onClearConfirm={vi.fn()}
+      />,
+    )
+    await act(async () => {})
+
+    const select = screen.getByRole('combobox', { name: '场景设定发送' }) as HTMLSelectElement
+    expect(select.value).toBe('first_turn')
+    expect(within(select).getByRole('option', { name: '仅首轮' })).toBeTruthy()
+    expect(within(select).getByRole('option', { name: '每轮' })).toBeTruthy()
+    expect(within(select).getByRole('option', { name: '关闭' })).toBeTruthy()
+
+    fireEvent.change(select, { target: { value: 'always' } })
+    expect(useSettingsStore.getState().settings.scenarioInjectionMode).toBe('always')
+  })
+
+  it('把场景设定和对话示例归入末尾的上下文注入分区', async () => {
+    render(
+      <QuickSettingsPanel
+        open
+        onClose={vi.fn()}
+        messages={[]}
+        onShowContextViewer={vi.fn()}
+        onShowBgPanel={vi.fn()}
+        onExport={vi.fn()}
+        onClearConfirm={vi.fn()}
+      />,
+    )
+    await act(async () => {})
+
+    const contextSection = screen.getByText('上下文注入').parentElement?.parentElement
+    const displaySection = screen.getByText('显示').parentElement?.parentElement
+    expect(contextSection).toBeTruthy()
+    expect(displaySection).toBeTruthy()
+    expect(within(contextSection as HTMLElement).getByText('场景设定发送')).toBeTruthy()
+    expect(within(contextSection as HTMLElement).getByText('对话示例发送')).toBeTruthy()
+    expect(within(displaySection as HTMLElement).queryByText('场景设定发送')).toBeNull()
+    expect(within(displaySection as HTMLElement).queryByText('对话示例发送')).toBeNull()
+    expect(contextSection?.nextElementSibling).toBeNull()
+  })
+
   it('统一关闭、刷新和连接测试按钮的图标容器样式', async () => {
     useSettingsStore.setState((state) => ({
       settings: {

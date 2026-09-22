@@ -26,6 +26,7 @@ export interface CommandContextDeps {
     task?: GenerationTask
     inputChars?: number
     expectedBodyChars?: number
+    includePresetJailbreak?: boolean
   }) => Promise<string>
 }
 
@@ -189,6 +190,7 @@ export function createCommandContext(deps: CommandContextDeps): CommandContext {
         task: options?.task,
         inputChars: options?.inputChars ?? userContent.length,
         expectedBodyChars: options?.expectedBodyChars,
+        includePresetJailbreak: options?.includePresetJailbreak,
       })
     },
     getRecentMessages: (count) => {

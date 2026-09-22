@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 
 vi.mock('../../services/ai', () => ({
   getAdapter: vi.fn(() => ({ id: 'openai' })),
@@ -16,6 +16,10 @@ import { RealModelPort } from '../realModel'
 import { chatWithRetry } from '../../services/ai'
 
 describe('RealModelPort', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('stream 委托 chatWithRetry 并回调 onChunk/onUsage', async () => {
     const port = new RealModelPort()
     const chunks: string[] = []
@@ -48,5 +52,24 @@ describe('RealModelPort', () => {
       new AbortController().signal,
     )
     expect(vi.mocked(chatWithRetry).mock.calls.at(-1)?.[1]).toMatchObject({ maxTokens: 4096 })
+  })
+
+  it('空响应且未输出 chunk 时用同一上下文自动恢复一次', async () => {
+    vi.mocked(chatWithRetry)
+      .mockRejectedValueOnce(new Error('模型未返回任何内容，请重试或检查模型是否可用'))
+
+    const port = new RealModelPort()
+    const chunks: string[] = []
+    const result = await port.stream(
+      { messages: [{ role: 'user', content: 'hi' }], model: 'gpt-4o', provider: 'openai', maxTokens: 2048 },
+      { onChunk: (chunk) => chunks.push(chunk) },
+      new AbortController().signal,
+    )
+
+    expect(result.text).toBe('hello world')
+    expect(chunks.join('')).toBe('hello world')
+    expect(vi.mocked(chatWithRetry)).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(chatWithRetry).mock.calls[0]?.[1].messages)
+      .toEqual(vi.mocked(chatWithRetry).mock.calls[1]?.[1].messages)
   })
 })

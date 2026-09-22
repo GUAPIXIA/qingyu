@@ -186,8 +186,9 @@ class BackupOrchestrator(
      * 由备份直接覆盖等于凭一个文件伪造一次本机清理。被这条守卫挡掉的行数不进 counts。
      */
     suspend fun restore(bytes: ByteArray): RestoreOutcome {
-        val preview = (BackupV3.inspect(bytes) as? BackupV3.InspectResult.Ok)?.preview
-            ?: return RestoreOutcome(emptyMap(), 0, rolledBack = false, error = "备份校验未通过，未做任何修改")
+        if (BackupV3.inspect(bytes) !is BackupV3.InspectResult.Ok) {
+            return RestoreOutcome(emptyMap(), 0, rolledBack = false, error = "备份校验未通过，未做任何修改")
+        }
 
         val incoming = File(mediaRoot, INCOMING_DIR)
         runCatching { incoming.deleteRecursively() }
@@ -196,72 +197,110 @@ class BackupOrchestrator(
         var mediaCount = 0
 
         return try {
-            preview.entries.forEach { (path, payload) ->
-                if (!path.startsWith(BackupV3.Paths.MEDIA)) return@forEach
-                val rel = path.removePrefix(BackupV3.Paths.MEDIA)
-                val target = File(incoming, rel)
-                target.parentFile?.mkdirs()
-                target.writeBytes(payload)
-                staged += target to rel
-            }
+            // ── 第一遍（事务之外）：只把媒体写进暂存区，正式路径一个字节都不动。
+            // 媒体写在事务**之前**是有意的：写盘失败时库里一行都没变，才配得上 rolledBack = true。
+            BackupV3.streamEntries(bytes) { path, payload ->
+                if (path.startsWith(BackupV3.Paths.MEDIA)) {
+                    val rel = path.removePrefix(BackupV3.Paths.MEDIA)
+                    val target = File(incoming, rel)
+                    target.parentFile?.mkdirs()
+                    target.writeBytes(payload)
+                    staged += target to rel
+                }
+            }?.let { throw IllegalStateException(it) }
 
             val applied = store.inTransaction {
-                val counts = LinkedHashMap<String, Int>()
-                characters(preview).forEach { store.putCharacter(it) }
-                counts["characters"] = increment(null, preview, BackupV3.Paths.CHARACTERS)
+                // 这 10 个键在旧实现里**总是存在**（即使计数为 0），UI 与用例都按「键在不在」读它，
+                // 所以先归零再累加，保持 `applied` 的形状稳定（例如「包里有 1 条清理游标，
+                // 但那是我自己的 → usageClearMarkers=0」是一个有信息量的 0，不是缺键）。
+                val counts = LinkedHashMap<String, Int>().apply {
+                    listOf(
+                        "characters", "lorebooks", "presets", "personas", "regexRules",
+                        "mappingTemplates", "quickReplySets", "usageRecords",
+                        "usageClearMarkers", "sessions",
+                    ).forEach { put(it, 0) }
+                }
+                val quickReplies = ArrayList<LocalQuickReplySetEntity>()
 
-                val books = lorebooks(preview)
-                books.forEach { store.putLorebook(it) }
-                counts["lorebooks"] = books.size
+                // ── 第二遍：逐条目流式应用**父实体与配置**（彼此无依赖，读到即写）。
+                // 每一轮循环只在内存里有一个条目的字节——这是「备份比堆大也能恢复」的关键。
+                BackupV3.streamEntries(bytes) { path, payload ->
+                    when {
+                        path.startsWith(BackupV3.Paths.CHARACTERS) ->
+                            characterOf(payload)?.let { store.putCharacter(it); counts.bump("characters") }
 
-                val ps = presets(preview)
-                ps.forEach { store.putPreset(it) }
-                counts["presets"] = ps.size
+                        path.startsWith(BackupV3.Paths.LOREBOOKS) ->
+                            lorebookOf(payload)?.let { store.putLorebook(it); counts.bump("lorebooks") }
 
-                val pn = personas(preview)
-                pn.forEach { store.putPersona(it) }
-                counts["personas"] = pn.size
+                        path.startsWith(BackupV3.Paths.PRESETS) ->
+                            presetOf(payload)?.let { store.putPreset(it); counts.bump("presets") }
 
-                val rx = regex(preview)
-                rx.forEach { store.putRegexRule(it) }
-                counts["regexRules"] = rx.size
+                        // 映射模板是**一个数组文件**（`templates/templates.json`），不是每实体一文件
+                        path == BackupV3.Paths.TEMPLATES + "templates.json" ->
+                            eachIndexed(payload) { index, obj ->
+                                templateOf(obj, index)?.let { store.putLorebookMappingTemplate(it); counts.bump("mappingTemplates") }
+                            }
 
-                val tp = templates(preview)
-                tp.forEach { store.putLorebookMappingTemplate(it) }
-                counts["mappingTemplates"] = tp.size
+                        path == BackupV3.Paths.PERSONAS -> eachIndexed(payload) { index, obj ->
+                            personaOf(obj)?.let { store.putPersona(it); counts.bump("personas") }
+                        }
+
+                        path == BackupV3.Paths.REGEX_RULES -> eachIndexed(payload) { index, obj ->
+                            regexOf(obj, index)?.let { store.putRegexRule(it); counts.bump("regexRules") }
+                        }
+
+                        // 快捷回复是**整库替换**语义，必须先知道备份里有哪些集合，
+                        // 所以只收集、不在这里写——等这一遍读完再清空重建。
+                        path == BackupV3.Paths.QUICK_REPLIES ->
+                            quickReplySetsOf(payload).forEach { quickReplies += it }
+
+                        path == BackupV3.Paths.USAGE -> eachIndexed(payload) { _, obj ->
+                            usageOf(obj)?.let { if (store.recordUsage(it)) counts.bump("usageRecords") }
+                        }
+
+                        // 清理游标：只落**别的设备**的行。本机自己的游标由 clearUsage 的因果判定维护，
+                        // 让备份文件直接盖它就等于凭一个文件抹掉本机并发产生的用量（§6.3 要求那些保留）。
+                        path == BackupV3.Paths.USAGE_CLEAR_MARKERS -> eachIndexed(payload) { _, obj ->
+                            clearMarkerOf(obj)?.let { marker ->
+                                if (marker.deviceId != store.deviceId()) {
+                                    store.putUsageClearMarker(marker)
+                                    counts.bump("usageClearMarkers")
+                                }
+                            }
+                        }
+
+                        path == BackupV3.Paths.SETTINGS ->
+                            settingsOf(payload).forEach { (section, key, valueJson) ->
+                                store.putPublicSetting(section, key, valueJson)
+                            }
+
+                        // 媒体在第一遍已处理；`groups/` 目前 PC/Android 都还没有群数据；
+                        // 其余路径预检已拒（不在清单里就进不来）。
+                        else -> Unit
+                    }
+                }?.let { throw IllegalStateException(it) }
 
                 // 快捷回复整库替换：先清空再按备份重建。
                 // 只增不删会把两批不同来源的集合叠在一起，聊天页出现重复按钮。
-                val qr = quickReplySets(preview)
-                if (qr.isNotEmpty()) {
+                if (quickReplies.isNotEmpty()) {
                     store.listQuickReplySets().forEach { store.deleteQuickReplySet(it.id) }
-                    qr.forEach { store.putQuickReplySet(it) }
+                    quickReplies.forEach { store.putQuickReplySet(it) }
                 }
-                counts["quickReplySets"] = qr.size
+                counts["quickReplySets"] = quickReplies.size
 
-                var usageCount = 0
-                usage(preview).forEach { if (store.recordUsage(it)) usageCount += 1 }
-                counts["usageRecords"] = usageCount
+                // ── 第三遍：**子实体**（会话与消息）必须在父（角色/群）之后。
+                // 单独走一遍而不是依赖 ZIP 内部顺序：外部产出的包（PC 的）条目顺序不受我们控制，
+                // 靠顺序就等于把一个安全属性交给打包方。三遍读的代价是 I/O，不是内存。
+                BackupV3.streamEntries(bytes) { path, payload ->
+                    if (path.startsWith(BackupV3.Paths.CHATS)) {
+                        sessionOf(payload)?.let { (session, messages) ->
+                            store.putSession(session)
+                            messages.forEach { store.appendMessage(it) }
+                            counts.bump("sessions")
+                        }
+                    }
+                }?.let { throw IllegalStateException(it) }
 
-                // 清理游标：只落**别的设备**的行。本机自己的游标由 clearUsage 的因果判定维护，
-                // 让备份文件直接盖它就等于凭一个文件抹掉本机并发产生的用量（§6.3 要求那些保留）。
-                var markerCount = 0
-                clearMarkers(preview).forEach { marker ->
-                    if (marker.deviceId == store.deviceId()) return@forEach
-                    store.putUsageClearMarker(marker)
-                    markerCount += 1
-                }
-                counts["usageClearMarkers"] = markerCount
-
-                var sessionCount = 0
-                sessions(preview).forEach { (session, messages) ->
-                    store.putSession(session)
-                    messages.forEach { store.appendMessage(it) }
-                    sessionCount += 1
-                }
-                counts["sessions"] = sessionCount
-
-                settings(preview).forEach { (section, key, valueJson) -> store.putPublicSetting(section, key, valueJson) }
                 counts
             }
 
@@ -296,8 +335,9 @@ class BackupOrchestrator(
     /** 事务已提交、仅媒体 move 失败时用来区分「可回滚」与「不可回滚」两条路。 */
     private class MediaMoveFailure(val path: String, val applied: Map<String, Int>) : Exception(path)
 
-    private fun increment(@Suppress("UNUSED_PARAMETER") unused: Any?, preview: BackupV3.Preview, prefix: String): Int =
-        preview.entries.keys.count { it.startsWith(prefix) && it.endsWith(".json") }
+    private fun MutableMap<String, Int>.bump(key: String) {
+        this[key] = (this[key] ?: 0) + 1
+    }
 
     // ------------------------------------------------------------ 备份 JSON 形状
 
@@ -414,21 +454,6 @@ class BackupOrchestrator(
         put("updatedAt", row.updatedAt)
     }
 
-    private fun clearMarkers(preview: BackupV3.Preview): List<LocalUsageClearMarkerEntity> =
-        preview.arrayAt(BackupV3.Paths.USAGE_CLEAR_MARKERS).let { array ->
-            (0 until array.length()).mapNotNull { index ->
-                val obj = array.optJSONObject(index) ?: return@mapNotNull null
-                val markerDevice = string(obj, "deviceId")
-                if (markerDevice.isEmpty()) return@mapNotNull null
-                LocalUsageClearMarkerEntity(
-                    deviceId = markerDevice,
-                    clearedThroughJson = obj.optJSONObject("clearedThrough")?.toString() ?: "{}",
-                    tombstonedIdsJson = obj.optJSONArray("tombstonedIds")?.toString() ?: "[]",
-                    updatedAt = obj.optLong("updatedAt"),
-                )
-            }
-        }
-
     private suspend fun publicSettingsJson(): Map<String, Any?> =
         store.listPublicSettings().associate { row ->
             "${row.section}.${row.key}" to JsonValues.parseAny(row.valueJson)
@@ -472,17 +497,25 @@ class BackupOrchestrator(
     )
 
     // ------------------------------------------------------------ 备份 → 实体
+    //
+    // 每个映射函数只吃**一个条目的字节**：流式恢复时同一时刻只有一个条目在内存里。
+    // 以前它们吃的是整张 `Preview.entries`（整包解压结果都驻留），
+    // 那正是「备份比堆大就只能拒绝」的根因（§5-P1-d）。
 
-    private fun BackupV3.Preview.jsonAt(path: String): JSONObject? =
-        entries[path]?.let { runCatching { JSONObject(it.toString(Charsets.UTF_8)) }.getOrNull() }
+    private fun jsonOf(payload: ByteArray): JSONObject? =
+        runCatching { JSONObject(payload.toString(Charsets.UTF_8)) }.getOrNull()
 
-    private fun BackupV3.Preview.arrayAt(path: String): JSONArray =
-        entries[path]?.let { runCatching { JSONArray(it.toString(Charsets.UTF_8)) }.getOrNull() } ?: JSONArray()
+    private fun arrayOf(payload: ByteArray): JSONArray =
+        runCatching { JSONArray(payload.toString(Charsets.UTF_8)) }.getOrNull() ?: JSONArray()
 
-    private fun BackupV3.Preview.objectsUnder(prefix: String): List<JSONObject> =
-        entries.entries.filter { it.key.startsWith(prefix) && it.key.endsWith(".json") }.mapNotNull { entry ->
-            runCatching { JSONObject(entry.value.toString(Charsets.UTF_8)) }.getOrNull()
+    /** 数组型配置文件（personas / regex / usage / 清理游标 / 映射模板）逐元素交给 [block]。 */
+    private inline fun eachIndexed(payload: ByteArray, block: (Int, JSONObject) -> Unit) {
+        val array = arrayOf(payload)
+        for (index in 0 until array.length()) {
+            val obj = array.optJSONObject(index) ?: continue
+            block(index, obj)
         }
+    }
 
     private fun string(obj: JSONObject, key: String): String = obj.optString(key)
 
@@ -492,132 +525,120 @@ class BackupOrchestrator(
     private fun array(obj: JSONObject, key: String, fallback: String): String =
         obj.optJSONArray(key)?.toString() ?: fallback
 
-    private fun characters(preview: BackupV3.Preview): List<LocalCharacterEntity> =
-        preview.objectsUnder(BackupV3.Paths.CHARACTERS).mapNotNull { obj ->
-            val id = string(obj, "id").ifEmpty { return@mapNotNull null }
-            LocalCharacterEntity(
-                id = id,
-                name = string(obj, "name"),
-                description = string(obj, "description"),
-                personality = string(obj, "personality"),
-                scenario = string(obj, "scenario"),
-                firstMessage = string(obj, "firstMessage"),
-                exampleDialog = string(obj, "exampleDialog"),
-                alternateGreetingsJson = array(obj, "alternateGreetings", "[]"),
-                groupOnlyGreetingsJson = array(obj, "groupOnlyGreetings", "[]"),
-                systemPrompt = string(obj, "systemPrompt"),
-                postHistoryInstructions = string(obj, "postHistoryInstructions"),
-                tagsJson = array(obj, "tags", "[]"),
-                creator = string(obj, "creator"),
-                creatorNotes = string(obj, "creatorNotes"),
-                characterVersion = string(obj, "characterVersion"),
-                boundLorebookIdsJson = array(obj, "boundLorebookIds", "[]"),
-                extensionsJson = obj.optJSONObject("extensions")?.toString() ?: "{}",
-                avatarPath = nullableString(obj, "avatarRef"),
-                backgroundPath = nullableString(obj, "chatBackgroundRef"),
-                translatedContentJson = obj.optJSONObject("translatedContent")?.toString() ?: "",
-                createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                importedFrom = SOURCE,
-            )
-        }
+    private fun characterOf(payload: ByteArray): LocalCharacterEntity? {
+        val obj = jsonOf(payload) ?: return null
+        val id = string(obj, "id").ifEmpty { return null }
+        return LocalCharacterEntity(
+            id = id,
+            name = string(obj, "name"),
+            description = string(obj, "description"),
+            personality = string(obj, "personality"),
+            scenario = string(obj, "scenario"),
+            firstMessage = string(obj, "firstMessage"),
+            exampleDialog = string(obj, "exampleDialog"),
+            alternateGreetingsJson = array(obj, "alternateGreetings", "[]"),
+            groupOnlyGreetingsJson = array(obj, "groupOnlyGreetings", "[]"),
+            systemPrompt = string(obj, "systemPrompt"),
+            postHistoryInstructions = string(obj, "postHistoryInstructions"),
+            tagsJson = array(obj, "tags", "[]"),
+            creator = string(obj, "creator"),
+            creatorNotes = string(obj, "creatorNotes"),
+            characterVersion = string(obj, "characterVersion"),
+            boundLorebookIdsJson = array(obj, "boundLorebookIds", "[]"),
+            extensionsJson = obj.optJSONObject("extensions")?.toString() ?: "{}",
+            avatarPath = nullableString(obj, "avatarRef"),
+            backgroundPath = nullableString(obj, "chatBackgroundRef"),
+            translatedContentJson = obj.optJSONObject("translatedContent")?.toString() ?: "",
+            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+            updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+            importedFrom = SOURCE,
+        )
+    }
 
-    private fun lorebooks(preview: BackupV3.Preview): List<LocalLorebookEntity> =
-        preview.objectsUnder(BackupV3.Paths.LOREBOOKS).mapNotNull { obj ->
-            val id = string(obj, "id").ifEmpty { return@mapNotNull null }
-            LocalLorebookEntity(
-                id = id,
-                name = string(obj, "name"),
-                canonicalJson = obj.toString(),
-                createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                importedFrom = SOURCE,
-            )
-        }
+    private fun lorebookOf(payload: ByteArray): LocalLorebookEntity? {
+        val obj = jsonOf(payload) ?: return null
+        val id = string(obj, "id").ifEmpty { return null }
+        return LocalLorebookEntity(
+            id = id,
+            name = string(obj, "name"),
+            canonicalJson = obj.toString(),
+            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+            updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+            importedFrom = SOURCE,
+        )
+    }
 
-    private fun presets(preview: BackupV3.Preview): List<LocalPresetEntity> =
-        preview.objectsUnder(BackupV3.Paths.PRESETS).mapNotNull { obj ->
-            val id = string(obj, "id").ifEmpty { return@mapNotNull null }
-            val body = LinkedHashMap<String, Any?>()
-            // 只剔 id：`bodyJson` 的约定就是「整个预设对象（含 name/description/isBuiltin）+ id」
-            // ——见 `SyncPayloadGoldenTest.presetPayloadIsWholeBodyMinusId`，那里正是用
-            // `payload + id` 反推行的。所以恢复时把其余键原样放回 body 才是对的，
-            // 顺手「拆回列」会把 PC 也有的键从 payload 里弄丢（同步哈希就变了）。
-            obj.keys().forEach { key -> if (key != "id") body[key] = JsonValues.parseAny(obj.opt(key).toString()) }
-            LocalPresetEntity(
-                id = id,
-                name = string(obj, "name"),
-                bodyJson = JsonValues.stringify(body),
-                description = string(obj, "description"),
-                isBuiltin = obj.optBoolean("isBuiltin", false),
-                createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                importedFrom = SOURCE,
-            )
-        }
+    private fun presetOf(payload: ByteArray): LocalPresetEntity? {
+        val obj = jsonOf(payload) ?: return null
+        val id = string(obj, "id").ifEmpty { return null }
+        val body = LinkedHashMap<String, Any?>()
+        // 只剔 id：`bodyJson` 的约定就是「整个预设对象（含 name/description/isBuiltin）+ id」
+        // ——见 `SyncPayloadGoldenTest.presetPayloadIsWholeBodyMinusId`，那里正是用
+        // `payload + id` 反推行的。所以恢复时把其余键原样放回 body 才是对的，
+        // 顺手「拆回列」会把 PC 也有的键从 payload 里弄丢（同步哈希就变了）。
+        obj.keys().forEach { key -> if (key != "id") body[key] = JsonValues.parseAny(obj.opt(key).toString()) }
+        return LocalPresetEntity(
+            id = id,
+            name = string(obj, "name"),
+            bodyJson = JsonValues.stringify(body),
+            description = string(obj, "description"),
+            isBuiltin = obj.optBoolean("isBuiltin", false),
+            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+            updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+            importedFrom = SOURCE,
+        )
+    }
 
-    private fun personas(preview: BackupV3.Preview): List<LocalPersonaEntity> =
-        preview.arrayAt(BackupV3.Paths.PERSONAS).let { array ->
-            (0 until array.length()).mapNotNull { index ->
-                val obj = array.optJSONObject(index) ?: return@mapNotNull null
-                val id = string(obj, "id").ifEmpty { return@mapNotNull null }
-                LocalPersonaEntity(
-                    id = id,
-                    name = string(obj, "name"),
-                    description = string(obj, "description"),
-                    persona = string(obj, "persona"),
-                    avatarPath = nullableString(obj, "avatarRef"),
-                    createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                    updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                    importedFrom = SOURCE,
-                )
-            }
-        }
+    private fun personaOf(obj: JSONObject): LocalPersonaEntity? {
+        val id = string(obj, "id").ifEmpty { return null }
+        return LocalPersonaEntity(
+            id = id,
+            name = string(obj, "name"),
+            description = string(obj, "description"),
+            persona = string(obj, "persona"),
+            avatarPath = nullableString(obj, "avatarRef"),
+            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+            updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+            importedFrom = SOURCE,
+        )
+    }
 
-    private fun regex(preview: BackupV3.Preview): List<LocalRegexRuleEntity> =
-        preview.arrayAt(BackupV3.Paths.REGEX_RULES).let { array ->
-            (0 until array.length()).mapNotNull { index ->
-                val obj = array.optJSONObject(index) ?: return@mapNotNull null
-                val id = string(obj, "id").ifEmpty { return@mapNotNull null }
-                LocalRegexRuleEntity(
-                    id = id,
-                    name = string(obj, "name"),
-                    pattern = string(obj, "pattern"),
-                    replacement = string(obj, "replacement"),
-                    flags = string(obj, "flags").ifEmpty { "g" },
-                    scope = string(obj, "scope").ifEmpty { "output" },
-                    enabled = obj.optBoolean("enabled", true),
-                    sortIndex = obj.optInt("order", index),
-                    group = string(obj, "group"),
-                    stage = string(obj, "stage").ifEmpty { "text" },
-                    triggerPattern = string(obj, "triggerPattern"),
-                    triggerFlags = string(obj, "triggerFlags"),
-                    stopStringsJson = array(obj, "stopStrings", "[]"),
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    importedFrom = SOURCE,
-                )
-            }
-        }
+    private fun regexOf(obj: JSONObject, index: Int): LocalRegexRuleEntity? {
+        val id = string(obj, "id").ifEmpty { return null }
+        return LocalRegexRuleEntity(
+            id = id,
+            name = string(obj, "name"),
+            pattern = string(obj, "pattern"),
+            replacement = string(obj, "replacement"),
+            flags = string(obj, "flags").ifEmpty { "g" },
+            scope = string(obj, "scope").ifEmpty { "output" },
+            enabled = obj.optBoolean("enabled", true),
+            sortIndex = obj.optInt("order", index),
+            group = string(obj, "group"),
+            stage = string(obj, "stage").ifEmpty { "text" },
+            triggerPattern = string(obj, "triggerPattern"),
+            triggerFlags = string(obj, "triggerFlags"),
+            stopStringsJson = array(obj, "stopStrings", "[]"),
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+            importedFrom = SOURCE,
+        )
+    }
 
-    private fun templates(preview: BackupV3.Preview): List<LocalLorebookMappingTemplateEntity> =
-        preview.arrayAt(BackupV3.Paths.TEMPLATES + "templates.json").let { array ->
-            (0 until array.length()).mapNotNull { index ->
-                val obj = array.optJSONObject(index) ?: return@mapNotNull null
-                val id = string(obj, "id").ifEmpty { return@mapNotNull null }
-                LocalLorebookMappingTemplateEntity(
-                    id = id,
-                    name = string(obj, "name"),
-                    sourceFormat = string(obj, "sourceFormat"),
-                    templateJson = obj.optJSONObject("mapping")?.toString() ?: "{}",
-                    enabled = obj.optBoolean("enabled", true),
-                    sortIndex = obj.optInt("order", index),
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    importedFrom = SOURCE,
-                )
-            }
-        }
+    private fun templateOf(obj: JSONObject, index: Int): LocalLorebookMappingTemplateEntity? {
+        val id = string(obj, "id").ifEmpty { return null }
+        return LocalLorebookMappingTemplateEntity(
+            id = id,
+            name = string(obj, "name"),
+            sourceFormat = string(obj, "sourceFormat"),
+            templateJson = obj.optJSONObject("mapping")?.toString() ?: "{}",
+            enabled = obj.optBoolean("enabled", true),
+            sortIndex = obj.optInt("order", index),
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+            importedFrom = SOURCE,
+        )
+    }
 
     /**
      * 快捷回复：备份形状是整库 `{global, byCharacter}`，本地是集合行。
@@ -626,8 +647,8 @@ class BackupOrchestrator(
      * 备份前 Android 若把条目拆成多个集合，这里会被合并——可接受的有损点，
      * 因为 PC 本来就只有这两层，跨端恢复必须以 PC 形状为准。
      */
-    private fun quickReplySets(preview: BackupV3.Preview): List<LocalQuickReplySetEntity> {
-        val root = preview.jsonAt(BackupV3.Paths.QUICK_REPLIES) ?: return emptyList()
+    private fun quickReplySetsOf(payload: ByteArray): List<LocalQuickReplySetEntity> {
+        val root = jsonOf(payload) ?: return emptyList()
         val out = ArrayList<LocalQuickReplySetEntity>()
         val now = System.currentTimeMillis()
         root.optJSONArray("global")?.takeIf { it.length() > 0 }?.let { global ->
@@ -658,77 +679,84 @@ class BackupOrchestrator(
         return out
     }
 
-    private fun usage(preview: BackupV3.Preview): List<LocalUsageRecordEntity> =
-        preview.arrayAt(BackupV3.Paths.USAGE).let { array ->
-            (0 until array.length()).mapNotNull { index ->
-                val obj = array.optJSONObject(index) ?: return@mapNotNull null
-                val id = string(obj, "id").ifEmpty { return@mapNotNull null }
-                val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
-                LocalUsageRecordEntity(
-                    id = id,
-                    sessionId = nullableString(obj, "sessionId"),
-                    model = string(obj, "model"),
-                    promptTokens = obj.optInt("promptTokens"),
-                    completionTokens = obj.optInt("completionTokens"),
-                    createdAt = timestamp,
-                    inputChars = obj.optInt("inputChars"),
-                    outputChars = obj.optInt("outputChars"),
-                    status = string(obj, "status").ifEmpty { "success" },
-                    characterId = nullableString(obj, "characterId"),
-                    dateKey = toLocalDateKey(timestamp),
+    private fun usageOf(obj: JSONObject): LocalUsageRecordEntity? {
+        val id = string(obj, "id").ifEmpty { return null }
+        val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+        return LocalUsageRecordEntity(
+            id = id,
+            sessionId = nullableString(obj, "sessionId"),
+            model = string(obj, "model"),
+            promptTokens = obj.optInt("promptTokens"),
+            completionTokens = obj.optInt("completionTokens"),
+            createdAt = timestamp,
+            inputChars = obj.optInt("inputChars"),
+            outputChars = obj.optInt("outputChars"),
+            status = string(obj, "status").ifEmpty { "success" },
+            characterId = nullableString(obj, "characterId"),
+            dateKey = toLocalDateKey(timestamp),
+        )
+    }
+
+    private fun clearMarkerOf(obj: JSONObject): LocalUsageClearMarkerEntity? {
+        val markerDevice = string(obj, "deviceId")
+        if (markerDevice.isEmpty()) return null
+        return LocalUsageClearMarkerEntity(
+            deviceId = markerDevice,
+            clearedThroughJson = obj.optJSONObject("clearedThrough")?.toString() ?: "{}",
+            tombstonedIdsJson = obj.optJSONArray("tombstonedIds")?.toString() ?: "[]",
+            updatedAt = obj.optLong("updatedAt"),
+        )
+    }
+
+    private fun sessionOf(payload: ByteArray): Pair<LocalSessionEntity, List<LocalMessageEntity>>? {
+        val obj = jsonOf(payload) ?: return null
+        val id = string(obj, "id").ifEmpty { return null }
+        val now = obj.optLong("updatedAt", System.currentTimeMillis())
+        val session = LocalSessionEntity(
+            id = id,
+            characterId = nullableString(obj, "characterId"),
+            groupId = nullableString(obj, "groupId"),
+            title = string(obj, "title"),
+            personaId = nullableString(obj, "personaId"),
+            presetId = nullableString(obj, "presetId"),
+            lorebookIdsJson = array(obj, "lorebookIds", "[]"),
+            createdAt = obj.optLong("createdAt", now),
+            updatedAt = now,
+            importedFrom = SOURCE,
+        )
+        val messages = obj.optJSONArray("messages").let { array ->
+            if (array == null) emptyList() else (0 until array.length()).mapNotNull { index ->
+                val message = array.optJSONObject(index) ?: return@mapNotNull null
+                val messageId = string(message, "id").ifEmpty { return@mapNotNull null }
+                LocalMessageEntity(
+                    id = messageId,
+                    sessionId = id,
+                    // 优先用消息自带的说话人；旧包没有这个键时回落到会话的角色（单聊两者相同）
+                    characterId = nullableString(message, "characterId") ?: session.characterId,
+                    role = string(message, "role").ifEmpty { "user" },
+                    content = string(message, "content"),
+                    swipesJson = message.optJSONArray("swipes")?.toString(),
+                    swipeIndex = if (message.isNull("swipeIndex")) null else message.optInt("swipeIndex"),
+                    imagesJson = message.optJSONArray("images")?.toString() ?: "[]",
+                    usageJson = message.optJSONObject("usage")?.toString(),
+                    generationStatus = nullableString(message, "generationStatus"),
+                    generationNotice = nullableString(message, "generationNotice"),
+                    generationError = nullableString(message, "generationError"),
+                    logicalTime = message.optLong("logicalTime", System.currentTimeMillis() + index),
+                    seq = message.optLong("seq", index.toLong()),
+                    replyToId = nullableString(message, "replyToId"),
+                    translation = nullableString(message, "translation"),
+                    createdAt = message.optLong("createdAt", now),
+                    updatedAt = message.optLong("updatedAt", now),
+                    importedFrom = SOURCE,
                 )
             }
         }
+        return session to messages
+    }
 
-    private fun sessions(preview: BackupV3.Preview): List<Pair<LocalSessionEntity, List<LocalMessageEntity>>> =
-        preview.objectsUnder(BackupV3.Paths.CHATS).mapNotNull { obj ->
-            val id = string(obj, "id").ifEmpty { return@mapNotNull null }
-            val now = obj.optLong("updatedAt", System.currentTimeMillis())
-            val session = LocalSessionEntity(
-                id = id,
-                characterId = nullableString(obj, "characterId"),
-                groupId = nullableString(obj, "groupId"),
-                title = string(obj, "title"),
-                personaId = nullableString(obj, "personaId"),
-                presetId = nullableString(obj, "presetId"),
-                lorebookIdsJson = array(obj, "lorebookIds", "[]"),
-                createdAt = obj.optLong("createdAt", now),
-                updatedAt = now,
-                importedFrom = SOURCE,
-            )
-            val messages = obj.optJSONArray("messages").let { array ->
-                if (array == null) emptyList() else (0 until array.length()).mapNotNull { index ->
-                    val message = array.optJSONObject(index) ?: return@mapNotNull null
-                    val messageId = string(message, "id").ifEmpty { return@mapNotNull null }
-                    LocalMessageEntity(
-                        id = messageId,
-                        sessionId = id,
-                        // 优先用消息自带的说话人；旧包没有这个键时回落到会话的角色（单聊两者相同）
-                        characterId = nullableString(message, "characterId") ?: session.characterId,
-                        role = string(message, "role").ifEmpty { "user" },
-                        content = string(message, "content"),
-                        swipesJson = message.optJSONArray("swipes")?.toString(),
-                        swipeIndex = if (message.isNull("swipeIndex")) null else message.optInt("swipeIndex"),
-                        imagesJson = message.optJSONArray("images")?.toString() ?: "[]",
-                        usageJson = message.optJSONObject("usage")?.toString(),
-                        generationStatus = nullableString(message, "generationStatus"),
-                        generationNotice = nullableString(message, "generationNotice"),
-                        generationError = nullableString(message, "generationError"),
-                        logicalTime = message.optLong("logicalTime", System.currentTimeMillis() + index),
-                        seq = message.optLong("seq", index.toLong()),
-                        replyToId = nullableString(message, "replyToId"),
-                        translation = nullableString(message, "translation"),
-                        createdAt = message.optLong("createdAt", now),
-                        updatedAt = message.optLong("updatedAt", now),
-                        importedFrom = SOURCE,
-                    )
-                }
-            }
-            session to messages
-        }
-
-    private fun settings(preview: BackupV3.Preview): List<Triple<String, String, String>> {
-        val obj = preview.jsonAt(BackupV3.Paths.SETTINGS) ?: return emptyList()
+    private fun settingsOf(payload: ByteArray): List<Triple<String, String, String>> {
+        val obj = jsonOf(payload) ?: return emptyList()
         return obj.keys().asSequence().mapNotNull { key ->
             // 备份用 "section.key" 扁平存，恢复时拆回二维
             val dot = key.indexOf('.')

@@ -42,19 +42,19 @@ object BackupV3 {
     /**
      * 契约层的解压总量上限（1 GiB）。
      *
-     * 这是**契约**（两端与测试矩阵都按它说话），但它单独并不是一条可执行的防线：
-     * `inspect` 会把整包与每个条目的字节全部留在内存里，而 Android 单应用堆通常在
-     * 1/4–1/8 GiB 这个量级，所以真到 1 GiB 之前进程早就 OOM 了。
-     * 因此实际执行的是 [residentBudgetBytes] 给出的「本进程放得下」的那个更小的值，
-     * 见 [inspect] 的 `budgetBytes` 参数。
+     * 2026-09-20 起它的角色变了：[inspect] 与 [streamEntries] 都是**逐条目流式**的
+     * （一次只持有一个条目的字节，条目哈希只留 71 字节的小字符串），
+     * 所以「解压总量」不再与内存挂钩，这条上限回到它本来的用途——
+     * **防 ZIP bomb 的契约闸门**（两端与 §3 测试矩阵都按它说话）。
+     * 内存约束改由 [residentBudgetBytes] 描述，见 [inspect] 的 `budgetBytes`。
      */
     const val MAX_TOTAL_UNCOMPRESSED_BYTES = 1024L * 1024 * 1024
 
     /**
-     * 驻留预算占「可用堆」的比例。
+     * 单条目预算占「可用堆」的比例。
      *
-     * 留一半给解压缓冲、JSON 解析对象与源包本身：`total` 只统计条目**解压后**的字节，
-     * 而同一时刻还在内存里的是「源包 + 每个条目字节 + 解析出来的 JSONObject」，
+     * 留一半给解压缓冲、JSON 解析对象与源包本身：同一时刻还在内存里的是
+     * 「源包 + **一个**条目字节 + 解析出来的 JSONObject」。
      * 取 0.5 是刻意保守——宁可早一点给出可读的拒绝，也不要撞上 OOM 再兜。
      */
     private const val RESIDENT_HEAP_FRACTION = 0.5
@@ -199,11 +199,17 @@ object BackupV3 {
     }
 
     /**
-     * 本进程真正放得下的解压总量预算：**契约上限**与「可用堆的一半」取小。
+     * 本进程真正放得下的**单条目**预算：`MAX_SINGLE_ENTRY_BYTES`（64 MiB，契约）与
+     * 「可用堆的一半」取小。
      *
      * 纯函数（堆大小可注入）是为了可测：设备上的真实堆值不该成为断言的一部分。
      * `sourceBytes` 是源包自身的字节数——它此刻已经在内存里，所以要从堆里先扣掉；
      * 扣完不够就返回 0，调用方据此直接拒绝，而不是等 OOM。
+     *
+     * **语义变化（2026-09-20）**：以前它约束的是「所有条目解压后**之和**」（因为 `inspect`
+     * 把整包条目都留在内存里，大备份必然 OOM）。现在读写都是逐条目流式的，
+     * 于是约束只剩「**最大的那一个条目**」——同一台设备因此能处理大得多的备份，
+     * 而解压总量由 [MAX_TOTAL_UNCOMPRESSED_BYTES] 单独把关。
      */
     fun residentBudgetBytes(
         sourceBytes: Long,
@@ -211,7 +217,7 @@ object BackupV3 {
     ): Long {
         val headroom = heapMaxBytes - sourceBytes
         if (headroom <= 0) return 0
-        return minOf(MAX_TOTAL_UNCOMPRESSED_BYTES, (headroom * RESIDENT_HEAP_FRACTION).toLong())
+        return minOf(MAX_SINGLE_ENTRY_BYTES, (headroom * RESIDENT_HEAP_FRACTION).toLong())
     }
 
     /**
@@ -231,84 +237,166 @@ object BackupV3 {
         }
 
     /**
-     * 恢复前预检：**只读不写**。
+     * 恢复前预检：**只读不写**，且**逐条目流式**。
      *
-     * 一次遍历同时完成条目名校验、SHA-256 与清单比对、条目数与解压总量上限。
+     * 一次遍历同时完成条目名校验、单条上限、条目数上限、解压总量（契约）与 SHA-256 比对。
      * 任一条不通过就整包拒绝——半包应用比不应用危险得多（会留下部分覆盖的数据）。
      *
-     * `budgetBytes` 缺省取 [residentBudgetBytes]；显式传入是为了让「超出预算」这条分支
-     * 能在**不真的分配几百 MB**的前提下被测到（见 `BackupV3SafetyTest`）。
-     * 传进来的值仍会被契约上限 [MAX_TOTAL_UNCOMPRESSED_BYTES] 夹住，契约不因注入而放宽。
+     * **流式的关键**：每个条目的字节只在这一层短暂存在（读完即算哈希、即丢），
+     * 留在 [Preview] 里的只有路径与 71 字节的哈希字符串。此前 `Preview.entries`
+     * 把整包解压结果全留在内存里，于是「备份比堆还大」只能被拒（见 §5-P1-d）。
+     *
+     * `budgetBytes` 缺省取 [residentBudgetBytes]（单条目预算）；显式传入是为了让
+     * 「单条目超出预算」这条分支能在**不真的分配几百 MB** 的前提下被测到。
+     * 传进来的值仍会被契约上限 [MAX_SINGLE_ENTRY_BYTES] 夹住，契约不因注入而放宽。
      */
     fun inspect(
         bytes: ByteArray,
         budgetBytes: Long = residentBudgetBytes(bytes.size.toLong()),
     ): InspectResult {
-        val effectiveBudget = minOf(budgetBytes, MAX_TOTAL_UNCOMPRESSED_BYTES)
-        if (effectiveBudget <= 0) {
+        val perEntryBudget = minOf(budgetBytes, MAX_SINGLE_ENTRY_BYTES)
+        if (perEntryBudget <= 0) {
             return InspectResult.Rejected(
                 "本机可用内存不足以校验这个备份（源包 ${bytes.size / MIB} MB）：请改在 PC 上恢复。",
             )
         }
-        val entries = LinkedHashMap<String, ByteArray>()
-        val seen = HashSet<String>()
+        val seen = LinkedHashSet<String>()
+        // 只留「路径 → 内容哈希」：20k 条上限下最坏也就 ~1.4 MB，与条目体积无关
+        val hashes = LinkedHashMap<String, String>()
         var total = 0L
         var manifest: Manifest? = null
+        var rejection: String? = null
         runCatching {
             ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
                 while (true) {
-                    val entry = zip.nextEntry ?: break
+                    val entry = zip.nextEntry ?: return@use
                     if (seen.size >= MAX_ENTRIES) {
-                        return InspectResult.Rejected("条目数超过上限 $MAX_ENTRIES")
+                        rejection = "条目数超过上限 $MAX_ENTRIES"
+                        return@use
                     }
-                    rejectReasonForEntryName(entry.name)?.let { return InspectResult.Rejected("${entry.name}：$it") }
-                    if (isSymbolicLink(entry)) return InspectResult.Rejected("${entry.name}：符号链接条目")
-                    // 同名条目必须直接拒：`entries[path] = payload` 是后写覆盖前写，
-                    // 重复条目会让「恢复的是哪一份」取决于 ZIP 内部顺序，
+                    rejectReasonForEntryName(entry.name)?.let { reason ->
+                        rejection = "${entry.name}：$reason"
+                        return@use
+                    }
+                    if (isSymbolicLink(entry)) {
+                        rejection = "${entry.name}：符号链接条目"
+                        return@use
+                    }
+                    // 同名条目必须直接拒：后写覆盖前写会让「恢复的是哪一份」取决于 ZIP 内部顺序，
                     // 而清单哈希校验只按路径取最后一个哈希比对——两个不同内容同名时
                     // 恢复结果与用户看到的条目数根本对不上。§3 测试矩阵点名的就是这一条。
                     if (!seen.add(entry.name)) {
-                        return InspectResult.Rejected("${entry.name}：备份内出现重复条目")
+                        rejection = "${entry.name}：备份内出现重复条目"
+                        return@use
                     }
-                    val payload = readLimited(zip) ?: return InspectResult.Rejected("${entry.name}：单条目过大")
+                    val payload = readLimited(zip, perEntryBudget)
+                    if (payload == null) {
+                        // 措辞被 instrumented 用例钉着（`backup:oversizedSingleEntry…`）：
+                        // 必须同时说清「单条目过大」「上限」「不是堆崩」，并给出下一步
+                        rejection = "${entry.name}：单条目过大（超过本机可校验上限" +
+                            " ${perEntryBudget / MIB} MB）：请改在 PC 上恢复。"
+                        return@use
+                    }
                     total += payload.size
-                    if (total > effectiveBudget) {
-                        return InspectResult.Rejected(
-                            "备份解压后合计超过本机可校验上限" +
-                                "（上限 ${effectiveBudget / MIB} MB，已解压 ${total / MIB} MB）：" +
-                                "请改在 PC 上恢复，或分批导出后分别恢复。",
-                        )
+                    if (total > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                        rejection = "备份解压后合计超过契约上限 ${MAX_TOTAL_UNCOMPRESSED_BYTES / MIB} MB（疑似 ZIP bomb）"
+                        return@use
                     }
                     if (entry.name == MANIFEST_NAME) {
-                        manifest = parseManifest(payload.toString(Charsets.UTF_8))
-                            ?: return InspectResult.Rejected("manifest.json 无法解析")
+                        val parsed = parseManifest(payload.toString(Charsets.UTF_8))
+                        if (parsed == null) {
+                            rejection = "manifest.json 无法解析"
+                            return@use
+                        }
+                        manifest = parsed
                     } else {
-                        entries[entry.name] = payload
+                        hashes[entry.name] = sha256(payload)
                     }
                     zip.closeEntry()
                 }
             }
         }.onFailure { return InspectResult.Rejected(describeInspectFailure(it, total)) }
+        rejection?.let { return InspectResult.Rejected(it) }
 
         val manifestValue = manifest ?: return InspectResult.Rejected("缺少 manifest.json")
-        entries.forEach { (path, payload) ->
+        hashes.forEach { (path, actual) ->
             val expected = manifestValue.hashes[path] ?: return InspectResult.Rejected("$path 不在清单中")
-            val actual = sha256(payload)
             if (!sameHash(expected, actual)) {
                 return InspectResult.Rejected("$path 内容哈希不匹配（疑似篡改）")
             }
         }
-        val missing = manifestValue.hashes.keys - entries.keys
+        val missing = manifestValue.hashes.keys - hashes.keys
         if (missing.isNotEmpty()) {
             return InspectResult.Rejected("缺少条目：${missing.sorted().take(5).joinToString()}")
         }
         return InspectResult.Ok(
             Preview(
                 manifest = manifestValue,
-                entries = entries,
-                duplicateFreeCount = entries.size,
+                entryPaths = hashes.keys.toList(),
+                duplicateFreeCount = hashes.size,
             ),
         )
+    }
+
+    /**
+     * 逐条目流式读取（**一次只持有一个条目的字节**）：恢复端按路径分发时用这个，
+     * 而不是先 `inspect` 拿到一整张 `Map<路径, 字节>`。
+     *
+     * 安全护栏与 [inspect] 同源（条目名、重复、单条上限、条目数、解压总量），
+     * 因为它是公开入口，不能假设调用方一定先跑过预检。
+     * `manifest.json` 不交给回调——它由 [inspect] 负责解析与校验。
+     *
+     * 返回 `null` 表示成功，否则是拒绝原因（调用方必须据此失败，不能继续写库）。
+     */
+    suspend fun streamEntries(
+        bytes: ByteArray,
+        budgetBytes: Long = residentBudgetBytes(bytes.size.toLong()),
+        onEntry: suspend (path: String, payload: ByteArray) -> Unit,
+    ): String? {
+        val perEntryBudget = minOf(budgetBytes, MAX_SINGLE_ENTRY_BYTES)
+        if (perEntryBudget <= 0) {
+            return "本机可用内存不足以读取这个备份（源包 ${bytes.size / MIB} MB）：请改在 PC 上恢复。"
+        }
+        val seen = HashSet<String>()
+        var total = 0L
+        var rejection: String? = null
+        runCatching {
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: return@use
+                    if (seen.size >= MAX_ENTRIES) {
+                        rejection = "条目数超过上限 $MAX_ENTRIES"
+                        return@use
+                    }
+                    rejectReasonForEntryName(entry.name)?.let { reason ->
+                        rejection = "${entry.name}：$reason"
+                        return@use
+                    }
+                    if (isSymbolicLink(entry)) {
+                        rejection = "${entry.name}：符号链接条目"
+                        return@use
+                    }
+                    if (!seen.add(entry.name)) {
+                        rejection = "${entry.name}：备份内出现重复条目"
+                        return@use
+                    }
+                    val payload = readLimited(zip, perEntryBudget)
+                    if (payload == null) {
+                        rejection = "${entry.name}：单条目过大（超过本机可校验上限" +
+                            " ${perEntryBudget / MIB} MB）：请改在 PC 上恢复。"
+                        return@use
+                    }
+                    total += payload.size
+                    if (total > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                        rejection = "备份解压后合计超过契约上限 ${MAX_TOTAL_UNCOMPRESSED_BYTES / MIB} MB（疑似 ZIP bomb）"
+                        return@use
+                    }
+                    if (entry.name != MANIFEST_NAME) onEntry(entry.name, payload)
+                    zip.closeEntry()
+                }
+            }
+        }.onFailure { return describeInspectFailure(it, total) }
+        return rejection
     }
 
     sealed interface InspectResult {
@@ -316,10 +404,16 @@ object BackupV3 {
         data class Rejected(val reason: String) : InspectResult
     }
 
-    /** 预览：UI 在用户确认前展示 counts/excluded/条目数/版本。 */
+    /**
+     * 预览：UI 在用户确认前展示 counts/excluded/条目数/版本。
+     *
+     * **不持有条目字节**（2026-09-20 起）：只留路径与清单。
+     * 恢复时由 [streamEntries] 按路径重读——这是「多大的备份都能恢复」的前提。
+     */
     data class Preview(
         val manifest: Manifest,
-        val entries: Map<String, ByteArray>,
+        /** 校验通过的非 manifest 条目路径，按 ZIP 内顺序 */
+        val entryPaths: List<String>,
         val duplicateFreeCount: Int,
     ) {
         /** 与当前设备数据比较后由调用方填的统计（这里只暴露清单侧数字）。 */
@@ -375,15 +469,15 @@ object BackupV3 {
         return left.isNotEmpty() && left == right
     }
 
-    private fun readLimited(input: InputStream): ByteArray? {
+    private fun readLimited(input: InputStream, limit: Long = MAX_SINGLE_ENTRY_BYTES): ByteArray? {
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(8 * 1024)
-        var written = 0
+        var written = 0L
         while (true) {
             val read = input.read(buffer)
             if (read < 0) break
             written += read
-            if (written > MAX_SINGLE_ENTRY_BYTES) return null
+            if (written > limit) return null
             out.write(buffer, 0, read)
         }
         return out.toByteArray()

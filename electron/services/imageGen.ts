@@ -10,10 +10,12 @@
 import { createLogger } from './logger'
 import type {
   ComfyImageGenConfig,
+  ComfyPromptTarget,
   ImageGenModelConfig,
   OpenAiImageGenConfig,
   SdWebUiImageGenConfig,
 } from '../../shared/types'
+import { analyzeComfyWorkflow, type ApiWorkflow } from './comfyWorkflow'
 
 const log = createLogger('imageGen')
 
@@ -185,7 +187,7 @@ function applyWorkflowOverrides(workflow: ComfyWorkflow, overrides: Record<strin
 function customComfyWorkflow(
   config: ComfyImageGenConfig,
   prompt: string,
-  negativePrompt: string,
+  negativePrompt: string | undefined,
   width: number,
   height: number,
 ): ComfyWorkflow {
@@ -215,86 +217,49 @@ function customComfyWorkflow(
   const seed = Math.floor(Math.random() * 0x7fffffff)
   const workflow = replaceWorkflowPlaceholders(copied, {
     '{{prompt}}': prompt,
-    '{{negative_prompt}}': negativePrompt,
+    '{{negative_prompt}}': negativePrompt ?? '',
     '{{width}}': width,
     '{{height}}': height,
     '{{seed}}': seed,
   }) as ComfyWorkflow
 
-  // 提示词只写入选定入口；bindings 仅保存自动识别无法唯一确定的场景。
-  const textNodes: Array<[string, ComfyNode]> = Object.entries(workflow)
-    .filter(([, node]) => node.class_type === 'CLIPTextEncode')
-  const positiveBound = config.bindings?.positivePromptNodeIds ?? []
-  const negativeBound = config.bindings?.negativePromptNodeIds ?? []
-
-  let hasPositiveNode = false
-  let hasNegativeNode = false
-  const unmatchedTextNodes: Array<[string, ComfyNode]> = []
-  for (const [nodeId, node] of textNodes) {
-    if (positiveBound.includes(nodeId)) {
-      node.inputs.text = prompt
-      hasPositiveNode = true
-    } else if (negativeBound.includes(nodeId)) {
-      node.inputs.text = negativePrompt
-      hasNegativeNode = true
-    } else {
-      unmatchedTextNodes.push([nodeId, node])
-    }
+  // 用户绑定是唯一事实来源；旧配置没有绑定时复用导入分析器，
+  // 避免“配置页识别正确，运行时又用另一套规则猜错”。
+  const configuredTargets = (
+    role: 'positive' | 'negative',
+  ): ComfyPromptTarget[] | null => {
+    const bindings = config.bindings
+    if (!bindings) return null
+    const exact = role === 'positive' ? bindings.positivePromptTargets : bindings.negativePromptTargets
+    if (exact !== undefined) return exact
+    const legacy = role === 'positive' ? bindings.positivePromptNodeIds : bindings.negativePromptNodeIds
+    return legacy === undefined ? null : legacy.map((nodeId) => ({ nodeId, inputName: 'text' }))
   }
 
-  // 无绑定（未产生歧义）时沿用自动识别：采样器引用优先，标题其次。
-  if (positiveBound.length === 0 && negativeBound.length === 0) {
-    const negativeTextNodeIds = new Set<string>()
-    const positiveTextNodeIds = new Set<string>()
-    for (const node of Object.values(workflow)) {
-      if (!SAMPLER_CLASS_TYPES.has(node.class_type)) continue
-      const positive = node.inputs.positive
-      const negative = node.inputs.negative
-      if (isNodeReference(positive)) positiveTextNodeIds.add(positive[0])
-      if (isNodeReference(negative)) negativeTextNodeIds.add(negative[0])
-    }
-    const remaining: Array<[string, ComfyNode]> = []
-    for (const [nodeId, node] of unmatchedTextNodes) {
-      const label = `${nodeId} ${node._meta?.title ?? ''}`.toLowerCase()
-      if (negativeTextNodeIds.has(nodeId) || label.includes('negative')) {
-        node.inputs.text = negativePrompt
-        hasNegativeNode = true
-      } else if (positiveTextNodeIds.has(nodeId) || label.includes('positive')) {
-        node.inputs.text = prompt
-        hasPositiveNode = true
-      } else {
-        remaining.push([nodeId, node])
+  const analysis = analyzeComfyWorkflow(workflow as ApiWorkflow)
+  const inferredTargets = (role: 'positive' | 'negative'): ComfyPromptTarget[] => (
+    analysis.promptBindings
+      .filter((binding) => binding.role === role && binding.inputName)
+      .map((binding) => ({ nodeId: binding.nodeId, inputName: binding.inputName! }))
+  )
+  const positiveTargets = configuredTargets('positive') ?? inferredTargets('positive')
+  const negativeTargets = configuredTargets('negative') ?? inferredTargets('negative')
+
+  const writeTargets = (targets: ComfyPromptTarget[], value: string, label: string): void => {
+    for (const target of targets) {
+      const node = workflow[target.nodeId]
+      if (!node || !Object.prototype.hasOwnProperty.call(node.inputs, target.inputName)) {
+        throw new Error(`ComfyUI ${label}入口 ${target.nodeId}.${target.inputName} 已失效，请重新选择工作流入口`)
       }
+      node.inputs[target.inputName] = value
     }
-    // 已识别并写入的正向节点不能继续参与负向兜底。尤其是
-    // ConditioningZeroOut 复用正向 conditioning 的工作流，本身没有负面文本节点。
-    unmatchedTextNodes.length = 0
-    unmatchedTextNodes.push(...remaining)
-  } else {
-    // 已绑定部分入口时，剩余未绑定节点按标题兜底，避免提示词留空。
-    const remaining: Array<[string, ComfyNode]> = []
-    for (const [nodeId, node] of unmatchedTextNodes) {
-      const label = `${nodeId} ${node._meta?.title ?? ''}`.toLowerCase()
-      if (!hasNegativeNode && label.includes('negative')) {
-        node.inputs.text = negativePrompt
-        hasNegativeNode = true
-      } else if (!hasPositiveNode && label.includes('positive')) {
-        node.inputs.text = prompt
-        hasPositiveNode = true
-      } else {
-        remaining.push([nodeId, node])
-      }
-    }
-    unmatchedTextNodes.length = 0
-    unmatchedTextNodes.push(...remaining)
   }
 
-  if (!hasPositiveNode && unmatchedTextNodes[0]) {
-    unmatchedTextNodes.shift()![1].inputs.text = prompt
+  if (positiveTargets.length === 0) {
+    throw new Error('ComfyUI 未选择正面提示词入口，请在生图配置中确认')
   }
-  if (!hasNegativeNode && unmatchedTextNodes[0]) {
-    unmatchedTextNodes.shift()![1].inputs.text = negativePrompt
-  }
+  writeTargets(positiveTargets, prompt, '正面提示词')
+  if (negativePrompt !== undefined) writeTargets(negativeTargets, negativePrompt, '负面提示词')
 
   // 只随机化可达输出的第一个采样阶段，后续阶段继承其种子。
   // 未显式指定种子覆盖时，随机化结果生效。
@@ -321,7 +286,16 @@ function buildComfyWorkflow(
   if (!config.workflow?.trim()) {
     throw new Error('ComfyUI 未配置工作流，请在 设置 -> API -> 生图 中选择或粘贴 API 格式工作流')
   }
-  const negativePrompt = options?.negativePrompt || ''
+  const hasRequestNegative = Boolean(options)
+    && Object.prototype.hasOwnProperty.call(options, 'negativePrompt')
+    && options?.negativePrompt !== undefined
+  const negativePrompt = hasRequestNegative
+    ? options?.negativePrompt
+    : config.negativePromptMode === 'preset'
+      ? (config.negativePromptPreset ?? '')
+      : config.negativePromptMode === 'empty'
+        ? ''
+        : undefined
   // 尺寸只作为占位符初值；实际尺寸由 overrides 控制。
   const [width, height] = parseSize(options?.size || '512x512')
   return customComfyWorkflow(config, prompt, negativePrompt, width, height)
@@ -385,7 +359,7 @@ async function comfyuiGenerate(
       }
     }
     if (entry?.status?.completed) {
-      throw new Error('ComfyUI 工作流已完成，但没有 SaveImage/PreviewImage 输出')
+      throw new Error('ComfyUI 工作流已完成，但没有图片输出（SaveImage / PreviewImage / SaveImageAdvanced）')
     }
     await new Promise((resolve) => setTimeout(resolve, 500))
   }

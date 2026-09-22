@@ -751,6 +751,52 @@ export function QuickSettingsPanel({
               <ToggleRow checked={settings.streamOutput} onChange={(v) => updateSettings({ streamOutput: v })}>
                 流式输出
               </ToggleRow>
+            </div>
+          </Section>
+
+          {/* ===== 上下文注入 ===== */}
+          <Section
+            icon={Sliders}
+            title="上下文注入"
+            hint={
+              <p>
+                控制角色卡中的场景和对话示例何时发送给模型；这是全局设置，同时作用于单聊与群聊。
+              </p>
+            }
+          >
+            <div className="space-y-2">
+              {/* 角色卡场景设定发送模式（全局） */}
+              <div className="flex items-center justify-between gap-2 py-0.5">
+                <span
+                  className="text-xs text-tavern-text-soft select-none"
+                  title="默认仅首轮发送，避免后续剧情被反复拉回初始场景"
+                >
+                  场景设定发送
+                </span>
+                <select
+                  aria-label="场景设定发送"
+                  value={settings.scenarioInjectionMode ?? 'first_turn'}
+                  onChange={(e) => updateSettings({ scenarioInjectionMode: e.target.value as 'always' | 'first_turn' | 'off' })}
+                  className="input text-xs py-1 px-2 w-24"
+                >
+                  <option value="first_turn">仅首轮</option>
+                  <option value="always">每轮</option>
+                  <option value="off">关闭</option>
+                </select>
+                <HintIcon
+                  align="right"
+                  hint={
+                    <>
+                      <p>
+                        角色卡「场景设定」描述故事的<strong className="text-tavern-text-soft">初始环境与背景</strong>。
+                      </p>
+                      <p className="mt-1.5 pt-1.5 border-t border-tavern-border-soft">
+                        推荐仅首轮发送，避免剧情发展后仍反复强调已经过期的初始场景。
+                      </p>
+                    </>
+                  }
+                />
+              </div>
               {/* 对话示例发送模式 */}
               <div className="flex items-center justify-between gap-2 py-0.5">
                 <span

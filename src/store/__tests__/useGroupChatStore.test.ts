@@ -385,6 +385,39 @@ describe('useGroupChatStore', () => {
       expect(Array.isArray(context)).toBe(true)
     })
 
+    it.each([
+      { label: '仅首轮在群聊首轮发送', mode: 'first_turn' as const, userMessageCount: 1, expected: true },
+      { label: '仅首轮在群聊后续轮次停止发送', mode: 'first_turn' as const, userMessageCount: 2, expected: false },
+      { label: '每轮在群聊后续轮次仍发送', mode: 'always' as const, userMessageCount: 2, expected: true },
+      { label: '关闭时群聊首轮也不发送', mode: 'off' as const, userMessageCount: 1, expected: false },
+    ])('$label', ({ mode, userMessageCount, expected }) => {
+      const member: Character = {
+        id: 'scene-char', name: '苏晚', avatar: '', description: '', personality: '',
+        scenario: '初始场景在旧车站', firstMessage: '', exampleDialog: '', tags: [], lorebookId: null,
+        creator: '', createdAt: 0, updatedAt: 0, alternateGreetings: [],
+      }
+      const userMessages: GroupMessage[] = Array.from({ length: userMessageCount }, (_, index) => ({
+        id: `user-${index}`, groupId: 'scene-group', characterId: '__user__',
+        content: `用户消息 ${index + 1}`, images: [], timestamp: index + 1, round: index + 1,
+      }))
+      useCharacterStore.setState({ characters: [member] })
+      useSettingsStore.setState((state) => ({
+        settings: { ...state.settings, scenarioInjectionMode: mode },
+      }))
+      useGroupChatStore.setState({
+        currentGroup: {
+          id: 'scene-group', name: '场景测试', memberIds: [member.id], currentSpeakerIndex: 0,
+          autoMode: false, chatMode: 'polling', maxRounds: 1, speakerInterval: 2000,
+          lorebookIds: [], presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+        },
+        messages: userMessages,
+      })
+
+      const joined = useGroupChatStore.getState().buildGroupContextReport(member.id)
+        .messages.map(item => item.content).join('\n')
+      expect(joined.includes('场景：初始场景在旧车站')).toBe(expected)
+    })
+
     it('群聊报告使用动态输出预算，maxTokens=0 不回退为 1024', () => {
       useSettingsStore.setState((state) => ({
         settings: {

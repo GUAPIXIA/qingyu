@@ -164,6 +164,7 @@ export interface DirectionGenerationInput {
 /**
  * 构造方向生成的 system 提示词。两种叙事模式分别约束 content 的叙事身份，
  * 不允许把 AI 正文改写成选项格式，也不注入世界书或完整预设。
+ * 当前预设的 jailbreak 由各运行时调用层追加，避免共享协议依赖预设存储。
  */
 export function buildDialogueDirectionSystemPrompt(input: DirectionGenerationInput): string {
   const { userName, charName, narrativeMode } = input

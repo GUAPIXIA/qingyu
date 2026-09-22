@@ -7,13 +7,14 @@ import { useSettingsStore } from '../store/useSettingsStore'
 
 type GroupBy = 'character' | 'session' | 'day' | 'model'
 type TimeRange = 'today' | '7d' | '30d' | 'all'
+const MAX_DAILY_CHART_ITEMS = 30
 
 export function UsagePage() {
   const configuredTimeZone = useSettingsStore((state) => state.settings.timezone)
   const timeZone = resolveUsageTimeZone(configuredTimeZone)
   const [summary, setSummary] = useState<{ totalInput: number; totalOutput: number; totalChars: number; count: number } | null>(null)
   const [records, setRecords] = useState<Array<{ key: string; inputChars: number; outputChars: number; totalChars: number; count: number }>>([])
-  const [groupBy, setGroupBy] = useState<GroupBy>('character')
+  const [groupBy, setGroupBy] = useState<GroupBy>('day')
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -121,9 +122,9 @@ export function UsagePage() {
   }
 
   const groupByOptions: Array<{ value: GroupBy; label: string }> = [
+    { value: 'day', label: '按天' },
     { value: 'character', label: '按角色' },
     { value: 'session', label: '按对话' },
-    { value: 'day', label: '按天' },
     { value: 'model', label: '按模型' },
   ]
 
@@ -135,7 +136,11 @@ export function UsagePage() {
   ]
 
   // 日趋势图表数据
-  const dailyData = groupBy === 'day' ? records.slice().reverse() : []
+  // 服务端的按天聚合按日期倒序返回；图表只取最近 30 个有数据日期，再按时间正序展示。
+  // 下方表格仍保留当前筛选范围内的完整记录。
+  const dailyData = groupBy === 'day'
+    ? records.slice(0, MAX_DAILY_CHART_ITEMS).reverse()
+    : []
   const maxDailyChars = dailyData.length > 0 ? Math.max(...dailyData.map(r => r.totalChars)) : 1
 
   return (
@@ -218,7 +223,7 @@ export function UsagePage() {
                       <div className="flex h-[100px] w-full flex-col justify-end">
                         <div
                           data-usage-bar
-                          className="group/bar relative min-h-[4px] w-full rounded-t bg-tavern-accent/85 shadow-sm transition-[height,background-color] hover:bg-tavern-accent-hover dark:bg-tavern-accent"
+                          className="group/bar relative min-h-[4px] w-full rounded-t bg-tavern-accent shadow-sm transition-[height,background-color] hover:bg-tavern-accent-hover"
                           style={{ height: `${Math.max(height, 4)}%` }}
                         >
                           <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-tavern-border bg-tavern-bg-card px-2 py-1 text-[10px] font-medium text-tavern-text opacity-0 shadow-lg transition-opacity group-hover/bar:opacity-100">

@@ -109,6 +109,7 @@ function stubAiSequence(
 describe('dialogueDirectionRunner', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(window.api.preset.list).mockResolvedValue([])
     // 方向请求走 getActiveProfile；测试里注入一个可用连接
     useSettingsStore.setState((state) => ({
       settings: {
@@ -133,6 +134,20 @@ describe('dialogueDirectionRunner', () => {
     expect(raw.messages[1].dialogueDirections).toHaveLength(3)
     expect(raw.messages[1].dialogueDirectionsGeneratedAt).toBeTypeOf('number')
     expect(window.api.chat.saveMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 'a1' }))
+  })
+
+  it('单聊方向注入当前预设的越狱提示词并替换变量', async () => {
+    stubAiText([`<directions>${JSON.stringify(DIRECTIONS)}</directions>`])
+    vi.mocked(window.api.preset.list).mockResolvedValue([{
+      id: 'preset-jailbreak', jailbreak: '方向越狱：{{user}} / {{char}} / {{original}}',
+    } as never])
+    const { set, get, raw } = makeStore(makeMessages())
+    raw.activePresetId = 'preset-jailbreak'
+
+    await generateSingleDialogueDirections(set, get, { messageId: 'a1', character: makeCharacter() })
+
+    const systemPrompt = vi.mocked(window.api.ai.chat).mock.calls[0][0].messages[0].content
+    expect(systemPrompt).toContain('方向越狱：林舟 / 艾莉丝 / 艾莉丝')
   })
 
   it('结构非法时重试一次并接受第二次结果', async () => {
@@ -529,6 +544,7 @@ describe('群聊方向生成', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(window.api.preset.list).mockResolvedValue([])
   })
 
   it('为有效角色回复生成方向并持久化到群聊消息', async () => {
@@ -543,6 +559,23 @@ describe('群聊方向生成', () => {
     expect(result).toHaveLength(3)
     expect((raw.messages[1] as { dialogueDirections?: unknown[] }).dialogueDirections).toHaveLength(3)
     expect(window.api.group.saveMessage).toHaveBeenCalledWith('g1', 'gs1', expect.objectContaining({ id: 'ga1' }))
+  })
+
+  it('群聊方向注入群聊绑定预设的越狱提示词', async () => {
+    stubAiText([`<directions>${JSON.stringify(DIRECTIONS)}</directions>`])
+    vi.mocked(window.api.preset.list).mockResolvedValue([{
+      id: 'group-preset', jailbreak: '群聊越狱：{{user}} 与 {{char}}',
+    } as never])
+    const { set, get, raw } = makeGroupStore(makeGroupMessages())
+    raw.currentGroup!.presetId = 'group-preset'
+
+    await generateGroupDialogueDirections(
+      set as never, get as never,
+      { messageId: 'ga1', character: makeCharacter(), userName: '林舟' },
+    )
+
+    const systemPrompt = vi.mocked(window.api.ai.chat).mock.calls[0][0].messages[0].content
+    expect(systemPrompt).toContain('群聊越狱：林舟 与 艾莉丝')
   })
 
   it('用户消息与空正文不生成方向', async () => {

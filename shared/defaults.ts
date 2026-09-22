@@ -56,6 +56,8 @@ export function getDefaultSettings(): Settings {
     enableThoughtFormat: true,
     autoExpandThought: false,
     exampleDialogMode: 'always',
+    // 场景通常描述开场状态；默认仅首轮发送，避免后续剧情被反复拉回初始场景。
+    scenarioInjectionMode: 'first_turn',
     coverBlurStrength: 8,
     enableUsageTracking: true,
     useCoverAsBackground: false,

@@ -336,6 +336,55 @@ describe('ComfyUI 工作流即事实来源', () => {
     expect(queued['5'].inputs.text).toBe('bound negative')
   })
 
+  it('只改写用户选中的精确输入字段，并使用负面提示词预设', async () => {
+    const workflow = zImageWorkflow()
+    workflow['4'] = {
+      class_type: 'CLIPTextEncodeSDXL',
+      inputs: { text_g: 'keep global', text_l: 'replace local', clip: ['2', 0] },
+    }
+    workflow['5'] = {
+      class_type: 'CLIPTextEncodeSDXL',
+      inputs: { text_g: 'keep negative global', text_l: 'old negative', clip: ['2', 0] },
+    }
+    const fetchMock = mockSuccessfulRun('prompt-exact-targets', '9')
+
+    await generateImage(zImageConfig({
+      workflow: JSON.stringify(workflow),
+      bindings: {
+        positivePromptTargets: [{ nodeId: '4', inputName: 'text_l' }],
+        negativePromptTargets: [{ nodeId: '5', inputName: 'text_l' }],
+        outputNodeIds: ['9'],
+      },
+      negativePromptMode: 'preset',
+      negativePromptPreset: 'bad hands, watermark',
+    }), 'new scene prompt')
+    const queued = submittedWorkflow(fetchMock)
+
+    expect(queued['4'].inputs.text_g).toBe('keep global')
+    expect(queued['4'].inputs.text_l).toBe('new scene prompt')
+    expect(queued['5'].inputs.text_g).toBe('keep negative global')
+    expect(queued['5'].inputs.text_l).toBe('bad hands, watermark')
+  })
+
+  it('负面模式为保留工作流原值时，未传入负面词不会清空节点', async () => {
+    const workflow = zImageWorkflow()
+    workflow['5'].inputs.text = 'workflow negative'
+    const fetchMock = mockSuccessfulRun('prompt-keep-negative', '9')
+
+    await generateImage(zImageConfig({
+      workflow: JSON.stringify(workflow),
+      bindings: {
+        positivePromptTargets: [{ nodeId: '4', inputName: 'text' }],
+        negativePromptTargets: [{ nodeId: '5', inputName: 'text' }],
+        outputNodeIds: ['9'],
+      },
+      negativePromptMode: 'workflow',
+    }), 'new prompt')
+    const queued = submittedWorkflow(fetchMock)
+
+    expect(queued['5'].inputs.text).toBe('workflow negative')
+  })
+
   it('未配置工作流时拒绝提交，并给出可读错误', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
 

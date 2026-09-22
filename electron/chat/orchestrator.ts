@@ -11,11 +11,11 @@
 import { nanoid } from 'nanoid'
 import type { ChatCommand } from '../../shared/chat-core/commands'
 import { validateChatCommand } from '../../shared/chat-core/commands'
-import type { TaskSnapshot, TaskEventEnvelope } from '../../shared/chat-core/events'
+import { isTerminalState, type TaskSnapshot, type TaskEventEnvelope } from '../../shared/chat-core/events'
 import { createDomainError, type DomainError } from '../../shared/chat-core/errors'
 import { createTask, findByRequestId as findTaskByRequestId, getTaskSnapshot, updateTask, appendEvent } from './taskStore'
 import { transitionTask, acquireSessionOrThrow, releaseSession } from './taskManager'
-import type { MessagePort, ContextPort, ModelPort, MemorySchedulerPort } from './ports'
+import type { MessagePort, ContextPort, ModelPort, MemorySchedulerPort, UsageRecorderPort } from './ports'
 import { toPublicModelDescriptor } from './ports'
 import { authorizeTool } from './toolGate'
 
@@ -24,6 +24,7 @@ export interface OrchestratorDeps {
   contextPort: ContextPort
   modelPort: ModelPort
   memoryScheduler?: MemorySchedulerPort
+  usageRecorder?: UsageRecorderPort
   // 可选：chunk batching 参数
   chunkFlushMs?: number
   chunkFlushBytes?: number
@@ -39,6 +40,34 @@ function makeEventId(): string {
 
 export class ChatOrchestrator {
   constructor(private deps: OrchestratorDeps) {}
+
+  /**
+   * 接受任务后立即返回快照，完整生成在后台继续。
+   *
+   * `handle()` 在第一个 await 之前会同步完成校验、幂等检查、任务落盘与会话加锁，
+   * 因此这里可以安全取回 accepted 快照，而不必让 IPC/HTTP 请求阻塞到模型结束。
+   */
+  start(command: ChatCommand): TaskSnapshot {
+    const validationError = validateChatCommand(command)
+    if (validationError) throw createDomainError('INVALID_COMMAND', validationError)
+
+    const existing = findTaskByRequestId(command.requestId)
+    if (existing) return existing
+
+    const completion = this.handle(command)
+    // 后台失败已由 handle 写入任务终态；此处必须吸收 rejection，
+    // 否则会变成 Electron 主进程的 unhandled rejection。
+    void completion.catch(() => {})
+
+    const accepted = findTaskByRequestId(command.requestId)
+    if (!accepted) {
+      throw createDomainError('PERSISTENCE_FAILED', '任务接受后未能读回快照')
+    }
+    if (accepted.state === 'failed') {
+      throw accepted.error ?? createDomainError('UNKNOWN', '任务启动失败')
+    }
+    return accepted
+  }
 
   async handle(command: ChatCommand): Promise<TaskSnapshot> {
     // 1. validate
@@ -367,7 +396,24 @@ export class ChatOrchestrator {
         updateTask(taskId, (s) => ({ ...s, assistantMessageId: assistantId, accumulatedText: finalText, updatedAt: Date.now() }))
       }
 
-      // 17. completed
+      // 新版聊天引擎的用量必须在主进程完成点记录：渲染层可能切页或断开，
+      // 不能承担记账。Array.from 按 Unicode 字符计数，与页面现有 countChars 口径一致。
+      const inputChars = command.type === 'send' ? Array.from(command.content).length : 0
+      const outputChars = Array.from(finalText).length
+      try {
+        await this.deps.usageRecorder?.record({
+          timestamp: Date.now(),
+          characterId,
+          sessionId,
+          model: ctx.model.model,
+          inputChars,
+          outputChars,
+          totalChars: inputChars + outputChars,
+        })
+      } catch {
+        // 统计是辅助数据，失败不得反转已经落盘的主对话终态。
+      }
+      // 17. completed：先等记账尝试收口，保证终态观察者刷新时能读到最新统计。
       transitionTask(taskId, 'completed')
       // 自动长记忆由主进程统一调度；调度器必须异步执行，不能阻塞主回复完成。
       try {
@@ -376,6 +422,17 @@ export class ChatOrchestrator {
         // 后台辅助任务失败不反转已经落盘的主对话终态。
       }
       return getTaskSnapshot(taskId)!
+    } catch (e) {
+      // stream 以外的异常（例如上下文构建/配置读取）也必须收口为终态，
+      // 否则后台执行时客户端会永久看到 preparing/streaming。
+      const current = getTaskSnapshot(taskId)
+      if (current && !isTerminalState(current.state)) {
+        const domain = (e as DomainError)?.code
+          ? e as DomainError
+          : mapProviderError(e)
+        transitionTask(taskId, 'failed', { error: domain })
+      }
+      throw e
     } finally {
       releaseSession(sessionId, taskId)
     }

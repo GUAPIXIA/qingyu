@@ -14,7 +14,7 @@ import {
   friendlyError, syncPersonaToSettings, applyDefaultMemory,
   invalidateDerivedMemory, nextLoadRequestId, currentLoadRequestId,
 } from './chatUtils'
-import { streamAIResponse, cleanupActiveStream, finalizeNoticeFields, claimUserStop, abortActiveTailRepair } from './streamController'
+import { streamAIResponse, cleanupActiveStream, finalizeNoticeFields, claimUserStop, abortActiveTailRepair, maybeAutoTitle } from './streamController'
 import { createChunkAccumulator } from './chunkAccumulator'
 import { buildChatContext, buildChatContextReport } from './chatContext'
 import { maybeRunAutoMemorySummary, runMemorySummary } from './memoryManager'
@@ -536,16 +536,24 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
           const poll = setInterval(async () => {
             try {
               const snap = await (window as unknown as { api: { chatTask: { get: (id: string) => Promise<import('../../shared/chat-core/events').TaskSnapshot> } } }).api.chatTask.get(task.taskId)
-              if (snap.state === 'completed' || snap.state === 'failed' || snap.state === 'cancelled') {
+              if (snap.state === 'completed' || snap.state === 'failed' || snap.state === 'cancelled' || snap.state === 'interrupted') {
                 clearInterval(poll)
                 unsub()
-                set({ isStreaming: false })
+                set({
+                  isStreaming: false,
+                  ...(snap.state === 'failed' || snap.state === 'interrupted'
+                    ? { error: snap.error?.message || '生成失败，请重试' }
+                    : {}),
+                })
                 // 终态后重载消息文件，确保与落盘一致
                 const msgs = await window.api.chat.listMessages(character.id, curSid)
                 set({ messages: msgs as unknown as typeof get extends () => infer T ? T extends { messages: infer M } ? M : never : never })
                 // V2 链路自动长记忆：对齐旧链路 sendMessage 完成后的挂接；仅在生成成功时检查
                 // 间隔阈值，消息已按落盘内容重载，游标统计基于持久化 id。
                 if (snap.state === 'completed' && get().currentSessionId === curSid) {
+                  // 新版主聊天完成后与旧链路一致触发自动标题；
+                  // 标题请求只追加当前预设的 jailbreak，不注入预设其他正文。
+                  void maybeAutoTitle(get, set, character, preset)
                   // “下一步方向”：落盘后按持久化 id 取最后一条有效 AI 回复生成，失败静默降级。
                   const session = get().sessions.find((item) => item.id === curSid)
                   if (resolveDialogueDirectionsEnabled(session)) {
@@ -561,7 +569,6 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
               }
             } catch { /* ignore */ }
           }, 1000)
-          setTimeout(() => { clearInterval(poll); unsub() }, 120000)
           return
         }
       }

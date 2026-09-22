@@ -69,6 +69,7 @@ describe('useChatInputState', () => {
     setupStores()
     vi.clearAllMocks()
     localStorage.clear()
+    vi.mocked(window.api.preset.list).mockResolvedValue([])
     ;(window.api as any).quickReply = {
       listAll: vi.fn().mockResolvedValue({ global: [], byCharacter: {} }),
     }
@@ -205,6 +206,36 @@ describe('useChatInputState', () => {
     expect(vi.mocked(window.api.ai.chat).mock.calls[0][0].reasoningGate).toMatchObject({ level: 'off' })
     expect(result.current.text).toBe('夜已经很深。门外忽然传来急促的敲门声，走廊里的灯随之闪烁起来。')
     expect(result.current.text).not.toContain('We need')
+  })
+
+  it('输入框续写把当前预设越狱提示词注入 system 消息并替换变量', async () => {
+    useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
+    useChatStore.setState({ activePresetId: 'preset-jailbreak' })
+    vi.mocked(window.api.preset.list).mockResolvedValue([{
+      id: 'preset-jailbreak',
+      name: '越狱预设',
+      description: '',
+      systemPrompt: '',
+      jailbreak: '越狱规则：{{user}} 与 {{char}} 必须保持沉浸。',
+      maxContext: 8192,
+      temperature: 0.8,
+      topP: 0.9,
+      maxTokens: 0,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      isBuiltin: false,
+    }])
+    mockAiHelperResponses([
+      '<continuation>门外忽然传来急促的敲门声，走廊里的灯随之闪烁起来。</continuation>',
+    ])
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+
+    await act(async () => {
+      await result.current.handleAiContinue()
+    })
+
+    const systemPrompt = vi.mocked(window.api.ai.chat).mock.calls[0][0].messages[0].content
+    expect(systemPrompt).toContain('越狱规则：TestUser 与 Alice 必须保持沉浸。')
   })
 
   it('续写重试后仍无有效中文时恢复原输入', async () => {
@@ -379,6 +410,26 @@ describe('useChatInputState', () => {
 
     expect(extendedMax).toBeGreaterThan(briefMax)
     expect(briefMax).toBeGreaterThan(0)
+  })
+
+  it('辅助请求把自动扩容方案和任务类型传给主进程', async () => {
+    useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
+    mockAiHelperResponses([`<continuation>${sentenceText(40)}</continuation>`])
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+
+    await act(async () => {
+      await result.current.handleAiContinue()
+    })
+
+    const params = vi.mocked(window.api.ai.chat).mock.calls[0][0]
+    expect(params.adaptiveOutputBudget).toEqual(expect.objectContaining({
+      ceilingTokens: expect.any(Number),
+      bodyReserveTokens: expect.any(Number),
+    }))
+    expect(params.observability).toMatchObject({
+      source: 'aux',
+      taskType: 'continuation',
+    })
   })
 
   it('修复后轻微越界但句意完整时接受', async () => {

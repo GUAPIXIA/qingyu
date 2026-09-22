@@ -134,13 +134,13 @@ class BackupV3SafetyTest {
      *
      * **2026-09-20 更新**：这里原先还记着一个设计问题——`inspect` 把整包与每个条目的字节
      * 都留在内存里、上限却是 1 GiB，而 Android 单应用堆只有它的 1/4–1/8，
-     * 于是「备份变大」会 OOM 并被报成「ZIP 解析失败」。现在分成了两半：
-     * - **已修**：`inspect` 按 [BackupV3.residentBudgetBytes]（契约上限与「可用堆的一半」取小）
-     *   在**超预算时先拒**，并用 [BackupV3.describeInspectFailure] 把 OOM 与「包损坏」分开说——
-     *   用户不会再把「本机内存不够」当成「文件坏了」。下面两条用例钉这两件事；
-     * - **仍未修（能力层）**：真正**恢复**一个大于驻留预算的备份要改接口形状
-     *   （`Preview.entries: Map<String, ByteArray>` 是整包驻留的根），属报告 §5-P1-d 的剩余项。
-     *   所以现在的口径是「拒绝得诚实且可执行」，不是「多大的备份都能恢复」。
+     * 于是「备份变大」会 OOM 并被报成「ZIP 解析失败」。现在三件事都修完了：
+     * - `inspect` 按 [BackupV3.residentBudgetBytes] 在**单条目超预算时先拒**，
+     *   并用 [BackupV3.describeInspectFailure] 把 OOM 与「包损坏」分开说；
+     * - `inspect` 与恢复路径都改成**逐条目流式**（`Preview` 不再持有条目字节），
+     *   所以「总量大但每条都不大」的备份不再被拒——下面 `totalSizeMayExceedTheBudgetAsLongAsEachEntryFits`
+     *   钉住这条新能力，解压总量由契约上限（1 GiB，防 ZIP bomb）把关；
+     * - 因此口径从「拒绝得诚实且可执行」变成了「拒绝得诚实，且放得下的就真能恢复」。
      */
     @Test
     fun entryCountCapRejectsZipBomb() {
@@ -156,13 +156,17 @@ class BackupV3SafetyTest {
     }
 
     /**
-     * 驻留预算是「契约上限」与「可用堆的一半」取小，并且先把源包自身扣掉。
+     * 驻留预算是「**单条目**契约上限 64 MiB」与「可用堆的一半」取小，并且先把源包自身扣掉。
      *
      * 纯函数（堆大小可注入）：设备上的真实堆值不该成为断言的一部分，
      * 否则同一条用例在不同机器上断的是不同的数。
+     *
+     * **2026-09-20 语义变化**：以前它约束「所有条目解压后**之和**」（因为 `inspect` 把整包条目
+     * 都留在内存里）。改成逐条目流式之后，内存上只剩「最大的那一个条目」这条约束，
+     * 所以堆很大时预算被 **64 MiB 的单条目契约**夹住，而不是 1 GiB 的解压总量。
      */
     @Test
-    fun residentBudgetIsTheSmallerOfTheContractCeilingAndHalfTheHeadroom() {
+    fun residentBudgetIsTheSmallerOfThePerEntryCeilingAndHalfTheHeadroom() {
         val mib = 1024L * 1024L
         // 堆很小：预算由堆决定 = (堆 − 源包) × 0.5
         assertEquals(
@@ -170,41 +174,83 @@ class BackupV3SafetyTest {
             BackupV3.residentBudgetBytes(sourceBytes = 10L * mib, heapMaxBytes = 100L * mib),
             "预算必须先把源包自身从堆里扣掉，再取一半",
         )
-        // 堆很大：被契约上限夹住，不会超过 1 GiB
+        // 堆很大：被**单条目**契约上限夹住（不再是 1 GiB 的解压总量）
         assertEquals(
-            BackupV3.MAX_TOTAL_UNCOMPRESSED_BYTES,
+            BackupV3.MAX_SINGLE_ENTRY_BYTES,
             BackupV3.residentBudgetBytes(sourceBytes = 1024L, heapMaxBytes = 64L * 1024 * mib),
-            "再大的堆也不能让预算超过契约上限",
+            "再大的堆也只能容纳一个 64 MiB 的条目",
         )
         // 源包自己就吃掉整个堆：没有预算可用（返回 0，调用方据此直接拒，而不是等 OOM）
         assertEquals(0L, BackupV3.residentBudgetBytes(sourceBytes = 200L, heapMaxBytes = 100L))
     }
 
     /**
-     * 超出**驻留预算**必须在解压过程中被拒，而且文案要说清是「本机放不下」。
+     * **单个条目**超出预算必须在解压过程中被拒，而且文案要说清是「本机放不下」。
      *
      * 这条注入一个极小的预算，从而不必真的分配几百 MB——否则要复现同一个场景得先有
-     * 一个几百 MB 的合法备份，用例既慢又依赖机型堆大小。第三条断言是对照组：
+     * 一个几百 MB 的合法备份，用例既慢又依赖机型堆大小。最后一条断言是对照组：
      * 同一个包给足预算必须通过，防止把「这包本来就坏」误当成「超预算」。
      */
     @Test
-    fun exceedingTheResidentBudgetIsRejectedByTheBudgetNotByTheHeap() {
-        val entries = (0 until 8).map { index ->
-            BackupV3.Entry("characters/big$index.json", ByteArray(64 * 1024) { 'a'.code.toByte() })
-        }
+    fun anEntryLargerThanTheResidentBudgetIsRejectedByTheBudgetNotByTheHeap() {
+        val entries = listOf(
+            BackupV3.Entry("characters/small.json", ByteArray(4 * 1024) { 'a'.code.toByte() }),
+            // 这一个比注入的预算还大
+            BackupV3.Entry("media/avatar/big.png", ByteArray(256 * 1024) { 'b'.code.toByte() }),
+        )
         val manifest = BackupV3.manifestOf(entries, "0.17.2", "android", 1L, counts = emptyMap())
         val archive = BackupV3.build(entries, manifest)
 
         val result = BackupV3.inspect(archive, budgetBytes = 128 * 1024)
-        assertTrue(result is BackupV3.InspectResult.Rejected, "超预算必须被拒，实际：$result")
+        assertTrue(result is BackupV3.InspectResult.Rejected, "单条目超预算必须被拒，实际：$result")
         val reason = (result as BackupV3.InspectResult.Rejected).reason
-        assertTrue("上限" in reason, "拒绝原因必须报出上限：$reason")
+        assertTrue("单条目" in reason && "上限" in reason, "拒绝原因必须报出是单条目超限：$reason")
         assertTrue("ZIP 解析失败" !in reason, "不能把「本机放不下」说成「ZIP 坏了」：$reason")
-        assertTrue("PC" in reason, "文案要给出下一步（PC / 分批）：$reason")
+        assertTrue("PC" in reason, "文案要给出下一步（PC）：$reason")
 
         assertTrue(
             BackupV3.inspect(archive, budgetBytes = 8L * 1024 * 1024) is BackupV3.InspectResult.Ok,
             "同一份备份在预算充足时必须通过——这是上面那条的对照组",
+        )
+    }
+
+    /**
+     * **本轮新增的能力**（§5-P1-d 结案）：解压**总量**超过驻留预算的备份现在能通过预检。
+     *
+     * 以前预检把「所有条目解压后之和」与预算比，于是「总量很大但每个条目都不大」的备份
+     * （正是真实备份的形状：一堆头像 + 若干会话）在**本机明明放得下**的情况下被拒。
+     * 改成逐条目流式后，约束只落在单条目上；总量由契约上限（1 GiB，防 ZIP bomb）把关。
+     *
+     * 断言 ①总量确实超过注入预算（否则这条用例什么都没测）②预检仍然通过；
+     * ③而**单个**条目一旦超过同一个预算就被拒——即预算没有失效，只是量纲变了。
+     */
+    @Test
+    fun totalSizeMayExceedTheBudgetAsLongAsEachEntryFits() {
+        val budget = 128L * 1024
+        val entries = (0 until 8).map { index ->
+            BackupV3.Entry("characters/normal$index.json", ByteArray(64 * 1024) { 'a'.code.toByte() })
+        }
+        val manifest = BackupV3.manifestOf(entries, "0.17.2", "android", 1L, counts = emptyMap())
+        val archive = BackupV3.build(entries, manifest)
+
+        val total = entries.sumOf { it.bytes.size.toLong() }
+        assertTrue(
+            total > budget,
+            "这条用例的前提是「总量大于预算」：total=$total budget=$budget",
+        )
+        assertTrue(
+            BackupV3.inspect(archive, budgetBytes = budget) is BackupV3.InspectResult.Ok,
+            "逐条目流式之后，总量超预算但每条都放得下的备份必须通过预检",
+        )
+
+        val oversized = listOf(BackupV3.Entry("characters/huge.json", ByteArray((budget + 1).toInt()) { 'a'.code.toByte() }))
+        val oversizedArchive = BackupV3.build(
+            oversized,
+            BackupV3.manifestOf(oversized, "0.17.2", "android", 1L, counts = emptyMap()),
+        )
+        assertTrue(
+            BackupV3.inspect(oversizedArchive, budgetBytes = budget) is BackupV3.InspectResult.Rejected,
+            "同一个预算对**单条目**仍然有效",
         )
     }
 

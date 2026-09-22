@@ -289,6 +289,7 @@ export const imagineCommand: CommandDef = {
             temperature: attempt === 0 ? 0.5 : 0.2,
             task: 'image_prompt',
             expectedBodyChars: style === 'natural' ? 1200 : 800,
+            includePresetJailbreak: true,
             // R1-A：撞上限时返回已产出正文，由 parseImagePromptResult 兜底解析
           })
           const candidate = parseImagePromptResult(raw, style)

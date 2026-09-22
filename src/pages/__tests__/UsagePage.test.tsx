@@ -64,6 +64,19 @@ describe('UsagePage', () => {
     expect(screen.getByText('导出 CSV')).toBeInTheDocument()
   })
 
+  it('分组选项把按天放在第一位', async () => {
+    render(<UsagePage />)
+    await waitFor(() => {
+      expect(window.api.usage.aggregate).toHaveBeenCalledWith({}, 'day', 'Asia/Shanghai')
+    })
+
+    const labels = screen.getAllByRole('button')
+      .map((button) => button.textContent)
+      .filter((label) => ['按天', '按角色', '按对话', '按模型'].includes(label ?? ''))
+    expect(labels).toEqual(['按天', '按角色', '按对话', '按模型'])
+    expect(screen.getByRole('button', { name: '按天' }).className).toContain('bg-tavern-accent')
+  })
+
   it('今日使用用户时区的自然日零点，并把时区传给按天聚合', async () => {
     render(<UsagePage />)
     await waitFor(() => expect(window.api.usage.summary).toHaveBeenCalled())
@@ -82,7 +95,7 @@ describe('UsagePage', () => {
     })
   })
 
-  it('每日趋势在夜间模式使用高对比日期与实色柱体', async () => {
+  it('每日趋势在浅色与夜间模式都使用可解析的实色柱体', async () => {
     vi.mocked(window.api.usage.aggregate).mockResolvedValue([{
       key: '2026-08-27', inputChars: 100, outputChars: 200, totalChars: 300, count: 1,
     }])
@@ -95,7 +108,28 @@ describe('UsagePage', () => {
     const chartItem = dateLabel.parentElement
     const bar = chartItem?.querySelector('[data-usage-bar]')
     expect(dateLabel.className).toContain('dark:text-tavern-text-soft')
-    expect(bar?.className).toContain('dark:bg-tavern-accent')
+    expect(bar?.className.split(' ')).toContain('bg-tavern-accent')
+    expect(bar?.className).not.toContain('bg-tavern-accent/85')
     expect(bar?.className).toContain('min-h-[4px]')
+  })
+
+  it('每日趋势最多显示最近 30 条，表格仍保留完整记录', async () => {
+    const days = Array.from({ length: 31 }, (_, index) => ({
+      key: `2026-08-${String(index + 1).padStart(2, '0')}`,
+      inputChars: index + 1,
+      outputChars: index + 1,
+      totalChars: (index + 1) * 2,
+      count: 1,
+    })).reverse()
+    vi.mocked(window.api.usage.aggregate).mockResolvedValue(days)
+    const { container } = render(<UsagePage />)
+    await waitFor(() => expect(window.api.usage.summary).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByText('按天'))
+
+    await screen.findByText('08-31')
+    expect(container.querySelectorAll('[data-usage-bar]')).toHaveLength(30)
+    expect(screen.queryByText('08-01')).not.toBeInTheDocument()
+    expect(screen.getByText('2026-08-01')).toBeInTheDocument()
   })
 })

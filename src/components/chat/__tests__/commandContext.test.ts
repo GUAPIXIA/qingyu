@@ -62,4 +62,24 @@ describe('生图命令上下文', () => {
       { role: 'assistant', content: '她浑身湿透，扶着站台长椅喘气。', name: 'Alice' },
     ])
   })
+
+  it('把生图提示词请求的越狱注入标记透传给 AI 辅助层', async () => {
+    const callAiHelper = vi.fn().mockResolvedValue('result')
+    const context = createCommandContext({
+      character,
+      loadActivePresetLorebook: vi.fn().mockResolvedValue([null, []]),
+      showNotification: vi.fn(),
+      callAiHelper,
+    })
+
+    await context.callAiHelper('system', 'user', { includePresetJailbreak: true })
+
+    expect(callAiHelper).toHaveBeenCalledWith(expect.objectContaining({
+      includePresetJailbreak: true,
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'user' },
+      ],
+    }))
+  })
 })

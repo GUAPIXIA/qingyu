@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
-import type { ImageGenModelConfig, ImageGenProvider } from '../../../shared/types'
+import type {
+  ComfyPromptTarget,
+  ComfyWorkflowBindings,
+  ImageGenModelConfig,
+  ImageGenProvider,
+} from '../../../shared/types'
 import type {
   ComfyWorkflowAnalysis,
   ComfyWorkflowImportResult,
@@ -11,7 +16,7 @@ import type {
 import {
   Image, Plus, Trash2, Check, Eye, EyeOff,
   Circle, ChevronUp, ChevronDown, Loader2, FolderOpen, RefreshCw, FileJson2,
-  AlertTriangle, RotateCcw, Box,
+  AlertTriangle, RotateCcw, Box, MessageSquareText,
 } from 'lucide-react'
 
 /** 提供商选项 */
@@ -45,6 +50,35 @@ const IMAGE_QUALITIES = [
   { value: 'hd', label: 'HD 高清' },
 ]
 
+type PromptBindingRole = 'positive' | 'negative' | 'keep'
+
+function promptTargetKey(target: ComfyPromptTarget): string {
+  return `${target.nodeId}.${target.inputName}`
+}
+
+/** 读取新版精确绑定，并兼容只保存节点 ID 的旧配置。 */
+function promptTargets(
+  bindings: ComfyWorkflowBindings | undefined,
+  role: 'positive' | 'negative',
+): ComfyPromptTarget[] {
+  if (!bindings) return []
+  const exact = role === 'positive' ? bindings.positivePromptTargets : bindings.negativePromptTargets
+  if (exact !== undefined) return exact
+  const legacy = role === 'positive' ? bindings.positivePromptNodeIds : bindings.negativePromptNodeIds
+  return (legacy ?? []).map((nodeId) => ({ nodeId, inputName: 'text' }))
+}
+
+function suggestedBindings(analysis: ComfyWorkflowAnalysis): ComfyWorkflowBindings {
+  const targetsFor = (role: 'positive' | 'negative') => analysis.promptBindings
+    .filter((binding) => binding.role === role)
+    .map((binding) => ({ nodeId: binding.nodeId, inputName: binding.inputName ?? 'text' }))
+  return {
+    positivePromptTargets: targetsFor('positive'),
+    negativePromptTargets: targetsFor('negative'),
+    outputNodeIds: analysis.outputBindings.map((binding) => binding.nodeId),
+  }
+}
+
 /** 根据 provider 返回空表单默认值 */
 function emptyForm(provider: ImageGenProvider = 'openai'): ImageGenModelConfig {
   if (provider === 'comfyui') {
@@ -53,6 +87,8 @@ function emptyForm(provider: ImageGenProvider = 'openai'): ImageGenModelConfig {
       apiKey: '', baseUrl: 'http://127.0.0.1:8188',
       enabled: true, order: 0,
       workflow: '',
+      negativePromptMode: 'workflow',
+      negativePromptPreset: '',
     }
   }
   if (provider === 'sd-webui') {
@@ -146,7 +182,17 @@ export function ImageGenModelsSection() {
   }
 
   const openEdit = (m: ImageGenModelConfig) => {
-    setForm({ ...m })
+    setForm(m.provider === 'comfyui' && m.bindings
+      ? {
+          ...m,
+          bindings: {
+            ...m.bindings,
+            positivePromptTargets: promptTargets(m.bindings, 'positive'),
+            negativePromptTargets: promptTargets(m.bindings, 'negative'),
+          },
+          negativePromptMode: m.negativePromptMode ?? 'workflow',
+        }
+      : { ...m })
     setEditingId(m.id)
     setShowAdd(false)
     setShowKey(false)
@@ -188,23 +234,19 @@ export function ImageGenModelsSection() {
     setAnalysis(result.analysis ?? null)
     setForm((current) => {
       if (current.provider !== 'comfyui') return current
-      const inferred = analysis?.promptBindings ?? []
-      const positiveIds = inferred.filter((b) => b.role === 'positive').map((b) => b.nodeId)
-      const negativeIds = inferred.filter((b) => b.role === 'negative').map((b) => b.nodeId)
-      const outputIds = analysis?.outputBindings.map((b) => b.nodeId) ?? []
-      // 只有存在歧义时才持久化绑定；唯一确定的入口由运行时自动识别。
-      const needsBindings = (analysis?.warnings ?? []).some(
-        (w) => w.code === 'ambiguous-prompt' || w.code === 'ambiguous-output',
-      )
+      const bindings = analysis ? suggestedBindings(analysis) : undefined
+      const importedNegative = result.settings?.negativePrompt
+        ?? analysis?.promptBindings.find((binding) => binding.role === 'negative')?.workflowValue
+        ?? ''
       return {
         ...current,
         workflow: result.workflow!,
         workflowName: result.sourceName,
         workflowMeta: result.workflowMeta,
         overrides: {},
-        ...(needsBindings
-          ? { bindings: { positivePromptNodeIds: positiveIds, negativePromptNodeIds: negativeIds, outputNodeIds: outputIds } }
-          : { bindings: undefined }),
+        bindings,
+        negativePromptMode: 'workflow',
+        negativePromptPreset: importedNegative,
         name: current.name || result.sourceName || current.name,
       }
     })
@@ -255,6 +297,19 @@ export function ImageGenModelsSection() {
       const result = await window.api.imageGen.analyzeComfyWorkflow(workflowJson, objectInfo)
       if (result.success && result.analysis) {
         setAnalysis(result.analysis)
+        // 旧配置可能没有 bindings：第一次用新分析器打开时填入建议值，
+        // 之后始终保留用户已做的选择，不被重新分析覆盖。
+        setForm((current) => {
+          if (current.provider !== 'comfyui' || current.bindings) return current
+          const importedNegative = result.analysis?.promptBindings
+            .find((binding) => binding.role === 'negative')?.workflowValue ?? ''
+          return {
+            ...current,
+            bindings: suggestedBindings(result.analysis!),
+            negativePromptMode: current.negativePromptMode ?? 'workflow',
+            negativePromptPreset: current.negativePromptPreset ?? importedNegative,
+          }
+        })
       } else {
         setAnalysis(null)
         setWorkflowMessage({ success: false, text: result.error ?? '分析工作流失败' })
@@ -328,6 +383,40 @@ export function ImageGenModelsSection() {
   const overrideCount = form.provider === 'comfyui' && form.overrides
     ? Object.keys(form.overrides).length
     : 0
+
+  const selectedPromptRole = (nodeId: string, inputName: string): PromptBindingRole => {
+    if (!comfyForm) return 'keep'
+    const key = `${nodeId}.${inputName}`
+    if (promptTargets(comfyForm.bindings, 'positive').some((target) => promptTargetKey(target) === key)) return 'positive'
+    if (promptTargets(comfyForm.bindings, 'negative').some((target) => promptTargetKey(target) === key)) return 'negative'
+    return 'keep'
+  }
+
+  const setPromptBindingRole = (target: ComfyPromptTarget, role: PromptBindingRole) => {
+    setForm((current) => {
+      if (current.provider !== 'comfyui') return current
+      const bindings = current.bindings ?? {
+        positivePromptTargets: [],
+        negativePromptTargets: [],
+        outputNodeIds: analysis?.outputBindings.map((binding) => binding.nodeId) ?? [],
+      }
+      const targetKey = promptTargetKey(target)
+      const positivePromptTargets = promptTargets(bindings, 'positive')
+        .filter((item) => promptTargetKey(item) !== targetKey)
+      const negativePromptTargets = promptTargets(bindings, 'negative')
+        .filter((item) => promptTargetKey(item) !== targetKey)
+      if (role === 'positive') positivePromptTargets.push(target)
+      if (role === 'negative') negativePromptTargets.push(target)
+      return {
+        ...current,
+        bindings: {
+          positivePromptTargets,
+          negativePromptTargets,
+          outputNodeIds: bindings.outputNodeIds,
+        },
+      }
+    })
+  }
 
   /** 单个动态参数控件；覆盖过的项显示「已改」标记与还原按钮。 */
   const renderParameter = (param: ComfyWorkflowParameter) => {
@@ -598,6 +687,131 @@ export function ImageGenModelsSection() {
     )
   }
 
+  /**
+   * 提示词入口由分析器给出建议，但最终角色由用户确认。
+   * 三态选择明确区分“写正面词 / 写负面词 / 不改工作流原值”。
+   */
+  const renderPromptBindings = () => {
+    if (!analysis || !comfyForm || analysis.promptBindings.length === 0) return null
+    const negativeTargets = promptTargets(comfyForm.bindings, 'negative')
+    const mode = comfyForm.negativePromptMode ?? 'workflow'
+    const modes: Array<{ value: 'workflow' | 'preset' | 'empty'; label: string; hint: string }> = [
+      { value: 'workflow', label: '保留原值', hint: '生成时不改动工作流里的负面词' },
+      { value: 'preset', label: '使用预设', hint: '每次写入下方的固定负面词' },
+      { value: 'empty', label: '每次清空', hint: '生成前主动清空已选负面入口' },
+    ]
+
+    return (
+      <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 overflow-hidden">
+        <div className="px-3 py-2.5 border-b border-tavern-border-soft bg-tavern-bg-card/50">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-tavern-text">
+            <MessageSquareText className="w-3.5 h-3.5 text-tavern-accent" />
+            提示词入口
+          </div>
+          <p className="text-[11px] text-tavern-text-muted mt-1 leading-relaxed">
+            已根据连接关系预选。请确认每个文本输入的用途；选择“保持原值”的输入不会被生成请求改写。
+          </p>
+        </div>
+
+        <div className="divide-y divide-tavern-border-soft">
+          {analysis.promptBindings.map((binding) => {
+            const inputName = binding.inputName ?? 'text'
+            const role = selectedPromptRole(binding.nodeId, inputName)
+            const title = binding.title || `节点 ${binding.nodeId}`
+            const target = { nodeId: binding.nodeId, inputName }
+            const choices: Array<{ value: PromptBindingRole; label: string }> = [
+              { value: 'positive', label: '正面' },
+              { value: 'negative', label: '负面' },
+              { value: 'keep', label: '保持原值' },
+            ]
+            return (
+              <div key={`${binding.nodeId}.${inputName}`} className="p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs text-tavern-text-soft truncate">{title}</div>
+                    <div className="text-[10px] text-tavern-text-muted font-mono">
+                      {binding.nodeId}.{inputName}
+                    </div>
+                    {binding.workflowValue && (
+                      <div className="text-[10px] text-tavern-text-muted/80 truncate mt-0.5" title={binding.workflowValue}>
+                        原值：{binding.workflowValue}
+                      </div>
+                    )}
+                  </div>
+                  <div className="inline-flex rounded-lg border border-tavern-border-soft bg-tavern-bg-card p-0.5 shrink-0">
+                    {choices.map((choice) => (
+                      <button
+                        key={choice.value}
+                        type="button"
+                        aria-label={`节点 ${binding.nodeId} ${inputName} 设为${choice.value === 'positive' ? '正面提示词' : choice.value === 'negative' ? '负面提示词' : '保持工作流原值'}`}
+                        aria-pressed={role === choice.value}
+                        onClick={() => setPromptBindingRole(target, choice.value)}
+                        className={cn(
+                          'px-2 py-1 rounded-md text-[10px] transition-colors',
+                          role === choice.value
+                            ? choice.value === 'negative'
+                              ? 'bg-tavern-warning/15 text-tavern-warning'
+                              : 'bg-tavern-accent-soft text-tavern-accent'
+                            : 'text-tavern-text-muted hover:text-tavern-text-soft',
+                        )}
+                      >
+                        {choice.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {negativeTargets.length > 0 && (
+          <div className="p-3 border-t border-tavern-warning/20 bg-tavern-warning/5 space-y-2.5">
+            <div>
+              <div className="text-xs font-medium text-tavern-text">负面提示词</div>
+              <p className="text-[11px] text-tavern-text-muted mt-0.5">{modes.find((item) => item.value === mode)?.hint}</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {modes.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  aria-pressed={mode === item.value}
+                  onClick={() => setForm((current) => current.provider === 'comfyui'
+                    ? { ...current, negativePromptMode: item.value }
+                    : current)}
+                  className={cn(
+                    'px-2.5 py-1 rounded-lg text-[11px] border transition-colors',
+                    mode === item.value
+                      ? 'border-tavern-warning/40 bg-tavern-warning/15 text-tavern-warning'
+                      : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted hover:text-tavern-text',
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            {mode === 'preset' && (
+              <div>
+                <label htmlFor="comfy-negative-prompt-preset" className="sr-only">负面提示词预设</label>
+                <textarea
+                  id="comfy-negative-prompt-preset"
+                  aria-label="负面提示词预设"
+                  className="textarea text-xs min-h-20 resize-y"
+                  value={comfyForm.negativePromptPreset ?? ''}
+                  onChange={(event) => setForm((current) => current.provider === 'comfyui'
+                    ? { ...current, negativePromptPreset: event.target.value }
+                    : current)}
+                  placeholder="例如：lowres, bad anatomy, bad hands, watermark"
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   /** ComfyUI 工作流选择与读取；默认项自动读取，切换下拉也立即读取。 */
   const renderComfyWorkflowPicker = () => (
     <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-3 space-y-2.5">
@@ -829,6 +1043,7 @@ export function ImageGenModelsSection() {
             </div>
           )}
           {renderWorkflowCheck()}
+          {renderPromptBindings()}
           {renderDynamicParameters()}
           {renderDependencies()}
           {renderAdvancedJson()}
@@ -954,8 +1169,18 @@ export function ImageGenModelsSection() {
       <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={handleSave}
-          disabled={!form.name.trim() || (isComfyUi && !comfyForm?.workflow?.trim())}
-          title={isComfyUi && !comfyForm?.workflow?.trim() ? '请先选择或粘贴工作流' : undefined}
+          disabled={
+            !form.name.trim()
+            || (isComfyUi && !comfyForm?.workflow?.trim())
+            || (isComfyUi && Boolean(analysis?.promptBindings.length)
+              && promptTargets(comfyForm?.bindings, 'positive').length === 0)
+          }
+          title={isComfyUi && !comfyForm?.workflow?.trim()
+            ? '请先选择或粘贴工作流'
+            : isComfyUi && Boolean(analysis?.promptBindings.length)
+              && promptTargets(comfyForm?.bindings, 'positive').length === 0
+              ? '请至少选择一个正面提示词入口'
+              : undefined}
           className="btn-primary text-xs"
         >
           <Check className="w-3.5 h-3.5" />保存

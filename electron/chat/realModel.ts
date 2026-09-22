@@ -5,6 +5,7 @@
 import { getAdapter, chatWithRetry } from '../services/ai'
 import type { ModelPort, ModelRequest, ModelCallbacks } from './ports'
 import type { ChatParams } from '../../shared/types'
+import { classifyFailureOutcome } from '../../shared/generationObservation'
 
 export class RealModelPort implements ModelPort {
   async stream(request: ModelRequest, callbacks: ModelCallbacks, signal: AbortSignal): Promise<{ text: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
@@ -25,7 +26,7 @@ export class RealModelPort implements ModelPort {
     // 委托给现有 AI 服务（内部已处理 provider 适配、重试、用量；阶段3返回 AICompletion）
     let text = ''
     const onUsage = callbacks.onUsage
-    const completion = await chatWithRetry(
+    const run = () => chatWithRetry(
       getAdapter(params.provider),
       params,
       (chunk) => {
@@ -36,6 +37,16 @@ export class RealModelPort implements ModelPort {
       1,
       onUsage as (u: { promptTokens: number; completionTokens: number; totalTokens: number }) => void,
     )
+    let completion: Awaited<ReturnType<typeof chatWithRetry>>
+    try {
+      completion = await run()
+    } catch (error) {
+      const failure = classifyFailureOutcome(error, { signalAborted: signal.aborted })
+      // 新任务链路不经过 renderer 的 gateRecovery。空响应且尚未外发
+      // 任何 chunk 时，同一上下文原样恢复一次；有正文或其他错误均不重发。
+      if (signal.aborted || text || failure.errorKind !== 'empty_output') throw error
+      completion = await run()
+    }
     return { text: completion.text || text }
   }
 }

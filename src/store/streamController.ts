@@ -457,7 +457,12 @@ async function compressDroppedHistory(
  * 会话标题自动生成（P1-4）：新会话达到 4 条消息后，AI 生成简短标题。
  * 仅执行一次（titleGenerated 防重复），失败静默。
  */
-async function maybeAutoTitle(get: StoreGet, set: StoreSet, character: Character): Promise<void> {
+export async function maybeAutoTitle(
+  get: StoreGet,
+  set: StoreSet,
+  character: Character,
+  preset: Preset | null = null,
+): Promise<void> {
   const settings = useSettingsStore.getState().settings
   if (settings.autoTitle === false) return
   const { sessions, currentSessionId, messages } = get()
@@ -472,8 +477,9 @@ async function maybeAutoTitle(get: StoreGet, set: StoreSet, character: Character
   if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) return
 
   const userName = settings.userName || '用户'
+  const characterDisplayName = character.translatedContent?.name || character.name
   const recentText = messages.slice(-12).map((m) =>
-    `${m.role === 'user' ? userName : character.name}: ${m.content}`
+    `${m.role === 'user' ? userName : characterDisplayName}: ${m.content}`
   ).join('\n')
   const model = settings.activeModel || profile.model
   const titlePlan = await resolveRendererGenerationTaskBudget({
@@ -486,6 +492,13 @@ async function maybeAutoTitle(get: StoreGet, set: StoreSet, character: Character
   const requestId = `autotitle-${Date.now()}`
   let result = ''
   let finished = false
+  const baseSystemPrompt = '你是一个对话标题生成器。请为以下角色扮演对话生成一个 2-8 字的中文标题，概括对话主题或核心事件。只输出标题本身，不要引号、解释或多余内容。'
+  const presetJailbreak = preset?.jailbreak?.trim()
+    ? replaceVariables(preset.jailbreak.trim(), userName, characterDisplayName, character.name)
+    : ''
+  const systemPrompt = presetJailbreak
+    ? `${baseSystemPrompt}\n\n${presetJailbreak}`
+    : baseSystemPrompt
 
   const unbindChunk = window.api.ai.onChunk((data) => {
     if (data.requestId !== requestId) return
@@ -525,7 +538,7 @@ async function maybeAutoTitle(get: StoreGet, set: StoreSet, character: Character
     messages: [
       {
         role: 'system',
-        content: '你是一个对话标题生成器。请为以下角色扮演对话生成一个 2-8 字的中文标题，概括对话主题或核心事件。只输出标题本身，不要引号、解释或多余内容。',
+        content: systemPrompt,
       },
       { role: 'user', content: recentText.slice(0, 3000) },
     ],
@@ -1069,7 +1082,7 @@ export async function streamAIResponse(
         compressDroppedHistory(get, set, character, pc).catch((e) => logError('ChatStore:compress', e))
       }
       // 会话标题自动生成（P1-4）：新会话第 4 条用户消息后
-      maybeAutoTitle(get, set, character)
+      void maybeAutoTitle(get, set, character, opts.preset)
     })().catch((e) => {
       logError('StreamController:doneTerminal', e)
       if (!latch.acceptsStreamEvent()) return

@@ -81,6 +81,30 @@ afterEach(() => {
 })
 
 describe('Orchestrator', () => {
+  it('start 立即返回 accepted 快照，生成在后台继续', async () => {
+    let releaseModel!: () => void
+    const modelStarted = new Promise<void>((resolve) => { releaseModel = resolve })
+    const orch = new ChatOrchestrator({
+      messagePort: makeMessagePort(),
+      contextPort: makeContextPort(),
+      modelPort: {
+        async stream(_request, callbacks) {
+          await modelStarted
+          callbacks.onChunk('done')
+          return { text: 'done' }
+        },
+      },
+    })
+
+    const accepted = orch.start(cmd({ requestId: 'req-background', sessionId: 'sess-background' }))
+
+    expect(accepted.state).toBe('queued')
+    expect(getTaskSnapshot(accepted.taskId)?.state).not.toBe('completed')
+
+    releaseModel()
+    await vi.waitFor(() => expect(getTaskSnapshot(accepted.taskId)?.state).toBe('completed'))
+  })
+
   it('send 完整流程：多 chunk -> completed', async () => {
     const mp = makeMessagePort()
     const orch = new ChatOrchestrator({
@@ -93,6 +117,46 @@ describe('Orchestrator', () => {
     expect(snap.state).toBe('completed')
     expect(snap.accumulatedText).toBe('hello world')
     expect(snap.assistantMessageId).toBeTruthy()
+  })
+
+  it('新版普通对话完成后记录本轮输入与输出字符', async () => {
+    const record = vi.fn().mockResolvedValue(undefined)
+    const orch = new ChatOrchestrator({
+      messagePort: makeMessagePort(),
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'success', chunks: ['你好😊'] }),
+      usageRecorder: { record },
+    })
+
+    await orch.handle(cmd({
+      requestId: 'req-usage',
+      sessionId: 'sess-usage',
+      characterId: 'char-usage',
+      content: '今天 hi😊',
+    }))
+
+    expect(record).toHaveBeenCalledOnce()
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      characterId: 'char-usage',
+      sessionId: 'sess-usage',
+      model: 'gpt-4o-mini',
+      inputChars: 6,
+      outputChars: 3,
+      totalChars: 9,
+    }))
+  })
+
+  it('用量记录失败不影响新版普通对话完成', async () => {
+    const orch = new ChatOrchestrator({
+      messagePort: makeMessagePort(),
+      contextPort: makeContextPort(),
+      modelPort: new FakeModelPort({ kind: 'success', chunks: ['ok'] }),
+      usageRecorder: { record: vi.fn().mockRejectedValue(new Error('usage unavailable')) },
+    })
+
+    const snap = await orch.handle(cmd({ requestId: 'req-usage-fail', sessionId: 'sess-usage-fail' }))
+
+    expect(snap.state).toBe('completed')
   })
 
   it('回复落盘后由主进程统一调度自动长记忆，且不阻塞任务完成', async () => {

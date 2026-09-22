@@ -13,7 +13,7 @@ import type {
   ComfyWorkflowWarning,
 } from '../../shared/ipc-api'
 
-export const COMFY_ANALYZER_VERSION = 1
+export const COMFY_ANALYZER_VERSION = 2
 
 export interface LocalComfyWorkflow {
   path: string
@@ -305,8 +305,20 @@ function inferSettings(workflow: ApiWorkflow): ComfyWorkflowSettings {
   return settings
 }
 
-function hasImageOutput(workflow: ApiWorkflow): boolean {
-  return Object.values(workflow).some((node) => node.class_type === 'SaveImage' || node.class_type === 'PreviewImage')
+/**
+ * 图片输出节点白名单，是「本地工作流列表扫描」与「工作流分析」的唯一事实来源。
+ *
+ * 两处曾各自硬编码一份，白名单一旦不同就会出现「列表里看不到、按路径导入又报不支持」的错位。
+ *
+ * SaveImageAdvanced 是 ComfyUI 新版核心的「Save Image (Advanced)」
+ * （comfy_extras/nodes_images.py，is_output_node=True，历史输出键同为 images），
+ * 新版 Desktop 模板保存的画布工作流默认使用它。
+ */
+const IMAGE_OUTPUT_NODES = new Set(['SaveImage', 'PreviewImage', 'SaveImageAdvanced'])
+
+/** 本地工作流列表的可读性过滤：必须存在图片输出节点。 */
+export function hasImageOutput(workflow: ApiWorkflow): boolean {
+  return Object.values(workflow).some((node) => IMAGE_OUTPUT_NODES.has(node.class_type))
 }
 
 interface LoaderSpec {
@@ -361,7 +373,6 @@ const LOADER_SPECS: Record<string, LoaderSpec> = {
   },
 }
 
-const IMAGE_OUTPUT_NODES = new Set(['SaveImage', 'PreviewImage'])
 const VIDEO_OUTPUT_NODES = new Set([
   'SaveWEBM',
   'SaveVideo',
@@ -373,6 +384,9 @@ const IMAGE_INPUT_NODES = new Set(['LoadImage', 'LoadImageMask', 'LoadImageOutpu
 const LATENT_SIZE_NODES = new Set(['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyLatentImagePresets'])
 const SAMPLER_NODES = new Set(['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'])
 const TEXT_ENCODE_NODES = new Set(['CLIPTextEncode', 'CLIPTextEncodeSDXL', 'BNK_CLIPTextEncodeAdvanced'])
+const PROMPT_INPUT_NAMES = new Set([
+  'text', 'text_g', 'text_l', 'prompt', 'positive_prompt', 'negative_prompt',
+])
 /**
  * 条件链上的「屏障」节点：其输出不再携带上游文本的语义，回溯到此终止。
  *
@@ -436,6 +450,26 @@ function collectReachable(workflow: ApiWorkflow, outputIds: string[]): Set<strin
 function hasNegativeTitleHint(node: ApiNode): boolean {
   const title = (node._meta?.title ?? '').toLowerCase()
   return NEGATIVE_NODE_HINTS.some((hint) => title.includes(hint))
+}
+
+/**
+ * 列出节点中可由用户绑定的文本输入。
+ *
+ * 已知编码器支持 text / text_g / text_l 等多字段；自定义节点则只接受
+ * 名称明确表示提示词的字符串输入，避免把模型文件名等普通字符串暴露为提示词。
+ */
+function promptInputs(node: ApiNode): Array<{ inputName: string; value: string }> {
+  const knownEncoder = TEXT_ENCODE_NODES.has(node.class_type) || /text.*encode|encode.*text/i.test(node.class_type)
+  const result: Array<{ inputName: string; value: string }> = []
+  for (const [inputName, value] of Object.entries(node.inputs)) {
+    if (typeof value !== 'string') continue
+    const normalized = inputName.toLowerCase()
+    const promptLike = PROMPT_INPUT_NAMES.has(normalized) || /(^|_)(prompt|text)(_|$)/.test(normalized)
+    if (promptLike && (knownEncoder || PROMPT_INPUT_NAMES.has(normalized))) {
+      result.push({ inputName, value })
+    }
+  }
+  return result
 }
 
 /**
@@ -625,7 +659,7 @@ export function analyzeComfyWorkflow(
   }
 
   if (imageOutputIds.length === 0 && videoOutputIds.length === 0) {
-    warnings.push({ code: 'no-output', message: '工作流没有 SaveImage / PreviewImage 输出节点' })
+    warnings.push({ code: 'no-output', message: '工作流没有图片输出节点（SaveImage / PreviewImage / SaveImageAdvanced）' })
   }
 
   const outputIds = imageOutputIds.length > 0 ? imageOutputIds : videoOutputIds
@@ -643,7 +677,12 @@ export function analyzeComfyWorkflow(
   const reachableIds = allIds.filter((id) => reachable.has(id))
   const samplers = reachableIds.filter((id) => SAMPLER_NODES.has(workflow[id].class_type))
 
-  const textNodes = reachableIds.filter((id) => TEXT_ENCODE_NODES.has(workflow[id].class_type))
+  const promptInputsByNode = new Map(
+    reachableIds
+      .map((id) => [id, promptInputs(workflow[id])] as const)
+      .filter(([, inputs]) => inputs.length > 0),
+  )
+  const textNodes = [...promptInputsByNode.keys()]
   const textNodeSet = new Set(textNodes)
 
   // 采样器的 positive / negative 输入指向的是 conditioning，中间可能隔着
@@ -679,29 +718,36 @@ export function analyzeComfyWorkflow(
 
   const promptBindings: ComfyWorkflowBinding[] = []
   for (const id of resolvedPositiveIds) {
-    promptBindings.push({
-      role: 'positive',
-      nodeId: id,
-      inputName: 'text',
-      ...(workflow[id]._meta?.title ? { title: workflow[id]._meta?.title } : {}),
-    })
+    for (const input of promptInputsByNode.get(id) ?? []) {
+      promptBindings.push({
+        role: 'positive',
+        nodeId: id,
+        inputName: input.inputName,
+        workflowValue: input.value,
+        ...(workflow[id]._meta?.title ? { title: workflow[id]._meta?.title } : {}),
+      })
+    }
   }
   for (const id of textNodes) {
     if (!samplerNegativeIds.has(id)) continue
-    promptBindings.push({
-      role: 'negative',
-      nodeId: id,
-      inputName: 'text',
-      ...(workflow[id]._meta?.title ? { title: workflow[id]._meta?.title } : {}),
-    })
+    for (const input of promptInputsByNode.get(id) ?? []) {
+      promptBindings.push({
+        role: 'negative',
+        nodeId: id,
+        inputName: input.inputName,
+        workflowValue: input.value,
+        ...(workflow[id]._meta?.title ? { title: workflow[id]._meta?.title } : {}),
+      })
+    }
   }
 
-  if (resolvedPositiveIds.length === 0) {
-    warnings.push({ code: 'no-prompt', message: '未找到正面提示词入口（CLIPTextEncode）' })
-  } else if (resolvedPositiveIds.length > 1) {
+  const positiveBindingCount = promptBindings.filter((item) => item.role === 'positive').length
+  if (positiveBindingCount === 0) {
+    warnings.push({ code: 'no-prompt', message: '未找到可写入的正面提示词入口' })
+  } else if (positiveBindingCount > 1) {
     warnings.push({
       code: 'ambiguous-prompt',
-      message: `有 ${resolvedPositiveIds.length} 个候选正面提示词节点，需要确认绑定的入口`,
+      message: `有 ${positiveBindingCount} 个候选正面提示词输入，需要确认绑定的入口`,
       nodeIds: resolvedPositiveIds,
     })
   }
@@ -858,7 +904,7 @@ export function analyzeComfyWorkflow(
 
   const compatible = kind === 'text-to-image'
     && imageOutputIds.length > 0
-    && resolvedPositiveIds.length > 0
+    && positiveBindingCount > 0
     && !warnings.some((item) => item.code === 'unknown-node' || item.code === 'missing-model')
 
   return {
@@ -980,7 +1026,7 @@ export async function importLocalComfyWorkflow(filePath?: string): Promise<Impor
       throw new Error('当前生图配置不支持图生图工作流（需要提供输入图片），请选择纯文生图工作流')
     }
     if (analysis.outputBindings.length === 0) {
-      throw new Error('当前生图配置仅支持包含 SaveImage 或 PreviewImage 的图片工作流')
+      throw new Error('当前生图配置仅支持包含图片输出节点（SaveImage / PreviewImage / SaveImageAdvanced）的工作流')
     }
     return {
       success: true,

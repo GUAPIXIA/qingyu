@@ -1,13 +1,17 @@
 # Android 独立客户端重构阶段 5 实施报告
 
-> 日期：2026-09-18（2026-09-19 复核更新；**2026-09-20 收尾**）
+> 日期：2026-09-18（2026-09-19 复核更新；**2026-09-20 收尾**；**2026-09-22 门禁复核**）
 > 基线提交：`37801ff`（阶段 4 预算断言与文档同步）
 > 完成提交：`047e093`（阶段 5 收尾 + 阶段 2–5 工作区成果整体入库；本报告与执行索引的回写是其后的
 > 独立文档提交，故报告里不再自指该提交哈希）
 > 结论：**进行中 —— 未到可签字状态**。2026-09-20 收尾后：单元测试 **1111 / 0**、
 > `lintDebug` **0 Error**、`assembleDebug` 通过，**设备三档自动化矩阵全绿**
 > （API 26 GMD 59/0、API 34 GMD 59/0、API 31 走**经典 AVD** 路径 59/0——GMD 那条路被插件写死的
-> `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿），
+> `PT2M` 挡住，见 §3.2），`pnpm lint` 的 7 个 error **已清零**（统一门禁首次全绿）。
+> **2026-09-22 独立复核**（见 §3.3）：在含未提交工作区改动的状态下重跑全套统一门禁 +
+> 三档经典 AVD 仪器化，结果仍全绿（单测 **1112 / 0**、`pnpm test` **3072 / 4**、
+> lint **0 error**、API 26/31/34 各 **59/0**）；与 2026-09-20 收尾数字的差值来自工作区
+> 未提交改动（imageGen/ComfyUI、chat orchestrator 等 37 个文件），**不是阶段 5 本体回归**。
 > 关闭了 §5 那条悬置的 P1（`retrieval` 从没进过运行时 → §2.21），
 > 把 P1-d 的「诚实失败」那一半修了（OOM 不再被说成「ZIP 解析失败」+ 驻留预算先拒 → §2.22），
 > 并修掉 **message / session / group** 三类实体的 payload P0（三条写路径此前都在发 Room 列名 →
@@ -1178,6 +1182,38 @@ git ls-files --others --ignored --exclude-standard |
 | 自洽性复核 + 公告提示收口（§2.30） | 六项 tracked/on-disk 全部相等（434/434、98/98、8/8、257/257、311/311、135/135）；`AnnouncementsNoticeTest` 通过并突变验证 | |
 | `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`（§2.30 改动后） | **1111 通过 / 0 失败 / 0 跳过 / 143 套**；`lintDebug` **0 Error / 94 Warning**；`assembleDebug` 通过 | 上一版 1110；**+1 条**（`AnnouncementsNoticeTest`）。改了生产代码（公告页接线），故设备复跑 |
 | 设备（§2.30 改动后） | API 31 经典 AVD **59/0**（1m11s） | |
+
+### 3.3 2026-09-22 门禁复核（独立重跑，非阶段 5 本体改动）
+
+> 目的：在阶段 5 收尾之后、开阶段 6/7 之前，用当前工作区（含**未提交**改动）独立复核
+> §11.2 统一门禁 + 三档仪器化，确认 2026-09-20 的收尾数字仍然成立。
+> 本次**没有改任何源码**，只跑门禁。工作区未提交改动约 37 个文件
+> （imageGen/ComfyUI、chat orchestrator、contextBuilder 等），故测试条数比 §3.2 略高。
+
+| 命令 | 结果 | 备注 |
+|---|---|---|
+| `pnpm check` | **通过** | `tsc -b --noEmit` + `tsc -p tsconfig.electron.json --noEmit` 均无输出 |
+| `pnpm lint` | **0 error / 1 warning** | warning 为 `ImageGenModelsSection.tsx:176` 的 `react-hooks/exhaustive-deps`，属工作区未提交改动，非阶段 5 |
+| `pnpm test` | **3072 通过 / 4 跳过**（278 文件 + 1 跳过） | 上一版 3045；+27 来自工作区未提交改动 |
+| `pnpm --dir relay-server check` / `test` | **通过** / **13 通过** | |
+| `:app:testDebugUnitTest --rerun` | **1112 通过 / 0 失败 / 0 跳过**（143 套） | 上一版 1111；+1 来自工作区未提交改动。按备忘 §4.3 加 `--rerun` 真跑，避免 UP-TO-DATE 回放 |
+| `:app:lintDebug` | **0 Error / 94 Warning** | 与 §3.2 口径一致 |
+| `:app:assembleDebug` | **通过** | |
+| `:app:connectedDebugAndroidTest --rerun`（**经典 AVD，逐台**） | API 26 `qingyu-api26(AVD) - 8.0.0`：**59/0**（47s）；API 31 `qingyu-api31(AVD) - 12`：**59/0**（36s）；API 34 `qingyu-api34(AVD) - 14`：**59/0**（52s） | 三档均走经典 AVD（`connectedDebugAndroidTest`），不再混用 GMD。结果 XML 时间戳为本次（API 34 最终档 `2026-09-22 12:46`） |
+
+**环境发现（比门禁数字更有用，写进备忘录的素材）**：
+
+1. **不能三台 AVD 同开**：16 GB 内存下三台并行会整批掉线（`adb devices` 变空、Gradle 报
+   `device offline`），随后残留 `qemu-system-x86_64-headless.exe` 抢占 `5554`。可靠做法是
+   **逐台起 → 跑 → 杀**。
+2. **杀模拟器必须杀 `qemu-system-x86_64-headless.exe`**：只 `taskkill /IM emulator.exe`
+   清不掉 QEMU；残留进程会让「起的 API 31 实际连上 API 26」。本次靠
+   `Get-CimInstance Win32_Process` 查命令行才定位到。
+3. `pnpm test` 与 Gradle 全量并行会在本机触发 vitest 5s 超时假红（§3.2 已记，本次未复现，
+   但保持串行跑更稳）。
+
+**判定**：本地/模拟器门禁与 2026-09-20 收尾一致，**全绿**。仍不改变结论——
+不能签字的两件事（物理真机走查、D-1～D-12 决策）与门禁无关，见抬头。
 
 **一次假红（记下来，别当成回归）**：本轮先把 `pnpm test` 与 `gradlew :app:testDebugUnitTest`
 **并行**跑（两个都吃 CPU 与磁盘），`compaction.test.ts > 保留策略 > 超过 200 个或 7 天的 terminal 被清理`

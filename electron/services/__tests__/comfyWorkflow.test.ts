@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   analyzeComfyWorkflow,
   convertComfyCanvasWorkflow,
+  hasImageOutput,
   hashComfyWorkflow,
   normalizeComfyWorkflow,
   type ApiWorkflow,
@@ -293,10 +294,29 @@ describe('analyzeComfyWorkflow 提示词与输出绑定', () => {
   it('按 sampling 的 positive/negative 输入区分正负提示词节点', () => {
     const analysis = analyzeComfyWorkflow(buildZImageWorkflow())
     expect(analysis.promptBindings).toEqual([
-      { role: 'positive', nodeId: '4', inputName: 'text' },
-      { role: 'negative', nodeId: '5', inputName: 'text' },
+      { role: 'positive', nodeId: '4', inputName: 'text', workflowValue: 'a quiet tavern' },
+      { role: 'negative', nodeId: '5', inputName: 'text', workflowValue: 'low quality' },
     ])
     expect(analysis.outputBindings).toEqual([{ role: 'output', nodeId: '9', inputName: 'images' }])
+  })
+
+  it('精确列出多文本输入编码节点的字段与原值', () => {
+    const workflow = buildZImageWorkflow()
+    workflow['4'] = {
+      class_type: 'CLIPTextEncodeSDXL',
+      inputs: {
+        text_g: 'global description',
+        text_l: 'local details',
+        clip: ['2', 0],
+      },
+    }
+
+    const analysis = analyzeComfyWorkflow(workflow)
+
+    expect(analysis.promptBindings.filter((item) => item.role === 'positive')).toEqual([
+      { role: 'positive', nodeId: '4', inputName: 'text_g', workflowValue: 'global description' },
+      { role: 'positive', nodeId: '4', inputName: 'text_l', workflowValue: 'local details' },
+    ])
   })
 
   it('没有负面条件节点时不产生负面绑定', () => {
@@ -513,6 +533,36 @@ describe('analyzeComfyWorkflow 与转换流程串联', () => {
     expect(analysis.promptBindings[0]).toMatchObject({ role: 'positive', nodeId: '1' })
     expect(analysis.parameterGroups.find((item) => item.stage === 'output')?.parameters[0].workflowValue).toBe('512x768')
     expect(analysis.parameterGroups.find((item) => item.nodeId === '3')?.parameters[0].workflowValue).toBe(12)
+  })
+})
+
+describe('图片输出节点识别', () => {
+  // 新版 ComfyUI Desktop 模板默认使用 SaveImageAdvanced 收尾。
+  // 该节点若不被识别，列表扫描会直接过滤掉工作流（读不到），按路径导入也会被拒。
+  const workflowWith = (classType: string): ApiWorkflow => ({
+    '1': { class_type: 'CLIPTextEncode', inputs: { text: 'p', clip: ['2', 1] } },
+    '2': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'a.safetensors' } },
+    '3': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512 } },
+    '4': {
+      class_type: 'KSampler',
+      inputs: { steps: 20, model: ['2', 0], positive: ['1', 0], latent_image: ['3', 0] },
+    },
+    '5': { class_type: classType, inputs: { images: ['4', 0] } },
+  })
+
+  it('hasImageOutput 接受 SaveImage / PreviewImage / SaveImageAdvanced，不接受视频输出', () => {
+    expect(hasImageOutput(workflowWith('SaveImage'))).toBe(true)
+    expect(hasImageOutput(workflowWith('PreviewImage'))).toBe(true)
+    expect(hasImageOutput(workflowWith('SaveImageAdvanced'))).toBe(true)
+    expect(hasImageOutput(workflowWith('SaveVideo'))).toBe(false)
+  })
+
+  it('SaveImageAdvanced 产生输出绑定，不再误报 no-output', () => {
+    const analysis = analyzeComfyWorkflow(workflowWith('SaveImageAdvanced'))
+    expect(analysis.kind).toBe('text-to-image')
+    expect(analysis.outputBindings).toEqual([{ role: 'output', nodeId: '5', inputName: 'images' }])
+    expect(analysis.warnings.map((item) => item.code)).not.toContain('no-output')
+    expect(analysis.compatible).toBe(true)
   })
 })
 

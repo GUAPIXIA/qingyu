@@ -3,7 +3,7 @@ import { useChatStore } from '../useChatStore'
 import { useSettingsStore } from '../useSettingsStore'
 import { usePersonaStore } from '../usePersonaStore'
 import { getDefaultSettings } from '../../../shared/defaults'
-import { streamAIResponse, cleanupActiveStream } from '../streamController'
+import { streamAIResponse, cleanupActiveStream, maybeAutoTitle } from '../streamController'
 import { STREAM_THROTTLE_MS, STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
 import type { Character, Message, ConnectionProfile, Preset, Settings } from '../../../shared/types'
 
@@ -43,7 +43,7 @@ function captureStreamCallbacks() {
     onChunk?: (data: { requestId: string; text: string }) => void
     onComplete?: (payload: { requestId: string; finishReason?: string }) => void
     onError?: (data: { requestId: string; error: string }) => void
-    chatParams?: { requestId: string; maxTokens?: number }
+    chatParams?: { requestId: string; maxTokens?: number; messages?: Array<{ role: string; content: string }> }
   } = {}
   ;(window.api.ai as any).onChunk = vi.fn().mockImplementation((cb) => {
     callbacks.onChunk = cb
@@ -112,6 +112,34 @@ describe('streamAIResponse 流式控制', () => {
   afterEach(() => {
     cleanupActiveStream()
     vi.useRealTimers()
+  })
+
+  it('会话标题生成注入当前预设越狱提示词并替换变量', async () => {
+    const callbacks = captureStreamCallbacks()
+    const character = createCharacter()
+    const preset: Preset = {
+      id: 'title-jailbreak', name: '标题预设', description: '', systemPrompt: '',
+      jailbreak: '标题越狱：{{user}} 与 {{char}} 保持沉浸。',
+      maxContext: 0, temperature: 0.8, topP: 0.95, maxTokens: 0,
+      frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false,
+    }
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sessions: [{
+        id: 's1', characterId: 'char-1', title: '新对话 1',
+        createdAt: 0, updatedAt: 0, titleGenerated: false,
+      } as never],
+      messages: Array.from({ length: 4 }, (_, index) => ({
+        id: `u${index}`, sessionId: 's1', characterId: 'char-1', role: 'user' as const,
+        content: `用户消息${index}`, images: [], isEditing: false, timestamp: index,
+      })),
+    })
+
+    await maybeAutoTitle(useChatStore.getState as any, useChatStore.setState as any, character, preset)
+
+    const systemPrompt = callbacks.chatParams?.messages?.find((message) => message.role === 'system')?.content ?? ''
+    expect(systemPrompt).toContain('你是一个对话标题生成器')
+    expect(systemPrompt).toContain('标题越狱：TestUser 与 Alice 保持沉浸。')
   })
 
   it('流式 chunk 累积后 flush 到消息内容', async () => {

@@ -119,6 +119,22 @@ export interface MemorySchedulerPort {
   schedule(input: { sessionId: string; characterId: string }): void
 }
 
+/**
+ * 字符用量记录端口。编排器只提交已完成的物理生成轮，
+ * 具体持久化由宿主端注入，避免核心流程直接依赖 Electron 存储。
+ */
+export interface UsageRecorderPort {
+  record(input: {
+    timestamp: number
+    characterId: string
+    sessionId: string
+    model: string
+    inputChars: number
+    outputChars: number
+    totalChars: number
+  }): Promise<unknown> | unknown
+}
+
 export interface ProposedToolCall {
   name: string
   args: Record<string, unknown>
