@@ -28,6 +28,8 @@
 
 **2026-09-22 并行工作流登记（S6-01(d)-3 时点）**：工作区出现第三条并行线——**人设/身份接线**（`shared/personaResolution.ts`+测试、`shared/chat-core/contextBuilder.ts`、`ChatContextBuilder.kt`、`LocalChatGenerationUseCase.kt`、`ChatPersonaWiringTest.kt`、PC `rendererContextProvider`/`ChatHeader`/`useChatStore`/`chatUtils` 等）。非阶段 6 子代理产物（主题与文件面不符），与本轮改动**零文件重叠**，原样保留。⚠️ 预告潜在合流点：该线若改 `ChatGroupContextBuilder`/`LocalGroupGenerationUseCase` 的人设解析（本报告 §3.6 登记的 `sessionPersonaIdDefined` 口径），需与 S6-01 的 `resolveGroupPersonaFields` fixture 对齐后再合。
 
+**2026-09-22 并行工作流登记（终局前复查）**：第四条并行线——**PC 体验流**（`src/components/chat/{ChatInput,GroupChatMessage,useChatInputState}`、`src/store/{chatGeneration,groupStreamController,useGroupChatStore,useChatStore}`、`src/pages/*` 等）正活跃编辑，**其中 `useGroupChatStore.ts`/`groupStreamController.ts` 是阶段 6 S6-01(a)/(c) 验证过的 PC 接线文件**（调用共享模块的等价重构点）。监控证据：其改动期间共享 oracle 只读复跑 `shared/__tests__/groupChatCoreGolden.test.ts` **6/6 绿**（TS 生产 ↔ 6 份 fixture 未漂移）；若其后续把调用点改回内联实现，`ContentWiringAudit` 同族守卫与该 oracle 会红——届时按 P1-6-2 先例（c5e7c94）重新接线。PC 侧 `pnpm check` 1 类型错 + `ChatInput.test.tsx` 4 红（§3.9）同属该流在途。
+
 ## 1. 已完成任务
 
 | 任务 ID | 产物 | 证据 |
