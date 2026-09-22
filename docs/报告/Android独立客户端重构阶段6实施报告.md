@@ -134,6 +134,29 @@
 
 **P2 排期缺口（D-16）**：`chat.sessionStats`、`lorebook.keywordLocalization` 仍无纳入记录与签字排期——验收前必须补签字或明确排除；「移动端 embedding ABI」决策已在 S6-05 实现中体现（远程→本地→词法三级，真机 NNAPI/GPU 项另列真机矩阵）。
 
+### 2.6 六线合流第一波：全量测试 1639 例与遗留红灯清单（2026-09-22）
+
+统一串行全量 `:app:testDebugUnitTest` 首次跑通 1639 例（此前 1166）：**1611 绿 / 28 红**。红灯分诊与处置：
+
+- **5 红 = 测试 JVM 堆 OOM**（ContentDraftCodecTest ×5）：媒体炸弹样本/音频字节与 1639 例全量并跑撑爆默认堆。处置：`build.gradle.kts` unitTests `maxHeapSize = "2g"`（已修）。
+- **4 红 = S6-01(e) 自有**（已修，定向复跑 **19/19 绿**）：① `LocalGroupMemoryService.parseFacts` 未处理 `kind=text` → 文本事实往返丢失（真 bug）；② 旧用例「推进修订号」语义已被检查点失效取代 → 用例改内容不变式并指向取代者；③ 检查点用例断言版本**清零**，但存储层 CAS **单调**（`applyMemoryStateIfVersion` 强制 `expected+1`，S4-05 契约）——「版本推进使在飞摘要 CAS 失败」与 PC「置 0」语义等价，断言改语义口径；④ `ContentWiringAuditTest` 三条 `notWiredYet` 已被 S6-05 真实接线 → 按守卫自身契约删条目，并短路清单置空后**空交替正则匹配一切**的新坑。
+- **19 红 = 各代理自有逻辑/断言问题**（投递通道对 6 个子代理失效——`ready` 态 `send_message` 持续返回 unavailable，登记清单由集成线兜底修复）：
+
+| 所有者 | 红灯 | 根因线索 |
+|---|---|---|
+| S6-02 media | AttachmentIngestServiceTest ×9 | TemporaryFolder 规则未生效（「the temporary folder has not yet been created」，查 `@get:Rule` 声明） |
+| S6-02 media | ThumbnailPolicyTest 缩放取整 | 3x1000@512 期望 (2,512) 得 (1,512)：截断 vs 取整口径 |
+| S6-04 imagegen | ComfyUiProtocolTest ×2 | history 解析进 Failed 分支（强转失败）；object_info 节点解析空 |
+| S6-04 imagegen | ImageGenClientTest ×1 / SdWebUiProtocolTest ×1 | 链路进 Failure 分支；prompt 清洗残余空格（`café[ #]`） |
+| S6-06 mcp | StdioNoProcessPathTest | **红线守卫命中自家文件**：`McpPlatformPolicy.kt` 含 `ProcessBuilder` 字面量（改写文案，**不放宽守卫**） |
+| S6-06 mcp | McpServerManagerTest / McpLogSanitizerTest | 工具路由 1 vs 0；日志字节计数 10 vs 11（UTF-8 字节 vs 字符口径） |
+| S6-07 diagnostics | DiagnosticsSectionsTest | 空样本平均值口径 null vs 0 |
+| S6-03 tts | TtsQueueControllerTest | 打断替换语义（期望「打断项」得「z」） |
+
+- **0 红 = S6-05 embedding 全部通过**（含模型包签名/断点续传/空间预检/卸载提示红线用例）。
+
+另收编集成修复若干（`@JvmField` 消 JVM 签名冲突、`payload.size.toLong()`、`testScheduler.runCurrent()`、`${preview}` 模板括起等，见 §2.4 表）。
+
 ## 3. 测试命令与结果
 
 | 命令 | 结果 | 备注 |
