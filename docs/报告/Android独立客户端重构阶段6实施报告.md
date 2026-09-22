@@ -183,6 +183,8 @@
 
 补齐 `BackupOrchestrator` 的注释之洞（「groups/ 目前 PC/Android 都还没有群数据」在 S6-01(b) 后已过时）：导出 `groups/{gid}.json`（群行 18 列含 9 调度列）+ `groups/{gid}.messages.json`（群消息 24 列数组）；恢复二遍落群行（父实体）、三遍**会话之后**落群消息（FK 级联序）；`counts` 增 `groups`/`groupMessages`（键总在形状）。`BackupGroupRoundTripTest` 2 例：9 调度列逐一断言 + identity 三键 + logicalTime/图片/译文/提示字段往返 + 合并语义（同 id 覆盖、本地群保留）——`content.backup.*` 全绿。实施备注：该任务子代理四轮未落盘且投递通道失效，按预案中断后本体实施；含一次自踩反引号陷阱的现场修复（陷阱速查第 2 条）。
 
+**S6-01f 合流进行时（round 23–25 观察）**：纯逻辑五件（`GroupStreaming/GroupExport/GroupSessionPatch/GroupSettingsMapper/GroupMemoryFeedback` + `GroupGenerationDriver`）已落盘并验证（round 23：7 suites/45 tests/0 失败，含既有 `GroupChatViewModelTest`/`GroupsLoadStateTest` 回归）；round 25 批扩至 8 suites/51 tests，新增 `GroupChatViewModelStreamingTest`（③的 VM 层）**1 红为 TDD 先行**（测试已落、VM 实现跟进中，代理活跃施工面）。合流终验时按 §7 七项清单核验并重跑全绿。
+
 **U-6-8 并行写入冲突与收敛决策（同日）**：上文实施后，`9ba86042` 代理恢复活动并判定该实现为「半成品」，列出 4 处偏差并计划把 `content/backup/**` 收敛为终版。**逐条裁决**：③「群消息恢复依赖 ZIP 条目顺序」**成立**（三遍式内跨条目有序性违背「不把安全属性交给打包方」原则）；④「`groupOf` 对非对象条目抛异常炸整包」**成立**（偏离文件既有 null 容错惯例）；①「未复用 `EntityPayloads` 口径」部分成立（与备份文件既有显式序列化惯例相容，但任务书确要求 payload 口径单源）；②「缺 `groupSessions` 计数」成立（群会话并入 `sessions` 计数但键面应显式）。**决策：采纳其收敛版**（消息内嵌会话条目=排序安全、payload 口径单源、解析容错），`19c091a` 作中间态保留回滚点。**合流核验红线**：其终版测试必须**覆盖等价**——9 调度列逐一断言、identity 三键、合并语义三项不可缩水，缺了就补。
 
 ## 3. 测试命令与结果
