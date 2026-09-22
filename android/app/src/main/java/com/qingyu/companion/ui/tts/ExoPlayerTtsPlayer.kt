@@ -78,6 +78,16 @@ class ExoPlayerTtsPlayer(
         stopInternal()
     }
 
+    // ---- S6-03 追加：PC 中转流路径的暂停/恢复（不改变既有 play/stop 语义） ----
+
+    override fun pause() {
+        player?.pause()
+    }
+
+    override fun resume() {
+        player?.play()
+    }
+
     private fun stopInternal() {
         player?.removeListener(playerListener)
         player?.release()

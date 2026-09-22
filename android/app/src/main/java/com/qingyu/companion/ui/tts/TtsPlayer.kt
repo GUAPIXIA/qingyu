@@ -25,4 +25,10 @@ interface TtsPlayer {
     fun stop()
 
     fun release()
+
+    /** 暂停播放（可恢复）。不支持暂停的路径（PC 中转流缓冲未就绪）为空操作。S6-03 追加。 */
+    fun pause() {}
+
+    /** 从暂停处继续。S6-03 追加。 */
+    fun resume() {}
 }

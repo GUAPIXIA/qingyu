@@ -60,6 +60,21 @@ object ChatLorebookChannels {
      */
     const val LEXICAL_AVAILABLE: Boolean = false
 
+    /**
+     * S6-05 接缝（阶段 5 §2.21 预留的「通道能力输入」）：嵌入层注入的**动态**通道能力，
+     * 供运行时在 [VECTOR_AVAILABLE]/[LEXICAL_AVAILABLE] 编译期常量之外接收真实能力读数。
+     *
+     * - `vectorAvailable`：向量触发通道当前是否可用（设备能力/模型包就绪）；
+     * - `lexicalAvailable`：词法（BM25 `unicode-bigram-v1`）兜底通道是否可用；
+     * - `semanticRequiredGated`：`semanticRequired` 条目**按 PC 现状（D-9 未翻转）**在
+     *   无向量通道时停用并 warn-once，而不是阶段 5 快照里的「关键词照常触发」。
+     */
+    data class ChannelCapabilities(
+        val vectorAvailable: Boolean = false,
+        val lexicalAvailable: Boolean = false,
+        val semanticRequiredGated: Boolean = false,
+    )
+
     /** 条目在本机相对 PC 的触发保真度。 */
     enum class Fidelity {
         /** 与 PC 使用同一通道（`hybrid` 仍受类注释的平台级缺口影响）。 */
@@ -166,6 +181,68 @@ object ChatLorebookChannels {
                     retrieval = entry.retrieval,
                     priority = entry.priority,
                     keywordChannelPresent = entry.keywords.any { it.isNotBlank() },
+                )
+                if (fidelity == Fidelity.SAME) continue
+                findings += Finding("${book.id}:${entry.id}", entry.retrieval, fidelity)
+            }
+        }
+        return Report(findings)
+    }
+
+    // ================================================================
+    // 阶段 6 S6-05 追加：判定表的**通道能力输入版**（`embedding` 包接入点）
+    //
+    // 上面的 [fidelityOf]/[analyze] 以编译期常量为开关，描述的是「通道还没接线」
+    // 的阶段 5 快照。S6-05 起通道可用性是**运行期事实**（远程配置了没有、本地模型
+    // 装了没有、设备支不支持），所以下面这组重载把 [ChannelCapabilities] 作为输入，
+    // 分类表语义完全同构。两份判定的一致性由 `EmbeddingChannelCapabilitiesTest`
+    // 在 [compiledInCapabilities] 口径下逐行钉死——谁改了一边，另一边必须同步。
+    // ================================================================
+
+    /** 编译期常量口径的能力输入（阶段 5 快照的等价物，两份判定表的一致性基线）。 */
+    fun compiledInCapabilities(): ChannelCapabilities = ChannelCapabilities(
+        vectorAvailable = VECTOR_AVAILABLE,
+        lexicalAvailable = LEXICAL_AVAILABLE,
+        semanticRequiredGated = false,
+    )
+
+    /** 判定表（能力输入版）。 */
+    fun fidelityOf(
+        retrieval: String,
+        priority: String?,
+        keywordChannelPresent: Boolean,
+        capabilities: ChannelCapabilities,
+    ): Fidelity {
+        if (isSemanticDeadEntry(retrieval, priority) && !capabilities.vectorAvailable) {
+            // D-9（**按 PC 现状实现，决策仍开放**）：S6-05 分流生效（gated）后本机与 PC
+            // 一样停用该条目 → 不再构成差异；gated=false 保持阶段 5 快照：PC 停用、
+            // 本机仍按关键词触发 → PC_DISABLED。不自行翻转，翻转需契约签字。
+            return if (capabilities.semanticRequiredGated) Fidelity.SAME else Fidelity.PC_DISABLED
+        }
+        return when (retrieval) {
+            "keyword" -> Fidelity.SAME
+            "hybrid" ->
+                if (keywordChannelPresent || capabilities.lexicalAvailable) Fidelity.SAME else Fidelity.UNAVAILABLE
+            "semanticPreferred" ->
+                if (capabilities.vectorAvailable || capabilities.lexicalAvailable) Fidelity.SAME else Fidelity.APPROXIMATED
+            "semanticRequired" ->
+                if (capabilities.vectorAvailable || priority == "always") Fidelity.SAME else Fidelity.UNAVAILABLE
+            else -> Fidelity.SAME
+        }
+    }
+
+    /** 聚合读数（能力输入版）：跳过停用书/停用条目的口径与 [analyze] 一致。 */
+    fun analyze(books: List<ChatLorebookRuntime.Book>, capabilities: ChannelCapabilities): Report {
+        val findings = mutableListOf<Finding>()
+        for (book in books) {
+            if (!book.enabled) continue
+            for (entry in book.entries) {
+                if (!entry.enabled) continue
+                val fidelity = fidelityOf(
+                    retrieval = entry.retrieval,
+                    priority = entry.priority,
+                    keywordChannelPresent = entry.keywords.any { it.isNotBlank() },
+                    capabilities = capabilities,
                 )
                 if (fidelity == Fidelity.SAME) continue
                 findings += Finding("${book.id}:${entry.id}", entry.retrieval, fidelity)

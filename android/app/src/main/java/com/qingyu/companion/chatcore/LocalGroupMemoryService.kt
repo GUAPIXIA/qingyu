@@ -73,8 +73,8 @@ class LocalGroupMemoryService(
     }
 
     private data class GroupMessageView(
-        val id: String,
-        val content: String,
+        override val id: String,
+        override val content: String,
         val characterId: String,
     ) : ChatMemoryWindow.WindowMessage
 
@@ -130,8 +130,11 @@ class LocalGroupMemoryService(
         val outputTokens = memoryBudget.request.requestMaxTokens
         val overhead = ChatMemorySummaryPolicy.promptOverheadTokens(
             characterName = memberNames,
+            userName = userName,
+            previousState = memoryState?.currentState.orEmpty(),
             previousMemory = previousMemory,
             previousFactsText = previousFactsText,
+            estimateTokens = { text -> ChatTokenCounter.estimateTokens(text, model) },
         )
         val summaryInputBudget = ChatMemoryWindow.resolveMemorySummaryInputBudget(
             maxContext = CONTEXT_LIMIT.toDouble(),
@@ -334,15 +337,23 @@ class LocalGroupMemoryService(
             (0 until array.length()).mapNotNull { index ->
                 when (val item = array.opt(index)) {
                     is String -> item.takeIf { it.isNotBlank() }?.let { ChatMemoryFacts.FactRecord.TextFact(it) }
-                    is org.json.JSONObject -> ChatMemoryFacts.FactRecord.Structured(
-                        id = item.optString("id"),
-                        subject = item.optString("subject"),
-                        predicate = item.optString("predicate"),
-                        value = item.optString("value"),
-                        status = item.optString("status").ifEmpty { "active" },
-                        importance = item.optInt("importance", 3),
-                        confidence = item.optDouble("confidence", 0.8),
-                    )
+                    is org.json.JSONObject -> {
+                        if (item.optString("kind") == "text") {
+                            // factsToJson 的文本事实形态（kind=text）：必须原样回读，否则往返丢文本
+                            item.optString("text").takeIf { it.isNotBlank() }
+                                ?.let { ChatMemoryFacts.FactRecord.TextFact(it) }
+                        } else {
+                            ChatMemoryFacts.FactRecord.Structured(
+                                id = item.optString("id"),
+                                subject = item.optString("subject"),
+                                predicate = item.optString("predicate"),
+                                value = item.optString("value"),
+                                status = item.optString("status").ifEmpty { "active" },
+                                importance = item.optInt("importance", 3),
+                                confidence = item.optDouble("confidence", 0.8),
+                            )
+                        }
+                    }
                     else -> null
                 }
             }

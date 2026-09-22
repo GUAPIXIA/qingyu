@@ -93,11 +93,46 @@
 | 8 | `mcp/{schema/ToolSchema,transport/McpTransports}.kt`、`imagegen/ComfyWorkflowAnalyzer.kt`、`mcp/McpClientTest.kt`（S6-04/06） | 空 data class、字段名 `code`→`errorCode`、`Any` 索引转型、扩展函数全限定调用（`kotlinx.coroutines.test.runCurrent()` 无接收者） | data object 化/改字段名/显式转型/`testScheduler.runCurrent()` |
 | 9 | `chatcore/ChatLorebookChannels.kt`（接缝） | S6-05 引用阶段 5 §2.21 预留的 `ChannelCapabilities` 输入但类型未落地 | 按预留注释补齐 data class（S6-05 已确认并基于它追加重载，双方不重叠） |
 
-另有 **Gradle 并发互踩事故**：多线程同时构建同一模块导致 `kotlin-classes`/元数据缓存损坏（`Failed to create MD5 hash … does not exist`、`JvmProtoBuf mergeFrom` 解析失败），`clean` 亦一度因他方构建持有 `R.jar` 锁而失败。处置：清损坏目录→单次调用 clean+build 持锁重建。**过程教训**（并入 §3.8）：并行子代理应分批（≤3）或分模块；共享模块时全体构建应串行化。
+另有 **Gradle 并发互踩事故**：多线程同时构建同一模块导致 `kotlin-classes`/元数据缓存损坏（`Failed to create MD5 hash … does not exist`、`JvmProtoBuf mergeFrom` 解析失败），一次 `clean` 因他方构建持有 `R.jar` 锁而真实失败。处置过程含一次**自查纠偏**：删除 `build` 目录连败 5 次一度误判为「文件持续被锁」，实为删除脚本的**相对路径笔误**（workdir 已在 `android/` 又叠加 `android\` 前缀，删的是不存在的路径）；另一次真实根因是早前手工删 `kotlin-classes` 子目录留下了任务状态不一致（Gradle 输出哈希找不到 `META-INF`）。最终处置：`--stop` 停掉 8 个并发守护进程 → 正确路径整删 `app\build`（一次成功）→ 单次全新构建。**过程教训**（并入 §3.8）：并行子代理应分批（≤3）或分模块；共享模块时全体构建应串行化；不要手工删 Gradle 输出子目录（破坏任务状态追踪，要么整删 `build/` 走 clean、要么不动）。
 
 ### 2.3 发现的 PC 侧行为不一致（**未改**，登记为 D-14 等待签字）
 
 只读取证（阶段 6 §0：不能为降低 Android 实现成本改变已验证的 PC 行为）发现 PC 群聊存在若干自相矛盾处，例如：polling 非 autoMode 时 `currentSpeakerIndex` 永不推进（"按顺序"只在接力下成立）；free 中途停止的半截正文存成 `__free__` 消息（沉浸模式不渲染、后续上下文标【未知角色】）；群气泡不显示 `generationNotice/generationError`（只落盘）；`__free__/__narrator__` 消息显示"重新生成"但 store 静默无效；群导出 md 的 speaker 取 characterId 原值且与单聊 `sessionExport` 不同源；桥接（旧伴侣通道）与桌面的群口径不同（用户消息 `round:0`、`members[(round-1)%len]` 轮转、历史全带【名字】前缀）。完整清单见 D-14。
+
+### 2.5 平台等价验收表（阶段 6 §2 要求；裁定口径：same / equivalent / pc_only_confirmed）
+
+> 判定依据：`docs/架构/android-parity-matrix.json` 各行 notes/testId + 阶段 6 §S6-01～07 原文。子代理自评在合流时逐行核验后定稿（**加粗**为已定稿，其余待最终报告回填）。
+
+| capabilityId | 判定 | 实现落点 | 备注 |
+|---|---|---|---|
+| group.listCreate | **same** | S6-01(b) `LocalChatRepository`（PC 新建默认值/补丁白名单/成员排序） | 数据面与 PC 同语义 |
+| group.chatModes | **same** | S6-01(a) `ChatGroupScheduling`（三模式 fixture 44 例）+ S6-01(d) 闭环消费 | UI 模式切换归 S6-01f |
+| group.autoMode | **same** | S6-01(d)-1 `ChatGroupTurnMachine`（接力链/索引推进/PC 现状钉子） | |
+| group.narrativeModes | **same** | S6-01(c) `ChatNarrativeMode.buildGroupNarrativeModePrompt`（逐字 golden） | |
+| group.members | **same** | S6-01(b) 成员增删排序 + 删成员接力停止语义（状态机 13 例） | |
+| group.sessions | **same** | S6-01(b) 群会话 CRUD + 级联删除 | |
+| group.messages | **same** | S6-01(b)/(d) 消息读写/编辑/删除/身份快照/(logicalTime,id) 排序 | |
+| group.aiReply | **same** | S6-01(d) 本地生成闭环（终局矩阵/归属锁定/共用轮号/立即接话） | 世界书/记忆接入已闭合 |
+| group.memory | **same** | S6-01(e) 群记忆 CAS/事实归一化/退避/检查点失效 | 测试执行见 §3.8 |
+| group.translate | **same** | S6-01(b) 群翻译（PC 短提示词变体逐字） | |
+| group.export | 待定 | 导出入口归 S6-01f（复用 `ChatSessionExport`） | |
+| chat.imageAttachVision | 待回填 | S6-02 `media/**` | 子代理自评待核 |
+| attachments.file | 待回填 | S6-02 `media/**`（SAF/魔数/缩略图/blob store/EXIF） | |
+| tts.speakControl | 待回填 | S6-03 `tts/**`（系统 TTS/队列/音频焦点） | 真机项另列 |
+| tts.voices | **equivalent**（裁定） | S6-03 | 矩阵原记 same；**裁定改为 equivalent**：Windows SAPI 音色集合与 Android 系统 TTS 必然不同，「same」仅可指列表能力/协议字段对齐；PC Windows-only 音色在 Android 显示「不适用」不猜测（语义钉子） |
+| image.generate | 待回填 | S6-04 `imagegen/**`（三端点/localhost 提示/SSRF） | |
+| image.comfyWorkflow | **pc_only_confirmed**（桌面深度集成半边）+ 共享 fixture 分析半边待回填 | S6-04 | 不复活已删除功能 |
+| semantic.embeddingConfig | 待回填 | S6-05 `embedding/**`（三级降级） | D-9 按 PC 现状 |
+| semantic.lorebookIndex | 待回填 | S6-05（失效键三要素） | |
+| semantic.factSearch | 待回填 | S6-05 | |
+| localModels.catalog / lifecycle | **pc_only_confirmed**（PC 安装管理半边）；移动端模型包半边待回填（签名/hash/断点续传/空间预检/卸载提示） | S6-05 | |
+| mcp.serverManage / remoteHttp / toolCall | 待回填 | S6-06 `mcp/**`（HTTP/SSE/权限默认拒绝/超时/提示注入防线） | |
+| mcp.stdioOnly | **pc_only_confirmed** | S6-06 仅保留配置可见性 + `platformSupport=pc_only` + 无进程启动路径守卫 | |
+| announcement.listDetail | 待回填 | S6-07（`ui/announcements/AnnouncementFeed.kt`） | |
+| settings.updater | 待回填 | S6-07 `updater/**`（hash 校验/不静默安装） | |
+| diagnostics.connection / generation / export | 待回填 | S6-07 `diagnostics/**`（泄密红线） | P2 纳入本轮 |
+
+**P2 排期缺口（D-16）**：`chat.sessionStats`、`lorebook.keywordLocalization` 仍无纳入记录与签字排期——验收前必须补签字或明确排除；「移动端 embedding ABI」决策已在 S6-05 实现中体现（远程→本地→词法三级，真机 NNAPI/GPU 项另列真机矩阵）。
 
 ## 3. 测试命令与结果
 

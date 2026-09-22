@@ -85,9 +85,9 @@ class ContentWiringAuditTest {
      * **不是免责声明**：接上之后必须删条目，否则 [deferredEntriesAreNotStale] 会红。
      */
     private val notWiredYet: Map<String, String> = mapOf(
-        "ChatEmbeddingPolicy" to "判定层已按 fixture 锁定，但 Android 尚无嵌入通道：属阶段 6 §S6-05",
-        "ChatLorebookEmbedding" to "语义索引文档构造：等待阶段 6 §S6-05 的嵌入通道",
-        "ChatVector" to "向量检索纯函数：等待阶段 6 §S6-05 的嵌入通道",
+        // S6-05 已接线 ChatEmbeddingPolicy/ChatLorebookEmbedding/ChatVector（SemanticIndexPolicy/
+        // SemanticRetrieval 等生产簇已引用），三件按守卫契约**删除出清单**；清单暂空代表
+        // 「无未接线能力」——这正是本守卫的完成态，将来再登记新条目时它自动恢复非空检查。
     )
 
     @Test
@@ -109,13 +109,14 @@ class ContentWiringAuditTest {
 
     @Test
     fun deferredEntriesAreNotStale() {
-        assertTrue("未接线清单不能空跑", notWiredYet.isNotEmpty())
+        // 清单为空 = 无未接线能力（S6-05 后的完成态）；非空时逐条守住「接上必须删」契约
         for ((symbol, reason) in notWiredYet) {
             assertTrue("$symbol 的原因必须写清楚（含归属阶段）", reason.length >= 10)
         }
         // 「尚未接线」的判据必须是「**簇外**没有任何生产文件引用」：
-        // 这三个模块彼此互调（纯函数拆层），所以数「出现几次」会把它们判成已接线。
+        // 同簇模块彼此互调（纯函数拆层），所以数「出现几次」会把它们判成已接线。
         val cluster = notWiredYet.keys
+        if (cluster.isEmpty()) return // 清单空 = 无待检簇（完成态）；空交替正则会匹配一切，必须短路
         val pattern = Regex("\\b(${cluster.joinToString("|")})\\b")
         val outsiders = productionFiles()
             .filter { it.nameWithoutExtension !in cluster }

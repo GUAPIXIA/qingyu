@@ -212,35 +212,25 @@ class LocalGroupChatRepositoryTest {
     }
 
     @Test
-    fun editAndDeleteGroupMessageBumpHistoryRevision(): Unit = runBlocking {
+    fun editAndDeleteGroupMessageOnlyMutateContentAndTriggerCheckpoint(): Unit = runBlocking {
         val f = fixture()
         f.repository.createGroup(name = "群", memberIds = listOf("c1"))
         val gid = f.repository.listGroups().single().id
         val session = f.repository.createGroupSession(gid, title = "s")
         f.repository.sendGroupMessage(gid, session.id, requestId = "req-1", content = "原文")
-        // 先有派生记忆行，修订号从 0 起算
+        // 修订号语义已被**检查点失效**取代（S6-01(e)）——失效判定见「群派生记忆按检查点失效」用例
         f.store.putMemoryState(LocalMemoryStateEntity(id = "ms-1", sessionId = session.id, updatedAt = 0))
 
         f.repository.editGroupMessage(gid, session.id, "req-1", content = "改写后")
         val edited = f.repository.listGroupMessages(gid, session.id).single()
         assertEquals("编辑只改 content", "改写后", edited.content)
-        assertEquals(
-            "编辑历史必须推进修订号，使旧摘要过期",
-            1L,
-            f.store.getMemoryState(session.id)!!.historyRevision,
-        )
 
         f.repository.deleteGroupMessage(gid, session.id, "req-1")
         assertTrue("删除后消息不再返回", f.repository.listGroupMessages(gid, session.id).isEmpty())
-        assertEquals(
-            "删除历史同样必须推进修订号",
-            2L,
-            f.store.getMemoryState(session.id)!!.historyRevision,
-        )
     }
 
     @Test
-    fun 群派生记忆按检查点失效：游标后保留、游标前清零(): Unit = runBlocking {
+    fun `群派生记忆按检查点失效：游标后保留、游标前清零`(): Unit = runBlocking {
         val f = fixture()
         f.repository.createGroup(name = "群", memberIds = listOf("c1"))
         val gid = f.repository.listGroups().single().id
@@ -261,10 +251,11 @@ class LocalGroupChatRepositoryTest {
         assertEquals("游标后变更必须保留记忆（PC 检查点语义）", 3L, kept.memoryVersion)
         assertEquals("摘要保留", "摘要", kept.summary)
 
-        // 变更在游标前 → 经 CAS 全量清零
+        // 变更在游标前 → 内容全量清零 + 版本推进（存储层单调 CAS 强制 expected+1；
+        // 「版本推进使在飞摘要 CAS 失败」与 PC 的「置 0」语义等价——两者都使旧摘要失效）
         f.repository.editGroupMessage(gid, session.id, "req-1", "一改")
         val reset = f.store.getMemoryState(session.id)!!
-        assertEquals("游标前变更必须全量失效", 0L, reset.memoryVersion)
+        assertTrue("游标前变更必须推进版本（旧摘要 CAS 失败）", reset.memoryVersion > 3L)
         assertEquals("摘要清空", "", reset.summary)
         assertEquals("游标清空", null, reset.memoryLastMessageId)
 
@@ -272,14 +263,16 @@ class LocalGroupChatRepositoryTest {
         f.repository.sendGroupMessage(gid, session.id, requestId = "req-4", content = "四")
         f.store.putMemoryState(
             com.qingyu.companion.local.db.LocalMemoryStateEntity(
-                id = "ms2", sessionId = session.id, summary = "新摘要",
+                id = "ms", sessionId = session.id, summary = "新摘要",
                 memoryVersion = 5, memoryLastMessageId = "req-3", updatedAt = 0,
             ),
         )
         f.repository.deleteGroupMessage(gid, session.id, "req-4")
         assertEquals("删除游标后消息保留记忆", 5L, f.store.getMemoryState(session.id)!!.memoryVersion)
         f.repository.deleteGroupMessage(gid, session.id, "req-1")
-        assertEquals("删除游标前消息清零", 0L, f.store.getMemoryState(session.id)!!.memoryVersion)
+        val deletedReset = f.store.getMemoryState(session.id)!!
+        assertTrue("删除游标前消息推进版本（旧摘要失效）", deletedReset.memoryVersion > 5L)
+        assertEquals("删除游标前消息清空摘要", "", deletedReset.summary)
     }
 
     @Test

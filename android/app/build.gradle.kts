@@ -118,6 +118,9 @@ android {
         }
         unitTests {
             isIncludeAndroidResources = true
+            // 阶段 6 并行合流后全量单测达 1600+ 例（媒体炸弹样本/音频字节等大对象），
+            // 默认测试堆会 Java heap space（ContentDraftCodecTest 实测）；统一抬到 2 GiB。
+            all { it.maxHeapSize = "2g" }
         }
     }
 }
