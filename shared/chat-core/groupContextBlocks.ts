@@ -21,6 +21,8 @@ import { replaceVariables } from './variables'
 export interface GroupContextMember {
   id: string
   name: string
+  /** 译名（thought 契约的焦点名优先用它；缺省用 name）。 */
+  translatedName?: string
   description?: string
   personality?: string
   scenario?: string

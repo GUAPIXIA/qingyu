@@ -19,6 +19,8 @@ object ChatGroupContextBlocks {
     data class Member(
         val id: String,
         val name: String,
+        /** 译名（thought 契约的焦点名优先用它；缺省用 name）。 */
+        val translatedName: String? = null,
         val description: String? = null,
         val personality: String? = null,
         val scenario: String? = null,
@@ -38,6 +40,13 @@ object ChatGroupContextBlocks {
         val position: String = "system",
         val includeDescription: Boolean? = null,
         val includePersona: Boolean? = null,
+    )
+
+    /** 已解析的人设字段来源（身份回退语义见 ChatGroupContextBuilder.resolvePersonaFields）。 */
+    data class PersonaLike(
+        val name: String? = null,
+        val description: String? = null,
+        val persona: String? = null,
     )
 
     data class HistoryEntry(

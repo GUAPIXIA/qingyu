@@ -24,6 +24,7 @@
 | `memory-invalidation.json` | `derivedMemory.ts` | 阶段 6 S6-01：派生记忆检查点失效决策（chat/group 两 variant 的 hasDerived 差异为语义钉子） |
 | `group-prompts.json` | `groupChatPrompt.ts` + `narrativeMode.ts` | 阶段 6 S6-01(c)：群 roster/turnRules 段、单聊与群聊叙事约束（mode × chatMode 矩阵、自定义全局规则、焦点名空/非空） |
 | `group-context-blocks.json` | `groupContextBlocks.ts` | 阶段 6 S6-01(c)：free/聚焦成员卡（含 scenario 门控与示例锚点重排）、用户人设、历史归属标注、后历史指令、charName 口径 |
+| `group-context.json` | `groupContextBuilder.ts` | 阶段 6 S6-01(c)：**群上下文完整装配**（组装顺序 1–19）——三模式 + 场景门控 + 压缩摘要注入 + pendingCompression 归属 + 语义事实注入 + 身份解析，8+3 例 |
 
 ## 生成与校验
 
