@@ -30,6 +30,22 @@ import {
 } from '../chat-core/groupScheduling'
 import { splitFreeReply } from '../chat-core/groupFreeSplit'
 import { planDerivedMemoryInvalidation, derivedMemoryResetPatch } from '../chat-core/derivedMemory'
+import {
+  resolveGroupCharNameForVars,
+  resolveShouldSendScenario,
+  buildFreeMemberCards,
+  buildTargetMemberCard,
+  buildGroupUserPersona,
+  mapGroupHistoryMessages,
+  buildGroupPostHistoryInstructions,
+  type GroupContextMember,
+} from '../chat-core/groupContextBlocks'
+import { buildGroupRosterIntro, buildGroupTurnRulesPrompt } from '../groupChatPrompt'
+import {
+  buildNarrativeModePrompt,
+  buildGroupNarrativeModePrompt,
+  DEFAULT_OMNISCIENT_NARRATIVE_RULES,
+} from '../narrativeMode'
 
 const FIXTURE_DIR = join(__dirname, '..', 'fixtures', 'cross-platform', 'chat-core')
 const UPDATE = process.env.CHAT_CORE_UPDATE_FIXTURES === '1'
@@ -85,7 +101,6 @@ const MEMBERS = [
   { id: 'char-en', name: 'AbC' },
   { id: 'char-dot', name: 'A.B' },
 ]
-const MEMBER_IDS = MEMBERS.map((m) => m.id)
 const THREE_IDS = ['char-a', 'char-b', 'char-c']
 
 const NEXT_ROUND_CASES = [
@@ -664,5 +679,187 @@ describe('group-chat golden（阶段 6 S6-01）', () => {
       }),
     }
     writeFixture('memory-invalidation', data)
+  })
+
+  it('group-prompts：群提示词段（roster/turnRules/叙事约束）', () => {
+    const rosterCases = [
+      { label: '三成员含描述截断', groupName: '合成群聊', members: MEMBERS.slice(0, 3).map((m) => ({ name: m.name, description: `${m.name}的描述` })), userName: '用户' },
+      { label: '无描述成员', groupName: '无名群', members: [{ name: '小A' }, { name: '小B' }], userName: '旅人' },
+      { label: '超长描述截到 80 字', groupName: '长文群', members: [{ name: '小A', description: 'x'.repeat(120) }], userName: 'u' },
+      { label: '空群', groupName: '空群', members: [], userName: 'u' },
+    ]
+    const narrativeCases: Array<{ label: string; args: [string, string, string, string, string?] }> = [
+      { label: 'immersive + mention（带焦点）', args: ['immersive', '用户', '小A', 'mention'] },
+      { label: 'immersive + polling（带焦点）', args: ['immersive', '用户', '小B', 'polling'] },
+      { label: 'immersive + free（多成员限知）', args: ['immersive', '用户', '小A、小B', 'free'] },
+      { label: 'omniscient + mention', args: ['omniscient', '用户', '小A', 'mention'] },
+      { label: 'omniscient + free（对白只能作引语）', args: ['omniscient', '用户', '小A、小B', 'free'] },
+      { label: 'omniscient + polling 且无焦点名', args: ['omniscient', '用户', '', 'polling'] },
+      { label: 'omniscient 自定义规则（{{user}}/{{char}} 变量）', args: ['omniscient', '旅人', '苏晚', 'mention', '自定义全局规则：{{user}} 与 {{char}}。'] },
+    ]
+    const data = {
+      version: 1,
+      oracle: 'shared/groupChatPrompt.ts + shared/narrativeMode.ts',
+      turnRulesCases: ['mention', 'polling', 'free'].map((mode) => ({
+        label: `turnRules/${mode}`,
+        input: { chatMode: mode },
+        expected: buildGroupTurnRulesPrompt(mode as 'mention' | 'polling' | 'free'),
+      })),
+      rosterCases: rosterCases.map((c) => ({
+        label: c.label,
+        input: c,
+        expected: buildGroupRosterIntro(c.groupName, c.members, c.userName),
+      })),
+      singleNarrativeCases: (['immersive', 'omniscient'] as const).map((mode) => ({
+        label: `singleNarrative/${mode}`,
+        input: { mode, userName: '用户', characterName: '苏晚' },
+        expected: buildNarrativeModePrompt(mode, '用户', '苏晚'),
+      })),
+      groupNarrativeCases: narrativeCases.map((c) => ({
+        label: c.label,
+        input: {
+          mode: c.args[0],
+          userName: c.args[1],
+          focusName: c.args[2],
+          chatMode: c.args[3],
+          omniscientRules: c.args[4] ?? null,
+        },
+        expected: buildGroupNarrativeModePrompt(
+          c.args[0] as 'immersive' | 'omniscient',
+          c.args[1],
+          c.args[2],
+          c.args[3] as 'mention' | 'polling' | 'free',
+          c.args[4],
+        ),
+      })),
+      defaultOmniscientRules: DEFAULT_OMNISCIENT_NARRATIVE_RULES,
+    }
+    writeFixture('group-prompts', data)
+  })
+
+  it('group-context-blocks：成员卡/人设/历史归属/后历史指令', () => {
+    const fullMember = (id: string, name: string): GroupContextMember => ({
+      id,
+      name,
+      description: `${name}是{{user}}的伙伴。`,
+      personality: `${name}性格沉稳。`,
+      scenario: `场景：与{{user}}同行。`,
+      systemPrompt: `（${name}的系统提示，{{char}}）`,
+      exampleDialog: '{{user}}：在吗？\n{{char}}：在。',
+      postHistoryInstructions: `（${name}的后历史指令）`,
+    })
+    const members: GroupContextMember[] = [
+      fullMember('char-a', '小A'),
+      fullMember('char-b', '小B'),
+      { id: 'char-c', name: '小C' },
+    ]
+
+    const shouldSendCases = [
+      { label: 'first_turn 首轮注入', input: { mode: 'first_turn', userMessageCount: 1 }, expected: true },
+      { label: 'first_turn 非首轮不注入', input: { mode: 'first_turn', userMessageCount: 2 }, expected: false },
+      { label: 'always 总是注入', input: { mode: 'always', userMessageCount: 5 }, expected: true },
+      { label: 'off 从不注入', input: { mode: 'off', userMessageCount: 1 }, expected: false },
+      { label: '缺省按 first_turn', input: { mode: null, userMessageCount: 1 }, expected: true },
+    ]
+
+    const freeCardCases = [
+      { label: 'free 全字段无锚点', opts: { userName: '用户', shouldSendScenario: true } },
+      { label: 'free 场景被门控', opts: { userName: '用户', shouldSendScenario: false } },
+      {
+        label: 'free 示例锚点重排（示例集中到锚点间、带成员名）',
+        opts: { userName: '用户', shouldSendScenario: true, exampleBefore: ['<示例前锚点>'], exampleAfter: ['<示例后锚点>'] },
+      },
+      {
+        label: 'free 世界书前后段包裹',
+        opts: { userName: '用户', shouldSendScenario: true, lorebookBefore: '<世界书前>', lorebookAfter: '<世界书后>' },
+      },
+    ]
+    const targetCardCases = [
+      { label: 'target 全字段无锚点', opts: { userName: '用户', shouldSendScenario: true } },
+      {
+        label: 'target 锚点包裹且示例始终无成员名',
+        opts: { userName: '用户', shouldSendScenario: true, exampleBefore: ['<前>'], exampleAfter: ['<后>'], lorebookAfter: '<世界书后>' },
+      },
+      { label: 'target 场景被门控', opts: { userName: '用户', shouldSendScenario: false } },
+    ]
+    const personaCases = [
+      { label: '全字段注入', input: { userName: '用户', userDescription: '旅行者', userPersona: '果敢', charNameForVars: '小A', injection: null } },
+      { label: '关闭注入', input: { userName: '用户', userDescription: '旅行者', userPersona: '果敢', charNameForVars: '小A', injection: { enabled: false } } },
+      { label: '只出用户名', input: { userName: '用户', charNameForVars: '小A、小B', injection: { enabled: true, includeDescription: false, includePersona: false } } },
+      { label: 'include 缺省视为 true', input: { userName: '旅人', userDescription: '{{user}}的档案', userPersona: '冷静', charNameForVars: '小A', injection: { enabled: true } } },
+    ]
+    const historyCases = [
+      {
+        label: '归属标注全语义（用户无前缀+图片、角色带名前缀、未知角色、空正文跳过、变量按发言者替换）',
+        input: {
+          messages: [
+            { characterId: '__user__', content: '{{user}}来了', images: ['img1'] },
+            { characterId: 'char-a', content: '{{char}}在此' },
+            { characterId: 'char-gone', content: '游离发言' },
+            { characterId: 'char-b', content: '   ' },
+          ],
+          memberIds: ['char-a', 'char-b', 'char-c'],
+          userName: '旅人',
+          charNameForVars: '小A、小B',
+        },
+      },
+    ]
+    const postHistoryCases = [
+      { label: 'free 拼接全部成员（各带尾换行）', input: { chatMode: 'free', memberIds: ['char-a', 'char-b', 'char-c'], target: null, userName: '用户', charNameForVars: '小A、小B' } },
+      { label: 'mention 只用目标角色（变量按 charNameForVars）', input: { chatMode: 'mention', memberIds: ['char-a', 'char-b', 'char-c'], target: 'char-a', userName: '用户', charNameForVars: '小A' } },
+      { label: '目标无后历史指令返回空', input: { chatMode: 'polling', memberIds: ['char-c'], target: 'char-c', userName: '用户', charNameForVars: '小C' } },
+    ]
+
+    const data = {
+      version: 1,
+      oracle: 'shared/chat-core/groupContextBlocks.ts',
+      members,
+      charNameForVarsCases: [
+        { label: '有目标用目标名', input: { targetName: '小A', memberIds: ['char-a', 'char-b'] }, expected: resolveGroupCharNameForVars('小A', members.slice(0, 2)) },
+        { label: '无目标用成员名、连接', input: { targetName: null, memberIds: ['char-a', 'char-b'] }, expected: resolveGroupCharNameForVars(undefined, members.slice(0, 2)) },
+      ],
+      shouldSendScenarioCases: shouldSendCases.map((c) => ({
+        label: c.label,
+        input: c.input,
+        expected: resolveShouldSendScenario(c.input.mode, c.input.userMessageCount),
+      })),
+      freeMemberCardCases: freeCardCases.map((c) => ({
+        label: c.label,
+        input: { memberIds: ['char-a', 'char-b', 'char-c'], opts: c.opts },
+        expected: buildFreeMemberCards(members, c.opts),
+      })),
+      targetMemberCardCases: targetCardCases.map((c) => ({
+        label: c.label,
+        input: { targetId: 'char-a', opts: c.opts },
+        expected: buildTargetMemberCard(members[0], c.opts),
+      })),
+      userPersonaCases: personaCases.map((c) => ({
+        label: c.label,
+        input: c.input,
+        expected: buildGroupUserPersona(c.input as Parameters<typeof buildGroupUserPersona>[0]),
+      })),
+      historyCases: historyCases.map((c) => ({
+        label: c.label,
+        input: c.input,
+        expected: mapGroupHistoryMessages({
+          messages: c.input.messages,
+          members: c.input.memberIds.map((id) => members.find((m) => m.id === id)!).filter(Boolean),
+          userName: c.input.userName,
+          charNameForVars: c.input.charNameForVars,
+        }),
+      })),
+      postHistoryCases: postHistoryCases.map((c) => ({
+        label: c.label,
+        input: c.input,
+        expected: buildGroupPostHistoryInstructions({
+          chatMode: c.input.chatMode,
+          members: c.input.memberIds.map((id) => members.find((m) => m.id === id)!).filter(Boolean),
+          target: c.input.target ? members.find((m) => m.id === c.input.target)! : null,
+          userName: c.input.userName,
+          charNameForVars: c.input.charNameForVars,
+        }),
+      })),
+    }
+    writeFixture('group-context-blocks', data)
   })
 })

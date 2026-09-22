@@ -1,0 +1,357 @@
+{
+  "version": 1,
+  "oracle": "shared/chat-core/groupContextBlocks.ts",
+  "members": [
+    {
+      "id": "char-a",
+      "name": "小A",
+      "description": "小A是{{user}}的伙伴。",
+      "personality": "小A性格沉稳。",
+      "scenario": "场景：与{{user}}同行。",
+      "systemPrompt": "（小A的系统提示，{{char}}）",
+      "exampleDialog": "{{user}}：在吗？\n{{char}}：在。",
+      "postHistoryInstructions": "（小A的后历史指令）"
+    },
+    {
+      "id": "char-b",
+      "name": "小B",
+      "description": "小B是{{user}}的伙伴。",
+      "personality": "小B性格沉稳。",
+      "scenario": "场景：与{{user}}同行。",
+      "systemPrompt": "（小B的系统提示，{{char}}）",
+      "exampleDialog": "{{user}}：在吗？\n{{char}}：在。",
+      "postHistoryInstructions": "（小B的后历史指令）"
+    },
+    {
+      "id": "char-c",
+      "name": "小C"
+    }
+  ],
+  "charNameForVarsCases": [
+    {
+      "label": "有目标用目标名",
+      "input": {
+        "targetName": "小A",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ]
+      },
+      "expected": "小A"
+    },
+    {
+      "label": "无目标用成员名、连接",
+      "input": {
+        "targetName": null,
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ]
+      },
+      "expected": "小A、小B"
+    }
+  ],
+  "shouldSendScenarioCases": [
+    {
+      "label": "first_turn 首轮注入",
+      "input": {
+        "mode": "first_turn",
+        "userMessageCount": 1
+      },
+      "expected": true
+    },
+    {
+      "label": "first_turn 非首轮不注入",
+      "input": {
+        "mode": "first_turn",
+        "userMessageCount": 2
+      },
+      "expected": false
+    },
+    {
+      "label": "always 总是注入",
+      "input": {
+        "mode": "always",
+        "userMessageCount": 5
+      },
+      "expected": true
+    },
+    {
+      "label": "off 从不注入",
+      "input": {
+        "mode": "off",
+        "userMessageCount": 1
+      },
+      "expected": false
+    },
+    {
+      "label": "缺省按 first_turn",
+      "input": {
+        "mode": null,
+        "userMessageCount": 1
+      },
+      "expected": true
+    }
+  ],
+  "freeMemberCardCases": [
+    {
+      "label": "free 全字段无锚点",
+      "input": {
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "opts": {
+          "userName": "用户",
+          "shouldSendScenario": true
+        }
+      },
+      "expected": "\n\n以下是所有角色的完整设定：\n\n--- 小A ---\n描述：小A是用户的伙伴。\n性格：小A性格沉稳。\n场景：场景：与用户同行。\n\n（小A的系统提示，小A）\n\n对话示例：\n用户：在吗？\n小A：在。\n\n--- 小B ---\n描述：小B是用户的伙伴。\n性格：小B性格沉稳。\n场景：场景：与用户同行。\n\n（小B的系统提示，小B）\n\n对话示例：\n用户：在吗？\n小B：在。\n\n--- 小C ---\n"
+    },
+    {
+      "label": "free 场景被门控",
+      "input": {
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "opts": {
+          "userName": "用户",
+          "shouldSendScenario": false
+        }
+      },
+      "expected": "\n\n以下是所有角色的完整设定：\n\n--- 小A ---\n描述：小A是用户的伙伴。\n性格：小A性格沉稳。\n\n（小A的系统提示，小A）\n\n对话示例：\n用户：在吗？\n小A：在。\n\n--- 小B ---\n描述：小B是用户的伙伴。\n性格：小B性格沉稳。\n\n（小B的系统提示，小B）\n\n对话示例：\n用户：在吗？\n小B：在。\n\n--- 小C ---\n"
+    },
+    {
+      "label": "free 示例锚点重排（示例集中到锚点间、带成员名）",
+      "input": {
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "opts": {
+          "userName": "用户",
+          "shouldSendScenario": true,
+          "exampleBefore": [
+            "<示例前锚点>"
+          ],
+          "exampleAfter": [
+            "<示例后锚点>"
+          ]
+        }
+      },
+      "expected": "\n\n以下是所有角色的完整设定：\n\n--- 小A ---\n描述：小A是用户的伙伴。\n性格：小A性格沉稳。\n场景：场景：与用户同行。\n\n（小A的系统提示，小A）\n\n--- 小B ---\n描述：小B是用户的伙伴。\n性格：小B性格沉稳。\n场景：场景：与用户同行。\n\n（小B的系统提示，小B）\n\n--- 小C ---\n\n<示例前锚点>\n\n对话示例（小A）：\n用户：在吗？\n小A：在。\n\n对话示例（小B）：\n用户：在吗？\n小B：在。\n\n<示例后锚点>\n"
+    },
+    {
+      "label": "free 世界书前后段包裹",
+      "input": {
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "opts": {
+          "userName": "用户",
+          "shouldSendScenario": true,
+          "lorebookBefore": "<世界书前>",
+          "lorebookAfter": "<世界书后>"
+        }
+      },
+      "expected": "\n\n<世界书前>以下是所有角色的完整设定：\n\n--- 小A ---\n描述：小A是用户的伙伴。\n性格：小A性格沉稳。\n场景：场景：与用户同行。\n\n（小A的系统提示，小A）\n\n对话示例：\n用户：在吗？\n小A：在。\n\n--- 小B ---\n描述：小B是用户的伙伴。\n性格：小B性格沉稳。\n场景：场景：与用户同行。\n\n（小B的系统提示，小B）\n\n对话示例：\n用户：在吗？\n小B：在。\n\n--- 小C ---\n\n<世界书后>"
+    }
+  ],
+  "targetMemberCardCases": [
+    {
+      "label": "target 全字段无锚点",
+      "input": {
+        "targetId": "char-a",
+        "opts": {
+          "userName": "用户",
+          "shouldSendScenario": true
+        }
+      },
+      "expected": "\n\n【当前发言角色：小A】\n描述：小A是用户的伙伴。\n性格：小A性格沉稳。\n场景：场景：与用户同行。\n\n（小A的系统提示，小A）\n\n对话示例：\n用户：在吗？\n小A：在。\n"
+    },
+    {
+      "label": "target 锚点包裹且示例始终无成员名",
+      "input": {
+        "targetId": "char-a",
+        "opts": {
+          "userName": "用户",
+          "shouldSendScenario": true,
+          "exampleBefore": [
+            "<前>"
+          ],
+          "exampleAfter": [
+            "<后>"
+          ],
+          "lorebookAfter": "<世界书后>"
+        }
+      },
+      "expected": "\n\n【当前发言角色：小A】\n描述：小A是用户的伙伴。\n性格：小A性格沉稳。\n场景：场景：与用户同行。\n\n（小A的系统提示，小A）\n\n<前>\n\n对话示例：\n用户：在吗？\n小A：在。\n\n<后>\n\n<世界书后>"
+    },
+    {
+      "label": "target 场景被门控",
+      "input": {
+        "targetId": "char-a",
+        "opts": {
+          "userName": "用户",
+          "shouldSendScenario": false
+        }
+      },
+      "expected": "\n\n【当前发言角色：小A】\n描述：小A是用户的伙伴。\n性格：小A性格沉稳。\n\n（小A的系统提示，小A）\n\n对话示例：\n用户：在吗？\n小A：在。\n"
+    }
+  ],
+  "userPersonaCases": [
+    {
+      "label": "全字段注入",
+      "input": {
+        "userName": "用户",
+        "userDescription": "旅行者",
+        "userPersona": "果敢",
+        "charNameForVars": "小A",
+        "injection": null
+      },
+      "expected": "用户名：用户\n描述：旅行者\n性格：果敢\n"
+    },
+    {
+      "label": "关闭注入",
+      "input": {
+        "userName": "用户",
+        "userDescription": "旅行者",
+        "userPersona": "果敢",
+        "charNameForVars": "小A",
+        "injection": {
+          "enabled": false
+        }
+      },
+      "expected": ""
+    },
+    {
+      "label": "只出用户名",
+      "input": {
+        "userName": "用户",
+        "charNameForVars": "小A、小B",
+        "injection": {
+          "enabled": true,
+          "includeDescription": false,
+          "includePersona": false
+        }
+      },
+      "expected": "用户名：用户\n"
+    },
+    {
+      "label": "include 缺省视为 true",
+      "input": {
+        "userName": "旅人",
+        "userDescription": "{{user}}的档案",
+        "userPersona": "冷静",
+        "charNameForVars": "小A",
+        "injection": {
+          "enabled": true
+        }
+      },
+      "expected": "用户名：旅人\n描述：旅人的档案\n性格：冷静\n"
+    }
+  ],
+  "historyCases": [
+    {
+      "label": "归属标注全语义（用户无前缀+图片、角色带名前缀、未知角色、空正文跳过、变量按发言者替换）",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "content": "{{user}}来了",
+            "images": [
+              "img1"
+            ]
+          },
+          {
+            "characterId": "char-a",
+            "content": "{{char}}在此"
+          },
+          {
+            "characterId": "char-gone",
+            "content": "游离发言"
+          },
+          {
+            "characterId": "char-b",
+            "content": "   "
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "userName": "旅人",
+        "charNameForVars": "小A、小B"
+      },
+      "expected": [
+        {
+          "role": "user",
+          "content": "旅人来了",
+          "images": [
+            "img1"
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "【小A】小A在此"
+        },
+        {
+          "role": "assistant",
+          "content": "【未知角色】游离发言"
+        }
+      ]
+    }
+  ],
+  "postHistoryCases": [
+    {
+      "label": "free 拼接全部成员（各带尾换行）",
+      "input": {
+        "chatMode": "free",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "target": null,
+        "userName": "用户",
+        "charNameForVars": "小A、小B"
+      },
+      "expected": "（小A的后历史指令）\n（小B的后历史指令）\n"
+    },
+    {
+      "label": "mention 只用目标角色（变量按 charNameForVars）",
+      "input": {
+        "chatMode": "mention",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "target": "char-a",
+        "userName": "用户",
+        "charNameForVars": "小A"
+      },
+      "expected": "（小A的后历史指令）"
+    },
+    {
+      "label": "目标无后历史指令返回空",
+      "input": {
+        "chatMode": "polling",
+        "memberIds": [
+          "char-c"
+        ],
+        "target": "char-c",
+        "userName": "用户",
+        "charNameForVars": "小C"
+      },
+      "expected": ""
+    }
+  ]
+}

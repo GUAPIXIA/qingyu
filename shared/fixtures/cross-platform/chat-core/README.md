@@ -22,6 +22,8 @@
 | `group-scheduling.json` | `groupScheduling.ts` | 阶段 6 S6-01：`nextGroupRound` / `detectMentionedMembers` / `resolveGroupSpeakerPlan`（mention/polling/free 发言计划）/ `planGroupPollingContinue`（轮询续排）/ `resolvePollingIntervalMs` / `planAutoMemoryTrigger` |
 | `group-free-split.json` | `groupFreeSplit.ts` | 阶段 6 S6-01：free 多角色拆分与归属（omniscient 不拆分、旁白并入首段、未识别角色旁注、空段丢弃、无标记回落） |
 | `memory-invalidation.json` | `derivedMemory.ts` | 阶段 6 S6-01：派生记忆检查点失效决策（chat/group 两 variant 的 hasDerived 差异为语义钉子） |
+| `group-prompts.json` | `groupChatPrompt.ts` + `narrativeMode.ts` | 阶段 6 S6-01(c)：群 roster/turnRules 段、单聊与群聊叙事约束（mode × chatMode 矩阵、自定义全局规则、焦点名空/非空） |
+| `group-context-blocks.json` | `groupContextBlocks.ts` | 阶段 6 S6-01(c)：free/聚焦成员卡（含 scenario 门控与示例锚点重排）、用户人设、历史归属标注、后历史指令、charName 口径 |
 
 ## 生成与校验
 

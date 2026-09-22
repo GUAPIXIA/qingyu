@@ -8,7 +8,7 @@ package com.qingyu.companion.chatcore
  * 若 Android 与 PC 的措辞不同，同一会话在两端会得到不同叙事身份，
  * 用户会看到角色"性格变了"。因此本模块的每个字符串都直接对应 PC 常量。
  *
- * 阶段 4 只移植单聊路径；`buildGroupNarrativeModePrompt` 属阶段 6（群聊），未移植。
+ * 阶段 4 只移植单聊路径；`buildGroupNarrativeModePrompt` 由阶段 6 S6-01(c) 补齐。
  */
 object ChatNarrativeMode {
 
@@ -98,6 +98,49 @@ object ChatNarrativeMode {
             "3. 不替 $userName 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n" +
             "4. 默认使用贴近角色的限知视角；对白自然使用第一人称，叙述人称服从角色卡和既有文本。\n" +
             "5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。"
+    }
+
+    /**
+     * 群聊专用叙事约束（阶段 6 S6-01(c)，对齐
+     * `shared/narrativeMode.ts#buildGroupNarrativeModePrompt`，桌面/桥接共用段）。
+     *
+     * chatMode 只决定本轮由谁发言；narrativeMode 决定叙事视角与控制范围。
+     */
+    fun buildGroupNarrativeModePrompt(
+        mode: String,
+        userName: String,
+        focusName: String,
+        chatMode: String,
+        omniscientRules: String? = null,
+    ): String {
+        if (mode == "omniscient") {
+            val focusPart = if (focusName.isNotEmpty()) "「$focusName」" else ""
+            val tail = if (chatMode == "free") {
+                "自由发言模式下可让多名角色自然参与，但回答主体仍是第三人称旁白；" +
+                    "对白只能作为叙事中的引语，并用「【角色名】」清楚标注人物。"
+            } else {
+                "如其他角色参与，其对白只能作为第三人称叙事中的引语；请保持人物设定一致，并清楚标注人物。"
+            }
+            return buildNarrativeModePrompt(mode, userName, focusName, omniscientRules) + "\n" +
+                "【群聊叙事边界】\n" +
+                "本轮的发言调度仅指定剧情焦点$focusPart，不限制旁白描写其他成员、环境、异地事件或世界变化。\n" +
+                tail
+        }
+
+        if (chatMode == "free") {
+            return "【叙事模式：代入式角色扮演】\n" +
+                "你正在以群聊成员各自的有限视角，与 $userName 进行沉浸式互动。\n" +
+                "1. 每名角色只依据自己可感知、可理解的信息行动，保持各自身份、性格、记忆和知识边界。\n" +
+                "2. 可以让多名角色自然参与，但必须用「【角色名】」标注发言者，不使用全知旁白揭示幕后或异地事件。\n" +
+                "3. 不替 $userName 说话、行动、思考、感受或作出决定，也不宣布其重大行为结果。\n" +
+                "4. 主要书写角色对白、动作、感受，以及维持当前场景所需的少量环境反应。\n" +
+                "5. 每次回应当前互动并留下可继续行动或回答的空间，不跳出故事解释规则。"
+        }
+
+        return buildNarrativeModePrompt(mode, userName, focusName, omniscientRules) + "\n" +
+            "【群聊叙事边界】\n" +
+            "本轮只由当前发言角色「$focusName」回应；不要替其他群聊成员发言，也不要让其无理由共享当前角色的私有信息。\n" +
+            "对白必须是「$focusName」自己的第一人称；动作/神态可用第三人称叙述（与单聊一致）。"
     }
 
     /** 长记忆摘要侧重点随叙事模式变化，但不改变既有摘要数据结构。 */
