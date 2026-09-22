@@ -277,6 +277,8 @@
 
 阶段 6 范围（Android 全量 + shared golden）见 §3.1–3.8；上述 PC 红待两并行流收敛后由其自身收口（登记不代修，沿所有权边界）。
 
+**稳定性复验（round 19）**：`.\gradlew.bat :app:testDebugUnitTest` **1639 例 / 1 红**——唯一红仍为 `ChatContextBuilderGoldenTest.buildMessagesMatchPc`（人格流在途的夹具重生成，与 §3.9 归属一致）；**阶段 6 范围 1638/1638 绿，自 round 14 红灯清零以来跨 5 轮稳定**。共享 oracle 同期 6/6 绿（§0.2 监控判据成立）。
+
 ### 3.8 S6-01(e) 门禁补记（群记忆、CAS 与历史失效）
 
 | 命令 | 结果 | 备注 |
@@ -371,6 +373,9 @@
 
 ## 7. 下一阶段输入
 
-- Kotlin 侧 `ChatGroupScheduling` / `ChatGroupFreeSplit` / `ChatMemoryInvalidation` 是 S6-01 调度器状态机（U-6-3）与群记忆（U-6-4）的直接依赖，发言计划/拆分/失效语义以三份 fixture 为唯一真源。
-- S6-01 群上下文（U-6-2）应按 PC 规格（`groupChatContext.ts` 组装顺序 1–19）建 `group-context` golden；桥接精简版口径（旧伴侣通道）按总方案 §9.3 属阶段 9 删除对象，不移植。
-- S6-02 媒体、S6-05 语义检索分别等 D-15 的 D-12/D-9 结论；S6-03 TTS、S6-04 生图、S6-06 MCP、S6-07 公告/更新/诊断为"绿地"部分，不受上述决策阻塞（阶段 5 §2.28 结论）。
+- **跨语言真源**：6 份 golden fixture（`chat-core/{group-scheduling, group-free-split, memory-invalidation, group-prompts, group-context-blocks, group-context}`）是调度/拆分/失效/提示词/上下文语义的**唯一真源**；任何语义改动必须双端同步实现并以 `CHAT_CORE_UPDATE_FIXTURES=1` 重生成 + 双向 golden 测试（TS 生产 ↔ fixture ↔ Kotlin）三面锁定。语义钉子清单见 §2.2。
+- **决策流**（§5.1 送签中）：D-9 签翻转 → 重生成语义 golden 并迁移条目数据；D-11 签归一化 → 重写群 payload 并补跨端 golden；D-14 签修 PC → Android 同批跟修（4 条不一致清单）；D-16 余两项补签或明确排除。
+- **实机矩阵**（§5.2）：9 场景 × Android 8/12/14 执行结果入档后，阶段 6 方可置「已完成」终态；真机 NNAPI/GPU embedding 项随 S6-05 模型包一并验。
+- **并行流收敛判据**（§0.2）：人格接线流 / PC 体验流收敛后复跑共享 oracle（`shared/__tests__/groupChatCoreGolden.test.ts` 6 例）与 `ContentWiringAuditTest`；红了即按 P1-6-2 先例（`c5e7c94`）重新接线，禁止把共享调用点改回内联实现。
+- **在途合流**：S6-01(f) UI 收尾（`0f9cfcac`）、U-6-8 备份群数据（`9ba86042`）——合流后补 `group.export` 裁定行与各自报告小节。
+- **已知口径**（§3.6）随身带入后续阶段：`sessionPersonaIdDefined` 保留、群生成设置面真值化（S6-01f）、`lorebookPlan` 世界书执行已接入（d)-3）。
