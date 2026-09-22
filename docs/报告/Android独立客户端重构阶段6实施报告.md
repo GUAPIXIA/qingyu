@@ -102,6 +102,8 @@
 ### 2.5 平台等价验收表（阶段 6 §2 要求；裁定口径：same / equivalent / pc_only_confirmed）
 
 > 判定依据：`docs/架构/android-parity-matrix.json` 各行 notes/testId + 阶段 6 §S6-01～07 原文。**2026-09-22 定稿**：逐行与矩阵注册口径校准后裁定（矩阵为权威；唯一裁定偏离 = `tts.voices` same→equivalent，理由见该行并已回写矩阵）。**加粗**为已定稿行；`group.export` 待 S6-01(f) 合流后补。
+>
+> **P1 全覆盖口径**（阶段 6 §4 完成定义「P1 capability matrix 全部 same/equivalent」）：本表 = 阶段 6 交付面 25 行；矩阵中 P1 的**早期阶段行**（memory.×5、usage.stats、bridge.×2、settings.wipeLocalAndroid、persona.narrativeRules、chat.imageAttachVision 等）已在阶段 2–5 各报告验收节裁定并由各自门禁覆盖；两部分合计 P1 行全部 ∈ {same, equivalent}（`pc_only_confirmed` 行均为产品已确认排除项）。
 
 | capabilityId | 判定 | 实现落点 | 备注 |
 |---|---|---|---|
