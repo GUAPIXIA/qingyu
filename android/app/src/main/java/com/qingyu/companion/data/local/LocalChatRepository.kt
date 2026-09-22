@@ -90,6 +90,8 @@ class LocalChatRepository(
      * 阶段 6 S6-01(d)：群聊本地生成闭环。为 null 时 [groupAiReply] **明确报错**（不静默）。
      */
     private val groupGeneration: com.qingyu.companion.chatcore.LocalGroupGenerationUseCase? = null,
+    /** 阶段 6 S6-01(e)：群聊长记忆摘要服务（自动触发；null = 不启用）。 */
+    private val groupMemory: com.qingyu.companion.chatcore.LocalGroupMemoryService? = null,
     /**
      * 会话级请求 id 生成（幂等键；本地场景仅用于事件关联）。
      * **必须保持在参数末位**，调用方以尾随 lambda 传入。
@@ -1387,19 +1389,66 @@ class LocalChatRepository(
      *
      * 与 PC `group:editMessage` 逐条对齐：**只改 content**（译文/方向按 PC 现状保留
      * 在存储层、由上层失效），并且**不 bump 会话 updatedAt**（PC 同）；
-     * 编辑历史会使派生记忆过期 → 推进历史修订号（S4-05 检查点口径）。
+     * 派生记忆失效走 **PC 检查点语义**（S6-01(e)，fixture `memory-invalidation.json`）：
+     * 变更在游标后保留记忆，在游标前/等于游标/游标缺失 → 经 CAS 全量清零。
      */
     override suspend fun editGroupMessage(groupId: String, sessionId: String, messageId: String, content: String) {
         val existing = store.listGroupMessages(sessionId).firstOrNull { it.id == messageId }
             ?: throw IllegalArgumentException("消息不存在：$messageId")
+        // 检查点判定**先于**写入（PC `invalidateGroupDerivedMemory` 同序：判定要用到消息仍在列表）
+        invalidateGroupDerivedMemoryIfNeeded(sessionId, messageId)
         store.updateGroupMessage(existing.copy(content = content))
-        store.bumpMemoryHistoryRevision(sessionId)
     }
 
-    /** 删除群聊消息（S6-01）：删除同样使派生记忆过期（推进历史修订号）。 */
+    /** 删除群聊消息（S6-01）：失效判定同编辑（PC 检查点语义，判定先于删除）。 */
     override suspend fun deleteGroupMessage(groupId: String, sessionId: String, messageId: String) {
+        invalidateGroupDerivedMemoryIfNeeded(sessionId, messageId)
         store.deleteGroupMessage(messageId, sessionId)
-        store.bumpMemoryHistoryRevision(sessionId)
+    }
+
+    /**
+     * 群派生记忆失效（S6-01(e)）：检查点决策见 `ChatMemoryInvalidation`（跨语言 fixture 钉住）。
+     * 全量清零经 CAS 提交；版本不符说明并发推进，静默放弃本次失效（与 PC `invalidateGroupDerivedMemory` 同）。
+     */
+    private suspend fun invalidateGroupDerivedMemoryIfNeeded(sessionId: String, changedMessageId: String?) {
+        val session = store.getSession(sessionId) ?: return
+        val memoryState = store.getMemoryState(sessionId) ?: return
+        val snapshot = com.qingyu.companion.chatcore.ChatMemoryInvalidation.Snapshot(
+            memory = memoryState.summary,
+            memoryCurrentState = memoryState.currentState,
+            memoryFacts = emptyList(),
+            memoryFactHistory = emptyList(),
+            factsVectors = emptyList(),
+            memoryLastMessageId = memoryState.memoryLastMessageId,
+            memoryVersion = memoryState.memoryVersion,
+            compressedSummary = session.compressedSummary.takeIf { it.isNotEmpty() },
+            memoryFactParseFailureCount = memoryState.factParseFailureCount.toLong(),
+            memoryFactRetryAfterVersion = memoryState.factRetryAfterVersion,
+        )
+        val messageIds = store.listGroupMessages(sessionId).map { it.id }
+        val decision = com.qingyu.companion.chatcore.ChatMemoryInvalidation.plan(
+            variant = "group",
+            session = snapshot,
+            messageIds = messageIds,
+            changedMessageId = changedMessageId,
+        )
+        if (decision is com.qingyu.companion.chatcore.ChatMemoryInvalidation.Decision.Invalidate) {
+            store.applyMemoryStateIfVersion(
+                sessionId,
+                decision.expectedVersion,
+                memoryState.copy(
+                    summary = "",
+                    currentState = "",
+                    factsJson = "[]",
+                    historyJson = "[]",
+                    factParseFailureCount = 0,
+                    factRetryAfterVersion = 0L,
+                    memoryVersion = 0L,
+                    memoryLastMessageId = null,
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+        }
     }
 
     /**
@@ -1426,13 +1475,42 @@ class LocalChatRepository(
                 it is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.WaitingUser
         }
         return when (terminal) {
-            is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.TurnFinished ->
+            is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.TurnFinished -> {
+                // S6-01(e)：本轮结束按自动记忆策略触发群摘要（发起即忘，失败不影响对话）
+                if (terminal.messageIds.isNotEmpty()) scheduleGroupMemorySummary(groupId, sessionId)
                 terminal.messageIds.isNotEmpty()
+            }
             is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.Rejected -> {
                 unsupported.value = "群聊回复未执行：${terminal.reason}"
                 false
             }
             else -> false
+        }
+    }
+
+    /**
+     * S6-01(e)：后台尝试群长记忆摘要。发起即忘——失败只记录，不影响对话可用性；
+     * 是否真正触发由 `ChatMemorySummaryPolicy` 按间隔与模式决定。
+     */
+    private fun scheduleGroupMemorySummary(groupId: String, sessionId: String) {
+        val service = groupMemory ?: return
+        scope.launch {
+            runCatching {
+                val (profile, apiKey) = activeProfileAndKey()
+                if (profile == null) return@launch
+                val session = store.getSession(sessionId) ?: return@launch
+                service.summarize(
+                    scope = scope,
+                    groupId = groupId,
+                    sessionId = sessionId,
+                    automatic = true,
+                    profile = profile,
+                    apiKey = apiKey,
+                    model = profile.model,
+                    autoMemoryInterval = session.autoMemoryInterval,
+                )
+                // 静默：群摘要的可见反馈归 S6-01f 记忆面板
+            }
         }
     }
 

@@ -266,6 +266,11 @@ class AppContainer(context: Context) {
                 profileProvider = { activeLocalProfile() },
                 apiKeyProvider = { activeLocalProfileId()?.let { profileId -> readSecretOrNull(profileId) } },
             ),
+            // 阶段 6 S6-01(e)：群长记忆摘要（自动触发；与生成共用执行层）
+            groupMemory = com.qingyu.companion.chatcore.LocalGroupMemoryService(
+                store = localSyncRepository,
+                gateway = com.qingyu.companion.chatcore.ModelClientGateway(modelClient),
+            ),
         )
 
     val repository: ChatRepository = chatRepository

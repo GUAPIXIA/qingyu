@@ -17,6 +17,7 @@
 - **S6-01(d)-1** = **`75d939a`**（2026-09-22，未推送，哈希补记 `daf68aa`）：`ChatGroupTurnMachine.kt` 群轮次调度器状态机（纯 Kotlin 领域状态机，决策不含副作用）+ `ChatGroupTurnMachineTest` 13/13（含归属锁定/接力链全终止条件）。
 - **S6-01(d)-2** = **`61b8e79`**（2026-09-22，未推送，哈希补记随后）：`LocalGroupGenerationUseCase.kt` 群本地生成闭环（消费状态机/装配/free 拆分/统一收尾管线，取消保正文）+ `groupAiReply` 去 notMigrated + `AppContainer` 接线 + `LocalGroupGenerationUseCaseTest` 8/8。
 - **S6-01(d)-3 世界书执行接入群装配** = **`3f7eed4`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：U-6-2 余项闭合——群/成员绑定世界书激活集、scanText 带 `【成员名】` 前缀、characterNames/Tags 与 entityVocabulary=成员名+tags、统一渲染器各桶按装配位置拼装、触发键回写会话近因窗口（环形 5）。`LocalGroupGenerationUseCaseTest` 增至 **10/10**。同时 **S6-02/03/04/07 已并行委派子代理实施中**。
+- **S6-01(e) 群记忆、CAS 与历史失效**（2026-09-22，未推送，提交哈希随后一笔补记）：`LocalGroupMemoryService.kt`（PC `groupMemoryManager` 语义逐条镜像：群消息源 `用户名:/【成员名】` 格式化、**系统提示逐字**（群名/成员名/事实提案协议/退避文案/「服务端负责规范化群聊范围和角色身份」）、事实提案 `scope=group:{gid}` + entityId 回退链（提案→同名成员→subject=用户名?`__user__`）、解析失败指数退避 `n>=3?v+2^(n-2):v`、**CAS 提交 stale 丢弃**（PC 字面量「本次旧摘要未写入」）、缺【时间线】保留旧时间线、游标只推进到总结位置、同会话并发合并）+ `LocalChatRepository` 群编辑/删除改 **PC 检查点失效**（`ChatMemoryInvalidation` fixture 语义，**判定先于写入**——判定需要消息仍在列表，顺序反了会退化成永远保守全清）+ 自动记忆触发（`groupAiReply` 成功后发起即忘，策略同单聊）。
 - PC 侧接线为**等价重构**：不改任何用户可观察行为（提示词、文案、调度结果、落盘语义均不变），由既有 43 条 `useGroupChatStore` 用例、12 条 `groupMemoryManager` 用例、6 条 checkpoint 用例与全量 `pnpm test` 佐证。
 
 ### 0.2 工作区并存改动（非本轮产物，未触碰）
@@ -168,6 +169,18 @@
 测试纠偏记录（守卫按设计工作）：①mention 用例误用 `forcedSpeakerId`（那是**立即接话=新轮**语义），改走发言计划后共用轮号成立；②「传输失败保留部分正文」必须用**带稳定句界**的文本——PC 语义是「稳定边界收束」，无句界的残句（如"稳定部分"）本就应被收尾管线丢弃（否则与"无正文不建空消息"矛盾）。最终用例改为：稳定句保留 + 残句收束 + `generationError` 只进提示字段。
 
 已知口径（登记不隐藏）：Android 会话行无法区分「personaId 未设置」与「显式 null」——非空即视为已显式设置（`resolvePersonaFields` 的 `sessionPersonaIdDefined` 语义保留，行格式升级留待确需时做）；群生成设置面暂用 **PC 默认值**（人设注入/场景门控/thought 开关的用户设置接线随 S6-01f 设置 UI）；世界书执行暂未接（`lorebookPlan=null`，见 U-6-2 余项）。
+
+### 3.8 S6-01(e) 门禁补记（群记忆、CAS 与历史失效）
+
+| 命令 | 结果 | 备注 |
+|---|---|---|
+| `.\gradlew.bat :app:compileDebugKotlin`（多次，间隔 45s–300s） | **被并行在途文件阻塞** | 失败输出**只含**两个子代理在写的文件（`media/MagicBytes.kt`、`diagnostics/DiagnosticsRedactor.kt` 的写入中半成品语法错），行号随其写入抖动（DiagnosticsRedactor EOF 173→178 仍在增长） |
+| 替代证据（主源码侧） | **本轮新增/修改的全部文件在历次编译尝试中零错误** | Kotlin 一次报告全部错误：错误清单从未包含 `LocalGroupMemoryService.kt`/`LocalChatRepository.kt`/`AppContainer.kt`（修掉 `toList` 缺导入后）——主源码侧等价于编译通过 |
+| 测试执行 | **顺延至下轮**（`LocalGroupMemoryServiceTest` 6 例 + `LocalGroupChatRepositoryTest` 检查点用例 1 例已写就） | 模块整体可编译后立即执行并补 XML 证据；代码提交随本次一并入库（提交信息记录上述替代证据），下轮验证失败则按报告回滚 |
+
+测试矩阵（写就待跑）：CAS stale 丢弃（PC 字面量「本次旧摘要未写入」）、事实提案 scope=group:{gid}+entityId 回退链（同名成员/用户名→`__user__`/显式 id）、缺【时间线】保留旧时间线+游标推进、解析失败指数退避（n=1→retryAfter=下一版本）、不足 4 条跳过且不调模型、提示词含群名/成员名与「服务端负责规范化群聊范围和角色身份」逐字；检查点失效：游标后保留 / 游标前 CAS 全量清零 / 删除同序（**判定先于删除**——顺序反了会退化成永远保守全清）。
+
+**过程教训（并发编排）**：6 线并行共享一个 Gradle 模块时，任一线的写入中半成品会阻塞全体编译；下轮起子代理产出应「各自收敛到可编译态再交回」，或按批次（≤3 线）并行。
 
 ## 4. 刻意取舍
 

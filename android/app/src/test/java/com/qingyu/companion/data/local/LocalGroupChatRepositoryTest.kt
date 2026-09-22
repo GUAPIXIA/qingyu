@@ -240,6 +240,49 @@ class LocalGroupChatRepositoryTest {
     }
 
     @Test
+    fun 群派生记忆按检查点失效：游标后保留、游标前清零(): Unit = runBlocking {
+        val f = fixture()
+        f.repository.createGroup(name = "群", memberIds = listOf("c1"))
+        val gid = f.repository.listGroups().single().id
+        val session = f.repository.createGroupSession(gid, title = "s")
+        f.repository.sendGroupMessage(gid, session.id, requestId = "req-1", content = "一")
+        f.repository.sendGroupMessage(gid, session.id, requestId = "req-2", content = "二")
+        f.repository.sendGroupMessage(gid, session.id, requestId = "req-3", content = "三")
+        f.store.putMemoryState(
+            com.qingyu.companion.local.db.LocalMemoryStateEntity(
+                id = "ms", sessionId = session.id, summary = "摘要", currentState = "状态",
+                memoryVersion = 3, memoryLastMessageId = "req-2", updatedAt = 0,
+            ),
+        )
+
+        // 变更在游标后 → 保留派生记忆
+        f.repository.editGroupMessage(gid, session.id, "req-3", "三改")
+        val kept = f.store.getMemoryState(session.id)!!
+        assertEquals("游标后变更必须保留记忆（PC 检查点语义）", 3L, kept.memoryVersion)
+        assertEquals("摘要保留", "摘要", kept.summary)
+
+        // 变更在游标前 → 经 CAS 全量清零
+        f.repository.editGroupMessage(gid, session.id, "req-1", "一改")
+        val reset = f.store.getMemoryState(session.id)!!
+        assertEquals("游标前变更必须全量失效", 0L, reset.memoryVersion)
+        assertEquals("摘要清空", "", reset.summary)
+        assertEquals("游标清空", null, reset.memoryLastMessageId)
+
+        // 删除同序：判定先于删除（删游标后消息保留）
+        f.repository.sendGroupMessage(gid, session.id, requestId = "req-4", content = "四")
+        f.store.putMemoryState(
+            com.qingyu.companion.local.db.LocalMemoryStateEntity(
+                id = "ms2", sessionId = session.id, summary = "新摘要",
+                memoryVersion = 5, memoryLastMessageId = "req-3", updatedAt = 0,
+            ),
+        )
+        f.repository.deleteGroupMessage(gid, session.id, "req-4")
+        assertEquals("删除游标后消息保留记忆", 5L, f.store.getMemoryState(session.id)!!.memoryVersion)
+        f.repository.deleteGroupMessage(gid, session.id, "req-1")
+        assertEquals("删除游标前消息清零", 0L, f.store.getMemoryState(session.id)!!.memoryVersion)
+    }
+
+    @Test
     fun groupMessagesAreSortedByLogicalTimeThenId(): Unit = runBlocking {
         val f = fixture()
         f.repository.createGroup(name = "群", memberIds = listOf("c1"))
