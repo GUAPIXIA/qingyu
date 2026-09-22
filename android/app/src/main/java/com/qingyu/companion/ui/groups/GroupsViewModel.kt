@@ -133,6 +133,81 @@ class GroupsViewModel(
     }
 
     fun clearActionError() = _ui.update { it.copy(actionError = null) }
+
+    // ---------- S6-01f 群编辑/删除、成员增删排序（第 1 项） ----------
+
+    /** 群改名（patchGroup name 键）。 */
+    fun renameGroup(groupId: String, name: String) {
+        viewModelScope.launch {
+            try {
+                repository.patchGroup(groupId, GroupSessionPatch.renamePatch(name))
+                refresh()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(actionError = e.toCompanionError()) }
+            }
+        }
+    }
+
+    /** 删除群聊（连带会话与消息）。 */
+    fun deleteGroup(groupId: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                repository.deleteGroup(groupId)
+                _ui.update { it.copy(selectedGroupId = null) }
+                refresh()
+                onSuccess()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(actionError = e.toCompanionError()) }
+            }
+        }
+    }
+
+    /** 添加成员。 */
+    fun addMembers(groupId: String, characterIds: List<String>) {
+        if (characterIds.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                repository.addGroupMembers(groupId, characterIds)
+                openGroup(groupId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(actionError = e.toCompanionError()) }
+            }
+        }
+    }
+
+    /** 删除成员（接力链停止语义由 ChatGroupTurnMachine 处理，UI 只驱动）。 */
+    fun removeMember(groupId: String, characterId: String) {
+        viewModelScope.launch {
+            try {
+                repository.removeGroupMember(groupId, characterId)
+                openGroup(groupId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(actionError = e.toCompanionError()) }
+            }
+        }
+    }
+
+    /** 成员排序（patchGroup memberIds 整表覆盖）。 */
+    fun reorderMembers(groupId: String, memberIds: List<String>) {
+        viewModelScope.launch {
+            try {
+                repository.patchGroup(groupId, GroupSessionPatch.memberOrderPatch(memberIds))
+                openGroup(groupId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(actionError = e.toCompanionError()) }
+            }
+        }
+    }
 }
 
 /**

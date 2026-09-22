@@ -119,7 +119,7 @@
 | group.aiReply | **same** | S6-01(d) 本地生成闭环（终局矩阵/归属锁定/共用轮号/立即接话） | 世界书/记忆接入已闭合 |
 | group.memory | **same** | S6-01(e) 群记忆 CAS/事实归一化/退避/检查点失效 | 测试执行见 §3.8 |
 | group.translate | **same** | S6-01(b) 群翻译（PC 短提示词变体逐字） | |
-| group.export | 待定 | 导出入口归 S6-01f（复用 `ChatSessionExport`） | |
+| group.export | **equivalent** | S6-01(f) `GroupExport.kt`（D-14 群口径 Markdown，`GroupExportTest` 5 例） | PC 现状「md 导出 speaker=raw characterId」不一致处按 D-14 登记（§2.3/§5.1），Android 按群口径实现；签修 PC 后同批对齐 |
 | chat.imageAttachVision | **equivalent** | S6-02 `media/**` | data URL 解析/识图能力判定/无 vision 模型发送前阻断（`VisionImageInputTest`、`VisionModelResolverTest` 全绿）；Android 端识图走附件同源管道，SAF 选图（与 PC 文件对话框等价） |
 | attachments.file | **equivalent** | S6-02 `media/**`（SAF/魔数/缩略图/blob store/EXIF） | 矩阵行原述「Android 图片为主 + SAF」；恶意输入表驱动（伪 MIME/路径穿越/截断/解压炸弹）、EXIF 默认剥离、内容寻址去重全绿（`AttachmentIngestServiceTest`×9、`AttachmentValidatorTest`、`MagicBytesTest`、`ExifPolicyTest`、`ContentBlobStoreTest`、`ImageInspectionTest`、`SyncAttachmentPolicyTest`、`ThumbnailPolicyTest`、`AndroidImageCodecTest`） |
 | tts.speakControl | **equivalent** | S6-03 `tts/**`（系统 TTS/队列/音频焦点） | 控制语义（队列/打断/暂停恢复/停止/焦点）逐条测试锁定；引擎面 Windows SAPI/Edge ↔ Android 系统 TTS/OpenAI 必然不同（矩阵行原判 equivalent） |
@@ -186,6 +186,10 @@
 **S6-01f 合流进行时（round 23–25 观察）**：纯逻辑五件（`GroupStreaming/GroupExport/GroupSessionPatch/GroupSettingsMapper/GroupMemoryFeedback` + `GroupGenerationDriver`）已落盘并验证（round 23：7 suites/45 tests/0 失败，含既有 `GroupChatViewModelTest`/`GroupsLoadStateTest` 回归）；round 25 批扩至 8 suites/51 tests，新增 `GroupChatViewModelStreamingTest`（③的 VM 层）**1 红为 TDD 先行**（测试已落、VM 实现跟进中，代理活跃施工面）。合流终验时按 §7 七项清单核验并重跑全绿。**round 26 复验**：51/1 无变化，Phase-1 诊断已备（失败点 = `GroupChatViewModelStreamingTest.kt:74`「落库 AI 回复可见」断言，即③的 TurnFinished 落库可见性缺口）——若下轮仍未收敛，按 U-6-8 先例接管实施（诊断与验收口径均已就位）。
 
 **U-6-8 并行写入冲突与收敛决策（同日）**：上文实施后，`9ba86042` 代理恢复活动并判定该实现为「半成品」，列出 4 处偏差并计划把 `content/backup/**` 收敛为终版。**逐条裁决**：③「群消息恢复依赖 ZIP 条目顺序」**成立**（三遍式内跨条目有序性违背「不把安全属性交给打包方」原则）；④「`groupOf` 对非对象条目抛异常炸整包」**成立**（偏离文件既有 null 容错惯例）；①「未复用 `EntityPayloads` 口径」部分成立（与备份文件既有显式序列化惯例相容，但任务书确要求 payload 口径单源）；②「缺 `groupSessions` 计数」成立（群会话并入 `sessions` 计数但键面应显式）。**决策：采纳其收敛版**（消息内嵌会话条目=排序安全、payload 口径单源、解析容错），`19c091a` 作中间态保留回滚点。**合流核验红线**：其终版测试必须**覆盖等价**——9 调度列逐一断言、identity 三键、合并语义三项不可缩水，缺了就补。
+
+### 2.9 S6-01(f) UI 收尾合流（`0f9cfcac` 产出 + 集成核验）
+
+七项验收清单逐项核验（实现落点均为 `ui/groups/**`）：①成员添加/删除/排序 = `GroupMembers.kt`（`GroupMembersTest`）②模式切换（mention|polling|free+autoMode+间隔+四叙事）= `GroupSessionPatch.kt` patch 白名单（`GroupSessionPatchTest` 10 例）③停止+流式 Delta 全语义 = `GroupStreaming.kt` reducer + `GroupGenerationDriver.kt`（generate Flow 驱动）+ `GroupChatViewModel` 接线（`GroupStreamingReducerTest` 9 例、`GroupChatViewModelStreamingTest`——Chunk 上屏/TurnFinished 落库可见/清缓冲，TDD 红转绿）④立即接话/续写/群导出（D-14 群口径）= `GroupExport.kt`（`GroupExportTest` 5 例）⑤TTS 入口 = `GroupChatScreen` `playGroup`（Windows-only 音色「不适用」口径随 S6-03）⑥`GroupGenerationSettings` 真值化 = `GroupSettingsMapper.kt`（`GroupSettingsMapperTest` 5 例）⑦记忆面板反馈 = `GroupMemoryFeedback.kt`（`GroupMemoryFeedbackTest` 4 例）。定向验证 **13 suites / 77 tests / 0 失败**（ui.groups 8 类 + content.backup 3 类；含既有 `GroupChatViewModelTest`/`GroupsLoadStateTest` 回归）。
 
 ## 3. 测试命令与结果
 
