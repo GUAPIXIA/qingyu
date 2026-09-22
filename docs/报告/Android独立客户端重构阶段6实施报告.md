@@ -311,8 +311,22 @@
 
 - **D-13（契约负责人）**：阶段 0 baseline `group-modes.json` 与 PC 群类型不对齐（模式命名 natural/nomination/poll ≠ mention/polling/free；消息字段 role/speakerId/nominate ≠ characterId/round；群记忆 memory.entries ≠ GroupSession.memory*）。选项：①重写 baseline fixture 对齐 PC 类型（推荐，改动仅测试资产）；②建映射层转译后再作 oracle（多一层可漂移代码）；③标记该文件仅作数据形态示意、不作 oracle（则 S6-01"与 PC fixture 对齐"改以本轮三份 chat-core fixture 为准）。
 - **D-14（产品 + 契约负责人）**：§2.3 的 PC 群行为不一致清单——Android 是**逐字对齐（含缺陷）**还是**修复后对齐**。阶段 6 §0 要求不为 Android 便利改 PC 行为，故本轮按逐字对齐执行；若产品判定其中属 PC 缺陷（如 free 中停消息不可见、群气泡不显示中断提示），按总方案 §3.4 须单独立项修 PC 并补 PC 回归证据，再同步 Kotlin。
-- **D-15（契约负责人，沿用阶段 5 遗留）**：S6-02 前置 D-12（`media_manifest` 跨端落点）与 S6-05 前置 D-9（`semanticRequired` 两端行为相反）仍未决，卡 S6-02 媒体同步语义与 S6-05 降级语义。
-- **D-16（产品）**：P2 条目 `chat.sessionStats`、`lorebook.keywordLocalization` 无纳入记录也无签字排期，「移动端 embedding ABI」决策无落地记录 —— 阶段 6 §4「其余 P2 项有签字确认的排期」目前证据不足，验收前必须补。
+- **D-15（契约负责人）**：S6-02 的 D-12（`media_manifest` 跨端落点）已按「内容寻址 blob + AttachmentRef 形状」实施（`media/**` 测试锁定），**media_manifest 契约本体仍待签字**；D-9（`semanticRequired` 两端行为相反）已**按 PC 现状**实施并登记未翻转（S6-05 `SemanticEntryGate` warn-once + `ChatLorebookChannels.ChannelCapabilities.semanticRequiredGated`），**行为翻转与否仍待签字**。
+- **D-16（产品）**：「移动端 embedding ABI」已裁定落地（**远程 → 设备模型包（签名/hash/断点续传/空间预检）→ 词法 BM25 三级降级**，验收表 §2.5 localModels 行）；余两项 `chat.sessionStats`、`lorebook.keywordLocalization` 仍**无签字排期**——阶段 6 §4「其余 P2 项有签字确认的排期」目前证据不足，验收前必须补签或明确排除。
+
+### 5.1 决策清单（送签版，2026-09-22）
+
+> 每项列：决策内容 / 工程现状（已按何口径实施+证据）/ 需要谁签 / 不签的默认后果。签字后回填本表并转 `已完成`。
+
+| # | 决策内容 | 工程现状（已实施口径） | 送签方 | 不签的默认后果 |
+|---|---|---|---|---|
+| **D-9** | `semanticRequired` 条目两端行为相反：PC 无向量**停用+warn-once**，阶段 5 快照为「关键词照常触发」 | **按 PC 现状**（无向量停用+warn-once）；`SemanticEntryGate`+`EmbeddingTierPolicy` 测试锁定；`ChatLorebookChannels.Entry.retrieval` 注释明确「本字段暂不分流」 | 产品/架构 | 保持 PC 现状（不翻转）；若签翻转需重生成语义 golden 并迁移既有条目数据 |
+| **D-11** | 群会话/群消息同步 payload 归一化口径 | **临时镜像** PC `group.ts` spread（−id +parentId）：`EntityPayloads.groupSessionPayload/groupMessagePayload`；契约行为 11 双实现 | 契约负责人 | 维持临时镜像；跨端 golden 每次契约变更需人工核对（无 schema 保护） |
+| **D-12** | `media_manifest` 跨端落点与字段 | 附件按**内容寻址 blob + AttachmentRef**（引用形状/尺寸/2MiB payload 上限测试锁定）；媒体默认**不同步**、显式保存才入 manifest（S6-02/S6-03 口径） | 契约负责人 | 维持引用形状；manifest 若定约不同需迁移 blob 键 |
+| **D-13** | 基线 `group-modes.json` 错形（natural/nomination/poll + role/speakerId）vs 三模式（mention/polling/free + characterId/round） | 基线**冻结未动**（阶段 0 约定）；三模式语义由 `group-scheduling.json` 44 例双向 golden 钉住 | 测试/契约 | 基线继续冻结；其覆盖缺口由 `group-scheduling.json` 承担 |
+| **D-14** | PC 群行为不一致 4 条（polling 不推进索引 / free 中停 `__free__` 不可见 / 群气泡不渲染 generationNotice / `__free__` 再生成 no-op） | Android **逐字对齐 PC 现状**（阶段 6 §0：不为降低实现成本改变已验证的 PC 行为） | 产品 | 维持两端一致的现状（含各自怪癖）；签修 PC 后 Android 需同批跟修 |
+| **D-15** | D-9 + D-12 组合放行 | 见上两行 | 契约负责人 | 同上 |
+| **D-16** | P2 缺口排期：`chat.sessionStats`、`lorebook.keywordLocalization`、移动端 embedding ABI | ABI **已裁定落地**（三级降级+模型包）；余两项仍无排期 | 产品 | 两项按「明确排除出阶段 6」处理并写入总方案 §5 排期缺口 |
 
 ### B-n（阻断）
 
