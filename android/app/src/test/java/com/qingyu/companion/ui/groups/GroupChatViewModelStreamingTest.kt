@@ -166,7 +166,89 @@ class GroupChatViewModelStreamingTest {
     }
 }
 
-private class ScriptedDriver : GroupGenerationDriver {: Flow<LocalGroupGenerationUseCase.Delta> = flowOf()
+/** S6-01f 第 1／2 项：模式切换 + 群编辑/成员增删排序 驱动群接口（白名单键）。 */
+@OptIn(ExperimentalCoroutinesApi::class)
+class GroupManagementActionsTest {
+
+    private val dispatcher = StandardTestDispatcher()
+    private lateinit var repo: StreamingGroupRepository
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(dispatcher)
+        repo = StreamingGroupRepository()
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `模式切换下发 patchGroup chatMode 白名单键`() = runTest(dispatcher) {
+        val vm = GroupChatViewModel(repo, "g1", "s1", null, null, null)
+        advanceUntilIdle()
+        vm.applyChatMode("free")
+        advanceUntilIdle()
+        assertEquals("chatMode 走群级补丁", mapOf("chatMode" to "free"), repo.patchGroupCalls.single())
+        assertNull("合法模式无错误", vm.ui.value.error)
+    }
+
+    @Test
+    fun `发言间隔与自动接力走群级补丁`() = runTest(dispatcher) {
+        val vm = GroupChatViewModel(repo, "g1", "s1", null, null, null)
+        advanceUntilIdle()
+        vm.applyAutoMode(true)
+        vm.applySpeakerInterval(1500)
+        advanceUntilIdle()
+        assertTrue("自动接力进群补丁", repo.patchGroupCalls.any { it["autoMode"] == true })
+        assertTrue("发言间隔进群补丁", repo.patchGroupCalls.any { it["speakerInterval"] == 1500 })
+    }
+
+    @Test
+    fun `叙事模式走会话补丁白名单键`() = runTest(dispatcher) {
+        val vm = GroupChatViewModel(repo, "g1", "s1", null, null, null)
+        advanceUntilIdle()
+        vm.applyNarrativeMode("omniscient")
+        advanceUntilIdle()
+        assertEquals("narrativeMode 走会话补丁", mapOf("narrativeMode" to "omniscient"), repo.patchSessionCalls.single())
+    }
+
+    @Test
+    fun `非法模式被拦截不下发`() = runTest(dispatcher) {
+        val vm = GroupChatViewModel(repo, "g1", "s1", null, null, null)
+        advanceUntilIdle()
+        vm.applyChatMode("natural")
+        advanceUntilIdle()
+        assertTrue("非法模式不进仓库", repo.patchGroupCalls.isEmpty())
+        assertNotNull("越界报错进提示", vm.ui.value.error)
+    }
+
+    @Test
+    fun `成员增删排序驱动群接口`() = runTest(dispatcher) {
+        val vm = GroupsViewModel(repo)
+        advanceUntilIdle()
+        vm.addMembers("g1", listOf("c9"))
+        vm.removeMember("g1", "c1")
+        vm.reorderMembers("g1", listOf("c2", "c1"))
+        advanceUntilIdle()
+        assertEquals("新增成员走 addGroupMembers", listOf("c9"), repo.addedMembers)
+        assertEquals("删除成员走 removeGroupMember", listOf("c1"), repo.removedMembers)
+        assertEquals("排序走 memberIds 整表覆盖", mapOf("memberIds" to listOf("c2", "c1")), repo.patchGroupCalls.single())
+    }
+
+    @Test
+    fun `删除群驱动 deleteGroup`() = runTest(dispatcher) {
+        val vm = GroupsViewModel(repo)
+        advanceUntilIdle()
+        vm.deleteGroup("g1")
+        advanceUntilIdle()
+        assertEquals("删除群调用 deleteGroup", "g1", repo.deletedGroup)
+    }
+}
+
+private class ScriptedDriver : GroupGenerationDriver {
+    var script: Flow<LocalGroupGenerationUseCase.Delta> = flowOf()
     var lastForced: String? = "unset"
     var lastChainEnabled: Boolean = true
 

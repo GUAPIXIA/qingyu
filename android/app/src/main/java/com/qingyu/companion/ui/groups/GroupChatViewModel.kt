@@ -42,6 +42,8 @@ class GroupChatViewModel(
         val generating: Boolean = false,
         val translatingMessageIds: Set<String> = emptySet(),
         val error: String? = null,
+        /** 当前发言模式（mention|polling|free），供模式切换高亮；null = 未加载。 */
+        val currentChatMode: String? = null,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -311,7 +313,10 @@ class GroupChatViewModel(
     // ---------- S6-01f 模式切换（第 2 项）：patchGroup 群级键 ----------
 
     /** 发言模式切换（mention | polling | free）。 */
-    fun applyChatMode(mode: String) = patchGroup { GroupSessionPatch.chatModePatch(mode) }
+    fun applyChatMode(mode: String) {
+        _ui.update { it.copy(currentChatMode = mode) }
+        patchGroup { GroupSessionPatch.chatModePatch(mode) }
+    }
 
     /** polling 自动接力开关。 */
     fun applyAutoMode(enabled: Boolean) = patchGroup { GroupSessionPatch.autoModePatch(enabled) }

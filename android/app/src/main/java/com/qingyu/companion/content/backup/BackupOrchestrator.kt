@@ -4,6 +4,8 @@ import com.qingyu.companion.chatcore.Ulid
 import com.qingyu.companion.content.CharacterCardCodec
 import com.qingyu.companion.content.PresetCodec
 import com.qingyu.companion.local.db.LocalCharacterEntity
+import com.qingyu.companion.local.db.LocalGroupEntity
+import com.qingyu.companion.local.db.LocalGroupMessageEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
 import com.qingyu.companion.local.db.LocalLorebookMappingTemplateEntity
 import com.qingyu.companion.local.db.LocalMessageEntity
@@ -14,6 +16,7 @@ import com.qingyu.companion.local.db.LocalRegexRuleEntity
 import com.qingyu.companion.local.db.LocalSessionEntity
 import com.qingyu.companion.local.db.LocalUsageClearMarkerEntity
 import com.qingyu.companion.local.db.LocalUsageRecordEntity
+import com.qingyu.companion.local.domain.EntityPayloads
 import com.qingyu.companion.local.domain.JsonValues
 import com.qingyu.companion.local.domain.LocalStore
 import java.io.File
@@ -86,6 +89,7 @@ class BackupOrchestrator(
         val usage = store.listUsage(limit = Int.MAX_VALUE)
         val clearMarkers = store.listUsageClearMarkers()
         val sessions = store.listSessions()
+        val groups = store.listGroups()
 
         entries += entry(BackupV3.Paths.PERSONAS, JSONArray(personas.map { personaJson(it) }).toString())
         entries += entry(BackupV3.Paths.REGEX_RULES, JSONArray(rules.map { regexJson(it) }).toString())
@@ -99,23 +103,28 @@ class BackupOrchestrator(
             JSONArray(clearMarkers.map { clearMarkerJson(it) }).toString(),
         )
         entries += entry(BackupV3.Paths.SETTINGS, JSONObject(publicSettingsJson()).toString())
+        // U-6-8：会话条目一视同仁地走 `chats/<sessionId>.json`。群会话（groupId 非空）是
+        // 「消息方言不同」的同一种条目：会话行 + 内嵌消息数组（群消息方言）。
+        // 群消息与它的会话**同条目**落位，「消息在群/会话之后」的依赖顺序由条目结构保证，
+        // 不靠 ZIP 条目顺序——那正是三遍式「不信打包方顺序」的原则。
+        var groupSessionCount = 0
+        var groupMessageCount = 0
         sessions.forEach { session ->
-            entries += entry(BackupV3.Paths.CHATS + session.id + ".json", JSONObject(sessionJson(session)).toString())
+            val json = if (session.groupId == null) {
+                sessionJson(session)
+            } else {
+                groupSessionCount += 1
+                val messages = store.listGroupMessages(session.id)
+                groupMessageCount += messages.size
+                groupSessionJson(session, messages)
+            }
+            entries += entry(BackupV3.Paths.CHATS + session.id + ".json", JSONObject(json).toString())
         }
 
-        // U-6-8：群行（含调度列）与群消息进包。群会话本身已随 chats/{sessionId}.json（带 groupId）出包；
-        // 群消息按群聚成一个数组文件，恢复时在**第三遍**（会话之后）落库——FK 级联要求会话先行。
-        val groups = store.listGroups()
-        var groupMessageCount = 0
+        // U-6-8：群行（含 9 个调度列）进包：`groups/<gid>.json`，每实体一文件，
+        // 与 `characters/<id>.json` 同一命名风格。
         groups.forEach { group ->
             entries += entry(BackupV3.Paths.GROUPS + group.id + ".json", groupJson(group))
-            val messages = sessions.filter { it.groupId == group.id }
-                .flatMap { store.listGroupMessages(it.id) }
-            entries += entry(
-                BackupV3.Paths.GROUPS + group.id + GROUP_MESSAGES_SUFFIX,
-                JSONArray(messages.map { groupMessageJson(it) }).toString(),
-            )
-            groupMessageCount += messages.size
         }
 
         counts["personas"] = personas.size
@@ -125,7 +134,11 @@ class BackupOrchestrator(
         counts["usageRecords"] = usage.size
         counts["usageClearMarkers"] = clearMarkers.size
         counts["sessions"] = sessions.size
+        // U-6-8：三个群计数键与其余键一样**总是在**（0 也是有信息量的数）。
+        // `sessions` 仍是全部会话行（含群会话，口径不变）；`groupSessions` 是其中 groupId 非空的
+        // 子集，`groupMessages` 是群消息条数。
         counts["groups"] = groups.size
+        counts["groupSessions"] = groupSessionCount
         counts["groupMessages"] = groupMessageCount
 
         // 媒体：**必须递归**收集。
@@ -168,113 +181,137 @@ class BackupOrchestrator(
     private fun entry(path: String, json: String) = BackupV3.Entry(path, json.toByteArray(Charsets.UTF_8))
 
     // ------------------------------------------------------------ U-6-8 群数据序列化
-    // 字段与 LocalGroupEntity（18 列，含 9 调度列）/LocalGroupMessageEntity（24 列）逐一对称；
-    // 备份是跨版本存档，**显式列字段**而不是反射/序列化器推断——缺列会在 BackupGroupRoundTripTest 变红。
+    //
+    // 布局决策（与 `chats/` 对称）：群行每实体一文件 `groups/<gid>.json`（与 `characters/<id>.json`
+    // 同一命名风格）；**群会话并入 `chats/<sid>.json`**，群消息内嵌在同一会话条目的 `messages`
+    // 数组里。两个理由：① 恢复端只有「一条目 = 会话 + 其消息」一种形状，比「群消息另放一个
+    // 数组文件」少一个分支；② 「消息在群/会话之后」的依赖顺序由**条目结构**保证，不依赖 ZIP
+    // 条目顺序——群消息单独成条目时，外部包把它排在会话条目之前就撞了 FK，而三遍式的原则
+    // 正是「不信打包方的顺序」。
+    //
+    // 字段口径：群行/群会话/群消息的备份字段**直接复用 [EntityPayloads.groupPayload] /
+    // [EntityPayloads.groupSessionPayload] / [EntityPayloads.groupMessagePayload]**（D-11 临时
+    // 镜像：PC `electron/ipc/group.ts` spread − id + parentId），只补上 payload 刻意不发的本地
+    // 保真列（id / seq / 时间戳元数据 / 归属 / 预设 / 世界书）。键名与同步口径同名同义
+    // （`memberIds`、`images`、`mentionedCharacterIds`、`timestamp`…），PC 打开也读得懂。
 
-    private val GROUP_MESSAGES_SUFFIX = ".messages.json"
+    private fun groupJson(row: LocalGroupEntity): String {
+        // 基底 = 同步 payload（name / memberIds / createdAt / updatedAt）
+        val out = LinkedHashMap<String, Any?>(EntityPayloads.groupPayload(row))
+        // 备份保真列：同步契约是稀疏白名单——群调度参数两端都不进契约（见 groupPayload 的注释），
+        // 但备份是全保真存档。9 个调度列（chatMode / autoMode / maxRounds / speakerInterval /
+        // currentSpeakerIndex / presetId / systemPrompt / lorebookIds / defaultNarrativeMode）
+        // 一个都不能少：缺哪一列就在 BackupGroupRoundTripTest 的九列逐一断言里变红。
+        out["id"] = row.id
+        out["mode"] = row.mode
+        out["memoryEnabled"] = row.memoryEnabled
+        out["avatarRef"] = row.avatarPath
+        out["chatMode"] = row.chatMode
+        out["autoMode"] = row.autoMode
+        out["maxRounds"] = row.maxRounds
+        out["speakerInterval"] = row.speakerInterval
+        out["currentSpeakerIndex"] = row.currentSpeakerIndex
+        out["presetId"] = row.presetId
+        out["systemPrompt"] = row.systemPrompt
+        out["lorebookIds"] = JsonValues.parseArray(row.lorebookIdsJson)
+        out["defaultNarrativeMode"] = row.defaultNarrativeMode
+        // 导入来源随包保真（U-6-8 要求全字段往返）：原样进出，缺键（外部包）即未设置
+        out["importedFrom"] = row.importedFrom
+        return JSONObject(out).toString(2)
+    }
 
-    private fun groupJson(row: com.qingyu.companion.local.db.LocalGroupEntity): String = JSONObject().apply {
-        put("id", row.id)
-        put("name", row.name)
-        put("mode", row.mode)
-        put("characterIdsJson", row.characterIdsJson)
-        put("memoryEnabled", row.memoryEnabled)
-        put("avatarPath", row.avatarPath)
-        put("importedFrom", row.importedFrom)
-        put("createdAt", row.createdAt)
-        put("updatedAt", row.updatedAt)
-        put("chatMode", row.chatMode)
-        put("autoMode", row.autoMode)
-        put("maxRounds", row.maxRounds)
-        put("speakerInterval", row.speakerInterval)
-        put("currentSpeakerIndex", row.currentSpeakerIndex)
-        put("presetId", row.presetId)
-        put("systemPrompt", row.systemPrompt)
-        put("lorebookIdsJson", row.lorebookIdsJson)
-        put("defaultNarrativeMode", row.defaultNarrativeMode)
-    }.toString()
-
-    private fun groupOf(payload: ByteArray): com.qingyu.companion.local.db.LocalGroupEntity? {
-        val obj = JSONObject(String(payload, Charsets.UTF_8))
-        val id = obj.optString("id")
-        if (id.isEmpty()) return null
-        return com.qingyu.companion.local.db.LocalGroupEntity(
+    private fun groupOf(payload: ByteArray): LocalGroupEntity? {
+        val obj = jsonOf(payload) ?: return null
+        val id = string(obj, "id").ifEmpty { return null }
+        return LocalGroupEntity(
             id = id,
-            name = obj.optString("name"),
-            mode = obj.optString("mode", "group"),
-            characterIdsJson = obj.optString("characterIdsJson", "[]"),
-            memoryEnabled = obj.optBoolean("memoryEnabled", true),
-            avatarPath = if (obj.isNull("avatarPath")) null else obj.optString("avatarPath"),
-            importedFrom = if (obj.isNull("importedFrom")) null else obj.optString("importedFrom"),
+            name = string(obj, "name"),
+            mode = obj.optString("mode", "sequential"),
+            characterIdsJson = array(obj, "memberIds", "[]"),
+            memoryEnabled = obj.optBoolean("memoryEnabled", false),
+            avatarPath = nullableString(obj, "avatarRef"),
+            // 备份是存档：导入来源**原样进出**（全字段往返），不重盖 SOURCE 标记；缺键即未设置
+            importedFrom = nullableString(obj, "importedFrom"),
             createdAt = obj.optLong("createdAt"),
             updatedAt = obj.optLong("updatedAt"),
-            chatMode = obj.optString("chatMode", "mention"),
-            autoMode = obj.optBoolean("autoMode"),
-            maxRounds = obj.optInt("maxRounds", 3),
-            speakerInterval = obj.optInt("speakerInterval", 1500),
-            currentSpeakerIndex = obj.optInt("currentSpeakerIndex"),
-            presetId = if (obj.isNull("presetId")) null else obj.optString("presetId"),
-            systemPrompt = obj.optString("systemPrompt"),
-            lorebookIdsJson = obj.optString("lorebookIdsJson", "[]"),
-            defaultNarrativeMode = obj.optString("defaultNarrativeMode", "immersive"),
+            chatMode = obj.optString("chatMode", "polling"),
+            autoMode = obj.optBoolean("autoMode", false),
+            maxRounds = obj.optInt("maxRounds", 1),
+            speakerInterval = obj.optInt("speakerInterval", 2000),
+            currentSpeakerIndex = obj.optInt("currentSpeakerIndex", 0),
+            presetId = nullableString(obj, "presetId"),
+            systemPrompt = string(obj, "systemPrompt"),
+            lorebookIdsJson = array(obj, "lorebookIds", "[]"),
+            defaultNarrativeMode = string(obj, "defaultNarrativeMode"),
         )
     }
 
-    private fun groupMessageJson(row: com.qingyu.companion.local.db.LocalGroupMessageEntity): JSONObject = JSONObject().apply {
-        put("id", row.id)
-        put("sessionId", row.sessionId)
-        put("groupId", row.groupId)
-        put("characterId", row.characterId)
-        put("content", row.content)
-        put("imagesJson", row.imagesJson)
-        put("round", row.round)
-        put("translation", row.translation)
-        put("replyToId", row.replyToId)
-        put("status", row.status)
-        put("mentionedIdsJson", row.mentionedIdsJson)
-        put("narrativeMode", row.narrativeMode)
-        put("speakerKind", row.speakerKind)
-        put("generationKind", row.generationKind)
-        put("dialogueDirectionsJson", row.dialogueDirectionsJson)
-        put("dialogueDirectionsGeneratedAt", row.dialogueDirectionsGeneratedAt)
-        put("generationNotice", row.generationNotice)
-        put("generationError", row.generationError)
-        put("contentRenderMode", row.contentRenderMode)
-        put("logicalTime", row.logicalTime)
-        put("seq", row.seq)
-        put("importedFrom", row.importedFrom)
-        put("createdAt", row.createdAt)
-        put("updatedAt", row.updatedAt)
+    /**
+     * 群会话条目（`chats/<sid>.json`）：会话行 + 内嵌群消息。
+     *
+     * 会话行基底是 [EntityPayloads.groupSessionPayload]（D-11 镜像口径），再补备份保真列
+     * id / 归属 / 预设 / 世界书——键名与单聊会话条目（[sessionJson]）一致，所以恢复端解析
+     * 两种会话条目共用同一段代码（见 `sessionEntryOf`）。
+     */
+    private fun groupSessionJson(
+        session: LocalSessionEntity,
+        messages: List<LocalGroupMessageEntity>,
+    ): Map<String, Any?> {
+        val out = LinkedHashMap<String, Any?>(EntityPayloads.groupSessionPayload(session))
+        out["id"] = session.id
+        out["characterId"] = session.characterId
+        out["presetId"] = session.presetId
+        out["lorebookIds"] = JsonValues.parseArray(session.lorebookIdsJson)
+        out["messages"] = messages.map { groupMessageJson(it) }
+        return out
     }
 
-    private fun groupMessageOf(obj: JSONObject): com.qingyu.companion.local.db.LocalGroupMessageEntity? {
-        val id = obj.optString("id")
-        if (id.isEmpty()) return null
-        return com.qingyu.companion.local.db.LocalGroupMessageEntity(
+    private fun groupMessageJson(row: LocalGroupMessageEntity): Map<String, Any?> {
+        val out = LinkedHashMap<String, Any?>(EntityPayloads.groupMessagePayload(row))
+        // 备份保真列：payload 镜像口径刻意不发 id / seq / 时间戳元数据（同步按父级寻址），
+        // 备份却要靠它们把这一行原样建回来——seq 是 (sessionId, seq) 唯一索引的一半。
+        out["id"] = row.id
+        out["seq"] = row.seq
+        out["createdAt"] = row.createdAt
+        out["updatedAt"] = row.updatedAt
+        out["importedFrom"] = row.importedFrom
+        return out
+    }
+
+    private fun groupMessageOf(
+        obj: JSONObject,
+        fallbackSessionId: String,
+        fallbackGroupId: String,
+    ): LocalGroupMessageEntity? {
+        val id = string(obj, "id").ifEmpty { return null }
+        val timestamp = obj.optLong("timestamp", 0L)
+        return LocalGroupMessageEntity(
             id = id,
-            sessionId = obj.optString("sessionId"),
-            groupId = obj.optString("groupId"),
-            characterId = obj.optString("characterId"),
-            content = obj.optString("content"),
-            imagesJson = obj.optString("imagesJson", "[]"),
-            round = obj.optInt("round", 1),
-            translation = if (obj.isNull("translation")) null else obj.optString("translation"),
-            replyToId = if (obj.isNull("replyToId")) null else obj.optString("replyToId"),
-            status = if (obj.isNull("status")) null else obj.optString("status"),
-            mentionedIdsJson = obj.optString("mentionedIdsJson", "[]"),
-            narrativeMode = if (obj.isNull("narrativeMode")) null else obj.optString("narrativeMode"),
-            speakerKind = if (obj.isNull("speakerKind")) null else obj.optString("speakerKind"),
-            generationKind = if (obj.isNull("generationKind")) null else obj.optString("generationKind"),
-            dialogueDirectionsJson = if (obj.isNull("dialogueDirectionsJson")) null else obj.optString("dialogueDirectionsJson"),
-            dialogueDirectionsGeneratedAt = if (obj.isNull("dialogueDirectionsGeneratedAt")) null else obj.optLong("dialogueDirectionsGeneratedAt"),
-            generationNotice = if (obj.isNull("generationNotice")) null else obj.optString("generationNotice"),
-            generationError = if (obj.isNull("generationError")) null else obj.optString("generationError"),
-            contentRenderMode = if (obj.isNull("contentRenderMode")) null else obj.optString("contentRenderMode"),
-            logicalTime = obj.optLong("logicalTime"),
-            seq = obj.optLong("seq"),
-            importedFrom = if (obj.isNull("importedFrom")) null else obj.optString("importedFrom"),
-            createdAt = obj.optLong("createdAt"),
-            updatedAt = obj.optLong("updatedAt"),
+            sessionId = string(obj, "sessionId").ifEmpty { fallbackSessionId },
+            groupId = string(obj, "groupId").ifEmpty { fallbackGroupId },
+            // 归属缺键（外部旧包）按用户发言哨兵处理，绝不落空串——空串不是合法归属
+            characterId = string(obj, "characterId").ifEmpty { SPEAKER_USER },
+            content = string(obj, "content"),
+            imagesJson = array(obj, "images", "[]").replace("\\/", "/"),
+            round = obj.optInt("round", 0),
+            translation = nullableString(obj, "translation"),
+            replyToId = nullableString(obj, "replyToId"),
+            status = nullableString(obj, "status"),
+            mentionedIdsJson = array(obj, "mentionedCharacterIds", "[]"),
+            narrativeMode = nullableString(obj, "narrativeMode"),
+            speakerKind = nullableString(obj, "speakerKind"),
+            generationKind = nullableString(obj, "generationKind"),
+            dialogueDirectionsJson = obj.optJSONArray("dialogueDirections")?.toString(),
+            dialogueDirectionsGeneratedAt = nullableLong(obj, "dialogueDirectionsGeneratedAt"),
+            generationNotice = nullableString(obj, "generationNotice"),
+            generationError = nullableString(obj, "generationError"),
+            contentRenderMode = nullableString(obj, "contentRenderMode"),
+            logicalTime = timestamp,
+            seq = obj.optLong("seq", 0L),
+            createdAt = obj.optLong("createdAt", timestamp),
+            updatedAt = obj.optLong("updatedAt", timestamp),
+            // 同 groupOf：导入来源随包保真，不重盖
+            importedFrom = nullableString(obj, "importedFrom"),
         )
     }
 
@@ -338,14 +375,15 @@ class BackupOrchestrator(
             }?.let { throw IllegalStateException(it) }
 
             val applied = store.inTransaction {
-                // 这 10 个键在旧实现里**总是存在**（即使计数为 0），UI 与用例都按「键在不在」读它，
+                // 这些键在旧实现里**总是存在**（即使计数为 0），UI 与用例都按「键在不在」读它，
                 // 所以先归零再累加，保持 `applied` 的形状稳定（例如「包里有 1 条清理游标，
                 // 但那是我自己的 → usageClearMarkers=0」是一个有信息量的 0，不是缺键）。
+                // U-6-8 增补 groups / groupSessions / groupMessages 三键，沿用同一形状。
                 val counts = LinkedHashMap<String, Int>().apply {
                     listOf(
                         "characters", "lorebooks", "presets", "personas", "regexRules",
                         "mappingTemplates", "quickReplySets", "usageRecords",
-                        "usageClearMarkers", "sessions", "groups", "groupMessages",
+                        "usageClearMarkers", "sessions", "groups", "groupSessions", "groupMessages",
                     ).forEach { put(it, 0) }
                 }
                 val quickReplies = ArrayList<LocalQuickReplySetEntity>()
@@ -397,8 +435,12 @@ class BackupOrchestrator(
                             }
                         }
 
-                        // U-6-8：群行是**父实体**（第二遍落库）；群消息文件跳过，第三遍在会话之后处理
-                        path.startsWith(BackupV3.Paths.GROUPS) && !path.endsWith(GROUP_MESSAGES_SUFFIX) ->
+                        // U-6-8：群行是**父实体**（群会话的 FK 挂在它上面），第二遍落库。
+                        // 只认 `groups/<gid>.json` 这一种「每实体一文件」形状；PC 的 `groups/`
+                        // 是 index.json + 每群目录（sessions.json / .jsonl）布局，那些**嵌套**条目
+                        // 不在这里解析（也不误读），落到 else 原样跳过。
+                        path.startsWith(BackupV3.Paths.GROUPS) &&
+                            !path.removePrefix(BackupV3.Paths.GROUPS).contains('/') ->
                             groupOf(payload)?.let { store.putGroup(it); counts.bump("groups") }
 
                         path == BackupV3.Paths.SETTINGS ->
@@ -406,8 +448,8 @@ class BackupOrchestrator(
                                 store.putPublicSetting(section, key, valueJson)
                             }
 
-                        // 媒体在第一遍已处理；`groups/` 目前 PC/Android 都还没有群数据；
-                        // 其余路径预检已拒（不在清单里就进不来）。
+                        // 媒体在第一遍已处理；`groups/` 的嵌套布局（PC 的 index.json / 每群目录）
+                        // 不解析、原样跳过；其余路径预检已拒（不在清单里就进不来）。
                         else -> Unit
                     }
                 }?.let { throw IllegalStateException(it) }
@@ -420,21 +462,23 @@ class BackupOrchestrator(
                 }
                 counts["quickReplySets"] = quickReplies.size
 
-                // ── 第三遍：**子实体**（会话与消息）必须在父（角色/群）之后。
+                // ── 第三遍：**子实体**（会话与其消息）必须在父（角色/群）之后。
                 // 单独走一遍而不是依赖 ZIP 内部顺序：外部产出的包（PC 的）条目顺序不受我们控制，
                 // 靠顺序就等于把一个安全属性交给打包方。三遍读的代价是 I/O，不是内存。
+                //
+                // U-6-8 落位：群会话是 `chats/` 的同形条目（groupId 非空），群消息**内嵌**在同一
+                // 会话条目里——同一个处理器里先 putSession 再 appendGroupMessage，「消息在群/会话
+                // 之后」由条目结构保证（群行已在第二遍落库），与 ZIP 条目顺序无关。
                 BackupV3.streamEntries(bytes) { path, payload ->
                     if (path.startsWith(BackupV3.Paths.CHATS)) {
-                        sessionOf(payload)?.let { (session, messages) ->
-                            store.putSession(session)
-                            messages.forEach { store.appendMessage(it) }
+                        sessionEntryOf(payload)?.let { entry ->
+                            store.putSession(entry.session)
+                            entry.plainMessages.forEach { store.appendMessage(it) }
+                            entry.groupMessages.forEach { store.appendGroupMessage(it); counts.bump("groupMessages") }
                             counts.bump("sessions")
-                        }
-                    }
-                    // U-6-8：群消息是**子实体**，必须在群/会话之后（FK 级联）
-                    if (path.startsWith(BackupV3.Paths.GROUPS) && path.endsWith(GROUP_MESSAGES_SUFFIX)) {
-                        eachIndexed(payload) { _, obj ->
-                            groupMessageOf(obj)?.let { store.appendGroupMessage(it); counts.bump("groupMessages") }
+                            // groupSessions 是 sessions 的子集（groupId 非空那部分），两个键都在：
+                            // 读「会话数」看 sessions，读「群会话数」看 groupSessions
+                            if (entry.session.groupId != null) counts.bump("groupSessions")
                         }
                     }
                 }?.let { throw IllegalStateException(it) }
@@ -660,6 +704,10 @@ class BackupOrchestrator(
     private fun nullableString(obj: JSONObject, key: String): String? =
         if (obj.isNull(key)) null else obj.optString(key).takeIf { it.isNotEmpty() }
 
+    /** 缺键与 JSON null 都算「未设置」（`isNull` 对缺键也返回 true）。 */
+    private fun nullableLong(obj: JSONObject, key: String): Long? =
+        if (obj.isNull(key)) null else obj.optLong(key)
+
     private fun array(obj: JSONObject, key: String, fallback: String): String =
         obj.optJSONArray(key)?.toString() ?: fallback
 
@@ -846,51 +894,77 @@ class BackupOrchestrator(
         )
     }
 
-    private fun sessionOf(payload: ByteArray): Pair<LocalSessionEntity, List<LocalMessageEntity>>? {
+    /** 一个 `chats/<sid>.json` 条目的解析结果：会话行 + 按归属分流的两种消息方言。 */
+    private class SessionEntry(
+        val session: LocalSessionEntity,
+        val plainMessages: List<LocalMessageEntity>,
+        val groupMessages: List<LocalGroupMessageEntity>,
+    )
+
+    /**
+     * `chats/` 条目 → 会话 + 其消息。**一种条目形状、两种消息方言**：
+     * `groupId == null` 是单聊消息（[LocalMessageEntity] 方言），否则是群消息（D-11 镜像口径，
+     * 字段复用 [EntityPayloads.groupMessagePayload]）。方言按会话归属分流，两张消息表互不串
+     * ——串了就是「群消息出现在单聊记录里」级别的数据事故。
+     */
+    private fun sessionEntryOf(payload: ByteArray): SessionEntry? {
         val obj = jsonOf(payload) ?: return null
         val id = string(obj, "id").ifEmpty { return null }
+        val groupId = nullableString(obj, "groupId")
         val now = obj.optLong("updatedAt", System.currentTimeMillis())
         val session = LocalSessionEntity(
             id = id,
             characterId = nullableString(obj, "characterId"),
-            groupId = nullableString(obj, "groupId"),
+            groupId = groupId,
             title = string(obj, "title"),
             personaId = nullableString(obj, "personaId"),
             presetId = nullableString(obj, "presetId"),
             lorebookIdsJson = array(obj, "lorebookIds", "[]"),
             createdAt = obj.optLong("createdAt", now),
             updatedAt = now,
+            // U-6-8：群会话条目按 D-11 镜像口径会带 narrativeMode；单聊条目没有这个键 → 空串（未设置）。
+            // 此前这里不读它，群会话的叙事模式会被恢复悄悄抹掉。
+            narrativeMode = nullableString(obj, "narrativeMode") ?: "",
             importedFrom = SOURCE,
         )
-        val messages = obj.optJSONArray("messages").let { array ->
-            if (array == null) emptyList() else (0 until array.length()).mapNotNull { index ->
-                val message = array.optJSONObject(index) ?: return@mapNotNull null
-                val messageId = string(message, "id").ifEmpty { return@mapNotNull null }
-                LocalMessageEntity(
-                    id = messageId,
-                    sessionId = id,
-                    // 优先用消息自带的说话人；旧包没有这个键时回落到会话的角色（单聊两者相同）
-                    characterId = nullableString(message, "characterId") ?: session.characterId,
-                    role = string(message, "role").ifEmpty { "user" },
-                    content = string(message, "content"),
-                    swipesJson = message.optJSONArray("swipes")?.toString(),
-                    swipeIndex = if (message.isNull("swipeIndex")) null else message.optInt("swipeIndex"),
-                    imagesJson = message.optJSONArray("images")?.toString() ?: "[]",
-                    usageJson = message.optJSONObject("usage")?.toString(),
-                    generationStatus = nullableString(message, "generationStatus"),
-                    generationNotice = nullableString(message, "generationNotice"),
-                    generationError = nullableString(message, "generationError"),
-                    logicalTime = message.optLong("logicalTime", System.currentTimeMillis() + index),
-                    seq = message.optLong("seq", index.toLong()),
-                    replyToId = nullableString(message, "replyToId"),
-                    translation = nullableString(message, "translation"),
-                    createdAt = message.optLong("createdAt", now),
-                    updatedAt = message.optLong("updatedAt", now),
-                    importedFrom = SOURCE,
-                )
+        val messages = obj.optJSONArray("messages") ?: return SessionEntry(session, emptyList(), emptyList())
+        val plain = ArrayList<LocalMessageEntity>()
+        val grouped = ArrayList<LocalGroupMessageEntity>()
+        for (index in 0 until messages.length()) {
+            val message = messages.optJSONObject(index) ?: continue
+            if (groupId == null) {
+                messageOf(message, session, index)?.let { plain += it }
+            } else {
+                groupMessageOf(message, id, groupId)?.let { grouped += it }
             }
         }
-        return session to messages
+        return SessionEntry(session, plain, grouped)
+    }
+
+    private fun messageOf(message: JSONObject, session: LocalSessionEntity, index: Int): LocalMessageEntity? {
+        val messageId = string(message, "id").ifEmpty { return null }
+        return LocalMessageEntity(
+            id = messageId,
+            sessionId = session.id,
+            // 优先用消息自带的说话人；旧包没有这个键时回落到会话的角色（单聊两者相同）
+            characterId = nullableString(message, "characterId") ?: session.characterId,
+            role = string(message, "role").ifEmpty { "user" },
+            content = string(message, "content"),
+            swipesJson = message.optJSONArray("swipes")?.toString(),
+            swipeIndex = if (message.isNull("swipeIndex")) null else message.optInt("swipeIndex"),
+            imagesJson = message.optJSONArray("images")?.toString() ?: "[]",
+            usageJson = message.optJSONObject("usage")?.toString(),
+            generationStatus = nullableString(message, "generationStatus"),
+            generationNotice = nullableString(message, "generationNotice"),
+            generationError = nullableString(message, "generationError"),
+            logicalTime = message.optLong("logicalTime", System.currentTimeMillis() + index),
+            seq = message.optLong("seq", index.toLong()),
+            replyToId = nullableString(message, "replyToId"),
+            translation = nullableString(message, "translation"),
+            createdAt = message.optLong("createdAt", session.updatedAt),
+            updatedAt = message.optLong("updatedAt", session.updatedAt),
+            importedFrom = SOURCE,
+        )
     }
 
     private fun settingsOf(payload: ByteArray): List<Triple<String, String, String>> {
@@ -916,6 +990,9 @@ class BackupOrchestrator(
     companion object {
         const val PLATFORM = "android"
         const val SOURCE = "backup-v3"
+
+        /** 群消息归属哨兵：用户发言（PC `GroupMessage.characterId` 的 `__user__`）。 */
+        private const val SPEAKER_USER = "__user__"
         private const val INCOMING_DIR = ".incoming"
     }
 }

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
@@ -93,6 +94,8 @@ internal fun GroupMessageActionSheet(
     onEdit: () -> Unit,
     onTranslate: () -> Unit,
     onSpeak: () -> Unit,
+    /** 立即接话（S6-01f forcedSpeakerId）：让该成员开新轮接话；null = 不显示入口。 */
+    onSpeakNow: (() -> Unit)? = null,
     onDelete: () -> Unit,
 ) {
     val qy = qyColors()
@@ -147,6 +150,9 @@ internal fun GroupMessageActionSheet(
             GroupActionRow(Icons.Filled.Edit, stringResource(R.string.chat_action_edit), onEdit)
             GroupActionRow(Icons.Filled.Translate, stringResource(R.string.chat_action_translate), onTranslate)
             GroupActionRow(Icons.Filled.VolumeUp, stringResource(R.string.chat_action_speak), onSpeak)
+            if (onSpeakNow != null) {
+                GroupActionRow(Icons.Filled.PlayArrow, "让此成员接话", onSpeakNow)
+            }
 
             Spacer(Modifier.height(6.dp))
             HorizontalDivider(color = qy.lineSoft)

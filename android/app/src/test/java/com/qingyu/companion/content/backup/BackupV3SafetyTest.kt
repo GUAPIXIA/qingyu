@@ -374,6 +374,62 @@ class BackupV3SafetyTest {
         }
     }
 
+    /**
+     * U-6-8：`groups/` 条目与其余条目同受三条红线约束——篡改、未登记（夹带）、路径穿越。
+     * 群数据此前没有任何安全覆盖，三条里漏掉任何一条都是「借备份文件写库」的入口。
+     */
+    @Test
+    fun groupEntriesAreCoveredByTamperSmugglingAndTraversalRejections() {
+        val entries = listOf(
+            BackupV3.Entry("groups/g1.json", """{"id":"g1","name":"甲"}""".toByteArray()),
+            BackupV3.Entry("chats/gs1.json", """{"id":"gs1","groupId":"g1"}""".toByteArray()),
+        )
+        val manifest = BackupV3.manifestOf(entries, "0.17.2", "android", 1L, counts = mapOf("groups" to 1))
+        assertTrue(
+            BackupV3.inspect(BackupV3.build(entries, manifest)) is BackupV3.InspectResult.Ok,
+            "完好的群条目必须过预检（否则自己导出的包自己恢复不了）",
+        )
+
+        // 篡改群行正文但沿用旧清单：哈希必须对不上
+        val tampered = listOf(
+            BackupV3.Entry("groups/g1.json", """{"id":"g1","name":"乙"}""".toByteArray()),
+            entries[1],
+        )
+        assertRejected(BackupV3.build(tampered, manifest), "groups/ 条目被篡改必须整包拒收")
+
+        // 清单里有、包里没有
+        assertRejected(BackupV3.build(listOf(entries[1]), manifest), "缺 groups/ 条目必须整包拒收")
+
+        // 包里有、清单里没有（夹带群条目）
+        val smuggled = entries + BackupV3.Entry("groups/evil.json", "{}".toByteArray())
+        assertRejected(BackupV3.build(smuggled, manifest), "未登记的 groups/ 条目必须整包拒收")
+
+        // 路径穿越形状：条目名校验拒，打包侧也直接抛
+        assertTrue(
+            BackupV3.rejectReasonForEntryName("groups/../escape.json") != null,
+            "groups/ 前缀不能洗白上级目录片段（否则可写出任意路径）",
+        )
+        val failure = runCatching {
+            BackupV3.build(listOf(BackupV3.Entry("groups/../escape.json", "{}".toByteArray())), manifest)
+        }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException, "穿越形状必须在打包阶段就抛出，实际：$failure")
+    }
+
+    /**
+     * U-6-8：合法条目前缀清单必须登记 `groups/`。
+     * 装配层按 [BackupCollections.ENTITY_PREFIXES] 决定哪些前缀是「合法备份路径」，
+     * 漏登记的后果是自己导出的 `groups/` 条目被预检当非法路径拒收。
+     */
+    @Test
+    fun collectionRegistryKeepsGroupsAndChatsRegisteredAsLegalEntryPrefixes() {
+        listOf(BackupV3.Paths.GROUPS, BackupV3.Paths.CHATS).forEach { prefix ->
+            assertTrue(
+                prefix in BackupCollections.ENTITY_PREFIXES,
+                "合法条目前缀清单必须登记 ${prefix}，否则自己导出的条目会被拒收",
+            )
+        }
+    }
+
     private fun assertRejected(bytes: ByteArray, message: String) {
         val result = BackupV3.inspect(bytes)
         assertTrue(result is BackupV3.InspectResult.Rejected, "$message（实际通过）")

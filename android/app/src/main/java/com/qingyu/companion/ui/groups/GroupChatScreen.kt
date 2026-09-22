@@ -110,6 +110,8 @@ fun GroupChatScreen(
     val ui by vm.ui.collectAsStateWithLifecycle()
     val input by vm.input.collectAsStateWithLifecycle()
     val memberNames by vm.memberNames.collectAsStateWithLifecycle()
+    val streaming by vm.streaming.collectAsStateWithLifecycle()
+    val memoryFeedback by vm.memoryFeedback.collectAsStateWithLifecycle()
     // 消息操作状态
     var menuMessage by remember { mutableStateOf<GroupMessage?>(null) }
     var editingMessage by remember { mutableStateOf<GroupMessage?>(null) }
@@ -200,7 +202,34 @@ fun GroupChatScreen(
                         }
                     }
                 }
-                if (ui.generating) {
+                // S6-01f：流式实时上屏（Chunk）+ 结构化收尾（提示绝不进正文，语义钉子）
+                if (streaming.streamingText.isNotBlank()) {
+                    Text(
+                        streaming.streamingText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = qy.soft,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
+                streaming.error?.let {
+                    Text(
+                        "生成失败：${it}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = qy.danger,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+                if (streaming.error == null) {
+                    streaming.notice?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = qy.muted.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
+                }
+                if (ui.generating || streaming.active) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -209,6 +238,61 @@ fun GroupChatScreen(
                         Spacer(Modifier.width(6.dp))
                         Text(stringResource(R.string.msg_ai_generating), color = qy.soft, style = MaterialTheme.typography.bodySmall)
                     }
+                }
+
+                // S6-01f：模式切换 + 停止 + 立即接话/续写/导出/群记忆动作
+                val modeOptions = listOf("mention" to "提及", "polling" to "轮流", "free" to "自由")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    modeOptions.forEach { (wire, label) ->
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = qy.accent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (ui.currentChatMode == wire) qy.accentSoft else qy.bg2)
+                                .clickable { vm.applyChatMode(wire) }
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (streaming.showStop) {
+                        Text(
+                            "停止",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = qy.danger,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { vm.stop() }
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    GroupQuickAction("续写", enabled = !ui.generating && !ui.sending) { vm.continueWrite() }
+                    GroupQuickAction("群导出", enabled = true) {
+                        clipboard.setText(AnnotatedString(vm.exportMarkdown(groupName, "", "")))
+                    }
+                    GroupQuickAction("群记忆", enabled = true) { vm.summarizeMemory() }
+                }
+                memoryFeedback?.let {
+                    Text(
+                        it.text,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (it.isError) qy.danger else qy.muted,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
                 }
 
                 // 输入栏（方案 B）：bg2 圆角 22 + 细描边 + 40dp 圆形暖金发送键（收窄 2/5，居中）
@@ -297,6 +381,14 @@ fun GroupChatScreen(
                     container.ttsPlayer.playGroup(groupId, sessionId, message.id)
                 }
             },
+            onSpeakNow = if (!message.isUser) {
+                {
+                    menuMessage = null
+                    vm.speakNow(message.characterId)
+                }
+            } else {
+                null
+            },
             onDelete = {
                 menuMessage = null
                 deleteTarget = message
@@ -358,6 +450,21 @@ fun GroupChatScreen(
             },
         )
     }
+}
+
+/** S6-01f 快捷动作（续写/群导出/群记忆）：弱文字 chip，不可用时降透明。 */
+@Composable
+private fun GroupQuickAction(label: String, enabled: Boolean, onClick: () -> Unit) {
+    val qy = qyColors()
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (enabled) qy.accent else qy.muted.copy(alpha = 0.4f),
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    )
 }
 
 /** 群消息操作面板（方案 B 底部弹出）：grip + 消息预览 + 44dp 动作行 + 红色删除 */
