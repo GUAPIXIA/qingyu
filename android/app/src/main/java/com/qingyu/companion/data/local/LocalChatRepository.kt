@@ -1303,52 +1303,375 @@ class LocalChatRepository(
      */
     override suspend fun fetchVersionInfo(): VersionInfo? = notMigrated("版本信息", null)
 
+    // ---------------------------------------------------------------- 群聊（阶段 6 S6-01：本地权威）
+
+    /**
+     * 群聊自阶段 6 起为**本地权威数据**（关闭 PC 后群聊独立可用，S6-01 完成定义）。
+     *
+     * 仍未本地化的只有 [groupAiReply]（群生成闭环依赖群调度器状态机 + 群上下文装配，
+     * 属 S6-01d/S6-01c 后续子项）——它继续走 [notMigrated]，不假装成功。
+     */
+
     override suspend fun listGroups(): List<com.qingyu.companion.model.GroupChat> =
-        notMigrated("群聊列表", emptyList())
+        store.listGroups().map { it.toGroupChat() }
 
     override suspend fun listGroupSessions(groupId: String): List<com.qingyu.companion.model.GroupSession> =
-        notMigrated("群聊会话列表", emptyList())
+        store.listSessions()
+            .filter { it.groupId == groupId }
+            .sortedWith(compareByDescending<com.qingyu.companion.local.db.LocalSessionEntity> { it.updatedAt }.thenBy { it.id })
+            .map { it.toGroupSession(store.countGroupMessages(it.id)) }
 
     override suspend fun listGroupMessages(
         groupId: String,
         sessionId: String,
-    ): List<com.qingyu.companion.model.GroupMessage> = notMigrated("群聊消息列表", emptyList())
+    ): List<com.qingyu.companion.model.GroupMessage> = store.listGroupMessages(sessionId)
+        // 展示顺序 = (logicalTime, id) 稳定排序（总方案 §6.3）
+        .sortedWith(compareBy({ it.logicalTime }, { it.id }))
+        .map { it.toGroupMessage() }
 
+    /**
+     * 发送群聊用户消息（S6-01）。
+     *
+     * 与 PC `useGroupChatStore.sendMessage` 的公共前序对齐：
+     * - `requestId` 即消息 id（幂等键：弱网重发**不写第二条**，同 id 重放直接返回成功）；
+     * - 轮次 = `max(rounds, 0) + 1`（[ChatGroupScheduling.nextGroupRound]，与 PC 同一份逻辑）；
+     * - 身份快照：`generationKind='manual'`，`speakerKind` 由会话叙事模式决定
+     *   （omniscient → narrator，其余 → persona）。
+     */
     override suspend fun sendGroupMessage(
         groupId: String,
         sessionId: String,
         requestId: String,
         content: String,
-    ): Boolean = notMigrated("群聊发送", false)
+    ): Boolean {
+        val session = store.getSession(sessionId)
+            ?: throw IllegalArgumentException("群聊会话不存在：$sessionId")
+        require(session.groupId == groupId) { "会话不属于该群聊" }
+        // 幂等：同一 requestId 重发只落一条
+        if (store.listGroupMessages(sessionId).any { it.id == requestId }) return true
 
-    override suspend fun editGroupMessage(groupId: String, sessionId: String, messageId: String, content: String) {
-        notMigrated("群聊消息编辑", Unit)
+        val now = System.currentTimeMillis()
+        val narrative = resolveSessionNarrativeMode(session.narrativeMode)
+        store.appendGroupMessage(
+            com.qingyu.companion.local.db.LocalGroupMessageEntity(
+                id = requestId,
+                sessionId = sessionId,
+                groupId = groupId,
+                characterId = "__user__",
+                content = content,
+                round = com.qingyu.companion.chatcore.ChatGroupScheduling
+                    .nextGroupRound(store.listGroupMessages(sessionId).map { it.round.toLong() })
+                    .toInt(),
+                status = "sent",
+                narrativeMode = narrative,
+                speakerKind = if (narrative == "omniscient") "narrator" else "persona",
+                generationKind = "manual",
+                logicalTime = now,
+                seq = -1,
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
+        // 与 PC `group:saveMessage` 同口径：消息落盘推进会话 updatedAt
+        store.putSession(session.copy(updatedAt = now))
+        return true
     }
 
+    /**
+     * 编辑群聊消息（S6-01）。
+     *
+     * 与 PC `group:editMessage` 逐条对齐：**只改 content**（译文/方向按 PC 现状保留
+     * 在存储层、由上层失效），并且**不 bump 会话 updatedAt**（PC 同）；
+     * 编辑历史会使派生记忆过期 → 推进历史修订号（S4-05 检查点口径）。
+     */
+    override suspend fun editGroupMessage(groupId: String, sessionId: String, messageId: String, content: String) {
+        val existing = store.listGroupMessages(sessionId).firstOrNull { it.id == messageId }
+            ?: throw IllegalArgumentException("消息不存在：$messageId")
+        store.updateGroupMessage(existing.copy(content = content))
+        store.bumpMemoryHistoryRevision(sessionId)
+    }
+
+    /** 删除群聊消息（S6-01）：删除同样使派生记忆过期（推进历史修订号）。 */
     override suspend fun deleteGroupMessage(groupId: String, sessionId: String, messageId: String) {
-        notMigrated("群聊消息删除", Unit)
+        store.deleteGroupMessage(messageId, sessionId)
+        store.bumpMemoryHistoryRevision(sessionId)
     }
 
     override suspend fun groupAiReply(groupId: String, sessionId: String, speakerId: String?): Boolean =
         notMigrated("群聊 AI 回复", false)
 
-    override suspend fun createGroup(name: String?, memberIds: List<String>): Boolean =
-        notMigrated("新建群聊", false)
+    /**
+     * 新建群聊（S6-01）：与 PC `GroupChatPage.confirmCreate` 的新建默认一致
+     * （polling / 不自动接力 / maxRounds 1 / 2000ms / `builtin-default` 预设）；
+     * 未给名称时用成员名 `、` 连接（PC 同）。
+     */
+    override suspend fun createGroup(name: String?, memberIds: List<String>): Boolean {
+        val now = System.currentTimeMillis()
+        // 缺省群名 = 成员名「、」连接（PC confirmCreate 口径）；joinToString 的 lambda 非挂起，先取名再拼接
+        val resolvedName = name?.takeIf { it.isNotBlank() } ?: run {
+            val names = ArrayList<String>(memberIds.size)
+            for (id in memberIds) names += store.getCharacter(id)?.name ?: id
+            names.joinToString("、")
+        }
+        store.putGroup(
+            com.qingyu.companion.local.db.LocalGroupEntity(
+                id = com.qingyu.companion.chatcore.Ulid.newId(),
+                name = resolvedName,
+                mode = "manual",
+                characterIdsJson = com.qingyu.companion.local.domain.JsonValues.stringify(memberIds),
+                chatMode = "polling",
+                autoMode = false,
+                maxRounds = 1,
+                speakerInterval = 2000,
+                currentSpeakerIndex = 0,
+                presetId = "builtin-default",
+                systemPrompt = "",
+                lorebookIdsJson = "[]",
+                defaultNarrativeMode = "",
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
+        return true
+    }
 
+    /**
+     * 修改群聊设置（S6-01）。白名单键（越界键报错，不静默丢弃）：
+     * `name` / `chatMode` / `autoMode` / `maxRounds` / `speakerInterval` /
+     * `currentSpeakerIndex` / `presetId` / `systemPrompt` / `lorebookIds` /
+     * `defaultNarrativeMode` / `memberIds`（整体替换 = 成员增删与**排序**的统一入口）。
+     */
     override suspend fun patchGroup(groupId: String, patch: Map<String, Any?>) {
-        notMigrated("群聊设置", Unit)
+        val group = store.getGroup(groupId) ?: throw IllegalArgumentException("群聊不存在：$groupId")
+        store.putGroup(applyGroupPatch(group, patch))
     }
 
+    /** 添加群聊成员（S6-01）：追加到成员顺序末尾；已存在的成员不重复、不改变位置。 */
     override suspend fun addGroupMembers(groupId: String, characterIds: List<String>) {
-        notMigrated("群聊成员添加", Unit)
+        val group = store.getGroup(groupId) ?: throw IllegalArgumentException("群聊不存在：$groupId")
+        val current = parseStringList(group.characterIdsJson)
+        val merged = current + characterIds.filter { it !in current }
+        store.putGroup(group.copy(characterIdsJson = com.qingyu.companion.local.domain.JsonValues.stringify(merged)))
     }
 
+    /** 删除群聊成员（S6-01）：从成员顺序中移除（轮转顺序即 memberIds 顺序）。 */
     override suspend fun removeGroupMember(groupId: String, characterId: String) {
-        notMigrated("群聊成员移除", Unit)
+        val group = store.getGroup(groupId) ?: throw IllegalArgumentException("群聊不存在：$groupId")
+        val merged = parseStringList(group.characterIdsJson).filter { it != characterId }
+        store.putGroup(group.copy(characterIdsJson = com.qingyu.companion.local.domain.JsonValues.stringify(merged)))
     }
 
-    override suspend fun groupTranslate(groupId: String, sessionId: String, messageId: String): String? =
-        notMigrated("群聊翻译", null)
+    /**
+     * 删除群聊（S6-01）：**先删会话（含消息），再删群**——顺序不可反。
+     *
+     * 会话删除走 [LocalStore.deleteSession] 的 tombstone 记账（消息随会话级联清理），
+     * 群删除走 [LocalStore.deleteGroup] 的 tombstone；先删群会让会话的 tombstone
+     * 永久失去 parentId（父行已不在），§6.3 的删除并发/孤儿检测就归不了位。
+     */
+    override suspend fun deleteGroup(groupId: String) {
+        store.listSessions().filter { it.groupId == groupId }.forEach { store.deleteSession(it.id) }
+        store.deleteGroup(groupId)
+    }
+
+    /**
+     * 新建群聊会话（S6-01）：群会话 = `local_sessions` 中 `group_id` 非空的行。
+     *
+     * 记忆配置暂按「关闭 / manual / 10」落盘；跟随全局默认记忆配置属 S6-01e
+     * （群记忆接入）范围，届时按 `resolveDefaultGroupMemoryConfig` 同口径补齐。
+     */
+    override suspend fun createGroupSession(groupId: String, title: String?): com.qingyu.companion.model.GroupSession {
+        store.getGroup(groupId) ?: throw IllegalArgumentException("群聊不存在：$groupId")
+        val id = com.qingyu.companion.chatcore.Ulid.newId()
+        val now = System.currentTimeMillis()
+        store.putSession(
+            LocalSessionEntity(
+                id = id,
+                groupId = groupId,
+                title = title?.takeIf { it.isNotBlank() } ?: "新对话",
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
+        return store.getSession(id)!!.toGroupSession(0)
+    }
+
+    override suspend fun renameGroupSession(groupId: String, sessionId: String, title: String) {
+        val session = store.getSession(sessionId) ?: throw IllegalArgumentException("会话不存在：$sessionId")
+        require(session.groupId == groupId) { "会话不属于该群聊" }
+        store.putSession(session.copy(title = title))
+    }
+
+    override suspend fun deleteGroupSession(groupId: String, sessionId: String) {
+        val session = store.getSession(sessionId) ?: return
+        require(session.groupId == groupId) { "会话不属于该群聊" }
+        store.deleteSession(sessionId)
+    }
+
+    /**
+     * 修改群聊会话设置（S6-01）。白名单键（越界键报错）：
+     * `title` / `personaId` / `narrativeMode` / `dialogueDirectionsEnabled` /
+     * `memoryEnabled` / `memoryMode` / `autoMemoryInterval`。
+     */
+    override suspend fun patchGroupSession(groupId: String, sessionId: String, patch: Map<String, Any?>) {
+        val session = store.getSession(sessionId) ?: throw IllegalArgumentException("会话不存在：$sessionId")
+        require(session.groupId == groupId) { "会话不属于该群聊" }
+        var next = session
+        for ((key, value) in patch) {
+            next = when (key) {
+                "title" -> next.copy(title = requireString(key, value))
+                "personaId" -> next.copy(personaId = value as? String)
+                "narrativeMode" -> next.copy(narrativeMode = requireNarrativeMode(key, value))
+                "dialogueDirectionsEnabled" -> next.copy(dialogueDirectionsEnabled = requireBoolean(key, value))
+                "memoryEnabled" -> next.copy(memoryEnabled = requireBoolean(key, value))
+                "memoryMode" -> next.copy(memoryMode = requireMemoryMode(key, value))
+                "autoMemoryInterval" -> next.copy(autoMemoryInterval = requireInt(key, value, min = 1))
+                else -> throw IllegalArgumentException("未知的群聊会话设置键：$key")
+            }
+        }
+        store.putSession(next)
+    }
+
+    /**
+     * 翻译群聊消息（S6-01）：与 PC 群翻译**短提示词变体**逐字对齐
+     * （`你是一个翻译助手。请将以下内容翻译成{目标语言}。只输出翻译结果，不要添加任何解释。`
+     * ——PC 群聊用的是短变体，与单聊 `buildMessageTranslationSystemPrompt` 有意不同）；
+     * 译文以同 id 覆盖写回 `translation`，用量按独立 task type 记账。
+     */
+    override suspend fun groupTranslate(groupId: String, sessionId: String, messageId: String): String? {
+        val target = store.listGroupMessages(sessionId).firstOrNull { it.id == messageId }
+            ?: throw IllegalArgumentException("目标消息不存在：$messageId")
+        val (profile, apiKey) = activeProfileAndKey()
+        if (profile == null) throw IllegalStateException("未配置可用的 API 连接，无法翻译")
+
+        val model = profile.model
+        val targetLang = getSettings().translationTargetLang.ifBlank { "中文" }
+        val plan = com.qingyu.companion.chatcore.ChatGenerationTaskBudget.resolveGenerationTaskBudget(
+            com.qingyu.companion.chatcore.ChatGenerationTaskBudget.Input(
+                task = "translation",
+                model = model,
+                inputChars = target.content.length,
+            ),
+        )
+        val client = auxGateway ?: throw IllegalStateException("辅助生成未接线，无法翻译")
+        val events = client.stream(
+            profile.provider,
+            profile,
+            com.qingyu.companion.network.models.ModelChatRequest(
+                model = model,
+                messages = listOf(
+                    com.qingyu.companion.network.models.ChatMessageDto(
+                        "system",
+                        "你是一个翻译助手。请将以下内容翻译成$targetLang。只输出翻译结果，不要添加任何解释。",
+                    ),
+                    com.qingyu.companion.network.models.ChatMessageDto("user", target.content),
+                ),
+                temperature = com.qingyu.companion.chatcore.ChatTranslationPrompt.TEMPERATURE,
+                maxTokens = plan.request.requestMaxTokens,
+                stream = false,
+            ),
+            apiKey,
+        ).first.toList()
+        events.filterIsInstance<com.qingyu.companion.network.models.ModelStreamEvent.Failure>().firstOrNull()
+            ?.let { throw IllegalStateException(it.error.message) }
+        val raw = events.filterIsInstance<com.qingyu.companion.network.models.ModelStreamEvent.Chunk>()
+            .joinToString("") { it.value.deltaText }
+        val translation = com.qingyu.companion.chatcore.ChatTranslationPrompt.stripTranslationWrapper(raw)
+        if (translation.isEmpty()) throw IllegalStateException("翻译结果为空，请重试")
+        store.updateGroupMessage(target.copy(translation = translation))
+        runCatching {
+            val metrics = com.qingyu.companion.chatcore.ChatTextMetrics
+            val promptChars = metrics.countVisibleCharacters(
+                "你是一个翻译助手。请将以下内容翻译成$targetLang。只输出翻译结果，不要添加任何解释。",
+            ) + metrics.countVisibleCharacters(target.content)
+            val outputChars = metrics.countVisibleCharacters(translation)
+            if (outputChars > 0) {
+                store.recordUsage(
+                    com.qingyu.companion.local.db.LocalUsageRecordEntity(
+                        id = "group-translation-$messageId-${System.currentTimeMillis()}",
+                        sessionId = sessionId,
+                        messageId = messageId,
+                        provider = "",
+                        model = model,
+                        promptTokens = 0,
+                        completionTokens = 0,
+                        createdAt = System.currentTimeMillis(),
+                        taskType = "translation",
+                        inputChars = promptChars,
+                        outputChars = outputChars,
+                    ),
+                )
+            }
+        }
+        return translation
+    }
+
+    /** 群聊设置补丁：白名单逐键校验（枚举/范围非法一律报错，不静默纠正）。 */
+    private fun applyGroupPatch(
+        group: com.qingyu.companion.local.db.LocalGroupEntity,
+        patch: Map<String, Any?>,
+    ): com.qingyu.companion.local.db.LocalGroupEntity {
+        var next = group
+        for ((key, value) in patch) {
+            next = when (key) {
+                "name" -> next.copy(name = requireString(key, value))
+                "chatMode" -> {
+                    val mode = requireString(key, value)
+                    require(mode in setOf("mention", "polling", "free")) { "参数无效：chatMode" }
+                    next.copy(chatMode = mode)
+                }
+                "autoMode" -> next.copy(autoMode = requireBoolean(key, value))
+                "maxRounds" -> next.copy(maxRounds = requireInt(key, value, min = 1))
+                "speakerInterval" -> next.copy(speakerInterval = requireInt(key, value, min = 0))
+                "currentSpeakerIndex" -> next.copy(currentSpeakerIndex = requireInt(key, value, min = 0))
+                "presetId" -> next.copy(presetId = value as? String)
+                "systemPrompt" -> next.copy(systemPrompt = requireString(key, value))
+                "lorebookIds" -> next.copy(lorebookIdsJson = com.qingyu.companion.local.domain.JsonValues.stringify(requireStringList(key, value)))
+                "defaultNarrativeMode" -> next.copy(defaultNarrativeMode = requireNarrativeMode(key, value))
+                "memberIds" -> next.copy(characterIdsJson = com.qingyu.companion.local.domain.JsonValues.stringify(requireStringList(key, value)))
+                else -> throw IllegalArgumentException("未知的群聊设置键：$key")
+            }
+        }
+        return next
+    }
+
+    private fun requireString(key: String, value: Any?): String =
+        value as? String ?: throw IllegalArgumentException("参数无效：$key")
+
+    private fun requireBoolean(key: String, value: Any?): Boolean =
+        value as? Boolean ?: throw IllegalArgumentException("参数无效：$key")
+
+    private fun requireInt(key: String, value: Any?, min: Int): Int {
+        val v = (value as? Number)?.toInt() ?: throw IllegalArgumentException("参数无效：$key")
+        require(v >= min) { "参数无效：$key" }
+        return v
+    }
+
+    private fun requireStringList(key: String, value: Any?): List<String> {
+        val list = value as? List<*> ?: throw IllegalArgumentException("参数无效：$key")
+        return list.map { it as? String ?: throw IllegalArgumentException("参数无效：$key") }
+    }
+
+    private fun requireNarrativeMode(key: String, value: Any?): String {
+        val v = value as? String ?: throw IllegalArgumentException("参数无效：$key")
+        require(v in setOf("", "immersive", "omniscient")) { "参数无效：$key" }
+        return v
+    }
+
+    private fun requireMemoryMode(key: String, value: Any?): String {
+        val v = value as? String ?: throw IllegalArgumentException("参数无效：$key")
+        require(v in setOf("manual", "auto")) { "参数无效：$key" }
+        return v
+    }
+
+    private fun parseStringList(json: String): List<String> =
+        com.qingyu.companion.local.domain.JsonValues.parseArray(json).mapNotNull { it as? String }
+
+    /** 会话叙事模式解析（PC `resolveNarrativeMode(session.narrativeMode)` 单候选口径）：非法/未设一律 immersive。 */
+    private fun resolveSessionNarrativeMode(stored: String): String =
+        when (stored) {
+            "immersive", "omniscient" -> stored
+            else -> "immersive"
+        }
 
     companion object {
         const val PAGE_SIZE = 30
@@ -1402,3 +1725,65 @@ private fun com.qingyu.companion.local.db.LocalCharacterEntity.toCharacter(): Ch
     firstMessage = firstMessage,
     updatedAt = updatedAt,
 )
+
+// ---------------------------------------------------------------- 群聊实体 → DTO（阶段 6 S6-01）
+
+private val groupJson = kotlinx.serialization.json.Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    explicitNulls = false
+}
+
+private fun com.qingyu.companion.local.db.LocalGroupEntity.toGroupChat(): com.qingyu.companion.model.GroupChat =
+    com.qingyu.companion.model.GroupChat(
+        id = id,
+        name = name,
+        memberIds = com.qingyu.companion.local.domain.JsonValues.parseArray(characterIdsJson).mapNotNull { it as? String },
+        chatMode = chatMode,
+        autoMode = autoMode,
+        maxRounds = maxRounds,
+        speakerInterval = speakerInterval,
+        currentSpeakerIndex = currentSpeakerIndex,
+        presetId = presetId,
+        systemPrompt = systemPrompt,
+        lorebookIds = com.qingyu.companion.local.domain.JsonValues.parseArray(lorebookIdsJson).mapNotNull { it as? String },
+        defaultNarrativeMode = defaultNarrativeMode,
+    )
+
+private fun LocalSessionEntity.toGroupSession(messageCount: Int): com.qingyu.companion.model.GroupSession =
+    com.qingyu.companion.model.GroupSession(
+        id = id,
+        groupId = groupId.orEmpty(),
+        title = title,
+        messageCount = messageCount,
+        dialogueDirectionsEnabled = dialogueDirectionsEnabled,
+        personaId = personaId,
+        narrativeMode = narrativeMode,
+        memoryEnabled = memoryEnabled,
+        memoryMode = memoryMode,
+        autoMemoryInterval = autoMemoryInterval,
+    )
+
+private fun com.qingyu.companion.local.db.LocalGroupMessageEntity.toGroupMessage(): com.qingyu.companion.model.GroupMessage =
+    com.qingyu.companion.model.GroupMessage(
+        id = id,
+        groupId = groupId,
+        characterId = characterId,
+        content = content,
+        images = com.qingyu.companion.local.domain.JsonValues.parseArray(imagesJson).mapNotNull { it as? String },
+        timestamp = logicalTime,
+        round = round,
+        translation = translation,
+        replyToId = replyToId,
+        narrativeMode = narrativeMode,
+        speakerKind = speakerKind,
+        generationKind = generationKind,
+        status = status,
+        mentionedCharacterIds = com.qingyu.companion.local.domain.JsonValues.parseArray(mentionedIdsJson).mapNotNull { it as? String },
+        dialogueDirections = dialogueDirectionsJson?.takeIf { it.isNotBlank() }?.let { json ->
+            runCatching { groupJson.decodeFromString<List<com.qingyu.companion.model.DialogueDirection>>(json) }.getOrNull()
+        },
+        generationNotice = generationNotice,
+        generationError = generationError,
+        contentRenderMode = contentRenderMode,
+    )

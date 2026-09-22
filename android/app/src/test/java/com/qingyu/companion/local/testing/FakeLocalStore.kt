@@ -7,6 +7,7 @@ import com.qingyu.companion.local.db.LocalCharacterEntity
 import com.qingyu.companion.local.db.LocalConnectionProfileEntity
 import com.qingyu.companion.local.db.LocalDeviceSettingEntity
 import com.qingyu.companion.local.db.LocalGroupEntity
+import com.qingyu.companion.local.db.LocalGroupMessageEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
 import com.qingyu.companion.local.db.LocalLorebookMappingTemplateEntity
 import com.qingyu.companion.local.db.LocalMediaManifestEntity
@@ -79,6 +80,7 @@ class FakeLocalStore(
     val quickReplySets = MutableStateFlow<List<LocalQuickReplySetEntity>>(emptyList())
     val mappingTemplates = MutableStateFlow<List<LocalLorebookMappingTemplateEntity>>(emptyList())
     val groups = MutableStateFlow<List<LocalGroupEntity>>(emptyList())
+    val groupMessages = MutableStateFlow<List<LocalGroupMessageEntity>>(emptyList())
     val sessions = MutableStateFlow<List<LocalSessionEntity>>(emptyList())
     private val messages = MutableStateFlow<List<LocalMessageEntity>>(emptyList())
     private val memoryStates = mutableMapOf<String, LocalMemoryStateEntity>()
@@ -645,6 +647,8 @@ class FakeLocalStore(
 
     override suspend fun listGroups(): List<LocalGroupEntity> = groups.value
 
+    override suspend fun getGroup(id: String): LocalGroupEntity? = groups.value.firstOrNull { it.id == id }
+
     override suspend fun putGroup(entity: LocalGroupEntity) = transaction {
         val now = System.currentTimeMillis()
         val row = entity.copy(createdAt = if (entity.createdAt == 0L) now else entity.createdAt, updatedAt = now)
@@ -689,6 +693,7 @@ class FakeLocalStore(
         val parent = sessions.value.firstOrNull { it.id == id }?.let { it.groupId ?: it.characterId }
         sessions.value = sessions.value.filterNot { it.id == id }
         messages.value = messages.value.filterNot { it.sessionId == id }
+        groupMessages.value = groupMessages.value.filterNot { it.sessionId == id }
         memoryFacts.value = memoryFacts.value.filterNot { it.sessionId == id }
         tombstone("session", id, parentId = parent)
     }
@@ -732,6 +737,57 @@ class FakeLocalStore(
     override suspend fun deleteMessage(id: String, sessionId: String) = transaction {
         messages.value = messages.value.filterNot { it.id == id }
         tombstone("message", id, parentId = sessionId)
+    }
+
+    // ---------------------------------------------------------------- 群消息（阶段 6 S6-01）
+
+    override fun observeGroupMessages(sessionId: String): Flow<List<LocalGroupMessageEntity>> =
+        groupMessages.map { list -> list.filter { it.sessionId == sessionId }.sortedBy { it.seq } }
+
+    override suspend fun listGroupMessages(sessionId: String): List<LocalGroupMessageEntity> =
+        groupMessages.value.filter { it.sessionId == sessionId }.sortedBy { it.seq }
+
+    override suspend fun countGroupMessages(sessionId: String): Int =
+        groupMessages.value.count { it.sessionId == sessionId }
+
+    override suspend fun appendGroupMessage(entity: LocalGroupMessageEntity) = transaction {
+        require(sessions.value.any { it.id == entity.sessionId }) { "父会话不存在，拒绝写入群消息" }
+        require(!isTombstoned("session", entity.sessionId)) { "父会话已被删除，拒绝写入群消息" }
+        require(!isTombstoned("group", entity.groupId)) { "父群组已被删除，拒绝写入群消息" }
+        val now = System.currentTimeMillis()
+        val seq = if (entity.seq >= 0) {
+            entity.seq
+        } else {
+            (groupMessages.value.filter { it.sessionId == entity.sessionId }.maxOfOrNull { it.seq } ?: -1L) + 1
+        }
+        val row = entity.copy(
+            seq = seq,
+            logicalTime = if (entity.logicalTime == 0L) now else entity.logicalTime,
+            createdAt = if (entity.createdAt == 0L) now else entity.createdAt,
+            updatedAt = now,
+        )
+        journal("message", row.id, EntityPayloads.groupMessagePayload(row), Origin.Local)
+        upsertList(groupMessages, row) { it.id }
+    }
+
+    override suspend fun updateGroupMessage(entity: LocalGroupMessageEntity) = transaction {
+        val existing = groupMessages.value.firstOrNull { it.id == entity.id }
+        val row = entity.copy(
+            seq = existing?.seq ?: entity.seq,
+            createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+        )
+        journal("message", row.id, EntityPayloads.groupMessagePayload(row), Origin.Local)
+        upsertList(groupMessages, row) { it.id }
+    }
+
+    override suspend fun deleteGroupMessage(id: String, sessionId: String) = transaction {
+        groupMessages.value = groupMessages.value.filterNot { it.id == id }
+        tombstone("message", id, parentId = sessionId)
+    }
+
+    override suspend fun deleteGroupMessagesForSession(sessionId: String) = transaction {
+        groupMessages.value = groupMessages.value.filterNot { it.sessionId == sessionId }
     }
 
     // ---------------------------------------------------------------- 记忆 / 用量 / 媒体

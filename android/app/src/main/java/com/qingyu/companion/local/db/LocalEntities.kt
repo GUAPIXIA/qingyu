@@ -227,6 +227,34 @@ data class LocalGroupEntity(
     @ColumnInfo(name = "imported_from") val importedFrom: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    // ---- 阶段 6 S6-01（v5）：群调度参数（对齐 PC `GroupChat`） ----
+    /**
+     * 发言调度模式：`mention` | `polling` | `free`（PC `GroupChat.chatMode`）。
+     *
+     * 与旧 [mode] 列（sequential|round_robin|manual，旧缓存来源）**不是同一套枚举**：
+     * 旧列保留仅作迁移溯源，业务一律读本列；缺省 `polling` 与 PC 新建群默认一致。
+     */
+    @ColumnInfo(name = "chat_mode") val chatMode: String = "polling",
+    /** polling 模式是否自动接力（PC `autoMode`）。 */
+    @ColumnInfo(name = "auto_mode") val autoMode: Boolean = false,
+    /** 自动接力的最大 AI 轮数（PC `maxRounds`，UI 1-5；语义见 group-scheduling fixture）。 */
+    @ColumnInfo(name = "max_rounds") val maxRounds: Int = 1,
+    /** 接力间隔毫秒（PC `speakerInterval`，UI 500-5000）。 */
+    @ColumnInfo(name = "speaker_interval") val speakerInterval: Int = 2000,
+    /**
+     * 轮转发言索引（PC `currentSpeakerIndex`）。
+     * PC 上是**纯运行时状态不落盘**；Android 落盘以便冷启动恢复轮转位置
+     * （不影响同步 payload——群调度参数两端都不进契约）。
+     */
+    @ColumnInfo(name = "current_speaker_index") val currentSpeakerIndex: Int = 0,
+    /** 群预设（PC `presetId`，新建默认 `builtin-default`）。 */
+    @ColumnInfo(name = "preset_id") val presetId: String? = null,
+    /** 群自定义系统提示（PC `systemPrompt`，支持变量与宏）。 */
+    @ColumnInfo(name = "system_prompt") val systemPrompt: String = "",
+    /** 群级世界书 id 数组（PC `lorebookIds`）。 */
+    @ColumnInfo(name = "lorebook_ids_json") val lorebookIdsJson: String = "[]",
+    /** 新建群会话的默认叙事模式（PC `defaultNarrativeMode`）；空串 = 跟随全局默认。 */
+    @ColumnInfo(name = "default_narrative_mode") val defaultNarrativeMode: String = "",
 )
 
 // ---------------------------------------------------------------- 会话 / 消息
@@ -294,6 +322,11 @@ data class LocalSessionEntity(
     @ColumnInfo(name = "compressed_summary") val compressedSummary: String = "",
     /** 历史压缩覆盖范围（v3）：JSON `{"startTs":..,"endTs":..}`，空串 = 无。 */
     @ColumnInfo(name = "compressed_range_json") val compressedRangeJson: String = "",
+    /**
+     * 会话级「下一步方向」开关（v5，阶段 6 S6-01；单聊/群聊会话共用——PC 的
+     * `ChatSession.dialogueDirectionsEnabled` 与 `GroupSession.dialogueDirectionsEnabled` 同名同义）。
+     */
+    @ColumnInfo(name = "dialogue_directions_enabled") val dialogueDirectionsEnabled: Boolean = false,
 )
 
 /**
@@ -329,6 +362,70 @@ data class LocalMessageEntity(
     @ColumnInfo(name = "generation_status") val generationStatus: String? = null,
     @ColumnInfo(name = "generation_notice") val generationNotice: String? = null,
     @ColumnInfo(name = "generation_error") val generationError: String? = null,
+    @ColumnInfo(name = "logical_time") val logicalTime: Long,
+    @ColumnInfo(name = "seq") val seq: Long,
+    @ColumnInfo(name = "imported_from") val importedFrom: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    /**
+     * 阶段 6 S6-01（v5）：消息身份三键（对齐 PC `Message.speakerKind/generationKind/narrativeMode`）。
+     *
+     * 可空 = 「未设置」，payload 按 PC 的 `typeof === 'string'` 语义**不下发**——
+     * 补上这三列后 `message` 的同步 payload 缺口（PC_ONLY_KEYS）清零。
+     */
+    @ColumnInfo(name = "speaker_kind") val speakerKind: String? = null,
+    @ColumnInfo(name = "generation_kind") val generationKind: String? = null,
+    @ColumnInfo(name = "narrative_mode") val narrativeMode: String? = null,
+)
+
+/**
+ * 阶段 6 S6-01（v5）：群聊消息表（对齐 PC `GroupMessage`；PC 存 `groups/<gid>/<sid>.jsonl`）。
+ *
+ * 与 [LocalMessageEntity] 分表：群消息的**业务列不同**（round / speaker_kind /
+ * mentioned_ids / dialogue_directions 等归属与调度字段），揉进单聊表会让两套语义
+ * 互相踩字段；分表也让「消息条数/排序」各按各的口径（群按 (logicalTime, id) 稳定排序）。
+ */
+@Entity(
+    tableName = "local_group_messages",
+    foreignKeys = [
+        ForeignKey(
+            entity = LocalSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["session_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("session_id"), Index(value = ["session_id", "seq"], unique = true)],
+)
+data class LocalGroupMessageEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "session_id") val sessionId: String,
+    /** 冗余群 id（PC `GroupMessage.groupId`；导出与 payload 需要，不靠 JOIN）。 */
+    @ColumnInfo(name = "group_id") val groupId: String,
+    /**
+     * 归属：角色 id，或哨兵 `__user__` / `__free__`（未拆分自由发言占位）/ `__narrator__`。
+     * 与 PC `GroupMessage.characterId` 同语义（消息归属的关键字段）。
+     */
+    @ColumnInfo(name = "character_id") val characterId: String,
+    val content: String = "",
+    @ColumnInfo(name = "images_json") val imagesJson: String = "[]",
+    /** 轮次号（PC `GroupMessage.round`）：用户消息与其触发的 AI 回复共用一轮。 */
+    val round: Int = 0,
+    val translation: String? = null,
+    @ColumnInfo(name = "reply_to_id") val replyToId: String? = null,
+    /** 用户消息发送状态：sending | sent（PC `status`）。 */
+    val status: String? = null,
+    /** @提及的角色 id 数组（PC `mentionedCharacterIds`；仅元数据，不决定发言者）。 */
+    @ColumnInfo(name = "mentioned_ids_json") val mentionedIdsJson: String = "[]",
+    @ColumnInfo(name = "narrative_mode") val narrativeMode: String? = null,
+    @ColumnInfo(name = "speaker_kind") val speakerKind: String? = null,
+    @ColumnInfo(name = "generation_kind") val generationKind: String? = null,
+    /** AI 回复后的下一步方向（PC `dialogueDirections`，JSON 数组）。 */
+    @ColumnInfo(name = "dialogue_directions_json") val dialogueDirectionsJson: String? = null,
+    @ColumnInfo(name = "dialogue_directions_generated_at") val dialogueDirectionsGeneratedAt: Long? = null,
+    @ColumnInfo(name = "generation_notice") val generationNotice: String? = null,
+    @ColumnInfo(name = "generation_error") val generationError: String? = null,
+    @ColumnInfo(name = "content_render_mode") val contentRenderMode: String? = null,
     @ColumnInfo(name = "logical_time") val logicalTime: Long,
     @ColumnInfo(name = "seq") val seq: Long,
     @ColumnInfo(name = "imported_from") val importedFrom: String? = null,

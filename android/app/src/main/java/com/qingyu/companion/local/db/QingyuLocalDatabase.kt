@@ -27,6 +27,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LocalGroupEntity::class,
         LocalSessionEntity::class,
         LocalMessageEntity::class,
+        LocalGroupMessageEntity::class,
         LocalMemoryStateEntity::class,
         LocalMemoryFactEntity::class,
         LocalUsageRecordEntity::class,
@@ -42,7 +43,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ConflictEntity::class,
         ContractObjectEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(BoolConverters::class)
@@ -57,6 +58,7 @@ abstract class QingyuLocalDatabase : RoomDatabase() {
     abstract fun groupDao(): LocalGroupDao
     abstract fun sessionDao(): LocalSessionDao
     abstract fun messageDao(): LocalMessageDao
+    abstract fun groupMessageDao(): LocalGroupMessageDao
     abstract fun memoryDao(): LocalMemoryDao
     abstract fun usageDao(): LocalUsageDao
     abstract fun mediaDao(): LocalMediaDao
@@ -221,8 +223,88 @@ abstract class QingyuLocalDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v4 → v5（阶段 6 S6-01）：**只加列、只加表，不重建任何既有表**。
+         *
+         * 三部分内容：
+         * 1. `local_groups` 的群调度参数（chatMode/autoMode/maxRounds/speakerInterval/
+         *    currentSpeakerIndex/presetId/systemPrompt/lorebookIds/defaultNarrativeMode）——
+         *    S6-01 三模式发言调度的本地真源；此前这些字段只存在于 PC；
+         * 2. `local_messages` 的消息身份三键（speaker_kind/generation_kind/narrative_mode）——
+         *    补齐后 `message` 同步 payload 对 PC 的键缺口清零（SyncPayloadGoldenTest 的
+         *    PC_ONLY_KEYS 登记随之撤销）；
+         * 3. 新表 `local_group_messages`（群消息，对齐 PC `GroupMessage`；PC 是每会话 JSONL）。
+         *
+         * 新列都带 DEFAULT（或可空 = 未设置）：旧群行迁移后 = PC 新建群缺省
+         * （polling / 不自动接力 / maxRounds 1 / 2000ms / 索引 0），旧消息行 = 身份三键未设置
+         * （payload 不下发，与 PC `typeof === 'string'` 语义一致）。
+         *
+         * 新表 DDL 必须与 Room 依据 `@Entity` 生成的建表语句逐字对齐（含索引名），
+         * 否则 `validate` 在打开数据库时直接抛 IllegalStateException。
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // ---- 群调度参数（对齐 PC GroupChat） ----
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN chat_mode TEXT NOT NULL DEFAULT 'polling'")
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN auto_mode INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN max_rounds INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN speaker_interval INTEGER NOT NULL DEFAULT 2000")
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN current_speaker_index INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN preset_id TEXT")
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN system_prompt TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN lorebook_ids_json TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE local_groups ADD COLUMN default_narrative_mode TEXT NOT NULL DEFAULT ''")
+                // ---- 消息身份三键（对齐 PC Message.speakerKind/generationKind/narrativeMode） ----
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN speaker_kind TEXT")
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN generation_kind TEXT")
+                db.execSQL("ALTER TABLE local_messages ADD COLUMN narrative_mode TEXT")
+                // ---- 会话级「下一步方向」开关（单聊/群聊会话共用） ----
+                db.execSQL("ALTER TABLE local_sessions ADD COLUMN dialogue_directions_enabled INTEGER NOT NULL DEFAULT 0")
+                // ---- 群消息表（对齐 PC GroupMessage） ----
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `local_group_messages` (
+                        `id` TEXT NOT NULL,
+                        `session_id` TEXT NOT NULL,
+                        `group_id` TEXT NOT NULL,
+                        `character_id` TEXT NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `images_json` TEXT NOT NULL,
+                        `round` INTEGER NOT NULL,
+                        `translation` TEXT,
+                        `reply_to_id` TEXT,
+                        `status` TEXT,
+                        `mentioned_ids_json` TEXT NOT NULL,
+                        `narrative_mode` TEXT,
+                        `speaker_kind` TEXT,
+                        `generation_kind` TEXT,
+                        `dialogue_directions_json` TEXT,
+                        `dialogue_directions_generated_at` INTEGER,
+                        `generation_notice` TEXT,
+                        `generation_error` TEXT,
+                        `content_render_mode` TEXT,
+                        `logical_time` INTEGER NOT NULL,
+                        `seq` INTEGER NOT NULL,
+                        `imported_from` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`session_id`) REFERENCES `local_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_local_group_messages_session_id` " +
+                        "ON `local_group_messages` (`session_id`)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_local_group_messages_session_id_seq` " +
+                        "ON `local_group_messages` (`session_id`, `seq`)",
+                )
+            }
+        }
+
         /** 全部显式迁移（顺序无关；Room 按 from→to 自行选择）。 */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         /** 每次打开本地库都显式开启外键，保证显式删除策略真正生效。 */
         val FOREIGN_KEYS_CALLBACK = object : Callback() {

@@ -2,6 +2,7 @@ package com.qingyu.companion.local.domain
 
 import com.qingyu.companion.local.db.LocalCharacterEntity
 import com.qingyu.companion.local.db.LocalGroupEntity
+import com.qingyu.companion.local.db.LocalGroupMessageEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
 import com.qingyu.companion.local.db.LocalLorebookMappingTemplateEntity
 import com.qingyu.companion.local.db.LocalMessageEntity
@@ -261,10 +262,9 @@ object EntityPayloads {
      *   `generationError`/`seq` 属**本地保真**，不进契约（PC 也一个都不发）；
      *   跨端保真由 Backup V3 与导入导出承担
      *
-     * **仍缺三键（属阶段 6 S6-01「旁白与角色身份」）**：Android 没有 `speakerKind` /
-     * `generationKind` / `narrativeMode` 列，PC 下发这三键时本机发不出。
-     * `SyncPayloadGoldenTest` 把这条缺口**逐键登记**——不是放宽断言：
-     * 多一个键、少一个键（缺口变化）都会让它变红。
+     * **三键缺口已闭合（阶段 6 S6-01）**：`speakerKind` / `generationKind` / `narrativeMode`
+     * 三列已在本地库 v5 落地，本函数按 PC `typeof === 'string'` 语义逐字下发
+     * （未设置 = 不下发键）。`SyncPayloadGoldenTest` 的 `PC_ONLY_KEYS["message"]` 随之清零。
      */
     fun messagePayload(row: LocalMessageEntity): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>(
@@ -274,6 +274,15 @@ object EntityPayloads {
             "timestamp" to row.logicalTime,
             "characterId" to row.characterId,
         )
+        // 身份三键：PC 只在 `typeof === 'string'` 时下发（undefined/null 都不下发）
+        for (key in listOf("speakerKind", "generationKind", "narrativeMode")) {
+            val value = when (key) {
+                "speakerKind" -> row.speakerKind
+                "generationKind" -> row.generationKind
+                else -> row.narrativeMode
+            }
+            if (value is String) out[key] = value
+        }
         // 不截断：PC 对 `swipes` 是原样透传（schema 的 maxItems 32 两端都没执行），
         // 单边截断会让候选数超过 32 的消息哈希不同。
         stringArray(row.swipesJson, Int.MAX_VALUE)?.let { out["swipes"] = it }
@@ -327,6 +336,63 @@ object EntityPayloads {
         "createdAt" to row.createdAt,
         "updatedAt" to row.updatedAt,
     )
+
+    /**
+     * 群会话实体 payload —— **临时镜像** PC `group.ts#groupSessionEntityPayload`
+     * （spread 全字段 − `id` + `groupId`）。
+     *
+     * ⚠️ **D-11 未决**：PC 的群会话/群消息与单聊 session/message **共用实体类型却用另一套
+     * payload**（spread 整个对象），契约侧三选项均需签字。本函数按 PC **现状行为**逐字段
+     * 镜像本表持有的字段（PC 对象上没有的字段 → 不下发；本表未设置 → 不下发），
+     * 不预判 D-11 的收敛结果；决策落定后必须按新契约重写并补跨端 golden。
+     */
+    fun groupSessionPayload(row: LocalSessionEntity): Map<String, Any?> {
+        val out = linkedMapOf<String, Any?>(
+            "groupId" to row.groupId,
+            "title" to row.title,
+            "createdAt" to row.createdAt,
+            "updatedAt" to row.updatedAt,
+        )
+        row.personaId?.let { out["personaId"] = it }
+        row.narrativeMode.takeIf { it.isNotBlank() }?.let { out["narrativeMode"] = it }
+        return out
+    }
+
+    /**
+     * 群消息实体 payload —— **临时镜像** PC `group.ts#groupMessageEntityPayload`
+     * （spread 全字段 − `id` + `sessionId`）。
+     *
+     * ⚠️ **D-11 未决**（同 [groupSessionPayload]）：按 PC 现状行为镜像——
+     * 必填字段（groupId/characterId/content/images/timestamp/round）始终下发，
+     * 可选字段仅在有值时下发（对位 PC 对象上「字段存在才 spread 到」）。
+     * `seq`/`imported_from`/`created_at`/`updated_at` 是本地保真列，不进 payload。
+     */
+    fun groupMessagePayload(row: LocalGroupMessageEntity): Map<String, Any?> {
+        val out = linkedMapOf<String, Any?>(
+            "groupId" to row.groupId,
+            "sessionId" to row.sessionId,
+            "characterId" to row.characterId,
+            "content" to row.content,
+            "images" to (stringArray(row.imagesJson, Int.MAX_VALUE) ?: emptyList()),
+            "timestamp" to row.logicalTime,
+            "round" to row.round,
+        )
+        row.translation?.let { out["translation"] = it }
+        row.replyToId?.let { out["replyToId"] = it }
+        row.status?.let { out["status"] = it }
+        stringArray(row.mentionedIdsJson, Int.MAX_VALUE)?.takeIf { it.isNotEmpty() }
+            ?.let { out["mentionedCharacterIds"] = it }
+        row.narrativeMode?.let { out["narrativeMode"] = it }
+        row.speakerKind?.let { out["speakerKind"] = it }
+        row.generationKind?.let { out["generationKind"] = it }
+        row.dialogueDirectionsJson?.takeIf { it.isNotBlank() }
+            ?.let { out["dialogueDirections"] = JsonValues.parseArray(it) }
+        row.dialogueDirectionsGeneratedAt?.let { out["dialogueDirectionsGeneratedAt"] = it }
+        row.generationNotice?.let { out["generationNotice"] = it }
+        row.generationError?.let { out["generationError"] = it }
+        row.contentRenderMode?.let { out["contentRenderMode"] = it }
+        return out
+    }
 
     private const val MAX_TAGS = 64
     private const val MAX_ALTERNATE_GREETINGS = 32

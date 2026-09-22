@@ -528,6 +528,10 @@ class SyncPayloadGoldenTest {
         seq = 0L,
         createdAt = 0L,
         updatedAt = 0L,
+        // S6-01 补齐的身份三键（v5 列）：同 `swipes` 口径，键缺失 = 列 NULL = 不下发
+        speakerKind = payload["speakerKind"] as String?,
+        generationKind = payload["generationKind"] as String?,
+        narrativeMode = payload["narrativeMode"] as String?,
     )
 
     @Suppress("UNCHECKED_CAST")
@@ -614,13 +618,13 @@ class SyncPayloadGoldenTest {
          * PC 会下发、而 Android **当前没有对应列**的键（逐条登记，不是放宽断言：
          * 缺口一变就红）。
          *
-         * `message` 的三键属**阶段 6 S6-01「旁白与角色身份」**：Android 的 message 行里
-         * 没有 `speakerKind`/`generationKind`/`narrativeMode` 三列，所以 PC 下发时本机发不出。
-         * 补列时要连同 Room 迁移、payload 映射与本节登记一起改——那正是这个映射存在的意义。
-         * `session` 目前没有缺口（Android 的 `narrative_mode` 列已在 v3 落地）。
+         * `message` 的三键缺口已随阶段 6 S6-01 **闭合**：`speakerKind`/`generationKind`/
+         * `narrativeMode` 三列在本地库 v5 落地，`messagePayload` 按 PC `typeof === 'string'`
+         * 语义下发——`message` 的缺口集合因此清零（少一个键或多一个键都会让断言变红）。
+         * `session` / `group` 目前没有缺口。
          */
         private val PC_ONLY_KEYS: Map<String, Set<String>> = mapOf(
-            "message" to setOf("speakerKind", "generationKind", "narrativeMode"),
+            "message" to emptySet(),
             "session" to emptySet(),
             "group" to emptySet(),
         )

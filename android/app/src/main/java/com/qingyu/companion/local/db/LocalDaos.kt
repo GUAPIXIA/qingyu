@@ -492,6 +492,35 @@ interface LocalMessageDao {
     suspend fun deleteForSession(sessionId: String)
 }
 
+/** 阶段 6 S6-01：群聊消息 DAO（v5 新表）。 */
+@Dao
+interface LocalGroupMessageDao {
+    @Query("SELECT * FROM local_group_messages WHERE session_id = :sessionId ORDER BY seq ASC")
+    fun observeForSession(sessionId: String): Flow<List<LocalGroupMessageEntity>>
+
+    @Query("SELECT * FROM local_group_messages WHERE session_id = :sessionId ORDER BY seq ASC")
+    suspend fun listForSession(sessionId: String): List<LocalGroupMessageEntity>
+
+    @Query("SELECT * FROM local_group_messages WHERE id = :id")
+    suspend fun getById(id: String): LocalGroupMessageEntity?
+
+    @Query("SELECT COUNT(*) FROM local_group_messages WHERE session_id = :sessionId")
+    suspend fun countForSession(sessionId: String): Int
+
+    @Query("SELECT COALESCE(MAX(seq), -1) + 1 FROM local_group_messages WHERE session_id = :sessionId")
+    suspend fun nextSeq(sessionId: String): Long
+
+    /** 与 [LocalMessageDao.upsert] 同口径：本表不是任何表的外键父表，REPLACE 不会级联删除。 */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: LocalGroupMessageEntity)
+
+    @Query("DELETE FROM local_group_messages WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM local_group_messages WHERE session_id = :sessionId")
+    suspend fun deleteForSession(sessionId: String)
+}
+
 // ---------------------------------------------------------------- 记忆 / 用量 / 媒体 DAO
 
 @Dao

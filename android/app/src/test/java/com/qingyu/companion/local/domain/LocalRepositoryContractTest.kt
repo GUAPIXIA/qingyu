@@ -198,6 +198,54 @@ class LocalRepositoryContractTest {
                 assertEquals("$name/all-entity-journals", 5, store.journalChangeCount())
                 assertEquals("$name/heads", 5, store.headCount())
             }
+
+            // ---- 行为 11（阶段 6 S6-01）：群消息写入记 journal、seq 递增、tombstone 与父实体保护、会话删除级联 ----
+            run {
+                val store = createStore()
+                store.putGroup(LocalGroupEntity(id = "g1", name = "G", createdAt = 0, updatedAt = 0))
+                store.putSession(
+                    LocalSessionEntity(id = "gs1", groupId = "g1", createdAt = 0, updatedAt = 0),
+                )
+                store.appendGroupMessage(
+                    com.qingyu.companion.local.db.LocalGroupMessageEntity(
+                        id = "gm1", sessionId = "gs1", groupId = "g1", characterId = "__user__",
+                        content = "大家好", round = 1, seq = -1, logicalTime = 0, createdAt = 0, updatedAt = 0,
+                    ),
+                )
+                store.appendGroupMessage(
+                    com.qingyu.companion.local.db.LocalGroupMessageEntity(
+                        id = "gm2", sessionId = "gs1", groupId = "g1", characterId = "char-a",
+                        content = "你好", round = 1, seq = -1, logicalTime = 0, createdAt = 0, updatedAt = 0,
+                    ),
+                )
+                assertEquals("$name/group-seq-stable-order", listOf(0L, 1L), store.listGroupMessages("gs1").map { it.seq })
+                assertTrue("$name/group-message-journal-gm1", store.getHead("message", "gm1") != null)
+                assertTrue("$name/group-message-journal-gm2", store.getHead("message", "gm2") != null)
+                assertEquals("$name/group-message-count", 2, store.countGroupMessages("gs1"))
+
+                // 删除走 tombstone（不抹掉同步历史）
+                store.deleteGroupMessage("gm2", "gs1")
+                assertEquals("$name/group-message-deleted", 1, store.countGroupMessages("gs1"))
+                assertTrue("$name/group-message-tombstone", store.getHead("message", "gm2")!!.deleted)
+
+                // 会话删除级联清理群消息
+                store.deleteSession("gs1")
+                assertEquals("$name/session-delete-cascades-group-messages", 0, store.countGroupMessages("gs1"))
+
+                // 父群 tombstone 后拒绝写入群消息（跨实体不变量 B）
+                store.putSession(LocalSessionEntity(id = "gs2", groupId = "g1", createdAt = 0, updatedAt = 0))
+                store.deleteGroup("g1")
+                val rejected = runCatching {
+                    store.appendGroupMessage(
+                        com.qingyu.companion.local.db.LocalGroupMessageEntity(
+                            id = "gm3", sessionId = "gs2", groupId = "g1", characterId = "__user__",
+                            content = "x", round = 1, seq = -1, logicalTime = 0, createdAt = 0, updatedAt = 0,
+                        ),
+                    )
+                }.isFailure
+                assertTrue("$name/group-message-under-tombstone-rejected", rejected)
+                assertEquals("$name/no-half-commit", 0, store.countGroupMessages("gs2"))
+            }
         }
     }
 

@@ -10,6 +10,7 @@ import com.qingyu.companion.local.db.LocalConnectionProfileEntity
 import com.qingyu.companion.local.db.LocalDeviceStateEntity
 import com.qingyu.companion.local.db.LocalDeviceSettingEntity
 import com.qingyu.companion.local.db.LocalGroupEntity
+import com.qingyu.companion.local.db.LocalGroupMessageEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
 import com.qingyu.companion.local.db.LocalLorebookMappingTemplateEntity
 import com.qingyu.companion.local.db.LocalMediaManifestEntity
@@ -658,6 +659,8 @@ class RoomLocalSyncRepository(
 
     override suspend fun listGroups(): List<LocalGroupEntity> = io { db.groupDao().listAll() }
 
+    override suspend fun getGroup(id: String): LocalGroupEntity? = io { db.groupDao().getById(id) }
+
     override suspend fun putGroup(entity: LocalGroupEntity) {
         val now = System.currentTimeMillis()
         val row = entity.copy(updatedAt = now, createdAt = if (entity.createdAt == 0L) now else entity.createdAt)
@@ -706,6 +709,8 @@ class RoomLocalSyncRepository(
         val parent = io { db.sessionDao().getById(id) }?.let { it.groupId ?: it.characterId }
         deleteWithTombstone("session", id, parentId = parent) {
             db.messageDao().deleteForSession(id)
+            // 群会话的消息在 local_group_messages（S6-01 分表），同样随会话级联清理
+            db.groupMessageDao().deleteForSession(id)
             db.memoryDao().deleteFactsForSession(id)
             db.sessionDao().delete(id)
         }
@@ -764,6 +769,76 @@ class RoomLocalSyncRepository(
 
     override suspend fun deleteMessage(id: String, sessionId: String) =
         deleteWithTombstone("message", id, parentId = sessionId) { db.messageDao().delete(id) }
+
+    // ------------------------------------------------------------ 群消息（S6-01）
+
+    override fun observeGroupMessages(sessionId: String): Flow<List<LocalGroupMessageEntity>> =
+        db.groupMessageDao().observeForSession(sessionId)
+
+    override suspend fun listGroupMessages(sessionId: String): List<LocalGroupMessageEntity> =
+        io { db.groupMessageDao().listForSession(sessionId) }
+
+    override suspend fun countGroupMessages(sessionId: String): Int =
+        io { db.groupMessageDao().countForSession(sessionId) }
+
+    /**
+     * 新增群消息：与 [appendMessage] 同一套不变量与记账口径。
+     *
+     * 实体类型沿用 `message`、`parentId = sessionId`——与 PC `group.ts` 的
+     * `commitThroughDomain({ entityType: 'message', … })` 一致；payload 用
+     * [EntityPayloads.groupMessagePayload]（⚠️ D-11 未决的临时镜像，见其文档）。
+     */
+    override suspend fun appendGroupMessage(entity: LocalGroupMessageEntity) {
+        val now = System.currentTimeMillis()
+        withJournal(
+            "message",
+            entity.id,
+            Origin.Local,
+            parentId = entity.sessionId,
+            payload = { EntityPayloads.groupMessagePayload(entity) },
+            business = {
+                require(db.sessionDao().getById(entity.sessionId) != null) { "父会话不存在，拒绝写入群消息" }
+                require(!isTombstoned("session", entity.sessionId)) { "父会话已被删除，拒绝写入群消息" }
+                require(!isTombstoned("group", entity.groupId)) { "父群组已被删除，拒绝写入群消息" }
+                val seq = if (entity.seq >= 0) entity.seq else db.groupMessageDao().nextSeq(entity.sessionId)
+                db.groupMessageDao().upsert(
+                    entity.copy(
+                        seq = seq,
+                        logicalTime = if (entity.logicalTime == 0L) now else entity.logicalTime,
+                        createdAt = if (entity.createdAt == 0L) now else entity.createdAt,
+                        updatedAt = now,
+                    ),
+                )
+            },
+        )
+    }
+
+    override suspend fun updateGroupMessage(entity: LocalGroupMessageEntity) {
+        val now = System.currentTimeMillis()
+        withJournal(
+            "message",
+            entity.id,
+            Origin.Local,
+            parentId = entity.sessionId,
+            payload = { EntityPayloads.groupMessagePayload(entity) },
+        ) {
+            val existing = db.groupMessageDao().getById(entity.id)
+            db.groupMessageDao().upsert(
+                entity.copy(
+                    seq = existing?.seq ?: entity.seq,
+                    createdAt = existing?.createdAt ?: now,
+                    updatedAt = now,
+                ),
+            )
+        }
+    }
+
+    override suspend fun deleteGroupMessage(id: String, sessionId: String) =
+        deleteWithTombstone("message", id, parentId = sessionId) { db.groupMessageDao().delete(id) }
+
+    override suspend fun deleteGroupMessagesForSession(sessionId: String) {
+        io { db.groupMessageDao().deleteForSession(sessionId) }
+    }
 
     // ------------------------------------------------------------ 记忆 / 用量 / 媒体
 

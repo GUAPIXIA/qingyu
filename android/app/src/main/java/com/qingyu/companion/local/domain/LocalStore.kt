@@ -7,6 +7,7 @@ import com.qingyu.companion.local.db.LocalCharacterEntity
 import com.qingyu.companion.local.db.LocalConnectionProfileEntity
 import com.qingyu.companion.local.db.LocalDeviceSettingEntity
 import com.qingyu.companion.local.db.LocalGroupEntity
+import com.qingyu.companion.local.db.LocalGroupMessageEntity
 import com.qingyu.companion.local.db.LocalLorebookEntity
 import com.qingyu.companion.local.db.LocalLorebookMappingTemplateEntity
 import com.qingyu.companion.local.db.LocalMediaManifestEntity
@@ -250,6 +251,7 @@ interface LocalStore {
     // ---- 群组（阶段 6） ----
     fun observeGroups(): Flow<List<LocalGroupEntity>>
     suspend fun listGroups(): List<LocalGroupEntity>
+    suspend fun getGroup(id: String): LocalGroupEntity?
     suspend fun putGroup(entity: LocalGroupEntity)
     suspend fun deleteGroup(id: String)
 
@@ -265,6 +267,19 @@ interface LocalStore {
     suspend fun appendMessage(entity: LocalMessageEntity)
     suspend fun updateMessage(entity: LocalMessageEntity)
     suspend fun deleteMessage(id: String, sessionId: String)
+
+    // ---- 群消息（阶段 6 S6-01） ----
+
+    /** 群会话的消息（按 (seq) 稳定序；展示排序由上层按 (logicalTime, id) 决定）。 */
+    fun observeGroupMessages(sessionId: String): Flow<List<LocalGroupMessageEntity>>
+    suspend fun listGroupMessages(sessionId: String): List<LocalGroupMessageEntity>
+    suspend fun countGroupMessages(sessionId: String): Int
+
+    /** 新增群消息：分配会话内稳定 `seq`；父会话被 tombstone 时拒绝写入（跨实体不变量 B）。 */
+    suspend fun appendGroupMessage(entity: LocalGroupMessageEntity)
+    suspend fun updateGroupMessage(entity: LocalGroupMessageEntity)
+    suspend fun deleteGroupMessage(id: String, sessionId: String)
+    suspend fun deleteGroupMessagesForSession(sessionId: String)
 
     // ---- 记忆 / 用量 / 媒体 ----
     suspend fun getMemoryState(sessionId: String): LocalMemoryStateEntity?

@@ -2,14 +2,15 @@
 
 > 日期：2026-09-22（增量报告，随阶段进度续写）  
 > 基线提交：`af85b9b`（工作区另含阶段 2–5 交织的未推送改动，见 §0.2）  
-> 完成提交：S6-01(a) = **`95c1f1e`**（2026-09-22，**尚未推送**）；本报告补记哈希随其后一笔小提交  
-> 结论：**进行中** — S6-01(a) 跨端「群调度/free 拆分/派生记忆失效」契约层已落地并通过双端门禁；S6-01 其余子项与 S6-02～S6-07 未完成（§5）。阶段 6 尚不能签字。
+> 完成提交：S6-01(a) = `95c1f1e`；S6-01(b) 见 §0.1（均**尚未推送**）  
+> 结论：**进行中** — S6-01(a) 跨端契约层与 S6-01(b) Android 群数据层已落地并通过双端门禁；S6-01 余项与 S6-02～S6-07 未完成（§5）。阶段 6 尚不能签字。
 
 ## 0. 边界与工作区
 
 ### 0.1 本增量的提交
 
 - 提交 **`95c1f1e`**（2026-09-22，未推送）：S6-01(a) 群聊发言调度、free 多角色拆分、派生记忆失效决策的**跨语言契约层**（TS oracle + golden fixture + Kotlin 等价实现 + PC 生产接线），19 files，+3674/−227。
+- **S6-01(b)**（2026-09-22，未推送，提交哈希见看板行）：Android 群数据层补全——本地库 v5（`local_groups` 调度参数列、`local_messages` 身份三键、新表 `local_group_messages`、会话方向开关）、`EntityPayloads` 三处（message 身份键缺口清零 + 群会话/群消息临时 payload）、`LocalStore`/`RoomLocalSyncRepository`/`FakeLocalStore` 群消息记账链、`ChatRepository` 群生命周期接口（默认明确失败）、`LocalChatRepository` 群聊 12 项真实现（`groupAiReply` 除外）、DTO 补字段、v4→v5 instrumented 迁移测试。
 - PC 侧接线为**等价重构**：不改任何用户可观察行为（提示词、文案、调度结果、落盘语义均不变），由既有 43 条 `useGroupChatStore` 用例、12 条 `groupMemoryManager` 用例、6 条 checkpoint 用例与全量 `pnpm test` 佐证。
 
 ### 0.2 工作区并存改动（非本轮产物，未触碰）
@@ -28,6 +29,12 @@
 | S6-01(a)-4 跨语言 golden fixture | `shared/fixtures/cross-platform/chat-core/{group-scheduling,group-free-split,memory-invalidation}.json`（group-scheduling 含 4+7+10+9+6+8=44 例，free-split 19 例，invalidation 13 例） | TS 生成器兼守卫 `shared/__tests__/groupChatCoreGolden.test.ts`（env 门控重生成 + 默认只读校验 + 两次求值确定性自检 + 不可往返值拒写）；README 文件表已补三行 |
 | S6-01(a)-5 Kotlin 等价实现 | `android/app/src/main/java/com/qingyu/companion/chatcore/{ChatGroupScheduling,ChatGroupFreeSplit,ChatMemoryInvalidation}.kt` | 纯 Kotlin（无 Compose/协程依赖），供后续群调度状态机/群记忆接入复用 |
 | S6-01(a)-6 Kotlin 一致性测试 | `android/app/src/test/java/com/qingyu/companion/chatcore/{ChatGroupSchedulingGoldenTest,ChatGroupFreeSplitGoldenTest,ChatMemoryInvalidationGoldenTest}.kt` | 读**同一份** fixture 逐字段断言；含 `resetPatchIsAFixedPointOfPcFieldSet` 钉 13 键键集 |
+| S6-01(b)-1 本地库 v5 | `LocalEntities/LocalDaos/QingyuLocalDatabase`：`local_groups` +9 调度列、`local_messages` +3 身份键列、`local_sessions` +方向开关列、**新表 `local_group_messages`**（24 列 + 2 索引，对齐 PC `GroupMessage`）、`MIGRATION_4_5`、导出 `app/schemas/.../5.json` | instrumented 迁移测试 `phase6/GroupChatSchemaMigrationInstrumentedTest`（v4 数据存活 + 新表经 Room validate 可读写） |
+| S6-01(b)-2 消息 payload 缺口闭合 | `EntityPayloads.messagePayload` 身份三键按 PC `typeof === 'string'` 语义下发；`SyncPayloadGoldenTest.PC_ONLY_KEYS["message"]` **清零**（阶段 5 登记的三键缺口闭合） | `SyncPayloadGoldenTest` 16/16；缺口必须恰好为零，多一键少一键都红 |
+| S6-01(b)-3 群会话/群消息临时 payload | `EntityPayloads.groupSessionPayload/groupMessagePayload`：镜像 PC `group.ts` 的 spread 语义（−id +parentId），**D-11 未决前的临时口径** | 契约行为 11 双实现；文档逐条标注 D-11 |
+| S6-01(b)-4 群消息记账链 | `LocalStore` + `RoomLocalSyncRepository` + `FakeLocalStore`：群消息 append/update/delete 走 `withJournal("message", …)`，父会话/父群 tombstone 保护、会话删除级联清理 | `LocalRepositoryContractTest` 行为 11（Fake/Room **双实现各跑一遍**） |
+| S6-01(b)-5 群聊本地实现 | `LocalChatRepository` 16 项真实现：群列表/会话列表/消息列表/发送（幂等+轮次+身份快照）/编辑/删除/建群（PC 新建默认值）/设置补丁（白名单）/成员增删/删群级联/会话增删改/会话设置/群翻译（PC 短提示词变体）；`groupAiReply` 保留 notMigrated（属 S6-01d 生成闭环） | `LocalGroupChatRepositoryTest` 7 例（新建默认值、补丁白名单与非法值报错、成员排序、幂等、身份快照、历史修订号、稳定排序） |
+| S6-01(b)-6 接口与 DTO | `ChatRepository` 新增 `deleteGroup/createGroupSession/renameGroupSession/deleteGroupSession/patchGroupSession`（默认实现**明确失败** 501，同 `patchSessionRuntimeState` 先例）；`GroupChat/GroupSession/GroupMessage` DTO 补调度/身份字段 | 既有序列化与 VM 测试零回归；`ContentWiringAuditTest` 钉子随迁移更新（双向守卫） |
 
 这补上了阶段 5 §2.28 指认的前置缺口之一：**「一份群调度 fixture」**（此前 `cross-platform` 四组 fixture 中无任何群调度 oracle，PC 的 groupCas/群测试都是单端断言）。
 
@@ -38,6 +45,13 @@
 - 新增 `chat-core` 组三份 golden fixture（`version: 1`），再生命令：
   `$env:CHAT_CORE_UPDATE_FIXTURES="1"; pnpm exec vitest run shared/__tests__/groupChatCoreGolden.test.ts`。
 - 无 schema / Room / 同步端点变更；同步 payload 白名单未动（群调度字段本就 `deliberatelyExcluded`，见 `sync-payload/group-payload.json`）。
+
+### 2.1b 契约/迁移变化（S6-01b）
+
+- **Room v4→v5 迁移**（只加列、只加表，不重建既有表）：`local_groups` 群调度参数 9 列、`local_messages` 身份三键、`local_sessions` 会话方向开关、新表 `local_group_messages`。旧行迁移后 = PC 新建群缺省（`polling`/不自动接力/`maxRounds` 1/2000ms/索引 0），旧消息身份三键 = NULL（= 未设置 = payload 不下发）。schema 导出 `5.json` 已随仓库保留（`RoomSchemaExportGuardTest` 流程要求）。
+- **`message` 同步 payload 缺口闭合**：阶段 5 在 `SyncPayloadGoldenTest.PC_ONLY_KEYS` 登记的三键（`speakerKind/generationKind/narrativeMode`）随 v5 列 + `messagePayload` 映射**清零**——这是 S6-01「旁白与角色身份」欠的账。
+- **群会话/群消息 payload 是临时镜像**（`EntityPayloads.groupSessionPayload/groupMessagePayload`）：按 PC `group.ts` 现状 spread 语义逐字段镜像；**D-11 未决**，决策落定后必须按新契约重写并补跨端 golden。
+- `LocalGroupEntity.mode`（`sequential|round_robin|manual`，旧缓存来源）保留仅作迁移溯源；业务一律读新列 `chat_mode`（`mention|polling|free`）。
 
 ### 2.2 语义钉子（fixture 钉死的 PC 现状，禁止"顺手修复"）
 
@@ -72,6 +86,26 @@
 | 新增跨语言 golden | `ChatGroupSchedulingGoldenTest` **6/6**、`ChatGroupFreeSplitGoldenTest` **1/1**（19 例逐条比对）、`ChatMemoryInvalidationGoldenTest` **2/2**（13 例逐条比对 + 13 键键集钉死） |
 | 基线对比 | 阶段 5 记录 1112 tests → 本增量 1121（+9，全为新增用例；既有 0 失败保持） |
 
+### 3.2 S6-01(b) 门禁补记
+
+| 命令 | 结果 | 备注 |
+|---|---|---|
+| `.\gradlew.bat :app:testDebugUnitTest --rerun` | **147 suites / 1128 tests / 0 失败 / 0 跳过**（XML 时间戳 2026-09-22T07:25:01–07:25:24） | 首跑暴露 `ContentWiringAuditTest` 钉子过期（群能力已迁移），按新事实更新为**双向守卫**后全绿 |
+| `LocalGroupChatRepositoryTest` | **7/7** | 新建默认值 / 补丁白名单 / 成员排序 / 会话生命周期与删群级联 / 发送幂等与身份快照 / 编辑删除推进历史修订号 / (logicalTime,id) 稳定排序 |
+| `SyncPayloadGoldenTest` | **16/16** | `PC_ONLY_KEYS["message"]` 清零后缺口恰好为零 |
+| `LocalRepositoryContractTest` | **2/2**（行为表 11 条） | 行为 11 群消息记账/tombstone/父实体保护/级联，Fake 与 Room 双实现各过 |
+| `.\gradlew.bat :app:pixel2Api34DebugAndroidTest -P…class=GroupChatSchemaMigrationInstrumentedTest` | 见下 | v4→v5 迁移 + 新表 Room validate 的真实 SQLite 验证（§11.2 Room migration 强制项） |
+
+#### 迁移 instrumentation 证据（Gradle Managed Device）
+
+| 项 | 结果 |
+|---|---|
+| 命令 | `.\gradlew.bat :app:pixel2Api34DebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.qingyu.companion.phase6.GroupChatSchemaMigrationInstrumentedTest"` |
+| 设备 | Gradle Managed Device `pixel2Api34`（Pixel 2 / API 34 / `systemImageSource=aosp`） |
+| 结果 | **2 tests / 0 失败**（XML 时间戳 `2026-09-22T07:32:30`；`app/build/outputs/androidTest-results/managedDevice/debug/pixel2Api34/TEST-pixel2Api34-_app-.xml`） |
+| 覆盖 | ①v4 群/会话/消息/change_log 旧行迁移后存活、群调度列取 PC 新建群缺省、身份三键 NULL、方向开关 0；②迁移后 Room 打开库（validate 通过 = 新表 DDL 与 `@Entity` 生成语句逐字对齐）且群消息读写/seq 递增/journal 记账正常 |
+| 过程记录 | 首跑 1/2 失败——**测试种子 SQL** 漏了 v4 `local_sessions`/`local_messages` 的 NOT NULL 列（`SQLiteConstraintException`），与迁移本身无关；补全种子列后 2/2。该失败恰好反证了 v4 约束仍被真实 SQLite 执行 |
+
 ## 4. 刻意取舍
 
 1. **oracle = 生产代码**：三个纯模块被 PC 生产路径直接调用（不是"测试专用副本"），符合 swipeCandidates/syncPayload 的既有约定；PC 接线是等价重构，行为差由既有单测守护。
@@ -84,13 +118,14 @@
 
 ### U-n（未完成）
 
-- **U-6-1 S6-01 余项**：Android 群数据层补全（`local_groups` 增列 chatMode/maxRounds/speakerInterval/autoMode/currentSpeakerIndex/presetId/systemPrompt/lorebookIds + schema v5 迁移；群消息表/DAO；`LocalChatRepository.kt:1306-1351` 十二处 `notMigrated` 换真实现）；
+- **U-6-1 S6-01 余项**（群数据层已落地，剩余为）：`groupAiReply` 本地生成闭环（群调度器状态机 + `LocalGroupGenerationUseCase` 接 ModelGateway + 中断/部分失败终局 + stop）、群记忆接入（默认记忆配置、摘要/事实、CAS、编辑删除失效判定接 `ChatMemoryInvalidation`）；
 - **U-6-2 S6-01 群上下文装配**：roster/turnRules/叙事 prompt 移植（`ChatNarrativeMode.kt:11` 已注明归属阶段 6）、多成员/发言人聚焦上下文、group-context golden；
-- **U-6-3 S6-01 调度器与生成闭环**：群调度器领域状态机（仿 `ChatGenerationTask.Machine`，禁止进 Compose/VM）、`LocalGroupGenerationUseCase` 接 ModelGateway、中断/部分失败终局（含 stop）、部分角色失败不回滚；
-- **U-6-4 S6-01 群记忆接入**：`LocalMemorySummaryService` 扩群会话、编辑/删除推进 historyRevision、scope=`group:{id}` 事实提案、CAS stale 丢弃；
+- **U-6-3 S6-01 调度器与生成闭环**：群调度器领域状态机（仿 `ChatGenerationTask.Machine`，禁止进 Compose/VM，消费 `ChatGroupScheduling`）；
+- **U-6-4 S6-01 群记忆接入**：`LocalMemorySummaryService` 扩群会话、scope=`group:{id}` 事实提案、CAS stale 丢弃；
 - **U-6-5 S6-01 UI 收尾**：群编辑/删除、成员增删排序、模式切换 UI（矩阵 `group.chatModes` notes「缺模式切换 UI」）、停止、续写、导出、TTS 入口；
 - **U-6-6 S6-02～S6-07 全部**（附件/识图、TTS、生图与 ComfyUI、Embedding 三级、MCP 平台策略、公告/更新/诊断）；
-- **U-6-7 实机验证**：音频焦点/蓝牙/低存储/权限撤销（§3 第 6 条）与 Android 8/12/14 真机矩阵。
+- **U-6-7 实机验证**：音频焦点/蓝牙/低存储/权限撤销（§3 第 6 条）与 Android 8/12/14 真机矩阵；
+- **U-6-8 备份覆盖**：Backup V3 需要覆盖新表 `local_group_messages` 与群调度列（含恢复回滚与 counts 校验）。`BackupOrchestrator.kt`/`BackupV3.kt` 当前是**其他 Agent 在途修改**（工作区 dirty），本轮未触碰，归属与该线合流后补齐。
 
 ### D-n（待决策，需签字方明确后执行，不留给后续 Agent 猜）
 
@@ -110,11 +145,12 @@
 ### F-n（跨阶段旁证）
 
 - F-6-1：`shared/fixtures/cross-platform/chat-core/*.json` 由 `shared/__tests__/chatCoreGolden.test.ts` 生成的 44 份与本轮 3 份共用同一目录与 `ChatCoreFixtures` 读取器；两份生成器共用 `CHAT_CORE_UPDATE_FIXTURES` 开关（README 已注明分别执行）。
+- F-6-2：`ContentWiringAuditTest.unmigratedCapabilitiesKeepAnActionableNoticeThatTheUiConsumes` 的钉子随 S6-01b 更新为**双向守卫**——未迁移能力（群聊 AI 回复/公告/版本信息）必须走 `notMigrated`，已迁移的群能力不得回退成 `notMigrated`（把「已经做了」伪装回「还没做」同样是撒谎）。首跑正是这条守卫把过期钉子顶红的，属守卫按设计工作。
 
 ## 6. 回滚方法
 
-- 本轮为纯新增 + 等价接线，无数据迁移。回滚 = revert 本轮提交：删除 `shared/chat-core/{groupScheduling,groupFreeSplit,derivedMemory}.ts`、三份 fixture、`shared/__tests__/groupChatCoreGolden.test.ts`、Kotlin 三模块 + 三测试，并还原 `src/store/{useGroupChatStore,groupStreamController,chatUtils}.ts`。
-- 还原后 PC 行为与基线一致（接线未改语义）；Android 侧新模块未接入生产路径，删除不影响现有功能。
+- S6-01(a)：纯新增 + 等价接线，无数据迁移。回滚 = revert `95c1f1e`：删除 `shared/chat-core/{groupScheduling,groupFreeSplit,derivedMemory}.ts`、三份 fixture、`shared/__tests__/groupChatCoreGolden.test.ts`、Kotlin 三模块 + 三测试，并还原 `src/store/{useGroupChatStore,groupStreamController,chatUtils}.ts`。还原后 PC 行为与基线一致；Android 侧新模块未接入生产路径。
+- S6-01(b)：含 **Room v4→v5 迁移**。revert 代码后再启动会因 schema 版本回退触发 Room 校验失败，需**卸载重装**或用 `5.json` 之前的备份恢复 `qingyu-local.db`（v5 只加列/加表，恢复 v4 文件对旧代码完全可读）。迁移前的用户数据无需专门快照：v4→v5 不删不改任何既有列值，失败路径是打开库报错而非数据损坏。
 
 ## 7. 下一阶段输入
 

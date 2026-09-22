@@ -411,6 +411,8 @@ class LocalDatabaseRoomTest {
             "local_groups",
             "local_sessions",
             "local_messages",
+            // 阶段 6 S6-01：群消息表（v5）
+            "local_group_messages",
             "local_memory_states",
             "local_memory_facts",
             "local_usage_records",

@@ -252,6 +252,41 @@ interface ChatRepository {
     /** 删除群聊成员 */
     suspend fun removeGroupMember(groupId: String, characterId: String)
 
+    /**
+     * 删除群聊（S6-01：连带删除其全部会话与消息）。
+     *
+     * 默认实现**明确失败**而不是静默成功（同 [patchSessionRuntimeState] 的理由）：
+     * 旧伴侣通道没有该端点，默默当成删除会让用户以为群没了。
+     */
+    suspend fun deleteGroup(groupId: String) {
+        throw CompanionError.ServerRejected(code = 501, message = "当前数据源不支持删除群聊，请在本地模式下使用")
+    }
+
+    /** 新建群聊会话（S6-01：群会话管理），返回新会话。 */
+    suspend fun createGroupSession(groupId: String, title: String? = null): com.qingyu.companion.model.GroupSession {
+        throw CompanionError.ServerRejected(code = 501, message = "当前数据源不支持新建群聊会话，请在本地模式下使用")
+    }
+
+    /** 重命名群聊会话。 */
+    suspend fun renameGroupSession(groupId: String, sessionId: String, title: String) {
+        throw CompanionError.ServerRejected(code = 501, message = "当前数据源不支持重命名群聊会话，请在本地模式下使用")
+    }
+
+    /** 删除群聊会话（连带删除其消息）。 */
+    suspend fun deleteGroupSession(groupId: String, sessionId: String) {
+        throw CompanionError.ServerRejected(code = 501, message = "当前数据源不支持删除群聊会话，请在本地模式下使用")
+    }
+
+    /**
+     * 修改群聊会话设置（S6-01）。
+     *
+     * 白名单键：`title` / `personaId` / `narrativeMode` / `dialogueDirectionsEnabled` /
+     * `memoryEnabled` / `memoryMode` / `autoMemoryInterval`；越界键报错而不是静默丢弃。
+     */
+    suspend fun patchGroupSession(groupId: String, sessionId: String, patch: Map<String, Any?>) {
+        throw CompanionError.ServerRejected(code = 501, message = "当前数据源不支持修改群聊会话设置，请在本地模式下使用")
+    }
+
     /** 翻译群聊消息，返回译文 */
     suspend fun groupTranslate(groupId: String, sessionId: String, messageId: String): String?
 
