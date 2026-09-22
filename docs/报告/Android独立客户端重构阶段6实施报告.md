@@ -378,6 +378,12 @@
 
 **执行前置**：①真机三台（含 Android 8 老机型）；②构建一个 release/签名包（更新流需要真实 PackageInstaller 会话）；③网络 TTS/生图/embedding 的真实端点凭据。执行完毕后本表逐格替换「待执行」为证据位，并把结果并入阶段验收记录。
 
+### 5.3 待人工执行交付包（阶段 6 → 「已完成」终态的最后三项）
+
+1. **实机矩阵执行**（§5.2）：9 场景 × Android 8/12/14 三真机，逐格替换「待执行」为证据位；前置=真机三台+release 签名包+真实端点凭据。
+2. **决策签字回填**（§5.1）：D-9/D-11/D-12/D-13/D-14/D-16 逐项由送签方签字；不签按各行「默认后果」执行并记录。
+3. **U-6-8 收敛版收尾**（round 28 状态）：`9ba86042` 收敛版已落盘，**覆盖等价核验通过**（红线三项+排序无关+群会话字段全覆盖，用例名承袭）；其核心往返用例 1 红 = `imagesJson` 的 `/` 被 payload 口径重序列化为 `\/`（JSON 斜杠转义破坏「原样往返」）——其自家测试已捕获（TDD），代理在途自修中；若停滞，按此诊断修补（序列化保留原始字符串或比对前归一化转义）。
+
 ## 6. 回滚方法
 
 - S6-01(a)：纯新增 + 等价接线，无数据迁移。回滚 = revert `95c1f1e`：删除 `shared/chat-core/{groupScheduling,groupFreeSplit,derivedMemory}.ts`、三份 fixture、`shared/__tests__/groupChatCoreGolden.test.ts`、Kotlin 三模块 + 三测试，并还原 `src/store/{useGroupChatStore,groupStreamController,chatUtils}.ts`。还原后 PC 行为与基线一致；Android 侧新模块未接入生产路径。
