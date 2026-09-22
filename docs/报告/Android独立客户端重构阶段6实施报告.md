@@ -2,7 +2,7 @@
 
 > 日期：2026-09-22（增量报告，随阶段进度续写）  
 > 基线提交：`af85b9b`（工作区另含阶段 2–5 交织的未推送改动，见 §0.2）  
-> 完成提交：S6-01(a) = `95c1f1e`；S6-01(b) = `b0294ec`；S6-01(c)-1/-2 = `041bd4b`；S6-01(c)-3 = `73b33f9`（均**尚未推送**）  
+> 完成提交：S6-01(a) = `95c1f1e`；S6-01(b) = `b0294ec`；S6-01(c)-1/-2 = `041bd4b`；S6-01(c)-3 = `73b33f9`；S6-01(c)-4（P1-6-2 闭合）见 §0.1（均**尚未推送**）  
 > 结论：**进行中** — S6-01(a) 跨端契约层、S6-01(b) Android 群数据层、S6-01(c) 群上下文（提示词段/文本块/完整装配）已落地并通过双端门禁；S6-01 余项（生成闭环 d、群记忆 e、UI f）与 S6-02～S6-07 未完成（§5）。阶段 6 尚不能签字。
 
 ## 0. 边界与工作区
@@ -13,6 +13,7 @@
 - **S6-01(b)** = **`b0294ec`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：Android 群数据层补全——本地库 v5（`local_groups` 调度参数列、`local_messages` 身份三键、新表 `local_group_messages`、会话方向开关）、`EntityPayloads` 三处（message 身份键缺口清零 + 群会话/群消息临时 payload）、`LocalStore`/`RoomLocalSyncRepository`/`FakeLocalStore` 群消息记账链、`ChatRepository` 群生命周期接口（默认明确失败）、`LocalChatRepository` 群聊 16 项真实现（`groupAiReply` 除外）、DTO 补字段、v4→v5 instrumented 迁移测试，19 files，+3871/−41。
 - **S6-01(c)-1/-2** = **`041bd4b`**（2026-09-22，未推送，哈希补记 `33e4012`）：群上下文提示词段与确定性文本块跨端共享——`shared/chat-core/groupContextBlocks.ts`（从 PC `groupChatContext.ts` 逐字抽出）+ `group-prompts`/`group-context-blocks` golden + Kotlin `ChatGroupPrompts`/`ChatNarrativeMode.buildGroupNarrativeModePrompt`/`ChatGroupContextBlocks` + 12 例逐字 golden。PC 接线暂缺（P1-6-2）。
 - **S6-01(c)-3** = **`73b33f9`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：群上下文完整装配——`shared/chat-core/groupContextBuilder.ts`（组装顺序 1–19）+ `ChatGroupContextBuilder.kt` + `group-context.json`（装配 8 例 + 身份解析 3 例）+ `ChatGroupContextBuilderGoldenTest` 3/3。
+- **S6-01(c)-4（P1-6-2 闭合）**（2026-09-22，未推送，提交哈希随后一笔补记）：PC `src/store/groupChatContext.ts` 六段内联文本块接线 `shared/chat-core/groupContextBlocks.ts`（等价重构，净删约 80 行副本），漂移窗口关闭。
 - PC 侧接线为**等价重构**：不改任何用户可观察行为（提示词、文案、调度结果、落盘语义均不变），由既有 43 条 `useGroupChatStore` 用例、12 条 `groupMemoryManager` 用例、6 条 checkpoint 用例与全量 `pnpm test` 佐证。
 
 ### 0.2 工作区并存改动（非本轮产物，未触碰）
@@ -40,6 +41,7 @@
 | S6-01(c)-1 群提示词段跨端共享 | `shared/chat-core/groupContextBlocks.ts`（成员卡/用户人设/历史归属/后历史指令/charName 口径/scenario 门控，从 PC `groupChatContext.ts` 逐字抽出）+ fixture `group-prompts.json`（roster/turnRules/叙事约束矩阵）与 `group-context-blocks.json` | TS 生成器 `groupChatCoreGolden.test.ts` 扩到 5 份 fixture；**PC 接线暂缺见 P1-6-2**（`groupChatContext.ts` 有他方在途修改重叠） |
 | S6-01(c)-2 Kotlin 端口 | `ChatGroupPrompts.kt`（roster/turnRules）、`ChatNarrativeMode.buildGroupNarrativeModePrompt`（补齐阶段 4 注明的 S6 缺口）、`ChatGroupContextBlocks.kt` | `ChatGroupPromptsGoldenTest` 5 例 + `ChatGroupContextBlocksGoldenTest` 7 例，读同一 fixture 逐字断言 |
 | S6-01(c)-3 群上下文完整装配 | `shared/chat-core/groupContextBuilder.ts`（PC `buildGroupChatContext` 组装顺序 1–19 逐字抽出：roster→turnRules→thought→分层记忆→群 systemPrompt→世界书段→成员卡→人设→at_end→预设→叙事→裁剪→压缩摘要→归属映射→深度插入→后历史→模板前缀→合并/转换→宏）+ `ChatGroupContextBuilder.kt` Kotlin 等价装配 | fixture `group-context.json`（装配 8 例：三模式/场景门控/压缩摘要注入/pendingCompression 归属文本/语义事实；身份解析 3 例）+ `ChatGroupContextBuilderGoldenTest` 3/3 逐字断言。世界书执行与请求预算计划在上游（各自已有跨语言 golden），此处按 PC 位置拼装 render plan 段 |
+| S6-01(c)-4 PC 接线（P1-6-2 闭合） | `src/store/groupChatContext.ts` 六段内联文本块替换为 `groupContextBlocks.ts` 调用（成员卡/人设/历史归属/后历史/场景门控/charName） | 等价重构：定向 61/61（含群聊旅程 43 例）、全量 `pnpm test` 3085/4/0、golden 6/6 只读一致、`pnpm check`/`lint` 0 error |
 
 这补上了阶段 5 §2.28 指认的前置缺口之一：**「一份群调度 fixture」**（此前 `cross-platform` 四组 fixture 中无任何群调度 oracle，PC 的 groupCas/群测试都是单端断言）。
 
@@ -140,14 +142,14 @@
 3. **不动阶段 0 冻结的 baseline**：`shared/fixtures/cross-platform/baseline/sessions/group-chat/group-modes.json`（natural/nomination/poll + role/speakerId/nominate 字段）与 PC 真实类型不对齐，不能直接作 oracle；登记为 D-13，未改。
 4. **hasDerived 差异按现状钉死**，不"顺手修复"（修也得先改契约、双端同改）。
 5. 群消息的 `status/speakerKind/generationKind` 补齐（`shared/messageIdentity.ts#withMessageIdentity`）、`saveMessagesBatch` 200 条上限等**持久化**语义本轮未纳入 fixture（属 S6-01 数据层子项，随 Room 落库一起做）。
-6. **§11.3 PC 门禁的适用口径（S6-01c）**：本轮新增 `shared/chat-core/groupContextBlocks.ts` 触发「共享 chat-core」条件，但 PC **尚未消费**该模块（P1-6-2），零行为/零热路径变化，故只跑统一门禁（check/lint/test）；A/B 性能基准与核心旅程 smoke 留到 **P1-6-2 闭合（PC 接线）时**执行，作为接线验收的一部分。届时若 A/B 不过，按 §3.4 阻断而不是放宽。
+6. **§11.3 PC 门禁的适用口径（S6-01c）**：S6-01(c)-1/-2/-3 新增共享模块时 PC 尚未消费（当时零行为变化，只跑统一门禁）；S6-01(c)-4 接线（P1-6-2 闭合）后 PC 群上下文行为**应为零变化**——以共享模块的 fixture 逐字 oracle + 定向 61 例 + 全量 `pnpm test` 作为等价性证据。§11.3 的 A/B 性能基准与核心旅程 smoke 的**性能半边**依赖阶段 2 **PCE-01** 采集脚本（遗留未补），挂在其闭合时一并复测；若届时 A/B 不过，按 §3.4 阻断而不是放宽。
 
 ## 5. 未完成与阻断
 
 ### U-n（未完成）
 
 - **U-6-1 S6-01 余项**（群数据层已落地，剩余为）：`groupAiReply` 本地生成闭环（群调度器状态机 + `LocalGroupGenerationUseCase` 接 ModelGateway + 中断/部分失败终局 + stop）、群记忆接入（默认记忆配置、摘要/事实、CAS、编辑删除失效判定接 `ChatMemoryInvalidation`）；
-- **U-6-2 S6-01 群上下文装配**（**实现完成，待生成闭环接线**）：S6-01(c)-1/-2/-3 已交付文本块/提示词段/完整装配（TS oracle + Kotlin 端 + `group-context` fixture 双端逐字对齐）。余项仅两件接线：①Kotlin `ChatGroupContextBuilder` 由 S6-01(d) 的 `LocalGroupGenerationUseCase` 消费（当前是「oracle + 端口先行」状态）；②PC 接线见 **P1-6-2**。世界书执行与请求预算计划在上游组装（各自已有跨语言 golden）；
+- **U-6-2 S6-01 群上下文装配**（**实现完成，待生成闭环接线**）：S6-01(c)-1/-2/-3/-4 已交付文本块/提示词段/完整装配 + PC 接线（TS oracle + Kotlin 端 + `group-context` fixture 双端逐字对齐，P1-6-2 已闭合）。余项一件：Kotlin `ChatGroupContextBuilder` 由 S6-01(d) 的 `LocalGroupGenerationUseCase` 消费（当前是「oracle + 端口先行」状态）。世界书执行与请求预算计划在上游组装（各自已有跨语言 golden）；
 - **U-6-3 S6-01 调度器与生成闭环**：群调度器领域状态机（仿 `ChatGenerationTask.Machine`，禁止进 Compose/VM，消费 `ChatGroupScheduling`）；
 - **U-6-4 S6-01 群记忆接入**：`LocalMemorySummaryService` 扩群会话、scope=`group:{id}` 事实提案、CAS stale 丢弃；
 - **U-6-5 S6-01 UI 收尾**：群编辑/删除、成员增删排序、模式切换 UI（矩阵 `group.chatModes` notes「缺模式切换 UI」）、停止、续写、导出、TTS 入口；
@@ -169,7 +171,7 @@
 ### P1-x（过程问题）
 
 - ~~P1-6-1：工作区存在与本阶段无关的杂物（`android/draft_patch.py`、`android/.../领域模型。`、`diag2.txt`、`diag3.txt`、`__pycache__/`、`.mcp.json`），建议归属 Agent 清理；本轮不代删。~~ **已闭合（2026-09-22，用户指示「整理工作区」）**：一次性脚本/日志草稿/0 字节误建文件/字节码缓存已删除；走查截图移入既有 `.tmp-archive/` 治理区；`.mcp.json`（本机 MCP 配置，含 `${UTOOLS_MCP_KEY}` 密钥头引用）与 `__pycache__/` 补入 `.gitignore`（沿用「隐私/凭据防误提交」与「测试沙盒与临时归档」两节的治理模式）。同次整理按 `047e093` 先例把阶段 2–5 交织的在途跟踪改动整体收编入库（收编前 `pnpm test` 全绿复验）。
-- **P1-6-2（PC 接线暂缺，已登记的漂移窗口）**：`shared/chat-core/groupContextBlocks.ts` 的文本块已从 PC `src/store/groupChatContext.ts` 逐字抽出，但该文件存在其他 Agent 的**在途修改**（scenarioInjectionMode 门控，+11/−2，与成员卡段重叠），按提交规则本轮不改该文件，PC 仍在内联实现同样逻辑。fixture 钉住共享模块、Kotlin 由共享模块对齐；**在 P1-6-2 闭合前，PC 内联段与共享模块之间存在理论漂移窗口**（改动方只动一处就可能漂移）。闭合条件：在途修改合流后，把 `groupChatContext.ts` 的成员卡/人设/历史归属/后历史段替换为本模块调用，并跑 `pnpm test` 全量 + 群相关用例。归属：PC 数据线/契约负责人。
+- **~~P1-6-2（PC 接线暂缺，已登记的漂移窗口）~~** **已闭合（2026-09-22，`groupChatContext.ts` 随工作区整理入库后接线）**：`src/store/groupChatContext.ts` 的成员卡/用户人设/历史归属标注/后历史指令/场景门控/charName 口径六段已替换为 `shared/chat-core/groupContextBlocks.ts` 调用（等价重构，净删约 80 行内联副本）。闭合证据：`tsc` 0 错、定向回归 61/61（含 `useGroupChatStore` 43 例群聊旅程用例）、全量 `pnpm test` **3085/4 跳过/0 失败**、群 golden 生成器 6/6 只读一致。原登记的「PC 内联段与共享模块之间的漂移窗口」随之关闭——此后文本块只有一份实现。§11.3 的 A/B 性能基准仍挂在阶段 2 的 **PCE-01** 采集脚本上（本轮为等价字符串装配，无热路径算法变化，以双端 fixture 逐字一致 + 全量回归作为等价性证据；PCE-01 闭合时补跑 A/B 复测）。
 
 ### F-n（跨阶段旁证）
 

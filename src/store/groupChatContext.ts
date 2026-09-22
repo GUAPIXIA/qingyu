@@ -27,6 +27,17 @@ import type { GroupStoreGet } from './groupChatTypes'
 import type { NarrativeMode } from '../../shared/types'
 import { buildGroupNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { buildGroupRosterIntro, buildGroupTurnRulesPrompt } from '../../shared/groupChatPrompt'
+// 阶段 6 S6-01(c)（P1-6-2 闭合）：成员卡/人设/历史归属/后历史/场景门控等确定性文本块
+// 收敛到共享模块——fixture oracle 就是这份实现（group-context-blocks.json / group-context.json）。
+import {
+  buildFreeMemberCards,
+  buildTargetMemberCard,
+  buildGroupUserPersona,
+  mapGroupHistoryMessages,
+  buildGroupPostHistoryInstructions,
+  resolveGroupCharNameForVars,
+  resolveShouldSendScenario,
+} from '../../shared/chat-core/groupContextBlocks'
 import { buildThoughtContractBody } from '../../shared/thoughtContract'
 import { resolveGroupRequestPlan } from './groupRequestPlan'
 import { withReasoningSamples } from './usageProfileCache'
@@ -107,14 +118,14 @@ export function buildGroupChatContext(
     .map(id => charStore.characters.find(c => c.id === id))
     .filter(Boolean) as Character[]
   // 与单聊一致：本轮用户消息已经入列，用户消息不超过 1 条即为会话首轮。
-  const isFirstTurn = state.messages.filter(m => m.characterId === '__user__').length <= 1
-  const scenarioInjectionMode = settings.scenarioInjectionMode ?? 'first_turn'
-  const shouldSendScenario = scenarioInjectionMode !== 'off'
-    && (scenarioInjectionMode !== 'first_turn' || isFirstTurn)
+  const shouldSendScenario = resolveShouldSendScenario(
+    settings.scenarioInjectionMode,
+    state.messages.filter(m => m.characterId === '__user__').length,
+  )
 
   // 变量替换用的 charName（mention/polling 为目标角色名，free 为成员列表）
   const targetChar = targetCharId ? members.find(m => m.id === targetCharId) : undefined
-  const charNameForVars = targetChar?.name || members.map(m => m.name).join('、')
+  const charNameForVars = resolveGroupCharNameForVars(targetChar?.name, members)
   // 已存在但缺少字段的旧会话固定按 immersive 运行；只有无会话预览才解析群聊/全局默认。
   const narrativeMode = currentSession
     ? resolveNarrativeMode(currentSession.narrativeMode)
@@ -290,72 +301,36 @@ export function buildGroupChatContext(
   }
 
   // 完整角色设定（mention/polling 时为目标角色；free 时为所有角色）
+  // 文本块收敛到共享模块（含示例锚点重排与世界书前后段包裹的语义钉子）
+  const memberCardsOptions = {
+    userName,
+    shouldSendScenario,
+    lorebookBefore,
+    lorebookAfter,
+    exampleBefore: lorebookRenderPlan.beforeExamples,
+    exampleAfter: lorebookRenderPlan.afterExamples,
+  }
   if (group.chatMode === 'free') {
-    systemContent += '\n\n' + lorebookBefore + '以下是所有角色的完整设定：\n'
-    const hasExampleAnchors = lorebookRenderPlan.beforeExamples.length > 0
-      || lorebookRenderPlan.afterExamples.length > 0
-    members.forEach(m => {
-      systemContent += `\n--- ${m.name} ---\n`
-      if (m.description) systemContent += `描述：${replaceVariables(m.description, userName, m.name)}\n`
-      if (m.personality) systemContent += `性格：${replaceVariables(m.personality, userName, m.name)}\n`
-      if (shouldSendScenario && m.scenario) {
-        systemContent += `场景：${replaceVariables(m.scenario, userName, m.name)}\n`
-      }
-      if (m.systemPrompt) systemContent += `\n${replaceVariables(m.systemPrompt, userName, m.name)}\n`
-      if (!hasExampleAnchors && m.exampleDialog) {
-        systemContent += `\n对话示例：\n${replaceVariables(m.exampleDialog, userName, m.name)}\n`
-      }
-    })
-    if (hasExampleAnchors) {
-      if (lorebookRenderPlan.beforeExamples.length > 0) {
-        systemContent += '\n' + lorebookRenderPlan.beforeExamples.join('\n') + '\n'
-      }
-      members.forEach((member) => {
-        if (member.exampleDialog) {
-          systemContent += `\n对话示例（${member.name}）：\n${replaceVariables(member.exampleDialog, userName, member.name)}\n`
-        }
-      })
-      if (lorebookRenderPlan.afterExamples.length > 0) {
-        systemContent += '\n' + lorebookRenderPlan.afterExamples.join('\n') + '\n'
-      }
-    }
-    if (lorebookAfter) systemContent += '\n' + lorebookAfter
+    systemContent += buildFreeMemberCards(members, memberCardsOptions)
   } else if (targetCharId) {
     const target = members.find(m => m.id === targetCharId)
     if (target) {
-      systemContent += `\n\n${lorebookBefore}【当前发言角色：${target.name}】\n`
-      if (target.description) systemContent += `描述：${replaceVariables(target.description, userName, target.name)}\n`
-      if (target.personality) systemContent += `性格：${replaceVariables(target.personality, userName, target.name)}\n`
-      if (shouldSendScenario && target.scenario) {
-        systemContent += `场景：${replaceVariables(target.scenario, userName, target.name)}\n`
-      }
-      if (target.systemPrompt) systemContent += `\n${replaceVariables(target.systemPrompt, userName, target.name)}\n`
-      if (lorebookRenderPlan.beforeExamples.length > 0) {
-        systemContent += '\n' + lorebookRenderPlan.beforeExamples.join('\n') + '\n'
-      }
-      if (target.exampleDialog) systemContent += `\n对话示例：\n${replaceVariables(target.exampleDialog, userName, target.name)}\n`
-      if (lorebookRenderPlan.afterExamples.length > 0) {
-        systemContent += '\n' + lorebookRenderPlan.afterExamples.join('\n') + '\n'
-      }
-      if (lorebookAfter) systemContent += '\n' + lorebookAfter
+      systemContent += buildTargetMemberCard(target, memberCardsOptions)
     }
   }
 
-  // 用户人设注入（可配置：开关 / 位置 / 字段，与单聊一致）
+  // 用户人设注入（可配置：开关 / 位置 / 字段，与单聊一致；正文收敛到共享模块）
   const personaInjection = settings.personaInjection
     ?? { enabled: true, position: 'system' as const, includeDescription: true, includePersona: true }
-  let personaText = ''
-  if (personaInjection.enabled) {
-    personaText += `用户名：${userName}\n`
-    if (personaInjection.includeDescription !== false && userDescription) {
-      personaText += `描述：${replaceVariables(userDescription, userName, charNameForVars)}\n`
-    }
-    if (personaInjection.includePersona !== false && userPersona) {
-      personaText += `性格：${replaceVariables(userPersona, userName, charNameForVars)}\n`
-    }
-    if (personaText && personaInjection.position === 'system') {
-      systemContent += '\n【用户人设】\n' + personaText
-    }
+  const personaText = buildGroupUserPersona({
+    userName,
+    userDescription,
+    userPersona,
+    charNameForVars,
+    injection: personaInjection,
+  })
+  if (personaText && personaInjection.position === 'system') {
+    systemContent += '\n【用户人设】\n' + personaText
   }
 
   // 世界书 at_end 条目
@@ -384,17 +359,14 @@ export function buildGroupChatContext(
   // ===== 历史消息（Token 预算裁剪）=====
   let usedTokens = estimateTokens(systemContent, model)
 
-  // 预计算后历史指令并预留 token 预算（避免裁剪后注入导致超限）
-  let postHistoryText = ''
-  if (group.chatMode === 'free') {
-    for (const m of members) {
-      if (m.postHistoryInstructions) {
-        postHistoryText += replaceVariables(m.postHistoryInstructions, userName, m.name) + '\n'
-      }
-    }
-  } else if (targetChar?.postHistoryInstructions) {
-    postHistoryText = replaceVariables(targetChar.postHistoryInstructions, userName, charNameForVars)
-  }
+  // 预计算后历史指令并预留 token 预算（避免裁剪后注入导致超限；拼接收敛到共享模块）
+  const postHistoryText = buildGroupPostHistoryInstructions({
+    chatMode: group.chatMode,
+    members,
+    target: targetChar ?? null,
+    userName,
+    charNameForVars,
+  })
   if (postHistoryText) {
     usedTokens += estimateTokens(postHistoryText, model)
   }
@@ -473,29 +445,15 @@ export function buildGroupChatContext(
       keepSeparate: true,
     })
   }
-  recentMessages.forEach(m => {
-    // M-23 修复：过滤空 content 消息（空占位/__free__ 错误消息）——
-    // 空 assistant 消息进上下文会干扰模型输出格式（单聊有对等过滤）
-    if (!m.content || !m.content.trim()) return
-    const char = members.find(c => c.id === m.characterId)
-    const speaker = m.characterId === '__user__'
-      ? userName
-      : (char?.name || '未知角色')
-
-    if (m.characterId === '__user__') {
-      historyContext.push({
-        role: 'user',
-        content: replaceVariables(m.content, userName, charNameForVars),
-        // 用户消息图片 → vision 模型识别（角色消息无图片回传）
-        ...(m.images?.length ? { images: m.images } : {}),
-      })
-    } else {
-      historyContext.push({
-        role: 'assistant',
-        content: `【${speaker}】${replaceVariables(m.content, userName, speaker)}`,
-      })
-    }
-  })
+  // 历史归属标注收敛到共享模块（M-23 空正文过滤 / 用户无前缀带图片 / 角色【名】前缀）
+  for (const entry of mapGroupHistoryMessages({ messages: recentMessages, members, userName, charNameForVars })) {
+    historyContext.push({
+      role: entry.role,
+      content: entry.content,
+      // 用户消息图片 → vision 模型识别（角色消息无图片回传）
+      ...(entry.images?.length ? { images: entry.images } : {}),
+    })
+  }
 
   // at_depth 世界书按深度注入历史消息段（共享工具）
   const depthInserts: DepthInsertItem[] =
