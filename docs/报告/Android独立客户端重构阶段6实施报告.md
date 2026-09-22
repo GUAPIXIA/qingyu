@@ -77,6 +77,24 @@
 5. **free 拆分**：未识别角色旁注归属**首成员**（上一条已是首成员则并入）；识别到但空正文的段丢弃且无旁注；全段皆空 → 空消息列表（占位由调用方移除）。
 6. **派生记忆 hasDerived 的 chat/group 差异**：单聊把 `memoryFactParseFailureCount/memoryFactRetryAfterVersion` 计入"有派生数据"，群聊不计（PC 两侧现状差异）。已在 fixture 用对偶用例钉住（"（语义钉子）事实解析退避计数计入单聊/不计入群聊派生数据"）。
 
+### 2.4 并行集成修复登记（P1-6-3，2026-09-22）
+
+6 线子代理 + 1 条人设流并行共享一个 Gradle 模块期间，出现一批**跨文件机械性编译阻塞**。主代理作为集成者做了以下**零语义变化**修复（各文件所有者属并行子代理，修复后均已能继续各自迭代；同类病灶家族见下，建议沉淀为 lint 规则）：
+
+| # | 文件（所有者） | 病灶 | 修复 |
+|---|---|---|---|
+| 1 | `media/MagicBytes.kt`（S6-02） | KDoc 文本含 `image/*`——**Kotlin 块注释可嵌套**，`/*` 开新层吞掉后续全部代码（「Missing '}'」+「Unclosed comment」幽灵错误） | 星号改全角＋注记 |
+| 2 | `diagnostics/DiagnosticsRedactor.kt`（S6-07） | KDoc 文本含 `scheme://***@host`（`//***` 含 `/*`）同款 | 同上 |
+| 3 | `mcp/StdioNoProcessPathTest.kt`（S6-06） | KDoc 文本含 `mcp/**` 同款 | 同上 |
+| 4 | `media/AndroidImageCodecTest.kt` 等 14 处（S6-02/03） | 测试函数名含 JVM 非法字符（`/` `.` `:`，反引号内也不允许）或全角标点+空格**未加反引号** | 非法字符改全角/补反引号 |
+| 5 | `media/MediaFixtures.kt`（S6-02） | `byteArrayOf` 超 Byte 范围字面量（0x9c/0x88） | `.toByte()` |
+| 6 | `updater/UpdateVerifierTest.kt`（S6-07） | String 传入 ByteArray 参数 | `.toByteArray()` |
+| 7 | `embedding/SemanticEntryGate.kt`（S6-05） | **字符串模板 CJK 吞变量**：`$preview要求…` 中 CJK 是合法标识符字符，整串被解析为一个未定义标识符 | `${preview}` 括起 |
+| 8 | `mcp/{schema/ToolSchema,transport/McpTransports}.kt`、`imagegen/ComfyWorkflowAnalyzer.kt`、`mcp/McpClientTest.kt`（S6-04/06） | 空 data class、字段名 `code`→`errorCode`、`Any` 索引转型、扩展函数全限定调用（`kotlinx.coroutines.test.runCurrent()` 无接收者） | data object 化/改字段名/显式转型/`testScheduler.runCurrent()` |
+| 9 | `chatcore/ChatLorebookChannels.kt`（接缝） | S6-05 引用阶段 5 §2.21 预留的 `ChannelCapabilities` 输入但类型未落地 | 按预留注释补齐 data class（S6-05 已确认并基于它追加重载，双方不重叠） |
+
+另有 **Gradle 并发互踩事故**：多线程同时构建同一模块导致 `kotlin-classes`/元数据缓存损坏（`Failed to create MD5 hash … does not exist`、`JvmProtoBuf mergeFrom` 解析失败），`clean` 亦一度因他方构建持有 `R.jar` 锁而失败。处置：清损坏目录→单次调用 clean+build 持锁重建。**过程教训**（并入 §3.8）：并行子代理应分批（≤3）或分模块；共享模块时全体构建应串行化。
+
 ### 2.3 发现的 PC 侧行为不一致（**未改**，登记为 D-14 等待签字）
 
 只读取证（阶段 6 §0：不能为降低 Android 实现成本改变已验证的 PC 行为）发现 PC 群聊存在若干自相矛盾处，例如：polling 非 autoMode 时 `currentSpeakerIndex` 永不推进（"按顺序"只在接力下成立）；free 中途停止的半截正文存成 `__free__` 消息（沉浸模式不渲染、后续上下文标【未知角色】）；群气泡不显示 `generationNotice/generationError`（只落盘）；`__free__/__narrator__` 消息显示"重新生成"但 store 静默无效；群导出 md 的 speaker 取 characterId 原值且与单聊 `sessionExport` 不同源；桥接（旧伴侣通道）与桌面的群口径不同（用户消息 `round:0`、`members[(round-1)%len]` 轮转、历史全带【名字】前缀）。完整清单见 D-14。
