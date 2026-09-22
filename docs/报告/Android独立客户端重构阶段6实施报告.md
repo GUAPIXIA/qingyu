@@ -2,7 +2,7 @@
 
 > 日期：2026-09-22（增量报告，随阶段进度续写）  
 > 基线提交：`af85b9b`（工作区另含阶段 2–5 交织的未推送改动，见 §0.2）  
-> 完成提交：S6-01(a) = `95c1f1e`；S6-01(b) = `b0294ec`；S6-01(c)-1/-2 = `041bd4b`；S6-01(c)-3 = `73b33f9`；S6-01(c)-4 = `c5e7c94`；S6-01(d)-1 = `75d939a`；S6-01(d)-2 = `61b8e79`（均**尚未推送**）  
+> 完成提交：S6-01(a) = `95c1f1e`；S6-01(b) = `b0294ec`；S6-01(c)-1/-2 = `041bd4b`；S6-01(c)-3 = `73b33f9`；S6-01(c)-4 = `c5e7c94`；S6-01(d)-1 = `75d939a`；S6-01(d)-2 = `61b8e79`；S6-01(d)-3 = `3f7eed4`（均**尚未推送**）  
 > 结论：**进行中** — S6-01(a) 跨端契约层、S6-01(b) Android 群数据层、S6-01(c) 群上下文（提示词段/文本块/完整装配）已落地并通过双端门禁；S6-01 余项（生成闭环 d、群记忆 e、UI f）与 S6-02～S6-07 未完成（§5）。阶段 6 尚不能签字。
 
 ## 0. 边界与工作区
@@ -16,7 +16,7 @@
 - **S6-01(c)-4（P1-6-2 闭合）** = **`c5e7c94`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：PC `src/store/groupChatContext.ts` 六段内联文本块接线 `shared/chat-core/groupContextBlocks.ts`（等价重构，净删约 80 行副本），漂移窗口关闭。
 - **S6-01(d)-1** = **`75d939a`**（2026-09-22，未推送，哈希补记 `daf68aa`）：`ChatGroupTurnMachine.kt` 群轮次调度器状态机（纯 Kotlin 领域状态机，决策不含副作用）+ `ChatGroupTurnMachineTest` 13/13（含归属锁定/接力链全终止条件）。
 - **S6-01(d)-2** = **`61b8e79`**（2026-09-22，未推送，哈希补记随后）：`LocalGroupGenerationUseCase.kt` 群本地生成闭环（消费状态机/装配/free 拆分/统一收尾管线，取消保正文）+ `groupAiReply` 去 notMigrated + `AppContainer` 接线 + `LocalGroupGenerationUseCaseTest` 8/8。
-- **S6-01(d)-3 世界书执行接入群装配**（2026-09-22，未推送，提交哈希随后一笔补记）：U-6-2 余项闭合——群/成员绑定世界书激活集、scanText 带 `【成员名】` 前缀、characterNames/Tags 与 entityVocabulary=成员名+tags、统一渲染器各桶按装配位置拼装、触发键回写会话近因窗口（环形 5）。`LocalGroupGenerationUseCaseTest` 增至 **10/10**（含常驻注入+近因回写、关键词+成员名前缀正则触发两用例）。同时 **S6-02/03/04/07 已并行委派子代理实施中**（media/tts/updater/diagnostics/imagegen 各自目录，结果待合流）。
+- **S6-01(d)-3 世界书执行接入群装配** = **`3f7eed4`**（2026-09-22，未推送，本报告补记哈希随其后一笔小提交）：U-6-2 余项闭合——群/成员绑定世界书激活集、scanText 带 `【成员名】` 前缀、characterNames/Tags 与 entityVocabulary=成员名+tags、统一渲染器各桶按装配位置拼装、触发键回写会话近因窗口（环形 5）。`LocalGroupGenerationUseCaseTest` 增至 **10/10**。同时 **S6-02/03/04/07 已并行委派子代理实施中**。
 - PC 侧接线为**等价重构**：不改任何用户可观察行为（提示词、文案、调度结果、落盘语义均不变），由既有 43 条 `useGroupChatStore` 用例、12 条 `groupMemoryManager` 用例、6 条 checkpoint 用例与全量 `pnpm test` 佐证。
 
 ### 0.2 工作区并存改动（非本轮产物，未触碰）
