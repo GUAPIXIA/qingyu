@@ -120,6 +120,14 @@ relay-server/dist/
 .tmp-drill-*/
 .tmp-s204-*/
 .tmp-archive/
+# 实机走查/演练的截图与录屏草稿（有引用价值的应移入 docs/报告 或 output/ 后入库）
+.tmp-walkthrough-*/
 # 与 .poc-tmp/ / .qa/ 同类的本地 QA 草稿目录（原先漏了忽略，2.6 MB 未跟踪）
 .qa-poc/
+
+# === 工作区整理（2026-09-22） ===
+# Python 一次性脚本的字节码缓存（如曾散落的 draft_patch.py）
+__pycache__/
+# 本机 MCP 工具配置（含 `${UTOOLS_MCP_KEY}` 密钥头引用，属本机环境，不入库）
+.mcp.json
 

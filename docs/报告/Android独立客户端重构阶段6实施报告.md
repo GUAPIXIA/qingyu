@@ -168,7 +168,7 @@
 
 ### P1-x（过程问题）
 
-- P1-6-1：工作区存在与本阶段无关的杂物（`android/draft_patch.py`、`android/.../领域模型。`、`diag2.txt`、`diag3.txt`、`__pycache__/`、`.mcp.json`），建议归属 Agent 清理；本轮不代删。
+- ~~P1-6-1：工作区存在与本阶段无关的杂物（`android/draft_patch.py`、`android/.../领域模型。`、`diag2.txt`、`diag3.txt`、`__pycache__/`、`.mcp.json`），建议归属 Agent 清理；本轮不代删。~~ **已闭合（2026-09-22，用户指示「整理工作区」）**：一次性脚本/日志草稿/0 字节误建文件/字节码缓存已删除；走查截图移入既有 `.tmp-archive/` 治理区；`.mcp.json`（本机 MCP 配置，含 `${UTOOLS_MCP_KEY}` 密钥头引用）与 `__pycache__/` 补入 `.gitignore`（沿用「隐私/凭据防误提交」与「测试沙盒与临时归档」两节的治理模式）。同次整理按 `047e093` 先例把阶段 2–5 交织的在途跟踪改动整体收编入库（收编前 `pnpm test` 全绿复验）。
 - **P1-6-2（PC 接线暂缺，已登记的漂移窗口）**：`shared/chat-core/groupContextBlocks.ts` 的文本块已从 PC `src/store/groupChatContext.ts` 逐字抽出，但该文件存在其他 Agent 的**在途修改**（scenarioInjectionMode 门控，+11/−2，与成员卡段重叠），按提交规则本轮不改该文件，PC 仍在内联实现同样逻辑。fixture 钉住共享模块、Kotlin 由共享模块对齐；**在 P1-6-2 闭合前，PC 内联段与共享模块之间存在理论漂移窗口**（改动方只动一处就可能漂移）。闭合条件：在途修改合流后，把 `groupChatContext.ts` 的成员卡/人设/历史归属/后历史段替换为本模块调用，并跑 `pnpm test` 全量 + 群相关用例。归属：PC 数据线/契约负责人。
 
 ### F-n（跨阶段旁证）
