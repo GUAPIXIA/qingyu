@@ -264,6 +264,15 @@
 
 已知口径（登记不隐藏）：Android 会话行无法区分「personaId 未设置」与「显式 null」——非空即视为已显式设置（`resolvePersonaFields` 的 `sessionPersonaIdDefined` 语义保留，行格式升级留待确需时做）；群生成设置面暂用 **PC 默认值**（人设注入/场景门控/thought 开关的用户设置接线随 S6-01f 设置 UI）；世界书执行暂未接（`lorebookPlan=null`，见 U-6-2 余项）。
 
+### 3.9 终局门禁基线（2026-09-22，PC 侧）
+
+| 命令 | 结果 | 归属 |
+|---|---|---|
+| `pnpm check` | **exit 1**：`Type 'boolean \| undefined' is not assignable to type 'boolean'` | **他流在途**：人格接线流 `50a2d95`（fix(chat): honor session persona in desktop context）落库遗留的 TS 类型错；阶段 6 的 PC 改动止于 round 8 等价重构（当轮 `pnpm check`/`lint`/`test` 全绿后未再触碰 PC） |
+| `pnpm test` | **3093 通过 / 4 跳过 / 4 失败**（TestFiles 279 passed \| 3 failed \| 1 skipped） | 4 红均在 `src/components/chat/__tests__/ChatInput.test.tsx`「AI 辅助」（续写空反馈/代入模式）——**PC 体验流在途文件**；共享契约测试（`shared/__tests__/groupChatCoreGolden.test.ts` 等）与群 golden 6 fixture 全绿 |
+
+阶段 6 范围（Android 全量 + shared golden）见 §3.1–3.8；上述 PC 红待两并行流收敛后由其自身收口（登记不代修，沿所有权边界）。
+
 ### 3.8 S6-01(e) 门禁补记（群记忆、CAS 与历史失效）
 
 | 命令 | 结果 | 备注 |
