@@ -1,0 +1,421 @@
+{
+  "version": 1,
+  "oracle": "shared/chat-core/groupFreeSplit.ts",
+  "members": [
+    {
+      "id": "char-a",
+      "name": "小A"
+    },
+    {
+      "id": "char-b",
+      "name": "小B"
+    },
+    {
+      "id": "char-c",
+      "name": "小C"
+    },
+    {
+      "id": "char-sub",
+      "name": "小"
+    },
+    {
+      "id": "char-en",
+      "name": "AbC"
+    },
+    {
+      "id": "char-dot",
+      "name": "A.B"
+    }
+  ],
+  "splitCases": [
+    {
+      "label": "全知叙事不拆分（【判定】类标记不被分段器误识别）",
+      "input": {
+        "content": "【判定】局势升级\n【可选行动】观望",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "omniscient"
+      },
+      "expected": {
+        "kind": "narrator",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "【判定】局势升级\n【可选行动】观望"
+          }
+        ]
+      }
+    },
+    {
+      "label": "全知叙事空正文占位",
+      "input": {
+        "content": "",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "omniscient"
+      },
+      "expected": {
+        "kind": "narrator",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "(无回复)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "全知叙事无成员归属 __narrator__",
+      "input": {
+        "content": "旁白正文",
+        "memberIds": [],
+        "narrativeMode": "omniscient"
+      },
+      "expected": {
+        "kind": "narrator",
+        "messages": [
+          {
+            "characterId": "__narrator__",
+            "content": "旁白正文"
+          }
+        ]
+      }
+    },
+    {
+      "label": "基本按【角色名】拆分",
+      "input": {
+        "content": "【小A】第一段\n【小B】第二段",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "第一段"
+          },
+          {
+            "characterId": "char-b",
+            "content": "第二段"
+          }
+        ]
+      }
+    },
+    {
+      "label": "首个标记前的旁白并入首段",
+      "input": {
+        "content": "开场旁白\n【小A】第一段\n【小B】第二段",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "开场旁白\n\n第一段"
+          },
+          {
+            "characterId": "char-b",
+            "content": "第二段"
+          }
+        ]
+      }
+    },
+    {
+      "label": "标记之间的旁白归上一段",
+      "input": {
+        "content": "【小A】一\n中间旁白\n【小B】二",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "一\n中间旁白"
+          },
+          {
+            "characterId": "char-b",
+            "content": "二"
+          }
+        ]
+      }
+    },
+    {
+      "label": "尾段标记后的文本归尾段",
+      "input": {
+        "content": "【小A】一\n【小B】二\n尾声",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "一"
+          },
+          {
+            "characterId": "char-b",
+            "content": "二\n尾声"
+          }
+        ]
+      }
+    },
+    {
+      "label": "未识别角色旁注归属首成员",
+      "input": {
+        "content": "【小D】幽灵发言",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "⚠️ 未识别角色「小D」: 幽灵发言"
+          }
+        ]
+      }
+    },
+    {
+      "label": "未识别角色紧跟首成员时并入同条",
+      "input": {
+        "content": "【小A】一\n【小D】幽灵",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "一\n\n⚠️ 未识别角色「小D」: 幽灵"
+          }
+        ]
+      }
+    },
+    {
+      "label": "未识别角色在其他成员发言后新建首成员消息",
+      "input": {
+        "content": "【小B】一\n【小D】幽灵",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-b",
+            "content": "一"
+          },
+          {
+            "characterId": "char-a",
+            "content": "⚠️ 未识别角色「小D」: 幽灵"
+          }
+        ]
+      }
+    },
+    {
+      "label": "识别到但正文为空的段直接丢弃",
+      "input": {
+        "content": "【小A】\n【小B】二",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-b",
+            "content": "二"
+          }
+        ]
+      }
+    },
+    {
+      "label": "未识别且正文为空的段丢弃且无旁注",
+      "input": {
+        "content": "【小A】\n【小D】\n【小B】二",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-b",
+            "content": "二"
+          }
+        ]
+      }
+    },
+    {
+      "label": "角色名大小写与首尾空格归一后匹配",
+      "input": {
+        "content": "【 小a 】你好",
+        "memberIds": [
+          "char-a"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "你好"
+          }
+        ]
+      }
+    },
+    {
+      "label": "成员名含正则元字符按字面匹配",
+      "input": {
+        "content": "【A.B】字面匹配",
+        "memberIds": [
+          "char-dot"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-dot",
+            "content": "字面匹配"
+          }
+        ]
+      }
+    },
+    {
+      "label": "同名多段顺序保留",
+      "input": {
+        "content": "【小A】一\n【小A】二",
+        "memberIds": [
+          "char-a"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "一"
+          },
+          {
+            "characterId": "char-a",
+            "content": "二"
+          }
+        ]
+      }
+    },
+    {
+      "label": "全部段为空时产生空消息列表（占位由调用方移除）",
+      "input": {
+        "content": "【小A】",
+        "memberIds": [
+          "char-a"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "segments",
+        "messages": []
+      }
+    },
+    {
+      "label": "无任何标记回落首成员",
+      "input": {
+        "content": "普通独白",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "fallback",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "普通独白"
+          }
+        ]
+      }
+    },
+    {
+      "label": "无标记空正文占位回落首成员",
+      "input": {
+        "content": "",
+        "memberIds": [
+          "char-a",
+          "char-b"
+        ],
+        "narrativeMode": null
+      },
+      "expected": {
+        "kind": "fallback",
+        "messages": [
+          {
+            "characterId": "char-a",
+            "content": "(无回复)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "无标记且无成员归属 __free__",
+      "input": {
+        "content": "独白",
+        "memberIds": [],
+        "narrativeMode": "immersive"
+      },
+      "expected": {
+        "kind": "fallback",
+        "messages": [
+          {
+            "characterId": "__free__",
+            "content": "独白"
+          }
+        ]
+      }
+    }
+  ]
+}

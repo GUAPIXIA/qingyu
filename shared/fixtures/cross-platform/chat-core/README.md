@@ -19,15 +19,20 @@
 | `thought.json` | `messagePostProcess.ts` | `extractThought` / `stripThought` / `stripThoughtTags`（含容忍标签与回退） |
 | `continuation-seam.json` | `messagePostProcess.ts` | `trimContinuationSeam` / `trimContinuationOverlap`（KMP 最长后缀=前缀） |
 | `token-estimate.json` | `tokenCounter.ts` | `estimateTokens` 按模型族系数、`estimateImageTokens`、`formatTokens` |
+| `group-scheduling.json` | `groupScheduling.ts` | 阶段 6 S6-01：`nextGroupRound` / `detectMentionedMembers` / `resolveGroupSpeakerPlan`（mention/polling/free 发言计划）/ `planGroupPollingContinue`（轮询续排）/ `resolvePollingIntervalMs` / `planAutoMemoryTrigger` |
+| `group-free-split.json` | `groupFreeSplit.ts` | 阶段 6 S6-01：free 多角色拆分与归属（omniscient 不拆分、旁白并入首段、未识别角色旁注、空段丢弃、无标记回落） |
+| `memory-invalidation.json` | `derivedMemory.ts` | 阶段 6 S6-01：派生记忆检查点失效决策（chat/group 两 variant 的 hasDerived 差异为语义钉子） |
 
 ## 生成与校验
 
 - 生成（TS 实现变化后必须重新生成并评审 diff）：
   ```powershell
   $env:CHAT_CORE_UPDATE_FIXTURES="1"; pnpm exec vitest run shared/__tests__/chatCoreGolden.test.ts
+  $env:CHAT_CORE_UPDATE_FIXTURES="1"; pnpm exec vitest run shared/__tests__/groupChatCoreGolden.test.ts
   ```
-- 默认（CI/门禁）：只读校验。TS 实现与 fixture 不一致时 `shared/__tests__/chatCoreGolden.test.ts` **先变红**。
-- Kotlin 侧：`ChatCoreGoldenTest`（`android/app/src/test/.../chatcore/`）读取同一批 JSON 断言相等。
+- 默认（CI/门禁）：只读校验。TS 实现与 fixture 不一致时对应的 `chatCoreGolden.test.ts` / `groupChatCoreGolden.test.ts` **先变红**。
+- Kotlin 侧：`ChatCoreGoldenTest`、`ChatGroupSchedulingGoldenTest`、`ChatGroupFreeSplitGoldenTest`、`ChatMemoryInvalidationGoldenTest`
+  （`android/app/src/test/.../chatcore/`）读取同一批 JSON 断言相等。
 
 ## 约定
 

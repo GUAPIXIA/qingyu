@@ -1,0 +1,514 @@
+{
+  "version": 1,
+  "oracle": "shared/chat-core/derivedMemory.ts",
+  "invalidationCases": [
+    {
+      "label": "无派生数据保留（清空无效化对象）",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": null,
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": null,
+          "memoryVersion": null,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": "m2"
+      },
+      "expected": {
+        "action": "keep"
+      }
+    },
+    {
+      "label": "clearChat（changedMessageId 为空）全量失效",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": "摘要",
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": null,
+          "memoryVersion": 2,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": null
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 2,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "无检查点（游标空）全量失效",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": "摘要",
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": null,
+          "memoryVersion": 2,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": "m2"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 2,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "memoryVersion 0 视为无检查点全量失效",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": "x",
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": "m1",
+          "memoryVersion": 0,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": "m1"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 0,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "变更在游标之后保留派生记忆",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": "摘要",
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": "m2",
+          "memoryVersion": 3,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3",
+          "m4"
+        ],
+        "changedMessageId": "m4"
+      },
+      "expected": {
+        "action": "keep"
+      }
+    },
+    {
+      "label": "变更在游标之前全量失效",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": "摘要",
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": "m3",
+          "memoryVersion": 3,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3",
+          "m4"
+        ],
+        "changedMessageId": "m1"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 3,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "变更等于游标全量失效（游标消息被改写）",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": "摘要",
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": "m3",
+          "memoryVersion": 3,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3",
+          "m4"
+        ],
+        "changedMessageId": "m3"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 3,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "游标消息丢失保守全量失效",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": "摘要",
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": "m-gone",
+          "memoryVersion": 2,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": "m2"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 2,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "变更消息丢失保守全量失效",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": "摘要",
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": "m2",
+          "memoryVersion": 2,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": "m-gone"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 2,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "factsVectors 非空视为派生数据",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": null,
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [
+            [
+              0.1,
+              0.2
+            ]
+          ],
+          "memoryLastMessageId": "m1",
+          "memoryVersion": 1,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": "m1"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 1,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "compressedSummary 视为派生数据",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": null,
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "compressedSummary": "早期摘要",
+          "memoryFactParseFailureCount": null,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1"
+        ],
+        "changedMessageId": "m1"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 0,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "（语义钉子）事实解析退避计数计入单聊派生数据",
+      "input": {
+        "variant": "chat",
+        "session": {
+          "memory": null,
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": null,
+          "memoryVersion": null,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": 1,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": "m2"
+      },
+      "expected": {
+        "action": "invalidate",
+        "expectedVersion": 0,
+        "patch": {
+          "memory": "",
+          "memoryCurrentState": "",
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "memoryFactParseFailureCount": 0,
+          "memoryFactRetryAfterVersion": 0,
+          "factsVectors": [],
+          "memoryUpdatedAt": 0,
+          "memoryLastMessageId": null,
+          "memoryVersion": 0,
+          "factsVectorVersion": 0,
+          "compressedSummary": null,
+          "compressedRange": null
+        }
+      }
+    },
+    {
+      "label": "（语义钉子）事实解析退避计数不计入群聊派生数据",
+      "input": {
+        "variant": "group",
+        "session": {
+          "memory": null,
+          "memoryCurrentState": null,
+          "memoryFacts": [],
+          "memoryFactHistory": [],
+          "factsVectors": [],
+          "memoryLastMessageId": null,
+          "memoryVersion": null,
+          "compressedSummary": null,
+          "memoryFactParseFailureCount": 1,
+          "memoryFactRetryAfterVersion": null
+        },
+        "messageIds": [
+          "m1",
+          "m2"
+        ],
+        "changedMessageId": "m2"
+      },
+      "expected": {
+        "action": "keep"
+      }
+    }
+  ]
+}

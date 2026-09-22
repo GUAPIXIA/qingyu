@@ -1,0 +1,764 @@
+{
+  "version": 1,
+  "oracle": "shared/chat-core/groupScheduling.ts",
+  "members": [
+    {
+      "id": "char-a",
+      "name": "小A"
+    },
+    {
+      "id": "char-b",
+      "name": "小B"
+    },
+    {
+      "id": "char-c",
+      "name": "小C"
+    },
+    {
+      "id": "char-sub",
+      "name": "小"
+    },
+    {
+      "id": "char-en",
+      "name": "AbC"
+    },
+    {
+      "id": "char-dot",
+      "name": "A.B"
+    }
+  ],
+  "nextRoundCases": [
+    {
+      "label": "空会话从第 1 轮开始",
+      "input": {
+        "rounds": []
+      },
+      "expected": 1
+    },
+    {
+      "label": "轮次取最大值加一",
+      "input": {
+        "rounds": [
+          1,
+          2,
+          5
+        ]
+      },
+      "expected": 6
+    },
+    {
+      "label": "负轮次不压低下限",
+      "input": {
+        "rounds": [
+          -3,
+          -1
+        ]
+      },
+      "expected": 1
+    },
+    {
+      "label": "单条消息",
+      "input": {
+        "rounds": [
+          4
+        ]
+      },
+      "expected": 5
+    }
+  ],
+  "mentionCases": [
+    {
+      "label": "单个 @提及 命中成员",
+      "input": {
+        "content": "@小A 你说",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ]
+      },
+      "expected": [
+        "char-a"
+      ]
+    },
+    {
+      "label": "多个 @提及 按成员顺序返回（不是正文顺序）",
+      "input": {
+        "content": "@小B 和 @小A 都说说",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ]
+      },
+      "expected": [
+        "char-a",
+        "char-b"
+      ]
+    },
+    {
+      "label": "子串语义：@小A 同时命中成员「小」与「小A」",
+      "input": {
+        "content": "@小A 你好",
+        "memberIds": [
+          "char-sub",
+          "char-a",
+          "char-b"
+        ]
+      },
+      "expected": [
+        "char-sub",
+        "char-a"
+      ]
+    },
+    {
+      "label": "@提及 大小写敏感",
+      "input": {
+        "content": "@abc 你好",
+        "memberIds": [
+          "char-en"
+        ]
+      },
+      "expected": []
+    },
+    {
+      "label": "无 @提及 返回空",
+      "input": {
+        "content": "大家怎么看",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ]
+      },
+      "expected": []
+    },
+    {
+      "label": "同一成员重复提及只记一次",
+      "input": {
+        "content": "@小A @小A",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ]
+      },
+      "expected": [
+        "char-a"
+      ]
+    },
+    {
+      "label": "非成员名字不计",
+      "input": {
+        "content": "@小D 你在吗",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ]
+      },
+      "expected": []
+    }
+  ],
+  "speakerPlanCases": [
+    {
+      "label": "mention 指定目标直接回复",
+      "input": {
+        "chatMode": "mention",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": 0,
+        "targetCharId": "char-b"
+      },
+      "expected": {
+        "kind": "single",
+        "speakerId": "char-b",
+        "speakerIndex": 1,
+        "via": "target"
+      }
+    },
+    {
+      "label": "mention 无目标回落 currentSpeakerIndex 轮转",
+      "input": {
+        "chatMode": "mention",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": 2,
+        "targetCharId": null
+      },
+      "expected": {
+        "kind": "single",
+        "speakerId": "char-c",
+        "speakerIndex": 2,
+        "via": "round_robin"
+      }
+    },
+    {
+      "label": "polling 忽略显式目标、一律轮转",
+      "input": {
+        "chatMode": "polling",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": 0,
+        "targetCharId": "char-b"
+      },
+      "expected": {
+        "kind": "single",
+        "speakerId": "char-a",
+        "speakerIndex": 0,
+        "via": "round_robin"
+      }
+    },
+    {
+      "label": "polling 轮转按成员数取模",
+      "input": {
+        "chatMode": "polling",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": 4
+      },
+      "expected": {
+        "kind": "single",
+        "speakerId": "char-b",
+        "speakerIndex": 1,
+        "via": "round_robin"
+      }
+    },
+    {
+      "label": "负索引保持 JS 取模语义、视为无发言者",
+      "input": {
+        "chatMode": "polling",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": -1
+      },
+      "expected": {
+        "kind": "error",
+        "reason": "no_speaker"
+      }
+    },
+    {
+      "label": "空成员表视为无发言者",
+      "input": {
+        "chatMode": "polling",
+        "memberIds": [],
+        "currentSpeakerIndex": 0
+      },
+      "expected": {
+        "kind": "error",
+        "reason": "no_speaker"
+      }
+    },
+    {
+      "label": "mention 目标已被删除报 speaker_missing",
+      "input": {
+        "chatMode": "mention",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": 0,
+        "targetCharId": "char-gone",
+        "knownCharacterIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ]
+      },
+      "expected": {
+        "kind": "error",
+        "reason": "speaker_missing"
+      }
+    },
+    {
+      "label": "未提供角色库时不做存在性校验（调用方兜底）",
+      "input": {
+        "chatMode": "mention",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": 0,
+        "targetCharId": "char-x"
+      },
+      "expected": {
+        "kind": "single",
+        "speakerId": "char-x",
+        "speakerIndex": -1,
+        "via": "target"
+      }
+    },
+    {
+      "label": "free 模式无固定发言者",
+      "input": {
+        "chatMode": "free",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": 0,
+        "targetCharId": "char-b"
+      },
+      "expected": {
+        "kind": "free"
+      }
+    },
+    {
+      "label": "未知模式走自由发言（与 PC 分支一致）",
+      "input": {
+        "chatMode": "nomination",
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "currentSpeakerIndex": 0
+      },
+      "expected": {
+        "kind": "free"
+      }
+    }
+  ],
+  "pollingContinueCases": [
+    {
+      "label": "达到 maxRounds（distinct AI 轮次）交还用户",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "char-a",
+            "round": 1
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 1
+      },
+      "expected": {
+        "continue": false,
+        "reason": "max_rounds"
+      }
+    },
+    {
+      "label": "未达上限排定下一位成员",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "char-a",
+            "round": 1
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 3
+      },
+      "expected": {
+        "continue": true,
+        "nextCharId": "char-b",
+        "nextSpeakerIndex": 1
+      }
+    },
+    {
+      "label": "轮转到末尾循环回首位",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "char-a",
+            "round": 1
+          },
+          {
+            "characterId": "char-b",
+            "round": 1
+          },
+          {
+            "characterId": "char-c",
+            "round": 2
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 10
+      },
+      "expected": {
+        "continue": true,
+        "nextCharId": "char-a",
+        "nextSpeakerIndex": 0
+      }
+    },
+    {
+      "label": "用户消息的轮次不计入 AI 轮数",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "__user__",
+            "round": 2
+          },
+          {
+            "characterId": "char-a",
+            "round": 3
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 2
+      },
+      "expected": {
+        "continue": true,
+        "nextCharId": "char-b",
+        "nextSpeakerIndex": 1
+      }
+    },
+    {
+      "label": "同一轮多条角色消息只计一轮（distinct）",
+      "input": {
+        "messages": [
+          {
+            "characterId": "char-a",
+            "round": 1
+          },
+          {
+            "characterId": "char-a",
+            "round": 1
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 2
+      },
+      "expected": {
+        "continue": true,
+        "nextCharId": "char-b",
+        "nextSpeakerIndex": 1
+      }
+    },
+    {
+      "label": "无角色消息停止接力",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "__free__",
+            "round": 1
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 5
+      },
+      "expected": {
+        "continue": false,
+        "reason": "no_last_speaker"
+      }
+    },
+    {
+      "label": "__free__ 占位不算角色发言",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "__free__",
+            "round": 1
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 5
+      },
+      "expected": {
+        "continue": false,
+        "reason": "no_last_speaker"
+      }
+    },
+    {
+      "label": "__narrator__ 算角色发言但不在成员表、停止接力",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "__narrator__",
+            "round": 1
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 5
+      },
+      "expected": {
+        "continue": false,
+        "reason": "speaker_not_member"
+      }
+    },
+    {
+      "label": "发言者已被移出成员表停止接力（不写错归属）",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "char-gone",
+            "round": 1
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 5
+      },
+      "expected": {
+        "continue": false,
+        "reason": "speaker_not_member"
+      }
+    }
+  ],
+  "pollingIntervalCases": [
+    {
+      "label": "缺省 2000ms",
+      "input": {
+        "speakerInterval": null
+      },
+      "expected": 2000
+    },
+    {
+      "label": "0 视为缺省",
+      "input": {
+        "speakerInterval": 0
+      },
+      "expected": 2000
+    },
+    {
+      "label": "下限 500ms",
+      "input": {
+        "speakerInterval": 300
+      },
+      "expected": 500
+    },
+    {
+      "label": "边界 500ms",
+      "input": {
+        "speakerInterval": 500
+      },
+      "expected": 500
+    },
+    {
+      "label": "用户配置 3000ms",
+      "input": {
+        "speakerInterval": 3000
+      },
+      "expected": 3000
+    },
+    {
+      "label": "负值按下限",
+      "input": {
+        "speakerInterval": -5
+      },
+      "expected": 500
+    }
+  ],
+  "autoMemoryCases": [
+    {
+      "label": "未启用记忆不触发",
+      "input": {
+        "memoryEnabled": false,
+        "memoryMode": "auto",
+        "autoMemoryInterval": 1,
+        "memoryLastMessageId": null,
+        "messageIds": [
+          "m1"
+        ]
+      },
+      "expected": false
+    },
+    {
+      "label": "手动模式不触发",
+      "input": {
+        "memoryEnabled": true,
+        "memoryMode": "manual",
+        "autoMemoryInterval": 1,
+        "memoryLastMessageId": null,
+        "messageIds": [
+          "m1"
+        ]
+      },
+      "expected": false
+    },
+    {
+      "label": "无游标按全量计数、达到默认间隔 10 触发",
+      "input": {
+        "memoryEnabled": true,
+        "memoryMode": "auto",
+        "autoMemoryInterval": null,
+        "memoryLastMessageId": null,
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3",
+          "m4",
+          "m5",
+          "m6",
+          "m7",
+          "m8",
+          "m9",
+          "m10"
+        ]
+      },
+      "expected": true
+    },
+    {
+      "label": "无游标未达标不触发",
+      "input": {
+        "memoryEnabled": true,
+        "memoryMode": "auto",
+        "autoMemoryInterval": null,
+        "memoryLastMessageId": null,
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3",
+          "m4",
+          "m5",
+          "m6",
+          "m7",
+          "m8",
+          "m9"
+        ]
+      },
+      "expected": false
+    },
+    {
+      "label": "游标后未总结数达标触发",
+      "input": {
+        "memoryEnabled": true,
+        "memoryMode": "auto",
+        "autoMemoryInterval": 2,
+        "memoryLastMessageId": "m3",
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3",
+          "m4",
+          "m5"
+        ]
+      },
+      "expected": true
+    },
+    {
+      "label": "游标后未总结数不足不触发",
+      "input": {
+        "memoryEnabled": true,
+        "memoryMode": "auto",
+        "autoMemoryInterval": 3,
+        "memoryLastMessageId": "m3",
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3",
+          "m4",
+          "m5"
+        ]
+      },
+      "expected": false
+    },
+    {
+      "label": "游标丢失按全量计数（不误判为 0）",
+      "input": {
+        "memoryEnabled": true,
+        "memoryMode": "auto",
+        "autoMemoryInterval": 2,
+        "memoryLastMessageId": "m-gone",
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3"
+        ]
+      },
+      "expected": true
+    },
+    {
+      "label": "interval 0 回落默认 10",
+      "input": {
+        "memoryEnabled": true,
+        "memoryMode": "auto",
+        "autoMemoryInterval": 0,
+        "memoryLastMessageId": null,
+        "messageIds": [
+          "m1",
+          "m2",
+          "m3",
+          "m4",
+          "m5"
+        ]
+      },
+      "expected": false
+    }
+  ]
+}

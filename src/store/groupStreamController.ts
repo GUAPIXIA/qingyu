@@ -23,6 +23,9 @@ import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
 import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
 import { resolveGroupRequestPlan } from './groupRequestPlan'
+// 阶段 6 S6-01：轮询续排/自动记忆/自由拆分的跨端共享纯逻辑（fixture oracle 即此实现）
+import { planGroupPollingContinue, resolvePollingIntervalMs, planAutoMemoryTrigger } from '../../shared/chat-core/groupScheduling'
+import { splitFreeReply } from '../../shared/chat-core/groupFreeSplit'
 import { BACKGROUND_GENERATION_PROFILES, hasCompleteSummaryTail } from '../../shared/backgroundGeneration'
 import { attemptTailRepair, finalizeNoticeFields, type GenerationOutcomeMeta } from './streamController'
 import { prefetchUsageProfile, withReasoningSamples } from './usageProfileCache'
@@ -1269,13 +1272,16 @@ export async function splitAndSaveMessages(
     .map(id => charStore.characters.find(c => c.id === id))
     .filter(Boolean) as Character[]
 
-  if (narrativeMode === 'omniscient') {
-    const focusCharacterId = members[0]?.id ?? '__narrator__'
+  // 拆分与归属：shared/chat-core/groupFreeSplit.ts 跨端一致（omniscient 不拆分、
+  // 旁白并入首段、未识别角色旁注归属首成员、无标记回落首成员）
+  const split = splitFreeReply({ content, members, narrativeMode })
+
+  if (split.kind === 'narrator') {
     const narratorMessage: GroupMessage = {
       id: placeholderId,
       groupId: group.id,
-      characterId: focusCharacterId,
-      content: content || '(无回复)',
+      characterId: split.messages[0].characterId,
+      content: split.messages[0].content,
       images: [],
       timestamp: Date.now(),
       round,
@@ -1294,45 +1300,14 @@ export async function splitAndSaveMessages(
     return
   }
 
-  // 按 【角色名】 拆分
-  const pattern = /【(.+?)】/g
-  const segments: { name: string; content: string }[] = []
-  let lastIdx = 0
-  let preamble = ''
-  let match: RegExpExecArray | null
-
-  while ((match = pattern.exec(content)) !== null) {
-    const textBefore = content.slice(lastIdx, match.index).trim()
-    if (segments.length === 0) {
-      // H-14 修复：首个【】前的旁白文本先暂存，结束时并入首段内容
-      // （此前 push 后被后续迭代的 prev.content 覆盖，旁白被静默丢弃）
-      preamble = textBefore
-      segments.push({ name: match[1], content: '' })
-    } else {
-      const prev = segments[segments.length - 1]
-      prev.content = textBefore
-      segments.push({ name: match[1], content: '' })
-    }
-    lastIdx = match.index + match[0].length
-  }
-
-  // 最后一段
-  if (segments.length > 0) {
-    segments[segments.length - 1].content = content.slice(lastIdx).trim()
-    // 首段内容前并入旁白（若有），保证不被覆盖
-    if (preamble) {
-      segments[0].content = [preamble, segments[0].content].filter(Boolean).join('\n\n')
-    }
-  }
-
-  if (segments.length === 0) {
+  if (split.kind === 'fallback') {
     // 没有匹配到任何角色标记 → 将占位消息改为第一个成员的消息，避免渲染为不可见
     const fallbackChar = members[0]
     const fallbackCharId = fallbackChar?.id || '__free__'
     set((s: GroupChatState) => ({
       messages: s.messages.map((m: GroupMessage) =>
         m.id === placeholderId
-          ? { ...m, characterId: fallbackCharId, content: content || '(无回复)', ...(extras?.renderMode ?? {}), ...(extras?.noticeFields ?? {}) }
+          ? { ...m, characterId: fallbackCharId, content: split.messages[0].content, ...(extras?.renderMode ?? {}), ...(extras?.noticeFields ?? {}) }
           : m,
       ),
       isStreaming: false, currentStreamingCharId: null,
@@ -1343,7 +1318,7 @@ export async function splitAndSaveMessages(
         id: placeholderId,
         groupId: group.id,
         characterId: fallbackChar.id,
-        content: content || '(无回复)',
+        content: split.messages[0].content,
         images: [],
         timestamp: Date.now(),
         round,
@@ -1358,53 +1333,18 @@ export async function splitAndSaveMessages(
   }
 
   // 移除占位消息，替换为拆分的角色消息
-  const newMessages: GroupMessage[] = []
-  for (const seg of segments) {
-    // 大小写不敏感 + 去除空格 进行角色名匹配
-    const segName = seg.name.toLowerCase().trim()
-    const char = members.find(c => c.name.toLowerCase().trim() === segName)
-    if (!char || !seg.content) {
-      // 未识别的角色：将内容追加到第一个成员的回复中
-      if (seg.content && members.length > 0) {
-        const fallbackSeg = newMessages.length > 0
-          ? newMessages[newMessages.length - 1]
-          : null
-        if (fallbackSeg && fallbackSeg.characterId === members[0].id) {
-          fallbackSeg.content += '\n\n⚠️ 未识别角色「' + seg.name + '」: ' + seg.content
-        } else {
-          const msgId = nanoid()
-          const gm: GroupMessage = {
-            id: msgId,
-            groupId: group.id,
-            characterId: members[0].id,
-            content: '⚠️ 未识别角色「' + seg.name + '」: ' + seg.content,
-            images: [],
-            timestamp: Date.now(),
-            round,
-            narrativeMode,
-            speakerKind: 'character',
-            generationKind: 'assistant_reply',
-          }
-          newMessages.push(gm)
-        }
-      }
-      continue
-    }
-    const msgId = nanoid()
-    const gm: GroupMessage = {
-      id: msgId,
-      groupId: group.id,
-      characterId: char.id,
-      content: seg.content,
-      images: [],
-      timestamp: Date.now(),
-      round,
-      narrativeMode,
-      speakerKind: 'character',
-      generationKind: 'assistant_reply',
-    }
-    newMessages.push(gm)
-  }
+  const newMessages: GroupMessage[] = split.messages.map((segment) => ({
+    id: nanoid(),
+    groupId: group.id,
+    characterId: segment.characterId,
+    content: segment.content,
+    images: [],
+    timestamp: Date.now(),
+    round,
+    narrativeMode,
+    speakerKind: 'character',
+    generationKind: 'assistant_reply',
+  }))
 
   // 阶段5：拆分出的新消息均为语义分块渲染；收尾提示附加在最后一条上
   if (extras?.renderMode) {
@@ -1435,13 +1375,15 @@ export async function splitAndSaveMessages(
 export function checkAutoMemory(get: GroupStoreGet) {
   const state = get()
   const session = state.sessions?.find((s) => s.id === state.currentSessionId)
-  if (!session?.memoryEnabled || session.memoryMode !== 'auto') return
-  const interval = session.autoMemoryInterval || 10
-  // 按已处理的消息游标统计，编辑或设备时钟变化不会误判。
-  const cursor = session.memoryLastMessageId
-  const cursorIndex = cursor ? state.messages.findIndex((message) => message.id === cursor) : -1
-  const unsummarizedCount = cursorIndex >= 0 ? state.messages.length - cursorIndex - 1 : state.messages.length
-  if (unsummarizedCount >= interval) {
+  // 触发判定：shared/chat-core/groupScheduling.ts 跨端一致（按已处理游标统计，编辑或时钟变化不误判）
+  const shouldTrigger = planAutoMemoryTrigger({
+    memoryEnabled: session?.memoryEnabled,
+    memoryMode: session?.memoryMode,
+    autoMemoryInterval: session?.autoMemoryInterval,
+    memoryLastMessageId: session?.memoryLastMessageId ?? null,
+    messageIds: state.messages.map((message) => message.id),
+  })
+  if (shouldTrigger) {
     state.triggerMemorySummary()
   }
 }
@@ -1457,23 +1399,19 @@ export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGe
   const group = state.currentGroup
   if (!group) return false
 
-  const pollingMsgs = state.messages.filter((m) => m.characterId !== '__user__' && m.characterId !== '__free__')
-  const rounds = new Set(pollingMsgs.map((m) => m.round))
-  if (rounds.size >= group.maxRounds) return false
-
-  // 找下一个发言者
-  const lastCharMsg = [...state.messages].reverse().find((m) => m.characterId !== '__user__' && m.characterId !== '__free__')
-  if (!lastCharMsg) return false
-
-  const currentIdx = group.memberIds.indexOf(lastCharMsg.characterId)
-  if (currentIdx < 0) return false
-  const nextIdx = (currentIdx + 1) % group.memberIds.length
-  const nextCharId = group.memberIds[nextIdx]
+  // 续排计划：shared/chat-core/groupScheduling.ts 跨端一致（轮数按 distinct AI 轮次计）
+  const plan = planGroupPollingContinue({
+    messages: state.messages.map((m) => ({ characterId: m.characterId, round: m.round })),
+    memberIds: group.memberIds,
+    maxRounds: group.maxRounds,
+  })
+  if (!plan.continue) return false
+  const nextCharId = plan.nextCharId
 
   // 更新 currentSpeakerIndex（纯运行时 UI 状态：成员栏高亮"当前说话者"）
   // 优化：不再每轮全量持久化群组文件（此前每 2s 一次整文件写入）；
   // 群组文件只在创建/编辑时保存，重启后该索引回落到上次持久化值，轮询下一轮自动纠正
-  const updatedGroup = { ...group, currentSpeakerIndex: nextIdx }
+  const updatedGroup = { ...group, currentSpeakerIndex: plan.nextSpeakerIndex }
   set({ currentGroup: updatedGroup })
 
   // H-02 修复：保存定时器 handle，以便切换/删除群聊时清理
@@ -1492,7 +1430,7 @@ export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGe
       const curGroup = currentState.currentGroup
       if (!curGroup || curGroup.id !== group.id) return
       currentState.sendPollingRound(nextCharId)
-    }, Math.max(500, group.speakerInterval || 2000))
+    }, resolvePollingIntervalMs(group.speakerInterval))
   }
   scheduleNextPoll()
   return true

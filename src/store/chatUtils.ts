@@ -6,6 +6,8 @@ import type { LorebookCompressionRequest } from '../utils/lorebook'
 import type { Character, SessionPreview, LorebookCompressionCacheEntry, ProviderType } from '../../shared/types'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { resolveDefaultGroupMemoryConfig, resolveDefaultMemoryConfig } from '../../shared/defaultMemory'
+// 阶段 6 S6-01：派生记忆失效决策的跨端共享纯逻辑（fixture oracle 即此实现）
+import { planDerivedMemoryInvalidation, type DerivedMemorySnapshot } from '../../shared/chat-core/derivedMemory'
 
 /** 防止会话加载竞态的请求计数器（模块级，跨调用共享） */
 export let loadRequestId = 0
@@ -111,50 +113,17 @@ export async function invalidateDerivedMemory(
   if (!sessionId) return null
   const current = get().sessions.find((session) => session.id === sessionId)
   if (!current) return null
-  const hasDerivedData = Boolean(
-    current.memory || current.memoryCurrentState || current.memoryFacts?.length || current.memoryFactHistory?.length || current.factsVectors?.length
-    || current.memoryLastMessageId || current.memoryVersion || current.memoryFactParseFailureCount || current.memoryFactRetryAfterVersion || current.compressedSummary,
-  )
-  if (!hasDerivedData) return null
+  // 失效决策：shared/chat-core/derivedMemory.ts 跨端一致（阶段五检查点）
+  const decision = planDerivedMemoryInvalidation({
+    variant: 'chat',
+    session: current,
+    messageIds: ((get() as { messages?: { id: string }[] }).messages ?? []).map((m) => m.id),
+    changedMessageId,
+  })
+  if (decision.action === 'keep') return null
 
-  // 检查点逻辑：变更在游标后则保留
-  if (changedMessageId) {
-    const cursor = current.memoryLastMessageId
-    const version = current.memoryVersion ?? 0
-    // 无检查点则全量失效
-    if (!cursor || version === 0) {
-      // fallthrough to full invalidate
-    } else {
-      const messages = (get() as { messages?: { id: string }[] }).messages ?? []
-      const cursorIndex = messages.findIndex((m) => m.id === cursor)
-      const changedIndex = messages.findIndex((m) => m.id === changedMessageId)
-      // 消息或游标找不到 → 保守全量失效
-      if (cursorIndex === -1 || changedIndex === -1) {
-        // fallthrough
-      } else if (changedIndex > cursorIndex) {
-        // 变更在已总结范围之后，保留记忆
-        return null
-      }
-      // 变更在游标前或等于游标 → 全量失效（fallthrough）
-    }
-  }
-
-  const expectedVersion = current.memoryVersion ?? 0
-  const patch: Partial<SessionPreview> = {
-    memory: '',
-    memoryCurrentState: '',
-    memoryFacts: [],
-    memoryFactHistory: [],
-    memoryFactParseFailureCount: 0,
-    memoryFactRetryAfterVersion: 0,
-    factsVectors: [],
-    memoryUpdatedAt: 0,
-    memoryLastMessageId: null,
-    memoryVersion: 0,
-    factsVectorVersion: 0,
-    compressedSummary: null,
-    compressedRange: null,
-  }
+  const expectedVersion = decision.expectedVersion
+  const patch = decision.patch as Partial<SessionPreview>
   // 乐观锁：若版本已变则跳过（由调用方在 patchLocalSession 前二次校验）
   const latest = get().sessions.find((s) => s.id === sessionId)
   if (latest && (latest.memoryVersion ?? 0) !== expectedVersion) {
@@ -178,43 +147,18 @@ export async function invalidateGroupDerivedMemory(
   if (!sessionId) return null
   const current = get().sessions.find((s) => s.id === sessionId) as unknown as Record<string, unknown> & { memory?: string; memoryFacts?: unknown[]; memoryFactHistory?: unknown[]; factsVectors?: unknown[]; memoryLastMessageId?: string | null; memoryVersion?: number; compressedSummary?: string | null }
   if (!current) return null
-  const hasDerived = Boolean(
-    current.memory || current.memoryCurrentState || (current.memoryFacts as unknown[])?.length || (current.memoryFactHistory as unknown[])?.length || (current.factsVectors as unknown[])?.length
-    || current.memoryLastMessageId || current.memoryVersion || current.compressedSummary,
-  )
-  if (!hasDerived) return null
-  if (changedMessageId) {
-    const cursor = current.memoryLastMessageId as string | null | undefined
-    const version = (current.memoryVersion as number | undefined) ?? 0
-    if (!cursor || version === 0) {
-      // fallthrough
-    } else {
-      const messages = get().messages ?? []
-      const cursorIndex = messages.findIndex((m) => m.id === cursor)
-      const changedIndex = messages.findIndex((m) => m.id === changedMessageId)
-      if (cursorIndex === -1 || changedIndex === -1) {
-        // fallthrough
-      } else if (changedIndex > cursorIndex) {
-        return null
-      }
-    }
-  }
-  const expectedVersion = (current.memoryVersion as number | undefined) ?? 0
-  const patch: Record<string, unknown> = {
-    memory: '',
-    memoryCurrentState: '',
-    memoryFacts: [],
-    memoryFactHistory: [],
-    memoryFactParseFailureCount: 0,
-    memoryFactRetryAfterVersion: 0,
-    factsVectors: [],
-    memoryUpdatedAt: 0,
-    memoryLastMessageId: null,
-    memoryVersion: 0,
-    factsVectorVersion: 0,
-    compressedSummary: null,
-    compressedRange: null,
-  }
+  // 失效决策：shared/chat-core/derivedMemory.ts 跨端一致（阶段五检查点）。
+  // variant='group'：PC 群侧 hasDerived 不计 memoryFactParseFailureCount/RetryAfterVersion（语义钉子）。
+  const decision = planDerivedMemoryInvalidation({
+    variant: 'group',
+    session: current as unknown as DerivedMemorySnapshot,
+    messageIds: (get().messages ?? []).map((m) => m.id),
+    changedMessageId,
+  })
+  if (decision.action === 'keep') return null
+
+  const expectedVersion = decision.expectedVersion
+  const patch = decision.patch as unknown as Record<string, unknown>
   const latest = get().sessions.find((s) => s.id === sessionId) as unknown as { memoryVersion?: number }
   if (latest && (latest.memoryVersion ?? 0) !== expectedVersion) return null
   const commit = await window.api.group.updateSessionIfMemoryVersion(groupId, sessionId, expectedVersion, patch).catch(() => null)

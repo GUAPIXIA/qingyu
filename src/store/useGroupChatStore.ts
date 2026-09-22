@@ -34,6 +34,8 @@ import {
   refreshGroupDialogueDirections,
   clearGroupDialogueDirections,
 } from './dialogueDirectionRunner'
+// 阶段 6 S6-01：发言调度/提及/轮次的跨端共享纯逻辑（fixture oracle 即此实现）
+import { nextGroupRound, detectMentionedMembers, resolveGroupSpeakerPlan } from '../../shared/chat-core/groupScheduling'
 
 /** 群聊身份以会话为作用域；旧会话没有字段时才回退全局默认身份。 */
 function syncGroupPersonaToSettings(session?: GroupSession): void {
@@ -571,9 +573,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     void clearGroupDialogueDirections(set, get, currentGroup.id, currentSessionId)
 
     // 1. 用户消息
-    const currentRound = state.messages.length > 0
-      ? Math.max(...state.messages.map(m => m.round), 0) + 1
-      : 1
+    const currentRound = nextGroupRound(state.messages.map((m) => m.round))
 
     // 对用户输入应用正则规则（input/both，text 阶段）
     let processedContent = content
@@ -589,15 +589,15 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       set({ error: '群聊已切换，消息未发送' })
       return
     }
-    // 检测 @提及的角色 ID（从群成员名中匹配）
-    const mentionedCharacterIds: string[] = []
+    // 检测 @提及的角色 ID（从群成员名中匹配；shared/chat-core/groupScheduling.ts 跨端一致）
     const charStore = useCharacterStore.getState()
-    for (const memberId of currentGroup.memberIds) {
-      const member = charStore.characters.find(c => c.id === memberId)
-      if (member && content.includes(`@${member.name}`)) {
-        mentionedCharacterIds.push(memberId)
-      }
-    }
+    const mentionedCharacterIds = detectMentionedMembers(
+      content,
+      currentGroup.memberIds
+        .map((id) => charStore.characters.find((c) => c.id === id))
+        .filter((c): c is NonNullable<typeof c> => !!c)
+        .map((c) => ({ id: c.id, name: c.name })),
+    )
 
     const narrativeMode = resolveNarrativeMode(get().sessions.find((session) => session.id === currentSessionId)?.narrativeMode)
     const userMsg: GroupMessage = {
@@ -639,25 +639,24 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       }
     }
 
-    // 2. 根据模式获取 AI 回复
-    const mode = currentGroup.chatMode
+    // 2. 根据模式获取 AI 回复（发言计划：shared/chat-core/groupScheduling.ts 跨端一致）
+    const plan = resolveGroupSpeakerPlan({
+      chatMode: currentGroup.chatMode,
+      memberIds: currentGroup.memberIds,
+      currentSpeakerIndex: currentGroup.currentSpeakerIndex,
+      targetCharId,
+      knownCharacterIds: charStore.characters.map((c) => c.id),
+    })
 
-    if (mode === 'mention' || mode === 'polling') {
+    if (plan.kind === 'error') {
+      set({ error: plan.reason === 'no_speaker' ? '未指定发言角色' : '发言角色不存在' })
+      markUserMsgSent(userMsg.id)
+      return
+    }
+
+    if (plan.kind === 'single') {
       // mention/polling: 单个角色回复
-      let speakerId = targetCharId
-
-      if (mode === 'polling' || !speakerId) {
-        const speakerIdx = currentGroup.currentSpeakerIndex % currentGroup.memberIds.length
-        speakerId = currentGroup.memberIds[speakerIdx]
-      }
-
-      if (!speakerId) {
-        set({ error: '未指定发言角色' })
-        markUserMsgSent(userMsg.id)
-        return
-      }
-
-      const speaker = charStore.characters.find(c => c.id === speakerId)
+      const speaker = charStore.characters.find(c => c.id === plan.speakerId)
       if (!speaker) {
         set({ error: '发言角色不存在' })
         markUserMsgSent(userMsg.id)
@@ -705,9 +704,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const speaker = charStore.characters.find(c => c.id === charId)
     if (!speaker) return
 
-    const currentRound = state.messages.length > 0
-      ? Math.max(...state.messages.map(m => m.round), 0) + 1
-      : 1
+    const currentRound = nextGroupRound(state.messages.map((m) => m.round))
 
     await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, async () => {
       // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
@@ -736,9 +733,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       return
     }
 
-    const currentRound = state.messages.length > 0
-      ? Math.max(...state.messages.map((message) => message.round), 0) + 1
-      : 1
+    const currentRound = nextGroupRound(state.messages.map((message) => message.round))
 
     // 即时接话是一次性的人工触发：只做记忆检查，不调用 checkPollingContinue；完成后即轮到用户。
     await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, () => {
@@ -752,9 +747,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const { currentGroup, currentSessionId, messages } = get()
     if (!currentGroup || !currentSessionId) return
 
-    const currentRound = messages.length > 0
-      ? Math.max(...messages.map(m => m.round), 0) + 1
-      : 1
+    const currentRound = nextGroupRound(messages.map((m) => m.round))
 
     const msg: GroupMessage = {
       id: nanoid(),
