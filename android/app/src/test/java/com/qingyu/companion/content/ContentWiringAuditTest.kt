@@ -217,8 +217,8 @@ class ContentWiringAuditTest {
      * 自己写着这句话）；而即使 `notMigrated` 写了提示，只要没人 `collect` 那个 StateFlow，
      * 它就等于不存在——那又是一次「提示在、界面不在」。
      *
-     * 阶段 6 S6-01b 起**群聊数据面已本地迁移**（列表/会话/消息/成员/翻译），
-     * 仍在 notMigrated 名单里的只剩群生成闭环（S6-01d）与公告/版本（S6-07）：
+     * 阶段 6 S6-01b/S6-01d 起**群聊数据面与群生成闭环已本地迁移**（列表/会话/消息/成员/翻译/AI 回复），
+     * 仍在 notMigrated 名单里的只剩公告/版本（S6-07）：
      * 本测试把两头都钉住——剩余未迁移能力必须走 notMigrated（不得静默返回空值），
      * 已迁移的群能力**不得**再退回 notMigrated（把「已经做了」伪装回「还没做」同样是撒谎）。
      */
@@ -230,15 +230,15 @@ class ContentWiringAuditTest {
             repository.contains("private fun <T> notMigrated(") &&
                 repository.contains("unsupported.value ="),
         )
-        for (capability in listOf("群聊 AI 回复", "公告", "版本信息")) {
+        for (capability in listOf("公告", "版本信息")) {
             assertTrue(
-                "能力「$capability」在本地模式下必须显式走 notMigrated（属阶段 6 §S6-01d/S6-07），" +
+                "能力「$capability」在本地模式下必须显式走 notMigrated（属阶段 6 §S6-07），" +
                     "静默返回空值会让用户分不清「真的没有」和「还没做」",
                 repository.contains("notMigrated(\"$capability\""),
             )
         }
         // 已迁移能力反向守卫：群数据面走真实现后不得回退成 notMigrated
-        for (capability in listOf("群聊列表", "群聊成员添加", "群聊翻译", "新建群聊")) {
+        for (capability in listOf("群聊列表", "群聊成员添加", "群聊翻译", "新建群聊", "群聊 AI 回复")) {
             assertTrue(
                 "能力「$capability」已随 S6-01b 本地迁移，不得再走 notMigrated 伪装成「还没做」",
                 !repository.contains("notMigrated(\"$capability\""),

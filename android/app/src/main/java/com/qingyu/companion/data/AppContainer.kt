@@ -259,6 +259,13 @@ class AppContainer(context: Context) {
             },
             // 辅助任务（翻译等一次性补全）与主生成共用同一执行层
             auxGateway = com.qingyu.companion.chatcore.ModelClientGateway(modelClient),
+            // 阶段 6 S6-01(d)：群聊本地生成闭环（与单聊同档案/密钥来源；设置面用 PC 默认值）
+            groupGeneration = com.qingyu.companion.chatcore.LocalGroupGenerationUseCase(
+                store = localSyncRepository,
+                gateway = com.qingyu.companion.chatcore.ModelClientGateway(modelClient),
+                profileProvider = { activeLocalProfile() },
+                apiKeyProvider = { activeLocalProfileId()?.let { profileId -> readSecretOrNull(profileId) } },
+            ),
         )
 
     val repository: ChatRepository = chatRepository

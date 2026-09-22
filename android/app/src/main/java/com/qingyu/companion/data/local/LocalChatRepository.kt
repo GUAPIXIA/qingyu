@@ -42,6 +42,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -85,6 +86,10 @@ class LocalChatRepository(
      * 且辅助任务必须能在不干扰对话状态的前提下独立失败。
      */
     private val auxGateway: com.qingyu.companion.chatcore.ModelGateway? = null,
+    /**
+     * 阶段 6 S6-01(d)：群聊本地生成闭环。为 null 时 [groupAiReply] **明确报错**（不静默）。
+     */
+    private val groupGeneration: com.qingyu.companion.chatcore.LocalGroupGenerationUseCase? = null,
     /**
      * 会话级请求 id 生成（幂等键；本地场景仅用于事件关联）。
      * **必须保持在参数末位**，调用方以尾随 lambda 传入。
@@ -1397,8 +1402,39 @@ class LocalChatRepository(
         store.bumpMemoryHistoryRevision(sessionId)
     }
 
-    override suspend fun groupAiReply(groupId: String, sessionId: String, speakerId: String?): Boolean =
-        notMigrated("群聊 AI 回复", false)
+    /**
+     * 群聊 AI 回复（S6-01(d)）：本地直连生成**一轮**（与旧 REST 契约同口径：一次一条回复）。
+     *
+     * - [speakerId] 非空 = 立即接话（不经发言计划，归属锁定该成员）；
+     * - 空 = 按发言计划轮转（polling 忽略目标、mention 回落轮转、free 一次多角色拆分）；
+     * - 接力链（polling+autoMode）由持有者经 [com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.generate]
+     *   的 Flow 驱动（S6-01f UI 接线）；本契约一轮即返回。
+     */
+    override suspend fun groupAiReply(groupId: String, sessionId: String, speakerId: String?): Boolean {
+        val generation = groupGeneration
+            ?: throw IllegalStateException("群生成闭环未接线，无法生成群聊回复")
+        val terminal = generation.generate(
+            groupId = groupId,
+            sessionId = sessionId,
+            requestId = requestIdFactory(),
+            forcedSpeakerId = speakerId,
+            chainEnabled = false,
+        ).first {
+            it is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.TurnFinished ||
+                it is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.Rejected ||
+                it is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.Stopped ||
+                it is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.WaitingUser
+        }
+        return when (terminal) {
+            is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.TurnFinished ->
+                terminal.messageIds.isNotEmpty()
+            is com.qingyu.companion.chatcore.LocalGroupGenerationUseCase.Delta.Rejected -> {
+                unsupported.value = "群聊回复未执行：${terminal.reason}"
+                false
+            }
+            else -> false
+        }
+    }
 
     /**
      * 新建群聊（S6-01）：与 PC `GroupChatPage.confirmCreate` 的新建默认一致
