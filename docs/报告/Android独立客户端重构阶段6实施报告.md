@@ -101,7 +101,7 @@
 
 ### 2.5 平台等价验收表（阶段 6 §2 要求；裁定口径：same / equivalent / pc_only_confirmed）
 
-> 判定依据：`docs/架构/android-parity-matrix.json` 各行 notes/testId + 阶段 6 §S6-01～07 原文。子代理自评在合流时逐行核验后定稿（**加粗**为已定稿，其余待最终报告回填）。
+> 判定依据：`docs/架构/android-parity-matrix.json` 各行 notes/testId + 阶段 6 §S6-01～07 原文。**2026-09-22 定稿**：逐行与矩阵注册口径校准后裁定（矩阵为权威；唯一裁定偏离 = `tts.voices` same→equivalent，理由见该行并已回写矩阵）。**加粗**为已定稿行；`group.export` 待 S6-01(f) 合流后补。
 
 | capabilityId | 判定 | 实现落点 | 备注 |
 |---|---|---|---|
@@ -116,21 +116,21 @@
 | group.memory | **same** | S6-01(e) 群记忆 CAS/事实归一化/退避/检查点失效 | 测试执行见 §3.8 |
 | group.translate | **same** | S6-01(b) 群翻译（PC 短提示词变体逐字） | |
 | group.export | 待定 | 导出入口归 S6-01f（复用 `ChatSessionExport`） | |
-| chat.imageAttachVision | 待回填 | S6-02 `media/**` | 子代理自评待核 |
-| attachments.file | 待回填 | S6-02 `media/**`（SAF/魔数/缩略图/blob store/EXIF） | |
-| tts.speakControl | 待回填 | S6-03 `tts/**`（系统 TTS/队列/音频焦点） | 真机项另列 |
-| tts.voices | **equivalent**（裁定） | S6-03 | 矩阵原记 same；**裁定改为 equivalent**：Windows SAPI 音色集合与 Android 系统 TTS 必然不同，「same」仅可指列表能力/协议字段对齐；PC Windows-only 音色在 Android 显示「不适用」不猜测（语义钉子） |
-| image.generate | 待回填 | S6-04 `imagegen/**`（三端点/localhost 提示/SSRF） | |
-| image.comfyWorkflow | **pc_only_confirmed**（桌面深度集成半边）+ 共享 fixture 分析半边待回填 | S6-04 | 不复活已删除功能 |
-| semantic.embeddingConfig | 待回填 | S6-05 `embedding/**`（三级降级） | D-9 按 PC 现状 |
-| semantic.lorebookIndex | 待回填 | S6-05（失效键三要素） | |
-| semantic.factSearch | 待回填 | S6-05 | |
-| localModels.catalog / lifecycle | **pc_only_confirmed**（PC 安装管理半边）；移动端模型包半边待回填（签名/hash/断点续传/空间预检/卸载提示） | S6-05 | |
-| mcp.serverManage / remoteHttp / toolCall | 待回填 | S6-06 `mcp/**`（HTTP/SSE/权限默认拒绝/超时/提示注入防线） | |
-| mcp.stdioOnly | **pc_only_confirmed** | S6-06 仅保留配置可见性 + `platformSupport=pc_only` + 无进程启动路径守卫 | |
-| announcement.listDetail | 待回填 | S6-07（`ui/announcements/AnnouncementFeed.kt`） | |
-| settings.updater | 待回填 | S6-07 `updater/**`（hash 校验/不静默安装） | |
-| diagnostics.connection / generation / export | 待回填 | S6-07 `diagnostics/**`（泄密红线） | P2 纳入本轮 |
+| chat.imageAttachVision | **equivalent** | S6-02 `media/**` | data URL 解析/识图能力判定/无 vision 模型发送前阻断（`VisionImageInputTest`、`VisionModelResolverTest` 全绿）；Android 端识图走附件同源管道，SAF 选图（与 PC 文件对话框等价） |
+| attachments.file | **equivalent** | S6-02 `media/**`（SAF/魔数/缩略图/blob store/EXIF） | 矩阵行原述「Android 图片为主 + SAF」；恶意输入表驱动（伪 MIME/路径穿越/截断/解压炸弹）、EXIF 默认剥离、内容寻址去重全绿（`AttachmentIngestServiceTest`×9、`AttachmentValidatorTest`、`MagicBytesTest`、`ExifPolicyTest`、`ContentBlobStoreTest`、`ImageInspectionTest`、`SyncAttachmentPolicyTest`、`ThumbnailPolicyTest`、`AndroidImageCodecTest`） |
+| tts.speakControl | **equivalent** | S6-03 `tts/**`（系统 TTS/队列/音频焦点） | 控制语义（队列/打断/暂停恢复/停止/焦点）逐条测试锁定；引擎面 Windows SAPI/Edge ↔ Android 系统 TTS/OpenAI 必然不同（矩阵行原判 equivalent） |
+| tts.voices | **equivalent**（裁定） | S6-03 | 矩阵原记 same；**裁定改为 equivalent 并已回写矩阵**（docs/架构/android-parity-matrix.json）：Windows SAPI 音色集合与 Android 系统 TTS 必然不同，「same」仅可指列表能力/协议字段对齐；PC Windows-only 音色在 Android 显示「不适用」不猜测（语义钉子） |
+| image.generate | **same** | S6-04 `imagegen/**`（三端点/localhost 提示/SSRF） | OpenAI Images/SD WebUI/ComfyUI 三类网络端点按 PC 协议实现；localhost 迁移阻断式提示；SSRF/重定向/file:// 拒绝红线全绿（`OpenAiImagesProtocolTest`、`SdWebUiProtocolTest`、`ComfyUiProtocolTest`、`ImageGenClientTest`、`ImageGenUrlPolicyTest`、`LocalhostEndpointPolicyTest`） |
+| image.comfyWorkflow | **pc_only_confirmed**（桌面本地深度集成半边）+ **same**（工作流分析/参数覆盖半边） | S6-04 | 不复活已删除功能；分析半边用共享 fixture 口径（`ComfyWorkflowAnalyzer`+测试）；Android 不扫描 PC 本地工作流目录 |
+| semantic.embeddingConfig | **same** | S6-05 `embedding/**`（三级降级） | 对齐矩阵注册口径（配置面/降级行为 same）；引擎差异（远程/设备包 vs PC ONNX）由 localModels 行与 D-16 ABI 决策覆盖。远程 OpenAI/Ollama → 设备本地模型包 → 词法 BM25 兜底；不支持设备明确降级**不阻断关键词世界书**；D-9 `semanticRequired` 按 PC 现状（无向量停用+warn-once）登记**未翻转** |
+| semantic.lorebookIndex | **same** | S6-05（失效键三要素） | 对齐矩阵口径；索引失效键 = 模型指纹+实体修订+分块策略版本（任一变化重建）；索引/模型包不同步、目标端重建（`SemanticIndexPolicyTest`、`SemanticIndexBuilderTest`） |
+| semantic.factSearch | **same** | S6-05 | 对齐矩阵口径（不可用时关键词降级）；`FactSemanticSearchTest` |
+| localModels.catalog / lifecycle | **pc_only_confirmed**（PC 本地 ONNX 目录/安装管理半边，对齐矩阵两行）+ **equivalent**（S6-05 新增的移动端模型包半边 = D-16「移动端 embedding ABI」决策落地） | S6-05 | 移动端模型包：签名/hash 校验、断点续传、空间预检、卸载影响提示四条红线全绿（`EmbeddingModelManifestTest`、`ManifestSignatureVerifierTest`、`ModelPackageInstallerTest`、`ModelPackageUninstallTest`） |
+| mcp.serverManage / remoteHttp / toolCall | **same** | S6-06 `mcp/**`（HTTP/SSE/权限默认拒绝/超时/提示注入防线） | 与 PC 相同工具清单/参数 schema/权限确认/超时；权限默认拒绝、schema 不合法拒绝、提示注入不改判、public config 不含认证头/环境变量（红线）全绿（`McpServerManagerTest`、`McpClientTest`、`McpToolExecutorTest`、`McpTransportTest`、`McpPublicConfigTest`、`McpLogSanitizerTest`） |
+| mcp.stdioOnly | **pc_only_confirmed** | S6-06 仅保留配置可见性 + `platformSupport=pc_only` + 无进程启动路径守卫 | `StdioNoProcessPathTest` 源码守卫 + 行为测试双保险 |
+| announcement.listDetail | **same** | S6-07（`ui/announcements/AnnouncementFeed.kt`） | 公告列表/详情 + 离线降级不崩 |
+| settings.updater | **equivalent** | S6-07 `updater/**`（hash 校验/不静默安装） | 渠道下载 + hash 校验 + 系统安装确认（PackageInstaller 会话）；PC 端安装策略不同（electron-updater），验证语义等价（`UpdateServiceTest`、`UpdateVerifierTest`、`UpdatePolicyTest`） |
+| diagnostics.connection / export **equivalent**、generation **same**（对齐矩阵三行） | S6-07 `diagnostics/**`（泄密红线） | 版本/能力/DB schema/同步摘要/脱敏错误同口径；泄密红线（API Key/token/正文/用户名路径不得出现）全绿（`DiagnosticsSectionsTest`、`DiagnosticsRedactorTest`、`DiagnosticsExportServiceTest`） |
 
 **P2 排期缺口（D-16）**：`chat.sessionStats`、`lorebook.keywordLocalization` 仍无纳入记录与签字排期——验收前必须补签字或明确排除；「移动端 embedding ABI」决策已在 S6-05 实现中体现（远程→本地→词法三级，真机 NNAPI/GPU 项另列真机矩阵）。
 
@@ -155,7 +155,25 @@
 
 - **0 红 = S6-05 embedding 全部通过**（含模型包签名/断点续传/空间预检/卸载提示红线用例）。
 
-另收编集成修复若干（`@JvmField` 消 JVM 签名冲突、`payload.size.toLong()`、`testScheduler.runCurrent()`、`${preview}` 模板括起等，见 §2.4 表）。
+### 2.7 §2.6 红灯清零（同日，集成线兜底修复，systematic-debugging 四阶段）
+
+19 红 + 5 OOM 全部按「先根因后修复」清零（定向复跑 media/tts/mcp/diagnostics/updater/imagegen 全绿）：
+
+| 根因（Phase 1–2 证据） | 修复（Phase 4，单因单改） | 覆盖红灯 |
+|---|---|---|
+| `AttachmentIngestServiceTest` **构造期**读 `temp.root`（属性初始化器先于 TemporaryFolder 规则运行） | 三个依赖链属性改 `by lazy` | media ×9 |
+| `ThumbnailMath.fit` 用 `.toInt()` **截断**（3×0.512=1.536→1；期望四舍五入→2） | `roundToInt()` + 补导入 | media ×1 |
+| `McpPlatformPolicy` 注释含 `ProcessBuilder / Runtime.exec` 字面量，被自家**源码文本守卫**命中（守卫按设计工作） | 注释改写为非触法措辞（**不放宽守卫**） | mcp ×1 |
+| `TtsQueueControllerTest:79` 断言拿 `requestId` 比对**文本**「打断项」（打断项 id 实为 "z"；平行用例 :108 证明行为正确） | 期望值改 "z" + 注明语义 | tts ×1 |
+| `McpLogSanitizerTest` 期望字面量少数一字节（"secret-body" = **11** B，测试写 10B） | 期望值改 11B | mcp ×1 |
+| `McpServerManagerTest` 未先连接就 `listTools`（清单语义是「来自**已连接**客户端」，同文件 `startEnabled` 用例为证） | 用例补 `manager.startEnabled()` | mcp ×1 |
+| `DiagnosticsCollector` 平均值分母含**无起始时刻**的会话（未开始就结束 → 平均出假 0ms） | 新增 `durationSamples` 样本计数（仅计真实时长样本），无样本 → `null` | diagnostics ×1 |
+| `PromptSanitizer` SD 白名单多收 `#`（非 SD 语法字符）→ `café@#$` 残留 ` #` | 白名单去 `#` | imagegen ×1 |
+| `ComfyUiProtocolTest:111-113` 夹具 JSON **少一个右花括号**（root 未闭合 → MALFORMED_JSON 是解析器正确行为） | 补 `}` | imagegen ×1 |
+| `ComfyUiProtocolTest:179` 夹具 JSON **多一个右花括号**（反向笔误） | 去 `}` | imagegen ×1 |
+| `ImageGenClientTest:114-116` 夹具同款少右花括号 | 补 `}` | imagegen ×1 |
+
+3 处夹具花括号笔误（少-多-少）是并行手写 JSON 的高发坑，已在上表逐条留证。
 
 ## 3. 测试命令与结果
 
