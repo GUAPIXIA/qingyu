@@ -191,6 +191,8 @@
 
 七项验收清单逐项核验（实现落点均为 `ui/groups/**`）：①成员添加/删除/排序 = `GroupMembers.kt`（`GroupMembersTest`）②模式切换（mention|polling|free+autoMode+间隔+四叙事）= `GroupSessionPatch.kt` patch 白名单（`GroupSessionPatchTest` 10 例）③停止+流式 Delta 全语义 = `GroupStreaming.kt` reducer + `GroupGenerationDriver.kt`（generate Flow 驱动）+ `GroupChatViewModel` 接线（`GroupStreamingReducerTest` 9 例、`GroupChatViewModelStreamingTest`——Chunk 上屏/TurnFinished 落库可见/清缓冲，TDD 红转绿）④立即接话/续写/群导出（D-14 群口径）= `GroupExport.kt`（`GroupExportTest` 5 例）⑤TTS 入口 = `GroupChatScreen` `playGroup`（Windows-only 音色「不适用」口径随 S6-03）⑥`GroupGenerationSettings` 真值化 = `GroupSettingsMapper.kt`（`GroupSettingsMapperTest` 5 例）⑦记忆面板反馈 = `GroupMemoryFeedback.kt`（`GroupMemoryFeedbackTest` 4 例）。定向验证 **13 suites / 77 tests / 0 失败**（ui.groups 8 类 + content.backup 3 类；含既有 `GroupChatViewModelTest`/`GroupsLoadStateTest` 回归）。
 
+**S6-01(f) 合流裁定（round 29，代理阶段性报告）**：①`GroupGenerationSettings` 实况仅 contextLimit+人设/叙事字段——任务书所列 maxMembersInContext/maxMessages/maxImages/enableChatCompression/promptChars **数据类不存在**，登记合流遗留（设置面接 `context.contextBudget` 真值）；②叙事模式实况=immersive/omniscient+跟随默认（`requireNarrativeMode` 拒其余值），按 2+默认实现（数据层为语义源）；③`ChatRepository` 无 reorder/rename 单数接口——成员排序=patchGroup(memberIds 整表覆盖)、改名=patchGroup(name)、群导出以「群口径 Markdown」纯函数新实现（D-14 差异点标注）——三项**采纳**；④**接线定夺项**：UI 侧自建 `LocalGroupGenerationUseCase` 实例（AppContainer 私有持有不可复用）→ 双实例会绕过 data 层的自动记忆触发（S6-01e）——终态接线应由 data 层暴露单例 seam（同实例供 groupAiReply 与流式驱动），合流终验时定夺。
+
 ## 3. 测试命令与结果
 
 | 命令 | 结果 | 备注 |
