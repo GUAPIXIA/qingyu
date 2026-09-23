@@ -275,8 +275,13 @@ function _downloadOne(url: string, proxy: { host: string; port: number } | null,
 }
 
 /** 下载图片并转为 base64 data URL
- *  如果配置了代理，直连和代理同时竞速，谁先返回用谁 */
-export async function downloadImageAsBase64(url: string, proxyUrl?: string, maxRedirects: number = 5): Promise<DownloadResult> {
+ *  如果配置了代理，直连和代理同时竞速，谁先返回用谁
+ *  UEX-P2-04：可选 signal 用于外部取消（批量导入取消时中断封面下载网络请求），向后兼容 */
+export async function downloadImageAsBase64(url: string, proxyUrl?: string, maxRedirects: number = 5, signal?: AbortSignal): Promise<DownloadResult> {
+  // UEX-P2-04：外部已取消则不再发起请求
+  if (signal?.aborted) {
+    return { success: false, error: '已取消', code: 'CANCELLED' }
+  }
   // 前置 URL 校验
   if (!url || typeof url !== 'string') {
     log.warn('封面 URL 无效', { url: String(url) })
@@ -305,7 +310,7 @@ export async function downloadImageAsBase64(url: string, proxyUrl?: string, maxR
 
   // 无代理：直连
   if (!proxy) {
-    return _downloadOne(trimmed, null, maxRedirects)
+    return _downloadOne(trimmed, null, maxRedirects, signal)
   }
 
   // 有代理：直连与代理竞速，谁先返回成功用谁
@@ -313,6 +318,15 @@ export async function downloadImageAsBase64(url: string, proxyUrl?: string, maxR
   // N14 修复：竞速胜出后取消输家请求，释放连接
   const directController = new AbortController()
   const proxyController = new AbortController()
+  // UEX-P2-04：外部取消时同时中断竞速中的直连与代理链路
+  if (signal) {
+    const onExternalAbort = () => {
+      directController.abort()
+      proxyController.abort()
+    }
+    if (signal.aborted) onExternalAbort()
+    else signal.addEventListener('abort', onExternalAbort, { once: true })
+  }
   // H-3 修复：原 Promise.any 取"第一个 resolve"（_downloadOne 失败路径也是 resolve），
   // 直连毫秒级快速失败会立刻落定并 abort 本可成功的代理链路。改为"第一个成功者胜"。
   const result = await raceFirstSuccess(
@@ -324,6 +338,10 @@ export async function downloadImageAsBase64(url: string, proxyUrl?: string, maxR
   )
   if (result) {
     return result
+  }
+  // UEX-P2-04：外部取消导致的竞速失败按「已取消」回传，不误报网络错误
+  if (signal?.aborted) {
+    return { success: false, error: '已取消', code: 'CANCELLED' }
   }
   // 全部失败
   log.warn('封面下载：直连和代理均失败', { url: trimmed.substring(0, 100) })

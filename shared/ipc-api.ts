@@ -223,25 +223,56 @@ export interface LorebookSuggestion {
   entryCount: number
 }
 
+/** UEX-P1-18：角色卡导出结果（成功回传落盘路径，失败回传原因，取消静默） */
+export interface CharacterExportResult {
+  ok: boolean
+  /** 成功时的落盘路径 */
+  path?: string
+  /** 用户在保存框点了取消 */
+  canceled?: boolean
+  error?: string
+}
+
+/** UEX-P1-17：同名冲突策略——'copy' 另存副本（默认）；'overwrite' 仅用户显式选择时覆盖原卡（相同卡始终跳过） */
+export type CharacterImportConflictPolicy = 'copy' | 'overwrite'
+/** UEX-P1-17：单张导入处理结果——新导入 / 内容相同跳过 / 同名副本 / 显式覆盖 */
+export type CharacterImportOutcome = 'imported' | 'skippedIdentical' | 'copied' | 'overwritten'
+
 export interface CharacterAPI {
   list(): Promise<Character[]>
   get(id: string): Promise<Character | null>
   save(character: Character): Promise<void>
   delete(id: string): Promise<void>
-  importPng(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[] }>
-  importJson(): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; needAvatar?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[] }>
-  importBatch(): Promise<{
+  /** UEX-P1-17：conflict 为同名冲突策略（默认另存副本）；相同卡跳过时无 character，仅回传 outcome/note 明细 */
+  importPng(conflict?: CharacterImportConflictPolicy): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[]; outcome?: CharacterImportOutcome; note?: string }>
+  /** UEX-P1-17：conflict 为同名冲突策略（默认另存副本）；相同卡跳过时无 character，仅回传 outcome/note 明细 */
+  importJson(conflict?: CharacterImportConflictPolicy): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; needAvatar?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[]; outcome?: CharacterImportOutcome; note?: string }>
+  /** UEX-P1-17：conflict 为同名冲突策略（默认另存副本）；批内重复按同策略去重（批内相同 → 跳过） */
+  importBatch(conflict?: CharacterImportConflictPolicy): Promise<{
     success: boolean
-    results?: { name: string; success: boolean; error?: string; needAvatar?: boolean }[]
+    results?: { name: string; success: boolean; error?: string; needAvatar?: boolean; outcome?: CharacterImportOutcome; note?: string }[]
     total?: number
     successCount?: number
     failCount?: number
     error?: string
+    /** 选文件对话框取消（success:false）或 UEX-P2-04 导入中取消（success:true，已完成明细保留在 results，不回滚） */
     canceled?: boolean
+    /** UEX-P2-04：导入中取消时未处理的文件数（= total - successCount - failCount - skippedIdentical） */
+    skippedCount?: number
+    /** UEX-P1-17：内容相同自动跳过的数量（明细注明「已存在相同角色：{name}」） */
+    skippedIdentical?: number
+    /** UEX-P1-17：同名冲突另存副本的数量（含「（副本 N）」递增命名） */
+    copied?: number
+    /** UEX-P1-17：显式覆盖同名原卡的数量（保留原 id 与会话关联） */
+    overwritten?: number
   }>
+  /** UEX-P2-04：取消进行中的批量导入（幂等：重复调用/无进行中批次均安全，返回 void） */
+  importBatchCancel(): Promise<void>
   bindLorebook(characterId: string, lorebookId: string | null): Promise<void>
-  exportPng(id: string): Promise<void>
-  exportJson(id: string): Promise<void>
+  /** UEX-P1-18：导出结果回传 { ok, path?/error? }，UI 据此提示成功路径或失败原因 */
+  exportPng(id: string): Promise<CharacterExportResult>
+  /** UEX-P1-18：导出结果回传 { ok, path?/error? }，UI 据此提示成功路径或失败原因 */
+  exportJson(id: string): Promise<CharacterExportResult>
   /** 将角色封面导出为独立图片文件；无封面时返回 ok:false */
   exportCover(id: string): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
   reloadAvatar(characterId: string, url: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }>
@@ -364,8 +395,8 @@ export interface QuickReplyAPI {
   clearCharacter(characterId: string): Promise<void>
   /** 导出 JSON 到文件 */
   exportJson(): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
-  /** 从 JSON 文件导入（合并） */
-  importJson(): Promise<{ ok: boolean; canceled?: boolean; error?: string }>
+  /** 从 JSON 文件导入（合并；replacedGlobal/importedGlobal 为覆盖明细，供 UI 反馈） */
+  importJson(): Promise<{ ok: boolean; canceled?: boolean; error?: string; replacedGlobal?: number; importedGlobal?: number }>
 }
 
 // ===================== 语义触发（向量 RAG）接口 =====================
@@ -395,13 +426,31 @@ export interface IndexResult {
   indexed?: number
   failed?: number
   error?: string
+  /** UEX-P1-28：本次索引被用户取消（已完成条目保留，不回滚） */
+  canceled?: boolean
+}
+
+/** UEX-P1-28：语义索引逐条目进度（主进程 → 渲染进程） */
+export interface LorebookIndexProgress {
+  /** 目标世界书（渲染进程据此过滤无关进度） */
+  lorebookId: string
+  /** 已完成条目数 */
+  current: number
+  /** 本次需要索引的条目总数 */
+  total: number
+  /** 刚完成的条目展示名（标题 > 首个关键词 > 正文开头） */
+  entryName?: string
 }
 
 export interface EmbeddingAPI {
   /** 测试嵌入服务连接，返回向量维度 */
   test(config: EmbeddingEndpointConfig): Promise<{ ok: boolean; dim?: number; error?: string }>
-  /** 为世界书生成/重建向量索引 */
+  /** 为世界书生成/重建向量索引（UEX-P1-28：逐条目进度 + 可取消） */
   indexLorebook(lorebookId: string, config: EmbeddingEndpointConfig): Promise<IndexResult>
+  /** UEX-P1-28：取消进行中的索引（幂等；lorebookId 可选，用于只取消指定世界书） */
+  cancelIndex(lorebookId?: string): Promise<{ ok: boolean }>
+  /** UEX-P1-28：订阅索引逐条目进度，返回取消订阅函数 */
+  onIndexProgress(listener: (progress: LorebookIndexProgress) => void): () => void
   /** 查询多个世界书的索引状态 */
   indexStatus(lorebookIds: string[], config?: EmbeddingEndpointConfig): Promise<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>
   /** 删除世界书向量索引 */
@@ -815,6 +864,14 @@ export interface BridgeDeviceInfo {
   lastSeen: number
 }
 
+/** UEX-P1-21：配对审批请求载荷（expiresAt 为审批有效期截止时间戳 ms） */
+export interface BridgePairRequest {
+  requestId: string
+  deviceName: string
+  /** UEX-P1-21：审批有效期截止时间戳（ms）；可选以兼容旧主进程（缺省时渲染层按「请求到达 + 审批窗口」推算） */
+  expiresAt?: number
+}
+
 /** 阶段一：PC 侧「手机连接」桥接层（设置页 + 配对审批） */
 export interface BridgeAPI {
   status(): Promise<BridgeStatus>
@@ -831,11 +888,12 @@ export interface BridgeAPI {
   /** 生成配对二维码载荷 JSON（D-02）：v2 默认；legacy=旧格式 {host,port,fingerprint} */
   pairingQrPayload(mode?: 'v2' | 'legacy'): Promise<string>
   listDevices(): Promise<BridgeDeviceInfo[]>
-  revokeDevice(deviceId: string): Promise<{ ok: boolean }>
+  /** UEX-P0-14：吊销失败需回传 error 供 UI 展示 */
+  revokeDevice(deviceId: string): Promise<{ ok: boolean; error?: string }>
   approvePair(requestId: string): Promise<{ ok: boolean; error?: string }>
   rejectPair(requestId: string): Promise<{ ok: boolean }>
-  /** 订阅配对审批请求（PC 端人工确认弹窗） */
-  onPairRequest(callback: (data: { requestId: string; deviceName: string }) => void): () => void
+  /** 订阅配对审批请求（PC 端人工确认弹窗；UEX-P1-21：载荷附带 expiresAt 供倒计时） */
+  onPairRequest(callback: (data: BridgePairRequest) => void): () => void
   wipeAll(): Promise<{ ok: boolean }>
 }
 
@@ -853,7 +911,8 @@ export interface RelayAPI {
   retry(): Promise<{ ok: boolean; error?: string }>
   createPairTicket(): Promise<import('./relayProtocol').RelayPairingQr>
   listDevices(): Promise<RelayDeviceInfo[]>
-  revokeDevice(deviceId: string): Promise<{ ok: boolean }>
+  /** UEX-P0-14：吊销失败需回传 error 供 UI 展示 */
+  revokeDevice(deviceId: string): Promise<{ ok: boolean; error?: string }>
   approvePair(requestId: string): Promise<{ ok: boolean }>
   rejectPair(requestId: string): Promise<{ ok: boolean }>
   clearCache(): Promise<{ ok: boolean }>

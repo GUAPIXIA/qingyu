@@ -4,18 +4,28 @@ import { nanoid } from 'nanoid'
 import { migrateLorebookId } from '../utils/lorebook'
 import { logError } from '../lib/logger'
 import { useSettingsStore } from './useSettingsStore'
+import { useToastStore } from './useToastStore'
+// UEX-P1-17：导入查重/冲突策略与处理结果类型
+import type { CharacterImportConflictPolicy, CharacterImportOutcome } from '../../shared/ipc-api'
 
-/** 导入角色卡后展示前端扩展落地提示（有内容才提示，8s 后自动清除） */
-function setImportNotice(cardExtras: { regexCount: number; quickReplyCount: number; skipped?: string[] } | null | undefined): void {
-  if (!cardExtras) return
+/** 导入角色卡后展示前端扩展落地提示（有内容才提示，8s 后自动清除）；UEX-P1-17：可附带查重/冲突明细 */
+function setImportNotice(cardExtras: { regexCount: number; quickReplyCount: number; skipped?: string[] } | null | undefined, importNote?: string): void {
   const parts: string[] = []
-  if (cardExtras.regexCount > 0) parts.push(`${cardExtras.regexCount} 条正则脚本`)
-  if (cardExtras.quickReplyCount > 0) parts.push(`${cardExtras.quickReplyCount} 条快捷回复`)
-  if (parts.length === 0) return
-  const skippedNote = cardExtras.skipped && cardExtras.skipped.length > 0
-    ? `（跳过 ${cardExtras.skipped.length} 项不支持的功能）`
-    : ''
-  useCharacterStore.setState({ importNotice: `已导入角色卡前端扩展：${parts.join('、')}${skippedNote}` })
+  if (cardExtras) {
+    if (cardExtras.regexCount > 0) parts.push(`${cardExtras.regexCount} 条正则脚本`)
+    if (cardExtras.quickReplyCount > 0) parts.push(`${cardExtras.quickReplyCount} 条快捷回复`)
+  }
+  const segments: string[] = []
+  // UEX-P1-17：查重/冲突结论（「已存在相同角色：{name}」/「已另存副本：…」/「已覆盖同名角色：…」）
+  if (importNote) segments.push(importNote)
+  if (parts.length > 0) {
+    const skippedNote = cardExtras?.skipped && cardExtras.skipped.length > 0
+      ? `（跳过 ${cardExtras.skipped.length} 项不支持的功能）`
+      : ''
+    segments.push(`已导入角色卡前端扩展：${parts.join('、')}${skippedNote}`)
+  }
+  if (segments.length === 0) return
+  useCharacterStore.setState({ importNotice: segments.join('；') })
   setTimeout(() => useCharacterStore.setState({ importNotice: null }), 8000)
 }
 
@@ -54,6 +64,8 @@ interface CharacterState {
   pendingLorebookCharacterId: string | null
   /** 批量导入进度 */
   importProgress: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' } | null
+  /** UEX-P2-04：批量导入是否进行中（UI 据此禁用导入入口并显示「取消导入」按钮） */
+  importingBatch: boolean
   loadCharacters: () => Promise<void>
   selectCharacter: (id: string | null) => void
   createCharacter: () => Character
@@ -62,17 +74,32 @@ interface CharacterState {
   patchCharacter: (id: string, patch: Partial<Character>) => Promise<void>
   togglePin: (id: string) => Promise<void>
   deleteCharacter: (id: string) => Promise<void>
-  importPng: () => Promise<Character | null>
-  importJson: () => Promise<Character | null>
-  importBatch: () => Promise<{
+  /** UEX-P1-17：conflict 为同名冲突策略（默认另存副本；相同卡始终跳过） */
+  importPng: (conflict?: CharacterImportConflictPolicy) => Promise<Character | null>
+  /** UEX-P1-17：conflict 为同名冲突策略（默认另存副本；相同卡始终跳过） */
+  importJson: (conflict?: CharacterImportConflictPolicy) => Promise<Character | null>
+  /** UEX-P1-17：conflict 为同名冲突策略（默认另存副本；批内重复同策略去重） */
+  importBatch: (conflict?: CharacterImportConflictPolicy) => Promise<{
     success: boolean
-    results?: { name: string; success: boolean; error?: string; needAvatar?: boolean }[]
+    results?: { name: string; success: boolean; error?: string; needAvatar?: boolean; outcome?: CharacterImportOutcome; note?: string }[]
     total?: number
     successCount?: number
     failCount?: number
+    /** UEX-P2-04：导入中被取消（success:true，已完成明细保留在 results） */
+    canceled?: boolean
+    /** UEX-P2-04：取消时未处理的文件数 */
+    skippedCount?: number
+    /** UEX-P1-17：内容相同自动跳过的数量 */
+    skippedIdentical?: number
+    /** UEX-P1-17：同名冲突另存副本的数量 */
+    copied?: number
+    /** UEX-P1-17：显式覆盖同名原卡的数量 */
+    overwritten?: number
   } | null>
-  exportPng: (id: string) => Promise<void>
-  exportJson: (id: string) => Promise<void>
+  /** UEX-P2-04：取消进行中的批量导入（幂等：重复调用/无进行中批次均安全） */
+  cancelImportBatch: () => Promise<void>
+  exportPng: (id: string) => Promise<import('../../shared/ipc-api').CharacterExportResult>
+  exportJson: (id: string) => Promise<import('../../shared/ipc-api').CharacterExportResult>
   exportCover: (id: string) => Promise<void>
   /** 绑定/忽略导入时推荐的世界书（null = 忽略） */
   bindSuggestedLorebook: (lorebookId: string | null) => Promise<void>
@@ -86,6 +113,7 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   importNotice: null,
   pendingAvatarId: null,
   importProgress: null,
+  importingBatch: false,
   lorebookSuggestions: null,
   pendingLorebookCharacterId: null,
 
@@ -237,16 +265,17 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
     }))
   },
 
-  importPng: async () => {
+  importPng: async (conflict) => {
     const unbind = window.api.character.onImportProgress((data) => {
       set({ importProgress: data })
     })
     try {
-      const result = await window.api.character.importPng()
+      const result = await window.api.character.importPng(conflict)
       if (result.canceled) { set({ importProgress: null }); return null }
       if (result.success && result.character) {
         await get().loadCharacters()
-        setImportNotice(result.cardExtras)
+        // UEX-P1-17：副本/覆盖结论随前端扩展提示一并展示（正常导入不额外提示）
+        setImportNotice(result.cardExtras, result.outcome !== 'imported' ? result.note : undefined)
         // 世界书推荐（显式确认）：导入后弹出候选供用户选择绑定
         if (result.lorebookSuggestions && result.lorebookSuggestions.length > 0) {
           set({
@@ -256,6 +285,12 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
         }
         setTimeout(() => set({ importProgress: null }), 1500)
         return result.character
+      }
+      // UEX-P1-17：内容相同自动跳过（不产生新卡），提示「已存在相同角色：{name}」
+      if (result.success && result.outcome === 'skippedIdentical') {
+        setImportNotice(undefined, result.note)
+        setTimeout(() => set({ importProgress: null }), 1500)
+        return null
       }
       if (result.error) {
         set({ importProgress: null, importError: result.error })
@@ -267,16 +302,17 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
     }
   },
 
-  importJson: async () => {
+  importJson: async (conflict) => {
     const unbind = window.api.character.onImportProgress((data) => {
       set({ importProgress: data })
     })
     try {
-      const result = await window.api.character.importJson()
+      const result = await window.api.character.importJson(conflict)
       if (result.canceled) { set({ importProgress: null }); return null }
       if (result.success && result.character) {
         await get().loadCharacters()
-        setImportNotice(result.cardExtras)
+        // UEX-P1-17：副本/覆盖结论随前端扩展提示一并展示（正常导入不额外提示）
+        setImportNotice(result.cardExtras, result.outcome !== 'imported' ? result.note : undefined)
         // 世界书推荐（显式确认）：导入后弹出候选供用户选择绑定
         if (result.lorebookSuggestions && result.lorebookSuggestions.length > 0) {
           set({
@@ -290,6 +326,12 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
         setTimeout(() => set({ importProgress: null }), 1500)
         return result.character
       }
+      // UEX-P1-17：内容相同自动跳过（不产生新卡），提示「已存在相同角色：{name}」
+      if (result.success && result.outcome === 'skippedIdentical') {
+        setImportNotice(undefined, result.note)
+        setTimeout(() => set({ importProgress: null }), 1500)
+        return null
+      }
       if (result.error) {
         set({ importProgress: null, importError: result.error })
         setTimeout(() => set({ importError: null }), 5000)
@@ -300,14 +342,19 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
     }
   },
 
-  importBatch: async () => {
+  importBatch: async (conflict) => {
+    // UEX-P2-04：防重入——已有批量导入进行中时不再发起（主进程另有「已有导入任务进行中」兜底）
+    if (get().importingBatch) return null
+    set({ importingBatch: true })
     // 注册进度监听
     const unbind = window.api.character.onImportProgress((data) => {
       set({ importProgress: data })
     })
     try {
-      const result = await window.api.character.importBatch()
-      if (result.canceled) { set({ importProgress: null }); return null }
+      // UEX-P1-17：conflict 透传给主进程（默认另存副本，'overwrite' 仅用户显式选择）
+      const result = await window.api.character.importBatch(conflict)
+      // UEX-P2-04：区分「选文件对话框取消」（无明细，静默返回）与「导入中取消」（保留已完成明细供结果条展示）
+      if (result.canceled && !result.success) { set({ importProgress: null }); return null }
       if (!result.success) {
         if (result.error) {
           set({ importError: result.error, importProgress: null })
@@ -318,8 +365,13 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
         return null
       }
       await get().loadCharacters()
-      // 完成后清除进度（延迟一点以便用户看到 100%）
-      setTimeout(() => set({ importProgress: null }), 1500)
+      if (result.canceled) {
+        // UEX-P2-04：已取消立即收起进度条（取消汇总由页面结果条展示，不自动消失）
+        set({ importProgress: null })
+      } else {
+        // 完成后清除进度（延迟一点以便用户看到 100%）
+        setTimeout(() => set({ importProgress: null }), 1500)
+      }
       // 如果有需要头像的角色，标记第一个
       const needAvatarItem = result.results?.find(r => r.success && r.needAvatar)
       if (needAvatarItem) {
@@ -332,15 +384,48 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
       return result
     } finally {
       unbind()
+      // UEX-P2-04：批次结束即解除防重入（取消后可立即重新发起）
+      set({ importingBatch: false })
     }
   },
 
-  exportPng: async (id) => {
-    await window.api.character.exportPng(id)
+  // UEX-P2-04：取消进行中的批量导入（主进程幂等：重复调用/无批次均安全）
+  cancelImportBatch: async () => {
+    await window.api.character.importBatchCancel()
   },
 
+  // UEX-P1-18：导出结果回传并提示（此前 fire-and-forget 全静默）
+  exportPng: async (id) => {
+    try {
+      const result = await window.api.character.exportPng(id)
+      if (result && result.ok) {
+        useToastStore.getState().push({ variant: 'success', title: `已导出：${result.path ?? ''}`, requestId: 'char-export' })
+      } else if (result && !result.canceled) {
+        useToastStore.getState().push({ variant: 'error', title: `导出失败：${result.error || '未知错误'}`, requestId: 'char-export' })
+      }
+      return result ?? { ok: false }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e)
+      useToastStore.getState().push({ variant: 'error', title: `导出失败：${error}`, requestId: 'char-export' })
+      return { ok: false, error }
+    }
+  },
+
+  // UEX-P1-18：导出结果回传并提示（此前 fire-and-forget 全静默）
   exportJson: async (id) => {
-    await window.api.character.exportJson(id)
+    try {
+      const result = await window.api.character.exportJson(id)
+      if (result && result.ok) {
+        useToastStore.getState().push({ variant: 'success', title: `已导出：${result.path ?? ''}`, requestId: 'char-export' })
+      } else if (result && !result.canceled) {
+        useToastStore.getState().push({ variant: 'error', title: `导出失败：${result.error || '未知错误'}`, requestId: 'char-export' })
+      }
+      return result ?? { ok: false }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e)
+      useToastStore.getState().push({ variant: 'error', title: `导出失败：${error}`, requestId: 'char-export' })
+      return { ok: false, error }
+    }
   },
 
   exportCover: async (id) => {

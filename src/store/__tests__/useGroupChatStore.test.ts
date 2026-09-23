@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useGroupChatStore } from '../useGroupChatStore'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useGroupChatStore, stopRemainingSpeakers } from '../useGroupChatStore'
+import { cleanupActiveStream, clearPollingTimer } from '../groupStreamController'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
 import { usePersonaStore } from '../usePersonaStore'
+import { useToastStore } from '../useToastStore'
 import { lorebookCache } from '../../utils/lorebook'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { GroupChat, GroupMessage, Character } from '../../../shared/types'
@@ -235,6 +237,36 @@ describe('useGroupChatStore', () => {
         maxTokens: expect.any(Number),
       }))
     })
+
+    it('UEX-P2-03：翻译失败推全局 Toast，不再静默清空', async () => {
+      useSettingsStore.setState({
+        settings: {
+          ...getDefaultSettings(),
+          activeProfileId: 'p1',
+          connectionProfiles: [{
+            id: 'p1', name: 'test', provider: 'openai' as const,
+            baseUrl: 'https://api.example.com/v1', model: 'gpt-4o', apiKey: 'sk-test', maxContext: 8192,
+          }],
+        },
+      })
+      useGroupChatStore.setState({
+        currentGroup: { id: 'g1' } as GroupChat,
+        currentSessionId: 's1',
+        messages: [{
+          id: 'm1', groupId: 'g1', characterId: 'c1', content: 'Hello world',
+          images: [], timestamp: 0, round: 1,
+        } as GroupMessage],
+      })
+      useToastStore.setState({ toasts: [] })
+
+      await useGroupChatStore.getState().translateMessage('m1')
+      // 模拟主进程返回翻译失败（onError 回调）
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      vi.mocked(window.api.ai.onError).mock.calls.at(-1)?.[0]({ requestId, error: '模型不可用' })
+
+      expect(useToastStore.getState().toasts.some((t) => t.title === '翻译失败' && t.description === '模型不可用')).toBe(true)
+      expect(useGroupChatStore.getState().messages.find((m) => m.id === 'm1')?.translation).toBeNull()
+    })
   })
 
   describe('updateMemoryFacts', () => {
@@ -284,6 +316,31 @@ describe('useGroupChatStore', () => {
       }
       useGroupChatStore.getState().setCurrentGroup(group)
       expect(useGroupChatStore.getState().currentGroup).toEqual(group)
+    })
+  })
+
+  describe('saveGroup', () => {
+    it('UEX-P1-11：生成中改动对话模式/成员被兜底拦截，外观设置仍可保存', async () => {
+      const group: GroupChat = {
+        id: 'g1', name: 'G', memberIds: ['c1'],
+        currentSpeakerIndex: 0, autoMode: false, chatMode: 'polling',
+        maxRounds: 1, speakerInterval: 2000, lorebookIds: [],
+        presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+      }
+      useGroupChatStore.setState({ currentGroup: group, groupChats: [group], isStreaming: true })
+      useToastStore.setState({ toasts: [] })
+      vi.mocked(window.api.group.list).mockResolvedValue([group])
+
+      await useGroupChatStore.getState().saveGroup({ ...group, chatMode: 'free' })
+      expect(window.api.group.save).not.toHaveBeenCalled()
+      expect(useToastStore.getState().toasts.some((t) => t.title.includes('生成中'))).toBe(true)
+
+      await useGroupChatStore.getState().saveGroup({ ...group, memberIds: ['c1', 'c2'] })
+      expect(window.api.group.save).not.toHaveBeenCalled()
+
+      // 非调度字段（主题色）生成中仍可保存
+      await useGroupChatStore.getState().saveGroup({ ...group, themeColor: '#ff0000' })
+      expect(window.api.group.save).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -359,6 +416,18 @@ describe('useGroupChatStore', () => {
         currentStreamingCharId: 'c1',
       })
       useGroupChatStore.getState().stopStreaming()
+      expect(useGroupChatStore.getState().isStreaming).toBe(false)
+      expect(useGroupChatStore.getState().currentStreamingCharId).toBeNull()
+    })
+  })
+
+  describe('stopRemainingSpeakers（UEX-P1-12 停剩余）', () => {
+    it('语义别名与 stopStreaming 同义：停止后续接力并复位流式状态（保留已生成内容）', () => {
+      useGroupChatStore.setState({
+        isStreaming: true,
+        currentStreamingCharId: 'c1',
+      })
+      stopRemainingSpeakers()
       expect(useGroupChatStore.getState().isStreaming).toBe(false)
       expect(useGroupChatStore.getState().currentStreamingCharId).toBeNull()
     })
@@ -790,6 +859,44 @@ describe('useGroupChatStore', () => {
       expect(savedUserMsg.mentionedCharacterIds).toBeUndefined()
     })
 
+    it('D3 已拍板：词边界——邮箱样式 email@test.com 不命中成员「test」', async () => {
+      setupMentionGroup()
+      useCharacterStore.setState({ characters: [makeCharacter('c1', '爱丽丝'), makeCharacter('c9', 'test')] })
+      useGroupChatStore.setState({
+        currentGroup: {
+          id: 'g1', name: 'G', memberIds: ['c1', 'c9'],
+          currentSpeakerIndex: 0, autoMode: false, chatMode: 'mention' as const,
+          maxRounds: 1, speakerInterval: 2000, lorebookIds: [],
+          presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+        },
+        currentSessionId: 's1',
+      })
+      const saveMsg = vi.mocked(window.api.group.saveMessage)
+
+      await useGroupChatStore.getState().sendMessage('联系 email@test.com 即可', [], undefined)
+
+      const savedUserMsg = saveMsg.mock.calls[0][2] as GroupMessage
+      expect(savedUserMsg.mentionedCharacterIds).toBeUndefined()
+    })
+
+    it('D3 已拍板：@@爱丽丝（@ 前为非名字字符）命中', async () => {
+      setupMentionGroup()
+      const saveMsg = vi.mocked(window.api.group.saveMessage)
+
+      await useGroupChatStore.getState().sendMessage('@@爱丽丝 在吗', [], undefined)
+
+      expect((saveMsg.mock.calls[0][2] as GroupMessage).mentionedCharacterIds).toEqual(['c1'])
+    })
+
+    it('D3 已拍板：中缀 x@爱丽丝（@ 前为名字字符）不命中', async () => {
+      setupMentionGroup()
+      const saveMsg = vi.mocked(window.api.group.saveMessage)
+
+      await useGroupChatStore.getState().sendMessage('x@爱丽丝 在吗', [], undefined)
+
+      expect((saveMsg.mock.calls[0][2] as GroupMessage).mentionedCharacterIds).toBeUndefined()
+    })
+
     it('多个成员被点名时全部记录', async () => {
       setupMentionGroup()
       const saveMsg = vi.mocked(window.api.group.saveMessage)
@@ -798,6 +905,190 @@ describe('useGroupChatStore', () => {
 
       const savedUserMsg = saveMsg.mock.calls[0][2] as GroupMessage
       expect(savedUserMsg.mentionedCharacterIds).toEqual(['c1', 'c2'])
+    })
+  })
+
+  describe('D10 已拍板：free 整段重生', () => {
+    function makeChar(id: string, name: string): Character {
+      return {
+        id, name, avatar: '', description: '', personality: '', scenario: '',
+        firstMessage: '', exampleDialog: '', tags: [], lorebookId: null, creator: '',
+        createdAt: 0, updatedAt: 0, alternateGreetings: [],
+      }
+    }
+
+    /** free 群 + 一整轮 free 段（splitAndSaveMessages 拆分结构：同 round、同批多条成员消息） */
+    function setupFreeSegment(chatMode: 'free' | 'polling' = 'free') {
+      useSettingsStore.setState({
+        settings: {
+          ...getDefaultSettings(),
+          activeProfileId: 'p1',
+          connectionProfiles: [{
+            id: 'p1', name: 'test', provider: 'openai' as const,
+            baseUrl: 'http://localhost:1/v1', model: 'gpt-4o', apiKey: 'sk-test', maxContext: 8192,
+          }],
+        },
+      })
+      useCharacterStore.setState({ characters: [makeChar('c1', '爱丽丝'), makeChar('c2', '千夏')] })
+      useGroupChatStore.setState({
+        currentGroup: {
+          id: 'g1', name: 'G', memberIds: ['c1', 'c2'],
+          currentSpeakerIndex: 0, autoMode: false, chatMode,
+          maxRounds: 3, speakerInterval: 2000, lorebookIds: [],
+          presetId: null, systemPrompt: '', createdAt: 0, updatedAt: 0,
+        },
+        currentSessionId: 's1',
+        sessions: [{ id: 's1', groupId: 'g1', narrativeMode: 'immersive' } as never],
+        messages: [
+          { id: 'u1', groupId: 'g1', characterId: '__user__', content: '大家出发吧', images: [], timestamp: 1, round: 2 },
+          { id: 'f1', groupId: 'g1', characterId: 'c1', content: '整段第一段', images: [], timestamp: 2, round: 2 },
+          { id: 'f2', groupId: 'g1', characterId: 'c2', content: '整段第二段', images: [], timestamp: 3, round: 2 },
+        ] as GroupMessage[],
+      })
+      useToastStore.setState({ toasts: [] })
+    }
+
+    afterEach(() => {
+      cleanupActiveStream()
+      clearPollingTimer()
+    })
+
+    it('整轮暂存 + 成功替换：只有新回复完成并落盘后才删除旧整轮', async () => {
+      setupFreeSegment()
+      const deleteMessage = vi.mocked(window.api.group.deleteMessage)
+      let emitComplete: ((payload: { requestId: string; finishReason: 'stop' }) => void) | undefined
+      vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+        emitComplete = callback as typeof emitComplete
+        return () => {}
+      })
+
+      const regeneration = useGroupChatStore.getState().regenerateMessage('f1')
+      await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+
+      // AI 请求只是成功启动时，旧消息必须仍留在持久层。
+      expect(deleteMessage).not.toHaveBeenCalled()
+
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      emitComplete?.({ requestId, finishReason: 'stop' })
+      await regeneration
+      await vi.waitFor(() => expect(deleteMessage).toHaveBeenCalledWith('g1', 's1', 'f2'))
+
+      // 重新发起的是 free 整段生成；收尾仍会拆分/回落真实成员，不持久化 __free__。
+      expect(vi.mocked(window.api.ai.chat)).toHaveBeenCalledTimes(1)
+      const msgs = useGroupChatStore.getState().messages
+      expect(msgs.some((m) => m.characterId === '__free__')).toBe(false)
+      expect(msgs.some((m) => m.characterId === 'c1')).toBe(true)
+      // 整轮旧消息先从 UI 隐藏（不落盘删除），成功后整轮删除
+      expect(msgs.find((m) => m.id === 'f1')).toBeUndefined()
+      expect(msgs.find((m) => m.id === 'f2')).toBeUndefined()
+      expect(deleteMessage).toHaveBeenCalledWith('g1', 's1', 'f1')
+      expect(deleteMessage).toHaveBeenCalledWith('g1', 's1', 'f2')
+      // 用户消息与非本段消息不删
+      expect(deleteMessage).not.toHaveBeenCalledWith('g1', 's1', 'u1')
+    })
+
+    it('新回复落盘后删除旧消息失败：回滚新回复并恢复整轮原文', async () => {
+      setupFreeSegment()
+      let emitComplete: ((payload: { requestId: string; finishReason: 'stop' }) => void) | undefined
+      vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+        emitComplete = callback as typeof emitComplete
+        return () => {}
+      })
+      vi.mocked(window.api.group.deleteMessage)
+        .mockRejectedValueOnce(new Error('delete failed'))
+        .mockResolvedValue(undefined)
+
+      const regeneration = useGroupChatStore.getState().regenerateMessage('f1')
+      await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      emitComplete?.({ requestId, finishReason: 'stop' })
+      await regeneration
+      await vi.waitFor(() => {
+        expect(useGroupChatStore.getState().messages.map((message) => message.id)).toEqual(['u1', 'f1', 'f2'])
+      })
+
+      expect(useGroupChatStore.getState().messages.map((message) => message.id)).toEqual(['u1', 'f1', 'f2'])
+      expect(useToastStore.getState().toasts.some((toast) => toast.title === '重新生成替换失败，已恢复原消息')).toBe(true)
+    })
+
+    it('失败恢复：发起失败恢复整轮原文 + toast「重新生成失败，已恢复原消息」', async () => {
+      setupFreeSegment()
+      // 无可用连接档案 → free 生成早退（与单成员重生同一失败口径）
+      useSettingsStore.setState({ settings: { ...getDefaultSettings(), activeProfileId: null }, credentials: {}, loaded: true, _saveTimer: null })
+
+      await useGroupChatStore.getState().regenerateMessage('f2')
+
+      expect(window.api.ai.chat).not.toHaveBeenCalled()
+      expect(window.api.group.deleteMessage).not.toHaveBeenCalled()
+      // 整轮原文按原位置恢复
+      expect(useGroupChatStore.getState().messages.map((m) => m.id)).toEqual(['u1', 'f1', 'f2'])
+      expect(useToastStore.getState().toasts.some((t) => t.title === '重新生成失败，已恢复原消息')).toBe(true)
+    })
+
+    it('__user__ 仍不可重生', async () => {
+      setupFreeSegment()
+
+      await useGroupChatStore.getState().regenerateMessage('u1')
+
+      expect(window.api.ai.chat).not.toHaveBeenCalled()
+      expect(window.api.group.deleteMessage).not.toHaveBeenCalled()
+      expect(useGroupChatStore.getState().messages.map((m) => m.id)).toEqual(['u1', 'f1', 'f2'])
+    })
+
+    it('历史 __free__ 占位按整段 free 重生（P0-07：落盘经拆分/回落首成员，不持久化 __free__）', async () => {
+      // 群已切到 polling 也能识别历史 __free__ 段（整段识别依据见 resolveGroupFreeSegment）
+      setupFreeSegment('polling')
+      useGroupChatStore.setState({
+        messages: [
+          { id: 'u1', groupId: 'g1', characterId: '__user__', content: '大家出发吧', images: [], timestamp: 1, round: 2 },
+          { id: 'legacy-free', groupId: 'g1', characterId: '__free__', content: '历史 free 正文', images: [], timestamp: 2, round: 2 },
+        ] as GroupMessage[],
+      })
+      let emitComplete: ((payload: { requestId: string; finishReason: 'stop' }) => void) | undefined
+      vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+        emitComplete = callback as typeof emitComplete
+        return () => {}
+      })
+
+      const regeneration = useGroupChatStore.getState().regenerateMessage('legacy-free')
+      await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      emitComplete?.({ requestId, finishReason: 'stop' })
+      await regeneration
+      await vi.waitFor(() => expect(window.api.group.deleteMessage).toHaveBeenCalledWith('g1', 's1', 'legacy-free'))
+
+      expect(window.api.ai.chat).toHaveBeenCalledTimes(1)
+      expect(useGroupChatStore.getState().messages.some((m) => m.id === 'legacy-free')).toBe(false)
+      expect(window.api.group.deleteMessage).toHaveBeenCalledWith('g1', 's1', 'legacy-free')
+    })
+
+    it('polling 单条回复不误判为 free 段（仍走单成员重生）', async () => {
+      setupFreeSegment('polling')
+      useGroupChatStore.setState({
+        messages: [
+          { id: 'u1', groupId: 'g1', characterId: '__user__', content: '大家出发吧', images: [], timestamp: 1, round: 2 },
+          { id: 'p1', groupId: 'g1', characterId: 'c1', content: '单条回复', images: [], timestamp: 2, round: 2 },
+        ] as GroupMessage[],
+      })
+      let emitComplete: ((payload: { requestId: string; finishReason: 'stop' }) => void) | undefined
+      vi.mocked(window.api.ai.onComplete).mockImplementation((callback) => {
+        emitComplete = callback as typeof emitComplete
+        return () => {}
+      })
+
+      const regeneration = useGroupChatStore.getState().regenerateMessage('p1')
+      await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      emitComplete?.({ requestId, finishReason: 'stop' })
+      await regeneration
+      await vi.waitFor(() => expect(window.api.group.deleteMessage).toHaveBeenCalledWith('g1', 's1', 'p1'))
+
+      // 单成员重生：占位归属发言成员而非 __free__，只删目标消息
+      const msgs = useGroupChatStore.getState().messages
+      expect(msgs.some((m) => m.characterId === '__free__')).toBe(false)
+      expect(msgs.some((m) => m.characterId === 'c1')).toBe(true)
+      expect(window.api.group.deleteMessage).toHaveBeenCalledWith('g1', 's1', 'p1')
+      expect(window.api.group.deleteMessage).toHaveBeenCalledTimes(1)
     })
   })
 })

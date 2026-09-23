@@ -14,7 +14,7 @@ import { validateChatCommand } from '../../shared/chat-core/commands'
 import { isTerminalState, type TaskSnapshot, type TaskEventEnvelope } from '../../shared/chat-core/events'
 import { createDomainError, type DomainError } from '../../shared/chat-core/errors'
 import { createTask, findByRequestId as findTaskByRequestId, getTaskSnapshot, updateTask, appendEvent } from './taskStore'
-import { transitionTask, acquireSessionOrThrow, releaseSession } from './taskManager'
+import { transitionTask, acquireSessionOrThrow, releaseSession, cancelTask, registerTaskAbort, clearTaskAbort, getTaskAbort } from './taskManager'
 import type { MessagePort, ContextPort, ModelPort, MemorySchedulerPort, UsageRecorderPort } from './ports'
 import { toPublicModelDescriptor } from './ports'
 import { authorizeTool } from './toolGate'
@@ -37,6 +37,13 @@ function makeTaskId(): string {
 function makeEventId(): string {
   return nanoid(8)
 }
+
+/**
+ * cancel-abort：cancel() 等待模型流收口的兜底时限。
+ * 正常收口（abort 拒绝 + 部分正文 commit）在毫秒级完成；超时兜底防
+ * waiting_approval 等非 abort 感知阶段把 IPC 应答挂住（终态已由 cancelTask 同步保证）。
+ */
+const CANCEL_SETTLE_WAIT_MS = 1500
 
 export class ChatOrchestrator {
   constructor(private deps: OrchestratorDeps) {}
@@ -129,6 +136,11 @@ export class ChatOrchestrator {
       transitionTask(taskId, 'failed', { error: domain })
       throw e
     }
+
+    // cancel-abort：模型流收口通知——cancel() 等它 resolve 再应答，
+    // 保证渲染层读到的终态快照已带 assistantMessageId（幂等落盘判定依据）。
+    let notifySettled: () => void = () => {}
+    const settled = new Promise<void>((resolve) => { notifySettled = resolve })
 
     try {
       // 5. resolve session + character（由 MessagePort.findSession 校验存在性）
@@ -230,6 +242,10 @@ export class ChatOrchestrator {
         lastFlush = now2
       }
 
+      // cancel-abort：登记 AbortController + 收口通知 + 冲刷回调，cancelTask 可真 abort 本流；
+      // 登记与 controller 创建同处一个同步块（中间无 await），不存在取消 interleaving 缝隙。
+      registerTaskAbort(taskId, { controller, settled, flush: () => flushChunk(true) })
+
       let modelResult: { text: string } | null = null
       let streamError: unknown = null
 
@@ -274,12 +290,17 @@ export class ChatOrchestrator {
         streamError = e
         // 若是用户取消（Abort），走 cancelled 分支；否则 failed
         const msg = (e as Error).message ?? ''
-        if (msg === 'Aborted' || (e as { code?: string }).code === 'TOOL_PERMISSION_DENIED') {
+        // cancel-abort：真 abort 后底层以 AbortError（fetch/undici）或 'Aborted'
+        // （fakeModel / ai.chatWithRetry 预检）抛出，且取消竞态下任意错误都可能带着
+        // 已 abort 的 signal 到达——统一按用户取消识别，避免把取消误落 failed 分支。
+        const isUserAbort = controller.signal.aborted || msg === 'Aborted' || (e as Error).name === 'AbortError'
+        if (isUserAbort || (e as { code?: string }).code === 'TOOL_PERMISSION_DENIED') {
           flushChunk(true)
           const snapC = getTaskSnapshot(taskId)!
           // 保留非空部分
           const finalText = accumulated
-          if (finalText) {
+          // cancel-abort：若收尾竞态中已有 commit（自然完成收尾先落盘），以已 commit 为准，绝不重复落盘
+          if (finalText && !snapC.assistantMessageId) {
             // 落盘部分消息
             const assistantId = nanoid()
             await this.deps.messagePort.commitAssistantMessage({
@@ -296,7 +317,10 @@ export class ChatOrchestrator {
             })
             updateTask(taskId, (s) => ({ ...s, assistantMessageId: assistantId, accumulatedText: finalText, updatedAt: Date.now() }))
           }
-          transitionTask(taskId, 'cancelled')
+          // cancel-abort：cancelTask 可能已抢先转 cancelled（终态不可再转，直接 transition 会抛
+          // TASK_CONFLICT 穿透收口）；仅未终态时补转，保证任务终态唯一 + 事件流恰一个终局事件。
+          const snapFinal = getTaskSnapshot(taskId)!
+          if (!isTerminalState(snapFinal.state)) transitionTask(taskId, 'cancelled')
           return getTaskSnapshot(taskId)!
         }
         // 其他失败
@@ -434,18 +458,45 @@ export class ChatOrchestrator {
       }
       throw e
     } finally {
+      // cancel-abort：先清登记再通知收口（同一同步块，cancel 不会观察到中间态）；
+      // 收口通知 resolve 时部分正文 commit 已完成，cancel 应答快照必带 assistantMessageId。
+      clearTaskAbort(taskId)
+      notifySettled()
       releaseSession(sessionId, taskId)
     }
   }
 
+  /**
+   * 取消（cancel-abort）：真 abort 后台模型流，并等待模型流收口后再应答。
+   *
+   * 应答前等收口是渲染层幂等收口（persistV2StoppedMessage 读终态 assistantMessageId）的
+   * 判定依据：cancel 响应快照已带 assistantMessageId 时渲染层并入已落盘消息、跳过兜底落盘，
+   * 未提交才由渲染层兜底保存已见正文——两条路径互斥，磁盘不会出现重复消息。
+   */
   async cancel(taskId: string): Promise<TaskSnapshot> {
     const snap = getTaskSnapshot(taskId)
     if (!snap) throw createDomainError('TASK_NOT_FOUND', '任务不存在')
-    // 幂等：终态直接返回
-    const { isTerminalState } = await import('../../shared/chat-core/events')
-    if (isTerminalState(snap.state)) return snap
-    const { cancelTask } = await import('./taskManager')
-    return cancelTask(taskId)
+    const inflight = getTaskAbort(taskId)
+    if (!isTerminalState(snap.state)) {
+      // cancel-abort：cancelTask 内部冲刷已见正文 + abort 模型流 + 转 cancelled（幂等）
+      cancelTask(taskId)
+    } else if (!inflight) {
+      // 幂等：已终态且无在途收口（自然完成先到先得），原样返回不翻转终态
+      return snap
+    }
+    if (inflight) {
+      // 等 'Aborted' 收口（部分正文 commit / 终态收尾）完成；超时兜底防非 abort
+      // 感知阶段（如 waiting_approval）把应答挂住——终态已由 cancelTask 同步保证。
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, CANCEL_SETTLE_WAIT_MS)
+        timer.unref?.()
+        inflight.settled.then(() => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
+    }
+    return getTaskSnapshot(taskId) ?? snap
   }
 }
 

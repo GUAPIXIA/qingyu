@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { UpdaterSection } from '../UpdaterSection'
 
 const QUARK_URL = 'https://pan.quark.cn/s/a9853284d260'
@@ -119,6 +119,29 @@ describe('UpdaterSection', () => {
     expect(screen.getByText('服务器最新版本')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /GitHub 最新版本/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: QUARK_URL })).toBeInTheDocument()
+  })
+
+  it('UEX-P1-23：重启安装前确认并告知退出时自动安装', async () => {
+    vi.mocked(window.api.updater.getState).mockResolvedValue({
+      status: 'downloaded',
+      message: '更新已下载完成',
+      version: '0.15.2',
+      hasAvailableUpdate: true,
+      github: { status: 'available', version: '0.15.2' },
+    })
+    render(<UpdaterSection />)
+
+    // UEX-P1-23：自动安装行为告知
+    expect(await screen.findByText(/退出应用时将自动安装更新/)).toBeInTheDocument()
+
+    // 点击「重启安装」先弹确认，且写明将关闭应用并安装更新；确认前不触发安装
+    fireEvent.click(screen.getByRole('button', { name: /重启安装/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(/将关闭应用并安装更新/)
+    expect(window.api.updater.install).not.toHaveBeenCalled()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '重启安装' }))
+    await waitFor(() => expect(window.api.updater.install).toHaveBeenCalled())
   })
 
   it('离开设置页再进入时复用主进程结果，不重复检查', async () => {

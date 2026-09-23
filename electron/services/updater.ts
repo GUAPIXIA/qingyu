@@ -63,6 +63,7 @@ async function loadAutoUpdater(): Promise<AutoUpdater> {
     const mod = await import('electron-updater')
     autoUpdater = mod.autoUpdater
     autoUpdater.autoDownload = false
+    // UEX-P1-23：保持「退出时自动安装」产品行为不变；UI（UpdaterSection）已明确告知该行为
     autoUpdater.autoInstallOnAppQuit = true
     bindUpdaterEvents(autoUpdater)
   }

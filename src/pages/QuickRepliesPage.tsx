@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
+import { useToastStore } from '../store/useToastStore'
+import { confirm } from '../store/useConfirmStore'
 import { cn } from '../lib/utils'
 import { MessageSquarePlus, Plus, Trash2, Pencil, Upload, Download, Keyboard } from 'lucide-react'
 import type { QuickReply, QuickReplyStore, Character, Preset } from '../../shared/types'
@@ -89,17 +91,46 @@ export function QuickRepliesPage() {
     setBusyMsg('导出中...')
     try {
       const r = await window.api.quickReply.exportJson()
-      if (r.error) setBusyMsg(`导出失败：${r.error}`)
-      else setBusyMsg(null)
+      if (r.error) {
+        useToastStore.getState().push({ variant: 'error', title: `导出失败：${r.error}`, requestId: 'qr-export' })
+      } else {
+        useToastStore.getState().push({ variant: 'success', title: '已导出快捷回复', requestId: 'qr-export' })
+      }
+    } catch (e) {
+      useToastStore.getState().push({ variant: 'error', title: `导出失败：${(e as Error).message}`, requestId: 'qr-export' })
     } finally { setBusyMsg(null) }
   }
 
   const handleImport = async () => {
+    // D9：导入会整表替换全局快捷回复，替换前确认
+    // 一致性：危险操作确认统一走全局 confirm 通道（ConfirmHost 已挂 MainLayout），替代 window.confirm
+    const ok = await confirm({
+      title: '导入快捷回复',
+      message: '导入将替换全部全局快捷回复，角色专属会合并。是否继续？',
+      confirmText: '导入',
+      cancelText: '取消',
+      danger: true,
+    })
+    if (!ok) {
+      useToastStore.getState().push({ variant: 'info', title: '已取消导入', requestId: 'qr-import' })
+      return
+    }
     setBusyMsg('导入中...')
     try {
-      const r = await window.api.quickReply.importJson()
-      if (r.error) setBusyMsg(`导入失败：${r.error}`)
-      else { setBusyMsg(null); await load() }
+      // UEX-P0-03：importJson 成功时附带「替换 N 条」明细（shared/ipc-api 契约由并行代理维护，这里局部收窄返回类型）
+      const r = await window.api.quickReply.importJson() as { ok: boolean; canceled?: boolean; error?: string; replacedGlobal?: number }
+      if (r.canceled) {
+        useToastStore.getState().push({ variant: 'info', title: '已取消导入', requestId: 'qr-import' })
+      } else if (r.error) {
+        useToastStore.getState().push({ variant: 'error', title: `导入失败：${r.error}`, requestId: 'qr-import' })
+      } else {
+        // UEX-P0-03：把整表替换明细并入成功文案（「替换 N 条」由 IPC 返回）
+        const replaced = typeof r.replacedGlobal === 'number' ? `（替换原有 ${r.replacedGlobal} 条）` : ''
+        useToastStore.getState().push({ variant: 'success', title: `快捷回复已导入${replaced}`, requestId: 'qr-import' })
+        await load()
+      }
+    } catch (e) {
+      useToastStore.getState().push({ variant: 'error', title: `导入失败：${(e as Error).message}`, requestId: 'qr-import' })
     } finally { setBusyMsg(null) }
   }
 

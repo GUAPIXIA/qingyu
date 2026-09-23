@@ -18,6 +18,7 @@ import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveMessageSpeakerKind } from '../../shared/messageIdentity'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
 import { generateSingleDialogueDirections, cancelDialogueDirectionRequests } from './dialogueDirectionRunner'
+import { pushToast } from './useToastStore'
 
 /** 从消息上移除方向字段（正文被替换时必须失效）。 */
 function withoutDirections<T extends Message>(message: T): T {
@@ -104,9 +105,24 @@ export async function regenerateChatMessage(
     preset,
     generationType: 'regenerate',
     onComplete: async (fullContent, meta) => {
-      // M-18 修复：空回复/手动中止——移除占位消息（regenerate 路径）
+      // S13：空回复回滚上一候选，禁止整条 filter（会连旧 swipes 一起丢）
       if (!fullContent) {
-        set((state) => ({ messages: state.messages.filter((m) => m.id !== messageId) }))
+        set((state) => ({
+          messages: state.messages.map((m) => {
+            if (m.id !== messageId) return m
+            const swipes = (m.swipes ?? []).slice(0, Math.max(0, newSwipeIndex))
+            const prevContent = swipes.length ? swipes[swipes.length - 1] : (m.content ?? '')
+            return {
+              ...m,
+              content: prevContent,
+              swipeIndex: Math.max(0, swipes.length - 1),
+              swipes: swipes.length ? swipes : (prevContent ? [prevContent] : []),
+              generationNotice: '本轮未生成有效内容，已保留上一条回复',
+            }
+          }),
+          isStreaming: false,
+        }))
+        pushToast({ variant: 'warning', title: '本轮未生成有效内容', description: '已保留上一条回复' })
         return
       }
 

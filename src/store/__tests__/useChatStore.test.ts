@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useChatStore } from '../useChatStore'
 import { useSettingsStore } from '../useSettingsStore'
 import { usePersonaStore } from '../usePersonaStore'
 import { useCharacterStore } from '../useCharacterStore'
+import { useToastStore } from '../useToastStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { semanticCacheGet, semanticCacheSet } from '../chatUtils'
 import type { Character, Message, Persona, SessionPreview } from '../../../shared/types'
@@ -62,6 +63,7 @@ function resetStores() {
     isStreaming: false,
     currentRequestId: null,
     error: null,
+    messagesLoading: false,
     pendingImageGenerations: {},
     activePresetId: null,
     activeLorebookIds: [],
@@ -71,6 +73,7 @@ function resetStores() {
     translatingMessages: {},
     showTranslationIds: new Set(),
   })
+  useToastStore.setState({ toasts: [] })
   useSettingsStore.setState({
     settings: getDefaultSettings(),
     credentials: {},
@@ -773,6 +776,8 @@ describe('useChatStore 生成失败落盘（R2）', () => {
     // 中断保留的正文与正常完成一致走语义分块，避免概率性丢失对话样式
     expect(aiMsg?.contentRenderMode).toBe('blocks')
     expect(savedAi?.contentRenderMode).toBe('blocks')
+    // UEX-P0-01：有部分正文时 generationError 已在气泡内展示，不再重复弹「生成失败」toast
+    expect(useToastStore.getState().toasts.some((t) => t.title === '生成失败')).toBe(false)
   })
 
   it('无分片 + 错误：不创建空 AI 消息、不落盘 ⚠️ 占位（阶段7 矩阵末行）', async () => {
@@ -798,6 +803,8 @@ describe('useChatStore 生成失败落盘（R2）', () => {
     expect(savedAssistant).toBeUndefined()
     // 错误只进 store.error（界面重试入口）
     expect(useChatStore.getState().error).toBeTruthy()
+    // UEX-P0-01：无正文终止不留可见气泡（store.error 无 UI 订阅），失败必须 toast 可见
+    expect(useToastStore.getState().toasts.some((t) => t.variant === 'error' && t.title === '生成失败')).toBe(true)
   })
 
   it('用户停止：抢先落盘的消息同样标记语义分块（unified 管线）', async () => {
@@ -854,5 +861,207 @@ describe('useChatStore 生成失败落盘（R2）', () => {
       .find((m) => m.id === 'ai-1')
     expect(saved?.contentRenderMode).toBe('blocks')
     void pending
+  })
+})
+
+// ===================== UEX-P1-35：删除会话跳邻近会话 =====================
+
+describe('UEX-P1-35 删除会话后跳邻近会话', () => {
+  function makeSession(id: string): SessionPreview {
+    return { id, characterId: 'c1', title: id, createdAt: 0, updatedAt: 0 } as SessionPreview
+  }
+
+  beforeEach(() => {
+    resetStores()
+    ;(window.api.chat as any).deleteSession = vi.fn().mockResolvedValue(undefined)
+    useChatStore.setState({
+      sessions: [makeSession('s1'), makeSession('s2'), makeSession('s3')],
+      currentSessionId: 's2',
+    })
+  })
+
+  it('deleteCurrentSession 优先跳下一项', async () => {
+    vi.mocked(window.api.chat.listSessions).mockResolvedValue([makeSession('s1'), makeSession('s3')] as never)
+    vi.mocked(window.api.chat.listMessages).mockResolvedValue([] as never)
+
+    await useChatStore.getState().deleteCurrentSession('c1')
+
+    expect(useChatStore.getState().currentSessionId).toBe('s3')
+  })
+
+  it('被删会话是末项时跳上一项', async () => {
+    useChatStore.setState({ currentSessionId: 's3' })
+    vi.mocked(window.api.chat.listSessions).mockResolvedValue([makeSession('s1'), makeSession('s2')] as never)
+    vi.mocked(window.api.chat.listMessages).mockResolvedValue([] as never)
+
+    await useChatStore.getState().deleteCurrentSession('c1')
+
+    expect(useChatStore.getState().currentSessionId).toBe('s2')
+  })
+
+  it('deleteSession 删除当前会话同样跳邻近项', async () => {
+    vi.mocked(window.api.chat.listSessions).mockResolvedValue([makeSession('s1'), makeSession('s3')] as never)
+    vi.mocked(window.api.chat.listMessages).mockResolvedValue([] as never)
+
+    await useChatStore.getState().deleteSession('c1', 's2')
+
+    expect(useChatStore.getState().currentSessionId).toBe('s3')
+    expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['s1', 's3'])
+  })
+
+  it('删除非当前会话只刷新列表，不跳转会话', async () => {
+    vi.mocked(window.api.chat.listSessions).mockResolvedValue([makeSession('s2'), makeSession('s3')] as never)
+
+    await useChatStore.getState().deleteSession('c1', 's1')
+
+    expect(useChatStore.getState().currentSessionId).toBe('s2')
+    expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['s2', 's3'])
+  })
+
+  it('N13 竞态分支：用删除前记录的位置跳邻近（下一项优先），不跳首项', async () => {
+    // 其他操作（deleteSession）删除 s2：删除前已记录其在旧列表的位置；
+    // currentSessionId 竞态残留仍指向 s2 → N13 分支（内存旧列表已无 s2）
+    useChatStore.setState({ currentSessionId: 's1' })
+    vi.mocked(window.api.chat.listSessions).mockResolvedValue([makeSession('s1'), makeSession('s3')] as never)
+    vi.mocked(window.api.chat.listMessages).mockResolvedValue([] as never)
+    await useChatStore.getState().deleteSession('c1', 's2')
+
+    useChatStore.setState({ currentSessionId: 's2' })
+    await useChatStore.getState().deleteCurrentSession('c1')
+
+    // 下一项优先（s3），而不是回退首项（s1）
+    expect(useChatStore.getState().currentSessionId).toBe('s3')
+    expect(useChatStore.getState().sessions.map((s) => s.id)).toEqual(['s1', 's3'])
+  })
+
+  it('N13 竞态分支：确实无法定位（无删除前记录）才回退首项', async () => {
+    useChatStore.setState({
+      sessions: [makeSession('s1'), makeSession('s3')],
+      currentSessionId: 'n13-gone',
+    })
+    vi.mocked(window.api.chat.listSessions).mockResolvedValue([makeSession('s1'), makeSession('s3')] as never)
+
+    await useChatStore.getState().deleteCurrentSession('c1')
+
+    expect(useChatStore.getState().currentSessionId).toBe('s1')
+  })
+})
+
+// ===================== UEX-P1-34：切会话加载态 =====================
+
+describe('UEX-P1-34 切会话加载态', () => {
+  beforeEach(() => {
+    resetStores()
+    useChatStore.setState({
+      sessions: [
+        { id: 's1', characterId: 'c1', title: '会话1' } as SessionPreview,
+        { id: 's2', characterId: 'c1', title: '会话2' } as SessionPreview,
+      ],
+      currentSessionId: 's1',
+    })
+  })
+
+  it('清空-加载空窗期置 messagesLoading，完成后复位', async () => {
+    let release!: (v: Message[]) => void
+    vi.mocked(window.api.chat.listMessages).mockImplementationOnce(() => new Promise((r) => { release = r as never }))
+
+    const pending = useChatStore.getState().switchSession('s2', makeCharacter())
+    // 空窗期：已清空且处于加载态（页面渲染加载占位而不是假空态）
+    expect(useChatStore.getState().messagesLoading).toBe(true)
+    expect(useChatStore.getState().messages).toEqual([])
+
+    release([])
+    await pending
+    expect(useChatStore.getState().messagesLoading).toBe(false)
+  })
+
+  it('加载失败也退出加载态，不悬挂骨架屏', async () => {
+    vi.mocked(window.api.chat.listMessages).mockRejectedValueOnce(new Error('io'))
+
+    await useChatStore.getState().switchSession('s2', makeCharacter())
+
+    expect(useChatStore.getState().messagesLoading).toBe(false)
+  })
+})
+
+// ===================== UEX-P0-04：V2 停止占位落盘收口 =====================
+
+describe('UEX-P0-04 V2 停止占位落盘收口', () => {
+  beforeEach(async () => {
+    resetStores()
+    const { useChatTaskStore } = await import('../chatTaskStore')
+    useChatTaskStore.setState({ chatEngineV2: true, activeTask: null, isTaskStreaming: false })
+    useSettingsStore.setState({
+      settings: {
+        ...getDefaultSettings(),
+        userName: '林舟',
+        activeProfileId: 'p1',
+        connectionProfiles: [{
+          id: 'p1', name: '测试', provider: 'openai', apiKey: 'sk-test',
+          baseUrl: 'https://api.example.com', model: 'test-model',
+        }] as never,
+      },
+      credentials: {}, loaded: true, _saveTimer: null,
+    })
+    useChatStore.setState({
+      currentSessionId: 's1',
+      sessions: [{ id: 's1', characterId: 'c1' } as never],
+    })
+  })
+
+  afterEach(() => {
+    delete (window.api as unknown as { chatTask?: unknown }).chatTask
+  })
+
+  function stubChatTask(cancelSnap: Record<string, unknown>, getSnap: Record<string, unknown> = {}) {
+    ;(window.api as unknown as { chatTask: unknown }).chatTask = {
+      start: vi.fn(async () => ({ taskId: 't1', state: 'streaming', lastSequence: 1 })),
+      get: vi.fn(async () => ({ taskId: 't1', state: 'cancelled', sessionId: 's1', characterId: 'c1', lastSequence: 1, accumulatedText: '已见正文', ...getSnap })),
+      onEvent: vi.fn(() => () => {}),
+      cancel: vi.fn(async () => ({ taskId: 't1', sessionId: 's1', lastSequence: 1, accumulatedText: '已见正文', ...cancelSnap })),
+    }
+  }
+
+  async function sendAndStop(cancelSnap: Record<string, unknown>, getSnap: Record<string, unknown> = {}) {
+    stubChatTask(cancelSnap, getSnap)
+    const character = makeCharacter()
+    await useChatStore.getState().sendMessage('你好', [], character, null, [])
+    // 模拟流式已累积用户可见正文
+    useChatStore.setState((s) => ({
+      messages: s.messages.map((m) => (m.role === 'assistant' ? { ...m, content: '已见正文' } : m)),
+    }))
+    useChatStore.getState().stopStreaming()
+    await new Promise((r) => setTimeout(r, 10))
+  }
+
+  it('Orchestrator 已提交同一任务消息时不重复落盘，UI 占位并入已落盘 id', async () => {
+    await sendAndStop({ state: 'completed', assistantMessageId: 'disk-1' })
+
+    expect(window.api.chat.saveMessage).not.toHaveBeenCalled()
+    const aiMsg = useChatStore.getState().messages.find((m) => m.role === 'assistant') as Message & { generationNotice?: string }
+    expect(aiMsg?.id).toBe('disk-1')
+    expect(aiMsg?.content).toBe('已见正文')
+    expect(aiMsg?.generationNotice).toBe('已停止生成')
+    expect(useChatStore.getState().isStreaming).toBe(false)
+  })
+
+  it('取消快照未带落盘 id 时复查任务快照兜底，避免重复落盘', async () => {
+    await sendAndStop({ state: 'cancelled' }, { assistantMessageId: 'disk-2' })
+
+    expect(window.api.chat.saveMessage).not.toHaveBeenCalled()
+    const aiMsg = useChatStore.getState().messages.find((m) => m.role === 'assistant') as Message & { generationNotice?: string }
+    expect(aiMsg?.id).toBe('disk-2')
+  })
+
+  it('Orchestrator 未提交（取消中断）时渲染层兜底落盘已见正文', async () => {
+    await sendAndStop({ state: 'cancelled' })
+
+    const saved = vi.mocked(window.api.chat.saveMessage).mock.calls
+      .map((c) => c[0] as Message & { generationNotice?: string })
+      .find((m) => m.role === 'assistant')
+    expect(saved?.content).toBe('已见正文')
+    expect(saved?.generationNotice).toBe('已停止生成')
+    // 未提交时 UI 保持占位 id 不变
+    expect(useChatStore.getState().messages.find((m) => m.role === 'assistant')?.id).toBe(saved?.id)
   })
 })

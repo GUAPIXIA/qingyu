@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { registerBuiltinCommands } from '../builtin/index'
 import { listCommands, findCommand, resetCommands, type CommandContext } from '../registry'
+import { confirm } from '../../store/useConfirmStore'
 import type { Character } from '../../../shared/types'
+
+// UEX-P1-04：/clear 执行前走全局确认通道；命令测试默认同意，取消用例单独覆写
+vi.mock('../../store/useConfirmStore', () => ({
+  confirm: vi.fn().mockResolvedValue(true),
+}))
 
 function makeCharacter(overrides: Partial<Character> = {}): Character {
   return {
@@ -84,17 +90,44 @@ describe('内置命令注册', () => {
 })
 
 describe('clear 命令', () => {
+  beforeEach(() => {
+    // UEX-P1-04：默认同意确认（显式复位，避免各用例间 mock 状态串扰）
+    vi.mocked(confirm).mockClear()
+    vi.mocked(confirm).mockResolvedValue(true)
+  })
+
   it('清空对话并提示', async () => {
     const ctx = makeCtx()
     await findCommand('clear')!.execute([], ctx)
     expect(ctx.clearChat).toHaveBeenCalled()
-    expect(ctx.notify).toHaveBeenCalledWith('对话已清空')
+    expect(ctx.notify).toHaveBeenCalledWith('对话与长记忆已清空')
   })
 
   it('失败时提示错误信息', async () => {
     const ctx = makeCtx({ clearChat: vi.fn().mockRejectedValue(new Error('disk full')) })
     await findCommand('clear')!.execute([], ctx)
     expect(ctx.notify).toHaveBeenCalledWith('清空对话失败: disk full')
+  })
+
+  it('UEX-P1-04：执行前弹确认，文案写明清空范围与不可撤销', async () => {
+    const ctx = makeCtx()
+    await findCommand('clear')!.execute([], ctx)
+    expect(confirm).toHaveBeenCalledTimes(1)
+    const options = vi.mocked(confirm).mock.calls[0][0]
+    expect(options.title).toBe('清空对话')
+    expect(options.message).toContain('长记忆')
+    expect(options.message).toContain('不可撤销')
+    // 确认之后才执行清空
+    expect(ctx.clearChat).toHaveBeenCalled()
+  })
+
+  it('UEX-P1-04：取消确认时不执行 clearChat，仅轻提示', async () => {
+    vi.mocked(confirm).mockResolvedValueOnce(false)
+    const ctx = makeCtx()
+    await findCommand('clear')!.execute([], ctx)
+    expect(ctx.clearChat).not.toHaveBeenCalled()
+    expect(ctx.notify).toHaveBeenCalledWith('已取消清空')
+    expect(ctx.notify).not.toHaveBeenCalledWith('对话与长记忆已清空')
   })
 })
 
@@ -319,7 +352,7 @@ describe('imagine 命令', () => {
 
     await findCommand('imagine')!.execute([], ctx)
 
-    expect(ctx.notify).toHaveBeenCalledWith('尚未配置或启用生图模型，请前往「设置 → API → 生图」完成配置')
+    expect(ctx.notify).toHaveBeenCalledWith('尚未配置或启用生图模型，请前往「模型 → 生图」完成配置')
     expect(ctx.callAiHelper).not.toHaveBeenCalled()
     expect(window.api.imageGen.generate).not.toHaveBeenCalled()
     expect(ctx.beginImageGeneration).not.toHaveBeenCalled()

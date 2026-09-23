@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { pushToast } from '../store/useToastStore'
 import { PROVIDER_INFO, isConnectionConfigured } from '../utils/defaults'
 import { cn } from '../lib/utils'
 import type { ProviderType, ConnectionProfile } from '../../shared/types'
@@ -19,6 +20,7 @@ import {
   EyeIcon,
   Brain,
 } from 'lucide-react'
+import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { TTSModelsSection } from '../components/api/TTSModelsSection'
 import { ImageGenModelsSection } from '../components/api/ImageGenModelsSection'
 import { VisionModelsSection } from '../components/api/VisionModelsSection'
@@ -94,6 +96,8 @@ export function ApiPage() {
     deleteProfile,
     setActiveProfileId,
     getActiveProfile,
+    saveStatus,
+    saveError,
   } = useSettingsStore()
 
   const [tab, setTab] = useState<TabKey>('chat')
@@ -124,6 +128,32 @@ export function ApiPage() {
   const activeProfile = getActiveProfile()
   const isConnected = isConnectionConfigured(activeProfile)
 
+  // UEX-P1-24：落盘失败必须在 /api 页可见（saveStatus/saveError 原先仅设置页顶栏消费）
+  useEffect(() => {
+    if (saveStatus === 'error' && saveError) {
+      pushToast({ variant: 'error', title: '模型配置保存失败', description: saveError, requestId: 'api-save-error' })
+    }
+  }, [saveStatus, saveError])
+
+  // UEX-P1-25：切换编辑目标前的未保存修改保护（dirty 比对 + ConfirmDialog 确认）
+  const editBaselineRef = useRef<{ form: ConnectionProfile; context: string } | null>(null)
+  const [pendingSwitch, setPendingSwitch] = useState<(() => void) | null>(null)
+
+  const isEditDirty = () => {
+    const baseline = editBaselineRef.current
+    if (!baseline) return false
+    return (
+      JSON.stringify(editForm) !== JSON.stringify(baseline.form)
+      || (contextRawInput || '') !== baseline.context
+    )
+  }
+
+  /** 切换编辑目标（换卡/折叠/新建）统一走此守卫，避免未保存输入被静默丢弃 */
+  const guardEditSwitch = (action: () => void) => {
+    if (isEditDirty()) setPendingSwitch(() => action)
+    else action()
+  }
+
   const resetForm = () => {
     setEditForm({ id: '', name: '', provider: 'openai', baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '', maxContext: 131072 })
     setContextRawInput('')
@@ -131,9 +161,12 @@ export function ApiPage() {
     setTestResult(null)
     setNameError(null)
     setEditingId(null)
+    editBaselineRef.current = null
   }
 
   const openEdit = (p: ConnectionProfile) => {
+    // UEX-P1-25：记录基线快照供 dirty 比对
+    editBaselineRef.current = { form: { ...p }, context: formatContextLength(p.maxContext) }
     setEditForm({ ...p })
     setContextRawInput(formatContextLength(p.maxContext))
     setEditingId(p.id)
@@ -167,13 +200,22 @@ export function ApiPage() {
       setShowAdd(false)
     }
     resetForm()
+    // UEX-P1-24：保存成功就地反馈
+    pushToast({ variant: 'success', title: editingId ? '连接已保存' : '连接已创建', description: name })
   }
 
+  const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null)
   const handleDelete = (id: string) => {
-    deleteProfile(id)
-    if (editingId === id) {
-      resetForm()
+    setDeleteProfileId(id)
+  }
+  const confirmDeleteProfile = () => {
+    if (deleteProfileId) {
+      deleteProfile(deleteProfileId)
+      if (editingId === deleteProfileId) {
+        resetForm()
+      }
     }
+    setDeleteProfileId(null)
   }
 
   const handleTest = async () => {
@@ -375,7 +417,7 @@ export function ApiPage() {
           <div className="text-center py-12">
             <Plug className="w-12 h-12 text-tavern-text-muted mx-auto mb-3 opacity-30" />
             <p className="text-tavern-text-muted mb-3">还没有连接配置</p>
-            <button onClick={openAdd} className="btn-primary inline-flex items-center gap-1.5">
+            <button onClick={() => guardEditSwitch(openAdd)} className="btn-primary inline-flex items-center gap-1.5">
               <Plus className="w-4 h-4" />
               添加连接
             </button>
@@ -397,11 +439,14 @@ export function ApiPage() {
                   onClick={() => {
                     // 正在新建时忽略 profile 卡片点击，防止覆盖新建表单
                     if (showAdd) return
-                    if (editingId === p.id) {
-                      resetForm()
-                    } else {
-                      openEdit(p)
-                    }
+                    // UEX-P1-25：切换编辑目标前若表单有未保存修改，先经 ConfirmDialog 确认
+                    guardEditSwitch(() => {
+                      if (editingId === p.id) {
+                        resetForm()
+                      } else {
+                        openEdit(p)
+                      }
+                    })
                   }}
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -847,7 +892,7 @@ export function ApiPage() {
               </div>
             ) : (
               <button
-                onClick={openAdd}
+                onClick={() => guardEditSwitch(openAdd)}
                 className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border-2 border-dashed border-tavern-border-soft text-tavern-text-muted hover:border-tavern-accent hover:text-tavern-accent transition-colors"
               >
                 <Plus className="w-4 h-4" />
@@ -856,6 +901,29 @@ export function ApiPage() {
             )}
           </>
         )}
+        <ConfirmDialog
+          open={!!deleteProfileId}
+          onClose={() => setDeleteProfileId(null)}
+          onConfirm={confirmDeleteProfile}
+          title="删除连接"
+          message="确定删除该 API 连接吗？依赖它的聊天、翻译、生图请求会失败；若为当前使用连接将自动切换到其余连接。"
+          confirmText="删除"
+          danger
+        />
+        {/* UEX-P1-25：未保存修改确认（统一 ConfirmDialog） */}
+        <ConfirmDialog
+          open={!!pendingSwitch}
+          onClose={() => setPendingSwitch(null)}
+          onConfirm={() => {
+            pendingSwitch?.()
+            setPendingSwitch(null)
+          }}
+          title="放弃未保存的修改？"
+          message="当前连接表单有未保存的修改，切换编辑目标后这些修改将丢失。确定放弃吗？"
+          confirmText="放弃修改"
+          cancelText="继续编辑"
+          danger
+        />
       </>
     )
   }

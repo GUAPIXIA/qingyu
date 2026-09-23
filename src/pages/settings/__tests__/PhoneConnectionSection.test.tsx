@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_RELAY_BASE_URL } from '../../../../shared/relayProtocol'
+import { useToastStore } from '../../../store/useToastStore'
 import { PhoneConnectionSection } from '../PhoneConnectionSection'
 
 describe('PhoneConnectionSection', () => {
@@ -47,5 +48,34 @@ describe('PhoneConnectionSection', () => {
 
     expect(screen.getByLabelText('服务器地址')).toHaveValue(DEFAULT_RELAY_BASE_URL)
     await waitFor(() => expect((window.api as any).relay.status).toHaveBeenCalled())
+  })
+
+  it('UEX-P2-10：开启局域网桥接前先经确认，确认后才启动', async () => {
+    ;(window.api as any).bridge.start = vi.fn().mockResolvedValue({ ok: true, host: '127.0.0.1', port: 8321 })
+    render(<PhoneConnectionSection />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '开启' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(/防火墙/)
+    expect((window.api as any).bridge.start).not.toHaveBeenCalled()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '开启' }))
+    await waitFor(() => expect((window.api as any).bridge.start).toHaveBeenCalled())
+  })
+
+  it('UEX-P0-14：吊销失败通过 Toast 展示错误', async () => {
+    ;(window.api as any).bridge.listDevices = vi.fn().mockResolvedValue([
+      { deviceId: 'dev-12345678', name: 'Pixel 8', lastSeen: Date.now() },
+    ])
+    ;(window.api as any).bridge.revokeDevice = vi.fn().mockResolvedValue({ ok: false })
+    render(<PhoneConnectionSection />)
+
+    fireEvent.click(await screen.findByTitle('吊销此设备'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '吊销' }))
+    await waitFor(() => expect((window.api as any).bridge.revokeDevice).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.map((t) => t.title)).toContain('吊销失败')
+    })
   })
 })

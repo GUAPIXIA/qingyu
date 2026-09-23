@@ -25,6 +25,18 @@
     {
       "id": "char-dot",
       "name": "A.B"
+    },
+    {
+      "id": "char-ming",
+      "name": "小明"
+    },
+    {
+      "id": "char-mingming",
+      "name": "小明明"
+    },
+    {
+      "id": "char-test",
+      "name": "test"
     }
   ],
   "splitCases": [

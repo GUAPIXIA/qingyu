@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { getDefaultSettings } from '../../../shared/defaults'
+import type { ConnectionProfile } from '../../../shared/types'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { useToastStore } from '../../store/useToastStore'
 import { ApiPage } from '../ApiPage'
 
 describe('模型页面', () => {
@@ -48,5 +50,46 @@ describe('模型页面', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     fireEvent.click(saveButton)
     expect(useSettingsStore.getState().settings.connectionProfiles[0].name).toBe('测试连接')
+  })
+
+  it('UEX-P1-24：保存成功有就地反馈', () => {
+    render(<ApiPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: '添加连接' }))
+    fireEvent.change(screen.getByPlaceholderText('连接名称（如：我的DeepSeek）'), {
+      target: { value: '新连接' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(useToastStore.getState().toasts.map((t) => t.title)).toContain('连接已创建')
+  })
+
+  it('UEX-P1-25：编辑有未保存修改时切换目标先经确认', async () => {
+    const p1: ConnectionProfile = {
+      id: 'p1', name: '连接一', provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '', maxContext: 131072,
+    }
+    const p2: ConnectionProfile = {
+      id: 'p2', name: '连接二', provider: 'openai',
+      baseUrl: 'https://api.deepseek.com', model: '', apiKey: '', maxContext: 131072,
+    }
+    useSettingsStore.setState({
+      settings: { ...getDefaultSettings(), connectionProfiles: [p1, p2], activeProfileId: 'p1' },
+    })
+    render(<ApiPage />)
+
+    // 打开连接一编辑并修改名称（未保存）
+    fireEvent.click(screen.getByText('连接一'))
+    fireEvent.change(screen.getByPlaceholderText('连接名称（如：我的DeepSeek）'), {
+      target: { value: '改名了' },
+    })
+
+    // 切换到连接二：应先弹出放弃修改确认
+    fireEvent.click(screen.getByText('连接二'))
+    expect(await screen.findByText('放弃未保存的修改？')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '放弃修改' }))
+    expect((screen.getByPlaceholderText('连接名称（如：我的DeepSeek）') as HTMLInputElement).value).toBe('连接二')
+    // 原连接一未被修改
+    expect(useSettingsStore.getState().settings.connectionProfiles[0].name).toBe('连接一')
   })
 })

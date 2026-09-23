@@ -3,11 +3,12 @@ import type React from 'react'
 import { nanoid } from 'nanoid'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useCharacterStore } from '../store/useCharacterStore'
-import { useGroupChatStore } from '../store/useGroupChatStore'
+import { useGroupChatStore, stopRemainingSpeakers } from '../store/useGroupChatStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { GroupChatMessage } from '../components/chat/GroupChatMessage'
 import { GroupChatInput } from '../components/chat/GroupChatInput'
+import { GroupMemberBar } from '../components/chat/GroupMemberBar'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Modal } from '../components/common/Modal'
@@ -24,6 +25,8 @@ import { TokenUsage } from '../components/chat/TokenUsage'
 import { LorebookDebugPanel } from '../components/chat/LorebookDebugPanel'
 import { cn } from '../lib/utils'
 import { downloadFile } from '../utils/download'
+// UEX-P2-12：会话滚动位置记忆（切走再回来恢复原滚动位置）
+import { groupScrollKey, useSessionScrollMemory } from '../utils/scrollMemory'
 import type { LorebookDiagnostics } from '../utils/lorebook'
 import type { GroupChat, GroupMessage, Lorebook, NarrativeMode, Preset } from '../../shared/types'
 import { getNarrativeModeLabel, resolveNarrativeMode } from '../../shared/narrativeMode'
@@ -54,6 +57,7 @@ export function GroupChatPage() {
   const currentSessionId = useGroupChatStore((s) => s.currentSessionId)
   const messages = useGroupChatStore((s) => s.messages)
   const isStreaming = useGroupChatStore((s) => s.isStreaming)
+  const currentStreamingCharId = useGroupChatStore((s) => s.currentStreamingCharId)
   const loadGroups = useGroupChatStore((s) => s.loadGroups)
   const selectGroup = useGroupChatStore((s) => s.selectGroup)
   const saveGroup = useGroupChatStore((s) => s.saveGroup)
@@ -116,7 +120,11 @@ export function GroupChatPage() {
   const [contextViewerTab, setContextViewerTab] = useState<'messages' | 'lorebook'>('messages')
   const [showGreetingPicker, setShowGreetingPicker] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  // UEX-P1-03：群聊删除消息前先确认（对齐单聊 MessageActionBar 的删除确认）
+  const [pendingDeleteMsgId, setPendingDeleteMsgId] = useState<string | null>(null)
   const [replyToMessage, setReplyToMessage] = useState<GroupMessage | null>(null)
+  // M6：切会话清引用，避免串会话
+  useEffect(() => { setReplyToMessage(null) }, [currentSessionId, currentGroup?.id])
   const [showMemoryPanel, setShowMemoryPanel] = useState(false)
   const [showWorldStatePanel, setShowWorldStatePanel] = useState(false)
   const [memoryInterval, setMemoryInterval] = useState(10)
@@ -126,6 +134,11 @@ export function GroupChatPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const currentSession = sessions.find((session) => session.id === currentSessionId)
   const dialogueDirectionsEnabled = resolveDialogueDirectionsEnabled(currentSession)
+  // UEX-P2-12：按 sessionId 记忆滚动位置——滚动即记录，回来且消息加载完成后恢复
+  const scrollMemory = useSessionScrollMemory({
+    key: currentGroup && currentSessionId ? groupScrollKey(currentGroup.id, currentSessionId) : null,
+    ready: messages.length > 0,
+  })
   /** 方向生成失败的可见反馈，按消息 ID 记录（仅本地，不持久化）。 */
   const [directionsError, setDirectionsError] = useState<Record<string, string | null>>({})
 
@@ -149,6 +162,8 @@ export function GroupChatPage() {
     }
   }
   const narrativeMode = resolveNarrativeMode(currentSession?.narrativeMode)
+  // UEX-P1-12：原最小文案的 streamingSpeakerName/streamingSpeakerOrder 派生口径
+  // （x = 当前说话者成员序号，N = 成员总数）已迁入 GroupMemberBar，由调度条统一展示。
   const totalChars = useMemo(
     () => messages.reduce((sum, message) => sum + (message.charUsage?.totalChars ?? 0), 0),
     [messages],
@@ -484,7 +499,10 @@ export function GroupChatPage() {
                     <div className="group-chat-header__identity-copy min-w-0 text-left">
                       <h2 className="max-w-32 truncate text-sm font-medium text-tavern-text">{currentGroup.name}</h2>
                       <p className="text-xs text-tavern-text-muted">
-                        {isStreaming ? '生成中...' : `${currentGroup.memberIds.length} 位成员`}
+                        {isStreaming
+                          // UEX-P1-12：调度详情（当前说话者 + x/N + 停剩余）由消息区下方的 GroupMemberBar 承载，页头不再重复
+                          ? '生成中...'
+                          : `${currentGroup.memberIds.length} 位成员`}
                       </p>
                     </div>
                     <button
@@ -652,8 +670,14 @@ export function GroupChatPage() {
                     ref={virtuosoRef}
                     data={messages}
                     className="h-full"
-                    initialTopMostItemIndex={999999}
-                    followOutput="smooth"
+                    // UEX-P2-12：有滚动记忆时恢复顶位索引；新会话（无记录）保持现状（999999 = 默认到底）
+                    initialTopMostItemIndex={scrollMemory.initialTopMostItemIndex}
+                    // UEX-P2-12：恢复窗口内临时关闭自动到底（仅恢复历史位置）；之后新消息行为保持现状
+                    followOutput={(isAtBottom) =>
+                      scrollMemory.isRestoring() ? false : isAtBottom ? 'smooth' : false
+                    }
+                    scrollerRef={scrollMemory.scrollerRef}
+                    rangeChanged={scrollMemory.onRangeChanged}
                     itemContent={(index, m) => {
                       const memberIdx = memberIndexMap.get(m.characterId) ?? -1
                       const isAiMsg = m.characterId !== '__user__'
@@ -674,7 +698,7 @@ export function GroupChatPage() {
                             !isStreaming ? () => setReplyToMessage(m) : undefined
                           }
                           onDelete={
-                            !currentSessionId || isStreaming ? undefined : () => deleteMessage(currentGroup.id, currentSessionId!, m.id)
+                            !currentSessionId || isStreaming ? undefined : () => setPendingDeleteMsgId(m.id)
                           }
                           onEdit={
                             !currentSessionId || isStreaming ? undefined : (content: string) => editMessage(currentGroup.id, currentSessionId!, m.id, content)
@@ -704,6 +728,16 @@ export function GroupChatPage() {
                 </div>
               )}
             </div>
+
+            {/* ---- UEX-P1-12：群调度条——生成中显示当前说话者 + 接力 x/N + 停剩余；
+                插在消息区与输入区之间（常规文档流不遮挡消息），是否显示由组件按 isStreaming 收起 ---- */}
+            <GroupMemberBar
+              memberIds={currentGroup.memberIds}
+              currentStreamingCharId={currentStreamingCharId}
+              isStreaming={isStreaming}
+              themeColor={currentGroup.themeColor}
+              onStopRemaining={stopRemainingSpeakers}
+            />
 
             {/* ---- 输入区 ---- */}
             <div className="relative z-10">
@@ -758,6 +792,22 @@ export function GroupChatPage() {
         message="确定要删除此群聊吗？所有群聊对话数据将被清除，此操作不可撤销。"
         onConfirm={handleDelete}
         onClose={() => { setShowDeleteConfirm(false); setDeletingId(null) }}
+        danger
+      />
+
+      {/* ============ 删除消息确认 ============ */}
+      <ConfirmDialog
+        open={!!pendingDeleteMsgId}
+        onClose={() => setPendingDeleteMsgId(null)}
+        onConfirm={() => {
+          if (currentGroup && currentSessionId && pendingDeleteMsgId) {
+            void deleteMessage(currentGroup.id, currentSessionId, pendingDeleteMsgId)
+          }
+          setPendingDeleteMsgId(null)
+        }}
+        title="删除消息"
+        message="确定删除这条消息吗？删除后上下文与长记忆检索将不再包含该内容。此操作不可撤销。"
+        confirmText="删除"
         danger
       />
 

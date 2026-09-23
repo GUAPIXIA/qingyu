@@ -1,4 +1,4 @@
-import { readFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs'
+import { readFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { DIRS, readJson, readJsonAsync, serializeJson, writeExportFile } from './storage'
@@ -84,8 +84,8 @@ export function lorebookEntityPayload(document: CanonicalLorebookDocumentV2): Re
   return payload
 }
 
-/** 从 PNG 文件导入角色卡 */
-export async function importCharacterFromPng(filePath: string, proxyUrl?: string): Promise<Character> {
+/** 从 PNG 文件导入角色卡（UEX-P2-04：signal 只用于中断封面下载网络请求，不强杀同步解析） */
+export async function importCharacterFromPng(filePath: string, proxyUrl?: string, signal?: AbortSignal): Promise<Character> {
   const buffer = readFileSync(filePath)
   const chunks = readPngTextChunks(buffer)
   // 优先读取 v2 的 chara 字段，fallback 到 v3 的 ccv3 字段
@@ -104,13 +104,13 @@ export async function importCharacterFromPng(filePath: string, proxyUrl?: string
   const parsed = JSON.parse(charaJson)
   // 头像直接用 PNG 文件的 base64
   const avatarBase64 = `data:image/png;base64,${buffer.toString('base64')}`
-  const character = await normalizeCharacter(parsed, avatarBase64, proxyUrl)
+  const character = await normalizeCharacter(parsed, avatarBase64, proxyUrl, signal)
   log.info('PNG 角色卡导入成功', { name: character.name, path: filePath.substring(0, 80) })
   return character
 }
 
-/** 从 JSON 文件导入角色卡 */
-export async function importCharacterFromJson(filePath: string, proxyUrl?: string): Promise<Character> {
+/** 从 JSON 文件导入角色卡（UEX-P2-04：signal 只用于中断封面下载网络请求，不强杀同步解析） */
+export async function importCharacterFromJson(filePath: string, proxyUrl?: string, signal?: AbortSignal): Promise<Character> {
   const raw = readFileSync(filePath, 'utf-8')
   const parsed = JSON.parse(raw)
 
@@ -128,13 +128,13 @@ export async function importCharacterFromJson(filePath: string, proxyUrl?: strin
     )
   }
 
-  const character = await normalizeCharacter(parsed, undefined, proxyUrl)
+  const character = await normalizeCharacter(parsed, undefined, proxyUrl, signal)
   log.info('JSON 角色卡导入成功', { name: character.name, path: filePath.substring(0, 80), hasAvatar: !!character.avatar })
   return character
 }
 
-/** 将各种格式归一化为 Character */
-async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyUrl?: string): Promise<Character> {
+/** 将各种格式归一化为 Character（UEX-P2-04：signal 透传给封面下载，用于批量导入取消） */
+async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyUrl?: string, signal?: AbortSignal): Promise<Character> {
   // 导入时校验角色卡基本结构（拦截损坏/非法卡）
   const validation = validateCharacterCard(parsed)
   if (!validation.ok) {
@@ -170,8 +170,8 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
           // 已经是 data URL
           finalAvatar = imageUrl
         } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-          // URL -> 下载
-          const result = await downloadImageAsBase64(imageUrl, proxyUrl)
+          // URL -> 下载（UEX-P2-04：取消时中断网络请求）
+          const result = await downloadImageAsBase64(imageUrl, proxyUrl, undefined, signal)
           if (result.success && result.data) {
             finalAvatar = result.data
             log.info('角色卡封面下载成功', { name: data.name, url: imageUrl.substring(0, 100) })
@@ -297,6 +297,149 @@ async function normalizeCharacter(parsed: unknown, avatarBase64?: string, proxyU
   // 前端弹窗让用户确认绑定（见 electron/ipc/character.ts）
 
   return character
+}
+
+// ===================== UEX-P1-17：导入查重与冲突策略 =====================
+// 拍板策略：「相同跳过、冲突副本、显式覆盖」。
+// 注意：「相同」必须覆盖导入会改变的媒体与扩展数据，避免把头像/正则/快捷回复更新静默跳过。
+
+/** UEX-P1-17：同名冲突策略——'copy' 另存副本（默认），'overwrite' 仅用户显式选择时覆盖原卡 */
+export type ImportConflictPolicy = 'copy' | 'overwrite'
+
+/** UEX-P1-17：单张导入卡的处理结果——新导入 / 相同跳过 / 副本 / 覆盖 */
+export type ImportOutcome = 'imported' | 'skippedIdentical' | 'copied' | 'overwritten'
+
+export interface ImportResolution {
+  outcome: ImportOutcome
+  /** 需要落盘的角色（skippedIdentical 时无需落盘） */
+  character: Character
+  /** 结果明细说明（「已存在相同角色：{name}」等，UI 结果条直接展示） */
+  note: string
+}
+
+/**
+ * UEX-P1-17：规范化角色语义内容的稳定指纹（sha256）。
+ * 参与判定的语义字段：name、description、personality、scenario、firstMessage、
+ * alternateGreetings、groupOnlyGreetings、tags、exampleDialog、creator、creatorNotes、
+ * characterVersion、systemPrompt、postHistoryInstructions；同时纳入 avatar/cover 媒体哈希、
+ * _importImageUrl 与 extensions（其中可能包含角色卡正则/快捷回复等功能性数据）。
+ * 排除：id、createdAt/updatedAt 时间戳、媒体文件名、lorebookId/boundLorebookIds/
+ * boundPresetId 等本地绑定关系、pinned/chatBackground* 等本地 UI 状态，
+ * 以及 translatedContent（本地翻译展示状态，不参与导入判重）。
+ */
+export function characterContentFingerprint(character: Character): string {
+  const mediaHash = (value: string | undefined) => value
+    ? createHash('sha256').update(value).digest('hex')
+    : ''
+  const canonicalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalize)
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .filter(([, child]) => child !== undefined)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+          .map(([key, child]) => [key, canonicalize(child)]),
+      )
+    }
+    return value
+  }
+  const normalized = {
+    name: character.name ?? '',
+    description: character.description ?? '',
+    personality: character.personality ?? '',
+    scenario: character.scenario ?? '',
+    firstMessage: character.firstMessage ?? '',
+    // 备选开场白按序参与（每条都是独立语义内容）
+    alternateGreetings: Array.isArray(character.alternateGreetings) ? [...character.alternateGreetings] : [],
+    groupOnlyGreetings: Array.isArray(character.groupOnlyGreetings) ? [...character.groupOnlyGreetings] : [],
+    // tags 是集合语义：排序后参与，仅顺序不同不算冲突
+    tags: Array.isArray(character.tags) ? [...character.tags].map((t) => String(t)).sort() : [],
+    exampleDialog: character.exampleDialog ?? '',
+    creator: character.creator ?? '',
+    creatorNotes: character.creatorNotes ?? '',
+    characterVersion: character.characterVersion ?? '',
+    systemPrompt: character.systemPrompt ?? '',
+    postHistoryInstructions: character.postHistoryInstructions ?? '',
+    avatarHash: mediaHash(character.avatar),
+    coverHash: mediaHash(character.cover),
+    importImageUrl: character._importImageUrl ?? '',
+    extensions: canonicalize(character.extensions ?? {}),
+  }
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex')
+}
+
+/** UEX-P1-17：副本命名——「{name}（副本）」，再冲突则「{name}（副本 2）」递增 */
+function nextCopyName(baseName: string, takenNames: Set<string>): string {
+  let candidate = `${baseName}（副本）`
+  let n = 2
+  while (takenNames.has(candidate)) {
+    candidate = `${baseName}（副本 ${n}）`
+    n++
+  }
+  return candidate
+}
+
+/**
+ * UEX-P1-17：导入查重/冲突策略核心（纯函数；落盘与计数由 IPC 层负责）：
+ * 1. 内容相同（指纹一致）→ 跳过，不产生新卡；即使命令覆盖也仍跳过。
+ *    批量导入内去重：调用方把已解析/已决策的角色并入 existing 即可（批内相同同样跳过）。
+ * 2. 同名但内容不同 + 'copy'（默认）→ 另存副本，命名「{name}（副本）」再冲突递增。
+ * 3. 同名但内容不同 + 'overwrite'（仅用户显式选择）→ 覆盖同名原卡：
+ *    保留原卡 id/createdAt/pinned（会话按 characterId 关联，不删会话），更新语义字段与头像/封面；
+ *    导入卡带内嵌世界书时换绑新书，否则保留原卡的世界书/预设绑定。
+ * 4. 无同名 → 正常导入。同名命中多个时取 existing 首个（调用方传入按更新时间倒序，即最近更新者）。
+ */
+export function resolveImportConflict(
+  incoming: Character,
+  existing: Character[],
+  conflict: ImportConflictPolicy = 'copy',
+): ImportResolution {
+  const fingerprint = characterContentFingerprint(incoming)
+  // 1. 内容相同 → 跳过（无论冲突策略）
+  const identical = existing.find((c) => characterContentFingerprint(c) === fingerprint)
+  if (identical) {
+    return { outcome: 'skippedIdentical', character: incoming, note: `已存在相同角色：${identical.name}` }
+  }
+  const target = existing.find((c) => c.name === incoming.name)
+  if (!target) {
+    // 4. 无同名冲突：正常新卡导入
+    return { outcome: 'imported', character: incoming, note: `已导入：${incoming.name}` }
+  }
+  // 2/3. 同名但内容不同：按策略另存副本或显式覆盖
+  if (conflict === 'overwrite') {
+    const merged: Character = {
+      ...incoming,
+      id: target.id, // 保留原卡 id：会话按 characterId 关联，不删会话
+      createdAt: target.createdAt,
+      updatedAt: Date.now(),
+      pinned: target.pinned,
+      // 绑定关系属本地关联：导入卡带内嵌世界书才换绑，否则保留原卡绑定
+      lorebookId: incoming.lorebookId ?? target.lorebookId,
+      boundLorebookIds: incoming.lorebookId
+        ? (incoming.boundLorebookIds?.length ? incoming.boundLorebookIds : [incoming.lorebookId])
+        : target.boundLorebookIds,
+    }
+    return { outcome: 'overwritten', character: merged, note: `已覆盖同名角色：${target.name}` }
+  }
+  const takenNames = new Set(existing.map((c) => c.name))
+  const copyName = nextCopyName(incoming.name, takenNames)
+  return { outcome: 'copied', character: { ...incoming, name: copyName }, note: `已另存副本：${copyName}` }
+}
+
+/**
+ * UEX-P1-17：覆盖原卡前清理其旧头像/封面媒体文件。
+ * 媒体文件扩展名按真实格式命名，覆盖后格式变化（如 png → jpg）时残留旧文件会被
+ * readAvatar/readCover 先命中而遮蔽新图，故覆盖落盘前先清干净（清理失败不阻断覆盖）。
+ */
+export function removeCharacterMediaFiles(characterId: string): void {
+  const dir = DIRS.characters()
+  for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'webp']) {
+    for (const path of [join(dir, `${characterId}.${ext}`), join(dir, `${characterId}_cover.${ext}`)]) {
+      try {
+        if (existsSync(path)) unlinkSync(path)
+      } catch { /* 清理失败不阻断覆盖 */ }
+    }
+  }
 }
 
 /** 导出角色卡为 PNG */

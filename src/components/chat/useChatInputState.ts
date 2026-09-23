@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useChatStore } from '../../store/useChatStore'
+import { useToastStore } from '../../store/useToastStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { logError } from '../../lib/logger'
 import { isConnectionConfigured } from '../../utils/defaults'
@@ -62,7 +63,6 @@ export interface ChatInputState {
   setSelectedSuggestionIdx: (v: number) => void
   imageMenuOpen: boolean
   setImageMenuOpen: (v: boolean | ((prev: boolean) => boolean)) => void
-  notification: string | null
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   effectiveReplies: QuickReply[]
   isConnected: boolean
@@ -104,14 +104,19 @@ export function useChatInputState(
     }
   })
   const draftGenerationKindRef = useRef<MessageGenerationKind>('manual')
+  // 草稿桥/失败回填读取最新文本：ref 同步镜像（setText 写入时同步更新，避免异步闭包读到旧值）
+  const textRef = useRef(text)
+  useEffect(() => { textRef.current = text }, [text])
   /** 用户键入或外部填充都重新视为手动草稿。 */
   const setText = (value: string) => {
     draftGenerationKindRef.current = 'manual'
+    textRef.current = value
     setTextState(value)
   }
   /** AI 输入续写保留来源，直到用户再次编辑或发送。 */
   const setContinuedText = (value: string) => {
     draftGenerationKindRef.current = 'input_continue'
+    textRef.current = value
     setTextState(value)
   }
   const [images, setImages] = useState<string[]>([])
@@ -122,8 +127,6 @@ export function useChatInputState(
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(0)
   const [imageMenuOpen, setImageMenuOpen] = useState(false)
   // 短暂通知（命令执行反馈）
-  const [notification, setNotification] = useState<string | null>(null)
-  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 快捷回复
   const [qrStore, setQrStore] = useState<QuickReplyStore>({ global: [], byCharacter: {} })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -138,9 +141,7 @@ export function useChatInputState(
   const activeProfile = getActiveProfile()
   const isConnected = isConnectionConfigured(activeProfile)
 
-  // 草稿桥读取最新文本：用 ref 镜像避免注册表持有过期的闭包值
-  const textRef = useRef(text)
-  useEffect(() => { textRef.current = text }, [text])
+  // 草稿桥读取最新文本：镜像已在上方声明（setText 同步写入 + effect 兜底）
 
   // 快捷回复按钮：角色/会话切换时刷新
   useEffect(() => {
@@ -169,11 +170,9 @@ export function useChatInputState(
     return () => window.removeEventListener('shortcut:insert-command', handleInsertCommand)
   }, [])
 
-  // 显示通知（3 秒后自动消失）
+  // 显示通知（S1：全局 Toast，不再用输入区局部 notification，避免双显）
   const showNotification = (msg: string) => {
-    setNotification(msg)
-    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current)
-    notificationTimerRef.current = setTimeout(() => setNotification(null), 3000)
+    useToastStore.getState().push({ variant: 'info', title: msg, requestId: msg })
   }
 
   /** 加载当前选中的预设和所有激活的世界书（P-7：委托给 store 的 getActiveChatConfig，同时更新缓存） */
@@ -282,7 +281,13 @@ export function useChatInputState(
     const timer = setTimeout(() => {
       try { localStorage.setItem(draftKey(character.id, currentSessionId), text) } catch { /* ignore */ }
     }, 300)
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      // S9：切换/卸载前同步 flush 未落盘草稿（300ms 防抖内输入）
+      try {
+        if (text) localStorage.setItem(draftKey(character.id, currentSessionId), text)
+      } catch { /* ignore */ }
+    }
   }, [text, character.id, currentSessionId])
 
   // P-10 修复：用 requestAnimationFrame 避免同步 reflow
@@ -328,6 +333,7 @@ export function useChatInputState(
       if (parsed) {
         const cmd = findCommand(parsed.name)
         if (cmd) {
+          const cmdText = text
           setText('')
           setImages([])
           setOriginalText(null)
@@ -336,6 +342,8 @@ export function useChatInputState(
           try {
             await cmd.execute(parsed.args, buildCommandContext())
           } catch (err) {
+            // 修复5（命令失败回填）：失败时把命令原文回填输入框（用户未再输入时），便于直接重试
+            if (!textRef.current) setText(cmdText)
             showNotification(`命令执行失败: ${(err as Error).message}`)
           }
           return
@@ -344,19 +352,29 @@ export function useChatInputState(
       }
     }
 
-    // 普通消息发送
+    // 普通消息发送（S9：成功再清草稿，失败回填）
     const content = text.trim()
     const imgs = [...images]
     const generationKind = draftGenerationKindRef.current
-    setText('')
-    setImages([])
     setOriginalText(null)
-    // 清除草稿
-    try { localStorage.removeItem(draftKey(character.id, currentSessionId)) } catch { /* ignore */ }
     const [preset, lorebooks] = await loadActivePresetLorebook()
     const replyId = replyTo?.id ?? undefined
-    onCancelReply?.()
-    await sendMessage(content, imgs, character, preset, lorebooks, replyId, generationKind)
+    try {
+      const ok = await sendMessage(content, imgs, character, preset, lorebooks, replyId, generationKind)
+      if (ok === false) {
+        setText(content)
+        setImages(imgs)
+        return
+      }
+      setText('')
+      setImages([])
+      try { localStorage.removeItem(draftKey(character.id, currentSessionId)) } catch { /* ignore */ }
+      onCancelReply?.()
+    } catch (e) {
+      setText(content)
+      setImages(imgs)
+      showNotification(`发送失败：${e instanceof Error ? e.message : String(e)}`)
+    }
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -602,25 +620,33 @@ export function useChatInputState(
   /** 润色 */
   const handleAiPolish = async () => {
     if (isAiProcessing || !text.trim()) return
-    setOriginalText(text)
+    // UEX-P1-06 尾巴：本地捕获原文，异步回退不能依赖会过期的 originalText 状态闭包
+    const originalInput = text
+    setOriginalText(originalInput)
     setIsAiProcessing(true)
 
     try {
       const result = await callAiHelper({
         messages: [
           { role: 'system', content: '你是一个文字润色助手。请润色以下文本，修正语法、改善表达、使其更加流畅自然，但保持原意和语气不变。只输出润色后的文本，不要添加任何解释或额外内容。' },
-          { role: 'user', content: text },
+          { role: 'user', content: originalInput },
         ],
         temperature: 0.3,
         task: 'polish',
-        inputChars: text.length,
+        inputChars: originalInput.length,
       })
-      if (result) setText(result)
-      else setText(originalText ?? '')
+      if (result) {
+        setText(result)
+      } else {
+        // UEX-P1-06 尾巴：空结果回退原文时同步提示（对齐续写失败文案模式），不再静默
+        setText(originalInput)
+        showNotification('润色未返回结果，已保留原输入，请重试或更换模型')
+      }
     } catch (err) {
       logError('ChatInput:polish', err)
-      setText(originalText!)
+      setText(originalInput)
       setOriginalText(null)
+      showNotification(`润色失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setIsAiProcessing(false)
     }
@@ -629,7 +655,7 @@ export function useChatInputState(
   return {
     text, setText, images, setImages, isAiProcessing, originalText, setOriginalText,
     commandSuggestions, setCommandSuggestions, selectedSuggestionIdx, setSelectedSuggestionIdx,
-    imageMenuOpen, setImageMenuOpen, notification, textareaRef, effectiveReplies,
+    imageMenuOpen, setImageMenuOpen, textareaRef, effectiveReplies,
     isConnected, isStreaming, stopStreaming,
     runQuickReply, showNotification, buildCommandContext, handleSend, handleKeyDown,
     handleImageSelect, removeImage, handleAiContinue, handleAiPolish,

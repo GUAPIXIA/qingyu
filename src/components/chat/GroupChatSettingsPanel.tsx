@@ -3,8 +3,12 @@ import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText,
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../utils/variables'
 import { charAssetUrl } from '../../utils/asset'
+import { useGroupChatStore } from '../../store/useGroupChatStore'
 import type { GroupChat, Character, Lorebook, Preset } from '../../../shared/types'
 import { NARRATIVE_MODE_OPTIONS } from '../../../shared/narrativeMode'
+
+/** UEX-P1-11：生成中禁用发言调度相关控件的统一提示 */
+const STREAMING_GUARD_TITLE = '生成中，暂不可修改群模式与成员'
 
 interface GroupChatSettingsPanelProps {
   group: GroupChat
@@ -40,6 +44,8 @@ export function GroupChatSettingsPanel({
   onExport,
 }: GroupChatSettingsPanelProps) {
   const availableChars = characters.filter(c => !group.memberIds.includes(c.id))
+  // UEX-P1-11：生成中禁用模式切换与成员增删/排序（store saveGroup 另有兜底守卫）
+  const isStreaming = useGroupChatStore((state) => state.isStreaming)
 
   // 滑块和文本域使用本地 state，避免拖动时频繁写盘
   const [localMaxRounds, setLocalMaxRounds] = useState(group.maxRounds)
@@ -91,13 +97,13 @@ export function GroupChatSettingsPanel({
                     {idx === group.currentSpeakerIndex && (
                       <span className="text-[10px] text-tavern-accent">当前</span>
                     )}
-                    <button onClick={() => onMoveMember(idx, -1)} disabled={idx === 0} className="p-0.5 text-tavern-text-muted hover:text-tavern-text disabled:opacity-30">
+                    <button onClick={() => onMoveMember(idx, -1)} disabled={idx === 0 || isStreaming} title={isStreaming ? STREAMING_GUARD_TITLE : undefined} className="p-0.5 text-tavern-text-muted hover:text-tavern-text disabled:opacity-30">
                       <ArrowUp className="w-3 h-3" />
                     </button>
-                    <button onClick={() => onMoveMember(idx, 1)} disabled={idx === group.memberIds.length - 1} className="p-0.5 text-tavern-text-muted hover:text-tavern-text disabled:opacity-30">
+                    <button onClick={() => onMoveMember(idx, 1)} disabled={idx === group.memberIds.length - 1 || isStreaming} title={isStreaming ? STREAMING_GUARD_TITLE : undefined} className="p-0.5 text-tavern-text-muted hover:text-tavern-text disabled:opacity-30">
                       <ArrowDown className="w-3 h-3" />
                     </button>
-                    <button onClick={() => onRemoveMember(id)} className="p-0.5 text-tavern-text-muted hover:text-tavern-danger">
+                    <button onClick={() => onRemoveMember(id)} disabled={isStreaming} title={isStreaming ? STREAMING_GUARD_TITLE : undefined} className="p-0.5 text-tavern-text-muted hover:text-tavern-danger disabled:opacity-30">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -109,7 +115,9 @@ export function GroupChatSettingsPanel({
               <div className="mt-2">
                 <select
                   onChange={e => { if (e.target.value) onAddMember(e.target.value); e.target.value = '' }}
-                  className="w-full bg-tavern-bg border border-tavern-border-soft rounded-lg px-2.5 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
+                  disabled={isStreaming}
+                  title={isStreaming ? STREAMING_GUARD_TITLE : undefined}
+                  className="w-full bg-tavern-bg border border-tavern-border-soft rounded-lg px-2.5 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent disabled:opacity-50"
                   defaultValue=""
                 >
                   <option value="" disabled>+ 添加成员...</option>
@@ -188,8 +196,10 @@ export function GroupChatSettingsPanel({
                   <button
                     key={m.key}
                     onClick={() => onSave({ ...group, chatMode: m.key })}
+                    disabled={isStreaming}
+                    title={isStreaming ? STREAMING_GUARD_TITLE : undefined}
                     className={cn(
-                      'flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg border text-xs transition-colors',
+                      'flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg border text-xs transition-colors disabled:opacity-50',
                       group.chatMode === m.key
                         ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent'
                         : 'border-tavern-border-soft text-tavern-text-muted hover:border-tavern-border'
@@ -250,8 +260,12 @@ export function GroupChatSettingsPanel({
 
               <div>
                 <label className="label">
-                  最大轮数 <span className="text-xs text-tavern-text-muted ml-1">{group.maxRounds}</span>
+                  {/* D2 已拍板：「连续 N 轮」按每次接力（burst）计算，改称「每次接力上限」 */}
+                  每次接力上限 <span className="text-xs text-tavern-text-muted ml-1">{group.maxRounds}</span>
                 </label>
+                <p className="mt-1 text-[10px] leading-relaxed text-tavern-text-muted">
+                  每条用户消息触发的接力段内最多自动接力 {group.maxRounds} 轮；新消息开启新段、轮数重新计数。
+                </p>
                 <input
                   type="range"
                   min="1"

@@ -92,14 +92,28 @@ describe('CharacterCreatePage（向导容器）', () => {
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull()
   })
 
-  it('返回按钮：防抖写草稿后弹确认，确认后回到角色列表', async () => {
+  it('返回按钮：有实质内容时弹确认，确认后回到角色列表', async () => {
     renderPage()
-    // 等待防抖 500ms 使 dirtyRef 置位（有草稿时才弹离开确认）
+    // UEX-P1-19：填入实质内容后离开才弹确认
+    act(() => {
+      useCharacterCreatorStore.getState().updateDraft({ name: '草稿角色' })
+    })
+    // 等待防抖 500ms 写草稿
     await new Promise((r) => setTimeout(r, 600))
     fireEvent.click(screen.getByText('返回'))
     expect(screen.getByText('离开制作向导？')).toBeInTheDocument()
     fireEvent.click(screen.getByText('保存并离开'))
     expect(screen.getByText('角色列表页')).toBeInTheDocument()
+  })
+
+  it('UEX-P1-19：空表单返回不弹确认，也不写草稿', async () => {
+    renderPage()
+    // 等待超过防抖周期：空表单不应写草稿
+    await new Promise((r) => setTimeout(r, 600))
+    fireEvent.click(screen.getByText('返回'))
+    expect(screen.queryByText('离开制作向导？')).not.toBeInTheDocument()
+    expect(screen.getByText('角色列表页')).toBeInTheDocument()
+    expect(localStorage.getItem(DRAFT_KEY)).toBeNull()
   })
 
   it('步骤指示器点击回退到概念设定', () => {

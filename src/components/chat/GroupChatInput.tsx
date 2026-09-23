@@ -6,6 +6,8 @@ import { charAssetUrl } from '../../utils/asset'
 import { ChevronDown, Image as ImageIcon, LoaderCircle, Play, Reply, Send, Square, X as XIcon } from 'lucide-react'
 import { registerDraftBridge } from './draftBridge'
 import type { GroupChat, GroupMessage } from '../../../shared/types'
+// D2 已拍板：每次接力（burst）的 AI 轮次计数与调度共用同一口径（跨端共享纯逻辑）
+import { countGroupBurstRounds } from '../../../shared/chat-core/groupScheduling'
 
 interface GroupChatInputProps {
   group: GroupChat
@@ -20,7 +22,7 @@ const MODE_LABELS: Record<GroupChat['chatMode'], string> = {
 }
 
 export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInputProps) {
-  const [content, setContent] = useState('')
+  const [content, setContentState] = useState('')
   const [showMention, setShowMention] = useState(false)
   const [targetCharId, setTargetCharId] = useState<string | null>(null)
   const [mentionOverrideId, setMentionOverrideId] = useState<string | null>(null)
@@ -37,6 +39,24 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
   const triggerCharacterReply = useGroupChatStore((state) => state.triggerCharacterReply)
   const isStreaming = useGroupChatStore((state) => state.isStreaming)
   const stopStreaming = useGroupChatStore((state) => state.stopStreaming)
+  const currentSessionId = useGroupChatStore((state) => state.currentSessionId)
+  // D2 已拍板：只订阅派生计数（每次接力段内已用 AI 轮次），流式 flush 不触发输入区重渲染
+  const usedRounds = useGroupChatStore((state) => countGroupBurstRounds(state.messages))
+
+  // UEX-P1-13：草稿按 群+会话 隔离持久化（对齐单聊 useChatInputState 的 draftKey 模式，轻量版）
+  const draftKey = `group-draft:${group.id}:${currentSessionId || 'default'}`
+  // 写入入口可能被草稿桥长期持有：经 ref 读当前 key，避免会话切换后写到旧会话草稿
+  const draftKeyRef = useRef(draftKey)
+  useEffect(() => { draftKeyRef.current = draftKey }, [draftKey])
+
+  /** UEX-P1-13：写入草稿的统一入口——即时落盘，空值即清除 */
+  const setContent = (value: string) => {
+    setContentState(value)
+    try {
+      if (value) localStorage.setItem(draftKeyRef.current, value)
+      else localStorage.removeItem(draftKeyRef.current)
+    } catch { /* ignore */ }
+  }
 
   const members = group.memberIds
     .map((id) => characters.find((character) => character.id === id))
@@ -53,6 +73,27 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
     if (targetStillPresent) return
     setTargetCharId(firstMemberId)
   }, [firstMemberId, memberKey, targetStillPresent])
+
+  // UEX-P1-13：切换群/会话时恢复该会话草稿，并清掉 targetCharId/mentionOverrideId 跨会话残留
+  // （清空后由上方 effect 按成员表回落默认回复目标，不带入上一会话的选择）
+  useEffect(() => {
+    try {
+      setContentState(localStorage.getItem(draftKey) ?? '')
+    } catch {
+      setContentState('')
+    }
+    setTargetCharId(null)
+    setMentionOverrideId(null)
+    setShowMention(false)
+    // 恢复的长草稿同步输入框高度（与 onInput 的自适应一致）
+    requestAnimationFrame(() => {
+      const element = textareaRef.current
+      if (!element) return
+      element.style.height = 'auto'
+      element.style.height = `${Math.min(element.scrollHeight, 120)}px`
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey])
 
   // 方向卡片 → 输入框草稿桥（与单聊各自独立作用域）
   useEffect(() => {
@@ -186,7 +227,9 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
           </span>
         )}
         {group.chatMode === 'polling' && group.autoMode && (
-          <span className="shrink-0 rounded-full bg-tavern-success/10 px-2 py-0.5 text-[10px] font-medium text-tavern-success">连续 {group.maxRounds} 轮</span>
+          // D2 已拍板：「连续 N 轮」按每次接力（burst）计算——新用户消息开启新段、计数重置；
+          // x = 本段已用 AI 轮次，与 groupScheduling 的 per-burst 计数同口径
+          <span className="shrink-0 rounded-full bg-tavern-success/10 px-2 py-0.5 text-[10px] font-medium text-tavern-success">每次接力最多 {group.maxRounds} 轮 · 本段已用 {usedRounds}/{group.maxRounds}</span>
         )}
         {group.chatMode === 'free' && <span className="shrink-0 text-[10px] text-tavern-text-muted">可由多人回应</span>}
 

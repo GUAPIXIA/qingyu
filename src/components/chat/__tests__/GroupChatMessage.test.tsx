@@ -436,10 +436,82 @@ describe('GroupChatMessage', () => {
   })
 
   describe('free message (hidden)', () => {
-    it('renders null for __free__ characterId', () => {
+    it('D10 已拍板：历史 __free__ 正文仍隐藏（不单独归属成员、不展示）', () => {
       const msg = createMessage({ characterId: '__free__', content: 'Should not show' })
       const { container } = render(<GroupChatMessage message={msg} />)
       expect(container.textContent).not.toContain('Should not show')
+    })
+
+    it('D10 已拍板：放开 free 段整段重生入口（历史 __free__ 也显示重新生成并触发回调）', () => {
+      const onRegenerate = vi.fn()
+      const msg = createMessage({ characterId: '__free__', content: 'Should not show' })
+      const { container } = render(<GroupChatMessage message={msg} onRegenerate={onRegenerate} />)
+
+      const regenerateBtn = container.querySelector('[title="重新生成"]') as HTMLButtonElement
+      expect(regenerateBtn).toBeTruthy()
+      fireEvent.click(regenerateBtn)
+      expect(onRegenerate).toHaveBeenCalledTimes(1)
+    })
+
+    it('S7：free 流式占位可见（勿 return null）', () => {
+      const msg = createMessage({ characterId: '__free__', content: '正在生成的半截…' })
+      const { container, getByText } = render(
+        <GroupChatMessage message={msg} isStreamingMessage />,
+      )
+      expect(container.textContent).toContain('正在生成的半截…')
+      expect(getByText('生成中...')).toBeTruthy()
+    })
+  })
+
+  describe('S3 生成提示（generationError / generationNotice）', () => {
+    it('正文保留时在气泡下方渲染中断原因', () => {
+      useCharacterStore.setState({ characters: [createCharacter()] })
+      const { getByText } = render(
+        <GroupChatMessage
+          message={createMessage({ content: '半截回复', generationError: '模型输出达到长度上限' })}
+        />,
+      )
+      expect(getByText(/生成中断/)).toBeTruthy()
+      expect(getByText(/模型输出达到长度上限/)).toBeTruthy()
+    })
+
+    it('无 generationError 时不渲染提示行', () => {
+      useCharacterStore.setState({ characters: [createCharacter()] })
+      const { queryByText } = render(<GroupChatMessage message={createMessage()} />)
+      expect(queryByText(/生成中断/)).toBeNull()
+    })
+
+    it('隐藏历史消息中已保存的普通句界收束提示', () => {
+      useCharacterStore.setState({ characters: [createCharacter()] })
+      const { queryByText } = render(
+        <GroupChatMessage
+          message={createMessage({ content: '她推开门。', generationNotice: '内容已在完整句处收束' })}
+        />,
+      )
+      expect(queryByText(/内容已在完整句处收束/)).toBeNull()
+      expect(queryByText(/生成中断/)).toBeNull()
+    })
+
+    it('继续显示需要用户知晓的生成状态（短波只展示不做重试）', () => {
+      useCharacterStore.setState({ characters: [createCharacter()] })
+      const { getByText, queryByTitle } = render(
+        <GroupChatMessage
+          message={createMessage({ content: '她推开门。', generationNotice: '已停止生成' })}
+        />,
+      )
+      expect(getByText(/已停止生成/)).toBeTruthy()
+      expect(queryByTitle('重试')).toBeNull()
+    })
+
+    it('streaming 中不展示收尾提示', () => {
+      useCharacterStore.setState({ characters: [createCharacter()] })
+      const { queryByText } = render(
+        <GroupChatMessage
+          message={createMessage({ content: '流式中', generationError: 'x' })}
+          isStreamingMessage
+        />,
+      )
+      expect(queryByText(/生成中断/)).toBeNull()
     })
   })
 

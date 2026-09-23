@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import type { GroupMessage, GroupSession } from '../../shared/types'
+import type { GroupChat, GroupMessage, GroupSession } from '../../shared/types'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { usePersonaStore } from './usePersonaStore'
@@ -20,8 +20,54 @@ import {
 import {
   streamGroupAI, streamGroupAIFree, checkPollingContinue, checkAutoMemory,
   cleanupActiveStream, clearPollingTimer, claimGroupUserStop, preserveGroupReplyContent,
+  abandonActiveStream, persistPartialGroupReply, getActiveStream,
 } from './groupStreamController'
 import { abortActiveTailRepair } from './streamController'
+import { pushToast } from './useToastStore'
+
+/** S2：错误写入 store 的同时推全局 Toast，避免静默失败 */
+function setGroupError(set: (partial: Partial<{ error: string | null }>) => void, message: string) {
+  set({ error: message })
+  pushToast({ variant: 'error', title: message, requestId: 'group-error' })
+}
+
+/** UEX-P2-03：翻译失败可见反馈（此前只把 translation 置回 null，静默清空） */
+function toastTranslateFailure(detail: string) {
+  pushToast({ variant: 'warning', title: '翻译失败', description: detail, requestId: 'group-translate-fail' })
+}
+
+/**
+ * S8：store 层切换/删除入口的统一停止收尾。
+ * isStreaming 时走 abandonActiveStream({ preserve: true })（claim → preserve → cancelChat → cleanup + toast），
+ * 并把半截正文落盘（free 走 splitAndSaveMessages）；禁止裸 cleanupActiveStream()。
+ */
+function stopStreamForLifecycle(get: () => GroupChatState, set: GroupStoreSet): void {
+  clearPollingTimer()
+  if (!get().isStreaming) {
+    cleanupActiveStream()
+    return
+  }
+  const state = get()
+  const group = state.currentGroup
+  const sessionId = state.currentSessionId
+  const claimed = abandonActiveStream({ preserve: true })
+  if (claimed && claimed.preserved && group && sessionId) {
+    void persistPartialGroupReply({
+      set,
+      get: get as GroupStoreGet,
+      group,
+      sessionId,
+      msgId: claimed.msgId,
+      content: claimed.preserved,
+      round: claimed.round,
+      characterId: claimed.characterId,
+      isFree: claimed.isFree,
+      narrativeMode: claimed.narrativeMode,
+      noticeFields: { generationNotice: '已停止生成' },
+    })
+  }
+  set({ isStreaming: false, currentStreamingCharId: null })
+}
 import { buildGroupChatContext, type GroupContextBuildResult } from './groupChatContext'
 import { runGroupMemorySummary } from './groupMemoryManager'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
@@ -35,7 +81,7 @@ import {
   clearGroupDialogueDirections,
 } from './dialogueDirectionRunner'
 // 阶段 6 S6-01：发言调度/提及/轮次的跨端共享纯逻辑（fixture oracle 即此实现）
-import { nextGroupRound, detectMentionedMembers, resolveGroupSpeakerPlan } from '../../shared/chat-core/groupScheduling'
+import { nextGroupRound, detectMentionedMembers, resolveGroupSpeakerPlan, resolveGroupFreeSegment } from '../../shared/chat-core/groupScheduling'
 
 /** 群聊身份以会话为作用域；旧会话没有字段时才回退全局默认身份。 */
 function syncGroupPersonaToSettings(session?: GroupSession): void {
@@ -93,6 +139,139 @@ function maybeGenerateGroupDirections(set: GroupStoreSet, get: GroupStoreGet): v
   })
 }
 
+/** D10：重生回滚——移除本次新消息，并按暂存顺序插回原文。 */
+function restoreRegenerationMessages(
+  set: GroupStoreSet,
+  stashed: GroupMessage[],
+  anchorIndex: number,
+  generatedIds: Set<string> = new Set(),
+): void {
+  set((s: GroupChatState) => {
+    const stashedIds = new Set(stashed.map((message) => message.id))
+    const msgs = s.messages.filter((message) => !generatedIds.has(message.id) && !stashedIds.has(message.id))
+    msgs.splice(Math.min(anchorIndex, msgs.length), 0, ...stashed)
+    return { messages: msgs }
+  })
+}
+
+/**
+ * 重生成终态提交：新回复必须已完成且落盘，随后才删除旧消息。
+ * 删除旧消息任一步失败时执行补偿事务：删除本次新回复、重写全部旧消息并恢复 UI，
+ * 避免界面看似替换成功、重载后却出现新旧重复。
+ */
+async function settleRegenerationReplacement(input: {
+  set: GroupStoreSet
+  get: GroupStoreGet
+  group: GroupChat
+  sessionId: string
+  baselineIds: Set<string>
+  stashed: GroupMessage[]
+  anchorIndex: number
+  generationSucceeded: boolean
+  generatedMessages?: readonly GroupMessage[]
+}): Promise<boolean> {
+  const { set, get, group, sessionId, baselineIds, stashed, anchorIndex } = input
+  const current = get()
+  const isSameContext = () => get().currentGroup?.id === group.id && get().currentSessionId === sessionId
+  const visibleGenerated = isSameContext()
+    ? current.messages.filter((message) => !baselineIds.has(message.id))
+    : []
+  const generated = [...new Map(
+    [...(input.generatedMessages ?? []), ...visibleGenerated]
+      .map((message) => [message.id, message]),
+  ).values()]
+  const generatedIds = new Set(generated.map((message) => message.id))
+  const generationSucceeded = input.generationSucceeded && generated.length > 0
+
+  if (generationSucceeded) {
+    try {
+      for (const message of stashed) {
+        await window.api.group.deleteMessage(group.id, sessionId, message.id)
+      }
+      return true
+    } catch (error) {
+      logError('GroupChatStore:replaceRegeneratedMessages', error)
+      // 补偿：新回复全部撤回；已删掉的旧回复按原 id 重写，未删的写入也是幂等更新。
+      await Promise.allSettled(generated.map((message) =>
+        window.api.group.deleteMessage(group.id, sessionId, message.id)))
+      await Promise.allSettled(stashed.map((message) =>
+        window.api.group.saveMessage(group.id, sessionId, message)))
+      if (isSameContext()) restoreRegenerationMessages(set, stashed, anchorIndex, generatedIds)
+      pushToast({
+        variant: 'error',
+        title: '重新生成替换失败，已恢复原消息',
+        description: '新回复已撤回，请稍后重试。',
+        requestId: 'group-regenerate-replace-fail',
+      })
+      return false
+    }
+  }
+
+  // 生成失败、停止或切换：旧消息尚未删除，只需撤回可能落盘的半截新回复并恢复 UI。
+  await Promise.allSettled(generated.map((message) =>
+    window.api.group.deleteMessage(group.id, sessionId, message.id)))
+  if (isSameContext()) restoreRegenerationMessages(set, stashed, anchorIndex, generatedIds)
+  pushToast({ variant: 'error', title: '重新生成失败，已恢复原消息', requestId: 'group-regenerate-fail' })
+  return false
+}
+
+/**
+ * D10 已拍板：free 整段重生（复用 S13 防丢语义，整轮粒度）——
+ * 先暂存整轮原文、UI 隐藏（不落盘删除）→ 重新发起 free 生成（整段，非单成员）→
+ * 发起成功后替换整轮（删旧整轮；新整轮由收尾管线 splitAndSaveMessages 拆分插入）→
+ * 失败恢复整轮原文 + toast「重新生成失败，已恢复原消息」。
+ * 落盘仍遵守「不持久化 `__free__` 正文」约束（P0-07）：历史 `__free__` 占位整段重生后
+ * 同样经 splitAndSaveMessages 拆分到成员/回落首成员，绝不把 free 正文挂回 `__free__`。
+ */
+async function regenerateFreeSegment(
+  set: GroupStoreSet,
+  get: GroupStoreGet,
+  group: GroupChat,
+  sessionId: string,
+  messages: GroupMessage[],
+  segmentIds: string[],
+): Promise<void> {
+  const idSet = new Set(segmentIds)
+  // S13：整轮原文暂存（保持消息流顺序），失败时按原位置恢复
+  const stashedSegment = messages.filter((m) => idSet.has(m.id))
+  const anchorIndex = messages.findIndex((m) => idSet.has(m.id))
+  const targetRound = stashedSegment[0]?.round ?? 0
+  const baselineIds = new Set(messages.map((message) => message.id))
+
+  // 消息被替换：取消整轮在途的方向请求
+  cancelDialogueDirectionRequests(segmentIds)
+  // 仅从 UI 隐藏（不落盘删除），成功后再删、失败则恢复
+  set((s: GroupChatState) => ({ messages: s.messages.filter((m) => !idSet.has(m.id)) }))
+
+  // NEW-3 修复：await 期间用户可能已切换群聊/会话，校验后中止重新生成
+  const fresh = get()
+  if (fresh.currentGroup?.id !== group.id || fresh.currentSessionId !== sessionId) {
+    restoreRegenerationMessages(set, stashedSegment, anchorIndex)
+    setGroupError(set, '群聊已切换，未触发重新生成')
+    return
+  }
+
+  let settlement: Promise<boolean> | null = null
+  const settleOnce = (generationSucceeded: boolean, generatedMessages?: readonly GroupMessage[]) => {
+    settlement ??= settleRegenerationReplacement({
+      set, get, group, sessionId, baselineIds, stashed: stashedSegment, anchorIndex,
+      generationSucceeded, generatedMessages,
+    })
+    return settlement
+  }
+
+  // 重新发起 free 生成（整段，非单成员）：终态落盘后才替换旧整轮。
+  let started = false
+  try {
+    started = await streamGroupAIFree(set, get, group, sessionId, targetRound, undefined, {
+      onTerminal: settleOnce,
+    })
+  } catch (e) {
+    logError('Group:regenerateFreeSegment', e)
+  }
+  if (!started) await settleOnce(false)
+}
+
 export type { GroupChatState }
 export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   groupChats: [],
@@ -123,22 +302,34 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   saveGroup: async (group) => {
+    // UEX-P1-11 兜底：生成中禁止改动发言调度（对话模式/成员增删排序），UI 已禁用，此处拦截并发入口
+    const prev = get().groupChats.find((item) => item.id === group.id) ?? (get().currentGroup?.id === group.id ? get().currentGroup : null)
+    if (get().isStreaming && prev) {
+      const membersChanged = prev.memberIds.join(',') !== group.memberIds.join(',')
+      if (prev.chatMode !== group.chatMode || membersChanged || prev.currentSpeakerIndex !== group.currentSpeakerIndex) {
+        pushToast({
+          variant: 'warning',
+          title: '生成中，暂不可修改群模式与成员',
+          description: '请先停止生成，或等本轮完成后再修改。',
+          requestId: 'group-save-guard',
+        })
+        return
+      }
+    }
     await window.api.group.save(group)
     const groups = await window.api.group.list()
     set({ groupChats: groups, currentGroup: group })
   },
 
   deleteGroup: async (id) => {
-    clearPollingTimer()
-    cleanupActiveStream()
+    stopStreamForLifecycle(get, set)
     await window.api.group.delete(id)
     const groups = await window.api.group.list()
     set({ groupChats: groups, currentGroup: null, messages: [], sessions: [], currentSessionId: null })
   },
 
   selectGroup: async (groupId) => {
-    clearPollingTimer()
-    cleanupActiveStream()
+    stopStreamForLifecycle(get, set)
     const groups = await window.api.group.list()
     const group = groups.find(g => g.id === groupId) ?? null
     if (!group) return
@@ -162,8 +353,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   createSession: async (groupId) => {
-    clearPollingTimer()
-    cleanupActiveStream()
+    stopStreamForLifecycle(get, set)
     const session = await window.api.group.createSession(groupId)
     await applyDefaultGroupMemory(groupId, session.id)
     const sessions = await window.api.group.listSessions(groupId)
@@ -172,8 +362,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   switchSession: async (groupId, sessionId) => {
-    clearPollingTimer()
-    cleanupActiveStream()
+    stopStreamForLifecycle(get, set)
     // 会话切换：取消尚未完成的方向请求，避免结果写入其他会话的消息
     cancelDialogueDirectionRequests()
     set({ currentSessionId: sessionId, isStreaming: false, currentStreamingCharId: null })
@@ -182,8 +371,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   deleteSession: async (groupId, sessionId) => {
-    clearPollingTimer()
-    cleanupActiveStream()
+    stopStreamForLifecycle(get, set)
     await window.api.group.deleteSession(groupId, sessionId)
     const sessions = await window.api.group.listSessions(groupId)
     const newSid = sessions[0]?.id ?? null
@@ -270,9 +458,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   clearChat: async (groupId) => {
-    // 停止正在进行的流式生成和轮询
-    clearPollingTimer()
-    cleanupActiveStream()
+    // 停止正在进行的流式生成和轮询（S8：isStreaming 时保留半截并 cancel）
+    stopStreamForLifecycle(get, set)
     const { currentSessionId } = get()
     if (currentSessionId) {
       await window.api.group.clearChat(groupId, currentSessionId)
@@ -328,17 +515,31 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     if (msgIdx < 0) return
 
     const targetMsg = state.messages[msgIdx]
-    // 不能重新生成用户消息
-    if (targetMsg.characterId === '__user__' || targetMsg.characterId === '__free__') return
+    // D10 已拍板：用户消息仍不可重生
+    if (targetMsg.characterId === '__user__') return
+
+    // D10 已拍板：free 段消息放开重生，按「整轮 free 段」整段重生（识别依据见 resolveGroupFreeSegment）
+    const freeSegmentIds = resolveGroupFreeSegment(
+      state.messages.map((m) => ({ id: m.id, characterId: m.characterId, round: m.round })),
+      messageId,
+      currentGroup.chatMode,
+    )
+    if (freeSegmentIds) {
+      await regenerateFreeSegment(set, get as GroupStoreGet, currentGroup, currentSessionId, state.messages, freeSegmentIds)
+      return
+    }
+
     const charStore = useCharacterStore.getState()
     const speaker = charStore.characters.find(c => c.id === targetMsg.characterId)
     if (!speaker) return
 
-    // 删除旧 AI 回复
-    // 消息被删除：取消该消息在途的方向请求
+    // S13 群重生防丢：暂存原文，禁止先 deleteMessage 再 stream
+    const originalMsg = targetMsg
+    const baselineIds = new Set(state.messages.map((message) => message.id))
+
+    // 消息被替换：取消该消息在途的方向请求
     cancelDialogueDirectionRequests([messageId])
-    await window.api.group.deleteMessage(currentGroup.id, currentSessionId, messageId)
-    // 先从 UI 移除（无论上下文是否变化）
+    // 仅从 UI 隐藏（不落盘删除），成功后再删、失败则恢复
     set(s => ({
       messages: s.messages.filter(m => m.id !== messageId),
     }))
@@ -346,19 +547,46 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     // NEW-3 修复：await 期间用户可能已切换群聊/会话，校验后中止重新生成
     const fresh = get()
     if (fresh.currentGroup?.id !== currentGroup.id || fresh.currentSessionId !== currentSessionId) {
-      set({ error: '群聊已切换，未触发重新生成' })
+      set(s => {
+        const msgs = [...s.messages]
+        msgs.splice(Math.min(msgIdx, msgs.length), 0, originalMsg)
+        return { messages: msgs }
+      })
+      setGroupError(set, '群聊已切换，未触发重新生成')
       return
     }
 
-    // 重新生成
-    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, targetMsg.round, async () => {
-      // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
-      const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
-        ? await checkPollingContinue(set, get, currentGroup)
-        : false
-      if (!scheduled) maybeGenerateGroupDirections(set, get)
-      checkAutoMemory(get)
-    })
+    let settlement: Promise<boolean> | null = null
+    const settleOnce = (generationSucceeded: boolean, generatedMessages?: readonly GroupMessage[]) => {
+      settlement ??= settleRegenerationReplacement({
+        set,
+        get: get as GroupStoreGet,
+        group: currentGroup,
+        sessionId: currentSessionId,
+        baselineIds,
+        stashed: [originalMsg],
+        anchorIndex: msgIdx,
+        generationSucceeded,
+        generatedMessages,
+      })
+      return settlement
+    }
+
+    // 重新生成：终态落盘后再替换旧消息；失败/停止均恢复原文。
+    let started = false
+    try {
+      started = await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, targetMsg.round, async () => {
+        // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
+        const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
+          ? await checkPollingContinue(set, get, currentGroup)
+          : false
+        if (!scheduled) maybeGenerateGroupDirections(set, get)
+        checkAutoMemory(get)
+      }, undefined, { onTerminal: settleOnce })
+    } catch (e) {
+      logError('Group:regenerateMessage', e)
+    }
+    if (!started) await settleOnce(false)
   },
 
   translateMessage: async (messageId) => {
@@ -429,6 +657,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
           m.id === messageId ? { ...m, translation: null } : m
         ),
       }))
+      // UEX-P2-03：翻译失败不再静默清空，补可见提示
+      toastTranslateFailure(data.error || '未知错误')
     })
 
     // 超时保护：空闲超时自动清理（M-21 修复：收到 chunk 续期，长文本慢模型不再被一次性 60s 误杀）
@@ -446,6 +676,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
             m.id === messageId ? { ...m, translation: null } : m
           ),
         }))
+        // UEX-P2-03：翻译超时不再静默清空，补可见提示
+        toastTranslateFailure('翻译请求超时，请重试')
       }, STREAM_IDLE_TIMEOUT_MS)
     }
     armTranslateTimeout()
@@ -479,7 +711,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       observability: { source: 'aux', taskType: 'translation' },
       adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
       reasoningGate: translationPlan.reasoningGate,
-    }).catch(() => {
+    }).catch((e) => {
       clearTranslateTimeout()
       unbindChunk(); unbindDone(); unbindError()
       set((s) => ({
@@ -487,6 +719,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
           m.id === messageId ? { ...m, translation: null } : m
         ),
       }))
+      // UEX-P2-03：翻译请求失败不再静默清空，补可见提示
+      toastTranslateFailure(e instanceof Error ? e.message : String(e))
     })
   },
 
@@ -558,14 +792,14 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     }
 
     if (state.isStreaming) {
-      set({ error: '正在生成回复中，请稍候或点击停止' })
+      setGroupError(set, '正在生成回复中，请稍候或点击停止')
       return
     }
 
     const settingsStore = useSettingsStore.getState()
     const profile = settingsStore.getActiveProfile()
     if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
-      set({ error: '请先在设置中配置 API 连接' })
+      setGroupError(set, '请先在设置中配置 API 连接')
       return
     }
 
@@ -586,10 +820,12 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
     // BUG-08：await 期间群聊可能已切换，中止发送
     if (!isContextValid()) {
-      set({ error: '群聊已切换，消息未发送' })
+      setGroupError(set, '群聊已切换，消息未发送')
       return
     }
     // 检测 @提及的角色 ID（从群成员名中匹配；shared/chat-core/groupScheduling.ts 跨端一致）
+    // D3 已拍板：正文 @ 不决定发言人——只做气泡高亮（mentionedCharacterIds），
+    // 发言计划仍只吃 UI 的 targetCharId/mentionOverrideId（见下方 resolveGroupSpeakerPlan）。
     const charStore = useCharacterStore.getState()
     const mentionedCharacterIds = detectMentionedMembers(
       content,
@@ -622,7 +858,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     // （已保存的用户消息仍保留在发起时的群聊数据中，切回后可见，不丢数据）
     if (!isContextValid()) {
       set((s) => ({ messages: s.messages.filter((m) => m.id !== userMsg.id) }))
-      set({ error: '群聊已切换，未触发 AI 回复' })
+      setGroupError(set, '群聊已切换，未触发 AI 回复')
       return
     }
 
@@ -649,7 +885,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     })
 
     if (plan.kind === 'error') {
-      set({ error: plan.reason === 'no_speaker' ? '未指定发言角色' : '发言角色不存在' })
+      setGroupError(set, plan.reason === 'no_speaker' ? '未指定发言角色' : '发言角色不存在')
       markUserMsgSent(userMsg.id)
       return
     }
@@ -658,7 +894,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       // mention/polling: 单个角色回复
       const speaker = charStore.characters.find(c => c.id === plan.speakerId)
       if (!speaker) {
-        set({ error: '发言角色不存在' })
+        setGroupError(set, '发言角色不存在')
         markUserMsgSent(userMsg.id)
         return
       }
@@ -666,24 +902,39 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       // H-11 修复：进入流式前同步置位 isStreaming——否则置位要等 streamGroupAI 内部
       // 多次 await（含语义检索网络往返）之后，窗口期再次回车会并发第二个流
       // （覆盖模块级 activeStream，首流占位消息永久残留）。
+      // S11：early-return 时 try/finally 复位 isStreaming，避免输入区卡死
       set({ isStreaming: true })
-      await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, userMsg.round, async () => {
-        // AI 回复完成后，更新用户消息状态
-        markUserMsgSent(userMsg.id)
-        // onComplete: polling 模式下自动下一轮；未排定下一轮即已轮到用户
-        // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
-        const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
-          ? await checkPollingContinue(set, get, currentGroup)
-          : false
-        if (!scheduled) maybeGenerateGroupDirections(set, get)
-        // 自动记忆检查
-        checkAutoMemory(get)
-      })
+      try {
+        await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, userMsg.round, async () => {
+          // AI 回复完成后，更新用户消息状态
+          markUserMsgSent(userMsg.id)
+          // onComplete: polling 模式下自动下一轮；未排定下一轮即已轮到用户
+          // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
+          const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
+            ? await checkPollingContinue(set, get, currentGroup)
+            : false
+          if (!scheduled) maybeGenerateGroupDirections(set, get)
+          // 自动记忆检查
+          checkAutoMemory(get)
+        })
+      } finally {
+        // S11：未挂上 activeStream 时兜底复位（内部 failEarly 已复位 early-return）
+        if (!getActiveStream() && get().isStreaming) {
+          set({ isStreaming: false, currentStreamingCharId: null })
+        }
+      }
     } else {
       // free 模式：AI 一次返回多角色回复
       // H-11 修复：同 mention/polling，进入流式前同步置位 isStreaming 防双流并发
+      // S11：early-return 时 try/finally 复位 isStreaming
       set({ isStreaming: true })
-      await streamGroupAIFree(set, get, currentGroup, currentSessionId, userMsg.round)
+      try {
+        await streamGroupAIFree(set, get, currentGroup, currentSessionId, userMsg.round)
+      } finally {
+        if (!getActiveStream() && get().isStreaming) {
+          set({ isStreaming: false, currentStreamingCharId: null })
+        }
+      }
       markUserMsgSent(userMsg.id)
       // free 模式一次返回多角色回复，完成后即轮到用户
       maybeGenerateGroupDirections(set, get)
@@ -706,30 +957,38 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
 
     const currentRound = nextGroupRound(state.messages.map((m) => m.round))
 
-    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, async () => {
-      // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
-      const scheduled = await checkPollingContinue(set, get, currentGroup)
-      if (!scheduled) maybeGenerateGroupDirections(set, get)
-      checkAutoMemory(get)
-    })
+    // S11：与 sendMessage 一致——先置位 isStreaming，early-return 由 try/finally 复位
+    set({ isStreaming: true, currentStreamingCharId: charId })
+    try {
+      await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, async () => {
+        // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
+        const scheduled = await checkPollingContinue(set, get, currentGroup)
+        if (!scheduled) maybeGenerateGroupDirections(set, get)
+        checkAutoMemory(get)
+      })
+    } finally {
+      if (!getActiveStream() && get().isStreaming) {
+        set({ isStreaming: false, currentStreamingCharId: null })
+      }
+    }
   },
 
   triggerCharacterReply: async (charId) => {
     const state = get()
     const { currentGroup, currentSessionId } = state
     if (!currentGroup || !currentSessionId) {
-      set({ error: '请先选择一个群聊会话' })
+      setGroupError(set, '请先选择一个群聊会话')
       return
     }
     if (state.isStreaming) return
     if (!currentGroup.memberIds.includes(charId)) {
-      set({ error: '该角色不在当前群聊中' })
+      setGroupError(set, '该角色不在当前群聊中')
       return
     }
 
     const speaker = useCharacterStore.getState().characters.find((character) => character.id === charId)
     if (!speaker) {
-      set({ error: '未找到要接话的角色' })
+      setGroupError(set, '未找到要接话的角色')
       return
     }
 
@@ -781,6 +1040,13 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const msgId = claimed?.msgId ?? ''
     const accumulated = claimed?.accumulated ?? ''
 
+    // 重生成停止不是“保留半截新回复”，而是撤回本次生成并恢复旧消息。
+    if (claimed?.regenerationObserver) {
+      set({ isStreaming: false, currentStreamingCharId: null })
+      void claimed.regenerationObserver.onTerminal(false)
+      return
+    }
+
     const { currentGroup, currentSessionId, messages } = get()
     // S2：保留用户看到的内容，停止提示走 generationNotice（不拼进正文）
     const clean = preserveGroupReplyContent(accumulated)
@@ -791,6 +1057,24 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       const existing = messages.find(m => m.id === msgId)
       if (!existing) {
         set({ isStreaming: false, currentStreamingCharId: null })
+        return
+      }
+      // S7：free 半截正文禁止挂 __free__ 落盘——走 splitAndSaveMessages 或回落首成员
+      if (existing.characterId === '__free__') {
+        set({ isStreaming: false, currentStreamingCharId: null })
+        void persistPartialGroupReply({
+          set,
+          get: get as GroupStoreGet,
+          group: currentGroup,
+          sessionId: currentSessionId,
+          msgId,
+          content: clean,
+          round: existing.round,
+          characterId: existing.characterId,
+          isFree: true,
+          narrativeMode: existing.narrativeMode ?? resolveNarrativeMode(undefined),
+          noticeFields: { generationNotice: '已停止生成' },
+        })
         return
       }
       // 有部分内容，持久化并保留
@@ -856,6 +1140,15 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     })
   },
 }))
+
+/**
+ * UEX-P1-12：「停剩余」语义化别名——停止后续成员接力，保留已生成内容。
+ * 与 stopStreaming 完全同义（clearPollingTimer 已连带取消后续接力、半截正文按原语义落盘），
+ * 仅为群调度条提供语义入口；不改动群聊收尾管线（abandonActiveStream/persistPartialGroupReply/splitAndSaveMessages）。
+ */
+export function stopRemainingSpeakers(): void {
+  useGroupChatStore.getState().stopStreaming()
+}
 
 /**
  * 群聊世界书超限压缩（阶段三）：异步 AI 压缩被丢弃条目并写入会话缓存（内存 + 持久化）。

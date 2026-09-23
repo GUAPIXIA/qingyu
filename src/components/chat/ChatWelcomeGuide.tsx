@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, Settings as SettingsIcon } from 'lucide-react'
+import { MessageSquare, Plug } from 'lucide-react'
 
 /** 首次使用引导（从 ChatPage 拆出）：未配置 AI 连接时的欢迎页与三步指引 */
 export function ChatWelcomeGuide() {
@@ -37,8 +37,9 @@ export function ChatWelcomeGuide() {
             </div>
           </div>
         </div>
-        <button className="btn-primary w-full" onClick={() => navigate('/settings')}>
-          <SettingsIcon className="w-4 h-4" />
+        {/* UEX-P0-13：首次配置直达「模型」页（/api），不再绕行设置页停在「软件更新」 */}
+        <button className="btn-primary w-full" onClick={() => navigate('/api')}>
+          <Plug className="w-4 h-4" />
           开始配置
         </button>
       </div>

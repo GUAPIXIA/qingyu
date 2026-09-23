@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent, waitFor } from '@testing-library/react'
+import { render, fireEvent, waitFor, act } from '@testing-library/react'
 import { MessageBubble } from '../MessageBubble'
 import { useChatStore } from '../../../store/useChatStore'
 import { useSettingsStore } from '../../../store/useSettingsStore'
 import { usePersonaStore } from '../../../store/usePersonaStore'
+import { useToastStore } from '../../../store/useToastStore'
 import { getDefaultSettings } from '../../../../shared/defaults'
 import type { Message, Character } from '../../../../shared/types'
 
@@ -69,6 +70,7 @@ describe('MessageBubble', () => {
   beforeEach(() => {
     setupStores()
     vi.clearAllMocks()
+    useToastStore.setState({ toasts: [] })
     // clipboard mock
     Object.assign(navigator, {
       clipboard: {
@@ -330,6 +332,72 @@ describe('MessageBubble', () => {
     })
   })
 
+  describe('重新生图（UEX-P2-01 失败不再静默）', () => {
+    it('生图失败弹错误 toast 并带原因', async () => {
+      vi.mocked(window.api.imageGen.generate).mockResolvedValueOnce({ success: false, error: 'rate limited' })
+      const msg = createMessage({ role: 'system', content: 'a cat', images: ['data:image/png;base64,AAAA'] })
+      const { getByTitle } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+
+      await act(async () => { fireEvent.click(getByTitle('重新生图')) })
+
+      await waitFor(() => {
+        const toast = useToastStore.getState().toasts.find((t) => t.title === '重新生图失败')
+        expect(toast?.variant).toBe('error')
+        expect(toast?.description).toContain('rate limited')
+      })
+    })
+
+    it('IPC 异常弹错误 toast 而非吞掉', async () => {
+      vi.mocked(window.api.imageGen.generate).mockRejectedValueOnce(new Error('timeout'))
+      const msg = createMessage({ role: 'system', content: 'a cat', images: ['data:image/png;base64,AAAA'] })
+      const { getByTitle } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+
+      await act(async () => { fireEvent.click(getByTitle('重新生图')) })
+
+      await waitFor(() => {
+        const toast = useToastStore.getState().toasts.find((t) => t.title === '重新生图失败')
+        expect(toast?.description).toContain('timeout')
+      })
+    })
+
+    it('未返回图片时提示失败', async () => {
+      vi.mocked(window.api.imageGen.generate).mockResolvedValueOnce({ success: true, images: [] })
+      const msg = createMessage({ role: 'system', content: 'a cat', images: ['data:image/png;base64,AAAA'] })
+      const { getByTitle } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+
+      await act(async () => { fireEvent.click(getByTitle('重新生图')) })
+
+      await waitFor(() => {
+        const toast = useToastStore.getState().toasts.find((t) => t.title === '重新生图失败')
+        expect(toast?.description).toContain('未返回图片')
+      })
+    })
+
+    it('成功时替换图片并轻提示已重新生成', async () => {
+      // updateMessageImages 需在挂载前注入（组件订阅 store 快照）
+      const updateMessageImages = vi.fn().mockResolvedValue(undefined)
+      useChatStore.setState({ updateMessageImages } as any)
+      vi.mocked(window.api.imageGen.generate).mockResolvedValueOnce({ success: true, images: ['data:image/png;base64,NEW'] })
+      const msg = createMessage({ role: 'system', content: 'a cat', images: ['data:image/png;base64,AAAA'] })
+      const { getByTitle } = render(
+        <MessageBubble message={msg} character={createCharacter()} isLast={false} />
+      )
+
+      await act(async () => { fireEvent.click(getByTitle('重新生图')) })
+
+      await waitFor(() => {
+        expect(updateMessageImages).toHaveBeenCalledWith('msg-1', ['data:image/png;base64,NEW'])
+      })
+      expect(useToastStore.getState().toasts.some((t) => t.title === '已重新生成' && t.variant === 'success')).toBe(true)
+    })
+  })
+
   describe('操作栏', () => {
     it('编辑按钮打开编辑态', () => {
       const { getByTitle, getByText } = render(
@@ -404,14 +472,18 @@ describe('MessageBubble', () => {
       })
     })
 
-    it('删除按钮调用 store.deleteMessage', () => {
+    it('删除按钮经确认后调用 store.deleteMessage', async () => {
       const deleteMessage = vi.fn().mockResolvedValue(undefined)
       useChatStore.setState({ deleteMessage } as any)
-      const { getByTitle } = render(
+      const { getByTitle, getByText } = render(
         <MessageBubble message={createMessage()} character={createCharacter()} isLast={false} />
       )
       fireEvent.click(getByTitle('删除'))
-      expect(deleteMessage).toHaveBeenCalledWith('msg-1', expect.anything())
+      expect(deleteMessage).not.toHaveBeenCalled()
+      fireEvent.click(getByText('删除'))
+      await waitFor(() => {
+        expect(deleteMessage).toHaveBeenCalledWith('msg-1', expect.anything())
+      })
     })
 
     it('新建分支沿用原会话名称，不再截取消息正文', async () => {

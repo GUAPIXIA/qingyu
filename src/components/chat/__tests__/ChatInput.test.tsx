@@ -6,6 +6,13 @@ import { useSettingsStore } from '../../../store/useSettingsStore'
 import { useCharacterStore } from '../../../store/useCharacterStore'
 import { getDefaultSettings } from '../../../../shared/defaults'
 import type { Character, Message, ConnectionProfile } from '../../../../shared/types'
+import { useToastStore } from '../../../store/useToastStore'
+
+function lastToastText(): string {
+  const toasts = useToastStore.getState().toasts
+  const t = toasts[toasts.length - 1]
+  return t ? `${t.title} ${t.description ?? ''}` : ''
+}
 
 
 /** 渲染并冲刷 mount 异步（quickReply 等 promise resolve 的 setState），避免 act 警告 */
@@ -131,7 +138,7 @@ describe('ChatInput', () => {
     it('未连接时显示配置提示', async () => {
       setupStores(false)
       const { getByPlaceholderText } = await renderChatInput(<ChatInput character={createCharacter()} />)
-      expect(getByPlaceholderText(/请先在设置中配置 API 连接/)).toBeTruthy()
+      expect(getByPlaceholderText(/请先在「模型 → 对话 API」配置 API 连接/)).toBeTruthy()
     })
 
     it('disabled 时禁用输入框', async () => {
@@ -341,7 +348,7 @@ describe('ChatInput', () => {
       useChatStore.setState({
         sessions: [{ id: 's1', characterId: 'char-1', narrativeMode: 'omniscient' } as never],
       })
-      const { getByTitle, findByText } = await renderChatInput(<ChatInput character={createCharacter()} />)
+      const { getByTitle } = await renderChatInput(<ChatInput character={createCharacter()} />)
 
       fireEvent.click(getByTitle('AI 根据上下文续写输入文字'))
       await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalled())
@@ -358,7 +365,9 @@ describe('ChatInput', () => {
       })
 
       // 模型只返回思考内容、没有正文时归因为“没有返回正文”
-      expect(await findByText(/没有返回正文|未返回有效的中文正文/)).toBeTruthy()
+      await waitFor(() => {
+        expect(lastToastText()).toMatch(/没有返回正文|未返回有效的中文正文/)
+      })
     })
 
     it('代入模式连续输出角色视角内容时不回填输入框', async () => {
@@ -366,7 +375,7 @@ describe('ChatInput', () => {
       useChatStore.setState({
         sessions: [{ id: 's1', characterId: 'char-1', narrativeMode: 'immersive' } as never],
       })
-      const { getByTitle, getByPlaceholderText, findByText } = await renderChatInput(
+      const { getByTitle, getByPlaceholderText } = await renderChatInput(
         <ChatInput character={createCharacter()} />,
       )
 
@@ -386,7 +395,9 @@ describe('ChatInput', () => {
         handlers.done?.(retryParams!.requestId)
       })
 
-      expect(await findByText('续写未返回有效的中文正文，请重试或更换模型')).toBeTruthy()
+      await waitFor(() => {
+        expect(lastToastText()).toContain('续写未返回有效的中文正文，请重试或更换模型')
+      })
       // 输入框恢复原状，不回填角色台词
       expect((getByPlaceholderText(/输入消息/) as HTMLTextAreaElement).value).toBe('')
     })

@@ -1,24 +1,60 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ChatPage, ImageGenerationPlaceholder } from '../ChatPage'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
+import {
+  chatScrollKey,
+  clearScrollMemory,
+  loadScrollMemory,
+  saveScrollMemory,
+} from '../../utils/scrollMemory'
 import { getDefaultSettings } from '../../../shared/defaults'
-import type { Character, ConnectionProfile } from '../../../shared/types'
+import type { Character, ConnectionProfile, Message } from '../../../shared/types'
 
 // jsdom 无布局测量，Virtuoso 虚拟列表不会渲染 itemContent；mock 为普通列表
+// UEX-P2-12：mock 附带假滚动容器（可读写 scrollTop、固定 scrollHeight/clientHeight），
+// 并透出每次渲染的 props（含 initialTopMostItemIndex / rangeChanged），供滚动记忆用例驱动
+const virtuosoMock = vi.hoisted(() => ({
+  renders: [] as Array<Record<string, any>>,
+}))
+
 vi.mock('react-virtuoso', () => {
   const Virtuoso = (props: {
     data: unknown[]
     itemContent: (i: number, item: unknown) => React.ReactNode
     components?: { Footer?: React.ComponentType }
+    scrollerRef?: (el: unknown) => void
   }, _ref: React.ForwardedRef<HTMLDivElement>) => {
+    virtuosoMock.renders.push(props as Record<string, any>)
     const Footer = props.components?.Footer
-    return <div>{props.data.map((item, i) => props.itemContent(i, item))}{Footer ? <Footer /> : null}</div>
+    const scrollerElRef = React.useRef<HTMLDivElement>(null)
+    React.useEffect(() => {
+      const el = scrollerElRef.current
+      if (!el) return
+      // UEX-P2-12：jsdom 无布局——伪造滚动容器度量（可滚动 2400px），使记录/恢复/钳制可断言
+      let scrollTopValue = 0
+      Object.defineProperty(el, 'scrollTop', {
+        configurable: true,
+        get: () => scrollTopValue,
+        set: (v: number) => { scrollTopValue = v },
+      })
+      Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 3000 })
+      Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 600 })
+      props.scrollerRef?.(el)
+      return () => props.scrollerRef?.(null)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+    return (
+      <div ref={scrollerElRef} data-testid="virtuoso-mock-scroller">
+        {props.data.map((item, i) => props.itemContent(i, item))}
+        {Footer ? <Footer /> : null}
+      </div>
+    )
   }
   return { Virtuoso: React.forwardRef(Virtuoso) }
 })
@@ -61,6 +97,7 @@ function setupStores(connected: boolean, character: Character | null) {
     currentSessionId: null,
     isStreaming: false,
     error: null,
+    messagesLoading: false,
     activePresetId: null,
     activeLorebookIds: [],
     translatingMessages: {},
@@ -82,6 +119,7 @@ describe('ChatPage 冒烟测试', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    clearScrollMemory()
     // 会话/消息 IPC mock
     ;(window.api.chat as any).listSessions = vi.fn().mockResolvedValue([])
     ;(window.api.chat as any).listMessages = vi.fn().mockResolvedValue([])
@@ -102,7 +140,7 @@ describe('ChatPage 冒烟测试', () => {
   it('未配置连接但已选择角色时仍可进入聊天界面', async () => {
     setupStores(false, makeCharacter())
     const { findByPlaceholderText, queryByText } = renderPage()
-    expect(await findByPlaceholderText(/请先在设置中配置 API 连接/)).toBeTruthy()
+    expect(await findByPlaceholderText(/请先在「模型 → 对话 API」配置 API 连接/)).toBeTruthy()
     expect(queryByText('欢迎使用轻语')).toBeNull()
   })
 
@@ -123,6 +161,18 @@ describe('ChatPage 冒烟测试', () => {
     setupStores(true, makeCharacter())
     const { findByText } = renderPage()
     expect(await findByText('开始新的对话')).toBeTruthy()
+  })
+
+  it('UEX-P1-34：加载中渲染加载态，不闪现「开始新的对话」假空态', async () => {
+    setupStores(true, makeCharacter())
+    ;(window.api.chat as any).listSessions = vi.fn().mockResolvedValue([
+      { id: 's1', characterId: 'char-1', title: 't', createdAt: 0, updatedAt: 0 },
+    ])
+    // 挂起消息加载：停留在「清空 → 加载」空窗期
+    vi.mocked(window.api.chat.listMessages).mockImplementationOnce(() => new Promise(() => {}))
+    const { findByText, queryByText } = renderPage()
+    expect(await findByText('正在加载对话…')).toBeTruthy()
+    expect(queryByText('开始新的对话')).toBeNull()
   })
 
   it('有消息时渲染消息气泡', async () => {
@@ -203,5 +253,98 @@ describe('ChatPage 冒烟测试', () => {
     const background = container.querySelector('img[draggable="false"]') as HTMLImageElement
     expect(background).toBeTruthy()
     expect(background.src).toContain('tavern://character/char-1/cover')
+  })
+})
+
+describe('ChatPage 滚动记忆（UEX-P2-12）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    clearScrollMemory()
+    ;(window.api as any).settings.get = vi.fn().mockResolvedValue(getDefaultSettings())
+    // quickReply（ChatInput 挂载时拉取）
+    ;(window.api as any).quickReply = {
+      listAll: vi.fn().mockResolvedValue({ global: [], byCharacter: {} }),
+    }
+  })
+
+  function makeMessages(sessionId: string, count: number): Message[] {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `${sessionId}-m${i}`,
+      sessionId,
+      characterId: 'char-1',
+      role: 'assistant' as const,
+      content: `${sessionId} 的消息 ${i}`,
+      images: [],
+      isEditing: false,
+      timestamp: i,
+    }))
+  }
+
+  /** 两个会话的 IPC mock：s1 有消息，s2 空 */
+  function mockTwoSessions(messagesBySession: Record<string, Message[]>) {
+    ;(window.api.chat as any).listSessions = vi.fn().mockResolvedValue([
+      { id: 's1', characterId: 'char-1', title: 's1', createdAt: 0, updatedAt: 0 },
+      { id: 's2', characterId: 'char-1', title: 's2', createdAt: 0, updatedAt: 0 },
+    ])
+    ;(window.api.chat as any).listMessages = vi
+      .fn()
+      .mockImplementation(async (_characterId: string, sessionId: string) => messagesBySession[sessionId] ?? [])
+  }
+
+  type FakeScroller = HTMLElement & { scrollTop: number }
+
+  it('UEX-P2-12：切走再回来恢复滚动位置（顶位索引 + scrollTop）', async () => {
+    setupStores(true, makeCharacter())
+    const s1Messages = makeMessages('s1', 6)
+    mockTwoSessions({ s1: s1Messages, s2: [] })
+    renderPage()
+    // 等挂载加载链（loadSessions → loadMessages）完成
+    await waitFor(() => expect(useChatStore.getState().messages).toHaveLength(6))
+
+    // 模拟用户滚动：顶位索引 2、scrollTop 420
+    const scroller = screen.getByTestId('virtuoso-mock-scroller') as FakeScroller
+    const props = virtuosoMock.renders[virtuosoMock.renders.length - 1]
+    props.rangeChanged?.({ startIndex: 2, endIndex: 5 })
+    scroller.scrollTop = 420
+    fireEvent.scroll(scroller)
+
+    // 切走（切到 s2）：滚动位置应已按会话粒度记录
+    const character = makeCharacter()
+    await act(async () => {
+      await useChatStore.getState().switchSession('s2', character)
+    })
+    expect(loadScrollMemory(chatScrollKey('char-1', 's1'))).toMatchObject({ topIndex: 2, scrollTop: 420 })
+
+    // 回到 s1：顶位索引恢复 +（消息加载完成后）scrollTop 钳制写回
+    await act(async () => {
+      await useChatStore.getState().switchSession('s1', character)
+    })
+    await waitFor(() => expect(useChatStore.getState().messages).toHaveLength(6))
+    const restoredProps = virtuosoMock.renders[virtuosoMock.renders.length - 1]
+    expect(restoredProps.initialTopMostItemIndex).toEqual({ index: 2, align: 'start' })
+    await waitFor(() =>
+      expect((screen.getByTestId('virtuoso-mock-scroller') as FakeScroller).scrollTop).toBe(420),
+    )
+  })
+
+  it('UEX-P2-12：恢复位置超出最大滚动高度时钳制到合法值', async () => {
+    setupStores(true, makeCharacter())
+    mockTwoSessions({ s1: makeMessages('s1', 6) })
+    // 记录的 scrollTop 远超假滚动容器的最大滚动高度（3000 - 600 = 2400）
+    saveScrollMemory(chatScrollKey('char-1', 's1'), { topIndex: 1, scrollTop: 99999 })
+    renderPage()
+    await waitFor(() => expect(useChatStore.getState().messages).toHaveLength(6))
+    await waitFor(() =>
+      expect((screen.getByTestId('virtuoso-mock-scroller') as FakeScroller).scrollTop).toBe(2400),
+    )
+  })
+
+  it('UEX-P2-12：新会话（无记忆）保持现状——默认到底', async () => {
+    setupStores(true, makeCharacter())
+    mockTwoSessions({ s1: makeMessages('s1', 6) })
+    renderPage()
+    await waitFor(() => expect(useChatStore.getState().messages).toHaveLength(6))
+    const props = virtuosoMock.renders[virtuosoMock.renders.length - 1]
+    expect(props.initialTopMostItemIndex).toBe(999999)
   })
 })

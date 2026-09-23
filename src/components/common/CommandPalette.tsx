@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { useChatStore } from '../../store/useChatStore'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { pushToast } from '../../store/useToastStore'
 import { cn } from '../../lib/utils'
 import { listCommands } from '../../commands/registry'
 import { registerBuiltinCommands } from '../../commands/builtin'
@@ -67,9 +68,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   }, [open])
 
   // 延迟派发事件：等待目标页面挂载并注册监听（如 ChatPage 的 new-chat 监听）
-  const dispatchAfterNavigate = (path: string, eventName: string) => {
+  const dispatchAfterNavigate = (path: string, eventName: string, detail?: Record<string, unknown>) => {
     navigate(path)
-    setTimeout(() => window.dispatchEvent(new CustomEvent(eventName)), 60)
+    // M12：双 rAF 等待路由挂载，避免 60ms 竞态丢事件
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent(eventName, detail ? { detail } : undefined))
+      })
+    })
   }
 
   // 命令面板与聊天输入框共用同一份斜杠命令注册表，避免两套清单漂移。
@@ -81,10 +87,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     icon: Terminal,
     group: '指令',
     action: () => {
-      navigate('/chat')
-      setTimeout(() => window.dispatchEvent(new CustomEvent('shortcut:insert-command', {
-        detail: { value: cmd.usage },
-      })), 60)
+      // UEX-P1-36：斜杠命令与 M12 对齐双 rAF 派发，替换原 60ms setTimeout 竞态
+      dispatchAfterNavigate('/chat', 'shortcut:insert-command', { value: cmd.usage })
     },
   }))
 
@@ -161,6 +165,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const execute = (cmd: Command) => {
     onClose()
     cmd.action()
+    // UEX-P1-36：执行后低噪轻提示，命令不再零反馈
+    pushToast({ variant: 'info', title: `已执行：${cmd.label}`, durationMs: 2000, requestId: 'command-palette' })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

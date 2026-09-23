@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { pushToast } from '../../store/useToastStore'
+import { ConfirmDialog } from '../common/ConfirmDialog'
 import { PROVIDER_INFO } from '../../utils/defaults'
 import { cn } from '../../lib/utils'
 import type { VisionModelConfig, ProviderType } from '../../../shared/types'
@@ -63,14 +65,22 @@ export function VisionModelsSection() {
       setShowAdd(false)
     }
     resetForm()
+    // UEX-P1-24：保存成功就地反馈
+    pushToast({ variant: 'success', title: '识图模型已保存', description: form.name })
   }
 
+  const [deleteVisionId, setDeleteVisionId] = useState<string | null>(null)
   const handleDelete = (id: string) => {
-    deleteVisionModel(id)
-    if (editingId === id) {
+    setDeleteVisionId(id)
+  }
+  const confirmDeleteVision = () => {
+    if (!deleteVisionId) return
+    deleteVisionModel(deleteVisionId)
+    if (editingId === deleteVisionId) {
       setEditingId(null)
       resetForm()
     }
+    setDeleteVisionId(null)
   }
 
   const moveModel = (id: string, direction: 'up' | 'down') => {
@@ -418,6 +428,15 @@ export function VisionModelsSection() {
           )}
         </>
       )}
+      <ConfirmDialog
+        open={!!deleteVisionId}
+        onClose={() => setDeleteVisionId(null)}
+        onConfirm={confirmDeleteVision}
+        title="删除视觉模型"
+        message="确定删除该视觉模型吗？删除后看图/视觉理解能力将不可用。"
+        confirmText="删除"
+        danger
+      />
     </div>
   )
 }

@@ -11,9 +11,13 @@
  *
  * 语义钉子（历史行为，禁止"顺手修复"）：
  * - `currentSpeakerIndex % memberIds.length` 必须保持 JS 取模语义（负索引越界 → 无发言者）；
- * - polling 的 `maxRounds` 按「会话内不同 AI 轮次总数」计数，不是每条用户消息的接力上限；
- * - mention 模式的 `@名字` 是**子串**匹配（`@小A` 命中成员名 `小A`，`@小AB` 也会命中），
- *   与 UI 的 @ 选择器（不写入正文）是两条独立通道。
+ * - D2 已拍板：polling 的 `maxRounds` 是「每次接力（burst）的 AI 轮次上限」——自最近一条
+ *   用户消息以来的 AI 轮次数达到 `maxRounds` 即停止本段接力；新用户消息开启新段、计数重置
+ *   （不再是会话内 distinct AI 轮次总数）。
+ * - D3 已拍板：mention 模式的 `@名字` 改为**词边界**匹配（`@小A` 命中成员名 `小A`，但
+ *   `@小AB` 不命中 `小A`、`email@test.com` 不命中 `test`），与 UI 的 @ 选择器（不写入正文）
+ *   仍是两条独立通道；正文 @ 只做高亮（mentionedCharacterIds），**不决定发言人**。
+ * - D10 已拍板：free 整段重生按「整轮 free 段」识别（见 resolveGroupFreeSegment）。
  */
 
 /** 与 `shared/groupChatPrompt.ts` 的 GroupChatMode 同值；此处独立声明避免循环依赖。 */
@@ -29,6 +33,13 @@ export interface GroupScheduleMessageRef {
   round: number
 }
 
+/** D10 已拍板：free 整段识别用的消息引用（比 GroupScheduleMessageRef 多一个消息 id）。 */
+export interface GroupSegmentMessageRef {
+  id: string
+  characterId: string
+  round: number
+}
+
 /** 下一轮编号：`max(rounds, 0) + 1`（空会话为 1）。 */
 export function nextGroupRound(rounds: readonly number[]): number {
   let max = 0
@@ -39,8 +50,36 @@ export function nextGroupRound(rounds: readonly number[]): number {
 }
 
 /**
- * @提及检测：正文里出现 `@成员名` 子串的成员 id（按成员顺序）。
+ * D3 已拍板：正文 `@名字` 的词边界定义——「名字字符」= 中文/字母/数字/下划线。
+ * `@名字` 前后紧邻名字字符即视为更长名字/更长单词的一部分，不命中。
+ */
+const MENTION_NAME_CHAR_CLASS = '\\p{L}\\p{N}_'
+
+/** D3 已拍板：成员名按字面匹配，正则特殊字符先转义（如成员名 `A.B` 不得命中 `AXB`）。 */
+export function escapeGroupMemberName(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * D3 已拍板：`@名字` 词边界命中判定（大小写敏感，匹配原始输入）：
+ * - 词尾：`@名字` 之后不能再跟名字字符（`@小明` 不命中成员「小明明」，反之亦然）；
+ * - 词首：`@` 之前若是名字字符则不命中（`email@test.com` 不命中成员 `test`、中缀
+ *   `a@小明` 不命中成员「小明」）；`@` 前是非名字字符（含 `@@小明`）或位于串首即命中。
+ */
+export function matchGroupMentionToken(content: string, name: string): boolean {
+  if (!name) return false
+  const pattern = new RegExp(
+    `(?<![${MENTION_NAME_CHAR_CLASS}])@${escapeGroupMemberName(name)}(?![${MENTION_NAME_CHAR_CLASS}])`,
+    'u',
+  )
+  return pattern.test(content)
+}
+
+/**
+ * @提及检测：正文里出现 `@成员名` 词边界的成员 id（按成员顺序）。
  * 匹配的是**原始输入**（PC 在正则处理前采样），大小写敏感。
+ * D3 已拍板：正文 @ 不决定发言人——本结果只用于气泡高亮（mentionedCharacterIds），
+ * 发言计划仍只吃 UI 的 targetCharId/mentionOverrideId。
  */
 export function detectMentionedMembers(
   content: string,
@@ -48,7 +87,7 @@ export function detectMentionedMembers(
 ): string[] {
   const mentioned: string[] = []
   for (const member of members) {
-    if (content.includes('@' + member.name)) mentioned.push(member.id)
+    if (matchGroupMentionToken(content, member.name)) mentioned.push(member.id)
   }
   return mentioned
 }
@@ -99,8 +138,34 @@ export type GroupPollingContinuePlan =
   | { continue: false; reason: 'max_rounds' | 'no_last_speaker' | 'speaker_not_member' }
 
 /**
+ * D2 已拍板：「连续 N 轮」按**每次接力（burst）**计数——自最近一条用户消息（`__user__`，
+ * 无论用户手打还是系统/命令触发）以来的 AI 轮次数；新用户消息开启新段、计数从 0 起，
+ * 跨用户消息自动重置。
+ * 「轮」沿用既有定义：一个成员一轮发言 = 一个 distinct round；`__free__` 不算角色发言。
+ * 流式生成中途的半截轮次（占位消息已带 round）按 1 轮计。
+ */
+export function countGroupBurstRounds(messages: readonly GroupScheduleMessageRef[]): number {
+  let burstStart = 0
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].characterId === '__user__') {
+      burstStart = i + 1
+      break
+    }
+  }
+  const rounds = new Set<number>()
+  for (let i = burstStart; i < messages.length; i++) {
+    const m = messages[i]
+    if (m.characterId === '__user__' || m.characterId === '__free__') continue
+    rounds.add(m.round)
+  }
+  return rounds.size
+}
+
+/**
  * polling 自动接力的续排计划：
- * - 轮数按**会话内非用户消息的 distinct round 数**计（`__free__` 不算角色发言，`__narrator__` 算）；
+ * - D2 已拍板：轮数按**每次接力（burst）**计——自最近一条用户消息以来的 distinct AI 轮次数
+ *   （`__free__` 不算角色发言，`__narrator__` 算）；达到 `maxRounds` 停止本段接力，
+ *   新用户消息开启新段、计数重置（见 countGroupBurstRounds）；
  * - 下一发言者 = 最后一条角色消息的发言者在成员表中的下一位（循环）；
  * - 上限/无角色消息/发言者已不在成员表 → 停止，交还用户。
  */
@@ -112,9 +177,8 @@ export function planGroupPollingContinue(input: {
   const characterMessages = input.messages.filter(
     (m) => m.characterId !== '__user__' && m.characterId !== '__free__',
   )
-  const rounds = new Set<number>()
-  for (const m of characterMessages) rounds.add(m.round)
-  if (rounds.size >= input.maxRounds) return { continue: false, reason: 'max_rounds' }
+  // D2 已拍板：每次接力（burst）计数，不再是会话总轮次
+  if (countGroupBurstRounds(input.messages) >= input.maxRounds) return { continue: false, reason: 'max_rounds' }
 
   const lastCharMsg = characterMessages.length > 0 ? characterMessages[characterMessages.length - 1] : null
   if (!lastCharMsg) return { continue: false, reason: 'no_last_speaker' }
@@ -150,4 +214,37 @@ export function planAutoMemoryTrigger(input: {
     ? input.messageIds.length - cursorIndex - 1
     : input.messageIds.length
   return unsummarizedCount >= interval
+}
+
+/**
+ * D10 已拍板：free 整段（整轮）识别。
+ *
+ * 识别依据（读 `groupStreamController.ts` 的 `splitAndSaveMessages` 拆分结构确认）：
+ * 一次 free 生成拆分出的多条成员消息**共享同一 `round`、同批追加**，没有独立批次标记；
+ * 历史 `__free__` 占位消息（P0-07 前落盘）本身就是一段 free 生成。而 mention/polling 的
+ * 一轮至多一条角色消息（用户消息与其回复共享该 round，自动接力的轮各自独立 round）。
+ *
+ * 因此判定规则（命中其一即视为 free 整段）：
+ * - 目标消息是历史 `__free__` 占位 → 整段 = 同 round 的非用户消息（含自身）；
+ * - 同 round 的非用户消息 ≥ 2 条 → free 拆分段的充分特征，整段 = 这些消息；
+ * - 群当前为 free 模式 → 单条段（无标记回落首成员/单段拆分）同样按 free 整段处理。
+ *
+ * 返回整段消息 id（保持消息流顺序）；不属于 free 段返回 null（走单成员重生）。
+ * `__user__` 永不入段（用户消息不可重生）。
+ */
+export function resolveGroupFreeSegment(
+  messages: readonly GroupSegmentMessageRef[],
+  targetId: string,
+  chatMode: GroupChatMode | string,
+): string[] | null {
+  const target = messages.find((m) => m.id === targetId)
+  if (!target || target.characterId === '__user__') return null
+  const sameRound = messages.filter(
+    (m) => m.round === target.round && m.characterId !== '__user__',
+  )
+  const isLegacyFreeBody = target.characterId === '__free__'
+  const isSplitSegment = sameRound.length >= 2
+  const isFreeModeSingle = chatMode === 'free'
+  if (!isLegacyFreeBody && !isSplitSegment && !isFreeModeSingle) return null
+  return sameRound.map((m) => m.id)
 }

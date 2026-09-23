@@ -600,9 +600,9 @@ export function QuickSettingsPanel({
                   {group.autoMode && (
                     <div className="grid grid-cols-2 gap-2 border-t border-tavern-border-soft pt-2">
                       <label className="space-y-1 text-[10px] text-tavern-text-muted">
-                        <span>最大轮数</span>
+                        <span>每次接力上限</span>
                         <input
-                          aria-label="连续接力最大轮数"
+                          aria-label="每次接力最大轮数"
                           type="number"
                           min={1}
                           max={20}

@@ -2,9 +2,10 @@
  * LorebookPage 单元测试
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import type { LorebookIndexProgress } from '../../../shared/ipc-api'
 
 vi.mock('react-router-dom', () => ({
   useNavigate: vi.fn(() => vi.fn()),
@@ -22,6 +23,9 @@ vi.mock('../../lib/safeOps', () => ({
   safeSave: vi.fn(async (fn: () => Promise<void>) => await fn()),
 }))
 
+/** UEX-P1-28：捕获页面订阅的索引进度监听器（由 onIndexProgress mock 注入） */
+let indexProgressListener: ((progress: LorebookIndexProgress) => void) | null = null
+
 Object.defineProperty(window, 'api', {
   value: {
     lorebook: {
@@ -35,6 +39,11 @@ Object.defineProperty(window, 'api', {
     embedding: {
       indexStatus: vi.fn(async () => ({})),
       indexLorebook: vi.fn(async () => ({ ok: true })),
+      cancelIndex: vi.fn(async () => ({ ok: true })),
+      onIndexProgress: vi.fn((listener: (progress: LorebookIndexProgress) => void) => {
+        indexProgressListener = listener
+        return () => { indexProgressListener = null }
+      }),
     },
   },
 })
@@ -44,6 +53,7 @@ import { LorebookPage } from '../LorebookPage'
 describe('LorebookPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    indexProgressListener = null
     useSettingsStore.setState({ settings: getDefaultSettings() })
   })
 
@@ -174,6 +184,19 @@ describe('LorebookPage', () => {
     expect(dialog).not.toBeInTheDocument()
   })
 
+  it('UEX-P1-22：新建保存失败时移除乐观新建的世界书并给出错误提示', async () => {
+    vi.mocked(window.api.lorebook.save).mockRejectedValueOnce(new Error('磁盘写入失败'))
+    render(<LorebookPage />)
+    await waitFor(() => expect(window.api.lorebook.list).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: /^新建$/ }))
+
+    expect(await screen.findByRole('dialog', { name: '世界书保存失败' })).toBeInTheDocument()
+    expect(screen.getByText('磁盘写入失败')).toBeInTheDocument()
+    // 乐观新建项已从列表移除，回到空态
+    expect(screen.getByText('还没有世界书')).toBeInTheDocument()
+  })
+
   it('导入后展示 adapter 格式、置信度和兼容性摘要', async () => {
     vi.mocked(window.api.lorebook.importJsonDetailed).mockResolvedValueOnce({
       lorebook: {
@@ -198,5 +221,109 @@ describe('LorebookPage', () => {
     expect(screen.getByText(/SillyTavern World Info/)).toBeInTheDocument()
     expect(screen.getByText(/置信度 97%/)).toBeInTheDocument()
     expect(screen.getByText('已保留扩展字段')).toBeInTheDocument()
+  })
+
+  it('UEX-P1-28：索引进度显示 x/y、条目名与百分比，完成后收起并保留「已索引 N 个条目」', async () => {
+    vi.mocked(window.api.lorebook.list).mockResolvedValueOnce([{
+      id: 'progress-book',
+      name: '进度世界书',
+      description: '',
+      enabled: true,
+      scanDepth: 4,
+      entries: [
+        { id: 'e1', keywords: ['王城'], content: '王城设定', position: 'before_char', order: 100, probability: 100, enabled: true, matchMode: 'both' },
+        { id: 'e2', keywords: ['森林'], content: '森林设定', position: 'before_char', order: 100, probability: 100, enabled: true, matchMode: 'both' },
+        { id: 'e3', keywords: ['河流'], content: '河流设定', position: 'before_char', order: 100, probability: 100, enabled: true, matchMode: 'both' },
+      ],
+    }])
+    vi.mocked(window.api.embedding.indexStatus).mockResolvedValue({
+      'progress-book': { indexed: 3, model: 'bge-small-zh@1.2.3', updatedAt: 1, stale: 0 },
+    })
+    let resolveIndex!: (result: { ok: boolean; canceled?: boolean; total?: number; indexed?: number; failed?: number }) => void
+    vi.mocked(window.api.embedding.indexLorebook).mockImplementationOnce(() => new Promise((resolve) => { resolveIndex = resolve }))
+
+    render(<LorebookPage />)
+    const semanticGroup = await screen.findByRole('group', { name: '语义索引操作' })
+    fireEvent.click(within(semanticGroup).getByRole('button', { name: '生成语义索引' }))
+
+    // 逐条目进度：x/y + 条目名 + 百分比（进度条样式对齐角色批量导入）
+    act(() => { indexProgressListener?.({ lorebookId: 'progress-book', current: 1, total: 3, entryName: '王城' }) })
+    const progress = screen.getByRole('status', { name: '语义索引进度' })
+    expect(progress.textContent).toContain('索引中 1 / 3')
+    expect(within(progress).getByText('王城')).toBeInTheDocument()
+    expect(progress.textContent).toContain('33%')
+    const bar = progress.querySelector('[style*="width"]') as HTMLElement
+    expect(bar.style.width).toBe('33%')
+    expect(within(progress).getByRole('button', { name: '取消索引' })).toBeInTheDocument()
+
+    // 完成后进度区收起，保留「已索引 N 个条目」
+    await act(async () => { resolveIndex({ ok: true, canceled: false, total: 3, indexed: 3, failed: 0 }) })
+    expect(screen.queryByRole('status', { name: '语义索引进度' })).not.toBeInTheDocument()
+    expect(await screen.findByText('已索引 3 个条目')).toBeInTheDocument()
+  })
+
+  it('UEX-P1-28：取消后结果条「已取消：已索引 x/y」，手动关闭前不消失', async () => {
+    vi.mocked(window.api.lorebook.list).mockResolvedValueOnce([{
+      id: 'cancel-book',
+      name: '取消世界书',
+      description: '',
+      enabled: true,
+      scanDepth: 4,
+      entries: [
+        { id: 'e1', keywords: ['王城'], content: '王城设定', position: 'before_char', order: 100, probability: 100, enabled: true, matchMode: 'both' },
+        { id: 'e2', keywords: ['森林'], content: '森林设定', position: 'before_char', order: 100, probability: 100, enabled: true, matchMode: 'both' },
+        { id: 'e3', keywords: ['河流'], content: '河流设定', position: 'before_char', order: 100, probability: 100, enabled: true, matchMode: 'both' },
+      ],
+    }])
+    vi.mocked(window.api.embedding.indexLorebook).mockResolvedValueOnce({ ok: true, canceled: true, total: 3, indexed: 1 })
+
+    render(<LorebookPage />)
+    const semanticGroup = await screen.findByRole('group', { name: '语义索引操作' })
+    fireEvent.click(within(semanticGroup).getByRole('button', { name: '生成语义索引' }))
+
+    // 取消汇总（已完成条目已保留），手动关闭前不自动消失
+    expect(await screen.findByText('已取消：已索引 1/3')).toBeInTheDocument()
+    expect(screen.getByText('（已完成条目已保留）')).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(screen.getByText('已取消：已索引 1/3')).toBeInTheDocument()
+    fireEvent.click(screen.getByTitle('关闭'))
+    expect(screen.queryByText('已取消：已索引 1/3')).not.toBeInTheDocument()
+  })
+
+  it('UEX-P1-28：索引期间禁用全部入口（防重入），「取消索引」触发幂等取消', async () => {
+    vi.mocked(window.api.lorebook.list).mockResolvedValueOnce([{
+      id: 'guard-book',
+      name: '防重入世界书',
+      description: '',
+      enabled: true,
+      scanDepth: 4,
+      entries: [
+        { id: 'kw', keywords: ['王城'], content: '仅关键词', position: 'before_char', order: 100, probability: 100, enabled: true, matchMode: 'keyword' },
+      ],
+    }])
+    let resolveIndex!: (result: { ok: boolean; canceled?: boolean; total?: number; indexed?: number }) => void
+    vi.mocked(window.api.embedding.indexLorebook).mockImplementationOnce(() => new Promise((resolve) => { resolveIndex = resolve }))
+
+    render(<LorebookPage />)
+    const semanticGroup = await screen.findByRole('group', { name: '语义索引操作' })
+    const batchButton = within(semanticGroup).getByRole('button', { name: /批量启用语义/ })
+    expect(batchButton).not.toBeDisabled()
+
+    fireEvent.click(within(semanticGroup).getByRole('button', { name: '生成语义索引' }))
+    await waitFor(() => expect(window.api.embedding.indexLorebook).toHaveBeenCalledTimes(1))
+
+    // 防重入：单条索引入口（索引中…）与批量启用语义（含批量启用后的自动索引）全部禁用
+    const indexingButton = within(semanticGroup).getByRole('button', { name: /索引中/ })
+    expect(indexingButton).toBeDisabled()
+    expect(batchButton).toBeDisabled()
+    fireEvent.click(indexingButton)
+    expect(window.api.embedding.indexLorebook).toHaveBeenCalledTimes(1)
+
+    // 取消（主进程侧幂等）；点击后按钮进入「正在取消…」并禁用
+    fireEvent.click(screen.getByRole('button', { name: '取消索引' }))
+    await waitFor(() => expect(window.api.embedding.cancelIndex).toHaveBeenCalledWith('guard-book'))
+    expect(screen.getByRole('button', { name: '正在取消…' })).toBeDisabled()
+    await act(async () => { resolveIndex({ ok: true, canceled: true, total: 1, indexed: 0 }) })
+    expect(await screen.findByText('已取消：已索引 0/1')).toBeInTheDocument()
   })
 })

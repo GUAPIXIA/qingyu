@@ -106,7 +106,8 @@ const bridgeApi: BridgeAPI = {
   approvePair: (requestId) => ipcRenderer.invoke('bridge:approvePair', requestId),
   rejectPair: (requestId) => ipcRenderer.invoke('bridge:rejectPair', requestId),
   onPairRequest: (callback) => {
-    const handler = (_e: unknown, data: { requestId: string; deviceName: string }) => callback(data)
+    // UEX-P1-21：原样透传配对请求载荷（含可选 expiresAt，供渲染层过期倒计时）
+    const handler = (_e: unknown, data: Parameters<typeof callback>[0]) => callback(data)
     ipcRenderer.on('bridge:pairRequest', handler)
     return () => ipcRenderer.removeListener('bridge:pairRequest', handler)
   },
@@ -133,9 +134,12 @@ const characterApi: CharacterAPI = {  list: () => ipcRenderer.invoke('character:
   get: (id) => ipcRenderer.invoke('character:get', id),
   save: (character) => ipcRenderer.invoke('character:save', character),
   delete: (id) => ipcRenderer.invoke('character:delete', id),
-  importPng: () => ipcRenderer.invoke('character:importPng'),
-  importJson: () => ipcRenderer.invoke('character:importJson'),
-  importBatch: () => ipcRenderer.invoke('character:importBatch'),
+  // UEX-P1-17：conflict 为同名冲突策略（'copy' 默认另存副本 / 'overwrite' 显式覆盖）
+  importPng: (conflict) => ipcRenderer.invoke('character:importPng', conflict),
+  importJson: (conflict) => ipcRenderer.invoke('character:importJson', conflict),
+  importBatch: (conflict) => ipcRenderer.invoke('character:importBatch', conflict),
+  // UEX-P2-04：取消进行中的批量导入（幂等）
+  importBatchCancel: () => ipcRenderer.invoke('character:importBatchCancel'),
   bindLorebook: (characterId, lorebookId) => ipcRenderer.invoke('character:bindLorebook', characterId, lorebookId),
   exportPng: (id) => ipcRenderer.invoke('character:exportPng', id),
   exportJson: (id) => ipcRenderer.invoke('character:exportJson', id),
@@ -198,6 +202,14 @@ const lorebookApi: LorebookAPI = {
 const embeddingApi: EmbeddingAPI = {
   test: (config) => ipcRenderer.invoke('embedding:test', config),
   indexLorebook: (lorebookId, config) => ipcRenderer.invoke('embedding:indexLorebook', lorebookId, config),
+  // UEX-P1-28：取消进行中的索引（幂等；lorebookId 可选，用于只取消指定世界书）
+  cancelIndex: (lorebookId) => ipcRenderer.invoke('embedding:indexCancel', lorebookId),
+  // UEX-P1-28：订阅索引逐条目进度 { current, total, entryName? }
+  onIndexProgress: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof listener>[0]) => listener(payload)
+    ipcRenderer.on(IPC_EVENTS.lorebookIndexProgress, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.lorebookIndexProgress, handler)
+  },
   indexStatus: (lorebookIds, config) => ipcRenderer.invoke('embedding:indexStatus', lorebookIds, config),
   removeIndex: (lorebookId) => ipcRenderer.invoke('embedding:removeIndex', lorebookId),
   semanticSearch: (payload) => ipcRenderer.invoke('embedding:semanticSearch', payload),

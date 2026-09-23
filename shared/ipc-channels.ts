@@ -9,6 +9,8 @@ export const IPC_EVENTS = {
   aiError: 'ai:error',
   aiUsage: 'ai:usage',
   characterImportProgress: 'character:importProgress',
+  // UEX-P1-28：世界书语义索引逐条目进度
+  lorebookIndexProgress: 'embedding:indexProgress',
   // 阶段 0c：会话变更事件总线
   // session:changed 渲染层->主进程上报；session:updated 主进程广播（供桥接层转推 WS）
   sessionChanged: 'session:changed',

@@ -56,7 +56,7 @@ class ChatGroupSchedulingGoldenTest {
     }
 
     @Test
-    fun mentionDetectionMatchesPcSubstringSemantics() {
+    fun mentionDetectionMatchesPcWordBoundarySemantics() {
         val members = members()
         for (case in cases("mentionCases")) {
             val label = ChatCoreFixtures.str(case, "label") ?: "?"
@@ -68,7 +68,7 @@ class ChatGroupSchedulingGoldenTest {
                 content,
                 memberIds.mapNotNull { id -> members.find { it.id == id } },
             )
-            assertEquals("$label：@提及集合必须与 PC 相同（子串、大小写敏感、按成员顺序）", expected, actual)
+            assertEquals("$label：@提及集合必须与 PC 相同（D3 词边界、大小写敏感、按成员顺序）", expected, actual)
         }
     }
 

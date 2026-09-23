@@ -38,8 +38,30 @@ export function truncateEmbeddingInput(
   return inputKind === 'query' ? text.slice(-max) : text.slice(0, max)
 }
 
+/**
+ * UEX-P1-28：合并「请求超时」与「外部取消」两个信号。
+ * 外部 signal 触发时 fetch 真中断；老运行时无 AbortSignal.any 时手动转发兜底。
+ */
+function mergeAbortSignals(timeout: AbortSignal, signal: AbortSignal): AbortSignal {
+  const anyFn = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any
+  if (typeof anyFn === 'function') return anyFn.call(AbortSignal, [timeout, signal])
+  const merged = new AbortController()
+  const forward = (source: AbortSignal) => {
+    if (!merged.signal.aborted) merged.abort(source.reason)
+  }
+  timeout.addEventListener('abort', () => forward(timeout), { once: true })
+  signal.addEventListener('abort', () => forward(signal), { once: true })
+  return merged.signal
+}
+
+/** 请求信号：无外部取消时仅超时；有外部取消时与超时合并（任一触发即中断） */
+function requestSignal(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(TIMEOUT_MS)
+  return signal ? mergeAbortSignals(timeout, signal) : timeout
+}
+
 /** OpenAI 兼容 /embeddings 接口 */
-async function embedOpenAI(config: EmbeddingConfig, inputs: string[]): Promise<number[][]> {
+async function embedOpenAI(config: EmbeddingConfig, inputs: string[], signal?: AbortSignal): Promise<number[][]> {
   const url = `${config.baseUrl.replace(/\/$/, '')}/embeddings`
   const response = await fetch(url, {
     method: 'POST',
@@ -48,7 +70,7 @@ async function embedOpenAI(config: EmbeddingConfig, inputs: string[]): Promise<n
       ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
     },
     body: JSON.stringify({ model: config.model, input: inputs }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: requestSignal(signal),
   })
   if (!response.ok) {
     const errText = await response.text()
@@ -78,13 +100,13 @@ async function embedOpenAI(config: EmbeddingConfig, inputs: string[]): Promise<n
 }
 
 /** Ollama /api/embed 接口 */
-async function embedOllama(config: EmbeddingConfig, inputs: string[]): Promise<number[][]> {
+async function embedOllama(config: EmbeddingConfig, inputs: string[], signal?: AbortSignal): Promise<number[][]> {
   const url = `${config.baseUrl.replace(/\/$/, '')}/api/embed`
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: config.model, input: inputs }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: requestSignal(signal),
   })
   if (!response.ok) {
     const errText = await response.text()
@@ -100,11 +122,12 @@ async function embedOllama(config: EmbeddingConfig, inputs: string[]): Promise<n
   return embeddings
 }
 
-/** 批量嵌入文本（自动分批 + 截断，任一批失败即抛错） */
+/** 批量嵌入文本（自动分批 + 截断，任一批失败即抛错；UEX-P1-28：signal 取消时中断在途请求） */
 export async function embedTexts(
   config: EmbeddingConfig,
   texts: string[],
   inputKind: 'query' | 'passage' = 'passage',
+  signal?: AbortSignal,
 ): Promise<number[][]> {
   if (texts.length === 0) return []
   if (config.provider === 'local') throw new Error('local provider 必须通过本地模型 worker 调用')
@@ -113,7 +136,7 @@ export async function embedTexts(
   const embed = config.provider === 'ollama' ? embedOllama : embedOpenAI
   for (let i = 0; i < clean.length; i += BATCH_SIZE) {
     const batch = clean.slice(i, i + BATCH_SIZE)
-    const vectors = await embed(config, batch)
+    const vectors = await embed(config, batch, signal)
     results.push(...vectors)
   }
   // 兜底：结果缺失时补零向量（沿用批次已知维度，避免维度不一致导致下游点积错乱）

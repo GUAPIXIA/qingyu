@@ -16,6 +16,10 @@ export interface LorebookHealthIssue {
   bookId: string
   bookName: string
   entryId?: string
+  /** UEX-P2 补3：条目名（title），用于报告中定位条目；旧数据可缺失 */
+  entryName?: string
+  /** UEX-P2 补3：条目触发词（主/次关键词与别名），便于用户辨认条目 */
+  keywords?: string[]
   detail: string
 }
 

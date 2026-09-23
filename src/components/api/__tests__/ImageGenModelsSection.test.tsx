@@ -260,6 +260,24 @@ describe('ImageGenModelsSection', () => {
     expect(save.hasAttribute('disabled')).toBe(true)
   })
 
+  it('UEX-P1-25：换 provider 保留用户已填 Base URL', () => {
+    render(<ImageGenModelsSection />)
+    fireEvent.click(screen.getByRole('button', { name: '添加生图模型' }))
+    fireEvent.change(screen.getByDisplayValue('https://api.openai.com/v1'), {
+      target: { value: 'http://192.168.1.5:7860' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'SD WebUI (A1111)' }))
+    // 用户已填的地址不被新 provider 默认值冲掉
+    expect(screen.getByDisplayValue('http://192.168.1.5:7860')).toBeTruthy()
+  })
+
+  it('UEX-P1-25：Base URL 仍为旧 provider 默认值时换 provider 才替换为新默认值', () => {
+    render(<ImageGenModelsSection />)
+    fireEvent.click(screen.getByRole('button', { name: '添加生图模型' }))
+    fireEvent.click(screen.getByRole('button', { name: 'SD WebUI (A1111)' }))
+    expect(screen.getByDisplayValue('http://127.0.0.1:7860')).toBeTruthy()
+  })
+
   it('扫描到唯一的 ComfyUI 工作流时自动读取，无需切换下拉项', async () => {
     const api = window.api.imageGen as unknown as Record<string, ReturnType<typeof vi.fn>>
     api.listLocalComfyWorkflows.mockResolvedValue({

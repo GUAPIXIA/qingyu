@@ -7,7 +7,8 @@ import { cn } from '../lib/utils'
 import { UserCircle, Plus, Trash2, Pencil, Star, Search, Download, Upload } from 'lucide-react'
 import type { Persona } from '../../shared/types'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { usePersonaStore } from '../store/usePersonaStore'
+import { usePersonaStore, syncActivePersonaToSettings } from '../store/usePersonaStore'
+import { pushToast } from '../store/useToastStore'
 import { PersonaInjectionSection } from './personas/PersonaInjectionSection'
 import { GlobalNarrativeRulesSection } from './personas/GlobalNarrativeRulesSection'
 
@@ -16,16 +17,8 @@ export function PersonasPage() {
   const { personas, loadPersonas: storeLoadPersonas, savePersona, deletePersona: storeDeletePersona } = usePersonaStore()
   const [editing, setEditing] = useState<Persona | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [search, setSearch] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const showToast = (msg: string) => {
-    setToast(msg)
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    toastTimerRef.current = setTimeout(() => setToast(null), 3000)
-  }
 
   // 默认身份置顶显示
   const sortedPersonas = [...personas].sort((a, b) => {
@@ -49,7 +42,8 @@ export function PersonasPage() {
         updatedAt: Date.now(),
       }
       await savePersona(defaultPersona)
-      updateSettings({ activePersonaId: defaultPersona.id })
+      // 一致性：新默认身份即当前激活身份，快照经唯一入口写入
+      syncActivePersonaToSettings(defaultPersona)
     } else {
       // 如果没有激活的身份，激活第一个
       if (!settings.activePersonaId && list.length > 0) {
@@ -60,17 +54,13 @@ export function PersonasPage() {
 
   useEffect(() => {
     loadPersonasAndInit()
-    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 一致性（UEX-P1-30）：激活身份只经 syncActivePersonaToSettings 写 settings 快照，
+  // persona 存储为真源，禁止在此直接 updateSettings 双写
   const activatePersona = (p: Persona) => {
-    updateSettings({
-      activePersonaId: p.id,
-      userName: p.name,
-      userDescription: p.description,
-      userPersona: p.persona,
-    })
+    syncActivePersonaToSettings(p)
   }
 
   const handleNew = () => {
@@ -112,7 +102,8 @@ export function PersonasPage() {
       if (remaining.length > 0) {
         activatePersona(remaining[0])
       } else {
-        updateSettings({ activePersonaId: null, userName: '用户', userDescription: '', userPersona: '' })
+        // 一致性：无剩余身份时经唯一写入口复位快照（清空双写残留）
+        syncActivePersonaToSettings(null)
       }
     }
     // 如果删除的是默认身份，清除
@@ -126,9 +117,14 @@ export function PersonasPage() {
   const handleToggleDefault = (p: Persona) => {
     const isDefault = settings.defaultPersonaId === p.id
     updateSettings({ defaultPersonaId: isDefault ? null : p.id })
-    showToast(isDefault
-      ? `已取消「${p.name}」的默认身份`
-      : `已将「${p.name}」设为默认身份，新建对话将默认使用`)
+    // 一致性：操作反馈统一走全局 toast（成功 success）
+    pushToast({
+      variant: 'success',
+      title: isDefault
+        ? `已取消「${p.name}」的默认身份`
+        : `已将「${p.name}」设为默认身份，新建对话将默认使用`,
+      requestId: 'persona-default',
+    })
   }
 
   const filtered = search.trim()
@@ -139,7 +135,8 @@ export function PersonasPage() {
     const blob = new Blob([JSON.stringify(personas, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href = url; a.download = `personas-${Date.now()}.json`; a.click(); URL.revokeObjectURL(url)
-    showToast(`已导出 ${personas.length} 个身份`)
+    // 一致性：操作反馈统一走全局 toast（成功 success）
+    pushToast({ variant: 'success', title: `已导出 ${personas.length} 个身份`, requestId: 'persona-export' })
   }
   const handleImportClick = () => fileInputRef.current?.click()
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement> & { target: HTMLInputElement }) => {
@@ -147,14 +144,30 @@ export function PersonasPage() {
     try {
       const text = await file.text(); const data = JSON.parse(text)
       const list: Persona[] = Array.isArray(data) ? data : data.personas ?? []
-      let count = 0
+      // UEX-P2 补4：无名条目计入「跳过」；逐条导入失败不整段 abort，收集明细后统一汇报
+      let ok = 0
+      let skipped = 0
+      const failures: string[] = []
       for (const p of list) {
-        if (!p.name) continue
+        if (!p?.name) { skipped++; continue }
         const persona: Persona = { id: nanoid(), name: String(p.name), description: String(p.description ?? ''), persona: String(p.persona ?? ''), avatar: String(p.avatar ?? ''), createdAt: Date.now(), updatedAt: Date.now() }
-        await savePersona(persona); count++
+        try {
+          await savePersona(persona); ok++
+        } catch (err) {
+          failures.push(`${String(p.name)}（${(err as Error).message}）`)
+        }
       }
-      showToast(`已导入 ${count} 个身份`)
-    } catch (err) { showToast(`导入失败：${(err as Error).message}`) }
+      const detail = failures.length > 0 ? `：${failures.join('、')}` : ''
+      // 一致性：操作反馈统一走全局 toast（成功 success / 失败 error）
+      pushToast({
+        variant: failures.length > 0 ? 'error' : 'success',
+        title: `导入完成：成功 ${ok} / 跳过 ${skipped} / 失败 ${failures.length}${detail}`,
+        requestId: 'persona-import',
+      })
+    } catch (err) {
+      // 一致性：失败反馈统一走全局 toast（失败 error）
+      pushToast({ variant: 'error', title: `导入失败：${(err as Error).message}`, requestId: 'persona-import' })
+    }
     e.target.value = ''
   }
 
@@ -217,6 +230,9 @@ export function PersonasPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-tavern-text truncate">{p.name}</span>
+                        {settings.activePersonaId === p.id && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-tavern-accent/20 text-tavern-accent shrink-0">当前</span>
+                        )}
                         {settings.defaultPersonaId === p.id && (
                           <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-tavern-warning/15 text-tavern-warning shrink-0">
                             <Star className="w-3 h-3" />
@@ -340,13 +356,6 @@ export function PersonasPage() {
         confirmText="删除"
         danger
       />
-
-      {/* 操作反馈提示 */}
-      {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg bg-tavern-bg-soft border border-tavern-border shadow-xl text-sm text-tavern-text animate-in fade-in slide-in-from-top-2">
-          {toast}
-        </div>
-      )}
     </div>
   )
 }

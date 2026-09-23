@@ -109,7 +109,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
   const {
     text, setText, images, isAiProcessing, originalText, setOriginalText,
     commandSuggestions, selectedSuggestionIdx, setCommandSuggestions, imageMenuOpen, setImageMenuOpen,
-    notification, textareaRef, effectiveReplies, isConnected, isStreaming, stopStreaming,
+    textareaRef, effectiveReplies, isConnected, isStreaming, stopStreaming,
     runQuickReply, handleSend, handleKeyDown, handleImageSelect, removeImage,
     handleAiContinue, handleAiPolish, settings,
   } = useChatInputState(character, replyTo, onCancelReply)
@@ -364,12 +364,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
               </div>
             </div>
           )}
-          {/* 通知提示 */}
-          {notification && (
-            <div className="absolute bottom-full left-0 mb-2 px-3 py-1.5 rounded-lg bg-tavern-accent text-white text-xs shadow-lg z-50 animate-fade-in">
-              {notification}
-            </div>
-          )}
+          {/* 通知提示已迁移至全局 ToastHost（S1） */}
           <textarea
             ref={textareaRef as React.Ref<HTMLTextAreaElement>}
             autoFocus
@@ -383,7 +378,8 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
             onKeyDown={handleKeyDown}
             placeholder={
               !isConnected
-                ? '请先在设置中配置 API 连接...'
+                // UEX-P0-13：阻断文案与真实 IA 一致（「模型 → 对话 API」，对齐 useChatStore 口径）
+                ? '请先在「模型 → 对话 API」配置 API 连接...'
                 : isStreaming
                 ? '正在生成回复...'
                 : '输入消息，Enter 发送，Shift+Enter 换行'

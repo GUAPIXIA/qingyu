@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { pushToast } from '../../store/useToastStore'
+import { ConfirmDialog } from '../common/ConfirmDialog'
 import { cn } from '../../lib/utils'
 import type { TTSModelConfig } from '../../../shared/types'
 import {
@@ -91,6 +93,14 @@ export function TTSModelsSection() {
         } else {
           setTestResult({ success: false, message: '未找到已安装的语音，请检查 Windows 语音设置' })
         }
+      } else if (form.provider === 'edge') {
+        // Edge TTS：验证语音列表，勿走 OpenAI chat 探测
+        const voices = await window.api.tts.listVoices('edge')
+        if (voices.length > 0) {
+          setTestResult({ success: true, message: `Edge TTS 可用，${voices.length} 个语音` })
+        } else {
+          setTestResult({ success: false, message: 'Edge TTS 未返回语音列表' })
+        }
       } else {
         // OpenAI TTS: 复用对话 API 测试连接
         const result = await window.api.ai.testConnection({
@@ -122,14 +132,22 @@ export function TTSModelsSection() {
       setShowAdd(false)
     }
     resetForm()
+    // UEX-P1-24：保存成功就地反馈
+    pushToast({ variant: 'success', title: 'TTS 模型已保存', description: form.name })
   }
 
+  const [deleteTtsId, setDeleteTtsId] = useState<string | null>(null)
   const handleDelete = (id: string) => {
-    deleteTTSModel(id)
-    if (editingId === id) {
+    setDeleteTtsId(id)
+  }
+  const confirmDeleteTts = () => {
+    if (!deleteTtsId) return
+    deleteTTSModel(deleteTtsId)
+    if (editingId === deleteTtsId) {
       setEditingId(null)
       resetForm()
     }
+    setDeleteTtsId(null)
   }
 
   /** 试听：用当前表单配置合成并播放一句测试语音 */
@@ -521,6 +539,15 @@ export function TTSModelsSection() {
           )}
         </>
       )}
+      <ConfirmDialog
+        open={!!deleteTtsId}
+        onClose={() => setDeleteTtsId(null)}
+        onConfirm={confirmDeleteTts}
+        title="删除 TTS 模型"
+        message="确定删除该 TTS 模型吗？删除后朗读将不可用，已绑定的朗读配置会失效。"
+        confirmText="删除"
+        danger
+      />
     </div>
   )
 }

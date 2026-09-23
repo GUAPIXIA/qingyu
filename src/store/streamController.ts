@@ -36,6 +36,7 @@ import { lorebookCache } from '../utils/lorebook'
 import type { BudgetLoreItem } from '../utils/lorebook'
 import { logError, logInfo, logWarn } from '../lib/logger'
 import { safeFire } from '../lib/safeOps'
+import { pushToast } from './useToastStore'
 import {
   STREAM_THROTTLE_MS,
   STREAM_IDLE_TIMEOUT_MS,
@@ -755,6 +756,8 @@ export async function streamAIResponse(
   const profile = settingsStore.getActiveProfile()
   if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
     set({ isStreaming: false, currentRequestId: null })
+    // UEX-P0-01：此失败不留下任何可见气泡（占位被调用方移除），只写 store.error 用户看不见——必须 toast
+    pushToast({ variant: 'error', title: '生成失败', description: '未配置 API 连接', requestId: 'chat-generate-error' })
     onError?.('未配置 API 连接')
     return
   }
@@ -809,6 +812,8 @@ export async function streamAIResponse(
   if (budgetRisk) {
     logWarn('StreamController:budget', budgetRisk)
     set({ isStreaming: false, currentRequestId: null, error: budgetRisk })
+    // UEX-P0-01：不发起请求的失败同样不留可见气泡，必须 toast 才能被用户看见
+    pushToast({ variant: 'error', title: '生成失败', description: budgetRisk, requestId: 'chat-generate-error' })
     onError?.(budgetRisk)
     return
   }
@@ -840,6 +845,12 @@ export async function streamAIResponse(
     const errText = result?.noticeFields.generationError
       ?? terminationPromptWithoutContent(cause, detailMessage)
     set({ isStreaming: false, currentRequestId: null, error: detailMessage || errText })
+    // UEX-P0-01：无 persistable content 的终止失败不留可见气泡（占位被调用方移除），
+    // 只写 store.error 用户看不见——必须同时弹错误 toast；
+    // 有部分正文时 generationError 已在气泡内展示，用户主动停止也不算失败，均不重复提示
+    if (!(result?.persistable && result?.content) && cause !== 'user_cancel') {
+      pushToast({ variant: 'error', title: '生成失败', description: errText, requestId: 'chat-generate-error' })
+    }
     // N26 修复：流式失败时同样执行待处理的上下文压缩（与 done 分支一致），
     // 避免 pendingCompression 残留导致裁剪历史永远不被压缩
     if (pendingCompression) {
@@ -1114,6 +1125,8 @@ export async function streamAIResponse(
       return
     }
     if (!latch.claim('transport_error')) {
+      // 迟到 error：同一 requestId 已有终止分支收口（气泡内 generationError / 已弹 toast / 用户停止），
+      // UEX-P0-01 排查结论：这里不再重复提示，只复位流式状态
       set({ isStreaming: false, currentRequestId: null, error: friendly })
       return
     }

@@ -19,6 +19,8 @@ interface ModalProps {
   overlayClassName?: string
   /** 内容区 className */
   contentClassName?: string
+  /** false 时遮罩/Esc/X 均不关闭（Confirm busy）；默认 true 行为不变 */
+  dismissible?: boolean
 }
 
 export function Modal({
@@ -33,15 +35,22 @@ export function Modal({
   footer,
   overlayClassName,
   contentClassName,
+  dismissible = true,
 }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const prevFocusRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
-  // onClose 通常是内联箭头函数，每次渲染都会变化；用 ref 持有，
-  // 避免焦点管理 effect 因 onClose 变化而反复重跑（导致输入时焦点被抢回关闭按钮）
   const onCloseRef = useRef(onClose)
-  useEffect(() => { onCloseRef.current = onClose })
+  const dismissibleRef = useRef(dismissible)
+  useEffect(() => {
+    onCloseRef.current = onClose
+    dismissibleRef.current = dismissible
+  })
+  const requestClose = () => {
+    if (!dismissibleRef.current) return
+    onCloseRef.current()
+  }
 
   // S2-D 可访问性：焦点管理与 trap
   useEffect(() => {
@@ -62,7 +71,7 @@ export function Modal({
     }, 0)
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); onCloseRef.current(); return }
+      if (e.key === 'Escape') { e.preventDefault(); requestClose(); return }
       if (e.key !== 'Tab') return
       const dialog = dialogRef.current
       if (!dialog) return
@@ -99,7 +108,7 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" ref={overlayRef}>
-      <div className={cn('motion-overlay absolute inset-0 bg-black/60 backdrop-blur-[2px]', overlayClassName)} onClick={onClose} aria-hidden />
+      <div className={cn('motion-overlay absolute inset-0 bg-black/60 backdrop-blur-[2px]', overlayClassName)} onClick={requestClose} aria-hidden />
       <div
         ref={dialogRef}
         role="dialog"
@@ -120,7 +129,7 @@ export function Modal({
             )}
             <button
               data-modal-close
-              onClick={onClose}
+              onClick={requestClose}
               aria-label="关闭"
               className="p-1 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-tavern-accent focus-visible:outline-none"
             >

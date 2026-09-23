@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Sparkles, Wand2, X, Loader2, AlertCircle, Plus, Trash2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useCharacterCreatorStore } from '../../store/useCharacterCreatorStore'
-import type { GenerateField } from '../../store/useCharacterCreatorStore'
+import type { GenerateField, GeneratedTarget } from '../../store/useCharacterCreatorStore'
 import type { AuthorNoteConfig } from '../../../shared/types'
 
 /* ===================== 通用「帮我写」小组件 ===================== */
@@ -95,6 +95,55 @@ function AiInputPanel({ targetLabel, generating, onCancel, onGenerate }: AiInput
 
 /* ===================== 字段卡片 ===================== */
 
+interface GenerationPreviewCardProps {
+  target: GeneratedTarget
+  /** 目标展示名，如「角色描述」 */
+  label: string
+  /** 三选动作语义提示（字段/标签/开场白不同） */
+  actionHint: string
+}
+
+/** UEX-P2-07：「帮我写」生成结果内联预览卡——展示结果 + 「替换 / 追加 / 放弃」三选，不再直接覆盖字段 */
+function GenerationPreviewCard({ target, label, actionHint }: GenerationPreviewCardProps) {
+  const pending = useCharacterCreatorStore((s) => s.pendingGeneration)
+  const applyGenerated = useCharacterCreatorStore((s) => s.applyGenerated)
+  if (!pending) return null
+  const matched =
+    target.kind === 'field'
+      ? pending.target.kind === 'field' && pending.target.field === target.field
+      : pending.target.kind === 'greeting' && pending.target.index === target.index
+  if (!matched) return null
+  return (
+    <div className="mt-2.5 rounded-lg border border-tavern-accent/40 bg-tavern-accent-soft/30 p-2.5 space-y-2 animate-fade-in">
+      <div className="flex items-center gap-1.5 text-xs text-tavern-accent">
+        <Sparkles className="w-3.5 h-3.5 shrink-0" />
+        AI 已生成「{label}」，请选择如何使用（不会自动覆盖你的内容）
+      </div>
+      <pre className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-tavern-border-soft bg-tavern-bg-card p-2 font-mono text-xs text-tavern-text-soft">
+        {pending.content}
+      </pre>
+      <div className="text-[11px] text-tavern-text-muted">{actionHint}</div>
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" className="btn-secondary text-xs" onClick={() => applyGenerated('discard')}>
+          放弃
+        </button>
+        <button type="button" className="btn-secondary text-xs" onClick={() => applyGenerated('append')}>
+          追加
+        </button>
+        <button type="button" className="btn-primary text-xs" onClick={() => applyGenerated('replace')}>
+          替换
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** 三选动作语义提示：文本字段 / 标签 / 开场白各不相同 */
+const FIELD_ACTION_HINT =
+  '替换＝覆盖当前内容（含你之后的修改） · 追加＝基于你最新的输入接到内容之后'
+const TAGS_ACTION_HINT = '替换＝全部替换标签 · 追加＝与现有标签合并去重（最多 8 个）'
+const GREETING_ACTION_HINT = '替换＝覆盖这条开场白 · 追加＝作为新的备选开场白添加'
+
 interface FieldCardProps {
   label: string
   field: GenerateField
@@ -126,6 +175,12 @@ function FieldCard({ label, field, hint, className, children }: FieldCardProps) 
         />
       </div>
       {children}
+      {/* UEX-P2-07：生成结果三选预览（仅当未决结果属于当前字段时显示） */}
+      <GenerationPreviewCard
+        target={{ kind: 'field', field }}
+        label={label}
+        actionHint={field === 'tags' ? TAGS_ACTION_HINT : FIELD_ACTION_HINT}
+      />
       {open && (
         <AiInputPanel
           targetLabel={`「${label}」`}
@@ -232,6 +287,12 @@ function GreetingCard() {
         placeholder={'*手指在虚拟键盘上飞速跳动*\n"来了？我等你好久了。"'}
         className="textarea min-h-[90px] resize-y"
       />
+      {/* UEX-P2-07：主消息生成结果三选预览 */}
+      <GenerationPreviewCard
+        target={{ kind: 'greeting', index: -1 }}
+        label="主首条消息"
+        actionHint={GREETING_ACTION_HINT}
+      />
       {openIndex === -1 && (
         <AiInputPanel
           targetLabel="主首条消息"
@@ -273,6 +334,12 @@ function GreetingCard() {
             onChange={(e) => updateVariant(i, e.target.value)}
             placeholder={`备选开场白 ${i + 1}：与主消息不同风格的开场白`}
             className="textarea min-h-[70px] resize-y"
+          />
+          {/* UEX-P2-07：备选开场白生成结果三选预览 */}
+          <GenerationPreviewCard
+            target={{ kind: 'greeting', index: i }}
+            label={`备选开场白 ${i + 1}`}
+            actionHint={GREETING_ACTION_HINT}
           />
           {openIndex === i && (
             <AiInputPanel

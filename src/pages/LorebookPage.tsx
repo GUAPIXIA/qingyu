@@ -24,6 +24,7 @@ import {
   Sparkles,
   Wand2,
   HeartPulse,
+  X,
 } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { resolveRendererGenerationTaskBudget } from '../store/generationTaskBudget'
@@ -34,6 +35,7 @@ import type {
   LorebookImportResult,
   LorebookImportOutcome,
   LorebookKeywordLocalizationSuggestion,
+  LorebookIndexProgress,
 } from '../../shared/ipc-api'
 import type { LorebookHealthReport } from '../../shared/lorebook/health'
 import { LorebookEntryEditor } from './lorebook/LorebookEntryEditor'
@@ -82,12 +84,18 @@ export function LorebookPage() {
   /** AI 翻译状态：key 为字段标识 */
   const [translatingField, setTranslatingField] = useState<{ key: string; text: string } | null>(null)
   const [translateResult, setTranslateResult] = useState<string | null>(null)
-  /** AI 翻译错误提示（空结果等） */
-  const [translateError, setTranslateError] = useState<string | null>(null)
+  /** AI 翻译错误提示（空结果等）——UEX-P2 补2：错误带目标 fieldKey，只渲染到对应条目/字段 */
+  const [translateError, setTranslateError] = useState<{ key: string; message: string } | null>(null)
   /** 语义触发：向量索引状态（lorebookId -> 已索引条目数等） */
   const [indexStatus, setIndexStatus] = useState<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>({})
   const [indexingId, setIndexingId] = useState<string | null>(null)
   const [indexError, setIndexError] = useState<string | null>(null)
+  /** UEX-P1-28：语义索引逐条目进度（x/y + 条目名 + 百分比；完成后收起） */
+  const [indexProgress, setIndexProgress] = useState<LorebookIndexProgress | null>(null)
+  /** UEX-P1-28：「取消索引」按钮的瞬时状态（点击后变「正在取消…」并禁用） */
+  const [indexCanceling, setIndexCanceling] = useState(false)
+  /** UEX-P1-28：取消汇总结果条「已取消：已索引 x/y」（手动关闭前不消失） */
+  const [indexCancelResult, setIndexCancelResult] = useState<{ indexed: number; total: number } | null>(null)
   const [bookSearch, setBookSearch] = useState('')
   const [entrySearch, setEntrySearch] = useState('')
   const [keywordLocalizationOpen, setKeywordLocalizationOpen] = useState(false)
@@ -151,8 +159,17 @@ export function LorebookPage() {
     void refreshIndexStatus(lorebooks.map((l) => l.id))
   }, [lorebooks, refreshIndexStatus])
 
-  /** 为当前世界书生成/重建向量索引 */
+  // UEX-P1-28：订阅语义索引逐条目进度（渲染时按 indexingId 过滤无关世界书的进度）
+  useEffect(() => {
+    const unbind = window.api.embedding.onIndexProgress?.((progress) => {
+      setIndexProgress(progress)
+    })
+    return () => unbind?.()
+  }, [])
+
+  /** 为当前世界书生成/重建向量索引（UEX-P1-28：逐条目进度 + 可取消） */
   const handleIndexLorebook = async () => {
+    // UEX-P1-28：防重入——索引期间再次触发直接忽略（按钮另有 indexingId 禁用）
     if (!selected || indexingId) return
     const st = settings.semanticTrigger
     if (!st) {
@@ -161,6 +178,9 @@ export function LorebookPage() {
     }
     setIndexingId(selected.id)
     setIndexError(null)
+    setIndexProgress(null)
+    setIndexCancelResult(null)
+    setIndexCanceling(false)
     try {
       const result = await window.api.embedding.indexLorebook(selected.id, {
         provider: st.provider,
@@ -168,7 +188,12 @@ export function LorebookPage() {
         model: st.model,
         apiKey: st.apiKey ?? '',
       })
-      if (!result.ok) {
+      // UEX-P1-28：完成后收起进度区（「已索引 N 个条目」由 indexStatus 保留展示）
+      setIndexProgress(null)
+      if (result.canceled) {
+        // UEX-P1-28：取消汇总「已取消：已索引 x/y」（已完成条目已保留），手动关闭前不消失
+        setIndexCancelResult({ indexed: result.indexed ?? 0, total: result.total ?? 0 })
+      } else if (!result.ok) {
         setIndexError(result.error || '索引失败')
       }
       await refreshIndexStatus([selected.id])
@@ -176,8 +201,22 @@ export function LorebookPage() {
       setIndexError((e as Error).message)
     } finally {
       setIndexingId(null)
+      setIndexCanceling(false)
     }
   }
+
+  /** UEX-P1-28：取消当前索引（主进程侧幂等；已完成条目保留不回滚） */
+  const handleCancelIndex = useCallback(async () => {
+    if (!indexingId) return
+    setIndexCanceling(true)
+    try {
+      // ?. 兼容预览模式最小 mock（无该方法时静默跳过）
+      await window.api.embedding.cancelIndex?.(indexingId)
+    } catch {
+      // 取消请求失败时恢复按钮，允许重试
+      setIndexCanceling(false)
+    }
+  }, [indexingId])
 
   /** 单本世界书的保存串行化执行：携带最新编辑基准 revision，冲突时重载磁盘版本（方案 §10.3） */
   const runQueuedSave = async (payload: Lorebook): Promise<void> => {
@@ -231,6 +270,8 @@ export function LorebookPage() {
       await enqueueSave(updated)
       return true
     } catch (error) {
+      // M9：失败回滚乐观更新
+      setLorebooks((prev) => prev.map((l) => (l.id === id ? current : l)))
       setOperationError({
         title: '世界书保存失败',
         message: error instanceof Error ? error.message : String(error),
@@ -248,6 +289,10 @@ export function LorebookPage() {
     try {
       await enqueueSave(lb)
     } catch (error) {
+      // UEX-P1-22：新建失败时移除乐观插入的世界书（对齐 M9 失败回滚模式）
+      setLorebooks((prev) => prev.filter((l) => l.id !== lb.id))
+      setSelectedId((prev) => (prev === lb.id ? null : prev))
+      revisionRef.current.delete(lb.id)
       setOperationError({
         title: '世界书保存失败',
         message: error instanceof Error ? error.message : String(error),
@@ -294,6 +339,24 @@ export function LorebookPage() {
         message: error instanceof Error ? error.message : String(error),
       })
     }
+  }
+
+  /** UEX-P2 补3：从健康报告定位问题条目——选中所属世界书并打开该条目编辑 */
+  const handleLocateEntry = (entryId: string, bookId: string) => {
+    const book = lorebooks.find((l) => l.id === bookId)
+    const entry = book?.entries.find((e) => e.id === entryId)
+    if (!book || !entry) {
+      setOperationError({
+        title: '无法定位条目',
+        message: '未在当前世界书列表中找到该条目，可能已被删除；请重新运行健康检查。',
+      })
+      return
+    }
+    setSelectedId(bookId)
+    setEntrySearch('')
+    setKeywordLocalizationOpen(false)
+    setHealthReport(null)
+    setEditingEntry({ ...entry })
   }
 
   const handleDelete = async () => {
@@ -348,7 +411,8 @@ export function LorebookPage() {
   )) ?? []
 
   const handleBatchEnableSemantic = async () => {
-    if (!selected || batchSemanticBusy || batchSemanticEntries.length === 0) return
+    // UEX-P1-28：防重入——索引期间禁止再次触发（按钮另有禁用；内部自动索引经 handleIndexLorebook 同样受 guard）
+    if (!selected || indexingId || batchSemanticBusy || batchSemanticEntries.length === 0) return
     setBatchSemanticBusy(true)
     setIndexError(null)
     const affectedIds = new Set(batchSemanticEntries.map((entry) => entry.id))
@@ -408,10 +472,11 @@ export function LorebookPage() {
         if (cleanResult) {
           onApply(cleanResult)
         } else {
-          setTranslateError('翻译结果为空，请重试或更换模型')
+          // UEX-P2 补2：错误归属到发起翻译的字段
+          setTranslateError({ key: fieldKey, message: '翻译结果为空，请重试或更换模型' })
         }
       } else {
-        setTranslateError('翻译结果为空，请重试或更换模型')
+        setTranslateError({ key: fieldKey, message: '翻译结果为空，请重试或更换模型' })
       }
     })
     const unbindError = window.api.ai.onError((data) => {
@@ -419,6 +484,8 @@ export function LorebookPage() {
       cleanup()
       setTranslatingField(null)
       setTranslateResult(null)
+      // UEX-P2 补2：请求失败不再静默，错误提示归属到目标条目/字段
+      setTranslateError({ key: fieldKey, message: `翻译失败：${data.error || '未知错误'}，请重试` })
     })
 
     const targetLang = settings.translationTargetLang || '中文'
@@ -449,10 +516,12 @@ export function LorebookPage() {
       observability: { source: 'aux', taskType: 'translation' },
       adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
       reasoningGate: translationPlan.reasoningGate,
-    }).catch(() => {
+    }).catch((error) => {
       cleanup()
       setTranslatingField(null)
       setTranslateResult(null)
+      // UEX-P2 补2：发起请求失败同样给出归属明确的错误提示
+      setTranslateError({ key: fieldKey, message: `翻译失败：${error instanceof Error ? error.message : String(error)}` })
     })
   }
 
@@ -639,6 +708,10 @@ export function LorebookPage() {
                             )}
                           </button>
                         </div>
+                        {/* UEX-P2 补2：名称翻译错误就地提示（不再串到其他条目） */}
+                        {translateError?.key === `name-${selected.id}` && (
+                          <p className="mt-1 text-xs text-tavern-danger">{translateError.message}</p>
+                        )}
                       </div>
                       <div>
                         <label className="label">扫描深度（最近 N 条消息）</label>
@@ -697,6 +770,10 @@ export function LorebookPage() {
                         )}
                       </button>
                     </div>
+                    {/* UEX-P2 补2：描述翻译错误就地提示（不再串到其他条目） */}
+                    {translateError?.key === `desc-${selected.id}` && (
+                      <p className="mt-1 text-xs text-tavern-danger">{translateError.message}</p>
+                    )}
                   </div>
 
                   {/* 语义触发：向量索引 */}
@@ -770,6 +847,63 @@ export function LorebookPage() {
                     )}
                     {indexError && (
                       <span className="text-xs text-tavern-danger">{indexError}</span>
+                    )}
+                    {/* UEX-P1-28：索引逐条目进度区（x/y + 条目名 + 百分比；样式对齐角色批量导入进度条）。
+                        首条进度事件前也显示（此时仅「索引中…」），保证取消入口从开始即可用。 */}
+                    {indexingId === selected.id && (!indexProgress || indexProgress.lorebookId === selected.id) && (
+                      <div className="w-full rounded-xl border border-tavern-border-soft bg-tavern-bg-soft p-3 animate-fade-in" role="status" aria-label="语义索引进度">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <Loader2 className="w-4 h-4 animate-spin text-tavern-accent" />
+                            <span className="text-tavern-text-soft">
+                              {indexProgress ? (
+                                <>索引中 <strong>{indexProgress.current}</strong> / {indexProgress.total}</>
+                              ) : (
+                                '索引中…'
+                              )}
+                            </span>
+                          </div>
+                          <span className="text-xs truncate ml-4 max-w-[50%] text-tavern-text-muted">
+                            {indexProgress?.entryName}
+                          </span>
+                          {/* UEX-P1-28：索引进行中可取消；点击后变「正在取消…」并禁用（主进程侧幂等） */}
+                          <button
+                            onClick={handleCancelIndex}
+                            disabled={indexCanceling}
+                            className="btn-secondary text-xs px-2.5 py-1 ml-2 shrink-0 text-tavern-danger border-tavern-danger/40 hover:bg-tavern-danger/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="取消本次语义索引，已完成的条目会保留"
+                          >
+                            {indexCanceling ? '正在取消…' : '取消索引'}
+                          </button>
+                        </div>
+                        {indexProgress && (
+                          <>
+                            <div className="w-full h-2 rounded-full bg-tavern-bg-hover overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-300 ease-out"
+                                style={{
+                                  width: `${indexProgress.total > 0 ? Math.round((indexProgress.current / indexProgress.total) * 100) : 0}%`,
+                                  background: 'linear-gradient(90deg, #d4a574, #e8b88a)',
+                                }}
+                              />
+                            </div>
+                            <div className="text-xs text-tavern-text-muted text-right mt-0.5">
+                              {indexProgress.total > 0 ? Math.round((indexProgress.current / indexProgress.total) * 100) : 0}%
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {/* UEX-P1-28：取消汇总结果条「已取消：已索引 x/y」（手动关闭前不消失） */}
+                    {indexCancelResult && (
+                      <div className="w-full flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-600 animate-fade-in" role="status">
+                        <CircleAlert className="w-3.5 h-3.5 shrink-0" />
+                        <span className="flex-1">{`已取消：已索引 ${indexCancelResult.indexed}/${indexCancelResult.total}`}</span>
+                        <span className="text-tavern-text-muted">（已完成条目已保留）</span>
+                        <button onClick={() => setIndexCancelResult(null)} className="p-0.5 hover:opacity-70" title="关闭">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -852,9 +986,9 @@ export function LorebookPage() {
                                     {translateResult || '...'}
                                   </div>
                                 )}
-                                {/* 翻译错误提示（条目列表） */}
-                                {translateError && translatingField?.key !== `entry-${entry.id}` && !entry.translation && (
-                                  <div className="mt-1.5 text-xs text-tavern-danger">{translateError}</div>
+                                {/* 翻译错误提示（条目列表）——UEX-P2 补2：只渲染到发起翻译的条目 */}
+                                {translateError?.key === `entry-${entry.id}` && (
+                                  <div className="mt-1.5 text-xs text-tavern-danger">{translateError.message}</div>
                                 )}
                               </div>
                               <div className="flex items-center gap-3 mt-1.5 text-xs text-tavern-text-muted">
@@ -1019,7 +1153,7 @@ export function LorebookPage() {
       )}
 
       {healthReport && (
-        <LorebookHealthReportModal report={healthReport} onClose={() => setHealthReport(null)} />
+        <LorebookHealthReportModal report={healthReport} onLocate={handleLocateEntry} onClose={() => setHealthReport(null)} />
       )}
 
       {mappingWizardOpen && (

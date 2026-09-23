@@ -24,6 +24,8 @@ import { getDisplayName } from '../utils/variables'
 import { getEffectiveLorebookIds } from '../utils/lorebook'
 import { downloadFile } from '../utils/download'
 import { charAssetUrl } from '../utils/asset'
+// UEX-P2-12：会话滚动位置记忆（切走再回来恢复原滚动位置）
+import { chatScrollKey, useSessionScrollMemory } from '../utils/scrollMemory'
 import type { Message } from '../../shared/types'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
 import { findLatestActionableSingleDirectionMessageId } from '../components/chat/dialogueDirectionView'
@@ -84,6 +86,8 @@ export function ChatPage() {
   // P1 修复：选择性订阅 store 字段（此前无选择器订阅整个 store，
   // 任何字段变化都全页重渲染——流式 50ms flush 时每秒 20 次整树协调）
   const messages = useChatStore((s) => s.messages)
+  // UEX-P1-34：切会话「清空 → 加载」空窗期的加载态（渲染加载占位，避免假空态）
+  const messagesLoading = useChatStore((s) => s.messagesLoading)
   const sessions = useChatStore((s) => s.sessions)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const currentSessionId = useChatStore((s) => s.currentSessionId)
@@ -99,6 +103,7 @@ export function ChatPage() {
   const { settings, loaded, getActiveProfile } = useSettingsStore()
   const { loadPersonas } = usePersonaStore()
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [showCleanupHistoryConfirm, setShowCleanupHistoryConfirm] = useState(false)
   const [showQuickSettings, setShowQuickSettings] = useState(false)
   const [showBgPanel, setShowBgPanel] = useState(false)
   const [showContextViewer, setShowContextViewer] = useState(false)
@@ -114,6 +119,11 @@ export function ChatPage() {
   const pendingSessionCallbackRef = useRef<(() => void) | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const virtuosoRef = useRef<VirtuosoHandle>(null)
+  // UEX-P2-12：按 sessionId 记忆滚动位置——滚动即记录，回来且消息加载完成后恢复
+  const scrollMemory = useSessionScrollMemory({
+    key: currentCharacter && currentSessionId ? chatScrollKey(currentCharacter.id, currentSessionId) : null,
+    ready: !messagesLoading,
+  })
   // 背景图片拖拽状态
   const [isDraggingBg, setIsDraggingBg] = useState(false)
   const bgImgRef = useRef<HTMLImageElement>(null)
@@ -577,7 +587,7 @@ export function ChatPage() {
             {isMemorySummarizing ? '正在总结…' : '立即总结'}
           </button>
           <button
-            onClick={() => useChatStore.getState().clearChat(currentCharacter!.id)}
+            onClick={() => setShowCleanupHistoryConfirm(true)}
             className="px-2 py-0.5 rounded font-medium text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-danger/10 transition-colors shrink-0"
           >
             清理历史
@@ -597,7 +607,17 @@ export function ChatPage() {
           className="w-full h-full flex flex-col"
           style={{ maxWidth: `${(settings.messageWidth ?? 768) + 32}px` }}
         >
-        {messages.length === 0 && !currentImageGeneration ? (
+        {messagesLoading ? (
+          // UEX-P1-34：加载中渲染轻量加载态，避免清空-加载空窗期闪现「开始新的对话」假空态
+          <div
+            role="status"
+            aria-live="polite"
+            className="h-full flex flex-col items-center justify-center gap-3 text-tavern-text-muted animate-fade-in"
+          >
+            <Loader2 data-testid="chat-messages-loading" className="w-7 h-7 animate-spin text-tavern-accent/70" aria-hidden />
+            <p className="text-sm">正在加载对话…</p>
+          </div>
+        ) : messages.length === 0 && !currentImageGeneration ? (
           <EmptyState
             className="h-full"
             icon={<MessageSquare className="w-8 h-8" />}
@@ -610,8 +630,14 @@ export function ChatPage() {
             ref={virtuosoRef}
             data={messages}
             className="h-full"
-            initialTopMostItemIndex={999999}
-            followOutput={settings.autoScroll ? 'smooth' : false}
+            // UEX-P2-12：有滚动记忆时恢复顶位索引；新会话（无记录）保持现状（999999 = 默认到底）
+            initialTopMostItemIndex={scrollMemory.initialTopMostItemIndex}
+            // UEX-P2-12：恢复窗口内临时关闭自动到底（仅恢复历史位置）；之后新消息行为保持现状
+            followOutput={(isAtBottom) =>
+              scrollMemory.isRestoring() ? false : isAtBottom && settings.autoScroll ? 'smooth' : false
+            }
+            scrollerRef={scrollMemory.scrollerRef}
+            rangeChanged={scrollMemory.onRangeChanged}
             computeItemKey={(_, msg) => msg.id}
             itemContent={(index, msg) => {
               const replied = msg.replyToId ? (messageMap.get(msg.replyToId) ?? null) : null
@@ -650,6 +676,17 @@ export function ChatPage() {
 
       {/* 清空确认 */}
       <ConfirmDialog
+        open={showCleanupHistoryConfirm}
+        onClose={() => setShowCleanupHistoryConfirm(false)}
+        onConfirm={() => {
+          if (currentCharacter) useChatStore.getState().clearChat(currentCharacter.id)
+        }}
+        title="清理历史"
+        message="将删除本会话全部消息，并清除自动摘要与记忆事实。此操作不可撤销。"
+        confirmText="清理"
+        danger
+      />
+      <ConfirmDialog
         open={showClearConfirm}
         onClose={() => setShowClearConfirm(false)}
         onConfirm={async () => {
@@ -664,7 +701,8 @@ export function ChatPage() {
           }
         }}
         title="清空对话"
-        message={`确定要清空与 ${getDisplayName(currentCharacter)} 的所有对话记录吗？此操作不可撤销。`}
+        // UEX-P1-04：确认文案写明清除范围（对齐「清理历史」模板）——含自动摘要与记忆事实
+        message={`确定要清空与 ${getDisplayName(currentCharacter)} 的所有对话记录吗？将删除本会话全部消息，并清除自动摘要与记忆事实。此操作不可撤销。`}
         confirmText="清空"
         danger
       />
@@ -675,6 +713,8 @@ export function ChatPage() {
         onClose={() => {
           setShowLorebookConfirm(false)
           setPendingLorebookIds([])
+          // S10：取消/Esc/X 等同「不使用」，必须续跑待办，避免点了没反应
+          void handleLorebookConfirm(false)
         }}
         onConfirm={() => handleLorebookConfirm(true)}
         cancelText="不使用"

@@ -6,8 +6,9 @@ import {
   DRAFT_KEY,
 } from '../useCharacterCreatorStore'
 import { useSettingsStore } from '../useSettingsStore'
+import { useToastStore } from '../useToastStore'
 import { getDefaultSettings } from '../../../shared/defaults'
-import type { ConnectionProfile } from '../../../shared/types'
+import type { Character, ConnectionProfile } from '../../../shared/types'
 
 const PROFILE: ConnectionProfile = {
   id: 'p1',
@@ -37,6 +38,7 @@ function setupProfile() {
 
 beforeEach(() => {
   localStorage.clear()
+  useToastStore.setState({ toasts: [] })
   chunkCb = null
   doneCb = null
   errorCb = null
@@ -194,7 +196,8 @@ describe('aiExpand（一句话扩展）', () => {
 })
 
 describe('aiGenerateField（单字段帮我写）', () => {
-  it('chunk 累积后填入对应字段', async () => {
+  // UEX-P2-07：旧用例「生成即覆盖」按新语义同步——生成只进待确认区，三选后才写入
+  it('chunk 累积后进入待确认（不直接覆盖），点击替换才写入字段', async () => {
     const { aiGenerateField, updateDraft } = useCharacterCreatorStore.getState()
     updateDraft({ name: '零' })
     await aiGenerateField('description')
@@ -202,24 +205,39 @@ describe('aiGenerateField（单字段帮我写）', () => {
     chunkCb?.({ requestId: reqId, text: '外冷内热，' })
     chunkCb?.({ requestId: reqId, text: '话不多' })
     doneCb?.(reqId)
-    expect(useCharacterCreatorStore.getState().draft.description).toBe('外冷内热，话不多')
+    let s = useCharacterCreatorStore.getState()
+    expect(s.draft.description).toBe('') // UEX-P2-07：不再直接覆盖
+    expect(s.pendingGeneration).toMatchObject({
+      target: { kind: 'field', field: 'description' },
+      content: '外冷内热，话不多',
+    })
+    useCharacterCreatorStore.getState().applyGenerated('replace')
+    s = useCharacterCreatorStore.getState()
+    expect(s.draft.description).toBe('外冷内热，话不多')
+    expect(s.pendingGeneration).toBeNull()
   })
 
-  it('剥离 <thought> 思考块后再填入', async () => {
+  it('剥离 <thought> 思考块后再进入待确认', async () => {
     const { aiGenerateField } = useCharacterCreatorStore.getState()
     await aiGenerateField('personality')
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '<thought>想一下</thought>冷静果决' })
     doneCb?.(reqId)
+    const s = useCharacterCreatorStore.getState()
+    expect(s.draft.personality).toBe('') // 不直接写入
+    expect(s.pendingGeneration?.content).toBe('冷静果决')
+    useCharacterCreatorStore.getState().applyGenerated('replace')
     expect(useCharacterCreatorStore.getState().draft.personality).toBe('冷静果决')
   })
 
-  it('tags 字段按顿号/逗号切分', async () => {
+  it('tags 字段按顿号/逗号切分（replace 应用时解析为数组）', async () => {
     const { aiGenerateField } = useCharacterCreatorStore.getState()
     await aiGenerateField('tags')
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '赛博朋克、黑客，御姐' })
     doneCb?.(reqId)
+    expect(useCharacterCreatorStore.getState().draft.tags).toEqual([]) // 不直接写入
+    useCharacterCreatorStore.getState().applyGenerated('replace')
     expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['赛博朋克', '黑客', '御姐'])
   })
 
@@ -228,26 +246,35 @@ describe('aiGenerateField（单字段帮我写）', () => {
     await aiGenerateField('name')
     doneCb?.(lastChatRequestId())
     expect(useCharacterCreatorStore.getState().error).toContain('生成失败')
+    expect(useCharacterCreatorStore.getState().pendingGeneration).toBeNull()
   })
 })
 
 describe('aiGenerateGreeting（备选开场白）', () => {
-  it('index=-1 写入主首条消息', async () => {
+  // UEX-P2-07：旧用例「生成即覆盖」按新语义同步——生成只进待确认区，三选后才写入
+  it('index=-1 生成主首条消息进待确认，替换后写入', async () => {
     const { aiGenerateGreeting } = useCharacterCreatorStore.getState()
     await aiGenerateGreeting(-1)
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '*推门而入* "我来了。"' })
     doneCb?.(reqId)
-    expect(useCharacterCreatorStore.getState().draft.firstMessage).toBe('*推门而入* "我来了。"')
+    let s = useCharacterCreatorStore.getState()
+    expect(s.draft.firstMessage).toBe('') // 不直接覆盖
+    expect(s.pendingGeneration).toMatchObject({ target: { kind: 'greeting', index: -1 } })
+    useCharacterCreatorStore.getState().applyGenerated('replace')
+    s = useCharacterCreatorStore.getState()
+    expect(s.draft.firstMessage).toBe('*推门而入* "我来了。"')
+    expect(s.pendingGeneration).toBeNull()
   })
 
-  it('index>=0 写入备选开场白（自动扩容数组）', async () => {
+  it('index>=0 替换备选开场白（自动扩容数组）', async () => {
     const { aiGenerateGreeting, updateDraft } = useCharacterCreatorStore.getState()
     updateDraft({ firstMessage: '主消息' })
     await aiGenerateGreeting(2) // 直接生成第 3 条
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '备选三' })
     doneCb?.(reqId)
+    useCharacterCreatorStore.getState().applyGenerated('replace')
     const s = useCharacterCreatorStore.getState()
     expect(s.draft.alternateGreetings[2]).toBe('备选三')
     expect(s.draft.alternateGreetings[0]).toBe('') // 中间自动补空
@@ -264,6 +291,128 @@ describe('aiGenerateGreeting（备选开场白）', () => {
     expect(systemPrompt).toContain('风格不同的新一条')
   })
 })
+
+describe('applyGenerated（UEX-P2-07 三选动作）', () => {
+  /** 发起一次字段生成并完成流式，产出 pendingGeneration */
+  async function generateField(field: 'description' | 'tags', output: string) {
+    await useCharacterCreatorStore.getState().aiGenerateField(field)
+    const reqId = lastChatRequestId()
+    chunkCb?.({ requestId: reqId, text: output })
+    doneCb?.(reqId)
+  }
+
+  /** 发起一次开场白生成并完成流式 */
+  async function generateGreeting(index: number, output: string) {
+    await useCharacterCreatorStore.getState().aiGenerateGreeting(index)
+    const reqId = lastChatRequestId()
+    chunkCb?.({ requestId: reqId, text: output })
+    doneCb?.(reqId)
+  }
+
+  it('文本 replace：覆盖当前值（含生成期间的用户修改，UI 已注明）', async () => {
+    updateDraftOf({ description: '旧描述' })
+    await generateField('description', '新描述')
+    // 生成完成后用户又改了字段 → replace 仍以生成结果覆盖（语义即「替换」）
+    updateDraftOf({ description: '用户新输入' })
+    useCharacterCreatorStore.getState().applyGenerated('replace')
+    expect(useCharacterCreatorStore.getState().draft.description).toBe('新描述')
+    expect(useCharacterCreatorStore.getState().pendingGeneration).toBeNull()
+  })
+
+  it('文本 append：基于 apply 时最新值追加（防覆盖用户新输入）', async () => {
+    updateDraftOf({ description: '生成时原文' })
+    await generateField('description', '新增段落')
+    // 生成期间用户改过字段 → append 基于最新值，而非生成时快照
+    updateDraftOf({ description: '用户最新输入' })
+    useCharacterCreatorStore.getState().applyGenerated('append')
+    expect(useCharacterCreatorStore.getState().draft.description).toBe('用户最新输入\n\n新增段落')
+  })
+
+  it('文本 append：原字段为空时直接写入（无前导换行）', async () => {
+    await generateField('description', '首次内容')
+    useCharacterCreatorStore.getState().applyGenerated('append')
+    expect(useCharacterCreatorStore.getState().draft.description).toBe('首次内容')
+  })
+
+  it('文本 discard：丢弃结果，字段恢复原样', async () => {
+    updateDraftOf({ description: '原有内容' })
+    await generateField('description', '不该出现')
+    useCharacterCreatorStore.getState().applyGenerated('discard')
+    const s = useCharacterCreatorStore.getState()
+    expect(s.draft.description).toBe('原有内容')
+    expect(s.pendingGeneration).toBeNull()
+  })
+
+  it('tags replace：整体替换数组', async () => {
+    updateDraftOf({ tags: ['旧标签'] })
+    await generateField('tags', '新A、新B')
+    useCharacterCreatorStore.getState().applyGenerated('replace')
+    expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['新A', '新B'])
+  })
+
+  it('tags append：合并去重（现有在前，上限 8）', async () => {
+    updateDraftOf({ tags: ['黑客'] })
+    await generateField('tags', '黑客、赛博朋克、御姐')
+    useCharacterCreatorStore.getState().applyGenerated('append')
+    expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['黑客', '赛博朋克', '御姐'])
+  })
+
+  it('tags discard：标签不变', async () => {
+    updateDraftOf({ tags: ['保留'] })
+    await generateField('tags', '不该出现')
+    useCharacterCreatorStore.getState().applyGenerated('discard')
+    expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['保留'])
+  })
+
+  it('开场白 append：追加为新备选开场白（不动当前文本）', async () => {
+    updateDraftOf({ firstMessage: '主消息', alternateGreetings: ['备选A'] })
+    await generateGreeting(-1, '新备选内容')
+    useCharacterCreatorStore.getState().applyGenerated('append')
+    const s = useCharacterCreatorStore.getState()
+    expect(s.draft.firstMessage).toBe('主消息') // 当前文本不动
+    expect(s.draft.alternateGreetings).toEqual(['备选A', '新备选内容']) // 数据结构支持变体数组 → 追加
+  })
+
+  it('开场白 discard：主消息与备选均不变', async () => {
+    updateDraftOf({ firstMessage: '主消息' })
+    await generateGreeting(-1, '不该出现')
+    useCharacterCreatorStore.getState().applyGenerated('discard')
+    const s = useCharacterCreatorStore.getState()
+    expect(s.draft.firstMessage).toBe('主消息')
+    expect(s.draft.alternateGreetings).toEqual([])
+  })
+
+  it('pending 覆盖策略：再次点「帮我写」静默丢弃旧未决结果', async () => {
+    await generateField('description', '第一次结果')
+    expect(useCharacterCreatorStore.getState().pendingGeneration).not.toBeNull()
+    // 新生成发起时即清空旧未决（简单方案，已在 store 注释）
+    await useCharacterCreatorStore.getState().aiGenerateField('personality')
+    expect(useCharacterCreatorStore.getState().pendingGeneration).toBeNull()
+    const reqId = lastChatRequestId()
+    chunkCb?.({ requestId: reqId, text: '第二次结果' })
+    doneCb?.(reqId)
+    const s = useCharacterCreatorStore.getState()
+    expect(s.pendingGeneration).toMatchObject({
+      target: { kind: 'field', field: 'personality' },
+      content: '第二次结果',
+    })
+  })
+
+  it('无未决结果时 applyGenerated 是安全空操作', () => {
+    updateDraftOf({ name: '零' })
+    useCharacterCreatorStore.getState().applyGenerated('replace')
+    useCharacterCreatorStore.getState().applyGenerated('append')
+    useCharacterCreatorStore.getState().applyGenerated('discard')
+    const s = useCharacterCreatorStore.getState()
+    expect(s.draft.name).toBe('零')
+    expect(s.pendingGeneration).toBeNull()
+  })
+})
+
+/** 便捷：直接取最新 store 的 updateDraft */
+function updateDraftOf(partial: Partial<Character>) {
+  useCharacterCreatorStore.getState().updateDraft(partial)
+}
 
 describe('generateCover（封面生成）', () => {
   function setupImageGen(provider: 'sd-webui' | 'openai') {
@@ -365,7 +514,7 @@ describe('saveCharacter（保存）', () => {
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull()
   })
 
-  it('有封面时裁剪头像失败不阻塞保存（cover 保留）', async () => {
+  it('有封面时裁剪头像失败不阻塞保存（cover 保留 + UEX-P2-08 提示）', async () => {
     const { saveCharacter, setCover, updateDraft } = useCharacterCreatorStore.getState()
     updateDraft({ name: '零' })
     setCover('data:image/png;base64,cover')
@@ -373,6 +522,9 @@ describe('saveCharacter（保存）', () => {
     expect(saved?.name).toBe('零')
     expect(lastSaveArg().cover).toBe('data:image/png;base64,cover')
     expect(lastSaveArg().avatar).toBe('') // jsdom 无 canvas → 裁剪失败 → 留空，不阻塞
+    // UEX-P2-08：裁剪失败不再静默，toast 轻提示且不阻塞保存
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((t) => t.title === '头像生成失败，可稍后手动设置')).toBe(true)
   })
 
   it('保存失败返回 null 并显示错误', async () => {
@@ -455,9 +607,13 @@ describe('草稿持久化', () => {
     expect(useCharacterCreatorStore.getState().restoreDraft()).toBe(false)
   })
 
-  it('hasDraft / clearDraft', () => {
+  it('hasDraft / clearDraft（UEX-P1-19：空草稿不计为有草稿）', () => {
     expect(useCharacterCreatorStore.getState().hasDraft()).toBe(false)
+    // 空草稿也带 nanoid id，但无实质内容 → 不算可恢复草稿
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ step: 0, draft: { id: 'x' } }))
+    expect(useCharacterCreatorStore.getState().hasDraft()).toBe(false)
+    // 有实质内容才算
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ step: 0, draft: { id: 'x', name: '有名字' } }))
     expect(useCharacterCreatorStore.getState().hasDraft()).toBe(true)
     useCharacterCreatorStore.getState().clearDraft()
     expect(useCharacterCreatorStore.getState().hasDraft()).toBe(false)

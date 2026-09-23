@@ -2,6 +2,7 @@ import type { Character } from '../../../shared/types'
 import { stripAllThinking } from '../../../shared/thoughtMarkup'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { useToastStore } from '../../store/useToastStore'
 import { resolveRendererGenerationTaskBudget } from '../../store/generationTaskBudget'
 import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
@@ -77,6 +78,8 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
   const [imgError, setImgError] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [translating, setTranslating] = useState(false)
+  // UEX-P1-18：导出进行中态（按钮 disabled/图标转圈，防重入）
+  const [exporting, setExporting] = useState<'png' | 'json' | 'cover' | null>(null)
   const coverSrc = charAssetUrl(character.id, 'cover', character.updatedAt)
   const blurEnabled = character.coverBlurEnabled === true
 
@@ -86,7 +89,11 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
     if (!text || translating) return
 
     const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) return
+    if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
+      // UEX-P1-20：未配置翻译通道时不再静默返回（requestId 去重防刷屏）
+      useToastStore.getState().push({ variant: 'warning', title: '请先配置 API 连接', description: '在「API」页面配置对话模型后再翻译', requestId: 'char-translate-fm' })
+      return
+    }
 
     setTranslating(true)
     const requestId = `translate-fm-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -153,9 +160,13 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
         const tc = { ...(character.translatedContent || {}) }
         tc.firstMessage = result
         useCharacterStore.getState().patchCharacter(character.id, { translatedContent: tc } as Partial<Character>)
+      } else {
+        // UEX-P1-20：翻译失败不再静默（requestId 去重防刷屏）
+        useToastStore.getState().push({ variant: 'error', title: '首条消息翻译失败', description: '可稍后重试', requestId: 'char-translate-fm' })
       }
     } catch {
-      // 翻译失败静默处理
+      // UEX-P1-20：翻译异常给出提示（此前静默）
+      useToastStore.getState().push({ variant: 'error', title: '首条消息翻译失败', description: '可稍后重试', requestId: 'char-translate-fm' })
     } finally {
       setTranslating(false)
     }
@@ -176,6 +187,21 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
 
   const toggleBlur = () => {
     patchCharacter(character.id, { coverBlurEnabled: !blurEnabled })
+  }
+
+  // UEX-P1-18：导出统一入口——await 结果、进行中态、防重入
+  const handleExport = async (kind: 'png' | 'json' | 'cover') => {
+    if (exporting) return
+    setExporting(kind)
+    try {
+      if (kind === 'png') await exportPng(character.id)
+      else if (kind === 'json') await exportJson(character.id)
+      else await exportCover(character.id)
+    } finally {
+      setExporting(null)
+      setShowCardMenu(false)
+      setShowMenu(false)
+    }
   }
 
   const cfg = SIZE_CONFIG[cardSize]
@@ -267,9 +293,16 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
               </button>
               {showMenu && (
                 <div className="mx-2 mb-1 bg-tavern-bg-hover/50 rounded p-1 space-y-1">
-                  <button onClick={(e) => { e.stopPropagation(); exportPng(character.id); setShowCardMenu(false); setShowMenu(false) }} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5">PNG</button>
-                  <button onClick={(e) => { e.stopPropagation(); exportJson(character.id); setShowCardMenu(false); setShowMenu(false) }} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5">JSON</button>
-                  <button onClick={(e) => { e.stopPropagation(); exportCover(character.id); setShowCardMenu(false); setShowMenu(false) }} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5">封面图片</button>
+                  {/* UEX-P1-18：await 导出结果 + 进行中态（转圈/禁用/防重入） */}
+                  <button onClick={(e) => { e.stopPropagation(); handleExport('png') }} disabled={exporting !== null} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5 disabled:opacity-50">
+                    {exporting === 'png' && <Loader2 className="w-3 h-3 animate-spin" />}PNG
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); handleExport('json') }} disabled={exporting !== null} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5 disabled:opacity-50">
+                    {exporting === 'json' && <Loader2 className="w-3 h-3 animate-spin" />}JSON
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); handleExport('cover') }} disabled={exporting !== null} className="w-full px-2 py-1 text-left hover:bg-tavern-bg-hover rounded text-xs flex items-center gap-1.5 disabled:opacity-50">
+                    {exporting === 'cover' && <Loader2 className="w-3 h-3 animate-spin" />}封面图片
+                  </button>
                 </div>
               )}
               <div className="border-t border-tavern-border-soft my-1" />

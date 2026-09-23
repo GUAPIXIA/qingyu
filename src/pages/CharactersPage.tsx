@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useDeferredValue, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useCharacterStore } from "../store/useCharacterStore"
+import { useToastStore } from "../store/useToastStore"
 import { CharacterCard } from "../components/character/CharacterCard"
 import { CharacterEditor } from "../components/character/CharacterEditor"
 import { CharacterDetail } from "../components/character/CharacterDetail"
@@ -10,6 +11,8 @@ import { Modal } from "../components/common/Modal"
 import { cn } from "../lib/utils"
 import { Users, Upload, FileUp, Search, AlertCircle, X, FileStack, CheckCircle, Info, Grid3X3, List, Loader2, FileWarning, ArrowDownUp, Sparkles, BookOpen, Wand2 } from "lucide-react"
 import type { Character } from "../../shared/types"
+// UEX-P1-17：导入同名冲突策略类型
+import type { CharacterImportConflictPolicy } from "../../shared/ipc-api"
 
 type CardSize = "sm" | "md" | "lg"
 type SortKey = "updatedAt" | "createdAt" | "name"
@@ -18,9 +21,14 @@ function loadCardSize(): CardSize {
   try { return (localStorage.getItem("char-card-size") as CardSize) || "md" } catch { return "md" }
 }
 
+/** UEX-P1-17：读取同名冲突策略（默认另存副本；覆盖仅用户显式选择过才记住） */
+function loadImportConflict(): CharacterImportConflictPolicy {
+  try { return localStorage.getItem("char-import-conflict") === "overwrite" ? "overwrite" : "copy" } catch { return "copy" }
+}
+
 export function CharactersPage() {
   const navigate = useNavigate()
-  const { characters, selectCharacter, deleteCharacter, importPng, importJson, importBatch, saveCharacter, importError, importNotice, pendingAvatarId, importProgress, lorebookSuggestions, bindSuggestedLorebook } = useCharacterStore()
+  const { characters, loaded, selectCharacter, deleteCharacter, importPng, importJson, importBatch, cancelImportBatch, saveCharacter, importError, importNotice, pendingAvatarId, importProgress, importingBatch, lorebookSuggestions, bindSuggestedLorebook } = useCharacterStore()
   const [editing, setEditing] = useState(false)
   const [editCharacter, setEditCharacter] = useState<Character | null>(null)
   const [search, setSearch] = useState("")
@@ -29,7 +37,11 @@ export function CharactersPage() {
   const [cardSize, setCardSize] = useState<CardSize>(loadCardSize)
   const [sortKey, setSortKey] = useState<SortKey>("updatedAt")
   const [detailCharacter, setDetailCharacter] = useState<Character | null>(null)
-  const [batchResult, setBatchResult] = useState<{ total: number; successCount: number; failCount: number; fails: { name: string; error: string }[] } | null>(null)
+  const [batchResult, setBatchResult] = useState<{ total: number; successCount: number; failCount: number; skippedCount: number; canceled: boolean; fails: { name: string; error: string }[]; skippedIdentical: number; copied: number; overwritten: number; notes: string[] } | null>(null)
+  // UEX-P1-17：同名冲突策略（默认另存副本；「覆盖原卡」仅用户显式选择）
+  const [importConflict, setImportConflict] = useState<CharacterImportConflictPolicy>(loadImportConflict)
+  // UEX-P2-04：「取消导入」按钮的瞬时状态（点击后变「正在取消…」并禁用，批次结束后复位）
+  const [canceling, setCanceling] = useState(false)
 
   const deferredSearch = useDeferredValue(search)
 
@@ -59,15 +71,31 @@ export function CharactersPage() {
     try { localStorage.setItem("char-card-size", size) } catch { /* ignore */ }
   }
 
+  /** UEX-P1-17：切换同名冲突策略并记住选择（内容相同的卡不受影响，始终自动跳过） */
+  const handleImportConflictChange = (policy: CharacterImportConflictPolicy) => {
+    setImportConflict(policy)
+    try { localStorage.setItem("char-import-conflict", policy) } catch { /* ignore */ }
+  }
+
   const handleEdit = useCallback((char: Character) => {
     setEditCharacter({ ...char })
     setEditing(true)
   }, [])
 
+  const [, setSavingChar] = useState(false)
   const handleSave = async (char: Character) => {
-    await saveCharacter(char)
-    setEditing(false)
-    setEditCharacter(null)
+    setSavingChar(true)
+    try {
+      await saveCharacter(char)
+      // UEX-P1-14：保存成功显式反馈，不再仅靠关闭编辑器隐式确认
+      useToastStore.getState().push({ variant: 'success', title: `已保存「${char.name}」`, durationMs: 2500 })
+      setEditing(false)
+      setEditCharacter(null)
+    } catch (e) {
+      useToastStore.getState().push({ variant: 'error', title: '保存失败', description: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setSavingChar(false)
+    }
   }
 
   const handleStartChat = useCallback((char: Character) => {
@@ -105,22 +133,57 @@ export function CharactersPage() {
     return () => { if (batchTimerRef.current) clearTimeout(batchTimerRef.current) }
   }, [])
 
+  // UEX-P2-04：批次状态变化（结束/新批次开始）即复位「正在取消…」按钮态
+  useEffect(() => {
+    setCanceling(false)
+  }, [importingBatch])
+
   const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // UEX-P2-04：导入进行中禁用所有导入入口（防重入；主进程另有「已有导入任务进行中」兜底）
+  const importBusy = importingBatch || importProgress !== null
+
+  const handleCancelImport = useCallback(async () => {
+    // 主进程侧幂等：重复点击/无进行中批次均安全
+    setCanceling(true)
+    try {
+      await cancelImportBatch()
+    } catch {
+      // 取消请求失败时恢复按钮，允许重试
+      setCanceling(false)
+    }
+  }, [cancelImportBatch])
+
   const handleBatchImport = async () => {
-    const result = await importBatch()
+    // UEX-P1-17：冲突策略透传（默认另存副本；「覆盖原卡」仅在选项里显式选定）
+    const result = await importBatch(importConflict)
     if (result) {
       const fails = (result.results || [])
         .filter(r => !r.success)
         .map(r => ({ name: r.name, error: r.error || "未知错误" }))
+      // UEX-P1-17：查重/冲突明细（「已存在相同角色：X」/「已另存副本：…」/「已覆盖同名角色：…」）
+      const notes = (result.results || [])
+        .filter(r => r.outcome && r.outcome !== "imported" && r.note)
+        .map(r => r.note as string)
+      const canceled = !!result.canceled
+      const skippedIdentical = result.skippedIdentical ?? 0
       setBatchResult({
         total: result.total || 0,
         successCount: result.successCount || 0,
         failCount: result.failCount || 0,
+        skippedCount: result.skippedCount ?? Math.max(0, (result.total || 0) - (result.successCount || 0) - (result.failCount || 0) - skippedIdentical),
+        canceled,
         fails,
+        skippedIdentical,
+        copied: result.copied ?? 0,
+        overwritten: result.overwritten ?? 0,
+        notes,
       })
       if (batchTimerRef.current) clearTimeout(batchTimerRef.current)
-      batchTimerRef.current = setTimeout(() => setBatchResult(null), 8000)
+      // M4：有失败时结果条保持可见，便于阅读原因；UEX-P2-04：取消汇总同样不自动消失
+      if (!canceled && fails.length === 0) {
+        batchTimerRef.current = setTimeout(() => setBatchResult(null), 8000)
+      }
     }
   }
 
@@ -157,25 +220,44 @@ export function CharactersPage() {
       {batchResult && (
         <div className={cn(
           "flex items-center gap-2 px-4 py-2 border-b text-sm animate-fade-in",
-          batchResult.failCount > 0
+          batchResult.canceled || batchResult.failCount > 0
             ? "bg-amber-500/10 border-amber-500/30 text-amber-600"
             : "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
         )}>
-          {batchResult.failCount > 0 ? (
+          {batchResult.canceled || batchResult.failCount > 0 ? (
             <Info className="w-4 h-4 shrink-0" />
           ) : (
             <CheckCircle className="w-4 h-4 shrink-0" />
           )}
           <span className="flex-1">
-            批量导入完成：成功 <strong>{batchResult.successCount}</strong> 个
-            {batchResult.failCount > 0 && (
-              <>，失败 <strong>{batchResult.failCount}</strong> 个
-                {batchResult.fails.length > 0 && (
-                  <span className="ml-1 text-tavern-text-muted">
-                    （{batchResult.fails.map(f => f.name).join("、")}）
-                  </span>
+            {batchResult.canceled ? (
+              // UEX-P2-04：取消汇总（对齐 M4 失败明细风格，不自动消失）
+              <>批量导入已取消：成功 <strong>{batchResult.successCount}</strong> 个
+                ，失败 <strong>{batchResult.failCount}</strong> 个
+                ，未处理 <strong>{batchResult.skippedCount}</strong> 个
+              </>
+            ) : (
+              <>批量导入完成：成功 <strong>{batchResult.successCount}</strong> 个
+                {batchResult.failCount > 0 && (
+                  <>，失败 <strong>{batchResult.failCount}</strong> 个</>
                 )}
               </>
+            )}
+            {/* UEX-P1-17：查重/冲突结果明细——「跳过 N 个相同 / 副本 M 个 / 覆盖 K 个」 */}
+            {(batchResult.skippedIdentical > 0 || batchResult.copied > 0 || batchResult.overwritten > 0) && (
+              <span className="ml-1 text-tavern-text-muted">
+                （{[
+                  batchResult.skippedIdentical > 0 ? `跳过 ${batchResult.skippedIdentical} 个相同` : null,
+                  batchResult.copied > 0 ? `副本 ${batchResult.copied} 个` : null,
+                  batchResult.overwritten > 0 ? `覆盖 ${batchResult.overwritten} 个` : null,
+                ].filter(Boolean).join(" / ")}）
+              </span>
+            )}
+            {/* M4 失败明细 + UEX-P1-17 查重/冲突明细（「已存在相同角色：X」等） */}
+            {(batchResult.fails.length > 0 || batchResult.notes.length > 0) && (
+              <span className="ml-1 text-tavern-text-muted">
+                （{[...batchResult.fails.map(f => `${f.name}：${f.error}`), ...batchResult.notes].join("；")}）
+              </span>
             )}
           </span>
           <button onClick={() => setBatchResult(null)} className="p-0.5 hover:opacity-70">
@@ -205,6 +287,17 @@ export function CharactersPage() {
             )}>
               {importProgress.fileName}
             </span>
+            {/* UEX-P2-04：批量导入进行中可取消；点击后变「正在取消…」并禁用（主进程侧幂等） */}
+            {importingBatch && (
+              <button
+                onClick={handleCancelImport}
+                disabled={canceling}
+                className="btn-secondary text-xs px-2.5 py-1 ml-2 shrink-0 text-tavern-danger border-tavern-danger/40 hover:bg-tavern-danger/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="取消本次批量导入，已导入的角色会保留"
+              >
+                {canceling ? "正在取消…" : "取消导入"}
+              </button>
+            )}
           </div>
           <div className="w-full h-2 rounded-full bg-tavern-bg-hover overflow-hidden">
             <div
@@ -230,15 +323,28 @@ export function CharactersPage() {
             <Wand2 className="w-4 h-4" />
             制作角色卡
           </button>
-          <button onClick={() => importPng()} className="btn-secondary" title="导入 PNG 角色卡">
+          {/* UEX-P1-17：同名冲突策略（内容相同的卡始终自动跳过，不受此选项影响；覆盖仅显式选择） */}
+          <select
+            value={importConflict}
+            onChange={(e) => handleImportConflictChange(e.target.value as CharacterImportConflictPolicy)}
+            disabled={importBusy}
+            className="text-xs bg-tavern-bg-hover border border-tavern-border rounded-md px-2 py-1.5 text-tavern-text-soft outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            title="导入时遇到同名但内容不同的角色卡如何处理（内容相同的卡始终自动跳过）"
+            aria-label="同名冲突时"
+          >
+            <option value="copy">同名冲突：另存副本</option>
+            <option value="overwrite">同名冲突：覆盖原卡</option>
+          </select>
+          <button onClick={() => importPng(importConflict)} disabled={importBusy} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed" title="导入 PNG 角色卡">
             <FileUp className="w-4 h-4" />
             PNG
           </button>
-          <button onClick={() => importJson()} className="btn-secondary" title="导入 JSON 角色卡">
+          <button onClick={() => importJson(importConflict)} disabled={importBusy} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed" title="导入 JSON 角色卡">
             <Upload className="w-4 h-4" />
             JSON
           </button>
-          <button onClick={handleBatchImport} className="btn-secondary" title="批量导入角色卡">
+          {/* UEX-P2-04：导入进行中禁用导入入口（防重入） */}
+          <button onClick={handleBatchImport} disabled={importBusy} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed" title="批量导入角色卡">
             <FileStack className="w-4 h-4" />
             批量导入
           </button>
@@ -305,7 +411,13 @@ export function CharactersPage() {
       )}
 
       <div className="flex-1 overflow-y-auto p-4">
-        {characters.length === 0 ? (
+        {!loaded ? (
+          // UEX-P2-05：数据未加载完成显示加载态，避免冷启动闪现「还没有角色」空态
+          <div className="h-full flex flex-col items-center justify-center gap-3 text-tavern-text-muted" role="status">
+            <Loader2 className="w-6 h-6 animate-spin text-tavern-accent" />
+            <span className="text-sm">正在加载角色…</span>
+          </div>
+        ) : characters.length === 0 ? (
           <EmptyState
             className="h-full"
             icon={<Users className="w-8 h-8" />}
@@ -317,7 +429,7 @@ export function CharactersPage() {
                   <Wand2 className="w-4 h-4" />
                   制作角色卡
                 </button>
-                <button className="btn-secondary" onClick={() => importPng()}>
+                <button className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed" disabled={importBusy} onClick={() => importPng(importConflict)}>
                   <FileUp className="w-4 h-4" />
                   导入角色卡
                 </button>
@@ -330,6 +442,12 @@ export function CharactersPage() {
             icon={<Search className="w-8 h-8" />}
             title="未找到匹配的角色"
             description={`没有包含 "${search}" 的角色`}
+            action={
+              // UEX-P2-06：搜索无结果提供一键清空
+              <button className="btn-secondary" onClick={() => setSearch("")}>
+                清空搜索
+              </button>
+            }
           />
         ) : viewMode === "list" ? (
           <div className="flex flex-col gap-3 max-w-3xl mx-auto pb-4">
@@ -388,7 +506,7 @@ export function CharactersPage() {
         onClose={() => setDeleteId(null)}
         onConfirm={handleDelete}
         title="删除角色"
-        message="确定要删除这个角色吗？相关的对话记录也将被删除。此操作不可撤销。"
+        message="确定要删除这个角色吗？将删除角色设定与封面；该角色下的会话记录会保留。此操作不可撤销。"
         confirmText="删除"
         danger
       />

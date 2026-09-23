@@ -36,6 +36,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.setState({ hasError: false, error: undefined })
   }
 
+  handleReload = () => {
+    window.location.reload()
+  }
+
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
@@ -59,6 +63,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <button className="btn-primary inline-flex items-center gap-2 mt-2" onClick={this.handleReset}>
               <RefreshCw size={16} />
               重试
+            </button>
+            <button className="btn-secondary inline-flex items-center gap-2 mt-2" onClick={this.handleReload}>
+              重载应用
             </button>
           </div>
         </div>

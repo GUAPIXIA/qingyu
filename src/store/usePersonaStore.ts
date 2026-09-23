@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Persona } from '../../shared/types'
+import { useSettingsStore } from './useSettingsStore'
 
 interface PersonaState {
   personas: Persona[]
@@ -44,3 +45,30 @@ export const usePersonaStore = create<PersonaState>((set, get) => ({
     }))
   },
 }))
+
+/**
+ * 一致性（UEX-P1-30）：「激活身份 → 同步 settings 快照」的唯一写入口。
+ * settings 的 userName / userDescription / userPersona 是生成管线消费的**快照**，
+ * persona 存储（本 store）是真源；只允许经此入口写快照，
+ * 禁止在别处直接 updateSettings({ userName, userDescription, userPersona }) 造成双源漂移。
+ * - persona 非空：激活该身份（activePersonaId 与快照三字段一并写入）
+ * - persona 为 null：无激活身份，快照复位为空身份（'用户' / 空描述 / 空性格）
+ * 不改字段结构：生成管线仍按既有 Settings 字段读取，保持兼容。
+ */
+export function syncActivePersonaToSettings(persona: Persona | null): void {
+  useSettingsStore.getState().updateSettings(
+    persona
+      ? {
+          activePersonaId: persona.id,
+          userName: persona.name || '用户',
+          userDescription: persona.description || '',
+          userPersona: persona.persona || '',
+        }
+      : {
+          activePersonaId: null,
+          userName: '用户',
+          userDescription: '',
+          userPersona: '',
+        },
+  )
+}

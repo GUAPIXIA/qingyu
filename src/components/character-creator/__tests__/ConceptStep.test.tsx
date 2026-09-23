@@ -65,7 +65,8 @@ describe('ConceptStep（概念设定）', () => {
     expect(screen.getByText('高级设置（可选）')).toBeInTheDocument()
   })
 
-  it('帮我写面板：输入想法后生成并填入字段', async () => {
+  // UEX-P2-07：旧用例「生成即覆盖」按新语义同步——生成后不直接覆盖，三选后才写入
+  it('帮我写面板：生成后不直接覆盖，点「替换」才写入字段', async () => {
     render(<ConceptStep />)
     const personalityCard = screen.getByText('性格特征').closest('.field-card')!
     fireEvent.click(within(personalityCard as HTMLElement).getByText('帮我写'))
@@ -76,7 +77,79 @@ describe('ConceptStep（概念设定）', () => {
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
     // 触发流式完成
     completeStream(lastRequestId(), ['外冷内热，', '话不多但关心人'])
+    // UEX-P2-07：不直接覆盖字段，出现内联预览卡 + 替换/追加/放弃
+    expect(useCharacterCreatorStore.getState().draft.personality).toBe('')
+    expect(within(personalityCard as HTMLElement).getByText(/AI 已生成/)).toBeInTheDocument()
+    expect(within(personalityCard as HTMLElement).getByText('替换')).toBeInTheDocument()
+    expect(within(personalityCard as HTMLElement).getByText('追加')).toBeInTheDocument()
+    expect(within(personalityCard as HTMLElement).getByText('放弃')).toBeInTheDocument()
+    fireEvent.click(within(personalityCard as HTMLElement).getByText('替换'))
     expect(useCharacterCreatorStore.getState().draft.personality).toBe('外冷内热，话不多但关心人')
+    // 应用后预览卡消失
+    expect(within(personalityCard as HTMLElement).queryByText('替换')).not.toBeInTheDocument()
+  })
+
+  it('三选：「追加」接到当前内容之后（基于最新输入）', async () => {
+    useCharacterCreatorStore.getState().updateDraft({ description: '已有内容' })
+    render(<ConceptStep />)
+    const card = screen.getByText('角色描述').closest('.field-card')!
+    fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
+    fireEvent.click(within(card as HTMLElement).getByText('生成'))
+    await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+    completeStream(lastRequestId(), ['新增内容'])
+    // 生成期间用户又改了字段 → 追加以最新值为基准
+    act(() => {
+      useCharacterCreatorStore.getState().updateDraft({ description: '用户最新输入' })
+    })
+    fireEvent.click(within(card as HTMLElement).getByText('追加'))
+    expect(useCharacterCreatorStore.getState().draft.description).toBe('用户最新输入\n\n新增内容')
+  })
+
+  it('三选：「放弃」丢弃结果，字段保持原样且预览卡消失', async () => {
+    useCharacterCreatorStore.getState().updateDraft({ description: '原有内容' })
+    render(<ConceptStep />)
+    const card = screen.getByText('角色描述').closest('.field-card')!
+    fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
+    fireEvent.click(within(card as HTMLElement).getByText('生成'))
+    await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+    completeStream(lastRequestId(), ['不该出现'])
+    fireEvent.click(within(card as HTMLElement).getByText('放弃'))
+    expect(useCharacterCreatorStore.getState().draft.description).toBe('原有内容')
+    expect(within(card as HTMLElement).queryByText(/AI 已生成/)).not.toBeInTheDocument()
+    expect(useCharacterCreatorStore.getState().pendingGeneration).toBeNull()
+  })
+
+  it('标签生成：「追加」合并去重，「替换」整体替换', async () => {
+    useCharacterCreatorStore.getState().updateDraft({ tags: ['黑客'] })
+    render(<ConceptStep />)
+    const card = screen.getByText('标签').closest('.field-card')!
+    fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
+    fireEvent.click(within(card as HTMLElement).getByText('生成'))
+    await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+    completeStream(lastRequestId(), ['黑客、赛博朋克'])
+    fireEvent.click(within(card as HTMLElement).getByText('追加'))
+    expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['黑客', '赛博朋克'])
+    // 再生成一次走「替换」
+    fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
+    fireEvent.click(within(card as HTMLElement).getByText('生成'))
+    await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(2))
+    completeStream(lastRequestId(), ['御姐'])
+    fireEvent.click(within(card as HTMLElement).getByText('替换'))
+    expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['御姐'])
+  })
+
+  it('开场白生成：「追加」为新备选开场白，不动当前文本', async () => {
+    useCharacterCreatorStore.getState().updateDraft({ firstMessage: '主消息' })
+    render(<ConceptStep />)
+    const card = screen.getByText('首条消息').closest('.field-card')!
+    fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
+    fireEvent.click(within(card as HTMLElement).getByText('生成'))
+    await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+    completeStream(lastRequestId(), ['*翻窗而入* "久等了。"'])
+    fireEvent.click(within(card as HTMLElement).getByText('追加'))
+    const s = useCharacterCreatorStore.getState()
+    expect(s.draft.firstMessage).toBe('主消息') // 当前文本不动
+    expect(s.draft.alternateGreetings).toEqual(['*翻窗而入* "久等了。"']) // 追加为新备选项
   })
 
   it('帮我写面板可收起且不触发生成', () => {
@@ -89,7 +162,7 @@ describe('ConceptStep（概念设定）', () => {
     expect(window.api.ai.chat).not.toHaveBeenCalled()
   })
 
-  it('帮我写面板支持 Ctrl+Enter 快速生成', async () => {
+  it('帮我写面板支持 Ctrl+Enter 快速生成（UEX-P2-07：完成后进待确认）', async () => {
     render(<ConceptStep />)
     const card = screen.getByText('角色描述').closest('.field-card')!
     fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
@@ -98,6 +171,8 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
     completeStream(lastRequestId(), ['银色短发，黑客装扮'])
+    expect(useCharacterCreatorStore.getState().draft.description).toBe('') // 不直接覆盖
+    fireEvent.click(within(card as HTMLElement).getByText('替换'))
     expect(useCharacterCreatorStore.getState().draft.description).toBe('银色短发，黑客装扮')
   })
 
@@ -111,7 +186,7 @@ describe('ConceptStep（概念设定）', () => {
     expect(within(card as HTMLElement).getByText('生成中…')).toBeInTheDocument()
   })
 
-  it('主首条消息的帮我写面板：生成到 firstMessage', async () => {
+  it('主首条消息的帮我写面板：生成进待确认，替换后写入 firstMessage', async () => {
     render(<ConceptStep />)
     const card = screen.getByText('首条消息').closest('.field-card')!
     fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
@@ -120,6 +195,8 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.click(within(card as HTMLElement).getByText('生成并修改'))
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
     completeStream(lastRequestId(), ['*抬眼* "说正事。"'])
+    expect(useCharacterCreatorStore.getState().draft.firstMessage).toBe('') // UEX-P2-07：不直接覆盖
+    fireEvent.click(within(card as HTMLElement).getByText('替换'))
     expect(useCharacterCreatorStore.getState().draft.firstMessage).toBe('*抬眼* "说正事。"')
   })
 

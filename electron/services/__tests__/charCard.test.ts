@@ -21,7 +21,15 @@ vi.mock('../charCardDownload', () => ({
   downloadImageAsBase64: mockDownloadImageAsBase64,
 }))
 
-import { importCardFrontendExtensions, importCharacterFromJson, exportCharacterCover, getCoverExtension } from '../charCard'
+import {
+  importCardFrontendExtensions,
+  importCharacterFromJson,
+  exportCharacterCover,
+  getCoverExtension,
+  characterContentFingerprint,
+  resolveImportConflict,
+  removeCharacterMediaFiles,
+} from '../charCard'
 import { readLorebookView } from '../lorebookDocumentStore'
 import type { Character } from '../../../shared/types'
 
@@ -235,7 +243,8 @@ describe('封面原始 URL 提取（重加载按钮触发条件）', () => {
     '下载失败时 %s 字段仍记录 _importImageUrl（按钮可见）',
     async (field) => {
       const character = await importCard({ name: '角色', first_mes: '你好', [field]: 'https://example.com/a.png' })
-      expect(mockDownloadImageAsBase64).toHaveBeenCalledWith('https://example.com/a.png', undefined)
+      // UEX-P2-04：downloadImageAsBase64 签名追加 maxRedirects/signal 尾参，断言同步
+      expect(mockDownloadImageAsBase64).toHaveBeenCalledWith('https://example.com/a.png', undefined, undefined, undefined)
       expect(character._importImageUrl).toBe('https://example.com/a.png')
       expect(character.avatar).toBe('')
     },
@@ -303,5 +312,204 @@ describe('封面导出图片', () => {
     const outPath = join(TEST_DATA_DIR, 'empty.png')
     expect(() => exportCharacterCover(makeCharacter(undefined), outPath)).toThrow('没有可导出的封面图片')
     expect(existsSync(outPath)).toBe(false)
+  })
+})
+
+describe('UEX-P1-17：导入查重内容指纹（相同判定）', () => {
+  it('媒体或前端扩展变化不再误判为相同卡', () => {
+    const a = makeCharacter(undefined, {
+      id: 'id-a',
+      name: '艾莉娅',
+      description: '星界旅行法师',
+      firstMessage: '你好',
+      avatar: 'data:image/png;base64,AAAA',
+      cover: 'data:image/png;base64,AAAA',
+      extensions: { regex_scripts: [{ findRegex: 'old', replaceString: 'A' }] },
+      createdAt: 1, updatedAt: 1,
+    })
+    const b = makeCharacter(undefined, {
+      id: 'id-b',
+      name: '艾莉娅',
+      description: '星界旅行法师',
+      firstMessage: '你好',
+      avatar: 'data:image/png;base64,BBBB',
+      cover: 'data:image/jpeg;base64,CCCC',
+      _importImageUrl: 'https://example.com/x.png',
+      extensions: { regex_scripts: [{ findRegex: 'new', replaceString: 'B' }] },
+      createdAt: 999, updatedAt: 999,
+    })
+    expect(characterContentFingerprint(a)).not.toBe(characterContentFingerprint(b))
+
+    expect(characterContentFingerprint(a)).not.toBe(characterContentFingerprint({
+      ...a,
+      avatar: 'data:image/png;base64,BBBB',
+    }))
+    expect(characterContentFingerprint(a)).not.toBe(characterContentFingerprint({
+      ...a,
+      extensions: { regex_scripts: [{ findRegex: 'new', replaceString: 'B' }] },
+    }))
+  })
+
+  it('tags 仅顺序不同视为相同；语义字段变化则指纹变化', () => {
+    const base = makeCharacter(undefined, { name: '贝拉', tags: ['奇幻', '冒险'], firstMessage: '嗨' })
+    const reordered = makeCharacter(undefined, { name: '贝拉', tags: ['冒险', '奇幻'], firstMessage: '嗨' })
+    expect(characterContentFingerprint(base)).toBe(characterContentFingerprint(reordered))
+
+    for (const patch of [
+      { description: '新描述' },
+      { personality: '冷淡' },
+      { scenario: '雨夜' },
+      { firstMessage: '你好呀' },
+      { alternateGreetings: ['备选'] },
+      { exampleDialog: '{{user}}: hi' },
+      { creatorNotes: '备注' },
+      { tags: ['奇幻'] },
+    ] as Partial<Character>[]) {
+      expect(characterContentFingerprint({ ...base, ...patch })).not.toBe(characterContentFingerprint(base))
+    }
+  })
+})
+
+describe('UEX-P1-17：导入冲突策略（相同跳过、冲突副本、显式覆盖）', () => {
+  const existingChar = makeCharacter(undefined, {
+    id: 'char-old',
+    name: '艾莉娅',
+    description: '星界旅行法师',
+    firstMessage: '你好',
+    createdAt: 111,
+    pinned: true,
+    lorebookId: 'lb-old',
+    boundLorebookIds: ['lb-old'],
+  })
+
+  it('内容相同 → 跳过，明细注明「已存在相同角色：{name}」，不产生新卡', () => {
+    const incoming = makeCharacter(undefined, {
+      id: 'char-new',
+      name: '艾莉娅',
+      description: '星界旅行法师',
+      firstMessage: '你好',
+      createdAt: 222,
+    })
+    const r = resolveImportConflict(incoming, [existingChar], 'copy')
+    expect(r.outcome).toBe('skippedIdentical')
+    expect(r.note).toBe('已存在相同角色：艾莉娅')
+  })
+
+  it('显式覆盖可更新文本相同但媒体不同的角色卡', () => {
+    const incoming = makeCharacter(undefined, {
+      id: 'char-new',
+      name: '艾莉娅',
+      description: '星界旅行法师',
+      firstMessage: '你好',
+      avatar: 'data:image/png;base64,NEWAVATAR',
+      createdAt: 222,
+    })
+    const r = resolveImportConflict(incoming, [existingChar], 'overwrite')
+    expect(r.outcome).toBe('overwritten')
+    expect(r.character.avatar).toBe('data:image/png;base64,NEWAVATAR')
+  })
+
+  it('同名不同内容默认另存副本：「{name}（副本）」，再冲突「{name}（副本 2）」递增', () => {
+    const incoming = makeCharacter(undefined, { id: 'char-new', name: '艾莉娅', description: '新版本设定', firstMessage: '你好' })
+    const r1 = resolveImportConflict(incoming, [existingChar], 'copy')
+    expect(r1.outcome).toBe('copied')
+    expect(r1.character.name).toBe('艾莉娅（副本）')
+    expect(r1.note).toBe('已另存副本：艾莉娅（副本）')
+    expect(r1.character.id).toBe('char-new') // 副本走既有新卡流程，不复用原卡 id
+
+    // 再次冲突：已有「艾莉娅」与「艾莉娅（副本）」→「艾莉娅（副本 2）」
+    const existing2 = [existingChar, r1.character]
+    const r2 = resolveImportConflict({ ...incoming, id: 'char-new-2' }, existing2, 'copy')
+    expect(r2.outcome).toBe('copied')
+    expect(r2.character.name).toBe('艾莉娅（副本 2）')
+  })
+
+  it('显式覆盖：保留原卡 id/createdAt/pinned 与会话关联，更新语义字段与头像/封面', () => {
+    const incoming = makeCharacter(undefined, {
+      id: 'char-new',
+      name: '艾莉娅',
+      description: '重制版设定',
+      firstMessage: '新的开场',
+      avatar: 'data:image/png;base64,NEWAVATAR',
+      cover: 'data:image/png;base64,NEWCOVER',
+    })
+    const r = resolveImportConflict(incoming, [existingChar], 'overwrite')
+    expect(r.outcome).toBe('overwritten')
+    expect(r.note).toBe('已覆盖同名角色：艾莉娅')
+    expect(r.character.id).toBe('char-old') // 保留原 id：会话按 characterId 关联，不删会话
+    expect(r.character.createdAt).toBe(111)
+    expect(r.character.pinned).toBe(true)
+    expect(r.character.description).toBe('重制版设定')
+    expect(r.character.firstMessage).toBe('新的开场')
+    expect(r.character.avatar).toBe('data:image/png;base64,NEWAVATAR')
+    expect(r.character.cover).toBe('data:image/png;base64,NEWCOVER')
+    // 导入卡未带内嵌世界书：保留原卡绑定
+    expect(r.character.lorebookId).toBe('lb-old')
+    expect(r.character.boundLorebookIds).toEqual(['lb-old'])
+  })
+
+  it('显式覆盖：导入卡带内嵌世界书时换绑新书', () => {
+    const incoming = makeCharacter(undefined, {
+      id: 'char-new',
+      name: '艾莉娅',
+      description: '重制版设定',
+      firstMessage: '新的开场',
+      lorebookId: 'lb-new',
+    })
+    const r = resolveImportConflict(incoming, [existingChar], 'overwrite')
+    expect(r.outcome).toBe('overwritten')
+    expect(r.character.lorebookId).toBe('lb-new')
+    expect(r.character.boundLorebookIds).toEqual(['lb-new'])
+  })
+
+  it('无同名冲突 → 正常导入', () => {
+    const incoming = makeCharacter(undefined, { id: 'char-new', name: '新角色', firstMessage: '你好' })
+    const r = resolveImportConflict(incoming, [existingChar], 'overwrite')
+    expect(r.outcome).toBe('imported')
+    expect(r.character.name).toBe('新角色')
+  })
+
+  it('批内去重：把已决策角色并入 existing 后，批内相同跳过、批内同名冲突递增副本', () => {
+    const known = [existingChar]
+    const cardA = makeCharacter(undefined, { id: 'a', name: '卡莲', description: '内容一', firstMessage: '嗨' })
+    const cardA2 = makeCharacter(undefined, { id: 'a2', name: '卡莲', description: '内容一', firstMessage: '嗨' })
+    const cardB = makeCharacter(undefined, { id: 'b', name: '卡莲', description: '内容二', firstMessage: '嗨' })
+
+    // 批内第 1 张：正常导入并入 known
+    const r1 = resolveImportConflict(cardA, known, 'copy')
+    expect(r1.outcome).toBe('imported')
+    known.push(r1.character)
+
+    // 批内第 2 张（与第 1 张内容相同）→ 跳过
+    const r2 = resolveImportConflict(cardA2, known, 'copy')
+    expect(r2.outcome).toBe('skippedIdentical')
+    expect(r2.note).toBe('已存在相同角色：卡莲')
+
+    // 批内第 3 张（同名不同内容）→ 副本命名避开批内已占用名
+    const r3 = resolveImportConflict(cardB, known, 'copy')
+    expect(r3.outcome).toBe('copied')
+    expect(r3.character.name).toBe('卡莲（副本）')
+    known.push(r3.character)
+
+    // 批内第 4 张（再一个同名不同内容）→ 递增「（副本 2）」
+    const r4 = resolveImportConflict(makeCharacter(undefined, { id: 'd', name: '卡莲', description: '内容三', firstMessage: '嗨' }), known, 'copy')
+    expect(r4.character.name).toBe('卡莲（副本 2）')
+  })
+})
+
+describe('UEX-P1-17：覆盖前旧媒体清理', () => {
+  it('removeCharacterMediaFiles 清掉头像/封面各扩展名文件，不影响其他角色', () => {
+    const dir = join(TEST_DATA_DIR, 'characters')
+    mkdirSync(dir, { recursive: true })
+    for (const f of ['m.png', 'm.jpg', 'm_cover.png', 'other.png']) {
+      writeFileSync(join(dir, f), 'x', 'utf-8')
+    }
+
+    removeCharacterMediaFiles('m')
+
+    for (const f of ['m.png', 'm.jpg', 'm_cover.png']) {
+      expect(existsSync(join(dir, f))).toBe(false)
+    }
+    expect(existsSync(join(dir, 'other.png'))).toBe(true)
   })
 })

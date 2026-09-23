@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import type { Character, ProviderType } from '../../../shared/types'
 import { stripAllThinking } from '../../../shared/thoughtMarkup'
 import { Modal } from '../common/Modal'
+import { ConfirmDialog } from '../common/ConfirmDialog'
 import { IdentitySection } from './editor/IdentitySection'
 import { AdvancedSection } from './editor/AdvancedSection'
 import type { TranslatableField } from './editor/types'
@@ -71,6 +72,10 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   const [form, setForm] = useState<Character>(character)
   // NEW-L10：记录当前编辑的角色 ID，仅在切换角色时重置表单
   const lastCharIdRef = useRef(character.id)
+  // UEX-P1-15：进入编辑时快照初始值，改动后 dirty；取消/关闭前按 dirty 决定是否弹确认
+  const initialFormRef = useRef<Character>(character)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initialFormRef.current), [form])
   const [tagInput, setTagInput] = useState('')
   const [translating, setTranslating] = useState(false)
   const [translatingField, setTranslatingField] = useState<string | null>(null)
@@ -81,6 +86,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   const [avatarError, setAvatarError] = useState(false)
   // H-09 修复：追踪活跃的翻译请求，组件卸载时取消
   const activeRequestIdsRef = useRef<Set<string>>(new Set())
+  // UEX-P1-20：整卡翻译取消标志（置位后循环跳出，已翻译字段保留）
+  const translateAbortRef = useRef(false)
   const { settings } = useSettingsStore()
 
   // B-05：textarea 高度记忆
@@ -97,6 +104,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     // 避免外部 character 对象更新（如自动保存刷新）覆盖用户未保存的编辑
     if (character.id !== lastCharIdRef.current) {
       lastCharIdRef.current = character.id
+      initialFormRef.current = character // UEX-P1-15：切换编辑对象时同步重置快照
       setForm(character)
     }
   }, [character])
@@ -187,10 +195,20 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     onSave(form)
   }
 
+  // UEX-P1-15：取消/关闭统一入口——有未保存修改时先弹确认，空手直接关
+  const requestClose = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true)
+    } else {
+      onClose()
+    }
+  }
+
   const handleAiTranslate = async () => {
     setTranslating(true)
     setTranslateError(null)
     setTranslatedFields(new Set())
+    translateAbortRef.current = false // UEX-P1-20：新一轮翻译复位取消标志
 
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
@@ -218,6 +236,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
 
     // 翻译其余字段，使用翻译后的名称作为上下文
     for (const { key, label } of TRANSLATABLE_FIELDS) {
+      if (translateAbortRef.current) break // UEX-P1-20：取消后跳出循环，已翻译字段保留
       if (key === 'name') continue // 已翻译
       const text = form[key]
       if (!text || !text.trim()) continue
@@ -236,6 +255,18 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       }
     }
 
+    setTranslating(false)
+    // UEX-P1-20：取消属于正常控制流，不置错误；已完成字段的译文已保留
+  }
+
+  // UEX-P1-20：整卡翻译取消——置标志位跳出循环 + cancelChat 清理活跃请求（对齐卸载清理写法）
+  const handleCancelTranslate = () => {
+    translateAbortRef.current = true
+    const ids = Array.from(activeRequestIdsRef.current)
+    for (const id of ids) {
+      window.api.ai.cancelChat(id).catch((e) => logError('CharacterEditor:cancelChat', e))
+    }
+    activeRequestIdsRef.current.clear()
     setTranslating(false)
   }
 
@@ -400,15 +431,21 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   }
 
   return (
+    <>
     <Modal
       open
-      onClose={onClose}
+      onClose={requestClose}
       title={character.name === '新角色' ? '创建角色' : '编辑角色'}
       width="custom"
       widthClassName="max-w-5xl"
       footer={
         <>
-          <button className="btn-secondary" onClick={onClose}>取消</button>
+          {/* UEX-P1-15：取消走统一入口，有未保存修改先确认 */}
+          <button className="btn-secondary" onClick={requestClose}>取消</button>
+          {translating && (
+            // UEX-P1-20：整卡翻译可取消（已翻译字段保留）
+            <button className="btn-secondary" onClick={handleCancelTranslate}>取消翻译</button>
+          )}
           <button
             className="btn-secondary"
             onClick={handleAiTranslate}
@@ -479,5 +516,21 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         </div>
       </div>
     </Modal>
+
+    {/* UEX-P1-15：放弃未保存修改确认（danger，确认才关闭） */}
+    <ConfirmDialog
+      open={showDiscardConfirm}
+      title="放弃未保存的修改？"
+      message="当前编辑内容尚未保存，关闭后修改将丢失。"
+      confirmText="放弃修改"
+      cancelText="继续编辑"
+      danger
+      onConfirm={() => {
+        setShowDiscardConfirm(false)
+        onClose()
+      }}
+      onClose={() => setShowDiscardConfirm(false)}
+    />
+    </>
   )
 }

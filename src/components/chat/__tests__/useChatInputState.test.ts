@@ -2,10 +2,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useChatInputState } from '../useChatInputState'
 import { useChatStore } from '../../../store/useChatStore'
+import { useToastStore } from '../../../store/useToastStore'
 import { useSettingsStore } from '../../../store/useSettingsStore'
 import { useCharacterStore } from '../../../store/useCharacterStore'
+import { registerCommand } from '../../../commands/registry'
 import { getDefaultSettings } from '../../../../shared/defaults'
 import type { Character, Message, ConnectionProfile } from '../../../../shared/types'
+
+// UEX-P1-04：/clear 走全局确认通道；测试默认同意（无 ConfirmHost 挂载时避免 Promise 悬挂）
+vi.mock('../../../store/useConfirmStore', () => ({
+  confirm: vi.fn().mockResolvedValue(true),
+}))
+
+function lastToastText(): string {
+  const toasts = useToastStore.getState().toasts
+  const t = toasts[toasts.length - 1]
+  return t ? `${t.title} ${t.description ?? ''}` : ''
+}
 
 function createCharacter(overrides: Partial<Character> = {}): Character {
   return {
@@ -154,6 +167,26 @@ describe('useChatInputState', () => {
     expect(result.current.text).toBe('')
   })
 
+  it('修复5：命令执行失败时回填命令原文并提示', async () => {
+    registerCommand({
+      name: 'failcmd',
+      description: '测试用失败命令',
+      usage: '/failcmd',
+      execute: async () => { throw new Error('boom') },
+    })
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+    await act(async () => {}) // 冲刷挂载异步（quickReply）
+    act(() => {
+      result.current.setText('/failcmd')
+    })
+    await act(async () => {
+      await result.current.handleSend()
+    })
+    // 失败后命令原文回填，便于直接重试
+    expect(result.current.text).toBe('/failcmd')
+    expect(lastToastText()).toContain('命令执行失败')
+  })
+
   it('流式中 handleSend 不发送', async () => {
     useChatStore.setState({ isStreaming: true } as any)
     const { result } = renderHook(() => useChatInputState(createCharacter()))
@@ -248,7 +281,7 @@ describe('useChatInputState', () => {
     })
 
     expect(result.current.text).toBe('保留这段原文。')
-    expect(result.current.notification).toContain('有效的中文正文')
+    expect(lastToastText()).toContain('有效的中文正文')
   })
 
   /** 生成 n 个可见字符的完整句正文（每句 2 字）。 */
@@ -338,8 +371,8 @@ describe('useChatInputState', () => {
       await result.current.handleAiContinue()
     })
 
-    expect(result.current.notification).toContain('续写没有写完')
-    expect(result.current.notification).not.toContain('未返回有效的中文正文')
+    expect(lastToastText()).toContain('续写没有写完')
+    expect(lastToastText()).not.toContain('未返回有效的中文正文')
   })
 
   it('无标签的格式错误仍提示重试或更换模型', async () => {
@@ -350,7 +383,7 @@ describe('useChatInputState', () => {
       await result.current.handleAiContinue()
     })
 
-    expect(result.current.notification).toContain('未返回有效的中文正文')
+    expect(lastToastText()).toContain('未返回有效的中文正文')
   })
 
   it('修复后仍明显越界时保留原输入并给出可见反馈', async () => {
@@ -369,7 +402,7 @@ describe('useChatInputState', () => {
     // 最多一次修复，失败后保留用户原输入
     expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
     expect(result.current.text).toBe('保留这段原文。')
-    expect(result.current.notification).toContain('长度')
+    expect(lastToastText()).toContain('长度')
   })
 
   it('格式无效重试与长度修复各自最多一次，不串成更多请求', async () => {
@@ -446,5 +479,19 @@ describe('useChatInputState', () => {
     })
 
     expect(result.current.text).toBe(sentenceText(14))
+  })
+
+  it('UEX-P1-06 尾巴：润色空结果回退原文并提示', async () => {
+    mockAiHelperResponses([''])
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+    act(() => result.current.setText('待润色的原文。'))
+
+    await act(async () => {
+      await result.current.handleAiPolish()
+    })
+
+    // 空结果不再静默回退：保留原文并给出提示
+    expect(result.current.text).toBe('待润色的原文。')
+    expect(lastToastText()).toContain('润色')
   })
 })

@@ -25,6 +25,18 @@
     {
       "id": "char-dot",
       "name": "A.B"
+    },
+    {
+      "id": "char-ming",
+      "name": "小明"
+    },
+    {
+      "id": "char-mingming",
+      "name": "小明明"
+    },
+    {
+      "id": "char-test",
+      "name": "test"
     }
   ],
   "nextRoundCases": [
@@ -97,7 +109,7 @@
       ]
     },
     {
-      "label": "子串语义：@小A 同时命中成员「小」与「小A」",
+      "label": "D3 词边界：@小A 只命中「小A」，不再命中「小」（旧子串语义已废止）",
       "input": {
         "content": "@小A 你好",
         "memberIds": [
@@ -107,9 +119,88 @@
         ]
       },
       "expected": [
-        "char-sub",
         "char-a"
       ]
+    },
+    {
+      "label": "D3 词边界：@小明 不命中更长名「小明明」",
+      "input": {
+        "content": "@小明 你好",
+        "memberIds": [
+          "char-ming",
+          "char-mingming"
+        ]
+      },
+      "expected": [
+        "char-ming"
+      ]
+    },
+    {
+      "label": "D3 词边界：@小明明 命中「小明明」，前缀名「小明」不算命中",
+      "input": {
+        "content": "@小明明 你好",
+        "memberIds": [
+          "char-ming",
+          "char-mingming"
+        ]
+      },
+      "expected": [
+        "char-mingming"
+      ]
+    },
+    {
+      "label": "D3 词边界：email@test.com 不命中成员「test」（@ 前是名字字符）",
+      "input": {
+        "content": "联系 email@test.com 即可",
+        "memberIds": [
+          "char-test"
+        ]
+      },
+      "expected": []
+    },
+    {
+      "label": "D3 边界：@@小明（@ 前是非名字字符）仍命中",
+      "input": {
+        "content": "@@小明 在吗",
+        "memberIds": [
+          "char-ming"
+        ]
+      },
+      "expected": [
+        "char-ming"
+      ]
+    },
+    {
+      "label": "D3 边界：中缀 a@小明（@ 前是名字字符）不命中",
+      "input": {
+        "content": "a@小明 在吗",
+        "memberIds": [
+          "char-ming"
+        ]
+      },
+      "expected": []
+    },
+    {
+      "label": "D3 成员名含正则元字符按字面匹配（@A.B 命中）",
+      "input": {
+        "content": "@A.B 字面",
+        "memberIds": [
+          "char-dot"
+        ]
+      },
+      "expected": [
+        "char-dot"
+      ]
+    },
+    {
+      "label": "D3 成员名含正则元字符不命中近似串（@AXB 不命中 A.B）",
+      "input": {
+        "content": "@AXB 字面",
+        "memberIds": [
+          "char-dot"
+        ]
+      },
+      "expected": []
     },
     {
       "label": "@提及 大小写敏感",
@@ -339,7 +430,7 @@
   ],
   "pollingContinueCases": [
     {
-      "label": "达到 maxRounds（distinct AI 轮次）交还用户",
+      "label": "达到 maxRounds（D2 已拍板：每次接力段内的 AI 轮次）交还用户",
       "input": {
         "messages": [
           {
@@ -361,6 +452,81 @@
       "expected": {
         "continue": false,
         "reason": "max_rounds"
+      }
+    },
+    {
+      "label": "D2 每次接力：段内第 N 轮达到上限即停止本段接力",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "char-a",
+            "round": 1
+          },
+          {
+            "characterId": "char-b",
+            "round": 2
+          },
+          {
+            "characterId": "char-c",
+            "round": 3
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 3
+      },
+      "expected": {
+        "continue": false,
+        "reason": "max_rounds"
+      }
+    },
+    {
+      "label": "D2 每次接力：新用户消息开启新段，计数重置（不再会话累计）",
+      "input": {
+        "messages": [
+          {
+            "characterId": "__user__",
+            "round": 1
+          },
+          {
+            "characterId": "char-a",
+            "round": 1
+          },
+          {
+            "characterId": "char-b",
+            "round": 2
+          },
+          {
+            "characterId": "char-c",
+            "round": 3
+          },
+          {
+            "characterId": "__user__",
+            "round": 4
+          },
+          {
+            "characterId": "char-a",
+            "round": 4
+          }
+        ],
+        "memberIds": [
+          "char-a",
+          "char-b",
+          "char-c"
+        ],
+        "maxRounds": 3
+      },
+      "expected": {
+        "continue": true,
+        "nextCharId": "char-b",
+        "nextSpeakerIndex": 1
       }
     },
     {

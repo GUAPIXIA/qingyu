@@ -102,7 +102,7 @@ export class RelayService {
     return response.json() as Promise<RelayPairingQr>
   }
   async listDevices(): Promise<unknown[]> { const response = await this.authorized('/relay/v1/devices'); return response.ok ? response.json() as Promise<unknown[]> : [] }
-  async revokeDevice(deviceId: string): Promise<{ ok: boolean }> { const response = await this.authorized(`/relay/v1/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' }); return { ok: response.ok } }
+  async revokeDevice(deviceId: string): Promise<{ ok: boolean; error?: string }> { const response = await this.authorized(`/relay/v1/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' }); return response.ok ? { ok: true } : { ok: false, error: `云端吊销失败（HTTP ${response.status}），请稍后重试` } }
   async approvePair(requestId: string): Promise<{ ok: boolean }> { const response = await this.authorized(`/relay/v1/pair-requests/${encodeURIComponent(requestId)}/approve`, { method: 'POST' }); return { ok: response.ok } }
   async rejectPair(requestId: string): Promise<{ ok: boolean }> { const response = await this.authorized(`/relay/v1/pair-requests/${encodeURIComponent(requestId)}/reject`, { method: 'POST' }); return { ok: response.ok } }
   async clearCache(): Promise<{ ok: boolean }> { const response = await this.authorized('/relay/v1/spaces/current/cache', { method: 'DELETE' }); return { ok: response.ok } }

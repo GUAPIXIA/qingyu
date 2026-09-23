@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { pushToast } from '../../store/useToastStore'
+import { ConfirmDialog } from '../common/ConfirmDialog'
 import { cn } from '../../lib/utils'
 import type {
   ComfyPromptTarget,
@@ -210,13 +212,16 @@ export function ImageGenModelsSection() {
   const handleProviderChange = (provider: ImageGenProvider) => {
     setForm((f) => {
       const defaults = emptyForm(provider)
+      // UEX-P1-25：保留用户已填 Base URL；仅当原值为空或仍等于旧 provider 默认值时才替换为新默认值
+      const oldDefaultBaseUrl = emptyForm(f.provider).baseUrl
+      const keepUserBaseUrl = f.baseUrl.trim() !== '' && f.baseUrl !== oldDefaultBaseUrl
       // 保留用户已填写的标识与连接信息，其余按新 provider 重置。
       return {
         ...defaults,
         id: f.id,
         name: f.name,
         apiKey: f.apiKey,
-        baseUrl: defaults.baseUrl,
+        baseUrl: keepUserBaseUrl ? f.baseUrl : defaults.baseUrl,
         enabled: f.enabled,
         order: f.order,
       }
@@ -943,14 +948,22 @@ export function ImageGenModelsSection() {
       setShowAdd(false)
     }
     resetForm()
+    // UEX-P1-24：保存成功就地反馈
+    pushToast({ variant: 'success', title: '生图模型已保存', description: form.name })
   }
 
+  const [deleteImageGenId, setDeleteImageGenId] = useState<string | null>(null)
   const handleDelete = (id: string) => {
-    deleteImageGenModel(id)
-    if (editingId === id) {
+    setDeleteImageGenId(id)
+  }
+  const confirmDeleteImageGen = () => {
+    if (!deleteImageGenId) return
+    deleteImageGenModel(deleteImageGenId)
+    if (editingId === deleteImageGenId) {
       setEditingId(null)
       resetForm()
     }
+    setDeleteImageGenId(null)
   }
 
   const moveModel = (id: string, direction: 'up' | 'down') => {
@@ -1336,6 +1349,15 @@ export function ImageGenModelsSection() {
           )}
         </>
       )}
+      <ConfirmDialog
+        open={!!deleteImageGenId}
+        onClose={() => setDeleteImageGenId(null)}
+        onConfirm={confirmDeleteImageGen}
+        title="删除生图模型"
+        message="确定删除该生图模型吗？删除后封面/立绘生成将不可用。"
+        confirmText="删除"
+        danger
+      />
     </div>
   )
 }

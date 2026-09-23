@@ -13,13 +13,13 @@ describe('safeSave', () => {
 
   it('成功时正常执行，不抛异常', async () => {
     const fn = vi.fn().mockResolvedValue(undefined)
-    await safeSave(fn, '测试操作')
+    await expect(safeSave(fn, '测试操作')).resolves.toBe(true)
     expect(fn).toHaveBeenCalled()
   })
 
   it('失败时不抛异常（静默处理）', async () => {
     const fn = vi.fn().mockRejectedValue(new Error('网络错误'))
-    await expect(safeSave(fn, '测试操作')).resolves.toBeUndefined()
+    await expect(safeSave(fn, '测试操作')).resolves.toBe(false)
     expect(fn).toHaveBeenCalled()
   })
 

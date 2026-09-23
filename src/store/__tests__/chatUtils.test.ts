@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { Character } from '../../../shared/types'
 import { useSettingsStore } from '../useSettingsStore'
-import { applyDefaultMemory, buildLorebookRevisionCorpus, buildSemanticCacheKey, compressLorebookOverflow, friendlyError } from '../chatUtils'
+import { useToastStore } from '../useToastStore'
+import { applyDefaultMemory, buildLorebookRevisionCorpus, buildSemanticCacheKey, compressLorebookOverflow, friendlyError, invalidateCompression } from '../chatUtils'
 
 const character = {
   id: 'char-1',
@@ -30,6 +31,52 @@ describe('applyDefaultMemory', () => {
       memoryMode: 'auto',
       autoMemoryInterval: 10,
     })
+  })
+
+  it('UEX-P0-02：写入失败不再静默——一次性 warning toast，requestId 限频防刷屏', async () => {
+    useToastStore.setState({ toasts: [] })
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, defaultMemoryEnabled: true },
+    }))
+    vi.mocked(window.api.chat.updateSession)
+      .mockRejectedValueOnce(new Error('io'))
+      .mockRejectedValueOnce(new Error('io'))
+
+    await applyDefaultMemory(character, 'session-1')
+    await applyDefaultMemory(character, 'session-2')
+
+    const hits = useToastStore.getState().toasts.filter((t) => t.requestId === 'chatUtils:applyDefaultMemory')
+    expect(hits).toHaveLength(1)
+    expect(hits[0].variant).toBe('warning')
+  })
+})
+
+describe('invalidateCompression（UEX-P0-02）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useToastStore.setState({ toasts: [] })
+  })
+
+  it('压缩摘要失效失败时 warning toast 可见，不再空 catch', async () => {
+    vi.mocked(window.api.chat.updateSession).mockRejectedValueOnce(new Error('io'))
+
+    await invalidateCompression(
+      () => ({ currentSessionId: 's1', sessions: [{ id: 's1', compressedSummary: '旧摘要' }] }),
+      character,
+    )
+
+    const hits = useToastStore.getState().toasts.filter((t) => t.requestId === 'chatUtils:invalidateCompression')
+    expect(hits).toHaveLength(1)
+    expect(hits[0].variant).toBe('warning')
+  })
+
+  it('无压缩摘要时不发起清理、不弹提示', async () => {
+    await invalidateCompression(
+      () => ({ currentSessionId: 's1', sessions: [{ id: 's1' }] }),
+      character,
+    )
+    expect(window.api.chat.updateSession).not.toHaveBeenCalled()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })
 

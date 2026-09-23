@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
+import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { McpServerFormModal } from './mcp/McpServerFormModal'
 import { McpTestPanel } from './mcp/McpTestPanel'
 import { EMPTY_FORM } from './mcp/mcpTypes'
@@ -29,6 +30,8 @@ export function McpPage() {
   const [tools, setTools] = useState<McpTool[]>([])
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
+  // UEX-P1-29：删除走统一 ConfirmDialog（原 window.confirm）
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
 
   // 添加/编辑弹窗
   const [showForm, setShowForm] = useState(false)
@@ -150,9 +153,12 @@ export function McpPage() {
     await loadData()
   }
 
-  const handleDelete = async (id: string) => {
-    await window.api.mcp.removeServer(id)
+  const handleDelete = async () => {
+    // UEX-P1-29：确认已在 ConfirmDialog 完成，这里执行删除并刷新
+    if (!deleteTarget) return
+    await window.api.mcp.removeServer(deleteTarget.id)
     await loadData()
+    setDeleteTarget(null)
   }
 
   const handleStart = async (id: string) => {
@@ -323,6 +329,16 @@ export function McpPage() {
                               <span>自动启动</span>
                             </>
                           )}
+                          {/* UEX-P1-29：启动失败折叠态也在行头亮红色指示，错误详情展开后可见 */}
+                          {status?.lastError && (
+                            <span
+                              className="flex items-center gap-1 text-tavern-danger shrink-0"
+                              title={status.lastError}
+                            >
+                              <Circle className="w-2 h-2 fill-current" />
+                              启动失败
+                            </span>
+                          )}
                         </div>
                       </div>
                     </button>
@@ -362,7 +378,7 @@ export function McpPage() {
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(s.id)}
+                        onClick={() => setDeleteTarget({ id: s.id, name: s.name })}
                         className="p-1.5 rounded-lg text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-danger/10 transition-colors"
                         title="删除"
                       >
@@ -509,6 +525,17 @@ export function McpPage() {
           </div>
         )}
       </div>
+
+      {/* UEX-P1-29：删除确认统一走 ConfirmDialog（保留影响说明文案） */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="删除 MCP 服务器"
+        message={`确定删除「${deleteTarget?.name ?? ''}」？删除后其工具将从会话中移除。此操作不可撤销。`}
+        confirmText="删除"
+        danger
+      />
 
       {/* 添加/编辑 Server 弹窗（P-8 拆至 McpServerFormModal） */}
       {showForm && (

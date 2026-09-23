@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { getDefaultSettings } from '../utils/defaults'
@@ -9,6 +9,7 @@ import { GenerationPlanningSection } from './settings/GenerationPlanningSection'
 import { PhoneConnectionSection } from './settings/PhoneConnectionSection'
 import { UpdaterSection } from './settings/UpdaterSection'
 import { SectionCard } from '../components/common/SettingsShared'
+import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import type { CustomFont } from '../../shared/types'
 import {
   Settings as SettingsIcon,
@@ -27,16 +28,45 @@ import {
   RefreshCw,
 } from 'lucide-react'
 
+// UEX-P0-13：设置分区 id（与下方 sections 渲染保持一致，用于直达定位校验）
+const SECTION_IDS: readonly string[] = ['updater', 'api', 'appearance', 'behavior', 'generation', 'phone', 'network', 'data']
+// 与 SectionCard 的折叠持久化键保持一致（见 components/common/SettingsShared.tsx）
+const SETTINGS_SECTION_STATE_KEY = 'settings-section-open-state-v1'
+
 export function SettingsPage() {
   const { settings, updateSettings, saveStatus, saveError, saveSettings } = useSettingsStore()
   const navigate = useNavigate()
-  const { hash } = useLocation()
+  const location = useLocation()
   const [busy, setBusy] = useState<'export' | 'import' | null>(null)
+  // UEX-P2-11：导入前覆盖确认
+  const [confirmImport, setConfirmImport] = useState(false)
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([])
   const [activeSection, setActiveSection] = useState<string>('updater')
   const [fontUploading, setFontUploading] = useState(false)
   const [fontError, setFontError] = useState<string | null>(null)
+
+  // UEX-P0-13：欢迎页/直达进入定位（location.state.section / ?section=xxx / #settings-xxx 三选一）
+  const deepLinkSection = (() => {
+    const fromState = (location.state as { section?: string } | null)?.section
+    const fromQuery = new URLSearchParams(location.search).get('section')
+    const fromHash = /^#settings-([\w-]+)$/.exec(location.hash)?.[1]
+    const target = fromState || fromQuery || fromHash
+    return target && SECTION_IDS.includes(target) ? target : null
+  })()
+
+  // UEX-P0-13：直达模型卡时在 SectionCard 读取折叠持久化之前写入展开状态（首次/直达场景展开）
+  const expandModelsAppliedRef = useRef(false)
+  if (deepLinkSection === 'api' && !expandModelsAppliedRef.current) {
+    expandModelsAppliedRef.current = true
+    try {
+      const raw = localStorage.getItem(SETTINGS_SECTION_STATE_KEY)
+      const parsed: Record<string, unknown> = raw ? JSON.parse(raw) : {}
+      localStorage.setItem(SETTINGS_SECTION_STATE_KEY, JSON.stringify({ ...parsed, api: true }))
+    } catch {
+      // localStorage 不可用时退回 defaultOpen 折叠行为
+    }
+  }
 
   // 加载自定义字体列表
   const loadCustomFonts = useCallback(async () => {
@@ -52,14 +82,15 @@ export function SettingsPage() {
     loadCustomFonts()
   }, [loadCustomFonts])
 
+  // UEX-P0-13：直达/锚点进入时定位并滚动到目标分区（原 #settings-updater 锚点泛化为任意分区）
   useEffect(() => {
-    if (hash !== '#settings-updater') return
-    setActiveSection('updater')
+    if (!deepLinkSection) return
+    setActiveSection(deepLinkSection)
     const frame = requestAnimationFrame(() => {
-      document.getElementById('settings-updater')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+      document.getElementById(`settings-${deepLinkSection}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
     })
     return () => cancelAnimationFrame(frame)
-  }, [hash])
+  }, [deepLinkSection])
 
   // S2-D / P1-02：保存状态由 store 的真实落盘 Promise 结果驱动（不再用固定 500ms 计时器假成功）
 
@@ -124,7 +155,7 @@ export function SettingsPage() {
     }
   }
 
-  /** 导入备份 - S1 Backup V2：支持 zip/json，校验 + 全 Store 重载 */
+  /** 导入备份 - S1 Backup V2：支持 zip/json，校验 + 全 Store 重载（UEX-P2-11：导入前确认 + 部分失败明细） */
   const handleImport = async () => {
     setBusy('import')
     setImportMsg(null)
@@ -135,13 +166,30 @@ export function SettingsPage() {
       const counts = result.counts
       const detail = counts ? `（${Object.entries(counts).map(([k,v])=>`${k} ${v}`).join(' / ')}）` : ''
       setImportMsg({ ok: true, text: `导入成功${v}${detail}，正在刷新...` })
-      await Promise.allSettled([
-        useSettingsStore.getState().loadSettings(),
-        import('../store/useCharacterStore').then(m => m.useCharacterStore.getState().loadCharacters()),
-        import('../store/usePersonaStore').then(m => m.usePersonaStore.getState().loadPersonas()),
-        import('../store/useGroupChatStore').then(m => m.useGroupChatStore.getState().loadGroups()),
-      ])
-      setTimeout(() => setImportMsg({ ok: true, text: `导入成功${v}${detail}，已刷新。如列表未更新请重启应用。` }), 800)
+      // UEX-P2-11：刷新任务按成功/失败分别统计，部分失败展示明细而非统一「导入成功」
+      const reloadTasks: Array<{ label: string; run: () => Promise<unknown> }> = [
+        { label: '设置', run: () => useSettingsStore.getState().loadSettings() },
+        { label: '角色', run: () => import('../store/useCharacterStore').then(m => m.useCharacterStore.getState().loadCharacters()) },
+        { label: '人设', run: () => import('../store/usePersonaStore').then(m => m.usePersonaStore.getState().loadPersonas()) },
+        { label: '群聊', run: () => import('../store/useGroupChatStore').then(m => m.useGroupChatStore.getState().loadGroups()) },
+      ]
+      const settled = await Promise.allSettled(reloadTasks.map(t => t.run()))
+      const failed = settled
+        .map((r, i) => ({ result: r, label: reloadTasks[i].label }))
+        .filter((x): x is { result: PromiseRejectedResult; label: string } => x.result.status === 'rejected')
+      if (failed.length > 0) {
+        const failedDetail = failed.map((x) => {
+          const reason = x.result.reason instanceof Error ? x.result.reason.message : String(x.result.reason)
+          return `${x.label}（${reason}）`
+        }).join('；')
+        setImportMsg({
+          ok: false,
+          text: `备份已写入${v}${detail}，但 ${failed.length} 项数据刷新失败：${failedDetail}。如列表未更新请重启应用。`,
+        })
+        return
+      }
+      // 刷新任务已经全部 settled，无需再延迟更新；避免页面卸载后计时器继续 setState。
+      setImportMsg({ ok: true, text: `导入成功${v}${detail}，已刷新。如列表未更新请重启应用。` })
     } catch (err) {
       setImportMsg({ ok: false, text: err instanceof Error ? err.message : '导入失败' })
     } finally {
@@ -304,7 +352,8 @@ export function SettingsPage() {
               )}
               导出备份
             </button>
-            <button onClick={handleImport} disabled={busy !== null} className="btn-secondary">
+            {/* UEX-P2-11：导入前先经 ConfirmDialog 说明覆盖影响，不再直接执行 */}
+            <button onClick={() => setConfirmImport(true)} disabled={busy !== null} className="btn-secondary">
               {busy === 'import' ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
@@ -338,6 +387,19 @@ export function SettingsPage() {
               {importMsg.text}
             </p>
           )}
+          {/* UEX-P2-11：导入覆盖确认（统一 ConfirmDialog） */}
+          <ConfirmDialog
+            open={confirmImport}
+            onClose={() => setConfirmImport(false)}
+            onConfirm={() => {
+              setConfirmImport(false)
+              void handleImport()
+            }}
+            title="导入备份"
+            message="导入将覆盖现有数据（备份中的同名文件/记录会被覆盖，未包含的本地文件保留），并重新加载设置、角色、人设与群聊。确定继续导入吗？"
+            confirmText="导入"
+            danger
+          />
           <div className="mt-2 space-y-1 text-xs text-tavern-text-muted">
             <p>Backup V2（zip）：包含 设置、角色（含头像/封面）、世界书、预设、身份、正则、快捷回复、MCP、用量、全部聊天记录与群聊。</p>
             <p>导入为合并式恢复：同名文件覆盖，备份中未包含的本地文件保留；写入前先完成整包校验，失败会回滚本次写入。</p>

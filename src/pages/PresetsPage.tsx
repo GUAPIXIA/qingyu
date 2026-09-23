@@ -9,6 +9,7 @@ import { cn } from '../lib/utils'
 import { estimateTokens } from '../utils/tokenCounter'
 import { parsePresetGeneration } from '../utils/presetGen'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { useToastStore } from '../store/useToastStore'
 import { useCharacterStore } from '../store/useCharacterStore'
 import { syncBuildData } from '../context/rendererContextProvider'
 import { buildChatParamsFromData, buildContextMessagesFromData } from '../context/contextBuilder'
@@ -114,7 +115,11 @@ export function PresetsPage() {
   const handleImport = async () => {
     try {
       const imported = await window.api.preset.importJson()
-      if (!imported) return
+      if (!imported) {
+        // UEX-P0-03：取消导入给出明确提示（对齐 QuickRepliesPage 的「已取消导入」）
+        showImportNotice('已取消导入')
+        return
+      }
       loadPresets()
       const compatibilityLabel = imported.sourceFormat === 'standard' ? '（已转换标准格式）' : ''
       const unsupported = imported.unsupportedFields.length > 0
@@ -143,8 +148,13 @@ export function PresetsPage() {
     setBusyMsg(`正在导出「${preset.name}」...`)
     try {
       const r = await window.api.preset.exportJson(preset.id)
-      if (r.error) setBusyMsg(`导出失败：${r.error}`)
-      else setBusyMsg(null)
+      if (r.error) {
+        useToastStore.getState().push({ variant: 'error', title: `导出失败：${r.error}`, requestId: 'preset-export' })
+      } else {
+        useToastStore.getState().push({ variant: 'success', title: `已导出「${preset.name}」`, requestId: 'preset-export' })
+      }
+    } catch (e) {
+      useToastStore.getState().push({ variant: 'error', title: `导出失败：${(e as Error).message}`, requestId: 'preset-export' })
     } finally {
       setBusyMsg(null)
     }

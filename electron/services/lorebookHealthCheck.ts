@@ -33,8 +33,19 @@ function issue(
   bookName: string,
   detail: string,
   entryId?: string,
+  entryName?: string,
+  keywords?: string[],
 ): LorebookHealthIssue {
-  return { kind, bookId, bookName, detail, ...(entryId ? { entryId } : {}) }
+  // UEX-P2 补3：仅扩展展示字段（entryName/keywords），不改变任何判定逻辑
+  return {
+    kind,
+    bookId,
+    bookName,
+    detail,
+    ...(entryId ? { entryId } : {}),
+    ...(entryName ? { entryName } : {}),
+    ...(keywords && keywords.length > 0 ? { keywords } : {}),
+  }
 }
 
 function regexPatterns(entry: CanonicalLorebookDocumentV2['entries'][number]): string[] {
@@ -72,8 +83,10 @@ export function analyzeLorebookHealth(
 
     const seen = new Set<string>()
     for (const entry of document.entries) {
+      // UEX-P2 补3：随问题带上条目名与触发词，供报告定位展示
+      const entryDisplay = [entry.id, entry.title, regexPatterns(entry)] as const
       if (seen.has(entry.id)) {
-        issues.push(issue('duplicate_id', bookId, bookName, `条目 ID 重复：${entry.id}`, entry.id))
+        issues.push(issue('duplicate_id', bookId, bookName, `条目 ID 重复：${entry.id}`, ...entryDisplay))
       }
       seen.add(entry.id)
 
@@ -84,20 +97,20 @@ export function analyzeLorebookHealth(
           } catch (error) {
             issues.push(issue('invalid_regex', bookId, bookName,
               `正则 /${pattern}/${entry.activation.regex.flags} 无法编译：${error instanceof Error ? error.message : String(error)}`,
-              entry.id))
+              ...entryDisplay))
           }
         }
       }
 
       const deadReason = deadEntryReason(entry, input.semanticAvailable)
-      if (deadReason) issues.push(issue('dead_entry', bookId, bookName, deadReason, entry.id))
+      if (deadReason) issues.push(issue('dead_entry', bookId, bookName, deadReason, ...entryDisplay))
 
       if (entry.insertion.kind === 'outlet') {
         issues.push(issue('unexecutable_position', bookId, bookName,
-          `命名 outlet「${entry.insertion.name}」在当前聊天协议下回退到 prompt_end`, entry.id))
+          `命名 outlet「${entry.insertion.name}」在当前聊天协议下回退到 prompt_end`, ...entryDisplay))
       } else if (entry.insertion.kind === 'custom') {
         issues.push(issue('unexecutable_position', bookId, bookName,
-          `自定义插入位置在当前聊天协议下回退到 prompt_end`, entry.id))
+          `自定义插入位置在当前聊天协议下回退到 prompt_end`, ...entryDisplay))
       }
     }
 

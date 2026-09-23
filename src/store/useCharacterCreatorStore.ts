@@ -3,6 +3,8 @@
  *
  * - aiExpand: 一句话概念 → AI 扩展为完整角色设定（流式，支持取消）
  * - aiGenerateField: 单字段「帮我写」（以其他字段为上下文）
+ * - UEX-P2-07: 「帮我写」生成结果不再直接覆盖字段，进入 pendingGeneration 待确认，
+ *   由 applyGenerated('replace' | 'append' | 'discard') 三选处理
  * - generateCover: 调用 imageGen 生成 3:4 封面（DALL-E 正方形自动裁 3:4）
  * - saveCharacter: 保存（含 1:1 头像裁剪）+ 选中 + 清草稿
  * - 草稿持久化：文本字段 + 封面缩略图（完整 base64 不落 localStorage）
@@ -11,6 +13,7 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { useCharacterStore } from './useCharacterStore'
 import { useSettingsStore } from './useSettingsStore'
+import { useToastStore } from './useToastStore'
 import { cropAvatar, cropCoverTo34, downscaleImage } from '../utils/avatarCrop'
 import { buildCoverPrompt } from '../utils/charPrompt'
 import type { Character } from '../../shared/types'
@@ -23,6 +26,32 @@ export const DRAFT_KEY = 'character-creator-draft'
 export type CreatorStep = 0 | 1 | 2
 export type AvatarPosition = 'top' | 'center' | 'bottom'
 export type GenerateField = 'name' | 'description' | 'personality' | 'scenario' | 'firstMessage' | 'exampleDialog' | 'tags'
+
+/** UEX-P2-07：「帮我写」生成结果的落点（普通字段 / 开场白） */
+export type GeneratedTarget =
+  | { kind: 'field'; field: GenerateField }
+  | { kind: 'greeting'; index: number } // -1 = 主首条消息，>=0 = 备选开场白（alternateGreetings[i]）
+
+/** UEX-P2-07：待确认的生成结果（生成完成不直接写 draft，等用户替换/追加/放弃） */
+export interface PendingGeneration {
+  target: GeneratedTarget
+  /** 生成结果原文（tags 为顿号/逗号分隔文本，apply 时解析为数组） */
+  content: string
+  /** 生成发起时的原值快照（仅作 UI 对比展示；apply 一律基于最新 draft 计算，防覆盖用户生成期间的新输入） */
+  original: string
+}
+
+/** UEX-P2-07：三选动作——replace 覆盖 / append 追加 / discard 放弃 */
+export type ApplyGeneratedAction = 'replace' | 'append' | 'discard'
+
+/** UEX-P2-07：tags 生成原文 → 标签数组（顿号/逗号/空白切分，上限 8 与标签编辑器一致） */
+export function parseGeneratedTags(content: string): string[] {
+  return content
+    .split(/[,，、\s]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+}
 
 export interface DraftSnapshot {
   step: number
@@ -204,6 +233,24 @@ export function parseExpandResult(text: string): Partial<Character> | null {
   }
 }
 
+/** UEX-P1-19：草稿是否含实质内容（name/step/任一文本字段/标签/备选开场白/封面非空；
+ * 空草稿也带 nanoid id，不能只看 id） */
+export function isDraftMeaningful(input: {
+  draft?: Partial<Character> | null
+  step?: number
+  cover?: string | null
+}): boolean {
+  const d = input.draft
+  if (!d) return false
+  if ((input.step ?? 0) > 0) return true
+  if (input.cover) return true
+  const textFields = [d.name, d.description, d.personality, d.scenario, d.firstMessage, d.exampleDialog]
+  if (textFields.some((v) => typeof v === 'string' && v.trim().length > 0)) return true
+  if (Array.isArray(d.tags) && d.tags.length > 0) return true
+  if (d.alternateGreetings?.some((g) => typeof g === 'string' && g.trim().length > 0)) return true
+  return false
+}
+
 function createEmptyDraft(): Character {
   const now = Date.now()
   return {
@@ -243,6 +290,8 @@ interface CharacterCreatorState {
   generatingField: GenerateField | null
   /** 开场白生成中：-1 = 主首条消息，>=0 = 备选开场白（alternateGreetings[i]） */
   generatingGreetingIndex: number | null
+  /** UEX-P2-07：待确认的「帮我写」生成结果（单槽位；新生成会静默丢弃旧的未决结果） */
+  pendingGeneration: PendingGeneration | null
   expandRequestId: string | null
   // 错误
   error: string | null
@@ -260,6 +309,8 @@ interface CharacterCreatorState {
   aiGenerateField: (field: GenerateField, userInput?: string) => Promise<void>
   /** 生成开场白（-1 = 主首条消息，>=0 = 备选开场白 i），要求与已有开场白风格不同 */
   aiGenerateGreeting: (index: number, userInput?: string) => Promise<void>
+  /** UEX-P2-07：处理待确认生成结果（replace 覆盖 / append 追加 / discard 放弃），apply 时读最新 draft */
+  applyGenerated: (action: ApplyGeneratedAction) => void
   cancelExpand: () => void
   generateCover: () => Promise<void>
   saveCharacter: () => Promise<Character | null>
@@ -331,6 +382,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
   isSaving: false,
   generatingField: null,
   generatingGreetingIndex: null,
+  pendingGeneration: null,
   expandRequestId: null,
   error: null,
 
@@ -433,7 +485,8 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
     if (prevFieldRequest) {
       window.api.ai.cancelChat(prevFieldRequest)
     }
-    set({ generatingField: field, error: null })
+    // UEX-P2-07：简单方案——再次点「帮我写」时静默丢弃旧的未决生成结果，再发起新生成
+    set({ generatingField: field, error: null, pendingGeneration: null })
 
     const { systemPrompt, userContent } = buildFieldGeneratePrompt(field, get().draft, userInput)
     const model = useSettingsStore.getState().settings.activeModel || profile.model
@@ -463,22 +516,22 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
           // H-13：被取消/替换的旧请求忽略其补发 aiDone
           if (get().expandRequestId !== requestId) return
           const content = cleanFieldOutput(text, field).trim()
-          set((state) => {
-            if (!content) {
-              return { generatingField: null, expandRequestId: null, error: `「${FIELD_LABELS[field]}」生成失败，请重试` }
-            }
-            const draft = { ...state.draft }
-            if (field === 'tags') {
-              draft.tags = content
-                .split(/[,，、\s]+/)
-                .map((t) => t.trim())
-                .filter(Boolean)
-                .slice(0, 8)
-            } else {
-              ;(draft as unknown as Record<string, unknown>)[field] = content
-            }
-            return { draft, generatingField: null, expandRequestId: null, error: null }
-          })
+          if (!content) {
+            set({ generatingField: null, expandRequestId: null, error: `「${FIELD_LABELS[field]}」生成失败，请重试` })
+            return
+          }
+          // UEX-P2-07：生成结果进入待确认（替换/追加/放弃），不直接覆盖 draft 字段
+          set((state) => ({
+            pendingGeneration: {
+              target: { kind: 'field', field },
+              content,
+              // 生成时原值仅作 UI 对比展示；apply 时读最新 draft，防覆盖用户生成期间的新输入
+              original: field === 'tags' ? (state.draft.tags ?? []).join('、') : state.draft[field] ?? '',
+            },
+            generatingField: null,
+            expandRequestId: null,
+            error: null,
+          }))
         },
         onError: (err) => {
           if (get().expandRequestId !== requestId) return
@@ -500,7 +553,8 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
     if (prevGreetingRequest) {
       window.api.ai.cancelChat(prevGreetingRequest)
     }
-    set({ generatingGreetingIndex: index, error: null })
+    // UEX-P2-07：简单方案——新生成静默丢弃旧的未决生成结果
+    set({ generatingGreetingIndex: index, error: null, pendingGeneration: null })
 
     const { systemPrompt, userContent } = buildGreetingPrompt(index, get().draft, userInput)
     const model = useSettingsStore.getState().settings.activeModel || profile.model
@@ -530,21 +584,24 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
           // H-13：被取消/替换的旧请求忽略其补发 aiDone
           if (get().expandRequestId !== requestId) return
           const content = cleanFieldOutput(text).trim()
-          set((state) => {
-            if (!content) {
-              return { generatingGreetingIndex: null, expandRequestId: null, error: '开场白生成失败，请重试' }
-            }
-            const draft = { ...state.draft }
-            if (index === -1) {
-              draft.firstMessage = content
-            } else {
-              const list = [...(draft.alternateGreetings ?? [])]
-              while (list.length <= index) list.push('')
-              list[index] = content
-              draft.alternateGreetings = list
-            }
-            return { draft, generatingGreetingIndex: null, expandRequestId: null, error: null }
-          })
+          if (!content) {
+            set({ generatingGreetingIndex: null, expandRequestId: null, error: '开场白生成失败，请重试' })
+            return
+          }
+          // UEX-P2-07：生成结果进入待确认（替换/追加/放弃），不直接覆盖开场白
+          set((state) => ({
+            pendingGeneration: {
+              target: { kind: 'greeting', index },
+              content,
+              // 生成时原文仅作 UI 对比展示；apply 时读最新 draft
+              original: index === -1
+                ? state.draft.firstMessage
+                : state.draft.alternateGreetings?.[index] ?? '',
+            },
+            generatingGreetingIndex: null,
+            expandRequestId: null,
+            error: null,
+          }))
         },
         onError: (err) => {
           if (get().expandRequestId !== requestId) return
@@ -556,12 +613,56 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
     set({ expandRequestId: requestId })
   },
 
+  /** UEX-P2-07：处理待确认生成结果——replace 覆盖 / append 追加 / discard 放弃；
+   * 一律在 apply 时读最新 draft 计算（不做生成时快照替换），防覆盖用户生成期间的新输入 */
+  applyGenerated: (action) => {
+    const pending = get().pendingGeneration
+    if (!pending) return
+    if (action === 'discard') {
+      // 放弃 = 丢弃生成结果；draft 从未被写入，天然恢复原样
+      set({ pendingGeneration: null })
+      return
+    }
+    set((state) => {
+      const draft = { ...state.draft }
+      const { target, content } = pending
+      if (target.kind === 'field') {
+        if (target.field === 'tags') {
+          const generated = parseGeneratedTags(content)
+          // replace = 替换整个标签数组；append = 合并去重（现有标签在前，上限 8）
+          draft.tags =
+            action === 'replace'
+              ? generated
+              : [...new Set([...(draft.tags ?? []), ...generated])].slice(0, 8)
+        } else {
+          const current = draft[target.field] ?? ''
+          // replace = 覆盖；append = 当前值 + 空行分隔 + 新内容（当前值取 apply 时最新）
+          draft[target.field] = action === 'replace' ? content : current ? `${current}\n\n${content}` : content
+        }
+      } else if (action === 'replace') {
+        // 开场白 replace = 覆盖当前开场白（-1 主消息 / >=0 备选 i，沿用原索引扩容语义）
+        if (target.index === -1) {
+          draft.firstMessage = content
+        } else {
+          const list = [...(draft.alternateGreetings ?? [])]
+          while (list.length <= target.index) list.push('')
+          list[target.index] = content
+          draft.alternateGreetings = list
+        }
+      } else {
+        // 开场白 append = 数据结构支持变体数组 → 追加为新备选开场白（不动当前文本）
+        draft.alternateGreetings = [...(draft.alternateGreetings ?? []), content]
+      }
+      return { draft, pendingGeneration: null }
+    })
+  },
+
   cancelExpand: () => {
     const { expandRequestId } = get()
     if (expandRequestId) {
       window.api.ai.cancelChat(expandRequestId)
     }
-    set({ isExpanding: false, generatingField: null, generatingGreetingIndex: null, expandRequestId: null })
+    set({ isExpanding: false, generatingField: null, generatingGreetingIndex: null, expandRequestId: null, pendingGeneration: null })
   },
 
   generateCover: async () => {
@@ -617,7 +718,12 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       }
       if (coverBase64) {
         const avatar = await cropAvatar(coverBase64, { position: avatarPosition })
-        if (avatar) character.avatar = avatar
+        if (avatar) {
+          character.avatar = avatar
+        } else {
+          // UEX-P2-08：头像裁剪失败不再静默——轻提示，不阻塞保存（保持降级语义）
+          useToastStore.getState().push({ variant: 'warning', title: '头像生成失败，可稍后手动设置', requestId: 'char-create-avatar' })
+        }
         character.cover = coverBase64
       }
       const store = useCharacterStore.getState()
@@ -625,6 +731,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       await store.loadCharacters()
       store.selectCharacter(character.id)
       get().clearDraft()
+      get().reset()
       return character
     } catch (e) {
       set({ error: `保存失败：${e instanceof Error ? e.message : String(e)}` })
@@ -678,6 +785,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
         coverIsThumb: !!saved.coverThumb,
         coverMode: 'upload',
         error: null,
+        pendingGeneration: null, // UEX-P2-07：待确认生成结果不随草稿持久化，恢复时清空
       })
       return true
     } catch {
@@ -690,7 +798,9 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       const raw = localStorage.getItem(DRAFT_KEY)
       if (!raw) return false
       const saved = JSON.parse(raw) as DraftSnapshot
-      return !!saved?.draft?.id
+      if (!saved?.draft?.id) return false
+      // UEX-P1-19：空草稿也有 nanoid id，需含实质内容才算可恢复草稿
+      return isDraftMeaningful({ draft: saved.draft, step: saved.step, cover: saved.coverThumb })
     } catch {
       return false
     }
@@ -724,6 +834,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       isSaving: false,
       generatingField: null,
       generatingGreetingIndex: null,
+      pendingGeneration: null,
       expandRequestId: null,
       error: null,
     })

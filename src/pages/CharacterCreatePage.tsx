@@ -7,7 +7,7 @@ import { CoverStep } from '../components/character-creator/CoverStep'
 import { ReviewStep } from '../components/character-creator/ReviewStep'
 import { Modal } from '../components/common/Modal'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { useCharacterCreatorStore, DRAFT_KEY } from '../store/useCharacterCreatorStore'
+import { useCharacterCreatorStore, DRAFT_KEY, isDraftMeaningful } from '../store/useCharacterCreatorStore'
 import type { CreatorStep } from '../store/useCharacterCreatorStore'
 
 export function CharacterCreatePage() {
@@ -22,19 +22,26 @@ export function CharacterCreatePage() {
   const [showRestore, setShowRestore] = useState(false)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
   const leavingRef = useRef<'back' | 'chat'>('back')
-  const dirtyRef = useRef(false)
 
   // 草稿防抖持久化（500ms）：步骤或任何草稿内容变化时触发
   const draft = useCharacterCreatorStore((s) => s.draft)
   const coverBase64 = useCharacterCreatorStore((s) => s.coverBase64)
   const avatarPosition = useCharacterCreatorStore((s) => s.avatarPosition)
 
+  // UEX-P1-19：表单是否有实质内容（空表单不置脏、不写草稿、离开不弹确认）
+  const isMeaningful = () => {
+    const s = useCharacterCreatorStore.getState()
+    return isDraftMeaningful({ draft: s.draft, step: s.step, cover: s.coverBase64 })
+  }
+
   useEffect(() => {
+    // UEX-P1-19：仅表单有实质内容才写草稿；空表单返回不弹确认
+    if (!isDraftMeaningful({ draft, step, cover: coverBase64 })) return
     const timer = setTimeout(() => {
-      dirtyRef.current = true
       persistDraft()
     }, 500)
     return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, draft, coverBase64, avatarPosition, persistDraft])
 
   // 进入页面时检查未完成草稿
@@ -46,15 +53,18 @@ export function CharacterCreatePage() {
   // 组件卸载时兜底保存一次（切换路由触发）
   useEffect(() => {
     return () => {
-      if (dirtyRef.current) {
-        useCharacterCreatorStore.getState().persistDraft()
+      // M3：保存成功后 store 已 reset；仅仍有实质内容时才卸载兜底落盘（UEX-P1-19：空表单不写）
+      const s = useCharacterCreatorStore.getState()
+      if (isDraftMeaningful({ draft: s.draft, step: s.step, cover: s.coverBase64 })) {
+        s.persistDraft()
       }
     }
   }, [])
 
   const handleLeave = (target: 'back' | 'chat') => {
     leavingRef.current = target
-    if (dirtyRef.current && hasDraft()) {
+    // UEX-P1-19：离开前实时判断实质内容，空表单直接走，不弹确认
+    if (isMeaningful()) {
       setShowLeaveConfirm(true)
     } else {
       doLeave()
@@ -63,7 +73,8 @@ export function CharacterCreatePage() {
 
   const doLeave = () => {
     // 离开时保持草稿（用户可下次恢复）；「直接放弃」才清除
-    if (leavingRef.current === 'back') {
+    // UEX-P1-19：空表单不写草稿，避免下次进入误弹恢复提示
+    if (leavingRef.current === 'back' && isMeaningful()) {
       useCharacterCreatorStore.getState().persistDraft()
     }
     navigate('/characters')

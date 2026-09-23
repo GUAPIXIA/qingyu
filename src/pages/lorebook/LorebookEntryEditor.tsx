@@ -15,7 +15,8 @@ interface LorebookEntryEditorProps {
   setEditingEntry: (entry: LoreEntry) => void
   translatingField: { key: string; text: string } | null
   translateResult: string | null
-  translateError: string | null
+  /** UEX-P2 补2：翻译错误带目标 fieldKey，只渲染到对应条目 */
+  translateError: { key: string; message: string } | null
   onTranslate: (text: string, key: string, apply: (translated: string) => void) => void
   onSave: () => void
   onCancel: () => void
@@ -102,9 +103,9 @@ export function LorebookEntryEditor({
               {translateResult || '...'}
             </div>
           )}
-          {/* 翻译错误提示（编辑弹窗） */}
-          {translateError && translatingField?.key !== `edit-${editingEntry.id}` && !editingEntry.translation && (
-            <div className="mt-1.5 text-xs text-tavern-danger">{translateError}</div>
+          {/* 翻译错误提示（编辑弹窗）——UEX-P2 补2：只渲染到发起翻译的条目 */}
+          {translateError?.key === `edit-${editingEntry.id}` && (
+            <div className="mt-1.5 text-xs text-tavern-danger">{translateError.message}</div>
           )}
           {/* 已有翻译结果展示 */}
           {editingEntry.translation && translatingField?.key !== `edit-${editingEntry.id}` && (

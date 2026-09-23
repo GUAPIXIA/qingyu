@@ -262,7 +262,8 @@ export const imagineCommand: CommandDef = {
     // 生图模型不可用时应在辅助模型生成提示词之前失败，
     // 否则无参数调用会把配置错误误报成“提示词生成失败”。
     if (!activeImageGen) {
-      ctx.notify('尚未配置或启用生图模型，请前往「设置 → API → 生图」完成配置')
+      // UEX-P0-13：文案与真实 IA 一致（真实入口是「模型 → 生图」）
+      ctx.notify('尚未配置或启用生图模型，请前往「模型 → 生图」完成配置')
       return
     }
     const jobId = ctx.beginImageGeneration(prompt ? 'generating' : 'prompting')

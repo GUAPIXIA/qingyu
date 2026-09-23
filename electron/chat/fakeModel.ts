@@ -40,7 +40,16 @@ export class FakeModelPort implements ModelPort {
 
     for (const delta of chunks) {
       if (signal.aborted) throw new Error('Aborted')
-      if (b.delayMs) await new Promise((r) => setTimeout(r, b.delayMs))
+      if (b.delayMs) {
+        // cancel-abort：延迟可被 abort 立即打断（模拟底层 fetch 中断即抛错），不白等到时延结束
+        await new Promise<void>((resolve, reject) => {
+          const t = setTimeout(resolve, b.delayMs)
+          signal.addEventListener('abort', () => {
+            clearTimeout(t)
+            reject(new Error('Aborted'))
+          }, { once: true })
+        })
+      }
       if (signal.aborted) throw new Error('Aborted')
       text += delta
       callbacks.onChunk(delta)

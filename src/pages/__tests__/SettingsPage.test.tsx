@@ -84,6 +84,24 @@ describe('SettingsPage 冒烟测试', () => {
     }
   })
 
+  it('UEX-P0-13：带 section 定位进入时展开模型卡并滚动到目标分区', async () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      const { findByText } = render(
+        <MemoryRouter initialEntries={[{ pathname: '/settings', state: { section: 'api' } }]}>
+          <SettingsPage />
+        </MemoryRouter>
+      )
+      // 模型卡 defaultOpen=false，直达进入时应被强制展开（「打开模型」入口可见）
+      expect(await findByText('打开模型')).toBeTruthy()
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
   it('将语义检索与用户人设配置移出设置页', async () => {
     render(
       <MemoryRouter>
@@ -114,38 +132,72 @@ describe('SettingsPage 冒烟测试', () => {
     })
   })
 
-  it('点击导入备份调用 window.api.settings.importBackup', async () => {
+  it('点击导入备份弹出覆盖确认，确认后调用 window.api.settings.importBackup', async () => {
     vi.mocked(window.api.settings.importBackup).mockResolvedValue({ status: 'success', counts: { characters: 1, lorebooks: 1, presets: 1 } })
-    const { findByText } = render(
+    const { findByText, findByRole } = render(
       <MemoryRouter>
         <SettingsPage />
       </MemoryRouter>
     )
     fireEvent.click(await findByText('导入备份'))
+    // UEX-P2-11：导入前先经确认弹窗说明覆盖影响
+    expect(await findByText(/导入将覆盖现有数据/)).toBeTruthy()
+    fireEvent.click(await findByRole('button', { name: '导入' }))
     await waitFor(() => {
       expect(window.api.settings.importBackup).toHaveBeenCalled()
     })
   })
 
-  it('导入成功显示提示信息', async () => {
-    vi.mocked(window.api.settings.importBackup).mockResolvedValue({ status: 'success', counts: { characters: 1, lorebooks: 1, presets: 1 } })
-    const { findByText } = render(
+  it('UEX-P2-11：取消导入确认时不触发导入', async () => {
+    const { findByText, findByRole } = render(
       <MemoryRouter>
         <SettingsPage />
       </MemoryRouter>
     )
     fireEvent.click(await findByText('导入备份'))
+    fireEvent.click(await findByRole('button', { name: '取消' }))
+    await act(async () => {})
+    expect(window.api.settings.importBackup).not.toHaveBeenCalled()
+  })
+
+  it('导入成功显示提示信息', async () => {
+    vi.mocked(window.api.settings.importBackup).mockResolvedValue({ status: 'success', counts: { characters: 1, lorebooks: 1, presets: 1 } })
+    const { findByText, findByRole } = render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+    fireEvent.click(await findByText('导入备份'))
+    fireEvent.click(await findByRole('button', { name: '导入' }))
     expect(await findByText(/导入成功/)).toBeTruthy()
   })
 
-  it('导入失败显示错误信息', async () => {
-    vi.mocked(window.api.settings.importBackup).mockRejectedValue(new Error('文件损坏'))
-    const { findByText } = render(
+  it('UEX-P2-11：部分数据刷新失败时展示失败明细而非统一成功', async () => {
+    vi.mocked(window.api.settings.importBackup).mockResolvedValue({ status: 'success', counts: { characters: 1 } })
+    vi.mocked(window.api.persona.list).mockRejectedValueOnce(new Error('身份数据损坏'))
+    const { findByText, findByRole } = render(
       <MemoryRouter>
         <SettingsPage />
       </MemoryRouter>
     )
     fireEvent.click(await findByText('导入备份'))
+    fireEvent.click(await findByRole('button', { name: '导入' }))
+    // 刷新任务含动态 import，首轮加载较慢；等待窗口与用例总超时一并放宽，防全量负载下顶格
+    await waitFor(() => {
+      const msg = screen.getByText(/数据刷新失败/)
+      expect(msg.textContent).toContain('人设（身份数据损坏）')
+    }, { timeout: 15000 })
+  }, 30000)
+
+  it('导入失败显示错误信息', async () => {
+    vi.mocked(window.api.settings.importBackup).mockRejectedValue(new Error('文件损坏'))
+    const { findByText, findByRole } = render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+    fireEvent.click(await findByText('导入备份'))
+    fireEvent.click(await findByRole('button', { name: '导入' }))
     expect(await findByText('文件损坏')).toBeTruthy()
   })
 

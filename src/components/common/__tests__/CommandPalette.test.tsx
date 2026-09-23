@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useToastStore } from '../../../store/useToastStore'
 import { CommandPalette } from '../CommandPalette'
 
 describe('CommandPalette', () => {
@@ -33,5 +34,14 @@ describe('CommandPalette', () => {
 
     expect(screen.getByRole('combobox').getAttribute('aria-activedescendant')).toBe('command-page-settings')
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+  })
+
+  it('UEX-P1-36：执行命令后给出低噪轻提示，不再零反馈', () => {
+    render(<MemoryRouter><CommandPalette open onClose={vi.fn()} /></MemoryRouter>)
+    useToastStore.getState().dismissAll()
+
+    fireEvent.click(screen.getByRole('option', { name: /新建对话/ }))
+
+    expect(useToastStore.getState().toasts.some((t) => t.title === '已执行：新建对话')).toBe(true)
   })
 })

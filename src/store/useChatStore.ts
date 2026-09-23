@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create, type StateCreator } from 'zustand'
 import type { Message, SessionPreview, Preset, Lorebook } from '../../shared/types'
 import { nanoid } from 'nanoid'
 import { useSettingsStore } from './useSettingsStore'
@@ -15,6 +15,66 @@ import {
   invalidateDerivedMemory, nextLoadRequestId, currentLoadRequestId,
 } from './chatUtils'
 import { streamAIResponse, cleanupActiveStream, finalizeNoticeFields, claimUserStop, abortActiveTailRepair, maybeAutoTitle } from './streamController'
+import { pushToast } from './useToastStore'
+
+/** S5：V2 生成句柄（taskId + 订阅/轮询清理），stopStreaming 按 engine 分流 */
+let activeV2Handle: {
+  taskId: string
+  unsub?: () => void
+  clearPoll?: () => void
+} | null = null
+
+/**
+ * UEX-P0-04：V2 停止后的占位落盘收口（防磁盘重复条目）。
+ * V2 占位仅落屏、由 Orchestrator 幂等落盘；但「停止」与「任务恰好完成并提交」存在竞态
+ * （轮询最长 1s 延迟内点停止），此时再 saveMessage 占位会与 Orchestrator 提交的消息重复。
+ * - 已提交（终态快照带 assistantMessageId）→ 不再落盘占位，UI 占位并入已落盘 id（后续编辑不产生第二条）；
+ * - 未提交（取消中断、Orchestrator 不落盘）→ 渲染层兜底保存已见正文，保证停止不丢内容。
+ */
+async function persistV2StoppedMessage(
+  stopped: Message,
+  taskId: string,
+  canceling: Promise<{ assistantMessageId?: string } | null>,
+): Promise<void> {
+  let committedId: string | undefined
+  try {
+    const cancelSnap = await canceling
+    committedId = cancelSnap?.assistantMessageId
+    if (!committedId) {
+      // 取消与提交的收口顺序不保证，再查一次任务快照兜底
+      committedId = (await window.api.chatTask?.get?.(taskId))?.assistantMessageId ?? undefined
+    }
+  } catch { /* 查询失败不阻塞兜底落盘 */ }
+  if (committedId) {
+    const persistedId = committedId
+    useChatStore.setState((s) => ({
+      messages: s.messages.map((m) => (m.id === stopped.id ? { ...stopped, id: persistedId } : m)),
+    }))
+    return
+  }
+  await window.api.chat.saveMessage(stopped).catch(() => { /* ignore */ })
+}
+
+/**
+ * UEX-P1-35：删除会话后选中邻近会话（下一项优先，其次上一项），不再跳回首项。
+ * before = 删除前列表（定位被删会话位置），after = 删除后列表（校验候选仍存在）。
+ */
+function pickAdjacentSessionId(before: SessionPreview[], removedId: string, after: SessionPreview[]): string | null {
+  const idx = before.findIndex((s) => s.id === removedId)
+  // 被删会话不在旧列表（如已被其他操作删除）时无位置信息，回退首项
+  if (idx < 0) return after[0]?.id ?? null
+  for (const id of [before[idx + 1]?.id, before[idx - 1]?.id]) {
+    if (id && after.some((s) => s.id === id)) return id
+  }
+  return after[0]?.id ?? null
+}
+
+/**
+ * UEX-P1-35：删除前记录目标会话在旧列表的位置（或 sessionId）。
+ * N13 竞态分支里被删会话已被其他操作删除、内存旧列表已无位置信息，
+ * 靠这份删除前快照对新列表取邻近（下一项优先、否则上一项）；确实无法定位才回退首项。
+ */
+let preDeleteSessionAnchor: { id: string; before: SessionPreview[] } | null = null
 import { createChunkAccumulator } from './chunkAccumulator'
 import { buildChatContext, buildChatContextReport } from './chatContext'
 import { maybeRunAutoMemorySummary, runMemorySummary } from './memoryManager'
@@ -34,13 +94,21 @@ import {
 import { resolveMessageSpeakerKind } from '../../shared/messageIdentity'
 
 export type { ChatState }
-export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) => ({
+
+/**
+ * UEX-P1-34：消息加载态（切会话/切角色「清空 → 异步加载」空窗期专用，仅本 store 与 ChatPage 消费）。
+ * 以可选扩展字段挂在本 store，不改共享 ChatState 类型，避免跨端/跨模块扩散。
+ */
+export type ChatStoreState = ChatState & { messagesLoading?: boolean }
+
+const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
   messages: [],
   sessions: [],
   currentSessionId: null,
   isStreaming: false,
   currentRequestId: null,
   error: null,
+  messagesLoading: false,
   pendingImageGenerations: {},
   summarizingMemoryKey: null,
   memorySummaryError: null,
@@ -208,10 +276,17 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     useSettingsStore.getState().updateSettings({ activeSessionId: sessionId })
     // 重新加载消息
     const currentLoadId = nextLoadRequestId()
-    set({ messages: [] })
-    const messages = await window.api.chat.listMessages(character.id, sessionId)
+    // UEX-P1-34：清空与异步加载之间有空窗期——置加载态，页面渲染加载占位而不是「开始新的对话」假空态
+    set({ messages: [], messagesLoading: true })
+    let messages: Message[] = []
+    try {
+      messages = await window.api.chat.listMessages(character.id, sessionId)
+    } catch (e) {
+      // UEX-P1-34：加载失败也要退出加载态（回空态），避免骨架屏悬挂
+      logError('ChatStore:switchSession', e)
+    }
     if (currentLoadId !== currentLoadRequestId()) return
-    set({ messages })
+    set({ messages, messagesLoading: false })
     // 同步世界书：从会话恢复（或回退到角色绑定）
     get().syncLorebooksFromCurrentSession(character)
     // 同步 persona 到 settings（仅供界面与旧链路；上下文会再次按会话权威解析）
@@ -227,16 +302,24 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     if (get().isStreaming) {
       get().stopStreaming()
     }
+    // UEX-P1-35：删除前记录目标会话在旧列表的位置（或 sessionId），N13 竞态分支据此取邻近
+    const removedIndex = sessions.findIndex(s => s.id === currentSessionId)
+    if (removedIndex >= 0) preDeleteSessionAnchor = { id: currentSessionId, before: sessions }
     // N13 修复：会话不存在（已被其他操作删除）时跳过删除，仅刷新列表
-    if (!sessions.some(s => s.id === currentSessionId)) {
+    if (removedIndex < 0) {
       const newSessions = await window.api.chat.listSessions(characterId)
-      set({ sessions: newSessions, currentSessionId: newSessions[0]?.id ?? null })
+      // UEX-P1-35：被删会话已不在旧列表时，用删除前记录的位置（或 sessionId）对新列表取邻近
+      //（下一项优先、否则上一项）；确实无法定位（无删除前记录）才回退首项
+      const anchor = preDeleteSessionAnchor
+      const before = anchor && anchor.id === currentSessionId ? anchor.before : sessions
+      set({ sessions: newSessions, currentSessionId: pickAdjacentSessionId(before, currentSessionId, newSessions) })
       return
     }
     await window.api.chat.deleteSession(characterId, currentSessionId)
     // 刷新
     const newSessions = await window.api.chat.listSessions(characterId)
-    const newSessionId = newSessions[0]?.id ?? null
+    // UEX-P1-35：跳被删会话的邻近项（下一项优先，其次上一项），不再跳回首项
+    const newSessionId = pickAdjacentSessionId(sessions, currentSessionId, newSessions)
     let newMessages: Message[] = []
     if (newSessionId) {
       newMessages = await window.api.chat.listMessages(characterId, newSessionId)
@@ -249,6 +332,11 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
 
   /** 删除指定会话（不再绕过 store） */
   deleteSession: async (characterId, sessionId) => {
+    // UEX-P1-35：删除前记住列表位置，删除后跳邻近会话用
+    const prevSessions = get().sessions
+    // UEX-P1-35：删除前记录目标会话在旧列表的位置（或 sessionId），
+    // 供 deleteCurrentSession N13 竞态分支（旧列表已无其位置）取邻近
+    preDeleteSessionAnchor = { id: sessionId, before: prevSessions }
     // 取消进行中的流式
     if (get().isStreaming) {
       get().stopStreaming()
@@ -257,7 +345,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     const newSessions = await window.api.chat.listSessions(characterId)
     const { currentSessionId } = get()
     if (currentSessionId === sessionId) {
-      const newSid = newSessions[0]?.id ?? null
+      // UEX-P1-35：跳被删会话的邻近项（下一项优先，其次上一项），不再跳回首项
+      const newSid = pickAdjacentSessionId(prevSessions, sessionId, newSessions)
       let newMessages: Message[] = []
       if (newSid) {
         newMessages = await window.api.chat.listMessages(characterId, newSid)
@@ -323,70 +412,76 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     // 竞态条件防护
     const currentLoadId = nextLoadRequestId()
     // 角色/会话切换：清空语义命中缓存，避免残留旧命中
-    set({ messages: [], editingMessageId: null, _semanticLoreHits: [], _semanticLoreAvailable: undefined }) // 先清空，避免显示旧角色消息
+    // UEX-P1-34：清空-加载空窗期置加载态，避免闪现「开始新的对话」假空态
+    set({ messages: [], editingMessageId: null, _semanticLoreHits: [], _semanticLoreAvailable: undefined, messagesLoading: true }) // 先清空，避免显示旧角色消息
 
-    // 先加载会话列表
-    let sessionId = get().currentSessionId
-    if (!sessionId) {
-      const sessions = await window.api.chat.listSessions(character.id)
-      // 恢复上次打开的会话：直接从磁盘读取
-      let savedSessionId = useSettingsStore.getState().settings.activeSessionId
-      if (!savedSessionId) {
-        const freshSettings = await window.api.settings.get()
-        savedSessionId = freshSettings.activeSessionId ?? null
-      }
-      const savedSessionExists = savedSessionId && sessions.some(s => s.id === savedSessionId)
-      sessionId = savedSessionExists ? savedSessionId : (sessions[0]?.id ?? null)
-      set({ sessions, currentSessionId: sessionId })
-      // 持久化当前会话 ID，确保重启后能恢复
-      if (sessionId && sessionId !== savedSessionId) {
-        useSettingsStore.getState().updateSettings({ activeSessionId: sessionId })
-      }
-    }
-
-    if (!sessionId) {
-      set({ messages: [] })
-      return
-    }
-
-    // 同步世界书：从当前会话恢复（或回退到角色绑定）
-    get().syncLorebooksFromCurrentSession(character)
-
-    const messages = await window.api.chat.listMessages(character.id, sessionId)
-
-    // 如果期间又发起了新的加载请求，放弃本次结果
-    if (currentLoadId !== currentLoadRequestId()) return
-
-    if (messages.length === 0 && character.firstMessage) {
-      // 有备选开场白时，交给 ChatPage 的选择面板处理，不自动插入
-      const hasAltGreetings = character.alternateGreetings && character.alternateGreetings.length > 0
-      if (hasAltGreetings) {
-        set({ messages: [] })
-      } else {
-        // 没有备选开场白 -> 变量替换后自动插入并保存（优先译文，原文未覆盖时用原文）
-        const settings = useSettingsStore.getState().settings
-        const processedFirstMsg = replaceVariables(character.translatedContent?.firstMessage ?? character.firstMessage, settings.userName, character.name)
-        const firstMsg: Message = {
-          id: nanoid(),
-          sessionId: sessionId,
-          characterId: character.id,
-          role: 'assistant',
-          content: processedFirstMsg,
-          images: [],
-          isEditing: false,
-          timestamp: Date.now(),
-          narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === sessionId)?.narrativeMode),
-          speakerKind: 'character',
-          generationKind: 'assistant_reply',
-          // 作者开场白可含完整 Markdown，显式走兼容路径
-          contentRenderMode: 'markdown',
+    try {
+      // 先加载会话列表
+      let sessionId = get().currentSessionId
+      if (!sessionId) {
+        const sessions = await window.api.chat.listSessions(character.id)
+        // 恢复上次打开的会话：直接从磁盘读取
+        let savedSessionId = useSettingsStore.getState().settings.activeSessionId
+        if (!savedSessionId) {
+          const freshSettings = await window.api.settings.get()
+          savedSessionId = freshSettings.activeSessionId ?? null
         }
-        await window.api.chat.saveMessage(firstMsg)
-        // N25 修复：若加载期间用户已发送消息（messages 非空），不覆盖用户消息
-        set((state) => ({ messages: state.messages.length === 0 ? [firstMsg] : state.messages }))
+        const savedSessionExists = savedSessionId && sessions.some(s => s.id === savedSessionId)
+        sessionId = savedSessionExists ? savedSessionId : (sessions[0]?.id ?? null)
+        set({ sessions, currentSessionId: sessionId })
+        // 持久化当前会话 ID，确保重启后能恢复
+        if (sessionId && sessionId !== savedSessionId) {
+          useSettingsStore.getState().updateSettings({ activeSessionId: sessionId })
+        }
       }
-    } else {
-      set({ messages })
+
+      if (!sessionId) {
+        set({ messages: [] })
+        return
+      }
+
+      // 同步世界书：从当前会话恢复（或回退到角色绑定）
+      get().syncLorebooksFromCurrentSession(character)
+
+      const messages = await window.api.chat.listMessages(character.id, sessionId)
+
+      // 如果期间又发起了新的加载请求，放弃本次结果
+      if (currentLoadId !== currentLoadRequestId()) return
+
+      if (messages.length === 0 && character.firstMessage) {
+        // 有备选开场白时，交给 ChatPage 的选择面板处理，不自动插入
+        const hasAltGreetings = character.alternateGreetings && character.alternateGreetings.length > 0
+        if (hasAltGreetings) {
+          set({ messages: [] })
+        } else {
+          // 没有备选开场白 -> 变量替换后自动插入并保存（优先译文，原文未覆盖时用原文）
+          const settings = useSettingsStore.getState().settings
+          const processedFirstMsg = replaceVariables(character.translatedContent?.firstMessage ?? character.firstMessage, settings.userName, character.name)
+          const firstMsg: Message = {
+            id: nanoid(),
+            sessionId: sessionId,
+            characterId: character.id,
+            role: 'assistant',
+            content: processedFirstMsg,
+            images: [],
+            isEditing: false,
+            timestamp: Date.now(),
+            narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === sessionId)?.narrativeMode),
+            speakerKind: 'character',
+            generationKind: 'assistant_reply',
+            // 作者开场白可含完整 Markdown，显式走兼容路径
+            contentRenderMode: 'markdown',
+          }
+          await window.api.chat.saveMessage(firstMsg)
+          // N25 修复：若加载期间用户已发送消息（messages 非空），不覆盖用户消息
+          set((state) => ({ messages: state.messages.length === 0 ? [firstMsg] : state.messages }))
+        }
+      } else {
+        set({ messages })
+      }
+    } finally {
+      // UEX-P1-34：完成/失败都退出加载态；陈旧请求不碰（由最新一次加载接管）
+      if (currentLoadId === currentLoadRequestId()) set({ messagesLoading: false })
     }
   },
 
@@ -493,24 +588,39 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
             })
           })
           // 轮询终态（简化：1s 后拉一次，实际靠 chatTask:event 推送）
-          const poll = setInterval(async () => {
+          let pollTimer: ReturnType<typeof setInterval> | null = null
+          activeV2Handle = {
+            taskId: task.taskId,
+            unsub,
+            clearPoll: () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } },
+          }
+          pollTimer = setInterval(async () => {
+            if (!activeV2Handle || activeV2Handle.taskId !== task.taskId) return
             try {
               const snap = await (window as unknown as { api: { chatTask: { get: (id: string) => Promise<import('../../shared/chat-core/events').TaskSnapshot> } } }).api.chatTask.get(task.taskId)
               if (snap.state === 'completed' || snap.state === 'failed' || snap.state === 'cancelled' || snap.state === 'interrupted') {
-                clearInterval(poll)
+                clearInterval(pollTimer!)
                 unsub()
+                activeV2Handle = null
                 set({
                   isStreaming: false,
                   ...(snap.state === 'failed' || snap.state === 'interrupted'
                     ? { error: snap.error?.message || '生成失败，请重试' }
                     : {}),
                 })
-                // 终态后重载消息文件，确保与落盘一致
+                // 终态后重载消息文件（S6：仅仍停留在该会话才写 UI，避免切会话串台）
                 const msgs = await window.api.chat.listMessages(character.id, curSid)
-                set({ messages: msgs as unknown as typeof get extends () => infer T ? T extends { messages: infer M } ? M : never : never })
+                // UEX-P0-05：S6 会话守卫 + 角色/视图一致性双守卫（对齐 addStandaloneMessage 的 visibleCharacterId 模式）：
+                // 磁盘由 Orchestrator 幂等落盘，这里只决定是否写 UI——会话或角色已切走则只落盘不写 UI
+                const visibleCharacterId = useCharacterStore.getState().currentCharacter?.id
+                const stillInView = get().currentSessionId === curSid
+                  && (!visibleCharacterId || visibleCharacterId === character.id)
+                if (stillInView) {
+                  set({ messages: msgs as unknown as typeof get extends () => infer T ? T extends { messages: infer M } ? M : never : never })
+                }
                 // V2 链路自动长记忆：对齐旧链路 sendMessage 完成后的挂接；仅在生成成功时检查
                 // 间隔阈值，消息已按落盘内容重载，游标统计基于持久化 id。
-                if (snap.state === 'completed' && get().currentSessionId === curSid) {
+                if (snap.state === 'completed' && stillInView) {
                   // 新版主聊天完成后与旧链路一致触发自动标题；
                   // 标题请求只追加当前预设的 jailbreak，不注入预设其他正文。
                   void maybeAutoTitle(get, set, character, preset)
@@ -529,14 +639,15 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
               }
             } catch { /* ignore */ }
           }, 1000)
-          return
+          return true
         }
       }
     } catch { /* fallback to legacy path */ }
     // 流式中拒绝：现在给一个错误提示而不是静默忽略
     if (get().isStreaming) {
       set({ error: '正在生成回复中，请稍候或点击停止' })
-      return
+      pushToast({ variant: 'warning', title: '正在生成回复中，请稍候或点击停止', requestId: 'chat-error' })
+      return false
     }
 
     const settingsStore = useSettingsStore.getState()
@@ -544,7 +655,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
 
     if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
       set({ error: '请先在设置中配置 API 连接' })
-      return
+      pushToast({ variant: 'error', title: '请先在设置中配置 API 连接', description: '打开「模型 → 对话 API」完成配置', requestId: 'chat-error' })
+      return false
     }
 
     // 确保 currentSessionId 有效（不再用 'default' 兜底）
@@ -573,7 +685,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     // 中止发送避免用户消息被追加到错误会话的 UI（磁盘仍按捕获的 currentSid 保存）
     if (get().currentSessionId !== currentSid) {
       set({ error: '会话已切换，消息未发送' })
-      return
+      pushToast({ variant: 'warning', title: '会话已切换，消息未发送', requestId: 'chat-error' })
+      return false
     }
 
     // 添加用户消息
@@ -602,7 +715,8 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
     if (get().currentSessionId !== currentSid) {
       set((state) => ({ messages: state.messages.filter((m) => m.id !== userMessage.id) }))
       set({ error: '会话已切换，未触发 AI 回复' })
-      return
+      pushToast({ variant: 'warning', title: '会话已切换，未触发 AI 回复', requestId: 'chat-error' })
+      return true // 用户消息已入列，仅 AI 未触发
     }
 
     // 构建 AI 消息占位（创建时即标记语义分块：流式期间与完成后样式一致）
@@ -692,9 +806,34 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
         }))
       },
     })
+    return true
   },
 
   stopStreaming: () => {
+    // S5：V2 任务取消（chatTask.cancel + 清理 poll/unsub，禁止再走 ai.cancelChat）
+    if (activeV2Handle) {
+      const handle = activeV2Handle
+      activeV2Handle = null
+      try { handle.unsub?.() } catch { /* ignore */ }
+      try { handle.clearPoll?.() } catch { /* ignore */ }
+      const canceling = window.api.chatTask?.cancel?.(handle.taskId).catch(() => null) ?? Promise.resolve(null)
+      set({ isStreaming: false, currentRequestId: null })
+      // 保留已见正文 + 中性提示
+      const msgs = get().messages
+      const lastAi = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (lastAi && lastAi.content) {
+        const stopped: Message = {
+          ...lastAi,
+          generationNotice: '已停止生成',
+          contentRenderMode: 'blocks' as const,
+        }
+        set((s) => ({ messages: s.messages.map((m) => (m.id === lastAi.id ? stopped : m)) }))
+        // UEX-P0-04：V2 占位按「仅落屏、由 Orchestrator 幂等落盘」设计，停止与任务完成存在竞态，
+        // 直接 saveMessage 可能与 Orchestrator 已提交的消息在磁盘重复——落盘交给幂等收口判定
+        void persistV2StoppedMessage(stopped, handle.taskId, canceling)
+      }
+      return
+    }
     // 阶段7：用户手动停止经终止状态机抢占（claimUserStop），
     // 同一 requestId 的迟到 chunk/done/error 全部被忽略，不会二次落盘。
     const stoppedStream = claimUserStop()
@@ -1022,4 +1161,9 @@ export const useChatStore = create<ChatState>()(sessionEventReporter((set, get) 
   buildContextReport: (character, preset, opts) => {
     return buildChatContextReport(character, preset, opts)
   },
-})))
+})
+
+// UEX-P1-34：messagesLoading 仅在本 store 扩展（sessionEventReporter 仍按 ChatState 签名包装，此处收窄断言）
+export const useChatStore = create<ChatStoreState>()(
+  sessionEventReporter(createChatStoreState as unknown as StateCreator<ChatState>) as unknown as StateCreator<ChatStoreState>,
+)

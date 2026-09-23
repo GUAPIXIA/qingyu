@@ -10,9 +10,14 @@ import {
   preserveGroupReplyContent,
   streamGroupAI,
   streamGroupAIFree,
+  abandonActiveStream,
+  persistPartialGroupReply,
+  claimFreeSplitOnce,
+  resetFreeSplitDedupe,
 } from '../groupStreamController'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
+import { useToastStore } from '../useToastStore'
 import { resetTailRepairFailureCounts } from '../streamController'
 import { STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
 import { getDefaultSettings } from '../../../shared/defaults'
@@ -309,6 +314,7 @@ describe('群聊超时统一收尾（S2）', () => {
   })
 
   it('阶段7：ai:error 无正文 → 移除占位消息，不落盘错误文案（不创建空 AI 消息）', async () => {
+    useToastStore.setState({ toasts: [] })
     const group = makeGroup({ chatMode: 'mention' })
     const { get, set, read } = makeGroupGet(group, 's1')
     const callbacks = captureCallbacks()
@@ -320,6 +326,70 @@ describe('群聊超时统一收尾（S2）', () => {
     expect(window.api.group.saveMessage).not.toHaveBeenCalled()
     expect(read().messages).toHaveLength(0)
     expect(read().isStreaming).toBe(false)
+    // UEX-P0-01：占位被移除、无存活气泡展示错误 → 必须补全局 Toast，不得静默
+    expect(useToastStore.getState().toasts.some((t) => t.title === '群聊生成失败')).toBe(true)
+  })
+
+  it.each(['mention', 'free'] as const)(
+    '重生成 %s 收到 chunk 后超时：不保留半截新回复并通知回滚',
+    async (mode) => {
+      const group = makeGroup({ chatMode: mode })
+      const { get, set } = makeGroupGet(group, 's1')
+      const callbacks = captureCallbacks()
+      const onTerminal = vi.fn().mockResolvedValue(false)
+
+      if (mode === 'free') {
+        await streamGroupAIFree(set as any, get as any, group, 's1', 1, undefined, { onTerminal })
+      } else {
+        await streamGroupAI(
+          set as any,
+          get as any,
+          group,
+          's1',
+          makeCharacter('c1', '爱丽丝'),
+          1,
+          () => {},
+          undefined,
+          { onTerminal },
+        )
+      }
+
+      const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      callbacks.onChunk!({ requestId, text: '这段半截新回复不应保留。' })
+      await vi.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MS + 1)
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(window.api.group.saveMessage).not.toHaveBeenCalled()
+      expect(window.api.group.saveMessagesBatch).not.toHaveBeenCalled()
+      expect(onTerminal).toHaveBeenCalledWith(false, [])
+    },
+  )
+
+  it('重生成替换提交失败时不继续 polling/记忆链', async () => {
+    const group = makeGroup({ chatMode: 'polling' })
+    const { get, set } = makeGroupGet(group, 's1')
+    const callbacks = captureCallbacks()
+    const onComplete = vi.fn()
+    const onTerminal = vi.fn().mockResolvedValue(false)
+
+    await streamGroupAI(
+      set as any,
+      get as any,
+      group,
+      's1',
+      makeCharacter('c1', '爱丽丝'),
+      1,
+      onComplete,
+      undefined,
+      { onTerminal },
+    )
+    const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+    callbacks.onChunk!({ requestId, text: '完整的新回复。' })
+    callbacks.onComplete!({ requestId, finishReason: 'stop' })
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(onTerminal).toHaveBeenCalledWith(true, [expect.objectContaining({ content: '完整的新回复。' })])
+    expect(onComplete).not.toHaveBeenCalled()
   })
 
   it('阶段7：timeout 收口后到达的迟到 chunk/done/error 被忽略，不二次落盘', async () => {
@@ -570,6 +640,48 @@ describe('checkPollingContinue polling 轮询', () => {
     expect(state.sendPollingRound).not.toHaveBeenCalled()
   })
 
+  it('D2 已拍板：段内达到每次接力上限即停止（不再是会话总轮次）', async () => {
+    const set = vi.fn()
+    const state = {
+      currentGroup: makeGroup({ maxRounds: 3 }),
+      messages: [
+        { characterId: '__user__', round: 1 },
+        { characterId: 'c1', round: 1 },
+        { characterId: 'c2', round: 2 },
+        { characterId: 'c1', round: 3 },
+      ],
+      memberIds: ['c1', 'c2'],
+      sendPollingRound: vi.fn(),
+    }
+    await checkPollingContinue(set as any, (() => state) as any, makeGroup())
+    expect(state.sendPollingRound).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('D2 已拍板：新用户消息开启新段，接力计数重置后继续排定下一轮', async () => {
+    const set = vi.fn()
+    const sendPollingRound = vi.fn()
+    const group = makeGroup({ maxRounds: 3 })
+    const state = {
+      currentGroup: group,
+      messages: [
+        { characterId: '__user__', round: 1 },
+        { characterId: 'c1', round: 1 },
+        { characterId: 'c2', round: 2 },
+        { characterId: 'c1', round: 3 },
+        { characterId: '__user__', round: 4 },
+        { characterId: 'c2', round: 4 },
+      ],
+      isStreaming: false,
+      sendPollingRound,
+    }
+    await checkPollingContinue(set as any, (() => state) as any, group)
+
+    // 本段（新用户消息之后）只用了 1 轮 < 3：继续接力，下一发言者 = 千夏之后的爱丽丝
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(sendPollingRound).toHaveBeenCalledWith('c1')
+  })
+
   it('无最后角色消息时不继续', async () => {
     const set = vi.fn()
     const state = {
@@ -625,6 +737,7 @@ describe('流状态管理', () => {
   afterEach(() => {
     cleanupActiveStream()
     clearPollingTimer()
+    resetFreeSplitDedupe()
   })
 
   it('getActiveStream 初始为 null', () => {
@@ -639,5 +752,238 @@ describe('流状态管理', () => {
     expect(() => markPendingGroupCompression({
       groupId: 'g1', sessionId: 's1', droppedText: 'x', droppedStartTs: 0, droppedEndTs: 1,
     })).not.toThrow()
+  })
+})
+
+describe('S7 判重：拆分前 msgId/内容 hash', () => {
+  beforeEach(() => {
+    resetFreeSplitDedupe()
+  })
+
+  it('同一 msgId + 内容只允许 claim 一次', () => {
+    expect(claimFreeSplitOnce('msg-a', '半截正文')).toBe(true)
+    expect(claimFreeSplitOnce('msg-a', '半截正文')).toBe(false)
+  })
+
+  it('msgId 不同或内容不同视为新正文', () => {
+    expect(claimFreeSplitOnce('msg-a', '半截正文')).toBe(true)
+    expect(claimFreeSplitOnce('msg-b', '半截正文')).toBe(true)
+    expect(claimFreeSplitOnce('msg-a', '另一段正文')).toBe(true)
+  })
+
+  it('persistPartialGroupReply 判重后不再二次落盘', async () => {
+    setup()
+    vi.clearAllMocks()
+    const group = makeGroup()
+    let state: any = {
+      currentGroup: group, currentSessionId: 's1',
+      sessions: [{ id: 's1', narrativeMode: 'immersive' }],
+      messages: [{ id: 'ph-1', characterId: '__free__', content: '半截正文', groupId: 'g1', images: [], timestamp: 1, round: 1 }],
+    }
+    const set = vi.fn((updater: any) => {
+      const patch = typeof updater === 'function' ? updater(state) : updater
+      state = { ...state, ...patch }
+    })
+    const get = () => state
+    const input = {
+      set: set as any, get: get as any, group, sessionId: 's1',
+      msgId: 'ph-1', content: '半截正文', round: 1,
+      characterId: '__free__', isFree: true, narrativeMode: 'immersive' as const,
+    }
+    await persistPartialGroupReply(input)
+    await persistPartialGroupReply(input)
+    const totalSaves =
+      vi.mocked(window.api.group.saveMessage).mock.calls.length +
+      vi.mocked(window.api.group.saveMessagesBatch).mock.calls.length
+    expect(totalSaves).toBe(1)
+  })
+
+  it('free 半截正文回落首成员，禁止持久化 __free__', async () => {
+    setup()
+    vi.clearAllMocks()
+    const group = makeGroup()
+    let state: any = {
+      currentGroup: group, currentSessionId: 's1',
+      sessions: [{ id: 's1', narrativeMode: 'immersive' }],
+      messages: [{ id: 'ph-free', characterId: '__free__', content: '', groupId: 'g1', images: [], timestamp: 1, round: 1 }],
+    }
+    const set = vi.fn((updater: any) => {
+      const patch = typeof updater === 'function' ? updater(state) : updater
+      state = { ...state, ...patch }
+    })
+    await persistPartialGroupReply({
+      set: set as any, get: (() => state) as any, group, sessionId: 's1',
+      msgId: 'ph-free', content: '没有角色标记的半截', round: 2,
+      characterId: '__free__', isFree: true, narrativeMode: 'immersive',
+      noticeFields: { generationNotice: '已停止生成' },
+    })
+    const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+    expect(saved.characterId).toBe('c1')
+    expect(saved.characterId).not.toBe('__free__')
+    expect(saved.content).toBe('没有角色标记的半截')
+    expect(saved.generationNotice).toBe('已停止生成')
+  })
+})
+
+describe('S8 abandonActiveStream（cancel + preserve）', () => {
+  beforeEach(() => {
+    setup()
+    vi.clearAllMocks()
+    resetFreeSplitDedupe()
+    useToastStore.setState({ toasts: [] })
+    vi.useFakeTimers()
+    ;(window.api.ai as any).chat = vi.fn().mockResolvedValue(undefined)
+    ;(window.api.ai as any).cancelChat = vi.fn().mockResolvedValue(undefined)
+    ;(window.api.ai as any).onChunk = vi.fn(() => () => {})
+    ;(window.api.ai as any).onComplete = vi.fn(() => () => {})
+    ;(window.api.ai as any).onError = vi.fn(() => () => {})
+  })
+
+  afterEach(() => {
+    cleanupActiveStream()
+    clearPollingTimer()
+    vi.useRealTimers()
+    resetFreeSplitDedupe()
+  })
+
+  function makeGroupGet(group: GroupChat, sessionId: string) {
+    let state: any = {
+      currentGroup: group,
+      currentSessionId: sessionId,
+      sessions: [{ id: sessionId, narrativeMode: 'immersive' }],
+      messages: [],
+      isStreaming: true,
+      currentStreamingCharId: 'c1',
+      _semanticLoreHits: [],
+      _semanticFactsHits: [],
+      ensureLorebooksLoaded: vi.fn(async () => {}),
+      buildGroupContext: vi.fn(() => [{ role: 'user', content: '你好' }]),
+    }
+    const set = vi.fn((updater: any) => {
+      const patch = typeof updater === 'function' ? updater(state) : updater
+      state = { ...state, ...patch }
+    })
+    return { get: () => state, set, read: () => state }
+  }
+
+  it('preserve=true：claim → 保留正文 → cancelChat → cleanup，并 toast', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...getDefaultSettings(),
+        userName: '用户',
+        activeProfileId: 'p1',
+        connectionProfiles: [{
+          id: 'p1', name: '测试', provider: 'openai',
+          baseUrl: 'https://api.example.com', apiKey: 'sk-test', model: 'gpt-4o', maxContext: 8192,
+        }],
+      } as any,
+      credentials: {}, loaded: true, _saveTimer: null,
+    })
+    const group = makeGroup({ chatMode: 'mention' })
+    const { get, set, read } = makeGroupGet(group, 's1')
+    const callbacks: { onChunk?: any } = {}
+    ;(window.api.ai as any).onChunk = vi.fn((cb: any) => { callbacks.onChunk = cb; return () => {} })
+    await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+    callbacks.onChunk!({ requestId, text: '她推开门，走进房间。' })
+
+    const claimed = abandonActiveStream({ preserve: true })
+    expect(claimed).not.toBeNull()
+    expect(claimed!.preserved).toBe('她推开门，走进房间。')
+    expect(window.api.ai.cancelChat).toHaveBeenCalledWith(claimed!.requestId, 'user')
+    expect(getActiveStream()).toBeNull()
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((t) => t.title === '已保留未完成回复并停止生成')).toBe(true)
+
+    // 保留正文落盘（S7：free 走拆分/回首成员；点名直接更新）
+    await persistPartialGroupReply({
+      set: set as any, get: get as any, group, sessionId: 's1',
+      msgId: claimed!.msgId, content: claimed!.preserved, round: claimed!.round,
+      characterId: claimed!.characterId, isFree: claimed!.isFree,
+      narrativeMode: claimed!.narrativeMode,
+      noticeFields: { generationNotice: '已停止生成' },
+    })
+    const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)?.[2] as GroupMessage
+    expect(saved.content).toBe('她推开门，走进房间。')
+    expect(saved.generationNotice).toBe('已停止生成')
+    expect(read().isStreaming).toBe(false)
+  })
+})
+
+describe('S11 early-return 复位 isStreaming', () => {
+  beforeEach(() => {
+    setup()
+    vi.clearAllMocks()
+    useSettingsStore.setState({
+      settings: {
+        ...getDefaultSettings(),
+        userName: '用户',
+        activeProfileId: 'p1',
+        connectionProfiles: [{
+          id: 'p1', name: '测试', provider: 'openai',
+          baseUrl: 'https://api.example.com', apiKey: 'sk-test', model: 'gpt-4o', maxContext: 8192,
+        }],
+      } as any,
+      credentials: {}, loaded: true, _saveTimer: null,
+    })
+  })
+
+  afterEach(() => {
+    cleanupActiveStream()
+    clearPollingTimer()
+  })
+
+  function makeGroupGet(group: GroupChat, sessionId: string, context: unknown[] = [{ role: 'user', content: '你好' }]) {
+    let state: any = {
+      currentGroup: group,
+      currentSessionId: sessionId,
+      sessions: [{ id: sessionId, narrativeMode: 'immersive' }],
+      messages: [],
+      isStreaming: true,
+      currentStreamingCharId: 'c1',
+      _semanticLoreHits: [],
+      _semanticFactsHits: [],
+      ensureLorebooksLoaded: vi.fn(async () => {}),
+      buildGroupContext: vi.fn(() => context),
+    }
+    const set = vi.fn((updater: any) => {
+      const patch = typeof updater === 'function' ? updater(state) : updater
+      state = { ...state, ...patch }
+    })
+    return { get: () => state, set, read: () => state }
+  }
+
+  it('点名路径空上下文 early-return 复位 isStreaming/currentStreamingCharId', async () => {
+    const group = makeGroup({ chatMode: 'mention' })
+    const { get, set, read } = makeGroupGet(group, 's1', [])
+    const started = await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    expect(started).toBe(false)
+    expect(read().isStreaming).toBe(false)
+    expect(read().currentStreamingCharId).toBeNull()
+    expect(window.api.ai.chat).not.toHaveBeenCalled()
+  })
+
+  it('free 路径空上下文 early-return 复位 isStreaming/currentStreamingCharId', async () => {
+    const group = makeGroup({ chatMode: 'free' })
+    const { get, set, read } = makeGroupGet(group, 's1', [])
+    const started = await streamGroupAIFree(set as any, get as any, group, 's1', 1)
+    expect(started).toBe(false)
+    expect(read().isStreaming).toBe(false)
+    expect(read().currentStreamingCharId).toBeNull()
+    expect(window.api.ai.chat).not.toHaveBeenCalled()
+  })
+
+  it('无连接档案 early-return 同样复位', async () => {
+    useSettingsStore.setState({
+      settings: { ...getDefaultSettings(), userName: '用户', activeProfileId: null } as any,
+      credentials: {}, loaded: true, _saveTimer: null,
+    })
+    const group = makeGroup({ chatMode: 'mention' })
+    const { get, set, read } = makeGroupGet(group, 's1')
+    const started = await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    expect(started).toBe(false)
+    expect(read().isStreaming).toBe(false)
+    expect(read().currentStreamingCharId).toBeNull()
   })
 })

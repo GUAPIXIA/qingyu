@@ -1,12 +1,12 @@
 import { useSettingsStore } from './useSettingsStore'
-import { usePersonaStore } from './usePersonaStore'
+import { usePersonaStore, syncActivePersonaToSettings } from './usePersonaStore'
 import { logWarn } from '../lib/logger'
+import { pushToast } from './useToastStore'
 import { estimateTokens } from '../utils/tokenCounter'
 import type { LorebookCompressionRequest } from '../utils/lorebook'
 import type { Character, SessionPreview, LorebookCompressionCacheEntry, ProviderType } from '../../shared/types'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { resolveDefaultGroupMemoryConfig, resolveDefaultMemoryConfig } from '../../shared/defaultMemory'
-import { resolveSessionPersonaFields } from '../../shared/personaResolution'
 // 阶段 6 S6-01：派生记忆失效决策的跨端共享纯逻辑（fixture oracle 即此实现）
 import { planDerivedMemoryInvalidation, type DerivedMemorySnapshot } from '../../shared/chat-core/derivedMemory'
 
@@ -45,15 +45,24 @@ export function friendlyError(error: string): string {
 }
 
 /** 根据 personaId 同步身份到 settings（activePersonaId / userName / userDescription / userPersona）
- *  用于新会话绑定默认身份后立即生效，避免顶栏与发送消息仍使用旧身份 */
+ *  用于新会话绑定默认身份后立即生效，避免顶栏与发送消息仍使用旧身份
+ *  一致性（UEX-P1-30）：快照写入统一委托 usePersonaStore 的唯一写入口 syncActivePersonaToSettings，
+ *  语义映射：null / 身份不存在 → 复位空身份；undefined 且无默认身份 → 保持全局旧镜像（原「写回当前值」等价 no-op）。 */
 export function syncPersonaToSettings(personaId?: string | null): void {
-  const settingsStore = useSettingsStore.getState()
-  const resolved = resolveSessionPersonaFields(
-    { personaId },
-    settingsStore.settings,
-    usePersonaStore.getState().personas,
-  )
-  settingsStore.updateSettings(resolved)
+  const settings = useSettingsStore.getState().settings
+  const { personas } = usePersonaStore.getState()
+  if (personaId === null) {
+    // 明确「不使用身份」：复位空身份（原实现 EMPTY_PERSONA_FIELDS 语义）
+    syncActivePersonaToSettings(null)
+    return
+  }
+  const effectivePersonaId = personaId ?? settings.defaultPersonaId
+  if (!effectivePersonaId) {
+    // 旧会话且无默认身份：兼容旧版全局字段，不做复位（原实现为写回当前值，等价 no-op）
+    return
+  }
+  const persona = personas.find((candidate) => candidate.id === effectivePersonaId) ?? null
+  syncActivePersonaToSettings(persona)
 }
 
 /**
@@ -67,7 +76,17 @@ export async function applyDefaultMemory(character: Character | null | undefined
   if (!cfg.memoryEnabled) return
   try {
     await window.api.chat.updateSession(character.id, sessionId, { ...cfg })
-  } catch { /* 忽略 */ }
+  } catch (e) {
+    // UEX-P0-02：默认记忆写入失败不再静默——一次性 warning toast；
+    // 用固定 requestId 限频（同 key 新 toast 顶掉旧 toast，防止批量新建会话时刷屏）
+    logWarn('applyDefaultMemory', `默认长记忆配置写入失败：${(e as Error)?.message ?? e}`)
+    pushToast({
+      variant: 'warning',
+      title: '默认长记忆开启失败',
+      description: '该新会话未自动开启长记忆，可在会话设置中手动开启',
+      requestId: 'chatUtils:applyDefaultMemory',
+    })
+  }
 }
 
 /** 将全局默认长记忆配置应用到新建群聊。 */
@@ -76,7 +95,16 @@ export async function applyDefaultGroupMemory(groupId: string, sessionId: string
   if (!cfg.memoryEnabled) return
   try {
     await window.api.group.updateSession(groupId, sessionId, { ...cfg })
-  } catch { /* 忽略 */ }
+  } catch (e) {
+    // UEX-P0-02：群聊默认记忆写入失败同样不再静默（对齐 applyDefaultMemory，requestId 限频）
+    logWarn('applyDefaultGroupMemory', `群聊默认长记忆配置写入失败：${(e as Error)?.message ?? e}`)
+    pushToast({
+      variant: 'warning',
+      title: '群聊默认长记忆开启失败',
+      description: '该新群聊未自动开启长记忆，可在群聊设置中手动开启',
+      requestId: 'chatUtils:applyDefaultGroupMemory',
+    })
+  }
 }
 
 /** 历史变更后使上下文压缩缓存失效（编辑/删除/清空消息时调用） */
@@ -91,7 +119,17 @@ export async function invalidateCompression(
     await window.api.chat.updateSession(character.id, sid, {
       compressedSummary: null,
       compressedRange: null,
-    }).catch(() => { /* 忽略 */ })
+    }).catch((e) => {
+      // UEX-P0-02：失效失败不再静默（旧压缩摘要残留可能被误注入上下文）——
+      // 一次性 warning toast，固定 requestId 限频防刷屏
+      logWarn('invalidateCompression', `压缩摘要清理失败：${(e as Error)?.message ?? e}`)
+      pushToast({
+        variant: 'warning',
+        title: '历史压缩摘要清理失败',
+        description: '旧摘要可能仍被用于上下文构建，可稍后重试或手动清理',
+        requestId: 'chatUtils:invalidateCompression',
+      })
+    })
   }
 }
 

@@ -9,6 +9,7 @@ import { extractThought } from '../../utils/messagePostProcess'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
+import { shouldDisplayGenerationNotice } from '../../../shared/generationNotice'
 import { DialogueDirectionCard } from './DialogueDirectionCard'
 import { RoleplayContentRenderer } from './RoleplayContentRenderer'
 
@@ -86,8 +87,44 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
       .filter((n): n is string => !!n)
   }, [message.mentionedCharacterIds, characters])
 
-  if (isFree) {
-    return null
+  // S7：free 流式占位必须可见（半截正文用户能看见）；非流式 free 正文不展示（不单独归属成员）。
+  // D10 已拍板：历史 `__free__` 段放开整段重生入口——正文仍隐藏，但保留操作行（重新生成整段/删除）。
+  if (isFree && !isStreaming) {
+    return (
+      <div className="px-4 group" style={{ marginBottom: `${settings.messageSpacing}px` }}>
+        <div className="mx-auto flex gap-4" style={{ maxWidth: `${settings.messageWidth ?? 768}px`, width: '100%' }}>
+          <div className="flex-1 min-w-0">
+            <div className="msg-bubble max-w-full rounded-lg border border-tavern-border-soft bg-tavern-bg-card/60 px-5 py-3 text-xs text-tavern-text-muted">
+              （历史自由发言段：正文不单独归属成员，已隐藏；可整段重新生成）
+            </div>
+            {(onRegenerate || onDelete) && (
+              <div className="mt-1 flex items-center gap-0.5">
+                {onRegenerate && (
+                  <button
+                    onClick={onRegenerate}
+                    className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent"
+                    title="重新生成"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    onClick={onDelete}
+                    className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-danger"
+                    title="删除"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          {/* 对侧占位：预留头像宽度，使左右气泡对齐在同一中间列 */}
+          <div className="w-10 shrink-0" aria-hidden="true" />
+        </div>
+      </div>
+    )
   }
 
   const startEdit = () => {
@@ -242,6 +279,18 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
                 isStreaming={isStreaming}
                 mentionNames={mentionNames}
               />
+
+              {/* S3：生成失败/截断提示（对齐 MessageBubble；短波只展示不做重试） */}
+              {!isStreaming && message.generationError && (
+                <div className="mt-2 text-xs text-tavern-danger">
+                  ⚠️ 生成中断：{message.generationError}
+                </div>
+              )}
+              {!isStreaming && !message.generationError && shouldDisplayGenerationNotice(message.generationNotice) && (
+                <div className="mt-2 text-xs text-tavern-text-muted/80">
+                  ℹ️ {message.generationNotice}
+                </div>
+              )}
 
               {/* 翻译切换 */}
               {message.translation && message.translation !== '...' && (

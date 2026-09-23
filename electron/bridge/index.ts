@@ -41,6 +41,14 @@ import { BridgeRuntime } from './runtime/bridgeRuntime'
 
 const log = createLogger('bridge')
 
+/**
+ * UEX-P1-21：配对审批挂起窗口（ms）——与 electron/bridge/routes.ts 的
+ * PAIR_WAIT_TIMEOUT_MS（55s，安卓端 readTimeout 60s 内）保持一致：
+ * 超过该窗口主进程自动 408 拒绝，故「请求到达 + 该窗口」即审批有效期。
+ * 该常量在 routes.ts 未导出，修改其一需同步另一处。
+ */
+const PAIR_APPROVAL_WAIT_MS = 55_000
+
 /** 桥接配置（持久化） */
 export interface BridgeConfig {
   enabled: boolean
@@ -208,9 +216,13 @@ export class BridgeService {
     }
     // 配对审批 -> 通知渲染层弹窗（方案 §5.1 PC 侧人工确认）
     const onPairRequest = (requestId: string, deviceName: string): void => {
+      // UEX-P1-21：载荷附带审批有效期截止时间戳（请求到达 + 审批挂起窗口），
+      // 供渲染层配对弹窗过期倒计时；向后兼容（旧渲染层忽略该字段即可）。
+      const createdAt = getPendingPair(requestId)?.createdAt ?? Date.now()
+      const expiresAt = createdAt + PAIR_APPROVAL_WAIT_MS
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed() && win.webContents) {
-          win.webContents.send('bridge:pairRequest', { requestId, deviceName })
+          win.webContents.send('bridge:pairRequest', { requestId, deviceName, expiresAt })
         }
       }
     }
@@ -391,12 +403,18 @@ export function registerBridgeIPC(ipcMainInstance: IpcMain): void {
   ipcMainInstance.handle('bridge:listDevices', () => bridgeService.listDevices())
 
   ipcMainInstance.handle('bridge:revokeDevice', (_e, deviceId: string) => {
-    return { ok: bridgeService.revokeDevice(deviceId) }
+    // UEX-P0-14：吊销失败回传具体原因，供渲染层 toast 展示
+    const revoked = bridgeService.revokeDevice(deviceId)
+    return revoked ? { ok: true } : { ok: false, error: '设备不存在或已失效，请刷新设备列表后重试' }
   })
 
   ipcMainInstance.handle('bridge:approvePair', (_e, requestId: string) => {
     const pair = getPendingPair(requestId)
     if (!pair) return { ok: false, error: '配对请求不存在或已处理' }
+    // UEX-P1-21：超过审批挂起窗口后请求已失效（routes.ts 已超时自动 408 拒绝），不再受理审批
+    if (Date.now() - pair.createdAt >= PAIR_APPROVAL_WAIT_MS) {
+      return { ok: false, error: '配对请求已过期，请在手机上重新发起配对' }
+    }
     bridgeService.approvePair(requestId)
     return { ok: true, device: { requestId, deviceName: pair.deviceName, deviceFingerprint: pair.deviceFingerprint } }
   })
@@ -413,9 +431,12 @@ export function registerBridgeIPC(ipcMainInstance: IpcMain): void {
 
   // 配对审批请求 -> 通知渲染层弹窗（方案 §5.1 PC 侧人工确认）
   ipcMainInstance.on('bridge:pairRequested', (_e, requestId: string, deviceName: string) => {
+    // UEX-P1-21：与 start() 内闭包一致，附带审批有效期截止时间戳供倒计时
+    const createdAt = getPendingPair(requestId)?.createdAt ?? Date.now()
+    const expiresAt = createdAt + PAIR_APPROVAL_WAIT_MS
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed() && win.webContents) {
-        win.webContents.send('bridge:pairRequest', { requestId, deviceName })
+        win.webContents.send('bridge:pairRequest', { requestId, deviceName, expiresAt })
       }
     }
   })

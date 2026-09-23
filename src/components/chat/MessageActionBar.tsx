@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { ConfirmDialog } from '../common/ConfirmDialog'
 import { Edit2, Copy, Reply, RotateCcw, Trash2, Volume2, VolumeX, Play, Pause, Languages, GitBranch, RefreshCw, Loader2 } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { pushToast } from '../../store/useToastStore'
 import { cn } from '../../lib/utils'
 import { stripThought, stripThoughtTags } from '../../utils/messagePostProcess'
 
@@ -40,6 +42,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
 
   const [ttsState, setTtsState] = useState<'idle' | 'speaking' | 'paused'>('idle')
   const [regenerating, setRegenerating] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const ttsConfig = getActiveTTS()
@@ -211,25 +214,50 @@ export const MessageActionBar = React.memo(function MessageActionBar({
     })
   }
 
-  /** 重新生图（生图消息） */
+  /** 重新生图（生图消息）——UEX-P2-01：全部失败路径提示，不再静默；成功轻提示 */
   const handleRegenerateImage = async () => {
     setRegenerating(true)
     try {
       const result = await window.api.imageGen.generate(message.content)
       if (result.success && result.images?.length) {
         await updateMessageImages(message.id, result.images)
+        // UEX-P2-01：成功轻提示（低噪短时长）
+        pushToast({ variant: 'success', title: '已重新生成', durationMs: 3000 })
+      } else {
+        // UEX-P2-01：失败 / 未返回图片均可见提示
+        pushToast({ variant: 'error', title: '重新生图失败', description: result.error || '生图服务未返回图片' })
       }
-    } catch { /* 忽略 */ }
-    setRegenerating(false)
+    } catch (e) {
+      // UEX-P2-01：异常不再吞掉
+      pushToast({ variant: 'error', title: '重新生图失败', description: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setRegenerating(false)
+    }
   }
 
   const iconBtn = 'p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors'
+
+  // 删除确认（三个布局分支共用；早退分支必须一并渲染，否则删除按钮失效）
+  const deleteConfirm = (
+    <ConfirmDialog
+      open={confirmDelete}
+      onClose={() => setConfirmDelete(false)}
+      onConfirm={() => {
+        if (character) void deleteMessage(message.id, character)
+      }}
+      title="删除消息"
+      message="确定删除这条消息吗？删除后上下文与长记忆检索将不再包含该内容。此操作不可撤销。"
+      confirmText="删除"
+      danger
+    />
+  )
 
   if (isStreaming) return null
 
   // 纯图片 system 消息（生图结果）：独立居中布局
   if (bare) {
     return (
+      <>
       <div className="flex items-center justify-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button className={iconBtn} onClick={onEdit} title="编辑"><Edit2 className="w-3.5 h-3.5" /></button>
         <button className={iconBtn} onClick={handleCopy} title="复制"><Copy className="w-3.5 h-3.5" /></button>
@@ -239,14 +267,17 @@ export const MessageActionBar = React.memo(function MessageActionBar({
         <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover transition-colors disabled:opacity-50" disabled={regenerating} onClick={handleRegenerateImage} title="重新生图">
           {regenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
         </button>
-        <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-bg-hover transition-colors" onClick={() => character && deleteMessage(message.id, character)} title="删除"><Trash2 className="w-3.5 h-3.5" /></button>
+        <button className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-bg-hover transition-colors" onClick={() => setConfirmDelete(true)} title="删除"><Trash2 className="w-3.5 h-3.5" /></button>
       </div>
+      {deleteConfirm}
+      </>
     )
   }
 
   // 用户消息
   if (isUser) {
     return (
+      <>
       <div className={cn('flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex-row-reverse')}>
         <button className={iconBtn} onClick={onEdit} title="编辑"><Edit2 className="w-3.5 h-3.5" /></button>
         <button className={iconBtn} onClick={handleCopy} title="复制"><Copy className="w-3.5 h-3.5" /></button>
@@ -259,12 +290,14 @@ export const MessageActionBar = React.memo(function MessageActionBar({
         </button>
         <button
           className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-bg-hover transition-colors"
-          onClick={() => character && deleteMessage(message.id, character)}
+          onClick={() => setConfirmDelete(true)}
           title="删除"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
+      {deleteConfirm}
+      </>
     )
   }
 
@@ -339,11 +372,12 @@ export const MessageActionBar = React.memo(function MessageActionBar({
       )}
       <button
         className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-bg-hover transition-colors"
-        onClick={() => character && deleteMessage(message.id, character)}
+        onClick={() => setConfirmDelete(true)}
         title="删除"
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
+      {deleteConfirm}
     </div>
   )
 })

@@ -17,8 +17,14 @@ const KIND_STYLES: Record<LorebookHealthIssueKind, string> = {
 /**
  * 阶段 7：一次性世界书数据健康检查报告。
  * 只读展示；发现问题不自动修改数据，由用户按 detail 自行处理。
+ * UEX-P2 补3：条目问题显示条目名/触发词，并提供 onLocate 定位入口。
  */
-export function LorebookHealthReportModal({ report, onClose }: { report: LorebookHealthReport | 'loading'; onClose: () => void }) {
+export function LorebookHealthReportModal({ report, onLocate, onClose }: {
+  report: LorebookHealthReport | 'loading'
+  /** 定位/编辑问题条目（entryId, bookId）；缺省时不显示入口 */
+  onLocate?: (entryId: string, bookId: string) => void
+  onClose: () => void
+}) {
   if (report === 'loading') {
     return (
       <Modal open onClose={onClose} title="世界书健康检查" width="md"
@@ -66,11 +72,33 @@ export function LorebookHealthReportModal({ report, onClose }: { report: Loreboo
                 <h4 className="text-sm font-medium">{bookName}</h4>
                 {items.map((item, index) => (
                   <div key={`${item.entryId ?? 'book'}-${index}`} className="text-xs space-y-0.5">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={cn('rounded px-1.5 py-0.5 text-[10px] shrink-0', KIND_STYLES[item.kind])}>
                         {LOREBOOK_HEALTH_KIND_LABELS[item.kind]}
                       </span>
-                      {item.entryId && <code className="text-tavern-text-muted">{item.entryId}</code>}
+                      {/* UEX-P2 补3：条目名/触发词优先展示，裸 entryId 兜底 */}
+                      {item.entryId && (
+                        <>
+                          {item.entryName && (
+                            <span className="font-medium text-tavern-text-soft truncate max-w-[14rem]">{item.entryName}</span>
+                          )}
+                          {item.keywords && item.keywords.length > 0 && (
+                            <span className="text-tavern-text-muted truncate max-w-[14rem]" title={item.keywords.join('、')}>
+                              关键词：{item.keywords.slice(0, 3).join('、')}{item.keywords.length > 3 ? '…' : ''}
+                            </span>
+                          )}
+                          <code className="text-tavern-text-muted/70 truncate max-w-[10rem]" title={item.entryId}>{item.entryId}</code>
+                          {onLocate && (
+                            <button
+                              type="button"
+                              className="btn-ghost px-1.5 py-0.5 text-[11px] text-tavern-accent shrink-0"
+                              onClick={() => onLocate(item.entryId!, item.bookId)}
+                            >
+                              定位/编辑
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
                     <p className="text-tavern-text-soft leading-relaxed"><CircleAlert className="inline w-3 h-3 mr-1 opacity-60" />{item.detail}</p>
                   </div>

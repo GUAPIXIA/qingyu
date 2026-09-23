@@ -153,7 +153,8 @@ export function registerQuickReplyIPC(ipcMain: IpcMain, dialog: Dialog): void {
         merged.byCharacter[charId] = [...existing, ...additions]
       }
       commitQuickReplyStore(merged)
-      return { ok: true }
+      // UEX-P0-03：返回替换明细，UI 可汇报「替换 N 条」而不是静默整表替换
+      return { ok: true, replacedGlobal: current.global.length, importedGlobal: merged.global.length }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { getDefaultSettings } from '../../../../shared/defaults'
 import type { Character } from '../../../../shared/types'
 import { useSettingsStore } from '../../../store/useSettingsStore'
@@ -39,7 +39,7 @@ describe('CharacterCard', () => {
     expect(onChat).toHaveBeenCalledWith(character)
   })
 
-  it('更多菜单可导出封面图片，调用 exportCover', () => {
+  it('更多菜单可导出封面图片，调用 exportCover', async () => {
     const exportCover = vi.fn()
     useCharacterStore.setState({ exportCover })
 
@@ -54,7 +54,10 @@ describe('CharacterCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: /导出/ }))
-    fireEvent.click(screen.getByRole('button', { name: '封面图片' }))
+    // UEX-P1-18：导出改为 await + 进行中态，act 内冲刷微任务避免 act 警告
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '封面图片' }))
+    })
 
     expect(exportCover).toHaveBeenCalledWith(character.id)
   })

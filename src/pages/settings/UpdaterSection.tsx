@@ -12,6 +12,7 @@ import {
   Server,
 } from 'lucide-react'
 import { SectionCard } from '../../components/common/SettingsShared'
+import { ConfirmDialog } from '../../components/common/ConfirmDialog'
 import type { UpdateSourceResult, UpdaterState } from '../../../shared/ipc-api'
 
 const GITHUB_RELEASES_URL = 'https://github.com/GUAPIXIA/qingyu/releases'
@@ -82,6 +83,8 @@ export function UpdaterSection() {
   const [busy, setBusy] = useState(false)
   const [currentVersion, setCurrentVersion] = useState('')
   const [linkError, setLinkError] = useState('')
+  // UEX-P1-23：重启安装前先确认（会关闭应用并安装更新）
+  const [confirmInstall, setConfirmInstall] = useState(false)
 
   const handleCheck = useCallback(async () => {
     setBusy(true)
@@ -146,7 +149,7 @@ export function UpdaterSection() {
   const action = status === 'downloaded' ? (
     <button
       type="button"
-      onClick={() => window.api.updater.install()}
+      onClick={() => setConfirmInstall(true)}
       className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-emerald-500"
     >
       <RotateCcw className="h-4 w-4" aria-hidden />
@@ -186,6 +189,23 @@ export function UpdaterSection() {
           <p className="text-sm">当前版本 v{currentVersion || '...'}</p>
           {action}
         </div>
+
+        {/* UEX-P1-23：自动安装行为告知（autoInstallOnAppQuit = true 保持产品行为） */}
+        <p className="text-[11px] text-tavern-text-muted">更新下载完成后，退出应用时将自动安装更新。</p>
+
+        {/* UEX-P1-23：重启安装确认（统一 ConfirmDialog，写明将关闭应用并安装更新） */}
+        <ConfirmDialog
+          open={confirmInstall}
+          onClose={() => setConfirmInstall(false)}
+          onConfirm={() => {
+            setConfirmInstall(false)
+            window.api.updater.install()
+          }}
+          title="重启安装更新"
+          message="点击「重启安装」将关闭应用并安装更新，未保存的内容可能丢失；若选择稍后退出，退出应用时也会自动安装更新。确定现在重启安装吗？"
+          confirmText="重启安装"
+          danger
+        />
 
         {showResults && (
           <div className="grid gap-2 sm:grid-cols-2" aria-label="更新来源版本">

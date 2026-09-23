@@ -7,6 +7,8 @@
  * - 设备管理：已配对设备列表，可吊销（§5.1）。
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { ConfirmDialog } from '../../components/common/ConfirmDialog'
+import { pushToast } from '../../store/useToastStore'
 import QRCode from 'qrcode'
 import { SectionCard } from '../../components/common/SettingsShared'
 import type { BridgeConfig, BridgeDeviceInfo, PairingInfo, RelayStatus } from '../../../shared/ipc-api'
@@ -193,7 +195,8 @@ export function LanConnectionPanel() {
     }
   }, [pairingFingerprint, qrMode])
 
-  /** 开关桥接服务 */
+  /** 开关桥接服务（UEX-P2-10：启停均先经 ConfirmDialog 说明网络影响） */
+  const [toggleConfirm, setToggleConfirm] = useState(false)
   const toggleBridge = async () => {
     setBusy(true)
     setMsg(null)
@@ -274,11 +277,17 @@ export function LanConnectionPanel() {
     setMsg({ ok: true, text: '已生成新配对码（旧码作废，5 分钟有效）' })
   }
 
+  const [revokeDeviceId, setRevokeDeviceId] = useState<string | null>(null)
   const revokeDevice = async (deviceId: string) => {
     const result = await window.api.bridge.revokeDevice(deviceId)
     if (result.ok) {
       setMsg({ ok: true, text: '设备已吊销' })
       setDevices((d) => d.filter((x) => x.deviceId !== deviceId))
+    } else {
+      // UEX-P0-14：吊销失败不再静默，错误经全局 Toast 展示
+      // （IPC 契约现仅返回 { ok }；error 为可选扩展字段，缺失时给通用文案）
+      const { error } = result as { ok: boolean; error?: string }
+      pushToast({ variant: 'error', title: '吊销失败', description: error ?? '请刷新设备列表后重试' })
     }
   }
 
@@ -301,7 +310,7 @@ export function LanConnectionPanel() {
             </div>
           </div>
           <button
-            onClick={toggleBridge}
+            onClick={() => setToggleConfirm(true)}
             disabled={busy}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               status?.running
@@ -318,11 +327,12 @@ export function LanConnectionPanel() {
             <ShieldAlert size={18} className="mt-0.5 shrink-0 text-tavern-warning" />
             <div className="min-w-0 space-y-1.5">
               <div className="font-medium">安卓端无法通过局域网连接时</div>
+              {/* UEX-P2-10：优先放行应用/端口，不再引导直接关闭防火墙 */}
               <div className="text-tavern-text-muted text-xs leading-relaxed">
-                请依次打开 Windows「设置 → 隐私与安全性 → 防火墙与网络保护」，关闭“专用网络”和“公用网络”防火墙后重新连接。
+                优先放行应用：打开 Windows「设置 → 隐私与安全性 → 防火墙与网络保护 → 允许应用通过防火墙」，找到轻语并勾选“专用网络/公用网络”放行后重新连接（也可在「高级设置 → 入站规则」放行端口 {status?.config.port ?? 8321}）。
               </div>
               <div className="text-tavern-danger/85 text-xs leading-relaxed">
-                关闭防火墙会降低电脑安全性，仅建议用于局域网连接排查；测试完成后请重新开启。
+                次选（有安全风险）：仅当放行后仍无法连接时，可临时关闭“专用网络”防火墙用于排查；关闭防火墙会降低电脑安全性，排查完成后请立即重新开启。
               </div>
             </div>
           </div>
@@ -431,7 +441,7 @@ export function LanConnectionPanel() {
                     </div>
                   </div>
                   <button
-                    onClick={() => revokeDevice(d.deviceId)}
+                    onClick={() => setRevokeDeviceId(d.deviceId)}
                     className="text-tavern-danger/70 hover:text-tavern-danger transition-colors"
                     title="吊销此设备"
                   >
@@ -462,11 +472,39 @@ export function LanConnectionPanel() {
         {msg && (
           <div className={`text-xs ${msg.ok ? 'text-tavern-success' : 'text-tavern-danger'}`}>{msg.text}</div>
         )}
+        <ConfirmDialog
+          open={!!revokeDeviceId}
+          onClose={() => setRevokeDeviceId(null)}
+          onConfirm={async () => {
+            if (revokeDeviceId) await revokeDevice(revokeDeviceId)
+            setRevokeDeviceId(null)
+          }}
+          title="吊销设备"
+          message="确定吊销该已配对设备吗？吊销后手机需重新配对才能连接。"
+          confirmText="吊销"
+          danger
+        />
+        {/* UEX-P2-10：LAN 桥接启停确认（启停都有网络影响说明） */}
+        <ConfirmDialog
+          open={toggleConfirm}
+          onClose={() => setToggleConfirm(false)}
+          onConfirm={() => {
+            setToggleConfirm(false)
+            void toggleBridge()
+          }}
+          title={status?.running ? '关闭「手机连接」' : '开启「手机连接」'}
+          message={status?.running
+            ? '关闭后局域网桥接服务将停止，已连接的手机会立即断开，需重新开启才能再次连接。确定关闭吗？'
+            : '开启后局域网内的安卓设备可发现并连接此电脑（需允许应用/端口通过防火墙），手机将能访问轻语数据。确定开启吗？'}
+          confirmText={status?.running ? '关闭' : '开启'}
+          danger={status?.running}
+        />
     </div>
   )
 }
 
 export function RelayConnectionPanel() {
+  const [pendingConfirm, setPendingConfirm] = useState<{ title: string; message: string; danger?: boolean; run: () => void } | null>(null)
   const [status, setStatus] = useState<RelayStatus>({ state: 'Disabled' })
   const [baseUrl, setBaseUrl] = useState(DEFAULT_RELAY_BASE_URL)
   const [ticket, setTicket] = useState<RelayPairingQr | null>(null)
@@ -496,7 +534,14 @@ export function RelayConnectionPanel() {
 
   const enabled = status.state !== 'Disabled'
   const toggle = async () => {
-    if (!window.confirm(enabled ? '确定停用服务器连接？局域网连接不受影响。' : '确定启用服务器连接？')) return
+    setPendingConfirm({
+      title: enabled ? '停用服务器连接' : '启用服务器连接',
+      message: enabled ? '确定停用服务器连接？局域网连接不受影响。' : '确定启用服务器连接？',
+      danger: enabled,
+      run: () => { void toggleRelayImpl(enabled) },
+    })
+  }
+  const toggleRelayImpl = async (enabled: boolean) => {
     setBusy(true); setMessage(null)
     try {
       const result = enabled ? await window.api.relay.disable() : await window.api.relay.enable(baseUrl)
@@ -513,9 +558,16 @@ export function RelayConnectionPanel() {
   }
 
   const clearCache = async () => {
-    if (!window.confirm('确定清空 Relay 上的临时缓存？PC 本地数据不会被删除。')) return
-    const result = await window.api.relay.clearCache()
-    setMessage(result.ok ? '云端缓存已清空' : '清空失败')
+    setPendingConfirm({
+      title: '清空云端缓存',
+      message: '确定清空 Relay 上的临时缓存？PC 本地数据不会被删除。',
+      danger: true,
+      run: () => {
+        void window.api.relay.clearCache().then((result) => {
+          setMessage(result.ok ? '云端缓存已清空' : '清空失败')
+        })
+      },
+    })
   }
 
   const statusText = status.state === 'Online' ? '已连接' : status.state === 'Reconnecting'
@@ -587,6 +639,18 @@ export function RelayConnectionPanel() {
           </div>
         )}
         {message && <div className="rounded-lg bg-tavern-danger/8 px-3 py-2 text-xs text-tavern-danger">{message}</div>}
+        <ConfirmDialog
+          open={!!pendingConfirm}
+          onClose={() => setPendingConfirm(null)}
+          onConfirm={() => {
+            pendingConfirm?.run()
+            setPendingConfirm(null)
+          }}
+          title={pendingConfirm?.title ?? ''}
+          message={pendingConfirm?.message ?? ''}
+          confirmText="确认"
+          danger={pendingConfirm?.danger}
+        />
     </div>
   )
 }

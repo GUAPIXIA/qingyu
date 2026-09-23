@@ -63,7 +63,7 @@ export interface ChatState {
     totalChars: number; durationStr: string
   } | null>
   loadMessages: (character: Character) => Promise<void>
-  sendMessage: (content: string, images: string[], character: Character, preset: Preset | null, lorebooks: Lorebook[], replyToId?: string, generationKind?: MessageGenerationKind) => Promise<void>
+  sendMessage: (content: string, images: string[], character: Character, preset: Preset | null, lorebooks: Lorebook[], replyToId?: string, generationKind?: MessageGenerationKind) => Promise<boolean>
   /** 添加独立消息（不触发 AI 回复，用于生图等） */
   addStandaloneMessage: (content: string, images: string[], character: Character, role?: 'user' | 'assistant' | 'system', sessionId?: string) => Promise<void>
   /** 同一角色会话只允许一个生图任务；冲突时返回 null。 */

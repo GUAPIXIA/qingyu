@@ -51,6 +51,7 @@ export function UsagePage() {
         nameMap[c.id] = c.name
       }
     } else if (groupBy === 'session') {
+      // UEX-P2 补1：「按对话」标签优先取会话标题（单聊/群聊会话列表），取不到再回退角色名
       const characters = await window.api.character.list()
       const charMap = new Map(characters.map(c => [c.id, c.name]))
       // aggregate 只返回 key=session 的数据，需查询原始记录反查 characterId
@@ -61,9 +62,22 @@ export function UsagePage() {
           sessionCharMap.set(rec.sessionId, charMap.get(rec.characterId) ?? rec.characterId)
         }
       }
+      // 会话标题索引：单聊按角色查会话，群聊按群查会话
+      const sessionTitleMap = new Map<string, string>()
+      const collectTitles = (list: Array<{ id: string; title: string }>) => {
+        for (const s of list) {
+          if (s.title) sessionTitleMap.set(s.id, s.title)
+        }
+      }
+      const charIds = [...new Set(rawRecords.map(r => r.characterId).filter(id => charMap.has(id)))]
+      const groups = await window.api.group.list().catch(() => [])
+      await Promise.all([
+        ...charIds.map(id => window.api.chat.listSessions(id).then(collectTitles).catch(() => {})),
+        ...groups.map(g => window.api.group.listSessions(g.id).then(collectTitles).catch(() => {})),
+      ])
       for (const rec of (recordsR.status === 'fulfilled' ? recordsR.value : [])) {
-        const charName = sessionCharMap.get(rec.key) ?? ''
-        nameMap[rec.key] = charName || rec.key
+        const label = sessionTitleMap.get(rec.key) || sessionCharMap.get(rec.key) || ''
+        nameMap[rec.key] = label || rec.key
       }
     }
     setKeyNameMap(nameMap)

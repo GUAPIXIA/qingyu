@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Dropdown } from './Dropdown'
 import { ConfirmDialog } from './ConfirmDialog'
 import { cn } from '../../lib/utils'
-import { Layers, ChevronDown, Edit2, Trash2, Plus, UserCircle } from 'lucide-react'
+import { Layers, ChevronDown, Edit2, Trash2, Plus, Search, UserCircle } from 'lucide-react'
 
 interface SessionSwitcherProps {
   /** 兼容单聊 SessionPreview[] 与群聊 GroupSession[]（均含 id/title/messageCount） */
@@ -40,14 +40,45 @@ export function SessionSwitcher({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // UEX-P1-33：会话列表轻量搜索（仅会话多时显示）
+  const [search, setSearch] = useState('')
+  // UEX-P1-33：会话列表轻量排序切换（最近使用 / 名称），仅前端内存态、不落盘
+  const [sortBy, setSortBy] = useState<'recent' | 'name'>('recent')
+  // UEX-P1-32：重命名结束标记，防止「回车 + 失焦」重复提交或 Esc 后误提交
+  const renameDoneRef = useRef(false)
 
   const currentSession = sessions.find(s => s.id === currentSessionId)
   const isChat = variant === 'chat'
 
+  // UEX-P1-33：按会话标题前端过滤 + 排序（默认「最近使用」保持现有顺序；「名称」localeCompare('zh')）
+  const searchKeyword = search.trim().toLowerCase()
+  const filteredSessions = searchKeyword
+    ? sessions.filter(s => s.title.toLowerCase().includes(searchKeyword))
+    : sessions
+  const visibleSessions = sortBy === 'name'
+    ? [...filteredSessions].sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+    : filteredSessions
+
+  const beginRename = (s: { id: string; title: string }) => {
+    renameDoneRef.current = false
+    setEditingId(s.id)
+    setEditTitle(s.title)
+  }
+
+  // UEX-P1-32：失焦 = 提交保存（chat/group 统一），Esc = 取消
   const handleRenameConfirm = async () => {
-    if (editingId && editTitle.trim()) {
-      await onRename(editingId, editTitle.trim())
+    if (renameDoneRef.current || !editingId) return
+    renameDoneRef.current = true
+    const id = editingId
+    const title = editTitle.trim()
+    setEditingId(null)
+    if (title) {
+      await onRename(id, title)
     }
+  }
+
+  const handleRenameCancel = () => {
+    renameDoneRef.current = true
     setEditingId(null)
   }
 
@@ -58,7 +89,18 @@ export function SessionSwitcher({
     setDeletingId(null)
   }
 
-  if (sessions.length === 0) return null
+  if (sessions.length === 0) {
+    return (
+      <div className="text-xs text-tavern-text-muted px-2">
+        暂无会话
+        {onCreate && (
+          <button type="button" className="ml-2 text-tavern-accent hover:underline" onClick={onCreate}>
+            新建
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center gap-1">
@@ -66,7 +108,11 @@ export function SessionSwitcher({
 
       <Dropdown
         open={showMenu}
-        onOpenChange={setShowMenu}
+        onOpenChange={(open) => {
+          setShowMenu(open)
+          // UEX-P1-33：关闭下拉时清空搜索词，避免下次打开残留过滤条件
+          if (!open) setSearch('')
+        }}
         panelClassName={cn('w-56', isChat && 'max-h-72 overflow-y-auto')}
         trigger={
           isChat ? (
@@ -88,7 +134,52 @@ export function SessionSwitcher({
           )
         }
       >
-        {sessions.map((s) => {
+        {/* UEX-P1-33：会话多于 5 条时提供轻量搜索框（按标题前端过滤）+ 排序切换 */}
+        {sessions.length > 5 && (
+          <div className="px-2 pt-1 pb-1.5 space-y-1">
+            <div className="flex items-center gap-1.5 rounded-lg bg-tavern-bg px-2 py-1 border border-tavern-border-soft">
+              <Search className="w-3 h-3 text-tavern-text-muted shrink-0" aria-hidden />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="搜索会话..."
+                aria-label="搜索会话"
+                className="flex-1 bg-transparent outline-none text-xs placeholder:text-tavern-text-muted"
+              />
+            </div>
+            {/* UEX-P1-33：轻量排序切换（最近使用 / 名称），仅前端内存态、不落盘；默认最近使用 = 现有顺序 */}
+            <div
+              role="group"
+              aria-label="会话排序"
+              className="flex items-center gap-1 rounded-lg bg-tavern-bg px-1.5 py-1 border border-tavern-border-soft"
+            >
+              <span className="text-[10px] text-tavern-text-muted shrink-0">排序</span>
+              {([
+                { value: 'recent' as const, label: '最近使用' },
+                { value: 'name' as const, label: '名称' },
+              ]).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={sortBy === option.value}
+                  onClick={() => setSortBy(option.value)}
+                  className={cn(
+                    'rounded-md px-1.5 py-0.5 text-[10px] transition-colors',
+                    sortBy === option.value
+                      ? 'bg-tavern-accent-soft text-tavern-accent font-semibold'
+                      : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text'
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {visibleSessions.length === 0 && (
+          <div className="px-3 py-3 text-xs text-tavern-text-muted">无匹配会话</div>
+        )}
+        {visibleSessions.map((s) => {
           if (isChat) {
             // Chat 风格：带 persona 头像
             return (
@@ -105,11 +196,12 @@ export function SessionSwitcher({
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRenameConfirm()
-                      else if (e.key === 'Escape') setEditingId(null)
+                      // UEX-P1-32：回车 = 提交保存，Esc = 取消，失焦 = 提交保存（与 group 分支一致）
+                      if (e.key === 'Enter') void handleRenameConfirm()
+                      else if (e.key === 'Escape') { e.stopPropagation(); handleRenameCancel() }
                     }}
                     autoFocus
-                    onBlur={() => setEditingId(null)}
+                    onBlur={() => void handleRenameConfirm()}
                   />
                 ) : (
                   <>
@@ -133,7 +225,7 @@ export function SessionSwitcher({
                     </button>
                     <button
                       className="p-0.5 rounded text-tavern-text-muted hover:text-tavern-text"
-                      onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setEditTitle(s.title) }}
+                      onClick={(e) => { e.stopPropagation(); beginRename(s) }}
                       title="重命名"
                     >
                       <Edit2 className="w-3 h-3" />
@@ -161,10 +253,11 @@ export function SessionSwitcher({
                   value={editTitle}
                   onChange={e => setEditTitle(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') handleRenameConfirm()
-                    if (e.key === 'Escape') setEditingId(null)
+                    // UEX-P1-32：回车 = 提交保存，Esc = 取消，失焦 = 提交保存（与 chat 分支一致）
+                    if (e.key === 'Enter') void handleRenameConfirm()
+                    else if (e.key === 'Escape') { e.stopPropagation(); handleRenameCancel() }
                   }}
-                  onBlur={handleRenameConfirm}
+                  onBlur={() => void handleRenameConfirm()}
                   className="flex-1 bg-tavern-bg border border-tavern-border rounded px-1.5 py-0.5 text-xs text-tavern-text outline-none focus:border-tavern-accent"
                   autoFocus
                 />
@@ -181,7 +274,7 @@ export function SessionSwitcher({
                 </button>
               )}
               <button
-                onClick={() => { setEditingId(s.id); setEditTitle(s.title) }}
+                onClick={() => beginRename(s)}
                 className="opacity-0 group-hover:opacity-100 p-0.5 text-tavern-text-muted hover:text-tavern-text"
                 title="重命名"
               >

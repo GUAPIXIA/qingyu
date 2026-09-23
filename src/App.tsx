@@ -8,6 +8,7 @@ import { useSessionSync } from './hooks/useSessionSync'
 import { usePairApproval } from './hooks/usePairApproval'
 import { BUILTIN_FONTS } from './utils/defaults'
 import { logError } from './lib/logger'
+import { pushToast } from './store/useToastStore'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { MainLayout } from './components/layout/MainLayout'
 import { ChatPage } from './pages/ChatPage'
@@ -150,10 +151,13 @@ export default function App() {
     const handleUnhandledRejection = (e: PromiseRejectionEvent) => {
       logError('App:unhandledRejection', e.reason)
       e.preventDefault()
+      pushToast({ variant: 'error', title: '发生未处理错误', description: String((e.reason as Error)?.message ?? e.reason ?? ''), requestId: 'unhandled' })
     }
     const handleError = (e: ErrorEvent) => {
       logError('App:uncaughtError', e.error ?? e.message)
       e.preventDefault()
+      // UEX-P0-02：未捕获渲染异常不再仅记日志——一次性 error toast（requestId 限频）
+      pushToast({ variant: 'error', title: '发生未处理错误', description: String((e.error as Error)?.message ?? e.message ?? ''), requestId: 'uncaught' })
     }
     window.addEventListener('unhandledrejection', handleUnhandledRejection)
     window.addEventListener('error', handleError)
@@ -170,8 +174,12 @@ export default function App() {
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault()
         navigate('/chat')
-        // 延迟派发：跨页面时等待 ChatPage 挂载并注册监听器
-        setTimeout(() => window.dispatchEvent(new CustomEvent('shortcut:new-chat')), 60)
+        // UEX-P1-36：双 rAF 等待 ChatPage 挂载并注册监听器，替换原 60ms setTimeout 竞态
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.dispatchEvent(new CustomEvent('shortcut:new-chat'))
+          })
+        })
       }
       // Ctrl+E: 导出对话
       if (e.ctrlKey && e.key === 'e') {

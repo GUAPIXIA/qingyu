@@ -89,8 +89,14 @@ export function RegexPage() {
   const handleSingleTest = () => {
     if (!editing) return
     try {
-      const regex = new RegExp(editing.pattern, editing.flags || 'g')
-      setTestOutput({ text: testInput.replace(regex, editing.replacement), applied: 1, matched: 1 })
+      // UEX-P1-27：真实统计——replace 回调计数实际命中替换次数，不再恒「命中 1」
+      let matched = 0
+      testInput.replace(new RegExp(editing.pattern, editing.flags || 'g'), () => {
+        matched++
+        return ''
+      })
+      const text = testInput.replace(new RegExp(editing.pattern, editing.flags || 'g'), editing.replacement)
+      setTestOutput({ text, applied: 1, matched })
     } catch {
       setTestOutput({ text: '正则语法错误', applied: 0, matched: 0 })
     }
@@ -104,6 +110,12 @@ export function RegexPage() {
       return next
     })
   }
+
+  /** UEX-P1-27：删除确认文案带真实影响（作用范围 + 处理阶段，取自规则实际字段） */
+  const deletingRule = rules.find((r) => r.id === deleteId) ?? null
+  const deleteImpact = deletingRule
+    ? `该规则「${deletingRule.name}」作用于${scopeLabels[deletingRule.scope]}的${stageLabels[deletingRule.stage ?? 'text']}阶段${deletingRule.enabled ? '（当前启用）' : '（当前未启用）'}${deletingRule.stopStrings && deletingRule.stopStrings.length > 0 ? '，并承担停止字符串截断' : ''}；删除后该范围内的替换处理将不再执行。此操作不可撤销。`
+    : '此操作不可撤销。'
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -166,12 +178,14 @@ export function RegexPage() {
                               <button
                                 onClick={() => setEditing({ ...rule })}
                                 className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover"
+                                title="编辑"
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => setDeleteId(rule.id)}
                                 className="p-1.5 rounded text-tavern-text-muted hover:text-tavern-danger hover:bg-tavern-bg-hover"
+                                title="删除"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -406,7 +420,7 @@ export function RegexPage() {
         onClose={() => setDeleteId(null)}
         onConfirm={handleDelete}
         title="删除规则"
-        message="确定要删除这条正则规则吗？"
+        message={`确定要删除这条正则规则吗？${deleteImpact}`}
         confirmText="删除"
         danger
       />

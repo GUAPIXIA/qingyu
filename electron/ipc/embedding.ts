@@ -8,13 +8,15 @@
  * - embedding:semanticSearch  扫描文本语义检索（供 buildContext 合并注入）
  */
 
-import type { IpcMain } from 'electron'
+import type { IpcMain, WebContents } from 'electron'
 import { join } from 'node:path'
 import { DIRS } from '../services/storage'
 import { readLorebookView } from '../services/lorebookDocumentStore'
 import { embedTexts, testEmbedding, isEmbeddingConfigured, type EmbeddingConfig } from '../services/embedding'
 import { getVectorIndex, saveVectorIndex, patchVectorIndex, removeVectorIndex, countIndexedEntries, countStaleEntries } from '../services/vectorStore'
 import { safeId } from '../utils/pathGuard'
+import { safeSend } from '../utils/safeSend'
+import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { createLogger } from '../services/logger'
 import type { Lorebook, LoreEntry } from '../../shared/types'
 import type { VectorIndex, VectorSpace } from '../services/vectorStore'
@@ -35,9 +37,10 @@ import {
 
 const log = createLogger('embedding-ipc')
 
-async function embedWithProvider(config: EmbeddingConfig, texts: string[], inputKind: 'query' | 'passage'): Promise<number[][]> {
+async function embedWithProvider(config: EmbeddingConfig, texts: string[], inputKind: 'query' | 'passage', signal?: AbortSignal): Promise<number[][]> {
+  // UEX-P1-28：signal 传入嵌入调用——远程 fetch 可真中断；本地 worker 不可中断（条目边界停止）
   if (config.provider === 'local') return getLocalModelManager().embed(texts, inputKind)
-  return embedTexts(config, texts, inputKind)
+  return embedTexts(config, texts, inputKind, signal)
 }
 
 export function mapFactSearchHits(
@@ -85,10 +88,17 @@ function resolveIndexChunkChars(config: EmbeddingConfig): number {
   return Math.max(256, manifest.maxTokens * 2)
 }
 
+/** UEX-P1-28：索引批次选项——取消信号 + 逐条目进度回调 */
+export interface IndexLorebookOptions {
+  signal?: AbortSignal
+  onEntry?: (progress: { current: number; total: number; entryName?: string }) => void
+}
+
 export async function indexLorebookWithConfig(
   lorebookId: string,
   config: EmbeddingConfig,
   changedIds?: string[],
+  options?: IndexLorebookOptions,
 ): Promise<import('../../shared/ipc-api').IndexResult> {
   const lb = readLorebook(lorebookId)
   if (!lb) return { ok: false, error: '世界书不存在' }
@@ -105,10 +115,24 @@ export async function indexLorebookWithConfig(
   try {
     const embedded = await embedLorebookEntries(
       sourceEntries,
-      (texts, inputKind) => embedWithProvider(config, texts, inputKind),
+      (texts, inputKind, signal) => embedWithProvider(config, texts, inputKind, signal),
       resolveIndexChunkChars(config),
+      options,
     )
-    if (incremental) {
+    const completedIds = Object.keys(embedded.vectors)
+    if (embedded.canceled) {
+      // UEX-P1-28：取消不回滚——已完成条目向量写入索引保留；未处理条目保持原状
+      const existing = getVectorIndex(lorebookId, space)
+      if (existing && isVectorIndexCompatible(existing, config)) {
+        if (completedIds.length > 0) {
+          // 只刷新已完成条目（清其 stale），不动未处理条目；sourceRevision 保持不变
+          patchVectorIndex(lorebookId, config.model, embedded.vectors, completedIds, space, existing.sourceRevision)
+        }
+      } else if (completedIds.length > 0) {
+        // 尚无兼容索引：写入部分索引（不声明修订号，待下次完整索引收敛）
+        saveVectorIndex(lorebookId, config.model, embedded.vectors, space)
+      }
+    } else if (incremental) {
       const patched = patchVectorIndex(
         lorebookId,
         config.model,
@@ -121,15 +145,15 @@ export async function indexLorebookWithConfig(
     } else {
       saveVectorIndex(lorebookId, config.model, embedded.vectors, space, lb.runtime?.revision)
     }
-    log.info(incremental ? '世界书向量索引已增量更新' : '世界书向量索引完成', {
+    log.info(embedded.canceled ? '世界书向量索引已取消（已完成条目保留）' : incremental ? '世界书向量索引已增量更新' : '世界书向量索引完成', {
       lorebookId,
       name: lb.name,
       total: allEligible.length,
-      indexed: Object.keys(embedded.vectors).length,
+      indexed: completedIds.length,
       chunks: embedded.chunkCount,
       revision: lb.runtime?.revision,
     })
-    return { ok: true, total: allEligible.length, indexed: Object.keys(embedded.vectors).length, failed: embedded.failed }
+    return { ok: true, canceled: embedded.canceled, total: allEligible.length, indexed: completedIds.length, failed: embedded.failed }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
@@ -182,6 +206,18 @@ export interface SemanticHit {
   summary?: string
 }
 
+/**
+ * UEX-P1-28：进行中的手动索引批次（模块级唯一，天然构成防重入锁）。
+ * - controller：中断在途嵌入请求（远程 fetch 真中断；本地 worker 不可中断，条目边界停止）
+ * - canceled：条目边界处检查的取消标志（新批次开始即重置）
+ */
+interface IndexBatchState {
+  lorebookId: string
+  controller: AbortController
+  canceled: boolean
+}
+let currentIndexBatch: IndexBatchState | null = null
+
 export function registerEmbeddingIPC(ipcMain: IpcMain): void {
   // 测试嵌入服务连接
   ipcMain.handle('embedding:test', async (_e, config: EmbeddingConfig) => {
@@ -193,9 +229,38 @@ export function registerEmbeddingIPC(ipcMain: IpcMain): void {
     return testEmbedding(config)
   })
 
-  // 为世界书生成/重建向量索引
-  ipcMain.handle('embedding:indexLorebook', async (_e, lorebookId: string, config: EmbeddingConfig) => {
-    return indexLorebookWithConfig(lorebookId, config)
+  // 为世界书生成/重建向量索引（UEX-P1-28：逐条目进度上报 + 可取消 + 防重入）
+  ipcMain.handle('embedding:indexLorebook', async (event, lorebookId: string, config: EmbeddingConfig) => {
+    // UEX-P1-28：防重入兜底——已有索引批次进行中时直接拒绝（UI 侧另有入口禁用）
+    if (currentIndexBatch) return { ok: false, error: '已有索引任务进行中' }
+    // UEX-P1-28：新批次开始即重置取消状态（全新 AbortController 与取消标志）
+    const batch: IndexBatchState = { lorebookId, controller: new AbortController(), canceled: false }
+    currentIndexBatch = batch
+    try {
+      const sender = (event as { sender?: WebContents } | null)?.sender
+      return await indexLorebookWithConfig(lorebookId, config, undefined, {
+        signal: batch.controller.signal,
+        onEntry: (progress) => {
+          // UEX-P1-28：逐条目推进上报 { current, total, entryName? }（renderer 可能已销毁，safeSend 兜底）
+          if (sender) safeSend(sender, IPC_EVENTS.lorebookIndexProgress, { lorebookId, ...progress })
+        },
+      })
+    } finally {
+      // UEX-P1-28：批次结束（含取消/异常）即释放防重入锁，支持取消后立即重新发起
+      if (currentIndexBatch === batch) currentIndexBatch = null
+    }
+  })
+
+  // 取消索引（UEX-P1-28：幂等——重复点击/无进行中批次/非目标书均安全）
+  ipcMain.handle('embedding:indexCancel', (_e, lorebookId?: string) => {
+    const batch = currentIndexBatch
+    if (batch && !batch.canceled && (!lorebookId || batch.lorebookId === lorebookId)) {
+      batch.canceled = true
+      // 中断在途嵌入请求；本地 worker 嵌入不可中断，条目边界处停止
+      batch.controller.abort()
+      log.info('语义索引取消请求已接收', { lorebookId: batch.lorebookId })
+    }
+    return { ok: true }
   })
 
   // 查询索引状态
