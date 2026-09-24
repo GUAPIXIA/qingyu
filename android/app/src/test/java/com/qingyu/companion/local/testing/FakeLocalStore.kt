@@ -679,10 +679,12 @@ class FakeLocalStore(
         require(!isTombstoned("group", entity.groupId)) { "父群组已被删除，不能写入会话" }
         val now = System.currentTimeMillis()
         val row = entity.copy(createdAt = if (entity.createdAt == 0L) now else entity.createdAt, updatedAt = now)
+        // D-11：群会话独立实体类型
+        val entityType = if (row.groupId != null) EntityTypes.GROUP_SESSION else EntityTypes.SESSION
         journal(
-            "session",
+            entityType,
             row.id,
-            EntityPayloads.sessionPayload(row),
+            if (row.groupId != null) EntityPayloads.groupSessionPayload(row) else EntityPayloads.sessionPayload(row),
             Origin.Local,
         )
         upsertList(sessions, row) { it.id }
@@ -690,12 +692,14 @@ class FakeLocalStore(
 
     override suspend fun deleteSession(id: String) = transaction {
         // 与 Room 实现同口径：父（角色/群）必须在删除前读出来
-        val parent = sessions.value.firstOrNull { it.id == id }?.let { it.groupId ?: it.characterId }
+        val existing = sessions.value.firstOrNull { it.id == id }
+        val parent = existing?.let { it.groupId ?: it.characterId }
         sessions.value = sessions.value.filterNot { it.id == id }
         messages.value = messages.value.filterNot { it.sessionId == id }
         groupMessages.value = groupMessages.value.filterNot { it.sessionId == id }
         memoryFacts.value = memoryFacts.value.filterNot { it.sessionId == id }
-        tombstone("session", id, parentId = parent)
+        val entityType = if (existing?.groupId != null) EntityTypes.GROUP_SESSION else EntityTypes.SESSION
+        tombstone(entityType, id, parentId = parent)
     }
 
     override fun observeMessages(sessionId: String): Flow<List<LocalMessageEntity>> =
@@ -752,7 +756,7 @@ class FakeLocalStore(
 
     override suspend fun appendGroupMessage(entity: LocalGroupMessageEntity) = transaction {
         require(sessions.value.any { it.id == entity.sessionId }) { "父会话不存在，拒绝写入群消息" }
-        require(!isTombstoned("session", entity.sessionId)) { "父会话已被删除，拒绝写入群消息" }
+        require(!isTombstoned(EntityTypes.GROUP_SESSION, entity.sessionId)) { "父会话已被删除，拒绝写入群消息" }
         require(!isTombstoned("group", entity.groupId)) { "父群组已被删除，拒绝写入群消息" }
         val now = System.currentTimeMillis()
         val seq = if (entity.seq >= 0) {
@@ -766,7 +770,7 @@ class FakeLocalStore(
             createdAt = if (entity.createdAt == 0L) now else entity.createdAt,
             updatedAt = now,
         )
-        journal("message", row.id, EntityPayloads.groupMessagePayload(row), Origin.Local)
+        journal(EntityTypes.GROUP_MESSAGE, row.id, EntityPayloads.groupMessagePayload(row), Origin.Local)
         upsertList(groupMessages, row) { it.id }
     }
 
@@ -777,13 +781,13 @@ class FakeLocalStore(
             createdAt = existing?.createdAt ?: System.currentTimeMillis(),
             updatedAt = System.currentTimeMillis(),
         )
-        journal("message", row.id, EntityPayloads.groupMessagePayload(row), Origin.Local)
+        journal("group_message", row.id, EntityPayloads.groupMessagePayload(row), Origin.Local)
         upsertList(groupMessages, row) { it.id }
     }
 
     override suspend fun deleteGroupMessage(id: String, sessionId: String) = transaction {
         groupMessages.value = groupMessages.value.filterNot { it.id == id }
-        tombstone("message", id, parentId = sessionId)
+        tombstone("group_message", id, parentId = sessionId)
     }
 
     override suspend fun deleteGroupMessagesForSession(sessionId: String) = transaction {
@@ -796,17 +800,7 @@ class FakeLocalStore(
 
     override suspend fun putMemoryState(entity: LocalMemoryStateEntity) = transaction {
         val row = entity.copy(updatedAt = System.currentTimeMillis())
-        journal(
-            "memory_state",
-            row.id,
-            mapOf(
-                "sessionId" to row.sessionId,
-                "summary" to row.summary,
-                "coveredThroughSeq" to row.coveredThroughSeq,
-                "budgetJson" to row.budgetJson,
-            ),
-            Origin.Local,
-        )
+        // D-12：记忆随 session 走，不作独立同步实体
         memoryStates[row.sessionId] = row
     }
 
@@ -837,7 +831,14 @@ class FakeLocalStore(
                 result = MemoryCasResult(false, existing.memoryVersion)
                 return@transaction
             }
-            putMemoryState(entity.copy(sessionId = sessionId, memoryVersion = expectedVersion + 1))
+            // 摘要 CAS 不得覆盖 historyRevision（编辑/删除的 bump 可能并发提交）
+            putMemoryState(
+                entity.copy(
+                    sessionId = sessionId,
+                    memoryVersion = expectedVersion + 1,
+                    historyRevision = maxOf(existing.historyRevision, entity.historyRevision),
+                ),
+            )
             result = MemoryCasResult(true, expectedVersion + 1)
         }
         return result
@@ -861,18 +862,7 @@ class FakeLocalStore(
 
     override suspend fun putMemoryFact(entity: LocalMemoryFactEntity) = transaction {
         val row = entity.copy(createdAt = if (entity.createdAt == 0L) System.currentTimeMillis() else entity.createdAt)
-        journal(
-            "memory_fact",
-            row.id,
-            mapOf(
-                "sessionId" to row.sessionId,
-                "subject" to row.subject,
-                "content" to row.content,
-                "sourceMessageId" to row.sourceMessageId,
-                "confidence" to row.confidence,
-            ),
-            Origin.Local,
-        )
+        // D-12：记忆事实随 session 走，不作独立同步实体
         upsertList(memoryFacts, row) { it.id }
     }
 
@@ -997,12 +987,7 @@ class FakeLocalStore(
             tombstonedIdsJson = JsonValues.stringify(tombstoned),
             updatedAt = System.currentTimeMillis(),
         )
-        journal(
-            EntityTypes.USAGE_CLEAR_MARKER,
-            deviceIdValue,
-            UsageClearMarkerPayload.of(clearedThrough),
-            Origin.Local,
-        )
+        journal(EntityTypes.USAGE_CLEAR_MARKER, CanonicalEntityIds.USAGE_CLEAR_MARKER, UsageClearMarkerPayload.of(clearedThrough), Origin.Local)
         UsageClearResult(clearedIds = cleared, retainedIds = retained)
     }
 
@@ -1017,9 +1002,10 @@ class FakeLocalStore(
             "不允许由备份写入本机自己的清理游标（本机只能经 clearUsage 的因果判定推进）"
         }
         usageClearMarkers[entity.deviceId] = entity
+        // D-10：单实体 id + 逐设备映射
         journal(
             EntityTypes.USAGE_CLEAR_MARKER,
-            entity.deviceId,
+            CanonicalEntityIds.USAGE_CLEAR_MARKER,
             UsageClearMarkerPayload.of(VersionVectorJson.decode(entity.clearedThroughJson)),
             Origin.Local,
         )
@@ -1033,21 +1019,7 @@ class FakeLocalStore(
             createdAt = if (entity.createdAt == 0L) now else entity.createdAt,
             updatedAt = now,
         )
-        journal(
-            "media_manifest",
-            row.id,
-            mapOf(
-                "ownerType" to row.ownerType,
-                "ownerId" to row.ownerId,
-                "kind" to row.kind,
-                "localPath" to row.localPath,
-                "remoteUrl" to row.remoteUrl,
-                "mimeType" to row.mimeType,
-                "byteSize" to row.byteSize,
-                "hash" to row.hash,
-            ),
-            Origin.Local,
-        )
+        // D-12：media_manifest 推迟到阶段 7，不进同步 journal
         media.removeAll { it.id == row.id }
         media += row
     }

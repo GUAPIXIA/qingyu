@@ -691,13 +691,18 @@ class RoomLocalSyncRepository(
         // 跨实体不变量 A：父实体（角色/群组）未被 tombstone 才能建会话（总方案 §6.3）。
         require(!isTombstoned(EntityTypes.CHARACTER, row.characterId)) { "父角色已被删除，不能写入会话" }
         require(!isTombstoned("group", row.groupId)) { "父群组已被删除，不能写入会话" }
+        // D-11：群会话用独立实体类型 group_session，不与单聊 session 混用
+        val entityType = if (row.groupId != null) EntityTypes.GROUP_SESSION else EntityTypes.SESSION
         withJournal(
-            "session",
+            entityType,
             row.id,
             Origin.Local,
             // 群会话的父是群、单聊会话的父是角色——与 PC `group.ts`/`chat.ts` 的 parentId 口径一致
             parentId = row.groupId ?: row.characterId,
-            payload = { EntityPayloads.sessionPayload(row) },
+            payload = {
+                if (row.groupId != null) EntityPayloads.groupSessionPayload(row)
+                else EntityPayloads.sessionPayload(row)
+            },
         ) {
             db.sessionDao().upsert(row)
         }
@@ -706,8 +711,10 @@ class RoomLocalSyncRepository(
     override suspend fun deleteSession(id: String) {
         // 父必须在删除**之前**读：行没了以后 tombstone 的 parentId 就永久是 null，
         // 而 §6.3 的删除并发/孤儿检测正是靠它把 tombstone 归到某个角色/群下。
-        val parent = io { db.sessionDao().getById(id) }?.let { it.groupId ?: it.characterId }
-        deleteWithTombstone("session", id, parentId = parent) {
+        val existing = io { db.sessionDao().getById(id) }
+        val parent = existing?.let { it.groupId ?: it.characterId }
+        val entityType = if (existing?.groupId != null) EntityTypes.GROUP_SESSION else EntityTypes.SESSION
+        deleteWithTombstone(entityType, id, parentId = parent) {
             db.messageDao().deleteForSession(id)
             // 群会话的消息在 local_group_messages（S6-01 分表），同样随会话级联清理
             db.groupMessageDao().deleteForSession(id)
@@ -784,21 +791,20 @@ class RoomLocalSyncRepository(
     /**
      * 新增群消息：与 [appendMessage] 同一套不变量与记账口径。
      *
-     * 实体类型沿用 `message`、`parentId = sessionId`——与 PC `group.ts` 的
-     * `commitThroughDomain({ entityType: 'message', … })` 一致；payload 用
-     * [EntityPayloads.groupMessagePayload]（⚠️ D-11 未决的临时镜像，见其文档）。
+     * D-11：实体类型为 `group_message`（独立于单聊 `message`）；payload 用
+     * [EntityPayloads.groupMessagePayload]。
      */
     override suspend fun appendGroupMessage(entity: LocalGroupMessageEntity) {
         val now = System.currentTimeMillis()
         withJournal(
-            "message",
+            EntityTypes.GROUP_MESSAGE,
             entity.id,
             Origin.Local,
             parentId = entity.sessionId,
             payload = { EntityPayloads.groupMessagePayload(entity) },
             business = {
                 require(db.sessionDao().getById(entity.sessionId) != null) { "父会话不存在，拒绝写入群消息" }
-                require(!isTombstoned("session", entity.sessionId)) { "父会话已被删除，拒绝写入群消息" }
+                require(!isTombstoned(EntityTypes.GROUP_SESSION, entity.sessionId)) { "父会话已被删除，拒绝写入群消息" }
                 require(!isTombstoned("group", entity.groupId)) { "父群组已被删除，拒绝写入群消息" }
                 val seq = if (entity.seq >= 0) entity.seq else db.groupMessageDao().nextSeq(entity.sessionId)
                 db.groupMessageDao().upsert(
@@ -816,7 +822,7 @@ class RoomLocalSyncRepository(
     override suspend fun updateGroupMessage(entity: LocalGroupMessageEntity) {
         val now = System.currentTimeMillis()
         withJournal(
-            "message",
+            EntityTypes.GROUP_MESSAGE,
             entity.id,
             Origin.Local,
             parentId = entity.sessionId,
@@ -834,7 +840,7 @@ class RoomLocalSyncRepository(
     }
 
     override suspend fun deleteGroupMessage(id: String, sessionId: String) =
-        deleteWithTombstone("message", id, parentId = sessionId) { db.groupMessageDao().delete(id) }
+        deleteWithTombstone(EntityTypes.GROUP_MESSAGE, id, parentId = sessionId) { db.groupMessageDao().delete(id) }
 
     override suspend fun deleteGroupMessagesForSession(sessionId: String) {
         io { db.groupMessageDao().deleteForSession(sessionId) }
@@ -848,22 +854,12 @@ class RoomLocalSyncRepository(
     override suspend fun putMemoryState(entity: LocalMemoryStateEntity) {
         val now = System.currentTimeMillis()
         val row = entity.copy(updatedAt = now)
-        withJournal(
-            "memory_state",
-            row.id,
-            Origin.Local,
-            parentId = row.sessionId,
-            // 这里原先是一份**自己的 4 键内联 map**（sessionId/summary/coveredThroughSeq/budgetJson），
-            // 而 CAS 路径用的是 [memoryStatePayload] 的 7 键——同一实体类型两种 payload 形状，
-            // 两条生产写路径算出不同 contentHash（§2.23 修的是跨端版本，这个是**本机内部**版本）。
-            // 上方的注释「保留原字段进 journal 载荷，同时补上 S4-05 新增字段」正说明它当时漏改了这一处。
-            payload = { memoryStatePayload(row) },
-        ) {
-            db.memoryDao().upsertState(row)
-        }
+        // D-12：记忆随 session 走，不再作为独立同步实体记账（本地表保留供应用使用）
+        io { db.memoryDao().upsertState(row) }
     }
 
-    /** 保留原字段进 journal 载荷，同时补上 S4-05 新增字段，便于后续同步/审计。 */
+    /** 本地展示/诊断用 payload（不进同步信封）。 */
+    @Suppress("unused")
     private fun memoryStatePayload(row: LocalMemoryStateEntity): Map<String, Any?> = mapOf(
         "sessionId" to row.sessionId,
         "summary" to row.summary,
@@ -881,7 +877,7 @@ class RoomLocalSyncRepository(
      *
      * 事务内先判断行是否存在：存在则走**单条条件 UPDATE**（版本不等 → 0 行受影响 → 丢弃）；
      * 不存在则只在期望版本为 0 时以初始行插入（否则说明并发方已创建，视为过期）。
-     * 只有真正应用后才写 journal——失败时磁盘与变更日志都不得变化。
+     * D-12：不写独立同步 journal（记忆随 session 走）。
      */
     override suspend fun applyMemoryStateIfVersion(
         sessionId: String,
@@ -893,29 +889,24 @@ class RoomLocalSyncRepository(
         val existing = db.memoryDao().getState(sessionId)
         if (existing == null) {
             if (expectedVersion != 0L) return@io MemoryCasResult(applied = false, currentVersion = 0L)
-            withJournal("memory_state", row.id, Origin.Local, parentId = sessionId, payload = { memoryStatePayload(row) }) {
-                db.memoryDao().upsertState(row)
-            }
+            db.memoryDao().upsertState(row)
             return@io MemoryCasResult(applied = true, currentVersion = row.memoryVersion)
         }
-        val affected = withJournal("memory_state", existing.id, Origin.Local, parentId = sessionId, payload = { memoryStatePayload(row) }) {
-            db.memoryDao().applyStateIfVersion(
-                sessionId = sessionId,
-                expectedVersion = expectedVersion,
-                nextVersion = expectedVersion + 1,
-                summary = row.summary,
-                currentState = row.currentState,
-                factsJson = row.factsJson,
-                historyJson = row.historyJson,
-                coveredThroughSeq = row.coveredThroughSeq,
-                historyRevision = row.historyRevision,
-                budgetJson = row.budgetJson,
-                cursorMessageId = row.memoryLastMessageId,
-                factParseFailureCount = row.factParseFailureCount,
-                factRetryAfterVersion = row.factRetryAfterVersion,
-                updatedAt = now,
-            )
-        }
+        val affected = db.memoryDao().applyStateIfVersion(
+            sessionId = sessionId,
+            expectedVersion = expectedVersion,
+            nextVersion = expectedVersion + 1,
+            summary = row.summary,
+            currentState = row.currentState,
+            factsJson = row.factsJson,
+            historyJson = row.historyJson,
+            coveredThroughSeq = row.coveredThroughSeq,
+            budgetJson = row.budgetJson,
+            cursorMessageId = row.memoryLastMessageId,
+            factParseFailureCount = row.factParseFailureCount,
+            factRetryAfterVersion = row.factRetryAfterVersion,
+            updatedAt = now,
+        )
         MemoryCasResult(
             applied = affected > 0,
             currentVersion = if (affected > 0) expectedVersion + 1 else existing.memoryVersion,
@@ -931,29 +922,12 @@ class RoomLocalSyncRepository(
     override suspend fun putMemoryFact(entity: LocalMemoryFactEntity) {
         val now = System.currentTimeMillis()
         val row = entity.copy(createdAt = if (entity.createdAt == 0L) now else entity.createdAt)
-        withJournal(
-            "memory_fact",
-            row.id,
-            Origin.Local,
-            parentId = row.sessionId,
-            payload = {
-                mapOf(
-                    "sessionId" to row.sessionId,
-                    "subject" to row.subject,
-                    "content" to row.content,
-                    "sourceMessageId" to row.sourceMessageId,
-                    "confidence" to row.confidence,
-                )
-            },
-        ) {
-            db.memoryDao().upsertFact(row)
-        }
+        // D-12：记忆事实随 session 走，不作独立同步实体
+        io { db.memoryDao().upsertFact(row) }
     }
 
     override suspend fun deleteMemoryFact(id: String) {
-        // 同 deleteSession：父（会话）要在删除前读出来
-        val sessionId = io { db.memoryDao().getFact(id) }?.sessionId
-        deleteWithTombstone("memory_fact", id, parentId = sessionId) { db.memoryDao().deleteFact(id) }
+        io { db.memoryDao().deleteFact(id) }
     }
 
     /**
@@ -1105,9 +1079,11 @@ class RoomLocalSyncRepository(
             )
             // payload 只带 `clearedThrough`：共享 schema 是 additionalProperties:false，
             // 已抹除 id 列表属于本地 tombstone 记账，不进入跨端信封（PC 同口径）。
+            // D-10：实体 id 统一为 CanonicalEntityIds.USAGE_CLEAR_MARKER（单实体 + 映射），
+            // 不再按 deviceId 拆成多实体。
             withJournal(
                 EntityTypes.USAGE_CLEAR_MARKER,
-                deviceId,
+                CanonicalEntityIds.USAGE_CLEAR_MARKER,
                 Origin.Local,
                 payload = { UsageClearMarkerPayload.of(clearedThrough) },
             ) { }
@@ -1132,9 +1108,10 @@ class RoomLocalSyncRepository(
             "不允许由备份写入本机自己的清理游标（本机只能经 clearUsage 的因果判定推进）"
         }
         val clearedThrough = VersionVectorJson.decode(entity.clearedThroughJson)
+        // D-10：单实体 id + 逐设备映射（与 PC `usage-clear-marker` 一致）
         withJournal(
             EntityTypes.USAGE_CLEAR_MARKER,
-            entity.deviceId,
+            CanonicalEntityIds.USAGE_CLEAR_MARKER,
             Origin.Local,
             payload = { UsageClearMarkerPayload.of(clearedThrough) },
         ) {
@@ -1154,28 +1131,8 @@ class RoomLocalSyncRepository(
             updatedAt = now,
             createdAt = if (entity.createdAt == 0L) now else entity.createdAt,
         )
-        withJournal(
-            "media_manifest",
-            row.id,
-            Origin.Local,
-            // 媒体的父是它归属的实体（owner）。PC 侧还没有 media_manifest 的独立落点（见 D-12），
-            // 所以这条 parent 语义是 Android 自己定的，等 D-12 有结论再对齐。
-            parentId = row.ownerId,
-            payload = {
-                mapOf(
-                    "ownerType" to row.ownerType,
-                    "ownerId" to row.ownerId,
-                    "kind" to row.kind,
-                    "localPath" to row.localPath,
-                    "remoteUrl" to row.remoteUrl,
-                    "mimeType" to row.mimeType,
-                    "byteSize" to row.byteSize,
-                    "hash" to row.hash,
-                )
-            },
-        ) {
-            db.mediaDao().upsert(row)
-        }
+        // D-12：media_manifest 推迟到阶段 7 blob 存储；本地表保留，不进同步 journal
+        io { db.mediaDao().upsert(row) }
     }
 
     override suspend fun listMediaManifests(ownerType: String, ownerId: String): List<LocalMediaManifestEntity> =

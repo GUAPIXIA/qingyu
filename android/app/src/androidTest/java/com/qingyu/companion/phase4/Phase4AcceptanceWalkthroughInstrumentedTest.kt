@@ -308,7 +308,14 @@ class Phase4AcceptanceWalkthroughInstrumentedTest {
         val firstUser = afterChat.first { it.role == "user" }
         // 记忆行由 seed() 在对话开始前预置（见该函数注释）——此处**不得再建一行**：
         // 表上没有 session 唯一约束，中途插入第二行会让读取取到旧版本，症状是「记忆卡住」。
-        val revisionBefore = store.getMemoryState("s1")?.historyRevision ?: 0L
+        // 阶段 5 F-1：慢设备上 seed 可能晚于本断言，必须显式等待落地再取基线。
+        val seedDeadline = System.currentTimeMillis() + 3_000L
+        while (store.getMemoryState("s1") == null && System.currentTimeMillis() < seedDeadline) {
+            Thread.sleep(20)
+        }
+        val memoryBeforeEdit = store.getMemoryState("s1")
+        assertNotNull("seed 记忆行必须落地后才能测历史修订号", memoryBeforeEdit)
+        val revisionBefore = memoryBeforeEdit!!.historyRevision
         repository.editMessage("s1", firstUser.id, "夜安，我来了。")
         assertEquals(
             "编辑历史必须使派生记忆失效",

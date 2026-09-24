@@ -559,7 +559,7 @@ interface LocalMemoryDao {
     @Query(
         "UPDATE local_memory_states SET summary = :summary, current_state = :currentState, " +
             "facts_json = :factsJson, history_json = :historyJson, " +
-            "covered_through_seq = :coveredThroughSeq, history_revision = :historyRevision, " +
+            "covered_through_seq = :coveredThroughSeq, " +
             "budget_json = :budgetJson, memory_last_message_id = :cursorMessageId, " +
             "memory_version = :nextVersion, " +
             "fact_parse_failure_count = :factParseFailureCount, " +
@@ -575,7 +575,6 @@ interface LocalMemoryDao {
         factsJson: String,
         historyJson: String,
         coveredThroughSeq: Long,
-        historyRevision: Long,
         budgetJson: String,
         cursorMessageId: String?,
         factParseFailureCount: Int,
