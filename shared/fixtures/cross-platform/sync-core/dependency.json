@@ -1,0 +1,27 @@
+{
+  "genesisSame": {
+    "ok": true
+  },
+  "genesisDiff": {
+    "ok": false,
+    "reason": "GENESIS_MISMATCH",
+    "localId": "g1",
+    "remoteId": "g2"
+  },
+  "pseudoSame": {
+    "action": "converge",
+    "version": {
+      "pc_a": "3",
+      "android_b": "2"
+    },
+    "contentHash": "sha256:f19ce3ef6c2c56fbbb0c0e42736d547c95e879bc991fc1dc3db46b28713b13d3"
+  },
+  "notPseudo": "not_pseudo",
+  "fence": [
+    {
+      "ok": false,
+      "code": "DEPENDENCY_CONFLICT",
+      "fenceAggregateId": "s-dead"
+    }
+  ]
+}

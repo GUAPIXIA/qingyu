@@ -1,0 +1,65 @@
+{
+  "buckets": [
+    {
+      "entityType": "character",
+      "entityId": "c2",
+      "bucket": "upload",
+      "conflictKind": null,
+      "unknownSchemaReason": null
+    },
+    {
+      "entityType": "message",
+      "entityId": "m1",
+      "bucket": "upload",
+      "conflictKind": null,
+      "unknownSchemaReason": null
+    },
+    {
+      "entityType": "character",
+      "entityId": "c1",
+      "bucket": "download",
+      "conflictKind": null,
+      "unknownSchemaReason": null
+    },
+    {
+      "entityType": "character",
+      "entityId": "c3",
+      "bucket": "download",
+      "conflictKind": null,
+      "unknownSchemaReason": null
+    },
+    {
+      "entityType": "message",
+      "entityId": "m3",
+      "bucket": "download",
+      "conflictKind": null,
+      "unknownSchemaReason": null
+    },
+    {
+      "entityType": "message",
+      "entityId": "m2",
+      "bucket": "conflict",
+      "conflictKind": "version_concurrent",
+      "unknownSchemaReason": null
+    },
+    {
+      "entityType": "message",
+      "entityId": "m4",
+      "bucket": "unknown_schema",
+      "conflictKind": null,
+      "unknownSchemaReason": "SCHEMA_VERSION_UNSUPPORTED"
+    }
+  ],
+  "stats": {
+    "uploadCount": 2,
+    "downloadCount": 3,
+    "sameCount": 0,
+    "conflictCount": 1,
+    "unknownSchemaCount": 1,
+    "uploadBytesEstimate": 40,
+    "downloadBytesEstimate": 60
+  },
+  "planId": "plan:sha256:af450c448e59ed2579fe32941a7718ba0b6dd4f0070e75f03f1a3deaff0074b3",
+  "rootLocal": "sha256:f64d0b640bd2cf8a65e78e900e588bddaf9c634c698abf237e8a4e4cc0b3b84d",
+  "rootRemote": "sha256:1b2e8f794ca6098a53d7bee8e4c6eb6412fad2ce94c60e2c3afb3a2df773e7b0"
+}

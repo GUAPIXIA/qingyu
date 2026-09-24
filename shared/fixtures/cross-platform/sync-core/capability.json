@@ -1,0 +1,19 @@
+{
+  "negotiated": {
+    "protocolVersion": 1,
+    "features": [
+      "blob_v1",
+      "lan"
+    ],
+    "schemaVersions": {
+      "character": 2,
+      "message": 1
+    },
+    "unsupportedEntityTypes": [
+      "group",
+      "session"
+    ]
+  },
+  "protocolOk": true,
+  "protocolOld": false
+}

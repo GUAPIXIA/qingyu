@@ -1,0 +1,129 @@
+{
+  "walk": [
+    {
+      "from": "idle",
+      "event": "start_scan",
+      "result": {
+        "next": "scanning",
+        "ok": true
+      }
+    },
+    {
+      "from": "scanning",
+      "event": "plan_ready",
+      "result": {
+        "next": "plan_ready",
+        "ok": true
+      }
+    },
+    {
+      "from": "plan_ready",
+      "event": "await_confirmation",
+      "result": {
+        "next": "awaiting_confirmation",
+        "ok": true
+      }
+    },
+    {
+      "from": "awaiting_confirmation",
+      "event": "user_confirm",
+      "result": {
+        "next": "transferring",
+        "ok": true
+      }
+    },
+    {
+      "from": "transferring",
+      "event": "validate",
+      "result": {
+        "next": "validating",
+        "ok": true
+      }
+    },
+    {
+      "from": "validating",
+      "event": "prepare",
+      "result": {
+        "next": "prepared",
+        "ok": true
+      }
+    },
+    {
+      "from": "prepared",
+      "event": "commit",
+      "result": {
+        "next": "committing",
+        "ok": true
+      }
+    },
+    {
+      "from": "committing",
+      "event": "apply_local",
+      "result": {
+        "next": "applying_local",
+        "ok": true
+      }
+    },
+    {
+      "from": "applying_local",
+      "event": "mark_completed",
+      "result": {
+        "next": "completed",
+        "ok": true
+      }
+    },
+    {
+      "from": "completed",
+      "event": "start_scan",
+      "result": {
+        "next": "completed",
+        "ok": false,
+        "reason": "TERMINAL_LOCKED"
+      }
+    },
+    {
+      "from": "idle",
+      "event": "cancel",
+      "result": {
+        "next": "idle",
+        "ok": false,
+        "reason": "INVALID_TRANSITION"
+      }
+    },
+    {
+      "from": "scanning",
+      "event": "cancel",
+      "result": {
+        "next": "cancelling",
+        "ok": true
+      }
+    },
+    {
+      "from": "cancelling",
+      "event": "cancel_done",
+      "result": {
+        "next": "cancelled",
+        "ok": true
+      }
+    },
+    {
+      "from": "cancelled",
+      "event": "start_scan",
+      "result": {
+        "next": "cancelled",
+        "ok": false,
+        "reason": "TERMINAL_LOCKED"
+      }
+    }
+  ],
+  "terminal": {
+    "completed": true,
+    "cancelled": true,
+    "failed": false
+  },
+  "readOnly": {
+    "scanning": true,
+    "plan_ready": true,
+    "transferring": false
+  }
+}

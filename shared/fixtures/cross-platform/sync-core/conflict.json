@@ -1,0 +1,19 @@
+{
+  "suggest": {
+    "version_concurrent": "manual_merge",
+    "delete_vs_modify": "confirm_delete_vs_modify",
+    "dependency": "resolve_dependency"
+  },
+  "canBatch": {
+    "empty": false,
+    "allConcurrent": true,
+    "mixed": false
+  },
+  "resolution": {
+    "conflictId": "c-1",
+    "choice": "local",
+    "localHash": "sha256:015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+    "remoteHash": "sha256:7e8059f495589fcd981232cc11d00b00da3802c01d688fa1cf1f6bed6e5bb33c",
+    "resolvedAt": 1700000000000
+  }
+}

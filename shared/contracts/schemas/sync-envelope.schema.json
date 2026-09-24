@@ -30,13 +30,12 @@
         "regex_rule",
         "quick_reply_set",
         "group",
+        "group_session",
+        "group_message",
         "session",
         "message",
-        "memory_state",
-        "memory_fact",
         "usage_record",
         "mcp_public_config",
-        "media_manifest",
         "lorebook_mapping_template",
         "usage_clear_marker"
       ]

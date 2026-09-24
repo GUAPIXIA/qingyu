@@ -10,6 +10,14 @@ import {
 
 export const SYNC_CONTRACT_VERSION = 1
 
+/**
+ * 同步实体类型（D-11/D-12 决策后冻结）。
+ *
+ * - D-11：群会话/群消息使用独立类型 `group_session`/`group_message`，不再与单聊
+ *   `session`/`message` 共用实体类型却混用两套 payload。
+ * - D-12：`memory_state`/`memory_fact` 不作为独立同步实体（记忆随 session 走）；
+ *   `media_manifest` 推迟到阶段 7 blob 存储再引入。
+ */
 export type SyncEntityType =
   | 'settings_public'
   | 'character'
@@ -19,13 +27,12 @@ export type SyncEntityType =
   | 'regex_rule'
   | 'quick_reply_set'
   | 'group'
+  | 'group_session'
+  | 'group_message'
   | 'session'
   | 'message'
-  | 'memory_state'
-  | 'memory_fact'
   | 'usage_record'
   | 'mcp_public_config'
-  | 'media_manifest'
   | 'lorebook_mapping_template'
   | 'usage_clear_marker'
 
