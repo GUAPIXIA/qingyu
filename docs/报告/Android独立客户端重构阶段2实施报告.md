@@ -1,8 +1,9 @@
 # Android 独立客户端重构阶段 2 实施报告
 
-> 日期：2026-09-17（重写）
+> 日期：2026-09-17（重写）；**2026-09-23 PCE-01 围栏落地**
 > 基线提交：`a5aacb5`
-> 结论：**原 S2-01～S2-07 代码与门禁通过；阶段验收待 PCE-01。** 2026-09-17 新增的 PC 体验补充门禁尚未取证，完成前不得把阶段 2 标记为最终验收通过。
+> 结论：**原 S2-01～S2-07 代码与门禁通过；PCE-01 围栏（`needsFullRescan`）已实现并单测覆盖。**
+> **PCE-01 取证（A/B 性能、核心旅程 smoke）仍待补**，完成前阶段 2 保持「待验收」。
 > 另有工作区未提交事项，见 §8。
 
 本报告替换 2026-09-16 版。旧版把「HIGH_RISK 文件级启发式 11/11」当作收口证据，实际是文件级判定，掩盖了 Bridge/服务层的多处绕过；本次已改为调用点级判定并据此完成收口。
@@ -19,7 +20,7 @@
 | S2-06 远端批次应用器 | ✅ | `remoteApply.ts` 重写 + `remoteMaterializers.ts`：预检→版本因果→materializer→checkpoint→单事务应用→receipt；delete fence 由本地 tombstone 推导 | `phase2.remote-apply.test.ts`（9 用例，含整体回滚） |
 | S2-07 观测与诊断 | ✅ | `metrics.ts`；检测脚本重写为调用点级 AST + 假事务检测 + 可审计豁免 | 脚本输出 |
 | 交付门禁 | ✅ 通过 | 见 §4 | — |
-| PCE-01 PC 体验补充门禁 | ⏳ 待验证 | 透明升级、无后台扫描/联网、核心旅程回归、同构建 A/B、`needsFullRescan` 故障隔离 | 待追加本报告 §8 |
+| PCE-01 PC 体验补充门禁 | 🟡 围栏已落 / 取证待补 | `needsFullRescan` 持久化 + 暂停同步 + 全量 bootstrap 后清除（`syncHealth.ts` + `phase2.syncHealth.test.ts` 6/6）；A/B 性能与核心旅程 smoke **待取证** | 见 §8.1 |
 
 ## 2. S2-03 跨存储事务（本次核心）
 
@@ -155,17 +156,60 @@
 
 ## 8. 未完成与阻断
 
-1. **PCE-01 尚未执行**：需验证从不启用同步的 PC 用户升级后无需登录、配对、迁移或新提示；默认配置下不进行业务目录全量扫描、bootstrap checkpoint、mDNS 或同步网络；核心聊天/内容/设置/Backup V2 旅程通过；同构建 A/B 的中位数回退不超过 5%、P95 不超过 10%；同步元数据初始化失败或损坏时持久化 `needsFullRescan`、暂停同步但不阻塞本地使用。完成后在本报告追加设备、样本、原始结果和结论。
-2. **工作区未提交**：另一条并行工作线（生成预算/管线重构，约 75 文件）与
-   `bridge/{chatService,routes,dialogueDirections}.ts` 重叠；本次全部为增量编辑，未回滚其改动。
-   提交需先与负责人确认归属，因此阶段 2 改动尚未落地为提交。
-3. `pnpm test` 有 5 项失败，全部是并行工作线自己的 `reasoningReserve` 断言
-   （期望 2048 实得 8192，`shared/modelOutputProfile.ts` / `shared/generationTaskBudget.ts` /
-   `src/store/__tests__/groupMemoryManager.test.ts` 等均为其改动文件），与阶段 2 无关；
-   阶段 2 新增/修改文件的测试全绿。
-4. 契约行为表当前覆盖 7 条语义；aggregate revision / delete fence 的跨实体不变量
-   仅实现到「由本地 tombstone 推导 fence」这一层，更完整的聚合版本仍属阶段 7。
-5. S2-01 的仓储形态与实施方案字面不一致，已以 `ADR-011` 记录并给出新增同步域的强制清单。
+### 8.1 PCE-01 追加（2026-09-23）
+
+**已落地（代码围栏）**
+
+- 新增 `electron/domain/syncHealth.ts`：独立标记文件 `data/config/sync-health.json`（不进 `sync-meta.db`，元数据库损坏时仍可写）。
+- 各域写入口：journal 写失败时**先持久化 `needsFullRescan`** 再落业务文件，禁止静默「继续直写且仍显示可同步」。
+- `syncDomainOrNull`：flags 显示曾启用同步但 journal 初始化失败 → 自动标记。
+- `resetSyncStateForRestore`：备份恢复后标记需全量重扫。
+- `runBootstrapIfEnabled`：全量重建 heads 成功后才清除标记；已有 bootstrap 记录但仍标记时强制重建，**不得用旧 cursor 增量**。
+- 测试：`phase2.syncHealth.test.ts` **6/6**；`electron/domain` 全量 **75/75**。
+
+**仍待取证（完成前阶段 2 不得标「已完成」）**
+
+1. 同构建 A/B：同步关闭 vs 同步域已接管但空闲，冷启动 / 打开 10k 会话 / 发送编辑消息 / 设置保存，中位 ≤5%、P95 ≤10%。
+2. 无同步配置升级启动：无迁移向导、登录/配对、全量 bootstrap、Backup checkpoint、新增后台网络请求。
+3. 核心旅程 smoke 与 `0.17.2` 可观察行为一致。
+4. `needsFullRescan` 运行时取证（损坏 `sync-meta.db`/断网时 PC 仍可用，同步中心显示暂停/需修复）。
+5. 恢复后强制重建 heads 的端到端 UI 路径证据。
+
+### 8.1.1 PCE-01 A/B 领域层取证（2026-09-24）
+
+**脚本**：`scripts/pce01-ab-bench.mjs`  
+**报告**：`output/pce01/pce01-ab-report.json`  
+**口径**：同进程、同数据形状；A = 12 域 flag 全关（直写）；B = flag 全开但无同步会话（`putWithJournal`）。只测 domain 写/读热路径，**不含** Electron GUI 冷启动与 React 渲染。阈值：中位 ≤5%、P95 ≤10%。
+
+| 热路径 | A 中位 | B 中位 | 中位 Δ | P95 Δ | 相对门禁 |
+|---|---|---|---|---|---|
+| 设置保存 | 0.78 ms | 7.14 ms | **+815.9%** | +602.6% | ❌ |
+| 发送消息 | 1.38 ms | 7.55 ms | **+448.2%** | +45.2% | ❌ |
+| 编辑消息 | 1.42 ms | 7.55 ms | **+431.2%** | +17.0% | ❌ |
+| 打开 10k 会话 | 8.13 ms | ~8.8 ms | +8.6% | +0.1% | ⚠️ 中位略超、P95 过 |
+
+**绝对增量**：journal 路径每写约 **+6 ms**（staging 备份 + 原子替换 + SQLite head/change）。  
+**隔离烟雾**：`flagOffDoesNotJournal=true`；`needsFullRescanPausesSync=true`；脚本内零网络、零业务目录全量扫描。
+
+**本轮已做优化**（相对首测 18× → 8×）：
+
+1. `DeviceIdentityStore` 内存缓存 + 去掉 tmp 双写（原先每次 `allocateCounter` 两次 fsync）。  
+2. `sync-meta.db`：`PRAGMA synchronous = NORMAL`（WAL；崩溃恢复仍由 fileTransaction 前滚/回滚兜底）。
+
+**判定（不得美化）**：
+
+- **写路径微基准未过 5% 相对门禁**。journal 与单次 `writeFileSync` 的相对开销在亚毫秒级写上不可避免地放大。  
+- **读路径（10k 打开）接近门禁**（P95 过，中位噪声内）。  
+- 总方案门禁对象是「冷启动 / 10k 打开 / 发送编辑 / 设置保存」的**用户可感知耗时**；在真实 UI/IPC 路径上 +6 ms 通常被渲染与序列化摊薄。  
+- **因此**：领域层微基准记为 **诊断证据 + 写路径已知成本**；**正式 PCE-01 签字仍必须补 Electron 同构建 GUI A/B**（冷启动、设置保存、发送编辑的 wall-clock）。清单第 2–3 条（无弹窗/无后台网络/核心旅程）同样需 GUI 或 Playwright 会话。
+
+**结论更新**：阶段 2 保持「待验收」；PCE-01 围栏与领域层 A/B 已取证，**GUI 半边仍缺**。在 GUI A/B 出数前，不得把阶段 2/7 标为「已完成」。
+
+### 8.2 其余未完成
+
+1. **工作区未提交**：与并行工作线文件重叠，提交需确认归属。
+2. 契约行为表 aggregate revision / delete fence 完整聚合版本仍属阶段 7。
+3. S2-01 仓储形态差异已记 `ADR-011`。
 
 ## 9. 回滚
 
@@ -176,5 +220,6 @@
 ## 10. 下一阶段输入
 
 - 阶段 3 可并行（Android 数据/模型连接）。
-- S2-06 远端 staging 应用器、真实数据演练和 repository 契约套件已经完成，满足阶段 7 的代码前置；阶段 7 启用 PC 同步前仍必须先通过 PCE-01，并落实同步元数据故障时的 `needsFullRescan` 围栏。
-- 建议下一步优先级：PCE-01 取证与围栏验证 → 阶段 2 变更提交/看板更新 → 阶段 7 LAN 同步。
+- S2-06 远端 staging 应用器、真实数据演练和 repository 契约套件已经完成，满足阶段 7 的代码前置。
+- **PCE-01 围栏已落**（`needsFullRescan`，见 §8.1）；阶段 7 启用 PC 同步前仍必须补齐 PCE-01 的 A/B 与核心旅程取证。
+- 建议下一步优先级：PCE-01 取证 → 看板更新 → 阶段 7 LAN 同步。
