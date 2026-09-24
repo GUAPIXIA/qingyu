@@ -920,6 +920,95 @@ export interface RelayAPI {
   onPairRequest(callback: (request: RelayPairRequest) => void): () => void
 }
 
+/** S7-03：LAN 一次性授权状态（不含 secret / 私钥 / 会话密钥） */
+export interface SyncLanAuthUiState {
+  phase: 'idle' | 'open' | 'awaiting_confirm' | 'confirmed' | 'revoked' | 'expired'
+  sessionId: string | null
+  qrJson: string | null
+  expiresAt: number | null
+  host: string | null
+  port: number | null
+  displayName: string
+  fingerprint: string
+  peerDeviceName: string | null
+  peerPublicKey: string | null
+  shortAuth: string | null
+}
+
+/** 阶段 7 S7-03：同步中心 LAN 一次性授权 */
+export interface SyncLanAPI {
+  startAuth(input: { host: string; port: number; fingerprint: string; displayName: string }): Promise<SyncLanAuthUiState>
+  status(): Promise<SyncLanAuthUiState>
+  submitPeerHello(input: { sessionId: string; deviceName: string; androidPublicKey: string }): Promise<SyncLanAuthUiState>
+  confirmPeer(input: { sessionId: string; shortAuth: string }): Promise<{ ok: boolean; state: SyncLanAuthUiState; error?: string }>
+  revoke(): Promise<SyncLanAuthUiState>
+}
+
+/** S7-06/S7-07：同步中心冲突项（不含正文） */
+export interface SyncConflictItem {
+  id: string
+  entityType: string
+  entityId: string
+  localHash: string
+  remoteHash: string
+  localDeleted: boolean
+  remoteDeleted: boolean
+  status: string
+  suggestion: string
+}
+
+export interface SyncCenterStatus {
+  syncReady: boolean
+  needsFullRescan: boolean
+  healthReason: string | null
+  openConflicts: number
+  journalBacklog: number
+  heads: number
+  lanAuthPhase: 'idle' | 'open' | 'awaiting_confirm' | 'confirmed' | 'revoked' | 'expired' | string
+  lanSessionId: string | null
+  lanShortAuth: string | null
+  lanPeerDeviceName: string | null
+  lanExpiresAt: number | null
+  qrJson: string | null
+}
+
+/** 阶段 7 S7-06/S7-07：同步中心 */
+export interface SyncCenterAPI {
+  status(): Promise<SyncCenterStatus>
+  startLanAuth(input: { host: string; port: number; fingerprint: string; displayName: string }): Promise<SyncCenterStatus>
+  confirmPeer(input: { sessionId: string; shortAuth: string }): Promise<{ ok: boolean; error?: string; status: SyncCenterStatus }>
+  revokeLanAuth(): Promise<SyncCenterStatus>
+  listConflicts(status?: string): Promise<SyncConflictItem[]>
+  resolveConflict(input: { id: string; choice: 'local' | 'remote' | 'copy' | 'manual' }): Promise<{ ok: boolean; status: SyncCenterStatus }>
+  markFullRescan(reason: string): Promise<SyncCenterStatus>
+  /** S7-08：同步设备（对端）列表 */
+  listDevices(): Promise<SyncPeerDevice[]>
+  /** S7-08：退役设备（需 UI 二次确认）；退役后须当新设备重新授权 */
+  retireDevice(deviceId: string): Promise<{ ok: boolean; status: SyncCenterStatus }>
+  /** S7-08：tombstone 清理 dry-run（只统计，不压缩） */
+  tombstoneDryRun(opts?: { retainDays?: number; now?: number }): Promise<SyncTombstoneDryRun>
+}
+
+export interface SyncPeerDevice {
+  deviceId: string
+  displayName: string | null
+  retired: boolean
+  retiredAt: number | null
+  lastSeenAt: number | null
+  cursor: number
+  knownDevices: number
+}
+
+export interface SyncTombstoneDryRun {
+  total: number
+  compactible: number
+  blocked: number
+  blockedReasons: Record<string, number>
+  pendingDeviceIds: string[]
+  deviceCount: number
+  retiredCount: number
+}
+
 // ===================== 应用接口 =====================
 export interface AppAPI {
   /** 获取当前应用版本号 */
@@ -967,6 +1056,8 @@ export interface ExposedAPI {
   sessionSync: SessionSyncAPI
   bridge: BridgeAPI
   relay: RelayAPI
+  syncLan: SyncLanAPI
+  syncCenter: SyncCenterAPI
   app: AppAPI
 }
 

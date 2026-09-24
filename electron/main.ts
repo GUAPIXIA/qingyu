@@ -23,6 +23,8 @@ import { registerAnnouncementIPC } from './ipc/announcement'
 import { registerUpdaterIPC } from './services/updater'
 import { registerBridgeIPC, bridgeService } from './bridge'
 import { registerRelayIPC, relayService } from './relay/relayService'
+import { registerSyncLanIPC } from './ipc/syncLan'
+import { registerSyncCenterIPC } from './ipc/syncCenter'
 import { ensureSyncDomain, runBootstrapIfEnabled, setSyncDomainUserDataResolver } from './domain/syncDomainService'
 import { IPC_EVENTS } from '../shared/ipc-channels'
 import { mcpManager } from './mcp/manager'
@@ -234,6 +236,8 @@ app.whenReady().then(async () => {
     () => registerUpdaterIPC(ipcMain),
     () => registerBridgeIPC(ipcMain),
     () => registerRelayIPC(ipcMain),
+    () => registerSyncLanIPC(ipcMain),
+    () => registerSyncCenterIPC(ipcMain),
   ]
   for (const register of ipcRegistrars) {
     register()

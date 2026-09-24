@@ -114,6 +114,36 @@ const bridgeApi: BridgeAPI = {
   wipeAll: () => ipcRenderer.invoke('bridge:wipeAll'),
 }
 
+// ---- 阶段 7 S7-03：LAN 一次性授权（同步中心） ----
+const syncLanApi = {
+  startAuth: (input: { host: string; port: number; fingerprint: string; displayName: string }) =>
+    ipcRenderer.invoke('syncLan:startAuth', input),
+  status: () => ipcRenderer.invoke('syncLan:status'),
+  submitPeerHello: (input: { sessionId: string; deviceName: string; androidPublicKey: string }) =>
+    ipcRenderer.invoke('syncLan:submitPeerHello', input),
+  confirmPeer: (input: { sessionId: string; shortAuth: string }) =>
+    ipcRenderer.invoke('syncLan:confirmPeer', input),
+  revoke: () => ipcRenderer.invoke('syncLan:revoke'),
+}
+
+// ---- 阶段 7 S7-06/S7-07：同步中心 ----
+const syncCenterApi = {
+  status: () => ipcRenderer.invoke('syncCenter:status'),
+  startLanAuth: (input: { host: string; port: number; fingerprint: string; displayName: string }) =>
+    ipcRenderer.invoke('syncCenter:startLanAuth', input),
+  confirmPeer: (input: { sessionId: string; shortAuth: string }) =>
+    ipcRenderer.invoke('syncCenter:confirmPeer', input),
+  revokeLanAuth: () => ipcRenderer.invoke('syncCenter:revokeLanAuth'),
+  listConflicts: (status?: string) => ipcRenderer.invoke('syncCenter:listConflicts', status),
+  resolveConflict: (input: { id: string; choice: 'local' | 'remote' | 'copy' | 'manual' }) =>
+    ipcRenderer.invoke('syncCenter:resolveConflict', input),
+  markFullRescan: (reason: string) => ipcRenderer.invoke('syncCenter:markFullRescan', reason),
+  listDevices: () => ipcRenderer.invoke('syncCenter:listDevices'),
+  retireDevice: (deviceId: string) => ipcRenderer.invoke('syncCenter:retireDevice', deviceId),
+  tombstoneDryRun: (opts?: { retainDays?: number; now?: number }) =>
+    ipcRenderer.invoke('syncCenter:tombstoneDryRun', opts),
+}
+
 const relayApi: RelayAPI = {
   status: () => ipcRenderer.invoke('relay:status'),
   enable: (baseUrl) => ipcRenderer.invoke('relay:enable', baseUrl),
@@ -415,6 +445,8 @@ contextBridge.exposeInMainWorld('api', {
   sessionSync: sessionSyncApi,
   bridge: bridgeApi,
   relay: relayApi,
+  syncLan: syncLanApi,
+  syncCenter: syncCenterApi,
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkVersion: () => ipcRenderer.invoke('app:checkVersion'),

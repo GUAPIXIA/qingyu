@@ -11,6 +11,7 @@ export interface EntityHeadRow {
   hash: string
   deleted: number
   payloadRef: string | null
+  updatedAt?: number
 }
 
 export interface ChangeLogRow {
@@ -26,6 +27,8 @@ export interface ChangeLogRow {
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
+-- PCE-01：WAL 下 NORMAL 足够（崩溃恢复由 fileTransaction staging 前滚/回滚兜底）
+PRAGMA synchronous = NORMAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 
@@ -67,6 +70,14 @@ CREATE TABLE IF NOT EXISTS sync_receipts (
   cursor INTEGER NOT NULL,
   known_vector TEXT NOT NULL,
   committed_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sync_device_state (
+  peer_id TEXT PRIMARY KEY,
+  display_name TEXT,
+  retired INTEGER NOT NULL DEFAULT 0,
+  retired_at INTEGER,
+  created_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS conflicts (
@@ -242,6 +253,98 @@ export class SyncMetaDb {
       knownVector: row.known_vector,
       committedAt: Number(row.committed_at),
     }
+  }
+
+  /** S7-08：全部对端 receipt（设备已知向量来源） */
+  listReceipts(): Array<{ peerId: string; cursor: number; knownVector: string; committedAt: number }> {
+    const rows = this.db
+      .prepare('SELECT peer_id, cursor, known_vector, committed_at FROM sync_receipts ORDER BY committed_at DESC')
+      .all() as Array<{ peer_id: string; cursor: number; known_vector: string; committed_at: number }>
+    return rows.map((r) => ({
+      peerId: r.peer_id,
+      cursor: Number(r.cursor),
+      knownVector: r.known_vector,
+      committedAt: Number(r.committed_at),
+    }))
+  }
+
+  /** S7-08：对端设备状态（显示名 / 退役） */
+  upsertPeerDeviceState(input: { peerId: string; displayName?: string }): void {
+    this.db
+      .prepare(
+        `INSERT INTO sync_device_state(peer_id, display_name, retired, retired_at, created_at)
+         VALUES (?, ?, 0, NULL, ?)
+         ON CONFLICT(peer_id) DO UPDATE SET display_name = COALESCE(excluded.display_name, sync_device_state.display_name)`,
+      )
+      .run(input.peerId, input.displayName ?? null, Date.now())
+  }
+
+  getPeerDeviceState(peerId: string): {
+    peerId: string
+    displayName: string | null
+    retired: boolean
+    retiredAt: number | null
+    createdAt: number
+  } | null {
+    const row = this.db
+      .prepare('SELECT peer_id, display_name, retired, retired_at, created_at FROM sync_device_state WHERE peer_id = ?')
+      .get(peerId) as
+      | { peer_id: string; display_name: string | null; retired: number; retired_at: number | null; created_at: number }
+      | undefined
+    if (!row) return null
+    return {
+      peerId: row.peer_id,
+      displayName: row.display_name,
+      retired: row.retired === 1,
+      retiredAt: row.retired_at == null ? null : Number(row.retired_at),
+      createdAt: Number(row.created_at),
+    }
+  }
+
+  listPeerDeviceStates(): Array<{
+    peerId: string
+    displayName: string | null
+    retired: boolean
+    retiredAt: number | null
+    createdAt: number
+  }> {
+    const rows = this.db
+      .prepare('SELECT peer_id, display_name, retired, retired_at, created_at FROM sync_device_state ORDER BY created_at')
+      .all() as Array<{
+      peer_id: string
+      display_name: string | null
+      retired: number
+      retired_at: number | null
+      created_at: number
+    }>
+    return rows.map((row) => ({
+      peerId: row.peer_id,
+      displayName: row.display_name,
+      retired: row.retired === 1,
+      retiredAt: row.retired_at == null ? null : Number(row.retired_at),
+      createdAt: Number(row.created_at),
+    }))
+  }
+
+  /**
+   * S7-08：退役设备——二次确认后调用。
+   * 退役后旧 receipt 一并删除：对端重新出现必须当新设备重新授权，旧计数器不得继续写。
+   */
+  retirePeerDevice(peerId: string): boolean {
+    const info = this.db
+      .prepare(
+        `INSERT INTO sync_device_state(peer_id, display_name, retired, retired_at, created_at)
+         VALUES (?, NULL, 1, ?, ?)
+         ON CONFLICT(peer_id) DO UPDATE SET retired = 1, retired_at = excluded.retired_at`,
+      )
+      .run(peerId, Date.now(), Date.now())
+    this.db.prepare('DELETE FROM sync_receipts WHERE peer_id = ?').run(peerId)
+    return Number(info.changes) > 0
+  }
+
+  /** 是否已退役（退役设备的写入应被拒绝） */
+  isPeerDeviceRetired(peerId: string): boolean {
+    return this.getPeerDeviceState(peerId)?.retired === true
   }
 
   listConflicts(status?: string): Array<{
@@ -557,6 +660,14 @@ export class SyncMetaDb {
         JSON.stringify(input.remoteEnvelope),
         Date.now(),
       )
+  }
+
+  /** S7-06：标记冲突已解决（保留行作审计，status 变为 resolved_*） */
+  resolveConflict(id: string, status: 'resolved_local' | 'resolved_remote' | 'resolved_copy' | 'resolved_manual'): boolean {
+    const info = this.db
+      .prepare(`UPDATE conflicts SET status = ? WHERE id = ? AND status = 'open'`)
+      .run(status, id)
+    return Number(info.changes) > 0
   }
 
   metrics(): {

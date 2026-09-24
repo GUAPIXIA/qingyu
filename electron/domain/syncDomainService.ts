@@ -8,14 +8,46 @@ import { recoverIncompleteFileTransactions } from './recovery'
 import { applyRemoteBatch } from './remoteApply'
 import { collectSyncDiagnostics } from './metrics'
 import { runBootstrap } from './bootstrap'
+import { SyncHealthStore, defaultSyncHealthPath, type SyncHealthState } from './syncHealth'
 import type { SyncEnvelope } from '../../shared/contracts/sync-envelope'
 import type { SyncDomainContext, DomainWriteFile } from './types'
 
 export type { DomainFlagKey }
 export type { SyncDomainContext, DomainWriteFile }
+export type { SyncHealthState }
 
 let ctx: SyncDomainContext | null = null
 let userDataResolver: (() => string) | null = null
+let healthStore: SyncHealthStore | null = null
+
+function health(userDataDir?: string): SyncHealthStore {
+  if (healthStore && !userDataDir) return healthStore
+  const dir = userDataDir ?? userDataResolver?.() ?? ''
+  healthStore = new SyncHealthStore(defaultSyncHealthPath(dir))
+  return healthStore
+}
+
+/**
+ * PCE-01：同步健康状态。`needsFullRescan` 为 true 时必须暂停同步
+ * （不得推进 cursor、不得显示可同步），本地写入仍可继续。
+ */
+export function getSyncHealth(userDataDir?: string): SyncHealthState {
+  return health(userDataDir).read()
+}
+
+export function isSyncReady(userDataDir?: string): boolean {
+  return health(userDataDir).isSyncReady()
+}
+
+/** journal 不可用 / 同步元数据损坏时调用：持久化恢复标记并暂停同步 */
+export function markNeedsFullRescan(reason: string, userDataDir?: string): void {
+  health(userDataDir).markNeedsFullRescan(reason)
+}
+
+/** 全量 bootstrap 重建 heads 成功后调用 */
+export function clearNeedsFullRescanAfterFullRescan(userDataDir?: string): void {
+  health(userDataDir).clearAfterFullRescan()
+}
 
 /**
  * 主进程启动时注册 userData 解析器，使所有域写入入口可以惰性初始化同步域，
@@ -25,13 +57,26 @@ export function setSyncDomainUserDataResolver(resolver: () => string): void {
   userDataResolver = resolver
 }
 
-/** 惰性获取同步域；未注册解析器或初始化失败时返回 null（退化为直接落盘） */
+/**
+ * 惰性获取同步域；未注册解析器或初始化失败时返回 null（退化为直接落盘）。
+ * PCE-01：若 flags 显示曾启用同步但 journal 不可用，必须标记 needsFullRescan，
+ * 禁止静默回退成「继续直写且仍显示可同步」。
+ */
 function syncDomainOrNull(): SyncDomainContext | null {
   if (ctx) return ctx
   if (!userDataResolver) return null
+  const userDataDir = userDataResolver()
   try {
-    return ensureSyncDomain(userDataResolver())
-  } catch {
+    return ensureSyncDomain(userDataDir)
+  } catch (err) {
+    try {
+      const flags = new RepoFeatureFlags(defaultFlagsPath(userDataDir))
+      if (flags.enabledDomains().length > 0) {
+        markNeedsFullRescan(`journal 初始化失败：${String(err)}`, userDataDir)
+      }
+    } catch {
+      markNeedsFullRescan(`journal 初始化失败且 flags 不可读：${String(err)}`, userDataDir)
+    }
     return null
   }
 }
@@ -39,6 +84,8 @@ function syncDomainOrNull(): SyncDomainContext | null {
 /** 集成测试/非 Electron 环境注入 userData 根目录 */
 export function setSyncDomainUserDataDirForTest(userDataDir: string): void {
   ctx = null
+  healthStore = null
+  userDataResolver = () => userDataDir
   ensureSyncDomain(userDataDir)
 }
 
@@ -69,6 +116,8 @@ export function resetSyncDomainForTest(): void {
     /* ignore */
   }
   ctx = null
+  healthStore = null
+  userDataResolver = null
 }
 
 export function isDomainEnabled(domain: DomainFlagKey): boolean {
@@ -117,6 +166,8 @@ export interface DomainWriteOutcome {
  * 唯一的域写入入口（S2-04）：
  * - domain flag 开启：文件 + journal 在同一持久化事务中提交
  * - flag 关闭：保持旧行为，直接落盘且不写 journal
+ * PCE-01：flag 开启但 journal 写失败时，先持久化 needsFullRescan 再落业务文件，
+ * 并暂停同步（调用方通过 isSyncReady 感知），禁止静默假装可同步。
  */
 export function writeThroughDomain(input: DomainPutInput): DomainWriteOutcome {
   const domain = syncDomainOrNull()
@@ -129,17 +180,23 @@ export function writeThroughDomain(input: DomainPutInput): DomainWriteOutcome {
     applyFilesDirectly(input.files)
     return { journaled: false, changeSeq: null }
   }
-  const result = repo.putWithJournal({
-    entityType: input.entityType,
-    entityId: input.entityId,
-    payload: input.payload,
-    schemaVersion: input.schemaVersion,
-    parentId: input.parentId ?? null,
-    references: input.references,
-    aggregate: input.aggregate,
-    files: input.files,
-  })
-  return { journaled: true, changeSeq: result.changeSeq }
+  try {
+    const result = repo.putWithJournal({
+      entityType: input.entityType,
+      entityId: input.entityId,
+      payload: input.payload,
+      schemaVersion: input.schemaVersion,
+      parentId: input.parentId ?? null,
+      references: input.references,
+      aggregate: input.aggregate,
+      files: input.files,
+    })
+    return { journaled: true, changeSeq: result.changeSeq }
+  } catch (err) {
+    markNeedsFullRescan(`journal 写入失败：${String(err)}`, domain.userDataDir)
+    applyFilesDirectly(input.files)
+    return { journaled: false, changeSeq: null }
+  }
 }
 
 export interface DomainDeleteInput {
@@ -162,14 +219,20 @@ export function deleteThroughDomain(input: DomainDeleteInput): DomainWriteOutcom
     applyFilesDirectly(input.files)
     return { journaled: false, changeSeq: null }
   }
-  const result = repo.tombstoneWithJournal({
-    entityType: input.entityType,
-    entityId: input.entityId,
-    parentId: input.parentId ?? null,
-    aggregate: input.aggregate,
-    files: input.files,
-  })
-  return { journaled: true, changeSeq: result.changeSeq }
+  try {
+    const result = repo.tombstoneWithJournal({
+      entityType: input.entityType,
+      entityId: input.entityId,
+      parentId: input.parentId ?? null,
+      aggregate: input.aggregate,
+      files: input.files,
+    })
+    return { journaled: true, changeSeq: result.changeSeq }
+  } catch (err) {
+    markNeedsFullRescan(`journal 删除失败：${String(err)}`, domain.userDataDir)
+    applyFilesDirectly(input.files)
+    return { journaled: false, changeSeq: null }
+  }
 }
 
 /**
@@ -180,14 +243,26 @@ export function resetSyncStateForRestore(reason: string, userDataDir: string): v
   const domain = ensureSyncDomain(userDataDir)
   domain.meta.clearSyncState()
   domain.identity.resetForClone()
+  markNeedsFullRescan(`备份恢复/迁移：${reason}`, userDataDir)
 }
 
-/** S2-05：按当前 flag 决定是否执行 bootstrap；幂等 */
+/** S2-05：按当前 flag 决定是否执行 bootstrap；幂等。成功全量重建后清除 needsFullRescan */
 export function runBootstrapIfEnabled(userDataDir: string): ReturnType<typeof runBootstrap> | null {
   const domain = ensureSyncDomain(userDataDir)
   const enabledDomains = domain.flags.enabledDomains()
   if (enabledDomains.length === 0) return null
-  return runBootstrap(domain, enabledDomains)
+  const result = runBootstrap(domain, enabledDomains)
+  // needsFullRescan 时禁止用旧 cursor 增量；bootstrap 是全量重建 heads 的唯一出口
+  if (result && !result.alreadyBootstrapped) {
+    clearNeedsFullRescanAfterFullRescan(userDataDir)
+  } else if (result?.alreadyBootstrapped && getSyncHealth(userDataDir).needsFullRescan) {
+    // 已有 bootstrap 记录但仍标记需全量重扫：强制重新扫 heads
+    domain.meta.clearSyncState()
+    const rebuilt = runBootstrap(domain, enabledDomains)
+    clearNeedsFullRescanAfterFullRescan(userDataDir)
+    return rebuilt
+  }
+  return result
 }
 
 export interface DomainCommitInput {
@@ -225,13 +300,19 @@ export function commitThroughDomain(input: DomainCommitInput): DomainManyWriteOu
     applyFilesDirectly(input.files)
     return { journaled: false, changeSeqs: [] }
   }
-  const result = repo.commitWithJournal({
-    entityType: input.entityType,
-    puts: input.puts,
-    deletes: input.deletes,
-    files: input.files,
-  })
-  return { journaled: true, changeSeqs: result.changeSeqs }
+  try {
+    const result = repo.commitWithJournal({
+      entityType: input.entityType,
+      puts: input.puts,
+      deletes: input.deletes,
+      files: input.files,
+    })
+    return { journaled: true, changeSeqs: result.changeSeqs }
+  } catch (err) {
+    markNeedsFullRescan(`journal 批量提交失败：${String(err)}`, domain.userDataDir)
+    applyFilesDirectly(input.files)
+    return { journaled: false, changeSeqs: [] }
+  }
 }
 
 export interface DomainManyPutInput {
@@ -276,12 +357,18 @@ export function writeManyThroughDomain(input: DomainManyPutInput): DomainManyWri
     applyFilesDirectly(input.files)
     return { journaled: false, changeSeqs: [] }
   }
-  const result = repo.putManyWithJournal({
-    entityType: input.entityType,
-    entries: input.entries,
-    files: input.files,
-  })
-  return { journaled: true, changeSeqs: result.changeSeqs }
+  try {
+    const result = repo.putManyWithJournal({
+      entityType: input.entityType,
+      entries: input.entries,
+      files: input.files,
+    })
+    return { journaled: true, changeSeqs: result.changeSeqs }
+  } catch (err) {
+    markNeedsFullRescan(`journal 多实体写入失败：${String(err)}`, domain.userDataDir)
+    applyFilesDirectly(input.files)
+    return { journaled: false, changeSeqs: [] }
+  }
 }
 
 export function deleteManyThroughDomain(input: DomainManyDeleteInput): DomainManyWriteOutcome {
@@ -295,13 +382,19 @@ export function deleteManyThroughDomain(input: DomainManyDeleteInput): DomainMan
     applyFilesDirectly(input.files)
     return { journaled: false, changeSeqs: [] }
   }
-  const result = repo.tombstoneManyWithJournal({
-    entityType: input.entityType,
-    entityIds: input.entityIds,
-    parentId: input.parentId ?? null,
-    files: input.files,
-  })
-  return { journaled: true, changeSeqs: result.changeSeqs }
+  try {
+    const result = repo.tombstoneManyWithJournal({
+      entityType: input.entityType,
+      entityIds: input.entityIds,
+      parentId: input.parentId ?? null,
+      files: input.files,
+    })
+    return { journaled: true, changeSeqs: result.changeSeqs }
+  } catch (err) {
+    markNeedsFullRescan(`journal 批量删除失败：${String(err)}`, domain.userDataDir)
+    applyFilesDirectly(input.files)
+    return { journaled: false, changeSeqs: [] }
+  }
 }
 
 export { applyRemoteBatch, collectSyncDiagnostics, recoverIncompleteFileTransactions }

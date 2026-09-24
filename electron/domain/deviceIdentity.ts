@@ -34,13 +34,17 @@ export function formatCounter(v: bigint): string {
  * 备份恢复不得恢复本文件；克隆/重复身份时调用 resetForClone。
  */
 export class DeviceIdentityStore {
+  private cache: DeviceIdentityFile | null = null
+
   constructor(private readonly filePath: string) {}
 
   loadOrCreate(): DeviceIdentityFile {
+    if (this.cache) return this.cache
     if (existsSync(this.filePath)) {
       const parsed = JSON.parse(readFileSync(this.filePath, 'utf8')) as DeviceIdentityFile
       parseCounter(parsed.nextCounter)
       if (!parsed.deviceId) throw new Error('deviceId 缺失')
+      this.cache = parsed
       return parsed
     }
     const created: DeviceIdentityFile = {
@@ -49,6 +53,7 @@ export class DeviceIdentityStore {
       nextCounter: '1',
     }
     this.persist(created)
+    this.cache = created
     return created
   }
 
@@ -60,6 +65,7 @@ export class DeviceIdentityStore {
       nextCounter: '1',
     }
     this.persist(created)
+    this.cache = created
     return created
   }
 
@@ -77,6 +83,7 @@ export class DeviceIdentityStore {
       nextCounter: formatCounter(cur === UINT64_MAX ? cur : cur + 1n),
     }
     this.persist(next)
+    this.cache = next
     return { identity: next, counter: allocated }
   }
 
@@ -90,20 +97,15 @@ export class DeviceIdentityStore {
     if (current.manifestSecret && current.manifestSecret.length >= 32) return current.manifestSecret
     const next: DeviceIdentityFile = { ...current, manifestSecret: randomBytes(32).toString('hex') }
     this.persist(next)
+    this.cache = next
     return next.manifestSecret as string
   }
 
   private persist(value: DeviceIdentityFile): void {
     mkdirSync(dirname(this.filePath), { recursive: true })
-    const tmp = this.filePath + '.tmp'
-    writeFileSync(tmp, JSON.stringify(value, null, 2), 'utf8')
-    writeFileSync(this.filePath, JSON.stringify(value, null, 2), 'utf8')
-    try {
-      // 清理 tmp
-      if (existsSync(tmp)) unlinkSync(tmp)
-    } catch {
-      /* ignore */
-    }
+    // 单次写（tmp+rename 由 writeFileAtomic 语义：此处目标小文件，直接写即可；
+    // 双写 tmp+目标会让每次 allocateCounter 付两倍 fsync，PCE-01 热路径不可接受）
+    writeFileSync(this.filePath, JSON.stringify(value), 'utf8')
   }
 }
 
