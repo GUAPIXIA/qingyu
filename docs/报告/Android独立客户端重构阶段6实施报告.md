@@ -97,7 +97,7 @@
 
 另有 **Gradle 并发互踩事故**：多线程同时构建同一模块导致 `kotlin-classes`/元数据缓存损坏（`Failed to create MD5 hash … does not exist`、`JvmProtoBuf mergeFrom` 解析失败），一次 `clean` 因他方构建持有 `R.jar` 锁而真实失败。处置过程含一次**自查纠偏**：删除 `build` 目录连败 5 次一度误判为「文件持续被锁」，实为删除脚本的**相对路径笔误**（workdir 已在 `android/` 又叠加 `android\` 前缀，删的是不存在的路径）；另一次真实根因是早前手工删 `kotlin-classes` 子目录留下了任务状态不一致（Gradle 输出哈希找不到 `META-INF`）。最终处置：`--stop` 停掉 8 个并发守护进程 → 正确路径整删 `app\build`（一次成功）→ 单次全新构建。**过程教训**（并入 §3.8）：并行子代理应分批（≤3）或分模块；共享模块时全体构建应串行化；不要手工删 Gradle 输出子目录（破坏任务状态追踪，要么整删 `build/` 走 clean、要么不动）。
 
-### 2.3 发现的 PC 侧行为不一致（**未改**，登记为 D-14 等待签字）
+### 2.3 发现的 PC 侧行为不一致（**未改**；D-14 已签「维持现状」）
 
 只读取证（阶段 6 §0：不能为降低 Android 实现成本改变已验证的 PC 行为）发现 PC 群聊存在若干自相矛盾处，例如：polling 非 autoMode 时 `currentSpeakerIndex` 永不推进（"按顺序"只在接力下成立）；free 中途停止的半截正文存成 `__free__` 消息（沉浸模式不渲染、后续上下文标【未知角色】）；群气泡不显示 `generationNotice/generationError`（只落盘）；`__free__/__narrator__` 消息显示"重新生成"但 store 静默无效；群导出 md 的 speaker 取 characterId 原值且与单聊 `sessionExport` 不同源；桥接（旧伴侣通道）与桌面的群口径不同（用户消息 `round:0`、`members[(round-1)%len]` 轮转、历史全带【名字】前缀）。完整清单见 D-14。
 
@@ -136,7 +136,7 @@
 | settings.updater | **equivalent** | S6-07 `updater/**`（hash 校验/不静默安装） | 渠道下载 + hash 校验 + 系统安装确认（PackageInstaller 会话）；PC 端安装策略不同（electron-updater），验证语义等价（`UpdateServiceTest`、`UpdateVerifierTest`、`UpdatePolicyTest`） |
 | diagnostics.connection / export **equivalent**、generation **same**（对齐矩阵三行） | S6-07 `diagnostics/**`（泄密红线） | 版本/能力/DB schema/同步摘要/脱敏错误同口径；泄密红线（API Key/token/正文/用户名路径不得出现）全绿（`DiagnosticsSectionsTest`、`DiagnosticsRedactorTest`、`DiagnosticsExportServiceTest`） |
 
-**P2 排期缺口（D-16）**：`chat.sessionStats`、`lorebook.keywordLocalization` 仍无纳入记录与签字排期——验收前必须补签字或明确排除；「移动端 embedding ABI」决策已在 S6-05 实现中体现（远程→本地→词法三级，真机 NNAPI/GPU 项另列真机矩阵）。
+**P2 排期缺口（D-16）**：~~`chat.sessionStats`、`lorebook.keywordLocalization` 仍无纳入记录与签字排期~~ → **2026-09-24 已签「明确排除出阶段 6」**（总方案 §4.3 P2 追加排除行）；「移动端 embedding ABI」决策已在 S6-05 实现中体现（远程→本地→词法三级，真机 NNAPI/GPU 项另列真机矩阵）。
 
 ### 2.6 六线合流第一波：全量测试 1639 例与遗留红灯清单（2026-09-22）
 
@@ -327,14 +327,7 @@
 - **U-6-7 实机验证**：音频焦点/蓝牙/低存储/权限撤销（§3 第 6 条）与 Android 8/12/14 真机矩阵；
 - **U-6-8 备份覆盖**：Backup V3 需要覆盖新表 `local_group_messages` 与群调度列（含恢复回滚与 counts 校验）。`BackupOrchestrator.kt`/`BackupV3.kt` 当前是**其他 Agent 在途修改**（工作区 dirty），本轮未触碰，归属与该线合流后补齐。
 
-### D-n（待决策，需签字方明确后执行，不留给后续 Agent 猜）
-
-- **D-13（契约负责人）**：阶段 0 baseline `group-modes.json` 与 PC 群类型不对齐（模式命名 natural/nomination/poll ≠ mention/polling/free；消息字段 role/speakerId/nominate ≠ characterId/round；群记忆 memory.entries ≠ GroupSession.memory*）。选项：①重写 baseline fixture 对齐 PC 类型（推荐，改动仅测试资产）；②建映射层转译后再作 oracle（多一层可漂移代码）；③标记该文件仅作数据形态示意、不作 oracle（则 S6-01"与 PC fixture 对齐"改以本轮三份 chat-core fixture 为准）。
-- **D-14（产品 + 契约负责人）**：§2.3 的 PC 群行为不一致清单——Android 是**逐字对齐（含缺陷）**还是**修复后对齐**。阶段 6 §0 要求不为 Android 便利改 PC 行为，故本轮按逐字对齐执行；若产品判定其中属 PC 缺陷（如 free 中停消息不可见、群气泡不显示中断提示），按总方案 §3.4 须单独立项修 PC 并补 PC 回归证据，再同步 Kotlin。
-- **D-15（契约负责人）**：S6-02 的 D-12（`media_manifest` 跨端落点）已按「内容寻址 blob + AttachmentRef 形状」实施（`media/**` 测试锁定），**media_manifest 契约本体仍待签字**；D-9（`semanticRequired` 两端行为相反）已**按 PC 现状**实施并登记未翻转（S6-05 `SemanticEntryGate` warn-once + `ChatLorebookChannels.ChannelCapabilities.semanticRequiredGated`），**行为翻转与否仍待签字**。
-- **D-16（产品）**：「移动端 embedding ABI」已裁定落地（**远程 → 设备模型包（签名/hash/断点续传/空间预检）→ 词法 BM25 三级降级**，验收表 §2.5 localModels 行）；余两项 `chat.sessionStats`、`lorebook.keywordLocalization` 仍**无签字排期**——阶段 6 §4「其余 P2 项有签字确认的排期」目前证据不足，验收前必须补签或明确排除。
-
-### 5.1 决策清单（送签版，2026-09-22）
+### 5.1 决策清单（~~送签版~~ → **已签字 2026-09-24**，全文见[送签稿](./Android独立客户端重构阶段6决策送签稿-D13至D16-2026-09-24.md)）
 
 > 每项列：决策内容 / 工程现状（已按何口径实施+证据）/ 需要谁签 / 不签的默认后果。签字后回填本表并转 `已完成`。
 
