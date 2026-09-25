@@ -89,6 +89,7 @@ class SyncAuthViewModel(
                     val keys = withContext(Dispatchers.IO) { authClient.deriveSessionKeys() }
                     val session = withContext(Dispatchers.IO) { authClient.openSyncSession() }
                     if (keys is SyncTransportResult.Ok && session is SyncTransportResult.Ok) {
+                        com.qingyu.companion.network.sync.LanSyncSessionState.markAuthorized(session.value.endpoint)
                         _state.value = _state.value.copy(
                             phase = SyncAuthUiState.Phase.Confirmed,
                             confirmed = true,

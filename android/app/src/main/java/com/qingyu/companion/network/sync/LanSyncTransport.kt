@@ -40,6 +40,12 @@ data class SyncBatch(
     val envelopes: List<SyncEnvelopeDto>,
 )
 
+data class PullPage(
+    val envelopes: List<SyncEnvelopeDto>,
+    val nextCursor: String,
+    val hasMore: Boolean,
+)
+
 sealed class SyncTransportResult<out T> {
     data class Ok<T>(val value: T) : SyncTransportResult<T>()
     data class Fail(val code: String, val retryable: Boolean, val message: String = "") : SyncTransportResult<Nothing>()
@@ -198,6 +204,52 @@ class LanSyncTransport(
             }
         }
         return last
+    }
+
+    /**
+     * 拉取对端增量（S7-04 pull；cursor 服务端签发，客户端不解析语义）。
+     * 同 cursor 重试幂等。
+     */
+    fun pull(
+        handle: SyncSessionHandle,
+        cursor: String? = null,
+        limit: Int = 200,
+    ): SyncTransportResult<PullPage> {
+        val payload = org.json.JSONObject()
+            .put("limit", limit)
+            .apply { if (cursor != null) put("cursor", cursor) }
+            .toString()
+        return requestJson("POST", "${baseUrl(handle.endpoint)}/session/${handle.sessionId}/pull", payload) { body ->
+            val json = org.json.JSONObject(body)
+            val arr = json.optJSONArray("envelopes") ?: org.json.JSONArray()
+            val items = buildList {
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val ver = mutableMapOf<String, String>()
+                    val vo = o.optJSONObject("version")
+                    if (vo != null) for (k in vo.keys()) ver[k] = vo.getString(k)
+                    add(
+                        SyncEnvelopeDto(
+                            entityType = o.optString("entityType"),
+                            entityId = o.optString("entityId"),
+                            contentHash = o.optString("contentHash"),
+                            version = ver,
+                            deleted = o.optBoolean("deleted"),
+                            schemaVersion = o.optInt("schemaVersion", 1),
+                            parentId = if (o.isNull("parentId")) null else o.optString("parentId"),
+                            payload = emptyMap(),
+                        ),
+                    )
+                }
+            }
+            SyncTransportResult.Ok(
+                PullPage(
+                    envelopes = items,
+                    nextCursor = json.optString("nextCursor", cursor ?: "0"),
+                    hasMore = json.optBoolean("hasMore", false),
+                ),
+            )
+        }
     }
 
     fun fetchReceipt(handle: SyncSessionHandle, batchId: String): SyncTransportResult<String> {

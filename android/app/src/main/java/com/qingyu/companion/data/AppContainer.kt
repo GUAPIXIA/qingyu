@@ -328,6 +328,36 @@ class AppContainer(context: Context) {
     /** P1-4.2 全局生成状态跟踪（单聊+群聊），供后台策略与通知使用 */
     val generationTracker: GenerationTracker = GenerationTracker()
 
+    /**
+     * 阶段 7 S7-07 / 阶段 8：同步协调器（同步中心唯一网络入口）。
+     * **仅用户点击同步时**运行；未授权/未配置不建 session。
+     */
+    val syncCoordinator: com.qingyu.companion.network.sync.SyncCoordinator =
+        com.qingyu.companion.network.sync.DefaultSyncCoordinator(
+            lanAuthorized = { com.qingyu.companion.network.sync.LanSyncSessionState.authorized },
+            serverConfigured = { false /* 阶段 8 服务器配置落盘后改为读本地设置 */ },
+            lanRunner = { onProgress ->
+                val engine = com.qingyu.companion.network.sync.OkHttpSyncEngine()
+                val transport = com.qingyu.companion.network.sync.LanSyncTransport(engine)
+                val runner = com.qingyu.companion.network.sync.LanSyncRunner(
+                    transport = transport,
+                    endpointProvider = { com.qingyu.companion.network.sync.LanSyncSessionState.endpoint },
+                    authorized = { com.qingyu.companion.network.sync.LanSyncSessionState.authorized },
+                    collectUpload = { emptyList() /* journal backlog → envelopes 接线见阶段 7 收尾 */ },
+                    applyDownload = { emptyMap() /* staging apply 接线见阶段 7 收尾 */ },
+                )
+                runner.run(onProgress)
+            },
+            serverRunner = { _ ->
+                com.qingyu.companion.network.sync.SyncRunResult(
+                    ok = false,
+                    error = "服务器同步未配置",
+                    retryable = false,
+                )
+            },
+        )
+
+
     /** P1-4.2 生命周期感知后台策略（前台保持 WS，60s 后空闲断开） */
     val wsLifecycleManager: WsLifecycleManager = WsLifecycleManager(appContext, wsClient, connectionManager, generationTracker)
 
