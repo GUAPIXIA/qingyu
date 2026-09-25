@@ -26,7 +26,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.qingyu.companion.R
+import com.qingyu.companion.data.LocalAppContainer
 import com.qingyu.companion.ui.components.AppBackground
 import com.qingyu.companion.ui.components.AppTopBar
 import com.qingyu.companion.ui.components.QyErrorBanner
@@ -45,7 +48,20 @@ fun SyncCenterScreen(
     onOpenLanAuth: () -> Unit,
     onOpenServerSetup: () -> Unit,
     onStartSync: () -> Unit,
-    vm: SyncCenterViewModel = viewModel(),
+    vm: SyncCenterViewModel = run {
+        val container = LocalAppContainer.current
+        viewModel(
+            factory = viewModelFactory {
+                initializer {
+                    SyncCenterViewModel(
+                        store = container.localSyncRepository,
+                        backlogCounter = { 0 },
+                        coordinator = container.syncCoordinator,
+                    )
+                }
+            },
+        )
+    },
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
 
