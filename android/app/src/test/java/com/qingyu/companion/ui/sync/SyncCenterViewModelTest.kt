@@ -3,6 +3,7 @@ package com.qingyu.companion.ui.sync
 import com.qingyu.companion.local.testing.FakeLocalStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -77,5 +78,37 @@ class SyncCenterViewModelTest {
         vm.setRemindUnsynced(true)
         assertTrue(vm.state.value.remindUnsynced)
         assertFalse(vm.state.value.running)
+    }
+
+    @Test
+    fun startSyncWithoutCoordinatorDoesNothing() {
+        val vm = SyncCenterViewModel(store = FakeLocalStore("sync-center"), backlogCounter = { 0 })
+        vm.startSync()
+        assertFalse(vm.state.value.running)
+    }
+
+    @Test
+    fun startSyncCallsCoordinatorOnlyWhenAuthorized() = runTest {
+        var runs = 0
+        val coordinator = com.qingyu.companion.network.sync.DefaultSyncCoordinator(
+            lanAuthorized = { true },
+            serverConfigured = { false },
+            lanRunner = { onProgress ->
+                runs++
+                onProgress("push", 3, 1)
+                com.qingyu.companion.network.sync.SyncRunResult(ok = true, uploaded = 3, downloaded = 1)
+            },
+            serverRunner = { com.qingyu.companion.network.sync.SyncRunResult(ok = false) },
+        )
+        val vm = SyncCenterViewModel(
+            store = FakeLocalStore("sync-center"),
+            backlogCounter = { 2 },
+            coordinator = coordinator,
+        )
+        vm.startSync(com.qingyu.companion.network.sync.SyncCoordinator.Target.LAN)
+        advanceUntilIdle()
+        assertEquals(1, runs)
+        assertEquals("ok", vm.state.value.lastSyncResult)
+        assertEquals(0, vm.state.value.localBacklog)
     }
 }

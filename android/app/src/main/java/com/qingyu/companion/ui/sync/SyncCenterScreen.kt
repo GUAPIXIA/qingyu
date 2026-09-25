@@ -171,7 +171,12 @@ fun SyncCenterScreen(
                 } else {
                     Button(
                         onClick = {
-                            onStartSync()
+                            val target = when {
+                                state.lanAuthorized -> com.qingyu.companion.network.sync.SyncCoordinator.Target.LAN
+                                state.serverConfigured -> com.qingyu.companion.network.sync.SyncCoordinator.Target.SERVER
+                                else -> return@Button
+                            }
+                            vm.startSync(target)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = state.lanAuthorized || state.serverConfigured,
