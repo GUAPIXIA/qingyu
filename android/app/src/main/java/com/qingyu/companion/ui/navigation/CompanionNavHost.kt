@@ -83,6 +83,15 @@ fun CompanionNavHost(
         }
     }
 
+    // LAN 联调：注入 QR 时自动进入授权页（与扫码入口同一目的地）
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        com.qingyu.companion.network.sync.SyncQrInject.pending.collect { qr ->
+            if (!qr.isNullOrBlank()) {
+                navController.navigate(Routes.SYNC_AUTH) { launchSingleTop = true }
+            }
+        }
+    }
+
     NavHost(navController = navController, startDestination = Routes.STARTUP) {
         composable(Routes.STARTUP) {
             StartupScreen(

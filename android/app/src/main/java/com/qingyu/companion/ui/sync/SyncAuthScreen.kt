@@ -51,6 +51,15 @@ fun SyncAuthScreen(
             vm.onQrScanned(contents)
         }
     }
+    // LAN 联调：adb 注入的 QR 与扫码走同一路径（每次 pending 都消费）
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        com.qingyu.companion.network.sync.SyncQrInject.pending.collect { qr ->
+            val injected = if (!qr.isNullOrBlank()) com.qingyu.companion.network.sync.SyncQrInject.consume() else null
+            if (!injected.isNullOrBlank()) {
+                vm.onQrScanned(injected)
+            }
+        }
+    }
 
     AppBackground {
         Column(Modifier.fillMaxSize()) {

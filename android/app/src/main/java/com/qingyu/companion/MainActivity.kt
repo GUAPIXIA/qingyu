@@ -54,6 +54,8 @@ class MainActivity : FragmentActivity() {
         setIntent(intent)
         // A-03：运行中点通知（singleTop 复用 Activity）→ 提取目标，由 CompanionNavHost 立即消费
         NotificationDeepLink.post(notificationTargetFromIntent(intent))
+        // LAN 联调：adb --es sync_qr 注入授权二维码（与扫码同一路径）
+        handleSyncQrInject(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,6 +67,7 @@ class MainActivity : FragmentActivity() {
         val container = (application as CompanionApp).container
         // A-03：冷启动点通知 → 先暂存目标，启动决策（StartupScreen 四态）完成后再消费跳转
         NotificationDeepLink.post(notificationTargetFromIntent(intent))
+        handleSyncQrInject(intent)
         setContent {
             CompositionLocalProvider(LocalAppContainer provides container) {
                 val themeMode by container.uiPrefsStore.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
@@ -108,6 +111,29 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+    /** LAN 联调：`am start --es sync_qr '<json>'` 或 `--es sync_qr_b64 '<base64>'` */
+    private fun handleSyncQrInject(intent: Intent?) {
+        val direct = intent?.getStringExtra(EXTRA_SYNC_QR)
+        val b64 = intent?.getStringExtra(EXTRA_SYNC_QR_B64)
+        val raw = when {
+            !direct.isNullOrBlank() -> direct
+            !b64.isNullOrBlank() -> try {
+                String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT), Charsets.UTF_8)
+            } catch (_: Exception) {
+                null
+            }
+            else -> null
+        }
+        android.util.Log.i("SyncQrInject", "extra direct=${direct?.length ?: 0} b64=${b64?.length ?: 0} raw=${raw?.length ?: 0}")
+        if (!raw.isNullOrBlank()) {
+            com.qingyu.companion.network.sync.SyncQrInject.submit(raw)
+        }
+    }
+
+    companion object {
+        const val EXTRA_SYNC_QR = "sync_qr"
+        const val EXTRA_SYNC_QR_B64 = "sync_qr_b64"
     }
 }
 
