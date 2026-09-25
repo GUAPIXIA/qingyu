@@ -72,6 +72,35 @@
     <string name="settings_pc_preset">预设</string>
     <string name="settings_pc_preset_default">默认</string>
     <string name="settings_sync_rejected">PC 拒绝：%1$s</string>
+    <string name="sync_auth_title">局域网同步</string>
+    <string name="sync_auth_intro">在 PC「设置 → 同步中心」点「允许局域网同步」，然后扫描出现的授权二维码。授权仅 5 分钟有效。</string>
+    <string name="sync_auth_scan">扫描授权二维码</string>
+    <string name="sync_auth_connecting">正在连接 PC…</string>
+    <string name="sync_auth_compare">请核对手机与 PC 上显示的短认证串是否一致：</string>
+    <string name="sync_auth_wait_pc">然后在 PC 上点击「确认授权」。此页会自动继续。</string>
+    <string name="sync_auth_cancel">取消</string>
+    <string name="sync_auth_ok">已授权</string>
+    <string name="sync_auth_continue">开始同步</string>
+    <string name="sync_auth_retry">重新扫描</string>
+    <!-- 阶段 7 S7-07：同步中心 -->
+    <string name="sync_center_title">同步中心</string>
+    <string name="sync_center_entry_desc">本地未同步更改 / 局域网与服务器 / 手动同步</string>
+    <string name="sync_center_backlog_title">本地未同步更改</string>
+    <string name="sync_center_backlog_value">%1$d 条待同步</string>
+    <string name="sync_center_remind">提醒我有未同步更改</string>
+    <string name="sync_center_remind_hint">仅本地提示，不会自动发起同步或上传。</string>
+    <string name="sync_center_targets">同步目标</string>
+    <string name="sync_center_lan">局域网（PC）</string>
+    <string name="sync_center_lan_authorized">已授权，可开始同步</string>
+    <string name="sync_center_lan_need_auth">需扫码授权（PC 同步中心 · 允许局域网同步）</string>
+    <string name="sync_center_server">我的服务器</string>
+    <string name="sync_center_server_ready">已配置</string>
+    <string name="sync_center_server_placeholder">尚未配置（阶段 8）</string>
+    <string name="sync_center_start">开始同步</string>
+    <string name="sync_center_cancel">取消同步</string>
+    <string name="sync_center_need_target">请先选择局域网或服务器目标</string>
+    <string name="sync_center_progress">同步中 · %1$s · 上传 %2$d · 下载 %3$d</string>
+    <string name="sync_center_last">最近一次：%1$s · 上传 %2$d · 下载 %3$d</string>
     <!-- 阶段 B-07：连接诊断卡片 -->
     <string name="settings_diagnostics_title">连接诊断</string>
     <string name="settings_diagnostics_endpoint">当前端点</string>

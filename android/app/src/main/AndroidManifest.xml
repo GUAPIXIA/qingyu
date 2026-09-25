@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- P1-4.2 生成中通知（Android 13+ 动态申请） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 阶段 7 S7-05：同步前台服务（用户显式选择后台继续时） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -41,6 +44,12 @@
             android:exported="false"
             android:screenOrientation="fullSensor"
             tools:replace="screenOrientation" />
+
+        <!-- 阶段 7 S7-05：同步前台服务 -->
+        <service
+            android:name=".network.sync.SyncForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

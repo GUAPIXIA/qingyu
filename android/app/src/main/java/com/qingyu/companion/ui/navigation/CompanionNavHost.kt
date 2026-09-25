@@ -272,6 +272,28 @@ fun CompanionNavHost(
                 onOpenUsage = { navController.navigate(Routes.USAGE) },
                 onOpenAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
                 onOpenContentHub = { navController.navigate(Routes.CONTENT_HUB) },
+                onOpenSyncCenter = { navController.navigate(Routes.SYNC_CENTER) },
+            )
+        }
+        composable(Routes.SYNC_CENTER) {
+            com.qingyu.companion.ui.sync.SyncCenterScreen(
+                onBack = { navController.popBackStack() },
+                onOpenLanAuth = { navController.navigate(Routes.SYNC_AUTH) },
+                onOpenServerSetup = { /* 阶段 8 服务器配置页；未建成前留在本页 */ },
+                onStartSync = {
+                    // 用户显式点击才启动前台服务并跑同步；默认路径先起前台服务占位
+                    com.qingyu.companion.network.sync.SyncForegroundService.start(
+                        context = navController.context,
+                        title = "同步中",
+                        text = "手动同步已开始",
+                    )
+                },
+            )
+        }
+        composable(Routes.SYNC_AUTH) {
+            com.qingyu.companion.ui.sync.SyncAuthScreen(
+                onConfirmed = { navController.popBackStack() },
+                onBack = { navController.popBackStack() },
             )
         }
         composable(Routes.USAGE) {

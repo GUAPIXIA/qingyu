@@ -63,6 +63,8 @@ fun SettingsScreen(
     onOpenChat: (() -> Unit)? = null,
     /** 阶段 5：内容管理入口（默认不可点，兼容既有调用点与测试） */
     onOpenContentHub: () -> Unit = {},
+    /** 阶段 7 S7-07：同步中心入口 */
+    onOpenSyncCenter: () -> Unit = {},
 ) {
     val qy = qyColors()
     val context = LocalContext.current
@@ -151,6 +153,8 @@ fun SettingsScreen(
 
                 ConnectionDataSection(vm = vm, ui = ui, onOpenPairing = onOpenPairing)
 
+                SyncCenterEntry(onOpenSyncCenter = onOpenSyncCenter)
+
                 ContentToolsEntry(onOpenContentHub = onOpenContentHub)
 
                 // 阶段 5 S5-07：可同步的公开设置项 + 明确不参与同步的设备级设置分区。
@@ -185,6 +189,30 @@ internal fun openSystemNotificationSettings(context: Context) {
         }
     }
     context.startActivity(intent)
+}
+
+@Composable
+private fun SyncCenterEntry(onOpenSyncCenter: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenSyncCenter)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.sync_center_title), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    stringResource(R.string.sync_center_entry_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
+        Divider()
+    }
 }
 
 @Composable

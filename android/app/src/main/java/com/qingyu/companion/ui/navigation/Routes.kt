@@ -79,6 +79,12 @@ object Routes {
     /** 阶段 5 S5-08：跨平台 Backup V3 导出/恢复 */
     const val BACKUP = "backup"
 
+    /** 阶段 7 S7-07：同步中心（backlog / LAN / 服务器入口 / 手动同步） */
+    const val SYNC_CENTER = "sync/center"
+
+    /** 阶段 7 S7-05：局域网同步授权（扫码） */
+    const val SYNC_AUTH = "sync/auth"
+
     /** 设置页（退出时清除 / 清缓存 / 内网穿透指引 / 关于） */
     const val SETTINGS = "settings"
 
