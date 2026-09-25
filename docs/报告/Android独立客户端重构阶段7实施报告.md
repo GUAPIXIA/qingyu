@@ -41,11 +41,11 @@
 
 ## 未完成与阻断
 
-1. **Android 同步中心完整页**（列表/计划/进度/冲突入口）；当前仅有 `SyncAuthScreen` 授权流。  
+1. **Android 同步中心** — **骨架已落**（2026-09-24，`SyncCenterScreen/ViewModel` + 设置入口 + `Routes.SYNC_CENTER`；backlog/手动开始取消/LAN·服务器入口位；`SyncCenterViewModelTest` 4/4）。**仍缺**：真实 plan/进度对接 `LanSyncTransport`/`ServerSyncTransport.runSyncFlow`、冲突列表页。  
 2. **真机 LAN 联调**（Android ↔ PC 扫码双向同步 P0 数据）。  
-3. **前台服务**（App 退后台暂停或明确前台服务；S7-05）。  
-4. **PCE-01 A/B 取证**（阶段 2 §8.1）——本阶段验收前置；见阶段 2 报告追加节。  
-5. **物理真机矩阵**（与阶段 3/5/6 共用环境债）。
+3. **前台服务** — **骨架已落**（`SyncForegroundService` + Manifest `dataSync`；默认暂停、用户显式后台继续）。**仍缺**：与 transport 生命周期接线与取消钩子。  
+4. **PCE-01 A/B 取证**（阶段 2 §8.1）——本阶段验收前置；见阶段 2 报告追加节（领域层已采，**GUI 半边仍缺**）。  
+5. **物理真机矩阵** + **API 31**（GMD 环境锁/超时，2026-09-24 重试 2 次仍阻断）。
 
 ## 回滚方法
 
