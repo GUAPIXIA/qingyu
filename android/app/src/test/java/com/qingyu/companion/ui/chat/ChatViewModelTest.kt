@@ -1,5 +1,6 @@
 package com.qingyu.companion.ui.chat
 
+import com.qingyu.companion.model.LinkState
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.model.Character
 import com.qingyu.companion.model.CompanionEvent
@@ -12,7 +13,6 @@ import com.qingyu.companion.model.QuickReplyListResponse
 import com.qingyu.companion.model.Role
 import com.qingyu.companion.model.SessionPreview
 import com.qingyu.companion.model.TranslateResponse
-import com.qingyu.companion.network.WsClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -490,7 +490,7 @@ class ChatViewModelTest {
 private class FakeChatRepository : ChatRepository {
 
     override val events = MutableSharedFlow<CompanionEvent>(extraBufferCapacity = 64)
-    override val connectionState = MutableStateFlow(WsClient.State.DISCONNECTED)
+    override val connectionState = MutableStateFlow(LinkState.DISCONNECTED)
 
     // 可注入行为
     var messages: List<Message> = emptyList()
@@ -511,7 +511,7 @@ private class FakeChatRepository : ChatRepository {
     }
 
     fun setConnected(connected: Boolean) {
-        connectionState.value = if (connected) WsClient.State.CONNECTED else WsClient.State.DISCONNECTED
+        connectionState.value = if (connected) LinkState.CONNECTED else LinkState.DISCONNECTED
     }
 
     override suspend fun listMessages(sessionId: String, beforeId: String?): MessagePage {
@@ -551,10 +551,8 @@ private class FakeChatRepository : ChatRepository {
         return result
     }
 
-    /** 内存发件箱（requestId -> 行），模拟 Room outbox_messages 的最小行为 */
+    /** 内存发件箱（requestId -> 行），模拟最小发送轨迹 */
     private val outbox = LinkedHashMap<String, com.qingyu.companion.model.PendingMessage>()
-
-    override suspend fun outboxEntry(requestId: String): com.qingyu.companion.model.PendingMessage? = outbox[requestId]
 
     override suspend fun editMessage(sessionId: String, messageId: String, content: String): Message =
         onEdit?.invoke(sessionId, messageId, content) ?: throw UnsupportedOperationException()

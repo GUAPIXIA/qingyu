@@ -1,5 +1,6 @@
 package com.qingyu.companion.ui.chat
 
+import com.qingyu.companion.model.LinkState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -113,9 +114,9 @@ internal fun DateHeaderRow(label: String) {
 internal fun PendingBubble(
     pending: PendingMessage,
     onRetry: () -> Unit,
-    onRetryGeneration: () -> Unit,
+    onRetryGeneration: () -> Unit = {},
     onCancel: () -> Unit,
-    connection: com.qingyu.companion.network.WsClient.State,
+    connection: com.qingyu.companion.model.LinkState,
     fontScale: Float = 1f,
     spacingMultiplier: Float = 1f,
 ) {

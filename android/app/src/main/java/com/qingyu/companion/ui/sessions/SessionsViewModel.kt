@@ -1,5 +1,6 @@
 package com.qingyu.companion.ui.sessions
 
+import com.qingyu.companion.model.LinkState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
@@ -7,7 +8,6 @@ import com.qingyu.companion.data.CompanionError
 import com.qingyu.companion.data.toCompanionError
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.SessionPreview
-import com.qingyu.companion.network.WsClient
 import com.qingyu.companion.ui.components.LoadState
 import com.qingyu.companion.ui.components.projectLoadState
 import kotlinx.coroutines.CancellationException
@@ -41,7 +41,7 @@ class SessionsViewModel(
         val pageError: CompanionError? = null,
         /** 动作级错误（删除/重命名/新建失败）：不参与页面 LoadState 投影 */
         val error: CompanionError? = null,
-        val connection: WsClient.State = WsClient.State.DISCONNECTED,
+        val connection: LinkState = LinkState.DISCONNECTED,
         /** 排序模式：updated = 按时间（最近优先）｜name = 按角色名称 */
         val sortMode: String = "updated",
         /**

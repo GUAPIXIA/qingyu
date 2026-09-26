@@ -4,7 +4,7 @@ import android.net.Uri
 
 /**
  * 导航路由（对应方案 §3.1 功能范围）。
- * 未配对时落在 pairing；配对后默认进 sessions。
+ * 本地模式直接进入主区。
  */
 object Routes {
     /** 启动决策页（A-03）：只读本地快照分发，已配对用户直达会话，不再闪现配对页 */
@@ -18,7 +18,6 @@ object Routes {
     const val MAIN_SHELL = "main_shell"
 
     /** 扫码/手动输 IP 配对、多 PC 管理 */
-    const val PAIRING = "pairing"
 
     /** 有已配对连接但无有效 active（或需修复连接）时的设备选择页（A-03） */
     const val CONNECTION_PICKER = "connection_picker"

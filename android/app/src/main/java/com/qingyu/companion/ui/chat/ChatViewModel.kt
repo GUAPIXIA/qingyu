@@ -1,13 +1,9 @@
 package com.qingyu.companion.ui.chat
 
+import com.qingyu.companion.model.LinkState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingyu.companion.data.ChatRepository
-import com.qingyu.companion.data.send.CancelQueuedMessageUseCase
-import com.qingyu.companion.data.send.ObserveOutboxUseCase
-import com.qingyu.companion.data.send.RetryGenerationUseCase
-import com.qingyu.companion.data.send.RetrySendUseCase
-import com.qingyu.companion.data.send.SendMessageUseCase
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.Message
 import com.qingyu.companion.model.MessageOps
@@ -16,7 +12,6 @@ import com.qingyu.companion.model.PendingMessage
 import com.qingyu.companion.model.QuickReply
 import com.qingyu.companion.model.QuickReplyAction
 import com.qingyu.companion.model.Role
-import com.qingyu.companion.network.WsClient
 import com.qingyu.companion.ui.tts.TtsPlayer
 import com.qingyu.companion.data.CompanionError
 import com.qingyu.companion.data.userMessage
@@ -48,11 +43,6 @@ class ChatViewModel(
     private val ttsPlayer: TtsPlayer? = null,
     private val generationTracker: com.qingyu.companion.data.GenerationTracker? = null,
     private val draftStore: com.qingyu.companion.data.DraftStore? = null,
-    // F-06：发送/重试/取消统一走 UseCase（默认由 repository 构造；ViewModel 只投影状态）
-    private val sendMessageUseCase: SendMessageUseCase = SendMessageUseCase(repository),
-    private val retrySendUseCase: RetrySendUseCase = RetrySendUseCase(repository),
-    private val retryGenerationUseCase: RetryGenerationUseCase = RetryGenerationUseCase(repository),
-    private val cancelQueuedMessageUseCase: CancelQueuedMessageUseCase = CancelQueuedMessageUseCase(repository),
 ) : ViewModel() {
 
     /** 所属角色 id（loadSessionInfo 时缓存，删除会话时精确定位） */
@@ -71,7 +61,7 @@ class ChatViewModel(
         val nextCursor: String? = null,
         val loading: Boolean = false,
         val loadingOlder: Boolean = false,
-        val connection: WsClient.State = WsClient.State.DISCONNECTED,
+        val connection: LinkState = LinkState.DISCONNECTED,
         val error: String? = null,
         /** AI 续写/润色处理中 */
         val aiProcessing: Boolean = false,
@@ -148,7 +138,7 @@ class ChatViewModel(
             repository.connectionState.collect { state ->
                 _ui.update { it.copy(connection = state) }
                 // 断线队列：连接恢复后自动重发失败消息（方案 §8 弱网对策）
-                if (state == WsClient.State.CONNECTED) retryAllFailed()
+                if (state == LinkState.CONNECTED) retryAllFailed()
             }
         }
         viewModelScope.launch {
@@ -175,13 +165,9 @@ class ChatViewModel(
         // P1-4.1 B1-2：观察持久化发件箱，App 重启后可恢复（替代纯内存 pending）
         // F-06：经 ObserveOutboxUseCase 观察（仅当前活跃 PC 的未完成行）
         viewModelScope.launch {
-            ObserveOutboxUseCase(repository)(sessionId).collect { outboxPending ->
+            repository.observeOutbox(sessionId).collect { outboxPending ->
                 _ui.update { it.copy(pending = outboxPending) }
             }
-        }
-        viewModelScope.launch {
-            // 恢复未完成发件箱（queued/failed -> queued 等待重发）
-            runCatching { repository.restoreOutbox() }
         }
         loadLatest()
         loadQuickReplies()
@@ -406,7 +392,7 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 // F-06：网络/状态机逻辑下沉 SendMessageUseCase（Repository 状态机在事务内推进）
-                val result = sendMessageUseCase(sessionId, content, replyTarget?.id, images, requestId)
+                val result = repository.sendMessage(sessionId, requestId, content, replyTarget?.id, images)
                 onSendResult(requestId, submitted, result)
             } catch (e: CancellationException) {
                 throw e
@@ -525,48 +511,13 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 // F-06：RetrySendUseCase——发送失败行重发；已落盘用户消息的行自动转生成重试
-                val result = retrySendUseCase(sessionId, requestId)
+                val result = repository.sendMessage(sessionId, requestId, content = pending.content, replyToId = pending.replyToId, images = pending.images)
                 onSendResult(requestId, pending, result)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 markPendingFailed(requestId, e)
             }
-        }
-    }
-
-    /** F-06：仅重试 AI 生成（不重发用户消息；v2 有 taskId 走 /tasks/:id/retry）。 */
-    fun retryGeneration(requestId: String) {
-        _ui.update { it.copy(error = null) }
-        viewModelScope.launch {
-            try {
-                val message = retryGenerationUseCase(requestId)
-                _ui.update { st ->
-                    st.copy(
-                        messages = MessageOps.upsert(st.messages, message),
-                        pending = st.pending.filterNot { it.requestId == requestId },
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                markPendingFailed(requestId, e)
-            }
-        }
-    }
-
-    /** F-06：取消排队/生成中的消息（queued/sending 本地取消；v2 任务同时请求 PC 取消）。 */
-    fun cancelPending(requestId: String) {
-        viewModelScope.launch {
-            runCatching { cancelQueuedMessageUseCase(requestId) }
-                .onSuccess { cancelled ->
-                    if (cancelled) {
-                        _ui.update { st ->
-                            st.copy(pending = st.pending.filterNot { it.requestId == requestId })
-                        }
-                    }
-                }
-                .onFailure { e -> report(e, "取消失败") }
         }
     }
 
@@ -798,9 +749,6 @@ class ChatViewModel(
             is CompanionEvent.RelayCommandCompleted -> Unit
             is CompanionEvent.RelayCommandExpired -> Unit
 
-            // F-01：task:* 帧事件——本设备 v2 任务由 Repository 轮询链路消费（cursor 去重后
-            // 转为同构 Chunk 事件流）；此分支面向 PC 端发起的任务推送，聊天页当前不消费
-            is CompanionEvent.TaskEvent -> Unit
         }
     }
 

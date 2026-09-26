@@ -34,7 +34,7 @@ import com.qingyu.companion.ui.sessions.SessionsScreen
 @Composable
 fun MainShell(
     onOpenSettings: () -> Unit,
-    onOpenPairing: () -> Unit,
+    onOpenPairing: () -> Unit = {},
     onOpenChat: (sessionId: String, characterId: String) -> Unit,
     onOpenCharacterSessions: (characterId: String, characterName: String) -> Unit,
     onOpenGroupChat: (groupId: String, groupName: String, sessionId: String) -> Unit,
@@ -103,7 +103,7 @@ fun MainShell(
 private fun MainShellNavHost(
     innerController: NavHostController,
     onOpenSettings: () -> Unit,
-    onOpenPairing: () -> Unit,
+    onOpenPairing: () -> Unit = {},
     onOpenChat: (sessionId: String, characterId: String) -> Unit,
     onOpenCharacterSessions: (characterId: String, characterName: String) -> Unit,
     onOpenGroupChat: (groupId: String, groupName: String, sessionId: String) -> Unit,

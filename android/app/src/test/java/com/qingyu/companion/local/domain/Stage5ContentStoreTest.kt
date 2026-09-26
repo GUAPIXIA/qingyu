@@ -388,7 +388,8 @@ class Stage5ContentStoreTest {
 
             // marker 本身是同步实体：journal 里必须能看到它，且 payload 符合共享 schema。
             val markerChange = store.changesAfter(0, 50).last { it.entityType == EntityTypes.USAGE_CLEAR_MARKER }
-            assertEquals("$name/marker-entity-id", DEVICE, markerChange.entityId)
+            // D-10：单实体 id（与 PC `usage-clear-marker` 一致），不再按 deviceId 拆多实体
+            assertEquals("$name/marker-entity-id", CanonicalEntityIds.USAGE_CLEAR_MARKER, markerChange.entityId)
             val payload = payloadOf(markerChange)
             assertEquals(
                 "$name/payload-keys",

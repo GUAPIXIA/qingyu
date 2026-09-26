@@ -1,5 +1,6 @@
 package com.qingyu.companion.ui.chat
 
+import com.qingyu.companion.model.LinkState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -153,14 +154,14 @@ private fun AttachmentRow(icon: ImageVector, label: String, onClick: () -> Unit)
 @Composable
 internal fun PendingErrorActions(
     pending: com.qingyu.companion.model.PendingMessage,
-    connection: com.qingyu.companion.network.WsClient.State,
+    connection: com.qingyu.companion.model.LinkState,
     onRetry: () -> Unit,
-    onRetryGeneration: () -> Unit,
+    onRetryGeneration: () -> Unit = {},
     onCancel: () -> Unit,
 ) {
     val qy = qyColors()
-    val offline = connection == com.qingyu.companion.network.WsClient.State.DISCONNECTED ||
-        connection == com.qingyu.companion.network.WsClient.State.RECONNECTING
+    val offline = connection == com.qingyu.companion.model.LinkState.DISCONNECTED ||
+        connection == com.qingyu.companion.model.LinkState.RECONNECTING
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),

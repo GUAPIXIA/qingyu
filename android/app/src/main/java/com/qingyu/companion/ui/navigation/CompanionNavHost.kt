@@ -25,7 +25,6 @@ import com.qingyu.companion.ui.regex.RegexScreen
 import com.qingyu.companion.ui.chat.ChatScreen
 import com.qingyu.companion.ui.groups.GroupChatScreen
 import com.qingyu.companion.ui.groups.GroupsScreen
-import com.qingyu.companion.ui.pairing.PairingScreen
 import com.qingyu.companion.ui.sessions.CharacterSessionsScreen
 import com.qingyu.companion.ui.sessions.SessionsScreen
 import com.qingyu.companion.ui.settings.SettingsScreen
@@ -33,7 +32,6 @@ import com.qingyu.companion.ui.settings.connection.ConnectionProfilesScreen
 import com.qingyu.companion.ui.shell.MainShell
 import com.qingyu.companion.ui.shell.MainShellPolicy
 import com.qingyu.companion.ui.startup.LocalSetupScreen
-import com.qingyu.companion.ui.startup.StartupConnectionPickerScreen
 import com.qingyu.companion.ui.startup.StartupScreen
 import com.qingyu.companion.ui.usage.UsageScreen
 
@@ -78,8 +76,9 @@ fun CompanionNavHost(
         when (route) {
             is NotificationRoute.Chat ->
                 navController.navigate(Routes.chat(route.sessionId, "")) { launchSingleTop = true }
-            NotificationRoute.Pairing ->
-                navController.navigate(Routes.PAIRING) { launchSingleTop = true }
+            NotificationRoute.Pairing -> {
+                // S9-07：旧伴侣配对入口已删除
+            }
         }
     }
 
@@ -131,34 +130,9 @@ fun CompanionNavHost(
         composable(Routes.CONNECTION_PROFILES) {
             ConnectionProfilesScreen(onBack = { navController.popBackStack() })
         }
-        composable(Routes.CONNECTION_PICKER) {
-            StartupConnectionPickerScreen(
-                onOpenPairing = {
-                    navController.navigate(Routes.PAIRING) {
-                        popUpTo(Routes.CONNECTION_PICKER) { inclusive = true }
-                    }
-                },
-                onPicked = {
-                    navController.navigate(mainEntryRoute) {
-                        popUpTo(Routes.CONNECTION_PICKER) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable(Routes.PAIRING) {
-            PairingScreen(
-                onPaired = {
-                    navController.navigate(mainEntryRoute) {
-                        popUpTo(Routes.PAIRING) { inclusive = true }
-                    }
-                },
-            )
-        }
         composable(Routes.MAIN_SHELL) {
             MainShell(
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-                onOpenPairing = { navController.navigate(Routes.PAIRING) },
                 onOpenChat = { sessionId, characterId ->
                     navController.navigate(Routes.chat(sessionId, characterId))
                 },
@@ -177,7 +151,6 @@ fun CompanionNavHost(
                     navController.navigate(Routes.chat(sessionId, characterId))
                 },
                 onOpenCharacters = { navController.navigate(Routes.CHARACTERS) },
-                onOpenPairing = { navController.navigate(Routes.PAIRING) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenGroups = { navController.navigate(Routes.GROUPS) },
             )
@@ -277,7 +250,6 @@ fun CompanionNavHost(
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
-                onOpenPairing = { navController.navigate(Routes.PAIRING) },
                 onOpenUsage = { navController.navigate(Routes.USAGE) },
                 onOpenAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
                 onOpenContentHub = { navController.navigate(Routes.CONTENT_HUB) },

@@ -106,7 +106,7 @@ fun CharactersScreen(
     val ui by vm.ui.collectAsStateWithLifecycle()
     val loadState by vm.loadState.collectAsStateWithLifecycle()
     val skeletonVisible = rememberSkeletonVisible(loadState is LoadState.Loading)
-    val activeConnection by container.connectionManager.activeFlow.collectAsStateWithLifecycle()
+    val activeConnection: Any? = null
     var detailCharacter by remember { mutableStateOf<Character?>(null) }
     // 搜索与排序
     var searchQuery by remember { mutableStateOf("") }
@@ -260,7 +260,7 @@ fun CharactersScreen(
                                     onRetry = vm::refresh,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                                 )
-                                CharacterGrid(filteredCharacters, activeConnection) { character ->
+                                CharacterGrid(filteredCharacters) { character ->
                                     detailCharacter = character
                                 }
                             }
@@ -273,7 +273,7 @@ fun CharactersScreen(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             } else {
-                                CharacterGrid(filteredCharacters, activeConnection) { character ->
+                                CharacterGrid(filteredCharacters) { character ->
                                     detailCharacter = character
                                 }
                             }
@@ -315,7 +315,7 @@ fun CharactersScreen(
     detailCharacter?.let { character ->
         CharacterDetailSheet(
             character = character,
-            avatarUrl = resolveImageUrl(character.avatarUrl, activeConnection),
+            avatarUrl = resolveImageUrl(character.avatarUrl),
             activating = ui.activatingId == character.id,
             creating = ui.creatingId == character.id,
             onDismiss = { detailCharacter = null },
@@ -332,7 +332,6 @@ fun CharactersScreen(
 @Composable
 private fun CharacterGrid(
     characters: List<Character>,
-    activeConnection: com.qingyu.companion.model.ServerConnection?,
     onOpenDetail: (Character) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -345,7 +344,7 @@ private fun CharacterGrid(
         items(characters, key = { it.id }) { character ->
             CharacterCard(
                 character = character,
-                avatarUrl = resolveImageUrl(character.avatarUrl, activeConnection),
+                avatarUrl = resolveImageUrl(character.avatarUrl),
                 onClick = { onOpenDetail(character) },
             )
         }

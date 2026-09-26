@@ -35,12 +35,12 @@ import com.qingyu.companion.R
 import com.qingyu.companion.data.LocalAppContainer
 
 /**
- * HTML 内容渲染（对齐 PC 端 react-markdown + rehype-raw）。
- * 角色卡首条消息等可能为 HTML 格式（<div>/<img>/<h1>/<a>…），
- * MVP 用 HtmlCompat 解析保留常见文本样式，<img> 图片经 Coil 加载。
+ * HTML 内容渲染（对�?PC �?react-markdown + rehype-raw）�?
+ * 角色卡首条消息等可能�?HTML 格式�?div>/<img>/<h1>/<a>…）�?
+ * MVP �?HtmlCompat 解析保留常见文本样式�?img> 图片�?Coil 加载�?
  */
 
-/** HTML 标签检测（命中任一标签即按 HTML 渲染） */
+/** HTML 标签检测（命中任一标签即按 HTML 渲染�?*/
 private val HTML_TAG_REGEX = Regex(
     """<(div|img|h[1-6]|p|br|span|table|tr|td|th|a|b|i|u|s|hr|font|center|ul|ol|li|blockquote|code|pre)\b""",
     RegexOption.IGNORE_CASE,
@@ -48,7 +48,7 @@ private val HTML_TAG_REGEX = Regex(
 
 fun containsHtml(text: String): Boolean = HTML_TAG_REGEX.containsMatchIn(text)
 
-/** 提取 HTML 中的 <img src=...> 图片 URL（外部 URL 或相对路径） */
+/** 提取 HTML 中的 <img src=...> 图片 URL（外�?URL 或相对路径） */
 private val IMG_SRC_REGEX = Regex(
     """<img[^>]+src\s*=\s*['"]?([^'">\s]+)""",
     RegexOption.IGNORE_CASE,
@@ -58,8 +58,8 @@ fun extractHtmlImages(text: String): List<String> =
     IMG_SRC_REGEX.findAll(text).map { it.groupValues[1] }.toList()
 
 /**
- * HtmlCompat -> AnnotatedString：保留粗体/斜体/下划线/删除线/前景色等常见样式。
- * 链接（URLSpan）MVP 阶段降级为普通文本（保持可读），点击能力后续增强。
+ * HtmlCompat -> AnnotatedString：保留粗�?斜体/下划�?删除�?前景色等常见样式�?
+ * 链接（URLSpan）MVP 阶段降级为普通文本（保持可读），点击能力后续增强�?
  */
 fun htmlToAnnotatedString(html: String): AnnotatedString {
     val spanned: Spanned = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
@@ -94,8 +94,8 @@ fun htmlToAnnotatedString(html: String): AnnotatedString {
 }
 
 /**
- * HTML 富文本组件：文本经 HtmlCompat 解析保留格式，<img> 图片用 Coil 加载。
- * 图片 URL 支持外部地址与桥接层相对路径（经 resolveImageUrl 拼接 baseUrl）。
+ * HTML 富文本组件：文本�?HtmlCompat 解析保留格式�?img> 图片�?Coil 加载�?
+ * 图片 URL 支持外部地址与桥接层相对路径（经 resolveImageUrl 拼接 baseUrl）�?
  */
 @Composable
 fun HtmlText(
@@ -104,11 +104,10 @@ fun HtmlText(
     style: TextStyle = MaterialTheme.typography.bodyMedium,
 ) {
     val annotated = remember(text) { htmlToAnnotatedString(text) }
-    val connection = LocalAppContainer.current.connectionManager.activeConnection
-    val imageUrls = remember(text, connection) {
-        extractHtmlImages(text).map { resolveImageUrl(it, connection) ?: it }
+    val imageUrls = remember(text) {
+        extractHtmlImages(text).map { resolveImageUrl(it) ?: it }
     }
-    // 消息内嵌 <audio src=...>（角色首条消息等场景）：提取 URL 渲染播放器
+    // 消息内嵌 <audio src=...>（角色首条消息等场景）：提取 URL 渲染播放�?
     val audioUrls = remember(text) { extractHtmlAudios(text) }
 
     Column(modifier = modifier.fillMaxWidth()) {

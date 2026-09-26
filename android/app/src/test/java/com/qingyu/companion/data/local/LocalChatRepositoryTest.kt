@@ -1,5 +1,6 @@
 package com.qingyu.companion.data.local
 
+import com.qingyu.companion.model.LinkState
 import com.qingyu.companion.chatcore.LocalChatGenerationUseCase
 import com.qingyu.companion.chatcore.ModelGateway
 import com.qingyu.companion.local.db.LocalCharacterEntity
@@ -412,7 +413,7 @@ class LocalChatRepositoryTest {
     fun connectionStateIsReadyWithoutPc() = runBlocking {
         val f = fixture(listOf(listOf(chunk("x"), finish())))
         // 本地模式不依赖 PC 连接，状态必须表达「可用」而不是「未连接」
-        assertEquals(com.qingyu.companion.network.WsClient.State.CONNECTED, f.repository.connectionState.value)
+        assertEquals(com.qingyu.companion.model.LinkState.CONNECTED, f.repository.connectionState.value)
     }
 
     @Test

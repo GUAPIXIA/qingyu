@@ -78,7 +78,8 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmark" }
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
-    # 仅 androidTest：阶段0 Ed25519 spike 用；不进入生产 APK
+    # 阶段 8：生产 E2EE 需要 X25519/Ed25519/scrypt——平台 BC 不含这些算法，
+    # 必须自带 bcprov（与阶段 3 结论一致：用 provider 实例绕开 Android 同名 BC）。
     bouncycastle-prov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bcprov" }
 
 [plugins]

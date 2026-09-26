@@ -1,11 +1,11 @@
 package com.qingyu.companion.ui.chat
 
+import com.qingyu.companion.model.LinkState
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.Message
 import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.Role
-import com.qingyu.companion.network.WsClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -104,7 +104,7 @@ class ChatViewModelFlushAccumulationTest {
 /** 极简 Fake，仅需 events/connectionState 与基础桩 */
 private class FakeFlushRepository : ChatRepository {
     override val events = MutableSharedFlow<CompanionEvent>(extraBufferCapacity = 64)
-    override val connectionState = MutableStateFlow(WsClient.State.DISCONNECTED)
+    override val connectionState = MutableStateFlow(LinkState.DISCONNECTED)
     fun emit(e: CompanionEvent) { events.tryEmit(e) }
     override suspend fun listMessages(sessionId: String, beforeId: String?) = com.qingyu.companion.model.MessagePage(emptyList(), null)
     override suspend fun branchSession(sessionId: String, messageId: String) = com.qingyu.companion.model.SessionPreview(id="b", characterId="c", title="t", createdAt=0, updatedAt=0, messageCount=0, lastMessage="")

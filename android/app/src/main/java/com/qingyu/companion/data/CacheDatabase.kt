@@ -75,10 +75,8 @@ abstract class CacheDatabase : RoomDatabase() {
          * v4→v5：仅对 outbox_messages 做 ALTER 扩列。
          * v4/v5 的 cached_sessions/cached_messages 表结构相同，无需处理。
          *
-         * F-04 归属修复已落地：见 OnlineChatRepository.repairLegacyOutbox（应用启动路径
-         * AppContainer.start 调用一次），读取当前 active deviceId 回填 deviceId='legacy'
-         * 的未完成行；无法唯一确定归属的旧 pending 消息不自动发送，经
-         * ChatRepository.pendingLegacyOutbox 暴露给 UI 提示"旧版本待发送消息，需要选择目标 PC"。
+         * 历史 outbox 仅由一次性迁移读取器只读（LegacyCacheImporter 三分类），
+         * 生产路径不再读写本库。
          */
         val MIGRATION_4_5: Migration = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {

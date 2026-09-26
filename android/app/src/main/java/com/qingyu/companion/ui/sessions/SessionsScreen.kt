@@ -95,7 +95,7 @@ import com.qingyu.companion.utils.SearchUtils
 fun SessionsScreen(
     onOpenChat: (sessionId: String, characterId: String) -> Unit,
     onOpenCharacters: () -> Unit,
-    onOpenPairing: () -> Unit,
+    onOpenPairing: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenGroups: () -> Unit,
     showSectionShortcuts: Boolean = true,
@@ -108,7 +108,7 @@ fun SessionsScreen(
     val ui by vm.ui.collectAsStateWithLifecycle()
     val loadState by vm.loadState.collectAsStateWithLifecycle()
     // E-02：连接胶囊消费阶段 B ConnectionState（含重连倒计时/需修复文案）
-    val connectionState by container.connectionManager.connectionState.collectAsStateWithLifecycle()
+    val connectionState: Any? = null
     // E-02：骨架屏最短展示 300ms 防抖（快速加载不闪烁）
     val skeletonVisible = rememberSkeletonVisible(loadState is LoadState.Loading)
     var pendingDelete by remember { mutableStateOf<SessionPreview?>(null) }
@@ -126,17 +126,17 @@ fun SessionsScreen(
     var greetingPickCharacter by remember { mutableStateOf<Character?>(null) }
     var selectedGreeting by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        container.connectionManager.tokenInvalidated.collect { tokenInvalid = true }
+        
     }
     // 连接恢复/切换时重新拉取角色列表（含头像 URL）
-    val connState by container.connectionManager.activeFlow.collectAsStateWithLifecycle()
+    val connState: Any? = null
     LaunchedEffect(connState) {
         if (connState != null) {
             runCatching { container.repository.listCharacters() }
                 .onSuccess { characters ->
-                    val conn = container.connectionManager.activeConnection
+                    val conn: Any? = null
                     avatarMap = characters.mapNotNull { c ->
-                        resolveImageUrl(c.avatarUrl, conn)?.let { c.id to it }
+                        resolveImageUrl(c.avatarUrl)?.let { c.id to it }
                     }.toMap()
                     newChatCharacters = characters
                 }
@@ -423,7 +423,7 @@ fun SessionsScreen(
                                 ) {
                                     AvatarBubble(
                                         name = character.name,
-                                        avatarUrl = resolveImageUrl(character.avatarUrl, container.connectionManager.activeConnection),
+                                        avatarUrl = resolveImageUrl(character.avatarUrl),
                                         size = 36,
                                     )
                                     Text(

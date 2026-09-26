@@ -1,5 +1,6 @@
 package com.qingyu.companion.data.local
 
+import com.qingyu.companion.model.LinkState
 import com.qingyu.companion.chatcore.LocalChatGenerationUseCase
 import com.qingyu.companion.chatcore.LocalMemorySummaryService
 import com.qingyu.companion.chatcore.Ulid
@@ -34,7 +35,6 @@ import com.qingyu.companion.model.UsageRecordDto
 import com.qingyu.companion.model.UsageSummary
 import com.qingyu.companion.model.UsageSummaryResponse
 import com.qingyu.companion.model.VersionInfo
-import com.qingyu.companion.network.WsClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +56,7 @@ import kotlinx.coroutines.launch
  * 定位：让现有 `ChatScreen` / `ChatViewModel` 不改 UI 骨架就能切到本地数据源，
  * 从而满足阶段 4 完成定义「关闭 PC 与 Relay 后，Android 仍能连续多轮聊天」。
  *
- * 与旧 `OnlineChatRepository` 的区别：
+ * 与旧远程聊天仓储的区别：
  * - 数据源是 `qingyu-local.db`（阶段 3 的权威库），不是 PC 缓存；
  * - 生成由 [LocalChatGenerationUseCase] **本地直连模型**完成，不经 PC/Relay；
  * - 不依赖任何 PC 连接，因此 `connectionState` 恒为「已就绪」语义（用 DISCONNECTED 之外的本地态）。
@@ -123,8 +123,8 @@ class LocalChatRepository(
      * 本地模式没有远程连接概念。
      * 用 `CONNECTED` 表达「本地数据源可用」，避免 UI 显示「未连接 PC」而误导用户。
      */
-    private val localState = MutableStateFlow(WsClient.State.CONNECTED)
-    override val connectionState: StateFlow<WsClient.State> = localState.asStateFlow()
+    private val localState = MutableStateFlow(LinkState.CONNECTED)
+    override val connectionState: StateFlow<LinkState> = localState.asStateFlow()
 
     /** 本地模式下不可用的能力，供 UI 显示可行动提示。 */
     private val unsupported = MutableStateFlow<String?>(null)

@@ -159,7 +159,7 @@ class GroupChatSchemaMigrationInstrumentedTest {
             val rows = store.listGroupMessages("gs1")
             assertEquals("迁移后的库必须能正常读写群消息", 2, rows.size)
             assertEquals("seq 单调递增", listOf(0L, 1L), rows.map { it.seq })
-            assertTrue("群消息必须记 journal", store.getHead("message", "gm2") != null)
+            assertTrue("群消息必须记 journal", store.getHead("group_message", "gm2") != null)
         }
     }
 }

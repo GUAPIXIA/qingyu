@@ -1,10 +1,10 @@
 package com.qingyu.companion.ui.groups
 
+import com.qingyu.companion.model.LinkState
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.GroupMessage
-import com.qingyu.companion.network.WsClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -207,7 +207,7 @@ class GroupChatViewModelTest {
 
 private class FakeGroupRepository : ChatRepository {
     override val events = MutableSharedFlow<CompanionEvent>(extraBufferCapacity = 64)
-    override val connectionState = MutableStateFlow(WsClient.State.CONNECTED)
+    override val connectionState = MutableStateFlow(LinkState.CONNECTED)
 
     var messages: MutableList<GroupMessage> = mutableListOf()
     var groupCharacters: List<com.qingyu.companion.model.Character> = emptyList()

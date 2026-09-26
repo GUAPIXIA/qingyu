@@ -54,7 +54,7 @@ class MainShellPolicyTest {
     fun `detail and fullscreen routes are not main destinations`() {
         assertNull(MainDestination.fromRoute(null))
         assertNull(MainDestination.fromRoute(Routes.MAIN_SHELL))
-        assertNull(MainDestination.fromRoute(Routes.PAIRING))
+        assertNull(MainDestination.fromRoute("pairing"))
         assertNull(MainDestination.fromRoute(Routes.STARTUP))
         assertNull(MainDestination.fromRoute("chat_detail/abc"))
         assertFalse(MainShellPolicy.isMainDestination(Routes.SETTINGS))

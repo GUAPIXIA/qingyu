@@ -42,10 +42,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Divider
 import androidx.compose.ui.Alignment
 import com.qingyu.companion.ui.settings.sections.AboutDiagnosticsSection
-import com.qingyu.companion.ui.settings.sections.ConnectionDataSection
 import com.qingyu.companion.ui.settings.sections.LocalAppearanceSection
 import com.qingyu.companion.ui.settings.sections.LocalPrivacySection
-import com.qingyu.companion.ui.settings.sections.PcConversationSection
 import com.qingyu.companion.ui.theme.qyColors
 import kotlinx.coroutines.launch
 
@@ -57,7 +55,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onOpenPairing: () -> Unit,
     onOpenUsage: () -> Unit = {},
     onOpenAnnouncements: () -> Unit = {},
     onOpenChat: (() -> Unit)? = null,
@@ -70,16 +67,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val container = LocalAppContainer.current
     val vm: SettingsViewModel = viewModel(factory = viewModelFactory {
-        initializer {
-            SettingsViewModel(
-                repository = container.repository,
-                connectionManager = container.connectionManager,
-                settingsSync = container.settingsSyncRepository,
-                settingsSyncOwned = false,
-                diagnosticsProvider = { container.connectionCoordinator.snapshotForDiagnostics() },
-                rejectionRegistry = container.settingsRejectionRegistry,
-            )
-        }
+        initializer { SettingsViewModel(repository = container.repository) }
     })
     val ui by vm.ui.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -133,8 +121,6 @@ fun SettingsScreen(
                     onBgEnabledChange = { enabled -> scope.launch { container.uiPrefsStore.setChatBackground(enabled) } },
                 )
 
-                PcConversationSection(vm = vm, ui = ui, onOpenChat = onOpenChat)
-
                 LocalPrivacySection(
                     notifEnabled = notifEnabled,
                     notifHideContent = notifHideContent,
@@ -150,8 +136,6 @@ fun SettingsScreen(
                     onAppLockChange = { enabled -> scope.launch { container.uiPrefsStore.setAppLockEnabled(enabled) } },
                     onHidePreviewChange = { enabled -> scope.launch { container.uiPrefsStore.setHideTaskPreview(enabled) } },
                 )
-
-                ConnectionDataSection(vm = vm, ui = ui, onOpenPairing = onOpenPairing)
 
                 SyncCenterEntry(onOpenSyncCenter = onOpenSyncCenter)
 

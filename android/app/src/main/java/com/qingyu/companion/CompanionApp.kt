@@ -34,16 +34,8 @@ class CompanionApp : Application(), ImageLoaderFactory {
                     .connectionPool(container.networkStack.connectionPool)
                     .dispatcher(container.networkStack.dispatcher)
                     .addInterceptor { chain ->
-                        val url = chain.request().url
-                        val token = container.connectionCoordinator
-                            .tokenForEndpoint(url.host, url.port)
                         val request = chain.request().newBuilder()
                             .header("User-Agent", "qingyu-companion-android/0.1")
-                            .apply {
-                                token?.takeIf { it.isNotBlank() }?.let {
-                                    header("Authorization", "Bearer $it")
-                                }
-                            }
                             .build()
                         chain.proceed(request)
                     }

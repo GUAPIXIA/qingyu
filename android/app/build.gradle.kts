@@ -206,7 +206,8 @@ dependencies {
     // 阶段 4 S4-05：迁移测试需要 MigrationTestHelper（真实 SQLite）
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.espresso.core)
-    // 阶段0 spike：系统 Provider 无 Ed25519 时用 BC 实现验证（仅测试 APK）
+    // 阶段 8：生产 E2EE（X25519/Ed25519/scrypt）依赖自带 BC；androidTest 另装一份无害
+    implementation(libs.bouncycastle.prov)
     androidTestImplementation(libs.bouncycastle.prov)
     // 阶段 5 §11.1：内容管理八条入口的 Compose 交互层走查。BOM 只管 implementation 那条链，
     // androidTest 必须自己再 platform() 一次，否则 ui-test 的传递依赖会脱离 BOM 版本约束。

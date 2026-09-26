@@ -1,5 +1,6 @@
 package com.qingyu.companion.ui.chat
 
+import com.qingyu.companion.model.LinkState
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.data.CompanionError
 import com.qingyu.companion.model.Character
@@ -8,7 +9,6 @@ import com.qingyu.companion.model.Message
 import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.MessagePage
 import com.qingyu.companion.model.SessionPreview
-import com.qingyu.companion.network.WsClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -68,7 +68,7 @@ class ChatViewModelErrorTest {
         var quickReplyError: Throwable? = null
         var listMessagesError: Throwable? = null
         override val events = MutableSharedFlow<CompanionEvent>()
-        override val connectionState = MutableStateFlow(WsClient.State.CONNECTED)
+        override val connectionState = MutableStateFlow(LinkState.CONNECTED)
         override suspend fun listSessions() = emptyList<SessionPreview>()
         override suspend fun createSession(characterId: String, title: String?, greeting: String?) = throw NotImplementedError()
         override suspend fun deleteSession(sessionId: String, characterId: String?) {}

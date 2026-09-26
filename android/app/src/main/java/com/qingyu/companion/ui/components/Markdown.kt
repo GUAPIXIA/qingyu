@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
 
 
 /**
- * 可点击文本：处理链接区间（链接点击打开浏览器，仅 http/https 已在收集时过滤）。
+ * 可点击文本：处理链接区间（链接点击打开浏览器，�?http/https 已在收集时过滤）�?
  */
 @Composable
 private fun MdText(
@@ -90,18 +90,18 @@ fun MarkdownText(
     text: String,
     modifier: Modifier = Modifier,
     style: TextStyle = MaterialTheme.typography.bodyMedium,
-    /** 对话页本地字号缩放；标题、代码和 Markdown 子块统一跟随。 */
+    /** 对话页本地字号缩放；标题、代码和 Markdown 子块统一跟随�?*/
     fontScale: Float = 1f,
-    /** 对话页本地间距缩放；控制段落及 Markdown 块之间的留白。 */
+    /** 对话页本地间距缩放；控制段落�?Markdown 块之间的留白�?*/
     spacingMultiplier: Float = 1f,
-    /** 用户气泡内渲染（对话/动作样式切换为气泡对比色变体，对齐 PC .bubble-user） */
+    /** 用户气泡内渲染（对话/动作样式切换为气泡对比色变体，对�?PC .bubble-user�?*/
     onUserBubble: Boolean = false,
-    /** @提及高亮名单（群聊传成员名列表，单聊留空） */
+    /** @提及高亮名单（群聊传成员名列表，单聊留空�?*/
     mentionNames: List<String> = emptyList(),
 ) {
     val scaledStyle = style.scaledForChat(fontScale)
     val spacing = spacingMultiplier.coerceIn(0.6f, 1.6f)
-    // HTML 内容（角色卡首条消息等）走 HtmlCompat 渲染，避免显示为纯文本标签
+    // HTML 内容（角色卡首条消息等）�?HtmlCompat 渲染，避免显示为纯文本标�?
     if (containsHtml(text)) {
         HtmlText(text = text, modifier = modifier, style = scaledStyle)
         return
@@ -109,19 +109,19 @@ fun MarkdownText(
     val blocks = remember(text) { parseMarkdown(text) }
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     val qy = qyColors()
-    // 样式按气泡语境派生：普通气泡用主题色；用户气泡用气泡对比色淡化背景（PC .bubble-user 适配）
+    // 样式按气泡语境派生：普通气泡用主题色；用户气泡用气泡对比色淡化背景（PC .bubble-user 适配�?
     val styles = remember(text, onUserBubble) {
         val codeStyle = SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)
         if (onUserBubble) {
             val contrast = if (qy.isDark) Color.White else Color(0xFF2A2620)
             InlineStyles(
                 code = codeStyle,
-                // 行内动作：斜体 + 弱化色，无底色 chip（对齐 PC action-em）
+                // 行内动作：斜�?+ 弱化色，无底�?chip（对�?PC action-em�?
                 action = SpanStyle(
                     fontStyle = FontStyle.Italic,
                     color = contrast.copy(alpha = 0.75f),
                 ),
-                // 行内对话：引号文字色，无底色（对齐 PC dialogue-inline）
+                // 行内对话：引号文字色，无底色（对�?PC dialogue-inline�?
                 dialogue = SpanStyle(color = qy.warn),
                 mention = SpanStyle(
                     color = qy.accent,
@@ -155,7 +155,7 @@ fun MarkdownText(
                 is MdBlock.Paragraph -> {
                     val t = block.text.trim()
                     if (isActionBlock(t)) {
-                        // 整段动作 *动作*：灰色弱化正文（不斜体、无底色，对齐 PC action-block 三色收敛）
+                        // 整段动作 *动作*：灰色弱化正文（不斜体、无底色，对�?PC action-block 三色收敛�?
                         val inner = t.removePrefix("*").removeSuffix("*")
                         val links = remember(inner) { mutableListOf<Pair<IntRange, String>>() }
                         MdText(
@@ -176,14 +176,14 @@ fun MarkdownText(
                 }
 
                 is MdBlock.DialogueParagraph -> {
-                    // 对白块：左竖线 + 说话人名（色标圆点）+ 正文主色（对齐 PC dialogue-block 引用形态）；
-                    // 匿名块同结构无名字行；非块段为普通文本
+                    // 对白块：左竖�?+ 说话人名（色标圆点）+ 正文主色（对�?PC dialogue-block 引用形态）�?
+                    // 匿名块同结构无名字行；非块段为普通文�?
                     block.segments.forEachIndexed { idx, seg ->
                         if (seg.block) {
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    // 连续对话块间距收紧（对齐 PC 相邻 dialogue-block）
+                                    // 连续对话块间距收紧（对齐 PC 相邻 dialogue-block�?
                                     .padding(top = if (idx == 0) 3.dp else 1.dp, bottom = 2.dp),
                             ) {
                                 Box(
@@ -282,12 +282,12 @@ fun MarkdownText(
                 is MdBlock.Table -> TableBlock(block, scaledStyle, spacing)
 
                 is MdBlock.ListItem -> {
-                    // GFM 任务列表：- [ ] / - [x]（对齐 PC 端 remark-gfm checkbox）
+                    // GFM 任务列表�? [ ] / - [x]（对�?PC �?remark-gfm checkbox�?
                     val taskMatch = TASK_ITEM.matchEntire(block.text)
                     val taskChecked = taskMatch?.groupValues?.get(1)?.lowercase() == "x"
                     val taskText = taskMatch?.groupValues?.get(2) ?: block.text
                     val taskBox = if (taskMatch != null) {
-                        if (taskChecked) "☑ " else "☐ "
+                        if (taskChecked) "�?" else "�?"
                     } else {
                         ""
                     }
@@ -298,7 +298,7 @@ fun MarkdownText(
                         "$orderedCounter. "
                     } else {
                         orderedCounter = 0
-                        "• "
+                        "�?"
                     }
                     Row(
                         modifier = Modifier.padding(vertical = spacing.dp),
@@ -327,9 +327,9 @@ fun MarkdownText(
     }
 }
 
-/** 水平分隔线（--- / *** / ___） */
+/** 水平分隔线（--- / *** / ___�?*/
 
-/** 水平分隔线（--- / *** / ___） */
+/** 水平分隔线（--- / *** / ___�?*/
 @Composable
 private fun HorizontalDivider(spacing: Float) {
     Box(
@@ -341,9 +341,9 @@ private fun HorizontalDivider(spacing: Float) {
     )
 }
 
-/** GFM 表格：表头加粗 + 隔行底色 */
+/** GFM 表格：表头加�?+ 隔行底色 */
 
-/** GFM 表格：表头加粗 + 隔行底色 */
+/** GFM 表格：表头加�?+ 隔行底色 */
 @Composable
 private fun TableBlock(block: MdBlock.Table, style: TextStyle, spacing: Float) {
     val borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
@@ -370,7 +370,7 @@ private fun TableBlock(block: MdBlock.Table, style: TextStyle, spacing: Float) {
                 )
             }
         }
-        // 数据行（单元格不足时补空）
+        // 数据行（单元格不足时补空�?
         block.rows.forEachIndexed { idx, row ->
             Row(
                 Modifier
@@ -456,7 +456,7 @@ private fun CodeBlockCard(
     }
 }
 
-/** 轻量语法着色：覆盖常见语言的注释、字符串、关键字与数字，无额外运行时依赖。 */
+/** 轻量语法着色：覆盖常见语言的注释、字符串、关键字与数字，无额外运行时依赖�?*/
 private fun highlightedCode(code: String, language: String): AnnotatedString {
     val keywords = when (language.lowercase()) {
         "kt", "kotlin" -> "fun|val|var|class|object|interface|when|if|else|for|while|return|suspend|override|private|public|internal|data|sealed|import|package|null|true|false"
@@ -483,13 +483,12 @@ private fun highlightedCode(code: String, language: String): AnnotatedString {
     return builder.toAnnotatedString()
 }
 
-/** 独立行 Markdown 图片：相对路径拼 baseUrl，Coil 加载 */
+/** 独立�?Markdown 图片：相对路径拼 baseUrl，Coil 加载 */
 
-/** 独立行 Markdown 图片：相对路径拼 baseUrl，Coil 加载 */
+/** 独立�?Markdown 图片：相对路径拼 baseUrl，Coil 加载 */
 @Composable
 private fun ImageBlock(rawUrl: String) {
-    val connection = LocalAppContainer.current.connectionManager.activeConnection
-    val url = resolveImageUrl(rawUrl, connection) ?: rawUrl
+    val url = resolveImageUrl(rawUrl) ?: rawUrl
     AsyncImage(
         model = url,
         contentDescription = stringResource(R.string.cd_image),

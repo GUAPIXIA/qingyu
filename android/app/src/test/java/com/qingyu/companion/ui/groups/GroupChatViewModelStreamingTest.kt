@@ -1,12 +1,12 @@
 package com.qingyu.companion.ui.groups
 
+import com.qingyu.companion.model.LinkState
 import com.qingyu.companion.chatcore.ChatGroupTurnMachine
 import com.qingyu.companion.chatcore.LocalGroupGenerationUseCase
 import com.qingyu.companion.data.ChatRepository
 import com.qingyu.companion.model.CompanionEvent
 import com.qingyu.companion.model.DialogueDirection
 import com.qingyu.companion.model.GroupMessage
-import com.qingyu.companion.network.WsClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -269,7 +269,7 @@ private class ScriptedDriver : GroupGenerationDriver {
 
 private class StreamingGroupRepository : ChatRepository {
     override val events = MutableSharedFlow<CompanionEvent>(extraBufferCapacity = 64)
-    override val connectionState = MutableStateFlow(WsClient.State.CONNECTED)
+    override val connectionState = MutableStateFlow(LinkState.CONNECTED)
     val messages: MutableList<GroupMessage> = mutableListOf()
     val patchGroupCalls = mutableListOf<Map<String, Any?>>()
     val patchSessionCalls = mutableListOf<Map<String, Any?>>()

@@ -219,14 +219,14 @@ class LocalRepositoryContractTest {
                     ),
                 )
                 assertEquals("$name/group-seq-stable-order", listOf(0L, 1L), store.listGroupMessages("gs1").map { it.seq })
-                assertTrue("$name/group-message-journal-gm1", store.getHead("message", "gm1") != null)
-                assertTrue("$name/group-message-journal-gm2", store.getHead("message", "gm2") != null)
+                assertTrue("$name/group-message-journal-gm1", store.getHead("group_message", "gm1") != null)
+                assertTrue("$name/group-message-journal-gm2", store.getHead("group_message", "gm2") != null)
                 assertEquals("$name/group-message-count", 2, store.countGroupMessages("gs1"))
 
                 // 删除走 tombstone（不抹掉同步历史）
                 store.deleteGroupMessage("gm2", "gs1")
                 assertEquals("$name/group-message-deleted", 1, store.countGroupMessages("gs1"))
-                assertTrue("$name/group-message-tombstone", store.getHead("message", "gm2")!!.deleted)
+                assertTrue("$name/group-message-tombstone", store.getHead("group_message", "gm2")!!.deleted)
 
                 // 会话删除级联清理群消息
                 store.deleteSession("gs1")

@@ -33,15 +33,28 @@ object EntityTypes {
     const val REGEX_RULE = "regex_rule"
     const val QUICK_REPLY_SET = "quick_reply_set"
     const val GROUP = "group"
+    const val GROUP_SESSION = "group_session"
+    const val GROUP_MESSAGE = "group_message"
     const val SESSION = "session"
     const val MESSAGE = "message"
-    const val MEMORY_STATE = "memory_state"
-    const val MEMORY_FACT = "memory_fact"
     const val USAGE_RECORD = "usage_record"
     const val MCP_PUBLIC_CONFIG = "mcp_public_config"
-    const val MEDIA_MANIFEST = "media_manifest"
     const val LOREBOOK_MAPPING_TEMPLATE = "lorebook_mapping_template"
     const val USAGE_CLEAR_MARKER = "usage_clear_marker"
+
+    /**
+     * D-12：`memory_state`/`memory_fact`/`media_manifest` **不再作为独立同步实体**。
+     * 记忆随 session 走（与 PC 一致，内嵌 session payload）；媒体清单推迟到阶段 7 blob 存储。
+     * 本地表仍可保留供应用功能使用，但不得写入 change_log 作为同步实体。
+     */
+    @Deprecated("D-12：记忆随 session 走，不再独立同步", ReplaceWith("SESSION"))
+    const val MEMORY_STATE = "memory_state"
+
+    @Deprecated("D-12：记忆随 session 走，不再独立同步", ReplaceWith("SESSION"))
+    const val MEMORY_FACT = "memory_fact"
+
+    @Deprecated("D-12：media_manifest 推迟到阶段 7 blob 存储", ReplaceWith("MCP_PUBLIC_CONFIG"))
+    const val MEDIA_MANIFEST = "media_manifest"
 }
 
 /**
@@ -57,6 +70,13 @@ object CanonicalEntityIds {
 
     /** `electron/domain/bootstrapScanners.ts` 的 settings_public 实体 id */
     const val SETTINGS_PUBLIC = "settings-public"
+
+    /**
+     * D-10：`usage_clear_marker` 两端统一为**单一固定实体 id**（PC `electron/services/usage.ts`），
+     * 逐设备 `clearedThrough` 映射进 payload。Android 旧实现曾按 `entityId = deviceId` 记账，
+     * 导致同一批清理语义落在不同 entityId 上、§6.3「多个 marker 逐设备取最大值」无法跨端成立。
+     */
+    const val USAGE_CLEAR_MARKER = "usage-clear-marker"
 }
 
 /**
@@ -338,13 +358,8 @@ object EntityPayloads {
     )
 
     /**
-     * 群会话实体 payload —— **临时镜像** PC `group.ts#groupSessionEntityPayload`
-     * （spread 全字段 − `id` + `groupId`）。
-     *
-     * ⚠️ **D-11 未决**：PC 的群会话/群消息与单聊 session/message **共用实体类型却用另一套
-     * payload**（spread 整个对象），契约侧三选项均需签字。本函数按 PC **现状行为**逐字段
-     * 镜像本表持有的字段（PC 对象上没有的字段 → 不下发；本表未设置 → 不下发），
-     * 不预判 D-11 的收敛结果；决策落定后必须按新契约重写并补跨端 golden。
+     * 群会话实体 payload —— 对齐 `electron/ipc/group.ts#groupSessionEntityPayload`
+     * （spread 全字段 − `id` + `groupId`）。实体类型为 **`group_session`**（D-11）。
      */
     fun groupSessionPayload(row: LocalSessionEntity): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>(
@@ -359,12 +374,10 @@ object EntityPayloads {
     }
 
     /**
-     * 群消息实体 payload —— **临时镜像** PC `group.ts#groupMessageEntityPayload`
-     * （spread 全字段 − `id` + `sessionId`）。
+     * 群消息实体 payload —— 对齐 `electron/ipc/group.ts#groupMessageEntityPayload`
+     * （spread 全字段 − `id` + `sessionId`）。实体类型为 **`group_message`**（D-11）。
      *
-     * ⚠️ **D-11 未决**（同 [groupSessionPayload]）：按 PC 现状行为镜像——
-     * 必填字段（groupId/characterId/content/images/timestamp/round）始终下发，
-     * 可选字段仅在有值时下发（对位 PC 对象上「字段存在才 spread 到」）。
+     * 必填字段始终下发，可选字段仅在有值时下发（对位 PC 对象上「字段存在才 spread 到」）。
      * `seq`/`imported_from`/`created_at`/`updated_at` 是本地保真列，不进 payload。
      */
     fun groupMessagePayload(row: LocalGroupMessageEntity): Map<String, Any?> {

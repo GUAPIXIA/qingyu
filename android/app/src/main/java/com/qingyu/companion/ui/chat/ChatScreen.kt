@@ -208,9 +208,7 @@ fun ChatScreen(
             ) {
                 // ===== 角色封面背景（模糊 + 底色压暗蒙层，保证气泡可读） =====
                 val coverUrl = resolveImageUrl(
-                    ui.characterCoverUrl,
-                    container.connectionManager.activeConnection,
-                )
+                    ui.characterCoverUrl)
                 if (bgEnabled && coverUrl != null) {
                     AsyncImage(
                         model = coverUrl,
@@ -337,7 +335,7 @@ fun ChatScreen(
                                 val referenced = ui.messages.firstOrNull { it.id == item.message.replyToId }
                                 // 消息图片为相对路径（/static/messages/...），拼接当前连接的 baseUrl
                                 val imageUrls = item.message.images.map {
-                                    resolveImageUrl(it, container.connectionManager.activeConnection) ?: it
+                                    resolveImageUrl(it) ?: it
                                 }
                                 MessageBubble(
                                     message = item.message,
@@ -386,8 +384,7 @@ fun ChatScreen(
                             is TimelineItem.PendingEntry -> PendingBubble(
                                 pending = item.pending,
                                 onRetry = { vm.retryPending(item.pending.requestId) },
-                                onRetryGeneration = { vm.retryGeneration(item.pending.requestId) },
-                                onCancel = { vm.cancelPending(item.pending.requestId) },
+                                onCancel = { Unit },
                                 connection = ui.connection,
                                 fontScale = fontScale,
                                 spacingMultiplier = spacingMult,
@@ -603,9 +600,7 @@ fun ChatScreen(
                     }
                     // 角色头像（PC 端同步，相对路径拼 baseUrl）
                     val avatarUrl = resolveImageUrl(
-                        ui.characterAvatarUrl,
-                        container.connectionManager.activeConnection,
-                    )
+                        ui.characterAvatarUrl)
                     if (avatarUrl != null) {
                         var avatarFailed by remember(avatarUrl) { mutableStateOf(false) }
                         if (avatarFailed) {

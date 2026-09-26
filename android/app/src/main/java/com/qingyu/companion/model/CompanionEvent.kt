@@ -59,12 +59,4 @@ sealed interface CompanionEvent {
 
     data class RelayCommandExpired(val commandId: String) : CompanionEvent
 
-    /**
-     * F-01：task:* 帧分发（载荷为对齐 PC shared/chat-core TaskEventEnvelope 的 DTO）。
-     * 本设备发起的 v2 任务由 Repository 轮询链路统一消费（cursor 去重后转 Chunk 流）；
-     * 此事件面向 PC 端发起/转推的任务与未来 UI 消费，接收方按需处理，可安全忽略。
-     */
-    data class TaskEvent(
-        val envelope: TaskEventEnvelopeDto,
-    ) : CompanionEvent
 }

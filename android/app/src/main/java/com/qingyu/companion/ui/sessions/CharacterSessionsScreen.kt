@@ -90,7 +90,7 @@ fun CharacterSessionsScreen(
         runCatching { container.repository.listCharacters() }
             .onSuccess { characters ->
                 val character = characters.firstOrNull { it.id == characterId }
-                avatarUrl = resolveImageUrl(character?.avatarUrl, container.connectionManager.activeConnection)
+                avatarUrl = resolveImageUrl(character?.avatarUrl)
             }
     }
 

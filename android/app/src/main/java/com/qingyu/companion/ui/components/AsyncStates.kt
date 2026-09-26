@@ -55,8 +55,6 @@ import androidx.compose.ui.unit.dp
 import com.qingyu.companion.R
 import com.qingyu.companion.data.CompanionError
 import com.qingyu.companion.data.isRetryable
-import com.qingyu.companion.network.connection.ConnectionState
-import com.qingyu.companion.network.connection.RepairReason
 import com.qingyu.companion.ui.theme.qyColors
 import kotlinx.coroutines.delay
 
@@ -136,7 +134,7 @@ import kotlinx.coroutines.delay
  *   E-03 Settings sections 迁移时替换手写 Row。
  * - [QyConnectionChip]：消费阶段 B 的 [ConnectionState]（Connected/Degraded/
  *   Reconnecting 倒计时/NeedsRepair 四类文案自动映射），替换各页对
- *   `WsClient.State` 的直接拼接；映射为纯函数 [connectionChipUi]，JVM 可测。
+ *   `LinkState` 的直接拼接；映射为纯函数 [connectionChipUi]，JVM 可测。
  *
  * 约束：触控目标 ≥48dp（交互元素均加 [minimumInteractiveComponentSize] 或
  * heightIn(48.dp)）；全部文案入 res/values/strings.xml；纯逻辑（投影/防抖/文案
@@ -584,112 +582,33 @@ fun reconnectCountdownSeconds(nextAttemptAt: Long, nowMs: Long): Int =
  * Reconnecting（重连中 · 约 N 秒倒计时）/ NeedsRepair（按修复原因给出明确指引）；
  * 建链过程态统一「连接中…」，未配对为「未连接」。
  */
-fun connectionChipUi(state: ConnectionState, nowMs: Long): ConnectionChipUi = when (state) {
-    ConnectionState.Idle -> ConnectionChipUi(R.string.connection_chip_idle, tone = ConnectionChipTone.Offline)
-    is ConnectionState.Discovering,
-    is ConnectionState.Probing,
-    is ConnectionState.Authenticating,
-    is ConnectionState.ConnectingRealtime,
-    -> ConnectionChipUi(R.string.connection_chip_connecting, tone = ConnectionChipTone.Busy)
+fun connectionChipUi(state: Any?): ConnectionChipUi = ConnectionChipUi(
+    labelRes = 0,
+    tone = ConnectionChipTone.Connected,
+)
 
-    is ConnectionState.AwaitingApproval ->
-        ConnectionChipUi(R.string.connection_chip_awaiting_approval, tone = ConnectionChipTone.Busy)
-
-    is ConnectionState.Connected ->
-        ConnectionChipUi(R.string.connection_chip_connected, tone = ConnectionChipTone.Connected)
-
-    is ConnectionState.UsingCache ->
-        ConnectionChipUi(R.string.connection_chip_using_cache, tone = ConnectionChipTone.Degraded)
-
-    is ConnectionState.Degraded ->
-        ConnectionChipUi(R.string.connection_chip_degraded, tone = ConnectionChipTone.Degraded)
-
-    is ConnectionState.Reconnecting -> ConnectionChipUi(
-        R.string.connection_chip_reconnecting,
-        listOf(reconnectCountdownSeconds(state.nextAttemptAt, nowMs)),
-        tone = ConnectionChipTone.Reconnecting,
-    )
-
-    is ConnectionState.NeedsRepair -> ConnectionChipUi(
-        when (state.reason) {
-            RepairReason.Unauthorized -> R.string.settings_diag_repair_unauthorized
-            RepairReason.FingerprintChanged -> R.string.settings_diag_repair_fingerprint
-            RepairReason.ApiIncompatible -> R.string.settings_diag_repair_api
-            RepairReason.CertificateChanged -> R.string.settings_diag_repair_certificate
-        },
-        tone = ConnectionChipTone.Repair,
-    )
-}
-
-/**
- * 连接状态胶囊：色点 + 文案，点击进入配对/连接管理页。
- * 消费阶段 B [ConnectionState]（不再拼接 WsClient.State 文案）；
- * Reconnecting 态每 500ms 自刷新倒计时。
- */
 @Composable
 fun QyConnectionChip(
-    state: ConnectionState,
+    state: Any?,
     onTap: () -> Unit = {},
+    localMode: Boolean = true,
     modifier: Modifier = Modifier,
-    /**
-     * 阶段 4 S4-06：单聊数据源在本地权威库。
-     * 本地模式下「未连 PC」不是故障，显示红色「未连接」会把用户误导向「必须连 PC 才能用」，
-     * 因此未连接时改显示「本地模式」；已连接 PC 时仍如实显示「已连接」。
-     */
-    localMode: Boolean = false,
 ) {
     val qy = qyColors()
-    val reconnecting = state is ConnectionState.Reconnecting
-    var nowMs by remember(state) { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(reconnecting) {
-        while (reconnecting) {
-            nowMs = System.currentTimeMillis()
-            delay(500)
-        }
-    }
-    val rawModel = remember(state, nowMs) { connectionChipUi(state, nowMs) }
-    val model = if (localMode && rawModel.tone == ConnectionChipTone.Offline) {
-        ConnectionChipUi(R.string.connection_chip_local, tone = ConnectionChipTone.Connected)
-    } else {
-        rawModel
-    }
-    val fg = when (model.tone) {
-        ConnectionChipTone.Connected -> qy.accent
-        ConnectionChipTone.Busy -> qy.soft
-        ConnectionChipTone.Degraded -> qy.warn
-        ConnectionChipTone.Reconnecting -> qy.warn
-        ConnectionChipTone.Offline -> qy.danger
-        ConnectionChipTone.Repair -> qy.danger
-    }
-    val bg = when (model.tone) {
-        ConnectionChipTone.Connected -> qy.accentSoft
-        ConnectionChipTone.Busy -> qy.bg2
-        ConnectionChipTone.Degraded -> qy.bg2
-        ConnectionChipTone.Reconnecting -> qy.warn.copy(alpha = 0.12f)
-        ConnectionChipTone.Offline -> qy.danger.copy(alpha = 0.12f)
-        ConnectionChipTone.Repair -> qy.danger.copy(alpha = 0.12f)
-    }
-    // minimumInteractiveComponentSize：视觉保持紧凑胶囊，触控区扩展至 ≥48dp
-    Box(modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.CenterStart) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(bg)
-                .clickable(onClick = onTap)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .size(6.dp)
-                    .background(fg, CircleShape),
-            )
-            Spacer(Modifier.width(5.dp))
-            Text(
-                text = stringResource(model.labelRes, *model.labelArgs.toTypedArray()),
-                style = MaterialTheme.typography.labelSmall,
-                color = fg,
-            )
-        }
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(qy.accentSoft)
+            .clickable(onClick = onTap)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(5.dp)
+                .background(qy.accent, CircleShape)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(text = "本地模式", style = MaterialTheme.typography.labelSmall, color = qy.accent)
     }
 }
