@@ -1,6 +1,6 @@
-[submodule "shared"]
+﻿[submodule "shared"]
 	path = shared
-	url = D:/Code/qingyu-shared
+	url = ../qingyu-shared
 [submodule "android"]
 	path = android
-	url = D:/Code/qingyu-android
+	url = ../qingyu-android
