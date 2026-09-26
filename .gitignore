@@ -131,3 +131,7 @@ __pycache__/
 # 本机 MCP 工具配置（含 `${UTOOLS_MCP_KEY}` 密钥头引用，属本机环境，不入库）
 .mcp.json
 
+
+# === ���ֲ��������2026-09-26��===
+*-inline-backup/
+s9-*.txt
