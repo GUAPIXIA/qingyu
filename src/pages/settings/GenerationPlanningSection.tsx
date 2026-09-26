@@ -179,7 +179,7 @@ export function GenerationPlanningSection({ settings, updateSettings }: Props) {
             <div className="flex items-center justify-between gap-4 bg-tavern-bg-card/70 p-4">
               <div>
                 <p className="flex items-center gap-1.5 text-xs font-semibold text-tavern-text-soft"><WalletCards className="h-3.5 w-3.5" /> 费用提醒</p>
-                <p className="mt-0.5 text-[11px] text-tavern-text-muted">在快捷设置提示高预算；硬上限安全校验始终有效。</p>
+                <p className="mt-0.5 text-[11px] text-tavern-text-muted">预算偏高时给出提醒；安全上限始终生效。</p>
               </div>
               <Toggle label="费用提醒" checked={settings.costReminderEnabled !== false} onChange={(costReminderEnabled) => updateSettings({ costReminderEnabled })} />
             </div>
@@ -224,7 +224,7 @@ export function GenerationPlanningSection({ settings, updateSettings }: Props) {
                     <input aria-label="自定义输出能力" type="number" min="1" disabled={!capability.enabled} value={capability.outputLimit ?? ''} onChange={(event) => updateCapability({ outputLimit: Math.max(0, Number(event.target.value) || 0) || undefined })} placeholder="跟随模型档案" className="input mt-1.5 w-full font-mono text-sm disabled:opacity-50" />
                   </label>
                 </div>
-                <p className="mt-3 text-[11px] leading-relaxed text-tavern-text-muted">模型输出硬上限仍在预设高级项中设置：0 为自动，正数为每轮严格上限。通用 8192 安全阀保持不变。</p>
+                <p className="mt-3 text-[11px] leading-relaxed text-tavern-text-muted">若需限制单轮输出长度，可在预设「高级参数」中设置输出上限；一般保持「自动」即可。</p>
               </div>
 
               <div className="rounded-2xl border border-tavern-border-soft bg-tavern-bg-soft/25 p-4">

@@ -92,7 +92,6 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
       element.style.height = 'auto'
       element.style.height = `${Math.min(element.scrollHeight, 120)}px`
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey])
 
   // 方向卡片 → 输入框草稿桥（与单聊各自独立作用域）

@@ -230,6 +230,7 @@ function domainOrNull(): SyncDomainContext | null {
 /** 仅供路由内部：不导出到业务层 */
 let peekSyncDomain: () => SyncDomainContext | null = () => {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- 惰性加载以避免循环依赖
     const mod = require('../domain/syncDomainService') as {
       getSyncDomain?: () => SyncDomainContext
     }

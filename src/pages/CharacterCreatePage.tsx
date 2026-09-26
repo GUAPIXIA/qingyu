@@ -41,7 +41,6 @@ export function CharacterCreatePage() {
       persistDraft()
     }, 500)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, draft, coverBase64, avatarPosition, persistDraft])
 
   // 进入页面时检查未完成草稿

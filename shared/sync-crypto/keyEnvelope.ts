@@ -13,7 +13,6 @@ import { canonicalize } from '../contracts/canonical-json'
 import { deriveSubkey, hmacSha256 } from './kdf'
 import {
   GCM_NONCE_BYTES,
-  GCM_TAG_BITS,
   GCM_TAG_BYTES,
   SPACE_KEY_BYTES,
   SYNC_CRYPTO_FORMAT_VERSION,

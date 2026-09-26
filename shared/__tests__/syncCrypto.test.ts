@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createCipheriv, createDecipheriv, randomBytes, verify as cryptoVerify } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { contentHash, canonicalize } from '../contracts/canonical-json'
+import { contentHash } from '../contracts/canonical-json'
 import {
   buildEntityAad,
   encryptEntity,

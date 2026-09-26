@@ -12,7 +12,7 @@
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { execFileSync, execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 
 const ADB = 'D:/Code/android-sdk/platform-tools/adb.exe'
@@ -23,10 +23,6 @@ const log = (...a: unknown[]) => console.log('[lan-mumu]', ...a)
 const fail = (m: string): never => {
   console.error('[lan-mumu] FAIL', m)
   process.exit(1)
-}
-
-function adb(...args: string[]): string {
-  return execFileSync(ADB, ['-s', SERIAL, ...args], { encoding: 'utf8' })
 }
 
 function sleep(ms: number) {
@@ -48,12 +44,11 @@ async function main() {
   mkdirSync('output/pce01', { recursive: true })
 
   // ---- 动态 import（先 electron stub）----
-  const { buildSyncV1Router, resetSyncV1ForTest, syncV1Runtime, setSyncV1DomainPeekForTest } =
+  const { buildSyncV1Router, resetSyncV1ForTest, setSyncV1DomainPeekForTest } =
     await import('../electron/bridge/syncRoutes')
   const { syncLanAuthService } = await import('../electron/domain/syncLanAuth')
   const {
     setSyncDomainUserDataDirForTest,
-    resetSyncDomainForTest,
     getSyncDomain,
   } = await import('../electron/domain/syncDomainService')
   const { mkdtempSync, mkdirSync: mkdir } = await import('node:fs')

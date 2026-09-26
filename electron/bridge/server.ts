@@ -1,21 +1,14 @@
 /**
  * 桥接层 HTTP 服务生命周期（方案 §4.2）。
  *
- * - express + ws（/ws?token=xxx 鉴权），默认仅绑定指定局域网接口 IP；
+ * - express + /sync/v1 LAN 同步端点（S9-07：旧 /api/v1 伴侣业务面已删除）；
  * - 端口默认 8321，冲突自动递增（最大尝试 +10）；
- * - 会话变更通知：注入回调（index.ts 负责广播渲染层 + WS 转发）。
+ * - 默认仅绑定指定局域网接口 IP。
  */
 import express, { type Express } from 'express'
 import { createServer, type Server } from 'node:http'
-import { WsHub } from './ws'
-import { buildBridgeRouter, API_VERSION, originGuard, requireAuth } from './routes'
-import { buildStaticRouter } from './static'
-import { buildTaskRouter } from './taskRoutes'
 import { mountSyncV1 } from './syncRoutes'
-import { attachTaskWsAdapter } from './taskWsAdapter'
-import { BridgeChatService, type SessionChangedNotifier } from './chatService'
 import { createLogger } from '../services/logger'
-import { BridgeRuntime } from './runtime/bridgeRuntime'
 
 const log = createLogger('bridge-server')
 
@@ -34,31 +27,13 @@ export interface BridgeServerHandle {
 export class BridgeServer {
   private app: Express
   private httpServer: Server | null = null
-  private hub: WsHub
-  private chatService: BridgeChatService
-  private runtime: BridgeRuntime
-  private detachLanSink: (() => void) | null = null
 
-  constructor(
-    notifySessionChanged: SessionChangedNotifier,
-    onPairRequest: (requestId: string, deviceName: string) => void = () => {},
-    sharedRuntime?: BridgeRuntime,
-  ) {
-    this.runtime = sharedRuntime ?? new BridgeRuntime(notifySessionChanged)
-    this.hub = new WsHub(this.runtime.generations)
-    this.detachLanSink = this.runtime.events.add(this.hub)
-    this.chatService = this.runtime.chatService
+  constructor() {
     this.app = express()
     this.app.use(express.json({ limit: '10mb' }))
-    this.app.use('/api/v1', buildBridgeRouter(this.hub, this.chatService, notifySessionChanged, onPairRequest, this.runtime.facade))
-    this.app.use('/api/v2', requireAuth, buildTaskRouter())
     // S7-04：独立 /sync/v1（LAN 同步会话鉴权，不复用 Bridge JWT / Relay allowlist）
     mountSyncV1(this.app)
-    // H1 修复：/static 媒体路由此前挂在认证路由之外，任何 LAN 主机可无认证读取聊天图片/
-    // 角色素材。先挂 originGuard（阻断浏览器跨站 fetch 盗读，PC/安卓原生加载不受影响）；
-    // 完整修复（requireAuth + 客户端携带 token）需同步改 PC/安卓图片加载方式，见审计 H1。
-    this.app.use('/static', originGuard, requireAuth, buildStaticRouter())
-    // 兜底 404
+    // 兜底 404（旧 /api/v1 伴侣业务面已删除，不再提供）
     this.app.use((_req, res) => {
       res.status(404).json({ error: 'not found' })
     })
@@ -75,19 +50,13 @@ export class BridgeServer {
         await new Promise<void>((resolve, reject) => {
           const server = createServer(this.app)
           server.once('error', (err: NodeJS.ErrnoException) => {
-            if (err.code === 'EADDRINUSE') {
-              reject(err)
-            } else {
-              reject(err)
-            }
+            reject(err)
           })
           server.listen(port, host, () => resolve())
           this.httpServer = server
         })
         if (!this.httpServer) throw new Error('服务器初始化失败')
-        this.hub.attach(this.httpServer)
-        attachTaskWsAdapter(this.hub)
-        log.info('桥接服务已启动', { host, port, apiVersion: API_VERSION })
+        log.info('桥接服务已启动', { host, port })
         return { host, port }
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code
@@ -101,26 +70,10 @@ export class BridgeServer {
     throw new Error('端口冲突：连续 10 个端口均被占用')
   }
 
-  get clientCount(): number {
-    return this.hub.clientCount
-  }
-
-  /** WS 广播（会话变更转推） */
-  broadcast(event: string, payload?: unknown): void {
-    this.hub.broadcast(event, payload)
-  }
-
-  disconnectDevice(deviceId: string): void {
-    this.hub.disconnectDevice(deviceId)
-  }
-
   /** 停止 */
   stop(): void {
-    this.hub.close()
     this.httpServer?.close()
     this.httpServer = null
-    this.detachLanSink?.()
-    this.detachLanSink = null
     log.info('桥接服务已停止')
   }
 }

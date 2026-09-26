@@ -9,7 +9,7 @@
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { createPublicKey, createPrivateKey, diffieHellman, generateKeyPairSync, type KeyObject } from 'node:crypto'
+import { createPublicKey, diffieHellman, generateKeyPairSync, type KeyObject } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { buildSyncV1Router, resetSyncV1ForTest } from '../electron/bridge/syncRoutes'
 import { SyncLanAuthService } from '../electron/domain/syncLanAuth'
@@ -31,11 +31,6 @@ function publicKeyFromRaw(raw32: Buffer): KeyObject {
   return createPublicKey({ key: spki, format: 'der', type: 'spki' })
 }
 
-function privateKeyFromRaw(raw32: Buffer): KeyObject {
-  const pkcs8 = Buffer.concat([Buffer.from('302e020100300506032b656e04220420', 'hex'), raw32])
-  return createPrivateKey({ key: pkcs8, format: 'der', type: 'pkcs8' })
-}
-
 const log = (...args: unknown[]) => console.log('[lan-e2e]', ...args)
 const fail = (msg: string): never => {
   console.error('[lan-e2e] FAIL', msg)
@@ -44,7 +39,7 @@ const fail = (msg: string): never => {
 
 async function main() {
   resetSyncV1ForTest()
-  const lan = new SyncLanAuthService()
+  void new SyncLanAuthService()
 
   const app = express()
   app.use(express.json({ limit: '5mb' }))

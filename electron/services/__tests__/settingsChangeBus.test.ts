@@ -1,5 +1,5 @@
 /**
- * 阶段 C-04：设置变更事件总线单测 + 桥接防回环判定。
+ * 设置变更事件总线单测。
  */
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -8,7 +8,6 @@ import {
   clearSettingsChangeListeners,
   type SettingsChanged,
 } from '../../services/settingsChangeBus'
-import { shouldBroadcastSettingsToWs } from '../../bridge/index'
 
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-changebus-test' },
@@ -49,12 +48,5 @@ describe('settingsChangeBus', () => {
     unsubBad()
     unsubGood()
     clearSettingsChangeListeners()
-  })
-})
-
-describe('防回环判定（shouldBroadcastSettingsToWs）', () => {
-  it("source='pc' 转发 WS；android:* 来源跳过（写一次、广播一次）", () => {
-    expect(shouldBroadcastSettingsToWs('pc')).toBe(true)
-    expect(shouldBroadcastSettingsToWs('android:dev-1')).toBe(false)
   })
 })

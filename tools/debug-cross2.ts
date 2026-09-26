@@ -18,8 +18,8 @@ try {
   d.setAuthTag(tag)
   const out = Buffer.concat([d.update(body), d.final()])
   console.log('vector roundtrip OK', out.equals(plain))
-} catch (e: any) {
-  console.log('vector roundtrip FAIL', e.message)
+} catch (e: unknown) {
+  console.log('vector roundtrip FAIL', e instanceof Error ? e.message : String(e))
 }
 
 // 2) re-encrypt and compare tag
@@ -38,12 +38,12 @@ try {
   d.setAuthTag(javaTag)
   const out = Buffer.concat([d.update(body), d.final()])
   console.log('java tag decrypt OK', out.toString('utf8'))
-} catch (e: any) {
-  console.log('java tag decrypt FAIL', e.message)
+} catch (e: unknown) {
+  console.log('java tag decrypt FAIL', e instanceof Error ? e.message : String(e))
 }
 
 // 4) openssl-style: also try setAAD with plaintextLength
 const c2 = createCipheriv('aes-256-gcm', key, iv)
 c2.setAAD(aad, { plaintextLength: plain.length })
 const body3 = Buffer.concat([c2.update(plain), c2.final()])
-console.log('with plaintextLength tag', c2.getAuthTag().toString('hex'))
+console.log('with plaintextLength body3', body3.toString('hex'), 'tag', c2.getAuthTag().toString('hex'))

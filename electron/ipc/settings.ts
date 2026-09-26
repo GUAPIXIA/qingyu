@@ -5,7 +5,7 @@ import { DIRS, writeJson, readJson, withFileLock, serializeJson } from '../servi
 import { getDefaultSettings } from '../../shared/defaults'
 import { saveCredential, getCredential } from '../services/safeStorage'
 import { emitSettingsChanged } from '../services/settingsChangeBus'
-import { computeRevision, diffMobileSafeFields, toMobileSafeSettings } from '../bridge/settingsSync'
+import { computeRevision, diffMobileSafeFields, toMobileSafeSettings } from '../services/settingsRevision'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { setMigrationCredentialAccess } from '../services/migration'
 import { createLogger } from '../services/logger'

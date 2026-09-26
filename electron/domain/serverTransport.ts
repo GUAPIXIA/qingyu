@@ -143,7 +143,7 @@ export class ServerSyncTransport {
   }
 
   private async authHeaders(): Promise<Record<string, string>> {
-    let token = await this.config.getAccessToken()
+    const token = await this.config.getAccessToken()
     return {
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',

@@ -18,8 +18,8 @@ for (const [name, tag] of Object.entries(tags)) {
     d.setAuthTag(tag)
     const plain = Buffer.concat([d.update(body), d.final()])
     console.log(name, 'DECRYPT_OK', plain.length, plain.toString('utf8'))
-  } catch (e: any) {
-    console.log(name, 'DECRYPT_FAIL', e.message)
+  } catch (e: unknown) {
+    console.log(name, 'DECRYPT_FAIL', e instanceof Error ? e.message : String(e))
   }
 }
 console.log('aadLen', aad.length)

@@ -79,7 +79,6 @@ export function toOpenAIContent(messages: ImageMessage[]): Record<string, unknow
         .filter((p): p is ParsedImage => p !== null)
         .map((p) => ({ type: 'image_url' as const, image_url: { url: p.dataUrl } })),
     ]
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { images: _images, ...rest } = m
     return { ...rest, content: parts }
   })
@@ -104,7 +103,6 @@ export function toClaudeContent(messages: ImageMessage[]): Record<string, unknow
           source: { type: 'base64' as const, media_type: p.mimeType, data: p.data },
         })),
     ]
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { images: _images, ...rest } = m
     return { ...rest, content: parts }
   })
@@ -123,7 +121,6 @@ export function toOllamaMessages(messages: ImageMessage[]): Record<string, unkno
       .filter((p): p is ParsedImage => p !== null)
       .map((p) => p.data)
     if (base64List.length === 0) return m
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { images: _images, ...rest } = m
     return { ...rest, images: base64List }
   })

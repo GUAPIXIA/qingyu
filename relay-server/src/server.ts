@@ -1,15 +1,11 @@
 import { loadConfig } from './config.js'
 import { buildApp } from './app.js'
 import { AccessTokenService } from './auth/accessToken.js'
-import { RelayHub } from './ws/relayHub.js'
 import { createPool } from './db/pool.js'
 import { withTenantTransaction } from './db/tenantTransaction.js'
 import type { RelayAccessClaims } from './auth/accessToken.js'
 import { Redis } from 'ioredis'
 import { MetricsRegistry } from './observability/metrics.js'
-import { SnapshotService } from './cache/snapshotService.js'
-import { CommandQueue } from './cache/commandQueue.js'
-import { RetentionWorker } from './cache/retentionWorker.js'
 import { RedisRateLimiter } from './security/rateLimiter.js'
 
 const config = loadConfig()
@@ -27,23 +23,13 @@ const validate = (claims: RelayAccessClaims) => withTenantTransaction(pool, clai
   )
   return result.rowCount === 1
 })
-const hub = new RelayHub(tokens, validate, metrics)
-const snapshots = new SnapshotService(pool, config.retentionDays)
-const commands = new CommandQueue(pool, hub.broker, (spaceId, event, data, targetDeviceId) => {
-  hub.publishAndroidEvent(spaceId, event, data, targetDeviceId)
-})
-const retention = new RetentionWorker(pool, (spaceId, event, data, targetDeviceId) => {
-  hub.publishAndroidEvent(spaceId, event, data, targetDeviceId)
-})
-hub.setCacheHandler((spaceId, payload) => snapshots.accept(spaceId, payload))
-hub.setPcReadyHandler((spaceId, socket) => commands.drain(spaceId, socket))
+// S9-07：旧业务 WebSocket（RelayHub）、RPC broker、快照/离线队列已删除。
+// 新部署物仅提供 /sync/v1 同步 + 密钥交付 + 空间/设备/token 基础设施。
 const app = buildApp(config, {
-  pool, tokens, hub, validate, snapshots, commands, metrics, limiter,
+  pool, tokens, validate, metrics, limiter,
   ready: async () => { await Promise.all([pool.query('SELECT 1'), redis.ping()]) },
-  close: async () => { retention.stop(); redis.disconnect() },
+  close: async () => { redis.disconnect() },
 })
-hub.attach(app.server)
-retention.start()
 
 await app.listen({ port: config.port, host: '0.0.0.0' })
 

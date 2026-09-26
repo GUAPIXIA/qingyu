@@ -11,7 +11,6 @@ import { join } from 'node:path'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
-  createPrivateKey,
   createPublicKey,
   diffieHellman,
   generateKeyPairSync,

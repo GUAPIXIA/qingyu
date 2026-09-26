@@ -90,7 +90,8 @@ function journalTrashedGroupData(groupId: string, trashDir: string): void {
   if (messageFiles.length > 0) {
     commitThroughDomain({
       domain: 'group',
-      entityType: 'message',
+      // D-11：群消息独立实体类型，不与单聊 message 混用
+      entityType: 'group_message',
       puts: [],
       deletes: messageDeletes,
       files: messageFiles,
@@ -99,7 +100,8 @@ function journalTrashedGroupData(groupId: string, trashDir: string): void {
   if (existsSync(sessionsFile)) {
     commitThroughDomain({
       domain: 'group',
-      entityType: 'session',
+      // D-11：群会话独立实体类型，不与单聊 session 混用
+      entityType: 'group_session',
       puts: [],
       deletes: sessions.map((s) => ({ entityId: s.id, parentId: groupId })),
       files: [{ path: sessionsFile, content: null }],
@@ -225,7 +227,8 @@ function saveSessions(groupId: string, sessions: GroupSession[]): void {
 
   commitThroughDomain({
     domain: 'group',
-    entityType: 'session',
+    // D-11：群会话独立实体类型
+    entityType: 'group_session',
     puts: sessions
       .filter((s) => previousById.get(s.id) !== JSON.stringify(s))
       .map((s) => ({
@@ -335,7 +338,8 @@ function writeMessages(groupId: string, sessionId: string, messages: GroupMessag
   const nextIds = new Set(messages.map(m => m.id))
   commitThroughDomain({
     domain: 'group',
-    entityType: 'message',
+    // D-11：群消息独立实体类型
+    entityType: 'group_message',
     puts: messages
       .filter((m) => {
         const before = previous.get(m.id)
@@ -361,7 +365,8 @@ function appendMessage(groupId: string, sessionId: string, message: GroupMessage
   mkdirSync(dir, { recursive: true })
   commitThroughDomain({
     domain: 'group',
-    entityType: 'message',
+    // D-11：群消息独立实体类型
+    entityType: 'group_message',
     puts: [
       {
         entityId: message.id,

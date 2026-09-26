@@ -23,6 +23,8 @@ export interface WriteResult {
 export interface DomainFileWrite {
   path: string
   content: string | null
+  /** true = 追加到文件末尾（JSONL）；false/缺省 = 整文件写入。journal 路径必须保留此语义 */
+  append?: boolean
 }
 
 export interface PutInput {
@@ -445,7 +447,7 @@ export class PcDomainRepository {
 }
 
 function toStagedWrites(files: DomainFileWrite[]): StagedFileWrite[] {
-  return files.map((f) => ({ path: f.path, content: f.content }))
+  return files.map((f) => ({ path: f.path, content: f.content, append: f.append === true }))
 }
 
 export function defaultSyncMetaPath(userDataDir: string): string {

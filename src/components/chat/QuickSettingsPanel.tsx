@@ -649,11 +649,11 @@ export function QuickSettingsPanel({
                 </p>
               ) : settings.costReminderEnabled !== false && outputBudgetPreview.requestMaxTokens >= 4096 ? (
                 <p>
-                  本轮最多可申请 {outputBudgetPreview.requestMaxTokens.toLocaleString()} Token；费用仍按服务商实际用量计算。
+                  本轮回复预算较充足；若需严格控制花费，可在预设「高级参数」里设置输出上限。
                 </p>
               ) : (
                 <p>
-                  回复篇幅与模型输出硬上限解耦：此处只选篇幅偏好，硬上限在“预设”高级参数中设置。
+                  只选篇幅偏好即可，系统会自动安排输出；无需填写 Token。
                 </p>
               )
             }
@@ -801,7 +801,7 @@ export function QuickSettingsPanel({
               <div className="flex items-center justify-between gap-2 py-0.5">
                 <span
                   className="text-xs text-tavern-text-soft select-none"
-                  title="仅首轮/关闭可节省每轮固定 token 成本"
+                  title="仅首轮/关闭可节省每轮固定开销"
                 >
                   对话示例发送
                 </span>
@@ -824,7 +824,7 @@ export function QuickSettingsPanel({
                         帮助 AI 模仿角色的语气、口癖与格式（few-shot）。
                       </p>
                       <p className="mt-1.5 pt-1.5 border-t border-tavern-border-soft">
-                        仅首轮 / 关闭可节省每轮固定的 token 开销。
+                        仅首轮 / 关闭可节省每轮固定开销。
                       </p>
                     </>
                   }

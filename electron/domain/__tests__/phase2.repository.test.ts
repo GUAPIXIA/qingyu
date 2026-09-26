@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { DeviceIdentityStore } from '../deviceIdentity'
 import { SyncMetaDb } from '../syncMeta'
@@ -169,5 +169,68 @@ describe('phase2 sync-meta + repository', () => {
     const latest = meta.getLatestCheckpoint('bootstrap')
     expect(latest?.id).toBe('cp-1')
     expect(latest?.hash).toBe('sha256:abc')
+  })
+})
+
+describe('phase2 putWithJournal append 语义（PCE-01 回归）', () => {
+  let dir: string
+  let userData: string
+  let meta: SyncMetaDb
+  let repo: PcDomainRepository
+  let jsonl: string
+
+  beforeEach(() => {
+    dir = makeTemp()
+    userData = join(dir, 'userdata')
+    const identity = new DeviceIdentityStore(join(userData, 'data/config/sync-device-identity.json'))
+    identity.loadOrCreate()
+    meta = new SyncMetaDb(join(userData, 'data/config/sync-meta.db'))
+    repo = new PcDomainRepository({ meta, identity, userDataDir: userData })
+    jsonl = join(userData, 'data/chats/c1/s1.jsonl')
+  })
+
+  afterEach(() => {
+    meta.close()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('append:true 追加而不覆盖既有行（否则 journal 路径会抹掉历史消息）', () => {
+    mkdirSync(join(userData, 'data/chats/c1'), { recursive: true })
+    writeFileSync(jsonl, '{"id":"m1","content":"one"}\n', 'utf8')
+
+    repo.putWithJournal({
+      entityType: 'message',
+      entityId: 'm2',
+      payload: { id: 'm2', content: 'two' },
+      parentId: 's1',
+      files: [{ path: jsonl, content: '{"id":"m2","content":"two"}\n', append: true }],
+    })
+    repo.putWithJournal({
+      entityType: 'message',
+      entityId: 'm3',
+      payload: { id: 'm3', content: 'three' },
+      parentId: 's1',
+      files: [{ path: jsonl, content: '{"id":"m3","content":"three"}\n', append: true }],
+    })
+
+    const text = readFileSync(jsonl, 'utf8')
+    const lines = text.trim().split('\n')
+    expect(lines).toHaveLength(3)
+    expect(text).toContain('"id":"m1"')
+    expect(text).toContain('"id":"m2"')
+    expect(text).toContain('"id":"m3"')
+  })
+
+  it('append 路径 journal 仍记 3 条 change', () => {
+    mkdirSync(join(userData, 'data/chats/c1'), { recursive: true })
+    writeFileSync(jsonl, '{"id":"m1"}\n', 'utf8')
+    repo.putWithJournal({
+      entityType: 'message',
+      entityId: 'm2',
+      payload: { id: 'm2' },
+      parentId: 's1',
+      files: [{ path: jsonl, content: '{"id":"m2"}\n', append: true }],
+    })
+    expect(meta.countChanges('local')).toBe(1)
   })
 })

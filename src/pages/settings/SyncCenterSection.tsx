@@ -124,14 +124,12 @@ export function SyncCenterSection() {
     setBusy(true)
     setError(null)
     try {
-      const bridge = await window.api.bridge.status()
-      const bound = bridge.bound ?? { host: bridge.config.host || '127.0.0.1', port: bridge.config.port || 8321 }
-      const pairing = await window.api.bridge.pairingInfo()
+      const endpoint = await window.api.syncCenter.lanEndpoint()
       const st = await window.api.syncCenter.startLanAuth({
-        host: bound.host,
-        port: bound.port,
-        fingerprint: pairing.fingerprint,
-        displayName: pairing.displayName || 'PC',
+        host: endpoint.host,
+        port: endpoint.port,
+        fingerprint: endpoint.fingerprint,
+        displayName: endpoint.displayName || 'PC',
       })
       setStatus(st)
       setShortAuthInput('')

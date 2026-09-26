@@ -639,7 +639,6 @@ export function saveCharacterThroughDomain(character: Character): void {
   const filePath = join(characterDir, `${character.id}.json`)
 
   // JSON 中不存 base64，只存空字符串（图片从文件读取）
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { avatar: _avatar, cover: _cover, ...rest } = character
   const files: DomainWriteFile[] = [
     { path: filePath, content: serializeJson({ ...rest, avatar: '', cover: '' }) },
@@ -679,7 +678,6 @@ function normalizeStoredTags(char: Character): boolean {
 
 /** tags 脏数据回写修复：经角色域事务提交，避免绕过 journal */
 function repairStoredCharacter(char: Character, filePath: string, entityId: string): void {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 剥离头像字段，仅保留 rest 写入
   const { avatar: _a, cover: _c, ...rest } = char as unknown as Character & { avatar?: string; cover?: string }
   writeThroughDomain({
     domain: 'character',

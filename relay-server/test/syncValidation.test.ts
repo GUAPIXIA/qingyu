@@ -6,8 +6,6 @@ import {
   validateVersionVector,
   validateWireEntity,
   validatePushBatch,
-  isValidBatchId,
-  isValidCursor,
 } from '../src/sync/validation.js'
 import { checkQuota, DEFAULT_QUOTA, quotaSnapshotFromDefaults } from '../src/sync/quota.js'
 import { canTransition, computeRequestHash, isTerminal, mergeKnownVector } from '../src/sync/session.js'

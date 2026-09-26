@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { buildSyncPlan, headsRootHash, planFingerprint } from '../sync-core/plan'
+import { buildSyncPlan, headsRootHash } from '../sync-core/plan'
 import {
   sortBatch,
   batchPhaseOf,
@@ -165,7 +165,7 @@ describe('sync-core golden', () => {
     const ordered = sortBatch(envelopes)
     const batches = splitBatches(ordered, {
       maxCount: 2,
-      sizeOf: (item) => 100,
+      sizeOf: (_item) => 100,
     })
     writeOrCheck('batch.json', {
       order: ordered.map((o) => ({

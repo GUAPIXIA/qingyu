@@ -1,5 +1,7 @@
 import { importPKCS8, importSPKI, jwtVerify, SignJWT, type JWTPayload } from 'jose'
-import type { RelayRole } from '../../../shared/relayProtocol.js'
+
+/** 设备角色（旧 relayProtocol 已删除，此处内联） */
+export type RelayRole = 'pc' | 'android'
 
 export interface RelayAccessClaims extends JWTPayload {
   iss: 'qingyu-relay'; aud: 'qingyu-relay-client'; sub: string; sid: string; role: RelayRole; tv: number

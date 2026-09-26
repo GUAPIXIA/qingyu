@@ -3,7 +3,7 @@
  */
 import express from 'express'
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { writeFileSync, mkdirSync } from 'node:fs'
 
 const ADB = 'D:/Code/android-sdk/platform-tools/adb.exe'
 const SERIAL = 'emulator-5556'
@@ -11,7 +11,7 @@ const log = (...a) => console.log('[lan-hold]', ...a)
 
 const { buildSyncV1Router, resetSyncV1ForTest, setSyncV1DomainPeekForTest } = await import('../electron/bridge/syncRoutes')
 const { syncLanAuthService } = await import('../electron/domain/syncLanAuth')
-const { setSyncDomainUserDataDirForTest, resetSyncDomainForTest, getSyncDomain } = await import('../electron/domain/syncDomainService')
+const { setSyncDomainUserDataDirForTest, getSyncDomain } = await import('../electron/domain/syncDomainService')
 const { mkdtempSync, mkdirSync: mkdir } = await import('node:fs')
 const { join } = await import('node:path')
 const { tmpdir } = await import('node:os')
@@ -37,7 +37,7 @@ const server = await new Promise((r) => {
   const s = app.listen(0, '0.0.0.0', () => r(s))
 })
 const port = server.address().port
-try { execFileSync(ADB, ['-s', SERIAL, 'reverse', '--remove-all'], { stdio: 'pipe' }) } catch {}
+try { execFileSync(ADB, ['-s', SERIAL, 'reverse', '--remove-all'], { stdio: 'pipe' }) } catch { /* 已清空或无既有 reverse */ }
 execFileSync(ADB, ['-s', SERIAL, 'reverse', `tcp:${port}`, `tcp:${port}`], { stdio: 'pipe' })
 log('port', port)
 

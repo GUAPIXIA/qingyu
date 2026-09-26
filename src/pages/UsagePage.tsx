@@ -165,7 +165,7 @@ export function UsagePage() {
           <BarChart3 className="w-5 h-5 text-tavern-accent" aria-hidden />
           <div>
             <h1 className="text-lg font-medium">用量统计</h1>
-            <p className="text-xs text-tavern-text-muted">当前为字符数统计，精确 Token 与费用估算开发中</p>
+            <p className="text-xs text-tavern-text-muted">当前为字符数统计，精确用量与费用估算开发中</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

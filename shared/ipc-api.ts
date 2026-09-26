@@ -820,7 +820,7 @@ export interface SessionSyncAPI {
   onUpdated(callback: (payload: SessionChangePayload) => void): () => void
 }
 
-// ===================== 桥接层接口（阶段一） =====================
+// ===================== 桥接层接口（/sync/v1 服务生命周期） =====================
 
 export interface BridgeConfig {
   enabled: boolean
@@ -832,47 +832,10 @@ export interface BridgeConfig {
 export interface BridgeStatus {
   running: boolean
   config: BridgeConfig
-  bound: { host: string; port: number; clientCount: number } | null
+  bound: { host: string; port: number } | null
 }
 
-export interface PairingInfo {
-  host: string
-  port: number
-  /** 二维码 fingerprint 字段（安卓端将其作为配对码使用；v2 中同值于 pairingCode） */
-  fingerprint: string
-  expiresInSec: number
-  // ===== QR v2（阶段 D-02；旧客户端忽略新增字段，向后兼容）=====
-  /** 稳定服务器 ID（bridgeIdentity uuid） */
-  serverId?: string
-  /** PC 展示名 */
-  displayName?: string
-  /** REST 协议版本 */
-  apiVersion?: number
-  /** 能力声明（QR v2 capabilities；与 /server/info 同集合子集） */
-  capabilities?: string[]
-  /** 配对码到期时间戳（ms；QR v2 expiresAt） */
-  expiresAt?: number
-  /** QR v2 端点候选（当前绑定的局域网 host + 端口） */
-  endpoints?: import('./pairingQr').PairingQrEndpoint[]
-}
-
-export interface BridgeDeviceInfo {
-  deviceId: string
-  name: string
-  fingerprint: string
-  createdAt: number
-  lastSeen: number
-}
-
-/** UEX-P1-21：配对审批请求载荷（expiresAt 为审批有效期截止时间戳 ms） */
-export interface BridgePairRequest {
-  requestId: string
-  deviceName: string
-  /** UEX-P1-21：审批有效期截止时间戳（ms）；可选以兼容旧主进程（缺省时渲染层按「请求到达 + 审批窗口」推算） */
-  expiresAt?: number
-}
-
-/** 阶段一：PC 侧「手机连接」桥接层（设置页 + 配对审批） */
+/** S9-07：Bridge API 仅保留 /sync/v1 服务生命周期（旧伴侣配对/设备管理已删除） */
 export interface BridgeAPI {
   status(): Promise<BridgeStatus>
   start(): Promise<{ ok: boolean; host?: string; port?: number; error?: string }>
@@ -882,42 +845,7 @@ export interface BridgeAPI {
     config?: BridgeConfig
     error?: string
   }>
-  pairingInfo(): Promise<PairingInfo>
-  /** 强制生成新配对码（旧码作废）并返回最新配对信息 */
-  regeneratePairing(): Promise<PairingInfo>
-  /** 生成配对二维码载荷 JSON（D-02）：v2 默认；legacy=旧格式 {host,port,fingerprint} */
-  pairingQrPayload(mode?: 'v2' | 'legacy'): Promise<string>
-  listDevices(): Promise<BridgeDeviceInfo[]>
-  /** UEX-P0-14：吊销失败需回传 error 供 UI 展示 */
-  revokeDevice(deviceId: string): Promise<{ ok: boolean; error?: string }>
-  approvePair(requestId: string): Promise<{ ok: boolean; error?: string }>
-  rejectPair(requestId: string): Promise<{ ok: boolean }>
-  /** 订阅配对审批请求（PC 端人工确认弹窗；UEX-P1-21：载荷附带 expiresAt 供倒计时） */
-  onPairRequest(callback: (data: BridgePairRequest) => void): () => void
   wipeAll(): Promise<{ ok: boolean }>
-}
-
-export type RelayStatus =
-  | { state: 'Disabled' }
-  | { state: 'Registering' | 'Connecting' | 'Online' | 'NeedsAuth' | 'ServiceUnavailable'; baseUrl: string; spaceId?: string }
-  | { state: 'Reconnecting'; baseUrl: string; spaceId?: string; attempt: number; nextAt: number }
-
-export interface RelayDeviceInfo { deviceId: string; name: string; role: 'pc' | 'android'; approvedAt: number; lastSeenAt?: number }
-export interface RelayPairRequest { requestId: string; deviceName: string; expiresAt: number }
-export interface RelayAPI {
-  status(): Promise<RelayStatus>
-  enable(baseUrl: string): Promise<{ ok: boolean; error?: string }>
-  disable(): Promise<{ ok: boolean }>
-  retry(): Promise<{ ok: boolean; error?: string }>
-  createPairTicket(): Promise<import('./relayProtocol').RelayPairingQr>
-  listDevices(): Promise<RelayDeviceInfo[]>
-  /** UEX-P0-14：吊销失败需回传 error 供 UI 展示 */
-  revokeDevice(deviceId: string): Promise<{ ok: boolean; error?: string }>
-  approvePair(requestId: string): Promise<{ ok: boolean }>
-  rejectPair(requestId: string): Promise<{ ok: boolean }>
-  clearCache(): Promise<{ ok: boolean }>
-  onStatusChanged(callback: (status: RelayStatus) => void): () => void
-  onPairRequest(callback: (request: RelayPairRequest) => void): () => void
 }
 
 /** S7-03：LAN 一次性授权状态（不含 secret / 私钥 / 会话密钥） */
@@ -975,6 +903,8 @@ export interface SyncCenterStatus {
 /** 阶段 7 S7-06/S7-07：同步中心 */
 export interface SyncCenterAPI {
   status(): Promise<SyncCenterStatus>
+  /** S9-07：获取 LAN 同步端点信息（host/port/fingerprint/displayName）供 QR 生成 */
+  lanEndpoint(): Promise<{ host: string; port: number; fingerprint: string; displayName: string }>
   startLanAuth(input: { host: string; port: number; fingerprint: string; displayName: string }): Promise<SyncCenterStatus>
   confirmPeer(input: { sessionId: string; shortAuth: string }): Promise<{ ok: boolean; error?: string; status: SyncCenterStatus }>
   revokeLanAuth(): Promise<SyncCenterStatus>
@@ -987,6 +917,47 @@ export interface SyncCenterAPI {
   retireDevice(deviceId: string): Promise<{ ok: boolean; status: SyncCenterStatus }>
   /** S7-08：tombstone 清理 dry-run（只统计，不压缩） */
   tombstoneDryRun(opts?: { retainDays?: number; now?: number }): Promise<SyncTombstoneDryRun>
+  /** S9-01：启用同步域前只读升级预检（可取消；不写业务数据） */
+  runUpgradePrecheck(): Promise<SyncUpgradePrecheckReport>
+  /** S9-02：首次同步 dry-run 引导（标注初始资料侧与 genesis） */
+  buildFirstSyncPlan(input: SyncFirstSyncPlanInput): Promise<SyncFirstSyncPlan>
+}
+
+/** S9-01 预检报告（不含用户正文） */
+export interface SyncUpgradePrecheckReport {
+  ok: boolean
+  items: Array<{
+    kind: string
+    severity: 'block' | 'warn' | 'info'
+    target: string
+    detail: string
+  }>
+  freeBytes: number | null
+  requiredBytes: number
+  scannedAt: number
+}
+
+export interface SyncFirstSyncPlanInput {
+  localEntityCount: number
+  remoteEntityCount: number
+  localGenesisId: string | null
+  remoteGenesisId: string | null
+  localDatasetHash: string | null
+  remoteDatasetHash: string | null
+  localKnown?: Record<string, string>
+  remoteKnown?: Record<string, string>
+}
+
+export interface SyncFirstSyncPlan {
+  initialSide: 'local_pc' | 'remote_peer' | 'undetermined'
+  items: Array<{
+    kind: string
+    severity: 'info' | 'warn' | 'block'
+    message: string
+  }>
+  sameHashConvergeCount: number
+  trueConflictHint: string
+  allowFullReplaceWithConfirm: boolean
 }
 
 export interface SyncPeerDevice {
@@ -1055,7 +1026,6 @@ export interface ExposedAPI {
   updater: UpdaterAPI
   sessionSync: SessionSyncAPI
   bridge: BridgeAPI
-  relay: RelayAPI
   syncLan: SyncLanAPI
   syncCenter: SyncCenterAPI
   app: AppAPI

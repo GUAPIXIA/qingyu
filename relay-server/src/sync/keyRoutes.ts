@@ -5,9 +5,9 @@
  * 不解析 spaceKey，不替换公钥后伪造签名。
  * 批准必须由已有设备带外核对后签名——仅服务端列表点击设备名不构成批准。
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance } from 'fastify'
 import type pg from 'pg'
-import { randomUUID, createHash } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { requireRelayAuth } from '../auth/middleware.js'
 import type { AccessTokenService, RelayAccessClaims } from '../auth/accessToken.js'
 import { withTenantTransaction } from '../db/tenantTransaction.js'

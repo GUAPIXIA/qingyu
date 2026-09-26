@@ -550,7 +550,7 @@ export function ChatPage() {
       {showMemoryHint && (
         <div className="relative z-10 flex items-center gap-2 px-4 py-1.5 text-xs bg-tavern-accent-soft border-b border-tavern-border-soft animate-fade-in">
           <Sparkles className="w-3.5 h-3.5 text-tavern-accent shrink-0" />
-          <span className="flex-1 text-tavern-text-soft truncate">对话较长，开启自动摘要可节省 token 并保持主题连贯</span>
+          <span className="flex-1 text-tavern-text-soft truncate">对话较长，开启自动摘要可节省开销并保持主题连贯</span>
           <button
             onClick={handleEnableAutoMemory}
             className="px-2 py-0.5 rounded font-medium text-tavern-accent hover:bg-tavern-accent/10 transition-colors shrink-0"
@@ -575,7 +575,7 @@ export function ChatPage() {
         )}>
           <AlertTriangle className={cn('w-3.5 h-3.5 shrink-0', contextUsage.ratio >= 1 ? 'text-tavern-danger' : 'text-tavern-warning')} />
           <span className="flex-1 text-tavern-text-soft truncate">
-            上下文已使用 {contextUsage.pct}%（{contextUsage.used}/{contextUsage.max} token）
+            上下文已使用 {contextUsage.pct}%
             {contextUsage.ratio >= 1 ? '，将裁剪早期历史' : '，接近上限将裁剪早期历史'}
           </span>
           <button

@@ -8,7 +8,7 @@ import type { MessagePort, PersistUserMessage, PersistAssistantMessage } from '.
 
 export const chatMessagePort: MessagePort = {
   async findSession(sessionId, characterId) {
-    const { findSessionById, findSessionByCharacterId } = await import('../bridge/sessionsIndex')
+    const { findSessionById, findSessionByCharacterId } = await import('./sessionLookup')
     const s = characterId ? await findSessionByCharacterId(characterId, sessionId) : await findSessionById(sessionId)
     if (!s) return null
     return { id: s.id, sessionId: s.id, characterId: s.characterId, narrativeMode: s.narrativeMode }
@@ -16,7 +16,7 @@ export const chatMessagePort: MessagePort = {
 
   async findByRequestId(sessionId, requestId) {
     // 扫描该会话的消息，查找 requestId 匹配（Message.requestId 为可选字段，0.12 后写入）
-    const { listAllSessions } = await import('../bridge/sessionsIndex')
+    const { listAllSessions } = await import('./sessionLookup')
     const all = await listAllSessions()
     const target = all.find((s) => s.id === sessionId)
     if (!target) return null
@@ -71,7 +71,7 @@ export const chatMessagePort: MessagePort = {
   },
 
   async findMessage(sessionId, messageId) {
-    const { listAllSessions } = await import('../bridge/sessionsIndex')
+    const { listAllSessions } = await import('./sessionLookup')
     const all = await listAllSessions()
     const target = all.find((s) => s.id === sessionId)
     if (!target) return null
@@ -82,7 +82,7 @@ export const chatMessagePort: MessagePort = {
   },
 
   async appendSwipedCandidate(messageId, content, generationKind = 'regenerate') {
-    const { listAllSessions } = await import('../bridge/sessionsIndex')
+    const { listAllSessions } = await import('./sessionLookup')
     const all = await listAllSessions()
     for (const s of all) {
       const msgs = chatData.readMessages(s.characterId, s.id)

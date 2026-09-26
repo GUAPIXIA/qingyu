@@ -9,14 +9,13 @@
  */
 import type { FastifyInstance } from 'fastify'
 import type pg from 'pg'
-import { randomUUID, createHash } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { requireRelayAuth } from '../auth/middleware.js'
 import type { AccessTokenService, RelayAccessClaims } from '../auth/accessToken.js'
 import { withTenantTransaction } from '../db/tenantTransaction.js'
 import { sendRelayError } from '../http/relayErrors.js'
 import type { MetricsRegistry } from '../observability/metrics.js'
 import type { ObjectStore } from './objectStore.js'
-import { cipherHashOf } from './objectStore.js'
 import { DEFAULT_QUOTA, checkQuota, type QuotaSnapshot } from './quota.js'
 import {
   canTransition,
@@ -36,7 +35,6 @@ import {
   type ValidationError,
 } from './validation.js'
 import {
-  SYNC_BATCH_MAX_ITEMS,
   SYNC_PULL_MAX_ITEMS,
   SYNC_PROTOCOL_VERSION,
   type CommitReceipt,
@@ -46,7 +44,6 @@ import {
   type PullRequestBody,
   type SessionResponse,
   type SyncSessionState,
-  type WireEntity,
 } from './types.js'
 
 export interface SyncRoutesOptions {
@@ -418,7 +415,7 @@ export async function syncRoutes(app: FastifyInstance, options: SyncRoutesOption
     // 写入 heads + changes + 批次缓存（原子）
     const writeResult = await withTenantTransaction(pool, claims.sid, async (client) => {
       let accepted = 0
-      let rejected = 0
+      const rejected = 0
       let maxSeq = '0'
       let newEntityDelta = 0
       let newBytesDelta = 0

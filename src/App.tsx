@@ -5,7 +5,6 @@ import { useCharacterStore } from './store/useCharacterStore'
 import { useChatStore } from './store/useChatStore'
 import { useGroupChatStore } from './store/useGroupChatStore'
 import { useSessionSync } from './hooks/useSessionSync'
-import { usePairApproval } from './hooks/usePairApproval'
 import { BUILTIN_FONTS } from './utils/defaults'
 import { logError } from './lib/logger'
 import { pushToast } from './store/useToastStore'
@@ -39,10 +38,8 @@ export default function App() {
   const { loadCharacters } = useCharacterStore()
   const [paletteOpen, setPaletteOpen] = useState(false)
 
-  // 阶段 0c：会话变更事件总线订阅（PC 双窗口同步；桥接层 WS 转推在阶段一接线）
+  // 阶段 0c：会话变更事件总线订阅（PC 双窗口同步）
   useSessionSync()
-  // 阶段一：配对审批弹窗（PC 端人工确认，方案 §5.1）——返回值必须渲染，否则弹窗不显示
-  const pairApproval = usePairApproval()
 
   // 初始化加载
   useEffect(() => {
@@ -219,7 +216,6 @@ export default function App() {
           <a href="?" className="underline hover:no-underline">退出预览</a>
         </div>
       )}
-      {pairApproval}
       <Routes>
       <Route path="/" element={<MainLayout />}>
         <Route index element={<Navigate to="/chat" replace />} />

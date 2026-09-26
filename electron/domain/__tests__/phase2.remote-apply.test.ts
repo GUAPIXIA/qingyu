@@ -180,11 +180,12 @@ describe('phase2 S2-06 远端批次 staging 应用', () => {
   })
 
   it('不支持实体：显式拒绝且不写 head（不静默丢弃）', () => {
+    // D-12 后 memory_fact 已不在契约内；未知类型走 UNKNOWN_ENTITY_TYPE 显式拒绝
     const summary = applyRemoteBatch(meta, userData, [
-      remoteEnvelope({ entityType: 'memory_fact', entityId: 'f1', payload: { text: '事实' } }),
+      remoteEnvelope({ entityType: 'memory_fact' as never, entityId: 'f1', payload: { text: '事实' } }),
     ])
     expect(summary.applied).toBe(0)
-    expect(summary.rejected[0].code).toBe('UNSUPPORTED_ENTITY')
+    expect(summary.rejected[0].code).toBe('UNKNOWN_ENTITY_TYPE')
     expect(meta.getHead('memory_fact', 'f1')).toBeNull()
   })
 

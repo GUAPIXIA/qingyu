@@ -8,7 +8,7 @@ import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, s
 import { join } from 'node:path'
 import type { BootstrapIssue, BootstrapScanItem } from './types'
 import type { DomainFlagKey } from './featureFlag'
-import { toMobileSafeSettings } from '../bridge/settingsSync'
+import { toMobileSafeSettings } from '../services/settingsRevision'
 import type { Settings } from '../../shared/types'
 
 export interface ScanOutput {

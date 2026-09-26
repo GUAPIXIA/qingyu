@@ -25,7 +25,6 @@ import type {
   UpdaterState,
   SessionSyncAPI,
   BridgeAPI,
-  RelayAPI,
 } from '../shared/ipc-api'
 import type { LocalModelAPI } from '../shared/localModels'
 
@@ -92,25 +91,12 @@ const sessionSyncApi: SessionSyncAPI = {
   },
 }
 
-// ---- 桥接层（阶段一：手机连接） ----
+// ---- 桥接层（/sync/v1 服务生命周期） ----
 const bridgeApi: BridgeAPI = {
   status: () => ipcRenderer.invoke('bridge:status'),
   start: () => ipcRenderer.invoke('bridge:start'),
   stop: () => ipcRenderer.invoke('bridge:stop'),
   setConfig: (partial) => ipcRenderer.invoke('bridge:config', partial),
-  pairingInfo: () => ipcRenderer.invoke('bridge:pairingInfo'),
-  regeneratePairing: () => ipcRenderer.invoke('bridge:pairingInfo', true),
-  pairingQrPayload: (mode) => ipcRenderer.invoke('bridge:pairingQrPayload', mode),
-  listDevices: () => ipcRenderer.invoke('bridge:listDevices'),
-  revokeDevice: (deviceId) => ipcRenderer.invoke('bridge:revokeDevice', deviceId),
-  approvePair: (requestId) => ipcRenderer.invoke('bridge:approvePair', requestId),
-  rejectPair: (requestId) => ipcRenderer.invoke('bridge:rejectPair', requestId),
-  onPairRequest: (callback) => {
-    // UEX-P1-21：原样透传配对请求载荷（含可选 expiresAt，供渲染层过期倒计时）
-    const handler = (_e: unknown, data: Parameters<typeof callback>[0]) => callback(data)
-    ipcRenderer.on('bridge:pairRequest', handler)
-    return () => ipcRenderer.removeListener('bridge:pairRequest', handler)
-  },
   wipeAll: () => ipcRenderer.invoke('bridge:wipeAll'),
 }
 
@@ -129,6 +115,7 @@ const syncLanApi = {
 // ---- 阶段 7 S7-06/S7-07：同步中心 ----
 const syncCenterApi = {
   status: () => ipcRenderer.invoke('syncCenter:status'),
+  lanEndpoint: () => ipcRenderer.invoke('syncCenter:lanEndpoint'),
   startLanAuth: (input: { host: string; port: number; fingerprint: string; displayName: string }) =>
     ipcRenderer.invoke('syncCenter:startLanAuth', input),
   confirmPeer: (input: { sessionId: string; shortAuth: string }) =>
@@ -142,21 +129,17 @@ const syncCenterApi = {
   retireDevice: (deviceId: string) => ipcRenderer.invoke('syncCenter:retireDevice', deviceId),
   tombstoneDryRun: (opts?: { retainDays?: number; now?: number }) =>
     ipcRenderer.invoke('syncCenter:tombstoneDryRun', opts),
-}
-
-const relayApi: RelayAPI = {
-  status: () => ipcRenderer.invoke('relay:status'),
-  enable: (baseUrl) => ipcRenderer.invoke('relay:enable', baseUrl),
-  disable: () => ipcRenderer.invoke('relay:disable'),
-  retry: () => ipcRenderer.invoke('relay:retry'),
-  createPairTicket: () => ipcRenderer.invoke('relay:createPairTicket'),
-  listDevices: () => ipcRenderer.invoke('relay:listDevices'),
-  revokeDevice: (deviceId) => ipcRenderer.invoke('relay:revokeDevice', deviceId),
-  approvePair: (requestId) => ipcRenderer.invoke('relay:approvePair', requestId),
-  rejectPair: (requestId) => ipcRenderer.invoke('relay:rejectPair', requestId),
-  clearCache: () => ipcRenderer.invoke('relay:clearCache'),
-  onStatusChanged: (callback) => { const handler = (_e: unknown, status: Parameters<typeof callback>[0]) => callback(status); ipcRenderer.on('relay:statusChanged', handler); return () => ipcRenderer.removeListener('relay:statusChanged', handler) },
-  onPairRequest: (callback) => { const handler = (_e: unknown, request: Parameters<typeof callback>[0]) => callback(request); ipcRenderer.on('relay:pairRequest', handler); return () => ipcRenderer.removeListener('relay:pairRequest', handler) },
+  runUpgradePrecheck: () => ipcRenderer.invoke('syncCenter:runUpgradePrecheck'),
+  buildFirstSyncPlan: (input: {
+    localEntityCount: number
+    remoteEntityCount: number
+    localGenesisId: string | null
+    remoteGenesisId: string | null
+    localDatasetHash: string | null
+    remoteDatasetHash: string | null
+    localKnown?: Record<string, string>
+    remoteKnown?: Record<string, string>
+  }) => ipcRenderer.invoke('syncCenter:buildFirstSyncPlan', input),
 }
 
 // ---- 角色卡 ----
@@ -444,7 +427,6 @@ contextBridge.exposeInMainWorld('api', {
   group: groupApi,
   sessionSync: sessionSyncApi,
   bridge: bridgeApi,
-  relay: relayApi,
   syncLan: syncLanApi,
   syncCenter: syncCenterApi,
   app: {

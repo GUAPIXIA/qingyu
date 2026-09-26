@@ -2,7 +2,7 @@
  * 生成跨端 E2EE 互操作 fixture（固定测试密钥，生产禁用）。
  * 运行：pnpm exec tsx tools/gen-sync-crypto-fixtures.ts
  */
-import { createCipheriv, createDecipheriv, generateKeyPairSync, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto'
+import { createCipheriv, generateKeyPairSync, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

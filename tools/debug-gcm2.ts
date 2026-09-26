@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv } from 'node:crypto'
+import { createCipheriv } from 'node:crypto'
 
 // NIST GCM AES-256 empty PT/AAD
 const key = Buffer.alloc(32, 0)

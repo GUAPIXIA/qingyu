@@ -3,10 +3,9 @@ import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { Sliders, Plus, Upload, Trash2, Shield, Copy, Download, Sparkles, Play, Loader2, Wand2, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { Sliders, SlidersHorizontal, Plus, Upload, Trash2, Shield, Copy, Download, Sparkles, Play, Loader2, Wand2, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { BUILTIN_TEMPLATE_NAMES } from '../utils/chatTemplates'
 import { cn } from '../lib/utils'
-import { estimateTokens } from '../utils/tokenCounter'
 import { parsePresetGeneration } from '../utils/presetGen'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useToastStore } from '../store/useToastStore'
@@ -32,6 +31,15 @@ const TEMPLATE_LABELS: Record<string, string> = {
   alpaca: 'Alpaca',
   gemma: 'Gemma',
   'command-r': 'Command R',
+}
+
+/** 提示词体量用人话描述，避免默认路径暴露 Token 估算 */
+function describePromptBulk(preset: Pick<Preset, 'systemPrompt' | 'jailbreak'>): string {
+  const chars = (preset.systemPrompt?.length ?? 0) + (preset.jailbreak?.length ?? 0)
+  if (chars === 0) return '空白'
+  if (chars < 400) return '简短'
+  if (chars < 1200) return '适中'
+  return '偏长'
 }
 
 function createPreset(): Preset {
@@ -64,6 +72,7 @@ export function PresetsPage() {
   const importNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // AI 生成预设
   const [aiGenOpen, setAiGenOpen] = useState(false)
+  const [presetAdvancedOpen, setPresetAdvancedOpen] = useState(false)
   const [aiGenDesc, setAiGenDesc] = useState('')
   const [aiGenBusy, setAiGenBusy] = useState(false)
   const [aiGenError, setAiGenError] = useState<string | null>(null)
@@ -505,16 +514,10 @@ TopP: <0-1>
                           </p>
                           <div className="flex flex-wrap gap-1.5">
                             <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                              温度 {preset.temperature}
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                              TopP {preset.topP}
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
                               篇幅 {RESPONSE_LENGTH_LABELS[preset.responseLengthHint ?? 'auto']}
                             </span>
                             <span className="px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft text-xs">
-                              上下文 {preset.maxContext > 0 ? preset.maxContext : '跟随模型'}
+                              {preset.temperature >= 1 ? '偏创意' : preset.temperature <= 0.6 ? '偏稳定' : '平衡'}
                             </span>
                           </div>
                         </div>
@@ -623,13 +626,11 @@ TopP: <0-1>
               />
             </div>
 
-            {/* Token 预算预览（第二批）：提示词体量直观可见 */}
+            {/* 提示词体量：默认路径用「简短/适中/偏长」，不暴露 Token */}
             <div className="px-3 py-2 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft text-xs flex items-center gap-3 flex-wrap">
-              <span className="text-tavern-text-muted">提示词占用（估算）：</span>
-              <span className="text-tavern-text-soft">System Prompt ≈ {estimateTokens(editingPreset.systemPrompt || '')} tok</span>
-              <span className="text-tavern-text-soft">Jailbreak ≈ {estimateTokens(editingPreset.jailbreak || '')} tok</span>
-              <span className="text-tavern-accent font-medium">合计 ≈ {estimateTokens((editingPreset.systemPrompt || '') + '\n\n' + (editingPreset.jailbreak || ''))} tok</span>
-              <span className="text-tavern-text-muted/70">不含角色设定与世界书，实际以模型为准</span>
+              <span className="text-tavern-text-muted">提示词体量：</span>
+              <span className="text-tavern-accent font-medium">{describePromptBulk(editingPreset)}</span>
+              <span className="text-tavern-text-muted/70">不含角色设定与世界书，仅作参考</span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -679,10 +680,24 @@ TopP: <0-1>
               </div>
             </div>
 
-            {/* 采样参数快捷模板 */}
+            {/* 回复与采样：默认只给「人话」控件 */}
             <div>
-              <label className="label">采样参数</label>
-              <div className="flex gap-2 mb-3">
+              <label className="label">回复篇幅</label>
+              <select
+                className="input"
+                value={editingPreset.responseLengthHint ?? 'auto'}
+                onChange={(e) => updateField('responseLengthHint', e.target.value as ResponseLengthMode)}
+              >
+                {(Object.keys(RESPONSE_LENGTH_LABELS) as ResponseLengthMode[]).map((mode) => (
+                  <option key={mode} value={mode}>{RESPONSE_LENGTH_LABELS[mode]}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-tavern-text-muted">系统会按篇幅自动安排输出，无需填写 Token。</p>
+            </div>
+
+            <div>
+              <label className="label">文风手感</label>
+              <div className="flex gap-2">
                 {[
                   { name: '创意', temp: 1.1, topP: 0.98, fp: 0.3, pp: 0.3, desc: '高随机，剧情发散' },
                   { name: '平衡', temp: 0.8, topP: 0.95, fp: 0, pp: 0, desc: '通用默认' },
@@ -690,6 +705,7 @@ TopP: <0-1>
                 ].map((tpl) => (
                   <button
                     key={tpl.name}
+                    type="button"
                     title={tpl.desc}
                     onClick={() => {
                       updateField('temperature', tpl.temp)
@@ -708,91 +724,97 @@ TopP: <0-1>
                   </button>
                 ))}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">温度：{editingPreset.temperature}</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  value={editingPreset.temperature}
-                  onChange={(e) => updateField('temperature', Number(e.target.value))}
-                  className="w-full accent-tavern-accent"
-                />
-              </div>
-              <div>
-                <label className="label">Top P：{editingPreset.topP}</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={editingPreset.topP}
-                  onChange={(e) => updateField('topP', Number(e.target.value))}
-                  className="w-full accent-tavern-accent"
-                />
-              </div>
-              <div>
-                <label className="label">回复篇幅</label>
-                <select
-                  className="input"
-                  value={editingPreset.responseLengthHint ?? 'auto'}
-                  onChange={(e) => updateField('responseLengthHint', e.target.value as ResponseLengthMode)}
-                >
-                  {(Object.keys(RESPONSE_LENGTH_LABELS) as ResponseLengthMode[]).map((mode) => (
-                    <option key={mode} value={mode}>{RESPONSE_LENGTH_LABELS[mode]}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">模型输出硬上限（Token，0 = 自动）</label>
-                <input
-                  type="number"
-                  min={0}
-                  className="input"
-                  value={editingPreset.maxTokens}
-                  onChange={(e) => updateField('maxTokens', Math.max(0, Number(e.target.value) || 0))}
-                />
-                {presetBudgetPreview?.riskMessage && (
-                  <p className="mt-1 text-xs text-amber-500">{presetBudgetPreview.riskMessage}</p>
-                )}
-              </div>
-              <div>
-                <label className="label">上下文长度（0 = 跟随模型）</label>
-                <input
-                  type="number"
-                  min={0}
-                  className="input"
-                  value={editingPreset.maxContext}
-                  onChange={(e) => updateField('maxContext', Number(e.target.value) || 0)}
-                />
-              </div>
-              <div>
-                <label className="label">频率惩罚：{editingPreset.frequencyPenalty}</label>
-                <input
-                  type="range"
-                  min={-2}
-                  max={2}
-                  step={0.1}
-                  value={editingPreset.frequencyPenalty}
-                  onChange={(e) => updateField('frequencyPenalty', Number(e.target.value))}
-                  className="w-full accent-tavern-accent"
-                />
-              </div>
-              <div>
-                <label className="label">存在惩罚：{editingPreset.presencePenalty}</label>
-                <input
-                  type="range"
-                  min={-2}
-                  max={2}
-                  step={0.1}
-                  value={editingPreset.presencePenalty}
-                  onChange={(e) => updateField('presencePenalty', Number(e.target.value))}
-                  className="w-full accent-tavern-accent"
-                />
-              </div>
-              </div>
+            </div>
+
+            {/* 高级采样与上限：默认折叠，日常路径不要求理解 Token */}
+            <div className="rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/40">
+              <button
+                type="button"
+                onClick={() => setPresetAdvancedOpen((v) => !v)}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-tavern-text-soft hover:text-tavern-accent transition-colors"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                高级参数
+                <span className="ml-auto text-[11px] text-tavern-text-muted font-normal">
+                  {presetAdvancedOpen ? '收起' : '温度、上限等'}
+                </span>
+                {presetAdvancedOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              </button>
+              {presetAdvancedOpen && (
+                <div className="px-3 pb-3 grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">温度：{editingPreset.temperature}</label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      value={editingPreset.temperature}
+                      onChange={(e) => updateField('temperature', Number(e.target.value))}
+                      className="w-full accent-tavern-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Top P：{editingPreset.topP}</label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={editingPreset.topP}
+                      onChange={(e) => updateField('topP', Number(e.target.value))}
+                      className="w-full accent-tavern-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">模型输出硬上限（0 = 自动）</label>
+                    <input
+                      type="number"
+                      min={0}
+                      className="input"
+                      value={editingPreset.maxTokens}
+                      onChange={(e) => updateField('maxTokens', Math.max(0, Number(e.target.value) || 0))}
+                    />
+                    {presetBudgetPreview?.riskMessage && (
+                      <p className="mt-1 text-xs text-amber-500">{presetBudgetPreview.riskMessage}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="label">上下文长度（0 = 跟随模型）</label>
+                    <input
+                      type="number"
+                      min={0}
+                      className="input"
+                      value={editingPreset.maxContext}
+                      onChange={(e) => updateField('maxContext', Number(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">频率惩罚：{editingPreset.frequencyPenalty}</label>
+                    <input
+                      type="range"
+                      min={-2}
+                      max={2}
+                      step={0.1}
+                      value={editingPreset.frequencyPenalty}
+                      onChange={(e) => updateField('frequencyPenalty', Number(e.target.value))}
+                      className="w-full accent-tavern-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">存在惩罚：{editingPreset.presencePenalty}</label>
+                    <input
+                      type="range"
+                      min={-2}
+                      max={2}
+                      step={0.1}
+                      value={editingPreset.presencePenalty}
+                      onChange={(e) => updateField('presencePenalty', Number(e.target.value))}
+                      className="w-full accent-tavern-accent"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 预设测试器（第三批） */}
@@ -830,7 +852,7 @@ TopP: <0-1>
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-tavern-text-muted">
-                      参数：温度 {editingPreset.temperature} · TopP {editingPreset.topP} · 篇幅 {RESPONSE_LENGTH_LABELS[editingPreset.responseLengthHint ?? 'auto']} · 硬上限 {editingPreset.maxTokens} tok
+                      参数：温度 {editingPreset.temperature} · TopP {editingPreset.topP} · 篇幅 {RESPONSE_LENGTH_LABELS[editingPreset.responseLengthHint ?? 'auto']}
                     </span>
                     <button
                       onClick={() => navigator.clipboard.writeText(testOutput)}

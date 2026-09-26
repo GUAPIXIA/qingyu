@@ -6,6 +6,8 @@
 import type { IpcMain } from 'electron'
 import { getSyncDomain, getSyncHealth, isSyncReady, markNeedsFullRescan } from '../domain/syncDomainService'
 import { syncLanAuthService } from '../domain/syncLanAuth'
+import { bridgeService, getMachineFingerprint } from '../bridge'
+import { getServerDisplayName } from '../bridge/identity'
 import { suggestConflictResolution } from '../../shared/sync-core/conflictSuggest'
 import {
   tombstoneDryRun,
@@ -14,6 +16,9 @@ import {
 } from '../../shared/sync-core/tombstone'
 import type { VersionVector } from '../../shared/contracts/version-vector'
 import { createLogger } from '../services/logger'
+import { runUpgradePrecheck } from '../domain/upgradePrecheck'
+import { buildFirstSyncPlan } from '../domain/firstSyncPlan'
+import { app } from 'electron'
 
 const log = createLogger('sync-center')
 
@@ -114,6 +119,17 @@ function centerStatus(): SyncCenterStatus {
 
 export function registerSyncCenterIPC(ipcMain: IpcMain): void {
   ipcMain.handle('syncCenter:status', () => centerStatus())
+
+  ipcMain.handle('syncCenter:lanEndpoint', () => {
+    const bound = bridgeService.getBoundInfo()
+    const config = bridgeService.getConfig()
+    return {
+      host: bound?.host || config.host || '127.0.0.1',
+      port: bound?.port || config.port || 8321,
+      fingerprint: getMachineFingerprint(),
+      displayName: getServerDisplayName(),
+    }
+  })
 
   ipcMain.handle(
     'syncCenter:startLanAuth',
@@ -289,4 +305,71 @@ export function registerSyncCenterIPC(ipcMain: IpcMain): void {
       }
     }
   })
+
+  // ---------- S9-01：启用同步域前只读升级预检 ----------
+  ipcMain.handle('syncCenter:runUpgradePrecheck', () => {
+    try {
+      const userDataDir = app.getPath('userData')
+      return runUpgradePrecheck(userDataDir)
+    } catch (e) {
+      log.warn('runUpgradePrecheck 失败', { error: (e as Error).message })
+      return {
+        ok: false,
+        items: [
+          {
+            kind: 'schema_mismatch',
+            severity: 'block' as const,
+            target: 'precheck',
+            detail: (e as Error).message,
+          },
+        ],
+        freeBytes: null,
+        requiredBytes: 0,
+        scannedAt: Date.now(),
+      }
+    }
+  })
+
+  // ---------- S9-02：首次同步 dry-run 引导 ----------
+  ipcMain.handle(
+    'syncCenter:buildFirstSyncPlan',
+    (_e, input: {
+      localEntityCount: number
+      remoteEntityCount: number
+      localGenesisId: string | null
+      remoteGenesisId: string | null
+      localDatasetHash: string | null
+      remoteDatasetHash: string | null
+      localKnown?: Record<string, string>
+      remoteKnown?: Record<string, string>
+    }) => {
+      try {
+        return buildFirstSyncPlan({
+          localEntityCount: input?.localEntityCount ?? 0,
+          remoteEntityCount: input?.remoteEntityCount ?? 0,
+          localGenesisId: input?.localGenesisId ?? null,
+          remoteGenesisId: input?.remoteGenesisId ?? null,
+          localDatasetHash: input?.localDatasetHash ?? null,
+          remoteDatasetHash: input?.remoteDatasetHash ?? null,
+          localKnown: input?.localKnown ?? {},
+          remoteKnown: input?.remoteKnown ?? {},
+        })
+      } catch (e) {
+        log.warn('buildFirstSyncPlan 失败', { error: (e as Error).message })
+        return {
+          initialSide: 'undetermined' as const,
+          items: [
+            {
+              kind: 'full_replace_warning',
+              severity: 'warn' as const,
+              message: (e as Error).message,
+            },
+          ],
+          sameHashConvergeCount: 0,
+          trueConflictHint: '计划生成失败',
+          allowFullReplaceWithConfirm: true,
+        }
+      }
+    },
+  )
 }

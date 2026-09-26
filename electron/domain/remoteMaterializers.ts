@@ -324,14 +324,6 @@ function mcpPublicMaterializer(ctx: MaterializeContext): MaterializeResult {
   return { files: [{ path: filePath, content: JSON.stringify([...byId.values()], null, 2) }], unsupported: [] }
 }
 
-/** PC 存储没有独立落点的实体类型：显式报告，不静默丢弃 */
-function unsupportedMaterializer(reason: string): Materializer {
-  return (ctx) => ({
-    files: [],
-    unsupported: ctx.envelopes.map((env) => ({ entityId: env.entityId, reason })),
-  })
-}
-
 export const MATERIALIZERS: Record<SyncEntityType, Materializer> = {
   character: (ctx) => entityPerFile(join(dataRoot(ctx.userDataDir), 'characters'), ctx, (env) => env.payload as Record<string, unknown>),
   preset: (ctx) => entityPerFile(join(dataRoot(ctx.userDataDir), 'presets'), ctx, (env) => env.payload as Record<string, unknown>),
@@ -344,12 +336,12 @@ export const MATERIALIZERS: Record<SyncEntityType, Materializer> = {
     arrayFile(join(dataRoot(ctx.userDataDir), 'config', 'lorebook-mapping-templates.json'), ctx, (env) => env.payload as Record<string, unknown>),
   session: sessionMaterializer,
   message: messageMaterializer,
+  // D-11：群会话/群消息独立实体类型（与单聊 session/message 分开物化）
+  group_session: sessionMaterializer,
+  group_message: messageMaterializer,
   settings_public: settingsPublicMaterializer,
   quick_reply_set: quickReplyMaterializer,
   mcp_public_config: mcpPublicMaterializer,
-  media_manifest: unsupportedMaterializer('PC 尚无 media_manifest 独立落点（阶段 7 引入 blob 存储后实现）'),
-  memory_state: unsupportedMaterializer('PC 的长记忆内嵌在 session 实体中，无独立落点'),
-  memory_fact: unsupportedMaterializer('PC 的事实记录内嵌在 session 实体中，无独立落点'),
   usage_clear_marker: () => ({
     // usage_clear_marker 不需要改文件：它由 head/journal 记录，实际清理语义由阶段 7 sync core 应用
     files: [],

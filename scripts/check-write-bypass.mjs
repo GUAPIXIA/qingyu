@@ -22,7 +22,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const strict = process.argv.includes('--strict')
 const verbose = process.argv.includes('--verbose')
 
-const SCAN_DIRS = ['electron/ipc', 'electron/bridge', 'electron/services']
+const SCAN_DIRS = ['electron/ipc', 'electron/bridge', 'electron/services', 'electron/mcp']
 
 /**
  * 原始写调用：只列真正落盘的底层原语。
@@ -91,9 +91,7 @@ const SYNC_DOMAIN_FILES = [
   'electron/ipc/group.ts',
   'electron/ipc/usage.ts',
   'electron/ipc/mcp.ts',
-  'electron/bridge/chatService.ts',
-  'electron/bridge/routes.ts',
-  'electron/bridge/dialogueDirections.ts',
+  'electron/bridge/syncRoutes.ts',
   'electron/services/usage.ts',
   'electron/services/charCard.ts',
   'electron/services/lorebookDocumentStore.ts',
@@ -106,7 +104,6 @@ const SYNC_DOMAIN_FILES = [
  * 连接/凭据/日志/本地模型/向量索引/诊断/更新器等，允许原样直写。
  */
 const LOCAL_ONLY_FILES = [
-  'electron/bridge/auth.ts',
   'electron/bridge/identity.ts',
   'electron/bridge/index.ts',
   'electron/ipc/announcement.ts',
@@ -124,7 +121,6 @@ const LOCAL_ONLY_FILES = [
   'electron/services/migration.ts',
   'electron/services/settingsChangeBus.ts',
   'electron/services/filePersistence.ts',
-  'electron/services/sessionSync.ts',
   'electron/mcp/manager.ts',
 ]
 

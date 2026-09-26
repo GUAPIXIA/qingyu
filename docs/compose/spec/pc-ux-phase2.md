@@ -1,7 +1,7 @@
 ---
 feature: pc-ux-phase2
-status: in-progress
-updated: 2026-09-20
+status: done
+updated: 2026-09-24
 branch: main
 commits: pending
 ---
@@ -29,12 +29,30 @@ commits: pending
 ## [S3] Out of Scope
 L 波（onboarding、虚拟化、长任务统一进度）；D2/D3 改实现；Android。
 
+## [S4] 核验（2026-09-24）
+
+代码侧 M 波均已落地，对照如下：
+
+| 项 | 证据 |
+|---|---|
+| T1 M5 | `ApiPage` UEX-P1-25 dirty + ConfirmDialog；`CharacterEditor` UEX-P1-15；`TTSModelsSection` Edge 走 `listVoices('edge')` |
+| T2 M6a | `GroupChatInput` `group-draft:{groupId}:{sessionId}`；`GroupChatSettingsPanel` STREAMING_GUARD_TITLE 禁 chatMode/成员 |
+| T3 M7 | `usePairApproval` + Modal `dismissible`；有效期倒计时（UEX-P1-21） |
+| T4 M10 | `PersonasPage` 「当前」徽章 |
+| T5 M11 | `SessionSwitcher` 失焦 `renameDoneRef`；`ChatPage`/`useChatStore` `messagesLoading` |
+| T6 M12 | `CommandPalette`/`App` 双 rAF，无 60ms setTimeout |
+| T7 M4b | `charCard`/`CharactersPage` 同名默认另存副本（UEX-P1-17） |
+
+门禁：相关 vitest（预设/聊天页/设置/快捷设置/群草稿/API dirty/配对/命令面板）通过；`tsc -b --noEmit` 通过。全量 `pnpm lint` 有 **PRE-EXISTING** 未用变量（`remoteMaterializers.ts`、`syncCoreGolden.test.ts`）与 2 处 unused eslint-disable warning，非本阶段引入。
+
+同批产品默认层去 Token 化（预设高级折叠、提示词体量人话、快捷设置/上下文预警文案）见主计划冻结清单 §4。
+
 ## Tasks
-- [ ] T1: M5 表单 dirty + Edge TTS 测试 — acceptance: 切换/取消 dirty 有确认；Edge 不走 OpenAI chat 探测
-- [ ] T2: M6a 群草稿 + 生成中守卫 — acceptance: 切会话草稿隔离；生成中改模式/成员被拦
-- [ ] T3: M7 配对 Modal 化 — acceptance: 遮罩不 reject；失败可见
-- [ ] T4: M10 人设「当前」徽章 — acceptance: 列表能区分当前身份
-- [ ] T5: M11 会话列表补丁 — acceptance: 失焦语义统一；删除跳邻近；有加载态
-- [ ] T6: M12 命令派发去竞态 — acceptance: 无 60ms setTimeout 桥
-- [ ] T7: M4b 同名导入默认副本 — acceptance: 二次导入不静默双份
-- [ ] T8: check/lint/test — acceptance: 通过或注明 PRE-EXISTING
+- [x] T1: M5 表单 dirty + Edge TTS 测试
+- [x] T2: M6a 群草稿 + 生成中守卫
+- [x] T3: M7 配对 Modal 化
+- [x] T4: M10 人设「当前」徽章
+- [x] T5: M11 会话列表补丁
+- [x] T6: M12 命令派发去竞态
+- [x] T7: M4b 同名导入默认副本
+- [x] T8: check/lint/test — 相关 vitest + tsc 通过；全量 lint 标 PRE-EXISTING

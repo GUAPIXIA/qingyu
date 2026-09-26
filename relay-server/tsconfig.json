@@ -11,5 +11,5 @@
     "rootDir": "..",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "../shared/relayProtocol.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

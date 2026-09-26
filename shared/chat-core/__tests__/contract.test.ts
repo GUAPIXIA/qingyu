@@ -3,7 +3,6 @@ import { describe, it, expect } from 'vitest'
 import { validateChatCommand, type ChatCommand } from '../commands'
 import { isAllowedTransition, isTerminalState, type TaskState } from '../events'
 import { createDomainError } from '../errors'
-import { CAPABILITIES, API_VERSION } from '../capabilities'
 
 describe('ChatCommand 校验', () => {
   const base: ChatCommand = {
@@ -51,9 +50,4 @@ describe('DomainError', () => {
     expect(createDomainError('PROVIDER_TIMEOUT', 'timeout').retryable).toBe(true)
     expect(createDomainError('SESSION_NOT_FOUND', 'no').retryable).toBe(false)
   })
-})
-
-describe('capabilities', () => {
-  it('API_VERSION 为 2', () => expect(API_VERSION).toBe(2))
-  it('capabilities 非空', () => expect(CAPABILITIES.length).toBeGreaterThan(3))
 })
