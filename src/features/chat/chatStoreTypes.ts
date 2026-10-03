@@ -154,3 +154,16 @@ export type StoreSet = (
   partial: Partial<ChatState> | ChatState | ((state: ChatState) => Partial<ChatState> | ChatState),
 ) => void
 export type StoreGet = () => ChatState
+
+/**
+ * 阶段 4B：单聊 store 的完整状态。
+ * `messagesLoading`（UEX-P1-34 清空-加载空窗期加载态）是仅本 store 使用的可选扩展字段，
+ * 不进共享 `ChatState`；动作实现拆分到 features/chat 后，类型随动作契约一起放在本文件。
+ */
+export type ChatStoreState = ChatState & { messagesLoading?: boolean }
+
+/** 拆分出的单聊动作模块使用的 set/get（含 messagesLoading 扩展） */
+export type ChatStoreSet = (
+  partial: Partial<ChatStoreState> | ChatStoreState | ((state: ChatStoreState) => Partial<ChatStoreState> | ChatStoreState),
+) => void
+export type ChatStoreGet = () => ChatStoreState
