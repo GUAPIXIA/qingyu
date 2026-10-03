@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useGroupChatStore, stopRemainingSpeakers } from '../useGroupChatStore'
-import { cleanupActiveStream, clearPollingTimer } from '../groupStreamController'
+import { cleanupActiveStream } from '../../features/group-chat/streamSession'
+import { clearPollingTimer } from '../../features/group-chat/modeScheduler'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
 import { usePersonaStore } from '../usePersonaStore'

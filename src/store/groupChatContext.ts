@@ -22,7 +22,7 @@ import { fitLayeredMemoryBudget, formatMemoryFacts } from '../../shared/chat-cor
 import { expandMacros, buildMacroContext } from '../../shared/chat-core/macros'
 import { logInfo, logWarn } from '../lib/logger'
 import { DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFETY, resolveLorebookScanDepth } from '../../shared/chat-core/chatConstants'
-import { markPendingGroupCompression } from './groupStreamController'
+import { markPendingGroupCompression } from '../features/group-chat/requestRunner'
 import { cropHistory, applyDepthInserts, type DepthInsertItem } from '../../shared/chat-core/contextShared'
 import type { GroupStoreGet } from './groupChatTypes'
 import type { NarrativeMode } from '../../shared/types'

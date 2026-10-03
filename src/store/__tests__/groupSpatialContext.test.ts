@@ -6,7 +6,10 @@ import { getDefaultSettings } from '../../../shared/defaults'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
 import { useGroupChatStore } from '../useGroupChatStore'
-import { streamGroupAI, streamGroupAIFree, splitAndSaveMessages, persistPartialGroupReply, cleanupActiveStream, clearPollingTimer, checkPollingContinue } from '../groupStreamController'
+import { streamGroupAI, streamGroupAIFree } from '../../features/group-chat/requestRunner'
+import { splitAndSaveMessages, persistPartialGroupReply } from '../../features/group-chat/messageFinalizer'
+import { cleanupActiveStream } from '../../features/group-chat/streamSession'
+import { clearPollingTimer, checkPollingContinue } from '../../features/group-chat/modeScheduler'
 import { buildGroupChatContext } from '../groupChatContext'
 const group: GroupChat = { id: 'g1', name: '夜谈', memberIds: ['c1','c2'], chatMode: 'mention', currentSpeakerIndex: 0, autoMode: false, maxRounds: 1, speakerInterval: 100, presetId: null, lorebookIds: [], systemPrompt: '', createdAt: 1, updatedAt: 1 }
 const session: GroupSession = { id: 's1', groupId: 'g1', title: '会话', spatialBoardEnabled: true, messageCount: 0, narrativeMode: 'immersive', personaId: null, spatialWorldId: 'world', spatialRuntimeId: 'runtime', createdAt: 1, updatedAt: 1 }

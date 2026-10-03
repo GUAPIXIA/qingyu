@@ -1,22 +1,10 @@
 import { messageRef } from '../../../shared/featureSource'
 import { withMessageIdentity } from '../../../shared/messageIdentity'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import {
-  splitAndSaveMessages,
-  checkAutoMemory,
-  checkPollingContinue,
-  cleanupActiveStream,
-  clearPollingTimer,
-  getActiveStream,
-  markPendingGroupCompression,
-  preserveGroupReplyContent,
-  streamGroupAI,
-  streamGroupAIFree,
-  abandonActiveStream,
-  persistPartialGroupReply,
-  claimFreeSplitOnce,
-  resetFreeSplitDedupe,
-} from '../groupStreamController'
+import { streamGroupAI, streamGroupAIFree, markPendingGroupCompression } from '../../features/group-chat/requestRunner'
+import { checkAutoMemory, checkPollingContinue, clearPollingTimer } from '../../features/group-chat/modeScheduler'
+import { cleanupActiveStream, getActiveStream, preserveGroupReplyContent, abandonActiveStream } from '../../features/group-chat/streamSession'
+import { splitAndSaveMessages, persistPartialGroupReply, claimFreeSplitOnce, resetFreeSplitDedupe } from '../../features/group-chat/messageFinalizer'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
 import { useToastStore } from '../useToastStore'

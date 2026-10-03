@@ -21,11 +21,13 @@ import {
   currentLoadRequestId,
   invalidateGroupDerivedMemory,
 } from './chatUtils'
+import { streamGroupAI, streamGroupAIFree } from '../features/group-chat/requestRunner'
+import { checkPollingContinue, checkAutoMemory, clearPollingTimer } from '../features/group-chat/modeScheduler'
 import {
-  streamGroupAI, streamGroupAIFree, checkPollingContinue, checkAutoMemory,
-  cleanupActiveStream, clearPollingTimer, claimGroupUserStop, preserveGroupReplyContent,
-  abandonActiveStream, persistPartialGroupReply, getActiveStream,
-} from './groupStreamController'
+  cleanupActiveStream, claimGroupUserStop, preserveGroupReplyContent,
+  abandonActiveStream, getActiveStream,
+} from '../features/group-chat/streamSession'
+import { persistPartialGroupReply } from '../features/group-chat/messageFinalizer'
 import { abortActiveTailRepair } from './streamController'
 import { pushToast } from './useToastStore'
 

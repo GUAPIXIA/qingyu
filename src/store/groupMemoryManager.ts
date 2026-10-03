@@ -10,7 +10,7 @@ import { applyFactProposals, applyMemoryFactChanges, formatMemoryFacts, parseMem
 import { estimateTokens } from '../../shared/chat-core/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../../shared/chat-core/memoryWindow'
 import { MEMORY_SUMMARY_MIN } from '../../shared/chat-core/chatConstants'
-import { vectorizeGroupSessionFacts } from './groupStreamController'
+import { vectorizeGroupSessionFacts } from '../features/group-chat/requestRunner'
 import { logWarn } from '../lib/logger'
 import type { GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { nanoid } from 'nanoid'

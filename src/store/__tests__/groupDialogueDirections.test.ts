@@ -22,21 +22,35 @@ vi.mock('../dialogueDirectionRunner', async (importOriginal) => {
 })
 
 // streamGroupAI 立即回调 onComplete，模拟一次完成的角色回复
-vi.mock('../groupStreamController', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../groupStreamController')>()
+vi.mock('../../features/group-chat/requestRunner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../features/group-chat/requestRunner')>()
   return {
     ...actual,
-    checkPollingContinue: checkPollingContinueMock,
-    // 真实实现先落盘并把 isStreaming 置回 false，再调用 onComplete（groupStreamController）
+    // 真实实现先落盘并把 isStreaming 置回 false，再调用 onComplete（requestRunner）
     streamGroupAI: vi.fn(async (set, _get, _group, _sessionId, speaker, round, onComplete) => {
       set({ isStreaming: false })
       onComplete()
       void speaker; void round
     }),
     streamGroupAIFree: vi.fn(async () => { /* noop */ }),
+  }
+})
+
+vi.mock('../../features/group-chat/modeScheduler', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../features/group-chat/modeScheduler')>()
+  return {
+    ...actual,
+    checkPollingContinue: checkPollingContinueMock,
     checkAutoMemory: vi.fn(),
-    cleanupActiveStream: vi.fn(),
     clearPollingTimer: vi.fn(),
+  }
+})
+
+vi.mock('../../features/group-chat/streamSession', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../features/group-chat/streamSession')>()
+  return {
+    ...actual,
+    cleanupActiveStream: vi.fn(),
     getActiveStream: vi.fn(() => null),
   }
 })

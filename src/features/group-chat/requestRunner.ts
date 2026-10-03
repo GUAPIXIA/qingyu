@@ -1,101 +1,43 @@
-import { startHistoryCompression, type HistoryCompression } from './sessionFeatureTasks'
-import { prepareGroupSpatialGeneration, registerGroupSpatialMessages, finishGroupSpatialBurst } from './groupSpatialSync'
+import { startHistoryCompression, type HistoryCompression } from '../../store/sessionFeatureTasks'
+import { prepareGroupSpatialGeneration, registerGroupSpatialMessages, finishGroupSpatialBurst } from '../../store/groupSpatialSync'
 import { nanoid } from 'nanoid'
-import type { AIFinishReason, GroupChat, GroupMessage, Character, MemoryFactRecord } from '../../shared/types'
-import { useSettingsStore, type ActiveProfile } from './useSettingsStore'
-import { snapshotChatConfiguration, type ChatConfigurationSnapshot } from '../../shared/chatConnection'
-import { useCharacterStore } from './useCharacterStore'
-import { lorebookCache } from '../features/lorebook/lorebookCache'
-import type { BudgetLoreItem } from '../../shared/chat-core/lorebook'
-import { estimateTokens } from '../../shared/chat-core/tokenCounter'
-import { countChars } from '../utils/charCounter'
-import { replaceVariables } from '../../shared/chat-core/variables'
-import { resolveEffectiveTemplate } from '../../shared/chat-core/chatTemplates'
-import { collectStopStrings, findStopIndex } from '../../shared/chat-core/regex'
-import { logError, logInfo, logWarn } from '../lib/logger'
-import { safeSave } from '../lib/safeOps'
-import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS, DEFAULT_LOREBOOK_SCAN_DEPTH, resolveLorebookScanDepth } from '../../shared/chat-core/chatConstants'
-import { buildLorebookRevisionCorpus, buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
-import { resolveVisionModel } from '../utils/visionModel'
-import { memoryFactsToTexts } from '../../shared/chat-core/memory'
-import { stripVendorThinking } from '../../shared/chat-core/messagePostProcess'
-import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
-import { pushToast } from './useToastStore'
-import { resolveNarrativeMode } from '../../shared/narrativeMode'
-import { enabledProfileOverride, formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
-import { resolveGroupRequestPlan } from './groupRequestPlan'
-// 阶段 6 S6-01：轮询续排/自动记忆/自由拆分的跨端共享纯逻辑（fixture oracle 即此实现）
-import { planGroupPollingContinue, resolvePollingIntervalMs, planAutoMemoryTrigger } from '../../shared/chat-core/groupScheduling'
-import { splitFreeReply } from '../../shared/chat-core/groupFreeSplit'
-import { attemptTailRepair, finalizeNoticeFields, type GenerationOutcomeMeta } from './streamController'
-import { prefetchUsageProfile, withReasoningSamples } from './usageProfileCache'
+import type { GroupChat, GroupMessage, Character, MemoryFactRecord } from '../../../shared/types'
+import { useSettingsStore } from '../../store/useSettingsStore'
+import { snapshotChatConfiguration, type ChatConfigurationSnapshot } from '../../../shared/chatConnection'
+import { useCharacterStore } from '../../store/useCharacterStore'
+import { lorebookCache } from '../lorebook/lorebookCache'
+import type { BudgetLoreItem } from '../../../shared/chat-core/lorebook'
+import { estimateTokens } from '../../../shared/chat-core/tokenCounter'
+import { countChars } from '../../utils/charCounter'
+import { replaceVariables } from '../../../shared/chat-core/variables'
+import { resolveEffectiveTemplate } from '../../../shared/chat-core/chatTemplates'
+import { collectStopStrings, findStopIndex } from '../../../shared/chat-core/regex'
+import { logError, logInfo, logWarn } from '../../lib/logger'
+import { safeSave } from '../../lib/safeOps'
+import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS, DEFAULT_LOREBOOK_SCAN_DEPTH, resolveLorebookScanDepth } from '../../../shared/chat-core/chatConstants'
+import { buildLorebookRevisionCorpus, buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from '../../store/chatUtils'
+import { resolveVisionModel } from '../../utils/visionModel'
+import { memoryFactsToTexts } from '../../../shared/chat-core/memory'
+import type { GroupChatState, GroupStoreGet, GroupStoreSet } from '../../store/groupChatTypes'
+import { resolveNarrativeMode } from '../../../shared/narrativeMode'
+import { enabledProfileOverride, formatRequestBudgetRisk } from '../../../shared/modelOutputProfile'
+import { resolveGroupRequestPlan } from '../../store/groupRequestPlan'
+import { prefetchUsageProfile, withReasoningSamples } from '../../store/usageProfileCache'
 import {
   noteGateRecoveryFailure,
   noteGateRecoverySuccess,
   withReasoningGate,
-} from './reasoningGateState'
-import { nextRecoveryLevel } from './gateRecovery'
-import type { ReasoningGateLevel } from '../../shared/reasoningGate'
-import { finalizeGenerationTerminalResult, type GenerationTerminalOutcome } from '../../shared/chat-core/generatedReplyPipeline'
+} from '../../store/reasoningGateState'
+import { nextRecoveryLevel } from '../../store/gateRecovery'
+import type { ReasoningGateLevel } from '../../../shared/reasoningGate'
 import {
   createGenerationTerminationLatch,
   terminationCauseFromFinishReason,
-  terminationPromptWithoutContent,
-  type GenerationTerminationLatch,
-} from '../../shared/generationTermination'
-import type { GenerationTerminationCause } from '../../shared/types'
-
-// ====================== 流式状态管理（模块级） ======================
-
-interface ActiveStream {
-  requestId: string
-  msgId: string
-  accumulated: string
-  flushTimer: ReturnType<typeof setTimeout> | null
-  unbindChunk: () => void
-  unbindDone: () => void
-  unbindError: () => void
-  timeoutHandle: ReturnType<typeof setTimeout> | null
-  /** 阶段7：requestId + terminalState 一次性终止状态机（迟到事件幂等） */
-  latch: GenerationTerminationLatch
-  /** 阶段7：停止字符串命中截断（随后的 cancelled done 按正常 stop 收口，不是用户停止） */
-  stopStringsHit: boolean
-  /** S8：abandon 保留半截正文时需要的落盘上下文 */
-  characterId: string
-  isFree: boolean
-  offstageCharacterIds?: string[]
-  groupId: string
-  sessionId: string
-  round: number
-  narrativeMode: import('../../shared/types').NarrativeMode
-  /** 重生成专用：终态落盘完成后再替换旧消息；失败/停止时恢复原文。 */
-  regenerationObserver?: GroupRegenerationObserver
-}
-
-export interface GroupRegenerationObserver {
-  onTerminal: (success: boolean, generatedMessages?: readonly GroupMessage[]) => boolean | Promise<boolean>
-}
-
-let activeStream: ActiveStream | null = null
-
-/** 读取当前活动流（stopStreaming 等需要读取） */
-export function getActiveStream(): ActiveStream | null {
-  return activeStream
-}
-
-/**
- * 阶段7：用户手动停止的统一入口——抢占终止状态机并返回当前可见正文。
- * claim 失败（timeout/error/done 已进入收口）返回 null，调用方不得再触碰该消息；
- * 后续迟到 chunk/done/error 全部被状态机忽略，同一 requestId 最多落盘一次。
- */
-export function claimGroupUserStop(): { requestId: string; msgId: string; accumulated: string; isFree: boolean; offstageCharacterIds?: string[]; regenerationObserver?: GroupRegenerationObserver } | null {
-  const st = activeStream
-  if (!st) return null
-  if (!st.latch.claim('user_cancel')) return null
-  const result = { requestId: st.requestId, msgId: st.msgId, accumulated: st.accumulated, isFree: st.isFree, offstageCharacterIds: st.offstageCharacterIds, regenerationObserver: st.regenerationObserver }
-  cleanupActiveStream()
-  return result
-}
+} from '../../../shared/generationTermination'
+import type { GenerationTerminationCause } from '../../../shared/types'
+import { attachActiveStream, cleanupActiveStream, flushActiveStream, getActiveStream, type GroupRegenerationObserver } from './streamSession'
+import { finalizeGroupReply, handleGroupStreamException, handleGroupStreamTimeout, splitAndSaveMessages } from './messageFinalizer'
+import { clearPollingTimer } from './modeScheduler'
 
 /** 群聊上下文溢出压缩：待执行任务（buildGroupContext 标记，流式完成后消费） */
 interface PendingGroupCompression extends HistoryCompression {
@@ -111,386 +53,6 @@ let pendingGroupCompression: PendingGroupCompression | null = null
 /** 供 buildGroupContext 标记压缩任务（上下文溢出时） */
 export function markPendingGroupCompression(pc: PendingGroupCompression): void {
   pendingGroupCompression = pc
-}
-
-/** 轮询定时器 handle，用于切换/删除群聊时清理 */
-let pollingTimer: ReturnType<typeof setTimeout> | null = null
-
-export function cleanupActiveStream() {
-  if (!activeStream) return
-  clearTimeout(activeStream.flushTimer!)
-  clearTimeout(activeStream.timeoutHandle!)
-  activeStream.unbindChunk()
-  activeStream.unbindDone()
-  activeStream.unbindError()
-  activeStream = null
-}
-
-/** 清理轮询定时器 */
-export function clearPollingTimer() {
-  if (pollingTimer !== null) {
-    clearTimeout(pollingTimer)
-    pollingTimer = null
-  }
-}
-
-/** 群聊回复与单聊保持一致：丢弃供应商推理，保留角色 <thought> 供气泡折叠展示。 */
-export function preserveGroupReplyContent(content: string): string {
-  return stripVendorThinking(content).trim()
-}
-
-/**
- * S8：切换/删除群聊或会话时的统一停止收尾（store 层入口专用）。
- * claim latch → preserveGroupReplyContent → cancelChat → cleanup。
- * preserve=true 时返回已清理正文供调用方落盘，并 toast「已保留未完成回复并停止生成」。
- * 控制器内部终态收尾仍可直接 cleanupActiveStream()。
- */
-export function abandonActiveStream(options: { preserve: boolean }): {
-  requestId: string
-  msgId: string
-  preserved: string
-  characterId: string
-  isFree: boolean
-  offstageCharacterIds?: string[]
-  round: number
-  narrativeMode: import('../../shared/types').NarrativeMode
-  groupId: string
-  sessionId: string
-  regenerationObserver?: GroupRegenerationObserver
-} | null {
-  const st = activeStream
-  if (!st) return null
-  if (!st.latch.claim('user_cancel')) return null
-  // 重生成被切换/删除打断时必须恢复旧消息，不能把半截新回复另行落盘。
-  const preserved = options.preserve && !st.regenerationObserver ? preserveGroupReplyContent(st.accumulated) : ''
-  const result = {
-    requestId: st.requestId,
-    msgId: st.msgId,
-    preserved,
-    characterId: st.characterId,
-    isFree: st.isFree,
-    offstageCharacterIds: st.offstageCharacterIds,
-    round: st.round,
-    narrativeMode: st.narrativeMode,
-    groupId: st.groupId,
-    sessionId: st.sessionId,
-    regenerationObserver: st.regenerationObserver,
-  }
-  window.api.ai.cancelChat(result.requestId, 'user').catch((e) => logError('GroupChatStore:cancelChat', e))
-  cleanupActiveStream()
-  if (st.regenerationObserver) void st.regenerationObserver.onTerminal(false)
-  if (options.preserve) {
-    pushToast({ variant: 'info', title: '已保留未完成回复并停止生成' })
-  }
-  return result
-}
-
-/** S7：拆分前 msgId/内容 hash 判重——同一半截正文只允许落盘/拆分一次 */
-const freeSplitSeenKeys = new Set<string>()
-
-/** 简单 djb2 指纹：仅用于同会话内防重复拆分，不作安全哈希 */
-function contentFingerprint(msgId: string, content: string): string {
-  let h = 5381
-  for (let i = 0; i < content.length; i++) {
-    h = ((h << 5) + h + content.charCodeAt(i)) | 0
-  }
-  return `${msgId}:${(h >>> 0).toString(16)}`
-}
-
-/** 测试用：清空判重集合 */
-export function resetFreeSplitDedupe(): void {
-  freeSplitSeenKeys.clear()
-}
-
-/** S7：拆分前按 msgId/内容 hash 判重；首次返回 true 并记账 */
-export function claimFreeSplitOnce(msgId: string, content: string): boolean {
-  const key = contentFingerprint(msgId, content)
-  if (freeSplitSeenKeys.has(key)) return false
-  freeSplitSeenKeys.add(key)
-  return true
-}
-
-/**
- * S7：异常/停止/放弃时的半截正文落盘。
- * free（`__free__`）强制走 splitAndSaveMessages 或回落首成员，禁止持久化不可渲染的 `__free__` 正文。
- * 拆分前按 msgId/内容 hash 判重。
- */
-export async function persistPartialGroupReply(input: {
-  set: GroupStoreSet
-  get: GroupStoreGet
-  group: GroupChat
-  sessionId: string
-  msgId: string
-  content: string
-  round: number
-  characterId: string
-  isFree: boolean
-  offstageCharacterIds?: string[]
-  narrativeMode: import('../../shared/types').NarrativeMode
-  noticeFields?: { generationNotice?: string; generationError?: string }
-}): Promise<void> {
-  const clean = input.content
-  if (!clean) return
-  if (!claimFreeSplitOnce(input.msgId, clean)) return
-
-  const isFreeBody = input.isFree || input.characterId === '__free__'
-  if (isFreeBody) {
-    await splitAndSaveMessages(input.set, input.get, input.group, input.sessionId, clean, input.round, input.msgId, {
-      noticeFields: input.noticeFields,
-      renderMode: { contentRenderMode: 'blocks' },
-      offstageCharacterIds: input.offstageCharacterIds,
-    })
-    return
-  }
-
-  const renderMode = { contentRenderMode: 'blocks' as const }
-  input.set((s: GroupChatState) => ({
-    messages: s.messages.map((m: GroupMessage) =>
-      m.id === input.msgId
-        ? { ...m, content: clean, ...input.noticeFields, ...renderMode }
-        : m,
-    ),
-    isStreaming: false,
-    currentStreamingCharId: null,
-  }))
-  await window.api.group.saveMessage(input.group.id, input.sessionId, {
-    id: input.msgId,
-    groupId: input.group.id,
-    characterId: input.characterId,
-    content: clean,
-    images: [],
-    timestamp: Date.now(),
-    round: input.round,
-    narrativeMode: input.narrativeMode,
-    ...input.noticeFields,
-    ...renderMode,
-  } as GroupMessage)
-}
-
-/**
- * 阶段4/7：群聊回复统一收尾（与单聊共用同一条协调入口，方案 §4.2 / §7.4）。
- * 返回 null 表示无可用正文（调用方走占位/错误分支）。
- */
-export async function finalizeGroupReply(input: {
-  rawText: string
-  finishReason: AIFinishReason
-  speaker: Character
-  model: string
-  temperature?: number
-  regexRules: import('../../shared/types').RegexRule[]
-  profile?: ActiveProfile
-  autoTailRepairEnabled?: boolean
-}): Promise<{ content: string; noticeFields: { generationNotice?: string; generationError?: string }; stopped: boolean } | null> {
-  const cause = terminationCauseFromFinishReason(input.finishReason)
-  // 补尾限制（§8.1）：只有 provider_length 会被协调入口调用（每轮至多一次）
-  const result = await finalizeGenerationTerminalResult({
-    terminalResult: { rawText: input.rawText, finishReason: input.finishReason, terminationCause: cause },
-    regexRules: input.regexRules,
-    characterName: input.speaker.translatedContent?.name || input.speaker.name,
-    runTailRepair: (input.autoTailRepairEnabled ?? useSettingsStore.getState().settings.autoTailRepairEnabled) === false ? undefined : (finalized) => attemptTailRepair({
-      finalized,
-      character: input.speaker,
-      model: input.model,
-      temperature: input.temperature,
-      profile: input.profile,
-    }),
-  })
-  if (!result.persistable || !result.content) return null
-
-  const meta: GenerationOutcomeMeta = { finishReason: input.finishReason }
-  if (result.notice) meta.notice = result.notice
-  if (result.repairFailed) meta.repairFailed = true
-  // 异常类提示（协调入口生成）优先；正常收尾走 finalizeNoticeFields 统一口径
-  const noticeFields = Object.keys(result.noticeFields).length > 0
-    ? result.noticeFields
-    : finalizeNoticeFields(meta)
-  return { content: result.content, noticeFields, stopped: cause === 'user_cancel' }
-}
-
-/**
- * UEX-P0-01：无正文终止失败（占位被移除、无存活气泡承载 generationError）时补全局 Toast，
- * 与 useGroupChatStore 的 setGroupError 模式对齐（store error 无 UI 直接订阅，不能静默）。
- */
-function toastGroupGenerationFailure(detail: string): void {
-  pushToast({ variant: 'error', title: '群聊生成失败', description: detail, requestId: 'group-generate-fail' })
-}
-
-/**
- * 阶段7：群聊异常统一收口（timeout / 普通 ai:error 共用，不复制保存逻辑）。
- * 规则（方案 §4.1/§4.3）：
- * - 只有 streaming 状态能抢占终止；迟到 chunk/done/error 一律忽略；
- * - 先读取完整 accumulated 文本，再清理监听器；
- * - 部分正文必须先经统一收尾管线（稳定边界收束、不补尾）才允许保存；
- * - 错误原因只写 generationError，绝不拼进 content（避免进入复制/TTS/上下文/记忆摘要）；
- * - 无可用正文时移除占位消息，不创建空 AI 消息。
- */
-export async function handleGroupStreamException(input: {
-  requestId: string
-  msgId: string
-  groupId: string
-  sessionId: string
-  characterId: string
-  characterName: string
-  narrativeMode: import('../../shared/types').NarrativeMode
-  regexRules: import('../../shared/types').RegexRule[]
-  round: number
-  isFree: boolean
-  offstageCharacterIds?: string[]
-  latch?: GenerationTerminationLatch
-  /** NEW-M12：错误后继续推进轮询链/自动记忆检查 */
-  onChainContinue?: () => void
-  /** S7：free 半截正文拆分落盘需要 group/get */
-  group?: GroupChat
-  get?: GroupStoreGet
-  set: GroupStoreSet
-  regenerationObserver?: GroupRegenerationObserver
-}, cause: GenerationTerminationCause, detailMessage: string): Promise<void> {
-  // 抢占终止权：已被其它终止分支（或用户停止）处理过则直接忽略
-  const st = activeStream
-  if (st && st.requestId !== input.requestId) return
-  if (input.latch && !input.latch.claim(cause)) return
-  // 先取 accumulated 再清理（C-02 同款竞态保护；cleanup 同步合并未执行的 flush timer）
-  const partialContent = st?.accumulated ?? ''
-  input.offstageCharacterIds ??= st?.offstageCharacterIds
-  cleanupActiveStream()
-  if (cause === 'idle_timeout') {
-    window.api.ai.cancelChat(input.requestId, 'timeout').catch((e) => logError('GroupChatStore:cancelChat', e))
-  }
-
-  const errText = terminationPromptWithoutContent(cause, detailMessage)
-  if (input.regenerationObserver) {
-    // 重生成失败不保留半截新回复：旧消息尚在持久层，直接撤回占位并恢复原文。
-    input.set((s: GroupChatState) => ({
-      messages: s.messages.filter((m: GroupMessage) => m.id !== input.msgId),
-      isStreaming: false,
-      currentStreamingCharId: null,
-      error: errText,
-    }))
-    await input.regenerationObserver.onTerminal(false, [])
-    return
-  }
-  try {
-    const result = await finalizeGenerationTerminalResult({
-      terminalResult: { rawText: partialContent, finishReason: 'unknown', terminationCause: cause, errorMessage: detailMessage },
-      regexRules: input.regexRules,
-      characterName: input.characterName,
-    })
-    await dispatchGroupTerminal(input, result, errText)
-    if ((!input.onChainContinue || input.group?.chatMode !== 'polling' || !input.group?.autoMode) && input.group) await finishGroupSpatialBurst(input.group.id, input.sessionId)
-    input.onChainContinue?.()
-  } catch (e) {
-    logError('GroupChatStore:terminalFinalize', e)
-    input.latch?.markPersisted()
-    input.set((s: GroupChatState) => ({
-      messages: s.messages.filter((m: GroupMessage) => m.id !== input.msgId),
-      isStreaming: false, currentStreamingCharId: null, error: errText,
-    }))
-    // UEX-P0-01：占位被移除、无存活气泡展示错误 → 补全局 Toast
-    toastGroupGenerationFailure(errText)
-    if ((!input.onChainContinue || input.group?.chatMode !== 'polling' || !input.group?.autoMode) && input.group) await finishGroupSpatialBurst(input.group.id, input.sessionId)
-    input.onChainContinue?.()
-  }
-}
-
-/** 终止派发：可保存正文 → 更新+落盘；无正文 → 移除占位（不创建空 AI 消息） */
-async function dispatchGroupTerminal(input: Parameters<typeof handleGroupStreamException>[0], result: GenerationTerminalOutcome, errText: string) {
-  input.latch?.markPersisted()
-  const messageError = result.noticeFields.generationError ?? errText
-  if (result.persistable && result.content) {
-    // S7：free 半截正文禁止挂 __free__ 落盘——强制 splitAndSaveMessages 或回落首成员
-    if (input.isFree || input.characterId === '__free__') {
-      const group = input.group
-      const get = input.get
-      if (group && get) {
-        await persistPartialGroupReply({
-          set: input.set,
-          get,
-          group,
-          sessionId: input.sessionId,
-          msgId: input.msgId,
-          content: result.content,
-          round: input.round,
-          characterId: input.characterId,
-          isFree: true,
-          offstageCharacterIds: input.offstageCharacterIds,
-          narrativeMode: input.narrativeMode,
-          noticeFields: result.noticeFields,
-        })
-        return
-      }
-      // 缺 group/get 时回落首成员；仍无成员则移除占位，绝不持久化 __free__
-      const members = useCharacterStore.getState().characters.filter((c) =>
-        (input.group?.memberIds ?? []).includes(c.id),
-      )
-      const fallbackId = members[0]?.id
-      if (!fallbackId) {
-        input.set((s: GroupChatState) => ({
-          messages: s.messages.filter((m: GroupMessage) => m.id !== input.msgId),
-          isStreaming: false, currentStreamingCharId: null, error: messageError,
-        }))
-        // UEX-P0-01：无成员可回落且占位被移除 → 补全局 Toast
-        toastGroupGenerationFailure(messageError)
-        return
-      }
-      input.characterId = fallbackId
-      input.isFree = false
-    }
-    // 中断保留的正文与正常完成一致走语义分块。
-    const renderMode = { contentRenderMode: 'blocks' as const }
-    input.set((s: GroupChatState) => ({
-      messages: s.messages.map((m: GroupMessage) =>
-        m.id === input.msgId ? { ...m, content: result.content, ...result.noticeFields, ...renderMode } : m,
-      ),
-      isStreaming: false, currentStreamingCharId: null, error: messageError,
-    }))
-    await window.api.group.saveMessage(input.groupId, input.sessionId, {
-      id: input.msgId, groupId: input.groupId, characterId: input.characterId,
-      content: result.content, images: [], timestamp: input.get?.().messages.find((m: GroupMessage) => m.id === input.msgId && m.groupId === input.groupId)?.timestamp ?? Date.now(), round: input.round, narrativeMode: input.narrativeMode,
-      ...result.noticeFields,
-      ...renderMode,
-    } as GroupMessage)
-  } else {
-    input.set((s: GroupChatState) => ({
-      messages: s.messages.filter((m: GroupMessage) => m.id !== input.msgId),
-      isStreaming: false, currentStreamingCharId: null, error: messageError,
-    }))
-    // UEX-P0-01：无正文终止失败、占位被移除 → 补全局 Toast
-    toastGroupGenerationFailure(messageError)
-  }
-}
-
-/**
- * S2 兼容入口：群聊超时统一处理——委托阶段7异常收口（idle_timeout）。
- */
-export async function handleGroupStreamTimeout(input: {
-  requestId: string
-  msgId: string
-  groupId: string
-  sessionId: string
-  characterId: string
-  characterName: string
-  narrativeMode: import('../../shared/types').NarrativeMode
-  regexRules: import('../../shared/types').RegexRule[]
-  round: number
-  isFree: boolean
-  latch?: GenerationTerminationLatch
-  group?: GroupChat
-  get?: GroupStoreGet
-  set: GroupStoreSet
-  regenerationObserver?: GroupRegenerationObserver
-}): Promise<void> {
-  await handleGroupStreamException(input, 'idle_timeout', '请求超时')
-}
-
-async function flushStream(set: GroupStoreSet) {
-  if (!activeStream) return
-  const { msgId, accumulated } = activeStream
-  activeStream.flushTimer = null
-  set((s: GroupChatState) => ({
-    messages: s.messages.map((m: GroupMessage) =>
-      m.id === msgId ? { ...m, content: accumulated } : m,
-    ),
-  }))
 }
 
 /**
@@ -624,7 +186,7 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
     threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
     maxResults: st.maxResults,
   })
-  const cached = semanticCacheGet<import('../../shared/domain/semanticFacts').FactSearchHit[]>(cacheKey)
+  const cached = semanticCacheGet<import('../../../shared/domain/semanticFacts').FactSearchHit[]>(cacheKey)
   if (cached) {
     set({ _semanticFactsHits: cached })
     return
@@ -712,7 +274,7 @@ interface GroupRecovery {
   recoveryUsed?: boolean
   configuration?: ChatConfigurationSnapshot
   context?: { role: 'system' | 'user' | 'assistant'; content: string }[]
-  visionSnapshot?: import('../utils/visionModel').ResolvedVisionModel | null
+  visionSnapshot?: import('../../utils/visionModel').ResolvedVisionModel | null
 }
 
 export async function streamGroupAI(
@@ -764,7 +326,7 @@ export async function streamGroupAI(
     }
 
     // 加载正则规则
-    let regexRules: import('../../shared/types').RegexRule[] = []
+    let regexRules: import('../../../shared/types').RegexRule[] = []
     try {
       regexRules = await window.api.regex.list()
     } catch { /* 忽略 */ }
@@ -863,6 +425,7 @@ export async function streamGroupAI(
 
     // 绑定流式事件
     const unbindChunk = window.api.ai.onChunk((data: { requestId: string; text: string }) => {
+      const activeStream = getActiveStream()
       if (data.requestId !== requestId || !activeStream || activeStream.requestId !== requestId) return
       // 阶段7：迟到 chunk（已有终止分支抢占）忽略
       if (!activeStream.latch.acceptsStreamEvent()) return
@@ -877,13 +440,13 @@ export async function streamGroupAI(
             clearTimeout(activeStream.flushTimer)
             activeStream.flushTimer = null
           }
-          flushStream(set)
+          flushActiveStream(set)
           window.api.ai.cancelChat(requestId, 'stop_string').catch(() => {})
           return
         }
       }
       if (activeStream.flushTimer === null) {
-        activeStream.flushTimer = setTimeout(() => flushStream(set), STREAM_THROTTLE_MS)
+        activeStream.flushTimer = setTimeout(() => flushActiveStream(set), STREAM_THROTTLE_MS)
       }
       // 空闲超时续期：收到 chunk 即重置 60s 计时（卡死时更快恢复）
       if (activeStream.timeoutHandle) clearTimeout(activeStream.timeoutHandle)
@@ -901,6 +464,7 @@ export async function streamGroupAI(
 
     const unbindDone = window.api.ai.onComplete((payload) => {
       const { requestId: doneId, finishReason = 'unknown' } = payload
+      const activeStream = getActiveStream()
       if (doneId !== requestId || !activeStream || activeStream.requestId !== requestId) return
       const stopStringsHit = activeStream.stopStringsHit
       // 阶段8（§4.4/§4.7）：主进程的提前中止以结构化元数据下发
@@ -1051,7 +615,7 @@ export async function streamGroupAI(
       }, 'transport_error', friendlyMsg)
     })
 
-    activeStream = {
+    attachActiveStream({
       requestId,
       msgId,
       accumulated: '',
@@ -1078,7 +642,7 @@ export async function streamGroupAI(
           regenerationObserver,
         })
       }, STREAM_IDLE_TIMEOUT_MS),
-    }
+    })
 
     // 发起 AI 请求（点名 / 轮询共用此路径）
     try {
@@ -1200,7 +764,7 @@ export async function streamGroupAIFree(
     }
 
     // 加载正则规则
-    let regexRules: import('../../shared/types').RegexRule[] = []
+    let regexRules: import('../../../shared/types').RegexRule[] = []
     try {
       regexRules = await window.api.regex.list()
     } catch { /* 忽略 */ }
@@ -1304,6 +868,7 @@ export async function streamGroupAIFree(
     const stopStrings = collectStopStrings(regexRules)
 
     const unbindChunk = window.api.ai.onChunk((data: { requestId: string; text: string }) => {
+      const activeStream = getActiveStream()
       if (data.requestId !== requestId || !activeStream || activeStream.requestId !== requestId) return
       // 阶段7：迟到 chunk（已有终止分支抢占）忽略
       if (!activeStream.latch.acceptsStreamEvent()) return
@@ -1318,13 +883,13 @@ export async function streamGroupAIFree(
             clearTimeout(activeStream.flushTimer)
             activeStream.flushTimer = null
           }
-          flushStream(set)
+          flushActiveStream(set)
           window.api.ai.cancelChat(requestId, 'stop_string').catch(() => {})
           return
         }
       }
       if (activeStream.flushTimer === null) {
-        activeStream.flushTimer = setTimeout(() => flushStream(set), STREAM_THROTTLE_MS)
+        activeStream.flushTimer = setTimeout(() => flushActiveStream(set), STREAM_THROTTLE_MS)
       }
       // 空闲超时续期：收到 chunk 即重置 60s 计时（S2：统一走 handleGroupStreamTimeout）
       if (activeStream.timeoutHandle) clearTimeout(activeStream.timeoutHandle)
@@ -1342,6 +907,7 @@ export async function streamGroupAIFree(
 
     const unbindDone = window.api.ai.onComplete((payload) => {
       const { requestId: doneId, finishReason = 'unknown' } = payload
+      const activeStream = getActiveStream()
       if (doneId !== requestId || !activeStream || activeStream.requestId !== requestId) return
       const stopStringsHit = activeStream.stopStringsHit
       // 阶段8（§4.4/§4.7）：主进程的提前中止以结构化元数据下发
@@ -1455,7 +1021,7 @@ export async function streamGroupAIFree(
       }, 'transport_error', friendlyMsg)
     })
 
-    activeStream = {
+    attachActiveStream({
       requestId, msgId, accumulated: '', flushTimer: null,
       unbindChunk, unbindDone, unbindError,
       latch, stopStringsHit: false,
@@ -1477,7 +1043,7 @@ export async function streamGroupAIFree(
           regenerationObserver,
         })
       }, STREAM_IDLE_TIMEOUT_MS),
-    }
+    })
 
     try {
       const instructTemplate = resolveEffectiveTemplate(
@@ -1553,207 +1119,3 @@ export async function streamGroupAIFree(
   }
 }
 
-/** 解析 free 模式 AI 回复，拆分为多条角色消息 */
-export async function splitAndSaveMessages(
-  set: GroupStoreSet,
-  get: GroupStoreGet,
-  group: GroupChat,
-  sessionId: string,
-  content: string,
-  round: number,
-  placeholderId: string,
-  extras?: { noticeFields?: { generationNotice?: string; generationError?: string }; renderMode?: { contentRenderMode: 'blocks' }; offstageCharacterIds?: string[]; spatialGroupGenerationId?: string },
-): Promise<GroupMessage[]> {
-  const narrativeMode = resolveNarrativeMode(get().sessions?.find((session) => session.id === sessionId)?.narrativeMode)
-  const offstageCharacterIds = narrativeMode === 'immersive' ? extras?.offstageCharacterIds : undefined
-  const charStore = useCharacterStore.getState()
-  const members = group.memberIds
-    .map(id => charStore.characters.find(c => c.id === id))
-    .filter(Boolean) as Character[]
-
-  if (offstageCharacterIds && group.memberIds.every(id => offstageCharacterIds!.includes(id))) {
-    set(state => ({ messages: state.messages.filter(message => message.id !== placeholderId), isStreaming: false, currentStreamingCharId: null }))
-    return []
-  }
-
-  // 拆分与归属：shared/chat-core/groupFreeSplit.ts 跨端一致（omniscient 不拆分、
-  // 旁白并入首段、未识别角色旁注归属首成员、无标记回落首成员）
-  const split = splitFreeReply({ content, members, narrativeMode })
-
-  if (split.kind === 'narrator') {
-    const narratorMessage: GroupMessage = {
-      id: placeholderId,
-      groupId: group.id,
-      characterId: members.find(member => !offstageCharacterIds?.includes(member.id))?.id ?? split.messages[0].characterId,
-      content: split.messages[0].content,
-      images: [],
-      timestamp: Date.now(),
-      round,
-      narrativeMode,
-      speakerKind: 'character',
-      ...(extras?.spatialGroupGenerationId ? { spatialGroupGenerationId: extras.spatialGroupGenerationId } : {}),
-      generationKind: 'assistant_reply',
-      ...(extras?.renderMode ?? {}),
-      ...(extras?.noticeFields ?? {}),
-    }
-    await window.api.group.saveMessage(group.id, sessionId, narratorMessage)
-    set((state: GroupChatState) => ({
-      messages: state.messages.map((message: GroupMessage) => message.id === placeholderId ? narratorMessage : message),
-      isStreaming: false,
-      currentStreamingCharId: null,
-    }))
-    return [narratorMessage]
-  }
-
-  if (split.kind === 'fallback') {
-    // 没有匹配到任何角色标记 → 将占位消息改为第一个成员的消息，避免渲染为不可见
-    const fallbackChar = members.find(member => !offstageCharacterIds?.includes(member.id))
-    // S7：禁止持久化不可渲染的 __free__ 正文——无成员时移除占位，不落盘
-    if (!fallbackChar) {
-      set((s: GroupChatState) => ({
-        messages: s.messages.filter((m: GroupMessage) => m.id !== placeholderId),
-        isStreaming: false, currentStreamingCharId: null,
-      }))
-      return []
-    }
-    set((s: GroupChatState) => ({
-      messages: s.messages.map((m: GroupMessage) =>
-        m.id === placeholderId
-          ? { ...m, characterId: fallbackChar.id, content: split.messages[0].content, ...(extras?.renderMode ?? {}), ...(extras?.noticeFields ?? {}) }
-          : m,
-      ),
-      isStreaming: false, currentStreamingCharId: null,
-    }))
-    // 持久化更新后的占位消息（归属首成员，绝不落盘 __free__）
-    const fallbackMessage: GroupMessage = {
-      id: placeholderId,
-      groupId: group.id,
-      characterId: fallbackChar.id,
-      content: split.messages[0].content,
-      images: [],
-      timestamp: Date.now(),
-      round,
-      narrativeMode,
-      speakerKind: 'character',
-      ...(extras?.spatialGroupGenerationId ? { spatialGroupGenerationId: extras.spatialGroupGenerationId } : {}),
-      generationKind: 'assistant_reply',
-      ...(extras?.renderMode ?? {}),
-      ...(extras?.noticeFields ?? {}),
-    }
-    await window.api.group.saveMessage(group.id, sessionId, fallbackMessage)
-    return [fallbackMessage]
-  }
-
-  // 移除占位消息，替换为拆分的角色消息（过滤任何 __free__，禁止不可渲染正文落盘）
-  const newMessages: GroupMessage[] = split.messages
-    .filter((segment) => segment.characterId !== '__free__' && !offstageCharacterIds?.includes(segment.characterId) && !!segment.content?.trim())
-    .map((segment) => ({
-      id: nanoid(),
-      groupId: group.id,
-      characterId: segment.characterId,
-      content: segment.content,
-      images: [],
-      timestamp: Date.now(),
-      round,
-      narrativeMode,
-      speakerKind: 'character',
-      ...(extras?.spatialGroupGenerationId ? { spatialGroupGenerationId: extras.spatialGroupGenerationId } : {}),
-      generationKind: 'assistant_reply',
-    }))
-
-  // 阶段5：拆分出的新消息均为语义分块渲染；收尾提示附加在最后一条上
-  if (extras?.renderMode) {
-    for (const m of newMessages) m.contentRenderMode = extras.renderMode.contentRenderMode
-  }
-  if (extras?.noticeFields && newMessages.length > 0) {
-    Object.assign(newMessages[newMessages.length - 1], extras.noticeFields)
-  }
-
-  // 持久化（优化：多条消息合并为一次批量保存，减少 IPC 往返与文件全量重写）
-  if (newMessages.length === 1) {
-    await window.api.group.saveMessage(group.id, sessionId, newMessages[0])
-  } else if (newMessages.length > 1) {
-    await window.api.group.saveMessagesBatch(group.id, sessionId, newMessages)
-  }
-
-  set((s: GroupChatState) => ({
-    messages: s.messages
-      .filter((m: GroupMessage) => m.id !== placeholderId)
-      .concat(newMessages)
-      .sort((a: GroupMessage, b: GroupMessage) => a.timestamp - b.timestamp),
-    isStreaming: false,
-    currentStreamingCharId: null,
-  }))
-  return newMessages
-}
-
-/** 检查是否需要自动触发记忆摘要 */
-export function checkAutoMemory(get: GroupStoreGet) {
-  const state = get()
-  const session = state.sessions?.find((s) => s.id === state.currentSessionId)
-  // 触发判定：shared/chat-core/groupScheduling.ts 跨端一致（按已处理游标统计，编辑或时钟变化不误判）
-  const shouldTrigger = planAutoMemoryTrigger({
-    memoryEnabled: session?.memoryEnabled,
-    memoryMode: session?.memoryMode,
-    autoMemoryInterval: session?.autoMemoryInterval,
-    memoryLastMessageId: session?.memoryLastMessageId ?? null,
-    messageIds: state.messages.map((message) => message.id),
-  })
-  if (shouldTrigger) {
-    state.triggerMemorySummary()
-  }
-}
-
-/** 检查 polling 模式下是否需要继续下一轮 */
-/**
- * 轮询续接检查。
- * @returns 已排定下一轮接力返回 true；已到轮数上限、无下一发言者或越界返回 false（轮到用户）。
- */
-export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGet, _group: GroupChat): Promise<boolean> {
-  const state = get()
-  // 使用最新的 currentGroup，避免闭包中过期引用
-  const group = state.currentGroup
-  if (!group) return false
-  if (group.id !== _group.id) return false
-  const scopeSessionId = state.currentSessionId
-  const spatial = state.sessions.find(session => session.id === scopeSessionId)?.spatialBoardEnabled === true && scopeSessionId ? await window.api.spatial.readGroupContext(group.id, scopeSessionId) : null
-  if (get().currentGroup?.id !== group.id || get().currentSessionId !== scopeSessionId) return false
-  const eligibleMemberIds = spatial?.narrativeMode === 'omniscient' ? group.memberIds : group.memberIds.filter(id => !spatial?.offstageCharacterIds.includes(id))
-
-  // 续排计划：shared/chat-core/groupScheduling.ts 跨端一致
-  // （D2 已拍板：轮数按每次接力（burst）计——自最近一条用户消息以来的 AI 轮次，跨用户消息重置）
-  const plan = planGroupPollingContinue({
-    messages: state.messages.map((m) => ({ characterId: m.characterId, round: m.round })),
-    memberIds: eligibleMemberIds,
-    maxRounds: group.maxRounds,
-  })
-  if (!plan.continue) return false
-  const nextCharId = plan.nextCharId
-
-  // 更新 currentSpeakerIndex（纯运行时 UI 状态：成员栏高亮"当前说话者"）
-  // 优化：不再每轮全量持久化群组文件（此前每 2s 一次整文件写入）；
-  // 群组文件只在创建/编辑时保存，重启后该索引回落到上次持久化值，轮询下一轮自动纠正
-  const updatedGroup = { ...group, currentSpeakerIndex: group.memberIds.indexOf(nextCharId) }
-  set({ currentGroup: updatedGroup })
-
-  // H-02 修复：保存定时器 handle，以便切换/删除群聊时清理
-  clearPollingTimer()
-  const scheduleNextPoll = () => {
-    clearPollingTimer()
-    pollingTimer = setTimeout(() => {
-      const currentState = get()
-      if (currentState.isStreaming) {
-        // M-25 修复：流式中本轮跳过，但必须继续调度下一轮——
-        // 此前直接 return 导致自动轮询链永久中断，无恢复机制
-        scheduleNextPoll()
-        return
-      }
-      // 定时器触发时再次检查群组是否仍为当前群组
-      const curGroup = currentState.currentGroup
-      if (!curGroup || curGroup.id !== group.id) return
-      currentState.sendPollingRound(nextCharId)
-    }, resolvePollingIntervalMs(group.speakerInterval))
-  }
-  scheduleNextPoll()
-  return true
-}
