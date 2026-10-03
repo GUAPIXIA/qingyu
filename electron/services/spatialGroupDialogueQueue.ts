@@ -11,14 +11,14 @@ import { enabledProfileOverride, resolveEffectiveContextLimit } from '../../shar
 import { groupData } from '../ipc/group'
 import { safeId } from '../utils/pathGuard'
 import { DIRS } from './storage'
-import { hashSpatialValue, readSpatialJson, type SpatialGroupScope } from './spatialRepository'
-import { spatialRepository, sessionFor, snapshotLocked } from './spatialService'
+import { hashSpatialValue, readSpatialJson, type SpatialGroupScope } from '../features/spatial/repository'
+import { spatialRepository, sessionFor, snapshotLocked } from '../features/spatial/commitService'
 import { readChatSettings, resolveChatProfile } from './chatConnection'
 import { countTokens } from './tokenizer'
 import { parseSpatialDialogueReply, spatialNodePath, SPATIAL_DIALOGUE_PROMPT } from './spatialDialogueProtocol'
 import { spatialDialogueMentionsPlace } from './spatialPlaceNames'
 import { captureGroupSpatialCheckpoint } from './spatialGroupCheckpoint'
-import { isSpatialBoardEnabled, SPATIAL_DISABLED_REASON } from './spatialFeature'
+import { isSpatialBoardEnabled, SPATIAL_DISABLED_REASON } from '../features/spatial/board'
 
 interface Context { session: GroupSession; group: GroupChat; personaId: string | null; fingerprint: string }
 interface Lease { taskId: string; controller: AbortController }

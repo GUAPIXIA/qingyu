@@ -12,8 +12,8 @@ import type { SpatialCommand, SpatialCoreState } from '@qingyu/spatial-core'
 const root = join(tmpdir(), 'qingyu-spatial-group-test')
 vi.mock('electron', () => ({ app: { getPath: () => root, getVersion: () => 'test' }, safeStorage: { isEncryptionAvailable: () => false } }))
 import { groupData, registerGroupIPC } from '../../ipc/group'
-import { spatialRepository, spatialService } from '../spatialService'
-import { spatialPaths, spatialRuntimeId, validateSpatialScope, hashSpatialValue, type SpatialGroupScope, type SpatialSessionState } from '../spatialRepository'
+import { spatialRepository, spatialService } from '../../features/spatial/commitService'
+import { spatialPaths, spatialRuntimeId, validateSpatialScope, hashSpatialValue, type SpatialGroupScope, type SpatialSessionState } from '../../features/spatial/repository'
 import * as storage from '../storage'
 import { createBackupV2, restoreBackupV2 } from '../backup'
 import { onGroupSessionDeleting, onGroupSpatialSourceChanged, notifyGroupSpatialActorsChanged } from '../groupLifecycle'

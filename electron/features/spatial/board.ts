@@ -1,4 +1,4 @@
-import type { SpatialAiSession } from '../../shared/spatial-ai'
+import type { SpatialAiSession } from '../../../shared/spatial-ai'
 
 export const SPATIAL_DISABLED_REASON = '空间画布已关闭'
 

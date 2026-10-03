@@ -27,7 +27,7 @@ import { publicFeatureHistory, prepareFeatureBackupRestore } from './featureBack
 import { prepareFeatureDataRestore } from './featureTaskLifecycle'
 import type { Settings } from '../../shared/types'
 import { saveCredential } from './safeStorage'
-import { hashSpatialValue, validateSpatialPackage, validateSpatialScope, isGroupScope, spatialRuntimeId, type SpatialOwnerScope } from './spatialRepository'
+import { hashSpatialValue, validateSpatialPackage, validateSpatialScope, isGroupScope, spatialRuntimeId, type SpatialOwnerScope } from '../features/spatial/repository'
 import type { SpatialAiSession } from '../../shared/spatial-ai'
 import type { ChatSession, GroupSession, GroupChat } from '../../shared/types'
 // eslint-disable-next-line no-restricted-imports

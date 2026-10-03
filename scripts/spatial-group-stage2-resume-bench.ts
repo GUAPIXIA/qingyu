@@ -24,7 +24,7 @@ app.whenReady().then(async()=>{
   const check=(name:string,passed:boolean)=>{report.checks.push({name,passed});writeFileSync(join(output,'model-progress.json'),JSON.stringify(report,null,2));if(!passed)throw Error(name)}
   try{
     const {createSpatialGroupAiService}=await import('../electron/services/spatialGroupAiService')
-    const {spatialService}=await import('../electron/services/spatialService')
+    const {spatialService}=await import('../electron/features/spatial/commitService')
     const {groupData,registerGroupIPC}=await import('../electron/ipc/group')
     const {readChatSettings,resolveChatProfile}=await import('../electron/services/chatConnection')
     const {chatWithRetry,getAdapter,registerAIIPC}=await import('../electron/services/ai')

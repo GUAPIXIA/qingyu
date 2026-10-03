@@ -13,14 +13,14 @@ import { enabledProfileOverride, resolveEffectiveContextLimit } from '../../shar
 import { chatData } from '../features/chat/chatData'
 import { safeId } from '../utils/pathGuard'
 import { DIRS } from './storage'
-import { hashSpatialValue, type SpatialScope } from './spatialRepository'
-import { spatialRepository, sessionFor, snapshotLocked } from './spatialService'
+import { hashSpatialValue, type SpatialScope } from '../features/spatial/repository'
+import { spatialRepository, sessionFor, snapshotLocked } from '../features/spatial/commitService'
 import { readChatSettings, resolveChatProfile } from './chatConnection'
 import { countTokens } from './tokenizer'
 import { getTaskSnapshot } from '../chat/taskStore'
 import { parseSpatialDialogueReply, spatialAutomaticReason, spatialNodePath, SPATIAL_DIALOGUE_PROMPT } from './spatialDialogueProtocol'
 import { spatialDialogueMentionsPlace } from './spatialPlaceNames'
-import { isSpatialBoardEnabled, SPATIAL_DISABLED_REASON } from './spatialFeature'
+import { isSpatialBoardEnabled, SPATIAL_DISABLED_REASON } from '../features/spatial/board'
 
 export interface SpatialDialogueCaptureInput {
   generationId: string

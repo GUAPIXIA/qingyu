@@ -33,7 +33,7 @@ vi.mock('electron', () => ({
 
 import { createBackupV2, restoreBackupV2 } from '../backup'
 import { getCredential } from '../safeStorage'
-import { hashSpatialValue } from '../spatialRepository'
+import { hashSpatialValue } from '../../features/spatial/repository'
 import { createEmptyRuntime, createWorldWithDefaults } from '@qingyu/spatial-core'
 
 const TEST_ROOT = `${process.env.TEMP ?? '/tmp'}/qingyu-backup-test`

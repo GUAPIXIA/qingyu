@@ -7,9 +7,9 @@ import { createEmptyRuntime, removeNodeCategories, removeSubstructureConflicts, 
 import { guardRuntimeImport, guardWorldImport } from '@qingyu/spatial-core'
 // eslint-disable-next-line no-restricted-imports
 import type { SpatialCommand, SpatialCoreState, SpatialWorldDocumentV1 } from '@qingyu/spatial-core'
-import type { SpatialCommitReceipt } from '../../shared/spatial'
-import { safeId } from '../utils/pathGuard'
-import { DIRS, readJson, withFileLock, writeJson } from './storage'
+import type { SpatialCommitReceipt } from '../../../shared/spatial'
+import { safeId } from '../../utils/pathGuard'
+import { DIRS, readJson, withFileLock, writeJson } from '../../services/storage'
 
 export interface SpatialScope { kind?: 'single'; characterId: string; sessionId: string }
 export interface SpatialGroupScope { kind: 'group'; groupId: string; sessionId: string }
@@ -167,7 +167,7 @@ export class SpatialRepository {
     validateSpatialScope(tx.scope)
     if (isGroupScope(tx.scope) && (tx.files.length !== (tx.aiSessionId ? 4 : 3) || !['world', 'runtime', 'state', ...(tx.aiSessionId ? ['ai'] : [])].every(kind => tx.files.some(file => file.kind === kind)))) throw new Error('群聊空间事务必须包含世界、位置和提交记录')
     if (isGroupScope(tx.scope) && tx.aiSessionId) {
-      const ai = tx.files.find(file => file.kind === 'ai')?.after as import('../../shared/spatial-ai').SpatialGroupAiSession
+      const ai = tx.files.find(file => file.kind === 'ai')?.after as import('../../../shared/spatial-ai').SpatialGroupAiSession
       if (ai?.id !== tx.aiSessionId || ai.scope?.kind !== 'group' || ai.scope.groupId !== tx.scope.groupId || ai.scope.sessionId !== tx.scope.sessionId || ai.scope.worldId !== tx.worldId) throw new Error('群聊助手事务归属无效')
     }
     if (tx.binding) {

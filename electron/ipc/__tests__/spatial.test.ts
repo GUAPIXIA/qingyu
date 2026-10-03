@@ -14,7 +14,7 @@ vi.mock('../../features/chat/chatData', () => ({
 import { chatData } from '../../features/chat/chatData'
 import { registerSpatialIPC, spatialData } from '../spatial'
 import * as storage from '../../services/storage'
-import { spatialPaths, worldFingerprint } from '../../services/spatialRepository'
+import { spatialPaths, worldFingerprint } from '../../features/spatial/repository'
 import type { SessionPreview } from '../../../shared/types'
 import type { SpatialEditorCommit, SpatialSnapshot } from '../../../shared/spatial'
 import type { SpatialCoreState, SpatialCommand } from '@qingyu/spatial-core'

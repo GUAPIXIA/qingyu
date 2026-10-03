@@ -43,8 +43,8 @@ app.whenReady().then(async () => {
   }
   try {
     const { createSpatialAiService } = await import('../electron/services/spatialAiService')
-    const { spatialService } = await import('../electron/services/spatialService')
-    const { spatialContextService } = await import('../electron/services/spatialContextService')
+    const { spatialService } = await import('../electron/features/spatial/commitService')
+    const { spatialContextService } = await import('../electron/features/spatial/contextService')
     const { contextService } = await import('../electron/chat/contextService')
     const { chatWithRetry, getAdapter } = await import('../electron/services/ai')
     const modelReplies: unknown[] = resume ? priorReport.modelReplies : []

@@ -5,16 +5,16 @@ import { existsSync, unlinkSync } from 'node:fs'
 import { applyCommandBatch, createEmptyRuntime, createWorldWithDefaults } from '@qingyu/spatial-core'
 // eslint-disable-next-line no-restricted-imports
 import type { SpatialCommand, SpatialCoreState, SpatialWorldDocumentV1 } from '@qingyu/spatial-core'
-import type { Character, Persona, Settings, ChatSession, GroupSession } from '../../shared/types'
-import type { SpatialCommitReceipt, SpatialCommitResult, SpatialEditorCommit, SpatialSnapshot, SpatialUpdatedEvent } from '../../shared/spatial'
-import type { SpatialAiSession, SpatialGroupAiSession } from '../../shared/spatial-ai'
-import { chatData } from '../features/chat/chatData'
-import { groupData } from '../ipc/group'
-import { safeId } from '../utils/pathGuard'
-import { DIRS, listJsonFiles, readJson } from './storage'
+import type { Character, Persona, Settings, ChatSession, GroupSession } from '../../../shared/types'
+import type { SpatialCommitReceipt, SpatialCommitResult, SpatialEditorCommit, SpatialSnapshot, SpatialUpdatedEvent } from '../../../shared/spatial'
+import type { SpatialAiSession, SpatialGroupAiSession } from '../../../shared/spatial-ai'
+import { chatData } from '../chat/chatData'
+import { groupData } from '../../ipc/group'
+import { safeId } from '../../utils/pathGuard'
+import { DIRS, listJsonFiles, readJson } from '../../services/storage'
 import { hashSpatialValue, readSpatialJson, SpatialRepository, spatialPaths, validateSpatialPackage, worldFingerprint,
   isGroupScope, spatialRuntimeId, validateSpatialScope,
-  type SpatialBinding, type SpatialScope, type SpatialOwnerScope, type SpatialGroupScope, type SpatialSessionState } from './spatialRepository'
+  type SpatialBinding, type SpatialScope, type SpatialOwnerScope, type SpatialGroupScope, type SpatialSessionState } from './repository'
 
 export function sessionFor(scope: SpatialScope): Promise<ChatSession>
 export function sessionFor(scope: SpatialGroupScope): Promise<GroupSession>

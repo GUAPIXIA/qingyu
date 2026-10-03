@@ -6,9 +6,9 @@ import { randomUUID } from 'node:crypto'
 const { testRoot } = vi.hoisted(() => ({ testRoot: `${process.env.TEMP}/qingyu-spatial-ai-test-${process.pid}` }))
 vi.mock('electron', () => ({ app: { getPath: () => testRoot, getVersion: () => '0.0.0-test' }, safeStorage: { isEncryptionAvailable: () => false }, BrowserWindow: { getAllWindows: () => [] } }))
 import { createSpatialAiService } from '../spatialAiService'
-import { spatialService, spatialRepository, sessionFor } from '../spatialService'
-import { spatialPaths } from '../spatialRepository'
-import { projectSpatialContext, spatialContextService } from '../spatialContextService'
+import { spatialService, spatialRepository, sessionFor } from '../../features/spatial/commitService'
+import { spatialPaths } from '../../features/spatial/repository'
+import { projectSpatialContext, spatialContextService } from '../../features/spatial/contextService'
 import { parseSpatialAiReply } from '../spatialAiProtocol'
 import { parseSpatialDialogueReply } from '../spatialDialogueProtocol'
 import { createBackupV2, restoreBackupV2 } from '../backup'

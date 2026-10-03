@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 // eslint-disable-next-line no-restricted-imports
 import { applyCommandBatch, OFFSTAGE_REGION_TAG, type SpatialCommand, type SpatialCoreState, type SpatialNode } from '@qingyu/spatial-core'
 import type { SpatialEvidence, SpatialSource } from '../../shared/spatial-ai'
-import { validateSpatialPackage } from './spatialRepository'
+import { validateSpatialPackage } from '../features/spatial/repository'
 import { canonicalSpatialPlaceName, SPATIAL_PLACE_NAMING_PROMPT } from './spatialPlaceNames'
 
 type Json = Record<string, unknown>

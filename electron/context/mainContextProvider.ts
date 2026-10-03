@@ -36,7 +36,7 @@ import type {
   RegexRule,
 } from '../../shared/types'
 import { readChatSettings, resolveChatProfile } from '../services/chatConnection'
-import { spatialContextService } from '../services/spatialContextService'
+import { spatialContextService } from '../features/spatial/contextService'
 import { resolveDefaultGateLevel, resolveReasoningGate } from '../../shared/reasoningGate'
 import { listLorebookViews } from '../services/lorebookDocumentStore'
 import { withResolvedSessionPersona } from '../../shared/personaResolution'

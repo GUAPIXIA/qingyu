@@ -22,7 +22,7 @@ import { isDomainEnabled, writeThroughDomain, resetSyncStateForRestore, runBoots
 import { app } from 'electron'
 import { notifyGroupSpatialActorsChanged } from '../services/groupLifecycle'
 import { randomUUID } from 'node:crypto'
-import { hashSpatialValue } from '../services/spatialRepository'
+import { hashSpatialValue } from '../features/spatial/repository'
 
 const log = createLogger('settings')
 

@@ -107,6 +107,9 @@ const SYNC_DOMAIN_FILES = [
 /**
  * 已确认「本地但不同步」的数据域（方案 §6.1）：
  * 连接/凭据/日志/本地模型/向量索引/诊断/更新器等，允许原样直写。
+ * 空间画板归属说明（阶段 3B 显式归类）：空间世界/运行态/提交记录/助手记录为桌面本地数据域
+ * （bridge syncRoutes 与 domain 均无空间实体，备份由 backup.ts 覆盖），
+ * 模块自带 transactions + `.spatial-write-lock` 事务，不接入跨端 journal，允许原样直写。
  */
 const LOCAL_ONLY_FILES = [
   'electron/bridge/identity.ts',
@@ -127,6 +130,10 @@ const LOCAL_ONLY_FILES = [
   'electron/services/settingsChangeBus.ts',
   'electron/services/filePersistence.ts',
   'electron/mcp/manager.ts',
+  // 阶段 3B：空间本地域（仓储迁入 features/spatial；ai 服务待 3B-2 归组后替换路径）
+  'electron/features/spatial/repository.ts',
+  'electron/services/spatialAiService.ts',
+  'electron/services/spatialGroupAiService.ts',
 ]
 
 function walk(dir) {

@@ -26,8 +26,8 @@ app.whenReady().then(async () => {
   const check = (name: string, passed: boolean) => { report.checks.push({ name, passed }); if (!passed) throw new Error(name) }
   try {
     const { createSpatialGroupAiService } = await import('../electron/services/spatialGroupAiService')
-    const { spatialService } = await import('../electron/services/spatialService')
-    const { spatialContextService } = await import('../electron/services/spatialContextService')
+    const { spatialService } = await import('../electron/features/spatial/commitService')
+    const { spatialContextService } = await import('../electron/features/spatial/contextService')
     const { groupData } = await import('../electron/ipc/group')
     const { DIRS, writeJson } = await import('../electron/services/storage')
     const { readChatSettings, resolveChatProfile } = await import('../electron/services/chatConnection')
