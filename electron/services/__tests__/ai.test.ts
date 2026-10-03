@@ -1,4 +1,4 @@
-import { captureGroupSpatialCheckpoint, certifyGroupSpatialMessage } from '../spatialGroupCheckpoint'
+import { captureGroupSpatialCheckpoint, certifyGroupSpatialMessage } from '../../features/spatial/dialogue/groupCheckpoint'
 /**
  * AI 适配层单元测试
  *

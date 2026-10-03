@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 // 复用独立画板的纯核心；不依赖 PC 渲染层状态。
 // eslint-disable-next-line no-restricted-imports
 import { applyCommandBatch, type SpatialCommand, type SpatialCoreState } from '@qingyu/spatial-core'
-import type { SpatialAiProposal, SpatialDialogueCandidate, SpatialDialogueGeneration, SpatialEvidence } from '../../shared/spatial-ai'
-import { resolveSpatialPlaceName, spatialDialogueReference, spatialPlaceMentionMatches, SPATIAL_PLACE_NAMING_PROMPT, type SpatialDialogueText } from './spatialPlaceNames'
+import type { SpatialAiProposal, SpatialDialogueCandidate, SpatialDialogueGeneration, SpatialEvidence } from '../../../../shared/spatial-ai'
+import { resolveSpatialPlaceName, spatialDialogueReference, spatialPlaceMentionMatches, SPATIAL_PLACE_NAMING_PROMPT, type SpatialDialogueText } from '../placeNames'
 
 /** 自动采用可执行的已完成动作；未明确项由自动处理记录为跳过。 */
 export function spatialAutomaticReason(proposal: SpatialAiProposal, generation: SpatialDialogueGeneration, core: SpatialCoreState,

@@ -1,6 +1,6 @@
 // eslint-disable-next-line no-restricted-imports
 import type { SpatialCoreState } from '@qingyu/spatial-core'
-import type { SpatialSource } from '../../shared/spatial-ai'
+import type { SpatialSource } from '../../../shared/spatial-ai'
 
 type Actors = { character?: string; persona?: string; members?: string[] }
 type Reference = Pick<SpatialSource, 'speaker' | 'subject' | 'text'>

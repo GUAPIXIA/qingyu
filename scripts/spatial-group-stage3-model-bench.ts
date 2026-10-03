@@ -25,7 +25,7 @@ app.whenReady().then(async () => {
   const report: { passed: boolean; model?: string; connection?: string; checks: Array<{ name: string; passed: boolean }>; replies: Array<{ task: string; model: string; text: string; finishReason: string }>; error?: string; isolated: string } = { passed: false, checks: [], replies: [], isolated: relative(process.cwd(),isolated) }
   const check = (name: string, passed: boolean) => { report.checks.push({ name, passed }); writeFileSync(join(output,'model-progress.json'),JSON.stringify({model:report.model,connection:report.connection,checks:report.checks},null,2)); if (!passed) throw new Error(name) }
   try {
-    const { createSpatialGroupAiService } = await import('../electron/services/spatialGroupAiService')
+    const { createSpatialGroupAiService } = await import('../electron/features/spatial/ai/groupChatService')
     const { spatialService } = await import('../electron/features/spatial/commitService')
     const { spatialContextService } = await import('../electron/features/spatial/contextService')
     const { groupData } = await import('../electron/ipc/group')

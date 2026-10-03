@@ -7,7 +7,7 @@ vi.mock('electron', () => ({ app: { getPath: () => root, getVersion: () => 'test
 import { registerSpatialIPC } from '../spatial'
 import { chatData } from '../../features/chat/chatData'
 import { groupData } from '../group'
-import { spatialAiService } from '../../services/spatialAiService'
+import { spatialAiService } from '../../features/spatial/ai/singleChatService'
 import { spatialService } from '../../features/spatial/commitService'
 import { spatialContextService } from '../../features/spatial/contextService'
 import { DIRS, writeJson } from '../../services/storage'

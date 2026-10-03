@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 // eslint-disable-next-line no-restricted-imports
 import { applyCommandBatch, OFFSTAGE_REGION_TAG, type SpatialCommand, type SpatialCoreState, type SpatialNode } from '@qingyu/spatial-core'
-import type { SpatialEvidence, SpatialSource } from '../../shared/spatial-ai'
-import { validateSpatialPackage } from '../features/spatial/repository'
-import { canonicalSpatialPlaceName, SPATIAL_PLACE_NAMING_PROMPT } from './spatialPlaceNames'
+import type { SpatialEvidence, SpatialSource } from '../../../../shared/spatial-ai'
+import { validateSpatialPackage } from '../repository'
+import { canonicalSpatialPlaceName, SPATIAL_PLACE_NAMING_PROMPT } from '../placeNames'
 
 type Json = Record<string, unknown>
 function object(value: unknown, label: string, keys?: string[]): Json {

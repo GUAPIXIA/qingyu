@@ -1,33 +1,33 @@
-import { trimFeatureHistory } from '../../shared/featureHistory'
+import { trimFeatureHistory } from '../../../../shared/featureHistory'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { existsSync, readdirSync, unlinkSync } from 'node:fs'
 // eslint-disable-next-line no-restricted-imports
 import { applyCommandBatch, createEmptyRuntime, createWorldWithDefaults, type SpatialCoreState, type SpatialCommand } from '@qingyu/spatial-core'
-import type { AICompletion, ChatParams, Persona } from '../../shared/types'
-import type { SpatialAiProposal, SpatialAiRequest, SpatialAiSession, SpatialInitializationSources, SpatialProposalReviewInput, SpatialSource } from '../../shared/spatial-ai'
-import type { SpatialCommitReceipt, SpatialEditorCommit, SpatialSnapshot } from '../../shared/spatial'
-import { stripAllThinking } from '../../shared/thoughtMarkup'
-import { resolveSessionPersonaFields } from '../../shared/personaResolution'
-import { resolveMessageSpeakerKind } from '../../shared/messageIdentity'
-import { resolveGenerationTaskBudget } from '../../shared/generationTaskBudget'
-import { enabledProfileOverride, resolveEffectiveContextLimit } from '../../shared/modelOutputProfile'
-import { chatData } from '../features/chat/chatData'
-import { withChatMessageLock } from '../features/chat/chatRepository'
-import { getCharacter } from './charCard'
-import { listLorebookViews } from './lorebookDocumentStore'
-import { DIRS, readJson, writeJson } from './storage'
-import { safeId } from '../utils/pathGuard'
-import { readChatSettings, resolveChatProfile } from './chatConnection'
-import { countTokens } from './tokenizer'
-import { hashSpatialValue, readSpatialJson, spatialPaths, worldFingerprint, type SpatialScope } from '../features/spatial/repository'
-import { chatActors, sessionFor, snapshotLocked, spatialRepository, spatialService, stateFor, type SpatialCompanion } from '../features/spatial/commitService'
-import { assertInitializationPreview, initializationCommands, isBlankSpatial, parseSpatialAiReply, spatialAiSystemPrompt } from './spatialAiProtocol'
-import { spatialGroupAiService } from './spatialGroupAiService'
-import { createSpatialDialogueQueue } from './spatialDialogueQueue'
-import { reviewDialogueCandidates, spatialAutomaticReason, spatialNodePath } from './spatialDialogueProtocol'
-import { assertSpatialBoardEnabled, cancelSpatialWork } from '../features/spatial/board'
-import { canonicalSpatialPlaceName, spatialDialogueReference } from './spatialPlaceNames'
+import type { AICompletion, ChatParams, Persona } from '../../../../shared/types'
+import type { SpatialAiProposal, SpatialAiRequest, SpatialAiSession, SpatialInitializationSources, SpatialProposalReviewInput, SpatialSource } from '../../../../shared/spatial-ai'
+import type { SpatialCommitReceipt, SpatialEditorCommit, SpatialSnapshot } from '../../../../shared/spatial'
+import { stripAllThinking } from '../../../../shared/thoughtMarkup'
+import { resolveSessionPersonaFields } from '../../../../shared/personaResolution'
+import { resolveMessageSpeakerKind } from '../../../../shared/messageIdentity'
+import { resolveGenerationTaskBudget } from '../../../../shared/generationTaskBudget'
+import { enabledProfileOverride, resolveEffectiveContextLimit } from '../../../../shared/modelOutputProfile'
+import { chatData } from '../../chat/chatData'
+import { withChatMessageLock } from '../../chat/chatRepository'
+import { getCharacter } from '../../../services/charCard'
+import { listLorebookViews } from '../../../services/lorebookDocumentStore'
+import { DIRS, readJson, writeJson } from '../../../services/storage'
+import { safeId } from '../../../utils/pathGuard'
+import { readChatSettings, resolveChatProfile } from '../../../services/chatConnection'
+import { countTokens } from '../../../services/tokenizer'
+import { hashSpatialValue, readSpatialJson, spatialPaths, worldFingerprint, type SpatialScope } from '../repository'
+import { chatActors, sessionFor, snapshotLocked, spatialRepository, spatialService, stateFor, type SpatialCompanion } from '../commitService'
+import { assertInitializationPreview, initializationCommands, isBlankSpatial, parseSpatialAiReply, spatialAiSystemPrompt } from './protocol'
+import { spatialGroupAiService } from './groupChatService'
+import { createSpatialDialogueQueue } from '../dialogue/queue'
+import { reviewDialogueCandidates, spatialAutomaticReason, spatialNodePath } from '../dialogue/protocol'
+import { assertSpatialBoardEnabled, cancelSpatialWork } from '../board'
+import { canonicalSpatialPlaceName, spatialDialogueReference } from '../placeNames'
 
 const coreOf = (snapshot: SpatialSnapshot): SpatialCoreState => snapshot as SpatialCoreState & SpatialSnapshot
 const listeners = new Set<(scope: SpatialScope) => void>()
@@ -95,7 +95,7 @@ function fitSources(sources: SpatialSource[], budget: number, model: string): Sp
 }
 
 export function createSpatialAiService(deps: { complete: (params: ChatParams, signal: AbortSignal, timeout: number) => Promise<AICompletion> } = {
-  complete: async (params, signal, timeout) => { const { chatWithRetry, getAdapter } = await import('./ai'); return chatWithRetry(getAdapter(params.provider), params, () => {}, signal, 0, undefined, timeout) },
+  complete: async (params, signal, timeout) => { const { chatWithRetry, getAdapter } = await import('../../../services/ai'); return chatWithRetry(getAdapter(params.provider), params, () => {}, signal, 0, undefined, timeout) },
 }) {
   const active = new Map<string, { taskId: string; controller: AbortController }>()
   const deleted = new Set<string>()

@@ -1,6 +1,6 @@
-import { spatialAiService } from './spatialAiService'
-import type { SpatialScope } from '../features/spatial/repository'
-import type { SpatialDialogueCaptureInput } from './spatialDialogueQueue'
+import { spatialAiService } from './singleChatService'
+import type { SpatialScope } from '../repository'
+import type { SpatialDialogueCaptureInput } from '../dialogue/queue'
 
 /** 模型调用由独立持久队列执行，主对话只等待登记，不等待提取。 */
 export const spatialAiScheduler = {

@@ -9,7 +9,7 @@ import type { SpatialGroupScope } from '../../features/spatial/repository'
 import type { SpatialCommand, SpatialCoreState } from '@qingyu/spatial-core'
 const { root } = vi.hoisted(() => ({ root: `${process.env.TEMP}/qingyu-spatial-group-ai-${process.pid}` }))
 vi.mock('electron', () => ({ app: { getPath: () => root, getVersion: () => 'test' }, safeStorage: { isEncryptionAvailable: () => true, encryptString: (value: string) => Buffer.from(value), decryptString: (value: Buffer) => value.toString() }, BrowserWindow: { getAllWindows: () => [] } }))
-import { createSpatialGroupAiService } from '../spatialGroupAiService'
+import { createSpatialGroupAiService } from '../../features/spatial/ai/groupChatService'
 import { spatialRepository, spatialService } from '../../features/spatial/commitService'
 import { spatialPaths, hashSpatialValue } from '../../features/spatial/repository'
 import { spatialContextService } from '../../features/spatial/contextService'
@@ -17,7 +17,7 @@ import { DIRS, writeJson, readJson } from '../storage'
 import { groupData, registerGroupIPC } from '../../ipc/group'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { createBackupV2, restoreBackupV2 } from '../backup'
-import { completeGroupSpatialCheckpoint, certifyGroupSpatialMessage } from '../spatialGroupCheckpoint'
+import { completeGroupSpatialCheckpoint, certifyGroupSpatialMessage } from '../../features/spatial/dialogue/groupCheckpoint'
 import { saveCredential } from '../safeStorage'
 import { registerSettingsIPC } from '../../ipc/settings'
 const scope: SpatialGroupScope = { kind: 'group', groupId: 'group-a', sessionId: 'session-a' }

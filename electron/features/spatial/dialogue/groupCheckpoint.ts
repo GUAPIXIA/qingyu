@@ -1,4 +1,4 @@
-import type { GroupMessage } from '../../shared/types'
+import type { GroupMessage } from '../../../../shared/types'
 
 /** 群聊仍走 legacy 流式 IPC；只给已捕获且主进程完整结束的请求签入正文检查点。 */
 const requests = new Map<string, { groupId: string; sessionId: string; complete: boolean }>()

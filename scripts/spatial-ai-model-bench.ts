@@ -42,7 +42,7 @@ app.whenReady().then(async () => {
     report.resumedStage4 = { reusedBaselineChecks: boundary, previousCompletedCalls: priorReport.completedModelCalls }
   }
   try {
-    const { createSpatialAiService } = await import('../electron/services/spatialAiService')
+    const { createSpatialAiService } = await import('../electron/features/spatial/ai/singleChatService')
     const { spatialService } = await import('../electron/features/spatial/commitService')
     const { spatialContextService } = await import('../electron/features/spatial/contextService')
     const { contextService } = await import('../electron/chat/contextService')

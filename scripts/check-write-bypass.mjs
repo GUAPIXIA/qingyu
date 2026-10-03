@@ -130,10 +130,10 @@ const LOCAL_ONLY_FILES = [
   'electron/services/settingsChangeBus.ts',
   'electron/services/filePersistence.ts',
   'electron/mcp/manager.ts',
-  // 阶段 3B：空间本地域（仓储迁入 features/spatial；ai 服务待 3B-2 归组后替换路径）
+  // 阶段 3B：空间本地域（仓储与单聊/群聊助手服务；助手记录由各服务自行落盘）
   'electron/features/spatial/repository.ts',
-  'electron/services/spatialAiService.ts',
-  'electron/services/spatialGroupAiService.ts',
+  'electron/features/spatial/ai/singleChatService.ts',
+  'electron/features/spatial/ai/groupChatService.ts',
 ]
 
 function walk(dir) {

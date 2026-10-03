@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 // eslint-disable-next-line no-restricted-imports
 import { applyCommandBatch, getContainmentPath, type SpatialCommand, type SpatialCoreState, type SpatialNode } from '@qingyu/spatial-core'
-import type { SpatialDialogueCandidate } from '../../shared/spatial-ai'
-import { resolveSpatialPlaceName, spatialDialogueReference, spatialPlaceMentionMatches, type SpatialDialogueText } from './spatialPlaceNames'
-import { isCompletedSpatialAction, spatialNodePath } from './spatialDialogueProtocol'
+import type { SpatialDialogueCandidate } from '../../../../shared/spatial-ai'
+import { resolveSpatialPlaceName, spatialDialogueReference, spatialPlaceMentionMatches, type SpatialDialogueText } from '../placeNames'
+import { isCompletedSpatialAction, spatialNodePath } from './protocol'
 
 type Actors = { character?: string; persona?: string }
 

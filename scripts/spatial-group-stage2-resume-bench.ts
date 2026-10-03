@@ -23,7 +23,7 @@ app.whenReady().then(async()=>{
   const report:{passed:boolean;model?:string;connection?:string;checks:Array<{name:string;passed:boolean}>;replies:Array<{task:string;model:string;text:string;finishReason:string}>;error?:string;isolated:string;priorFailure?:string;benchmarkInterrupted?:boolean;verifiedModes?:string[]}={...previous,passed:false,error:undefined,benchmarkInterrupted:false,priorFailure:previous.error,checks:previous.checks.filter((item:{passed:boolean})=>item.passed),isolated:relative(process.cwd(),isolated)}
   const check=(name:string,passed:boolean)=>{report.checks.push({name,passed});writeFileSync(join(output,'model-progress.json'),JSON.stringify(report,null,2));if(!passed)throw Error(name)}
   try{
-    const {createSpatialGroupAiService}=await import('../electron/services/spatialGroupAiService')
+    const {createSpatialGroupAiService}=await import('../electron/features/spatial/ai/groupChatService')
     const {spatialService}=await import('../electron/features/spatial/commitService')
     const {groupData,registerGroupIPC}=await import('../electron/ipc/group')
     const {readChatSettings,resolveChatProfile}=await import('../electron/services/chatConnection')

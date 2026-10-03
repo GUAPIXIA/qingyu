@@ -1,9 +1,9 @@
 /** @vitest-environment node */
 import { describe, expect, it } from 'vitest'
 import { createEmptyRuntime, createWorldWithDefaults, type SpatialCoreState } from '@qingyu/spatial-core'
-import { parseSpatialAiReply, spatialAiSystemPrompt } from '../spatialAiProtocol'
-import { parseSpatialDialogueReply, reviewDialogueCandidates, SPATIAL_DIALOGUE_PROMPT } from '../spatialDialogueProtocol'
-import { spatialDialogueMentionsPlace } from '../spatialPlaceNames'
+import { parseSpatialAiReply, spatialAiSystemPrompt } from '../../features/spatial/ai/protocol'
+import { parseSpatialDialogueReply, reviewDialogueCandidates, SPATIAL_DIALOGUE_PROMPT } from '../../features/spatial/dialogue/protocol'
+import { spatialDialogueMentionsPlace } from '../../features/spatial/placeNames'
 import type { SpatialSource } from '../../../shared/spatial-ai'
 
 function fixture(): SpatialCoreState {

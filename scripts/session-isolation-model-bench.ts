@@ -61,7 +61,7 @@ async function runAcceptance(): Promise<void> {
   const { registerSettingsIPC } = await import('../electron/ipc/settings')
   const { memorySummaryService } = await import('../electron/services/memorySummaryService')
   const { contextService } = await import('../electron/chat/contextService')
-  const { spatialAiService } = await import('../electron/services/spatialAiService')
+  const { spatialAiService } = await import('../electron/features/spatial/ai/singleChatService')
   const { spatialService } = await import('../electron/features/spatial/commitService')
   const { featureSource, matchesFeatureSource, featureOwnerKey } = await import('../shared/featureSource')
   const { buildMessageTranslationSystemPrompt } = await import('../shared/translationPrompt')
