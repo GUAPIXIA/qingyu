@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import type { AIFinishReason, Character, GroupChat, GroupMessage, NarrativeMode, RegexRule } from '../../../shared/types'
-import type { GroupChatState, GroupStoreGet, GroupStoreSet } from '../../store/groupChatTypes'
+import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { useSettingsStore, type ActiveProfile } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { pushToast } from '../../store/useToastStore'

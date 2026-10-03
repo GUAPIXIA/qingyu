@@ -1,7 +1,12 @@
-import type { GroupChat, GroupMessage, GroupSession, Preset, MemoryFactRecord, NarrativeMode } from '../../shared/types'
-import type { BudgetLoreItem, LorebookDiagnostics } from '../../shared/chat-core/lorebook'
-import type { GroupContextBuildResult } from './groupChatContext'
-import type { FactSearchHit } from '../../shared/domain/semanticFacts'
+/**
+ * 群聊 store 的界面状态与动作契约（结构阶段 4B 由 `src/store/groupChatTypes.ts` 迁入）。
+ *
+ * 状态定义归群聊 feature；`src/store/useGroupChatStore.ts` 仍是页面消费的稳定状态入口。
+ */
+import type { GroupChat, GroupMessage, GroupSession, Preset, MemoryFactRecord, NarrativeMode } from '../../../shared/types'
+import type { BudgetLoreItem, LorebookDiagnostics } from '../../../shared/chat-core/lorebook'
+import type { GroupContextBuildResult } from '../../store/groupChatContext'
+import type { FactSearchHit } from '../../../shared/domain/semanticFacts'
 
 /** 群聊 store 的完整状态与动作接口 */
 export interface GroupChatState {
@@ -51,8 +56,8 @@ export interface GroupChatState {
   insertCharacterMessage: (charId: string, content: string) => Promise<void>
 
   buildGroupContext: (targetCharId?: string, preset?: Preset | null, opts?: {
-    configuration?: import('../../shared/chatConnection').ChatConfigurationSnapshot
-    spatialContext?: import('../../shared/spatial').SpatialGroupContext | null
+    configuration?: import('../../../shared/chatConnection').ChatConfigurationSnapshot
+    spatialContext?: import('../../../shared/spatial').SpatialGroupContext | null
     trackUsage?: boolean
     lorebookDiagnosticsMode?: 'live' | 'preview'
   }) => { role: 'system' | 'user' | 'assistant'; content: string }[]

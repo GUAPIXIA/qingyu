@@ -1,5 +1,5 @@
 import type { GroupMessage, NarrativeMode } from '../../../shared/types'
-import type { GroupChatState, GroupStoreSet } from '../../store/groupChatTypes'
+import type { GroupChatState, GroupStoreSet } from './groupChatTypes'
 import type { GenerationTerminationLatch } from '../../../shared/generationTermination'
 import { stripVendorThinking } from '../../../shared/chat-core/messagePostProcess'
 import { logError } from '../../lib/logger'

@@ -1,5 +1,5 @@
 import type { GroupChat } from '../../../shared/types'
-import type { GroupStoreGet, GroupStoreSet } from '../../store/groupChatTypes'
+import type { GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 // 阶段 6 S6-01：轮询续排/自动记忆的跨端共享纯逻辑（fixture oracle 即此实现）
 import { planGroupPollingContinue, resolvePollingIntervalMs, planAutoMemoryTrigger } from '../../../shared/chat-core/groupScheduling'
 

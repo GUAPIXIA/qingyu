@@ -6,7 +6,7 @@ import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
 import { useSettingsStore } from './useSettingsStore'
 import { pushToast } from './useToastStore'
 import type { StoreGet, StoreSet } from '../features/chat/chatStoreTypes'
-import type { GroupStoreGet, GroupStoreSet } from './groupChatTypes'
+import type { GroupStoreGet, GroupStoreSet } from '../features/group-chat/groupChatTypes'
 
 export async function translateSingleMessage(set: StoreSet, get: StoreGet, messageId: string, content: string): Promise<void> {
   const message = get().messages.find(m => m.id === messageId)

@@ -18,7 +18,7 @@ import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS, D
 import { buildLorebookRevisionCorpus, buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from '../../store/chatUtils'
 import { resolveVisionModel } from '../../utils/visionModel'
 import { memoryFactsToTexts } from '../../../shared/chat-core/memory'
-import type { GroupChatState, GroupStoreGet, GroupStoreSet } from '../../store/groupChatTypes'
+import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
 import { enabledProfileOverride, formatRequestBudgetRisk } from '../../../shared/modelOutputProfile'
 import { resolveGroupRequestPlan } from '../../store/groupRequestPlan'

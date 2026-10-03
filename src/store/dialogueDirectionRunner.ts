@@ -25,7 +25,7 @@ import { useCharacterStore } from './useCharacterStore'
 import { getDisplayName } from '../../shared/chat-core/variables'
 import { logError } from '../lib/logger'
 import type { StoreGet, StoreSet } from '../features/chat/chatStoreTypes'
-import type { GroupStoreGet, GroupStoreSet } from './groupChatTypes'
+import type { GroupStoreGet, GroupStoreSet } from '../features/group-chat/groupChatTypes'
 
 /** 每条消息最多保留的最近对话条数（方案 §4.1：最近 4–6 条）。 */
 const RECENT_MESSAGE_LIMIT = 6
