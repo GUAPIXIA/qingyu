@@ -7,11 +7,11 @@ import { tmpdir } from 'node:os'
 
 const testRoot = join(tmpdir(), 'qingyu-spatial-ipc-test')
 vi.mock('electron', () => ({ app: { getPath: () => testRoot }, BrowserWindow: { getAllWindows: () => [] } }))
-vi.mock('../chat', () => ({
+vi.mock('../../features/chat/chatData', () => ({
   chatData: { listSessions: vi.fn(), updateSpatialBindingIfMatches: vi.fn() },
 }))
 
-import { chatData } from '../chat'
+import { chatData } from '../../features/chat/chatData'
 import { registerSpatialIPC, spatialData } from '../spatial'
 import * as storage from '../../services/storage'
 import { spatialPaths, worldFingerprint } from '../../services/spatialRepository'

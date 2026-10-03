@@ -5,7 +5,7 @@
  * findSessionById / findSessionByCharacterId / listAllSessions。
  * 旧伴侣 /api/v1 会话索引已随 S9-07 删除。
  */
-import { chatData } from '../ipc/chat'
+import { chatData } from '../features/chat/chatData'
 import { listCharacters } from '../services/charCard'
 import type { SessionPreview } from '../../shared/types'
 

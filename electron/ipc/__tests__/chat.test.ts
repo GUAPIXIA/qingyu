@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-chat-test' },
 }))
 
-import { chatData } from '../chat'
+import { chatData } from '../../features/chat/chatData'
 import { computeMessageMetaCached, readMessages, appendMessage, messagesCacheInvalidate, compactSessionFile } from '../../features/chat/chatRepository'
 
 const TEST_DIR = '/tmp/qingyu-chat-test/data/chats/char-001'

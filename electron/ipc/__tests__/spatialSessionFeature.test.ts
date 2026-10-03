@@ -5,7 +5,7 @@ import { join } from 'node:path'
 const { root } = vi.hoisted(() => ({ root: `${process.env.TEMP}/qingyu-spatial-session-feature-${process.pid}` }))
 vi.mock('electron', () => ({ app: { getPath: () => root, getVersion: () => 'test' }, BrowserWindow: { getAllWindows: () => [] } }))
 import { registerSpatialIPC } from '../spatial'
-import { chatData } from '../chat'
+import { chatData } from '../../features/chat/chatData'
 import { groupData } from '../group'
 import { spatialAiService } from '../../services/spatialAiService'
 import { spatialService } from '../../services/spatialService'

@@ -12,7 +12,7 @@ import { projectSpatialContext, spatialContextService } from '../spatialContextS
 import { parseSpatialAiReply } from '../spatialAiProtocol'
 import { parseSpatialDialogueReply } from '../spatialDialogueProtocol'
 import { createBackupV2, restoreBackupV2 } from '../backup'
-import { chatData } from '../../ipc/chat'
+import { chatData } from '../../features/chat/chatData'
 import * as storage from '../storage'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { AICompletion, ChatParams, Settings } from '../../../shared/types'

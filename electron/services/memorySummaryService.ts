@@ -23,7 +23,7 @@ import { chatWithRetry, getAdapter } from './ai'
 import { countTokens } from './tokenizer'
 import { createLogger } from './logger'
 import { mainContextProvider } from '../context/mainContextProvider'
-import { chatData } from '../ipc/chat'
+import { chatData } from '../features/chat/chatData'
 
 const log = createLogger('memory-summary')
 

@@ -18,10 +18,6 @@ vi.mock('../../services/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }))
 
-vi.mock('../../ipc/chat', () => ({
-  messagesCacheInvalidate: vi.fn(),
-}))
-
 vi.mock('../../utils/pathGuard', () => ({
   safeId: vi.fn(),
 }))

@@ -22,7 +22,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const strict = process.argv.includes('--strict')
 const verbose = process.argv.includes('--verbose')
 
-const SCAN_DIRS = ['electron/ipc', 'electron/bridge', 'electron/services', 'electron/mcp']
+const SCAN_DIRS = ['electron/ipc', 'electron/bridge', 'electron/services', 'electron/mcp', 'electron/features']
 
 /**
  * 原始写调用：只列真正落盘的底层原语。
@@ -91,6 +91,11 @@ const SYNC_DOMAIN_FILES = [
   'electron/ipc/group.ts',
   'electron/ipc/usage.ts',
   'electron/ipc/mcp.ts',
+  // 阶段 3A：聊天仓储/用例/门面迁出 IPC 后按同步域文件收口（任何直写都必须经 journal）
+  'electron/features/chat/chatRepository.ts',
+  'electron/features/chat/sessionUseCases.ts',
+  'electron/features/chat/messageUseCases.ts',
+  'electron/features/chat/chatData.ts',
   'electron/bridge/syncRoutes.ts',
   'electron/services/usage.ts',
   'electron/services/charCard.ts',

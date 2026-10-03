@@ -27,7 +27,7 @@ describe('chatTasks coverage', () => {
     const { join } = await import('node:path')
     mkdirSync(DIRS.characters(), { recursive: true })
     writeFileSync(join(DIRS.characters(), 'char-1.json'), JSON.stringify({ id: 'char-1', name: 'Test', description: '', personality: '', scenario: '', firstMessage: 'hi', exampleDialog: '', tags: [], lorebookId: null, creator: '', createdAt: 0, updatedAt: 0, alternateGreetings: [] }), 'utf-8')
-    const { chatData } = await import('../../ipc/chat')
+    const { chatData } = await import('../../features/chat/chatData')
     await chatData.createSession('char-1', 'test')
     // 用真实创建的会话 ID 覆盖 snap 的 sessionId，确保后续 findSession 成功
     const sessions = await chatData.listSessions('char-1')

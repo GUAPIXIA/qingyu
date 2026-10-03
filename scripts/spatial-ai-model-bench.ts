@@ -56,7 +56,7 @@ app.whenReady().then(async () => {
     } })
     const { readChatSettings, resolveChatProfile } = await import('../electron/services/chatConnection')
     const { writeJson, DIRS } = await import('../electron/services/storage')
-    const { chatData } = await import('../electron/ipc/chat')
+    const { chatData } = await import('../electron/features/chat/chatData')
     const settings = readChatSettings(); const profile = resolveChatProfile(settings)
     if (!profile) throw new Error('未配置聊天模型')
     report.model = profile.model

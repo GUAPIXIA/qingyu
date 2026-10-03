@@ -10,7 +10,8 @@ vi.mock('electron', () => ({
   safeStorage: { isEncryptionAvailable: () => false, encryptString: (s: string) => Buffer.from(s), decryptString: (b: Buffer) => b.toString() },
 }))
 
-import { registerChatIPC, chatData } from '../chat'
+import { registerChatIPC } from '../chat'
+import { chatData } from '../../features/chat/chatData'
 
 // Helper to capture ipc handlers
 function makeIpc() {

@@ -2,12 +2,12 @@
  * 阶段 0a：主进程 ContextDataProvider 实现（方案「安卓伴侣端方案」§7 阶段 0a）。
  *
  * 设计决策：按需读磁盘，不维护内存镜像（配置数据变更频率低，每次请求读磁盘
- * 开销可接受；会话/消息复用 electron/ipc/chat.ts 的 chatData 门面）。
+ * 开销可接受；会话/消息复用 electron/features/chat/chatData.ts 的 chatData 门面）。
  *
  * 依赖说明：
  * - 角色：electron/services/charCard.ts 的 getCharacter（与渲染层同一数据源）
  * - 预设：DIRS.presets() 磁盘 JSON + getBuiltinPresets 内置预设
- * - 会话/消息：electron/ipc/chat.ts 的 chatData（与 IPC handler 共用底层存储函数）
+ * - 会话/消息：electron/features/chat/chatData.ts 的 chatData（与 IPC handler 共用底层存储函数）
  * - 设置：DIRS.config()/settings.json（主进程本就持有完整设置）
  * - 世界书：DIRS.lorebooks() 磁盘 JSON
  * - 正则：electron/ipc/regex.ts 的 readRules（同一 rules.json）
@@ -19,7 +19,7 @@
 import { join } from 'node:path'
 import { DIRS, readJson, listJsonFilesAsync } from '../services/storage'
 import { getCharacter } from '../services/charCard'
-import { chatData } from '../ipc/chat'
+import { chatData } from '../features/chat/chatData'
 import { getBuiltinPresets } from '../ipc/preset'
 import { readRules } from '../ipc/regex'
 import type {

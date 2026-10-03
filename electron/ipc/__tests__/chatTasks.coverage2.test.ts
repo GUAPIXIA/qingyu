@@ -51,7 +51,7 @@ describe('chatTasks coverage2 - 校验分支', () => {
     const { mkdirSync, writeFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     const { DIRS } = await import('../../services/storage')
-    const { chatData } = await import('../../ipc/chat')
+    const { chatData } = await import('../../features/chat/chatData')
     const { createTask } = await import('../../chat/taskStore')
     mkdirSync(DIRS.characters(), { recursive: true })
     writeFileSync(join(DIRS.characters(), 'char-cov2-retry.json'), JSON.stringify({ id: 'char-cov2-retry', name: 'T', description: '', personality: '', scenario: '', firstMessage: 'hi', exampleDialog: '', tags: [], lorebookId: null, creator: '', createdAt: 0, updatedAt: 0, alternateGreetings: [] }), 'utf-8')

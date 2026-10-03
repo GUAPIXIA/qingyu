@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
 }))
 
 import { DIRS } from '../../services/storage'
-import { chatData } from '../../ipc/chat'
+import { chatData } from '../../features/chat/chatData'
 import { messagesCacheInvalidate } from '../../features/chat/chatRepository'
 import { mainContextProvider, mainContextWriter } from '../mainContextProvider'
 import type { Message } from '../../../shared/types'

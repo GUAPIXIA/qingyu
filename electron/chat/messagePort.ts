@@ -3,7 +3,7 @@
  * V12-09 MessagePort 真实实现（对接 chatData JSONL 存储）
  */
 import { nanoid } from 'nanoid'
-import { chatData } from '../ipc/chat'
+import { chatData } from '../features/chat/chatData'
 import type { MessagePort, PersistUserMessage, PersistAssistantMessage } from './ports'
 
 export const chatMessagePort: MessagePort = {

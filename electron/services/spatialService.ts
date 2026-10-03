@@ -8,7 +8,7 @@ import type { SpatialCommand, SpatialCoreState, SpatialWorldDocumentV1 } from '@
 import type { Character, Persona, Settings, ChatSession, GroupSession } from '../../shared/types'
 import type { SpatialCommitReceipt, SpatialCommitResult, SpatialEditorCommit, SpatialSnapshot, SpatialUpdatedEvent } from '../../shared/spatial'
 import type { SpatialAiSession, SpatialGroupAiSession } from '../../shared/spatial-ai'
-import { chatData } from '../ipc/chat'
+import { chatData } from '../features/chat/chatData'
 import { groupData } from '../ipc/group'
 import { safeId } from '../utils/pathGuard'
 import { DIRS, listJsonFiles, readJson } from './storage'

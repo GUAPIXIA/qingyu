@@ -9,7 +9,7 @@ vi.mock('electron', () => ({ app: { getPath: () => TEST_ROOT } }))
 
 import { chatMessagePort } from '../messagePort'
 import { DIRS } from '../../services/storage'
-import { chatData } from '../../ipc/chat'
+import { chatData } from '../../features/chat/chatData'
 
 beforeEach(() => {
   rmSync(TEST_ROOT, { recursive: true, force: true })
