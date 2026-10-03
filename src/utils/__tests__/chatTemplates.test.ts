@@ -9,7 +9,7 @@ import {
   resolveEffectiveTemplate,
   applyInstructTemplate,
   BUILTIN_TEMPLATE_NAMES,
-} from '../chatTemplates'
+} from '../../../shared/chat-core/chatTemplates'
 
 const MESSAGES = [
   { role: 'system', content: '你是助手' },

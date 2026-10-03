@@ -200,6 +200,28 @@ describe('useChatInputState', () => {
     expect(useChatStore.getState().sendMessage).not.toHaveBeenCalled()
   })
 
+  it.each(['stop', 'error'])('润色晚到的 %s 不覆盖生成期间的新草稿', async (terminal) => {
+    let chunk: Parameters<typeof window.api.ai.onChunk>[0] = () => {}
+    let done: Parameters<typeof window.api.ai.onComplete>[0] = () => {}
+    let error: Parameters<typeof window.api.ai.onError>[0] = () => {}
+    vi.mocked(window.api.ai.onChunk).mockImplementation(cb => { chunk = cb; return vi.fn() })
+    vi.mocked(window.api.ai.onComplete).mockImplementation(cb => { done = cb; return vi.fn() })
+    vi.mocked(window.api.ai.onError).mockImplementation(cb => { error = cb; return vi.fn() })
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+    act(() => result.current.setText('原稿'))
+    let pending: Promise<void>
+    act(() => { pending = result.current.handleAiPolish() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+    const requestId = vi.mocked(window.api.ai.chat).mock.calls.at(-1)![0].requestId
+    act(() => result.current.setText('用户新稿'))
+    await act(async () => {
+      if (terminal === 'stop') { chunk({ requestId, text: '旧润色建议' }); done({ requestId, finishReason: 'stop' }) }
+      else error({ requestId, error: '模型失败' })
+      await pending!
+    })
+    expect(result.current.text).toBe('用户新稿')
+  })
+
   function mockAiHelperResponses(responses: string[]) {
     let onChunk: ((data: { requestId: string; text: string }) => void) | undefined
     let onDone: ((requestId: string) => void) | undefined
@@ -241,7 +263,7 @@ describe('useChatInputState', () => {
     expect(result.current.text).not.toContain('We need')
   })
 
-  it('输入框续写把当前预设越狱提示词注入 system 消息并替换变量', async () => {
+  it('输入框续写使用专用提示，不继承当前预设越狱提示词', async () => {
     useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
     useChatStore.setState({ activePresetId: 'preset-jailbreak' })
     vi.mocked(window.api.preset.list).mockResolvedValue([{
@@ -268,7 +290,7 @@ describe('useChatInputState', () => {
     })
 
     const systemPrompt = vi.mocked(window.api.ai.chat).mock.calls[0][0].messages[0].content
-    expect(systemPrompt).toContain('越狱规则：TestUser 与 Alice 必须保持沉浸。')
+    expect(systemPrompt).not.toContain('越狱规则')
   })
 
   it('续写重试后仍无有效中文时恢复原输入', async () => {

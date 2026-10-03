@@ -6,7 +6,7 @@ import { useToastStore } from '../../store/useToastStore'
 import { resolveRendererGenerationTaskBudget } from '../../store/generationTaskBudget'
 import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
-import { getDisplayName } from '../../utils/variables'
+import { getDisplayName } from '../../../shared/chat-core/variables'
 import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
 import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin, Languages, Loader2, MoreHorizontal } from 'lucide-react'
 import { useState, useMemo, memo } from 'react'
@@ -97,7 +97,7 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
 
     setTranslating(true)
     const requestId = `translate-fm-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    const model = useSettingsStore.getState().settings.activeModel || profile.model
+    const model = profile.model
     const translationPlan = await resolveRendererGenerationTaskBudget({
       profile,
       model,

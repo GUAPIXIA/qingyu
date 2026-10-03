@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { LorebookDiagnostics } from '../../../utils/lorebook'
+import type { LorebookDiagnostics } from '../../../../shared/chat-core/lorebook'
 import { LorebookDebugPanel } from '../LorebookDebugPanel'
 
 function makeDiagnostics(mode: 'live' | 'preview', name: string): LorebookDiagnostics {

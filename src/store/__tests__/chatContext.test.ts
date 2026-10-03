@@ -1,3 +1,4 @@
+import { featureSource } from '../../../shared/featureSource'
 /**
  * buildChatContext 核心逻辑单元测试（P-8）
  * 覆盖：系统提示组装 / 世界书位置注入 / at_depth 深度注入 / token 预算裁剪 /
@@ -9,8 +10,8 @@ import { markPendingCompression } from '../streamController'
 import { useSettingsStore } from '../useSettingsStore'
 import { useChatStore } from '../useChatStore'
 import { getDefaultSettings } from '../../../shared/defaults'
-import { lorebookCache } from '../../utils/lorebook'
-import type { BudgetLoreItem } from '../../utils/lorebook'
+import { lorebookCache } from '../../features/lorebook/lorebookCache'
+import type { BudgetLoreItem } from '../../../shared/chat-core/lorebook'
 import type { Character, Lorebook, Message, SessionPreview } from '../../../shared/types'
 
 vi.mock('../streamController', () => ({
@@ -300,6 +301,7 @@ describe('buildChatContext', () => {
     // 摘要覆盖全部范围：startTs 早于第一条，endTs 晚于最后一条
     const session = makeSession({
       compressedSummary: '之前他们在图书馆相遇并讨论了古书。',
+      compressedSource: { ...featureSource(messages, 'range'), range: { startTs: 0, endTs: 999999 } },
       compressedRange: { startTs: 0, endTs: 999999 },
     })
     const get = makeGet({ messages, sessions: [session] })

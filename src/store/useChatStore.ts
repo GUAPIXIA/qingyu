@@ -1,3 +1,4 @@
+import { cancelFeatureTasks } from './featureTasks'
 import { create, type StateCreator } from 'zustand'
 import type { Message, SessionPreview, Preset, Lorebook } from '../../shared/types'
 import { nanoid } from 'nanoid'
@@ -5,13 +6,14 @@ import { useSettingsStore } from './useSettingsStore'
 import { usePersonaStore } from './usePersonaStore'
 import { useCharacterStore } from './useCharacterStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
-import { replaceVariables } from '../utils/variables'
-import { applyRegexRules, applyOutputRegexRules } from '../utils/regex'
-import { getEffectiveLorebookIds, lorebookCache } from '../utils/lorebook'
+import { replaceVariables } from '../../shared/chat-core/variables'
+import { applyRegexRules, applyOutputRegexRules } from '../../shared/chat-core/regex'
+import { getEffectiveLorebookIds } from '../../shared/chat-core/lorebook'
+import { lorebookCache } from '../features/lorebook/lorebookCache'
 import { logError } from '../lib/logger'
-import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
+import { flushSpatialBoard } from '../lib/spatialFlush'
 import {
-  friendlyError, syncPersonaToSettings, applyDefaultMemory,
+  syncPersonaToSettings, applyDefaultMemory,
   invalidateDerivedMemory, nextLoadRequestId, currentLoadRequestId,
 } from './chatUtils'
 import { streamAIResponse, cleanupActiveStream, finalizeNoticeFields, claimUserStop, abortActiveTailRepair, maybeAutoTitle } from './streamController'
@@ -75,19 +77,16 @@ function pickAdjacentSessionId(before: SessionPreview[], removedId: string, afte
  * 靠这份删除前快照对新列表取邻近（下一项优先、否则上一项）；确实无法定位才回退首项。
  */
 let preDeleteSessionAnchor: { id: string; before: SessionPreview[] } | null = null
-import { createChunkAccumulator } from './chunkAccumulator'
+import { translateSingleMessage } from './messageTranslation'
 import { buildChatContext, buildChatContextReport } from './chatContext'
 import { maybeRunAutoMemorySummary, runMemorySummary } from './memoryManager'
 import { regenerateChatMessage, continueChatMessage, swipeChatMessage } from './chatGeneration'
 import { sessionEventReporter } from './sessionEventReporter'
-import type { ChatState } from './chatTypes'
+import type { ChatState } from '../features/chat/chatStoreTypes'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
-import { stripAllThinking } from '../../shared/thoughtMarkup'
-import { buildMessageTranslationSystemPrompt } from '../../shared/translationPrompt'
 import {
   generateSingleDialogueDirections,
-  cancelDialogueDirectionRequests,
   refreshSingleDialogueDirections,
   clearSessionDialogueDirections,
 } from './dialogueDirectionRunner'
@@ -146,6 +145,8 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
   },
 
   createSession: async (characterId, title) => {
+    const pending = flushSpatialBoard()
+    if (pending) await pending
     const charStore = useCharacterStore.getState()
     const char = charStore.characters.find(c => c.id === characterId)
     const initLorebookIds = getEffectiveLorebookIds(char)
@@ -164,6 +165,8 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
 
   /** 统一入口：创建新会话并可选地插入开场白（P-7：插入逻辑复用 insertGreetingMessage） */
   createSessionWithGreeting: async (character, greeting) => {
+    const pending = flushSpatialBoard()
+    if (pending) await pending
     const initLorebookIds = getEffectiveLorebookIds(character)
     const session = await window.api.chat.createSession(character.id, undefined, undefined, initLorebookIds)
     // 继承角色的默认长记忆配置
@@ -265,12 +268,12 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
   },
 
   switchSession: async (sessionId, character) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     // 切换会话时取消正在进行的流式请求
     if (get().isStreaming) {
       get().stopStreaming()
     }
-    // 会话切换：取消尚未完成的方向请求，避免结果写入其他会话的消息
-    cancelDialogueDirectionRequests()
     set({ currentSessionId: sessionId, editingMessageId: null })
     // 持久化当前会话 ID
     useSettingsStore.getState().updateSettings({ activeSessionId: sessionId })
@@ -295,6 +298,8 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
   },
 
   deleteCurrentSession: async (characterId) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     const { currentSessionId, sessions } = get()
     if (!currentSessionId) return
     // M-19 修复：删除当前会话前取消进行中的流式（对齐 deleteSession）——
@@ -315,6 +320,7 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
       set({ sessions: newSessions, currentSessionId: pickAdjacentSessionId(before, currentSessionId, newSessions) })
       return
     }
+    cancelFeatureTasks({ kind: 'single', characterId, sessionId: currentSessionId })
     await window.api.chat.deleteSession(characterId, currentSessionId)
     // 刷新
     const newSessions = await window.api.chat.listSessions(characterId)
@@ -332,6 +338,10 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
 
   /** 删除指定会话（不再绕过 store） */
   deleteSession: async (characterId, sessionId) => {
+    if (sessionId === get().currentSessionId) {
+      const pending = flushSpatialBoard()
+      if (pending) { try { await pending } catch { return } }
+    }
     // UEX-P1-35：删除前记住列表位置，删除后跳邻近会话用
     const prevSessions = get().sessions
     // UEX-P1-35：删除前记录目标会话在旧列表的位置（或 sessionId），
@@ -341,6 +351,7 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
     if (get().isStreaming) {
       get().stopStreaming()
     }
+    cancelFeatureTasks({ kind: 'single', characterId, sessionId })
     await window.api.chat.deleteSession(characterId, sessionId)
     const newSessions = await window.api.chat.listSessions(characterId)
     const { currentSessionId } = get()
@@ -557,6 +568,31 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
   },
 
   sendMessage: async (content, images, character, preset, _lorebooks, replyToId, generationKind = 'manual') => {
+    const spatialSid = get().currentSessionId
+    let spatialRead: import('../../shared/spatial').SpatialContext | null | undefined
+    if (spatialSid) {
+      try {
+        await flushSpatialBoard()
+        const spatial = await window.api.spatial.readContext(character.id, spatialSid)
+        spatialRead = spatial
+        if (get().currentSessionId !== spatialSid) throw new Error('会话已切换，消息未发送')
+        if (spatial?.characterOffstage && resolveNarrativeMode(get().sessions.find(session => session.id === spatialSid)?.narrativeMode) === 'immersive') throw new Error('当前角色位于“不参与对话”区域，请先调整位置或关闭对话读取位置')
+        if (spatial) {
+          const { syncBuildData } = await import('../context/rendererContextProvider')
+          const { buildContextMessagesFromData } = await import('../../shared/chat-core/contextBuilder')
+          const data = syncBuildData(character, preset)
+          data.spatialContext = spatial
+          data.chat = { ...data.chat, messages: [...data.chat.messages, { id: 'spatial-send-preflight', sessionId: spatialSid, characterId: character.id, role: 'user', content, images, isEditing: false, timestamp: Date.now() }] }
+          buildContextMessagesFromData(data, { lorebookDiagnosticsMode: 'preview' })
+          if (get().currentSessionId !== spatialSid) throw new Error('会话已切换，消息未发送')
+        }
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause)
+        set({ error: message })
+        pushToast({ variant: 'error', title: '消息未发送', description: message, requestId: 'chat-error' })
+        return false
+      }
+    }
     // V12-11: flag 隔离，新链路走 Orchestrator（带流式占位）
     try {
       const { useChatTaskStore } = await import('./chatTaskStore')
@@ -746,6 +782,7 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
       character,
       preset,
       inputText: processedContent,
+      ...(spatialSid === currentSid ? { spatialContext: spatialRead } : {}),
       onComplete: async (fullContent, meta) => {
         // M-18 修复：空回复/手动中止——移除占位消息，避免 UI 残留空气泡且不落盘
         if (!fullContent) {
@@ -763,12 +800,13 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
           content: finalContent,
           // 阶段3：收尾状态——"已恢复"走中性提示（generationNotice），失败走 generationError
           ...finalizeNoticeFields(meta),
+          spatialGenerationId: meta.spatialGenerationId,
           contentRenderMode: 'blocks' as const,
         }
         set((s) => ({
           messages: s.messages.map((m) => (m.id === aiMessageId ? finalMsg : m)),
         }))
-        window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
+        await window.api.chat.saveMessage(finalMsg)
 
         // “下一步方向”：主回复落盘后异步生成，失败静默降级，不影响正文。
         const session = get().sessions.find((item) => item.id === finalMsg.sessionId)
@@ -899,13 +937,16 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
     const invalidation = invalidateDerivedMemory(get, character, messageId)
 
     // 正文被编辑：旧方向不再对应当前内容，立即失效并取消在途请求
-    cancelDialogueDirectionRequests([messageId])
-    const updatedMsg: typeof msg = { ...msg, content: newContent }
+    const featureMessage = get().messages.find(m => m.id === messageId)
+    if (featureMessage) cancelFeatureTasks({ kind: 'single', characterId: featureMessage.characterId, sessionId: featureMessage.sessionId }, [messageId])
+    const updatedMsg: typeof msg = { ...msg, content: newContent, translation: null, translationLanguage: undefined, translationSource: undefined }
     delete (updatedMsg as Message).dialogueDirections
     delete (updatedMsg as Message).dialogueDirectionsGeneratedAt
     // 先更新本地状态
     set((s) => ({
       messages: s.messages.map((m) => (m.id === messageId ? updatedMsg : m)),
+      translatingMessages: Object.fromEntries(Object.entries(s.translatingMessages).filter(([id]) => id !== messageId)),
+      showTranslationIds: new Set([...s.showTranslationIds].filter(id => id !== messageId)),
     }))
     // 再保存到文件（updateMessage 会更新而非追加）
     await window.api.chat.saveMessage(updatedMsg)
@@ -928,7 +969,8 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
     // 用户可能已切换会话，避免删除操作作用于错误会话
     const sessionId = get().currentSessionId ?? undefined
     // 消息被删除：取消该消息在途的方向请求
-    cancelDialogueDirectionRequests([messageId])
+    const featureMessage = get().messages.find(m => m.id === messageId)
+    if (featureMessage) cancelFeatureTasks({ kind: 'single', characterId: featureMessage.characterId, sessionId: featureMessage.sessionId }, [messageId])
     // 阶段五检查点：仅当删除发生在游标前才失效
     const invalidated = await invalidateDerivedMemory(get, character, messageId)
     if (invalidated) get().patchLocalSession(invalidated.sessionId, invalidated.patch)
@@ -948,6 +990,7 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
 
   clearChat: async (characterId) => {
     const sessionId = get().currentSessionId
+    if (sessionId) cancelFeatureTasks({ kind: 'single', characterId, sessionId })
     await window.api.chat.clearChat(characterId, sessionId ?? undefined)
     set({ messages: [] })
     // P-7：本地 patch 会话元数据（不再全量 listSessions）
@@ -973,134 +1016,7 @@ const createChatStoreState: StateCreator<ChatStoreState> = (set, get) => ({
   },
 
   /** 启动 AI 翻译 - 全局状态管理，页面切换不中断 */
-  translateMessage: async (messageId, content) => {
-    if (!content) return
-
-    const existing = get().translatingMessages[messageId]
-    // 如果已有翻译结果，切换回原文
-    if (existing && existing.status === 'done') {
-      get().toggleTranslation(messageId)
-      return
-    }
-    // 如果正在翻译中，不重复发起
-    if (existing?.status === 'translating') return
-
-    // 初始化翻译状态
-    set((state) => ({
-      translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'translating' as const, content: '' } },
-    }))
-
-    const requestId = `translate-${messageId}-${Date.now()}`
-    // P-8 修复：chunk 累积器统一管理节流 flush + 空闲超时（30s 无 chunk 即中止），
-    // 替代此前手写的 timer 三件套
-    const acc = createChunkAccumulator({
-      onFlush: (accText) => {
-        set((state) => ({
-          translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'translating' as const, content: accText } },
-        }))
-      },
-      onIdleTimeout: () => {
-        unbindChunk(); unbindDone(); unbindError()
-        window.api.ai.cancelChat(requestId, 'timeout').catch(() => {})
-        set((state) => ({
-          translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译超时（30 秒无响应）' } },
-        }))
-      },
-    })
-
-    const unbindChunk = window.api.ai.onChunk((data) => {
-      if (data.requestId !== requestId) return
-      acc.append(data.text)
-    })
-
-    const unbindDone = window.api.ai.onComplete((payload) => {
-      if (payload.requestId !== requestId) return
-      unbindChunk(); unbindDone(); unbindError()
-
-      // 先准备好 updated 对象（不在 set 回调中执行副作用）
-      const finalResult = stripAllThinking(acc.flushNow())
-      // R4 修复：模型返回空结果（如推理模型思考内容耗尽 maxTokens 导致正文为空）时，
-      // 不落库空译文、不自动切显示，改为错误提示，避免 UI 静默回退原文且下次仍重复翻译
-      if (!finalResult) {
-        set((state) => ({
-          translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译结果为空，请重试或更换模型' } },
-        }))
-        return
-      }
-      set((state) => {
-        const updated = { ...state.translatingMessages, [messageId]: { status: 'done' as const, content: finalResult } }
-        const msgs = state.messages.map(m => m.id === messageId ? { ...m, translation: finalResult } : m)
-        // 翻译完成后自动显示译文：不依赖发起时的一次性 toggle（可能被重复点击抵消）
-        const nextShow = new Set(state.showTranslationIds)
-        nextShow.add(messageId)
-        return { translatingMessages: updated, messages: msgs, showTranslationIds: nextShow }
-      })
-      // 在 set 之外执行 IPC 副作用（修复反模式）
-      const msg = get().messages.find(m => m.id === messageId)
-      if (msg) {
-        window.api.chat.saveMessage(msg).catch((err) => {
-          logError('ChatStore:translate', err)
-        })
-      }
-    })
-
-    const unbindError = window.api.ai.onError((data) => {
-      if (data.requestId !== requestId) return
-      acc.dispose()
-      unbindChunk(); unbindDone(); unbindError()
-      set((state) => ({
-        translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: friendlyError(data.error) } },
-      }))
-    })
-
-    const profile = useSettingsStore.getState().getActiveProfile()
-    if (!profile) {
-      acc.dispose()
-      unbindChunk(); unbindDone(); unbindError()
-      set((state) => ({
-        translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '未配置 API 连接' } },
-      }))
-      return
-    }
-    const settings = useSettingsStore.getState().settings
-    const targetLang = settings.translationTargetLang || '中文'
-    const model = settings.activeModel || profile.model
-    const translationPlan = await resolveRendererGenerationTaskBudget({
-      profile,
-      model,
-      task: 'translation',
-      inputChars: content.length,
-      usageTaskType: 'translation',
-    })
-    window.api.ai.chat({
-      requestId,
-      messages: [
-        { role: 'system', content: buildMessageTranslationSystemPrompt(targetLang) },
-        { role: 'user', content },
-      ],
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model,
-      temperature: 0.3,
-      topP: 0.9,
-      maxTokens: translationPlan.requestMaxTokens,
-      frequencyPenalty: 0,
-      presencePenalty: 0,
-      stream: true,
-      observability: { source: 'aux', taskType: 'translation' },
-      adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
-      // 翻译只需要最终文本。关闭推理可避免模型把输出额度耗在 reasoning 中，
-      // reasoning 被界面剥离后留下“翻译结果为空”。
-      reasoningGate: translationPlan.reasoningGate,
-    }).catch(() => {
-      acc.dispose()
-      unbindChunk(); unbindDone(); unbindError()
-      set((state) => ({
-        translatingMessages: { ...state.translatingMessages, [messageId]: { status: 'error' as const, content: '', errorMsg: '翻译请求失败' } },
-      }))
-    })
-  },
+  translateMessage: (messageId, content) => translateSingleMessage(set, get, messageId, content),
 
   /** 切换翻译显示/隐藏 */
   toggleTranslation: (messageId) => {

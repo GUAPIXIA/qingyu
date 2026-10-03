@@ -1,3 +1,4 @@
+import { cancelFeatureTasks } from './featureTasks'
 /**
  * 单聊"生成类"方法（regenerate/continue/swipe）
  * 从 useChatStore 提取，行为不变：通过 set/get 闭包访问 store 状态与方法。
@@ -8,16 +9,16 @@ import {
   stripThought,
   stripVendorThinking,
   trimContinuationSeam,
-} from '../utils/messagePostProcess'
+} from '../../shared/chat-core/messagePostProcess'
 import { logError } from '../lib/logger'
 import { streamAIResponse, finalizeNoticeFields } from './streamController'
-import type { ChatState } from './chatTypes'
+import type { ChatState } from '../features/chat/chatStoreTypes'
 import { maybeRunAutoMemorySummary } from './memoryManager'
 import { invalidateDerivedMemory } from './chatUtils'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveMessageSpeakerKind } from '../../shared/messageIdentity'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
-import { generateSingleDialogueDirections, cancelDialogueDirectionRequests } from './dialogueDirectionRunner'
+import { generateSingleDialogueDirections } from './dialogueDirectionRunner'
 import { pushToast } from './useToastStore'
 
 /** 从消息上移除方向字段（正文被替换时必须失效）。 */
@@ -77,11 +78,12 @@ export async function regenerateChatMessage(
   const newSwipeIndex = swipes.length
 
   // 正文即将被替换：旧方向失效并取消在途请求
-  cancelDialogueDirectionRequests([messageId])
+  cancelFeatureTasks({ kind: 'single', characterId: targetMsg.characterId, sessionId: targetMsg.sessionId }, [messageId])
 
   // 在 UI 中先插入一个空候选，让用户看到正在生成
   const updatedMsg: Message = {
     ...withoutDirections(targetMsg),
+    translation: null, translationLanguage: undefined, translationSource: undefined,
     swipes: [...swipes, ''],
     swipeIndex: newSwipeIndex,
     content: '',
@@ -139,12 +141,13 @@ export async function regenerateChatMessage(
         content: finalContent,
         // 阶段3：新候选的收尾状态覆盖旧提示（成功生成清空上一轮失败/提示）
         ...finalizeNoticeFields(meta),
+        spatialGenerationId: meta.spatialGenerationId,
         contentRenderMode: 'blocks' as const,
       }
       set((s) => ({
         messages: s.messages.map(m => m.id === messageId ? finalMsg : m),
       }))
-      window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
+      await window.api.chat.saveMessage(finalMsg)
 
       maybeGenerateDirections(set, get, messageId, character)
       maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
@@ -260,7 +263,7 @@ export async function continueChatMessage(
   }
 
   // 将清洗后的续写内容写入新气泡并持久化；内容为空则移除占位气泡
-  const finalizeContinuation = (content: string): boolean => {
+  const finalizeContinuation = async (content: string, meta?: import('./streamController').GenerationOutcomeMeta): Promise<boolean> => {
     if (!content) {
       set((s) => ({ messages: s.messages.filter(m => m.id !== newMsgId) }))
       return false
@@ -270,12 +273,13 @@ export async function continueChatMessage(
     const finalMsg: Message = {
       ...curMsg,
       content,
+      ...(meta ? { ...finalizeNoticeFields(meta), spatialGenerationId: meta.spatialGenerationId } : { spatialGenerationId: undefined }),
       contentRenderMode: 'blocks' as const,
     }
     set((s) => ({
       messages: s.messages.map(m => m.id === newMsgId ? finalMsg : m),
     }))
-    window.api.chat.saveMessage(finalMsg).catch((e) => logError('ChatStore:saveMessage', e))
+    await window.api.chat.saveMessage(finalMsg)
     return true
   }
 
@@ -286,9 +290,9 @@ export async function continueChatMessage(
     continuation: true,
     narrativeMode: continuationNarrativeMode,
     generationType: 'continue',
-    onComplete: async (newContent) => {
+    onComplete: async (newContent, meta) => {
       const processed = await cleanContinuation(newContent)
-      if (!finalizeContinuation(processed)) {
+      if (!await finalizeContinuation(processed, meta)) {
         if (newContent) set({ error: '模型未输出有效续写内容' })
         return
       }
@@ -305,8 +309,8 @@ export async function continueChatMessage(
         return
       }
       cleanContinuation(partial)
-        .then((processed) => {
-          if (!finalizeContinuation(processed)) return
+        .then(async (processed) => {
+          if (!await finalizeContinuation(processed)) return
           // generationError 与正文分离（错误文案不进复制/TTS/上下文）
           if (terminal?.noticeFields.generationError) {
             const curMsg = get().messages.find(m => m.id === newMsgId)
@@ -336,9 +340,10 @@ export async function swipeChatMessage(
   const curIdx = msg.swipeIndex ?? 0
   const newIdx = (curIdx + direction + msg.swipes.length) % msg.swipes.length
   // 正文切换到另一候选：旧方向失效并取消在途请求
-  cancelDialogueDirectionRequests([messageId])
+  cancelFeatureTasks({ kind: 'single', characterId: msg.characterId, sessionId: msg.sessionId }, [messageId])
   const updatedMsg: Message = {
     ...withoutDirections(msg),
+    translation: null, translationLanguage: undefined, translationSource: undefined,
     swipeIndex: newIdx,
     content: msg.swipes[newIdx],
   }

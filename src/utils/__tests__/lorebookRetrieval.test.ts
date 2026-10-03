@@ -4,8 +4,8 @@ import {
   LexicalRetrievalProvider,
   reciprocalRankFusion,
   LEXICAL_ANALYZER_VERSION,
-} from '../lorebookRetrieval'
-import { executeLorebookRuntime } from '../lorebook'
+} from '../../../shared/chat-core/lorebookRetrieval'
+import { executeLorebookRuntime } from '../../../shared/chat-core/lorebook'
 import type { Lorebook, LoreEntry } from '../../../shared/types'
 
 /* ---------------------------------- 分词器 ---------------------------------- */

@@ -1,4 +1,9 @@
+import { upsertCompressionCache } from '../../shared/chat-core/lorebook'
+import { isFeatureTaskCancelled } from '../services/featureTaskLifecycle'
+import { assertFeatureCommit, matchesFeatureSource, compressionVersion, groupFeatureScope, type FeatureCommit, type FeatureSource } from '../../shared/featureSource'
 import type { IpcMain } from 'electron'
+import { notifyGroupSpatialSourceChanged, prepareGroupSessionDeletion } from '../services/groupLifecycle'
+import { certifyGroupSpatialMessage } from '../services/spatialGroupCheckpoint'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, renameSync, rmSync } from 'node:fs'
 import { DIRS, readJson, countLines, withFileLock } from '../services/storage'
@@ -7,6 +12,7 @@ import { createLogger } from '../services/logger'
 import type { GroupChat, GroupMessage, GroupSession, Settings } from '../../shared/types'
 import { getDefaultSettings } from '../../shared/defaults'
 import { nanoid } from 'nanoid'
+import { projectExportMessage } from '../../shared/chat-core/sessionExport'
 import { safeId } from '../utils/pathGuard'
 import { isNarrativeMode, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDefaultGroupMemoryConfig } from '../../shared/defaultMemory'
@@ -112,6 +118,7 @@ function journalTrashedGroupData(groupId: string, trashDir: string): void {
 /** group:updateSession 允许更新的字段白名单（防止注入 id/groupId 等关键字段） */
 const GROUP_UPDATE_SESSION_FIELDS = new Set([
   'title',
+  'spatialNarrativeSyncPolicy',
   'messageCount',
   'memoryEnabled',
   'memoryMode',
@@ -126,11 +133,16 @@ const GROUP_UPDATE_SESSION_FIELDS = new Set([
   'factsVectors',
   'memoryLastMessageId',
   'memoryVersion',
+  'memorySource',
+  'memoryTaskId',
   'factsVectorVersion',
   'compressedSummary',
   'compressedRange',
+  'compressedSource',
   'personaId',
   'narrativeMode',
+  'spatialContextEnabled',
+  'spatialBoardEnabled',
   'dialogueDirectionsEnabled',
   'recentTriggeredIds',
   'lorebookCompressionCache',
@@ -192,6 +204,11 @@ function saveGroups(groups: GroupChat[]): void {
   mkdirSync(DIRS.groups(), { recursive: true })
   const file = getIndexFile()
   const previous = existsSync(file) ? (readJson<GroupChat[]>(file) ?? []) : []
+  for (const group of groups) {
+    const old = previous.find(item => item.id === group.id)
+    const changed = old && (JSON.stringify(old.memberIds) !== JSON.stringify(group.memberIds) || old.chatMode !== group.chatMode)
+    group.spatialSourceEpoch = changed ? nanoid() : old?.spatialSourceEpoch
+  }
   const previousById = new Map(previous.map((g) => [g.id, JSON.stringify(g)]))
   const nextIds = new Set(groups.map((g) => g.id))
 
@@ -273,7 +290,8 @@ function cleanGroupSessionUpdates(updates: Record<string, unknown>): Record<stri
     if (key === 'narrativeMode' && !isNarrativeMode(value)) {
       throw new Error('参数无效：narrativeMode')
     }
-    if (key === 'dialogueDirectionsEnabled' && typeof value !== 'boolean') {
+    if (key === 'spatialNarrativeSyncPolicy' && value !== 'off' && value !== 'suggest') throw new Error('参数无效：群聊剧情同步仅支持关闭或需确认')
+    if (['dialogueDirectionsEnabled', 'spatialContextEnabled', 'spatialBoardEnabled'].includes(key) && typeof value !== 'boolean') {
       throw new Error('参数无效：dialogueDirectionsEnabled')
     }
     clean[key] = value
@@ -286,22 +304,26 @@ async function updateSessionIfMemoryVersion(
   sessionId: string,
   expectedVersion: number,
   updates: Record<string, unknown>,
+  source?: FeatureSource,
 ): Promise<{ applied: boolean; currentVersion: number }> {
   safeId(groupId)
   safeId(sessionId)
   if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new Error('参数无效：expectedVersion')
   const clean = cleanGroupSessionUpdates(updates)
-  return withSessionsLock(groupId, () => {
+  const apply = () => withSessionsLock(groupId, () => {
     const sessions = loadSessions(groupId)
     const session = sessions.find((item) => item.id === sessionId)
-    if (!session) throw new Error('会话不存在')
+    if (!session) { if (source) return { applied: false, currentVersion: 0 }; throw new Error('会话不存在') }
     const currentVersion = session.memoryVersion ?? 0
+    if (source && typeof updates.memoryTaskId === 'string' && isFeatureTaskCancelled(updates.memoryTaskId)) return { applied: false, currentVersion }
+    if (source && !matchesFeatureSource(source, readMessages(groupId, sessionId), session, groupFeatureScope(loadGroups().find(item => item.id === groupId) ?? { memberIds: [], chatMode: '' }))) return { applied: false, currentVersion }
     if (currentVersion !== expectedVersion) return { applied: false, currentVersion }
     Object.assign(session, clean)
     session.updatedAt = Date.now()
     saveSessions(groupId, sessions)
     return { applied: true, currentVersion: session.memoryVersion ?? currentVersion }
   })
+  return source ? withSessionFileLock(groupId, sessionId, apply) : apply()
 }
 
 // ===================== 消息管理 =====================
@@ -394,7 +416,59 @@ function updateMessage(groupId: string, sessionId: string, message: GroupMessage
 
 // ===================== IPC 注册 =====================
 
+async function commitFeatureResult(groupId: string, sessionId: string, input: FeatureCommit): Promise<boolean> {
+  safeId(groupId); safeId(sessionId); assertFeatureCommit(input)
+  return withSessionFileLock(groupId, sessionId, () => withSessionsLock(groupId, () => {
+    if (isFeatureTaskCancelled(input.taskId)) return false
+    const sessions = loadSessions(groupId)
+    const session = sessions.find(item => item.id === sessionId)
+    if (!session) return false
+    const group = loadGroups().find(item => item.id === groupId)
+      if (!group) return false
+    if (input.feature === 'lorebook_compression') {
+      session.lorebookCompressionCache = upsertCompressionCache(session.lorebookCompressionCache, input.cacheKey, input.entry)
+      saveSessions(groupId, sessions)
+      return true
+    }
+    const messages = readMessages(groupId, sessionId)
+    if (!matchesFeatureSource(input.source, messages, session, groupFeatureScope(group))) return false
+    if (input.feature === 'translation' || input.feature === 'direction') {
+      const message = messages.find(item => item.id === input.messageId)
+      if (!message || !input.source.messages.some(ref => ref.id === message.id)) return false
+      if (message.featureTaskIds?.[input.feature] === input.taskId) return true
+      if (input.feature === 'translation') {
+        const language = readJson<Settings>(join(DIRS.config(), 'settings.json'))?.translationTargetLang || '中文'
+        if (language !== input.language) return false
+        updateMessage(groupId, sessionId, { ...message, translation: input.text, translationLanguage: input.language,
+          translationSource: input.source, featureTaskIds: { ...message.featureTaskIds, translation: input.taskId },
+          _showTranslation: true, })
+      } else {
+        updateMessage(groupId, sessionId, { ...message, dialogueDirections: input.directions,
+          dialogueDirectionsGeneratedAt: Date.now(), dialogueDirectionsSource: input.directions.length ? input.source : null, featureTaskIds: { ...message.featureTaskIds, direction: input.taskId } })
+      }
+      return true
+    }
+    if (session.featureTaskIds?.[input.feature] === input.taskId) return true
+    if (input.feature === 'title') {
+      if (session.title !== input.expectedTitle || session.titleGenerated) return false
+      session.title = input.text.trim().slice(0, 20)
+      session.titleRevision = (session.titleRevision ?? 0) + 1
+      session.titleGenerated = true
+    } else {
+      if (compressionVersion(session) !== input.expectedCompression || !input.source.range || JSON.stringify(input.range) !== JSON.stringify(input.source.range)) return false
+      session.compressedSummary = input.text
+      session.compressedRange = input.range
+      session.compressedSource = input.source
+    }
+    session.featureTaskIds = { ...session.featureTaskIds, [input.feature]: input.taskId }
+    session.updatedAt = Date.now()
+    saveSessions(groupId, sessions)
+    return true
+  }))
+}
+
 export function registerGroupIPC(ipcMain: IpcMain): void {
+  ipcMain.handle( 'group:commitFeatureResult', async (_e, groupId: string, sessionId: string, input: FeatureCommit) => commitFeatureResult(groupId, sessionId, input))
 
   // ---- 群聊 CRUD ----
 
@@ -416,11 +490,13 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       }
       saveGroups(groups)
     })
+    notifyGroupSpatialSourceChanged({ groupId: group.id })
     log.info('群聊已保存', { groupId: group.id, name: group.name })
   })
 
   ipcMain.handle('group:delete', async (_e, id: string) => {
     safeId(id)
+    await prepareGroupSessionDeletion({ groupId: id })
     await withIndexLock(() => {
       const groups = loadGroups().filter(g => g.id !== id)
       saveGroups(groups)
@@ -496,6 +572,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   ipcMain.handle('group:deleteSession', async (_e, groupId: string, sessionId: string) => {
     safeId(groupId)
     safeId(sessionId)
+    await prepareGroupSessionDeletion({ groupId, sessionId })
     // R1 修复：先取消息文件锁删除文件（锁序与 saveMessage 一致：消息锁 → sessions 锁）
     await withSessionFileLock(groupId, sessionId, () => {
       const file = getSessionFile(groupId, sessionId)
@@ -517,6 +594,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
       const session = sessions.find(s => s.id === sessionId)
       if (session) {
         session.title = title
+        session.titleRevision = (session.titleRevision ?? 0) + 1
         session.updatedAt = Date.now()
         saveSessions(groupId, sessions)
       }
@@ -541,7 +619,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     safeId(groupId)
     safeId(sessionId)
     // 读-改-写整体持锁，避免全量重写覆盖并发追加/删除的消息
-    const normalizedMessage = withMessageIdentity(msg)
+    const normalizedMessage = withMessageIdentity(certifyGroupSpatialMessage(groupId, sessionId, msg))
     await withSessionFileLock(groupId, sessionId, () => {
       const messages = readMessages(groupId, sessionId)
       const existing = messages.find(m => m.id === msg.id)
@@ -560,6 +638,20 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         session.updatedAt = Date.now()
         saveSessions(groupId, sessions)
       }
+    })
+    notifyGroupSpatialSourceChanged({ groupId, sessionId })
+  })
+
+  // 翻译只更新冻结来源的附属字段，保留正文和主进程完整检查点。
+  ipcMain.handle('group:saveTranslation', async (_e, groupId: string, sessionId: string, messageId: string, expected: { characterId: string; content: string }, translation: string | null) => {
+    safeId(groupId); safeId(sessionId); safeId(messageId)
+    if (!expected || typeof expected.characterId !== 'string' || typeof expected.content !== 'string' || (translation !== null && typeof translation !== 'string')) throw new Error('群聊翻译来源无效')
+    return withSessionFileLock(groupId, sessionId, () => {
+      if (!loadSessions(groupId).some(session => session.id === sessionId)) return false
+      const message = readMessages(groupId, sessionId).find(item => item.id === messageId)
+      if (!message || message.groupId !== groupId || message.characterId !== expected.characterId || message.content !== expected.content) return false
+      updateMessage(groupId, sessionId, {...message, translation, _showTranslation: !!translation})
+      return true
     })
   })
 
@@ -580,9 +672,9 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         if (existingIds.has(msg.id)) {
           // 已存在则原位更新
           const idx = messages.findIndex(m => m.id === msg.id)
-          messages[idx] = withMessageIdentity(msg)
+          messages[idx] = withMessageIdentity(certifyGroupSpatialMessage(groupId, sessionId, msg))
         } else {
-          messages.push(withMessageIdentity(msg))
+          messages.push(withMessageIdentity(certifyGroupSpatialMessage(groupId, sessionId, msg)))
           existingIds.add(msg.id)
         }
       }
@@ -598,6 +690,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         saveSessions(groupId, sessions)
       }
     })
+    notifyGroupSpatialSourceChanged({ groupId, sessionId })
   })
 
   ipcMain.handle('group:deleteMessage', async (_e, groupId: string, sessionId: string, messageId: string) => {
@@ -618,6 +711,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         saveSessions(groupId, sessions)
       }
     })
+    notifyGroupSpatialSourceChanged({ groupId, sessionId })
   })
 
   ipcMain.handle('group:editMessage', async (_e, groupId: string, sessionId: string, messageId: string, content: string) => {
@@ -632,6 +726,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         writeMessages(groupId, sessionId, messages)
       }
     })
+    notifyGroupSpatialSourceChanged({ groupId, sessionId })
   })
 
   ipcMain.handle('group:clearChat', async (_e, groupId: string, sessionId?: string) => {
@@ -668,6 +763,7 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
         }
       })
     } else {
+      await prepareGroupSessionDeletion({ groupId })
       // 清空整个群聊（含所有会话）：先对现有文件排队加锁，再 rename 后删除
       const dir = getGroupDir(groupId)
       if (existsSync(dir)) {
@@ -729,23 +825,11 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
   })
 
   /** 通用会话字段更新（长记忆事实等） */
-  ipcMain.handle('group:updateSession', async (_e, groupId: string, sessionId: string, updates: Record<string, unknown>) => {
-    safeId(groupId)
-    safeId(sessionId)
-    const clean = cleanGroupSessionUpdates(updates)
-    return withSessionsLock(groupId, () => {
-      const sessions = loadSessions(groupId)
-      const session = sessions.find(s => s.id === sessionId)
-      if (session) {
-        Object.assign(session, clean)
-        session.updatedAt = Date.now()
-        saveSessions(groupId, sessions)
-      }
-    })
-  })
+  ipcMain.handle('group:updateSession', (_e, groupId: string, sessionId: string, updates: Record<string, unknown>) =>
+    groupData.updateSession(groupId, sessionId, updates))
 
-  ipcMain.handle('group:updateSessionIfMemoryVersion', async (_e, groupId: string, sessionId: string, expectedVersion: number, updates: Record<string, unknown>) =>
-    updateSessionIfMemoryVersion(groupId, sessionId, expectedVersion, updates))
+  ipcMain.handle('group:updateSessionIfMemoryVersion', async (_e, groupId: string, sessionId: string, expectedVersion: number, updates: Record<string, unknown>, source?: FeatureSource) =>
+    updateSessionIfMemoryVersion(groupId, sessionId, expectedVersion, updates, source))
 
   // ---- 导出 ----
 
@@ -754,7 +838,10 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
     safeId(sessionId)
     const messages = readMessages(groupId, sessionId)
     if (format === 'json') {
-      return JSON.stringify(messages, null, 2)
+      return JSON.stringify(messages.map(message => ({
+        ...projectExportMessage(message as unknown as Record<string, unknown>),
+        characterId: message.characterId,
+      })), null, 2)
     }
     // Markdown 导出（R5/N15 修复：内容统一转义，防 # 标题 / *斜体* / ![图片] 破坏格式）
     let md = ''
@@ -770,6 +857,37 @@ export function registerGroupIPC(ipcMain: IpcMain): void {
 // 数据层门面（阶段二：桥接层群聊复用，与 IPC handler 共用底层存储函数与锁）
 // ============================================================================
 export const groupData = {
+  commitFeatureResult,
+  withMessagesLock: <T>(groupId: string, sessionId: string, fn: () => T | Promise<T>): Promise<T> => { safeId(groupId); safeId(sessionId); return withSessionFileLock(groupId, sessionId, fn) },
+  attachSpatialAiSession: async (groupId: string, sessionId: string,
+    expected: { worldId: string | null; runtimeId: string | null; aiSessionId: string | null }, aiSessionId: string): Promise<void> => {
+    safeId(groupId); safeId(sessionId); safeId(aiSessionId)
+    await withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId), session = sessions.find(item => item.id === sessionId && item.groupId === groupId)
+      if (!session || (session.spatialWorldId ?? null) !== expected.worldId || (session.spatialRuntimeId ?? null) !== expected.runtimeId || (session.spatialAiSessionId ?? null) !== expected.aiSessionId) throw new Error('群聊画板助手关联范围已改变')
+      session.spatialAiSessionId = aiSessionId
+      saveSessions(groupId, sessions)
+    })
+  },
+  /** 权威只读索引，不自动补建会话。 */
+  readSessions: (groupId: string): GroupSession[] => { safeId(groupId); return loadSessions(groupId) },
+  /** 仅更新空间绑定，恢复时保留群聊标题、身份和记忆的并发更新。 */
+  updateSpatialBindingIfMatches: async (groupId: string, sessionId: string,
+    before: { worldId: string | null; runtimeId: string | null }, after: { worldId: string | null; runtimeId: string | null }): Promise<void> => {
+    safeId(groupId); safeId(sessionId)
+    if (after.worldId) safeId(after.worldId)
+    if (after.runtimeId) safeId(after.runtimeId)
+    await withSessionsLock(groupId, () => {
+      const sessions = loadSessions(groupId), session = sessions.find(item => item.id === sessionId)
+      if (!session || session.groupId !== groupId) throw new Error('群聊会话不存在')
+      const current = { worldId: session.spatialWorldId ?? null, runtimeId: session.spatialRuntimeId ?? null }
+      if (current.worldId === after.worldId && current.runtimeId === after.runtimeId) return
+      if (current.worldId !== before.worldId || current.runtimeId !== before.runtimeId) throw new Error('群聊空间绑定已改变，停止事务恢复')
+      session.spatialWorldId = after.worldId; session.spatialRuntimeId = after.runtimeId
+      session.updatedAt = Date.now()
+      saveSessions(groupId, sessions)
+    })
+  },
   /** 群聊列表 */
   listGroups: (): GroupChat[] => loadGroups(),
 
@@ -860,6 +978,7 @@ export const groupData = {
       const session = sessions.find((s) => s.id === sessionId)
       if (session) {
         session.title = title
+        session.titleRevision = (session.titleRevision ?? 0) + 1
         session.updatedAt = Date.now()
         saveSessions(groupId, sessions)
       }
@@ -878,10 +997,17 @@ export const groupData = {
       const sessions = loadSessions(groupId)
       const session = sessions.find((item) => item.id === sessionId)
       if (!session) throw new Error('会话不存在')
+      const spatialChanged = (clean.spatialBoardEnabled !== undefined && clean.spatialBoardEnabled !== (session.spatialBoardEnabled === true)) ||
+        (clean.spatialNarrativeSyncPolicy !== undefined && clean.spatialNarrativeSyncPolicy !== (session.spatialNarrativeSyncPolicy ?? 'off')) ||
+        (clean.spatialContextEnabled !== undefined && clean.spatialContextEnabled !== (session.spatialContextEnabled ?? true)) ||
+        (Object.prototype.hasOwnProperty.call(clean,'personaId') && clean.personaId !== session.personaId) ||
+        (clean.narrativeMode !== undefined && clean.narrativeMode !== (session.narrativeMode ?? 'immersive'))
       Object.assign(session, clean)
+      if (spatialChanged) session.spatialNarrativeSyncEpoch = nanoid()
       session.updatedAt = Date.now()
       saveSessions(groupId, sessions)
     })
+    if (Object.prototype.hasOwnProperty.call(clean, 'personaId') || Object.prototype.hasOwnProperty.call(clean, 'narrativeMode') || Object.prototype.hasOwnProperty.call(clean, 'spatialNarrativeSyncPolicy') || Object.prototype.hasOwnProperty.call(clean, 'spatialContextEnabled')) notifyGroupSpatialSourceChanged({ groupId, sessionId })
   },
 
   /** 保存/新增群聊（与 IPC handler group:save 同一路径） */
@@ -896,6 +1022,7 @@ export const groupData = {
       else groups.push(group)
       saveGroups(groups)
     })
+    notifyGroupSpatialSourceChanged({ groupId: group.id })
   },
 }
 

@@ -1,3 +1,6 @@
+import { cancelFeatureTask, onFeatureDataRestoring } from './featureTaskLifecycle'
+import { featureRangeSource, matchesFeatureSource, featureSessionRef, featureOwnerKey, type FeatureSource } from '../../shared/featureSource'
+import { onChatSessionDeleting, onChatSpatialSourceChanged } from './chatLifecycle'
 import { nanoid } from 'nanoid'
 import type { AICompletion, ChatParams, ChatSession, MemoryFactRecord, Message, ProviderType } from '../../shared/types'
 import type { ContextBuildData } from '../../shared/contextTypes'
@@ -33,13 +36,17 @@ interface MemorySummaryServiceDeps {
     sessionId: string,
     expectedVersion: number,
     updates: Partial<ChatSession>,
+    source?: FeatureSource,
   ): Promise<{ applied: boolean; currentVersion: number }>
-  complete(params: ChatParams): Promise<AICompletion>
+  complete(params: ChatParams, signal?: AbortSignal): Promise<AICompletion>
   countTokens(text: string, model: string): number
   now(): number
 }
 
 export interface MemorySummaryService {
+  cancelAll(): void
+  invalidateSource(characterId: string, sessionId: string): void
+  cancel(characterId: string, sessionId: string): void
   summarize(input: MemorySummaryRequest): Promise<MemorySummaryResult>
   schedule(input: { characterId: string; sessionId: string }): void
 }
@@ -93,9 +100,9 @@ ${input.previousFacts || '无'}
 }
 
 export function createMemorySummaryService(deps: MemorySummaryServiceDeps): MemorySummaryService {
-  const inFlight = new Map<string, { promise: Promise<MemorySummaryResult>; automatic: boolean }>()
+  const inFlight = new Map<string, { promise: Promise<MemorySummaryResult>; automatic: boolean; controller: AbortController; source?: FeatureSource }>()
 
-  const run = async (input: MemorySummaryRequest): Promise<MemorySummaryResult> => {
+  const run = async (input: MemorySummaryRequest, controller: AbortController): Promise<MemorySummaryResult> => {
     const sessions = await deps.listSessions(input.characterId)
     const session = sessions.find((item) => item.id === input.sessionId)
     if (!session?.memoryEnabled) return { status: 'skipped', reason: 'memory_disabled' }
@@ -109,8 +116,8 @@ export function createMemorySummaryService(deps: MemorySummaryServiceDeps): Memo
     const userName = settings.userName || '用户'
     const characterName = data.character.name
     const model = settings.activeModel || profile.model
-    const messages = deps.readMessages(input.characterId, input.sessionId)
-      .filter((message) => message.role !== 'system' && message.content.trim())
+    const rawMessages = deps.readMessages(input.characterId, input.sessionId)
+    const messages = rawMessages.filter((message) => message.role !== 'system' && message.content.trim())
     const cursor = session.memoryLastMessageId
     const cursorIndex = cursor ? messages.findIndex((message) => message.id === cursor) : -1
     const pendingCount = cursorIndex >= 0 ? messages.length - cursorIndex - 1 : messages.length
@@ -169,8 +176,15 @@ export function createMemorySummaryService(deps: MemorySummaryServiceDeps): Memo
     const baseMemoryVersion = session.memoryVersion ?? 0
     const nextMemoryVersion = baseMemoryVersion + 1
     const shouldAttemptFactProposal = nextMemoryVersion >= (session.memoryFactRetryAfterVersion ?? 0)
+    const source = featureRangeSource(rawMessages, [...summaryWindow.overlap, ...summaryWindow.selected], featureSessionRef(session, ['narrativeMode', 'personaId', 'memoryEnabled', 'memoryMode', 'memoryLastMessageId']))
+    const tracked = inFlight.get(`${input.characterId}:${input.sessionId}`)
+    if (tracked?.controller === controller) tracked.source = source
+    const taskId = `memory-summary-${nanoid()}`
+    controller.signal.addEventListener('abort', () => cancelFeatureTask(taskId), { once: true })
+    const owner = { kind: 'single' as const, characterId: input.characterId, sessionId: input.sessionId }
+    if (controller.signal.aborted) return { status: 'skipped', reason: 'stale_version' }
     const params: ChatParams = {
-      requestId: `memory-summary-${nanoid()}`,
+      requestId: taskId,
       messages: [
         {
           role: 'system',
@@ -202,9 +216,30 @@ export function createMemorySummaryService(deps: MemorySummaryServiceDeps): Memo
         taskType: 'memory',
         characterId: input.characterId,
         sessionId: input.sessionId,
+        featureTask: { owner, taskId, logicalSessionId: `${featureOwnerKey(owner)}:memory`, sourceRef: source },
       },
     }
-    const completion = await deps.complete(params)
+    let completion: AICompletion
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let abortListener: (() => void) | undefined
+    try {
+      completion = await Promise.race([
+        deps.complete(params, controller.signal),
+        new Promise<never>((_, reject) => {
+          abortListener = () => reject(new Error('记忆任务已取消或超时'))
+          controller.signal.addEventListener('abort', abortListener, { once: true })
+          timer = setTimeout(() => controller.abort(), 120_000)
+          if (controller.signal.aborted) abortListener()
+        }),
+      ])
+    } catch (error) {
+      if (controller.signal.aborted) return { status: 'skipped', reason: 'stale_version' }
+      throw error
+    } finally {
+      clearTimeout(timer)
+      if (abortListener) controller.signal.removeEventListener('abort', abortListener)
+    }
+    if (controller.signal.aborted || (completion.finishReason && completion.finishReason !== 'stop' && completion.finishReason !== 'length')) return { status: 'skipped', reason: 'stale_version' }
     const parsed = parseMemoryResult(completion.text)
     if (!parsed.summary && !parsed.currentState) {
       throw new Error('长记忆总结未产出可解析内容（模型可能只返回了思考过程或格式不符）')
@@ -288,7 +323,10 @@ export function createMemorySummaryService(deps: MemorySummaryServiceDeps): Memo
         memoryUpdatedAt: deps.now(),
         memoryLastMessageId: summaryWindow.processedThroughMessageId,
         memoryVersion: nextMemoryVersion,
+        memorySource: source,
+        memoryTaskId: taskId,
       },
+      source,
     )
     if (!commit.applied) return { status: 'skipped', reason: 'stale_version' }
     return {
@@ -315,14 +353,21 @@ export function createMemorySummaryService(deps: MemorySummaryServiceDeps): Memo
       }
       return existing.promise
     }
-    const promise = run(input).finally(() => {
+    const controller = new AbortController()
+    const promise = run(input, controller).finally(() => {
       if (inFlight.get(key)?.promise === promise) inFlight.delete(key)
     })
-    inFlight.set(key, { promise, automatic: input.automatic === true })
+    inFlight.set(key, { promise, automatic: input.automatic === true, controller })
     return promise
   }
 
   return {
+    cancelAll() { for (const task of inFlight.values()) task.controller.abort(); inFlight.clear() },
+    invalidateSource(characterId, sessionId) {
+      const tracked = inFlight.get(`${characterId}:${sessionId}`)
+      if (tracked?.source && !matchesFeatureSource({ ...tracked.source, session: undefined }, deps.readMessages(characterId, sessionId))) tracked.controller.abort()
+    },
+    cancel(characterId, sessionId) { inFlight.get(`${characterId}:${sessionId}`)?.controller.abort() },
     summarize,
     schedule(input) {
       void summarize({ ...input, automatic: true }).catch((error) => {
@@ -340,15 +385,20 @@ export const memorySummaryService = createMemorySummaryService({
   fetchBuildData: (characterId, sessionId) => mainContextProvider.fetchBuildData(characterId, sessionId),
   listSessions: (characterId) => chatData.listSessions(characterId),
   readMessages: (characterId, sessionId) => chatData.readMessages(characterId, sessionId),
-  updateSessionIfMemoryVersion: (characterId, sessionId, expectedVersion, updates) =>
-    chatData.updateSessionIfMemoryVersion(characterId, sessionId, expectedVersion, updates),
-  complete: (params) => chatWithRetry(
+  updateSessionIfMemoryVersion: (characterId, sessionId, expectedVersion, updates, source) =>
+    chatData.updateSessionIfMemoryVersion(characterId, sessionId, expectedVersion, updates, source),
+  complete: (params, signal) => chatWithRetry(
     getAdapter(params.provider),
     params,
     () => {},
-    new AbortController().signal,
+    signal ?? new AbortController().signal,
     1,
   ),
   countTokens,
   now: Date.now,
 })
+
+onChatSessionDeleting(async scope => { memorySummaryService.cancel(scope.characterId, scope.sessionId) })
+onFeatureDataRestoring(() => memorySummaryService.cancelAll())
+
+onChatSpatialSourceChanged(async scope => { memorySummaryService.invalidateSource(scope.characterId, scope.sessionId) })

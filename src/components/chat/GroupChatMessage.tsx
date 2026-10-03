@@ -1,11 +1,13 @@
+import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { matchesFeatureSource, groupFeatureScope } from '../../../shared/featureSource'
 import React, { useState, useMemo } from 'react'
 import { charAssetUrl } from '../../utils/asset'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
-import { getDisplayName } from '../../utils/variables'
-import { extractThought } from '../../utils/messagePostProcess'
+import { getDisplayName } from '../../../shared/chat-core/variables'
+import { extractThought } from '../../../shared/chat-core/messagePostProcess'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
@@ -58,6 +60,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
   const [editDraft, setEditDraft] = useState('')
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
 
+  const directionsValid = useGroupChatStore(s => !message.dialogueDirectionsSource || matchesFeatureSource(message.dialogueDirectionsSource, s.messages, s.sessions.find(session => session.id === s.currentSessionId), s.currentGroup && groupFeatureScope(s.currentGroup)))
   const isUser = message.characterId === '__user__'
   const isFree = message.characterId === '__free__'
   const speakerKind = resolveMessageSpeakerKind(message)
@@ -71,7 +74,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
   const { thought: thoughtContent, content: mainContent, isFallback: isThoughtFallback } = extractThought(message.content || '')
 
   // 翻译显示状态从 store 同步，而非本地 state
-  const showTranslation = message._showTranslation ?? false
+  const showTranslation = !!message._showTranslation && (!message.translationSource || (matchesFeatureSource(message.translationSource, [message]) && message.translationLanguage === (settings.translationTargetLang || '中文')))
   // 只有 thought、没有正文时也保留独立折叠区；避免回退文本绕过折叠状态永久显示。
   const displayContent = showTranslation && message.translation
     ? message.translation
@@ -383,6 +386,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
 
           {/* 下一步方向：气泡外的独立交互，仅等待用户输入时展示 */}
           {dialogueDirectionsEnabled
+            && directionsValid
             && !isStreaming
             && !isUser
             && !isFree

@@ -23,8 +23,15 @@ import AdmZip from 'adm-zip'
 import { DIRS, writeJson } from './storage'
 import { createLogger } from './logger'
 import { safeId, safePath } from '../utils/pathGuard'
+import { publicFeatureHistory, prepareFeatureBackupRestore } from './featureBackup'
+import { prepareFeatureDataRestore } from './featureTaskLifecycle'
 import type { Settings } from '../../shared/types'
 import { saveCredential } from './safeStorage'
+import { hashSpatialValue, validateSpatialPackage, validateSpatialScope, isGroupScope, spatialRuntimeId, type SpatialOwnerScope } from './spatialRepository'
+import type { SpatialAiSession } from '../../shared/spatial-ai'
+import type { ChatSession, GroupSession, GroupChat } from '../../shared/types'
+// eslint-disable-next-line no-restricted-imports
+import type { SpatialCoreState } from '@qingyu/spatial-core'
 
 const log = createLogger('backup')
 
@@ -210,6 +217,14 @@ function collectEntries(): Array<{ fsPath: string; zipPath: string }> {
     }
   }
 
+  // spatial — 世界定义和会话位置同属用户创作数据。
+  if (existsSync(DIRS.spatial())) {
+    for (const abs of listFilesRecursive(DIRS.spatial())) {
+      const rel = abs.substring(DIRS.spatial().length + 1).replace(/\\/g, '/')
+      if (rel.endsWith('.json')) entries.push({ fsPath: abs, zipPath: `spatial/${rel}` })
+    }
+  }
+
   return entries
 }
 
@@ -226,7 +241,7 @@ export function createBackupV2(destPath: string): ExportResult {
   const zip = new AdmZip()
 
   const counts: Record<string, number> = {
-    characters: 0, lorebooks: 0, presets: 0, chats: 0, groups: 0, personas: 0, regex: 0, quickReplies: 0, mcp: 0, usage: 0, settings: 0,
+    characters: 0, lorebooks: 0, presets: 0, chats: 0, groups: 0, spatial: 0, personas: 0, regex: 0, quickReplies: 0, mcp: 0, usage: 0, settings: 0,
   }
   const hashes: Record<string, string> = {}
   let totalBytes = 0
@@ -238,6 +253,7 @@ export function createBackupV2(destPath: string): ExportResult {
     else if (prefix.startsWith('presets/')) counts.presets++
     else if (prefix.startsWith('chats/')) counts.chats++
     else if (prefix.startsWith('groups/')) counts.groups++
+    else if (prefix.startsWith('spatial/')) counts.spatial++
     else if (prefix === 'config/personas.json') counts.personas = 1
     else if (prefix === 'config/regex/rules.json') counts.regex = 1
     else if (prefix === 'config/quickReplies.json') counts.quickReplies = 1
@@ -261,6 +277,8 @@ export function createBackupV2(destPath: string): ExportResult {
       } else if (zipPath === 'config/mcp-servers.json') {
         // MCP env 敏感值与 URL 内嵌凭据不得原样入包（P0-B）
         buf = sanitizeMcpServers(buf)
+      } else if (/^spatial\/ai-sessions\/[^/]+\.json$/.test(zipPath)) {
+        buf = publicFeatureHistory(buf)
       }
       hashes[zipPath] = sha256(buf)
       totalBytes += buf.length
@@ -318,6 +336,7 @@ const RESTORE_DIR_PREFIXES: Array<{ prefix: string; dir: () => string }> = [
   { prefix: 'presets/', dir: DIRS.presets },
   { prefix: 'chats/', dir: DIRS.chats },
   { prefix: 'groups/', dir: DIRS.groups },
+  { prefix: 'spatial/', dir: DIRS.spatial },
 ]
 
 /**
@@ -385,6 +404,154 @@ function validateTopLevelId(zipPath: string): void {
   safeId(file.substring(0, file.length - '.json'.length))
 }
 
+/** 先按事务完成后的逻辑状态校验归属，允许断电时的合法 before/after 文件组合。 */
+function validateSpatialBackup(files: Array<{ zipPath: string; data: Buffer }>): void {
+  if (!files.some(file => file.zipPath.startsWith('spatial/'))) return
+  const values = new Map<string, unknown>()
+  for (const file of files.filter(file => file.zipPath.startsWith('spatial/') || (/^(chats|groups)\/[^/]+\/sessions\.json$/.test(file.zipPath) || file.zipPath === 'groups/index.json'))) {
+    try { values.set(file.zipPath, JSON.parse(file.data.toString('utf8'))) } catch { throw new Error(`空间备份 JSON 无效：${clipPath(file.zipPath)}`) }
+  }
+  for (const [path, value] of [...values].filter(([name]) => name.startsWith('spatial/transactions/')).sort(([a],[b]) => a.localeCompare(b))) {
+    const tx = value as { schemaVersion: number; id: string; worldId: string; scope: SpatialOwnerScope; aiSessionId?: string;
+      binding?: { before: { worldId: string | null; runtimeId: string | null }; after: { worldId: string | null; runtimeId: string | null } };
+      files: Array<{ kind: string; beforeHash: string | null; afterHash: string; after: unknown }> }
+    if (!tx || tx.schemaVersion !== 1 || !tx.scope || !Array.isArray(tx.files) || tx.files.length < 2 || tx.files.length > 4 || new Set(tx.files.map(file => file.kind)).size !== tx.files.length) throw new Error('空间备份事务无效')
+    validateSpatialScope(tx.scope)
+    const group = isGroupScope(tx.scope)
+    if (group && (tx.files.length !== (tx.aiSessionId ? 4 : 3) || !['world', 'runtime', 'state', ...(tx.aiSessionId ? ['ai'] : [])].every(kind => tx.files.some(file => file.kind === kind)))) throw new Error('空间备份群聊事务缺少世界、位置或提交记录')
+    if (group && tx.aiSessionId && isGroupScope(tx.scope)) {
+      const ai = tx.files.find(file => file.kind === 'ai')?.after as import('../../shared/spatial-ai').SpatialGroupAiSession
+      if (ai?.id !== tx.aiSessionId || ai.scope?.kind !== 'group' || ai.scope.groupId !== tx.scope.groupId || ai.scope.sessionId !== tx.scope.sessionId || ai.scope.worldId !== tx.worldId) throw new Error('空间备份群聊助手事务归属无效')
+    }
+    const worldId = safeId(tx.worldId), ownerId = safeId(isGroupScope(tx.scope) ? tx.scope.groupId : tx.scope.characterId), sessionId = safeId(tx.scope.sessionId)
+    const runtimeRoot = group ? 'group-runtimes' : 'runtimes', stateRoot = group ? 'group-session-state' : 'session-state'
+    if (path !== `spatial/transactions/${safeId(tx.id)}.json`) throw new Error('空间备份事务 ID 不匹配')
+    for (const file of tx.files) {
+      const target = file.kind === 'world' ? `spatial/worlds/${worldId}.json` : file.kind === 'runtime' ? `spatial/${runtimeRoot}/${ownerId}/${sessionId}.json`
+        : file.kind === 'state' ? `spatial/${stateRoot}/${ownerId}/${sessionId}.json` : file.kind === 'ai' && tx.aiSessionId ? `spatial/ai-sessions/${safeId(tx.aiSessionId)}.json` : null
+      if (!target || hashSpatialValue(file.after) !== file.afterHash) throw new Error('空间备份事务内容无效')
+      const current = values.get(target), hash = current === undefined ? null : hashSpatialValue(current)
+      if (hash !== file.beforeHash && hash !== file.afterHash) throw new Error('空间备份事务与文件不匹配')
+      values.set(target, file.after)
+    }
+    if (tx.binding) {
+      const sessions = values.get(`${group ? 'groups' : 'chats'}/${ownerId}/sessions.json`) as Array<ChatSession | GroupSession> | undefined
+      const session = Array.isArray(sessions) ? sessions.find(item => item.id === sessionId) : null
+      if (!session) throw new Error('空间备份事务所属会话缺失')
+      const current = { worldId: session.spatialWorldId ?? null, runtimeId: session.spatialRuntimeId ?? null }
+      if (![hashSpatialValue(tx.binding.before),hashSpatialValue(tx.binding.after)].includes(hashSpatialValue(current))) throw new Error('空间备份事务绑定不匹配')
+      session.spatialWorldId = tx.binding.after.worldId; session.spatialRuntimeId = tx.binding.after.runtimeId
+    }
+  }
+  const sessions = new Map<string, ChatSession>()
+  for (const [path, value] of values) if (/^chats\/[^/]+\/sessions\.json$/.test(path)) {
+    if (!Array.isArray(value)) throw new Error('空间备份单聊索引无效')
+    const characterId = path.split('/')[1]
+    for (const session of value as ChatSession[]) {
+      if (session.characterId && session.characterId !== characterId) throw new Error('空间备份单聊角色不匹配')
+      sessions.set(`${characterId}/${safeId(session.id)}`, session)
+    }
+  }
+  for (const [key, session] of sessions) {
+    if (session.spatialWorldId) {
+      const world = values.get(`spatial/worlds/${safeId(session.spatialWorldId)}.json`) as SpatialCoreState['world'] | undefined
+      const runtime = values.get(`spatial/runtimes/${key}.json`) as SpatialCoreState['runtime'] | undefined
+      const state = values.get(`spatial/session-state/${key}.json`) as { worldId: string; runtimeId: string } | undefined
+      if (!world || !runtime || world.id !== session.spatialWorldId || runtime.worldId !== world.id || runtime.runtimeId !== (session.spatialRuntimeId ?? `single_${session.id}`)) throw new Error('空间备份地图或会话位置绑定不匹配')
+      validateSpatialPackage({ world, runtime })
+      if (state && (state.worldId !== world.id || state.runtimeId !== runtime.runtimeId)) throw new Error('空间备份提交记录与绑定不匹配')
+    }
+    if (session.spatialAiSessionId && !values.has(`spatial/ai-sessions/${safeId(session.spatialAiSessionId)}.json`)) throw new Error('空间备份缺少当前画板助手记录')
+  }
+  const groupSessions = new Map<string, GroupSession>()
+  const groups = values.get('groups/index.json') as GroupChat[] | undefined
+  for (const [path, value] of values) if (/^groups\/[^/]+\/sessions\.json$/.test(path)) {
+    if (!Array.isArray(value)) throw new Error('空间备份群聊会话索引无效')
+    const groupId = safeId(path.split('/')[1])
+    for (const session of value as GroupSession[]) {
+      if (!session.spatialWorldId && !session.spatialRuntimeId && !session.spatialAiSessionId) continue
+      if (session.groupId !== groupId || !Array.isArray(groups) || !groups.some(group => group.id === groupId && Array.isArray(group.memberIds))) throw new Error('空间备份画板所属群聊缺失或不匹配')
+      const key = `${groupId}/${safeId(session.id)}`
+      if (groupSessions.has(key)) throw new Error('空间备份群聊会话重复')
+      groupSessions.set(key, session)
+      if (session.spatialAiSessionId && !values.has(`spatial/ai-sessions/${safeId(session.spatialAiSessionId)}.json`)) throw new Error('空间备份缺少当前群聊画板助手记录')
+      if (!session.spatialWorldId && !session.spatialRuntimeId) continue
+      const runtimeId = spatialRuntimeId({ kind: 'group', groupId, sessionId: session.id })
+      const world = session.spatialWorldId ? values.get(`spatial/worlds/${safeId(session.spatialWorldId)}.json`) as SpatialCoreState['world'] | undefined : undefined
+      const runtime = values.get(`spatial/group-runtimes/${key}.json`) as SpatialCoreState['runtime'] | undefined
+      const state = values.get(`spatial/group-session-state/${key}.json`) as { schemaVersion: number; worldId: string; runtimeId: string; bindingEpoch: string; commits: unknown } | undefined
+      if (!world || !runtime || world.id !== session.spatialWorldId || session.spatialRuntimeId !== runtimeId || runtime.runtimeId !== runtimeId || runtime.worldId !== world.id) throw new Error('空间备份群聊地图或位置绑定不匹配')
+      validateSpatialPackage({ world, runtime })
+      if (!state || state.schemaVersion !== 1 || state.worldId !== world.id || state.runtimeId !== runtimeId || typeof state.bindingEpoch !== 'string' || !state.bindingEpoch || !state.commits || typeof state.commits !== 'object' || Array.isArray(state.commits)) throw new Error('空间备份群聊提交记录缺失或绑定不匹配')
+    }
+  }
+  for (const path of values.keys()) if (path.startsWith('spatial/group-runtimes/') || path.startsWith('spatial/group-session-state/')) {
+    const match = /^spatial\/(group-runtimes|group-session-state)\/([^/]+)\/([^/]+)\.json$/.exec(path)
+    if (!match || !groupSessions.has(`${safeId(match[2])}/${safeId(match[3])}`)) throw new Error('空间备份群聊位置或提交记录没有所属会话')
+  }
+  for (const [path, value] of values) if (path.startsWith('spatial/ai-sessions/')) {
+    const groupAi = value as import('../../shared/spatial-ai').SpatialGroupAiSession
+    if (groupAi?.scope?.kind === 'group') {
+      if (groupAi.schemaVersion !== 1 || !Array.isArray(groupAi.messages) || !Array.isArray(groupAi.proposals) || !Array.isArray(groupAi.tasks) || path !== `spatial/ai-sessions/${safeId(groupAi.id)}.json`) throw new Error('空间备份群聊助手记录无效')
+      const key = `${safeId(groupAi.scope.groupId)}/${safeId(groupAi.scope.sessionId)}`, session = groupSessions.get(key)
+      if (!session) throw new Error('空间备份助手所属群聊缺失')
+      if (groupAi.scope.worldId && !values.has(`spatial/worlds/${safeId(groupAi.scope.worldId)}.json`)) throw new Error('空间备份群聊助手所属地图缺失')
+      if (groupAi.groupDialogueBatches !== undefined && !Array.isArray(groupAi.groupDialogueBatches)) throw new Error('空间备份群聊剧情批次无效')
+      const batchIds = new Set<string>(), generationIds = new Set<string>()
+      for (const batch of groupAi.groupDialogueBatches ?? []) {
+        if (!batch || !Number.isSafeInteger(batch.sequence) || batch.sequence < 1 || typeof batch.closed !== 'boolean' || !['normal','regenerate'].includes(batch.kind) || !['mention','polling','free'].includes(batch.mode) || !['immersive','omniscient'].includes(batch.narrativeMode) || !Array.isArray(batch.memberIds) || !Array.isArray(batch.generations) || batch.generations.length > 200 || typeof batch.contextFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(batch.contextFingerprint) || !batch.snapshot?.version) throw new Error('空间备份群聊剧情批次无效')
+        safeId(batch.id); if (batchIds.has(batch.id)) throw new Error('空间备份群聊剧情批次重复'); batchIds.add(batch.id)
+        batch.memberIds.forEach(safeId)
+        if (batch.snapshot.version.worldId !== groupAi.scope.worldId || batch.snapshot.version.runtimeId !== spatialRuntimeId({kind:'group',groupId:groupAi.scope.groupId,sessionId:groupAi.scope.sessionId})) throw new Error('空间备份群聊剧情快照归属无效')
+        const capturedCore = batch.snapshot as unknown as SpatialCoreState
+        validateSpatialPackage(capturedCore)
+        if (capturedCore.world.id !== batch.snapshot.version.worldId || capturedCore.runtime.runtimeId !== batch.snapshot.version.runtimeId || capturedCore.runtime.revision !== batch.snapshot.version.runtimeRevision) throw new Error('空间备份群聊剧情快照版本无效')
+        for (const generation of batch.generations) {
+          safeId(generation.id); if (generationIds.has(generation.id) || !['awaiting_body','registered','ignored'].includes(generation.state) || !Array.isArray(generation.messageIds) || !Array.isArray(generation.bodyHashes) || generation.messageIds.length !== generation.bodyHashes.length || generation.messageIds.length > 200) throw new Error('空间备份群聊剧情检查点无效')
+          generationIds.add(generation.id); generation.messageIds.forEach(safeId)
+          if (generation.state === 'registered' && !generation.messageIds.length) throw new Error('空间备份群聊完整正文检查点缺失')
+          if (generation.bodyHashes.some(hash => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))) throw new Error('空间备份群聊剧情正文 hash 无效')
+        }
+      }
+      const proposalIds = new Set<string>()
+      for (const proposal of groupAi.proposals) {
+        safeId(proposal.id)
+        if (proposalIds.has(proposal.id)) throw new Error('空间备份群聊提案重复')
+        proposalIds.add(proposal.id)
+        if (proposal.placeForId !== undefined) {
+          safeId(proposal.placeForId)
+          const original = groupAi.proposals.find(item => item.id === proposal.placeForId)
+          const command = proposal.commands?.[0]
+          if (proposal.mode !== 'instruction' || !original || original.mode !== 'dialogue_sync' || !proposal.dialogueId || proposal.dialogueId !== original.dialogueId || proposal.sourceFingerprint !== original.sourceFingerprint || !Array.isArray(proposal.commands) || proposal.commands.length !== 1 || !command || typeof command !== 'object' || !('type' in command) || command.type !== 'create_node') throw new Error('空间备份群聊地点创建来源不匹配')
+        }
+        if (proposal.mode === 'dialogue_sync' && proposal.status === 'pending' && !batchIds.has(proposal.dialogueId ?? '')) throw new Error('空间备份群聊待确认建议缺少来源批次')
+      }
+      if (session.spatialAiSessionId === groupAi.id) {
+        const state = values.get(`spatial/group-session-state/${key}.json`) as { bindingEpoch: string } | undefined
+        if (groupAi.scope.worldId !== (session.spatialWorldId ?? null) || groupAi.scope.runtimeId !== (session.spatialWorldId ? session.spatialRuntimeId ?? null : null) || groupAi.scope.bindingEpoch !== (session.spatialWorldId ? state?.bindingEpoch ?? null : null)) throw new Error('空间备份当前群聊助手与画板绑定不匹配')
+      }
+      continue
+    }
+    const ai = value as SpatialAiSession
+    if (!ai || ai.schemaVersion !== 1 || !ai.scope || !Array.isArray(ai.messages) || !Array.isArray(ai.proposals) || !Array.isArray(ai.tasks) || path !== `spatial/ai-sessions/${safeId(ai.id)}.json`) throw new Error('空间备份助手记录无效')
+    const key = `${safeId(ai.scope.characterId)}/${safeId(ai.scope.sessionId)}`, session = sessions.get(key)
+    if (!session) throw new Error('空间备份助手所属单聊缺失')
+    if (ai.scope.worldId && !values.has(`spatial/worlds/${safeId(ai.scope.worldId)}.json`)) throw new Error('空间备份助手所属地图缺失')
+    if (session.spatialAiSessionId === ai.id) {
+      const state = values.get(`spatial/session-state/${key}.json`) as { bindingEpoch: string } | undefined
+      if (ai.scope.worldId !== (session.spatialWorldId ?? null) || ai.scope.runtimeId !== (session.spatialWorldId ? session.spatialRuntimeId ?? `single_${session.id}` : null) || ai.scope.bindingEpoch !== (session.spatialWorldId ? state?.bindingEpoch ?? 'legacy' : null)) throw new Error('空间备份当前助手与画板绑定不匹配')
+    }
+  }
+  for (const [key, session] of sessions) if (session.spatialAiSessionId) {
+    const ai = values.get(`spatial/ai-sessions/${session.spatialAiSessionId}.json`) as SpatialAiSession
+    if (`${ai.scope.characterId}/${ai.scope.sessionId}` !== key) throw new Error('空间备份助手属于其他单聊')
+  }
+  for (const [key, session] of groupSessions) if (session.spatialAiSessionId) {
+    const ai = values.get(`spatial/ai-sessions/${session.spatialAiSessionId}.json`) as import('../../shared/spatial-ai').SpatialGroupAiSession
+    if (ai.scope.kind !== 'group' || `${ai.scope.groupId}/${ai.scope.sessionId}` !== key) throw new Error('空间备份助手属于其他群聊')
+  }
+}
+
 /** 从 zip 恢复，返回 counts；会校验 manifest hashes 与条目路径 */
 export function restoreBackupV2(zipPath: string): { counts: Record<string, number> } {
   if (!existsSync(zipPath)) throw new Error('备份文件不存在')
@@ -433,12 +600,24 @@ export function restoreBackupV2(zipPath: string): { counts: Record<string, numbe
     validateTopLevelId(name)
     return { zipPath: name, data, dest: resolveEntryDest(name) }
   })
+  validateSpatialBackup(files)
+  prepareFeatureBackupRestore(files)
+  // 哈希校验针对原包，来源处理在校验之后；落盘使用处理后的数据。
+  const preparedFiles = new Map(files.map(file => [file.zipPath, file.data]))
+  for (const write of writes) write.data = preparedFiles.get(write.zipPath)!
 
   // 写入前快照：记录被覆盖文件与本次新建文件，失败时完整回滚（P1-01）
   const snapshotDir = mkdtempSync(join(tmpdir(), 'qingyu-restore-'))
   const overwritten = new Map<string, string>()
   const created: string[] = []
+  const obsoleteSpatial = files.some(file => file.zipPath.startsWith('spatial/')) && existsSync(DIRS.spatial())
+    ? listFilesRecursive(DIRS.spatial()).filter(path => path.endsWith('.json') && !writes.some(write => write.dest === path)) : []
   try {
+    // 整份空间数据以备份为准，不能让旧事务或旧助手请求混入恢复后的数据。
+    for (const dest of obsoleteSpatial) {
+      const snapPath = join(snapshotDir, String(overwritten.size))
+      copyFileSync(dest, snapPath); overwritten.set(dest, snapPath)
+    }
     for (const { dest } of writes) {
       if (overwritten.has(dest) || created.includes(dest)) continue
       if (existsSync(dest)) {
@@ -456,6 +635,7 @@ export function restoreBackupV2(zipPath: string): { counts: Record<string, numbe
     }
 
     // 校验通过后开始写入
+    prepareFeatureDataRestore()
     // sync-bypass-ok: 整库恢复后由调用方执行 fenceSyncStateAfterRestore 作废 journal 并重建基线（总方案 §6.4）
     for (const { zipPath: name, data, dest } of writes) {
       // 对 settings.json 的 apiKey 迁移进 safeStorage（与旧 importBackup 一致）
@@ -486,6 +666,7 @@ export function restoreBackupV2(zipPath: string): { counts: Record<string, numbe
       }
     }
 
+    for (const path of obsoleteSpatial) unlinkSync(path)
     log.info('Backup V2 已导入', { zipPath, counts: manifest.counts })
     return { counts: manifest.counts }
   } catch (e) {

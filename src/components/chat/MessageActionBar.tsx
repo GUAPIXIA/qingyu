@@ -6,7 +6,7 @@ import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { pushToast } from '../../store/useToastStore'
 import { cn } from '../../lib/utils'
-import { stripThought, stripThoughtTags } from '../../utils/messagePostProcess'
+import { stripThought, stripThoughtTags } from '../../../shared/chat-core/messagePostProcess'
 
 /**
  * 消息操作栏（MessageBubble 提取，2026-08-06）：

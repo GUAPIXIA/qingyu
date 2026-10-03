@@ -20,7 +20,7 @@ import { useSettingsStore } from '../store/useSettingsStore'
 import { useCharacterStore } from '../store/useCharacterStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { cachedReasoningSamplesFor } from '../store/usageProfileCache'
-import { lorebookCache } from '../utils/lorebook'
+import { lorebookCache } from '../features/lorebook/lorebookCache'
 import { withResolvedSessionPersona } from '../../shared/personaResolution'
 /** 渲染层会话快照：直读 useChatStore（含 P0-2 语义检索命中） */
 function buildChatSnapshot(): ContextChatSnapshot {
@@ -110,16 +110,17 @@ export function syncBuildData(
   preset: Preset | null,
   /** 阶段8（§4.2）：本轮门控（调用方按开关/熔断状态解析后传入；缺省 = 不介入） */
   reasoningGate?: ContextBuildData['reasoningGate'],
+  configuration?: import('../../shared/chatConnection').ChatConfigurationSnapshot,
 ): ContextBuildData {
   const settingsStore = useSettingsStore.getState()
   const chat = buildChatSnapshot()
   const currentSession = chat.sessions.find((session) => session.id === chat.currentSessionId) ?? null
   const settings = withResolvedSessionPersona(
-    settingsStore.settings,
+    configuration?.settings ?? settingsStore.settings,
     currentSession,
     usePersonaStore.getState().personas,
   )
-  const profile = settingsStore.getActiveProfile()
+  const profile = configuration ? configuration.profile : settingsStore.getActiveProfile()
   const model = settings.activeModel || profile?.model || ''
   const reasoningSamples = profile && model
     ? cachedReasoningSamplesFor({ provider: profile.provider, baseUrl: profile.baseUrl, model })

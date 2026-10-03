@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../memoryWindow'
+import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../../../shared/chat-core/memoryWindow'
 
 type TestMessage = { id: string; content: string }
 

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "world_bad_schema",
+  "name": "缺必填字段",
+  "description": "反例：节点缺少 name，schema 应拒绝。",
+  "rootBoardId": "board_root",
+  "boards": [
+    {
+      "id": "board_root",
+      "name": "根画板",
+      "description": "",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "region_broken",
+      "boardId": "board_root",
+      "kind": "region",
+      "description": "缺少 name。",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 120,
+        "y": 80,
+        "width": 360,
+        "height": 240
+      }
+    }
+  ],
+  "distances": [],
+  "actors": [],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

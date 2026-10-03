@@ -869,7 +869,7 @@ async function runDialogueCase(options: CliOptions, callModel: CallModel, testCa
     activeLorebookIds: testCase.activeLorebookIds,
     preset: testCase.preset,
   })
-  const { buildContextMessagesFromData, buildChatParamsFromData } = await import('../src/context/contextBuilder')
+  const { buildContextMessagesFromData, buildChatParamsFromData } = await import('../shared/chat-core/contextBuilder')
   const built = buildContextMessagesFromData(data)
   const params = buildChatParamsFromData(data, built.messages, { requestMaxTokens: built.requestMaxTokens })
   const systemPrompt = built.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n---\n\n')
@@ -935,7 +935,7 @@ async function runDialogueCase(options: CliOptions, callModel: CallModel, testCa
     checks.push(check('body-format-injected', bodyFormatPresent, 'system 中含【本轮回应范围】（阶段二约束已注入）'))
     // 用户可见的最终形态：应用会在落盘前补裸对白的角色名前缀（仅代入式单聊；全局叙事不推断说话人）
     if (narrativeMode === 'immersive') {
-      const { normalizeRoleplayDialoguePrefixes } = await import('../src/utils/messagePostProcess')
+      const { normalizeRoleplayDialoguePrefixes } = await import('../shared/chat-core/messagePostProcess')
       normalizedRaw = normalizeRoleplayDialoguePrefixes(raw, testCase.character.name, narrativeMode)
       const normalizedWithName = splitParagraphs(normalizedRaw).filter((p) =>
         new RegExp(`${testCase.character.name}\\s*[：:]\\s*[“"]`).test(p),
@@ -950,7 +950,7 @@ async function runDialogueCase(options: CliOptions, callModel: CallModel, testCa
       )
     } else {
       // 全局叙事不做前缀补齐（多说话人不可推断），检查应为无操作
-      const { normalizeRoleplayDialoguePrefixes } = await import('../src/utils/messagePostProcess')
+      const { normalizeRoleplayDialoguePrefixes } = await import('../shared/chat-core/messagePostProcess')
       normalizedRaw = normalizeRoleplayDialoguePrefixes(raw, testCase.character.name, narrativeMode)
       checks.push(check('normalize-noop-omniscient', normalizedRaw === raw, '全局叙事不补说话人前缀（行为固化）'))
     }
@@ -1303,8 +1303,8 @@ function streamCases(): StreamCase[] {
 }
 
 async function runStreamCase(options: CliOptions, testCase: StreamCase): Promise<CaseResult> {
-  const { buildContextMessagesFromData, buildChatParamsFromData } = await import('../src/context/contextBuilder')
-  const { stripVendorThinking } = await import('../src/utils/messagePostProcess')
+  const { buildContextMessagesFromData, buildChatParamsFromData } = await import('../shared/chat-core/contextBuilder')
+  const { stripVendorThinking } = await import('../shared/chat-core/messagePostProcess')
   const data = makeBuildData({ character: testCase.character, messages: testCase.messages, session: testCase.session })
   const built = buildContextMessagesFromData(data)
   const params = buildChatParamsFromData(data, built.messages)
@@ -1534,7 +1534,7 @@ function continueCases(): ContinueCase[] {
 
 async function runContinueCase(options: CliOptions, callModel: CallModel, testCase: ContinueCase): Promise<CaseResult> {
   const { buildContinueContext, parseContinueResult, evaluateContinueLength } =
-    await import('../src/components/chat/aiInputHelper')
+    await import('../shared/chat-core/aiInputHelper')
   const { CONTINUE_INTENSITY_PARAMS, CONTINUE_REQUEST_MAX_TOKENS } =
     await import('../shared/continueIntensity')
 
@@ -2263,7 +2263,7 @@ function memoryCases(): MemoryCase[] {
 }
 
 async function runMemoryCase(options: CliOptions, callModel: CallModel, testCase: MemoryCase): Promise<CaseResult> {
-  const { parseMemoryResult } = await import('../src/utils/memory')
+  const { parseMemoryResult } = await import('../shared/chat-core/memory')
 
   const systemPrompt = buildMemorySummaryPrompt({
     charName: CHAR_SUWAN.name,
@@ -2400,7 +2400,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   const extra: Record<string, unknown> = { focus: testCase.focus }
 
   if (testCase.id === 'v-memory-clear-proposal') {
-    const { parseMemoryResult } = await import('../src/utils/memory')
+    const { parseMemoryResult } = await import('../shared/chat-core/memory')
     const goodClear = parseMemoryResult('【事实提案】\n```json\n[{"subject":"苏晚的母亲","predicate":"健在并住在城南","value":"","changeType":"clear"}]\n```')
     checks.push(check('clear-empty-value-accepted', goodClear.factProposals?.length === 1, `空 value 的 clear → ${goodClear.factProposals?.length ?? 'null'} 条`))
     const omitted = parseMemoryResult('【事实提案】\n```json\n[{"subject":"A","predicate":"B","changeType":"clear"}]\n```')
@@ -2415,7 +2415,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-dialogue-prefix-normalize') {
-    const { normalizeRoleplayDialoguePrefixes } = await import('../src/utils/messagePostProcess')
+    const { normalizeRoleplayDialoguePrefixes } = await import('../shared/chat-core/messagePostProcess')
     const immersive = '苏晚：“我知道。”\n\n“你来得正好。”\n\n*她把门拉开。*'
     const normalized = normalizeRoleplayDialoguePrefixes(immersive, '苏晚', 'immersive')
     checks.push(check('adds-prefix', normalized.includes('苏晚：“你来得正好。”'), '独占一行的裸对白已补前缀'))
@@ -2555,7 +2555,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-continue-overlap-trim') {
-    const { trimContinuationOverlap } = await import('../src/utils/messagePostProcess')
+    const { trimContinuationOverlap } = await import('../shared/chat-core/messagePostProcess')
     const prev = '说起来，我今天其实'
     const next = '今天其实去了趟老城区的旧货市场'
     checks.push(check('default-8-unchanged', trimContinuationOverlap(prev, next) === next, '默认阈值 8：4 字重叠不裁剪'))
@@ -2565,7 +2565,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-dialogue-prefix-guard') {
-    const { normalizeRoleplayDialoguePrefixes } = await import('../src/utils/messagePostProcess')
+    const { normalizeRoleplayDialoguePrefixes } = await import('../shared/chat-core/messagePostProcess')
     const mixed = '“我没应。”苏晚顿了顿，“喊了两声就没了。”'
     checks.push(check('named-line-untouched', normalizeRoleplayDialoguePrefixes(mixed, '苏晚', 'immersive') === mixed, '行内已含角色名：保持原样'))
     checks.push(check('bare-line-still-prefixed', normalizeRoleplayDialoguePrefixes('“说。鞘哪来的。”', '林砚', 'immersive') === '林砚：“说。鞘哪来的。”', '不含角色名的裸对白：仍补前缀'))
@@ -2596,7 +2596,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-continue-continuity') {
-    const { buildContinueSystemPrompt } = await import('../src/components/chat/aiInputHelper')
+    const { buildContinueSystemPrompt } = await import('../shared/chat-core/aiInputHelper')
     const withInput = buildContinueSystemPrompt('陈默', '苏晚', true, 'immersive', 'active', 'standard')
     checks.push(check('no-repeat-clause', withInput.includes('不得重复原文末尾'), '有输入：含"不得重复原文末尾"'))
     checks.push(check('grammar-join-clause', withInput.includes('与原文拼接后语法通顺'), '有输入：含拼接语法要求'))
@@ -2607,7 +2607,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-body-format-position') {
-    const { buildContextMessagesFromData } = await import('../src/context/contextBuilder')
+    const { buildContextMessagesFromData } = await import('../shared/chat-core/contextBuilder')
     const data = makeBuildData({ character: CHAR_SUWAN, messages: SUWAN_MESSAGES, session: makeSession() })
     const built = buildContextMessagesFromData(data)
     const withProtocol = built.messages.filter((m) => m.role === 'system' && m.content.includes('【本轮回应范围】'))
@@ -2623,7 +2623,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-pipeline-flag') {
-    const { resolveChatRequestPlan } = await import('../src/context/contextBuilder')
+    const { resolveChatRequestPlan } = await import('../shared/chat-core/contextBuilder')
     const unified = resolveChatRequestPlan(makeBuildData({ character: CHAR_SUWAN, messages: SUWAN_MESSAGES, session: makeSession() }))
     checks.push(check('unified-default', unified.requestMaxTokens > 0, `统一预算：requestMaxTokens=${unified.requestMaxTokens}`))
     const legacySettings = { ...BASE_SETTINGS, generationPipeline: 'legacy' as const }
@@ -2647,7 +2647,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-thought-isolation-pipeline') {
-    const { runGeneratedReplyPipeline } = await import('../src/store/generatedReplyPipeline')
+    const { runGeneratedReplyPipeline } = await import('../shared/chat-core/generatedReplyPipeline')
     const raw = '<thinking>模型计划：先分析规则再写正文，注意用户要求简短。</thinking><thought>不能让他发现我在害怕。</thought>她说：“今天不去。”'
     const outcome = await runGeneratedReplyPipeline({
       rawText: raw,
@@ -2658,7 +2658,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
     checks.push(check('reasoning-not-in-content', !/模型计划|分析规则|用户要求/.test(outcome.content), '落盘正文不含供应商推理文本'))
     checks.push(check('thought-kept', outcome.content.includes('<thought>不能让他发现我在害怕。</thought>'), '<thought> 保留给渲染层（心理描写是业务特性）'))
     checks.push(check('body-kept', outcome.content.includes('“今天不去。”'), '正文完整保留'))
-    const { extractThought, stripThoughtTags } = await import('../src/utils/messagePostProcess')
+    const { extractThought, stripThoughtTags } = await import('../shared/chat-core/messagePostProcess')
     const extracted = extractThought(outcome.content)
     checks.push(check('extract-thought-first-person', extracted.thought === '不能让他发现我在害怕。', `extractThought.thought=${extracted.thought ?? 'null'}`))
     checks.push(check('extract-content-clean', !/模型计划|分析规则/.test(extracted.content), '渲染正文不含推理'))
@@ -2667,7 +2667,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
   }
 
   if (testCase.id === 'v-thought-tts-memory') {
-    const { stripThought, stripThoughtTags } = await import('../src/utils/messagePostProcess')
+    const { stripThought, stripThoughtTags } = await import('../shared/chat-core/messagePostProcess')
     const persisted = '<thought>不能让他发现我在害怕。</thought>她说：“今天不去。”'
     // TTS（默认）：剥离 thought 块后朗读正文；不得出现任何推理痕迹
     const ttsDefault = stripThought(persisted)
@@ -2676,7 +2676,7 @@ async function runVerifyCase(options: CliOptions, testCase: VerifyCase): Promise
     const ttsWithThought = stripThoughtTags(persisted)
     checks.push(check('tts-include-thought-no-reasoning', ttsWithThought.includes('害怕') && !/<thought>/.test(ttsWithThought), '朗读内心：去标签保留内容'))
     // 记忆摘要窗口：格式化只读取落盘正文（与 memoryManager.formatMessage 同口径）
-    const { buildMemorySummaryWindow } = await import('../src/utils/memoryWindow')
+    const { buildMemorySummaryWindow } = await import('../shared/chat-core/memoryWindow')
     const formatted = `苏晚: ${persisted}`
     const window = buildMemorySummaryWindow(
       [{ id: 'm1', content: formatted, role: 'assistant', characterId: 'c1' } as never],

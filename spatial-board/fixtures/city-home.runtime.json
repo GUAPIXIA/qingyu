@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "worldId": "world_city_home",
+  "runtimeId": "runtime_city_home_demo",
+  "revision": 3,
+  "placements": [
+    {
+      "actorId": "actor_user",
+      "boardId": "board_home",
+      "anchor": {
+        "kind": "node",
+        "nodeId": "place_bedroom"
+      },
+      "position": {
+        "x": 264,
+        "y": 240
+      },
+      "semanticPosition": {
+        "containmentPath": [
+          "region_city_x",
+          "place_home",
+          "region_floor_1",
+          "place_bedroom"
+        ],
+        "relativeDirection": "inside",
+        "precision": "inside-only",
+        "note": "用户位于卧室。"
+      },
+      "revision": 3,
+      "updatedAt": 1727000003000,
+      "updatedBy": "user"
+    },
+    {
+      "actorId": "actor_lin_xue",
+      "boardId": "board_continent",
+      "anchor": {
+        "kind": "node",
+        "nodeId": "region_city_y"
+      },
+      "position": {
+        "x": 864,
+        "y": 320
+      },
+      "semanticPosition": {
+        "containmentPath": [
+          "region_city_y"
+        ],
+        "relativeDirection": "inside",
+        "precision": "approximate",
+        "note": "林雪在 YY 市内，具体地点未知。"
+      },
+      "revision": 2,
+      "updatedAt": 1727000002000,
+      "updatedBy": "story"
+    }
+  ],
+  "events": [
+    {
+      "id": "evt_place_user",
+      "runtimeId": "runtime_city_home_demo",
+      "revision": 1,
+      "commandType": "place_actor",
+      "actorId": "actor_user",
+      "before": null,
+      "after": {
+        "actorId": "actor_user",
+        "boardId": "board_continent",
+        "anchor": {
+          "kind": "node",
+          "nodeId": "place_home"
+        },
+        "position": {
+          "x": 264,
+          "y": 256
+        },
+        "semanticPosition": {
+          "containmentPath": [
+            "region_city_x",
+            "place_home"
+          ],
+          "relativeDirection": "inside",
+          "precision": "inside-only"
+        },
+        "revision": 1,
+        "updatedAt": 1727000001000,
+        "updatedBy": "user"
+      },
+      "source": "user",
+      "createdAt": 1727000001000
+    },
+    {
+      "id": "evt_move_lin_xue",
+      "runtimeId": "runtime_city_home_demo",
+      "revision": 2,
+      "commandType": "move_actor",
+      "actorId": "actor_lin_xue",
+      "before": null,
+      "after": {
+        "actorId": "actor_lin_xue",
+        "boardId": "board_continent",
+        "anchor": {
+          "kind": "node",
+          "nodeId": "region_city_y"
+        },
+        "position": {
+          "x": 864,
+          "y": 320
+        },
+        "semanticPosition": {
+          "containmentPath": [
+            "region_city_y"
+          ],
+          "relativeDirection": "inside",
+          "precision": "approximate"
+        },
+        "revision": 2,
+        "updatedAt": 1727000002000,
+        "updatedBy": "story"
+      },
+      "source": "story",
+      "reason": "assistant_message_explicit_arrival",
+      "createdAt": 1727000002000
+    },
+    {
+      "id": "evt_move_user_bedroom",
+      "runtimeId": "runtime_city_home_demo",
+      "revision": 3,
+      "commandType": "move_actor",
+      "actorId": "actor_user",
+      "before": {
+        "actorId": "actor_user",
+        "boardId": "board_continent",
+        "anchor": {
+          "kind": "node",
+          "nodeId": "place_home"
+        },
+        "position": {
+          "x": 264,
+          "y": 256
+        },
+        "semanticPosition": {
+          "containmentPath": [
+            "region_city_x",
+            "place_home"
+          ],
+          "relativeDirection": "inside",
+          "precision": "inside-only"
+        },
+        "revision": 1,
+        "updatedAt": 1727000001000,
+        "updatedBy": "user"
+      },
+      "after": {
+        "actorId": "actor_user",
+        "boardId": "board_home",
+        "anchor": {
+          "kind": "node",
+          "nodeId": "place_bedroom"
+        },
+        "position": {
+          "x": 264,
+          "y": 240
+        },
+        "semanticPosition": {
+          "containmentPath": [
+            "region_city_x",
+            "place_home",
+            "region_floor_1",
+            "place_bedroom"
+          ],
+          "relativeDirection": "inside",
+          "precision": "inside-only",
+          "note": "用户进入卧室。"
+        },
+        "revision": 3,
+        "updatedAt": 1727000003000,
+        "updatedBy": "user"
+      },
+      "source": "user",
+      "reason": "user_drag_into_child_board",
+      "createdAt": 1727000003000
+    }
+  ],
+  "updatedAt": 1727000003000
+}

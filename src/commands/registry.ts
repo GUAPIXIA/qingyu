@@ -4,7 +4,7 @@
 import type { Character } from '../../shared/types'
 import type { GenerationTask } from '../../shared/generationTaskBudget'
 import type { ActiveImageGenProfile } from '../store/useSettingsStore'
-import type { ImageGenerationStage } from '../store/chatTypes'
+import type { ImageGenerationStage } from '../features/chat/chatStoreTypes'
 
 /** 命令执行上下文：暴露 store 方法和当前角色给命令 */
 export interface CommandContext {

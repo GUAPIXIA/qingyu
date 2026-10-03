@@ -168,6 +168,47 @@ describe('单聊降档恢复（生产路径）', () => {
     vi.useRealTimers()
   })
 
+  it('请求中切换配置后，内部恢复仍使用原连接和模型', async () => {
+    const streams = captureStreams()
+    const { promise } = startStream()
+    await vi.advanceTimersByTimeAsync(0)
+    useSettingsStore.setState(state => ({ settings: {
+      ...state.settings, activeModel: 'gpt-4o-mini',
+      connectionProfiles: [{ ...PROFILE, baseUrl: 'https://next.example.com', apiKey: 'next-placeholder' }],
+    } }))
+    streams.complete(0, { finishReason: 'length', terminationCause: 'reasoning_gate_exceeded' })
+    await vi.advanceTimersByTimeAsync(0)
+    const calls = vi.mocked(window.api.ai.chat).mock.calls
+    expect(calls).toHaveLength(2)
+    expect(calls[1][0].model).toBe(calls[0][0].model)
+    expect(calls[1][0].baseUrl).toBe(calls[0][0].baseUrl)
+    expect(calls[1][0].apiKey).toBe(calls[0][0].apiKey)
+    streams.emitChunk(1, '她走进房间。')
+    streams.complete(1, { finishReason: 'stop' })
+    await vi.advanceTimersByTimeAsync(10)
+    await promise
+  })
+
+  it('正文补尾沿用主请求连接，切换配置不会混用旧模型和新连接', async () => {
+    const streams = captureStreams()
+    const { promise } = startStream()
+    await vi.advanceTimersByTimeAsync(0)
+    streams.emitChunk(0, '她走进房间。然后伸手拿')
+    useSettingsStore.setState(state => ({ settings: {
+      ...state.settings, activeModel: 'gpt-4o-mini',
+      connectionProfiles: [{ ...PROFILE, baseUrl: 'https://next.example.com', apiKey: 'next-placeholder' }],
+    } }))
+    streams.complete(0, { finishReason: 'length' })
+    await vi.advanceTimersByTimeAsync(0)
+    const calls = vi.mocked(window.api.ai.chat).mock.calls
+    expect(calls).toHaveLength(2)
+    expect(calls[1][0]).toMatchObject({ model: MODEL, baseUrl: PROFILE.baseUrl, apiKey: PROFILE.apiKey, stream: false })
+    streams.emitChunk(1, '起桌上的杯子。')
+    streams.complete(1, { finishReason: 'stop' })
+    await vi.advanceTimersByTimeAsync(10)
+    await promise
+  })
+
   it('提前中止（空正文）→ 降一档重发同一请求，成功后只派发一次 onComplete', async () => {
     const streams = captureStreams()
     const { promise, onComplete, onError } = startStream()

@@ -52,6 +52,7 @@ vi.mock('../../services/storage', () => ({
     characters: () => '/mock/characters',
     lorebooks: () => '/mock/lorebooks',
     config: () => '/mock/config',
+    groups: () => '/mock/groups',
   },
   readJson: vi.fn(),
   withFileLock: mockWithFileLock,

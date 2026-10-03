@@ -5,7 +5,7 @@ import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
 import { usePersonaStore } from '../usePersonaStore'
 import { useToastStore } from '../useToastStore'
-import { lorebookCache } from '../../utils/lorebook'
+import { lorebookCache } from '../../features/lorebook/lorebookCache'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { GroupChat, GroupMessage, Character } from '../../../shared/types'
 
@@ -209,6 +209,20 @@ describe('useGroupChatStore', () => {
   })
 
   describe('translateMessage', () => {
+    it.each(['scope','body'] as const)('翻译迟到遇到 %s 变化不覆盖当前目标消息或保存正文', async kind => {
+      useSettingsStore.setState({settings:{...getDefaultSettings(),activeProfileId:'p1',connectionProfiles:[{id:'p1',name:'test',provider:'openai',baseUrl:'https://test.invalid',model:'gpt-4o',apiKey:'test-only',maxContext:32768}]}})
+      const original={id:'m1',groupId:'g1',characterId:'c1',content:'Hello world',images:[],timestamp:0,round:1} as GroupMessage
+      useGroupChatStore.setState({currentGroup:{id:'g1'} as GroupChat,currentSessionId:'s1',messages:[original]})
+      await useGroupChatStore.getState().translateMessage('m1')
+      const requestId=vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      useGroupChatStore.setState({currentGroup:{id:kind==='scope'?'g2':'g1'} as GroupChat,currentSessionId:kind==='scope'?'s2':'s1',messages:[{...original,groupId:kind==='scope'?'g2':'g1',content:'Different message',translation:null}]})
+      vi.mocked(window.api.ai.onChunk).mock.calls.at(-1)?.[0]({requestId,text:'你好'})
+      vi.mocked(window.api.ai.onComplete).mock.calls.at(-1)?.[0]({requestId,finishReason:'stop'})
+      await Promise.resolve()
+      expect(useGroupChatStore.getState().messages[0].translation).toBeNull()
+      expect(window.api.group.saveMessage).not.toHaveBeenCalled()
+      expect(window.api.group.commitFeatureResult).toHaveBeenCalledWith('g1', 's1', expect.objectContaining({ feature: 'translation', messageId: 'm1', text: '你好', language: '中文' }))
+    })
     it('关闭推理输出，避免思考内容耗尽翻译正文预算', async () => {
       useSettingsStore.setState({
         settings: {
@@ -263,6 +277,7 @@ describe('useGroupChatStore', () => {
       // 模拟主进程返回翻译失败（onError 回调）
       const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
       vi.mocked(window.api.ai.onError).mock.calls.at(-1)?.[0]({ requestId, error: '模型不可用' })
+      await vi.waitFor(() => expect(useToastStore.getState().toasts.some(t => t.title === '翻译失败')).toBe(true))
 
       expect(useToastStore.getState().toasts.some((t) => t.title === '翻译失败' && t.description === '模型不可用')).toBe(true)
       expect(useGroupChatStore.getState().messages.find((m) => m.id === 'm1')?.translation).toBeNull()

@@ -115,6 +115,20 @@ describe('会话派生记忆清理', () => {
     expect((persisted as { gameMasterMode?: unknown } | undefined)?.gameMasterMode).toBeUndefined()
   })
 
+  it('同步策略支持自动模式，代次只能由主进程维护，重复设置不会失效本轮', async () => {
+    const session = await chatData.createSession('char-001', '自动同步')
+    const automatic = await chatData.updateSession('char-001', session.id, { spatialNarrativeSyncPolicy: 'auto', spatialNarrativeSyncEpoch: 'injected' })
+    expect(automatic.spatialNarrativeSyncPolicy).toBe('auto')
+    expect(automatic.spatialNarrativeSyncEpoch).toBeTruthy()
+    expect(automatic.spatialNarrativeSyncEpoch).not.toBe('injected')
+    const unchanged = await chatData.updateSession('char-001', session.id, { spatialNarrativeSyncPolicy: 'auto', spatialNarrativeSyncEpoch: 'injected' })
+    expect(unchanged.spatialNarrativeSyncEpoch).toBe(automatic.spatialNarrativeSyncEpoch)
+    await chatData.updateSessionIfMemoryVersion('char-001', session.id, 0, { spatialNarrativeSyncPolicy: 'suggest' })
+    const switched = (await chatData.listSessions('char-001')).find(item => item.id === session.id)!
+    expect(switched.spatialNarrativeSyncEpoch).not.toBe(automatic.spatialNarrativeSyncEpoch)
+    await expect(chatData.updateSession('char-001', session.id, { spatialNarrativeSyncPolicy: 'invalid' } as never)).rejects.toThrow('spatialNarrativeSyncPolicy')
+  })
+
   it('条件更新会话时拒绝过期的记忆版本，避免旧摘要覆盖新事实', async () => {
     const session = await chatData.createSession('char-001', '并发记忆测试')
     const first = await chatData.updateSessionIfMemoryVersion('char-001', session.id, 0, {
@@ -130,6 +144,21 @@ describe('会话派生记忆清理', () => {
     expect(stale).toEqual({ applied: false, currentVersion: 1 })
     const persisted = (await chatData.listSessions('char-001')).find((item) => item.id === session.id)!
     expect(persisted.memory).toBe('版本 1')
+  })
+
+  it('空间绑定只能由专用 CAS 更新，普通会话 patch 不覆盖绑定或其他字段', async () => {
+    const session = await chatData.createSession('char-001', '空间绑定')
+    await chatData.updateSpatialBindingIfMatches('char-001', session.id,
+      { worldId: null, runtimeId: null }, { worldId: 'world-1', runtimeId: 'runtime-1' })
+    await chatData.updateSession('char-001', session.id, { title: '改标题', spatialWorldId: 'world-bypass', spatialRuntimeId: null })
+    await chatData.updateSpatialBindingIfMatches('char-001', session.id,
+      { worldId: null, runtimeId: null }, { worldId: 'world-1', runtimeId: 'runtime-1' })
+    await expect(chatData.updateSpatialBindingIfMatches('char-001', session.id,
+      { worldId: null, runtimeId: null }, { worldId: 'world-2', runtimeId: 'runtime-2' })).rejects.toThrow('绑定已改变')
+    const persisted = (await chatData.listSessions('char-001')).find((item) => item.id === session.id)!
+    expect(persisted).toMatchObject({ title: '改标题', spatialWorldId: 'world-1', spatialRuntimeId: 'runtime-1' })
+    await expect(chatData.updateSpatialBindingIfMatches('char-001', 'missing',
+      { worldId: null, runtimeId: null }, { worldId: 'world-1', runtimeId: 'runtime-1' })).rejects.toThrow('不存在')
   })
 
   it('清空会话时同时清除摘要、事实、向量与压缩摘要', async () => {

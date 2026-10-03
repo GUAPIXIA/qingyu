@@ -6,6 +6,7 @@ import { createLogger } from '../services/logger'
 import type { Persona } from '../../shared/types'
 import { nanoid } from 'nanoid'
 import { commitThroughDomain } from '../domain/syncDomainService'
+import { notifyGroupSpatialActorsChanged } from '../services/groupLifecycle'
 
 const log = createLogger('persona')
 
@@ -61,6 +62,7 @@ function writePersonas(personas: Persona[]): void {
     deletes,
     files: [{ path, content: serializeJson(personas) }],
   })
+  notifyGroupSpatialActorsChanged()
 }
 
 export function registerPersonaIPC(ipcMain: IpcMain): void {

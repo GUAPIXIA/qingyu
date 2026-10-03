@@ -4,7 +4,7 @@ import { useSettingsStore } from '../useSettingsStore'
 import { usePersonaStore } from '../usePersonaStore'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { streamAIResponse, cleanupActiveStream, maybeAutoTitle } from '../streamController'
-import { STREAM_THROTTLE_MS, STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
+import { STREAM_THROTTLE_MS, STREAM_IDLE_TIMEOUT_MS } from '../../../shared/chat-core/chatConstants'
 import type { Character, Message, ConnectionProfile, Preset, Settings } from '../../../shared/types'
 
 function createCharacter(overrides: Partial<Character> = {}): Character {
@@ -106,6 +106,8 @@ describe('streamAIResponse 流式控制', () => {
   beforeEach(() => {
     setupStores()
     vi.clearAllMocks()
+    vi.mocked(window.api.spatial.readContext).mockResolvedValue(null)
+    vi.mocked(window.api.spatial.prepareDialogue).mockResolvedValue(null)
     vi.useFakeTimers()
   })
 
@@ -114,7 +116,83 @@ describe('streamAIResponse 流式控制', () => {
     vi.useRealTimers()
   })
 
-  it('会话标题生成注入当前预设越狱提示词并替换变量', async () => {
+  it('legacy 实际请求包含一次预取的位置；重试的 prebuilt 保留同一快照', async () => {
+    const callbacks = captureStreamCallbacks()
+    const character = createCharacter()
+    useSettingsStore.setState(state=>({settings:{...state.settings,connectionProfiles:[{...PROFILE,maxContext:32768}]}}))
+    const spatial = { text:'【空间位置 v1】\nAlice 在茶馆，参与对话。',minimalText:'【空间位置 v1】\nAlice 在茶馆，参与对话。',tokens:40,minimalTokens:40,cropped:[],snapshotId:'one-snapshot',characterOffstage:false,
+      version:{worldId:'world-1',runtimeId:'single_s1',runtimeRevision:1,bindingEpoch:'epoch',worldFingerprint:'a'.repeat(64)} }
+    useChatStore.setState({sessions:[{id:'s1',characterId:character.id,spatialBoardEnabled:true,spatialWorldId:'world-1',spatialRuntimeId:'single_s1',title:'测试',createdAt:0,updatedAt:0,messageCount:0,lastMessage:'',memoryEnabled:false,memoryMode:'auto',autoMemoryInterval:10,memory:'',memoryUpdatedAt:0}]})
+    vi.mocked(window.api.spatial.readContext).mockResolvedValue(spatial)
+    await streamAIResponse(useChatStore.setState as any,useChatStore.getState as any,{aiMessageId:'ai-msg-1',character,preset:null,onComplete:vi.fn().mockResolvedValue(undefined)})
+    expect(useChatStore.getState().error).toBeNull()
+    expect(callbacks.chatParams?.messages?.map(message=>message.content).join('\n')).toContain('Alice 在茶馆')
+    expect(window.api.spatial.readContext).toHaveBeenCalledTimes(1)
+    const prebuilt = useChatStore.getState().buildContext(character,null,{spatialContext:spatial,trackUsage:false})
+    vi.mocked(window.api.spatial.readContext).mockResolvedValue({...spatial,text:'Alice 在厨房',snapshotId:'new-snapshot'})
+    await streamAIResponse(useChatStore.setState as any,useChatStore.getState as any,{aiMessageId:'ai-msg-1',character,preset:null,prebuilt,onComplete:vi.fn().mockResolvedValue(undefined)})
+    expect(window.api.spatial.readContext).toHaveBeenCalledTimes(1)
+    expect(callbacks.chatParams?.messages?.map(message=>message.content).join('\n')).toContain('Alice 在茶馆')
+    vi.mocked(window.api.spatial.readContext).mockResolvedValue(null)
+  })
+
+  it('会话默认关闭，即使旧全局开关开启也不读取或登记画板', async () => {
+    const callbacks = captureStreamCallbacks(), character = createCharacter()
+    useSettingsStore.setState(state => ({ settings: { ...state.settings, spatialBoardEnabled: true } }))
+    useChatStore.setState({ sessions: [{ id: 's1', title: '测试', characterId: character.id } as any] })
+    await streamAIResponse(useChatStore.setState as any, useChatStore.getState as any, {
+      aiMessageId: 'ai-msg-1', character, preset: null, onComplete: vi.fn().mockResolvedValue(undefined),
+    })
+    expect(callbacks.chatParams).toBeDefined()
+    expect(window.api.spatial.readContext).not.toHaveBeenCalled()
+    expect(window.api.spatial.prepareDialogue).not.toHaveBeenCalled()
+  })
+
+  it('位置读取失败时不调用对话模型', async () => {
+    useChatStore.setState({ sessions: [{ id: 's1', title: '测试', characterId: createCharacter().id, spatialBoardEnabled: true } as any] })
+    const callbacks = captureStreamCallbacks(); const onError = vi.fn()
+    vi.mocked(window.api.spatial.readContext).mockRejectedValueOnce(new Error('空间运行状态缺失'))
+    await streamAIResponse(useChatStore.setState as any,useChatStore.getState as any,{aiMessageId:'ai-msg-1',character:createCharacter(),preset:null,onComplete:vi.fn().mockResolvedValue(undefined),onError})
+    expect(callbacks.chatParams).toBeUndefined(); expect(onError).toHaveBeenCalledWith('空间运行状态缺失')
+    expect(useChatStore.getState().isStreaming).toBe(false)
+  })
+
+  it('空间队列等完成回调保存成功才通知；保存失败不提取', async () => {
+    useChatStore.setState({ sessions: [{ id: 's1', title: '测试', characterId: createCharacter().id, spatialBoardEnabled: true } as any] })
+    const callbacks = captureStreamCallbacks()
+    vi.mocked(window.api.spatial.prepareDialogue).mockResolvedValue('spatial-generation')
+    let saveDone!: () => void
+    const onComplete = vi.fn().mockImplementation(() => new Promise<void>(resolve => { saveDone = resolve }))
+    await streamAIResponse(useChatStore.setState as any,useChatStore.getState as any,{aiMessageId:'ai-msg-1',character:createCharacter(),preset:null,onComplete})
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({requestId,text:'Alice 走进厨房。'}); callbacks.onComplete!({requestId,finishReason:'stop'})
+    await vi.advanceTimersByTimeAsync(10)
+    expect(onComplete).toHaveBeenCalledWith('Alice 走进厨房。',expect.objectContaining({spatialGenerationId:'spatial-generation'}))
+    expect(window.api.spatial.dialogueSaved).not.toHaveBeenCalled()
+    saveDone(); await vi.advanceTimersByTimeAsync(10)
+    expect(window.api.spatial.dialogueSaved).toHaveBeenCalledWith('char-1','s1','spatial-generation','ai-msg-1')
+    vi.mocked(window.api.spatial.dialogueSaved).mockClear()
+    onComplete.mockRejectedValueOnce(new Error('正文保存失败'))
+    await streamAIResponse(useChatStore.setState as any,useChatStore.getState as any,{aiMessageId:'ai-msg-1',character:createCharacter(),preset:null,onComplete})
+    const nextId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({requestId:nextId,text:'Alice 走进厨房。'}); callbacks.onComplete!({requestId:nextId,finishReason:'stop'})
+    await vi.advanceTimersByTimeAsync(10)
+    expect(window.api.spatial.dialogueSaved).not.toHaveBeenCalled()
+  })
+  it.each(['length','cancelled','unknown'])('终态 %s 不投递剧情事件', async finishReason => {
+    useChatStore.setState({ sessions: [{ id: 's1', title: '测试', characterId: createCharacter().id, spatialBoardEnabled: true } as any] })
+    const callbacks = captureStreamCallbacks(), onComplete = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(window.api.spatial.prepareDialogue).mockResolvedValue('spatial-generation')
+    useSettingsStore.setState(state => ({settings:{...state.settings,autoTailRepairEnabled:false}}))
+    await streamAIResponse(useChatStore.setState as any,useChatStore.getState as any,{aiMessageId:'ai-msg-1',character:createCharacter(),preset:null,onComplete})
+    const requestId = callbacks.chatParams!.requestId
+    callbacks.onChunk!({requestId,text:'Alice 走进厨房。'}); callbacks.onComplete!({requestId,finishReason})
+    await vi.advanceTimersByTimeAsync(10)
+    expect(window.api.spatial.dialogueSaved).not.toHaveBeenCalled()
+    if (onComplete.mock.calls.length) expect(onComplete.mock.calls[0]![1].spatialGenerationId).toBeUndefined()
+  })
+
+  it('会话标题生成只使用专用提示，不继承预设越狱', async () => {
     const callbacks = captureStreamCallbacks()
     const character = createCharacter()
     const preset: Preset = {
@@ -138,8 +216,8 @@ describe('streamAIResponse 流式控制', () => {
     await maybeAutoTitle(useChatStore.getState as any, useChatStore.setState as any, character, preset)
 
     const systemPrompt = callbacks.chatParams?.messages?.find((message) => message.role === 'system')?.content ?? ''
-    expect(systemPrompt).toContain('你是一个对话标题生成器')
-    expect(systemPrompt).toContain('标题越狱：TestUser 与 Alice 保持沉浸。')
+    expect(systemPrompt).toContain('对话标题生成器')
+    expect(systemPrompt).not.toContain('标题越狱')
   })
 
   it('流式 chunk 累积后 flush 到消息内容', async () => {

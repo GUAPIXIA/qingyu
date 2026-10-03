@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import type { LorebookTriggerOptions, LorebookTriggerResult } from '../../../src/utils/lorebook'
-import { executeLorebookRuntime } from '../../../src/utils/lorebook'
+import type { LorebookTriggerOptions, LorebookTriggerResult } from '../../../shared/chat-core/lorebook'
+import { executeLorebookRuntime } from '../../../shared/chat-core/lorebook'
 
 export interface LorebookGoldenFixture {
   id: string

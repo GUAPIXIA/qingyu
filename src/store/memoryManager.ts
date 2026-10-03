@@ -1,8 +1,8 @@
 import type { Character } from '../../shared/types'
-import { MEMORY_SUMMARY_MIN } from './chatConstants'
+import { MEMORY_SUMMARY_MIN } from '../../shared/chat-core/chatConstants'
 import { friendlyError } from './chatUtils'
 import { vectorizeSessionFacts } from './streamController'
-import type { StoreGet, StoreSet } from './chatTypes'
+import type { StoreGet, StoreSet } from '../features/chat/chatStoreTypes'
 
 /** 渲染层只维护交互状态；总结决策、模型调用与乐观提交统一由主进程负责。 */
 const activeMemorySummaries = new Set<string>()
@@ -25,7 +25,9 @@ export async function runMemorySummary(
 
   const summaryKey = `${character.id}:${currentSessionId}`
   if (activeMemorySummaries.has(summaryKey)) return null
+  const matchesScope = () => get().currentSessionId === currentSessionId && get().sessions.some(s => s.id === currentSessionId && s.characterId === character.id)
   const reportFailure = (message: string) => {
+    if (!matchesScope()) return
     set({ error: message, memorySummaryError: { key: summaryKey, message } })
   }
 
@@ -41,20 +43,20 @@ export async function runMemorySummary(
       if (!options.automatic) reportFailure(skippedMessage(result.reason))
       // 主进程可能已在渲染层轮询前完成总结；此时第二次自动检查会因游标已推进而跳过，
       // 仍需刷新会话，避免界面继续展示旧记忆快照。
-      if (options.automatic && get().currentSessionId === currentSessionId) {
+      if (options.automatic && matchesScope()) {
         const refreshedSessions = await window.api.chat.listSessions(character.id)
-        set({ sessions: refreshedSessions })
+        if (matchesScope()) set({ sessions: refreshedSessions })
       }
       return null
     }
 
-    set({ memorySummaryError: null })
+    if (matchesScope()) set({ memorySummaryError: null })
     if (result.facts.length > 0) {
       vectorizeSessionFacts(character.id, currentSessionId, result.facts, result.memoryVersion)
     }
-    if (get().currentSessionId === currentSessionId) {
+    if (matchesScope()) {
       const refreshedSessions = await window.api.chat.listSessions(character.id)
-      set({ sessions: refreshedSessions })
+      if (matchesScope()) set({ sessions: refreshedSessions })
     }
     return result.summary || result.currentState || null
   } catch (error) {

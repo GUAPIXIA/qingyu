@@ -21,11 +21,20 @@ export function ContextViewer({ open, onClose, character, preset }: ContextViewe
   const liveDiagnosticsSessionId = useChatStore((state) => state.lastLorebookDiagnosticsSessionId)
   const currentSessionId = useChatStore((state) => state.currentSessionId)
   const [tab, setTab] = useState<'messages' | 'lorebook'>('messages')
-
-  const report = useMemo(() => {
-    if (!open) return null
-    return buildContextReport(character, preset)
-  }, [open, character, preset, buildContextReport])
+  const [report, setReport] = useState<ReturnType<typeof buildContextReport> | null>(null)
+  const [contextError, setContextError] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    setReport(null); setContextError(null)
+    if (!open) return
+    void (async () => {
+      try {
+        const spatial = currentSessionId ? await window.api.spatial.readContext(character.id, currentSessionId) : null
+        if (active) setReport(buildContextReport(character, preset, { spatialContext: spatial ?? undefined }))
+      } catch (cause) { if (active) setContextError(cause instanceof Error ? cause.message : String(cause)) }
+    })()
+    return () => { active = false }
+  }, [open, character, preset, buildContextReport, currentSessionId])
   const context = useMemo(() => report?.messages ?? [], [report])
 
   useEffect(() => {
@@ -45,6 +54,8 @@ export function ContextViewer({ open, onClose, character, preset }: ContextViewe
   return (
     <Modal open={open} onClose={onClose} title="上下文预览" width="xl">
       <div className="space-y-3">
+        {contextError && <p role="alert" className="text-xs text-tavern-danger">{contextError}</p>}
+        {report?.spatialContext && <p className="text-xs text-tavern-text-muted">空间位置：{report.spatialContext.tokens} tokens · 修订 {report.spatialContext.version.runtimeRevision} · 快照 {report.spatialContext.snapshotId.slice(0, 8)}{report.spatialContext.cropped.length > 0 && ` · 已裁剪：${report.spatialContext.cropped.join('、')}`}</p>}
         <div className="flex gap-1 rounded-xl border border-tavern-border-soft bg-tavern-bg-soft p-1">
           <button
             type="button"

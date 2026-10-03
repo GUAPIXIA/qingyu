@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "id": "world_planet_system",
+  "name": "行星系",
+  "description": "黄金样例：星系—星球—基地层级，使用天文单位距离与自定义单位。",
+  "rootBoardId": "board_galaxy",
+  "boards": [
+    {
+      "id": "board_galaxy",
+      "name": "银河边缘",
+      "description": "根画板：包含太阳系。",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    },
+    {
+      "id": "board_earth_base",
+      "name": "地球基地内部",
+      "description": "地球基地的内部舱室。",
+      "parentEntryNodeId": "place_earth_base",
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "region_solar_system",
+      "boardId": "board_galaxy",
+      "kind": "region",
+      "name": "太阳系",
+      "description": "以恒星为中心的行星系。",
+      "tags": [
+        "星系"
+      ],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 144,
+        "y": 120,
+        "width": 864,
+        "height": 560
+      }
+    },
+    {
+      "id": "place_earth",
+      "boardId": "board_galaxy",
+      "kind": "place",
+      "name": "地球",
+      "description": "人类居住行星。",
+      "tags": [
+        "行星"
+      ],
+      "parentNodeId": "region_solar_system",
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 384,
+        "y": 336
+      },
+      "iconKey": "planet"
+    },
+    {
+      "id": "place_earth_base",
+      "boardId": "board_galaxy",
+      "kind": "place",
+      "name": "地球基地",
+      "description": "地表科考基地，可进入内部画板。",
+      "tags": [
+        "基地"
+      ],
+      "parentNodeId": "region_solar_system",
+      "childBoardId": "board_earth_base",
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 432,
+        "y": 440
+      },
+      "iconKey": "base"
+    },
+    {
+      "id": "place_mars",
+      "boardId": "board_galaxy",
+      "kind": "place",
+      "name": "火星",
+      "description": "邻近行星，设有前哨站。",
+      "tags": [
+        "行星"
+      ],
+      "parentNodeId": "region_solar_system",
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 816,
+        "y": 304
+      },
+      "iconKey": "planet"
+    },
+    {
+      "id": "place_control_room",
+      "boardId": "board_earth_base",
+      "kind": "place",
+      "name": "主控室",
+      "description": "基地指挥与通讯中心。",
+      "tags": [
+        "舱室"
+      ],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 360,
+        "y": 280
+      },
+      "iconKey": "control"
+    },
+    {
+      "id": "place_dormitory",
+      "boardId": "board_earth_base",
+      "kind": "place",
+      "name": "宿舍舱",
+      "description": "队员休息区。",
+      "tags": [
+        "舱室"
+      ],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 744,
+        "y": 464
+      },
+      "iconKey": "bed"
+    }
+  ],
+  "distances": [
+    {
+      "id": "dist_earth_mars",
+      "kind": "distance",
+      "boardId": "board_galaxy",
+      "sourceNodeId": "place_earth",
+      "targetNodeId": "place_mars",
+      "name": "地火距离",
+      "description": "地球到火星的平均轨道距离。",
+      "measurement": {
+        "value": 1.5,
+        "unit": "au",
+        "displayText": "约 1.5 AU",
+        "certainty": "estimated"
+      },
+      "travelNotes": "视窗发射窗口约 26 个月一次。",
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000
+    },
+    {
+      "id": "dist_base_mars",
+      "kind": "distance",
+      "boardId": "board_galaxy",
+      "sourceNodeId": "place_earth_base",
+      "targetNodeId": "place_mars",
+      "name": "基地至火星前哨",
+      "description": "使用叙事单位的估算航程。",
+      "measurement": {
+        "value": null,
+        "unit": "custom",
+        "customUnit": "跃迁时",
+        "displayText": "约两天跃迁时，视航路而定",
+        "certainty": "unknown"
+      },
+      "travelNotes": "不稳定航路，风暴季可能延误。",
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000
+    }
+  ],
+  "actors": [
+    {
+      "id": "actor_commander",
+      "kind": "persona",
+      "externalRef": {
+        "type": "standalone",
+        "id": "user"
+      },
+      "displayName": "指挥官",
+      "description": "基地指挥官视角。"
+    },
+    {
+      "id": "actor_pilot",
+      "kind": "character",
+      "externalRef": {
+        "type": "standalone",
+        "id": "pilot"
+      },
+      "displayName": "飞行员",
+      "description": "负责行星间穿梭的角色。"
+    }
+  ],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

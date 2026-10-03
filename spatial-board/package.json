@@ -1,0 +1,41 @@
+{
+  "name": "qingyu-spatial-board",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "空间语义编辑器独立开发包（与轻语 PC 端隔离）",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
+    "check:boundary": "node scripts/check-boundary.mjs",
+    "test:schema": "node scripts/validate-fixtures.mjs",
+    "test:unit": "vitest run",
+    "test:browser": "node scripts/browser-regression.mjs",
+    "test:embedded-browser": "node scripts/embedded-browser-regression.mjs",
+    "test": "npm run check:boundary && npm run test:schema && npm run test:unit && npm run check"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "typescript": "~5.8.3",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  },
+  "dependencies": {
+    "@qingyu/spatial-core": "file:../packages/spatial-core",
+    "@xyflow/react": "^12.12.0",
+    "playwright": "^1.63.0",
+    "playwright-core": "^1.63.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zustand": "^5.0.15"
+  }
+}

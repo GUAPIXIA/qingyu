@@ -97,6 +97,20 @@ describe('useSettingsStore', () => {
   })
 
   describe('getActiveProfile', () => {
+    it('uses the active model and keeps the resolved request independent of later settings changes', () => {
+      const profile = createProfile('p1', { capabilityOverride: { enabled: true, outputLimit: 2048 } })
+      useSettingsStore.setState({ settings: {
+        ...getDefaultSettings(), activeProfileId: 'p1', activeModel: 'gpt-4o-mini', connectionProfiles: [profile],
+      } })
+      const snapshot = useSettingsStore.getState().getActiveProfile()!
+      expect(snapshot.model).toBe('gpt-4o-mini')
+      profile.capabilityOverride!.outputLimit = 4096
+      useSettingsStore.setState(state => ({ settings: { ...state.settings, activeModel: 'next-model' } }))
+      expect(snapshot.model).toBe('gpt-4o-mini')
+      expect(snapshot.capabilityOverride!.outputLimit).toBe(2048)
+      expect(useSettingsStore.getState().getActiveProfile()!.model).toBe('next-model')
+    })
+
     it('returns null when no activeProfileId', () => {
       expect(useSettingsStore.getState().getActiveProfile()).toBeNull()
     })
@@ -118,6 +132,7 @@ describe('useSettingsStore', () => {
         settings: {
           ...getDefaultSettings(),
           activeProfileId: 'p1',
+          activeModel: '',
           connectionProfiles: [profile],
         },
       })

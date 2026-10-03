@@ -2,6 +2,7 @@ import type { IpcMain, Dialog } from 'electron'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { createLogger } from '../services/logger'
+import { notifyGroupSpatialActorsChanged } from '../services/groupLifecycle'
 import { safeSend } from '../utils/safeSend'
 import {
   importCharacterFromPng,
@@ -120,6 +121,7 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       saveCharacterThroughDomain(character)
     })
     log.info('角色已保存', { id: character.id, name: character.name })
+    notifyGroupSpatialActorsChanged(character.id)
   })
 
   // 删除

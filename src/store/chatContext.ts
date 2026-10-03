@@ -1,18 +1,19 @@
 import type { Character, NarrativeMode, Preset, ResponsePolicy } from '../../shared/types'
 import type { ContextBuildData } from '../../shared/contextTypes'
 import type { RequestBudget } from '../../shared/modelOutputProfile'
-import { buildContextMessagesFromData, type BuildResult } from '../context/contextBuilder'
+import { buildContextMessagesFromData, type BuildResult } from '../../shared/chat-core/contextBuilder'
 import { syncBuildData } from '../context/rendererContextProvider'
 import { markPendingCompression } from './streamController'
-import { appendRecentTriggeredIds, touchCompressionCache, upsertCompressionCache } from '../utils/lorebook'
+import { appendRecentTriggeredIds, touchCompressionCache, upsertCompressionCache } from '../../shared/chat-core/lorebook'
 import { compressLorebookOverflow } from './chatUtils'
 import { useSettingsStore } from './useSettingsStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
-import { LOREBOOK_RECENCY_WINDOW } from './chatConstants'
-import type { ContextMessage, StoreGet, StoreSet } from './chatTypes'
+import { LOREBOOK_RECENCY_WINDOW } from '../../shared/chat-core/chatConstants'
+import type { ContextMessage } from '../../shared/chat-core/chatTypes'
+import type { StoreGet, StoreSet } from '../features/chat/chatStoreTypes'
 
 /**
- * 阶段 0b：组装逻辑已抽离至 src/context/contextBuilder.ts（纯模块，两端共用）。
+ * 阶段 0b：组装逻辑已抽离至 shared/chat-core/contextBuilder.ts（纯模块，两端共用）。
  *
  * 本文件退化为薄封装：
  * 1. rendererContextProvider.syncBuildData 从现有 Zustand store 同步构造数据快照；
@@ -24,6 +25,7 @@ import type { ContextMessage, StoreGet, StoreSet } from './chatTypes'
  */
 /** 组装结果：历史消息 + 本轮请求预算（上下文预留与请求共用的同一次计算） */
 export interface BuiltChatContext {
+  spatialContext?: BuildResult['spatialContext']
   messages: ContextMessage[]
   /** 本轮请求 max_tokens（来自 resolveChatRequestPlan，调用方不得二次推导） */
   requestMaxTokens: number
@@ -50,9 +52,12 @@ export function buildChatContext(
     lorebookDiagnosticsMode?: 'live' | 'preview'
     /** 阶段8（§4.2）：本轮门控（调用方按开关/熔断解析后传入；缺省 = 不介入） */
     reasoningGate?: ContextBuildData['reasoningGate']
+    spatialContext?: ContextBuildData['spatialContext']
+    configuration?: import('../../shared/chatConnection').ChatConfigurationSnapshot
   },
 ): BuiltChatContext {
-  const data = syncBuildData(character, preset, opts?.reasoningGate)
+  const data = syncBuildData(character, preset, opts?.reasoningGate, opts?.configuration)
+  data.spatialContext = opts?.spatialContext
   const result = buildContextMessagesFromData(data, {
     ...opts,
     lorebookDiagnosticsMode: opts?.trackUsage === false ? opts.lorebookDiagnosticsMode : 'live',
@@ -101,6 +106,7 @@ export function buildChatContext(
   }
   return {
     messages: result.messages,
+    spatialContext: result.spatialContext,
     requestMaxTokens: result.requestMaxTokens,
     requestBudget: result.requestBudget,
     responsePolicy: result.responsePolicy,
@@ -114,11 +120,12 @@ export function buildChatContextReport(
   character: Character,
   preset: Preset | null,
   opts?: {
+    spatialContext?: ContextBuildData['spatialContext']
     continuation?: boolean
     generationType?: 'normal' | 'continue' | 'impersonate' | 'swipe' | 'regenerate' | 'quiet'
   },
 ): BuildResult {
-  return buildContextMessagesFromData(syncBuildData(character, preset), {
+  return buildContextMessagesFromData({ ...syncBuildData(character, preset), spatialContext: opts?.spatialContext }, {
     ...opts,
     lorebookDiagnosticsMode: 'preview',
   })
@@ -143,14 +150,14 @@ function fireLorebookCompression(
     provider: profile.provider,
     apiKey: profile.apiKey,
     baseUrl: profile.baseUrl,
-    model: settingsStore.settings.activeModel || profile.model,
-  }))).then((results) => {
+    model: profile.model,
+  }, { kind: 'single', characterId, sessionId }))).then((results) => {
     const successful = results.filter((res): res is NonNullable<typeof res> => !!res)
     if (successful.length === 0) return
+    if (get().currentSessionId !== sessionId || !get().messages.some(m => m.characterId === characterId)) return
     const cur = get().sessions.find(s => s.id === sessionId)
     let nextCache = cur?.lorebookCompressionCache
     for (const res of successful) nextCache = upsertCompressionCache(nextCache, res.key, res.entry)
     set(s => ({ sessions: s.sessions.map(ss => ss.id === sessionId ? { ...ss, lorebookCompressionCache: nextCache } : ss) }))
-    window.api.chat.updateSession(characterId, sessionId, { lorebookCompressionCache: nextCache }).catch(() => { /* 忽略 */ })
   }).catch(() => { /* 忽略 */ })
 }

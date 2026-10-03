@@ -145,6 +145,17 @@ describe('GroupChatPage', () => {
     expect(screen.getByRole('button', { name: '重命名群聊' })).toBeTruthy()
   })
 
+  it('全局关闭画布后仍保留群聊入口，便于进入画布重新开启', () => {
+    const { rerender } = render(<GroupChatPage />)
+    expect(screen.getByRole('button', { name: '群聊空间画板' })).toBeTruthy()
+    Object.assign(mocks.settingsState.settings, { spatialBoardEnabled: false })
+    rerender(<GroupChatPage />)
+    expect(screen.getByRole('button', { name: '群聊空间画板' })).toBeTruthy()
+    Object.assign(mocks.settingsState.settings, { spatialBoardEnabled: true })
+    rerender(<GroupChatPage />)
+    expect(screen.getByRole('button', { name: '群聊空间画板' })).toBeTruthy()
+  })
+
   it('进入已有消息的群聊时从最后一条消息开始显示', () => {
     Object.assign(mocks.groupState, {
       currentSessionId: 'session-1',

@@ -1,28 +1,29 @@
+import { featureSource, featureSessionRef, validCompression, compressionVersion , featureFingerprint, groupFeatureScope } from '../../shared/featureSource'
 import type { Character, LorebookTimedEffectsState, Preset, ResponsePolicy } from '../../shared/types'
 import type { RequestBudget } from '../../shared/modelOutputProfile'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { usePersonaStore } from './usePersonaStore'
+import { lorebookCache } from '../features/lorebook/lorebookCache'
 import {
-  lorebookCache,
   executeLorebookRuntime,
   type BudgetLoreItem,
   type LorebookCompressionRequest,
   type LorebookDiagnostics,
-} from '../utils/lorebook'
-import type { DepthLoreItem } from '../utils/lorebook'
-import { emptyLorebookRenderPlan, type LorebookRenderPlan } from '../utils/lorebookRenderer'
-import { estimateTokens, estimateImageTokens } from '../utils/tokenCounter'
-import { replaceVariables } from '../utils/variables'
-import { mergeConsecutiveMessages } from '../utils/messagePostProcess'
-import { convertMessages } from '../utils/promptConverters'
-import { resolveEffectiveTemplate } from '../utils/chatTemplates'
-import { fitLayeredMemoryBudget, formatMemoryFacts } from '../utils/memory'
-import { expandMacros, buildMacroContext } from '../utils/macros'
+} from '../../shared/chat-core/lorebook'
+import type { DepthLoreItem } from '../../shared/chat-core/lorebook'
+import { emptyLorebookRenderPlan, type LorebookRenderPlan } from '../../shared/chat-core/lorebookRenderer'
+import { estimateTokens, estimateImageTokens } from '../../shared/chat-core/tokenCounter'
+import { replaceVariables } from '../../shared/chat-core/variables'
+import { mergeConsecutiveMessages } from '../../shared/chat-core/messagePostProcess'
+import { convertMessages } from '../../shared/chat-core/promptConverters'
+import { resolveEffectiveTemplate } from '../../shared/chat-core/chatTemplates'
+import { fitLayeredMemoryBudget, formatMemoryFacts } from '../../shared/chat-core/memory'
+import { expandMacros, buildMacroContext } from '../../shared/chat-core/macros'
 import { logInfo, logWarn } from '../lib/logger'
-import { DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFETY, resolveLorebookScanDepth } from './chatConstants'
+import { DEFAULT_LOREBOOK_SCAN_DEPTH, TOKEN_BUDGET_SAFETY, resolveLorebookScanDepth } from '../../shared/chat-core/chatConstants'
 import { markPendingGroupCompression } from './groupStreamController'
-import { cropHistory, applyDepthInserts, type DepthInsertItem } from './contextShared'
+import { cropHistory, applyDepthInserts, type DepthInsertItem } from '../../shared/chat-core/contextShared'
 import type { GroupStoreGet } from './groupChatTypes'
 import type { NarrativeMode } from '../../shared/types'
 import { buildGroupNarrativeModePrompt, resolveNarrativeMode } from '../../shared/narrativeMode'
@@ -68,13 +69,13 @@ export function buildGroupChatContext(
   get: GroupStoreGet,
   targetCharId?: string,
   preset?: Preset | null,
-  opts?: { trackUsage?: boolean; lorebookDiagnosticsMode?: 'live' | 'preview' },
+  opts?: { trackUsage?: boolean; lorebookDiagnosticsMode?: 'live' | 'preview'; spatialContext?: import('../../shared/spatial').SpatialGroupContext | null; configuration?: import('../../shared/chatConnection').ChatConfigurationSnapshot },
 ): GroupContextBuildResult {
   const state = get()
   const group = state.currentGroup
   const settingsStore = useSettingsStore.getState()
-  const settings = settingsStore.settings
-  const profile = settingsStore.getActiveProfile()
+  const settings = opts?.configuration?.settings ?? settingsStore.settings
+  const profile = opts?.configuration ? opts.configuration.profile : settingsStore.getActiveProfile()
   const model = settings.activeModel || profile?.model || 'gpt-4o-mini'
   const requestPlan = resolveGroupRequestPlan({
     model,
@@ -356,6 +357,16 @@ export function buildGroupChatContext(
   )
   systemContent += '\n\n' + narrativePrompt
 
+  const spatial = opts?.spatialContext
+  if (spatial && currentSession?.spatialContextEnabled !== false) {
+    if (spatial.groupId !== group.id || spatial.sessionId !== currentSessionId || spatial.targetCharacterId !== targetCharId || spatial.narrativeMode !== narrativeMode || JSON.stringify(spatial.memberIds) !== JSON.stringify(group.memberIds) || (currentSession?.spatialWorldId && spatial.version.worldId !== currentSession.spatialWorldId) || (currentSession?.spatialRuntimeId && spatial.version.runtimeId !== currentSession.spatialRuntimeId)) throw new Error('群聊画板读取范围已变化，请重新发送')
+    if (narrativeMode === 'immersive' && spatial.characterOffstage) throw new Error('该角色在画板中明确不参与对话')
+    const available = budgetBase - estimateTokens(systemContent, model) - 256
+    const text = estimateTokens(spatial.text, model) <= available ? spatial.text : spatial.minimalText
+    if (estimateTokens(text, model) > available) throw new Error('群聊上下文无法容纳必要的位置关系，请精简设定后重试')
+    systemContent += '\n\n' + text
+  }
+
   // ===== 历史消息（Token 预算裁剪）=====
   let usedTokens = estimateTokens(systemContent, model)
 
@@ -390,7 +401,7 @@ export function buildGroupChatContext(
   // 群聊长期时间线已存在时，压缩摘要会与其重复，直接跳过。
   const hasTimelineMemory = Boolean(currentSession?.memory?.trim())
   if (compression.enabled && !hasTimelineMemory && droppedTokens > 0 && currentSession) {
-    const covered = !!currentSession.compressedSummary
+    const covered = validCompression(currentSession, state.messages, groupFeatureScope(group)) && !!currentSession.compressedSummary
       && !!currentSession.compressedRange
       && droppedStartTs >= currentSession.compressedRange.startTs
       && droppedEndTs <= currentSession.compressedRange.endTs
@@ -411,6 +422,9 @@ export function buildGroupChatContext(
           : '',
         droppedStartTs,
         droppedEndTs,
+        source: { ...featureSource(state.messages.filter(m => m.timestamp >= droppedStartTs && m.timestamp <= droppedEndTs), 'range', featureSessionRef(currentSession)),
+          range: { startTs: droppedStartTs, endTs: droppedEndTs }, groupFingerprint: featureFingerprint(groupFeatureScope(group)), },
+        expectedCompression: compressionVersion(currentSession),
       })
     }
   }

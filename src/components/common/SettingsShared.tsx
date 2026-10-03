@@ -82,10 +82,12 @@ export function Toggle({
   checked,
   onChange,
   label,
+  disabled = false,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
   label?: string
+  disabled?: boolean
 }) {
   return (
     <button
@@ -93,9 +95,10 @@ export function Toggle({
       role="switch"
       aria-label={label}
       aria-checked={checked}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'toggle-track relative inline-flex h-5 w-9 items-center rounded-full',
+        'toggle-track relative inline-flex h-5 w-9 items-center rounded-full disabled:cursor-not-allowed disabled:opacity-50',
         checked ? 'bg-tavern-accent' : 'bg-tavern-bg-hover'
       )}
     >

@@ -1,10 +1,12 @@
+import { featureSource, featureSessionRef, matchesFeatureSource, featureFingerprint, groupFeatureScope, type FeatureOwner } from '../../shared/featureSource'
+import { beginFeatureTask, cancelFeatureTasks, finishFeatureTask, requestFeatureText, type FeatureTask } from './featureTasks'
 /**
  * “下一步方向”运行时：发起独立辅助请求 → 严格校验 → 回写消息。
  *
  * 与主回复解耦：主回复流式展示后，本模块异步补齐方向；失败只静默降级，
  * 不影响正文与发送状态（见方案 §4.1 / §10）。
  */
-import type { ChatParams, Character, DialogueDirection, GroupMessage, Message, NarrativeMode } from '../../shared/types'
+import type { ChatParams, Character, DialogueDirection, GroupMessage, NarrativeMode } from '../../shared/types'
 import {
   DIALOGUE_DIRECTION_TEMPERATURE,
   buildDialogueDirectionSystemPrompt,
@@ -15,51 +17,22 @@ import {
 import { BACKGROUND_GENERATION_PROFILES } from '../../shared/backgroundGeneration'
 import { resolveCachedRendererGenerationTaskBudget } from './generationTaskBudget'
 import { noteGateRecoveryFailure } from './reasoningGateState'
-import { stripThought } from '../utils/messagePostProcess'
+import { stripThought } from '../../shared/chat-core/messagePostProcess'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
-import { useSettingsStore } from './useSettingsStore'
+import { useSettingsStore, type ActiveProfile } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
-import { getDisplayName, replaceVariables } from '../utils/variables'
+import { getDisplayName } from '../../shared/chat-core/variables'
 import { logError } from '../lib/logger'
-import type { StoreGet, StoreSet } from './chatTypes'
+import type { StoreGet, StoreSet } from '../features/chat/chatStoreTypes'
 import type { GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 
 /** 每条消息最多保留的最近对话条数（方案 §4.1：最近 4–6 条）。 */
 const RECENT_MESSAGE_LIMIT = 6
 
-/** 进行中的方向请求：同一消息只允许一个在途请求，避免重复消耗。 */
-const inFlight = new Map<string, string>()
-/** 每个消息在途请求的真实 IPC requestId 集合（含重试），用于精确取消。 */
-const activeRequestIds = new Map<string, Set<string>>()
-/** 每个消息最近一次请求的批次 id，用于丢弃“换一批”快速点击产生的过期结果。 */
-const latestRequest = new Map<string, string>()
-
-/** 会话切换或消息失效时取消尚未完成的方向请求。 */
-export function cancelDialogueDirectionRequests(messageIds?: readonly string[]): void {
-  const targets = messageIds ? [...messageIds] : [...inFlight.keys()]
-  for (const messageId of targets) {
-    if (!inFlight.has(messageId)) continue
-    for (const requestId of activeRequestIds.get(messageId) ?? []) {
-      window.api.ai.cancelChat(requestId).catch(() => { /* 请求可能已结束 */ })
-    }
-    activeRequestIds.delete(messageId)
-    inFlight.delete(messageId)
-    // 取消同时失效“最近请求”标记：即使响应随后到达也不再回写
-    latestRequest.delete(messageId)
-  }
-}
-
-/** 记录真实 IPC requestId，供取消使用；返回注销函数。 */
-function trackRequestId(messageId: string, requestId: string): () => void {
-  const ids = activeRequestIds.get(messageId) ?? new Set<string>()
-  ids.add(requestId)
-  activeRequestIds.set(messageId, ids)
-  return () => ids.delete(requestId)
-}
-
-function newRequestId(messageId: string, attempt = 0): string {
-  return `dialogue-directions-${messageId}-${attempt}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+/** 可以按 owner 精确取消；未指定 owner 保留既有全局取消入口。 */
+export function cancelDialogueDirectionRequests(messageIds?: readonly string[], owner?: FeatureOwner): void {
+  cancelFeatureTasks(owner, messageIds, 'direction')
 }
 
 export interface DirectionCallResult {
@@ -68,141 +41,61 @@ export interface DirectionCallResult {
   terminationCause?: import('../../shared/types').GenerationTerminationCause
 }
 
-/** 非流式辅助请求：方向生成专用；提示词可由调用层追加 preset jailbreak。 */
-function callDirectionHelper(
-  requestId: string,
-  messages: ChatParams['messages'],
-  opts?: { downgradeRetry?: boolean },
-): Promise<DirectionCallResult> {
-  const settingsStore = useSettingsStore.getState()
-  const profile = settingsStore.getActiveProfile()
-  if (!profile) return Promise.reject(new Error('未配置 API 连接'))
-  const activeModel = settingsStore.settings.activeModel || profile.model
-
-  // W4（主计划 §7.6）：方向退出 1536 直连——后台 'direction' 档案给出期望正文，
-  // 统一预算负责换算，off 门控把"关闭推理"的意图正式化（可被探测与提前中止兜底）。
-  const budget = resolveCachedRendererGenerationTaskBudget({
-    profile,
-    model: activeModel,
-    task: 'direction',
-    expectedBodyChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars,
-    usageTaskType: 'direction',
+/** 专用提示、连接快照和任务身份在重试之间保持不变。 */
+async function callDirectionHelper(profile: ActiveProfile, task: FeatureTask, messages: ChatParams['messages'], opts?: { downgradeRetry?: boolean }): Promise<DirectionCallResult> {
+  const budget = resolveCachedRendererGenerationTaskBudget({ profile, model: profile.model, task: 'direction',
+    expectedBodyChars: BACKGROUND_GENERATION_PROFILES.direction.expectedBodyChars, usageTaskType: 'direction' })
+  const { text, completion } = await requestFeatureText(task, {
+    ...profile, requestId: `${task.id}-${opts?.downgradeRetry ? 'downgrade' : Math.random().toString(36).slice(2)}`,
+    messages, temperature: DIALOGUE_DIRECTION_TEMPERATURE, topP: 0.9, maxTokens: budget.requestMaxTokens,
+    frequencyPenalty: 0, presencePenalty: 0, stream: false, reasoningGate: budget.reasoningGate,
+    observability: { source: 'aux', taskType: 'direction', ...(opts?.downgradeRetry ? { downgradeRetry: true } : {}) },
   })
-
-  let result = ''
-  return new Promise<DirectionCallResult>((resolve, reject) => {
-    const cleanup = () => {
-      unbindChunk(); unbindDone(); unbindError()
-    }
-    const unbindChunk = window.api.ai.onChunk((data) => {
-      if (data.requestId !== requestId) return
-      result += data.text
-    })
-    const unbindDone = window.api.ai.onComplete((payload) => {
-      if (payload.requestId !== requestId) return
-      cleanup()
-      // 阶段7（§7.3）：direction = background 档案，触顶输出按结构不完整处理
-      // （解析为空 → 由 requestDialogueDirections 决定"降档重试"或"只补结构"一次）
-      if (payload.finishReason === 'length') {
-        resolve({ text: '', terminationCause: payload.terminationCause ?? 'provider_length' })
-        return
-      }
-      resolve({ text: stripThought(result), terminationCause: payload.terminationCause })
-    })
-    const unbindError = window.api.ai.onError((data) => {
-      if (data.requestId !== requestId) return
-      cleanup()
-      reject(new Error(data.error))
-    })
-
-    window.api.ai.chat({
-      requestId,
-      messages,
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model: activeModel,
-      temperature: DIALOGUE_DIRECTION_TEMPERATURE,
-      topP: 0.9,
-      maxTokens: budget.requestMaxTokens,
-      frequencyPenalty: 0,
-      presencePenalty: 0,
-      stream: false,
-      reasoningGate: budget.reasoningGate,
-      // 阶段7（§7.3）：独立 taskType，不混入主对话篇幅统计；降档重试归属原生成轮
-      observability: {
-        source: 'aux',
-        taskType: 'direction',
-        ...(opts?.downgradeRetry ? { downgradeRetry: true } : {}),
-      },
-    } satisfies ChatParams).catch((err) => {
-      cleanup()
-      reject(err)
-    })
-  })
+  return { text: completion.finishReason && completion.finishReason !== 'stop' ? '' : stripThought(text),
+    terminationCause: completion.terminationCause ?? (completion.finishReason === 'length' ? 'provider_length' : undefined) }
 }
 
 /** 调用辅助模型并返回方向列表；结构非法时重试一次，第二次仍失败返回空。 */
 async function requestDialogueDirections(
-  messageId: string,
+  task: FeatureTask,
   input: DirectionGenerationInput,
-  presetJailbreak = '',
 ): Promise<DialogueDirection[]> {
-  const baseSystemPrompt = buildDialogueDirectionSystemPrompt(input)
-  const systemPrompt = presetJailbreak.trim()
-    ? `${baseSystemPrompt}\n\n${presetJailbreak.trim()}`
-    : baseSystemPrompt
+  const profile = useSettingsStore.getState().getActiveProfile()
+  if (!profile) throw new Error('未配置 API 连接')
+  const systemPrompt = buildDialogueDirectionSystemPrompt(input)
   const userPrompt = buildDialogueDirectionUserPrompt(input)
   const messages: ChatParams['messages'] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ]
 
-  const firstId = newRequestId(messageId, 0)
-  const untrackFirst = trackRequestId(messageId, firstId)
-  const first = await callDirectionHelper(firstId, messages).finally(untrackFirst)
+  const first = await callDirectionHelper(profile, task, messages)
   const parsed = parseDialogueDirections(first.text)
   if (parsed.length > 0) return parsed
   // 请求期间被取消（会话切换 / 消息失效）：不再发起重试
-  if (!inFlight.has(messageId)) return []
+  if (task.controller.signal.aborted) return []
 
   // 阶段8（§4.5/§6.4）：首次推理挤占（length + 零正文）允许一次降档重试，
   // 复用同一 prompt 快照；第二次无论再挤占还是结构非法，都不再发起第三次。
   const reasoningExhausted = !first.text.trim()
     && (first.terminationCause === 'reasoning_gate_exceeded' || first.terminationCause === 'provider_length')
   if (reasoningExhausted) {
-    const retryId = newRequestId(messageId, 1)
-    const untrackRetry = trackRequestId(messageId, retryId)
-    const retry = await callDirectionHelper(retryId, messages, { downgradeRetry: true }).finally(untrackRetry)
+    const retry = await callDirectionHelper(profile, task, messages, { downgradeRetry: true })
     const retryParsed = parseDialogueDirections(retry.text)
     if (retryParsed.length > 0) return retryParsed
     // 两次都失败：记录熔断事实（该端点本会话内不可靠，后续请求从更低档起步）
-    noteGateRecoveryFailure(directionGateScope())
+    noteGateRecoveryFailure({ provider: profile.provider, baseUrl: profile.baseUrl, model: profile.model, task: 'direction' })
     return []
   }
 
-  const retryId = newRequestId(messageId, 1)
-  const untrackRetry = trackRequestId(messageId, retryId)
-  const retry = await callDirectionHelper(retryId, [
+  const retry = await callDirectionHelper(profile, task, [
     {
       role: 'system',
       content: `${systemPrompt}\n\n上一次输出结构不合法。不要分析或解释，只返回一组 <directions>...</directions> 包裹的合法 JSON 数组。`,
     },
     { role: 'user', content: userPrompt },
-  ]).finally(untrackRetry)
+  ])
   return parseDialogueDirections(retry.text)
-}
-
-/** 方向任务的门控熔断作用域（与主对话共享端点级事实） */
-function directionGateScope(): { provider: string; baseUrl: string; model: string; task: string } {
-  const settingsStore = useSettingsStore.getState()
-  const profile = settingsStore.getActiveProfile()
-  return {
-    provider: profile?.provider ?? '',
-    baseUrl: profile?.baseUrl ?? '',
-    model: settingsStore.settings.activeModel || profile?.model || '',
-    task: 'direction',
-  }
 }
 
 /** 单聊与群聊共用的方向请求参数（角色、世界状态、最近对话、叙事模式快照）。 */
@@ -226,20 +119,6 @@ function buildInput(context: DirectionContext): DirectionGenerationInput {
     latestReply: context.latestReply,
     worldState: context.worldState,
   }
-}
-
-/** 按当前单聊/群聊绑定解析预设，只抽取 jailbreak，不带入预设其余正文。 */
-async function loadDirectionPresetJailbreak(
-  presetId: string | null | undefined,
-  input: DirectionGenerationInput,
-  originalCharName: string,
-): Promise<string> {
-  if (!presetId) return ''
-  const presets = await window.api.preset.list()
-  const jailbreak = presets.find((preset) => preset.id === presetId)?.jailbreak?.trim()
-  return jailbreak
-    ? replaceVariables(jailbreak, input.userName, input.charName, originalCharName)
-    : ''
 }
 
 function recentDialogue(
@@ -271,7 +150,6 @@ export async function generateSingleDialogueDirections(
   if (index < 0) return []
   const target = state.messages[index]
   if (target.role !== 'assistant' || !(target.content || '').trim()) return []
-  if (inFlight.has(messageId)) return []
 
   const userName = useSettingsStore.getState().settings.userName || '用户'
   const session = state.sessions.find((item) => item.id === target.sessionId)
@@ -288,48 +166,37 @@ export async function generateSingleDialogueDirections(
     latestReply: stripThought(target.content || ''),
     worldState: session?.memoryCurrentState,
   })
-  inFlight.set(messageId, messageId)
-  latestRequest.set(messageId, messageId)
-
+  const source = featureSource(state.messages, 'whole', featureSessionRef(session, ['narrativeMode', 'personaId', 'memoryCurrentState']))
+  const task = beginFeatureTask({ kind: 'single', characterId: target.characterId, sessionId: target.sessionId }, 'direction', source, messageId)
+  if (!task) return []
   try {
-    const presetJailbreak = await loadDirectionPresetJailbreak(state.activePresetId, input, character.name)
-    if (!inFlight.has(messageId)) return []
-    const directions = await requestDialogueDirections(messageId, input, presetJailbreak)
-    // 过期结果（用户已点“换一批”或已发下一条消息）直接丢弃
-    if (latestRequest.get(messageId) !== messageId) return []
-    if (directions.length === 0) return []
-    await persistSingleDirections(set, get, messageId, directions)
-    return directions
+    const directions = await requestDialogueDirections(task, input)
+    if (!directions.length || task.controller.signal.aborted) return []
+    return await persistSingleDirections(set, get, messageId, directions, task) ? directions : []
   } catch (error) {
-    logError('DialogueDirections:single', error)
+    if (!task.controller.signal.aborted) logError('DialogueDirections:single', error)
     return []
-  } finally {
-    if (inFlight.get(messageId) === messageId) {
-      inFlight.delete(messageId)
-      activeRequestIds.delete(messageId)
-      latestRequest.delete(messageId)
-    }
-  }
+  } finally { finishFeatureTask(task) }
 }
 
 /** 把方向写回消息（内存 + 持久化）。调用方负责校验方向非空。 */
 export async function persistSingleDirections(
-  set: StoreSet,
-  get: StoreGet,
-  messageId: string,
-  directions: DialogueDirection[],
-): Promise<void> {
-  const current = get().messages.find((message) => message.id === messageId)
-  if (!current) return
-  // 正文在请求期间被替换或清空（重生成/Swipe/续写）：方向已失效，放弃回写
-  if (!(current.content || '').trim()) return
-  const updated: Message = {
-    ...current,
-    dialogueDirections: directions,
-    dialogueDirectionsGeneratedAt: Date.now(),
+  set: StoreSet, get: StoreGet, messageId: string, directions: DialogueDirection[], task?: FeatureTask,
+): Promise<boolean> {
+  const current = get().messages.find(m => m.id === messageId)
+  const owner = task?.owner ?? (current && { kind: 'single' as const, characterId: current.characterId, sessionId: current.sessionId })
+  if (!owner || owner.kind !== 'single' || task?.controller.signal.aborted || (!task && !current?.content.trim())) return false
+  const source = task?.source ?? featureSource([current!], 'message')
+  const session = get().sessions.find(s => s.id === owner.sessionId)
+  const displayed = get().currentSessionId === owner.sessionId || get().messages.some(m => m.sessionId === owner.sessionId)
+  if (displayed && !matchesFeatureSource(source, get().messages, session)) return false
+  const applied = await window.api.chat.commitFeatureResult(owner.characterId, owner.sessionId,
+    { feature: 'direction', taskId: task?.id ?? `direction-save-${Date.now()}-${Math.random()}`, source, messageId, directions })
+  if (applied && !task?.controller.signal.aborted && get().messages.some(m => m.sessionId === owner.sessionId)
+    && matchesFeatureSource(source, get().messages, get().sessions.find(s => s.id === owner.sessionId))) {
+    set(s => ({ messages: s.messages.map(m => m.id === messageId ? { ...m, dialogueDirections: directions, dialogueDirectionsGeneratedAt: Date.now(), dialogueDirectionsSource: source } : m) }))
   }
-  set((state) => ({ messages: state.messages.map((message) => (message.id === messageId ? updated : message)) }))
-  await window.api.chat.saveMessage(updated).catch((e) => logError('DialogueDirections:save', e))
+  return applied
 }
 
 /** 群聊中一条有效角色消息的判定：非用户、非自由旁白占位、正文非空。 */
@@ -360,7 +227,6 @@ export async function generateGroupDialogueDirections(
   if (index < 0) return []
   const target = state.messages[index]
   if (!isGroupReply(target)) return []
-  if (inFlight.has(messageId)) return []
 
   const session = state.sessions.find((item) => item.id === state.currentSessionId)
   const input = buildInput({
@@ -372,36 +238,25 @@ export async function generateGroupDialogueDirections(
     recentMessages: recentDialogue(state.messages, index, (message) => {
       if (message.characterId === '__user__') return userName
       if (message.speakerKind === 'narrator') return '旁白'
-      return getDisplayName(character)
+      const speaker = useCharacterStore.getState().characters.find(c => c.id === message.characterId)
+      return speaker ? getDisplayName(speaker) : (message.characterId === character.id ? getDisplayName(character) : '未知角色')
     }),
     latestReply: stripThought(target.content || ''),
     worldState: worldState ?? session?.memoryCurrentState,
   })
-  inFlight.set(messageId, messageId)
-  latestRequest.set(messageId, messageId)
-
+  if (!state.currentGroup || !state.currentSessionId) return []
+  const source = featureSource(state.messages, 'whole', featureSessionRef(session, ['narrativeMode', 'personaId', 'memoryCurrentState']))
+  source.groupFingerprint = featureFingerprint(groupFeatureScope(state.currentGroup))
+  const task = beginFeatureTask({ kind: 'group', groupId: state.currentGroup.id, sessionId: state.currentSessionId }, 'direction', source, messageId)
+  if (!task) return []
   try {
-    const presetJailbreak = await loadDirectionPresetJailbreak(
-      state.currentGroup?.presetId,
-      input,
-      character.name,
-    )
-    if (!inFlight.has(messageId)) return []
-    const directions = await requestDialogueDirections(messageId, input, presetJailbreak)
-    if (latestRequest.get(messageId) !== messageId) return []
-    if (directions.length === 0) return []
-    await persistGroupDirections(set, get, messageId, directions)
-    return directions
+    const directions = await requestDialogueDirections(task, input)
+    if (!directions.length || task.controller.signal.aborted) return []
+    return await persistGroupDirections(set, get, messageId, directions, task) ? directions : []
   } catch (error) {
-    logError('DialogueDirections:group', error)
+    if (!task.controller.signal.aborted) logError('DialogueDirections:group', error)
     return []
-  } finally {
-    if (inFlight.get(messageId) === messageId) {
-      inFlight.delete(messageId)
-      activeRequestIds.delete(messageId)
-      latestRequest.delete(messageId)
-    }
-  }
+  } finally { finishFeatureTask(task) }
 }
 
 /**
@@ -417,6 +272,8 @@ export async function clearSessionDialogueDirections(
   get: StoreGet,
   sessionId: string,
 ): Promise<void> {
+  const characterId = get().messages.find(m => m.sessionId === sessionId)?.characterId
+  if (characterId) cancelDialogueDirectionRequests(undefined, { kind: 'single', characterId, sessionId })
   const targets = get().messages.filter(
     (message) => message.sessionId === sessionId && (message.dialogueDirections?.length ?? 0) > 0,
   )
@@ -429,6 +286,7 @@ export async function clearSessionDialogueDirections(
     const next = { ...message }
     delete next.dialogueDirections
     delete next.dialogueDirectionsGeneratedAt
+    delete next.dialogueDirectionsSource
     return next
   })
   const clearedById = new Map(cleared.map((message) => [message.id, message]))
@@ -436,7 +294,7 @@ export async function clearSessionDialogueDirections(
     messages: state.messages.map((message) => clearedById.get(message.id) ?? message),
   }))
   for (const message of cleared) {
-    await window.api.chat.saveMessage(message).catch((e) => logError('DialogueDirections:clear', e))
+    await window.api.chat.commitFeatureResult(message.characterId, sessionId, { feature: 'direction', taskId: `clear-${Date.now()}-${Math.random()}`, source: featureSource([message], 'message'), messageId: message.id, directions: [] }).catch((e) => logError('DialogueDirections:clear', e))
   }
 }
 
@@ -447,6 +305,7 @@ export async function clearGroupDialogueDirections(
   groupId: string,
   sessionId: string,
 ): Promise<void> {
+  cancelDialogueDirectionRequests(undefined, { kind: 'group', groupId, sessionId })
   const targets = get().messages.filter(
     (message) => (message.dialogueDirections?.length ?? 0) > 0,
   )
@@ -458,6 +317,7 @@ export async function clearGroupDialogueDirections(
     const next = { ...message }
     delete next.dialogueDirections
     delete next.dialogueDirectionsGeneratedAt
+    delete next.dialogueDirectionsSource
     return next
   })
   const clearedById = new Map(cleared.map((message) => [message.id, message]))
@@ -465,7 +325,7 @@ export async function clearGroupDialogueDirections(
     messages: state.messages.map((message) => clearedById.get(message.id) ?? message),
   }))
   for (const message of cleared) {
-    await window.api.group.saveMessage(groupId, sessionId, message)
+    await window.api.group.commitFeatureResult(groupId, sessionId, { feature: 'direction', taskId: `clear-${Date.now()}-${Math.random()}`, source: featureSource([message], 'message'), messageId: message.id, directions: [] })
       .catch((e) => logError('DialogueDirections:clearGroup', e))
   }
 }
@@ -494,7 +354,7 @@ export async function refreshSingleDialogueDirections(
   if (!latest || (latest.dialogueDirections?.length ?? 0) === 0) return
 
   // 先取消在途请求：否则 generate 会因“同一消息去重”而直接跳过
-  cancelDialogueDirectionRequests([latest.id])
+  cancelDialogueDirectionRequests([latest.id], { kind: 'single', characterId: latest.characterId, sessionId: latest.sessionId })
   await generateSingleDialogueDirections(set, get, { messageId: latest.id, character: opts.character })
 }
 
@@ -518,7 +378,7 @@ export async function refreshGroupDialogueDirections(
   )
   if (!speaker) return
 
-  cancelDialogueDirectionRequests([latest.id])
+  if (state.currentGroup && state.currentSessionId) cancelDialogueDirectionRequests([latest.id], { kind: 'group', groupId: state.currentGroup.id, sessionId: state.currentSessionId })
   await generateGroupDialogueDirections(set, get, {
     messageId: latest.id,
     character: speaker,
@@ -528,21 +388,19 @@ export async function refreshGroupDialogueDirections(
 
 /** 群聊方向回写（内存 + 持久化）。 */
 export async function persistGroupDirections(
-  set: GroupStoreSet,
-  get: GroupStoreGet,
-  messageId: string,
-  directions: DialogueDirection[],
-): Promise<void> {
-  const state = get()
-  const current = state.messages.find((message) => message.id === messageId)
-  if (!current || !state.currentGroup || !state.currentSessionId) return
-  if (!(current.content || '').trim()) return
-  const updated: GroupMessage = {
-    ...current,
-    dialogueDirections: directions,
-    dialogueDirectionsGeneratedAt: Date.now(),
+  set: GroupStoreSet, get: GroupStoreGet, messageId: string, directions: DialogueDirection[], task?: FeatureTask,
+): Promise<boolean> {
+  const state = get(), current = state.messages.find(m => m.id === messageId)
+  const owner = task?.owner ?? (state.currentGroup && state.currentSessionId && { kind: 'group' as const, groupId: state.currentGroup.id, sessionId: state.currentSessionId })
+  if (!owner || owner.kind !== 'group' || task?.controller.signal.aborted || (!task && !current?.content.trim())) return false
+  const source = task?.source ?? featureSource([current!], 'message')
+  const displayed = () => get().currentGroup?.id === owner.groupId && get().currentSessionId === owner.sessionId
+  const valid = () => matchesFeatureSource(source, get().messages, get().sessions.find(s => s.id === owner.sessionId), get().currentGroup && groupFeatureScope(get().currentGroup!))
+  if (displayed() && !valid()) return false
+  const applied = await window.api.group.commitFeatureResult(owner.groupId, owner.sessionId,
+    { feature: 'direction', taskId: task?.id ?? `direction-save-${Date.now()}-${Math.random()}`, source, messageId, directions })
+  if (applied && !task?.controller.signal.aborted && displayed() && valid()) {
+    set(s => ({ messages: s.messages.map(m => m.id === messageId ? { ...m, dialogueDirections: directions, dialogueDirectionsGeneratedAt: Date.now(), dialogueDirectionsSource: source } : m) }))
   }
-  set((s) => ({ messages: s.messages.map((message) => (message.id === messageId ? updated : message)) }))
-  await window.api.group.saveMessage(state.currentGroup.id, state.currentSessionId, updated)
-    .catch((e) => logError('DialogueDirections:saveGroup', e))
+  return applied
 }

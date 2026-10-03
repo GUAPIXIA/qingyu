@@ -8,7 +8,7 @@ import {
   MAX_MEMORY_FACTS,
   memoryFactToText,
   parseMemoryResult,
-} from '../memory'
+} from '../../../shared/chat-core/memory'
 
 /** 模拟启发式估算：每字符约 0.3 token（中文更密） */
 function mockEstimate(text: string): number {

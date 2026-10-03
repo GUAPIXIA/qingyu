@@ -3,8 +3,8 @@
  * 类别：人物关系×5 / 时地物×5 / 新事件覆盖×3 / 编辑清理×3 / 超长×4
  */
 import { describe, it, expect } from 'vitest'
-import { buildMemorySummaryWindow } from '../../utils/memoryWindow'
-import { applyFactProposals, fitLayeredMemoryBudget, memoryFactToText, parseMemoryResult } from '../../utils/memory'
+import { buildMemorySummaryWindow } from '../../../shared/chat-core/memoryWindow'
+import { applyFactProposals, fitLayeredMemoryBudget, memoryFactToText, parseMemoryResult } from '../../../shared/chat-core/memory'
 import type { MemoryFact } from '../../../shared/types'
 
 function mockEstimate(text: string): number {

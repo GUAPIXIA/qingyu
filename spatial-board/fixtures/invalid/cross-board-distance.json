@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "world_bad_cross_board",
+  "name": "跨画板距离",
+  "description": "反例（领域校验）：距离两端位于不同画板。schema 结构可通过，距离校验器须拒绝。",
+  "rootBoardId": "board_root",
+  "boards": [
+    {
+      "id": "board_root",
+      "name": "根画板",
+      "description": "",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    },
+    {
+      "id": "board_home",
+      "name": "内部",
+      "description": "",
+      "parentEntryNodeId": "place_home",
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "place_home",
+      "boardId": "board_root",
+      "kind": "place",
+      "name": "用户家",
+      "description": "",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": "board_home",
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 240,
+        "y": 160
+      },
+      "iconKey": "house"
+    },
+    {
+      "id": "place_bedroom",
+      "boardId": "board_home",
+      "kind": "place",
+      "name": "卧室",
+      "description": "",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 480,
+        "y": 320
+      },
+      "iconKey": "bed"
+    }
+  ],
+  "distances": [
+    {
+      "id": "dist_cross_board",
+      "kind": "distance",
+      "boardId": "board_root",
+      "sourceNodeId": "place_home",
+      "targetNodeId": "place_bedroom",
+      "name": "非法跨画板距离",
+      "description": "两端不在同一画板。",
+      "measurement": {
+        "value": 5,
+        "unit": "m",
+        "displayText": "5 m",
+        "certainty": "exact"
+      },
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000
+    }
+  ],
+  "actors": [],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

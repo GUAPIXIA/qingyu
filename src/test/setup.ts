@@ -1,3 +1,4 @@
+import { cancelFeatureTasks } from '../store/featureTasks'
 import '@testing-library/jest-dom/vitest'
 import { vi, afterEach } from 'vitest'
 import { act } from '@testing-library/react'
@@ -41,6 +42,7 @@ const mockApi: Partial<ExposedAPI> = {
     listSessions: vi.fn().mockResolvedValue([]),
     createSession: vi.fn().mockResolvedValue({ id: 'test-session', characterId: 'test-char', title: 'Test' }),
     listMessages: vi.fn().mockResolvedValue([]),
+    commitFeatureResult: vi.fn().mockResolvedValue(true),
     saveMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
     updateSession: vi.fn().mockResolvedValue(undefined),
@@ -77,13 +79,50 @@ const mockApi: Partial<ExposedAPI> = {
     listSessions: vi.fn().mockResolvedValue([]),
     createSession: vi.fn().mockResolvedValue({ id: 'test' }),
     listMessages: vi.fn().mockResolvedValue([]),
+    commitFeatureResult: vi.fn().mockResolvedValue(true),
     saveMessage: vi.fn().mockResolvedValue(undefined),
+    saveTranslation: vi.fn().mockResolvedValue(true),
     editMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
     clearChat: vi.fn().mockResolvedValue(undefined),
     updateSession: vi.fn().mockResolvedValue(undefined),
     updateSessionIfMemoryVersion: vi.fn().mockResolvedValue({ applied: true, currentVersion: 1 }),
   } as any,
+  spatial: {
+    setEnabled: vi.fn().mockResolvedValue(null),
+    setGroupEnabled: vi.fn().mockResolvedValue(null),
+    prepareGroupDialogue: vi.fn().mockResolvedValue(null),
+    groupDialogueSaved: vi.fn().mockResolvedValue(undefined),
+    closeGroupDialogueBatch: vi.fn().mockResolvedValue(undefined),
+    retryGroupDialogue: vi.fn().mockResolvedValue(undefined),
+    groupProposalTargets: vi.fn().mockResolvedValue([]),
+    reviewGroupProposal: vi.fn().mockResolvedValue(undefined),
+    prepareGroupPlace: vi.fn().mockResolvedValue(undefined),
+    undoGroupProposal: vi.fn().mockResolvedValue(undefined),
+    readGroupContext: vi.fn().mockResolvedValue(null),
+    getGroupAiSession: vi.fn().mockResolvedValue(undefined),
+    groupInitializationSources: vi.fn().mockResolvedValue(undefined),
+    askGroupAi: vi.fn().mockResolvedValue(undefined),
+    cancelGroupAi: vi.fn().mockResolvedValue(undefined),
+    discardGroupProposal: vi.fn().mockResolvedValue(undefined),
+    editGroupDraft: vi.fn().mockResolvedValue(undefined),
+    applyGroupProposal: vi.fn().mockResolvedValue(undefined),
+    loadGroupBound: vi.fn().mockResolvedValue(null), createGroupAndBind: vi.fn(), bindGroupWorld: vi.fn(), applyGroupEditorBatch: vi.fn(),
+    prepareDialogue: vi.fn().mockResolvedValue(null),
+    dialogueSaved: vi.fn().mockResolvedValue(undefined),
+    retryDialogue: vi.fn().mockResolvedValue(undefined),
+    readContext: vi.fn().mockResolvedValue(null),
+    getAiSession: vi.fn().mockResolvedValue({ messages: [], proposals: [], tasks: [] }),
+    initializationSources: vi.fn().mockResolvedValue({ sources: [], loreEntries: [], canInitialize: true, sharedSessions: 0 }),
+    askAi: vi.fn(), cancelAi: vi.fn(), discardProposal: vi.fn(), proposalTargets: vi.fn().mockResolvedValue([]), reviewProposal: vi.fn(), preparePlace: vi.fn(), undoProposal: vi.fn(), editDraft: vi.fn(), applyProposal: vi.fn(),
+    onAiUpdated: vi.fn().mockReturnValue(() => {}),
+    listWorlds: vi.fn().mockResolvedValue([]),
+    loadBound: vi.fn().mockResolvedValue(null),
+    createAndBind: vi.fn(),
+    bindWorld: vi.fn(),
+    applyEditorBatch: vi.fn(),
+    onUpdated: vi.fn().mockReturnValue(() => {}),
+  },
   file: {
     selectImage: vi.fn().mockResolvedValue(null),
     readImageAsBase64: vi.fn().mockResolvedValue(''),
@@ -229,3 +268,5 @@ afterEach(async () => {
     throw new Error(`测试期间发生 ${count} 个未捕获错误:\n  ${errors}`)
   }
 })
+
+afterEach(() => { cancelFeatureTasks() })

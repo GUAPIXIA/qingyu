@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { executeLorebookRuntime, type BudgetLoreItem } from '../lorebook'
+import { executeLorebookRuntime, type BudgetLoreItem } from '../../../shared/chat-core/lorebook'
 import type { Lorebook, LoreEntry } from '../../../shared/types'
 
 /** 构造一个仅含语义命中条目的 worldbook 场景辅助 */

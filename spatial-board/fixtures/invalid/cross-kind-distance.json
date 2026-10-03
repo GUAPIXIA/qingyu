@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "id": "world_bad_cross_kind",
+  "name": "跨类型距离",
+  "description": "反例（领域校验）：region 与 place 之间建立距离。schema 结构可通过，层级/距离校验器须拒绝。",
+  "rootBoardId": "board_root",
+  "boards": [
+    {
+      "id": "board_root",
+      "name": "根画板",
+      "description": "",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "region_city",
+      "boardId": "board_root",
+      "kind": "region",
+      "name": "城市",
+      "description": "",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 120,
+        "y": 80,
+        "width": 480,
+        "height": 320
+      }
+    },
+    {
+      "id": "place_shop",
+      "boardId": "board_root",
+      "kind": "place",
+      "name": "商店",
+      "description": "",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 840,
+        "y": 560
+      },
+      "iconKey": "shop"
+    }
+  ],
+  "distances": [
+    {
+      "id": "dist_cross_kind",
+      "kind": "distance",
+      "boardId": "board_root",
+      "sourceNodeId": "region_city",
+      "targetNodeId": "place_shop",
+      "name": "非法跨类型距离",
+      "description": "region ↔ place 不允许。",
+      "measurement": {
+        "value": 1,
+        "unit": "km",
+        "displayText": "1 km",
+        "certainty": "estimated"
+      },
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000
+    }
+  ],
+  "actors": [],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

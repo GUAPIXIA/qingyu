@@ -5,8 +5,9 @@ const { streamAIResponseMock } = vi.hoisted(() => ({
   streamAIResponseMock: vi.fn(async () => undefined),
 }))
 
-vi.mock('../streamController', () => ({
+vi.mock('../streamController', async () => ({
   streamAIResponse: streamAIResponseMock,
+  finalizeNoticeFields: (await import('../../../shared/generationNotice')).finalizeNoticeFields,
 }))
 
 vi.mock('../chatUtils', () => ({

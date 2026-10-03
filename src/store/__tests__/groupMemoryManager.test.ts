@@ -75,7 +75,7 @@ function makeState(overrides: Record<string, unknown> = {}) {
       id: `m${i}`,
       content: `消息${i}`,
       characterId: i % 2 === 0 ? '__user__' : 'c1',
-      timestamp: Date.now() + i,
+      timestamp: i + 1,
     })),
     sessions: [{
       id: 's1', groupId: 'g1', title: '会话', messageCount: 6,
@@ -114,6 +114,18 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
       vi.fn() as any,
     )
     expect(window.api.ai.chat).not.toHaveBeenCalled()
+  })
+  it('群聊记忆使用 activeModel 计算预算并实际发送，只向群会话提交',async()=>{
+    window.api.chat.updateMemory=vi.fn().mockResolvedValue(undefined)
+    useSettingsStore.setState(state=>({settings:{...state.settings,activeModel:'gpt-4o-mini'}}))
+    const callbacks=captureStreamCallbacks(),pending=runGroupMemorySummary((()=>makeState()) as any,vi.fn())
+    const params=vi.mocked(window.api.ai.chat).mock.calls[0][0]
+    expect(params.model).toBe('gpt-4o-mini');expect(params.maxTokens).toBe(resolveGenerationTaskBudget({task:'memory',model:'gpt-4o-mini'}).requestMaxTokens)
+    expect(params.observability).toMatchObject({source:'aux',taskType:'memory',sessionId:'s1'})
+    callbacks.onChunk!({requestId:params.requestId,text:'【当前状态】众人在森林。\n【时间线】众人来到森林。'});callbacks.onDone!(params.requestId)
+    await pending
+    expect(window.api.group.updateSessionIfMemoryVersion).toHaveBeenCalledWith('g1','s1',0,expect.any(Object), expect.objectContaining({ messages: expect.any(Array), mode: 'range' }))
+    expect(window.api.chat.updateSession).not.toHaveBeenCalled();expect(window.api.chat.updateMemory).not.toHaveBeenCalled()
   })
 
   it('无当前会话时直接返回', async () => {
@@ -161,7 +173,9 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
       memoryUpdatedAt: expect.any(Number),
       memoryLastMessageId: 'm5',
       memoryVersion: 1,
-    })
+      memorySource: expect.any(Object),
+      memoryTaskId: expect.any(String),
+    }, expect.objectContaining({ messages: expect.any(Array), mode: 'range' }))
     // 本地 sessions 更新（set 可能先收到 summarizingMemoryKey 等标记，按载荷查找携带 sessions 的调用）
     const sessions = set.mock.calls.map((c: any[]) => c[0]?.sessions).find(Boolean) as { id: string }[]
     const updated = sessions.find((s: { id: string }) => s.id === 's1') as any
@@ -200,7 +214,9 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
       memoryCurrentState: '众人围着篝火争论明天的路线。',
       memoryLastMessageId: 'm5',
       memoryVersion: 1,
-    }))
+      memorySource: expect.any(Object),
+      memoryTaskId: expect.any(String),
+    }), expect.objectContaining({ messages: expect.any(Array), mode: 'range' }))
   })
 
   it('系统提示包含群名、成员名与之前的事实', async () => {
@@ -251,7 +267,7 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
     await p
     expect(window.api.group.updateSessionIfMemoryVersion).toHaveBeenCalledWith('g1', 's1', 0, expect.objectContaining({
       memoryLastMessageId: 'm7',
-    }))
+    }), expect.objectContaining({ messages: expect.any(Array), mode: 'range' }))
   })
 
   it('chat 调用失败时静默处理（不影响主流程）', async () => {
@@ -279,6 +295,6 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
 
 function makeMessages(count: number): GroupMessage[] {
   return Array.from({ length: count }, (_, i) => makeMessage({
-    id: `mm${i}`, content: `消息${i}`, timestamp: Date.now() + i,
+    id: `mm${i}`, content: `消息${i}`, timestamp: i + 1,
   }))
 }

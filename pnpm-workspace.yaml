@@ -1,5 +1,6 @@
 packages:
   - relay-server
+  - packages/spatial-core
 
 allowBuilds:
   electron: true

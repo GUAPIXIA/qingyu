@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "id": "world_city_home",
+  "name": "城市与住宅",
+  "description": "黄金样例：完整表达需求示意图中的两座城市、用户家内部结构、城市距离与角色定义。",
+  "rootBoardId": "board_continent",
+  "boards": [
+    {
+      "id": "board_continent",
+      "name": "大陆",
+      "description": "根画板：包含 XX 市与 YY 市。",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    },
+    {
+      "id": "board_home",
+      "name": "用户家内部",
+      "description": "用户家的内部结构：1 楼、2 楼与房间。",
+      "parentEntryNodeId": "place_home",
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "region_city_x",
+      "boardId": "board_continent",
+      "kind": "region",
+      "name": "XX 市",
+      "description": "用户家所在的城市。",
+      "tags": [
+        "城市",
+        "行政区"
+      ],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 120,
+        "y": 144,
+        "width": 504,
+        "height": 496
+      }
+    },
+    {
+      "id": "place_home",
+      "boardId": "board_continent",
+      "kind": "place",
+      "name": "用户家",
+      "description": "两层住宅，可进入内部画板查看楼层与房间。",
+      "tags": [
+        "住宅"
+      ],
+      "parentNodeId": "region_city_x",
+      "childBoardId": "board_home",
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 264,
+        "y": 256
+      },
+      "iconKey": "house"
+    },
+    {
+      "id": "place_square",
+      "boardId": "board_continent",
+      "kind": "place",
+      "name": "中央广场",
+      "description": "XX 市中心的开放广场。",
+      "tags": [
+        "地标"
+      ],
+      "parentNodeId": "region_city_x",
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 456,
+        "y": 440
+      },
+      "iconKey": "landmark"
+    },
+    {
+      "id": "region_city_y",
+      "boardId": "board_continent",
+      "kind": "region",
+      "name": "YY 市",
+      "description": "东边的另一座城市。",
+      "tags": [
+        "城市"
+      ],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 696,
+        "y": 176,
+        "width": 384,
+        "height": 384
+      }
+    },
+    {
+      "id": "region_floor_1",
+      "boardId": "board_home",
+      "kind": "region",
+      "name": "1 楼",
+      "description": "住宅一层，含卧室与厕所。",
+      "tags": [
+        "楼层"
+      ],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 96,
+        "y": 96,
+        "width": 600,
+        "height": 576
+      }
+    },
+    {
+      "id": "place_bedroom",
+      "boardId": "board_home",
+      "kind": "place",
+      "name": "卧室",
+      "description": "一层主卧。",
+      "tags": [
+        "房间"
+      ],
+      "parentNodeId": "region_floor_1",
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 264,
+        "y": 240
+      },
+      "iconKey": "bed"
+    },
+    {
+      "id": "place_toilet",
+      "boardId": "board_home",
+      "kind": "place",
+      "name": "厕所",
+      "description": "一层卫生间。",
+      "tags": [
+        "房间"
+      ],
+      "parentNodeId": "region_floor_1",
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 504,
+        "y": 496
+      },
+      "iconKey": "toilet"
+    },
+    {
+      "id": "region_floor_2",
+      "boardId": "board_home",
+      "kind": "region",
+      "name": "2 楼",
+      "description": "住宅二层。",
+      "tags": [
+        "楼层"
+      ],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 696,
+        "y": 96,
+        "width": 408,
+        "height": 576
+      }
+    }
+  ],
+  "distances": [
+    {
+      "id": "dist_city_x_y",
+      "kind": "distance",
+      "boardId": "board_continent",
+      "sourceNodeId": "region_city_x",
+      "targetNodeId": "region_city_y",
+      "name": "XX 市至 YY 市",
+      "description": "两城之间的公路里程估算。",
+      "measurement": {
+        "value": 32,
+        "unit": "km",
+        "displayText": "约 32 km",
+        "certainty": "estimated"
+      },
+      "travelNotes": "驾车约 40 分钟，视天气而定。",
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000
+    }
+  ],
+  "actors": [
+    {
+      "id": "actor_user",
+      "kind": "persona",
+      "externalRef": {
+        "type": "standalone",
+        "id": "user"
+      },
+      "displayName": "用户",
+      "description": "故事的主角视角。"
+    },
+    {
+      "id": "actor_lin_xue",
+      "kind": "character",
+      "externalRef": {
+        "type": "standalone",
+        "id": "lin_xue"
+      },
+      "displayName": "林雪",
+      "description": "故事中的同行角色。"
+    }
+  ],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

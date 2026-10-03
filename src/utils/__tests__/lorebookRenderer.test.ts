@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderLorebookItems, type LorebookRenderItem } from '../lorebookRenderer'
+import { renderLorebookItems, type LorebookRenderItem } from '../../../shared/chat-core/lorebookRenderer'
 
 function item(content: string, insertion: LorebookRenderItem['insertion'], order = 1): LorebookRenderItem {
   return { content, insertion, order, key: `book:${content}` }

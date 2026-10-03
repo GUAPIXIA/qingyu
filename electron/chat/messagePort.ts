@@ -26,7 +26,7 @@ export const chatMessagePort: MessagePort = {
   },
 
   async appendUserMessage(input: PersistUserMessage) {
-    chatData.saveMessage(input.characterId, {
+    await chatData.saveMessageLocked(input.characterId, {
       id: input.id,
       sessionId: input.sessionId,
       characterId: input.characterId,
@@ -45,7 +45,7 @@ export const chatMessagePort: MessagePort = {
   },
 
   async commitAssistantMessage(input: PersistAssistantMessage) {
-    chatData.saveMessage(input.characterId, {
+    await chatData.saveMessageLocked(input.characterId, {
       id: input.id,
       sessionId: input.sessionId,
       characterId: input.characterId,
@@ -55,6 +55,7 @@ export const chatMessagePort: MessagePort = {
       isEditing: false,
       timestamp: Date.now(),
       generationTaskId: input.generationTaskId,
+      spatialGenerationId: input.spatialGenerationId,
       requestId: input.requestId,
       narrativeMode: input.narrativeMode,
       speakerKind: input.speakerKind,
@@ -81,7 +82,7 @@ export const chatMessagePort: MessagePort = {
     return { id: m.id, role: m.role, content: m.content, swipes: (m as unknown as { swipes?: string[] }).swipes, swipeIndex: (m as unknown as { swipeIndex?: number }).swipeIndex }
   },
 
-  async appendSwipedCandidate(messageId, content, generationKind = 'regenerate') {
+  async appendSwipedCandidate(messageId, content, generationKind = 'regenerate', spatialGenerationId) {
     const { listAllSessions } = await import('./sessionLookup')
     const all = await listAllSessions()
     for (const s of all) {
@@ -90,8 +91,8 @@ export const chatMessagePort: MessagePort = {
       if (target) {
         const swipes = (target as unknown as { swipes?: string[] }).swipes ?? [target.content]
         const nextSwipes = [...swipes, content]
-        const updated = { ...target, swipes: nextSwipes, swipeIndex: nextSwipes.length - 1, content, generationKind }
-        chatData.saveMessage(s.characterId, updated as unknown as Parameters<typeof chatData.saveMessage>[1])
+        const updated = { ...target, swipes: nextSwipes, swipeIndex: nextSwipes.length - 1, content, generationKind, spatialGenerationId, generationError: undefined, generationNotice: undefined }
+        await chatData.saveMessageLocked(s.characterId, updated as unknown as Parameters<typeof chatData.saveMessage>[1])
         return { id: messageId, content, swipes: nextSwipes, swipeIndex: nextSwipes.length - 1 }
       }
     }

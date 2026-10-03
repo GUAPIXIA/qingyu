@@ -14,6 +14,7 @@ import { contextService } from '../chat/contextService'
 import { RealModelPort } from '../chat/realModel'
 import { FakeModelPort } from '../chat/fakeModel'
 import { memorySummaryService } from '../services/memorySummaryService'
+import { spatialAiScheduler } from '../services/spatialAiScheduler'
 import { recordUsage } from '../services/usage'
 import { getTaskSnapshot, listActiveTasks, readEvents } from '../chat/taskStore'
 import type { ChatCommand } from '../../shared/chat-core/commands'
@@ -27,6 +28,7 @@ function getOrchestrator(): ChatOrchestrator {
     contextPort: contextService,
     modelPort,
     memoryScheduler: memorySummaryService,
+    spatialScheduler: spatialAiScheduler,
     usageRecorder: { record: recordUsage },
   })
 }

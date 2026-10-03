@@ -1,4 +1,9 @@
+import { registerFeatureRequest, cancelFeatureTask, isFeatureTaskCancelled, onFeatureDataRestoring } from './featureTaskLifecycle'
+import { onChatSessionDeleting } from './chatLifecycle'
+import { onGroupSessionDeleting } from './groupLifecycle'
+import type { FeatureTaskOwner } from '../../shared/featureSource'
 import type { IpcMain, WebContents } from 'electron'
+import { completeGroupSpatialCheckpoint } from './spatialGroupCheckpoint'
 import type { AICompletion, ChatParams, ProviderType } from '../../shared/types'
 import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
@@ -86,6 +91,16 @@ export function getAdapter(provider: string): AIAdapter {
 
 // ===================== IPC 注册 =====================
 const activeRequests = new Map<string, AbortController>()
+const activeFeatureOwners = new Map<string, FeatureTaskOwner>()
+onFeatureDataRestoring(() => {
+  for (const id of activeFeatureOwners.keys()) activeRequests.get(id)?.abort()
+})
+onChatSessionDeleting(async scope => {
+  for (const [id, owner] of activeFeatureOwners) if (owner.kind === 'single' && owner.characterId === scope.characterId && owner.sessionId === scope.sessionId) activeRequests.get(id)?.abort()
+})
+onGroupSessionDeleting(async scope => {
+  for (const [id, owner] of activeFeatureOwners) if (owner.kind === 'group' && owner.groupId === scope.groupId && (!scope.sessionId || owner.sessionId === scope.sessionId)) activeRequests.get(id)?.abort()
+})
 
 /**
  * 取消原因注册（阶段0观测）：区分用户手动停止 / 渲染层空闲看门狗超时 / 停止字符串命中。
@@ -457,7 +472,11 @@ export function registerAIIPC(ipcMain: IpcMain): void {
     const controller = new AbortController()
     // 防御：同 requestId 重复发起时中止旧请求，避免旧 controller 泄漏
     activeRequests.get(params.requestId)?.abort()
+    registerFeatureRequest(params)
+    if (params.observability?.featureTask && isFeatureTaskCancelled(params.observability.featureTask.taskId)) controller.abort()
     activeRequests.set(params.requestId, controller)
+    if (params.observability?.featureTask) activeFeatureOwners.set(params.requestId, params.observability.featureTask.owner)
+    else activeFeatureOwners.delete(params.requestId)
 
     log.info('AI 请求开始', {
       requestId: params.requestId,
@@ -507,6 +526,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
         )
       }
       log.info('AI 请求完成', { requestId: params.requestId, provider: params.provider, model: params.model, finishReason: completion.finishReason })
+      if (activeRequests.get(params.requestId) === controller) completeGroupSpatialCheckpoint(params.requestId, !controller.signal.aborted && completion.finishReason === 'stop' && !completion.earlyAbort)
       // 阶段3：ai:done 携带结构化完成元数据（finishReason + usage），length 不再走 ai:error
       safeSend(webContents, IPC_EVENTS.aiDone, {
         requestId: params.requestId,
@@ -517,6 +537,7 @@ export function registerAIIPC(ipcMain: IpcMain): void {
       })
     } catch (e) {
       const err = e as Error
+      if (activeRequests.get(params.requestId) === controller) completeGroupSpatialCheckpoint(params.requestId, false)
       if (err.name === 'AbortError' || controller.signal.aborted) {
         log.info('AI 请求被取消', { requestId: params.requestId })
         // 被取消视为 done（前端会重置状态）
@@ -540,17 +561,20 @@ export function registerAIIPC(ipcMain: IpcMain): void {
       // （防止同 requestId 被覆盖后，旧请求的 finally 误删新请求的 controller）
       if (activeRequests.get(params.requestId) === controller) {
         activeRequests.delete(params.requestId)
+        activeFeatureOwners.delete(params.requestId)
       }
     }
   })
 
   // 取消请求（阶段0观测：reason 区分用户停止 / 看门狗超时 / 停止字符串）
   ipcMain.handle('ai:cancel', async (_event, requestId: string, reason?: CancelReason) => {
+    if (reason !== 'timeout' && reason !== 'stop_string') cancelFeatureTask(requestId)
     const controller = activeRequests.get(requestId)
     if (controller) {
       registerCancelReason(requestId, reason === 'timeout' || reason === 'stop_string' ? reason : 'user')
       controller.abort()
       activeRequests.delete(requestId)
+      activeFeatureOwners.delete(requestId)
     }
   })
 

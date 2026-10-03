@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cosineSimilarity, l2Normalize, dotProduct, topKSimilar } from '../vector'
+import { cosineSimilarity, l2Normalize, dotProduct, topKSimilar } from '../../../shared/chat-core/vector'
 
 describe('cosineSimilarity', () => {
   it('相同方向向量相似度为 1', () => {

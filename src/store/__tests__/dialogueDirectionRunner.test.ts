@@ -9,7 +9,7 @@ import {
   clearSessionDialogueDirections,
 } from '../dialogueDirectionRunner'
 import { useSettingsStore } from '../useSettingsStore'
-import type { ChatState } from '../chatTypes'
+import type { ChatState } from '../../features/chat/chatStoreTypes'
 import { BACKGROUND_GENERATION_PROFILES } from '../../../shared/backgroundGeneration'
 import {
   BODY_RESERVE_MULTIPLIER,
@@ -133,10 +133,10 @@ describe('dialogueDirectionRunner', () => {
     expect(result).toHaveLength(3)
     expect(raw.messages[1].dialogueDirections).toHaveLength(3)
     expect(raw.messages[1].dialogueDirectionsGeneratedAt).toBeTypeOf('number')
-    expect(window.api.chat.saveMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 'a1' }))
+    expect(window.api.chat.commitFeatureResult).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({ feature: 'direction', messageId: 'a1' }))
   })
 
-  it('单聊方向注入当前预设的越狱提示词并替换变量', async () => {
+  it('单聊方向不继承角色预设的越狱提示词', async () => {
     stubAiText([`<directions>${JSON.stringify(DIRECTIONS)}</directions>`])
     vi.mocked(window.api.preset.list).mockResolvedValue([{
       id: 'preset-jailbreak', jailbreak: '方向越狱：{{user}} / {{char}} / {{original}}',
@@ -147,7 +147,7 @@ describe('dialogueDirectionRunner', () => {
     await generateSingleDialogueDirections(set, get, { messageId: 'a1', character: makeCharacter() })
 
     const systemPrompt = vi.mocked(window.api.ai.chat).mock.calls[0][0].messages[0].content
-    expect(systemPrompt).toContain('方向越狱：林舟 / 艾莉丝 / 艾莉丝')
+    expect(systemPrompt).not.toContain('方向越狱')
   })
 
   it('结构非法时重试一次并接受第二次结果', async () => {
@@ -159,6 +159,30 @@ describe('dialogueDirectionRunner', () => {
     expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
     expect(result).toHaveLength(3)
     expect(raw.messages[1].dialogueDirections).toHaveLength(3)
+  })
+
+  it('内部结构重试沿用首次连接快照，下一次手动请求使用新配置', async () => {
+    stubAiText(['不是 JSON', `<directions>${JSON.stringify(DIRECTIONS)}</directions>`])
+    const originalChat = vi.mocked(window.api.ai.chat).getMockImplementation()!
+    vi.mocked(window.api.ai.chat).mockImplementation(async params => {
+      if (vi.mocked(window.api.ai.chat).mock.calls.length === 1) {
+        useSettingsStore.setState(state => ({ settings: {
+          ...state.settings, activeModel: 'next-model',
+          connectionProfiles: state.settings.connectionProfiles.map(profile => ({ ...profile, baseUrl: 'http://next-endpoint/v1', apiKey: 'next-key' })),
+        } }))
+      }
+      return originalChat(params)
+    })
+    const { set, get } = makeStore(makeMessages())
+    await generateSingleDialogueDirections(set, get, { messageId: 'a1', character: makeCharacter() })
+    const [first, retry] = vi.mocked(window.api.ai.chat).mock.calls.map(call => call[0])
+    expect(retry.model).toBe(first.model)
+    expect(retry.baseUrl).toBe(first.baseUrl)
+    expect(retry.apiKey).toBe(first.apiKey)
+    await generateSingleDialogueDirections(set, get, { messageId: 'a1', character: makeCharacter() })
+    const next = vi.mocked(window.api.ai.chat).mock.calls[2][0]
+    expect(next.model).toBe('next-model')
+    expect(next.baseUrl).toBe('http://next-endpoint/v1')
   })
 
   it('两次都非法时放弃，不写入任何方向', async () => {
@@ -204,7 +228,7 @@ describe('dialogueDirectionRunner', () => {
     await Promise.resolve()
     // 模型返回了合法方向，但正文在请求期间被替换（重生成）
     onChunkCb?.({ requestId, text: `<directions>${JSON.stringify(DIRECTIONS)}</directions>` })
-    raw.messages[1] = { ...raw.messages[1], content: '' }
+    raw.messages[1] = { ...raw.messages[1], content: '已经发生了另一件事。' }
     onCompleteCb?.({ requestId, finishReason: 'stop' })
 
     await pending
@@ -244,7 +268,7 @@ describe('dialogueDirectionRunner', () => {
 
   it('persistSingleDirections 对已删除的消息安全返回', async () => {
     const { set, get } = makeStore(makeMessages())
-    await expect(persistSingleDirections(set, get, 'missing', [...DIRECTIONS])).resolves.toBeUndefined()
+    await expect(persistSingleDirections(set, get, 'missing', [...DIRECTIONS])).resolves.toBe(false)
     expect(window.api.chat.saveMessage).not.toHaveBeenCalled()
   })
 })
@@ -303,9 +327,9 @@ describe('用户发送后清空上一轮方向', () => {
 
     await clearSessionDialogueDirections(set, get, 's1')
 
-    const saved = vi.mocked(window.api.chat.saveMessage).mock.calls.map((c) => c[0] as { id: string; dialogueDirections?: unknown })
-    expect(saved.map((m) => m.id).sort()).toEqual(['m1', 'm2'])
-    expect(saved.every((m) => m.dialogueDirections === undefined)).toBe(true)
+    const saved = vi.mocked(window.api.chat.commitFeatureResult).mock.calls.map(c => c[2])
+    expect(saved.map(m => 'messageId' in m ? m.messageId : '').sort()).toEqual(['m1', 'm2'])
+    expect(saved.every(m => m.feature === 'direction' && m.directions.length === 0)).toBe(true)
   })
 
   it('没有方向时不写盘（避免无谓 IO）', async () => {
@@ -456,7 +480,7 @@ describe('切换叙事模式后刷新方向', () => {
     expect(window.api.ai.chat).toHaveBeenCalledTimes(1)
     const params = vi.mocked(window.api.ai.chat).mock.calls[0][0]
     expect(params.messages[0].content).toContain('第三人称')
-    expect(window.api.chat.saveMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 'a1' }))
+    expect(window.api.chat.commitFeatureResult).toHaveBeenCalledWith('char-1', 's1', expect.objectContaining({ feature: 'direction', messageId: 'a1' }))
     // 历史消息方向未被改写
     expect((raw.messages[0] as { dialogueDirectionsGeneratedAt?: number }).dialogueDirectionsGeneratedAt).toBeUndefined()
   })
@@ -558,10 +582,10 @@ describe('群聊方向生成', () => {
 
     expect(result).toHaveLength(3)
     expect((raw.messages[1] as { dialogueDirections?: unknown[] }).dialogueDirections).toHaveLength(3)
-    expect(window.api.group.saveMessage).toHaveBeenCalledWith('g1', 'gs1', expect.objectContaining({ id: 'ga1' }))
+    expect(window.api.group.commitFeatureResult).toHaveBeenCalledWith('g1', 'gs1', expect.objectContaining({ feature: 'direction', messageId: 'ga1' }))
   })
 
-  it('群聊方向注入群聊绑定预设的越狱提示词', async () => {
+  it('群聊方向不继承群聊角色预设的越狱提示词', async () => {
     stubAiText([`<directions>${JSON.stringify(DIRECTIONS)}</directions>`])
     vi.mocked(window.api.preset.list).mockResolvedValue([{
       id: 'group-preset', jailbreak: '群聊越狱：{{user}} 与 {{char}}',
@@ -575,7 +599,7 @@ describe('群聊方向生成', () => {
     )
 
     const systemPrompt = vi.mocked(window.api.ai.chat).mock.calls[0][0].messages[0].content
-    expect(systemPrompt).toContain('群聊越狱：林舟 与 艾莉丝')
+    expect(systemPrompt).not.toContain('群聊越狱')
   })
 
   it('用户消息与空正文不生成方向', async () => {

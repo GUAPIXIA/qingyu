@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "worldId": "world_planet_system",
+  "runtimeId": "runtime_planet_system_demo",
+  "revision": 2,
+  "placements": [
+    {
+      "actorId": "actor_commander",
+      "boardId": "board_earth_base",
+      "anchor": {
+        "kind": "node",
+        "nodeId": "place_control_room"
+      },
+      "position": {
+        "x": 360,
+        "y": 280
+      },
+      "semanticPosition": {
+        "containmentPath": [
+          "region_solar_system",
+          "place_earth_base",
+          "place_control_room"
+        ],
+        "relativeDirection": "inside",
+        "precision": "inside-only",
+        "note": "指挥官在主控室值守。"
+      },
+      "revision": 2,
+      "updatedAt": 1727000002000,
+      "updatedBy": "user"
+    },
+    {
+      "actorId": "actor_pilot",
+      "boardId": "board_galaxy",
+      "anchor": {
+        "kind": "node",
+        "nodeId": "place_mars"
+      },
+      "position": {
+        "x": 816,
+        "y": 304
+      },
+      "semanticPosition": {
+        "containmentPath": [
+          "region_solar_system",
+          "place_mars"
+        ],
+        "relativeDirection": "inside",
+        "precision": "approximate",
+        "note": "飞行员已抵达火星前哨。"
+      },
+      "revision": 1,
+      "updatedAt": 1727000001000,
+      "updatedBy": "story"
+    }
+  ],
+  "events": [
+    {
+      "id": "evt_pilot_mars",
+      "runtimeId": "runtime_planet_system_demo",
+      "revision": 1,
+      "commandType": "move_actor",
+      "actorId": "actor_pilot",
+      "before": null,
+      "after": {
+        "actorId": "actor_pilot",
+        "boardId": "board_galaxy",
+        "anchor": {
+          "kind": "node",
+          "nodeId": "place_mars"
+        },
+        "position": {
+          "x": 816,
+          "y": 304
+        },
+        "semanticPosition": {
+          "containmentPath": [
+            "region_solar_system",
+            "place_mars"
+          ],
+          "relativeDirection": "inside",
+          "precision": "approximate"
+        },
+        "revision": 1,
+        "updatedAt": 1727000001000,
+        "updatedBy": "story"
+      },
+      "source": "story",
+      "reason": "assistant_message_explicit_arrival",
+      "createdAt": 1727000001000
+    },
+    {
+      "id": "evt_commander_control",
+      "runtimeId": "runtime_planet_system_demo",
+      "revision": 2,
+      "commandType": "move_actor",
+      "actorId": "actor_commander",
+      "before": {
+        "actorId": "actor_commander",
+        "boardId": "board_galaxy",
+        "anchor": {
+          "kind": "node",
+          "nodeId": "place_earth_base"
+        },
+        "position": {
+          "x": 432,
+          "y": 440
+        },
+        "semanticPosition": {
+          "containmentPath": [
+            "region_solar_system",
+            "place_earth_base"
+          ],
+          "relativeDirection": "inside",
+          "precision": "inside-only"
+        },
+        "revision": 0,
+        "updatedAt": 1727000000500,
+        "updatedBy": "user"
+      },
+      "after": {
+        "actorId": "actor_commander",
+        "boardId": "board_earth_base",
+        "anchor": {
+          "kind": "node",
+          "nodeId": "place_control_room"
+        },
+        "position": {
+          "x": 360,
+          "y": 280
+        },
+        "semanticPosition": {
+          "containmentPath": [
+            "region_solar_system",
+            "place_earth_base",
+            "place_control_room"
+          ],
+          "relativeDirection": "inside",
+          "precision": "inside-only",
+          "note": "进入主控室。"
+        },
+        "revision": 2,
+        "updatedAt": 1727000002000,
+        "updatedBy": "user"
+      },
+      "source": "user",
+      "reason": "user_drag_into_child_board",
+      "createdAt": 1727000002000
+    }
+  ],
+  "updatedAt": 1727000002000
+}

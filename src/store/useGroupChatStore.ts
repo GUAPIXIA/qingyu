@@ -1,3 +1,7 @@
+import { cancelFeatureTasks } from './featureTasks'
+import { translateGroupMessage } from './messageTranslation'
+import { finishGroupSpatialBurst } from './groupSpatialSync'
+import { flushSpatialBoard } from '../lib/spatialFlush'
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import type { GroupChat, GroupMessage, GroupSession } from '../../shared/types'
@@ -5,11 +9,11 @@ import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { usePersonaStore } from './usePersonaStore'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
-import { applyRegexRules as applyRegexRulesEngine } from '../utils/regex'
-import { lorebookCache, appendRecentTriggeredIds, touchCompressionCache, upsertCompressionCache } from '../utils/lorebook'
+import { applyRegexRules as applyRegexRulesEngine } from '../../shared/chat-core/regex'
+import { lorebookCache } from '../features/lorebook/lorebookCache'
+import { appendRecentTriggeredIds, touchCompressionCache, upsertCompressionCache } from '../../shared/chat-core/lorebook'
 import { compressLorebookOverflow } from './chatUtils'
-import { STREAM_IDLE_TIMEOUT_MS, LOREBOOK_RECENCY_WINDOW } from './chatConstants'
-import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
+import { LOREBOOK_RECENCY_WINDOW } from '../../shared/chat-core/chatConstants'
 import { logError } from '../lib/logger'
 import {
   applyDefaultGroupMemory,
@@ -31,11 +35,6 @@ function setGroupError(set: (partial: Partial<{ error: string | null }>) => void
   pushToast({ variant: 'error', title: message, requestId: 'group-error' })
 }
 
-/** UEX-P2-03：翻译失败可见反馈（此前只把 translation 置回 null，静默清空） */
-function toastTranslateFailure(detail: string) {
-  pushToast({ variant: 'warning', title: '翻译失败', description: detail, requestId: 'group-translate-fail' })
-}
-
 /**
  * S8：store 层切换/删除入口的统一停止收尾。
  * isStreaming 时走 abandonActiveStream({ preserve: true })（claim → preserve → cancelChat → cleanup + toast），
@@ -43,6 +42,8 @@ function toastTranslateFailure(detail: string) {
  */
 function stopStreamForLifecycle(get: () => GroupChatState, set: GroupStoreSet): void {
   clearPollingTimer()
+  const spatialOwner = get()
+  if (spatialOwner.currentGroup && spatialOwner.currentSessionId) void finishGroupSpatialBurst(spatialOwner.currentGroup.id, spatialOwner.currentSessionId)
   if (!get().isStreaming) {
     cleanupActiveStream()
     return
@@ -62,6 +63,7 @@ function stopStreamForLifecycle(get: () => GroupChatState, set: GroupStoreSet): 
       round: claimed.round,
       characterId: claimed.characterId,
       isFree: claimed.isFree,
+      offstageCharacterIds: claimed.offstageCharacterIds,
       narrativeMode: claimed.narrativeMode,
       noticeFields: { generationNotice: '已停止生成' },
     })
@@ -73,10 +75,8 @@ import { runGroupMemorySummary } from './groupMemoryManager'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
-import { stripAllThinking } from '../../shared/thoughtMarkup'
 import {
   generateGroupDialogueDirections,
-  cancelDialogueDirectionRequests,
   refreshGroupDialogueDirections,
   clearGroupDialogueDirections,
 } from './dialogueDirectionRunner'
@@ -239,7 +239,7 @@ async function regenerateFreeSegment(
   const baselineIds = new Set(messages.map((message) => message.id))
 
   // 消息被替换：取消整轮在途的方向请求
-  cancelDialogueDirectionRequests(segmentIds)
+  cancelFeatureTasks({ kind: 'group', groupId: group.id, sessionId }, segmentIds)
   // 仅从 UI 隐藏（不落盘删除），成功后再删、失败则恢复
   set((s: GroupChatState) => ({ messages: s.messages.filter((m) => !idSet.has(m.id)) }))
 
@@ -302,6 +302,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   saveGroup: async (group) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     // UEX-P1-11 兜底：生成中禁止改动发言调度（对话模式/成员增删排序），UI 已禁用，此处拦截并发入口
     const prev = get().groupChats.find((item) => item.id === group.id) ?? (get().currentGroup?.id === group.id ? get().currentGroup : null)
     if (get().isStreaming && prev) {
@@ -322,6 +324,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   deleteGroup: async (id) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     stopStreamForLifecycle(get, set)
     await window.api.group.delete(id)
     const groups = await window.api.group.list()
@@ -329,6 +333,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   selectGroup: async (groupId) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     stopStreamForLifecycle(get, set)
     const groups = await window.api.group.list()
     const group = groups.find(g => g.id === groupId) ?? null
@@ -353,6 +359,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   createSession: async (groupId) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     stopStreamForLifecycle(get, set)
     const session = await window.api.group.createSession(groupId)
     await applyDefaultGroupMemory(groupId, session.id)
@@ -362,16 +370,19 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   switchSession: async (groupId, sessionId) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     stopStreamForLifecycle(get, set)
-    // 会话切换：取消尚未完成的方向请求，避免结果写入其他会话的消息
-    cancelDialogueDirectionRequests()
     set({ currentSessionId: sessionId, isStreaming: false, currentStreamingCharId: null })
     syncGroupPersonaToSettings(get().sessions.find((item) => item.id === sessionId))
     await get().loadMessages(groupId, sessionId)
   },
 
   deleteSession: async (groupId, sessionId) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     stopStreamForLifecycle(get, set)
+    cancelFeatureTasks({ kind: 'group', groupId, sessionId })
     await window.api.group.deleteSession(groupId, sessionId)
     const sessions = await window.api.group.listSessions(groupId)
     const newSid = sessions[0]?.id ?? null
@@ -389,6 +400,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   setSessionPersona: async (personaId) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     const { currentGroup, currentSessionId, sessions } = get()
     if (!currentGroup || !currentSessionId) return
     await window.api.group.updateSession(currentGroup.id, currentSessionId, { personaId })
@@ -458,10 +471,13 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
   },
 
   clearChat: async (groupId) => {
+    const pending = flushSpatialBoard()
+    if (pending) { try { await pending } catch { return } }
     // 停止正在进行的流式生成和轮询（S8：isStreaming 时保留半截并 cancel）
     stopStreamForLifecycle(get, set)
     const { currentSessionId } = get()
     if (currentSessionId) {
+      cancelFeatureTasks({ kind: 'group', groupId, sessionId: currentSessionId })
       await window.api.group.clearChat(groupId, currentSessionId)
       // 阶段五：clearChat 始终全量失效（changedMessageId=null）
       const invalidated = await invalidateGroupDerivedMemory(get as unknown as () => never, groupId, null)
@@ -479,7 +495,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       set((s) => ({ sessions: s.sessions.map(ss => ss.id === invalidated.sessionId ? { ...ss, ...invalidated.patch } : ss) as never }))
     }
     // 消息被删除：取消该消息在途的方向请求
-    cancelDialogueDirectionRequests([messageId])
+    cancelFeatureTasks({ kind: 'group', groupId, sessionId }, [messageId])
     await window.api.group.deleteMessage(groupId, sessionId, messageId)
     set(s => ({
       messages: s.messages.filter(m => m.id !== messageId),
@@ -494,7 +510,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       set((s) => ({ sessions: s.sessions.map(ss => ss.id === invalidated.sessionId ? { ...ss, ...invalidated.patch } : ss) as never }))
     }
     // 正文被编辑：旧方向不再对应当前内容，立即失效并取消在途请求
-    cancelDialogueDirectionRequests([messageId])
+    cancelFeatureTasks({ kind: 'group', groupId, sessionId }, [messageId])
     await window.api.group.editMessage(groupId, sessionId, messageId, content)
     set(s => ({
       messages: s.messages.map(m =>
@@ -538,7 +554,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const baselineIds = new Set(state.messages.map((message) => message.id))
 
     // 消息被替换：取消该消息在途的方向请求
-    cancelDialogueDirectionRequests([messageId])
+    cancelFeatureTasks({ kind: 'group', groupId: currentGroup.id, sessionId: currentSessionId }, [messageId])
     // 仅从 UI 隐藏（不落盘删除），成功后再删、失败则恢复
     set(s => ({
       messages: s.messages.filter(m => m.id !== messageId),
@@ -580,7 +596,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
         const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
           ? await checkPollingContinue(set, get, currentGroup)
           : false
-        if (!scheduled) maybeGenerateGroupDirections(set, get)
+        if (!scheduled) { await finishGroupSpatialBurst(currentGroup.id, currentSessionId); maybeGenerateGroupDirections(set, get) }
         checkAutoMemory(get)
       }, undefined, { onTerminal: settleOnce })
     } catch (e) {
@@ -589,140 +605,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     if (!started) await settleOnce(false)
   },
 
-  translateMessage: async (messageId) => {
-    const state = get()
-    const msg = state.messages.find(m => m.id === messageId)
-    if (!msg || !msg.content) return
-
-    const settingsStore = useSettingsStore.getState()
-    const profile = settingsStore.getActiveProfile()
-    if (!profile) return
-
-    // 如果已有翻译，切换显示/隐藏
-    if (msg.translation && msg.translation !== '...') {
-      set(s => ({
-        messages: s.messages.map(m =>
-          m.id === messageId ? { ...m, _showTranslation: !m._showTranslation } : m
-        ),
-      }))
-      return
-    }
-    // M-21 修复：翻译进行中（in-flight 标记 '...'）防重——重复点击不再并发两个请求互相覆盖
-    if (msg.translation === '...') return
-
-    // 设置加载状态
-    set(s => ({
-      messages: s.messages.map(m =>
-        m.id === messageId ? { ...m, translation: '...' } : m
-      ),
-    }))
-
-    // H-08 修复：使用 IPC 而非直接 fetch，避免 API Key 暴露和 CORS 问题
-    const requestId = `group-translate-${messageId}-${Date.now()}`
-    let result = ''
-
-    const unbindChunk = window.api.ai.onChunk((data) => {
-      if (data.requestId !== requestId) return
-      result += data.text
-      armTranslateTimeout() // M-21：收到 chunk 续期空闲超时
-    })
-
-    const unbindDone = window.api.ai.onComplete((payload) => {
-      if (payload.requestId !== requestId) return
-      clearTranslateTimeout()
-      unbindChunk(); unbindDone(); unbindError()
-
-      const finalResult = stripAllThinking(result || '') || null
-      // 空结果（推理模型思考内容耗尽 maxTokens 等）：不标记显示译文，避免 UI 显示原文却残留已翻译状态
-      set((s) => ({
-        messages: s.messages.map((m: GroupMessage) =>
-          m.id === messageId ? { ...m, translation: finalResult, _showTranslation: finalResult ? true : false } : m
-        ),
-      }))
-      // 持久化翻译结果
-      const { currentGroup, currentSessionId, messages: curMsgs } = get()
-      const updatedMsg = curMsgs.find(m => m.id === messageId)
-      if (currentGroup && currentSessionId && updatedMsg) {
-        window.api.group.saveMessage(currentGroup.id, currentSessionId, updatedMsg).catch((e) => logError('GroupChatStore:saveMessage', e))
-      }
-    })
-
-    const unbindError = window.api.ai.onError((data) => {
-      if (data.requestId !== requestId) return
-      clearTranslateTimeout()
-      unbindChunk(); unbindDone(); unbindError()
-
-      set((s) => ({
-        messages: s.messages.map((m: GroupMessage) =>
-          m.id === messageId ? { ...m, translation: null } : m
-        ),
-      }))
-      // UEX-P2-03：翻译失败不再静默清空，补可见提示
-      toastTranslateFailure(data.error || '未知错误')
-    })
-
-    // 超时保护：空闲超时自动清理（M-21 修复：收到 chunk 续期，长文本慢模型不再被一次性 60s 误杀）
-    let translateTimeout: ReturnType<typeof setTimeout> | null = null
-    const clearTranslateTimeout = () => {
-      if (translateTimeout) { clearTimeout(translateTimeout); translateTimeout = null }
-    }
-    const armTranslateTimeout = () => {
-      clearTranslateTimeout()
-      translateTimeout = setTimeout(() => {
-        unbindChunk(); unbindDone(); unbindError()
-        window.api.ai.cancelChat(requestId, 'user').catch((e) => logError('GroupChatStore:cancelChat', e))
-        set((s) => ({
-          messages: s.messages.map((m: GroupMessage) =>
-            m.id === messageId ? { ...m, translation: null } : m
-          ),
-        }))
-        // UEX-P2-03：翻译超时不再静默清空，补可见提示
-        toastTranslateFailure('翻译请求超时，请重试')
-      }, STREAM_IDLE_TIMEOUT_MS)
-    }
-    armTranslateTimeout()
-
-    const settings = useSettingsStore.getState().settings
-    const targetLang = settings.translationTargetLang || '中文'
-    const model = settings.activeModel || profile.model
-    const translationPlan = await resolveRendererGenerationTaskBudget({
-      profile,
-      model,
-      task: 'translation',
-      inputChars: msg.content.length,
-      usageTaskType: 'translation',
-    })
-    window.api.ai.chat({
-      requestId,
-      messages: [
-        { role: 'system', content: `你是一个翻译助手。请将以下内容翻译成${targetLang}。只输出翻译结果，不要添加任何解释。` },
-        { role: 'user', content: msg.content },
-      ],
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model,
-      temperature: 0.3,
-      topP: 1,
-      maxTokens: translationPlan.requestMaxTokens,
-      frequencyPenalty: 0,
-      presencePenalty: 0,
-      stream: false,
-      observability: { source: 'aux', taskType: 'translation' },
-      adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
-      reasoningGate: translationPlan.reasoningGate,
-    }).catch((e) => {
-      clearTranslateTimeout()
-      unbindChunk(); unbindDone(); unbindError()
-      set((s) => ({
-        messages: s.messages.map((m: GroupMessage) =>
-          m.id === messageId ? { ...m, translation: null } : m
-        ),
-      }))
-      // UEX-P2-03：翻译请求失败不再静默清空，补可见提示
-      toastTranslateFailure(e instanceof Error ? e.message : String(e))
-    })
-  },
+  translateMessage: (messageId) => translateGroupMessage(set, get, messageId),
 
   ensureLorebooksLoaded: async (lorebookIds) => {
     const allLorebooks = await window.api.lorebook.list()
@@ -913,7 +796,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
           const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
             ? await checkPollingContinue(set, get, currentGroup)
             : false
-          if (!scheduled) maybeGenerateGroupDirections(set, get)
+          if (!scheduled) { await finishGroupSpatialBurst(currentGroup.id, currentSessionId); maybeGenerateGroupDirections(set, get) }
           // 自动记忆检查
           checkAutoMemory(get)
         })
@@ -963,7 +846,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
       await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, async () => {
         // checkPollingContinue 是 async：必须 await 后再判断，否则 Promise 恒为真值
         const scheduled = await checkPollingContinue(set, get, currentGroup)
-        if (!scheduled) maybeGenerateGroupDirections(set, get)
+        if (!scheduled) { await finishGroupSpatialBurst(currentGroup.id, currentSessionId); maybeGenerateGroupDirections(set, get) }
         checkAutoMemory(get)
       })
     } finally {
@@ -995,7 +878,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     const currentRound = nextGroupRound(state.messages.map((message) => message.round))
 
     // 即时接话是一次性的人工触发：只做记忆检查，不调用 checkPollingContinue；完成后即轮到用户。
-    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, () => {
+    await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, async () => {
+      await finishGroupSpatialBurst(currentGroup.id, currentSessionId)
       maybeGenerateGroupDirections(set, get)
       checkAutoMemory(get)
     })
@@ -1031,6 +915,8 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
     // 同一 requestId 的迟到 chunk/done/timeout 全部被忽略，不会二次落盘。
     const claimed = claimGroupUserStop()
     clearPollingTimer()
+    const spatialOwner = get()
+    if (spatialOwner.currentGroup && spatialOwner.currentSessionId) void finishGroupSpatialBurst(spatialOwner.currentGroup.id, spatialOwner.currentSessionId)
     if (claimed) {
       window.api.ai.cancelChat(claimed.requestId, 'user').catch((e) => logError('GroupChatStore:cancelChat', e))
     } else {
@@ -1060,7 +946,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
         return
       }
       // S7：free 半截正文禁止挂 __free__ 落盘——走 splitAndSaveMessages 或回落首成员
-      if (existing.characterId === '__free__') {
+      if (existing.characterId === '__free__' || claimed?.isFree) {
         set({ isStreaming: false, currentStreamingCharId: null })
         void persistPartialGroupReply({
           set,
@@ -1072,6 +958,7 @@ export const useGroupChatStore = create<GroupChatState>((set, get) => ({
           round: existing.round,
           characterId: existing.characterId,
           isFree: true,
+          offstageCharacterIds: claimed?.offstageCharacterIds,
           narrativeMode: existing.narrativeMode ?? resolveNarrativeMode(undefined),
           noticeFields: { generationNotice: '已停止生成' },
         })
@@ -1169,16 +1056,16 @@ function fireGroupLorebookCompression(
     provider: profile.provider,
     apiKey: profile.apiKey,
     baseUrl: profile.baseUrl,
-    model: settingsStore.settings.activeModel || profile.model,
-  }))).then((results) => {
+    model: profile.model,
+  }, { kind: 'group', groupId, sessionId }))).then((results) => {
     const successful = results.filter((res) => !!res)
     if (successful.length === 0) return
+    if (get().currentSessionId !== sessionId || get().currentGroup?.id !== groupId) return
     const cur = get().sessions.find(s => s.id === sessionId)
     let nextCache = cur?.lorebookCompressionCache
     for (const res of successful) {
       if (res) nextCache = upsertCompressionCache(nextCache, res.key, res.entry)
     }
     set(s => ({ sessions: s.sessions.map(ss => ss.id === sessionId ? { ...ss, lorebookCompressionCache: nextCache } : ss) }))
-    window.api.group.updateSession(groupId, sessionId, { lorebookCompressionCache: nextCache }).catch(() => { /* 忽略 */ })
   }).catch(() => { /* 忽略 */ })
 }

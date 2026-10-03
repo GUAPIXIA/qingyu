@@ -5,6 +5,7 @@ import { getDefaultSettings } from '../../../../shared/defaults'
 import { useSettingsStore } from '../../../store/useSettingsStore'
 import { useUIStore } from '../../../store/useUIStore'
 import { Sidebar } from '../Sidebar'
+import { registerSpatialFlush } from '../../../lib/spatialFlush'
 
 function LocationProbe() {
   const location = useLocation()
@@ -90,5 +91,25 @@ describe('Sidebar', () => {
     expect(await screen.findByText('/settings#settings-updater')).toBeInTheDocument()
     expect(window.api.app.openExternal).not.toHaveBeenCalled()
     expect(screen.queryByTitle('前往 GitHub 主页')).not.toBeInTheDocument()
+  })
+
+  it.each([false, true])('侧栏收起=%s 时，画板保存失败不导航，成功确认后才离开', async (collapsed) => {
+    useUIStore.setState({ sidebarCollapsed: collapsed })
+    render(<MemoryRouter initialEntries={['/chat']}><Sidebar /><LocationProbe /></MemoryRouter>)
+    const link = await screen.findByRole('link', { name: '角色卡' })
+    let complete!: () => void
+    let fail = true
+    const unregister = registerSpatialFlush(() => fail ? Promise.reject(new Error('画板冲突'))
+      : new Promise(resolve => { complete = resolve }))
+    try {
+      fireEvent.click(link)
+      await act(async () => {})
+      expect(screen.getByLabelText('当前位置')).toHaveTextContent('/chat')
+      fail = false
+      fireEvent.click(link)
+      expect(screen.getByLabelText('当前位置')).toHaveTextContent('/chat')
+      await act(async () => complete())
+      expect(screen.getByLabelText('当前位置')).toHaveTextContent('/characters')
+    } finally { unregister() }
   })
 })

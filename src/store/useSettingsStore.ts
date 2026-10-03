@@ -3,17 +3,8 @@ import type { Settings, ProviderType, ConnectionProfile, TTSModelConfig, ImageGe
 import { getDefaultSettings } from '../utils/defaults'
 import { nanoid } from 'nanoid'
 import { logError } from '../lib/logger'
-
-export interface ActiveProfile {
-  name: string
-  provider: ProviderType
-  apiKey: string
-  baseUrl: string
-  model: string
-  maxContext: number
-  useInstructTemplate?: boolean
-  capabilityOverride?: ConnectionProfile['capabilityOverride']
-}
+import { resolveChatProfile, type ActiveChatProfile as ActiveProfile } from '../../shared/chatConnection'
+export type { ActiveChatProfile as ActiveProfile } from '../../shared/chatConnection'
 
 export interface ActiveTTSProfile {
   name: string
@@ -301,22 +292,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   // ========== Profile 系统 ==========
 
-  getActiveProfile: () => {
-    const { settings } = get()
-    if (!settings.activeProfileId) return null
-    const profile = settings.connectionProfiles.find((p) => p.id === settings.activeProfileId)
-    if (!profile) return null
-    return {
-      name: profile.name,
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model: profile.model,
-      maxContext: profile.maxContext || 0, // 0 表示跟随模型默认
-      useInstructTemplate: profile.useInstructTemplate,
-      capabilityOverride: profile.capabilityOverride,
-    }
-  },
+  getActiveProfile: () => resolveChatProfile(get().settings),
 
   addProfile: (input) => {
     const newProfile = { ...input, id: nanoid() }

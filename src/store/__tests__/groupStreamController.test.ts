@@ -1,3 +1,5 @@
+import { messageRef } from '../../../shared/featureSource'
+import { withMessageIdentity } from '../../../shared/messageIdentity'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   splitAndSaveMessages,
@@ -19,7 +21,7 @@ import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
 import { useToastStore } from '../useToastStore'
 import { resetTailRepairFailureCounts } from '../streamController'
-import { STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
+import { STREAM_IDLE_TIMEOUT_MS } from '../../../shared/chat-core/chatConstants'
 import { getDefaultSettings } from '../../../shared/defaults'
 import type { GroupChat, GroupMessage, Character } from '../../../shared/types'
 
@@ -219,6 +221,58 @@ describe('群聊超时统一收尾（S2）', () => {
     ;(window.api.ai as any).onError = vi.fn((cb: any) => { callbacks.onError = cb; return () => {} })
     return callbacks
   }
+
+  it.each(['stop', 'error'] as const)('群聊 %s 收尾后的 UI 与落盘消息提供一致的辅助任务来源', async mode => {
+    const group = makeGroup({ chatMode: 'mention' })
+    const { get, set, read } = makeGroupGet(group, 's1'), callbacks = captureCallbacks()
+    await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+    await vi.advanceTimersByTimeAsync(5000)
+    callbacks.onChunk({ requestId, text: '她推开门，走进这个陌生的房间，指尖拂过积灰的桌面。然后她伸手拿' })
+    if (mode === 'stop') callbacks.onComplete({ requestId, finishReason: 'stop' })
+    else callbacks.onError({ requestId, error: '网络中断' })
+    await vi.advanceTimersByTimeAsync(10)
+    const saved = vi.mocked(window.api.group.saveMessage).mock.calls.at(-1)![2]
+    expect(messageRef(read().messages.find((m: GroupMessage) => m.id === saved.id))).toEqual(messageRef(withMessageIdentity(saved)))
+  })
+
+  it.each(['mention', 'free'] as const)('%s：切换模型后用量仍记录实际请求模型', async mode => {
+    const group = makeGroup({ chatMode: mode })
+    const { get, set } = makeGroupGet(group, 's1')
+    const callbacks = captureCallbacks()
+    if (mode === 'free') await streamGroupAIFree(set as any, get as any, group, 's1', 1)
+    else await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    const request = vi.mocked(window.api.ai.chat).mock.calls[0][0]
+    useSettingsStore.setState(state => ({ settings: { ...state.settings, activeModel: 'next-model' } }))
+    callbacks.onChunk({ requestId: request.requestId, text: '爱丽丝走进房间。' })
+    callbacks.onComplete({ requestId: request.requestId, finishReason: 'stop' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(vi.mocked(window.api.usage.record).mock.calls.at(-1)?.[0].model).toBe(request.model)
+  })
+
+  it.each(['mention', 'free'] as const)('%s：内部恢复沿用原连接与上下文快照', async mode => {
+    useSettingsStore.setState(state => ({ settings: { ...state.settings, activeModel: 'o3-mini' } }))
+    const group = makeGroup({ chatMode: mode })
+    const { get, set } = makeGroupGet(group, 's1')
+    const callbacks = captureCallbacks()
+    if (mode === 'free') await streamGroupAIFree(set as any, get as any, group, 's1', 1)
+    else await streamGroupAI(set as any, get as any, group, 's1', makeCharacter('c1', '爱丽丝'), 1, () => {})
+    const first = vi.mocked(window.api.ai.chat).mock.calls[0][0]
+    useSettingsStore.setState(state => ({ settings: {
+      ...state.settings, activeModel: 'gpt-4o-mini',
+      connectionProfiles: state.settings.connectionProfiles.map(profile => ({ ...profile, baseUrl: 'http://next-endpoint/v1', apiKey: 'next-placeholder' })),
+    } }))
+    callbacks.onComplete({ requestId: first.requestId, finishReason: 'length', terminationCause: 'reasoning_gate_exceeded' })
+    await vi.advanceTimersByTimeAsync(0)
+    const retry = vi.mocked(window.api.ai.chat).mock.calls[1][0]
+    expect(retry.model).toBe(first.model)
+    expect(retry.baseUrl).toBe(first.baseUrl)
+    expect(retry.apiKey).toBe(first.apiKey)
+    expect(retry.messages).toEqual(first.messages)
+    callbacks.onChunk({ requestId: retry.requestId, text: '爱丽丝走进房间。' })
+    callbacks.onComplete({ requestId: retry.requestId, finishReason: 'stop' })
+    await vi.advanceTimersByTimeAsync(0)
+  })
 
   /** 启动一次群聊生成并让 chunk 续期超时触发（收到半句后卡死） */
   async function startThenTimeout(mode: 'mention' | 'polling' | 'free', partial: string) {
@@ -628,6 +682,7 @@ describe('checkPollingContinue polling 轮询', () => {
   it('达到最大轮数时不继续', async () => {
     const set = vi.fn()
     const state = {
+      sessions: [],
       currentGroup: makeGroup({ maxRounds: 1 }),
       messages: [
         { characterId: 'c1', round: 1 },
@@ -643,6 +698,7 @@ describe('checkPollingContinue polling 轮询', () => {
   it('D2 已拍板：段内达到每次接力上限即停止（不再是会话总轮次）', async () => {
     const set = vi.fn()
     const state = {
+      sessions: [],
       currentGroup: makeGroup({ maxRounds: 3 }),
       messages: [
         { characterId: '__user__', round: 1 },
@@ -663,6 +719,7 @@ describe('checkPollingContinue polling 轮询', () => {
     const sendPollingRound = vi.fn()
     const group = makeGroup({ maxRounds: 3 })
     const state = {
+      sessions: [],
       currentGroup: group,
       messages: [
         { characterId: '__user__', round: 1 },
@@ -685,6 +742,7 @@ describe('checkPollingContinue polling 轮询', () => {
   it('无最后角色消息时不继续', async () => {
     const set = vi.fn()
     const state = {
+      sessions: [],
       currentGroup: makeGroup(),
       messages: [{ characterId: '__user__', round: 1 }],
       sendPollingRound: vi.fn(),
@@ -698,6 +756,7 @@ describe('checkPollingContinue polling 轮询', () => {
     const sendPollingRound = vi.fn()
     const group = makeGroup({ currentSpeakerIndex: 0 })
     const state = {
+      sessions: [],
       currentGroup: group,
       messages: [{ characterId: 'c1', round: 1 }],
       memberIds: ['c1', 'c2'],
@@ -721,6 +780,7 @@ describe('checkPollingContinue polling 轮询', () => {
     const sendPollingRound = vi.fn()
     const group = makeGroup({ currentSpeakerIndex: 0 })
     const state = {
+      sessions: [],
       currentGroup: group,
       messages: [{ characterId: 'c1', round: 1 }],
       memberIds: ['c1', 'c2'],

@@ -20,11 +20,6 @@ const PROC_START_MS = Date.now() - Math.round(process.uptime() * 1000)
 
 type Arm = 'A' | 'B'
 
-interface OpSample {
-  name: string
-  ms: number[]
-}
-
 export interface GuiBenchReport {
   arm: Arm
   userData: string
@@ -143,7 +138,7 @@ async function runBench(): Promise<void> {
   for (const key of ['showMessageBox', 'showMessageBoxSync', 'showOpenDialog', 'showSaveDialog', 'showErrorBox'] as const) {
     const orig = (dialog as unknown as Record<string, unknown>)[key]
     if (typeof orig !== 'function') continue
-    ;(dialog as unknown as Record<string, unknown>)[key] = (...args: unknown[]) => {
+    ;(dialog as unknown as Record<string, unknown>)[key] = (..._args: unknown[]) => {
       dialogsShown.push(String(key))
       notes.push(`dialog:${key}`)
       // bench 中阻断真实弹窗，避免挂死

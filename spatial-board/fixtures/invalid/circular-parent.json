@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "world_bad_cycle",
+  "name": "循环父子",
+  "description": "反例（领域校验）：A 的父是 B，B 的父是 A。schema 结构可通过，层级校验器须拒绝。",
+  "rootBoardId": "board_root",
+  "boards": [
+    {
+      "id": "board_root",
+      "name": "根画板",
+      "description": "",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "region_a",
+      "boardId": "board_root",
+      "kind": "region",
+      "name": "区域 A",
+      "description": "父指向 B。",
+      "tags": [],
+      "parentNodeId": "region_b",
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 120,
+        "y": 80,
+        "width": 360,
+        "height": 240
+      }
+    },
+    {
+      "id": "region_b",
+      "boardId": "board_root",
+      "kind": "region",
+      "name": "区域 B",
+      "description": "父指向 A。",
+      "tags": [],
+      "parentNodeId": "region_a",
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 600,
+        "y": 400,
+        "width": 360,
+        "height": 240
+      }
+    }
+  ],
+  "distances": [],
+  "actors": [],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

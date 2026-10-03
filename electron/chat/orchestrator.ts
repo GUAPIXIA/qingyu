@@ -15,7 +15,7 @@ import { isTerminalState, type TaskSnapshot, type TaskEventEnvelope } from '../.
 import { createDomainError, type DomainError } from '../../shared/chat-core/errors'
 import { createTask, findByRequestId as findTaskByRequestId, getTaskSnapshot, updateTask, appendEvent } from './taskStore'
 import { transitionTask, acquireSessionOrThrow, releaseSession, cancelTask, registerTaskAbort, clearTaskAbort, getTaskAbort } from './taskManager'
-import type { MessagePort, ContextPort, ModelPort, MemorySchedulerPort, UsageRecorderPort } from './ports'
+import type { MessagePort, ContextPort, ModelPort, MemorySchedulerPort, UsageRecorderPort, SpatialSchedulerPort, ModelResult } from './ports'
 import { toPublicModelDescriptor } from './ports'
 import { authorizeTool } from './toolGate'
 
@@ -24,6 +24,7 @@ export interface OrchestratorDeps {
   contextPort: ContextPort
   modelPort: ModelPort
   memoryScheduler?: MemorySchedulerPort
+  spatialScheduler?: SpatialSchedulerPort
   usageRecorder?: UsageRecorderPort
   // 可选：chunk batching 参数
   chunkFlushMs?: number
@@ -193,7 +194,12 @@ export class ChatOrchestrator {
       // 8-10. build context + select model
       transitionTask(taskId, 'preparing')
       const buildContent = (command as { content?: string }).content ?? ''
-      const ctx = await this.deps.contextPort.build({ sessionId, characterId, content: buildContent })
+      const ctx = await this.deps.contextPort.build({ sessionId, characterId, content: buildContent, clientKind: command.client.kind })
+      let spatialGenerationId: string | null = null
+      if (command.client.kind === 'desktop') {
+        try { spatialGenerationId = await this.deps.spatialScheduler?.prepare({ characterId, sessionId }, { generationId: taskId,
+          kind: command.type === 'regenerate' ? 'regenerate' : command.type === 'continue' ? 'continue' : 'normal', expectedVersion: ctx.spatialContext?.version }) ?? null } catch { /* 辅助登记失败不阻塞主对话。 */ }
+      }
       transitionTask(taskId, 'streaming')
       // 落盘/外发一律用剥离凭据的描述（apiKey 只留在进程内，供 modelPort 调用）
       const publicModel = toPublicModelDescriptor(ctx.model)
@@ -246,12 +252,12 @@ export class ChatOrchestrator {
       // 登记与 controller 创建同处一个同步块（中间无 await），不存在取消 interleaving 缝隙。
       registerTaskAbort(taskId, { controller, settled, flush: () => flushChunk(true) })
 
-      let modelResult: { text: string } | null = null
+      let modelResult: ModelResult | null = null
       let streamError: unknown = null
 
       try {
         modelResult = await this.deps.modelPort.stream(
-          { messages: ctx.messages, model: ctx.model.model, provider: ctx.model.provider, maxTokens: ctx.requestMaxTokens, apiKey: ctx.model.apiKey, baseUrl: ctx.model.baseUrl },
+          { sessionId, messages: ctx.messages, model: ctx.model.model, provider: ctx.model.provider, maxTokens: ctx.requestMaxTokens, apiKey: ctx.model.apiKey, baseUrl: ctx.model.baseUrl },
           {
             onChunk: (delta) => {
               accumulated += delta
@@ -393,6 +399,8 @@ export class ChatOrchestrator {
       flushChunk(true)
       const finalText = accumulated
 
+      const spatialCheckpoint = modelResult?.finishReason === 'stop' && finalText.trim() && !controller.signal.aborted ? spatialGenerationId ?? undefined : undefined
+
       // 16. finalizing -> 落盘（regenerate 追加 swipe，其余新建）
       transitionTask(taskId, 'finalizing')
       if (command.type === 'regenerate') {
@@ -401,7 +409,7 @@ export class ChatOrchestrator {
           transitionTask(taskId, 'failed', { error: createDomainError('INVALID_MODEL_RESPONSE', '空回复') })
           throw createDomainError('INVALID_MODEL_RESPONSE', '空回复')
         }
-        const res = await this.deps.messagePort.appendSwipedCandidate(targetId, finalText, 'regenerate')
+        const res = await this.deps.messagePort.appendSwipedCandidate(targetId, finalText, 'regenerate', spatialCheckpoint)
         updateTask(taskId, (s) => ({ ...s, assistantMessageId: res.id, accumulatedText: finalText, updatedAt: Date.now() }))
       } else {
         const assistantId = nanoid()
@@ -412,6 +420,7 @@ export class ChatOrchestrator {
           content: finalText,
           requestId: command.requestId,
           generationTaskId: taskId,
+          spatialGenerationId: spatialCheckpoint,
           narrativeMode: session.narrativeMode,
           speakerKind: 'character',
           generationKind: command.type === 'continue' ? 'message_continue' : 'assistant_reply',
@@ -439,6 +448,9 @@ export class ChatOrchestrator {
       }
       // 17. completed：先等记账尝试收口，保证终态观察者刷新时能读到最新统计。
       transitionTask(taskId, 'completed')
+      if (spatialCheckpoint) {
+        try { await this.deps.spatialScheduler?.saved({ characterId, sessionId }, spatialCheckpoint, getTaskSnapshot(taskId)!.assistantMessageId!) } catch { /* 提取登记失败不反转已保存正文，重启核对检查点。 */ }
+      }
       // 自动长记忆由主进程统一调度；调度器必须异步执行，不能阻塞主回复完成。
       try {
         this.deps.memoryScheduler?.schedule({ sessionId, characterId })

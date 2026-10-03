@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "world_bad_dangling",
+  "name": "悬空引用",
+  "description": "反例（领域校验）：childBoardId 指向不存在的画板。schema 结构可通过，引用校验器须拒绝。",
+  "rootBoardId": "board_root",
+  "boards": [
+    {
+      "id": "board_root",
+      "name": "根画板",
+      "description": "",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "place_home",
+      "boardId": "board_root",
+      "kind": "place",
+      "name": "用户家",
+      "description": "childBoardId 悬空。",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": "board_missing",
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 360,
+        "y": 240
+      },
+      "iconKey": "house"
+    }
+  ],
+  "distances": [],
+  "actors": [],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

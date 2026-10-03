@@ -1,6 +1,6 @@
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { cn } from '../../lib/utils'
-import { getDisplayName } from '../../utils/variables'
+import { getDisplayName } from '../../../shared/chat-core/variables'
 import { Square } from 'lucide-react'
 
 // UEX-P1-12：群调度条（GroupMemberBar）——生成中显示成员接力进度：

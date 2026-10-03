@@ -4,14 +4,16 @@ import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Sliders, SlidersHorizontal, Plus, Upload, Trash2, Shield, Copy, Download, Sparkles, Play, Loader2, Wand2, X, ChevronDown, ChevronRight } from 'lucide-react'
-import { BUILTIN_TEMPLATE_NAMES } from '../utils/chatTemplates'
+import { BUILTIN_TEMPLATE_NAMES } from '../../shared/chat-core/chatTemplates'
 import { cn } from '../lib/utils'
 import { parsePresetGeneration } from '../utils/presetGen'
+import { EditorAssistant } from '../store/editorAssistant'
+import { EditorSuggestions } from '../components/common/EditorSuggestions'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useToastStore } from '../store/useToastStore'
 import { useCharacterStore } from '../store/useCharacterStore'
 import { syncBuildData } from '../context/rendererContextProvider'
-import { buildChatParamsFromData, buildContextMessagesFromData } from '../context/contextBuilder'
+import { buildChatParamsFromData, buildContextMessagesFromData } from '../../shared/chat-core/contextBuilder'
 import { isLocalProvider, isLocalUrl } from '../utils/defaults'
 import { RESPONSE_LENGTH_LABELS, resolveResponsePolicy } from '../../shared/responsePolicy'
 import { formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
@@ -65,7 +67,16 @@ function createPreset(): Preset {
 export function PresetsPage() {
   const liveSettings = useSettingsStore((state) => state.settings)
   const [presets, setPresets] = useState<Preset[]>([])
-  const [editingPreset, setEditingPreset] = useState<Preset | null>(null)
+  const [editingPreset, setEditingPresetState] = useState<Preset | null>(null)
+  const editorRef = useRef<EditorAssistant | null>(null)
+  if (!editorRef.current) editorRef.current = new EditorAssistant('preset', '')
+  const editor = editorRef.current
+  const editingRef = useRef<Preset | null>(null)
+  const setEditingPreset = (value: Preset | null | ((prev: Preset | null) => Preset | null)) => {
+    const next = typeof value === 'function' ? value(editingRef.current) : value
+    editor.syncObject(next?.id ?? ''); editor.touch()
+    editingRef.current = next; setEditingPresetState(next)
+  }
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [busyMsg, setBusyMsg] = useState<string | null>(null)
   const [importNotice, setImportNotice] = useState<{ message: string; error: boolean } | null>(null)
@@ -105,11 +116,13 @@ export function PresetsPage() {
   }
 
   useEffect(() => {
+    editor.activate()
     loadPresets()
     return () => {
       if (importNoticeTimerRef.current) clearTimeout(importNoticeTimerRef.current)
+      editor.dispose()
     }
-  }, [])
+  }, [editor])
 
   const showImportNotice = (message: string, error = false) => {
     setImportNotice({ message, error })
@@ -183,57 +196,30 @@ export function PresetsPage() {
   }) => {
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile) return
-    let result = ''
-    const unbindChunk = window.api.ai.onChunk((data) => {
-      if (data.requestId !== opts.requestId) return
-      result += data.text
-      // 流式实时展示（仅测试器用）
-      if (opts.extra?.maxTokens === undefined) {
-        // 默认非实时
-      }
-    })
-    const unbindDone = window.api.ai.onComplete((payload) => {
-      if (payload.requestId !== opts.requestId) return
-      cleanup()
-      opts.onResult(result)
-    })
-    const unbindError = window.api.ai.onError((data) => {
-      if (data.requestId !== opts.requestId) return
-      cleanup()
-      opts.onError(data.error)
-    })
-    const cleanup = () => {
-      unbindChunk(); unbindDone(); unbindError()
+    const ticket = editor.begin(opts.task ?? 'generic', [editingRef.current, opts.messages])
+    try {
+      const model = profile.model
+      const plan = opts.extra?.maxTokens == null
+        ? await resolveRendererGenerationTaskBudget({ profile, model, task: opts.task ?? 'generic', inputChars: opts.inputChars, expectedBodyChars: opts.expectedBodyChars })
+        : null
+      const result = await editor.request(ticket, {
+        requestId: opts.requestId, messages: opts.messages,
+        provider: profile.provider, apiKey: profile.apiKey, baseUrl: profile.baseUrl, model,
+        temperature: opts.extra?.temperature ?? 0.7, topP: opts.extra?.topP ?? 0.95,
+        maxTokens: opts.extra?.maxTokens ?? plan!.requestMaxTokens,
+        frequencyPenalty: opts.extra?.frequencyPenalty ?? 0, presencePenalty: opts.extra?.presencePenalty ?? 0,
+        stream: true, instructTemplate: opts.extra?.instructTemplate,
+        ...(plan ? { reasoningGate: plan.reasoningGate } : {}),
+        observability: { source: 'aux', taskType: opts.task ?? 'generic' },
+      })
+      if (editor.current(ticket)) opts.onResult(result)
+      else if (editor.owns(ticket)) editor.keep(ticket, result, opts.task === 'preset_draft' ? '预设生成' : '预设测试')
+    } catch (error) {
+      if (editor.owns(ticket)) opts.onError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (editor.owns(ticket)) { setAiGenBusy(false); setTestBusy(false) }
+      editor.finish(ticket)
     }
-    const settings = useSettingsStore.getState().settings
-    const model = settings.activeModel || profile.model
-    const plan = opts.extra?.maxTokens == null
-      ? await resolveRendererGenerationTaskBudget({
-          profile,
-          model,
-          task: opts.task ?? 'generic',
-          inputChars: opts.inputChars,
-          expectedBodyChars: opts.expectedBodyChars,
-        })
-      : null
-    window.api.ai.chat({
-      requestId: opts.requestId,
-      messages: opts.messages,
-      provider: profile.provider,
-      apiKey: profile.apiKey,
-      baseUrl: profile.baseUrl,
-      model,
-      temperature: opts.extra?.temperature ?? 0.7,
-      topP: opts.extra?.topP ?? 0.95,
-      maxTokens: opts.extra?.maxTokens ?? plan!.requestMaxTokens,
-      frequencyPenalty: opts.extra?.frequencyPenalty ?? 0,
-      presencePenalty: opts.extra?.presencePenalty ?? 0,
-      stream: true,
-      instructTemplate: opts.extra?.instructTemplate,
-      ...(plan ? { reasoningGate: plan.reasoningGate } : {}),
-    }).catch(() => {
-      cleanup()
-    })
   }
 
   /** AI 生成预设：描述需求 → 生成 systemPrompt/jailbreak/参数建议 */
@@ -383,6 +369,7 @@ TopP: <0-1>
   }
 
   const handleTestStop = () => {
+    editor.cancel()
     if (testRequestRef.current) {
       window.api.ai.cancelChat(testRequestRef.current).catch(() => {})
       testRequestRef.current = null
@@ -391,6 +378,7 @@ TopP: <0-1>
   }
 
   const handleEdit = (preset: Preset) => {
+    setAiGenBusy(false); setTestBusy(false); setTestOutput(''); setAiGenError(null)
     setEditingPreset({ ...preset })
   }
 
@@ -553,6 +541,7 @@ TopP: <0-1>
               </div>
             )}
 
+            <EditorSuggestions suggestions={editor.suggestions} objectId={editingPreset.id} />
             {/* AI 生成预设（第三批） */}
             <div className="rounded-lg border border-tavern-border-soft bg-tavern-bg-soft/60">
               <button
@@ -570,7 +559,7 @@ TopP: <0-1>
                     className="textarea min-h-[60px]"
                     placeholder="描述你想要的预设风格，如：冷傲女王系，回复简短带刺，偶尔毒舌，喜欢用*动作描写*"
                     value={aiGenDesc}
-                    onChange={(e) => setAiGenDesc(e.target.value)}
+                    onChange={(e) => { editor.touch(); setAiGenDesc(e.target.value) }}
                   />
                   <div className="flex items-center gap-2">
                     <button
@@ -829,7 +818,7 @@ TopP: <0-1>
                   className="textarea min-h-[48px] flex-1"
                   placeholder="输入测试消息..."
                   value={testInput}
-                  onChange={(e) => setTestInput(e.target.value)}
+                  onChange={(e) => { editor.touch(); setTestInput(e.target.value) }}
                 />
                 <div className="flex flex-col gap-1.5">
                   <button

@@ -118,3 +118,31 @@ describe('maybeRunAutoMemorySummary', () => {
     expect(api.summarizeMemory).not.toHaveBeenCalled()
   })
 })
+
+
+describe('记忆结果的页面归属', () => {
+  it('刷新会话列表期间切换角色，即使会话 ID 相同也不覆盖新页面', async () => {
+    const api = installApi({ status: 'summarized', summary: '旧角色摘要', currentState: '', facts: [], memoryVersion: 1 })
+    let release!: (value: unknown) => void
+    api.listSessions.mockImplementationOnce(() => new Promise(resolve => { release = resolve as never }))
+    const current = state(), set = vi.fn()
+    const pending = runMemorySummary(() => current as never, set as never, character)
+    await vi.waitFor(() => expect(api.listSessions).toHaveBeenCalled())
+    current.sessions = [{ ...current.sessions[0], characterId: 'another-character' }]
+    release([{ id: 's1', characterId: 'char-1', memory: '旧角色摘要' }])
+    await pending
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ sessions: expect.anything() }))
+  })
+
+  it('旧会话的请求失败不会把错误写进当前会话', async () => {
+    const api = installApi(null)
+    let reject!: (error: Error) => void
+    api.summarizeMemory.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
+    const current = state(), set = vi.fn()
+    const pending = runMemorySummary(() => current as never, set as never, character)
+    current.currentSessionId = 's2'
+    reject(new Error('旧任务失败'))
+    await pending
+    expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ error: expect.any(String) }))
+  })
+})

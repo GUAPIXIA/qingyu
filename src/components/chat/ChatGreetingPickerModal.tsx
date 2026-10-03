@@ -1,6 +1,6 @@
 import { Modal } from '../common/Modal'
 import { charAssetUrl } from '../../utils/asset'
-import { getDisplayName, replaceVariables } from '../../utils/variables'
+import { getDisplayName, replaceVariables } from '../../../shared/chat-core/variables'
 import { cn } from '../../lib/utils'
 import type { Character } from '../../../shared/types'
 

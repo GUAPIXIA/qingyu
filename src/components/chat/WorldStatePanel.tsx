@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Database, Globe2, Save, X } from 'lucide-react'
 import type { MemoryFact, MemoryFactRecord } from '../../../shared/types'
 import { cn } from '../../lib/utils'
-import { isMemoryFact, memoryFactToText } from '../../utils/memory'
+import { isMemoryFact, memoryFactToText } from '../../../shared/chat-core/memory'
 
 interface WorldStateSession {
   id: string

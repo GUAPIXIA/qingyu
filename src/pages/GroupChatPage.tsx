@@ -7,7 +7,9 @@ import { useGroupChatStore, stopRemainingSpeakers } from '../store/useGroupChatS
 import { usePersonaStore } from '../store/usePersonaStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { GroupChatMessage } from '../components/chat/GroupChatMessage'
+import { SpatialBoardPane } from '../components/chat/SpatialBoardPane'
 import { GroupChatInput } from '../components/chat/GroupChatInput'
+import { SpatialSuggestionNotice } from '../components/chat/SpatialSuggestionNotice'
 import { GroupMemberBar } from '../components/chat/GroupMemberBar'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
@@ -27,7 +29,7 @@ import { cn } from '../lib/utils'
 import { downloadFile } from '../utils/download'
 // UEX-P2-12：会话滚动位置记忆（切走再回来恢复原滚动位置）
 import { groupScrollKey, useSessionScrollMemory } from '../utils/scrollMemory'
-import type { LorebookDiagnostics } from '../utils/lorebook'
+import type { LorebookDiagnostics } from '../../shared/chat-core/lorebook'
 import type { GroupChat, GroupMessage, Lorebook, NarrativeMode, Preset } from '../../shared/types'
 import { getNarrativeModeLabel, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
@@ -46,6 +48,7 @@ import {
   BookOpen,
   Globe2,
   UserRound,
+  Compass,
 } from 'lucide-react'
 
 export function GroupChatPage() {
@@ -103,6 +106,10 @@ export function GroupChatPage() {
     return map
   }, [currentGroup?.memberIds])
 
+  const [showSpatialBoard, setShowSpatialBoard] = useState(false)
+  const [openSpatialAssistant, setOpenSpatialAssistant] = useState(false)
+  const requestSpatialCloseRef = useRef<() => void>(() => {})
+  useEffect(() => { setShowSpatialBoard(false); setOpenSpatialAssistant(false) }, [currentGroup?.id, currentSessionId])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -199,10 +206,11 @@ export function GroupChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentGroup?.id, currentSessionId, messages.length])
 
-  const handleSelect = (group: GroupChat) => {
+  const handleSelect = async (group: GroupChat) => {
+    await selectGroup(group.id)
+    if (useGroupChatStore.getState().currentGroup?.id !== group.id) return
     setSelectedId(group.id)
     try { localStorage.setItem('group-last-selected', group.id) } catch { /* ignore */ }
-    selectGroup(group.id)
   }
 
   const handleCreate = () => {
@@ -596,6 +604,10 @@ export function GroupChatPage() {
               <div className="flex shrink-0 items-center gap-1">
                 <span className="group-chat-header__token mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
 
+                <button type="button" disabled={!currentSessionId || isStreaming} aria-label="群聊空间画板" aria-pressed={showSpatialBoard}
+                  onClick={() => { if (showSpatialBoard) requestSpatialCloseRef.current(); else { setOpenSpatialAssistant(false); setShowSpatialBoard(true) } }}
+                  className={cn('flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors disabled:opacity-40', currentSession?.spatialBoardEnabled === true ? 'bg-tavern-accent-soft text-tavern-accent' : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text')}
+                  title="空间画板"><Compass className="h-4 w-4" /><span>画板</span></button>
                 <button
                   onClick={() => {
                     const report = useGroupChatStore.getState().buildGroupContextReport()
@@ -640,6 +652,10 @@ export function GroupChatPage() {
               </div>
             </header>
 
+            {showSpatialBoard && currentSessionId ? (
+              <SpatialBoardPane groupId={currentGroup.id} sessionId={currentSessionId} openAssistant={openSpatialAssistant}
+                onClose={() => setShowSpatialBoard(false)} registerClose={handler => { requestSpatialCloseRef.current = handler }} />
+            ) : <>
             {/* ---- 消息区域 ---- */}
             <div className="flex-1 overflow-hidden relative z-0">
               {messages.length === 0 && !isStreaming ? (
@@ -741,12 +757,16 @@ export function GroupChatPage() {
 
             {/* ---- 输入区 ---- */}
             <div className="relative z-10">
+            {currentSession?.spatialBoardEnabled === true && currentSessionId && <div className="px-4"><SpatialSuggestionNotice groupId={currentGroup.id} sessionId={currentSessionId}
+              worldId={currentSession?.spatialWorldId} enabled={!!currentSession?.spatialAiSessionId}
+              onOpen={() => { setOpenSpatialAssistant(true); setShowSpatialBoard(true) }} /></div>}
             <GroupChatInput
               group={currentGroup}
               replyTo={replyToMessage}
               onCancelReply={() => setReplyToMessage(null)}
             />
             </div>
+            </>}
           </>
         )}
       </main>

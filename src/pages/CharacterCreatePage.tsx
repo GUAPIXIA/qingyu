@@ -54,6 +54,7 @@ export function CharacterCreatePage() {
     return () => {
       // M3：保存成功后 store 已 reset；仅仍有实质内容时才卸载兜底落盘（UEX-P1-19：空表单不写）
       const s = useCharacterCreatorStore.getState()
+      s.cancelExpand()
       if (isDraftMeaningful({ draft: s.draft, step: s.step, cover: s.coverBase64 })) {
         s.persistDraft()
       }

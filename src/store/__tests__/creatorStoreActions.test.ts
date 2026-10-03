@@ -107,6 +107,7 @@ describe('aiExpand（一句话扩展）', () => {
     chunkCb?.({ requestId: reqId, text: '{"name":"零","de' })
     chunkCb?.({ requestId: reqId, text: 'scription":"女黑客","tags":["赛博朋克","黑客"]}' })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
     const s = useCharacterCreatorStore.getState()
     expect(s.draft.name).toBe('零')
     expect(s.draft.tags).toEqual(['赛博朋克', '黑客'])
@@ -124,6 +125,7 @@ describe('aiExpand（一句话扩展）', () => {
       text: '<thought>构思中 { 草稿 }</thought>{"name":"零","personality":"冷静"}',
     })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
     const s = useCharacterCreatorStore.getState()
     expect(s.draft.name).toBe('零')
     expect(s.draft.personality).toBe('冷静')
@@ -150,6 +152,7 @@ describe('aiExpand（一句话扩展）', () => {
     const { aiExpand } = useCharacterCreatorStore.getState()
     await aiExpand('概念')
     errorCb?.({ requestId: lastChatRequestId(), error: '网络错误' })
+    await new Promise(resolve => setTimeout(resolve, 0))
     const s = useCharacterCreatorStore.getState()
     expect(s.isExpanding).toBe(false)
     expect(s.error).toBe('网络错误')
@@ -159,6 +162,7 @@ describe('aiExpand（一句话扩展）', () => {
     const { aiExpand } = useCharacterCreatorStore.getState()
     await aiExpand('概念')
     doneCb?.(lastChatRequestId()) // onDone 时 fullText 为空 → 解析失败
+    await new Promise(resolve => setTimeout(resolve, 0))
     const s = useCharacterCreatorStore.getState()
     expect(s.isExpanding).toBe(false)
     expect(s.error).toContain('无法解析')
@@ -205,6 +209,7 @@ describe('aiGenerateField（单字段帮我写）', () => {
     chunkCb?.({ requestId: reqId, text: '外冷内热，' })
     chunkCb?.({ requestId: reqId, text: '话不多' })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
     let s = useCharacterCreatorStore.getState()
     expect(s.draft.description).toBe('') // UEX-P2-07：不再直接覆盖
     expect(s.pendingGeneration).toMatchObject({
@@ -223,6 +228,7 @@ describe('aiGenerateField（单字段帮我写）', () => {
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '<thought>想一下</thought>冷静果决' })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
     const s = useCharacterCreatorStore.getState()
     expect(s.draft.personality).toBe('') // 不直接写入
     expect(s.pendingGeneration?.content).toBe('冷静果决')
@@ -236,6 +242,7 @@ describe('aiGenerateField（单字段帮我写）', () => {
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '赛博朋克、黑客，御姐' })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
     expect(useCharacterCreatorStore.getState().draft.tags).toEqual([]) // 不直接写入
     useCharacterCreatorStore.getState().applyGenerated('replace')
     expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['赛博朋克', '黑客', '御姐'])
@@ -245,6 +252,7 @@ describe('aiGenerateField（单字段帮我写）', () => {
     const { aiGenerateField } = useCharacterCreatorStore.getState()
     await aiGenerateField('name')
     doneCb?.(lastChatRequestId())
+    await new Promise(resolve => setTimeout(resolve, 0))
     expect(useCharacterCreatorStore.getState().error).toContain('生成失败')
     expect(useCharacterCreatorStore.getState().pendingGeneration).toBeNull()
   })
@@ -258,6 +266,7 @@ describe('aiGenerateGreeting（备选开场白）', () => {
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '*推门而入* "我来了。"' })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
     let s = useCharacterCreatorStore.getState()
     expect(s.draft.firstMessage).toBe('') // 不直接覆盖
     expect(s.pendingGeneration).toMatchObject({ target: { kind: 'greeting', index: -1 } })
@@ -274,6 +283,7 @@ describe('aiGenerateGreeting（备选开场白）', () => {
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '备选三' })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
     useCharacterCreatorStore.getState().applyGenerated('replace')
     const s = useCharacterCreatorStore.getState()
     expect(s.draft.alternateGreetings[2]).toBe('备选三')
@@ -299,6 +309,7 @@ describe('applyGenerated（UEX-P2-07 三选动作）', () => {
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: output })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
   }
 
   /** 发起一次开场白生成并完成流式 */
@@ -307,16 +318,17 @@ describe('applyGenerated（UEX-P2-07 三选动作）', () => {
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: output })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
   }
 
-  it('文本 replace：覆盖当前值（含生成期间的用户修改，UI 已注明）', async () => {
+  it('文本 replace：来源版本变化后保留新输入和旧建议', async () => {
     updateDraftOf({ description: '旧描述' })
     await generateField('description', '新描述')
-    // 生成完成后用户又改了字段 → replace 仍以生成结果覆盖（语义即「替换」）
+    // 生成完成后继续编辑：旧建议仅供查看或显式追加，不能替换新版本。
     updateDraftOf({ description: '用户新输入' })
     useCharacterCreatorStore.getState().applyGenerated('replace')
-    expect(useCharacterCreatorStore.getState().draft.description).toBe('新描述')
-    expect(useCharacterCreatorStore.getState().pendingGeneration).toBeNull()
+    expect(useCharacterCreatorStore.getState().draft.description).toBe('用户新输入')
+    expect(useCharacterCreatorStore.getState().pendingGeneration?.content).toBe('新描述')
   })
 
   it('文本 append：基于 apply 时最新值追加（防覆盖用户新输入）', async () => {
@@ -391,6 +403,7 @@ describe('applyGenerated（UEX-P2-07 三选动作）', () => {
     const reqId = lastChatRequestId()
     chunkCb?.({ requestId: reqId, text: '第二次结果' })
     doneCb?.(reqId)
+    await new Promise(resolve => setTimeout(resolve, 0))
     const s = useCharacterCreatorStore.getState()
     expect(s.pendingGeneration).toMatchObject({
       target: { kind: 'field', field: 'personality' },

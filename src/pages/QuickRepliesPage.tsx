@@ -8,7 +8,7 @@ import { cn } from '../lib/utils'
 import { MessageSquarePlus, Plus, Trash2, Pencil, Upload, Download, Keyboard } from 'lucide-react'
 import type { QuickReply, QuickReplyStore, Character, Preset } from '../../shared/types'
 import { createQuickReply } from '../utils/quickReply'
-import { listMacros } from '../utils/macros'
+import { listMacros } from '../../shared/chat-core/macros'
 
 const actionLabels = { text: '发送文本', preset: '切换预设', command: '斜杠命令' } as const
 

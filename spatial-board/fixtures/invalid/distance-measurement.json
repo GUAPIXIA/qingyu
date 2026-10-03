@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "world_bad_distance",
+  "name": "距离字段非法",
+  "description": "反例：custom 单位缺 customUnit，且 value 为 null 时 displayText 为空。",
+  "rootBoardId": "board_root",
+  "boards": [
+    {
+      "id": "board_root",
+      "name": "根画板",
+      "description": "",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "region_a",
+      "boardId": "board_root",
+      "kind": "region",
+      "name": "区域 A",
+      "description": "",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 120,
+        "y": 80,
+        "width": 360,
+        "height": 240
+      }
+    },
+    {
+      "id": "region_b",
+      "boardId": "board_root",
+      "kind": "region",
+      "name": "区域 B",
+      "description": "",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 600,
+        "y": 400,
+        "width": 360,
+        "height": 240
+      }
+    }
+  ],
+  "distances": [
+    {
+      "id": "dist_bad",
+      "kind": "distance",
+      "boardId": "board_root",
+      "sourceNodeId": "region_a",
+      "targetNodeId": "region_b",
+      "name": "非法距离",
+      "description": "custom 单位无 customUnit；value 为 null 且 displayText 为空。",
+      "measurement": {
+        "value": null,
+        "unit": "custom",
+        "displayText": "",
+        "certainty": "unknown"
+      },
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000
+    }
+  ],
+  "actors": [],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

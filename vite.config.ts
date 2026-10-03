@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from "vite-tsconfig-paths";
+import { fileURLToPath } from 'node:url'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -12,6 +13,12 @@ export default defineConfig(({ mode }) => ({
     outDir: 'dist',
     // 优化：路由懒加载生效——chunk 大于 400KB 时提示拆分（默认 500KB 告警）
     chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        spatial: fileURLToPath(new URL('./spatial-board/index.html', import.meta.url)),
+      },
+    },
   },
   esbuild: {
     // 静默 Duplicate attribute 警告：QINGYU_DEV_LOCATOR=1 打开 react-dev-locator 时，

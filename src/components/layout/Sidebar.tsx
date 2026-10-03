@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type MouseEvent } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useUIStore } from '../../store/useUIStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import { logError } from '../../lib/logger'
+import { flushSpatialBoard } from '../../lib/spatialFlush'
 import { isConnectionConfigured } from '../../utils/defaults'
 import {
   MessageSquare,
@@ -141,7 +142,19 @@ export function Sidebar() {
     }).catch((e) => logError('Sidebar:checkVersion', e))
   }, [])
 
-  const handleOpenUpdater = () => navigate('/settings#settings-updater')
+  const handleOpenUpdater = () => {
+    const pending = flushSpatialBoard()
+    if (pending) void pending.then(() => navigate('/settings#settings-updater')).catch(() => {})
+    else navigate('/settings#settings-updater')
+  }
+
+  const handleNavigation = (event: MouseEvent<HTMLAnchorElement>, to: string) => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || pathname === to) return
+    const pending = flushSpatialBoard()
+    if (!pending) return
+    event.preventDefault()
+    void pending.then(() => navigate(to)).catch(() => {})
+  }
 
   return (
     <aside
@@ -200,6 +213,7 @@ export function Sidebar() {
               <NavLink
                 key={item.to}
                 to={item.to}
+                onClick={(event) => handleNavigation(event, item.to)}
                 aria-label={item.label}
                 className={({ isActive }) =>
                   cn(
@@ -242,6 +256,7 @@ export function Sidebar() {
                       <NavLink
                         key={item.to}
                         to={item.to}
+                        onClick={(event) => handleNavigation(event, item.to)}
                         aria-label={item.label}
                         className={({ isActive }) =>
                           cn(

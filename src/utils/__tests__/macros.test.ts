@@ -7,7 +7,7 @@ import {
   hasMacro,
   buildMacroContext,
   type MacroContext,
-} from '../macros'
+} from '../../../shared/chat-core/macros'
 
 function makeCtx(overrides: Partial<MacroContext> = {}): MacroContext {
   return {

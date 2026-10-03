@@ -44,6 +44,19 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
 }
 
 describe('memorySummaryService', () => {
+  it('恢复取消全部旧记忆任务，立即重试不复用旧请求', async () => {
+    const completion = '【当前状态】\n新状态\n\n【时间线】\n新事件'
+    const complete = vi.fn().mockImplementationOnce(() => new Promise(() => {})).mockResolvedValue({ text: completion })
+    const deps = makeDeps({ complete }), service = createMemorySummaryService(deps as never)
+    const old = service.summarize({ characterId: 'character-1', sessionId: 'session-1', automatic: true })
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce())
+    service.cancelAll()
+    expect(await old).toEqual({ status: 'skipped', reason: 'stale_version' })
+    const current = await service.summarize({ characterId: 'character-1', sessionId: 'session-1', automatic: true })
+    expect(complete).toHaveBeenCalledTimes(2)
+    expect(current.status).toBe('summarized')
+    expect(deps.updateSessionIfMemoryVersion).toHaveBeenCalledOnce()
+  })
   it('自动模式达到间隔后总结并以 memoryVersion 乐观锁提交', async () => {
     const deps = makeDeps()
     const service = createMemorySummaryService(deps as never)
@@ -63,8 +76,7 @@ describe('memorySummaryService', () => {
         memoryCurrentState: '两人正在交谈。',
         memoryLastMessageId: 'm2',
         memoryVersion: 1,
-      }),
-    )
+      }), expect.objectContaining({ messages: expect.any(Array), mode: 'range' }))
   })
 
   it('未达到自动间隔时不请求模型', async () => {
@@ -134,4 +146,52 @@ describe('memorySummaryService', () => {
     expect(manualResult.status).toBe('summarized')
     expect(deps.complete).toHaveBeenCalledOnce()
   })
+})
+
+
+describe('记忆任务来源和生命周期', () => {
+  it('提交携带有序消息来源和独立任务身份，公开引用没有连接凭据', async () => {
+    const deps = makeDeps()
+    const service = createMemorySummaryService(deps as never)
+    await service.summarize({ characterId: 'character-1', sessionId: 'session-1', automatic: true })
+    const params = (deps.complete.mock.calls as any)[0][0] as any
+    expect(params.observability.featureTask.owner).toEqual({ kind: 'single', characterId: 'character-1', sessionId: 'session-1' })
+    expect(params.observability.featureTask.sourceRef.messages.map((ref: { id: string }) => ref.id)).toEqual(['m1', 'm2'])
+    expect(JSON.stringify(params.observability.featureTask)).not.toContain('test-key')
+    expect((deps.updateSessionIfMemoryVersion.mock.calls as any)[0][4]).toEqual(params.observability.featureTask.sourceRef)
+  })
+
+  it('删除会话取消运行记忆，晚到完成不提交；之后允许新的任务', async () => {
+    let resolveOld!: (value: unknown) => void
+    const complete = vi.fn(() => new Promise(resolve => { resolveOld = resolve }))
+    const deps = makeDeps({ complete })
+    const service = createMemorySummaryService(deps as never)
+    const pending = service.summarize({ characterId: 'character-1', sessionId: 'session-1', automatic: true })
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce())
+    service.cancel('character-1', 'session-1')
+    expect(await pending).toEqual({ status: 'skipped', reason: 'stale_version' })
+    resolveOld({ text: '【当前状态】旧状态。\n【时间线】旧事件。', finishReason: 'stop' })
+    await Promise.resolve()
+    expect(deps.updateSessionIfMemoryVersion).not.toHaveBeenCalled()
+  })
+})
+
+
+it('记忆源更新只取消失效窗口，正常追加新消息不影响已选范围', async () => {
+  const complete = vi.fn(() => new Promise(() => {}))
+  const deps = makeDeps({ complete })
+  const original = await deps.readMessages(), current = [...original]
+  deps.readMessages.mockImplementation(() => current)
+  const service = createMemorySummaryService(deps as never)
+  const pending = service.summarize({ characterId: 'character-1', sessionId: 'session-1', automatic: true })
+  await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce())
+  const signal = (complete.mock.calls as any)[0][1] as AbortSignal
+  current.push({ ...original[1], id: 'm3', timestamp: 3, content: '后续正常追加' })
+  service.invalidateSource('character-1', 'session-1')
+  expect(signal.aborted).toBe(false)
+  current[0] = { ...original[0], content: '历史正文已编辑' }
+  service.invalidateSource('character-1', 'session-1')
+  expect(signal.aborted).toBe(true)
+  expect(await pending).toEqual({ status: 'skipped', reason: 'stale_version' })
+  expect(deps.updateSessionIfMemoryVersion).not.toHaveBeenCalled()
 })

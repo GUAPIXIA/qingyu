@@ -3,6 +3,9 @@ import { Send, Square, ImagePlus, X, Sparkles, Loader2, Undo2, Wand2, Reply, Sli
 import { cn } from '../../lib/utils'
 import { useChatInputState } from './useChatInputState'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { useChatStore } from '../../store/useChatStore'
+import { SpatialSuggestionNotice } from './SpatialSuggestionNotice'
+import { EditorSuggestions } from '../common/EditorSuggestions'
 import { CONTINUE_INTENSITY_OPTIONS, CONTINUE_LENGTH_OPTIONS, resolveContinueIntensity, resolveContinueLength } from '../../../shared/continueIntensity'
 import type { Character, Message } from '../../../shared/types'
 
@@ -12,6 +15,7 @@ interface ChatInputProps {
   /** 引用回复：被引用消息（P1-5） */
   replyTo?: Message | null
   onCancelReply?: () => void
+  onOpenSpatialSuggestions?: () => void
 }
 
 type ImageSelfMode = 'hidden' | 'silhouette' | 'translucent' | 'pov'
@@ -105,14 +109,16 @@ function ContinueTierControl<T extends string>({
  * 聊天输入框（渲染层）
  * 全部状态与逻辑见 useChatInputState（输入 / 草稿 / 命令 / 快捷回复 / AI 辅助）。
  */
-export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatInputProps) {
+export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenSpatialSuggestions }: ChatInputProps) {
   const {
-    text, setText, images, isAiProcessing, originalText, setOriginalText,
+    text, setText, images, isAiProcessing, originalText, setOriginalText, oldSuggestions,
     commandSuggestions, selectedSuggestionIdx, setCommandSuggestions, imageMenuOpen, setImageMenuOpen,
     textareaRef, effectiveReplies, isConnected, isStreaming, stopStreaming,
-    runQuickReply, handleSend, handleKeyDown, handleImageSelect, removeImage,
+    runQuickReply, handleSend, handleSendAfter, isSpatialPreparing, handleKeyDown, handleImageSelect, removeImage,
     handleAiContinue, handleAiPolish, settings,
   } = useChatInputState(character, replyTo, onCancelReply)
+  const currentSession = useChatStore(s => s.sessions.find(session => session.id === s.currentSessionId))
+  const currentSessionId = useChatStore(s => s.currentSessionId)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const [continueMenuOpen, setContinueMenuOpen] = useState(false)
   const [imageSelfMode, setImageSelfMode] = useState<ImageSelfMode>('hidden')
@@ -124,6 +130,11 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
 
   return (
     <div className="border-t border-tavern-border-soft bg-tavern-bg-soft px-4 py-3">
+      <EditorSuggestions suggestions={oldSuggestions} objectId={`chat-draft:${character.id}:${currentSessionId || 'default'}`} />
+      {currentSession?.spatialBoardEnabled === true && currentSession.characterId === character.id && onOpenSpatialSuggestions && <SpatialSuggestionNotice characterId={character.id} sessionId={currentSession.id}
+        worldId={currentSession.spatialWorldId} enabled={currentSession.spatialContextEnabled !== false && currentSession.spatialNarrativeSyncPolicy !== 'off'} onOpen={onOpenSpatialSuggestions}
+        canSend={!!text.trim() && !text.startsWith('/') && isConnected && !isStreaming && !isSpatialPreparing && !disabled}
+        onApplyAndSend={proposal => handleSendAfter(async () => { await window.api.spatial.applyProposal(character.id, currentSession.id, proposal.id) })} />}
       {/* 图片预览 */}
       {images.length > 0 && (
         <div className="flex gap-2 mb-2 flex-wrap">
@@ -384,7 +395,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
                 ? '正在生成回复...'
                 : '输入消息，Enter 发送，Shift+Enter 换行'
             }
-            disabled={disabled || isStreaming}
+            disabled={disabled || isStreaming || isSpatialPreparing}
             rows={1}
             className="textarea w-full resize-none py-2.5 pr-3 leading-relaxed"
             style={{ minHeight: '42px', maxHeight: '200px' }}
@@ -507,7 +518,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply }: ChatI
         ) : (
           <button
             onClick={handleSend}
-            disabled={!text.trim() || !isConnected}
+            disabled={!text.trim() || !isConnected || isSpatialPreparing}
             className={cn(
               'p-2.5 rounded-lg transition-all shrink-0',
               text.trim() && isConnected

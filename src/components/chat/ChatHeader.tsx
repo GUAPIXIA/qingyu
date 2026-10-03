@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, Sliders, Users, UserCircle, Plus, Star, Globe2 } from 'lucide-react'
+import { ChevronDown, Sliders, Users, UserCircle, Plus, Star, Globe2, Compass } from 'lucide-react'
 import { useChatStore } from '../../store/useChatStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { charAssetUrl } from '../../utils/asset'
@@ -9,7 +9,7 @@ import { usePersonaStore } from '../../store/usePersonaStore'
 import { Dropdown } from '../common/Dropdown'
 import { SessionSwitcher } from '../common/SessionSwitcher'
 import { CharacterAvatar } from '../character/CharacterAvatar'
-import { getDisplayName } from '../../utils/variables'
+import { getDisplayName } from '../../../shared/chat-core/variables'
 import { MemoryPanel } from './MemoryPanel'
 import { TokenUsage } from './TokenUsage'
 import { NarrativeModeSwitcher } from './NarrativeModeSwitcher'
@@ -26,6 +26,8 @@ interface ChatHeaderProps {
   showQuickSettings: boolean
   onShowQuickSettings: () => void
   onCreateSession: () => void
+  showSpatialBoard: boolean
+  onShowSpatialBoard: () => void
 }
 
 export function ChatHeader({
@@ -35,6 +37,8 @@ export function ChatHeader({
   showQuickSettings,
   onShowQuickSettings,
   onCreateSession,
+  showSpatialBoard,
+  onShowSpatialBoard,
 }: ChatHeaderProps) {
   const navigate = useNavigate()
   // P-6 修复：字段级选择器订阅，避免流式 flush（50ms）时顶栏整体重渲染
@@ -319,9 +323,26 @@ export function ChatHeader({
         />
       </div>
 
-      {/* 右上角快捷设置直达入口 */}
+      {/* 当前会话画板与快捷设置 */}
       <div className="flex items-center gap-1">
         <span className="mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
+        <button
+          type="button"
+          aria-label={showSpatialBoard ? '返回对话' : '打开空间画板'}
+          aria-pressed={showSpatialBoard}
+          onClick={onShowSpatialBoard}
+          disabled={!currentSessionId}
+          className={cn(
+            'flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+            currentSession?.spatialBoardEnabled === true
+              ? 'bg-tavern-accent-soft text-tavern-accent'
+              : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text',
+          )}
+          title={currentSessionId ? '当前会话的空间画板' : '先创建会话'}
+        >
+          <Compass className="h-4 w-4" />
+          <span className="hidden xl:inline">画板</span>
+        </button>
         <button
           type="button"
           aria-label="快捷设置"

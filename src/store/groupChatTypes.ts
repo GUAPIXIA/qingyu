@@ -1,7 +1,7 @@
 import type { GroupChat, GroupMessage, GroupSession, Preset, MemoryFactRecord, NarrativeMode } from '../../shared/types'
-import type { BudgetLoreItem, LorebookDiagnostics } from '../utils/lorebook'
+import type { BudgetLoreItem, LorebookDiagnostics } from '../../shared/chat-core/lorebook'
 import type { GroupContextBuildResult } from './groupChatContext'
-import type { FactSearchHit } from '../../shared/ipc-api'
+import type { FactSearchHit } from '../../shared/domain/semanticFacts'
 
 /** 群聊 store 的完整状态与动作接口 */
 export interface GroupChatState {
@@ -51,6 +51,8 @@ export interface GroupChatState {
   insertCharacterMessage: (charId: string, content: string) => Promise<void>
 
   buildGroupContext: (targetCharId?: string, preset?: Preset | null, opts?: {
+    configuration?: import('../../shared/chatConnection').ChatConfigurationSnapshot
+    spatialContext?: import('../../shared/spatial').SpatialGroupContext | null
     trackUsage?: boolean
     lorebookDiagnosticsMode?: 'live' | 'preview'
   }) => { role: 'system' | 'user' | 'assistant'; content: string }[]

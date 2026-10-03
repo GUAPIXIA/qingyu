@@ -19,6 +19,7 @@ import { registerPersonaIPC } from './ipc/persona'
 import { registerUsageIPC } from './ipc/usage'
 import { registerMcpIPC } from './ipc/mcp'
 import { registerGroupIPC } from './ipc/group'
+import { registerSpatialIPC } from './ipc/spatial'
 import { registerAnnouncementIPC } from './ipc/announcement'
 import { registerUpdaterIPC } from './services/updater'
 import { registerBridgeIPC, bridgeService } from './bridge'
@@ -124,13 +125,13 @@ app.whenReady().then(async () => {
       "object-src 'none'",
       "base-uri 'none'",
       "form-action 'none'",
-      "frame-ancestors 'none'",
     ].join('; ')
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const isSpatialFrame = /\/spatial-board\/index\.html(?:[?#]|$)/.test(details.url)
       callback({
         responseHeaders: {
           ...details.responseHeaders,
-          'Content-Security-Policy': [CSP],
+          'Content-Security-Policy': [`${CSP}; frame-ancestors ${isSpatialFrame ? "'self' file:" : "'none'"}`],
         },
       })
     })
@@ -232,6 +233,7 @@ app.whenReady().then(async () => {
     () => registerUsageIPC(ipcMain),
     () => registerMcpIPC(ipcMain),
     () => registerGroupIPC(ipcMain),
+    () => registerSpatialIPC(ipcMain),
     () => registerAnnouncementIPC(ipcMain),
     () => registerUpdaterIPC(ipcMain),
     () => registerBridgeIPC(ipcMain),

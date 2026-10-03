@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Sparkles, Wand2, X, Loader2, AlertCircle, Plus, Trash2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useCharacterCreatorStore } from '../../store/useCharacterCreatorStore'
+import { EditorSuggestions } from '../common/EditorSuggestions'
 import type { GenerateField, GeneratedTarget } from '../../store/useCharacterCreatorStore'
 import type { AuthorNoteConfig } from '../../../shared/types'
 
@@ -522,6 +523,7 @@ function AdvancedSettings() {
 export function ConceptStep() {
   const [concept, setConcept] = useState('')
   const draft = useCharacterCreatorStore((s) => s.draft)
+  const oldSuggestions = useCharacterCreatorStore((s) => s.oldSuggestions)
   const updateDraft = useCharacterCreatorStore((s) => s.updateDraft)
   const isExpanding = useCharacterCreatorStore((s) => s.isExpanding)
   const error = useCharacterCreatorStore((s) => s.error)
@@ -530,6 +532,7 @@ export function ConceptStep() {
 
   return (
     <div className="space-y-5">
+      <EditorSuggestions suggestions={oldSuggestions} objectId={draft.id} />
       {/* AI 一句话扩展 */}
       <div className="field-card border-tavern-accent/30">
         <div className="flex items-center gap-2 mb-2">

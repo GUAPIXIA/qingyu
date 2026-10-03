@@ -1,0 +1,17 @@
+{
+  "name": "@qingyu/spatial-core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "空间画板纯领域核心：文档/命令/校验/迁移/投影/导入防护；无 React/Electron/宿主依赖",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "check:purity": "node scripts/check-purity.mjs"
+  }
+}

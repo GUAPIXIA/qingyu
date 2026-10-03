@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ContextBuildData, ContextChatSnapshot } from '../../../shared/contextTypes'
 import type { Character, Lorebook, Message, Preset, Settings } from '../../../shared/types'
-import { buildContextMessagesFromData } from '../contextBuilder'
+import { buildContextMessagesFromData } from '../../../shared/chat-core/contextBuilder'
 
 // ===== Fixture 构造（与 contextBuilder.test.ts 一致） =====
 

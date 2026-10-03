@@ -13,9 +13,16 @@ import { safeHandle } from '../utils/safeHandle'
 import { safeId } from '../utils/pathGuard'
 import type { Settings } from '../../shared/types'
 import { createBackupV2, restoreBackupV2 } from '../services/backup'
+import { prepareFeatureDataRestore, onFeatureDataRestoring } from '../services/featureTaskLifecycle'
+import { IPC_EVENTS } from '../../shared/ipc-channels'
+import { safeSend } from '../utils/safeSend'
+import { spatialAiService } from '../services/spatialAiService'
 import { readLorebookView, saveLorebookDocumentInput } from '../services/lorebookDocumentStore'
 import { isDomainEnabled, writeThroughDomain, resetSyncStateForRestore, runBootstrapIfEnabled, type DomainFlagKey } from '../domain/syncDomainService'
 import { app } from 'electron'
+import { notifyGroupSpatialActorsChanged } from '../services/groupLifecycle'
+import { randomUUID } from 'node:crypto'
+import { hashSpatialValue } from '../services/spatialRepository'
 
 const log = createLogger('settings')
 
@@ -140,6 +147,11 @@ export function restoreSecrets(settings: Settings): void {
   }
 }
 
+function spatialConfigFingerprint(settings: Settings): string {
+  const profile = settings.connectionProfiles?.find(item => item.id === settings.activeProfileId)
+  return hashSpatialValue({profile:profile ? {...profile,apiKey:profile.apiKey || getCredential(`profile-${profile.id}`),model:settings.activeModel || profile.model} : null,personaId:settings.defaultPersonaId})
+}
+
 export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   // 读取设置
   safeHandle(ipcMain, 'settings:get', async () => {
@@ -151,14 +163,18 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
   // 保存设置
   safeHandle(ipcMain, 'settings:save', async (_e, settings: Settings) => {
-    // H1 修复：保存前剥离 apiKey 到 safeStorage（settings.json 不落明文）
-    stripSecrets(settings, true)
+    let spatialSourceChanged = false
     // BUG-20 修复：写操作经 per-file 锁串行化，避免多个保存请求并发时相互覆盖
     // 阶段 C（C-04）：锁内读旧值，写成功后对移动端安全子集做 diff 并发设置变更事件
     //（BridgeService 订阅 -> WS settings:updated；source='pc'）。
     // 防回环：安卓 PATCH 走桥接层自身写路径、不经此 IPC，不会在此二次广播。
-    await withFileLock(SETTINGS_FILE(), () => {
+    await withFileLock(SETTINGS_FILE(), async () => {
       const before = readSettingsFromDisk()
+      const beforeSpatialConfig = spatialConfigFingerprint(before)
+      // 凭据和来源版本共用设置锁，避免并发保存漏记连接变化。
+      stripSecrets(settings, true)
+      spatialSourceChanged = beforeSpatialConfig !== spatialConfigFingerprint(settings)
+      settings.spatialSourceEpoch = spatialSourceChanged ? randomUUID() : before.spatialSourceEpoch
       // 阶段 2 S2-04：settings.json 与 settings_public journal 在同一持久化事务内提交
       writeThroughDomain({
         domain: 'settings_public',
@@ -178,12 +194,23 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
       }
     })
     log.info('设置已保存', { activeProfileId: settings.activeProfileId || '(none)', theme: settings.theme })
+    if (spatialSourceChanged) notifyGroupSpatialActorsChanged()
   })
 
   // 保存凭据（加密）
   safeHandle(ipcMain, 'settings:saveCredential', async (_e, provider: string, key: string) => {
-    saveCredential(provider, key)
+    let spatialChanged = false
+    await withFileLock(SETTINGS_FILE(), () => {
+      const settings = readSettingsFromDisk()
+      spatialChanged = provider === `profile-${settings.activeProfileId}` && getCredential(provider) !== key
+      saveCredential(provider, key)
+      if (spatialChanged) {
+        settings.spatialSourceEpoch = randomUUID()
+        writeThroughDomain({domain:'settings_public',entityType:'settings_public',entityId:'settings-public',payload:settingsPublicPayload(settings),schemaVersion:1,files:[{path:SETTINGS_FILE(),content:serializeJson(settings,'settings')}]})
+      }
+    })
     log.info('凭据已保存', { provider })
+    if (spatialChanged) notifyGroupSpatialActorsChanged()
   })
 
   // 读取凭据
@@ -237,7 +264,7 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   })
 
   // 导入备份 - S1 Backup V2：支持 .zip(V2) + .json(V1 兼容)；V2 含哈希校验与 safeId 校验
-  safeHandle(ipcMain, 'settings:importBackup', async () => {
+  safeHandle(ipcMain, 'settings:importBackup', async (event) => {
     const result = await dialog.showOpenDialog({
       title: '导入备份',
       filters: [
@@ -258,9 +285,12 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     }
 
     if (isZip) {
-      const { counts } = restoreBackupV2(filePath)
-      fenceSyncStateAfterRestore('importBackupV2')
-      return { status: 'success' as const, version: 2 as const, counts }
+      const unsubscribe = onFeatureDataRestoring(() => safeSend(event.sender, IPC_EVENTS.featureDataRestoring))
+      try {
+        const { counts } = await spatialAiService.restore(() => restoreBackupV2(filePath))
+        fenceSyncStateAfterRestore('importBackupV2')
+        return { status: 'success' as const, version: 2 as const, counts }
+      } finally { unsubscribe() }
     }
 
     // V1 JSON 兼容路径
@@ -278,6 +308,8 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     const chars = safeIdList(backup.characters, '角色')
     const lorebooks = safeIdList(backup.lorebooks, '世界书')
     const presets = safeIdList(backup.presets, '预设')
+    safeSend(event.sender, IPC_EVENTS.featureDataRestoring)
+    prepareFeatureDataRestore()
     if (backup.settings && typeof backup.settings === 'object') {
       stripSecrets(backup.settings as Settings, true)
       // sync-bypass-ok: 整库恢复由 fenceSyncStateAfterRestore 统一作废 journal 并重建基线（总方案 §6.4）

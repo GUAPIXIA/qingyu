@@ -16,6 +16,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive # 构建与测试需要 shared 子模块
+
+      - name: Verify submodules
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'shared/chat-core')) { throw "shared 子模块缺失：检查 .gitmodules 与仓库访问权限（qingyu-shared）" }
+          git submodule status --recursive
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -69,6 +77,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive # android 与 android/shared 两个挂载点
+
+      - name: Verify submodules
+        run: |
+          test -d android/app || { echo "::error::android 子模块缺失（qingyu-android）"; exit 1; }
+          test -d android/shared/chat-core || { echo "::error::android/shared 子模块缺失（qingyu-shared 第二挂载点）"; exit 1; }
+          git submodule status --recursive
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

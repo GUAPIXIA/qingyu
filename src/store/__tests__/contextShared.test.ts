@@ -4,7 +4,7 @@
  * applyDepthInserts：at_depth 深度注入（含 depth 0 = 末尾的 off-by-one 修复回归）
  */
 import { describe, it, expect } from 'vitest'
-import { cropHistory, applyDepthInserts, type DepthInsertItem } from '../contextShared'
+import { cropHistory, applyDepthInserts, type DepthInsertItem } from '../../../shared/chat-core/contextShared'
 
 function makeMsg(content: string, timestamp: number) {
   return { content, images: [] as string[], timestamp }

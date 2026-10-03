@@ -12,6 +12,7 @@ import { normalizeFinishReason } from '../../../shared/generationObservation'
 import { clampGateBudgetForBody, type GateProbeSignal } from '../../../shared/reasoningGate'
 import { sanitizeApiKey } from '../../utils/pathGuard'
 import { toClaudeContent, imageErrorHint } from './vision'
+import { openCodeHeaders } from './opencodeHeaders'
 
 export const claudeAdapter: AIAdapter = {
   async chat(params, onChunk, signal, onUsage) {
@@ -89,6 +90,7 @@ export const claudeAdapter: AIAdapter = {
       }
     }
 
+    const routingHeaders = openCodeHeaders(baseUrl, params)
     const sendRequest = () => fetch(url, {
       method: 'POST',
       headers: {
@@ -97,6 +99,7 @@ export const claudeAdapter: AIAdapter = {
         // API 版本（可定期更新）
         'anthropic-version': ANTHROPIC_API_VERSION,
         'anthropic-dangerous-direct-browser-access': 'true',
+        ...routingHeaders,
       },
       body: JSON.stringify(body),
       signal,
@@ -296,6 +299,7 @@ export const claudeAdapter: AIAdapter = {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': ANTHROPIC_API_VERSION,
+        ...openCodeHeaders(baseUrl),
       },
     })
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)

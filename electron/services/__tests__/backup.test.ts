@@ -33,6 +33,8 @@ vi.mock('electron', () => ({
 
 import { createBackupV2, restoreBackupV2 } from '../backup'
 import { getCredential } from '../safeStorage'
+import { hashSpatialValue } from '../spatialRepository'
+import { createEmptyRuntime, createWorldWithDefaults } from '@qingyu/spatial-core'
 
 const TEST_ROOT = `${process.env.TEMP ?? '/tmp'}/qingyu-backup-test`
 const DATA_ROOT = join(TEST_ROOT, 'data')
@@ -72,9 +74,18 @@ function seedData(): void {
   writeFileSync(join(DATA_ROOT, 'characters', 'char1.png'), Buffer.from('fake-png'))
   writeJsonFile(join(DATA_ROOT, 'lorebooks', 'lb1.json'), { id: 'lb1', name: '世界书' })
   writeJsonFile(join(DATA_ROOT, 'presets', 'preset1.json'), { id: 'preset1', name: '预设' })
-  writeJsonFile(join(DATA_ROOT, 'chats', 'char1', 'sessions.json'), [{ id: 's1' }])
+  writeJsonFile(join(DATA_ROOT, 'chats', 'char1', 'sessions.json'), [{ id: 's1', characterId: 'char1', spatialWorldId: 'world1', spatialRuntimeId: 'single_s1', spatialAiSessionId: 'ai1' }])
   writeFileSync(join(DATA_ROOT, 'chats', 'char1', 's1.jsonl'), JSON.stringify({ id: 'm1', content: 'hi' }) + '\n')
   writeJsonFile(join(DATA_ROOT, 'groups', 'group1', 'sessions.json'), [{ id: 'g1' }])
+  const world = createWorldWithDefaults('world1', '测试世界', { now: 1 }), runtime = createEmptyRuntime('world1', 'single_s1', 1)
+  writeJsonFile(join(DATA_ROOT, 'spatial', 'worlds', 'world1.json'), world)
+  writeJsonFile(join(DATA_ROOT, 'spatial', 'runtimes', 'char1', 's1.json'), runtime)
+  writeJsonFile(join(DATA_ROOT, 'spatial', 'session-state', 'char1', 's1.json'), { schemaVersion: 1, worldId: 'world1', runtimeId: 'single_s1', bindingEpoch: 'epoch-1', commits: { once: { receipt: { revisionAfter: 1 } } } })
+  writeJsonFile(join(DATA_ROOT, 'spatial', 'transactions', 'pending.json'), { schemaVersion: 1, id: 'pending', worldId: 'world1', scope: { characterId: 'char1', sessionId: 's1' }, files: [
+    { kind: 'world', beforeHash: hashSpatialValue(world), afterHash: hashSpatialValue(world), after: world },
+    { kind: 'runtime', beforeHash: hashSpatialValue(runtime), afterHash: hashSpatialValue(runtime), after: runtime },
+  ] })
+  writeJsonFile(join(DATA_ROOT, 'spatial', 'ai-sessions', 'ai1.json'), { schemaVersion: 1, id: 'ai1', scope: { characterId: 'char1', sessionId: 's1', worldId: 'world1', runtimeId: 'single_s1', bindingEpoch: 'epoch-1' }, messages: [{ role: 'user', content: '移动到茶馆' }], proposals: [{ id: 'proposal1', status: 'pending' }], tasks: [] })
 }
 
 function resetRoot(): void {
@@ -189,6 +200,11 @@ describe('restoreBackupV2 正常往返', () => {
     expect(existsSync(join(DATA_ROOT, 'presets', 'preset1.json'))).toBe(true)
     expect(existsSync(join(DATA_ROOT, 'chats', 'char1', 'sessions.json'))).toBe(true)
     expect(existsSync(join(DATA_ROOT, 'groups', 'group1', 'sessions.json'))).toBe(true)
+    expect(existsSync(join(DATA_ROOT, 'spatial', 'worlds', 'world1.json'))).toBe(true)
+    expect(existsSync(join(DATA_ROOT, 'spatial', 'runtimes', 'char1', 's1.json'))).toBe(true)
+    expect(JSON.parse(readFileSync(join(DATA_ROOT, 'spatial', 'session-state', 'char1', 's1.json'), 'utf8')).commits.once.receipt.revisionAfter).toBe(1)
+    expect(JSON.parse(readFileSync(join(DATA_ROOT, 'spatial', 'transactions', 'pending.json'), 'utf8')).id).toBe('pending')
+      expect(JSON.parse(readFileSync(join(DATA_ROOT, 'spatial', 'ai-sessions', 'ai1.json'), 'utf8')).proposals[0].status).toBe('pending')
 
     const settingsText = readFileSync(join(DATA_ROOT, 'config', 'settings.json'), 'utf-8')
     expect(settingsText).not.toContain(SEMANTIC_KEY)
@@ -214,6 +230,44 @@ describe('restoreBackupV2 正常往返', () => {
     expect(settingsText).not.toContain(PROFILE_KEY)
     expect(getCredential('semanticTrigger')).toBe(SEMANTIC_KEY)
     expect(getCredential('profile-p1')).toBe(PROFILE_KEY)
+  })
+})
+
+describe('空间阶段 3：备份归属与事务预检', () => {
+  it.each(['scope','world','runtime','orphan','transaction'] as const)('拒绝 %s 损坏且不覆盖任何其他文件', kind => {
+    if (kind === 'scope') {
+      const path = join(DATA_ROOT, 'spatial', 'ai-sessions', 'ai1.json'), ai = JSON.parse(readFileSync(path, 'utf8'))
+      ai.scope.sessionId = 'other'; writeJsonFile(path, ai)
+    } else if (kind === 'world') rmSync(join(DATA_ROOT, 'spatial', 'worlds', 'world1.json'))
+    else if (kind === 'runtime') {
+      const path = join(DATA_ROOT, 'spatial', 'runtimes', 'char1', 's1.json'), runtime = JSON.parse(readFileSync(path, 'utf8'))
+      runtime.worldId = 'another-world'; writeJsonFile(path, runtime)
+    } else if (kind === 'orphan') {
+      const path = join(DATA_ROOT, 'spatial', 'ai-sessions', 'ai1.json'), ai = JSON.parse(readFileSync(path, 'utf8'))
+      ai.id = 'orphan'; ai.scope.characterId = 'missing-char'; writeJsonFile(join(DATA_ROOT, 'spatial', 'ai-sessions', 'orphan.json'), ai)
+    } else writeJsonFile(join(DATA_ROOT, 'spatial', 'transactions', 'pending.json'), { schemaVersion: 1, id: 'pending' })
+    createBackupV2(ZIP_PATH)
+    const settingsPath = join(DATA_ROOT, 'config', 'settings.json')
+    writeFileSync(settingsPath, '{"afterBackup":true}')
+    expect(() => restoreBackupV2(ZIP_PATH)).toThrow(/空间备份/)
+    expect(readFileSync(settingsPath, 'utf8')).toBe('{"afterBackup":true}')
+  })
+  it('成功恢复删除备份之外的旧空间事务', () => {
+    createBackupV2(ZIP_PATH)
+    const old = join(DATA_ROOT, 'spatial', 'transactions', 'old.json')
+    writeJsonFile(old, { obsolete: true })
+    restoreBackupV2(ZIP_PATH)
+    expect(existsSync(old)).toBe(false)
+  })
+  it('空间恢复写入失败时保留旧事务及被覆盖地图', () => {
+    createBackupV2(ZIP_PATH)
+    const old = join(DATA_ROOT, 'spatial', 'transactions', 'old.json'), worldPath = join(DATA_ROOT, 'spatial', 'worlds', 'world1.json')
+    writeJsonFile(old, { obsolete: true })
+    const original = readFileSync(worldPath, 'utf8')
+    mkdirSync(`${worldPath}.tmp`, { recursive: true })
+    expect(() => restoreBackupV2(ZIP_PATH)).toThrow()
+    expect(readFileSync(old, 'utf8')).toContain('obsolete')
+    expect(readFileSync(worldPath, 'utf8')).toBe(original)
   })
 })
 
@@ -260,6 +314,20 @@ describe('restoreBackupV2 拒绝目录穿越（P0-A）', () => {
 })
 
 describe('restoreBackupV2 manifest 双向校验（P0-A）', () => {
+  it('真实 ZIP 包保留完成任务和来源，但裁剪任务连接凭据', () => {
+    const path = join(DATA_ROOT, 'spatial', 'ai-sessions', 'ai1.json')
+    const ai = JSON.parse(readFileSync(path, 'utf8'))
+    ai.tasks = [{ id: 'done1', state: 'completed', mode: 'instruction', requestHash: 'hash', startedAt: 1, apiKey: PROFILE_KEY, baseUrl: 'https://private.invalid', model: 'public-model' }]
+    writeJsonFile(path, ai)
+    createBackupV2(ZIP_PATH)
+    const zip = new AdmZip(ZIP_PATH)
+    const entry = JSON.parse(zip.readAsText('spatial/ai-sessions/ai1.json'))
+    expect(entry.tasks[0]).toMatchObject({ id: 'done1', state: 'completed', model: 'public-model' })
+    expect(entry.tasks[0]).not.toHaveProperty('apiKey')
+    expect(entry.tasks[0]).not.toHaveProperty('baseUrl')
+    restoreBackupV2(ZIP_PATH)
+    expect(JSON.parse(readFileSync(path, 'utf8')).tasks[0].state).toBe('completed')
+  })
   it('拒绝无哈希记录的条目', () => {
     writeZip(ZIP_PATH, {
       files: { 'characters/char1.json': '{"id":"char1"}' },

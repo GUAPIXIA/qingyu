@@ -1,0 +1,596 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qingyu/spatial/world-v1",
+  "title": "SpatialWorldDocumentV1",
+  "description": "空间世界定义文档 v1：画板、区域、地点、距离与角色定义。不含运行时位置。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "description",
+    "rootBoardId",
+    "boards",
+    "nodes",
+    "distances",
+    "actors",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "name": {
+      "$ref": "#/$defs/name"
+    },
+    "description": {
+      "$ref": "#/$defs/description"
+    },
+    "rootBoardId": {
+      "$ref": "#/$defs/id"
+    },
+    "boards": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "$ref": "#/$defs/board"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "distances": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "$ref": "#/$defs/distance"
+      }
+    },
+    "actors": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "$ref": "#/$defs/actor"
+      }
+    },
+    "metadata": {
+      "$ref": "#/$defs/worldMetadata"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "tags": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
+    "coordinate": {
+      "type": "number"
+    },
+    "positiveSize": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "timestamp": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "coordinateConvention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "north",
+        "origin",
+        "units"
+      ],
+      "properties": {
+        "north": {
+          "const": "up"
+        },
+        "origin": {
+          "const": "top-left"
+        },
+        "units": {
+          "const": "canvas"
+        }
+      }
+    },
+    "viewportHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "zoom"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "zoom": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "board": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "description",
+        "parentEntryNodeId",
+        "coordinateConvention"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "parentEntryNodeId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "coordinateConvention": {
+          "$ref": "#/$defs/coordinateConvention"
+        },
+        "viewportHint": {
+          "$ref": "#/$defs/viewportHint"
+        }
+      }
+    },
+    "regionGeometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/coordinate"
+        },
+        "y": {
+          "$ref": "#/$defs/coordinate"
+        },
+        "width": {
+          "$ref": "#/$defs/positiveSize"
+        },
+        "height": {
+          "$ref": "#/$defs/positiveSize"
+        }
+      }
+    },
+    "placeGeometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/coordinate"
+        },
+        "y": {
+          "$ref": "#/$defs/coordinate"
+        }
+      }
+    },
+    "regionNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "boardId",
+        "kind",
+        "name",
+        "description",
+        "tags",
+        "parentNodeId",
+        "childBoardId",
+        "createdAt",
+        "updatedAt",
+        "geometry"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "boardId": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "region"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "tags": {
+          "$ref": "#/$defs/tags"
+        },
+        "parentNodeId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "childBoardId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "geometry": {
+          "$ref": "#/$defs/regionGeometry"
+        }
+      }
+    },
+    "placeNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "boardId",
+        "kind",
+        "name",
+        "description",
+        "tags",
+        "parentNodeId",
+        "childBoardId",
+        "createdAt",
+        "updatedAt",
+        "geometry",
+        "iconKey"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "boardId": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "place"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "tags": {
+          "$ref": "#/$defs/tags"
+        },
+        "parentNodeId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "childBoardId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "geometry": {
+          "$ref": "#/$defs/placeGeometry"
+        },
+        "iconKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "childLayout": {
+          "enum": [
+            "row",
+            "column",
+            "column-right"
+          ]
+        }
+      }
+    },
+    "node": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/regionNode"
+        },
+        {
+          "$ref": "#/$defs/placeNode"
+        }
+      ]
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "unit",
+        "displayText",
+        "certainty"
+      ],
+      "properties": {
+        "value": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ]
+        },
+        "unit": {
+          "enum": [
+            "m",
+            "km",
+            "au",
+            "ly",
+            "custom"
+          ]
+        },
+        "customUnit": {
+          "$ref": "#/$defs/name"
+        },
+        "displayText": {
+          "$ref": "#/$defs/name"
+        },
+        "certainty": {
+          "enum": [
+            "exact",
+            "estimated",
+            "unknown"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "unit": {
+                "const": "custom"
+              }
+            },
+            "required": [
+              "unit"
+            ]
+          },
+          "then": {
+            "required": [
+              "customUnit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "value": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "value"
+            ]
+          },
+          "then": {
+            "properties": {
+              "displayText": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        }
+      ]
+    },
+    "distance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "boardId",
+        "sourceNodeId",
+        "targetNodeId",
+        "name",
+        "description",
+        "measurement",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "distance"
+        },
+        "boardId": {
+          "$ref": "#/$defs/id"
+        },
+        "sourceNodeId": {
+          "$ref": "#/$defs/id"
+        },
+        "targetNodeId": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "measurement": {
+          "$ref": "#/$defs/measurement"
+        },
+        "travelNotes": {
+          "$ref": "#/$defs/note"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "actorExternalRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "qingyu-persona",
+            "qingyu-character",
+            "standalone"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "externalRef",
+        "displayName"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "persona",
+            "character"
+          ]
+        },
+        "externalRef": {
+          "$ref": "#/$defs/actorExternalRef"
+        },
+        "displayName": {
+          "$ref": "#/$defs/name"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "avatarAssetRef": {
+          "type": "string",
+          "maxLength": 512
+        }
+      }
+    },
+    "worldMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "createdAt",
+        "updatedAt",
+        "app"
+      ],
+      "properties": {
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "app": {
+          "const": "qingyu-spatial-board"
+        }
+      }
+    }
+  }
+}

@@ -13,6 +13,7 @@ describe('BehaviorSection', () => {
     expect(screen.getByText('对话体验')).toBeTruthy()
     expect(screen.getByText('角色表达')).toBeTruthy()
     expect(screen.getByText('封面效果')).toBeTruthy()
+    expect(screen.queryByRole('switch', { name: '启用空间画布' })).toBeNull()
     expect(screen.queryByText('检测到旧版生成设置')).toBeNull()
 
     fireEvent.click(screen.getByRole('switch', { name: '流式输出' }))

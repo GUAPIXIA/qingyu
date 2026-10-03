@@ -7,6 +7,7 @@ import { useCharacterStore } from '../../../store/useCharacterStore'
 import { getDefaultSettings } from '../../../../shared/defaults'
 import type { Character, Message, ConnectionProfile } from '../../../../shared/types'
 import { useToastStore } from '../../../store/useToastStore'
+import type { SpatialAiSession } from '../../../../shared/spatial-ai'
 
 function lastToastText(): string {
   const toasts = useToastStore.getState().toasts
@@ -126,6 +127,53 @@ describe('ChatInput', () => {
     ;(window.api as any).quickReply = {
       listAll: vi.fn().mockResolvedValue({ global: [], byCharacter: {} }),
     }
+  })
+
+  describe('阶段 3：应用位置后发送', () => {
+    function spatialFixture() {
+      useChatStore.setState({ sessions: [{ id: 's1', characterId: 'char-1', spatialBoardEnabled: true, spatialWorldId: 'world', title: '单聊', messageCount: 1, createdAt: 1, updatedAt: 1, lastMessage: '', memoryEnabled: false, memoryMode: 'manual', autoMemoryInterval: 20, memory: '', memoryUpdatedAt: 0 }] })
+      const state: SpatialAiSession = { schemaVersion: 1, id: 'ai', scope: { characterId: 'char-1', sessionId: 's1', worldId: 'world', runtimeId: 'runtime', bindingEpoch: 'epoch' },
+        messages: [], tasks: [], proposals: [{ id: 'proposal', commitId: 'commit', mode: 'dialogue_sync', status: 'pending', explanation: '', summary: ['Alice → 厨房'], unresolved: [], evidence: [], sources: [], sourceOptions: { text: '', loreEntryIds: [] }, sourceFingerprint: 'hash', personaId: null, baseVersion: null, commands: [{}], createdAt: 1 }], createdAt: 1, updatedAt: 1 }
+      vi.mocked(window.api.spatial.getAiSession).mockResolvedValue(state)
+      return { state, snapshot: { world: {}, runtime: {}, version: { worldId: 'world', runtimeId: 'runtime', bindingEpoch: 'epoch', runtimeRevision: 2, worldFingerprint: 'hash' } } }
+    }
+    it('等待位置提交完成才发送，并阻止等待期间重复点击普通发送', async () => {
+      const result = spatialFixture()
+      let resolve!: (value: typeof result) => void
+      vi.mocked(window.api.spatial.applyProposal).mockImplementation(() => new Promise(done => { resolve = done }))
+      const ui = await renderChatInput(<ChatInput character={createCharacter()} onOpenSpatialSuggestions={vi.fn()} />)
+      fireEvent.change(ui.getByPlaceholderText(/输入消息/), { target: { value: '继续' } })
+      fireEvent.click(await ui.findByRole('button', { name: '应用并发送' }))
+      await waitFor(() => expect(window.api.spatial.applyProposal).toHaveBeenCalledWith('char-1', 's1', 'proposal'))
+      expect(useChatStore.getState().sendMessage).not.toHaveBeenCalled()
+      expect(ui.getByTitle('发送')).toBeDisabled()
+      await act(async () => { resolve(result) })
+      await waitFor(() => expect(useChatStore.getState().sendMessage).toHaveBeenCalledTimes(1))
+      expect(ui.getByPlaceholderText(/输入消息/)).toHaveValue('')
+    })
+    it('位置冲突保留输入稿，不发送主请求', async () => {
+      spatialFixture()
+      vi.mocked(window.api.spatial.applyProposal).mockRejectedValue(new Error('画板版本已改变，请重新核对'))
+      const ui = await renderChatInput(<ChatInput character={createCharacter()} onOpenSpatialSuggestions={vi.fn()} />)
+      fireEvent.change(ui.getByPlaceholderText(/输入消息/), { target: { value: '继续' } })
+      fireEvent.click(await ui.findByRole('button', { name: '应用并发送' }))
+      expect(await ui.findByRole('alert')).toHaveTextContent('重新核对')
+      expect(ui.getByPlaceholderText(/输入消息/)).toHaveValue('继续')
+      expect(useChatStore.getState().sendMessage).not.toHaveBeenCalled()
+    })
+    it('等待时切换会话只提交原位置，不向新会话发送旧输入稿', async () => {
+      const result = spatialFixture()
+      let resolve!: (value: typeof result) => void
+      vi.mocked(window.api.spatial.applyProposal).mockImplementation(() => new Promise(done => { resolve = done }))
+      const ui = await renderChatInput(<ChatInput character={createCharacter()} onOpenSpatialSuggestions={vi.fn()} />)
+      fireEvent.change(ui.getByPlaceholderText(/输入消息/), { target: { value: '继续' } })
+      fireEvent.click(await ui.findByRole('button', { name: '应用并发送' }))
+      await waitFor(() => expect(resolve).toBeDefined())
+      act(() => useChatStore.setState({ currentSessionId: 's2' }))
+      await act(async () => { resolve(result) })
+      expect(useChatStore.getState().sendMessage).not.toHaveBeenCalled()
+      expect(localStorage.getItem('chat-draft:char-1:s1')).toBe('继续')
+    })
   })
 
   describe('基础渲染', () => {

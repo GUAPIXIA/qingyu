@@ -1,7 +1,11 @@
+import { upsertCompressionCache } from '../../shared/chat-core/lorebook'
+import { isFeatureTaskCancelled, onFeatureDataRestoring } from '../services/featureTaskLifecycle'
+import { assertFeatureCommit, matchesFeatureSource, compressionVersion, type FeatureCommit, type FeatureSource } from '../../shared/featureSource'
 import type { IpcMain } from 'electron'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, renameSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { DIRS, readJson, withFileLock, serializeJson } from '../services/storage'
+import { prepareChatSessionDeletion, notifyChatSpatialSourceChanged } from '../services/chatLifecycle'
 import { exportSessionJson, exportSessionMarkdown } from '../../shared/chat-core/sessionExport'
 import { getDefaultSettings } from '../../shared/defaults'
 import { createLogger } from '../services/logger'
@@ -106,6 +110,9 @@ function journalTrashedChatData(characterId: string, trashDir: string): void {
 /** chat:updateSession 允许更新的字段白名单（防止注入 id/characterId 等关键字段） */
 const UPDATE_SESSION_FIELDS = new Set([
   'title',
+  'spatialContextEnabled',
+  'spatialBoardEnabled',
+  'spatialNarrativeSyncPolicy',
   'memory',
   'memoryCurrentState',
   'memoryEnabled',
@@ -119,9 +126,12 @@ const UPDATE_SESSION_FIELDS = new Set([
   'factsVectors',
   'memoryLastMessageId',
   'memoryVersion',
+  'memorySource',
+  'memoryTaskId',
   'factsVectorVersion',
   'compressedSummary',
   'compressedRange',
+  'compressedSource',
   'titleGenerated',
   'lorebookIds',
   'personaId',
@@ -231,6 +241,11 @@ function withSessionFileLock<T>(characterId: string, sessionId: string, fn: () =
   return withFileLock(getSessionFile(characterId, sessionId), fn)
 }
 
+/** 来源正文确认与消息保存共用锁，防止确认事务期间切换/改写正文。 */
+export function withChatMessageLock<T>(scope: { characterId: string; sessionId: string }, fn: () => T | Promise<T>): Promise<T> {
+  return withSessionFileLock(safeId(scope.characterId), safeId(scope.sessionId), fn)
+}
+
 function cleanSessionUpdates(updates: Partial<ChatSession>): Partial<ChatSession> {
   if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
     throw new Error('参数无效：updates 必须为对象')
@@ -239,6 +254,8 @@ function cleanSessionUpdates(updates: Partial<ChatSession>): Partial<ChatSession
   for (const key of Object.keys(updates)) {
     if (!UPDATE_SESSION_FIELDS.has(key)) continue
     const value = (updates as Record<string, unknown>)[key]
+    if (['spatialContextEnabled', 'spatialBoardEnabled'].includes(key) && typeof value !== 'boolean') throw new Error(`参数无效：${key}`)
+    if (key === 'spatialNarrativeSyncPolicy' && !['off', 'suggest', 'auto'].includes(String(value))) throw new Error('参数无效：spatialNarrativeSyncPolicy')
     if (key === 'title' && typeof value === 'string' && value.length > 200) {
       throw new Error('标题长度不能超过 200 字符')
     }
@@ -253,26 +270,37 @@ function cleanSessionUpdates(updates: Partial<ChatSession>): Partial<ChatSession
   return clean
 }
 
+function mergeSessionUpdates(session: ChatSession, updates: Partial<ChatSession>): ChatSession {
+  const changed = (updates.spatialNarrativeSyncPolicy !== undefined && updates.spatialNarrativeSyncPolicy !== (session.spatialNarrativeSyncPolicy ?? 'suggest')) ||
+    (updates.spatialBoardEnabled !== undefined && updates.spatialBoardEnabled !== (session.spatialBoardEnabled === true)) ||
+    (updates.spatialContextEnabled !== undefined && updates.spatialContextEnabled !== (session.spatialContextEnabled !== false))
+  return { ...session, ...updates, ...(changed ? { spatialNarrativeSyncEpoch: nanoid() } : {}), updatedAt: Date.now() }
+}
+
 async function updateSessionIfMemoryVersion(
   characterId: string,
   sessionId: string,
   expectedVersion: number,
   updates: Partial<ChatSession>,
+  source?: FeatureSource,
 ): Promise<{ applied: boolean; currentVersion: number }> {
   safeId(characterId)
   safeId(sessionId)
   if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new Error('参数无效：expectedVersion')
   const clean = cleanSessionUpdates(updates)
-  return withSessionsLock(characterId, () => {
+  const apply = () => withSessionsLock(characterId, () => {
     const sessions = loadSessions(characterId)
     const idx = sessions.findIndex((session) => session.id === sessionId)
-    if (idx === -1) throw new Error('会话不存在')
+    if (idx === -1) { if (source) return { applied: false, currentVersion: 0 }; throw new Error('会话不存在') }
     const currentVersion = sessions[idx].memoryVersion ?? 0
+    if (source && updates.memoryTaskId && isFeatureTaskCancelled(updates.memoryTaskId)) return { applied: false, currentVersion }
+    if (source && !matchesFeatureSource(source, readMessages(characterId, sessionId), sessions[idx])) return { applied: false, currentVersion }
     if (currentVersion !== expectedVersion) return { applied: false, currentVersion }
-    sessions[idx] = { ...sessions[idx], ...clean, updatedAt: Date.now() }
+    sessions[idx] = mergeSessionUpdates(sessions[idx]!, clean)
     saveSessions(characterId, sessions)
     return { applied: true, currentVersion: sessions[idx].memoryVersion ?? currentVersion }
   })
+  return source ? withSessionFileLock(characterId, sessionId, apply) : apply()
 }
 
 /** 读取指定 session 的消息（含数据完整性检查） */
@@ -530,6 +558,7 @@ export function appendMessage(characterId: string, sessionId: string, message: M
     // P-8：磁盘上是追加写（旧版本行残留），累计追加次数供 compact 决策
     bumpAppendCount(characterId, sessionId)
   }
+  notifyChatSpatialSourceChanged({ characterId, sessionId })
 }
 
 /**
@@ -629,6 +658,7 @@ function computeMessageMeta(characterId: string, sessionId: string): { count: nu
  * 避免 listSessions 每次对每个会话文件全量字节扫描（阻塞主进程事件循环） */
 interface MetaCacheEntry { mtimeMs: number; size: number; meta: { count: number; lastMessage: string } }
 const sessionMetaCache = new Map<string, MetaCacheEntry>()
+onFeatureDataRestoring(() => { messagesCache.clear(); sessionMetaCache.clear() })
 const META_CACHE_MAX = 1000
 
 /** 按时间顺序计算会话摘要；编辑旧消息时，JSONL 物理尾行不代表最后一条消息。 */
@@ -755,7 +785,58 @@ function createDefaultSession(characterId: string): ChatSession {
   }
 }
 
+async function commitFeatureResult(characterId: string, sessionId: string, input: FeatureCommit): Promise<boolean> {
+  safeId(characterId); safeId(sessionId); assertFeatureCommit(input)
+  return withSessionFileLock(characterId, sessionId, () => withSessionsLock(characterId, () => {
+    if (isFeatureTaskCancelled(input.taskId)) return false
+    const sessions = loadSessions(characterId)
+    const session = sessions.find(item => item.id === sessionId)
+    if (!session) return false
+
+    if (input.feature === 'lorebook_compression') {
+      session.lorebookCompressionCache = upsertCompressionCache(session.lorebookCompressionCache, input.cacheKey, input.entry)
+      saveSessions(characterId, sessions)
+      return true
+    }
+    const messages = readMessages(characterId, sessionId)
+    if (!matchesFeatureSource(input.source, messages, session)) return false
+    if (input.feature === 'translation' || input.feature === 'direction') {
+      const message = messages.find(item => item.id === input.messageId)
+      if (!message || !input.source.messages.some(ref => ref.id === message.id)) return false
+      if (message.featureTaskIds?.[input.feature] === input.taskId) return true
+      if (input.feature === 'translation') {
+        const language = readJson<Settings>(SETTINGS_FILE())?.translationTargetLang || '中文'
+        if (language !== input.language) return false
+        updateMessage(characterId, sessionId, { ...message, translation: input.text, translationLanguage: input.language,
+          translationSource: input.source, featureTaskIds: { ...message.featureTaskIds, translation: input.taskId },
+           })
+      } else {
+        updateMessage(characterId, sessionId, { ...message, dialogueDirections: input.directions,
+          dialogueDirectionsGeneratedAt: Date.now(), dialogueDirectionsSource: input.directions.length ? input.source : null, featureTaskIds: { ...message.featureTaskIds, direction: input.taskId } })
+      }
+      return true
+    }
+    if (session.featureTaskIds?.[input.feature] === input.taskId) return true
+    if (input.feature === 'title') {
+      if (session.title !== input.expectedTitle || session.titleGenerated) return false
+      session.title = input.text.trim().slice(0, 20)
+      session.titleRevision = (session.titleRevision ?? 0) + 1
+      session.titleGenerated = true
+    } else {
+      if (compressionVersion(session) !== input.expectedCompression || !input.source.range || JSON.stringify(input.range) !== JSON.stringify(input.source.range)) return false
+      session.compressedSummary = input.text
+      session.compressedRange = input.range
+      session.compressedSource = input.source
+    }
+    session.featureTaskIds = { ...session.featureTaskIds, [input.feature]: input.taskId }
+    session.updatedAt = Date.now()
+    saveSessions(characterId, sessions)
+    return true
+  }))
+}
+
 export function registerChatIPC(ipcMain: IpcMain): void {
+  safeHandle(ipcMain, 'chat:commitFeatureResult', async (_e, characterId: string, sessionId: string, input: FeatureCommit) => commitFeatureResult(characterId, sessionId, input))
   // ===== 会话管理 =====
 
   safeHandle(ipcMain, 'chat:listSessions', async (_e, characterId: string) => {
@@ -816,6 +897,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
   safeHandle(ipcMain, 'chat:deleteSession', async (_e, characterId: string, sessionId: string) => {
     safeId(characterId)
     safeId(sessionId)
+    await prepareChatSessionDeletion({ characterId, sessionId })
     // R1 修复：删除消息文件前先获取消息文件锁（与 saveMessage/deleteMessage 锁序一致：
     // 消息锁 → sessions 锁），避免与并发写入竞态导致"删除后文件被重建/读到半删状态"
     await withSessionFileLock(characterId, sessionId, () => {
@@ -850,6 +932,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       const session = sessions.find(s => s.id === sessionId)
       if (session) {
         session.title = title
+        session.titleRevision = (session.titleRevision ?? 0) + 1
         session.updatedAt = Date.now()
         saveSessions(characterId, sessions)
       }
@@ -862,20 +945,11 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       throw new Error('参数无效：updates 必须为对象')
     }
-    // 字段白名单与值校验统一走共享清洗函数。
-    const clean = cleanSessionUpdates(updates)
-    return withSessionsLock(characterId, () => {
-      const sessions = loadSessions(characterId)
-      const idx = sessions.findIndex(s => s.id === sessionId)
-      if (idx === -1) throw new Error('会话不存在')
-      sessions[idx] = { ...sessions[idx], ...clean, updatedAt: Date.now() }
-      saveSessions(characterId, sessions)
-      return sessions[idx]
-    })
+    return chatData.updateSession(characterId, sessionId, updates)
   })
 
-  safeHandle(ipcMain, 'chat:updateSessionIfMemoryVersion', async (_e, characterId: string, sessionId: string, expectedVersion: number, updates: Partial<ChatSession>) =>
-    updateSessionIfMemoryVersion(characterId, sessionId, expectedVersion, updates))
+  safeHandle(ipcMain, 'chat:updateSessionIfMemoryVersion', async (_e, characterId: string, sessionId: string, expectedVersion: number, updates: Partial<ChatSession>, source?: FeatureSource) =>
+    updateSessionIfMemoryVersion(characterId, sessionId, expectedVersion, updates, source))
 
   // ===== 消息管理 =====
 
@@ -940,6 +1014,7 @@ export function registerChatIPC(ipcMain: IpcMain): void {
       writeMessages(characterId, sid, filtered)
       // P-6：同步更新读取缓存（readMessages 已保证缓存存在）
       messagesCacheSet(characterId, sid, filtered)
+      notifyChatSpatialSourceChanged({ characterId, sessionId: sid })
       // P-8：全量重写后重置追加计数
       resetAppendCount(characterId, sid)
     })
@@ -1156,6 +1231,7 @@ export interface ChatDataResult {
 
 /** 数据层门面：主进程侧读写会话/消息的统一入口（不含任何 IPC 依赖） */
 export const chatData = {
+  commitFeatureResult,
   readMessages,
 
   /** 会话列表（含消息数与最后消息摘要；无会话时自动创建默认会话） */
@@ -1180,6 +1256,8 @@ export const chatData = {
   saveMessage: (characterId: string, message: Message): void => {
     appendMessage(characterId, message.sessionId, withMessageIdentity(message))
   },
+  saveMessageLocked: (characterId: string, message: Message): Promise<void> =>
+    withChatMessageLock({ characterId, sessionId: message.sessionId }, () => appendMessage(characterId, message.sessionId, withMessageIdentity(message))),
 
   /** 删除单条消息（与 IPC handler 相同的读-改-写锁路径） */
   deleteMessage: async (
@@ -1196,6 +1274,7 @@ export const chatData = {
       const filtered = messages.filter((m) => m.id !== messageId)
       writeMessages(characterId, sid, filtered)
       messagesCacheSet(characterId, sid, filtered)
+      notifyChatSpatialSourceChanged({ characterId, sessionId: sid })
       resetAppendCount(characterId, sid)
     })
     await withSessionsLock(characterId, () => {
@@ -1217,6 +1296,7 @@ export const chatData = {
       const session = sessions.find((s) => s.id === sessionId)
       if (session) {
         session.title = title
+        session.titleRevision = (session.titleRevision ?? 0) + 1
         session.updatedAt = Date.now()
         saveSessions(characterId, sessions)
       }
@@ -1319,17 +1399,59 @@ export const chatData = {
       throw new Error('参数无效：updates 必须为对象')
     }
     const clean = cleanSessionUpdates(updates)
-    return withSessionsLock(characterId, () => {
+    const updated = await withSessionsLock(characterId, () => {
       const sessions = loadSessions(characterId)
       const idx = sessions.findIndex((s) => s.id === sessionId)
       if (idx === -1) throw new Error('会话不存在')
-      sessions[idx] = { ...sessions[idx], ...clean, updatedAt: Date.now() }
+      sessions[idx] = mergeSessionUpdates(sessions[idx]!, clean)
       saveSessions(characterId, sessions)
       return sessions[idx]
+    })
+    notifyChatSpatialSourceChanged({ characterId, sessionId })
+    return updated
+  },
+
+  /** 空间事务恢复只修改绑定，保留其他会话更新。 */
+  updateSpatialBindingIfMatches: async (
+    characterId: string, sessionId: string,
+    before: { worldId: string | null; runtimeId: string | null },
+    after: { worldId: string | null; runtimeId: string | null },
+  ): Promise<void> => {
+    safeId(characterId)
+    safeId(sessionId)
+    if (after.worldId) safeId(after.worldId)
+    if (after.runtimeId) safeId(after.runtimeId)
+    await withSessionsLock(characterId, () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find((item) => item.id === sessionId)
+      if (!session) throw new Error('会话不存在')
+      const worldId = session.spatialWorldId ?? null
+      const runtimeId = session.spatialRuntimeId ?? null
+      if (worldId === after.worldId && runtimeId === after.runtimeId) return
+      if (worldId !== before.worldId || runtimeId !== before.runtimeId) throw new Error('空间绑定已改变，停止事务恢复')
+      session.spatialWorldId = after.worldId
+      session.spatialRuntimeId = after.runtimeId
+      session.updatedAt = Date.now()
+      saveSessions(characterId, sessions)
     })
   },
 
   /** 仅当磁盘中的 memoryVersion 仍等于 expectedVersion 时应用更新。 */
+  attachSpatialAiSession: async (characterId: string, sessionId: string,
+    expected: { worldId: string | null; runtimeId: string | null; aiSessionId: string | null }, aiSessionId: string): Promise<void> => {
+    safeId(aiSessionId)
+    await withSessionsLock(safeId(characterId), () => {
+      const sessions = loadSessions(characterId)
+      const session = sessions.find(item => item.id === safeId(sessionId))
+      if (!session || (session.spatialWorldId ?? null) !== expected.worldId ||
+        (session.spatialRuntimeId ?? null) !== expected.runtimeId || (session.spatialAiSessionId ?? null) !== expected.aiSessionId) {
+        throw new Error('画板助手关联范围已改变')
+      }
+      session.spatialAiSessionId = aiSessionId
+      saveSessions(characterId, sessions)
+    })
+  },
+
   updateSessionIfMemoryVersion,
 
   /** 清空指定会话消息（与 IPC handler chat:clearChat 同一路径：消息锁→sessions 锁） */
@@ -1368,6 +1490,7 @@ export const chatData = {
   deleteSession: async (characterId: string, sessionId: string): Promise<void> => {
     safeId(characterId)
     safeId(sessionId)
+    await prepareChatSessionDeletion({ characterId, sessionId })
     await withSessionFileLock(characterId, sessionId, () => {
       const filePath = getSessionFile(characterId, sessionId)
       if (existsSync(filePath)) {

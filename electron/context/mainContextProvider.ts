@@ -23,7 +23,6 @@ import { chatData } from '../ipc/chat'
 import { getBuiltinPresets } from '../ipc/preset'
 import { readRules } from '../ipc/regex'
 import type {
-  ActiveProfile,
   ContextBuildData,
   ContextChatSnapshot,
   ContextDataProvider,
@@ -35,43 +34,14 @@ import type {
   Persona,
   Preset,
   RegexRule,
-  Settings,
 } from '../../shared/types'
-import { getDefaultSettings } from '../../shared/defaults'
-import { restoreSecrets } from '../ipc/settings'
+import { readChatSettings, resolveChatProfile } from '../services/chatConnection'
+import { spatialContextService } from '../services/spatialContextService'
 import { resolveDefaultGateLevel, resolveReasoningGate } from '../../shared/reasoningGate'
 import { listLorebookViews } from '../services/lorebookDocumentStore'
 import { withResolvedSessionPersona } from '../../shared/personaResolution'
 
 /** 读取设置（含默认值兜底；H1：settings.json 不落 apiKey，需从 safeStorage 回填） */
-function readSettings(): Settings {
-  const settingsPath = join(DIRS.config(), 'settings.json')
-  const saved = readJson<Settings>(settingsPath, 'settings')
-  if (!saved) return getDefaultSettings()
-  // H1 修复：profile/tts/生图/识图的 apiKey 存在 safeStorage，settings.json 无明文，
-  // 主进程作为密钥唯一持有者需回填后再使用（对齐渲染层 settings:get 的 restoreSecrets）
-  restoreSecrets(saved)
-  // 与渲染层 loadSettings 的合并语义保持一致：缺省字段用默认值补全
-  return { ...getDefaultSettings(), ...saved }
-}
-
-/** 解析活跃 Profile（对齐渲染层 useSettingsStore.getActiveProfile） */
-function resolveActiveProfile(settings: Settings): ActiveProfile | null {
-  if (!settings.activeProfileId) return null
-  const profile = settings.connectionProfiles.find((p) => p.id === settings.activeProfileId)
-  if (!profile) return null
-  return {
-    name: profile.name,
-    provider: profile.provider,
-    apiKey: profile.apiKey,
-    baseUrl: profile.baseUrl,
-    model: profile.model,
-    maxContext: profile.maxContext || 0,
-    useInstructTemplate: profile.useInstructTemplate,
-    capabilityOverride: profile.capabilityOverride,
-  }
-}
-
 /** 读取全部预设（内置 + 自定义，对齐 preset:list 语义） */
 async function listAllPresets(): Promise<Preset[]> {
   const custom = await listJsonFilesAsync<Preset>(DIRS.presets())
@@ -115,13 +85,13 @@ async function buildChatSnapshot(
 export const mainContextProvider: ContextDataProvider = {
   async fetchBuildData(characterId, sessionId, opts): Promise<ContextBuildData> {
     const character = getCharacter(characterId)
-    const storedSettings = readSettings()
+    const storedSettings = readChatSettings()
     const chat = await buildChatSnapshot(character, sessionId)
     const currentSession = chat.sessions.find((session) => session.id === chat.currentSessionId) ?? null
     const personas = readJson<Persona[]>(join(DIRS.config(), 'personas.json')) ?? []
     // 会话身份是唯一可信来源；不再依赖渲染层延迟落盘的全局身份镜像。
     const settings = withResolvedSessionPersona(storedSettings, currentSession, personas)
-    const profile = resolveActiveProfile(settings)
+    const profile = resolveChatProfile(settings)
 
     // 预设优先级：显式覆盖 > 角色绑定 > 设置默认（会话无 presetId 字段，对齐渲染层 activePresetId 语义）
     let presetId = opts?.presetId ?? undefined
@@ -159,6 +129,7 @@ export const mainContextProvider: ContextDataProvider = {
       settings: { settings, profile },
       lorebooks,
       regexRules,
+      ...(opts?.clientKind === 'desktop' ? { spatialContext: await spatialContextService.read({ characterId, sessionId }) ?? undefined } : {}),
       ...(reasoningGate ? { reasoningGate } : {}),
     }
   },
@@ -172,7 +143,7 @@ export const mainContextProvider: ContextDataProvider = {
 /** 主进程 ContextDataWriter 实现：直接复用 chatData（与 IPC handler 同一底层存储） */
 export const mainContextWriter = {
   saveMessage: (characterId: string, message: Parameters<typeof chatData.saveMessage>[1]) =>
-    chatData.saveMessage(characterId, message),
+    chatData.saveMessageLocked(characterId, message),
   deleteMessage: chatData.deleteMessage,
   renameSession: chatData.renameSession,
   createSession: chatData.createSession,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_LOREBOOK_SCAN_DEPTH,
   resolveLorebookScanDepth,
-} from '../chatConstants'
+} from '../../../shared/chat-core/chatConstants'
 
 describe('resolveLorebookScanDepth', () => {
   it('显式配置允许低于默认扫描深度', () => {

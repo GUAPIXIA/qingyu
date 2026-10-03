@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "world_bad_kind",
+  "name": "非法节点类型",
+  "description": "反例：kind 为 door（第三种空间图形），schema 应拒绝。",
+  "rootBoardId": "board_root",
+  "boards": [
+    {
+      "id": "board_root",
+      "name": "根画板",
+      "description": "",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "door_bad",
+      "boardId": "board_root",
+      "kind": "door",
+      "name": "门",
+      "description": "用户不可添加第三种空间图形。",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 240,
+        "y": 160
+      }
+    }
+  ],
+  "distances": [],
+  "actors": [],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

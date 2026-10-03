@@ -14,6 +14,7 @@ import {
   saveScrollMemory,
 } from '../../utils/scrollMemory'
 import { getDefaultSettings } from '../../../shared/defaults'
+import { registerSpatialFlush } from '../../lib/spatialFlush'
 import type { Character, ConnectionProfile, Message } from '../../../shared/types'
 
 // jsdom 无布局测量，Virtuoso 虚拟列表不会渲染 itemContent；mock 为普通列表
@@ -116,6 +117,21 @@ function renderPage() {
 }
 
 describe('ChatPage 冒烟测试', () => {
+  it('画板保存被拒绝时新建对话捕获错误，保留原会话而不产生未处理 Promise', async () => {
+    setupStores(true, makeCharacter())
+    renderPage()
+    await screen.findByPlaceholderText(/输入消息/)
+    act(() => useChatStore.setState({ currentSessionId: 'original-session' }))
+    const unregister = registerSpatialFlush(async () => { throw new Error('结构调整被拒绝：请先调整角色位置') })
+    try {
+      fireEvent(window, new Event('shortcut:new-chat'))
+      await waitFor(() => expect(useChatStore.getState().error).toContain('结构调整被拒绝'))
+      expect(useChatStore.getState().currentSessionId).toBe('original-session')
+      expect(window.api.chat.createSession).not.toHaveBeenCalled()
+      expect(screen.queryByRole('dialog', { name: /开场白/ })).toBeNull()
+    } finally { unregister() }
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -155,6 +171,17 @@ describe('ChatPage 冒烟测试', () => {
     setupStores(true, makeCharacter())
     const { findByPlaceholderText } = renderPage()
     expect(await findByPlaceholderText(/输入消息/)).toBeTruthy()
+  })
+
+  it('全局关闭画布后仍保留单聊入口，便于进入画布重新开启', async () => {
+    setupStores(true, makeCharacter())
+    renderPage()
+    await screen.findByPlaceholderText(/输入消息/)
+    expect(screen.getByRole('button', { name: '打开空间画板' })).toBeTruthy()
+    act(() => useSettingsStore.setState(state => ({ settings: { ...state.settings, spatialBoardEnabled: false } })))
+    expect(screen.getByRole('button', { name: '打开空间画板' })).toBeTruthy()
+    act(() => useSettingsStore.setState(state => ({ settings: { ...state.settings, spatialBoardEnabled: true } })))
+    expect(screen.getByRole('button', { name: '打开空间画板' })).toBeTruthy()
   })
 
   it('有角色无消息时显示空对话提示', async () => {

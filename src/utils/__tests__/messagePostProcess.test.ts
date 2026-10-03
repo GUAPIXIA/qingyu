@@ -8,7 +8,7 @@ import {
   normalizeRoleplayDialoguePrefixes,
   trimContinuationOverlap,
   trimContinuationSeam,
-} from '../messagePostProcess'
+} from '../../../shared/chat-core/messagePostProcess'
 
 describe('extractThought', () => {
   it('removes vendor <thinking> blocks instead of exposing them as role thoughts', () => {

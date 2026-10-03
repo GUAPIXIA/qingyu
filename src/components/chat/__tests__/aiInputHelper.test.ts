@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  callAiHelper,
   ensureUserPerspective,
   normalizeContinueOutput,
   parseContinueResult,
@@ -11,7 +10,8 @@ import {
   isAcceptableAfterLengthRepair,
   buildLengthRepairInstruction,
   classifyContinueFailure,
-} from '../aiInputHelper'
+} from '../../../../shared/chat-core/aiInputHelper'
+import { callAiHelper } from '../../../features/chat/aiHelperClient'
 import type { Character, Message } from '../../../../shared/types'
 
 function createCharacter(overrides: Partial<Character> = {}): Character {

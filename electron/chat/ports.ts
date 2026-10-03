@@ -30,6 +30,7 @@ export interface PersistUserMessage {
 }
 
 export interface PersistAssistantMessage {
+  spatialGenerationId?: string
   id: string
   sessionId: string
   characterId: string
@@ -51,16 +52,18 @@ export interface MessagePort {
   appendUserMessage(input: PersistUserMessage): Promise<{ id: string }>
   commitAssistantMessage(input: PersistAssistantMessage): Promise<{ id: string }>
   updateAssistantMessage(messageId: string, patch: { content: string }): Promise<void>
-  appendSwipedCandidate(messageId: string, content: string, generationKind?: MessageGenerationKind): Promise<{ id: string; content: string; swipes: string[]; swipeIndex: number }>
+  appendSwipedCandidate(messageId: string, content: string, generationKind?: MessageGenerationKind, spatialGenerationId?: string): Promise<{ id: string; content: string; swipes: string[]; swipeIndex: number }>
 }
 
 export interface BuildContextInput {
+  clientKind?: 'desktop' | 'android'
   sessionId: string
   characterId: string
   content: string
 }
 
 export interface PreparedContext {
+  spatialContext?: Pick<import('../../shared/spatial').SpatialContext, 'snapshotId' | 'version' | 'tokens' | 'cropped'>
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   fingerprint: string
   requestMaxTokens: number
@@ -90,6 +93,8 @@ export interface ContextPort {
 }
 
 export interface ModelRequest {
+  /** 供应商会话路由使用的稳定对话 ID。 */
+  sessionId?: string
   messages: PreparedContext['messages']
   model: string
   provider: string
@@ -104,6 +109,7 @@ export interface ModelCallbacks {
 }
 
 export interface ModelResult {
+  finishReason?: import('../../shared/types').AIFinishReason
   text: string
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
 }
@@ -117,6 +123,11 @@ export interface ModelPort {
  */
 export interface MemorySchedulerPort {
   schedule(input: { sessionId: string; characterId: string }): void
+}
+
+export interface SpatialSchedulerPort {
+  prepare(scope: { characterId: string; sessionId: string }, input: { generationId: string; kind: 'normal' | 'regenerate' | 'continue'; expectedVersion?: import('../../shared/spatial').SpatialVersion }): Promise<string | null>
+  saved(scope: { characterId: string; sessionId: string }, generationId: string, messageId: string): Promise<void>
 }
 
 /**

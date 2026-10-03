@@ -22,6 +22,7 @@ export const DIRS = {
   embeddingIndexes: () => join(app.getPath('userData'), 'indexes', 'embedding'),
   presets: () => join(getDataDir(), 'presets'),
   groups: () => join(getDataDir(), 'groups'),
+  spatial: () => join(getDataDir(), 'spatial'),
   backups: () => join(getDataDir(), 'backups'),
 } as const
 

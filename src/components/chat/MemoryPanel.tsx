@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { isMemoryFact, memoryFactToText } from '../../utils/memory'
+import { isMemoryFact, memoryFactToText } from '../../../shared/chat-core/memory'
 import type { MemoryFact, MemoryFactRecord } from '../../../shared/types'
 
 interface Session {

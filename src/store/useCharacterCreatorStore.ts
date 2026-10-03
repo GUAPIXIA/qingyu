@@ -20,6 +20,8 @@ import type { Character } from '../../shared/types'
 import type { ChatParams } from '../../shared/types'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
+import { EditorAssistant, type EditorTicket, type EditorSuggestion } from './editorAssistant'
+const creatorAssistant = new EditorAssistant('character-creator', '')
 
 export const DRAFT_KEY = 'character-creator-draft'
 
@@ -37,8 +39,9 @@ export interface PendingGeneration {
   target: GeneratedTarget
   /** 生成结果原文（tags 为顿号/逗号分隔文本，apply 时解析为数组） */
   content: string
-  /** 生成发起时的原值快照（仅作 UI 对比展示；apply 一律基于最新 draft 计算，防覆盖用户生成期间的新输入） */
+  /** 发起时的原值；替换核对版本，显式追加基于最新草稿。 */
   original: string
+  source?: EditorTicket
 }
 
 /** UEX-P2-07：三选动作——replace 覆盖 / append 追加 / discard 放弃 */
@@ -272,6 +275,7 @@ function createEmptyDraft(): Character {
 }
 
 interface CharacterCreatorState {
+  oldSuggestions: EditorSuggestion[]
   step: CreatorStep
   draft: Character
   // 封面
@@ -324,50 +328,19 @@ interface CharacterCreatorState {
   reset: () => void
 }
 
-/** 运行一次流式 AI 调用，返回 requestId（自动绑定/解绑回调，支持取消） */
-function runAIChat(
-  params: Omit<ChatParams, 'requestId'>,
-  callbacks: {
-    onChunk?: (fullText: string) => void
-    onDone?: (fullText: string) => void
-    onError?: (error: string) => void
-  },
-): string {
-  const requestId = `charcreate-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  let fullText = ''
-  let finished = false
-  const unbindChunk = window.api.ai.onChunk((data) => {
-    if (data.requestId !== requestId) return
-    fullText += data.text
-    callbacks.onChunk?.(fullText)
-  })
-  const unbindDone = window.api.ai.onComplete((payload) => {
-    if (payload.requestId !== requestId) return
-    finished = true
-    unbindChunk()
-    unbindDone()
-    unbindError()
-    callbacks.onDone?.(fullText)
-  })
-  const unbindError = window.api.ai.onError((data) => {
-    if (data.requestId !== requestId) return
-    finished = true
-    unbindChunk()
-    unbindDone()
-    unbindError()
-    callbacks.onError?.(data.error)
-  })
-  window.api.ai.chat({ ...params, requestId }).catch((e: unknown) => {
-    if (finished) return
-    unbindChunk()
-    unbindDone()
-    unbindError()
-    callbacks.onError?.(e instanceof Error ? e.message : String(e))
-  })
-  return requestId
+/** 与其他编辑辅助共用取消、监听清理、超时和任务路由。 */
+function runAIChat(params: Omit<ChatParams, 'requestId'>, callbacks: {
+  onDone?: (text: string) => void; onError?: (error: string) => void
+}, ticket: EditorTicket): string {
+  void creatorAssistant.request(ticket, { ...params, requestId: ticket.task.id })
+    .then(text => callbacks.onDone?.(text))
+    .catch(error => callbacks.onError?.(error instanceof Error ? error.message : String(error)))
+    .finally(() => creatorAssistant.finish(ticket))
+  return ticket.task.id
 }
 
 export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get) => ({
+  oldSuggestions: [],
   step: 0,
   draft: createEmptyDraft(),
   coverMode: 'upload',
@@ -390,7 +363,10 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
 
   setCoverMode: (mode) => set({ coverMode: mode }),
 
-  updateDraft: (partial) => set((state) => ({ draft: { ...state.draft, ...partial } })),
+  updateDraft: (partial) => {
+    creatorAssistant.touch()
+    set((state) => ({ draft: { ...state.draft, ...partial } }))
+  },
 
   setAvatarPosition: (pos) => set({ avatarPosition: pos }),
 
@@ -424,17 +400,25 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       set({ error: '请先输入角色概念，如「赛博朋克世界的女黑客」' })
       return
     }
-    // 重复点击时取消上一次
-    const prevRequest = get().expandRequestId
-    if (prevRequest) {
-      window.api.ai.cancelChat(prevRequest)
+    // 登记新任务时统一取消上一次，包括预算等待。
+    set({ isExpanding: true, generatingField: null, generatingGreetingIndex: null, pendingGeneration: null, error: null })
+    const initialDraft = structuredClone(get().draft)
+    creatorAssistant.syncObject(initialDraft.id)
+    const ticket = creatorAssistant.begin('character_expand', [initialDraft, concept])
+    set({ expandRequestId: ticket.task.id })
+    const model = profile.model
+    let plan
+    try {
+      plan = await resolveRendererGenerationTaskBudget({
+        profile, model, task: 'character_expand', inputChars: concept.length,
+      })
+    } catch (error) {
+      if (creatorAssistant.owns(ticket)) set({ isExpanding: false, generatingField: null, generatingGreetingIndex: null, expandRequestId: null, error: error instanceof Error ? error.message : String(error) })
+      creatorAssistant.finish(ticket)
+      return
     }
-    set({ isExpanding: true, error: null })
-    const model = useSettingsStore.getState().settings.activeModel || profile.model
-    const plan = await resolveRendererGenerationTaskBudget({
-      profile, model, task: 'character_expand', inputChars: concept.length,
-    })
 
+    if (!creatorAssistant.owns(ticket)) return
     const requestId = runAIChat(
       {
         messages: [
@@ -457,8 +441,14 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
         onDone: (text) => {
           // H-13 修复：主进程 abort 被视为正常结束并补发 aiDone，被取消/替换的旧请求
           // 必须忽略其 onDone，否则污染新请求状态与草稿
-          if (get().expandRequestId !== requestId) return
+          if (get().expandRequestId !== ticket.task.id || !creatorAssistant.owns(ticket)) return
           const parsed = parseExpandResult(text)
+          if (parsed && !creatorAssistant.current(ticket)) {
+            creatorAssistant.keep(ticket, JSON.stringify(parsed, null, 2), '角色设定扩展')
+            set({ oldSuggestions: [...creatorAssistant.suggestions], isExpanding: false, expandRequestId: null })
+            return
+          }
+          if (parsed) creatorAssistant.touch()
           set((state) => ({
             draft: { ...state.draft, ...(parsed ?? {}) },
             isExpanding: false,
@@ -467,10 +457,11 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
           }))
         },
         onError: (err) => {
-          if (get().expandRequestId !== requestId) return
+          if (get().expandRequestId !== ticket.task.id || !creatorAssistant.owns(ticket)) return
           set({ isExpanding: false, expandRequestId: null, error: err })
         },
       },
+      ticket,
     )
     set({ expandRequestId: requestId })
   },
@@ -481,18 +472,26 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       set({ error: '请先在「API 页面」配置 AI 连接' })
       return
     }
-    const prevFieldRequest = get().expandRequestId
-    if (prevFieldRequest) {
-      window.api.ai.cancelChat(prevFieldRequest)
-    }
     // UEX-P2-07：简单方案——再次点「帮我写」时静默丢弃旧的未决生成结果，再发起新生成
-    set({ generatingField: field, error: null, pendingGeneration: null })
+    set({ isExpanding: false, generatingField: field, generatingGreetingIndex: null, error: null, pendingGeneration: null })
 
-    const { systemPrompt, userContent } = buildFieldGeneratePrompt(field, get().draft, userInput)
-    const model = useSettingsStore.getState().settings.activeModel || profile.model
-    const plan = await resolveRendererGenerationTaskBudget({
-      profile, model, task: 'character_field', inputChars: userContent.length,
-    })
+    const initialDraft = structuredClone(get().draft)
+    creatorAssistant.syncObject(initialDraft.id)
+    const ticket = creatorAssistant.begin('character_field', [initialDraft, [field, userInput]])
+    set({ expandRequestId: ticket.task.id })
+    const { systemPrompt, userContent } = buildFieldGeneratePrompt(field, initialDraft, userInput)
+    const model = profile.model
+    let plan
+    try {
+      plan = await resolveRendererGenerationTaskBudget({
+        profile, model, task: 'character_field', inputChars: userContent.length,
+      })
+    } catch (error) {
+      if (creatorAssistant.owns(ticket)) set({ isExpanding: false, generatingField: null, generatingGreetingIndex: null, expandRequestId: null, error: error instanceof Error ? error.message : String(error) })
+      creatorAssistant.finish(ticket)
+      return
+    }
+    if (!creatorAssistant.owns(ticket)) return
     const requestId = runAIChat(
       {
         messages: [
@@ -514,32 +513,33 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       {
         onDone: (text) => {
           // H-13：被取消/替换的旧请求忽略其补发 aiDone
-          if (get().expandRequestId !== requestId) return
+          if (get().expandRequestId !== ticket.task.id || !creatorAssistant.owns(ticket)) return
           const content = cleanFieldOutput(text, field).trim()
           if (!content) {
             set({ generatingField: null, expandRequestId: null, error: `「${FIELD_LABELS[field]}」生成失败，请重试` })
             return
           }
           // UEX-P2-07：生成结果进入待确认（替换/追加/放弃），不直接覆盖 draft 字段
-          set((state) => ({
+          set({
             pendingGeneration: {
               target: { kind: 'field', field },
-              content,
-              // 生成时原值仅作 UI 对比展示；apply 时读最新 draft，防覆盖用户生成期间的新输入
-              original: field === 'tags' ? (state.draft.tags ?? []).join('、') : state.draft[field] ?? '',
+              content, source: ticket,
+              // 对比发起时的原值；提交时另行核对版本。
+              original: field === 'tags' ? (initialDraft.tags ?? []).join('、') : initialDraft[field] ?? '',
             },
             generatingField: null,
             expandRequestId: null,
             error: null,
-          }))
+          })
         },
         onError: (err) => {
-          if (get().expandRequestId !== requestId) return
+          if (get().expandRequestId !== ticket.task.id || !creatorAssistant.owns(ticket)) return
           set({ generatingField: null, expandRequestId: null, error: err })
         },
       },
+      ticket,
     )
-    // H-12 修复：写入 expandRequestId（此前从不写入，取消按钮/重复点击取消完全失效）
+    // 与任务身份一致，旧任务回调不能修改新操作状态。
     set({ expandRequestId: requestId })
   },
 
@@ -549,18 +549,26 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       set({ error: '请先在「API 页面」配置 AI 连接' })
       return
     }
-    const prevGreetingRequest = get().expandRequestId
-    if (prevGreetingRequest) {
-      window.api.ai.cancelChat(prevGreetingRequest)
-    }
     // UEX-P2-07：简单方案——新生成静默丢弃旧的未决生成结果
-    set({ generatingGreetingIndex: index, error: null, pendingGeneration: null })
+    set({ isExpanding: false, generatingField: null, generatingGreetingIndex: index, error: null, pendingGeneration: null })
 
-    const { systemPrompt, userContent } = buildGreetingPrompt(index, get().draft, userInput)
-    const model = useSettingsStore.getState().settings.activeModel || profile.model
-    const plan = await resolveRendererGenerationTaskBudget({
-      profile, model, task: 'greeting', inputChars: userContent.length,
-    })
+    const initialDraft = structuredClone(get().draft)
+    creatorAssistant.syncObject(initialDraft.id)
+    const ticket = creatorAssistant.begin('greeting', [initialDraft, [index, userInput]])
+    set({ expandRequestId: ticket.task.id })
+    const { systemPrompt, userContent } = buildGreetingPrompt(index, initialDraft, userInput)
+    const model = profile.model
+    let plan
+    try {
+      plan = await resolveRendererGenerationTaskBudget({
+        profile, model, task: 'greeting', inputChars: userContent.length,
+      })
+    } catch (error) {
+      if (creatorAssistant.owns(ticket)) set({ isExpanding: false, generatingField: null, generatingGreetingIndex: null, expandRequestId: null, error: error instanceof Error ? error.message : String(error) })
+      creatorAssistant.finish(ticket)
+      return
+    }
+    if (!creatorAssistant.owns(ticket)) return
     const requestId = runAIChat(
       {
         messages: [
@@ -582,39 +590,40 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       {
         onDone: (text) => {
           // H-13：被取消/替换的旧请求忽略其补发 aiDone
-          if (get().expandRequestId !== requestId) return
+          if (get().expandRequestId !== ticket.task.id || !creatorAssistant.owns(ticket)) return
           const content = cleanFieldOutput(text).trim()
           if (!content) {
             set({ generatingGreetingIndex: null, expandRequestId: null, error: '开场白生成失败，请重试' })
             return
           }
           // UEX-P2-07：生成结果进入待确认（替换/追加/放弃），不直接覆盖开场白
-          set((state) => ({
+          set({
             pendingGeneration: {
               target: { kind: 'greeting', index },
-              content,
+              content, source: ticket,
               // 生成时原文仅作 UI 对比展示；apply 时读最新 draft
               original: index === -1
-                ? state.draft.firstMessage
-                : state.draft.alternateGreetings?.[index] ?? '',
+                ? initialDraft.firstMessage
+                : initialDraft.alternateGreetings?.[index] ?? '',
             },
             generatingGreetingIndex: null,
             expandRequestId: null,
             error: null,
-          }))
+          })
         },
         onError: (err) => {
-          if (get().expandRequestId !== requestId) return
+          if (get().expandRequestId !== ticket.task.id || !creatorAssistant.owns(ticket)) return
           set({ generatingGreetingIndex: null, expandRequestId: null, error: err })
         },
       },
+      ticket,
     )
-    // H-12 修复：写入 expandRequestId
+    // 保留当前任务身份。
     set({ expandRequestId: requestId })
   },
 
   /** UEX-P2-07：处理待确认生成结果——replace 覆盖 / append 追加 / discard 放弃；
-   * 一律在 apply 时读最新 draft 计算（不做生成时快照替换），防覆盖用户生成期间的新输入 */
+   * 替换核对发起版本；追加由用户明确选择，并基于最新草稿计算。 */
   applyGenerated: (action) => {
     const pending = get().pendingGeneration
     if (!pending) return
@@ -623,6 +632,11 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
       set({ pendingGeneration: null })
       return
     }
+    if (pending.source && (!creatorAssistant.owns(pending.source) || (action === 'replace' && !creatorAssistant.current(pending.source)))) {
+      set({ error: '草稿已变化，请查看旧建议或重新生成；未覆盖当前输入' })
+      return
+    }
+    creatorAssistant.touch()
     set((state) => {
       const draft = { ...state.draft }
       const { target, content } = pending
@@ -658,6 +672,7 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
   },
 
   cancelExpand: () => {
+    creatorAssistant.cancel()
     const { expandRequestId } = get()
     if (expandRequestId) {
       window.api.ai.cancelChat(expandRequestId)
@@ -777,7 +792,9 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
         avatar: '',
         cover: saved.coverThumb ?? undefined,
       } as Character
+      creatorAssistant.cancel(); creatorAssistant.touch(); creatorAssistant.syncObject(restored.id)
       set({
+        isExpanding: false, generatingField: null, generatingGreetingIndex: null, expandRequestId: null, oldSuggestions: [],
         step: (saved.step ?? 0) as CreatorStep,
         draft: restored,
         avatarPosition: saved.avatarPosition ?? 'center',
@@ -815,11 +832,13 @@ export const useCharacterCreatorStore = create<CharacterCreatorState>((set, get)
   },
 
   reset: () => {
+    creatorAssistant.cancel(); creatorAssistant.touch()
     const prevResetRequest = get().expandRequestId
     if (prevResetRequest) {
       window.api.ai.cancelChat(prevResetRequest)
     }
     set({
+      oldSuggestions: [],
       step: 0,
       draft: createEmptyDraft(),
       coverMode: 'upload',

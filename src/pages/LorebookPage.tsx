@@ -28,6 +28,8 @@ import {
 } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { resolveRendererGenerationTaskBudget } from '../store/generationTaskBudget'
+import { EditorAssistant } from '../store/editorAssistant'
+import { EditorSuggestions } from '../components/common/EditorSuggestions'
 import type { Lorebook, LoreEntry } from '../../shared/types'
 import { stripAllThinking } from '../../shared/thoughtMarkup'
 import type {
@@ -46,7 +48,7 @@ import { LorebookMappingWizardModal } from './lorebook/LorebookMappingWizardModa
 import { LorebookHealthReportModal } from './lorebook/LorebookHealthReportModal'
 import { LorebookBatchSemanticModal } from './lorebook/LorebookBatchSemanticModal'
 import { appendLocalizedKeywords } from '../utils/lorebookLocalization'
-import { lorebookCache } from '../utils/lorebook'
+import { lorebookCache } from '../features/lorebook/lorebookCache'
 import { Toggle } from './lorebook/lorebookComponents'
 import { POSITION_LABELS, MATCH_MODE_LABELS, PRIORITY_LABELS } from './lorebook/lorebookConstants'
 
@@ -76,8 +78,18 @@ function createEntry(): LoreEntry {
 
 export function LorebookPage() {
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [editingEntry, setEditingEntry] = useState<LoreEntry | null>(null)
+  const [selectedId, setSelectedIdState] = useState<string | null>(null)
+  const editorRef = useRef<EditorAssistant | null>(null)
+  if (!editorRef.current) editorRef.current = new EditorAssistant('lorebook', '')
+  const editor = editorRef.current
+  editor.syncObject(selectedId ?? '')
+  const selectedIdRef = useRef(selectedId)
+  const setSelectedId = useCallback((value: string | null | ((previous: string | null) => string | null)) => {
+    const next = typeof value === 'function' ? value(selectedIdRef.current) : value
+    editor.syncObject(next ?? ''); selectedIdRef.current = next; setSelectedIdState(next)
+  }, [editor])
+  const [editingEntry, setEditingEntryState] = useState<LoreEntry | null>(null)
+  const setEditingEntry = (value: LoreEntry | null) => { editor.touch(); setEditingEntryState(value) }
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null)
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set())
@@ -122,16 +134,19 @@ export function LorebookPage() {
 
   useEffect(() => {
     const ref = activeRequestIdsRef
+    editor.activate()
     return () => {
+      editor.dispose()
       const ids = Array.from(ref.current)
       for (const id of ids) {
         window.api.ai.cancelChat(id).catch((e) => logError('LorebookPage:cancelChat', e))
       }
       ref.current.clear()
     }
-  }, [])
+  }, [editor])
 
   const selected = lorebooks.find((l) => l.id === selectedId) ?? null
+  useEffect(() => { setTranslatingField(null); setTranslateResult(null); setTranslateError(null) }, [selectedId])
   const activeProfile = getActiveProfile()
 
   /** 刷新向量索引状态 */
@@ -153,7 +168,7 @@ export function LorebookPage() {
       })
       if (list.length > 0) setSelectedId(list[0].id)
     })
-  }, [])
+  }, [setSelectedId])
 
   useEffect(() => {
     void refreshIndexStatus(lorebooks.map((l) => l.id))
@@ -262,6 +277,7 @@ export function LorebookPage() {
   }
 
   const updateLorebook = async (id: string, patch: Partial<Lorebook>): Promise<boolean> => {
+    editor.touch()
     const current = lorebooks.find((l) => l.id === id)
     if (!current) return false
     const updated: Lorebook = { ...current, ...patch }
@@ -447,49 +463,11 @@ export function LorebookPage() {
     setTranslateResult(null)
     setTranslateError(null)
 
-    const requestId = `lorebook-translate-${Date.now()}`
-    activeRequestIdsRef.current.add(requestId)
-    let result = ''
-
-    const cleanup = () => {
-      activeRequestIdsRef.current.delete(requestId)
-      unbindChunk(); unbindDone(); unbindError()
-    }
-
-    const unbindChunk = window.api.ai.onChunk((data) => {
-      if (data.requestId !== requestId) return
-      result += data.text
-      setTranslateResult(stripAllThinking(result))
-    })
-    const unbindDone = window.api.ai.onComplete((payload) => {
-      if (payload.requestId !== requestId) return
-      cleanup()
-      setTranslatingField(null)
-      setTranslateResult(null)
-      if (result.trim()) {
-        // 剥离思考/推理标记，避免 AI 将思考过程混入翻译结果
-        const cleanResult = stripAllThinking(result)
-        if (cleanResult) {
-          onApply(cleanResult)
-        } else {
-          // UEX-P2 补2：错误归属到发起翻译的字段
-          setTranslateError({ key: fieldKey, message: '翻译结果为空，请重试或更换模型' })
-        }
-      } else {
-        setTranslateError({ key: fieldKey, message: '翻译结果为空，请重试或更换模型' })
-      }
-    })
-    const unbindError = window.api.ai.onError((data) => {
-      if (data.requestId !== requestId) return
-      cleanup()
-      setTranslatingField(null)
-      setTranslateResult(null)
-      // UEX-P2 补2：请求失败不再静默，错误提示归属到目标条目/字段
-      setTranslateError({ key: fieldKey, message: `翻译失败：${data.error || '未知错误'}，请重试` })
-    })
-
+    const ticket = editor.begin('translation', [fieldKey, text, selected, editingEntry])
+    const requestId = ticket.task.id
+    try {
     const targetLang = settings.translationTargetLang || '中文'
-    const model = settings.activeModel || profile.model
+    const model = profile.model
     const translationPlan = await resolveRendererGenerationTaskBudget({
       profile,
       model,
@@ -497,7 +475,7 @@ export function LorebookPage() {
       inputChars: text.length,
       usageTaskType: 'translation',
     })
-    window.api.ai.chat({
+      const result = stripAllThinking(await editor.request(ticket, {
       requestId,
       messages: [
         { role: 'system', content: `你是一个翻译助手。请将以下文本翻译成${targetLang}。只输出翻译结果，不要添加任何解释或额外内容。保留原文中的标点符号风格。` },
@@ -516,13 +494,19 @@ export function LorebookPage() {
       observability: { source: 'aux', taskType: 'translation' },
       adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
       reasoningGate: translationPlan.reasoningGate,
-    }).catch((error) => {
-      cleanup()
-      setTranslatingField(null)
-      setTranslateResult(null)
-      // UEX-P2 补2：发起请求失败同样给出归属明确的错误提示
-      setTranslateError({ key: fieldKey, message: `翻译失败：${error instanceof Error ? error.message : String(error)}` })
-    })
+    }, text => {
+        if (editor.current(ticket)) setTranslateResult(stripAllThinking(text))
+      }))
+      if (editor.current(ticket) && (useSettingsStore.getState().settings.translationTargetLang || '中文') === targetLang) {
+        if (result.trim()) onApply(result)
+        else setTranslateError({ key: fieldKey, message: '翻译结果为空，请重试或更换模型' })
+      } else editor.keep(ticket, result, fieldKey)
+    } catch (error) {
+      if (editor.owns(ticket)) setTranslateError({ key: fieldKey, message: `翻译失败：${error instanceof Error ? error.message : String(error)}` })
+    } finally {
+      if (editor.owns(ticket)) { setTranslatingField(null); setTranslateResult(null) }
+      editor.finish(ticket)
+    }
   }
 
   const toggleEntryExpand = (entryId: string) => {
@@ -536,6 +520,7 @@ export function LorebookPage() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      <EditorSuggestions suggestions={editor.suggestions} objectId={selectedId ?? ''} />
       {/* 顶栏 */}
       <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
         <h1 className="font-display text-lg font-bold">世界书</h1>

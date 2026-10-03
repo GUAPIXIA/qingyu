@@ -219,7 +219,7 @@ describe('ContextDataWriter 双端写入一致性', () => {
     const message = sampleMessage('mid-1', '双端写入测试消息', session.id)
 
     // 写入路径与渲染层 window.api.chat.saveMessage 的底层实现完全一致（appendMessage）
-    mainContextWriter.saveMessage(CHARACTER_ID, message)
+    await mainContextWriter.saveMessage(CHARACTER_ID, message)
 
     // 磁盘 JSONL：最后一行保留原消息，并由统一边界补齐身份快照
     const filePath = join(DIRS.chats(), CHARACTER_ID, `${session.id}.jsonl`)
@@ -241,7 +241,7 @@ describe('ContextDataWriter 双端写入一致性', () => {
   it('writer 的 delete/rename/memory 方法与 chatData 行为一致', async () => {
     const session = await chatData.createSession(CHARACTER_ID, '操作测试')
     const m = sampleMessage('mid-2', '待删除', session.id)
-    mainContextWriter.saveMessage(CHARACTER_ID, m)
+    await mainContextWriter.saveMessage(CHARACTER_ID, m)
 
     await mainContextWriter.renameSession(CHARACTER_ID, session.id, '新标题')
     await mainContextWriter.updateMemory(CHARACTER_ID, session.id, '记忆摘要')

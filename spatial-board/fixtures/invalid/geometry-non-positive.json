@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "id": "world_bad_geometry",
+  "name": "几何越界",
+  "description": "反例：region 宽度为 0，schema 应拒绝。",
+  "rootBoardId": "board_root",
+  "boards": [
+    {
+      "id": "board_root",
+      "name": "根画板",
+      "description": "",
+      "parentEntryNodeId": null,
+      "coordinateConvention": {
+        "north": "up",
+        "origin": "top-left",
+        "units": "canvas"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "region_overflow",
+      "boardId": "board_root",
+      "kind": "region",
+      "name": "越界区域",
+      "description": "width=0 非法。",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": 120,
+        "y": 80,
+        "width": 0,
+        "height": 240
+      }
+    },
+    {
+      "id": "place_neg",
+      "boardId": "board_root",
+      "kind": "place",
+      "name": "负坐标地点",
+      "description": "负坐标是无限画布中的合法对照。",
+      "tags": [],
+      "parentNodeId": null,
+      "childBoardId": null,
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000,
+      "geometry": {
+        "x": -240,
+        "y": 400
+      },
+      "iconKey": "marker"
+    }
+  ],
+  "distances": [],
+  "actors": [],
+  "metadata": {
+    "createdAt": 1727000000000,
+    "updatedAt": 1727000000000,
+    "app": "qingyu-spatial-board"
+  }
+}

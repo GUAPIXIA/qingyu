@@ -2,8 +2,11 @@
  * PresetsPage 单元测试
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { Preset } from '../../../shared/types'
+import { useSettingsStore } from '../../store/useSettingsStore'
+import { getDefaultSettings } from '../../../shared/defaults'
+const defaultAI = window.api.ai
 
 vi.mock('react-router-dom', () => ({
   useNavigate: vi.fn(() => vi.fn()),
@@ -19,6 +22,7 @@ vi.mock('../../lib/utils', () => ({
 
 Object.defineProperty(window, 'api', {
   value: {
+    ai: defaultAI,
     preset: {
       list: vi.fn(async () => []),
       save: vi.fn(async () => ({})),
@@ -35,6 +39,29 @@ import { PresetsPage } from '../PresetsPage'
 describe('PresetsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useSettingsStore.setState({ settings: { ...getDefaultSettings(), activeProfileId: 'p1', connectionProfiles: [{ id: 'p1', name: 'test', provider: 'openai', baseUrl: 'https://example.invalid', apiKey: 'fixture', model: 'gpt-4o', maxContext: 8192 }] }, credentials: {} })
+  })
+
+  it.each(['编辑', '切换'])('预设生成期间%s，旧结果不覆盖当前预设', async action => {
+    const preset = (id: string): Preset => ({ id, name: id, description: '', systemPrompt: '原提示', jailbreak: '', temperature: 0.8, topP: 0.95, maxTokens: 1024, maxContext: 8192, frequencyPenalty: 0, presencePenalty: 0, isBuiltin: false })
+    vi.mocked(window.api.preset.list).mockResolvedValueOnce([preset('预设一'), preset('预设二')])
+    let chunk: Parameters<typeof window.api.ai.onChunk>[0] = () => {}
+    let done: Parameters<typeof window.api.ai.onComplete>[0] = () => {}
+    vi.mocked(window.api.ai.onChunk).mockImplementation(cb => { chunk = cb; return vi.fn() })
+    vi.mocked(window.api.ai.onComplete).mockImplementation(cb => { done = cb; return vi.fn() })
+    render(<PresetsPage />)
+    fireEvent.click(await screen.findByText('预设一'))
+    fireEvent.click(screen.getByText('AI 生成预设'))
+    fireEvent.change(screen.getByPlaceholderText(/描述你想要的预设风格/), { target: { value: '古风' } })
+    fireEvent.click(screen.getByRole('button', { name: '生成预设' }))
+    await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledOnce())
+    const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+    if (action === '编辑') fireEvent.change(screen.getByPlaceholderText('系统提示词...'), { target: { value: '用户新提示' } })
+    else { fireEvent.click(screen.getAllByRole('button', { name: '关闭' })[0]); fireEvent.click(screen.getByText('预设二')) }
+    await act(async () => { chunk({ requestId, text: '【SystemPrompt】\n旧提示建议' }); done({ requestId, finishReason: 'stop' }) })
+    expect(screen.getByPlaceholderText('系统提示词...')).toHaveValue(action === '编辑' ? '用户新提示' : '原提示')
+    if (action === '编辑') expect(screen.getByDisplayValue(/旧提示建议/)).toBeInTheDocument()
+    else expect(window.api.ai.cancelChat).toHaveBeenCalledWith(requestId)
   })
 
   it('渲染页面', async () => {

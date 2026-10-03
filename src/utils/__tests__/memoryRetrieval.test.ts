@@ -6,7 +6,7 @@ import {
   selectFactsByBudget,
   fitLayeredMemoryBudget,
   memoryFactToText,
-} from '../memory'
+} from '../../../shared/chat-core/memory'
 
 function mockEstimate(text: string): number {
   const cjk = (text.match(/[\u4e00-\u9fff]/g) ?? []).length

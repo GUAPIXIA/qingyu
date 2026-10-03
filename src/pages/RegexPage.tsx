@@ -5,7 +5,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
 import { Regex as RegexIcon, Plus, Trash2, Pencil, Play, ChevronDown, ChevronRight } from 'lucide-react'
 import type { RegexRule } from '../../shared/types'
-import { applyRegexRules } from '../utils/regex'
+import { applyRegexRules } from '../../shared/chat-core/regex'
 
 const scopeLabels: Record<RegexRule['scope'], string> = { input: '输入', output: '输出', both: '输入+输出' }
 const stageLabels: Record<NonNullable<RegexRule['stage']>, string> = {

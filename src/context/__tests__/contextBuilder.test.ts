@@ -16,7 +16,7 @@ import type {
   ContextChatSnapshot,
 } from '../../../shared/contextTypes'
 import type { Character, Lorebook, Message, Preset, Settings } from '../../../shared/types'
-import { buildContextMessagesFromData, buildChatParamsFromData } from '../contextBuilder'
+import { buildContextMessagesFromData, buildChatParamsFromData } from '../../../shared/chat-core/contextBuilder'
 import { DEFAULT_AUTOMATIC_REASONING_RESERVE } from '../../../shared/modelOutputProfile'
 
 // ===== Fixture 构造 =====
@@ -205,6 +205,63 @@ function makeData(overrides: Partial<ContextBuildData> = {}): ContextBuildData {
 }
 
 // ===== 快照测试 =====
+
+describe('空间阶段 1b：必需当前位置与预算', () => {
+  function spatialData() {
+    const data = makeData()
+    data.chat.sessions[0].spatialWorldId = 'world-a'; data.chat.sessions[0].spatialRuntimeId = 'single_s1'
+    data.spatialContext = { snapshotId: 'snapshot-one', version: { worldId:'world-a',runtimeId:'single_s1',bindingEpoch:'epoch',runtimeRevision:7,worldFingerprint:'f'.repeat(64) },
+      text:'【空间位置 v1】\n角色：青石城 > 茶馆；参与对话。\n已确认距离：茶馆到城门 2 km。', minimalText:'【空间位置 v1】\n角色：青石城 > 茶馆；参与对话。', tokens:80,minimalTokens:40,cropped:[],characterOffstage:false }
+    return data
+  }
+  it('读取只出现在系统当前状态，并保留快照身份与 shadow 来源', () => {
+    const data = spatialData()
+    const result = buildContextMessagesFromData(data, { shadow:'shadow' })
+    expect(result.messages.filter(message => message.role === 'system').map(message => message.content).join('\n')).toContain('青石城 > 茶馆')
+    expect(result.spatialContext).toMatchObject({ snapshotId:'snapshot-one',version:{runtimeRevision:7} })
+    expect(result.contextShadow?.byKind.find(item => item.kind === 'current-state')?.mandatoryCount).toBeGreaterThan(0)
+  })
+  it('旧开场与后置提示之后只注入一次当前空间状态，并预留其预算', () => {
+    const data = spatialData()
+    data.character!.scenario = '角色原本在厨房。'
+    data.character!.postHistoryInstructions = '保留故事连续性。'
+    data.chat.messages = [makeMessage({id:'old-opening',role:'assistant',content:'角色现在在厨房。'}),makeMessage({id:'current-question',role:'user',content:'你现在在哪里？'})]
+    const result = buildContextMessagesFromData(data,{shadow:'shadow'})
+    const positionMessages = result.messages.filter(message => message.content.includes('【空间位置 v1】'))
+    expect(positionMessages).toHaveLength(1)
+    const positionIndex = result.messages.findIndex(message => message.content.includes('【空间位置 v1】'))
+    const oldIndex = result.messages.findIndex(message => message.content.includes('角色现在在厨房。'))
+    const postIndex = result.messages.findIndex(message => message.content.includes('保留故事连续性。'))
+    expect(positionIndex).toBeGreaterThan(oldIndex)
+    expect(positionIndex).toBeGreaterThan(postIndex)
+    expect(positionMessages[0]!.role).toBe('system')
+    expect(result.spatialContext!.tokens).toBeGreaterThan(0)
+  })
+  it('关闭和未绑定时保持原消息结果，错误身份不能混入上下文', () => {
+    const data = spatialData(); data.chat.sessions[0].spatialContextEnabled = false
+    const original = structuredClone(data); delete original.spatialContext
+    expect(buildContextMessagesFromData(data).messages).toEqual(buildContextMessagesFromData(original).messages)
+    data.chat.sessions[0].spatialContextEnabled = true
+    data.spatialContext!.version.runtimeId = 'other'
+    expect(() => buildContextMessagesFromData(data)).toThrow('不属于当前会话')
+  })
+  it('沉浸 offstage 阻止生成；全局叙事和只读预览保留参与规则', () => {
+    const data = spatialData(); data.spatialContext!.characterOffstage = true
+    expect(() => buildContextMessagesFromData(data)).toThrow('不参与对话')
+    data.chat.sessions[0].narrativeMode = 'omniscient'
+    expect(buildContextMessagesFromData(data).spatialContext).toBeDefined()
+    data.chat.sessions[0].narrativeMode = 'immersive'
+    expect(buildContextMessagesFromData(data,{ lorebookDiagnosticsMode:'preview' }).spatialContext).toBeDefined()
+  })
+  it('空间必须保留最小块；无法容纳时拒绝，补充部分超过 800 时裁剪', () => {
+    const data = spatialData(); data.spatialContext!.text += '补充距离'.repeat(1000)
+    const result = buildContextMessagesFromData(data)
+    expect(result.messages.map(message => message.content).join('\n')).toContain(data.spatialContext!.minimalText)
+    expect(result.spatialContext?.cropped).toContain('空间补充关系：输入预算不足')
+    data.spatialContext!.minimalText = '必要的位置层级'.repeat(1000)
+    expect(() => buildContextMessagesFromData(data)).toThrow('当前位置与参与规则')
+  })
+})
 
 describe('buildContextMessagesFromData 防漂移快照', () => {
   it.each([

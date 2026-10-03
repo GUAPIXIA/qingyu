@@ -20,8 +20,8 @@ let doneCb: ((id: string) => void) | null = null
 let chunkCb: ((d: { requestId: string; text: string }) => void) | null = null
 
 /** 在 act 内触发流式完成（避免 store 更新未包 act 的警告） */
-function completeStream(reqId: string, chunks: string[]) {
-  act(() => {
+async function completeStream(reqId: string, chunks: string[]) {
+  await act(async () => {
     for (const c of chunks) chunkCb?.({ requestId: reqId, text: c })
     doneCb?.(reqId)
   })
@@ -56,6 +56,31 @@ function lastRequestId(): string {
 }
 
 describe('ConceptStep（概念设定）', () => {
+  it('角色扩展期间用户编辑后，保留旧建议且不自动覆盖', async () => {
+    render(<ConceptStep />)
+    fireEvent.change(screen.getByPlaceholderText(/赛博朋克世界的女黑客/), { target: { value: '古风剑客' } })
+    fireEvent.click(screen.getByText('AI 扩展'))
+    await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
+    act(() => useCharacterCreatorStore.getState().updateDraft({ name: '用户新名字' }))
+    await completeStream(lastRequestId(), ['{"name":"旧剑客"}'])
+    expect(useCharacterCreatorStore.getState().draft.name).toBe('用户新名字')
+    expect(screen.getByDisplayValue(/旧剑客/)).toBeInTheDocument()
+    expect(useCharacterCreatorStore.getState().isExpanding).toBe(false)
+  })
+
+  it('字段来源原值在发起时冻结，改后改回也阻止旧建议替换', async () => {
+    act(() => useCharacterCreatorStore.getState().updateDraft({ description: '原描述' }))
+    const running = useCharacterCreatorStore.getState().aiGenerateField('description')
+    await running
+    act(() => useCharacterCreatorStore.getState().updateDraft({ description: '新描述' }))
+    act(() => useCharacterCreatorStore.getState().updateDraft({ description: '原描述' }))
+    await completeStream(lastRequestId(), ['旧描述建议'])
+    expect(useCharacterCreatorStore.getState().pendingGeneration?.original).toBe('原描述')
+    act(() => useCharacterCreatorStore.getState().applyGenerated('replace'))
+    expect(useCharacterCreatorStore.getState().draft.description).toBe('原描述')
+    expect(useCharacterCreatorStore.getState().pendingGeneration?.content).toBe('旧描述建议')
+    expect(useCharacterCreatorStore.getState().error).toContain('草稿已变化')
+  })
   it('渲染 AI 扩展区与全部字段', () => {
     render(<ConceptStep />)
     expect(screen.getByText('AI 一句话扩展')).toBeInTheDocument()
@@ -76,7 +101,7 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.click(within(personalityCard as HTMLElement).getByText('生成并修改'))
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
     // 触发流式完成
-    completeStream(lastRequestId(), ['外冷内热，', '话不多但关心人'])
+    await completeStream(lastRequestId(), ['外冷内热，', '话不多但关心人'])
     // UEX-P2-07：不直接覆盖字段，出现内联预览卡 + 替换/追加/放弃
     expect(useCharacterCreatorStore.getState().draft.personality).toBe('')
     expect(within(personalityCard as HTMLElement).getByText(/AI 已生成/)).toBeInTheDocument()
@@ -96,7 +121,7 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
     fireEvent.click(within(card as HTMLElement).getByText('生成'))
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
-    completeStream(lastRequestId(), ['新增内容'])
+    await completeStream(lastRequestId(), ['新增内容'])
     // 生成期间用户又改了字段 → 追加以最新值为基准
     act(() => {
       useCharacterCreatorStore.getState().updateDraft({ description: '用户最新输入' })
@@ -112,7 +137,7 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
     fireEvent.click(within(card as HTMLElement).getByText('生成'))
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
-    completeStream(lastRequestId(), ['不该出现'])
+    await completeStream(lastRequestId(), ['不该出现'])
     fireEvent.click(within(card as HTMLElement).getByText('放弃'))
     expect(useCharacterCreatorStore.getState().draft.description).toBe('原有内容')
     expect(within(card as HTMLElement).queryByText(/AI 已生成/)).not.toBeInTheDocument()
@@ -126,14 +151,14 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
     fireEvent.click(within(card as HTMLElement).getByText('生成'))
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
-    completeStream(lastRequestId(), ['黑客、赛博朋克'])
+    await completeStream(lastRequestId(), ['黑客、赛博朋克'])
     fireEvent.click(within(card as HTMLElement).getByText('追加'))
     expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['黑客', '赛博朋克'])
     // 再生成一次走「替换」
     fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
     fireEvent.click(within(card as HTMLElement).getByText('生成'))
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(2))
-    completeStream(lastRequestId(), ['御姐'])
+    await completeStream(lastRequestId(), ['御姐'])
     fireEvent.click(within(card as HTMLElement).getByText('替换'))
     expect(useCharacterCreatorStore.getState().draft.tags).toEqual(['御姐'])
   })
@@ -145,7 +170,7 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.click(within(card as HTMLElement).getByText('帮我写'))
     fireEvent.click(within(card as HTMLElement).getByText('生成'))
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
-    completeStream(lastRequestId(), ['*翻窗而入* "久等了。"'])
+    await completeStream(lastRequestId(), ['*翻窗而入* "久等了。"'])
     fireEvent.click(within(card as HTMLElement).getByText('追加'))
     const s = useCharacterCreatorStore.getState()
     expect(s.draft.firstMessage).toBe('主消息') // 当前文本不动
@@ -170,7 +195,7 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.change(input, { target: { value: '银发女黑客' } })
     fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
-    completeStream(lastRequestId(), ['银色短发，黑客装扮'])
+    await completeStream(lastRequestId(), ['银色短发，黑客装扮'])
     expect(useCharacterCreatorStore.getState().draft.description).toBe('') // 不直接覆盖
     fireEvent.click(within(card as HTMLElement).getByText('替换'))
     expect(useCharacterCreatorStore.getState().draft.description).toBe('银色短发，黑客装扮')
@@ -194,7 +219,7 @@ describe('ConceptStep（概念设定）', () => {
     fireEvent.change(input, { target: { value: '要冷淡一点' } })
     fireEvent.click(within(card as HTMLElement).getByText('生成并修改'))
     await waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
-    completeStream(lastRequestId(), ['*抬眼* "说正事。"'])
+    await completeStream(lastRequestId(), ['*抬眼* "说正事。"'])
     expect(useCharacterCreatorStore.getState().draft.firstMessage).toBe('') // UEX-P2-07：不直接覆盖
     fireEvent.click(within(card as HTMLElement).getByText('替换'))
     expect(useCharacterCreatorStore.getState().draft.firstMessage).toBe('*抬眼* "说正事。"')
@@ -245,7 +270,7 @@ describe('ConceptStep（概念设定）', () => {
     const params = (window.api.ai.chat as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(params.messages[1].content).toBe('古风剑客')
     // 触发完成 → 填充
-    completeStream(lastRequestId(), ['{"name":"剑客","tags":["古风"]}'])
+    await completeStream(lastRequestId(), ['{"name":"剑客","tags":["古风"]}'])
     expect(useCharacterCreatorStore.getState().draft.name).toBe('剑客')
   })
 })

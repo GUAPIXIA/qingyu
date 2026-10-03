@@ -28,7 +28,7 @@ vi.mock('../../utils/quickReply', () => ({
   createQuickReply: vi.fn(() => ({ id: 'new', text: '', hotkey: 0, scope: 'global' })),
 }))
 
-vi.mock('../../utils/macros', () => ({
+vi.mock('../../../shared/chat-core/macros', () => ({
   listMacros: vi.fn(() => []),
 }))
 

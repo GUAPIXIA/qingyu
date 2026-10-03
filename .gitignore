@@ -122,6 +122,8 @@ relay-server/dist/
 .tmp-archive/
 # 实机走查/演练的截图与录屏草稿（有引用价值的应移入 docs/报告 或 output/ 后入库）
 .tmp-walkthrough-*/
+# 画板浏览器回归的 smoke 截图（每次运行重新生成，属产物而非证据）
+spatial-board/smoke-*.png
 # 与 .poc-tmp/ / .qa/ 同类的本地 QA 草稿目录（原先漏了忽略，2.6 MB 未跟踪）
 .qa-poc/
 
@@ -132,6 +134,6 @@ __pycache__/
 .mcp.json
 
 
-# === ���ֲ��������2026-09-26��===
+# === ���ֲ��������2026-09-26��===
 *-inline-backup/
 s9-*.txt

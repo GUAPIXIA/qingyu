@@ -1,8 +1,8 @@
 import type { CommandDef } from '../registry'
 import type { Character } from '../../../shared/types'
 import type { ActiveImageGenProfile } from '../../store/useSettingsStore'
-import { extractTaggedResult } from '../../components/chat/aiInputHelper'
-import { stripThought } from '../../utils/messagePostProcess'
+import { extractTaggedResult } from '../../../shared/chat-core/aiInputHelper'
+import { stripThought } from '../../../shared/chat-core/messagePostProcess'
 
 type GenMode = 'moment' | 'closeup' | 'full' | 'interaction' | 'background'
 type SelfMode = 'hidden' | 'silhouette' | 'translucent' | 'pov'

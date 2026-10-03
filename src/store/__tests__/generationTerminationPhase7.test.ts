@@ -19,9 +19,9 @@ import {
   terminationPromptWithContent,
   terminationPromptWithoutContent,
 } from '../../../shared/generationTermination'
-import { finalizeGenerationTerminalResult } from '../generatedReplyPipeline'
+import { finalizeGenerationTerminalResult } from '../../../shared/chat-core/generatedReplyPipeline'
 import { streamAIResponse, cleanupActiveStream, resetTailRepairFailureCounts } from '../streamController'
-import { STREAM_IDLE_TIMEOUT_MS } from '../chatConstants'
+import { STREAM_IDLE_TIMEOUT_MS } from '../../../shared/chat-core/chatConstants'
 import { useChatStore } from '../useChatStore'
 import { useSettingsStore } from '../useSettingsStore'
 import { usePersonaStore } from '../usePersonaStore'

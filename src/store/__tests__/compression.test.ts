@@ -1,3 +1,4 @@
+import { featureSource } from '../../../shared/featureSource'
 /**
  * 上下文溢出压缩（P0-1）集成测试
  *
@@ -10,7 +11,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useChatStore } from '../useChatStore'
 import { useSettingsStore } from '../useSettingsStore'
 import { getDefaultSettings } from '../../../shared/defaults'
-import { lorebookCache } from '../../utils/lorebook'
+import { lorebookCache } from '../../features/lorebook/lorebookCache'
 import type { Character, Message, Preset, ChatSession } from '../../../shared/types'
 
 function makeCharacter(): Character {
@@ -99,6 +100,7 @@ function setup(overrides: {
       memoryUpdatedAt: 0,
       compressedSummary: overrides.compressedSummary,
       compressedRange: overrides.compressedRange,
+      compressedSource: overrides.compressedRange ? { ...featureSource((overrides.messages ?? makeMessages(8)).filter(m => m.timestamp >= overrides.compressedRange!.startTs && m.timestamp <= overrides.compressedRange!.endTs), 'range'), range: overrides.compressedRange } : undefined,
     } as ChatSession & { messageCount: number; lastMessage: string }],
     currentSessionId: 's1',
     activeLorebookIds: [],
@@ -144,6 +146,18 @@ describe('buildContext 上下文溢出压缩', () => {
     expect(idx).toBeGreaterThan(0)
     // keepSeparate
     expect((context[idx] as any).keepSeparate).toBe(true)
+  })
+
+  it('来源正文编辑后即使时间戳覆盖仍拒绝注入旧摘要', () => {
+    setup({ compressedSummary: '过期摘要', compressedRange: { startTs: 0, endTs: 10000 } })
+    useChatStore.setState(s => ({ messages: s.messages.map((m, i) => i === 0 ? { ...m, content: '同一条消息的新正文' } : m) }))
+    expect(build().map(c => c.content).join('\n')).not.toContain('过期摘要')
+  })
+
+  it('旧摘要没有来源引用时保留存储字段但不进入模型上下文', () => {
+    setup({ compressedSummary: '未校验摘要', compressedRange: { startTs: 0, endTs: 10000 } })
+    useChatStore.setState(s => ({ sessions: s.sessions.map(session => ({ ...session, compressedSource: null })) }))
+    expect(build().map(c => c.content).join('\n')).not.toContain('未校验摘要')
   })
 
   it('压缩范围不覆盖丢弃内容时不注入（将重新压缩）', () => {

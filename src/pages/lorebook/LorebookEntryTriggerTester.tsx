@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, FlaskConical, Play, XCircle } from 'lucide-react'
 import type { Lorebook, LoreEntry } from '../../../shared/types'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { executeLorebookRuntime } from '../../utils/lorebook'
+import { executeLorebookRuntime } from '../../../shared/chat-core/lorebook'
 import { cn } from '../../lib/utils'
 import { LORE_TRIGGER_REASON_LABELS } from '../../components/chat/lorebookDebugLabels'
 

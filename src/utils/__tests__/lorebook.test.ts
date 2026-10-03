@@ -4,8 +4,8 @@ import {
   extractEntities, checkEntityBoost, appendRecentTriggeredIds,
   buildCompressionKey, touchCompressionCache, upsertCompressionCache,
   semanticScoreByOverlap, shouldUseOverlapApprox, allocateGlobalBudgetByBooks,
-} from '../lorebook'
-import { estimateTokens } from '../tokenCounter'
+} from '../../../shared/chat-core/lorebook'
+import { estimateTokens } from '../../../shared/chat-core/tokenCounter'
 import { getCollectedLogs } from '../../lib/logger'
 import type { Lorebook, LoreEntry, LorebookCompressionCacheEntry } from '../../../shared/types'
 

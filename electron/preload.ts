@@ -21,6 +21,7 @@ import type {
   McpAPI,
   AnnouncementAPI,
   GroupChatAPI,
+  SpatialAPI,
   UpdaterAPI,
   UpdaterState,
   SessionSyncAPI,
@@ -30,6 +31,11 @@ import type { LocalModelAPI } from '../shared/localModels'
 
 // ---- AI 调用 ----
 const aiApi: AIAPI = {
+  onFeatureDataRestoring: callback => {
+    const handler = () => callback()
+    ipcRenderer.on(IPC_EVENTS.featureDataRestoring, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.featureDataRestoring, handler)
+  },
   chat: (params) => ipcRenderer.invoke('ai:chat', params),
   cancelChat: (requestId, reason) => ipcRenderer.invoke('ai:cancel', requestId, reason),  testConnection: (config) => ipcRenderer.invoke('ai:testConnection', config),
   listModels: (provider, baseUrl, apiKey) => ipcRenderer.invoke('ai:listModels', provider, baseUrl, apiKey),
@@ -167,12 +173,13 @@ const characterApi: CharacterAPI = {  list: () => ipcRenderer.invoke('character:
 
 // ---- 对话 ----
 const chatApi: ChatAPI = {
+  commitFeatureResult: (characterId, sessionId, input) => ipcRenderer.invoke('chat:commitFeatureResult', characterId, sessionId, input),
   listSessions: (characterId) => ipcRenderer.invoke('chat:listSessions', characterId),
   createSession: (characterId, title, personaId, lorebookIds) => ipcRenderer.invoke('chat:createSession', characterId, title, personaId, lorebookIds),
   deleteSession: (characterId, sessionId) => ipcRenderer.invoke('chat:deleteSession', characterId, sessionId),
   renameSession: (characterId, sessionId, title) => ipcRenderer.invoke('chat:renameSession', characterId, sessionId, title),
   updateSession: (characterId, sessionId, updates) => ipcRenderer.invoke('chat:updateSession', characterId, sessionId, updates),
-  updateSessionIfMemoryVersion: (characterId, sessionId, expectedVersion, updates) => ipcRenderer.invoke('chat:updateSessionIfMemoryVersion', characterId, sessionId, expectedVersion, updates),
+  updateSessionIfMemoryVersion: (characterId, sessionId, expectedVersion, updates, source) => ipcRenderer.invoke('chat:updateSessionIfMemoryVersion', characterId, sessionId, expectedVersion, updates, source),
   summarizeMemory: (characterId, sessionId, automatic) => ipcRenderer.invoke('chat:summarizeMemory', characterId, sessionId, automatic),
   listMessages: (characterId, sessionId) => ipcRenderer.invoke('chat:listMessages', characterId, sessionId),
   saveMessage: (message) => ipcRenderer.invoke('chat:saveMessage', message),
@@ -391,6 +398,8 @@ const groupApi: GroupChatAPI = {
   listMessages: (groupId, sessionId) => ipcRenderer.invoke('group:listMessages', groupId, sessionId),
   saveMessage: (groupId, sessionId, msg) => ipcRenderer.invoke('group:saveMessage', groupId, sessionId, msg),
   saveMessagesBatch: (groupId, sessionId, msgs) => ipcRenderer.invoke('group:saveMessagesBatch', groupId, sessionId, msgs),
+  commitFeatureResult: (groupId, sessionId, input) => ipcRenderer.invoke('group:commitFeatureResult', groupId, sessionId, input),
+  saveTranslation: (groupId, sessionId, messageId, expected, translation) => ipcRenderer.invoke('group:saveTranslation', groupId, sessionId, messageId, expected, translation),
   editMessage: (groupId, sessionId, messageId, content) => ipcRenderer.invoke('group:editMessage', groupId, sessionId, messageId, content),
   deleteMessage: (groupId, sessionId, messageId) => ipcRenderer.invoke('group:deleteMessage', groupId, sessionId, messageId),
   clearChat: (groupId, sessionId?) => ipcRenderer.invoke('group:clearChat', groupId, sessionId),
@@ -399,7 +408,62 @@ const groupApi: GroupChatAPI = {
   toggleMemory: (groupId, sessionId, enabled) => ipcRenderer.invoke('group:toggleMemory', groupId, sessionId, enabled),
   setMemoryMode: (groupId, sessionId, mode, interval) => ipcRenderer.invoke('group:setMemoryMode', groupId, sessionId, mode, interval),
   updateSession: (groupId, sessionId, updates) => ipcRenderer.invoke('group:updateSession', groupId, sessionId, updates),
-  updateSessionIfMemoryVersion: (groupId, sessionId, expectedVersion, updates) => ipcRenderer.invoke('group:updateSessionIfMemoryVersion', groupId, sessionId, expectedVersion, updates),
+  updateSessionIfMemoryVersion: (groupId, sessionId, expectedVersion, updates, source) => ipcRenderer.invoke('group:updateSessionIfMemoryVersion', groupId, sessionId, expectedVersion, updates, source),
+}
+
+const spatialApi: SpatialAPI = {
+  prepareGroupDialogue: (groupId, sessionId, input) => ipcRenderer.invoke('spatial:prepareGroupDialogue', groupId, sessionId, input),
+  groupDialogueSaved: (groupId, sessionId, generationId, messageIds) => ipcRenderer.invoke('spatial:groupDialogueSaved', groupId, sessionId, generationId, messageIds),
+  closeGroupDialogueBatch: (groupId, sessionId, burstId) => ipcRenderer.invoke('spatial:closeGroupDialogueBatch', groupId, sessionId, burstId),
+  retryGroupDialogue: (groupId, sessionId, taskId) => ipcRenderer.invoke('spatial:retryGroupDialogue', groupId, sessionId, taskId),
+  groupProposalTargets: (groupId, sessionId) => ipcRenderer.invoke('spatial:groupProposalTargets', groupId, sessionId),
+  reviewGroupProposal: (groupId, sessionId, id, input) => ipcRenderer.invoke('spatial:reviewGroupProposal', groupId, sessionId, id, input),
+  prepareGroupPlace: (groupId, sessionId, id, name, parentId) => ipcRenderer.invoke('spatial:prepareGroupPlace', groupId, sessionId, id, name, parentId),
+  undoGroupProposal: (groupId, sessionId, id) => ipcRenderer.invoke('spatial:undoGroupProposal', groupId, sessionId, id),
+  readGroupContext: (groupId, sessionId, targetCharacterId) => ipcRenderer.invoke('spatial:readGroupContext', groupId, sessionId, targetCharacterId),
+  getGroupAiSession: (groupId, sessionId) => ipcRenderer.invoke('spatial:getGroupAiSession', groupId, sessionId),
+  groupInitializationSources: (groupId, sessionId) => ipcRenderer.invoke('spatial:groupInitializationSources', groupId, sessionId),
+  askGroupAi: (groupId, sessionId, input) => ipcRenderer.invoke('spatial:askGroupAi', groupId, sessionId, input),
+  cancelGroupAi: (groupId, sessionId) => ipcRenderer.invoke('spatial:cancelGroupAi', groupId, sessionId),
+  discardGroupProposal: (groupId, sessionId, proposalId) => ipcRenderer.invoke('spatial:discardGroupProposal', groupId, sessionId, proposalId),
+  editGroupDraft: (groupId, sessionId, proposalId, input) => ipcRenderer.invoke('spatial:editGroupDraft', groupId, sessionId, proposalId, input),
+  applyGroupProposal: (groupId, sessionId, proposalId, acknowledgeUnresolved) => ipcRenderer.invoke('spatial:applyGroupProposal', groupId, sessionId, proposalId, acknowledgeUnresolved),
+  loadGroupBound: (groupId, sessionId) => ipcRenderer.invoke('spatial:loadGroupBound', groupId, sessionId),
+  createGroupAndBind: (groupId, sessionId, name) => ipcRenderer.invoke('spatial:createGroupAndBind', groupId, sessionId, name),
+  bindGroupWorld: (groupId, sessionId, worldId) => ipcRenderer.invoke('spatial:bindGroupWorld', groupId, sessionId, worldId),
+  applyGroupEditorBatch: (groupId, sessionId, input) => ipcRenderer.invoke('spatial:applyGroupEditorBatch', groupId, sessionId, input),
+  prepareDialogue: (characterId, sessionId, input) => ipcRenderer.invoke('spatial:prepareDialogue', characterId, sessionId, input),
+  dialogueSaved: (characterId, sessionId, generationId, messageId) => ipcRenderer.invoke('spatial:dialogueSaved', characterId, sessionId, generationId, messageId),
+  retryDialogue: (characterId, sessionId, taskId) => ipcRenderer.invoke('spatial:retryDialogue', characterId, sessionId, taskId),
+  readContext: (characterId, sessionId) => ipcRenderer.invoke('spatial:readContext', characterId, sessionId),
+  getAiSession: (characterId, sessionId) => ipcRenderer.invoke('spatial:getAiSession', characterId, sessionId),
+  initializationSources: (characterId, sessionId) => ipcRenderer.invoke('spatial:initializationSources', characterId, sessionId),
+  askAi: (characterId, sessionId, input) => ipcRenderer.invoke('spatial:askAi', characterId, sessionId, input),
+  cancelAi: (characterId, sessionId) => ipcRenderer.invoke('spatial:cancelAi', characterId, sessionId),
+  discardProposal: (characterId, sessionId, id) => ipcRenderer.invoke('spatial:discardProposal', characterId, sessionId, id),
+  proposalTargets: (characterId, sessionId) => ipcRenderer.invoke('spatial:proposalTargets', characterId, sessionId),
+  reviewProposal: (characterId, sessionId, id, input) => ipcRenderer.invoke('spatial:reviewProposal', characterId, sessionId, id, input),
+  preparePlace: (characterId, sessionId, id, name, parentId) => ipcRenderer.invoke('spatial:preparePlace', characterId, sessionId, id, name, parentId),
+  undoProposal: (characterId, sessionId, id) => ipcRenderer.invoke('spatial:undoProposal', characterId, sessionId, id),
+  editDraft: (characterId, sessionId, id, input) => ipcRenderer.invoke('spatial:editDraft', characterId, sessionId, id, input),
+  applyProposal: (characterId, sessionId, id, acknowledge) => ipcRenderer.invoke('spatial:applyProposal', characterId, sessionId, id, acknowledge),
+  onAiUpdated: (listener) => {
+    const handler = (_e: unknown, event: { characterId: string; sessionId: string }) => listener(event)
+    ipcRenderer.on('spatial:aiUpdated', handler)
+    return () => { ipcRenderer.removeListener('spatial:aiUpdated', handler) }
+  },
+  listWorlds: () => ipcRenderer.invoke('spatial:listWorlds'),
+  setEnabled: (characterId, sessionId, enabled) => ipcRenderer.invoke('spatial:setEnabled', characterId, sessionId, enabled),
+  setGroupEnabled: (groupId, sessionId, enabled) => ipcRenderer.invoke('spatial:setGroupEnabled', groupId, sessionId, enabled),
+  loadBound: (characterId, sessionId) => ipcRenderer.invoke('spatial:loadBound', characterId, sessionId),
+  createAndBind: (characterId, sessionId, name) => ipcRenderer.invoke('spatial:createAndBind', characterId, sessionId, name),
+  bindWorld: (characterId, sessionId, worldId) => ipcRenderer.invoke('spatial:bindWorld', characterId, sessionId, worldId),
+  applyEditorBatch: (characterId, sessionId, input) => ipcRenderer.invoke('spatial:applyEditorBatch', characterId, sessionId, input),
+  onUpdated: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: import('../shared/spatial').SpatialUpdatedEvent) => listener(payload)
+    ipcRenderer.on('spatial:updated', handler)
+    return () => { ipcRenderer.removeListener('spatial:updated', handler) }
+  },
 }
 
 contextBridge.exposeInMainWorld('api', {
@@ -425,6 +489,7 @@ contextBridge.exposeInMainWorld('api', {
   announcement: announcementApi,
   updater: updaterApi,
   group: groupApi,
+  spatial: spatialApi,
   sessionSync: sessionSyncApi,
   bridge: bridgeApi,
   syncLan: syncLanApi,

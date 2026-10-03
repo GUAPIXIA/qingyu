@@ -1,3 +1,4 @@
+import { matchesFeatureSource } from '../../../shared/featureSource'
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { charAssetUrl } from '../../utils/asset'
 import { Check, X, User, Bot, ChevronLeft, ChevronRight, Image as ImageIcon, ChevronsDown, RefreshCw, Reply, Loader2, Languages, Globe2, FileText, Trash2 } from 'lucide-react'
@@ -9,8 +10,8 @@ import { cn } from '../../lib/utils'
 import { ErrorBoundary } from '../common/ErrorBoundary'
 import { formatTime } from '../../utils/format'
 import { countChars, formatCharCount } from '../../utils/charCounter'
-import { extractThought, stripThought } from '../../utils/messagePostProcess'
-import { getDisplayName } from '../../utils/variables'
+import { extractThought, stripThought } from '../../../shared/chat-core/messagePostProcess'
+import { getDisplayName } from '../../../shared/chat-core/variables'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
 import { RoleplayContentRenderer } from './RoleplayContentRenderer'
 
@@ -73,7 +74,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const swipeMessage = useChatStore(s => s.swipeMessage)
   const isStreaming = useChatStore(s => s.isStreaming)
   // 字段级订阅：翻译状态只关注本条消息，避免其他消息翻译触发全列表重渲染
-  const transState = useChatStore(s => s.translatingMessages[message.id])
+  const directionsValid = useChatStore(s => !message.dialogueDirectionsSource || matchesFeatureSource(message.dialogueDirectionsSource, s.messages, s.sessions.find(session => session.id === message.sessionId)))
+  const cachedTranslation = useChatStore(s => s.translatingMessages[message.id])
+  const language = useSettingsStore(s => s.settings.translationTargetLang || '中文')
+  const transState = cachedTranslation && (!cachedTranslation.source || (matchesFeatureSource(cachedTranslation.source, [message]) && cachedTranslation.language === language)) ? cachedTranslation : undefined
+  const persistedTranslation = !message.translationSource || (matchesFeatureSource(message.translationSource, [message]) && message.translationLanguage === language) ? message.translation : null
   const showTranslation = useChatStore(s => s.showTranslationIds.has(message.id))
   // 字段级选择器订阅（此前无选择器，settings 任何变化都重渲染全部气泡）
   const autoExpandThought = useSettingsStore((s) => s.settings.autoExpandThought ?? false)
@@ -117,12 +122,12 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const displayContent = useMemo(() => {
     if (showTranslation) {
       // 优先内存翻译结果，回退到持久化的 message.translation（重启/状态丢失后仍能显示译文）
-      const translated = transState?.content || message.translation || ''
+      const translated = transState?.content || persistedTranslation || ''
       const cleaned = stripThought(translated)
       if (cleaned) return cleaned
     }
     return originalDisplay || ''
-  }, [showTranslation, transState?.content, message.translation, originalDisplay])
+  }, [showTranslation, transState?.content, persistedTranslation, originalDisplay])
 
   // B-05：纯图片消息，气泡不应撑满整行
   const hasOnlyImages = message.images?.length > 0
@@ -591,7 +596,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
             isStreaming,
             isSystem,
             enabled: dialogueDirectionsEnabled,
-          }) && message.dialogueDirections && (
+          }) && directionsValid && message.dialogueDirections && (
             <DialogueDirectionCard
               directions={message.dialogueDirections}
               canRegenerate={(canRegenerateDirections ?? isLast) && !isStreaming}

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Heart, MapPin, Smile, BookOpen, Lock } from 'lucide-react'
 import { useChatStore } from '../../store/useChatStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
-import { getEffectiveLorebookIds } from '../../utils/lorebook'
+import { getEffectiveLorebookIds } from '../../../shared/chat-core/lorebook'
 import { logError } from '../../lib/logger'
 import type { Character, Message, Lorebook } from '../../../shared/types'
 

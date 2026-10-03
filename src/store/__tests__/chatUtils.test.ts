@@ -207,3 +207,29 @@ describe('buildSemanticCacheKey', () => {
     }
   })
 })
+
+
+describe('世界书压缩任务归属', () => {
+  it('相同条目来源在单聊和群聊分别发起、分别提交，沿用同一聊天连接', async () => {
+    const profile = { id: 'p1', name: '测试', provider: 'openai' as const, apiKey: 'test-only', baseUrl: 'https://test.invalid', model: 'gpt-4o', maxContext: 32768 }
+    useSettingsStore.setState({ settings: { ...getDefaultSettings(), activeProfileId: 'p1', connectionProfiles: [profile] } })
+    const chunks: Array<(data: any) => void> = [], completed: Array<(data: any) => void> = []
+    vi.mocked(window.api.ai.onChunk).mockImplementation(cb => { chunks.push(cb); return () => {} })
+    vi.mocked(window.api.ai.onComplete).mockImplementation(cb => { completed.push(cb); return () => {} })
+    vi.mocked(window.api.ai.chat).mockImplementation(async params => {
+      queueMicrotask(() => {
+        chunks.forEach(cb => cb({ requestId: params.requestId, text: '压缩摘要。' }))
+        completed.forEach(cb => cb({ requestId: params.requestId, finishReason: 'stop' }))
+      })
+    })
+    const request = { key: 'same-revision', entryKeys: ['book:entry'], contents: ['设定材料'], targetTokens: 200, placement: { position: 'before_char' as const } }
+    const results = await Promise.all([
+      compressLorebookOverflow(request, profile, { kind: 'single', characterId: 'owner', sessionId: 's1' }),
+      compressLorebookOverflow(request, profile, { kind: 'group', groupId: 'owner', sessionId: 's1' }),
+    ])
+    expect(results.every(result => result?.entry.summary === '压缩摘要。')).toBe(true)
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(window.api.chat.commitFeatureResult).toHaveBeenCalledWith('owner', 's1', expect.objectContaining({ feature: 'lorebook_compression', cacheKey: 'same-revision' }))
+    expect(window.api.group.commitFeatureResult).toHaveBeenCalledWith('owner', 's1', expect.objectContaining({ feature: 'lorebook_compression', cacheKey: 'same-revision' }))
+  })
+})

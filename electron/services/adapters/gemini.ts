@@ -9,6 +9,7 @@ import { normalizeFinishReason } from '../../../shared/generationObservation'
 import type { AICompletion } from '../../../shared/types'
 import type { GateProbeSignal } from '../../../shared/reasoningGate'
 import { parseImageDataUrl, imageErrorHint } from './vision'
+import { openCodeHeaders } from './opencodeHeaders'
 
 export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, onUsage) {
     const { baseUrl, apiKey, model, temperature, topP,
@@ -87,9 +88,10 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
       }]
     }
 
+    const routingHeaders = openCodeHeaders(baseUrl, params)
     const sendRequest = () => fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey, ...routingHeaders },
       body: JSON.stringify(body),
       signal,
     })
@@ -340,7 +342,7 @@ export const geminiAdapter: AIAdapter = {  async chat(params, onChunk, signal, o
     const url = `${baseUrl.replace(/\/$/, '')}/v1beta/models`
     // NEW-L4 修复：部分 Gemini 兼容代理要求鉴权头，带上 API Key
     const response = await fetch(url, {
-      headers: apiKey ? { 'x-goog-api-key': apiKey } : undefined,
+      headers: { ...(apiKey ? { 'x-goog-api-key': apiKey } : {}), ...openCodeHeaders(baseUrl) },
     })
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
     const data = (await response.json()) as { models?: { supportedGenerationMethods?: string[]; name: string }[] }

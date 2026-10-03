@@ -12,7 +12,7 @@
  * -> 主进程广播 session:updated（所有窗口）-> 桥接层转推 WS（阶段一）。
  */
 import type { StateCreator } from 'zustand'
-import type { ChatState } from './chatTypes'
+import type { ChatState } from '../features/chat/chatStoreTypes'
 import type { SessionChangePayload } from '../../shared/ipc-api'
 
 /** 被拦截并上报的 action 清单 */

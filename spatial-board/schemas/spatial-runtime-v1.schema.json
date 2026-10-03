@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qingyu/spatial/runtime-v1",
+  "title": "SpatialRuntimeStateV1",
+  "description": "空间剧情运行状态 v1：某会话中的角色位置与移动历史。与世界定义分离保存。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "worldId",
+    "runtimeId",
+    "revision",
+    "placements",
+    "events",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "worldId": { "$ref": "#/$defs/id" },
+    "runtimeId": { "$ref": "#/$defs/id" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "placements": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/placement" }
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/event" }
+    },
+    "updatedAt": { "$ref": "#/$defs/timestamp" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+    },
+    "timestamp": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "coordinate": {
+      "type": "number"
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["board", "node"] },
+        "nodeId": { "$ref": "#/$defs/id" }
+      },
+      "if": {
+        "properties": { "kind": { "const": "node" } },
+        "required": ["kind"]
+      },
+      "then": { "required": ["nodeId"] }
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" }
+      }
+    },
+    "semanticPosition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["containmentPath", "precision"],
+      "properties": {
+        "containmentPath": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "relativeToNodeId": { "$ref": "#/$defs/id" },
+        "relativeDirection": {
+          "enum": [
+            "north",
+            "north-east",
+            "east",
+            "south-east",
+            "south",
+            "south-west",
+            "west",
+            "north-west",
+            "center",
+            "inside",
+            "nearby"
+          ]
+        },
+        "precision": {
+          "enum": ["exact", "approximate", "inside-only", "unknown"]
+        },
+        "note": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actorId",
+        "boardId",
+        "anchor",
+        "position",
+        "semanticPosition",
+        "revision",
+        "updatedAt",
+        "updatedBy"
+      ],
+      "properties": {
+        "actorId": { "$ref": "#/$defs/id" },
+        "boardId": { "$ref": "#/$defs/id" },
+        "anchor": { "$ref": "#/$defs/anchor" },
+        "position": { "$ref": "#/$defs/position" },
+        "semanticPosition": { "$ref": "#/$defs/semanticPosition" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "updatedBy": {
+          "enum": ["user", "story", "import", "system"]
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "runtimeId",
+        "revision",
+        "commandType",
+        "source",
+        "createdAt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "runtimeId": { "$ref": "#/$defs/id" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "commandType": {
+          "enum": [
+            "create_node",
+            "update_node",
+            "delete_node",
+            "create_distance",
+            "update_distance",
+            "delete_distance",
+            "create_actor",
+            "update_actor",
+            "delete_actor",
+            "place_actor",
+            "move_actor",
+            "remove_actor_from_board"
+          ]
+        },
+        "actorId": { "$ref": "#/$defs/id" },
+        "before": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/placement" }]
+        },
+        "after": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/placement" }]
+        },
+        "source": {
+          "enum": ["user", "story", "import", "system"]
+        },
+        "reason": { "type": "string", "maxLength": 2000 },
+        "messageId": { "$ref": "#/$defs/id" },
+        "createdAt": { "$ref": "#/$defs/timestamp" }
+      }
+    }
+  }
+}

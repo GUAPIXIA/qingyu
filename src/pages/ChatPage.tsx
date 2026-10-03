@@ -13,6 +13,7 @@ import { ChatWelcomeGuide } from '../components/chat/ChatWelcomeGuide'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { ChatHeader } from '../components/chat/ChatHeader'
+import { SpatialBoardPane } from '../components/chat/SpatialBoardPane'
 import { QuickSettingsPanel } from '../components/chat/QuickSettingsPanel'
 import { BackgroundPanel, PRESET_GRADIENTS } from '../components/chat/BackgroundPanel'
 import { ContextViewer } from '../components/chat/ContextViewer'
@@ -20,8 +21,8 @@ import { StatusBar } from '../components/chat/StatusBar'
 import { cn } from '../lib/utils'
 import { logError } from '../lib/logger'
 import { countChars } from '../utils/charCounter'
-import { getDisplayName } from '../utils/variables'
-import { getEffectiveLorebookIds } from '../utils/lorebook'
+import { getDisplayName } from '../../shared/chat-core/variables'
+import { getEffectiveLorebookIds } from '../../shared/chat-core/lorebook'
 import { downloadFile } from '../utils/download'
 import { charAssetUrl } from '../utils/asset'
 // UEX-P2-12：会话滚动位置记忆（切走再回来恢复原滚动位置）
@@ -38,7 +39,7 @@ import {
   Image as ImageIcon,
   Loader2,
 } from 'lucide-react'
-import type { ImageGenerationStage } from '../store/chatTypes'
+import type { ImageGenerationStage } from '../features/chat/chatStoreTypes'
 
 /** 长对话摘要引导提示的消息数阈值 */
 const MEMORY_HINT_THRESHOLD = 40
@@ -107,6 +108,9 @@ export function ChatPage() {
   const [showQuickSettings, setShowQuickSettings] = useState(false)
   const [showBgPanel, setShowBgPanel] = useState(false)
   const [showContextViewer, setShowContextViewer] = useState(false)
+  const [showSpatialBoard, setShowSpatialBoard] = useState(false)
+  const [openSpatialAssistant, setOpenSpatialAssistant] = useState(false)
+  const requestSpatialCloseRef = useRef<() => void>(() => {})
   const [greetingPickerOpen, setGreetingPickerOpen] = useState(false)
   const [selectedGreeting, setSelectedGreeting] = useState('')
   // 世界书绑定确认弹窗
@@ -306,25 +310,30 @@ export function ChatPage() {
   }, [messages])
 
   // 检查角色是否有绑定的世界书，如果有则弹窗确认
-  const checkBoundLorebooks = (callback: () => void) => {
+  const checkBoundLorebooks = (callback: () => void | Promise<void>) => {
+    const run = () => {
+      void (async () => { await callback() })().catch(cause => {
+        useChatStore.setState({ error: cause instanceof Error ? cause.message : String(cause) })
+      })
+    }
     if (!currentCharacter) {
-      callback()
+      run()
       return
     }
     const boundIds = getEffectiveLorebookIds(currentCharacter)
     if (boundIds.length === 0) {
-      callback()
+      run()
       return
     }
     // 检查是否已经激活了这些世界书
     const currentSet = new Set(activeLorebookIds)
     const allActive = boundIds.every(id => currentSet.has(id))
     if (allActive) {
-      callback()
+      run()
       return
     }
     // 弹窗确认，存储回调
-    pendingSessionCallbackRef.current = callback
+    pendingSessionCallbackRef.current = run
     setPendingLorebookIds(boundIds)
     setShowLorebookConfirm(true)
   }
@@ -539,8 +548,23 @@ export function ChatPage() {
         showQuickSettings={showQuickSettings}
         onShowQuickSettings={() => setShowQuickSettings(!showQuickSettings)}
         onCreateSession={handleCreateSession}
+        showSpatialBoard={showSpatialBoard}
+        onShowSpatialBoard={() => {
+          if (showSpatialBoard) requestSpatialCloseRef.current()
+          else { setOpenSpatialAssistant(false); setShowSpatialBoard(true) }
+        }}
       />
 
+      {showSpatialBoard && currentSessionId ? (
+        <SpatialBoardPane
+          key={`${currentCharacter.id}:${currentSessionId}`}
+          characterId={currentCharacter.id}
+          sessionId={currentSessionId}
+          openAssistant={openSpatialAssistant}
+          onClose={() => setShowSpatialBoard(false)}
+          registerClose={(handler) => { requestSpatialCloseRef.current = handler }}
+        />
+      ) : <>
       {/* 状态栏 — 有消息或有激活世界书时显示 */}
       {currentCharacter && (
         <div className="relative z-10"><StatusBar character={currentCharacter} messages={messages} /></div>
@@ -671,8 +695,10 @@ export function ChatPage() {
           character={currentCharacter}
           replyTo={replyToMessage}
           onCancelReply={() => setReplyToMessage(null)}
+          onOpenSpatialSuggestions={() => { setOpenSpatialAssistant(true); setShowSpatialBoard(true) }}
         />
       </div>
+      </>}
 
       {/* 清空确认 */}
       <ConfirmDialog

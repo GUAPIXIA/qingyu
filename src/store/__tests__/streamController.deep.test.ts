@@ -21,6 +21,7 @@ const mockedSettingsState = vi.hoisted(() => ({ semanticTrigger: null as any }))
 
 Object.defineProperty(window, 'api', {
   value: {
+    spatial: { readContext: vi.fn().mockResolvedValue(null), prepareDialogue: vi.fn().mockResolvedValue(null), dialogueSaved: vi.fn().mockResolvedValue(undefined) },
     ai: {
       chat: mockChat,
       cancelChat: mockCancelChat,
@@ -45,7 +46,7 @@ Object.defineProperty(window, 'api', {
   },
 })
 
-vi.mock('../../utils/tokenCounter', () => ({
+vi.mock('../../../shared/chat-core/tokenCounter', () => ({
   estimateTokens: vi.fn(() => 100),
 }))
 
@@ -58,20 +59,20 @@ vi.mock('../../utils/defaults', () => ({
   isLocalUrl: vi.fn(() => false),
 }))
 
-vi.mock('../../utils/variables', () => ({
+vi.mock('../../../shared/chat-core/variables', () => ({
   replaceVariables: vi.fn((t: string) => t),
 }))
 
-vi.mock('../../utils/chatTemplates', () => ({
+vi.mock('../../../shared/chat-core/chatTemplates', () => ({
   resolveEffectiveTemplate: vi.fn(() => ''),
 }))
 
-vi.mock('../../utils/regex', () => ({
+vi.mock('../../../shared/chat-core/regex', () => ({
   collectStopStrings: vi.fn(() => []),
   findStopIndex: vi.fn(() => -1),
 }))
 
-vi.mock('../../utils/lorebook', () => ({
+vi.mock('../../features/lorebook/lorebookCache', () => ({
   lorebookCache: {
     get: vi.fn(),
   },
@@ -92,7 +93,7 @@ vi.mock('../../utils/visionModel', () => ({
   resolveVisionModel: vi.fn(() => null),
 }))
 
-vi.mock('../chatConstants', () => ({
+vi.mock('../../../shared/chat-core/chatConstants', () => ({
   STREAM_THROTTLE_MS: 50,
   STREAM_IDLE_TIMEOUT_MS: 60_000,
   DEFAULT_LOREBOOK_SCAN_DEPTH: 10,
@@ -126,6 +127,8 @@ vi.mock('../useSettingsStore', () => ({
   useSettingsStore: {
     getState: vi.fn(() => ({
       settings: {
+        activeProfileId: 'p1',
+        connectionProfiles: mockGetActiveProfile() ? [{ id: 'p1', ...mockGetActiveProfile() }] : [],
         activeModel: 'gpt-4',
         userName: '用户',
         semanticTrigger: mockedSettingsState.semanticTrigger,

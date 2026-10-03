@@ -89,6 +89,22 @@ describe('useChatStore', () => {
   beforeEach(resetStores)
 
   describe('initial state', () => {
+    it('沉浸角色 offstage 时发送返回 false，保留输入稿并不保存用户消息', async () => {
+      useChatStore.setState({currentSessionId:'s1',sessions:[{id:'s1',characterId:'c1',title:'会话',narrativeMode:'immersive',messageCount:0,lastMessage:'',createdAt:0,updatedAt:0,memoryEnabled:false,memoryMode:'auto',autoMemoryInterval:10,memory:'',memoryUpdatedAt:0}]})
+      vi.mocked(window.api.spatial.readContext).mockResolvedValueOnce({characterOffstage:true} as any)
+      const sent = await useChatStore.getState().sendMessage('保留这条输入',[],makeCharacter(),null,[])
+      expect(sent).toBe(false); expect(window.api.chat.saveMessage).not.toHaveBeenCalled()
+      expect(useChatStore.getState().messages).toHaveLength(0)
+      expect(useChatStore.getState().error).toContain('不参与对话')
+    })
+    it('必要位置无法容纳时不保存用户消息，输入稿仍可重试', async () => {
+      useSettingsStore.setState(state=>({settings:{...state.settings,activeModel:'gpt-4o-mini',activeProfileId:'p-budget',connectionProfiles:[{id:'p-budget',name:'小预算',provider:'openai',model:'gpt-4o-mini',apiKey:'test',baseUrl:'https://example.invalid',maxContext:512}]}}))
+      useChatStore.setState({currentSessionId:'s1',sessions:[{id:'s1',characterId:'c1',title:'会话',narrativeMode:'immersive',spatialWorldId:'world-a',spatialRuntimeId:'single_s1',messageCount:0,lastMessage:'',createdAt:0,updatedAt:0,memoryEnabled:false,memoryMode:'auto',autoMemoryInterval:10,memory:'',memoryUpdatedAt:0}]})
+      vi.mocked(window.api.spatial.readContext).mockResolvedValueOnce({text:'【空间位置 v1】角色在茶馆',minimalText:'【空间位置 v1】角色在茶馆',characterOffstage:false,tokens:30,minimalTokens:30,cropped:[],snapshotId:'snapshot-budget',version:{worldId:'world-a',runtimeId:'single_s1',bindingEpoch:'epoch',runtimeRevision:0,worldFingerprint:'a'.repeat(64)}})
+      const sent = await useChatStore.getState().sendMessage('保留输入',[],makeCharacter(),null,[])
+      expect(sent).toBe(false); expect(window.api.chat.saveMessage).not.toHaveBeenCalled()
+      expect(useChatStore.getState().error).toContain('当前位置与参与规则')
+    })
     it('has empty collections and no active session', () => {
       const s = useChatStore.getState()
       expect(s.messages).toEqual([])
@@ -438,6 +454,7 @@ describe('useChatStore', () => {
       chunkCb({ requestId, text: '你好' })
       chunkCb({ requestId, text: '世界' })
       doneCb(requestId)
+      await vi.waitFor(() => expect(useChatStore.getState().translatingMessages['m1']?.status).not.toBe('translating'))
 
       const final = useChatStore.getState()
       expect(final.translatingMessages['m1']?.status).toBe('done')
@@ -477,6 +494,7 @@ describe('useChatStore', () => {
       // 模拟推理模型只输出思考内容，正文为空
       chunkCb({ requestId, text: '<thought>我来翻译这段内容……</thought>' })
       doneCb(requestId)
+      await vi.waitFor(() => expect(useChatStore.getState().translatingMessages['m1']?.status).not.toBe('translating'))
 
       const final = useChatStore.getState()
       expect(final.translatingMessages['m1']?.status).toBe('error')
@@ -681,8 +699,7 @@ describe('用户发送后清空上一轮方向（store 集成）', () => {
 
     const first = useChatStore.getState().messages[0] as { dialogueDirections?: unknown }
     expect(first.dialogueDirections).toBeUndefined()
-    const saved = vi.mocked(window.api.chat.saveMessage).mock.calls.map((c) => c[0] as { id: string; dialogueDirections?: unknown })
-    expect(saved.some((m) => m.id === 'a1' && m.dialogueDirections === undefined)).toBe(true)
+    expect(window.api.chat.commitFeatureResult).toHaveBeenCalledWith('c1', 's1', expect.objectContaining({ feature: 'direction', messageId: 'a1', directions: [] }))
   })
 
   it('用户以独立消息发言（addStandaloneMessage role=user）时同样清空', async () => {

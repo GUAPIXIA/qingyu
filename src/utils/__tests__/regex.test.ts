@@ -9,7 +9,7 @@ import {
   findStopIndex,
   truncateAtStop,
   collectStopStrings,
-} from '../regex'
+} from '../../../shared/chat-core/regex'
 import type { RegexRule } from '../../../shared/types'
 
 function makeRule(overrides: Partial<RegexRule> = {}): RegexRule {

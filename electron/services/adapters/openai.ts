@@ -16,6 +16,7 @@ import type { AICompletion } from '../../../shared/types'
 import type { GateProbeSignal } from '../../../shared/reasoningGate'
 import { sanitizeApiKey } from '../../utils/pathGuard'
 import { toOpenAIContent, imageErrorHint } from './vision'
+import { openCodeHeaders } from './opencodeHeaders'
 
 const SAMPLING_FIELD_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
   ['temperature', /\btemperature\b/i],
@@ -127,11 +128,13 @@ export const openaiAdapter: AIAdapter = {
     }
 
     const internalAbort = withInternalAbort(signal)
+    const routingHeaders = openCodeHeaders(baseUrl, params)
     const sendRequest = () => fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
+        ...routingHeaders,
       },
       body: JSON.stringify(body),
       signal: internalAbort.signal,
@@ -441,7 +444,7 @@ export const openaiAdapter: AIAdapter = {
   async listModels(baseUrl, apiKey) {
     const url = `${baseUrl.replace(/\/$/, '')}/models`
     const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: { Authorization: `Bearer ${apiKey}`, ...openCodeHeaders(baseUrl) },
     })
     if (!response.ok) throw new Error(`获取模型列表失败: ${response.status}`)
     const data = (await response.json()) as { data?: { id: string }[] }

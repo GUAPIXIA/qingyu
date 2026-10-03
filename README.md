@@ -38,16 +38,19 @@
 
 ## 📦 仓库结构
 
-本仓库包含三个协同发布的子项目：
+PC 主仓通过 Git 子模块挂载 shared 与 android（实际拓扑，2026-10-02 核对）：
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
 | **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.18.0 |
-| **安卓伴侣端** | `android/` | 同一仓库 | 远程连接与对话消费（配对 PC 使用） | v0.3.0 (build 9) |
+| **共享核心** | `shared/` 与 `android/shared/` | `GUAPIXIA/qingyu-shared`（子模块，**两个挂载点**） | chat-core 纯逻辑、跨端契约与 fixture | — |
+| **安卓客户端** | `android/` | `GUAPIXIA/qingyu-android`（子模块） | 独立本地客户端（内部再挂载 shared） | v0.3.0 (build 9) |
 | **Relay 服务** | `relay-server/` | 同一仓库 | HTTPS/WSS 中转、离线缓存与短时消息队列 | v0.1.0 |
 | **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |
 
-> `android/` 与 `server/` 已纳入本仓库统一管理；本地 `.env`、数据库与构建产物仍不纳入版本控制。
+> 克隆需递归初始化子模块：`git clone --recurse-submodules <repo>`（已克隆则 `git submodule update --init --recursive`）。
+> `shared/` 与 `android/shared/` 是 qingyu-shared 的**两个固定提交挂载点**；迁移期间允许指向不同兼容版本，需在提交信息中登记原因与升级顺序。
+> 本地 `.env`、数据库与构建产物不纳入版本控制。
 
 ---
 

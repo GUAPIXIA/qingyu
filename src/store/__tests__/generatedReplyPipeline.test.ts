@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { runGeneratedReplyPipeline } from '../generatedReplyPipeline'
+import { runGeneratedReplyPipeline } from '../../../shared/chat-core/generatedReplyPipeline'
 import type { RegexRule } from '../../../shared/types'
 
 function makeRule(overrides: Partial<RegexRule> = {}): RegexRule {

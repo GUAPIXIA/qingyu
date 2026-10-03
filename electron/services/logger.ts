@@ -48,6 +48,37 @@ let cachedLogSize = 0
 /** 全局最低日志级别 */
 let minLevel: LogLevel = LogLevel.DEBUG
 
+let consoleEnabled = true
+let consoleStreamsGuarded = false
+const brokenConsoleStreams = new WeakSet<NodeJS.WriteStream>()
+function isBrokenPipe(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code
+  return code === 'EPIPE' || code === 'ERR_STREAM_DESTROYED'
+}
+function writeToConsole(level: LogLevel, line: string): void {
+  if (!consoleEnabled) return
+  if (!consoleStreamsGuarded) {
+    consoleStreamsGuarded = true
+    for (const stream of [process.stdout, process.stderr]) {
+      // Windows 的 console.write 既可能同步抛错，也可能由输出流异步发出 error。
+      stream.on('error', (error: Error) => {
+        if (!isBrokenPipe(error)) throw error
+        brokenConsoleStreams.add(stream)
+      })
+    }
+  }
+  const stream = level >= LogLevel.WARN ? process.stderr : process.stdout
+  if (stream.destroyed || !stream.writable || brokenConsoleStreams.has(stream)) return
+  try {
+    if (level === LogLevel.ERROR) console.error(line)
+    else if (level === LogLevel.WARN) console.warn(line)
+    else console.log(line)
+  } catch (error) {
+    if (!isBrokenPipe(error)) throw error
+    brokenConsoleStreams.add(stream)
+  }
+}
+
 /** 格式时间戳 */
 function formatTime(): string {
   const now = new Date()
@@ -110,7 +141,7 @@ function writeToFile(line: string): void {
     appendFileSync(logPath, data, 'utf-8')
     cachedLogSize += Buffer.byteLength(data, 'utf-8')
   } catch {
-    // 文件写入失败，至少 console 已有输出
+    // 日志出口失效不能中断业务；console 出口也独立处理。
   }
 }
 
@@ -143,15 +174,9 @@ export class Logger {
 
     const line = `[${formatTime()}] [${LEVEL_NAMES[level]}] [${this.module}] ${message}${formatMeta(meta)}`
 
-    // 双输出
-    if (level === LogLevel.ERROR) {
-      console.error(line)
-    } else if (level === LogLevel.WARN) {
-      console.warn(line)
-    } else {
-      console.log(line)
-    }
+    // 先持久化，输出管道关闭时仍保留原始记录。
     writeToFile(line)
+    writeToConsole(level, line)
   }
 }
 
@@ -173,8 +198,9 @@ export function getLogger(module: string): Logger | undefined {
 }
 
 /** 初始化日志系统 */
-export function initLogger(userDataPath: string, level: LogLevel = LogLevel.DEBUG): void {
+export function initLogger(userDataPath: string, level: LogLevel = LogLevel.DEBUG, options: { console?: boolean } = {}): void {
   minLevel = level
+  consoleEnabled = options.console !== false
   logDir = join(userDataPath, 'logs')
   try {
     if (!existsSync(logDir)) {

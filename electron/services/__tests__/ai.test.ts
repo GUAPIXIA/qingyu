@@ -1,3 +1,4 @@
+import { captureGroupSpatialCheckpoint, certifyGroupSpatialMessage } from '../spatialGroupCheckpoint'
 /**
  * AI 适配层单元测试
  *
@@ -996,6 +997,15 @@ describe('registerAIIPC 连接通道', () => {
   })
 
   // 阶段8/G1 收口：ai:error 必须携带结构化失败分类，否则渲染层无法区分"模型零输出"与传输失败
+  it.each(['stop','length'] as const)('群聊检查点由主进程 %s 终态签入，界面完成声明不能绕过截断', async finishReason => {
+    const registered=registerIpc(),id='group-checkpoint-'+finishReason
+    captureGroupSpatialCheckpoint(id,'group-a','session-a')
+    fetchMock.mockResolvedValue(jsonResponse({choices:[{index:0,message:{role:'assistant',content:'阿远已经到达渡口。'},finish_reason:finishReason}],usage:{prompt_tokens:12,completion_tokens:12}}))
+    await registered.get('ai:chat')!({sender:{send:vi.fn(),isDestroyed:()=>false}},makeParams({requestId:id,stream:false,maxTokens:4096}))
+    const message=certifyGroupSpatialMessage('group-a','session-a',{id:'body',groupId:'group-a',characterId:'char-a',content:'阿远已经到达渡口。',images:[],timestamp:1,round:1,spatialGroupGenerationId:id,spatialGroupComplete:true})
+    expect(message.spatialGroupComplete).toBe(finishReason==='stop')
+  })
+
   it('ai:chat 空输出失败 → ai:error 携带 errorKind=empty_output', async () => {
     const registered = registerIpc()
     fetchMock.mockResolvedValue(jsonResponse({

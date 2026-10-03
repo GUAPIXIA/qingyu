@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import type { Character } from '../../shared/types'
 import { nanoid } from 'nanoid'
-import { migrateLorebookId } from '../utils/lorebook'
+import { migrateLorebookId } from '../../shared/chat-core/lorebook'
 import { logError } from '../lib/logger'
+import { flushSpatialBoard } from '../lib/spatialFlush'
 import { useSettingsStore } from './useSettingsStore'
 import { useToastStore } from './useToastStore'
 // UEX-P1-17：导入查重/冲突策略与处理结果类型
@@ -162,17 +163,21 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
   },
 
   selectCharacter: (id) => {
-    if (!id) {
-      set({ currentCharacter: null })
-      return
+    const select = () => {
+      if (!id) {
+        set({ currentCharacter: null })
+        return
+      }
+      const char = get().characters.find((c) => c.id === id) ?? null
+      set({ currentCharacter: char })
+      // 同步更新内存中的 settings 并立即持久化到磁盘。
+      const settingsStore = useSettingsStore.getState()
+      settingsStore.updateSettings({ activeCharacterId: id })
+      settingsStore.flushSettings()
     }
-    const char = get().characters.find((c) => c.id === id) ?? null
-    set({ currentCharacter: char })
-    // 同步更新内存中的 settings 并立即持久化到磁盘
-    // 修复：必须同时更新内存，否则后续 debounced updateSettings 会用旧 activeCharacterId 覆盖磁盘
-    const settingsStore = useSettingsStore.getState()
-    settingsStore.updateSettings({ activeCharacterId: id })
-    settingsStore.flushSettings()
+    const pending = flushSpatialBoard()
+    if (pending) void pending.then(select).catch(() => {})
+    else select()
   },
 
   createCharacter: () => {

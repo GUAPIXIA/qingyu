@@ -1,4 +1,4 @@
-import type { LoreTriggerReason } from '../../utils/lorebook'
+import type { LoreTriggerReason } from '../../../shared/chat-core/lorebook'
 
 export const LORE_TRIGGER_REASON_LABELS: Record<LoreTriggerReason, string> = {
   primary_miss: '主关键词未命中',

@@ -4,7 +4,7 @@ import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { downloadFile } from '../../utils/download'
-import { stripThought } from '../../utils/messagePostProcess'
+import { stripThought } from '../../../shared/chat-core/messagePostProcess'
 import type { CommandContext } from '../../commands/registry'
 
 /**

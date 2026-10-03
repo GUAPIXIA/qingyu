@@ -1,19 +1,18 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useChatStore } from '../../store/useChatStore'
 import { useToastStore } from '../../store/useToastStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { logError } from '../../lib/logger'
 import { isConnectionConfigured } from '../../utils/defaults'
-import { getDisplayName, replaceVariables } from '../../utils/variables'
-import { expandMacros, buildMacroContext } from '../../utils/macros'
+import { getDisplayName } from '../../../shared/chat-core/variables'
+import { expandMacros, buildMacroContext } from '../../../shared/chat-core/macros'
 import { getEffectiveQuickReplies } from '../../utils/quickReply'
 import type { Character, Preset, Lorebook, QuickReply, QuickReplyStore, Message, ChatParams, MessageGenerationKind } from '../../../shared/types'
 import { findCommand, listCommands, type CommandContext } from '../../commands/registry'
 import { parseCommand } from '../../commands/parser'
 import { registerBuiltinCommands } from '../../commands/builtin'
 import {
-  callAiHelper as callAiHelperCore,
   parseContinueResult,
   buildContinueContext,
   evaluateContinueLength,
@@ -21,10 +20,10 @@ import {
   buildLengthRepairInstruction,
   classifyContinueFailure,
   isCompleteSentence,
-} from './aiInputHelper'
+} from '../../../shared/chat-core/aiInputHelper'
 import { createCommandContext } from './commandContext'
 import { registerDraftBridge } from './draftBridge'
-import { trimContinuationSeam } from '../../utils/messagePostProcess'
+import { trimContinuationSeam } from '../../../shared/chat-core/messagePostProcess'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
 import {
   resolveContinueIntensity,
@@ -34,6 +33,7 @@ import {
 } from '../../../shared/continueIntensity'
 import type { GenerationTask } from '../../../shared/generationTaskBudget'
 import { resolveRendererGenerationTaskBudget } from '../../store/generationTaskBudget'
+import { EditorAssistant, type EditorTicket } from '../../store/editorAssistant'
 
 // 初始化内置命令（只执行一次）
 let commandsInitialized = false
@@ -50,6 +50,7 @@ function draftKey(characterId: string, sessionId?: string | null) {
 }
 
 export interface ChatInputState {
+  oldSuggestions: EditorAssistant['suggestions']
   text: string
   setText: (v: string) => void
   images: string[]
@@ -72,6 +73,8 @@ export interface ChatInputState {
   showNotification: (msg: string) => void
   buildCommandContext: () => CommandContext
   handleSend: () => Promise<void>
+  handleSendAfter: (prepare: () => Promise<void>) => Promise<void>
+  isSpatialPreparing: boolean
   handleKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void
   handleImageSelect: () => Promise<void>
   removeImage: (index: number) => void
@@ -95,6 +98,17 @@ export function useChatInputState(
   // P-6 修复：字段级选择器订阅——此前无选择器订阅整个 store，
   // 流式 flush（50ms 一次）时输入框整体重渲染
   const currentSessionId = useChatStore((s) => s.currentSessionId)
+  const editorRef = useRef<EditorAssistant | null>(null)
+  if (!editorRef.current) editorRef.current = new EditorAssistant('chat-draft', draftKey(character.id, currentSessionId))
+  const editor = editorRef.current
+  editor.syncObject(draftKey(character.id, currentSessionId))
+  const sameScope = () => {
+    const live = useChatStore.getState()
+    const session = live.sessions.find(item => item.id === live.currentSessionId)
+    return live.currentSessionId === currentSessionId && (!session || session.characterId === character.id)
+  }
+  const spatialPreparingRef = useRef(false)
+  const [isSpatialPreparing, setSpatialPreparing] = useState(false)
   const [text, setTextState] = useState(() => {
     // 启动时恢复草稿
     try {
@@ -108,17 +122,19 @@ export function useChatInputState(
   const textRef = useRef(text)
   useEffect(() => { textRef.current = text }, [text])
   /** 用户键入或外部填充都重新视为手动草稿。 */
-  const setText = (value: string) => {
+  const setText = useCallback((value: string) => {
+    editor.touch()
     draftGenerationKindRef.current = 'manual'
     textRef.current = value
     setTextState(value)
-  }
+  }, [editor])
   /** AI 输入续写保留来源，直到用户再次编辑或发送。 */
-  const setContinuedText = (value: string) => {
+  const setContinuedText = useCallback((value: string) => {
+    editor.touch()
     draftGenerationKindRef.current = 'input_continue'
     textRef.current = value
     setTextState(value)
-  }
+  }, [editor])
   const [images, setImages] = useState<string[]>([])
   const [isAiProcessing, setIsAiProcessing] = useState(false)
   const [originalText, setOriginalText] = useState<string | null>(null)
@@ -168,7 +184,7 @@ export function useChatInputState(
     }
     window.addEventListener('shortcut:insert-command', handleInsertCommand)
     return () => window.removeEventListener('shortcut:insert-command', handleInsertCommand)
-  }, [])
+  }, [setText])
 
   // 显示通知（S1：全局 Toast，不再用输入区局部 notification，避免双显）
   const showNotification = (msg: string) => {
@@ -183,6 +199,7 @@ export function useChatInputState(
 
   /** 执行一条快捷回复（宏展开 + 动作分发） */
   const runQuickReply = async (qr: QuickReply) => {
+    if (spatialPreparingRef.current) return
     try {
       // 消费当前引用（快捷回复发送时清除引用条）
       if (replyTo) onCancelReply?.()
@@ -270,7 +287,8 @@ export function useChatInputState(
     }
     setImages([])
     setOriginalText(null)
-  }, [character.id, currentSessionId])
+    setIsAiProcessing(false)
+  }, [character.id, currentSessionId, setText])
 
   // 自动保存草稿（防抖）
   useEffect(() => {
@@ -309,23 +327,25 @@ export function useChatInputState(
       setDraft: (value) => setText(value),
     })
     return () => registerDraftBridge('single', null)
-    // 桥只依赖 textRef；setText 每次渲染都是新引用，无需列入依赖
-  }, [])
+    // 同步 ref 镜像与稳定的草稿 setter。
+  }, [setText])
 
   // H-09 修复：组件卸载时取消所有活跃的 AI 辅助请求并清理 IPC 监听器
   useEffect(() => {
     const ref = activeRequestIdsRef
+    editor.activate()
     return () => {
+      editor.dispose()
       const ids = Array.from(ref.current)
       for (const id of ids) {
         window.api.ai.cancelChat(id).catch((e) => logError('ChatInput:cancelChat', e))
       }
       ref.current.clear()
     }
-  }, [])
+  }, [editor])
 
-  const handleSend = async () => {
-    if (!text.trim() || isStreaming) return
+  const sendDraft = async (prepared = false) => {
+    if (!text.trim() || isStreaming || (spatialPreparingRef.current && !prepared)) return
 
     // 命令解析：以 / 开头优先尝试作为命令执行
     if (text.startsWith('/')) {
@@ -359,22 +379,40 @@ export function useChatInputState(
     setOriginalText(null)
     const [preset, lorebooks] = await loadActivePresetLorebook()
     const replyId = replyTo?.id ?? undefined
+    const sameScope = () => {
+      const live = useChatStore.getState()
+      return live.currentSessionId === currentSessionId && live.sessions.find(session => session.id === currentSessionId)?.characterId === character.id
+    }
+    if (prepared && (!sameScope() || useChatStore.getState().isStreaming || textRef.current !== text)) throw new Error('位置已应用；会话、输入稿或生成状态已变化，未发送输入稿')
     try {
       const ok = await sendMessage(content, imgs, character, preset, lorebooks, replyId, generationKind)
       if (ok === false) {
-        setText(content)
-        setImages(imgs)
+        if (!prepared || sameScope()) { setText(content); setImages(imgs) }
         return
       }
+      if (prepared && !sameScope()) return
       setText('')
       setImages([])
       try { localStorage.removeItem(draftKey(character.id, currentSessionId)) } catch { /* ignore */ }
       onCancelReply?.()
     } catch (e) {
-      setText(content)
-      setImages(imgs)
+      if (!prepared || sameScope()) { setText(content); setImages(imgs) }
       showNotification(`发送失败：${e instanceof Error ? e.message : String(e)}`)
     }
+  }
+
+  const handleSend = () => sendDraft()
+  const handleSendAfter = async (prepare: () => Promise<void>) => {
+    if (!text.trim() || isStreaming || spatialPreparingRef.current) return
+    if (text.startsWith('/')) throw new Error('指令请使用普通发送；位置建议可在画板中单独确认')
+    spatialPreparingRef.current = true; setSpatialPreparing(true)
+    try {
+      await prepare()
+      const live = useChatStore.getState()
+      if (live.currentSessionId !== currentSessionId || live.sessions.find(session => session.id === currentSessionId)?.characterId !== character.id) throw new Error('位置已应用到原会话；当前会话已切换，未发送输入稿')
+      if (live.isStreaming || textRef.current !== text) throw new Error('位置已应用；输入稿或生成状态已变化，请核对后发送')
+      await sendDraft(true)
+    } finally { spatialPreparingRef.current = false; setSpatialPreparing(false) }
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -453,57 +491,45 @@ export function useChatInputState(
     inputChars?: number
     expectedBodyChars?: number
     onChunk?: (delta: string, full: string) => void
-    /** 仅显式需要的辅助链路注入当前预设的越狱提示词。 */
-    includePresetJailbreak?: boolean
+    editorTicket?: EditorTicket
+    frozenProfile?: ReturnType<typeof getActiveProfile>
   }): Promise<string> => {
-    const p = getActiveProfile()
+    const p = opts.frozenProfile !== undefined ? opts.frozenProfile : getActiveProfile()
     if (!p) throw new Error('未配置 API 连接')
-    const [preset] = await loadActivePresetLorebook()
-    const activeModel = settings.activeModel || p.model
-    const plan = await resolveRendererGenerationTaskBudget({
-      profile: p,
-      model: activeModel,
-      task: opts.task ?? 'generic',
-      inputChars: opts.inputChars,
-      expectedBodyChars: opts.expectedBodyChars,
-      userHardCap: preset?.maxTokens,
-      usageTaskType: opts.task ?? 'generic',
-    })
-    let messages = opts.messages
-    if (opts.includePresetJailbreak && preset?.jailbreak.trim()) {
-      const jailbreak = replaceVariables(
-        preset.jailbreak,
-        settings.userName || '用户',
-        getDisplayName(character),
-        character.name,
-      )
-      const systemIndex = messages.findIndex((message) => message.role === 'system')
-      messages = systemIndex >= 0
-        ? messages.map((message, index) => index === systemIndex
-          ? { ...message, content: `${message.content}\n\n${jailbreak}` }
-          : message)
-        : [{ role: 'system', content: jailbreak }, ...messages]
-    }
-    return callAiHelperCore({
-      messages,
-      temperature: opts.temperature,
-      onChunk: opts.onChunk,
-      maxTokens: plan.requestMaxTokens,
-      reasoningGate: plan.reasoningGate,
-      adaptiveOutputBudget: plan.adaptiveOutputBudget,
-      observability: {
-        source: 'aux',
-        taskType: opts.task ?? 'generic',
-        plannedBodyTokens: plan.bodyReserve,
-        plannedReasoningTokens: plan.reasoningReserve,
-        gateLevel: plan.reasoningGate.level,
-        gateKnob: plan.reasoningGate.knob,
-      },
-      profile: p,
-      activeModel,
-      preset,
-      activeRequestIds: activeRequestIdsRef.current,
-    })
+    const ticket = opts.editorTicket ?? editor.begin(opts.task ?? 'generic', opts.messages)
+    if (!editor.owns(ticket)) throw new Error('编辑任务已取消')
+    try {
+      const [preset] = await loadActivePresetLorebook()
+      const activeModel = p.model
+      const plan = await resolveRendererGenerationTaskBudget({
+        profile: p,
+        model: activeModel,
+        task: opts.task ?? 'generic',
+        inputChars: opts.inputChars,
+        expectedBodyChars: opts.expectedBodyChars,
+        userHardCap: preset?.maxTokens,
+        usageTaskType: opts.task ?? 'generic',
+      })
+      let previousText = ''
+      return await editor.request(ticket, {
+        requestId: `${ticket.task.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        messages: opts.messages,
+        provider: p.provider, apiKey: p.apiKey, baseUrl: p.baseUrl, model: activeModel,
+        temperature: opts.temperature ?? 0.7,
+        topP: preset?.topP ?? 0.95, frequencyPenalty: 0, presencePenalty: 0, stream: true,
+        maxTokens: plan.requestMaxTokens,
+        reasoningGate: plan.reasoningGate,
+        adaptiveOutputBudget: plan.adaptiveOutputBudget,
+        observability: {
+          source: 'aux',
+          taskType: opts.task ?? 'generic',
+          plannedBodyTokens: plan.bodyReserve,
+          plannedReasoningTokens: plan.reasoningReserve,
+          gateLevel: plan.reasoningGate.level,
+          gateKnob: plan.reasoningGate.knob,
+        },
+      }, full => { const delta = full.slice(previousText.length); previousText = full; opts.onChunk?.(delta, full) })
+    } finally { if (!opts.editorTicket) editor.finish(ticket) }
   }
 
   /**
@@ -527,6 +553,9 @@ export function useChatInputState(
     if (isAiProcessing) return
     setIsAiProcessing(true)
     const originalInput = text
+    const ticket = editor.begin('continuation', [originalInput, character.id, currentSessionId])
+    const active = getActiveProfile()
+    const frozenProfile = active ? { ...active } : null
     try {
       const store = useChatStore.getState()
       const recentMessages = store.messages.slice(-6)
@@ -551,7 +580,7 @@ export function useChatInputState(
         temperature,
         task: 'continuation',
         expectedBodyChars: CONTINUE_LENGTH_PARAMS[length].maxChars,
-        includePresetJailbreak: true,
+        editorTicket: ticket, frozenProfile,
       })
 
       /** 在 system 提示词后追加一段指令并重发（格式重试与长度修复共用）。 */
@@ -590,7 +619,6 @@ export function useChatInputState(
           if (repaired && isAcceptableAfterLengthRepair(repaired, length)) {
             cleaned = repaired
           } else {
-            setText(originalInput)
             // 仍以不完整句结尾时，实质是“没写完”而非长度档位问题，提示要指向症结
             showNotification(
               !repaired || !isCompleteSentence(repaired)
@@ -603,17 +631,18 @@ export function useChatInputState(
         // 提示词已禁止复读末尾，但模型仍会溢出；用确定性去重兜底（R5/S4）。
         // 统一走续写接缝策略：4 字直接去重，3 字仅在边界/完整短语重复时去重。
         if (hasInput) cleaned = trimContinuationSeam(originalInput, cleaned)
-        setContinuedText(hasInput ? originalInput + cleaned : cleaned)
+        const suggestion = hasInput ? originalInput + cleaned : cleaned
+        if (sameScope() && editor.current(ticket)) setContinuedText(suggestion)
+        else if (sameScope()) editor.keep(ticket, suggestion, '续写')
       } else {
-        setText(originalInput)
-        showNotification(continueFailureMessage(rawResult))
+        if (editor.owns(ticket)) showNotification(continueFailureMessage(rawResult))
       }
     } catch (err) {
       logError('ChatInput:continue', err)
-      setText(originalInput)
-      showNotification(`续写失败：${err instanceof Error ? err.message : String(err)}`)
+      if (editor.owns(ticket)) showNotification(`续写失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
-      setIsAiProcessing(false)
+      if (editor.owns(ticket)) setIsAiProcessing(false)
+      editor.finish(ticket)
     }
   }
 
@@ -622,7 +651,9 @@ export function useChatInputState(
     if (isAiProcessing || !text.trim()) return
     // UEX-P1-06 尾巴：本地捕获原文，异步回退不能依赖会过期的 originalText 状态闭包
     const originalInput = text
-    setOriginalText(originalInput)
+    const ticket = editor.begin('polish', originalInput)
+    const active = getActiveProfile()
+    const frozenProfile = active ? { ...active } : null
     setIsAiProcessing(true)
 
     try {
@@ -634,30 +665,31 @@ export function useChatInputState(
         temperature: 0.3,
         task: 'polish',
         inputChars: originalInput.length,
+        editorTicket: ticket, frozenProfile,
       })
       if (result) {
-        setText(result)
+        if (sameScope() && editor.current(ticket)) { setText(result); setOriginalText(originalInput) }
+        else if (sameScope()) editor.keep(ticket, result, '润色')
       } else {
         // UEX-P1-06 尾巴：空结果回退原文时同步提示（对齐续写失败文案模式），不再静默
-        setText(originalInput)
-        showNotification('润色未返回结果，已保留原输入，请重试或更换模型')
+        if (editor.owns(ticket)) showNotification('润色未返回结果，已保留原输入，请重试或更换模型')
       }
     } catch (err) {
       logError('ChatInput:polish', err)
-      setText(originalInput)
-      setOriginalText(null)
-      showNotification(`润色失败：${err instanceof Error ? err.message : String(err)}`)
+      if (editor.owns(ticket)) showNotification(`润色失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
-      setIsAiProcessing(false)
+      if (editor.owns(ticket)) setIsAiProcessing(false)
+      editor.finish(ticket)
     }
   }
 
   return {
+    oldSuggestions: editor.suggestions,
     text, setText, images, setImages, isAiProcessing, originalText, setOriginalText,
     commandSuggestions, setCommandSuggestions, selectedSuggestionIdx, setSelectedSuggestionIdx,
     imageMenuOpen, setImageMenuOpen, textareaRef, effectiveReplies,
     isConnected, isStreaming, stopStreaming,
-    runQuickReply, showNotification, buildCommandContext, handleSend, handleKeyDown,
+    runQuickReply, showNotification, buildCommandContext, handleSend, handleSendAfter, isSpatialPreparing, handleKeyDown,
     handleImageSelect, removeImage, handleAiContinue, handleAiPolish,
     settings,
   }

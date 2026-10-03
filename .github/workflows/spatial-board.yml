@@ -1,0 +1,33 @@
+name: Spatial Board
+
+on:
+  push:
+    paths:
+      - 'spatial-board/**'
+      - 'packages/spatial-core/**'
+      - '.github/workflows/spatial-board.yml'
+  pull_request:
+    paths:
+      - 'spatial-board/**'
+      - 'packages/spatial-core/**'
+      - '.github/workflows/spatial-board.yml'
+
+jobs:
+  standalone-checks:
+    name: Standalone tests and browser regression
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spatial-board
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: spatial-board/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - run: npm run test:browser
+      - run: npm run build

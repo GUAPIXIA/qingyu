@@ -141,6 +141,8 @@ export function SettingsPage() {
     try {
       const result = await window.api.settings.exportBackup() as { status: string; path?: string; version?: number; counts?: Record<string, number>; totalBytes?: number; excluded?: string[] } | undefined
       if (!result || result.status === 'canceled') return
+      const { cancelFeatureTasks } = await import('../store/featureTasks')
+      cancelFeatureTasks()
       const v = result.version ? ` V${result.version}` : ''
       const counts = result.counts
       const detail = counts ? `（${Object.entries(counts).map(([k,v])=>`${k} ${v}`).join(' / ')}）` : ''

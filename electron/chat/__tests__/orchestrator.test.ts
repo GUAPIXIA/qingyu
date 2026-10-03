@@ -80,6 +80,36 @@ afterEach(() => {
 })
 
 describe('Orchestrator', () => {
+  it.each([
+    ['desktop','stop','完成正文',true], ['desktop','length','截断正文',false], ['desktop','unknown','未知终态',false],
+    ['desktop','stop','',false], ['android','stop','移动端正文',false],
+  ])('空间同步仅登记 desktop 完整成功正文：%s / %s', async (clientKind,finishReason,text,expected) => {
+    const messagePort = makeMessagePort(), commit = vi.spyOn(messagePort,'commitAssistantMessage')
+    const prepare = vi.fn().mockResolvedValue('spatial-generation'), saved = vi.fn().mockImplementation(async (_scope,_id,messageId) => {
+      expect(commit).toHaveBeenCalled(); expect(commit.mock.calls[0][0].id).toBe(messageId)
+    })
+    const orch = new ChatOrchestrator({messagePort,contextPort:makeContextPort(),modelPort:{stream:async()=>({text,finishReason})},spatialScheduler:{prepare,saved}})
+    const result = await orch.handle(cmd({client:{kind:clientKind,clientId:'c1',protocolVersion:2}}))
+    expect(result.state).toBe('completed'); expect(saved).toHaveBeenCalledTimes(expected ? 1 : 0)
+    expect(prepare).toHaveBeenCalledTimes(clientKind === 'desktop' ? 1 : 0)
+    expect(commit.mock.calls[0][0].spatialGenerationId).toBe(expected ? 'spatial-generation' : undefined)
+  })
+  it('保存失败不通知空间队列；队列登记失败不反转已保存正文', async () => {
+    const prepare = vi.fn().mockResolvedValue('spatial-generation'), saved = vi.fn().mockRejectedValue(new Error('queue unavailable'))
+    const messagePort = makeMessagePort()
+    vi.spyOn(messagePort,'commitAssistantMessage').mockRejectedValueOnce(new Error('disk full'))
+    const orch = new ChatOrchestrator({messagePort,contextPort:makeContextPort(),modelPort:{stream:async()=>({text:'正文',finishReason:'stop'})},spatialScheduler:{prepare,saved}})
+    await expect(orch.handle(cmd())).rejects.toThrow('disk full'); expect(saved).not.toHaveBeenCalled()
+    expect((await orch.handle(cmd())).state).toBe('completed'); expect(saved).toHaveBeenCalledTimes(1)
+  })
+  it('重生成选中候选携带独立保存检查点，重复 request 不重新通知', async () => {
+    const messagePort = makeMessagePort(), append = vi.spyOn(messagePort,'appendSwipedCandidate')
+    const prepare = vi.fn().mockResolvedValue('spatial-generation'), saved = vi.fn().mockResolvedValue(undefined)
+    const orch = new ChatOrchestrator({messagePort,contextPort:makeContextPort(),modelPort:{stream:async()=>({text:'新候选',finishReason:'stop'})},spatialScheduler:{prepare,saved}})
+    const command = cmd({type:'regenerate',messageId:'target'})
+    await orch.handle(command); await orch.handle(command)
+    expect(append).toHaveBeenCalledWith('target','新候选','regenerate','spatial-generation'); expect(saved).toHaveBeenCalledTimes(1)
+  })
   it('start 立即返回 accepted 快照，生成在后台继续', async () => {
     let releaseModel!: () => void
     const modelStarted = new Promise<void>((resolve) => { releaseModel = resolve })
@@ -194,13 +224,16 @@ describe('Orchestrator', () => {
   // 2026-09-13 修复：任务快照落盘（data/tasks）与 task:started 事件外发都不得携带凭据
   it('任务快照与事件记录落盘均不携带 apiKey/baseUrl', async () => {
     const mp = makeMessagePort()
+    const modelPort = new FakeModelPort({ kind: 'success', chunks: ['ok'] })
+    const stream = vi.spyOn(modelPort, 'stream')
     const orch = new ChatOrchestrator({
       messagePort: mp,
       contextPort: makeContextPort(),
-      modelPort: new FakeModelPort({ kind: 'success', chunks: ['ok'] }),
+      modelPort,
     })
 
     const snap = await orch.handle(cmd({ requestId: 'req-secret', sessionId: 'sess-secret' }))
+    expect(stream.mock.calls[0]?.[0]).toMatchObject({ sessionId: 'sess-secret' })
 
     expect(snap.model).toEqual({ provider: 'openai', model: 'gpt-4o-mini', profileId: 'p1' })
     // 端到端：扫描该次任务落盘的全部文件（任务快照 + 事件日志）

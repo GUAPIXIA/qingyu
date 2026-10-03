@@ -14,7 +14,7 @@ import {
 import type {
   LorebookDiagnostics,
   LoreTriggerDetail,
-} from '../../utils/lorebook'
+} from '../../../shared/chat-core/lorebook'
 import { cn } from '../../lib/utils'
 import { LORE_TRIGGER_REASON_LABELS } from './lorebookDebugLabels'
 

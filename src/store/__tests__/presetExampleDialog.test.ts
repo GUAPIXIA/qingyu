@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useChatStore } from '../useChatStore'
 import { useSettingsStore } from '../useSettingsStore'
 import { getDefaultSettings } from '../../../shared/defaults'
-import { lorebookCache } from '../../utils/lorebook'
+import { lorebookCache } from '../../features/lorebook/lorebookCache'
 import type { Character, Message, Preset } from '../../../shared/types'
 
 function makeCharacter(): Character {

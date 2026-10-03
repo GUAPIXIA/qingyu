@@ -1,33 +1,32 @@
+import { startHistoryCompression, type HistoryCompression } from './sessionFeatureTasks'
+import { prepareGroupSpatialGeneration, registerGroupSpatialMessages, finishGroupSpatialBurst } from './groupSpatialSync'
 import { nanoid } from 'nanoid'
 import type { AIFinishReason, GroupChat, GroupMessage, Character, MemoryFactRecord } from '../../shared/types'
-import { useSettingsStore } from './useSettingsStore'
+import { useSettingsStore, type ActiveProfile } from './useSettingsStore'
+import { snapshotChatConfiguration, type ChatConfigurationSnapshot } from '../../shared/chatConnection'
 import { useCharacterStore } from './useCharacterStore'
-import { lorebookCache } from '../utils/lorebook'
-import type { BudgetLoreItem } from '../utils/lorebook'
-import { estimateTokens } from '../utils/tokenCounter'
+import { lorebookCache } from '../features/lorebook/lorebookCache'
+import type { BudgetLoreItem } from '../../shared/chat-core/lorebook'
+import { estimateTokens } from '../../shared/chat-core/tokenCounter'
 import { countChars } from '../utils/charCounter'
-import { isLocalProvider, isLocalUrl } from '../utils/defaults'
-import { replaceVariables } from '../utils/variables'
-import { resolveEffectiveTemplate } from '../utils/chatTemplates'
-import { collectStopStrings, findStopIndex } from '../utils/regex'
+import { replaceVariables } from '../../shared/chat-core/variables'
+import { resolveEffectiveTemplate } from '../../shared/chat-core/chatTemplates'
+import { collectStopStrings, findStopIndex } from '../../shared/chat-core/regex'
 import { logError, logInfo, logWarn } from '../lib/logger'
 import { safeSave } from '../lib/safeOps'
-import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS, DEFAULT_LOREBOOK_SCAN_DEPTH, resolveLorebookScanDepth } from './chatConstants'
+import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS, DEFAULT_LOREBOOK_SCAN_DEPTH, resolveLorebookScanDepth } from '../../shared/chat-core/chatConstants'
 import { buildLorebookRevisionCorpus, buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from './chatUtils'
 import { resolveVisionModel } from '../utils/visionModel'
-import { memoryFactsToTexts } from '../utils/memory'
-import { stripVendorThinking } from '../utils/messagePostProcess'
+import { memoryFactsToTexts } from '../../shared/chat-core/memory'
+import { stripVendorThinking } from '../../shared/chat-core/messagePostProcess'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 import { pushToast } from './useToastStore'
 import { resolveNarrativeMode } from '../../shared/narrativeMode'
-import { stripAllThinking } from '../../shared/thoughtMarkup'
-import { formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
-import { resolveRendererGenerationTaskBudget } from './generationTaskBudget'
+import { enabledProfileOverride, formatRequestBudgetRisk } from '../../shared/modelOutputProfile'
 import { resolveGroupRequestPlan } from './groupRequestPlan'
 // 阶段 6 S6-01：轮询续排/自动记忆/自由拆分的跨端共享纯逻辑（fixture oracle 即此实现）
 import { planGroupPollingContinue, resolvePollingIntervalMs, planAutoMemoryTrigger } from '../../shared/chat-core/groupScheduling'
 import { splitFreeReply } from '../../shared/chat-core/groupFreeSplit'
-import { BACKGROUND_GENERATION_PROFILES, hasCompleteSummaryTail } from '../../shared/backgroundGeneration'
 import { attemptTailRepair, finalizeNoticeFields, type GenerationOutcomeMeta } from './streamController'
 import { prefetchUsageProfile, withReasoningSamples } from './usageProfileCache'
 import {
@@ -37,7 +36,7 @@ import {
 } from './reasoningGateState'
 import { nextRecoveryLevel } from './gateRecovery'
 import type { ReasoningGateLevel } from '../../shared/reasoningGate'
-import { finalizeGenerationTerminalResult, type GenerationTerminalOutcome } from './generatedReplyPipeline'
+import { finalizeGenerationTerminalResult, type GenerationTerminalOutcome } from '../../shared/chat-core/generatedReplyPipeline'
 import {
   createGenerationTerminationLatch,
   terminationCauseFromFinishReason,
@@ -64,6 +63,7 @@ interface ActiveStream {
   /** S8：abandon 保留半截正文时需要的落盘上下文 */
   characterId: string
   isFree: boolean
+  offstageCharacterIds?: string[]
   groupId: string
   sessionId: string
   round: number
@@ -88,17 +88,17 @@ export function getActiveStream(): ActiveStream | null {
  * claim 失败（timeout/error/done 已进入收口）返回 null，调用方不得再触碰该消息；
  * 后续迟到 chunk/done/error 全部被状态机忽略，同一 requestId 最多落盘一次。
  */
-export function claimGroupUserStop(): { requestId: string; msgId: string; accumulated: string; regenerationObserver?: GroupRegenerationObserver } | null {
+export function claimGroupUserStop(): { requestId: string; msgId: string; accumulated: string; isFree: boolean; offstageCharacterIds?: string[]; regenerationObserver?: GroupRegenerationObserver } | null {
   const st = activeStream
   if (!st) return null
   if (!st.latch.claim('user_cancel')) return null
-  const result = { requestId: st.requestId, msgId: st.msgId, accumulated: st.accumulated, regenerationObserver: st.regenerationObserver }
+  const result = { requestId: st.requestId, msgId: st.msgId, accumulated: st.accumulated, isFree: st.isFree, offstageCharacterIds: st.offstageCharacterIds, regenerationObserver: st.regenerationObserver }
   cleanupActiveStream()
   return result
 }
 
 /** 群聊上下文溢出压缩：待执行任务（buildGroupContext 标记，流式完成后消费） */
-interface PendingGroupCompression {
+interface PendingGroupCompression extends HistoryCompression {
   groupId: string
   sessionId: string
   droppedText: string
@@ -151,6 +151,7 @@ export function abandonActiveStream(options: { preserve: boolean }): {
   preserved: string
   characterId: string
   isFree: boolean
+  offstageCharacterIds?: string[]
   round: number
   narrativeMode: import('../../shared/types').NarrativeMode
   groupId: string
@@ -168,6 +169,7 @@ export function abandonActiveStream(options: { preserve: boolean }): {
     preserved,
     characterId: st.characterId,
     isFree: st.isFree,
+    offstageCharacterIds: st.offstageCharacterIds,
     round: st.round,
     narrativeMode: st.narrativeMode,
     groupId: st.groupId,
@@ -223,6 +225,7 @@ export async function persistPartialGroupReply(input: {
   round: number
   characterId: string
   isFree: boolean
+  offstageCharacterIds?: string[]
   narrativeMode: import('../../shared/types').NarrativeMode
   noticeFields?: { generationNotice?: string; generationError?: string }
 }): Promise<void> {
@@ -235,6 +238,7 @@ export async function persistPartialGroupReply(input: {
     await splitAndSaveMessages(input.set, input.get, input.group, input.sessionId, clean, input.round, input.msgId, {
       noticeFields: input.noticeFields,
       renderMode: { contentRenderMode: 'blocks' },
+      offstageCharacterIds: input.offstageCharacterIds,
     })
     return
   }
@@ -274,6 +278,8 @@ export async function finalizeGroupReply(input: {
   model: string
   temperature?: number
   regexRules: import('../../shared/types').RegexRule[]
+  profile?: ActiveProfile
+  autoTailRepairEnabled?: boolean
 }): Promise<{ content: string; noticeFields: { generationNotice?: string; generationError?: string }; stopped: boolean } | null> {
   const cause = terminationCauseFromFinishReason(input.finishReason)
   // 补尾限制（§8.1）：只有 provider_length 会被协调入口调用（每轮至多一次）
@@ -281,11 +287,12 @@ export async function finalizeGroupReply(input: {
     terminalResult: { rawText: input.rawText, finishReason: input.finishReason, terminationCause: cause },
     regexRules: input.regexRules,
     characterName: input.speaker.translatedContent?.name || input.speaker.name,
-    runTailRepair: useSettingsStore.getState().settings.autoTailRepairEnabled === false ? undefined : (finalized) => attemptTailRepair({
+    runTailRepair: (input.autoTailRepairEnabled ?? useSettingsStore.getState().settings.autoTailRepairEnabled) === false ? undefined : (finalized) => attemptTailRepair({
       finalized,
       character: input.speaker,
       model: input.model,
       temperature: input.temperature,
+      profile: input.profile,
     }),
   })
   if (!result.persistable || !result.content) return null
@@ -328,6 +335,7 @@ export async function handleGroupStreamException(input: {
   regexRules: import('../../shared/types').RegexRule[]
   round: number
   isFree: boolean
+  offstageCharacterIds?: string[]
   latch?: GenerationTerminationLatch
   /** NEW-M12：错误后继续推进轮询链/自动记忆检查 */
   onChainContinue?: () => void
@@ -343,6 +351,7 @@ export async function handleGroupStreamException(input: {
   if (input.latch && !input.latch.claim(cause)) return
   // 先取 accumulated 再清理（C-02 同款竞态保护；cleanup 同步合并未执行的 flush timer）
   const partialContent = st?.accumulated ?? ''
+  input.offstageCharacterIds ??= st?.offstageCharacterIds
   cleanupActiveStream()
   if (cause === 'idle_timeout') {
     window.api.ai.cancelChat(input.requestId, 'timeout').catch((e) => logError('GroupChatStore:cancelChat', e))
@@ -367,6 +376,7 @@ export async function handleGroupStreamException(input: {
       characterName: input.characterName,
     })
     await dispatchGroupTerminal(input, result, errText)
+    if ((!input.onChainContinue || input.group?.chatMode !== 'polling' || !input.group?.autoMode) && input.group) await finishGroupSpatialBurst(input.group.id, input.sessionId)
     input.onChainContinue?.()
   } catch (e) {
     logError('GroupChatStore:terminalFinalize', e)
@@ -377,6 +387,7 @@ export async function handleGroupStreamException(input: {
     }))
     // UEX-P0-01：占位被移除、无存活气泡展示错误 → 补全局 Toast
     toastGroupGenerationFailure(errText)
+    if ((!input.onChainContinue || input.group?.chatMode !== 'polling' || !input.group?.autoMode) && input.group) await finishGroupSpatialBurst(input.group.id, input.sessionId)
     input.onChainContinue?.()
   }
 }
@@ -401,6 +412,7 @@ async function dispatchGroupTerminal(input: Parameters<typeof handleGroupStreamE
           round: input.round,
           characterId: input.characterId,
           isFree: true,
+          offstageCharacterIds: input.offstageCharacterIds,
           narrativeMode: input.narrativeMode,
           noticeFields: result.noticeFields,
         })
@@ -433,7 +445,7 @@ async function dispatchGroupTerminal(input: Parameters<typeof handleGroupStreamE
     }))
     await window.api.group.saveMessage(input.groupId, input.sessionId, {
       id: input.msgId, groupId: input.groupId, characterId: input.characterId,
-      content: result.content, images: [], timestamp: Date.now(), round: input.round, narrativeMode: input.narrativeMode,
+      content: result.content, images: [], timestamp: input.get?.().messages.find((m: GroupMessage) => m.id === input.msgId && m.groupId === input.groupId)?.timestamp ?? Date.now(), round: input.round, narrativeMode: input.narrativeMode,
       ...result.noticeFields,
       ...renderMode,
     } as GroupMessage)
@@ -612,7 +624,7 @@ async function fetchGroupSemanticFacts(get: GroupStoreGet, set: GroupStoreSet): 
     threshold: st.thresholdMode === 'manual' ? st.threshold : undefined,
     maxResults: st.maxResults,
   })
-  const cached = semanticCacheGet<import('../../shared/ipc-api').FactSearchHit[]>(cacheKey)
+  const cached = semanticCacheGet<import('../../shared/domain/semanticFacts').FactSearchHit[]>(cacheKey)
   if (cached) {
     set({ _semanticFactsHits: cached })
     return
@@ -674,85 +686,13 @@ export async function vectorizeGroupSessionFacts(
 /**
  * 群聊上下文溢出压缩（P0-1）：异步压缩被裁剪的早期群聊内容，存群聊会话。
  */
-async function compressGroupDroppedHistory(
-  get: GroupStoreGet,
-  set: GroupStoreSet,
-  group: GroupChat,
-  pending: PendingGroupCompression,
-): Promise<void> {
-  if (!pending.sessionId || !pending.droppedText) return
-  const settings = useSettingsStore.getState().settings
-  const profile = useSettingsStore.getState().getActiveProfile()
-  if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) return
-
-  const requestId = `group-compress-${Date.now()}`
-  let result = ''
-  let finished = false
-
-  const unbindChunk = window.api.ai.onChunk((data) => {
-    if (data.requestId !== requestId) return
-    result += data.text
-  })
-  // 阶段7（§7.3）：群聊历史压缩与单聊同一 background 档案（只允许任务体量参数不同）
-  const compressionProfile = BACKGROUND_GENERATION_PROFILES.compression
-  const compressionPlan = await resolveRendererGenerationTaskBudget({
-    profile,
-    model: settings.activeModel || profile.model,
-    task: 'compression',
-    expectedBodyChars: compressionProfile.expectedBodyChars,
-    usageTaskType: 'compression',
-  })
-  const unbindDone = window.api.ai.onComplete((payload) => {
-    if (payload.requestId !== requestId) return
-    cleanup()
-    finished = true
-    const summary = stripAllThinking(result)
-    const truncated = payload.finishReason === 'length' || !hasCompleteSummaryTail(summary)
-    if (summary && !truncated) {
-      window.api.group.updateSession(group.id, pending.sessionId, {
-        compressedSummary: summary,
-        compressedRange: { startTs: pending.droppedStartTs, endTs: pending.droppedEndTs },
-      }).then(async () => {
-        const sessions = await window.api.group.listSessions(group.id)
-        set({ sessions })
-      }).catch((e) => logError('GroupChatStore:compressSummary', e))
-    } else if (summary) {
-      logWarn('compressGroupDroppedHistory', '压缩结果结构不完整，本次丢弃，原历史保持不变')
-    }
-  })
-  const unbindError = window.api.ai.onError((data) => {
-    if (data.requestId !== requestId) return
-    cleanup()
-    finished = true
-  })
-  const cleanup = () => {
-    unbindChunk(); unbindDone(); unbindError()
-  }
-
-  window.api.ai.chat({
-    requestId,
-    messages: [
-      {
-        role: 'system',
-        content: `你是一个对话摘要助手。以下是群聊「${group.name}」的早期内容，即将被上下文裁剪。请压缩为 3-5 句中文摘要，必须保留：各角色身份与姓名、地点、目标、关键事件、未解决的问题、重要的约定。只输出摘要文本，不要任何解释。`,
-      },
-      { role: 'user', content: pending.droppedText.slice(0, 20000) },
-    ],
-    provider: profile.provider,
-    apiKey: profile.apiKey,
-    baseUrl: profile.baseUrl,
-    model: settings.activeModel || profile.model,
-    temperature: 0.3,
-    topP: 0.9,
-    maxTokens: compressionPlan.requestMaxTokens,
-    frequencyPenalty: 0,
-    presencePenalty: 0,
-    stream: true,
-    reasoningGate: compressionPlan.reasoningGate,
-    observability: { source: 'aux', taskType: 'compression', sessionId: pending.sessionId },
-  }).catch(() => {
-    cleanup()
-    if (!finished) logWarn('compressGroupDroppedHistory', '压缩请求失败')
+async function compressGroupDroppedHistory(get: GroupStoreGet, set: GroupStoreSet, group: GroupChat, pending: PendingGroupCompression): Promise<void> {
+  return startHistoryCompression({ owner: { kind: 'group', groupId: pending.groupId, sessionId: pending.sessionId }, pending,
+    session: get().sessions.find(s => s.id === pending.sessionId), messages: get().messages, group,
+    apply: patch => {
+      if (get().currentGroup?.id !== pending.groupId || get().currentSessionId !== pending.sessionId) return
+      set(s => ({ sessions: s.sessions.map(session => session.id === pending.sessionId ? { ...session, ...patch } : session) }))
+    },
   })
 }
 
@@ -764,6 +704,15 @@ async function compressGroupDroppedHistory(
 function isGroupContextCurrent(get: GroupStoreGet, group: GroupChat, sessionId: string): boolean {
   const s = get()
   return s.currentGroup?.id === group.id && s.currentSessionId === sessionId
+}
+
+interface GroupRecovery {
+  msgId: string
+  gateLevel: ReasoningGateLevel
+  recoveryUsed?: boolean
+  configuration?: ChatConfigurationSnapshot
+  context?: { role: 'system' | 'user' | 'assistant'; content: string }[]
+  visionSnapshot?: import('../utils/visionModel').ResolvedVisionModel | null
 }
 
 export async function streamGroupAI(
@@ -778,7 +727,7 @@ export async function streamGroupAI(
    * 阶段8（§4.5）：降档恢复。复用同一 msgId 与同一上下文，只按新档位重发一次；
    * 每个逻辑回合最多恢复一次（recoveryUsed），失败不重复其他角色已完成回合。
    */
-  recovery?: { msgId: string; gateLevel: ReasoningGateLevel; recoveryUsed?: boolean },
+  recovery?: GroupRecovery,
   regenerationObserver?: GroupRegenerationObserver,
 ): Promise<boolean> {
   /** S11：started = 成功挂上 activeStream 或发出 ai.chat */
@@ -791,11 +740,13 @@ export async function streamGroupAI(
       ...(err ? { error: err } : {}),
     })
     void regenerationObserver?.onTerminal(false)
+    void finishGroupSpatialBurst(group.id, sessionId)
     return false
   }
   try {
     const settingsStore = useSettingsStore.getState()
-    const profile = settingsStore.getActiveProfile()
+    const configuration = recovery?.configuration ?? snapshotChatConfiguration(settingsStore.settings)
+    const { settings, profile } = configuration
     if (!profile) return failEarly()
 
     // BUG-08 修复：异步加载期间用户可能已切换群聊/会话，先校验一次
@@ -831,16 +782,18 @@ export async function streamGroupAI(
       prefetchUsageProfile({
         provider: profile.provider,
         baseUrl: profile.baseUrl,
-        model: settingsStore.settings.activeModel || profile.model,
+        model: profile.model,
       }),
     ])
     // 阶段8（§4.2/§4.5）：本轮门控（恢复时用覆盖档位）；档位在 done 处理里用于判定降档
-    const groupGate = withReasoningGate(profile, settingsStore.settings.activeModel, recovery?.gateLevel)
+    const groupGate = withReasoningGate(profile, profile.model, recovery?.gateLevel)
     const requestPlan = resolveGroupRequestPlan({
-      model: settingsStore.settings.activeModel || profile.model,
+      model: profile.model,
       messages: get().messages,
       preset,
-      ...withReasoningSamples(profile, settingsStore.settings.activeModel),
+      defaultResponseLength: settings.defaultResponseLength,
+      profileOverride: enabledProfileOverride(profile.capabilityOverride),
+      ...withReasoningSamples(profile, profile.model),
       ...groupGate,
     })
     const budgetRisk = formatRequestBudgetRisk(requestPlan.requestBudget)
@@ -849,17 +802,22 @@ export async function streamGroupAI(
       return failEarly(budgetRisk)
     }
 
-    const context = get().buildGroupContext(speaker.id, preset)
+    const spatialContext = get().sessions.find(session => session.id === sessionId)?.spatialBoardEnabled !== true ? null : await window.api.spatial.readGroupContext(group.id, sessionId, speaker.id)
+    if (!isGroupContextCurrent(get, group, sessionId)) return failEarly()
+    if (narrativeMode === 'immersive' && spatialContext?.characterOffstage) { set({ isStreaming: false, currentStreamingCharId: null }); onComplete(); return false }
+    const context = recovery?.context ?? get().buildGroupContext(speaker.id, preset, { spatialContext, configuration })
 
     if (context.length === 0) return failEarly()
 
     // Vision：上下文含图片且配置了激活识图模型 → 本轮使用识图模型连接（未填字段回退当前 Profile）
-    const vision = resolveVisionModel(context)
+    const vision = recovery?.visionSnapshot === undefined ? resolveVisionModel(context) : recovery.visionSnapshot
 
     // BUG-08：占位消息写入前再次校验，避免追加到切换后的群聊 UI
     if (!isGroupContextCurrent(get, group, sessionId)) return failEarly()
 
     const requestId = nanoid()
+    const spatialBurst = await prepareGroupSpatialGeneration(group, sessionId, requestId, spatialContext?.version, speaker.id, !!regenerationObserver)
+    if (!isGroupContextCurrent(get, group, sessionId)) { await finishGroupSpatialBurst(group.id, sessionId); return failEarly() }
     // 阶段8：降档恢复复用原消息，避免留下 "(无回复)" + 新消息两条记录
     const msgId = recovery?.msgId ?? nanoid()
     // 阶段7：requestId 级一次性终止状态机（点名/轮询路径）
@@ -867,7 +825,7 @@ export async function streamGroupAI(
     /** 降档恢复：复用同一 msgId 与同一上下文；成功后计入熔断清零 */
     const retryWithDowngradedGate = (level: ReasoningGateLevel) => {
       void streamGroupAI(set, get, group, sessionId, speaker, round, onComplete, {
-        msgId, gateLevel: level, recoveryUsed: true,
+        msgId, gateLevel: level, recoveryUsed: true, configuration, context, visionSnapshot: vision,
       }, regenerationObserver)
     }
 
@@ -967,7 +925,7 @@ export async function streamGroupAI(
         const groupGateScope = {
           provider: profile.provider,
           baseUrl: profile.baseUrl,
-          model: settingsStore.settings.activeModel || profile.model,
+          model: profile.model,
           task: 'group',
         }
         if (doneCause === 'reasoning_gate_exceeded') {
@@ -998,7 +956,9 @@ export async function streamGroupAI(
           // 停止字符串命中后的 cancelled 按正常 stop 收尾，不标"已停止生成"
           finishReason: stopStringsHit && finishReason === 'cancelled' ? 'stop' : finishReason,
           speaker,
-          model: profile.model,
+          model: vision?.model ?? profile.model,
+          profile: { ...profile, ...(vision ?? {}) },
+          autoTailRepairEnabled: settings.autoTailRepairEnabled !== false,
           regexRules,
         })
         // 无可用正文：维持 (无回复) 占位
@@ -1025,9 +985,12 @@ export async function streamGroupAI(
           characterId: speaker.id,
           content: processed,
           images: [],
-          timestamp: Date.now(),
+          timestamp: get().messages.find(m => m.id === msgId && m.groupId === group.id)?.timestamp ?? Date.now(),
           round,
           narrativeMode,
+          speakerKind: 'character',
+          generationKind: 'assistant_reply',
+          ...(spatialBurst ? { spatialGroupGenerationId: requestId } : {}),
           ...noticeFields,
           ...renderMode,
         }
@@ -1036,8 +999,13 @@ export async function streamGroupAI(
           '消息保存',
         )
 
+        if (saved && isGroupContextCurrent(get, group, sessionId)) set(s => ({
+          messages: s.messages.map(m => m.id === msgId ? { ...m, timestamp: completedMessage.timestamp,
+            spatialGroupGenerationId: completedMessage.spatialGroupGenerationId } : m),
+        }))
+
         // 字符用量统计
-        const model = useSettingsStore.getState().settings.activeModel || profile.model
+        const model = vision?.model ?? profile.model
         const outputChars = countChars(processed || '').total
         const usageInfo = { inputChars: 0, outputChars, totalChars: outputChars, model, timestamp: Date.now() }
         set((s: GroupChatState) => ({
@@ -1061,6 +1029,8 @@ export async function streamGroupAI(
         const replacementCommitted = regenerationObserver
           ? await regenerationObserver.onTerminal(saved, saved ? [completedMessage] : [])
           : true
+        if (saved && replacementCommitted && finalizedReply && (stopStringsHit ? 'stop' : finishReason) === 'stop' && !noticeFields.generationError && !noticeFields.generationNotice) await registerGroupSpatialMessages(group.id, sessionId, requestId, spatialBurst, [completedMessage])
+        if (group.chatMode !== 'polling' || !group.autoMode) await finishGroupSpatialBurst(group.id, sessionId)
         if (replacementCommitted) onComplete()
       })()
     })
@@ -1196,7 +1166,7 @@ export async function streamGroupAIFree(
   sessionId: string,
   round: number,
   /** 阶段8（§4.5）：与点名/轮询同一恢复语义（自由发言无固定角色） */
-  recovery?: { msgId: string; gateLevel: ReasoningGateLevel; recoveryUsed?: boolean },
+  recovery?: GroupRecovery,
   regenerationObserver?: GroupRegenerationObserver,
 ): Promise<boolean> {
   /** S11：started = 成功挂上 activeStream 或发出 ai.chat */
@@ -1209,11 +1179,13 @@ export async function streamGroupAIFree(
       ...(err ? { error: err } : {}),
     })
     void regenerationObserver?.onTerminal(false)
+    void finishGroupSpatialBurst(group.id, sessionId)
     return false
   }
   try {
     const settingsStore = useSettingsStore.getState()
-    const profile = settingsStore.getActiveProfile()
+    const configuration = recovery?.configuration ?? snapshotChatConfiguration(settingsStore.settings)
+    const { settings, profile } = configuration
     if (!profile) return failEarly()
 
     // BUG-08 修复：异步加载期间用户可能已切换群聊/会话，先校验一次
@@ -1249,16 +1221,18 @@ export async function streamGroupAIFree(
       prefetchUsageProfile({
         provider: profile.provider,
         baseUrl: profile.baseUrl,
-        model: settingsStore.settings.activeModel || profile.model,
+        model: profile.model,
       }),
     ])
     // 阶段8（§4.2/§4.5）：本轮门控（恢复时用覆盖档位）；档位在 done 处理里用于判定降档
-    const groupGate = withReasoningGate(profile, settingsStore.settings.activeModel, recovery?.gateLevel)
+    const groupGate = withReasoningGate(profile, profile.model, recovery?.gateLevel)
     const requestPlan = resolveGroupRequestPlan({
-      model: settingsStore.settings.activeModel || profile.model,
+      model: profile.model,
       messages: get().messages,
       preset,
-      ...withReasoningSamples(profile, settingsStore.settings.activeModel),
+      defaultResponseLength: settings.defaultResponseLength,
+      profileOverride: enabledProfileOverride(profile.capabilityOverride),
+      ...withReasoningSamples(profile, profile.model),
       ...groupGate,
     })
     const budgetRisk = formatRequestBudgetRisk(requestPlan.requestBudget)
@@ -1267,17 +1241,23 @@ export async function streamGroupAIFree(
       return failEarly(budgetRisk)
     }
 
-    const context = get().buildGroupContext(undefined, preset)
+    const spatialContext = get().sessions.find(session => session.id === sessionId)?.spatialBoardEnabled !== true ? null : await window.api.spatial.readGroupContext(group.id, sessionId)
+    if (!isGroupContextCurrent(get, group, sessionId)) return failEarly()
+    const offstageCharacterIds = narrativeMode === 'immersive' ? spatialContext?.offstageCharacterIds : undefined
+    if (offstageCharacterIds && group.memberIds.every(id => offstageCharacterIds.includes(id))) return failEarly('当前群成员在画板中均明确不参与对话')
+    const context = recovery?.context ?? get().buildGroupContext(undefined, preset, { spatialContext, configuration })
 
     if (context.length === 0) return failEarly()
 
     // Vision：上下文含图片且配置了激活识图模型 → 本轮使用识图模型连接（未填字段回退当前 Profile）
-    const vision = resolveVisionModel(context)
+    const vision = recovery?.visionSnapshot === undefined ? resolveVisionModel(context) : recovery.visionSnapshot
 
     // BUG-08：占位消息写入前再次校验，避免追加到切换后的群聊 UI
     if (!isGroupContextCurrent(get, group, sessionId)) return failEarly()
 
     const requestId = nanoid()
+    const spatialBurst = await prepareGroupSpatialGeneration(group, sessionId, requestId, spatialContext?.version, undefined, !!regenerationObserver)
+    if (!isGroupContextCurrent(get, group, sessionId)) { await finishGroupSpatialBurst(group.id, sessionId); return failEarly() }
     // 阶段8：降档恢复复用原消息，避免留下 "(无回复)" + 新消息两条记录
     const msgId = recovery?.msgId ?? nanoid()
     // 阶段7：requestId 级一次性终止状态机（自由发言路径）
@@ -1285,7 +1265,7 @@ export async function streamGroupAIFree(
     /** 降档恢复：复用同一 msgId 与同一上下文（自由发言无固定角色） */
     const retryWithDowngradedGate = (level: ReasoningGateLevel) => {
       void streamGroupAIFree(set, get, group, sessionId, round, {
-        msgId, gateLevel: level, recoveryUsed: true,
+        msgId, gateLevel: level, recoveryUsed: true, configuration, context, visionSnapshot: vision,
       }, regenerationObserver)
     }
     // 全局叙事的自由发言保留为单条实际成员回应，避免【判定】/【可选行动】被角色分段器误识别。
@@ -1387,7 +1367,7 @@ export async function streamGroupAIFree(
         noteGateRecoveryFailure({
           provider: profile.provider,
           baseUrl: profile.baseUrl,
-          model: settingsStore.settings.activeModel || profile.model,
+          model: profile.model,
           task: 'group',
         })
       }
@@ -1414,7 +1394,9 @@ export async function streamGroupAIFree(
           // 停止字符串命中后的 cancelled 按正常 stop 收尾，不标"已停止生成"
           finishReason: stopStringsHit && finishReason === 'cancelled' ? 'stop' : finishReason,
           speaker: freeSpeaker,
-          model: profile.model,
+          model: vision?.model ?? profile.model,
+          profile: { ...profile, ...(vision ?? {}) },
+          autoTailRepairEnabled: settings.autoTailRepairEnabled !== false,
           regexRules,
         })
         latch.markPersisted()
@@ -1424,7 +1406,7 @@ export async function streamGroupAIFree(
           : undefined
         let savedMessages: GroupMessage[] = []
         try {
-          savedMessages = await splitAndSaveMessages(set, get, group, sessionId, processed, round, msgId, extras)
+          savedMessages = await splitAndSaveMessages(set, get, group, sessionId, processed, round, msgId, { ...extras, offstageCharacterIds, spatialGroupGenerationId: spatialBurst ? requestId : undefined })
         } catch (error) {
           logError('GroupChatStore:saveRegeneratedFreeMessage', error)
           set((state: GroupChatState) => ({
@@ -1433,10 +1415,12 @@ export async function streamGroupAIFree(
             currentStreamingCharId: null,
           }))
         }
-        await regenerationObserver?.onTerminal(savedMessages.length > 0, savedMessages)
+        const replacementCommitted = await regenerationObserver?.onTerminal(savedMessages.length > 0, savedMessages)
+        if (replacementCommitted !== false && finalizedReply && (stopStringsHit ? 'stop' : finishReason) === 'stop' && !finalizedReply.noticeFields.generationError && !finalizedReply.noticeFields.generationNotice) await registerGroupSpatialMessages(group.id, sessionId, requestId, spatialBurst, savedMessages)
+        await finishGroupSpatialBurst(group.id, sessionId)
 
         // 字符用量统计
-        const model = useSettingsStore.getState().settings.activeModel || profile.model
+        const model = vision?.model ?? profile.model
         const outputChars = countChars(processed || '').total
         const sid = get().currentSessionId
         if (sid) {
@@ -1477,6 +1461,7 @@ export async function streamGroupAIFree(
       latch, stopStringsHit: false,
       characterId: freeMessageCharacterId,
       isFree: true,
+      offstageCharacterIds,
       groupId: group.id,
       sessionId,
       round,
@@ -1577,13 +1562,19 @@ export async function splitAndSaveMessages(
   content: string,
   round: number,
   placeholderId: string,
-  extras?: { noticeFields?: { generationNotice?: string; generationError?: string }; renderMode?: { contentRenderMode: 'blocks' } },
+  extras?: { noticeFields?: { generationNotice?: string; generationError?: string }; renderMode?: { contentRenderMode: 'blocks' }; offstageCharacterIds?: string[]; spatialGroupGenerationId?: string },
 ): Promise<GroupMessage[]> {
   const narrativeMode = resolveNarrativeMode(get().sessions?.find((session) => session.id === sessionId)?.narrativeMode)
+  const offstageCharacterIds = narrativeMode === 'immersive' ? extras?.offstageCharacterIds : undefined
   const charStore = useCharacterStore.getState()
   const members = group.memberIds
     .map(id => charStore.characters.find(c => c.id === id))
     .filter(Boolean) as Character[]
+
+  if (offstageCharacterIds && group.memberIds.every(id => offstageCharacterIds!.includes(id))) {
+    set(state => ({ messages: state.messages.filter(message => message.id !== placeholderId), isStreaming: false, currentStreamingCharId: null }))
+    return []
+  }
 
   // 拆分与归属：shared/chat-core/groupFreeSplit.ts 跨端一致（omniscient 不拆分、
   // 旁白并入首段、未识别角色旁注归属首成员、无标记回落首成员）
@@ -1593,13 +1584,14 @@ export async function splitAndSaveMessages(
     const narratorMessage: GroupMessage = {
       id: placeholderId,
       groupId: group.id,
-      characterId: split.messages[0].characterId,
+      characterId: members.find(member => !offstageCharacterIds?.includes(member.id))?.id ?? split.messages[0].characterId,
       content: split.messages[0].content,
       images: [],
       timestamp: Date.now(),
       round,
       narrativeMode,
       speakerKind: 'character',
+      ...(extras?.spatialGroupGenerationId ? { spatialGroupGenerationId: extras.spatialGroupGenerationId } : {}),
       generationKind: 'assistant_reply',
       ...(extras?.renderMode ?? {}),
       ...(extras?.noticeFields ?? {}),
@@ -1615,7 +1607,7 @@ export async function splitAndSaveMessages(
 
   if (split.kind === 'fallback') {
     // 没有匹配到任何角色标记 → 将占位消息改为第一个成员的消息，避免渲染为不可见
-    const fallbackChar = members[0]
+    const fallbackChar = members.find(member => !offstageCharacterIds?.includes(member.id))
     // S7：禁止持久化不可渲染的 __free__ 正文——无成员时移除占位，不落盘
     if (!fallbackChar) {
       set((s: GroupChatState) => ({
@@ -1643,6 +1635,7 @@ export async function splitAndSaveMessages(
       round,
       narrativeMode,
       speakerKind: 'character',
+      ...(extras?.spatialGroupGenerationId ? { spatialGroupGenerationId: extras.spatialGroupGenerationId } : {}),
       generationKind: 'assistant_reply',
       ...(extras?.renderMode ?? {}),
       ...(extras?.noticeFields ?? {}),
@@ -1653,7 +1646,7 @@ export async function splitAndSaveMessages(
 
   // 移除占位消息，替换为拆分的角色消息（过滤任何 __free__，禁止不可渲染正文落盘）
   const newMessages: GroupMessage[] = split.messages
-    .filter((segment) => segment.characterId !== '__free__' && !!segment.content?.trim())
+    .filter((segment) => segment.characterId !== '__free__' && !offstageCharacterIds?.includes(segment.characterId) && !!segment.content?.trim())
     .map((segment) => ({
       id: nanoid(),
       groupId: group.id,
@@ -1664,6 +1657,7 @@ export async function splitAndSaveMessages(
       round,
       narrativeMode,
       speakerKind: 'character',
+      ...(extras?.spatialGroupGenerationId ? { spatialGroupGenerationId: extras.spatialGroupGenerationId } : {}),
       generationKind: 'assistant_reply',
     }))
 
@@ -1720,12 +1714,17 @@ export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGe
   // 使用最新的 currentGroup，避免闭包中过期引用
   const group = state.currentGroup
   if (!group) return false
+  if (group.id !== _group.id) return false
+  const scopeSessionId = state.currentSessionId
+  const spatial = state.sessions.find(session => session.id === scopeSessionId)?.spatialBoardEnabled === true && scopeSessionId ? await window.api.spatial.readGroupContext(group.id, scopeSessionId) : null
+  if (get().currentGroup?.id !== group.id || get().currentSessionId !== scopeSessionId) return false
+  const eligibleMemberIds = spatial?.narrativeMode === 'omniscient' ? group.memberIds : group.memberIds.filter(id => !spatial?.offstageCharacterIds.includes(id))
 
   // 续排计划：shared/chat-core/groupScheduling.ts 跨端一致
   // （D2 已拍板：轮数按每次接力（burst）计——自最近一条用户消息以来的 AI 轮次，跨用户消息重置）
   const plan = planGroupPollingContinue({
     messages: state.messages.map((m) => ({ characterId: m.characterId, round: m.round })),
-    memberIds: group.memberIds,
+    memberIds: eligibleMemberIds,
     maxRounds: group.maxRounds,
   })
   if (!plan.continue) return false
@@ -1734,7 +1733,7 @@ export async function checkPollingContinue(set: GroupStoreSet, get: GroupStoreGe
   // 更新 currentSpeakerIndex（纯运行时 UI 状态：成员栏高亮"当前说话者"）
   // 优化：不再每轮全量持久化群组文件（此前每 2s 一次整文件写入）；
   // 群组文件只在创建/编辑时保存，重启后该索引回落到上次持久化值，轮询下一轮自动纠正
-  const updatedGroup = { ...group, currentSpeakerIndex: plan.nextSpeakerIndex }
+  const updatedGroup = { ...group, currentSpeakerIndex: group.memberIds.indexOf(nextCharId) }
   set({ currentGroup: updatedGroup })
 
   // H-02 修复：保存定时器 handle，以便切换/删除群聊时清理

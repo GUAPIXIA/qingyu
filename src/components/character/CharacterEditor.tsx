@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { Character, ProviderType } from '../../../shared/types'
 import { stripAllThinking } from '../../../shared/thoughtMarkup'
 import { Modal } from '../common/Modal'
@@ -11,6 +11,8 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { resolveRendererGenerationTaskBudget } from '../../store/generationTaskBudget'
 import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
 import { logError } from '../../lib/logger'
+import { EditorAssistant } from '../../store/editorAssistant'
+import { EditorSuggestions } from '../common/EditorSuggestions'
 
 // B-05：记住 textarea 手动调整后的大小（使用原生 DOM 事件，React 合成事件无法捕获浏览器 resize handle）
 const TA_HEIGHTS_KEY = 'editor-ta-heights'
@@ -69,7 +71,16 @@ const TRANSLATABLE_FIELDS: { key: TranslatableField; label: string }[] = [
 ]
 
 export function CharacterEditor({ character, onSave, onClose }: CharacterEditorProps) {
-  const [form, setForm] = useState<Character>(character)
+  const [form, setFormState] = useState<Character>(character)
+  const formRef = useRef(character)
+  const editorRef = useRef<EditorAssistant | null>(null)
+  if (!editorRef.current) editorRef.current = new EditorAssistant('character-card', character.id)
+  const editor = editorRef.current
+  editor.syncObject(character.id)
+  const setForm = useCallback((value: Character | ((prev: Character) => Character)) => {
+    const next = typeof value === 'function' ? value(formRef.current) : value
+    editor.touch(); formRef.current = next; setFormState(next)
+  }, [editor])
   // NEW-L10：记录当前编辑的角色 ID，仅在切换角色时重置表单
   const lastCharIdRef = useRef(character.id)
   // UEX-P1-15：进入编辑时快照初始值，改动后 dirty；取消/关闭前按 dirty 决定是否弹确认
@@ -88,6 +99,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   const activeRequestIdsRef = useRef<Set<string>>(new Set())
   // UEX-P1-20：整卡翻译取消标志（置位后循环跳出，已翻译字段保留）
   const translateAbortRef = useRef(false)
+  const translateSequenceRef = useRef(0)
   const { settings } = useSettingsStore()
 
   // B-05：textarea 高度记忆
@@ -105,21 +117,24 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     if (character.id !== lastCharIdRef.current) {
       lastCharIdRef.current = character.id
       initialFormRef.current = character // UEX-P1-15：切换编辑对象时同步重置快照
-      setForm(character)
+      translateSequenceRef.current++; translateAbortRef.current = true
+      setForm(character); setTranslating(false); setTranslatingField(null)
     }
-  }, [character])
+  }, [character, setForm])
 
   // H-09 修复：组件卸载时取消所有活跃的翻译请求
   useEffect(() => {
     const ref = activeRequestIdsRef
+    editor.activate()
     return () => {
+      editor.dispose()
       const ids = Array.from(ref.current)
       for (const id of ids) {
         window.api.ai.cancelChat(id).catch((e) => logError('CharacterEditor:cancelChat', e))
       }
       ref.current.clear()
     }
-  }, [])
+  }, [editor])
 
   const update = (partial: Partial<Character>) => {
     setForm((prev) => ({ ...prev, ...partial }))
@@ -205,6 +220,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
   }
 
   const handleAiTranslate = async () => {
+    const sequence = ++translateSequenceRef.current
+    setTranslatingField(null)
     setTranslating(true)
     setTranslateError(null)
     setTranslatedFields(new Set())
@@ -212,8 +229,8 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
 
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
-      setTranslateError('请先配置 API 连接')
-      setTranslating(false)
+      if (sequence === translateSequenceRef.current) setTranslateError('请先配置 API 连接')
+      if (sequence === translateSequenceRef.current) setTranslating(false)
       return
     }
 
@@ -222,45 +239,46 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     if (form.name && form.name.trim()) {
       try {
         const result = await translateText(form.name, '角色名', settings, profile, form.name)
-        if (result) {
+        if (result && sequence === translateSequenceRef.current) {
           translatedName = result
-          const tc = { ...(form.translatedContent || {}) }
+          const tc = { ...(formRef.current.translatedContent || {}) }
           tc.name = result
           update({ translatedContent: tc } as Partial<Character>)
           setTranslatedFields((prev) => new Set(prev).add('name'))
         }
       } catch {
-        setTranslateError('翻译"角色名"时出现错误，已跳过')
+        if (sequence === translateSequenceRef.current) setTranslateError('翻译"角色名"时出现错误，已跳过')
       }
     }
 
     // 翻译其余字段，使用翻译后的名称作为上下文
     for (const { key, label } of TRANSLATABLE_FIELDS) {
-      if (translateAbortRef.current) break // UEX-P1-20：取消后跳出循环，已翻译字段保留
+      if (translateAbortRef.current || sequence !== translateSequenceRef.current) break // UEX-P1-20：取消后跳出循环，已翻译字段保留
       if (key === 'name') continue // 已翻译
       const text = form[key]
-      if (!text || !text.trim()) continue
+      if (!text || !text.trim() || formRef.current[key] !== text) continue
 
       try {
         const result = await translateText(text, label, settings, profile, translatedName)
-        if (result) {
+        if (result && sequence === translateSequenceRef.current) {
           // 译文统一存入 translatedContent，原文永不覆盖（UI 双语对照，AI 上下文按需取译文）
-          const tc = { ...(form.translatedContent || {}) }
+          const tc = { ...(formRef.current.translatedContent || {}) }
           tc[key] = result
           update({ translatedContent: tc } as Partial<Character>)
           setTranslatedFields((prev) => new Set(prev).add(key))
         }
       } catch {
-        setTranslateError(`翻译"${label}"时出现错误，已跳过`)
+        if (sequence === translateSequenceRef.current) setTranslateError(`翻译"${label}"时出现错误，已跳过`)
       }
     }
 
-    setTranslating(false)
+    if (sequence === translateSequenceRef.current) setTranslating(false)
     // UEX-P1-20：取消属于正常控制流，不置错误；已完成字段的译文已保留
   }
 
   // UEX-P1-20：整卡翻译取消——置标志位跳出循环 + cancelChat 清理活跃请求（对齐卸载清理写法）
   const handleCancelTranslate = () => {
+    editor.cancel(); translateSequenceRef.current++
     translateAbortRef.current = true
     const ids = Array.from(activeRequestIdsRef.current)
     for (const id of ids) {
@@ -272,12 +290,14 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
 
   // 单字段独立翻译
   const handleTranslateField = async (fieldKey: TranslatableField) => {
+    const sequence = ++translateSequenceRef.current
+    setTranslating(false); translateAbortRef.current = true
     const text = form[fieldKey]
     if (!text || !text.trim()) return
 
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
-      setTranslateError('请先配置 API 连接')
+      if (sequence === translateSequenceRef.current) setTranslateError('请先配置 API 连接')
       return
     }
 
@@ -287,28 +307,30 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     setTranslatingField(fieldKey)
     try {
       const result = await translateText(text, fieldLabel, settings, profile, nameForContext)
-      if (result) {
+      if (result && sequence === translateSequenceRef.current) {
         // 译文统一存入 translatedContent，原文永不覆盖
-        const tc = { ...(form.translatedContent || {}) }
+        const tc = { ...(formRef.current.translatedContent || {}) }
         tc[fieldKey] = result
         update({ translatedContent: tc } as Partial<Character>)
         setTranslatedFields(prev => new Set(prev).add(fieldKey))
       }
     } catch {
-      setTranslateError(`翻译"${fieldLabel}"失败`)
+      if (sequence === translateSequenceRef.current) setTranslateError(`翻译"${fieldLabel}"失败`)
     }
-    setTranslatingField(null)
+    if (sequence === translateSequenceRef.current) setTranslatingField(null)
   }
 
   // 翻译单条备选开场白
   const handleTranslateGreeting = async (index: number) => {
+    const sequence = ++translateSequenceRef.current
+    setTranslating(false); translateAbortRef.current = true
     const greetings = form.alternateGreetings || []
     const text = greetings[index]
     if (!text || !text.trim()) return
 
     const profile = useSettingsStore.getState().getActiveProfile()
     if (!profile || (!profile.apiKey && !isLocalProvider(profile.provider) && !isLocalUrl(profile.baseUrl))) {
-      setTranslateError('请先配置 API 连接')
+      if (sequence === translateSequenceRef.current) setTranslateError('请先配置 API 连接')
       return
     }
 
@@ -316,19 +338,19 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     setTranslatingField(`greeting-${index}`)
     try {
       const result = await translateText(text, '首条消息', settings, profile, nameForContext)
-      if (result) {
+      if (result && sequence === translateSequenceRef.current) {
         // 译文存入 translatedContent.alternateGreetings（与原数组索引对齐），原文不覆盖
         const originals = form.alternateGreetings || []
-        const tc = { ...(form.translatedContent || {}) }
+        const tc = { ...(formRef.current.translatedContent || {}) }
         const translated = [...(tc.alternateGreetings || new Array<string>(originals.length).fill(''))]
         translated[index] = result
         tc.alternateGreetings = translated
         update({ translatedContent: tc } as Partial<Character>)
       }
     } catch {
-      setTranslateError('翻译备选开场白失败')
+      if (sequence === translateSequenceRef.current) setTranslateError('翻译备选开场白失败')
     }
-    setTranslatingField(null)
+    if (sequence === translateSequenceRef.current) setTranslatingField(null)
   }
 
   // H-09 修复：translateText 移入组件内部以追踪活跃请求
@@ -339,9 +361,11 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
     profile: { provider: ProviderType; apiKey: string; baseUrl: string; model: string },
     characterName?: string,
   ): Promise<string> => {
+    const ticket = editor.begin('translation', [formRef.current, fieldLabel, text])
     const requestId = `translate-card-${Date.now()}-${Math.random().toString(36).slice(2)}`
     activeRequestIdsRef.current.add(requestId)
-    const model = settings.activeModel || profile.model
+    const model = profile.model
+    try {
     const translationPlan = await resolveRendererGenerationTaskBudget({
       profile,
       model,
@@ -349,32 +373,6 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       inputChars: text.length,
       usageTaskType: 'translation',
     })
-
-    return new Promise((resolve) => {
-      let result = ''
-
-      const cleanup = () => {
-        activeRequestIdsRef.current.delete(requestId)
-        unbindChunk(); unbindDone(); unbindError()
-      }
-
-      const unbindChunk = window.api.ai.onChunk((data) => {
-        if (data.requestId !== requestId) return
-        result += data.text
-      })
-      const unbindDone = window.api.ai.onComplete((payload) => {
-        if (payload.requestId !== requestId) return
-        cleanup()
-        const cleaned = stripAllThinking(result)
-        resolve(cleaned || text)
-      })
-      const unbindError = window.api.ai.onError((data) => {
-        if (data.requestId !== requestId) return
-        cleanup()
-        resolve('')
-      })
-
-      // 根据字段类型定制翻译提示
       const nameHint = characterName ? `\n- 角色名为「${characterName}」，其他字段中出现该名字时请一并翻译为中文` : ''
       const fieldHints: Record<string, string> = {
         '角色名': '- 这是角色名，请音译或意译为地道的中文名字',
@@ -386,7 +384,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
       }
       const fieldHint = fieldHints[fieldLabel] || ''
 
-      window.api.ai.chat({
+      const result = stripAllThinking(await editor.request(ticket, {
         requestId,
         messages: [
           {
@@ -423,11 +421,18 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         observability: { source: 'aux', taskType: 'translation' },
         adaptiveOutputBudget: translationPlan.adaptiveOutputBudget,
         reasoningGate: translationPlan.reasoningGate,
-      }).catch(() => {
-        cleanup()
-        resolve('')
-      })
-    })
+      }))
+      if (!editor.current(ticket)) {
+        editor.keep(ticket, result, fieldLabel)
+        return ''
+      }
+      return result
+    } catch (error) {
+      if (editor.owns(ticket)) throw error
+      return ''
+    } finally {
+      activeRequestIdsRef.current.delete(requestId); editor.finish(ticket)
+    }
   }
 
   return (
@@ -468,6 +473,7 @@ export function CharacterEditor({ character, onSave, onClose }: CharacterEditorP
         </>
       }
     >
+      <EditorSuggestions suggestions={editor.suggestions} objectId={character.id} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         {/* 翻译错误提示 */}
         {translateError && (

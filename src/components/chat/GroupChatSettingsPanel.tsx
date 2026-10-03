@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText, Download, Palette, Globe2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { getDisplayName } from '../../utils/variables'
+import { getDisplayName } from '../../../shared/chat-core/variables'
 import { charAssetUrl } from '../../utils/asset'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
 import type { GroupChat, Character, Lorebook, Preset } from '../../../shared/types'

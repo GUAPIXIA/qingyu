@@ -25,13 +25,14 @@ describe('RealModelPort', () => {
     const chunks: string[] = []
     let usage: unknown = null
     const result = await port.stream(
-      { messages: [{ role: 'user', content: 'hi' }], model: 'gpt-4o-mini', provider: 'openai', maxTokens: 2048, apiKey: 'sk-x', baseUrl: 'https://api.openai.com/v1' },
+      { messages: [{ role: 'user', content: 'hi' }], model: 'gpt-4o-mini', provider: 'openai', maxTokens: 2048, apiKey: 'sk-x', baseUrl: 'https://api.openai.com/v1', sessionId: 'session-1' },
       { onChunk: (d) => chunks.push(d), onUsage: (u) => (usage = u) },
       new AbortController().signal,
     )
     expect(result.text).toBe('hello world')
     expect(chunks.join('')).toBe('hello world')
     expect(usage).toEqual({ promptTokens: 10, completionTokens: 5, totalTokens: 15 })
+    expect(vi.mocked(chatWithRetry).mock.calls[0]?.[1]).toMatchObject({ sessionId: 'session-1' })
   })
 
   it('无 onUsage 回调仍可完成', async () => {

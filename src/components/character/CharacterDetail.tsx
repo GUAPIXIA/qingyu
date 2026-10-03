@@ -1,5 +1,5 @@
 import type { Character } from '../../../shared/types'
-import { getDisplayName } from '../../utils/variables'
+import { getDisplayName } from '../../../shared/chat-core/variables'
 import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
 import { X, Edit3, MessageSquare, Tag, BookOpen, Sparkles, MessageCircle, MessagesSquare, Settings, Link2, User, Clock } from 'lucide-react'

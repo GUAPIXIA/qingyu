@@ -50,6 +50,8 @@ describe('ChatHeader', () => {
           showQuickSettings={false}
           onShowQuickSettings={onShowQuickSettings}
           onCreateSession={vi.fn()}
+          showSpatialBoard={false}
+          onShowSpatialBoard={vi.fn()}
         />
       </MemoryRouter>,
     )
@@ -80,6 +82,8 @@ describe('ChatHeader', () => {
           showQuickSettings={false}
           onShowQuickSettings={vi.fn()}
           onCreateSession={vi.fn()}
+          showSpatialBoard={false}
+          onShowSpatialBoard={vi.fn()}
         />
       </MemoryRouter>,
     )
@@ -117,6 +121,8 @@ describe('ChatHeader', () => {
           showQuickSettings={false}
           onShowQuickSettings={vi.fn()}
           onCreateSession={vi.fn()}
+          showSpatialBoard={false}
+          onShowSpatialBoard={vi.fn()}
         />
       </MemoryRouter>,
     )
@@ -147,6 +153,8 @@ describe('ChatHeader', () => {
           showQuickSettings={false}
           onShowQuickSettings={vi.fn()}
           onCreateSession={vi.fn()}
+          showSpatialBoard={false}
+          onShowSpatialBoard={vi.fn()}
         />
       </MemoryRouter>,
     )

@@ -8,9 +8,10 @@ import type { ChatParams } from '../../shared/types'
 import { classifyFailureOutcome } from '../../shared/generationObservation'
 
 export class RealModelPort implements ModelPort {
-  async stream(request: ModelRequest, callbacks: ModelCallbacks, signal: AbortSignal): Promise<{ text: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  async stream(request: ModelRequest, callbacks: ModelCallbacks, signal: AbortSignal): Promise<import('./ports').ModelResult> {
     const params: ChatParams = {
       requestId: `real-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      sessionId: request.sessionId,
       messages: request.messages as ChatParams['messages'],
       provider: request.provider as ChatParams['provider'],
       apiKey: request.apiKey ?? '',
@@ -47,6 +48,6 @@ export class RealModelPort implements ModelPort {
       if (signal.aborted || text || failure.errorKind !== 'empty_output') throw error
       completion = await run()
     }
-    return { text: completion.text || text }
+    return { text: completion.text || text, finishReason: completion.finishReason }
   }
 }
