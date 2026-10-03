@@ -162,9 +162,17 @@ pnpm electron:dev
 # 生产构建（NSIS 安装包）
 pnpm electron:build
 
-# 测试
+# 类型检查 / 代码规范 / 测试
+pnpm check
+pnpm lint
 pnpm test
+
+# 结构与依赖边界门禁（转发层残余 / 写路径 / 跨目录依赖方向 + 负例自检）
+pnpm check:gates
 ```
+
+> 独立画板（`spatial-board/`）与空间核心包（`packages/spatial-core/`）有各自安装与构建入口：
+> 画板依赖 `@qingyu/spatial-core`（本地包），需先构建核心包再安装/构建画板，命令见 [`spatial-board/README.md`](./spatial-board/README.md)。
 
 ### 在线公告服务端（可选部署）
 
@@ -214,25 +222,38 @@ docker compose up -d          # 或 npm install && npm start
 
 ```
 qingyu/
-├── src/                        # 前端 React 代码
+├── src/                        # 桌面渲染层（React 18）
 │   ├── main.tsx                # React 入口
 │   ├── App.tsx                 # 根组件（路由 + 主题初始化）
 │   ├── index.css               # 全局样式（CSS 变量 + Tailwind）
-│   ├── components/             # api / character / chat / common / layout
 │   ├── pages/                  # 路由页面（Chat / GroupChat / Characters / Announcements …）
-│   ├── store/                  # Zustand 状态管理（单聊/群聊 store + 共享模块）
+│   ├── components/             # 通用与业务组件（api / character / chat / common / layout）
+│   ├── features/               # 按业务归组的界面状态与流控制
+│   │   ├── chat/               # 单聊 store 类型与动作（会话/消息/生成）
+│   │   ├── group-chat/         # 群聊 store、流会话、收尾、调度、请求与类型契约
+│   │   ├── spatial/            # 画板嵌入与宿主交互
+│   │   └── lorebook/           # 世界书界面缓存与 IPC 数据加载
+│   ├── store/                  # Zustand 稳定状态入口与共享辅助
 │   ├── commands/               # 斜杠命令系统
 │   └── utils/                  # 工具函数
 ├── electron/                   # Electron 主进程
-│   ├── main.ts                 # 主进程入口
-│   ├── preload.ts              # 预加载脚本（contextBridge）
-│   ├── ipc/                    # IPC 处理器模块
-│   ├── services/               # 后端服务（AI、存储、生图等）
+│   ├── main.ts / preload.ts    # 主进程入口与 contextBridge
+│   ├── ipc/                    # IPC 注册与参数边界（薄传输层）
 │   ├── bridge/                 # 安卓伴侣端桥接层（REST + WebSocket + 配对认证 + mDNS）
+│   ├── chat/                   # 对话编排器、任务生命周期与端口
+│   ├── features/               # 用例/仓储（chat）与空间业务（spatial）
+│   ├── domain/                 # 同步领域、事务与恢复
+│   ├── services/               # 存储、日志、模型适配等基础服务
 │   └── mcp/                    # MCP 协议实现
-├── shared/                     # 前后端共享（types.ts / ipc-api.ts / ipc-channels.ts）
-├── android/                    # 安卓伴侣端（独立子项目，见其 README）
-└── server/                     # 公告服务端（独立子项目，见其 README）
+├── packages/spatial-core/      # 纯空间领域核心包（无 React/Electron/PC 依赖）
+├── spatial-board/              # 独立画板（独立 React 19 + 构建链，见其 README）
+├── shared/                     # 共享子模块（chat-core / lorebook / domain / contracts / fixtures）
+├── android/                    # 安卓伴侣端（独立子模块，内部再挂载 shared）
+├── relay-server/               # 独立部署服务（workspace）
+├── server/                     # 公告服务端（独立子项目）
+├── scripts/lib/                # 联验公共设施（browserHarness / electronHarness）
+├── tests/                      # 跨模块、golden 与集成验证
+└── docs/                       # 规范、方案与报告
 ```
 
 ---
