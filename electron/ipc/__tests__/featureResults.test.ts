@@ -5,7 +5,8 @@ import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 const { root } = vi.hoisted(() => ({ root: `${process.env.TEMP}/qingyu-feature-results-${process.pid}` }))
 vi.mock('electron', () => ({ app: { getPath: () => root }, BrowserWindow: { getAllWindows: () => [] } }))
-import { chatData, messagesCacheInvalidate, withChatMessageLock, registerChatIPC } from '../chat'
+import { chatData, registerChatIPC } from '../chat'
+import { messagesCacheInvalidate, withChatMessageLock } from '../../features/chat/chatRepository'
 import { groupData, registerGroupIPC } from '../group'
 import { DIRS, writeJson, readJson } from '../../services/storage'
 import { getDefaultSettings } from '../../../shared/defaults'

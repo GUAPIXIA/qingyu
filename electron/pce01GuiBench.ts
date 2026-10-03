@@ -158,7 +158,7 @@ async function runBench(): Promise<void> {
   }
 
   // ---- 动态 import 生产写路径 ----
-  const chat = await import('./ipc/chat')
+  const chat = await import('./features/chat/chatRepository')
   const { writeThroughDomain, getSyncHealth, isSyncReady } = await import('./domain/syncDomainService')
   const { readSettingsFromDisk } = await import('./ipc/settings')
   void readSettingsFromDisk
