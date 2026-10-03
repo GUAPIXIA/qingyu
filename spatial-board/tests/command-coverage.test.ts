@@ -28,10 +28,8 @@ import {
   placeChipWidth,
   placeSizeByCount,
 } from '../src/canvas/adapter.ts'
-import {
-  MIN_REGION_SIZE,
-  useSpatialStore,
-} from '../src/store/spatialStore.ts'
+import { useSpatialStore } from '../src/store/spatialStore.ts'
+import { MIN_REGION_SIZE } from '../src/store/spatialStoreHelpers.ts'
 
 const s = () => useSpatialStore.getState()
 

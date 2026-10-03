@@ -7,7 +7,8 @@ import {
   type ResizeParams,
 } from '@xyflow/react'
 import type { RegionNodeData } from '../canvas/adapter.ts'
-import { MIN_REGION_SIZE, useSpatialStore } from '../store/spatialStore.ts'
+import { useSpatialStore } from '../store/spatialStore.ts'
+import { MIN_REGION_SIZE } from '../store/spatialStoreHelpers.ts'
 
 function RegionNodeComponent({
   id,
