@@ -1,7 +1,7 @@
 # scripts/ 工具登记
 
 > 用途：登记本目录每个入口的用途、运行方式、输出位置与敏感配置，避免“生产未引用即删除”。
-> 最后核对：2026-10-02（阶段 2 工具整理）。
+> 最后核对：2026-10-03（阶段 5 联验设施接入与边界门禁）。
 > 约定：默认工作目录为仓库根；`npx tsx` 指 `pnpm exec tsx`；输出目录若不在下表则视为临时草稿。
 
 ## 1. 固定入口（构建、检查、版本）
@@ -9,8 +9,11 @@
 | 入口 | 用途 | 运行方式 | 输出 |
 |---|---|---|---|
 | `version.mjs` | 版本号读写与 Android 同步 | `pnpm version:*` | `package.json`、`CHANGELOG.md` |
-| `check-contracts.mjs` | 契约漂移门禁（schemas / fixtures / settings_public / openapi operationId） | `node scripts/check-contracts.mjs` | stdout 结果，非零退出即失败 |
-| `check-write-bypass.mjs` | 写路径旁路检查（禁止绕过仓储写入口） | `node scripts/check-write-bypass.mjs` | stdout |
+| `check-contracts.mjs` | 契约漂移门禁（schemas / fixtures / settings_public / openapi operationId） | `node scripts/check-contracts.mjs` | stdout 结果，非零退出即失败；**当前为已知红**（schema 枚举尚未包含 Android 侧规划的 `memory_state`/`memory_fact`/`media_manifest`，修复需跨仓契约变更，见阶段 5 报告遗留） |
+| `check-write-bypass.mjs` | 写路径旁路检查（禁止绕过仓储写入口） | `pnpm check:write-bypass` | stdout |
+| `check-forwarders.mjs` | 转发层残余检查（旧路径不得有新引用） | `pnpm check:forwarders` | stdout |
+| `check-boundaries.mjs` | 跨目录依赖方向门禁（shared 平台依赖／PC↔画板／core 纯度／features 交叉与环；`--self-test` 负例自检） | `pnpm check:boundaries` / `pnpm check:boundaries:selftest` | stdout |
+| `check:gates`（聚合） | forwarders + 写路径 + boundaries（含负例）一次性门禁 | `pnpm check:gates` | stdout |
 | `dev.ps1` / `dev.bat` | 本地开发启动辅助 | `pwsh scripts/dev.ps1` | 无 |
 | `electron-stub*.mjs` | electron ESM 桩（给 tsx 运行的评测脚本提供 `electron` 导入） | `pnpm exec tsx --import ./scripts/electron-stub.mjs <script>` | 无 |
 
@@ -52,11 +55,10 @@
 | `mumu-explore.cjs`、`mumu-walkthrough.cjs`、`mumu-sync-center.cjs` | MuMu 模拟器探索脚本 | 保留（诊断） |
 | `.mimosa/` | 本地 AI 工具会话状态（gitignore） | 不入库，可清理 |
 
-## 5. 已知重复与后续动作（阶段 2/3 结论）
+## 5. 公共联验设施与已知结论（阶段 2/3/5）
 
-- 浏览器联验启动器（第 3 组）共享相同设施：写入 `host.tsx`／`host.html`、启动 518x 端口 Vite、Playwright `msedge`、就绪轮询、结果写 `result.json`、失败截图。当前在 5 个文件重复。
-- 公共设施已抽取为 [scripts/lib/browserHarness.mjs](./lib/browserHarness.mjs)（`startViteServer`／`launchHarnessBrowser`／`waitForServer`／`runBrowserSession`）。**尚未接入任何启动器**。
-- 未接入原因（2026-10-02 实测发现）：群聊画板入口已改为「启用空间画布」开关 + 默认关闭，页面不再出现 `创建空白` 按钮；`spatial-group-browser.mjs` 等启动器按旧流程断言，实测在首个 `创建空白` 等待即超时。这是启动器与当前 UI 的既有漂移，与本次基础设施抽取无关。
-- 后续动作（独立批次）：先按新入口更新各启动器流程（启用开关 → 初始化画板），再接入 `browserHarness`，逐脚本跑一次浏览器 smoke。
-- `scripts/clean.ps1` 已于 2026-10-02 重写为白名单模式（见文件头说明），默认仅预览。
+- 浏览器联验启动器（第 3 组）共用设施（写 `host.tsx`／`host.html`、518x 端口 Vite、Playwright `msedge`、就绪轮询、`result.json` 与失败截图）已抽取为 [scripts/lib/browserHarness.mjs](./lib/browserHarness.mjs)（`startViteServer`／`launchHarnessBrowser`／`waitForServer`／`runBrowserSession`）。
+  - 阶段 5 已完成接入：`spatial-group-browser.mjs`、`spatial-group-stage1-browser.mjs`、`spatial-group-stage2-browser.mjs`、`spatial-group-stage3-browser.mjs`、`spatial-phase1-browser.mjs` 全部改用 `runBrowserSession`，并适配「启用空间画布」开关新流程；5 个脚本均已本地 smoke 通过。
+- Electron 联验启动器（`run-session-isolation-model.mjs`、`run-spatial-group-stage2-model.mjs`、`run-spatial-group-stage3-model.mjs`、`logger-epipe-smoke.mjs`）共用打包/启动/日志/退出设施，已抽取为 [scripts/lib/electronHarness.mjs](./lib/electronHarness.mjs)（`buildElectronBundle`／`spawnElectronBundle`／`runElectronBundle`）。
+- `clean.ps1` 已于 2026-10-02 重写为白名单模式（见文件头说明），默认仅预览。
 - `工具集` 不含已迁移至 `tests/` 的纯测试与 `output/` 下的草稿。

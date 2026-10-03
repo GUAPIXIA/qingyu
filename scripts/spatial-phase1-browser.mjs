@@ -1,14 +1,15 @@
+// 单聊空间画板阶段 1—4 联验：初始化预览、手动指令、剧情同步、自动同步与撤销。
+// 公共设施（Vite/Playwright/就绪/收尾）来自 lib/browserHarness.mjs；本文件只保留 mock 与断言。
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
-import { resolve, join } from 'node:path'
-const require = createRequire(resolve('spatial-board/package.json'))
-const { chromium } = require('playwright')
+import { join, resolve } from 'node:path'
+import { runBrowserSession } from './lib/browserHarness.mjs'
+
 const phase4 = process.argv.includes('--phase4')
 const phase3 = phase4 || process.argv.includes('--phase3')
 const phase2 = phase3 || process.argv.includes('--phase2')
 const stage = phase4 ? 4 : phase3 ? 3 : phase2 ? 2 : 1
+const port = 5179
 const output = resolve(`output/playwright/spatial-stage${stage}`)
 await mkdir(output, { recursive: true })
 await writeFile(join(output, 'host.tsx'), `import React from 'react';
@@ -27,6 +28,7 @@ const createNode=(id,name,x)=>({type:'create_node',payload:{id,boardId:world.roo
 const initial=applyCommandBatch(core,{schemaVersion:1,expectedRevision:0,commands:[createNode('tea','茶馆',100),createNode('garden','花园',480),{type:'place_actor',actorId:'aiko-actor',placement:{boardId:world.rootBoardId,anchor:{kind:'node',nodeId:'tea'},semanticPosition:{precision:'inside-only',note:''}}}]},{source:'system',now:1,idGen:()=>crypto.randomUUID()});
 if(!initial.ok)throw Error(initial.message);
 const withVersion=(state,epoch='epoch-browser')=>({...state,version:{worldId:world.id,runtimeId:core.runtime.runtimeId,bindingEpoch:epoch,runtimeRevision:state.runtime.revision,worldFingerprint:'fp-'+state.runtime.revision}});
+const isBlank=snapshot=>!snapshot||(snapshot.world.boards.length===1&&snapshot.world.nodes.every(node=>node.tags.includes('system:offstage'))&&snapshot.world.distances.length===0&&snapshot.runtime.placements.length===0);
 const aiListeners=new Set(),listeners=new Set();
 let bound=null;
 const state={schemaVersion:1,id:'ai-browser',scope:{characterId:'char-browser',sessionId:'chat-browser',worldId:null,runtimeId:null,bindingEpoch:null},messages:[],proposals:[],tasks:[],createdAt:1,updatedAt:1};
@@ -42,10 +44,11 @@ const unavailable=async()=>{throw Error('fixture unsupported')};
 window.api={settings:{save:async()=>{}},app:{log:async()=>{}},chat:{updateSession:async(_char,_sid,patch)=>{if(patch.spatialNarrativeSyncPolicy)host.policy=patch.spatialNarrativeSyncPolicy}},spatial:{
  prepareDialogue:async()=>null,dialogueSaved:async()=>{},retryDialogue:async()=>{host.retried++;state.tasks.at(-1).state='completed';notify()},
  listWorlds:async()=>[],loadBound:async()=>structuredClone(bound),
+ setEnabled:async(_char,_sid,enabled)=>{if(!enabled)return null;if(!bound)bound=withVersion(core,'epoch-browser');return structuredClone(bound)},
  createAndBind:unavailable,bindWorld:unavailable,
  getAiSession:async()=>structuredClone(state),
  proposalTargets:async()=>bound?.world.nodes.filter(node=>!node.tags.includes('system:offstage')).map(node=>({id:node.id,boardId:node.boardId,path:node.name,canContain:node.kind==='region'||!!node.childBoardId}))??[],
- initializationSources:async()=>({sources:[{id:'scenario',label:'角色场景设定',kind:'character',text:'Aiko 在茶馆，附近有花园。'}],loreEntries:[],canInitialize:!bound,sharedSessions:bound?1:0}),
+ initializationSources:async()=>({sources:[{id:'scenario',label:'角色场景设定',kind:'character',text:'Aiko 在茶馆，附近有花园。'}],loreEntries:[],canInitialize:isBlank(bound),sharedSessions:bound?1:0}),
  onUpdated:listener=>{listeners.add(listener);return()=>listeners.delete(listener)},
  onAiUpdated:listener=>{aiListeners.add(listener);return()=>aiListeners.delete(listener)},
  askAi:async(_char,_sid,input)=>{
@@ -88,103 +91,112 @@ document.body.style.margin='0';
 createRoot(document.getElementById('root')).render(<div style={{height:'100vh',display:'flex',flexDirection:'column'}}><SpatialSuggestionNotice characterId="char-browser" sessionId="chat-browser" worldId="world-browser-1" enabled onOpen={()=>host.noticeOpened=true}/><SpatialBoardPane characterId="char-browser" sessionId="chat-browser" onClose={()=>host.closed=true} registerClose={()=>{}}/></div>);
 `)
 await writeFile(join(output,'host.html'), `<!doctype html><html><head><base href="/"><meta charset="utf-8"></head><body><div id="root"></div><script type="module" src="/output/playwright/spatial-stage${stage}/host.tsx"></script></body></html>`)
-const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5179'],{cwd:resolve('.'),stdio:'pipe',windowsHide:true})
-let startup='';server.stderr.on('data',chunk=>startup+=chunk);server.stdout.on('data',chunk=>startup+=chunk)
-const browser=await chromium.launch({headless:true,channel:'msedge'})
-const page=await browser.newPage({viewport:{width:1440,height:900}})
-const errors=[];page.on('pageerror',error=>errors.push(error.message))
-try {
- for(let attempt=0;attempt<80;attempt++){try{if((await fetch('http://127.0.0.1:5179')).ok)break}catch{}await new Promise(resolve=>setTimeout(resolve,100))}
- await page.goto(`http://127.0.0.1:5179/output/playwright/spatial-stage${stage}/host.html`)
- await page.getByRole('button',{name:'从当前设定生成'}).click()
- await page.getByRole('button',{name:'生成场景',exact:true}).click()
- await page.waitForFunction(()=>window.host.state.proposals.length===1)
- let frame=page.frameLocator('iframe')
- await frame.getByText('茶馆',{exact:true}).waitFor()
- assert.equal(await page.evaluate(()=>window.host.committed()),null)
- await page.screenshot({path:join(output,'initialization-preview.png'),fullPage:true})
- await frame.getByText('茶馆',{exact:true}).click()
- const name=frame.locator('.inspector .field').filter({has:frame.locator('label',{hasText:'名称（必填）'})}).locator('input').first()
- await name.fill('夜茶馆');await name.press('Tab')
- await page.waitForFunction(()=>window.host.draftEdits===1)
- assert.equal(await page.evaluate(()=>window.host.boardEdits),0)
- await page.getByRole('button',{name:'确认场景',exact:true}).click()
- await page.waitForFunction(()=>window.host.applies===1)
- frame=page.frameLocator('iframe')
- await frame.getByText('夜茶馆',{exact:true}).waitFor()
- await page.getByRole('button',{name:'关闭画板助手'}).click()
- await frame.getByRole('button',{name:'打开画板助手'}).click()
- await page.getByRole('textbox',{name:'画板助手输入'}).fill('把 Aiko 移到花园')
- await page.getByRole('button',{name:'发送',exact:true}).click()
- await page.waitForFunction(()=>window.host.state.proposals.filter(item=>item.status==='pending').length===1)
- assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea')
- await page.getByRole('button',{name:'应用',exact:true}).click()
- await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='garden')
- assert.equal(await page.evaluate(()=>window.host.applies),2)
- await page.getByRole('checkbox',{name:'对话读取位置'}).click()
- await page.waitForFunction(()=>document.querySelector('aside input[type="checkbox"]').checked===false)
- await page.evaluate(()=>window.host.hold=true)
- await page.getByRole('textbox',{name:'画板助手输入'}).fill('将 Aiko 移回茶馆')
- await page.getByRole('button',{name:'发送',exact:true}).click()
- await page.getByRole('button',{name:'停止',exact:true}).click()
- await page.waitForFunction(()=>window.host.cancelled===1)
- await page.getByRole('textbox',{name:'画板助手输入'}).fill('')
- if(phase2){
-  await page.getByRole('combobox',{name:'剧情同步策略'}).selectOption('off');await page.waitForFunction(()=>window.host.policy==='off');
-  await page.getByRole('combobox',{name:'剧情同步策略'}).selectOption('suggest');await page.waitForFunction(()=>window.host.policy==='suggest');
-  await page.evaluate(()=>window.host.story());await page.getByRole('heading',{name:'剧情位置建议'}).waitFor();
-  assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'garden');
-  await page.getByRole('button',{name:'应用',exact:true}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='tea');
-  await page.evaluate(()=>{window.host.story();window.host.stale()});await page.getByText('剧情建议已失效：来源正文已切换候选').waitFor();
-  assert.equal(await page.getByRole('button',{name:'应用',exact:true}).count(),0);
-  await page.evaluate(()=>window.host.story(true));await page.getByText('她准备出发：尚未完成，不改变位置').waitFor();
-  assert.equal(await page.getByRole('button',{name:'应用',exact:true}).isDisabled(),true);
-  await page.evaluate(()=>window.host.fail());await page.getByRole('button',{name:'重新提取本轮剧情'}).click();await page.waitForFunction(()=>window.host.retried===1);
+
+await runBrowserSession({ port, run: async ({ page, errors }) => {
+ try {
+  await page.goto(`http://127.0.0.1:${port}/output/playwright/spatial-stage${stage}/host.html`)
+  // 新 UI：面板默认关闭，先开启「启用空间画布」，mock 首次 enable 自动创建并绑定空白画板（幂等）。
+  await page.getByRole('switch',{name:'启用空间画布'}).click()
+  let frame=page.frameLocator('iframe')
+  await frame.locator('.react-flow__pane').waitFor()
+  // 画板助手改由 iframe 内「打开画板助手」开合（页面级面板）。
+  await frame.getByRole('button',{name:'打开画板助手'}).click()
+  await page.getByRole('button',{name:'生成场景',exact:true}).click()
+  await page.waitForFunction(()=>window.host.state.proposals.length===1)
+  await frame.getByText('茶馆',{exact:true}).waitFor()
+  // 初始化预览期间画板尚未提交场景（仅绑定空白画板）。
+  assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements.length),0)
+  assert.equal(await page.evaluate(()=>window.host.committed().world.nodes.filter(node=>node.name==='茶馆').length),0)
+  await page.screenshot({path:join(output,'initialization-preview.png'),fullPage:true})
+  await frame.getByText('茶馆',{exact:true}).click()
+  const name=frame.locator('.inspector .field').filter({has:frame.locator('label',{hasText:'名称（必填）'})}).locator('input').first()
+  await name.fill('夜茶馆');await name.press('Tab')
+  await page.waitForFunction(()=>window.host.draftEdits===1)
+  assert.equal(await page.evaluate(()=>window.host.boardEdits),0)
+  await page.getByRole('button',{name:'确认场景',exact:true}).click()
+  await page.waitForFunction(()=>window.host.applies===1)
+  frame=page.frameLocator('iframe')
+  await frame.getByText('夜茶馆',{exact:true}).waitFor()
+  await page.getByRole('button',{name:'关闭画板助手'}).click()
+  await frame.getByRole('button',{name:'打开画板助手'}).click()
+  // 新 UI：位置读取与剧情同步设置收纳在默认折叠的「同步设置」区内，先展开
+  await page.getByText('同步设置',{exact:true}).click()
+  await page.getByRole('textbox',{name:'画板助手输入'}).fill('把 Aiko 移到花园')
+  await page.getByRole('button',{name:'发送',exact:true}).click()
+  await page.waitForFunction(()=>window.host.state.proposals.filter(item=>item.status==='pending').length===1)
+  assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea')
+  await page.getByRole('button',{name:'应用',exact:true}).click()
+  await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='garden')
+  assert.equal(await page.evaluate(()=>window.host.applies),2)
+  await page.getByRole('checkbox',{name:'对话读取位置'}).click()
+  await page.waitForFunction(()=>document.querySelector('aside input[type="checkbox"]').checked===false)
+  await page.evaluate(()=>window.host.hold=true)
+  await page.getByRole('textbox',{name:'画板助手输入'}).fill('将 Aiko 移回茶馆')
+  await page.getByRole('button',{name:'发送',exact:true}).click()
+  await page.getByRole('button',{name:'停止',exact:true}).click()
+  await page.waitForFunction(()=>window.host.cancelled===1)
+  await page.getByRole('textbox',{name:'画板助手输入'}).fill('')
+  if(phase2){
+   await page.getByRole('combobox',{name:'剧情同步策略'}).selectOption('off');await page.waitForFunction(()=>window.host.policy==='off');
+   await page.getByRole('combobox',{name:'剧情同步策略'}).selectOption('suggest');await page.waitForFunction(()=>window.host.policy==='suggest');
+   await page.evaluate(()=>window.host.story());await page.getByRole('heading',{name:'剧情位置建议'}).waitFor();
+   assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'garden');
+   await page.getByRole('button',{name:'应用',exact:true}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='tea');
+   await page.evaluate(()=>{window.host.story();window.host.stale()});await page.getByText('剧情建议已失效：来源正文已切换候选').waitFor();
+   assert.equal(await page.getByRole('button',{name:'应用',exact:true}).count(),0);
+   await page.evaluate(()=>window.host.story(true));await page.getByText(/未明确项 · 1 项/).last().click();await page.getByText('她准备出发：尚未完成，不改变位置').waitFor();
+   assert.equal(await page.getByRole('button',{name:'应用',exact:true}).isDisabled(),true);
+   await page.evaluate(()=>window.host.fail());await page.getByRole('button',{name:'重新提取本轮剧情'}).click();await page.waitForFunction(()=>window.host.retried===1);
+  }
+  if(phase3){
+   await page.evaluate(()=>window.host.unknown());
+   await page.getByRole('button',{name:'查看画板建议'}).click();assert.equal(await page.evaluate(()=>window.host.noticeOpened),true);
+   await page.getByRole('button',{name:'创建地点',exact:true}).click();await page.getByRole('button',{name:'预览地点创建'}).click();
+   await page.getByRole('heading',{name:'待确认调整'}).waitFor();await page.getByRole('heading',{name:'待确认调整'}).locator('..').getByRole('button',{name:'应用',exact:true}).click();await page.waitForFunction(()=>window.host.committed().world.nodes.some(item=>item.id==='wharf'));
+   assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea');
+   await page.getByRole('combobox',{name:'选择已有地点：渡口'}).selectOption('wharf');await page.getByRole('button',{name:'重新核对',exact:true}).click();
+   await page.getByRole('button',{name:'确认移动',exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea');
+   await page.screenshot({path:join(output,'resolved-awaiting-confirmation.png'),fullPage:true});
+   await page.getByRole('button',{name:'确认移动',exact:true}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='wharf');
+   const undo=page.getByRole('button',{name:'撤销此次剧情更新'}).last();await undo.click();await page.getByRole('button',{name:'确认撤销此次更新'}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='tea');
+   await page.evaluate(()=>window.host.conflict());await page.getByRole('button',{name:'重新核对',exact:true}).click();await page.getByRole('button',{name:'确认移动',exact:true}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='garden');
+  }
+  if(phase4){
+   const selector=page.getByRole('combobox',{name:'剧情同步策略'});
+   await page.getByRole('checkbox',{name:'对话读取位置'}).click();
+   await page.waitForFunction(()=>document.querySelector('aside input[type="checkbox"]').checked===true);
+   await selector.selectOption('auto');await page.waitForFunction(()=>window.host.policy==='auto');
+   await page.getByText('按剧情自动同步角色和用户位置，明确的新地点自动添加；不确定或未完成的动作自动跳过。').waitFor();
+   await page.evaluate(()=>window.host.beginAuto());await page.getByText('正在自动同步位置…').waitFor();
+   // 新 UI：自动同步中的提案不再提供手动「应用」入口
+   assert.equal(await page.getByRole('button',{name:'应用',exact:true}).count(),0);
+   assert.equal(await selector.isEnabled(),true);
+   assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'garden');
+   await page.evaluate(()=>window.host.finishAuto());await page.getByText('已自动应用：Aiko → 夜茶馆').waitFor();
+   await page.getByText('本轮位置已自动同步').waitFor();
+   // 新 UI：单聊自动同步仅给 2s 瞬态提示，无持久「查看或撤销」入口；直接打开助手面板查看结果
+   if (!(await page.getByRole('button',{name:'关闭画板助手'}).isVisible().catch(()=>false))) await page.frameLocator('iframe').getByRole('button',{name:'打开画板助手'}).click();
+   assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea');
+   await page.getByText('已自动应用：Aiko → 夜茶馆').scrollIntoViewIfNeeded();
+   await page.screenshot({path:join(output,'automatic-applied.png'),fullPage:true});
+   await page.getByText('已自动应用：Aiko → 夜茶馆').locator('..').getByRole('button',{name:'撤销此次剧情更新'}).click();
+   assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea');
+   await page.getByRole('button',{name:'确认撤销此次更新'}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='garden');
+   assert.equal(await page.getByText('本轮位置已自动同步').count(),0);
+   await page.evaluate(()=>window.host.confirmation());await page.getByText('置信度不足 0.9，仍需确认').waitFor();
+   // 新 UI：自动策略下低置信度建议仅显示原因，不提供手动「应用」；需切回「需确认」策略再应用
+   assert.equal(await page.getByRole('button',{name:'应用',exact:true}).count(),0);
+   await selector.selectOption('suggest');await page.waitForFunction(()=>window.host.policy==='suggest');
+   await selector.selectOption('off');await page.waitForFunction(()=>window.host.policy==='off');
+   assert.equal(await page.evaluate(()=>window.host.state.proposals.at(-1).status),'pending');
+  }
+  await page.screenshot({path:join(output,'assistant-confirmed.png'),fullPage:true})
+  assert.deepEqual(errors,[])
+  await writeFile(join(output,'result.json'),JSON.stringify({passed:true,scenarios:phase4?25:phase3?19:phase2?13:7,errors,applies:await page.evaluate(()=>window.host.applies)},null,2))
+  console.log(phase4 ? 'Phase 4 browser: 25 scenarios passed' : phase3 ? 'Phase 3 browser: 19 scenarios passed' : phase2 ? 'Phase 2 browser: 13 scenarios passed' : 'Phase 1 browser: 7 scenarios passed')
+ } catch(error) {
+  await page.screenshot({path:join(output,'failure.png'),fullPage:true})
+  await writeFile(join(output,'failure.json'),JSON.stringify({error:String(error),errors,text:await page.locator('body').innerText(),debug:await page.evaluate(()=>({proposals:window.host.state.proposals.map(p=>({id:p.id,status:p.status,mode:p.mode})),tasks:window.host.state.tasks,buttons:[...document.querySelectorAll('aside button')].map(b=>({text:b.textContent,disabled:b.disabled}))}))},null,2))
+  throw error
  }
- if(phase3){
-  await page.evaluate(()=>window.host.unknown());
-  await page.getByRole('button',{name:'查看画板建议'}).click();assert.equal(await page.evaluate(()=>window.host.noticeOpened),true);
-  await page.getByRole('button',{name:'创建地点',exact:true}).click();await page.getByRole('button',{name:'预览地点创建'}).click();
-  await page.getByRole('heading',{name:'待确认调整'}).waitFor();await page.getByRole('heading',{name:'待确认调整'}).locator('..').getByRole('button',{name:'应用',exact:true}).click();await page.waitForFunction(()=>window.host.committed().world.nodes.some(item=>item.id==='wharf'));
-  assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea');
-  await page.getByRole('combobox',{name:'选择已有地点：渡口'}).selectOption('wharf');await page.getByRole('button',{name:'重新核对',exact:true}).click();
-  await page.getByRole('button',{name:'确认移动',exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea');
-  await page.screenshot({path:join(output,'resolved-awaiting-confirmation.png'),fullPage:true});
-  await page.getByRole('button',{name:'确认移动',exact:true}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='wharf');
-  const undo=page.getByRole('button',{name:'撤销此次剧情更新'}).last();await undo.click();await page.getByRole('button',{name:'确认撤销此次更新'}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='tea');
-  await page.evaluate(()=>window.host.conflict());await page.getByRole('button',{name:'重新核对',exact:true}).click();await page.getByRole('button',{name:'确认移动',exact:true}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='garden');
- }
- if(phase4){
-  const selector=page.getByRole('combobox',{name:'剧情同步策略'});
-  await page.getByRole('checkbox',{name:'对话读取位置'}).click();
-  await page.waitForFunction(()=>document.querySelector('aside input[type="checkbox"]').checked===true);
-  await selector.selectOption('auto');await page.waitForFunction(()=>window.host.policy==='auto');
-  await page.getByText('普通新回复中的明确角色移动自动同步；用户角色、续写和不确定项仍需确认。').waitFor();
-  await page.evaluate(()=>window.host.beginAuto());await page.getByText('正在自动同步位置…').waitFor();
-  assert.equal(await page.getByRole('button',{name:'应用',exact:true}).isDisabled(),true);
-  assert.equal(await selector.isEnabled(),true);
-  assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'garden');
-  await page.evaluate(()=>window.host.finishAuto());await page.getByText('已自动应用：Aiko → 夜茶馆').waitFor();
-  await page.getByText('本轮位置已自动同步').waitFor();await page.getByRole('button',{name:'查看或撤销'}).click();
-  assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea');
-  await page.getByText('已自动应用：Aiko → 夜茶馆').scrollIntoViewIfNeeded();
-  await page.screenshot({path:join(output,'automatic-applied.png'),fullPage:true});
-  await page.getByText('已自动应用：Aiko → 夜茶馆').locator('..').getByRole('button',{name:'撤销此次剧情更新'}).click();
-  assert.equal(await page.evaluate(()=>window.host.committed().runtime.placements[0].anchor.nodeId),'tea');
-  await page.getByRole('button',{name:'确认撤销此次更新'}).click();await page.waitForFunction(()=>window.host.committed().runtime.placements[0].anchor.nodeId==='garden');
-  assert.equal(await page.getByText('本轮位置已自动同步').count(),0);
-  await page.evaluate(()=>window.host.confirmation());await page.getByText('置信度不足 0.9，仍需确认').waitFor();
-  assert.equal(await page.getByRole('button',{name:'应用',exact:true}).isEnabled(),true);
-  await selector.selectOption('suggest');await page.waitForFunction(()=>window.host.policy==='suggest');
-  await selector.selectOption('off');await page.waitForFunction(()=>window.host.policy==='off');
-  assert.equal(await page.evaluate(()=>window.host.state.proposals.at(-1).status),'pending');
- }
- await page.screenshot({path:join(output,'assistant-confirmed.png'),fullPage:true})
- assert.deepEqual(errors,[])
- await writeFile(join(output,'result.json'),JSON.stringify({passed:true,scenarios:phase4?25:phase3?19:phase2?13:7,errors,applies:await page.evaluate(()=>window.host.applies)},null,2))
- console.log(phase4 ? 'Phase 4 browser: 25 scenarios passed' : phase3 ? 'Phase 3 browser: 19 scenarios passed' : phase2 ? 'Phase 2 browser: 13 scenarios passed' : 'Phase 1 browser: 7 scenarios passed')
-} catch(error) {
- await page.screenshot({path:join(output,'failure.png'),fullPage:true})
- await writeFile(join(output,'failure.json'),JSON.stringify({error:String(error),errors,text:await page.locator('body').innerText(),debug:await page.evaluate(()=>({proposals:window.host.state.proposals.map(p=>({id:p.id,status:p.status,mode:p.mode})),tasks:window.host.state.tasks,buttons:[...document.querySelectorAll('aside button')].map(b=>({text:b.textContent,disabled:b.disabled}))})),startup},null,2))
- throw error
-} finally {await browser.close();server.kill()}
+} })

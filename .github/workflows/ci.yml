@@ -126,6 +126,35 @@ jobs:
       - name: ESLint
         run: pnpm lint
 
+  # 结构边界与写路径门禁（阶段 5）：
+  # 转发层残余、写路径绕过、跨目录依赖方向（shared 平台依赖 / PC↔画板 / core 纯度 / features 交叉与环）
+  # 以及边界检查负例自检——人为违例必须使检查失败。
+  gates:
+    name: Structure gates (forwarders / write-path / boundaries)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive # 边界扫描覆盖 shared/ 与 spatial-board/src
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Structure gates
+        run: pnpm check:gates
+
+      - name: spatial-core purity
+        run: pnpm check:spatial-core
+
   # Windows 安装包构建（仅 main 分支推送时）
   build-windows:
     name: Build Windows installer
