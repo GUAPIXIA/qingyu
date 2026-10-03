@@ -104,10 +104,12 @@ app.whenReady().then(async () => {
     writeJson(join(DIRS.chats(),scope.characterId,'sessions.json'),[{id:scope.sessionId,characterId:scope.characterId,title:'隔离模型验证',personaId:'model-persona',narrativeMode:'immersive',createdAt:Date.now(),updatedAt:Date.now(),messageCount:1}])
     const messagePath = join(DIRS.chats(),scope.characterId,`${scope.sessionId}.jsonl`)
     writeFileSync(messagePath,JSON.stringify({id:'selected-opening',sessionId:scope.sessionId,characterId:scope.characterId,role:'assistant',content:'林雪现在在厨房，旅人此刻在花园。',timestamp:Date.now()})+'\n')
+    const blank = await spatialService.setEnabled(scope, true)
+    check('启用空间画布后创建空白绑定', !!blank && blank.runtime.placements.length === 0)
     const init = await spatialAiService.ask(scope,{requestId:randomUUID(),mode:'initialize',text:''})
     report.initializationTask = init.tasks.at(-1)
     check(`真实模型初始化输出校验通过${init.tasks.at(-1)?.error ? `：${init.tasks.at(-1)!.error}` : ''}`,init.tasks.at(-1)?.state === 'completed' && init.proposals.length === 1)
-    check('确认前未绑定正式地图',await spatialService.loadBound(scope.characterId,scope.sessionId) === null)
+    check('初始化确认前保持空白画板',JSON.stringify(await spatialService.loadBound(scope.characterId,scope.sessionId)) === JSON.stringify(blank))
     const initialCore = init.proposals[0]!.preview as SpatialSnapshot & SpatialCoreState
     const garden = initialCore.world.nodes.find(item => item.name.includes('花园'))!
     const house = initialCore.world.nodes.find(item => item.name === '小屋')!

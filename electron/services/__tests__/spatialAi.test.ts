@@ -1074,6 +1074,41 @@ describe('空间阶段 1：独立会话与确认事务', () => {
     const empty = structuredClone(snapshot); empty.runtime.placements = []
     expect(projectSpatialContext(empty,'char-a','persona-a','gpt-4o-mini')).toMatchObject({characterOffstage:false})
   })
+  it('当前事实在位置规则和补充关系之后再次明确，未知与未参与不能断言在场', async () => {
+    const snapshot = await initialized()
+    const actor = snapshot.world.actors.find(item => item.externalRef.type === 'qingyu-character')!
+    const city = snapshot.world.nodes.find(item => item.name === '青石城')!
+    const tea = snapshot.world.nodes.find(item => item.name === '茶馆')!
+    const moved = await spatialService.applyEditorBatch(scope.characterId,scope.sessionId,request(snapshot,[
+      {type:'move_actor',actorId:actor.id,to:{boardId:city.boardId,anchor:{kind:'node',nodeId:city.id},semanticPosition:{precision:'inside-only',note:''}}},
+    ]))
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) return
+    const current = view(moved.snapshot)
+    const projected = projectSpatialContext(current,'char-a','persona-a','gpt-4o-mini')
+    expect(projected.text.split('\n').at(-1)).toBe('本轮已确认的当前位置："林雪"现在在"青石城"内。"旅人"尚未放置，当前位置未知。')
+    expect(projected.minimalText.split('\n').at(-1)).toBe(projected.text.split('\n').at(-1))
+    expect(projected.text.split('\n').at(-1)).not.toContain(tea.name)
+    expect(projected.tokens).toBeLessThanOrEqual(800)
+    const together = structuredClone(current)
+    const persona = together.world.actors.find(item => item.externalRef.type === 'qingyu-persona')!
+    together.runtime.placements.push({...structuredClone(together.runtime.placements[0]!),actorId:persona.id})
+    const supplemented = projectSpatialContext(together,'char-a','persona-a','gpt-4o-mini')
+    expect(supplemented.text).toContain('当前两个人物处于同一地点')
+    expect(supplemented.text.split('\n').at(-1)).toBe(supplemented.minimalText.split('\n').at(-1))
+    const unknown = structuredClone(current)
+    unknown.runtime.placements[0]!.semanticPosition.precision = 'unknown'
+    expect(projectSpatialContext(unknown,'char-a','persona-a','gpt-4o-mini').text.split('\n').at(-1)).toContain('"林雪"当前位置未知')
+    const offstage = current.world.nodes.find(item => item.tags.includes('system:offstage'))!
+    const changed = await spatialService.applyEditorBatch(scope.characterId,scope.sessionId,request(current,[
+      {type:'move_actor',actorId:actor.id,to:{boardId:offstage.boardId,anchor:{kind:'node',nodeId:offstage.id},semanticPosition:{precision:'inside-only',note:''}}},
+    ]))
+    expect(changed.ok).toBe(true)
+    if (!changed.ok) return
+    const offstageText = projectSpatialContext(changed.snapshot,'char-a','persona-a','gpt-4o-mini').text.split('\n').at(-1)!
+    expect(offstageText).toContain('"林雪"本轮明确不参与对话')
+    expect(offstageText).not.toContain('现在在')
+  })
   it('起点建议不重置已有位置；删除会话助手清理不删除共享世界', async () => {
     const snapshot = await initialized()
     const core = view(snapshot); const actor = core.world.actors[0]!

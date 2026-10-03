@@ -51,9 +51,11 @@ app.whenReady().then(async () => {
     let group: GroupChat = { id: scope.groupId, name: '青石城夜谈', memberIds: members.map(([id])=>id), chatMode: 'polling', currentSpeakerIndex: 0, autoMode: false, maxRounds: 1, speakerInterval: 100, presetId: null, lorebookIds: [], systemPrompt: '三位成员在青石城茶馆相会。', createdAt: 1, updatedAt: 1 }
     writeJson(join(DIRS.groups(),'index.json'), [group])
     writeJson(join(DIRS.groups(),scope.groupId,'sessions.json'), [scope.sessionId,'second-session'].map(id=>({ id, groupId: scope.groupId, title: '联验', messageCount: 0, personaId: null, narrativeMode: 'immersive', createdAt: 1, updatedAt: 1 })))
+    const blank = await spatialService.setEnabled(scope, true)
+    check('启用群聊空间画布后创建空白绑定', !!blank && blank.runtime.placements.length === 0)
     const state = await ai.ask(scope,{ requestId: randomUUID(), mode: 'initialize', text: '创建青石城区域。茶馆和渡口都是青石城内的地点。林雪、阿远和小岚目前都在茶馆内，具体点位未知，不定义距离。' })
     check('真实模型初始化成功', state.tasks.at(-1)?.state === 'completed' && !!state.proposals[0]?.preview)
-    check('初始化确认前保持未绑定', await spatialService.loadGroupBound(scope.groupId,scope.sessionId) === null)
+    check('初始化确认前保持空白画板', JSON.stringify(await spatialService.loadGroupBound(scope.groupId,scope.sessionId)) === JSON.stringify(blank))
     const applied = await ai.apply(scope,state.proposals[0].id, true)
     const core = applied.snapshot as SpatialSnapshot & SpatialCoreState
     check('初始化正式登记三位成员且起点明确', core.runtime.placements.length === 3 && core.world.nodes.some(node=>node.name === '茶馆') && core.world.nodes.some(node=>node.name === '渡口'))

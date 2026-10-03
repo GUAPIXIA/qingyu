@@ -298,6 +298,8 @@ describe('SpatialBoardPane', () => {
     const onClose = vi.fn()
     render(<SpatialBoardPane characterId="char-1" sessionId="session-1" onClose={onClose} registerClose={vi.fn()} />)
     const frame = await screen.findByTitle('当前会话空间画板') as HTMLIFrameElement
+    // iframe 出现后先完成宿主 effect，避免在消息监听注册前发送提交。
+    await act(async () => {})
     const post = vi.spyOn(frame.contentWindow!, 'postMessage')
     fireEvent(window, new MessageEvent('message', { source: frame.contentWindow, origin: window.location.origin,
       data: { type: 'qingyu:spatial:commands', request: { commitId: 'conflict' } } }))

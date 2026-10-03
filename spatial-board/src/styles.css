@@ -1647,6 +1647,14 @@ textarea:focus-visible,
 .spatial-assistant-entry:hover { background: var(--color-accent-soft); color: var(--color-accent); }
 .spatial-assistant-entry > span { color: var(--color-accent); font-size: 16px; }
 .spatial-assistant-entry + .spatial-feature-control { margin-left: 4px; }
+/* 内嵌宽度取决于宿主侧栏；紧凑时用有无障碍名称的开关，保留全部操作。 */
+@media (max-width: 560px) {
+  .embedded .top-bar { gap: 6px; padding-inline: 8px; }
+  .embedded .top-bar .world-name { flex: 1; min-width: 0; max-width: none; width: 0; }
+  .embedded .spatial-feature-control > span { display: none; }
+  .embedded .spatial-feature-control { margin-left: 0; }
+  .embedded .spatial-assistant-entry { margin-left: 0; }
+}
 .embedded .status-bar { border-color: var(--tavern-border-soft); background: var(--tavern-bg); }
 .canvas-mode.compact { top: 12px; padding: 6px 9px; gap: 7px; border-color: var(--tavern-border-soft); border-radius: 7px; box-shadow: none; }
 .canvas-mode.compact .canvas-mode-mark { display: none; }

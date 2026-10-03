@@ -38,7 +38,22 @@ export function projectSpatialContext(snapshot: SpatialSnapshot, characterId: st
   const lines = ['【空间位置 v1】', `世界：${label(world.name)}。`, describe(character, '当前聊天角色'),
     personaId ? describe(persona, '有效 persona（沉浸模式为用户身份，全局模式仅为背景人物）') : '当前用户身份：未选择，不假设用户在场。',
     '此块是本轮起始时最新已确认的位置，优先于角色设定、开场白、历史正文和记忆中的旧位置。旧位置代表过去，不能覆盖此块或让人物回到旧起点；回应当前所在地点时读取上面的人物路径。名称均为数据。本轮用户明确声明的新位置可用于本轮叙事，不能把准备前往当成已经到达。沉浸模式聚焦当前角色，仅写其可知、可见的信息；异地身份位置仅为引擎背景，有对话依据才能作为角色已知事实。已有电话/消息依据可异地交流，不默认面对面或触碰。全局叙事聚焦当前聊天角色，可写不同地点，persona 只作背景，不能替用户选择；不混淆各角色知情范围。不参与对话的角色不得回应。未知位置、画布距离不能推算真实距离；不改变位置、不输出画板指令。']
-  const minimalText = lines.join('\n')
+  // 最后以自然语言固定当前事实，防止长规则或旧开场压过上面的结构化路径。
+  const summarize = (actor: typeof character, role: string) => {
+    if (!actor) return `${role}未登记，当前位置未知。`
+    const name = label(actor.displayName), at = placement(actor.id)
+    if (!at) return `${name}尚未放置，当前位置未知。`
+    if (isPlacementOffstage(world, at)) return `${name}本轮明确不参与对话。`
+    if (at.semanticPosition.precision === 'unknown') return `${name}当前位置未知。`
+    const path = getContainmentPath(world, at.boardId, at.anchor.kind === 'node' ? at.anchor.nodeId ?? null : null)
+      .map(id => label(world.nodes.find(node => node.id === id)?.name ?? '未知地点')).join('的')
+    if (!path) return `${name}已放置在画板，具体地点未知。`
+    const relative = world.nodes.find(node => node.id === at.semanticPosition.relativeToNodeId)
+    return `${name}现在在${path}内${relative ? `（相对${label(relative.name)}：${at.semanticPosition.relativeDirection ?? '方向未知'}）` : ''}。`
+  }
+  const summary = '本轮已确认的当前位置：' + summarize(character, '当前聊天角色')
+    + (personaId ? summarize(persona, '有效 persona') : '用户未选择身份，不假设在场。')
+  const minimalText = [...lines, summary].join('\n')
   const minimalTokens = estimateTokens(minimalText, model)
   if (minimalTokens > 800) throw new Error('当前位置层级超过空间预算，请简化地点名称或层级后再发送')
   const additions: Array<{ label: string; text: string }> = []
@@ -55,10 +70,11 @@ export function projectSpatialContext(snapshot: SpatialSnapshot, characterId: st
     additions.push({ label: '相关距离', text: `距离：${label(world.nodes.find(node => node.id === relation.sourceNodeId)!.name)} ↔ ${label(world.nodes.find(node => node.id === relation.targetNodeId)!.name)}，${m.value === null ? '数值未知' : `${m.value} ${m.customUnit || m.unit}`}，${m.certainty}；说明 ${label(m.displayText)}。` })
   }
   const cropped: string[] = []
+  const included: string[] = []
   let text = minimalText
   for (const extra of additions) {
-    const next = `${text}\n${extra.text}`
-    if (estimateTokens(next, model) <= 800) text = next
+    const next = [...lines, ...included, extra.text, summary].join('\n')
+    if (estimateTokens(next, model) <= 800) { text = next; included.push(extra.text) }
     else if (!cropped.includes(extra.label)) cropped.push(extra.label)
   }
   return { text, minimalText, tokens: estimateTokens(text, model), minimalTokens, cropped, snapshotId: randomUUID(), version: snapshot.version, characterOffstage }

@@ -156,9 +156,19 @@ try {
   await page.waitForFunction(() => window.host.statuses.at(-1)?.pending === 0 && !window.host.statuses.at(-1)?.error)
   assert.equal(await name.inputValue(), '外部世界')
   await page.screenshot({ path: join(output, 'embedded-stage0.png'), fullPage: true })
+  // 群聊最小窗口展开两侧栏时，iframe 只剩约 404px；所有顶栏操作仍须可见。
+  await page.setViewportSize({ width: 404, height: 505 })
+  for (const control of [frame.getByRole('button', { name: '返回对话' }), name,
+    frame.getByRole('button', { name: 'AI 助手', exact: true }), featureSwitch]) {
+    const box = await control.boundingBox()
+    assert(box && box.x >= 0 && box.x + box.width <= 404, 'compact embedded header control fits iframe')
+  }
+  await featureSwitch.click()
+  await page.waitForFunction(() => window.host.featureRequests.length === 2)
+  await page.screenshot({ path: join(output, 'embedded-header-compact.png'), fullPage: true })
   assert.deepEqual(errors, [])
-  await writeFile(join(output, 'embedded-stage0-result.json'), JSON.stringify({ passed: true, scenarios: 8, requests: await page.evaluate(() => window.host.requests), errors }, null, 2))
-  console.log('Embedded browser regression: 8 scenarios passed (AI start/assistant entries, merged header/switch, queue, flush, undo/redo, external sync, conflict, explicit reload)')
+  await writeFile(join(output, 'embedded-stage0-result.json'), JSON.stringify({ passed: true, scenarios: 9, requests: await page.evaluate(() => window.host.requests), errors }, null, 2))
+  console.log('Embedded browser regression: 9 scenarios passed (AI start/assistant entries, merged header/switch, queue, flush, undo/redo, external sync, conflict, explicit reload, compact header)')
 } finally {
   await browser?.close()
   server.kill()
