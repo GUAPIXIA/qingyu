@@ -54,6 +54,7 @@
 
 | 文档 | 状态 |
 |---|---|
+| [项目结构优化阶段4A实施报告-2026-10-03](./报告/项目结构优化阶段4A实施报告-2026-10-03.md) | ✅ 已完成 — 群聊流控制器（1757 行）拆分为 `src/features/group-chat/` 的 streamSession/messageFinalizer/modeScheduler/requestRunner，旧路径删除；store 定向 578 项、全量与基线一致（w9Shadow 确定性失败 + SpatialBoardPane 并发偶发隔离通过） |
 | [项目结构优化阶段3B实施报告-2026-10-03](./报告/项目结构优化阶段3B实施报告-2026-10-03.md) | ✅ 已完成 — 14 个空间模块迁入 `electron/features/spatial`（仓储/提交/上下文/开关 + ai/ + dialogue/），`services` 不再含 `spatial*`；写路径门禁 3 处 UNCLASSIFIED 显式归类为本地域，violations=0；定向 1108 项、全量与基线一致（仅 w9Shadow 既有失败） |
 | [项目结构优化阶段3A实施报告-2026-10-03](./报告/项目结构优化阶段3A实施报告-2026-10-03.md) | ✅ 已完成 — 聊天仓储/用例/实体映射/数据门面迁入 `electron/features/chat`，IPC 只留参数边界与注册；门面写路径漂移已登记；定向 1108 项、全量与基线一致（仅 w9Shadow 既有失败） |
 | [项目结构优化阶段2实施报告-2026-10-03](./报告/项目结构优化阶段2实施报告-2026-10-03.md) | ✅ 已完成 — 空间核心提取为 `@qingyu/spatial-core`（junction 接入、纯依赖门禁）；三链构建与全量测试通过，无新增失败 |
