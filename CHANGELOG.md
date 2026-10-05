@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **外部 IPC 写入的设置不再被渲染层旧值覆盖（F1）**：应用退出前无条件 `flushSettings()`，会把渲染层内存里的旧设置整份写回磁盘，覆盖由外部 Agent 经 IPC 写入的更新（实测 `theme=light` 在重启后被改回 `dark`）。现引入本地脏标记 `_dirty`：只有用户操作产生的改动才在退出前写盘，落盘成功后清除。
+- **外部 IPC 写入的数据不再要求重启才能看到（F3）**：主进程侧的写入（外部 Agent / 导入）此前不触发任何界面刷新。现新增 `character:changed` / `settings:changed` 广播（与既有 `session:updated` 同一套机制），并在会话新建/改名/删除后广播；渲染层订阅后重新拉取角色、会话与设置（设置在本地有未保存改动时不重载，避免与 F1 竞争）。
+- **消息缺字段不再击穿整页（F4）**：不完整消息（缺 `timestamp`/`images`/`isEditing`）会让 `date-fns.format(undefined)` 抛 `RangeError: Invalid time value`，触发整页「页面渲染异常」。现双层加固：写入边界补齐三个字段，格式化入口（`formatTime`/`formatDateTime`/`formatRelativeTime` 与书签调试面板）对无效时间戳一律降级为空串。
+- **重命名不存在的会话不再静默成功（F2）**：`renameSession` 此前 `if (session)` 无 else，外部调用方会拿到“成功”却什么都没发生。现与 `updateSession` 一致地抛「会话不存在」，并对非字符串标题报参数错误。
+- **会话切换器下拉项可被可靠定位与点击（F5）**：下拉项与触发器同为 `button` 且名称都可能是当前会话标题，无障碍与自动化都无法区分；且条目名称带 `(N条)` 后缀，按标题精确匹配必然失败（实测真实鼠标序列下点击超时）。现面板加 `role="menu"` + 名称、条目改 `role="menuitem"` 并用 `aria-label` 提供干净标题（条数后缀标记 `aria-hidden`），当前项带 `aria-current`。
+- **Edge TTS 配置不再被静默改写成系统语音**：`loadSettings` 每次加载都会把已有 TTS 模型的 `provider: 'edge'` 无条件改写为 `'system'`，而 `edge` 在 3.2-A 之后已是正式提供商（设置界面可选、`edgeSpeak` 有实现与测试、消息朗读按 edge 分支播放），因此用户配好的 Edge TTS 会在下次启动后被改写、并随任意一次保存落盘。现改为只在**旧单字段** `ttsProvider: 'edge'`（3.2-A 时代 `edge` 仅作系统引擎占位值）时迁移为 `system`，已有模型数组不再改写；历史数据的一次性迁移仍由主进程版本化迁移链负责。
+
+### 新增
+
+- **导出/导入支持显式路径（免系统对话框）**：角色卡（JSON/PNG/封面/批量）、世界书、预设、快捷回复、备份（zip/json）的导出与导入新增可选路径参数（导出 `targetPath`、导入 `sourcePath`）；**传入路径时不弹系统对话框**，直接读写该路径，供外部 Agent / 自动化端到端调用。不传路径时行为完全不变（仍弹对话框，保持原有交互）。`exportCover` 与 `preset/quickReply` 导出现在同样回传 `path`。`file.selectImage` 与 `font.select` **故意不提供路径参数**——它们是「仅允许读取对话框选择过的路径」的白名单闸门，加参数会打开任意文件读取面。
+- **TTS 新增小米 MiMo 提供商**：设置 → API → TTS 新增「小米 MiMo TTS」提供商，可直接用小米 MiMo 语音合成朗读。与既有 OpenAI 兼容 TTS 不同，小米走 `POST {baseUrl}/chat/completions`（文本在 `messages[role=assistant].content`，音频参数在 `audio:{format,voice}`，音频数据在响应 `choices[0].message.audio.data`），因此实现为独立适配器而不是复用 `/audio/speech`。内置 9 个官方音色（`mimo_default`、冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean），默认端点 `https://api.xiaomimimo.com/v1`、默认模型 `mimo-v2.5-tts`；「测试连接」改为真实合成一句短语音（同时验证 Key、端点与音色）。消息朗读、试听、音色下拉与配置列表标签均已接入该提供商。参考[小米 MiMo TTS 接口文档](https://mimo.mi.com/static/docs/api/audio/tts.md)。
+
 ## [0.18.0] - 2026-09-20
 
 ### 新增
