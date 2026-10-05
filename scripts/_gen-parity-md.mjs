@@ -1,3 +1,9 @@
+/**
+ * ⚠️ 已废弃（2026-10-05）：阶段 0 一次性生成器，会以旧模板整体覆盖
+ * `docs/架构/android-parity-matrix.md`（缺少「校正」表头行，且 PC entry 截断到 72 字符）。
+ * 权威刷新入口为 `node scripts/refresh-parity-matrix.mjs`（由 JSON 渲染 md，二者保持一致）。
+ * 仅作历史参考保留，请勿再运行。
+ */
 import { readFileSync, writeFileSync } from 'node:fs'
 
 const m = JSON.parse(readFileSync('docs/架构/android-parity-matrix.json', 'utf8'))

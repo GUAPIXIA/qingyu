@@ -3,6 +3,7 @@
 > 权威源：`android-parity-matrix.json`
 > 生成：阶段0 代码入口审计（2026-09-16）
 > 刷新：2026-09-26 独立客户端验收（阶段3–6 实现核验）
+> 校正：2026-10-03 PC entry／pcService 路径对齐三仓结构与 S9-07 旧链路删除（详见 JSON `notes`）
 
 共 **104** 项。
 
@@ -65,9 +66,9 @@
 
 | capabilityId | 名称 | Android | platformPolicy | PC entry |
 |---|---|---|---|---|
-| `settings.phoneConnectionProfiles` | 手机连接档案/配对（旧伴侣） | removed | equivalent | src/pages/settings/PhoneConnectionSection.tsx |
-| `settings.lanDiscovery` | 局域网发现（旧伴侣 mDNS） | removed | equivalent | src/pages/settings/PhoneConnectionSection.tsx |
-| `settings.serverRelayChannel` | 服务器中继双通道（旧） | removed | equivalent | src/pages/settings/PhoneConnectionSection.tsx |
+| `settings.phoneConnectionProfiles` | 手机连接档案/配对（旧伴侣） | removed | equivalent | —（已随 S9-07 删除） |
+| `settings.lanDiscovery` | 局域网发现（旧伴侣 mDNS） | removed | equivalent | —（已随 S9-07 删除） |
+| `settings.serverRelayChannel` | 服务器中继双通道（旧） | removed | equivalent | —（已随 S9-07 删除） |
 | `settings.settingsSync` | 设置跨端同步（旧 v2） | removed | equivalent | src/pages/SettingsPage.tsx |
 | `settings.appearanceLocal` | 本地外观/主题 | full | equivalent | src/pages/settings/AppearanceSection.tsx |
 | `settings.behavior` | 行为/对话默认项 | full | equivalent | src/pages/settings/BehaviorSection.tsx |
@@ -105,7 +106,7 @@
 | `attachments.file` | 文件附件 | full | equivalent | src/pages/ChatPage.tsx |
 | `announcement.listDetail` | 公告 | full | same | src/pages/AnnouncementsPage.tsx |
 | `usage.stats` | 用量统计 | full | same | src/pages/UsagePage.tsx |
-| `bridge.deviceManage` | 已配对设备管理（旧） | removed | equivalent | src/pages/settings/PhoneConnectionSection.tsx |
+| `bridge.deviceManage` | 已配对设备管理（旧） | removed | equivalent | —（已随 S9-07 删除；设备认证在 `electron/bridge/syncRoutes.ts`） |
 | `settings.wipeLocalAndroid` | 安卓本地缓存清理 | full | same | — |
 
 ## P2（14）
@@ -118,7 +119,7 @@
 | `mcp.stdioOnly` | MCP stdio 本地进程 | pc_only_confirmed | pc_only_confirmed | src/pages/McpPage.tsx |
 | `mcp.remoteHttp` | 远程 HTTP MCP | partial | same | src/pages/McpPage.tsx |
 | `mcp.toolCall` | MCP 工具调用 | partial | same | src/pages/McpPage.tsx |
-| `diagnostics.connection` | 连接诊断 | full | equivalent | src/pages/settings/PhoneConnectionSection.tsx |
+| `diagnostics.connection` | 连接诊断 | full | equivalent | src/pages/settings/SyncCenterSection.tsx |
 | `diagnostics.generation` | 生成诊断 | none | same | src/pages/ChatPage.tsx |
 | `diagnostics.export` | 诊断导出包 | partial | equivalent | src/pages/settings/* |
 | `localModels.catalog` | 本地模型目录/安装（ONNX） | pc_only_confirmed | pc_only_confirmed | src/pages/settings/LocalModelsSection.tsx |

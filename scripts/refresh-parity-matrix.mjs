@@ -144,6 +144,7 @@ function main() {
 > 权威源：\`android-parity-matrix.json\`
 > 生成：阶段0 代码入口审计（2026-09-16）
 > 刷新：2026-09-26 独立客户端验收（阶段3–6 实现核验）
+> 校正：2026-10-03 PC entry／pcService 路径对齐三仓结构与 S9-07 旧链路删除（详见 JSON \`notes\`）
 
 共 **${m.capabilities.length}** 项。
 
