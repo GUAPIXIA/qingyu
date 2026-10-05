@@ -1,9 +1,9 @@
 ---
 feature: pc-ux-phase2
 status: done
-updated: 2026-09-24
+updated: 2026-10-03
 branch: main
-commits: pending
+commits: pending  # 未单独记哈希；收口事实见 ../../报告/PC端用户体验修复实施报告-第二轮.md §9（2026-09-23 终态，291 文件／3288 项）
 ---
 
 # PC 端体验阶段 2（中波 M）收口
@@ -14,7 +14,7 @@ commits: pending
 阶段 1 短波已落地反馈与内容不丢主干。阶段 2 需完成中波剩余项：模型表单 dirty、群生成中守卫与草稿、配对弹层、会话列表与命令反馈、导入查重，使审查报告 P1 主体闭环。
 
 ## [S2] Design
-依据 [实施方案](../../方案/PC端用户体验逻辑优化实施方案-2026-09-20.md) §4 M 波。ConfirmDialog/Modal/Toast 底座已就绪。D7 默认「同名提示 + 默认副本」。
+依据 [实施方案](../../方案/归档/PC端用户体验逻辑优化实施方案-2026-09-20.md) §4 M 波。ConfirmDialog/Modal/Toast 底座已就绪。D7 默认「同名提示 + 默认副本」。
 
 **完成定义（本阶段）**：
 1. M5：模型/连接表单 dirty 切换确认；Edge TTS 测试走 listVoices/试听。

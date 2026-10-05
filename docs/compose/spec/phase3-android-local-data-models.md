@@ -1,7 +1,7 @@
 ---
 feature: phase3-android-local-data-models
-status: in-progress
-updated: 2026-09-16
+status: delivered  # 工程与门禁通过；待阶段负责人签字（物理真机矩阵按用户指示以 AVD 26/31/34 替代）
+updated: 2026-10-03
 branch: main
 commits: 60b536f..HEAD
 ---

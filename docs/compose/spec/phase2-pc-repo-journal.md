@@ -1,7 +1,7 @@
 ---
 feature: phase2-pc-repo-journal
-status: in-progress
-updated: 2026-09-16
+status: delivered  # 工程范围交付；阶段验收仍为「待验收」（PCE-01 GUI 相对门禁未过，见 ../../报告/PCE-01-GUI-AB取证报告-2026-09-26.md）
+updated: 2026-10-03
 branch: main
 commits: a5aacb5..HEAD
 ---
