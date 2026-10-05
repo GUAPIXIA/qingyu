@@ -156,10 +156,18 @@ jobs:
         run: pnpm check:spatial-core
 
       # 外部 Agent 工具门禁：动作目录 ↔ shared/ipc-api.ts 契约漂移。
-      # 与 check:gates 并列执行、结果分别记录（方案 §10）：check-contracts 当前已知红，
-      # 不能让两者的红绿互相掩盖。该门禁为纯 Node，无 GUI 依赖，可在 Linux runner 运行。
+      # 与 check:gates 并列执行、结果分别记录（方案 §10）。该门禁为纯 Node，无 GUI 依赖，
+      # 可在 Linux runner 运行。
       - name: pc-agent catalog gate
         run: pnpm check:pc-agent
+
+      # 契约漂移门禁（阶段 1）：schemas/fixtures 可解析、settings_public 无敏感字段、
+      # openapi operationId 唯一，且 entityType 集合与 shared/contracts/sync-envelope.ts 的
+      # SyncEntityType 双向一致。
+      # 历史：本门禁曾因脚本硬编码清单与 D-11/D-12 冻结契约脱节而长期"已知红"、未接入 CI；
+      # 2026-10-05 改为从契约源头派生比对（含比对函数自检）后转绿并纳入 CI，防止再次静默过期。
+      - name: contracts drift gate
+        run: pnpm check:contracts
 
   # Windows 安装包构建（仅 main 分支推送时）
   build-windows:
