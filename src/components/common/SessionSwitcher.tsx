@@ -114,6 +114,8 @@ export function SessionSwitcher({
           if (!open) setSearch('')
         }}
         panelClassName={cn('w-56', isChat && 'max-h-72 overflow-y-auto')}
+        panelRole="menu"
+        panelAriaLabel="会话列表"
         trigger={
           isChat ? (
             <button
@@ -215,11 +217,14 @@ export function SessionSwitcher({
                       </div>
                     )}
                     <button
+                      role="menuitem"
+                      aria-label={s.title}
+                      aria-current={s.id === currentSessionId ? 'true' : undefined}
                       className="flex-1 text-left text-sm text-tavern-text truncate"
                       onClick={() => { onSwitch(s.id); setShowMenu(false) }}
                     >
                       {s.title}
-                      <span className="text-xs text-tavern-text-muted ml-2">
+                      <span className="text-xs text-tavern-text-muted ml-2" aria-hidden="true">
                         ({s.messageCount}条)
                       </span>
                     </button>
@@ -263,6 +268,9 @@ export function SessionSwitcher({
                 />
               ) : (
                 <button
+                  role="menuitem"
+                  aria-label={s.title}
+                  aria-current={s.id === currentSessionId ? 'true' : undefined}
                   onClick={() => { onSwitch(s.id); setShowMenu(false) }}
                   className={cn(
                     'flex-1 text-left text-xs truncate px-1',
@@ -270,7 +278,7 @@ export function SessionSwitcher({
                   )}
                 >
                   {s.title}
-                  <span className="text-[10px] text-tavern-text-muted ml-1">({s.messageCount ?? 0})</span>
+                  <span className="text-[10px] text-tavern-text-muted ml-1" aria-hidden="true">({s.messageCount ?? 0})</span>
                 </button>
               )}
               <button

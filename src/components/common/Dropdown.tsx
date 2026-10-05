@@ -10,6 +10,13 @@ interface DropdownProps {
   panelClassName?: string
   /** 点击面板内容时不关闭（默认 true） */
   closeOnContentClick?: boolean
+  /**
+   * F5：面板语义角色（如 'menu'）。默认不设置（保持既有 DOM 结构）。
+   * 需要时由消费者声明，使面板内的条目能被无障碍技术与自动化按角色区分于触发器。
+   */
+  panelRole?: string
+  /** 面板的无障碍名称（与 panelRole 搭配使用） */
+  panelAriaLabel?: string
 }
 
 /**
@@ -25,6 +32,8 @@ export function Dropdown({
   align = 'left',
   panelClassName,
   closeOnContentClick = false,
+  panelRole,
+  panelAriaLabel,
 }: DropdownProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -55,6 +64,8 @@ export function Dropdown({
           {/* 下拉面板 */}
           <div
             ref={panelRef}
+            role={panelRole}
+            aria-label={panelRole ? panelAriaLabel : undefined}
             onClick={closeOnContentClick ? undefined : (e) => e.stopPropagation()}
             className={cn(
               'dropdown-pop absolute top-full mt-1 z-50 bg-tavern-bg-card border border-tavern-border rounded-xl shadow-xl py-1',

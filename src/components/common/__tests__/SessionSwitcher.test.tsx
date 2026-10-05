@@ -33,6 +33,35 @@ function readListedTitles(container: HTMLElement) {
 }
 
 describe('SessionSwitcher', () => {
+  // F5 回归：下拉面板与会话项必须有菜单语义，否则会话项与触发器同为 button
+  // 且名称相同（触发器显示当前会话标题），无障碍与自动化都无法区分二者。
+  it('F5：下拉面板为 menu、会话项为 menuitem，触发器不是 menuitem', () => {
+    const { container } = render(
+      <SessionSwitcher
+        sessions={makeSessions(3)}
+        currentSessionId="s2"
+        onSwitch={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByTitle('切换对话'))
+
+    expect(screen.getByRole('menu', { name: '会话列表' })).toBeTruthy()
+    const items = screen.getAllByRole('menuitem')
+    expect(items).toHaveLength(3)
+    // 无障碍名称必须是干净的标题（不含条数后缀），否则按标题精确定位会失败
+    expect(items.map((item) => item.getAttribute('aria-label'))).toEqual(['会话1', '会话2', '会话3'])
+    expect(items.map((item) => (item.textContent ?? '').replace(/\(.*\)$/, '').trim()))
+      .toEqual(['会话1', '会话2', '会话3'])
+    // 当前会话项带 aria-current，便于区分“当前项”
+    expect(items[1].getAttribute('aria-current')).toBe('true')
+    // 触发器保持 button 语义（不与条目同角色）
+    expect(screen.getByTitle('切换对话').getAttribute('role')).toBeNull()
+    expect(container.querySelectorAll('[role="menuitem"]')).toHaveLength(3)
+  })
+
   it('UEX-P1-32：chat 分支重命名失焦 = 提交保存', () => {
     const onRename = vi.fn()
     render(
