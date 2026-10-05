@@ -13,6 +13,7 @@
 | `check-write-bypass.mjs` | 写路径旁路检查（禁止绕过仓储写入口） | `pnpm check:write-bypass` | stdout |
 | `check-forwarders.mjs` | 转发层残余检查（旧路径不得有新引用） | `pnpm check:forwarders` | stdout |
 | `check-boundaries.mjs` | 跨目录依赖方向门禁（shared 平台依赖／PC↔画板／core 纯度／features 交叉与环；`--self-test` 负例自检） | `pnpm check:boundaries` / `pnpm check:boundaries:selftest` | stdout |
+| `check-pc-agent.mjs` | 外部 Agent 工具门禁：动作目录 ↔ `shared/ipc-api.ts` 契约漂移（成员遗漏、悬空映射、签名漂移、豁免缺原因、能力矩阵陈旧、UI/异步声明合法性）。**当前为绿**；`--require-covered` 已按“无 unregistered”收紧并常态通过 | `pnpm check:pc-agent`（可选 `--require-covered` / `--json`） | stdout 结果，非零退出即失败 |
 | `check:gates`（聚合） | forwarders + 写路径 + boundaries（含负例）一次性门禁 | `pnpm check:gates` | stdout |
 | `dev.ps1` / `dev.bat` | 本地开发启动辅助 | `pwsh scripts/dev.ps1` | 无 |
 | `electron-stub*.mjs` | electron ESM 桩（给 tsx 运行的评测脚本提供 `electron` 导入） | `pnpm exec tsx --import ./scripts/electron-stub.mjs <script>` | 无 |
@@ -61,4 +62,6 @@
   - 阶段 5 已完成接入：`spatial-group-browser.mjs`、`spatial-group-stage1-browser.mjs`、`spatial-group-stage2-browser.mjs`、`spatial-group-stage3-browser.mjs`、`spatial-phase1-browser.mjs` 全部改用 `runBrowserSession`，并适配「启用空间画布」开关新流程；5 个脚本均已本地 smoke 通过。
 - Electron 联验启动器（`run-session-isolation-model.mjs`、`run-spatial-group-stage2-model.mjs`、`run-spatial-group-stage3-model.mjs`、`logger-epipe-smoke.mjs`）共用打包/启动/日志/退出设施，已抽取为 [scripts/lib/electronHarness.mjs](./lib/electronHarness.mjs)（`buildElectronBundle`／`spawnElectronBundle`／`runElectronBundle`）。
 - `clean.ps1` 已于 2026-10-02 重写为白名单模式（见文件头说明），默认仅预览。
+- `check-pc-agent.mjs`（2026-10-03 加入）是外部 Agent 工具包的门禁，配合 [`tools/pc-agent/`](../tools/pc-agent/README.md)：目录由 `pnpm pc-agent:catalog` 生成，能力矩阵 [`docs/pc-agent/能力矩阵.md`](../docs/pc-agent/能力矩阵.md) 由目录渲染，禁止手改。**与 `check:gates` 并列执行、结果分别记录**（方案 §10：`check-contracts` 当前已知红，不能让两者的红绿互相掩盖）；CI 的 “Structure gates” 作业里作为独立步骤运行 `pnpm check:pc-agent`。
+- 本目录**不含**外部 Agent 工具的验证入口：`verify/dual-entry.mjs`（双入口等价）、`verify/matrix.mjs`（双入口全量矩阵）、`probes/`（可行性探针）都在 `tools/pc-agent/` 下，见该目录 README。
 - `工具集` 不含已迁移至 `tests/` 的纯测试与 `output/` 下的草稿。

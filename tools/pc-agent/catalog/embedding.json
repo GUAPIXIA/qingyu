@@ -1,0 +1,352 @@
+{
+  "namespace": "embedding",
+  "apiInterface": "EmbeddingAPI",
+  "apiPathPrefix": "window.api.embedding",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "embedding.test",
+      "apiPath": "window.api.embedding.test",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "test(config: EmbeddingEndpointConfig): Promise<{ ok: boolean; dim?: number; error?: string }>",
+      "params": [
+        {
+          "name": "config",
+          "type": "EmbeddingEndpointConfig",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; dim?: number; error?: string }>",
+      "description": "测试向量端点（本地模型真实推理）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "ok=true 且 dim>0"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "embedding.indexLorebook",
+      "apiPath": "window.api.embedding.indexLorebook",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "indexLorebook(lorebookId: string, config: EmbeddingEndpointConfig): Promise<IndexResult>",
+      "params": [
+        {
+          "name": "lorebookId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "config",
+          "type": "EmbeddingEndpointConfig",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<IndexResult>",
+      "description": "为世界书建索引（真实模型，逐条进度）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入向量索引",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "ok=true 且 indexed>0",
+        "indexStatus 反映索引结果"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "embedding.cancelIndex",
+      "apiPath": "window.api.embedding.cancelIndex",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "cancelIndex(lorebookId?: string): Promise<{ ok: boolean }>",
+      "params": [
+        {
+          "name": "lorebookId",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean }>",
+      "description": "取消进行中的索引（控制类动作，绕过写队列）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": true,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "中止索引任务",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 ok",
+        "取消后索引不再推进"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "embedding.onIndexProgress",
+      "apiPath": "window.api.embedding.onIndexProgress",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onIndexProgress(listener: (progress: LorebookIndexProgress) => void): () => void",
+      "params": [
+        {
+          "name": "listener",
+          "type": "(progress: LorebookIndexProgress) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "embedding.indexStatus",
+      "apiPath": "window.api.embedding.indexStatus",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "indexStatus(lorebookIds: string[], config?: EmbeddingEndpointConfig): Promise<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>",
+      "params": [
+        {
+          "name": "lorebookIds",
+          "type": "string[]",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "config",
+          "type": "EmbeddingEndpointConfig",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Record<string, { indexed: number; model: string; updatedAt: number; stale: number }>>",
+      "description": "读取索引状态",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回按世界书 id 的状态映射"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "embedding.removeIndex",
+      "apiPath": "window.api.embedding.removeIndex",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "removeIndex(lorebookId: string): Promise<{ ok: boolean }>",
+      "params": [
+        {
+          "name": "lorebookId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean }>",
+      "description": "删除世界书索引",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除向量索引",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "删除后 indexStatus 显示未索引"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "embedding.semanticSearch",
+      "apiPath": "window.api.embedding.semanticSearch",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "semanticSearch(payload: { scanText: string lorebookIds: string[] config: EmbeddingEndpointConfig threshold?: number maxResults?: number }): Promise<SemanticHit[]>",
+      "params": [
+        {
+          "name": "payload",
+          "type": "{ scanText: string lorebookIds: string[] config: EmbeddingEndpointConfig threshold?: number maxResults?: number }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SemanticHit[]>",
+      "description": "语义检索（真实推理）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回命中的条目"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "embedding.embedFacts",
+      "apiPath": "window.api.embedding.embedFacts",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "embedFacts(config: EmbeddingEndpointConfig, texts: string[]): Promise<number[][]>",
+      "params": [
+        {
+          "name": "config",
+          "type": "EmbeddingEndpointConfig",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "texts",
+          "type": "string[]",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<number[][]>",
+      "description": "把文本批量向量化（真实推理）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "向量数量等于输入条数",
+        "维度一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "embedding.searchFacts",
+      "apiPath": "window.api.embedding.searchFacts",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "searchFacts(payload: { query: string facts: string[] vectors: number[][] config: EmbeddingEndpointConfig threshold?: number maxResults?: number }): Promise<FactSearchHit[]>",
+      "params": [
+        {
+          "name": "payload",
+          "type": "{ query: string facts: string[] vectors: number[][] config: EmbeddingEndpointConfig threshold?: number maxResults?: number }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<FactSearchHit[]>",
+      "description": "事实检索（真实推理）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回命中"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

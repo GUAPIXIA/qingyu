@@ -1,0 +1,190 @@
+{
+  "namespace": "preset",
+  "apiInterface": "PresetAPI",
+  "apiPathPrefix": "window.api.preset",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "preset.list",
+      "apiPath": "window.api.preset.list",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "list(): Promise<Preset[]>",
+      "params": [],
+      "returns": "Promise<Preset[]>",
+      "description": "列出全部预设（含内置）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "数量与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "preset.save",
+      "apiPath": "window.api.preset.save",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "save(preset: Preset): Promise<Preset>",
+      "params": [
+        {
+          "name": "preset",
+          "type": "Preset",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Preset>",
+      "description": "保存预设（内置预设保存为副本）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案中的预设",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "保存后 list 可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "preset.delete",
+      "apiPath": "window.api.preset.delete",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "delete(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除预设",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除预设",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后 list 不含该预设"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "preset.importJson",
+      "apiPath": "window.api.preset.importJson",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "importJson(sourcePath?: string): Promise<PresetImportResult | null>",
+      "params": [
+        {
+          "name": "sourcePath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<PresetImportResult | null>",
+      "description": "导入预设 JSON（传 sourcePath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathArg": 0
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "preset.exportJson",
+      "apiPath": "window.api.preset.exportJson",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportJson(id: string, targetPath?: string): Promise<{ ok: boolean; canceled?: boolean; error?: string; path?: string }>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "targetPath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; canceled?: boolean; error?: string; path?: string }>",
+      "description": "导出预设 JSON（传 targetPath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "save",
+        "pathArg": 1
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

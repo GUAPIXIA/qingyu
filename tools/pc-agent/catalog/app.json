@@ -1,0 +1,103 @@
+{
+  "namespace": "app",
+  "apiInterface": "AppAPI",
+  "apiPathPrefix": "window.api.app",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "app.getVersion",
+      "apiPath": "window.api.app.getVersion",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getVersion(): Promise<string>",
+      "params": [],
+      "returns": "Promise<string>",
+      "description": "读取应用版本",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "版本号非空"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "app.checkVersion",
+      "apiPath": "window.api.app.checkVersion",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "checkVersion(): Promise<{ version: string; changelog: string; downloadUrl: string } | null>",
+      "params": [],
+      "returns": "Promise<{ version: string; changelog: string; downloadUrl: string } | null>",
+      "description": "检查是否有新版本",
+      "layer": "ipc",
+      "write": false,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要网络与更新服务器"
+    },
+    {
+      "id": "app.openExternal",
+      "apiPath": "window.api.app.openExternal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "openExternal(url: string): Promise<void>",
+      "params": [
+        {
+          "name": "url",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "用系统浏览器打开链接",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "会启动外部程序，需显式授权（方案 §8）"
+    }
+  ]
+}

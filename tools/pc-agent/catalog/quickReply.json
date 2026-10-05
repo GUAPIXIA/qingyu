@@ -1,0 +1,184 @@
+{
+  "namespace": "quickReply",
+  "apiInterface": "QuickReplyAPI",
+  "apiPathPrefix": "window.api.quickReply",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "quickReply.listAll",
+      "apiPath": "window.api.quickReply.listAll",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listAll(): Promise<{ global: QuickReply[]; byCharacter: Record<string, QuickReply[]> }>",
+      "params": [],
+      "returns": "Promise<{ global: QuickReply[]; byCharacter: Record<string, QuickReply[]> }>",
+      "description": "列出全局与按角色的快捷回复",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 global/byCharacter 结构"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "quickReply.saveAll",
+      "apiPath": "window.api.quickReply.saveAll",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "saveAll(store: { global: QuickReply[]; byCharacter: Record<string, QuickReply[]> }): Promise<void>",
+      "params": [
+        {
+          "name": "store",
+          "type": "{ global: QuickReply[]; byCharacter: Record<string, QuickReply[]> }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "整体保存快捷回复（全局 + 按角色）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入快捷回复",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "保存后 listAll 可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "quickReply.clearCharacter",
+      "apiPath": "window.api.quickReply.clearCharacter",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "clearCharacter(characterId: string): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "清空指定角色的快捷回复",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除该角色的快捷回复",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "清空后 byCharacter 不含该角色"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "quickReply.exportJson",
+      "apiPath": "window.api.quickReply.exportJson",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportJson(targetPath?: string): Promise<{ ok: boolean; canceled?: boolean; error?: string; path?: string }>",
+      "params": [
+        {
+          "name": "targetPath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; canceled?: boolean; error?: string; path?: string }>",
+      "description": "导出快捷回复 JSON（传 targetPath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "save",
+        "pathArg": 0
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "quickReply.importJson",
+      "apiPath": "window.api.quickReply.importJson",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "importJson(sourcePath?: string): Promise<{ ok: boolean; canceled?: boolean; error?: string; replacedGlobal?: number; importedGlobal?: number }>",
+      "params": [
+        {
+          "name": "sourcePath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; canceled?: boolean; error?: string; replacedGlobal?: number; importedGlobal?: number }>",
+      "description": "导入快捷回复 JSON（传 sourcePath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathArg": 0
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

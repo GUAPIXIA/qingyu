@@ -1,0 +1,99 @@
+{
+  "namespace": "log",
+  "apiInterface": "LogAPI",
+  "apiPathPrefix": "window.api.log",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "log.write",
+      "apiPath": "window.api.log.write",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "write(level: 'debug' | 'info' | 'warn' | 'error', module: string, message: string, meta?: Record<string, unknown>): Promise<void>",
+      "params": [
+        {
+          "name": "level",
+          "type": "'debug' | 'info' | 'warn' | 'error'",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "module",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "meta",
+          "type": "Record<string, unknown>",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "写入日志",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案日志文件",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "写入后 getRecent 能读到"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "log.getRecent",
+      "apiPath": "window.api.log.getRecent",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getRecent(limit?: number): Promise<string>",
+      "params": [
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>",
+      "description": "读取最近日志文本",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "包含刚写入的标记"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

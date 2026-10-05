@@ -1,0 +1,237 @@
+{
+  "namespace": "settings",
+  "apiInterface": "SettingsAPI",
+  "apiPathPrefix": "window.api.settings",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "settings.get",
+      "apiPath": "window.api.settings.get",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "get(): Promise<Settings>",
+      "params": [],
+      "returns": "Promise<Settings>",
+      "description": "读取设置（凭据字段已按 redactKeys 剔除）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [
+        "apiKey",
+        "apiKeys",
+        "token",
+        "secret",
+        "password",
+        "credential",
+        "spaceKey",
+        "privateKey"
+      ],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "schemaVersion 存在",
+        "返回值不含 apiKey 等凭据字段"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "settings.save",
+      "apiPath": "window.api.settings.save",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "save(settings: Settings): Promise<void>",
+      "params": [
+        {
+          "name": "settings",
+          "type": "Settings",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "保存设置（需传完整设置对象）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案的设置",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "保存后 get 读回一致",
+        "重启后仍一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "settings.saveAPICredential",
+      "apiPath": "window.api.settings.saveAPICredential",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "saveAPICredential(provider: string, key: string): Promise<void>",
+      "params": [
+        {
+          "name": "provider",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "写入连接档案的 API 凭据（默认关闭；需会话 --allow-credential-write 显式授权）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "credential-write"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "把凭据加密写入隔离档案的 credentials.json",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "写入后该档案可用于真实生成"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "settings.getAPICredential",
+      "apiPath": "window.api.settings.getAPICredential",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "getAPICredential(provider: string): Promise<string | null>",
+      "params": [
+        {
+          "name": "provider",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string | null>",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "settings.exportBackup",
+      "apiPath": "window.api.settings.exportBackup",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportBackup(targetPath?: string): Promise<{ status: 'canceled' | 'success'; path?: string; version?: 1 | 2; counts?: Record<string, number>; totalBytes?: number; excluded?: string[] }>",
+      "params": [
+        {
+          "name": "targetPath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ status: 'canceled' | 'success'; path?: string; version?: 1 | 2; counts?: Record<string, number>; totalBytes?: number; excluded?: string[] }>",
+      "description": "导出备份 ZIP（传 targetPath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "save",
+        "pathArg": 0
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "settings.importBackup",
+      "apiPath": "window.api.settings.importBackup",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "importBackup(sourcePath?: string): Promise<{ status: 'canceled' | 'success'; version?: 1 | 2; counts?: Record<string, number> }>",
+      "params": [
+        {
+          "name": "sourcePath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ status: 'canceled' | 'success'; version?: 1 | 2; counts?: Record<string, number> }>",
+      "description": "导入备份 ZIP（传 sourcePath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathArg": 0
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

@@ -1,0 +1,400 @@
+{
+  "file": "_tools.json",
+  "namespace": "_tools",
+  "apiInterface": null,
+  "apiPathPrefix": null,
+  "sourceFile": null,
+  "note": "工具来源动作：不对应 window.api 成员，由 tools/pc-agent 的适配器执行（当前为 UI 层操作）。新增工具动作请保持 origin=tool 并声明 adapter。",
+  "actions": [
+    {
+      "id": "ui.navigate",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.navigate(label: string)",
+      "params": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "void",
+      "description": "点击侧栏导航项进入页面（如 对话 / 角色卡）",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "ui": {
+        "kind": "navigate",
+        "name": "{{0}}",
+        "exact": true
+      },
+      "assertions": [
+        "页面已切换（URL 或可见标题）"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.character.startChat",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.character.startChat(characterName: string)",
+      "params": [
+        {
+          "name": "characterName",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "void",
+      "description": "在角色卡页面点击指定角色卡的“开始对话”，进入该角色的会话界面",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "ui": {
+        "kind": "clickWithin",
+        "pre": [
+          {
+            "kind": "navigate",
+            "name": "角色卡",
+            "exact": true,
+            "settleMs": 800
+          }
+        ],
+        "container": "div, li, article",
+        "hasText": "{{0}}",
+        "role": "button",
+        "name": "开始对话",
+        "settleMs": 1200
+      },
+      "assertions": [
+        "会话界面已打开（见 ui.chat.readSelectedTitle）"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.chat.selectSession",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.chat.selectSession(title: string)",
+      "params": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "void",
+      "description": "在会话切换器中选中标题匹配的会话（真实界面操作，按菜单项语义定位）",
+      "pendingReason": null,
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "ui": {
+        "kind": "click",
+        "pre": [
+          {
+            "kind": "navigate",
+            "name": "对话",
+            "exact": true,
+            "settleMs": 500
+          },
+          {
+            "kind": "click",
+            "title": "切换对话",
+            "exact": true,
+            "settleMs": 600
+          }
+        ],
+        "role": "menuitem",
+        "regex": true,
+        "name": "^{{0}}$",
+        "settleMs": 800
+      },
+      "assertions": [
+        "点击后当前会话标题变为目标标题（见 ui.chat.readSelectedTitle）"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.chat.readSelectedTitle",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.chat.readSelectedTitle()",
+      "params": [],
+      "returns": "string",
+      "description": "读取会话切换器上显示的当前会话标题（界面真实文本）",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "ui": {
+        "kind": "readText",
+        "title": "切换对话",
+        "exact": true,
+        "settleMs": 200
+      },
+      "assertions": [
+        "文本等于改名后的会话标题"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.character.readNames",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.character.readNames()",
+      "params": [],
+      "returns": "string",
+      "description": "读取角色卡页面当前渲染出的角色名文本（用于验证 IPC 写入的数据在界面上可见）",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "ui": {
+        "kind": "readText",
+        "pre": [
+          {
+            "kind": "navigate",
+            "name": "角色卡",
+            "exact": true,
+            "settleMs": 800
+          }
+        ],
+        "role": "main",
+        "name": "",
+        "settleMs": 200
+      },
+      "assertions": [
+        "包含通过 IPC 创建的角色名"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.readMainText",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.readMainText()",
+      "params": [],
+      "returns": "string",
+      "description": "读取当前页面主内容区的可见文本（用于核对落盘数据是否被界面渲染）",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "ui": {
+        "kind": "readText",
+        "role": "main",
+        "name": "",
+        "settleMs": 300
+      },
+      "assertions": [
+        "文本包含预期对象名"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.spatial.openBoard",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.spatial.openBoard()",
+      "params": [],
+      "returns": "void",
+      "description": "在会话页打开嵌入的空间画板（点击“打开空间画板”按钮）",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "ui": {
+        "kind": "click",
+        "pre": [
+          {
+            "kind": "navigate",
+            "name": "对话",
+            "exact": true,
+            "settleMs": 500
+          }
+        ],
+        "name": "打开空间画板",
+        "exact": true,
+        "settleMs": 2000
+      },
+      "assertions": [
+        "画板 iframe 已出现（见 ui.spatial.readFrameText）"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.spatial.readFrameText",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.spatial.readFrameText()",
+      "params": [],
+      "returns": "string",
+      "description": "读取嵌入画板 iframe 内的可见文本（验证 iframe 真实加载与内容渲染）",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "ui": {
+        "kind": "readText",
+        "frame": "iframe[title=\"当前会话空间画板\"]",
+        "body": true,
+        "settleMs": 500
+      },
+      "assertions": [
+        "iframe 文本包含画板控件或地点名"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.settings.readTtsProviderOptions",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.settings.readTtsProviderOptions()",
+      "params": [],
+      "returns": "string",
+      "description": "进入 模型 页面并打开「添加 TTS 模型」表单，读取表单区可见文本（用于核对 TTS 提供商与音色选项在界面真实可见）",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "ui": {
+        "kind": "readText",
+        "role": "main",
+        "name": "",
+        "settleMs": 500,
+        "pre": [
+          {
+            "kind": "goto",
+            "url": "#/api",
+            "settleMs": 1200
+          },
+          {
+            "kind": "click",
+            "name": "添加 TTS 模型",
+            "exact": true,
+            "settleMs": 800
+          }
+        ]
+      },
+      "assertions": [
+        "文本包含 TTS 提供商标签与音色选项"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.clickText",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.clickText(name: string)",
+      "params": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "returns": "void",
+      "description": "点击页面上文本匹配的元素（任意可交互元素；用于分步验证界面交互）",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "ui": {
+        "kind": "click",
+        "name": "{{0}}",
+        "exact": true,
+        "settleMs": 600
+      },
+      "assertions": [
+        "点击后页面状态按预期变化"
+      ],
+      "evidence": [
+        "screenshot"
+      ]
+    },
+    {
+      "id": "ui.debugDump",
+      "apiPath": null,
+      "origin": "tool",
+      "adapter": "ui",
+      "kind": "tool",
+      "status": "mapped",
+      "signature": "ui.debugDump()",
+      "params": [],
+      "returns": "object",
+      "description": "诊断：返回当前页面 URL 与关键角色元素清单（button/link/menuitem/menu），用于定位 UI 动作失败原因",
+      "layer": "ui",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "ui": {
+        "kind": "debugDump",
+        "settleMs": 200
+      },
+      "assertions": [
+        "返回 url 与元素清单"
+      ],
+      "evidence": []
+    }
+  ]
+}

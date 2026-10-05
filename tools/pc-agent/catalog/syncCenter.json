@@ -1,0 +1,442 @@
+{
+  "namespace": "syncCenter",
+  "apiInterface": "SyncCenterAPI",
+  "apiPathPrefix": "window.api.syncCenter",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "syncCenter.status",
+      "apiPath": "window.api.syncCenter.status",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "status(): Promise<SyncCenterStatus>",
+      "params": [],
+      "returns": "Promise<SyncCenterStatus>",
+      "description": "读取同步中心状态",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 syncReady/heads 等字段"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "syncCenter.lanEndpoint",
+      "apiPath": "window.api.syncCenter.lanEndpoint",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "lanEndpoint(): Promise<{ host: string; port: number; fingerprint: string; displayName: string }>",
+      "params": [],
+      "returns": "Promise<{ host: string; port: number; fingerprint: string; displayName: string }>",
+      "description": "读取局域网端点信息",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 host/port/fingerprint"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "syncCenter.startLanAuth",
+      "apiPath": "window.api.syncCenter.startLanAuth",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "startLanAuth(input: { host: string; port: number; fingerprint: string; displayName: string }): Promise<SyncCenterStatus>",
+      "params": [
+        {
+          "name": "input",
+          "type": "{ host: string; port: number; fingerprint: string; displayName: string }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SyncCenterStatus>",
+      "description": "发起局域网认证",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实局域网对端"
+    },
+    {
+      "id": "syncCenter.confirmPeer",
+      "apiPath": "window.api.syncCenter.confirmPeer",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "confirmPeer(input: { sessionId: string; shortAuth: string }): Promise<{ ok: boolean; error?: string; status: SyncCenterStatus }>",
+      "params": [
+        {
+          "name": "input",
+          "type": "{ sessionId: string; shortAuth: string }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; error?: string; status: SyncCenterStatus }>",
+      "description": "确认对端短码",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实对端与短码"
+    },
+    {
+      "id": "syncCenter.revokeLanAuth",
+      "apiPath": "window.api.syncCenter.revokeLanAuth",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "revokeLanAuth(): Promise<SyncCenterStatus>",
+      "params": [],
+      "returns": "Promise<SyncCenterStatus>",
+      "description": "撤销局域网认证",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要存在已确认的认证"
+    },
+    {
+      "id": "syncCenter.listConflicts",
+      "apiPath": "window.api.syncCenter.listConflicts",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listConflicts(status?: string): Promise<SyncConflictItem[]>",
+      "params": [
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SyncConflictItem[]>",
+      "description": "列出同步冲突",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "syncCenter.resolveConflict",
+      "apiPath": "window.api.syncCenter.resolveConflict",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "resolveConflict(input: { id: string; choice: 'local' | 'remote' | 'copy' | 'manual' }): Promise<{ ok: boolean; status: SyncCenterStatus }>",
+      "params": [
+        {
+          "name": "input",
+          "type": "{ id: string; choice: 'local' | 'remote' | 'copy' | 'manual' }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; status: SyncCenterStatus }>",
+      "description": "解决同步冲突",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实冲突数据；属高影响动作"
+    },
+    {
+      "id": "syncCenter.markFullRescan",
+      "apiPath": "window.api.syncCenter.markFullRescan",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "markFullRescan(reason: string): Promise<SyncCenterStatus>",
+      "params": [
+        {
+          "name": "reason",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SyncCenterStatus>",
+      "description": "标记需要全量重扫",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "会改变同步域状态，属高影响动作"
+    },
+    {
+      "id": "syncCenter.listDevices",
+      "apiPath": "window.api.syncCenter.listDevices",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listDevices(): Promise<SyncPeerDevice[]>",
+      "params": [],
+      "returns": "Promise<SyncPeerDevice[]>",
+      "description": "列出已登记设备",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "syncCenter.retireDevice",
+      "apiPath": "window.api.syncCenter.retireDevice",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "retireDevice(deviceId: string): Promise<{ ok: boolean; status: SyncCenterStatus }>",
+      "params": [
+        {
+          "name": "deviceId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; status: SyncCenterStatus }>",
+      "description": "注销设备",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要已登记设备"
+    },
+    {
+      "id": "syncCenter.tombstoneDryRun",
+      "apiPath": "window.api.syncCenter.tombstoneDryRun",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "tombstoneDryRun(opts?: { retainDays?: number; now?: number }): Promise<SyncTombstoneDryRun>",
+      "params": [
+        {
+          "name": "opts",
+          "type": "{ retainDays?: number; now?: number }",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SyncTombstoneDryRun>",
+      "description": "墓碑清理预演（只读）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回可清理数量与阻塞原因"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "syncCenter.runUpgradePrecheck",
+      "apiPath": "window.api.syncCenter.runUpgradePrecheck",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "runUpgradePrecheck(): Promise<SyncUpgradePrecheckReport>",
+      "params": [],
+      "returns": "Promise<SyncUpgradePrecheckReport>",
+      "description": "升级前预检",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回预检报告"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "syncCenter.buildFirstSyncPlan",
+      "apiPath": "window.api.syncCenter.buildFirstSyncPlan",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "buildFirstSyncPlan(input: SyncFirstSyncPlanInput): Promise<SyncFirstSyncPlan>",
+      "params": [
+        {
+          "name": "input",
+          "type": "SyncFirstSyncPlanInput",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SyncFirstSyncPlan>",
+      "description": "生成首次同步计划",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实对端数据集"
+    }
+  ]
+}

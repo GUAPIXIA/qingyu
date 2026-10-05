@@ -1,6 +1,8 @@
 packages:
   - relay-server
   - packages/spatial-core
+  # 外部 Agent 调用/测试工具包（不参与产品构建与运行；依赖自持，见 tools/pc-agent/README.md）
+  - tools/pc-agent
 
 allowBuilds:
   electron: true

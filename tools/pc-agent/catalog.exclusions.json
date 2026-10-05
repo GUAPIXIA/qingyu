@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "note": "豁免清单：用于登记“明确不属于外部 Agent 动作面”的契约成员。豁免必须写明原因，不能作为默认值；目录登记优先于本清单。门禁会校验每条 apiPath 在契约中仍然存在，悬空豁免即失败。新增豁免请同时说明处置方向。 注：settings.saveAPICredential 不再豁免，改为默认关闭、需 --allow-credential-write 显式授权的受控动作（仅用于已授权的真实模型验证）。",
+  "entries": [
+    {
+      "apiPath": "window.api.ai.onChunk",
+      "reason": "事件订阅：注册流式回调并返回取消函数，不是可独立调用的动作。由动作的观察/等待环节内部使用。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.ai.onComplete",
+      "reason": "事件订阅：生成完成回调注册，不是动作。由异步等待内部使用。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.ai.onError",
+      "reason": "事件订阅：生成错误回调注册，不是动作。由异步等待内部使用。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.ai.onUsage",
+      "reason": "事件订阅：用量回调注册，不是动作。用量查询走 usage 模块动作。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.ai.onFeatureDataRestoring",
+      "reason": "事件订阅：功能数据恢复状态回调注册，不是动作。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.character.onImportProgress",
+      "reason": "事件订阅：导入进度回调注册，不是动作。导入动作本身在 character 模块登记。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.chatTask.onEvent",
+      "reason": "事件订阅：聊天任务事件回调注册，不是动作。发送/停止等动作在 chat 模块登记。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.embedding.onIndexProgress",
+      "reason": "事件订阅：索引进度回调注册，不是动作。索引进度由异步等待读取。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.localModel.onProgress",
+      "reason": "事件订阅：本地模型任务进度回调注册，不是动作。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.tts.onState",
+      "reason": "事件订阅：朗读状态回调注册，不是动作。朗读与停止是动作，状态由 observe 读取。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.updater.onEvent",
+      "reason": "事件订阅：更新器状态回调注册，不是动作。更新检查/安装是动作。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.sessionSync.onUpdated",
+      "reason": "事件订阅：会话变更回调注册，不是动作。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.spatial.onAiUpdated",
+      "reason": "事件订阅：画板 AI 状态回调注册，不是动作。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.spatial.onUpdated",
+      "reason": "事件订阅：画板数据更新回调注册，不是动作。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.settings.getAPICredential",
+      "reason": "凭据读取接口：按方案 §4.4/§8 不对外暴露给外部 Agent（避免把密钥回传）。需要凭据的测试场景应走单独的授权流程。",
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "apiPath": "window.api.sessionSync.onCharactersChanged",
+      "kind": "event",
+      "reason": "事件订阅（F3 角色变更广播）：推送型接口，由渲染层订阅消费，不提供请求-响应语义，无法由外部 Agent 调用",
+      "registeredAt": "2026-10-05"
+    },
+    {
+      "apiPath": "window.api.sessionSync.onSettingsChanged",
+      "kind": "event",
+      "reason": "事件订阅（F3 设置变更广播）：同上",
+      "registeredAt": "2026-10-05"
+    }
+  ]
+}

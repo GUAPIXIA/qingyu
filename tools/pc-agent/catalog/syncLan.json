@@ -1,0 +1,175 @@
+{
+  "namespace": "syncLan",
+  "apiInterface": "SyncLanAPI",
+  "apiPathPrefix": "window.api.syncLan",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "syncLan.startAuth",
+      "apiPath": "window.api.syncLan.startAuth",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "startAuth(input: { host: string; port: number; fingerprint: string; displayName: string }): Promise<SyncLanAuthUiState>",
+      "params": [
+        {
+          "name": "input",
+          "type": "{ host: string; port: number; fingerprint: string; displayName: string }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SyncLanAuthUiState>",
+      "description": "发起局域网配对",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实局域网对端"
+    },
+    {
+      "id": "syncLan.status",
+      "apiPath": "window.api.syncLan.status",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "status(): Promise<SyncLanAuthUiState>",
+      "params": [],
+      "returns": "Promise<SyncLanAuthUiState>",
+      "description": "读取局域网认证状态",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 phase 字段"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "syncLan.submitPeerHello",
+      "apiPath": "window.api.syncLan.submitPeerHello",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "submitPeerHello(input: { sessionId: string; deviceName: string; androidPublicKey: string }): Promise<SyncLanAuthUiState>",
+      "params": [
+        {
+          "name": "input",
+          "type": "{ sessionId: string; deviceName: string; androidPublicKey: string }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SyncLanAuthUiState>",
+      "description": "提交对端握手",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实对端与已发起的认证会话"
+    },
+    {
+      "id": "syncLan.confirmPeer",
+      "apiPath": "window.api.syncLan.confirmPeer",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "confirmPeer(input: { sessionId: string; shortAuth: string }): Promise<{ ok: boolean; state: SyncLanAuthUiState; error?: string }>",
+      "params": [
+        {
+          "name": "input",
+          "type": "{ sessionId: string; shortAuth: string }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; state: SyncLanAuthUiState; error?: string }>",
+      "description": "确认对端短码",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实对端与短码"
+    },
+    {
+      "id": "syncLan.revoke",
+      "apiPath": "window.api.syncLan.revoke",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "revoke(): Promise<SyncLanAuthUiState>",
+      "params": [],
+      "returns": "Promise<SyncLanAuthUiState>",
+      "description": "撤销配对",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要存在已确认的配对"
+    }
+  ]
+}

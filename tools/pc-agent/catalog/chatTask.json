@@ -1,0 +1,272 @@
+{
+  "namespace": "chatTask",
+  "apiInterface": "ChatTaskAPI",
+  "apiPathPrefix": "window.api.chatTask",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "chatTask.start",
+      "apiPath": "window.api.chatTask.start",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "start(command: ChatCommand): Promise<{ taskId: string; state: string; lastSequence: number }>",
+      "params": [
+        {
+          "name": "command",
+          "type": "ChatCommand",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ taskId: string; state: string; lastSequence: number }>",
+      "description": "发起聊天任务（真实生成）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": {
+        "path": "taskId",
+        "timeoutMs": 300000,
+        "pollMs": 500,
+        "cancelAction": "chatTask.cancel"
+      },
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "在隔离档案中产生真实生成与消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回 taskId",
+        "终态 completed",
+        "快照含 usage"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chatTask.get",
+      "apiPath": "window.api.chatTask.get",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "get(taskId: string): Promise<TaskSnapshot | null>",
+      "params": [
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<TaskSnapshot | null>",
+      "description": "读取任务快照（异步等待的轮询入口）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "存在时返回快照，不存在返回 null"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chatTask.listBySession",
+      "apiPath": "window.api.chatTask.listBySession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listBySession(sessionId: string): Promise<TaskSnapshot[]>",
+      "params": [
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<TaskSnapshot[]>",
+      "description": "按会话列出任务快照",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chatTask.eventsAfter",
+      "apiPath": "window.api.chatTask.eventsAfter",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "eventsAfter(taskId: string, sequence: number): Promise<EventPage>",
+      "params": [
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sequence",
+          "type": "number",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<EventPage>",
+      "description": "按序号读取任务事件页（用于归属与进度核对）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回事件页结构"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chatTask.cancel",
+      "apiPath": "window.api.chatTask.cancel",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "cancel(taskId: string): Promise<TaskSnapshot>",
+      "params": [
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<TaskSnapshot>",
+      "description": "取消任务（控制类动作，绕过写队列）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": true,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "中止在途生成",
+      "cancelable": true,
+      "waitFor": null,
+      "assertions": [
+        "取消后任务 state=cancelled"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chatTask.retry",
+      "apiPath": "window.api.chatTask.retry",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "retry(taskId: string): Promise<{ taskId: string; state: string }>",
+      "params": [
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ taskId: string; state: string }>",
+      "description": "重试任务",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要存在已终结任务；本轮未覆盖重试路径（属评测脚本职责）"
+    },
+    {
+      "id": "chatTask.onEvent",
+      "apiPath": "window.api.chatTask.onEvent",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onEvent(listener: (event: { taskId: string; type: string; task?: TaskSnapshot }) => void): () => void",
+      "params": [
+        {
+          "name": "listener",
+          "type": "(event: { taskId: string; type: string; task?: TaskSnapshot }) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

@@ -1,0 +1,330 @@
+{
+  "namespace": "mcp",
+  "apiInterface": "McpAPI",
+  "apiPathPrefix": "window.api.mcp",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "mcp.listServers",
+      "apiPath": "window.api.mcp.listServers",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listServers(): Promise<McpServerConfig[]>",
+      "params": [],
+      "returns": "Promise<McpServerConfig[]>",
+      "description": "列出已配置的 MCP 服务器",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回服务器数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "mcp.listServerStatuses",
+      "apiPath": "window.api.mcp.listServerStatuses",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listServerStatuses(): Promise<McpServerStatus[]>",
+      "params": [],
+      "returns": "Promise<McpServerStatus[]>",
+      "description": "列出 MCP 服务器运行状态",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回状态数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "mcp.addServer",
+      "apiPath": "window.api.mcp.addServer",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "addServer(config: Omit<McpServerConfig, 'id'>): Promise<McpServerConfig>",
+      "params": [
+        {
+          "name": "config",
+          "type": "Omit<McpServerConfig, 'id'>",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<McpServerConfig>",
+      "description": "添加 MCP 服务器配置",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案的 MCP 配置",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回新服务器 id"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "mcp.updateServer",
+      "apiPath": "window.api.mcp.updateServer",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "updateServer(id: string, patch: Partial<McpServerConfig>): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "patch",
+          "type": "Partial<McpServerConfig>",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "更新 MCP 服务器配置",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改隔离档案的 MCP 配置",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回更新后的配置"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "mcp.removeServer",
+      "apiPath": "window.api.mcp.removeServer",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "removeServer(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除 MCP 服务器配置",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除隔离档案的 MCP 配置",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "删除后列表不含该服务器"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "mcp.startServer",
+      "apiPath": "window.api.mcp.startServer",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "startServer(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "启动 MCP 服务器（stdio 已实现；sse/http 未实现）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "拉起子进程或连接外部服务",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "成功或给出可读的未实现/连接错误"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "mcp.stopServer",
+      "apiPath": "window.api.mcp.stopServer",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "stopServer(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "停止 MCP 服务器",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "结束子进程或连接",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "停止后状态非 connected"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "mcp.listTools",
+      "apiPath": "window.api.mcp.listTools",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listTools(): Promise<McpTool[]>",
+      "params": [],
+      "returns": "Promise<McpTool[]>",
+      "description": "列出已连接服务器的工具",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回工具数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "mcp.callTool",
+      "apiPath": "window.api.mcp.callTool",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "callTool(serverId: string, toolName: string, args: Record<string, unknown>): Promise<McpToolResult>",
+      "params": [
+        {
+          "name": "serverId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "toolName",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "args",
+          "type": "Record<string, unknown>",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<McpToolResult>",
+      "description": "调用外部 MCP 工具",
+      "layer": "ipc",
+      "write": false,
+      "requires": [
+        "external-tool"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "会执行第三方工具（可能读写本机数据），需用户显式授权后按具体工具逐个验证；本轮只验证连接与工具发现"
+    }
+  ]
+}

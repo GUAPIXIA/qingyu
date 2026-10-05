@@ -1,0 +1,601 @@
+{
+  "namespace": "localModel",
+  "apiInterface": "LocalModelAPI",
+  "apiPathPrefix": "window.api.localModel",
+  "sourceFile": "shared/localModels.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "localModel.catalog",
+      "apiPath": "window.api.localModel.catalog",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "catalog(): Promise<LocalModelCatalogItem[]>",
+      "params": [],
+      "returns": "Promise<LocalModelCatalogItem[]>",
+      "description": "读取本地模型目录",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.installed",
+      "apiPath": "window.api.localModel.installed",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "installed(): Promise<InstalledLocalModel[]>",
+      "params": [],
+      "returns": "Promise<InstalledLocalModel[]>",
+      "description": "读取已安装本地模型",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.tasks",
+      "apiPath": "window.api.localModel.tasks",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "tasks(): Promise<LocalModelTaskSnapshot[]>",
+      "params": [],
+      "returns": "Promise<LocalModelTaskSnapshot[]>",
+      "description": "读取本地模型任务快照",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.install",
+      "apiPath": "window.api.localModel.install",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "install(modelId: string, version: string): Promise<LocalModelTaskRef>",
+      "params": [
+        {
+          "name": "modelId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LocalModelTaskRef>",
+      "description": "安装本地模型",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model",
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要模型包与下载环境；本机两个模型已安装，安装路径未验证"
+    },
+    {
+      "id": "localModel.importPackage",
+      "apiPath": "window.api.localModel.importPackage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "importPackage(): Promise<LocalModelTaskRef | null>",
+      "params": [],
+      "returns": "Promise<LocalModelTaskRef | null>",
+      "description": "导入本地模型包",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "native-dialog"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要原生文件选择对话框"
+    },
+    {
+      "id": "localModel.pause",
+      "apiPath": "window.api.localModel.pause",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "pause(taskId: string): Promise<void>",
+      "params": [
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "暂停安装任务",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": true,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要存在进行中的安装任务"
+    },
+    {
+      "id": "localModel.resume",
+      "apiPath": "window.api.localModel.resume",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "resume(taskId: string): Promise<void>",
+      "params": [
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "继续安装任务",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "同上"
+    },
+    {
+      "id": "localModel.cancel",
+      "apiPath": "window.api.localModel.cancel",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "cancel(taskId: string): Promise<void>",
+      "params": [
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "取消安装任务",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": true,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "同上（取消路径在阶段 3B 与异步等待一并验证）"
+    },
+    {
+      "id": "localModel.test",
+      "apiPath": "window.api.localModel.test",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "test(modelId: string, version: string): Promise<LocalModelTestResult>",
+      "params": [
+        {
+          "name": "modelId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LocalModelTestResult>",
+      "description": "测试本地模型可用性（真实推理）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "ok=true 且 dimensions>0"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.activate",
+      "apiPath": "window.api.localModel.activate",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "activate(modelId: string, version: string): Promise<LocalModelActivationResult>",
+      "params": [
+        {
+          "name": "modelId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LocalModelActivationResult>",
+      "description": "激活本地模型",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "切换隔离档案的活跃模型",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "active.modelId 等于入参"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.rollback",
+      "apiPath": "window.api.localModel.rollback",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "rollback(modelId: string): Promise<LocalModelActivationResult>",
+      "params": [
+        {
+          "name": "modelId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LocalModelActivationResult>",
+      "description": "回滚本地模型到上一版本",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "切换隔离档案的活跃模型",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回 previous 或明确错误"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.uninstallImpact",
+      "apiPath": "window.api.localModel.uninstallImpact",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "uninstallImpact(modelId: string, version: string): Promise<LocalModelUninstallImpact>",
+      "params": [
+        {
+          "name": "modelId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LocalModelUninstallImpact>",
+      "description": "查询卸载影响",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回影响对象"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.uninstall",
+      "apiPath": "window.api.localModel.uninstall",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "uninstall(request: LocalModelUninstallRequest): Promise<LocalModelTaskRef>",
+      "params": [
+        {
+          "name": "request",
+          "type": "LocalModelUninstallRequest",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LocalModelTaskRef>",
+      "description": "卸载本地模型",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要已安装的本地模型"
+    },
+    {
+      "id": "localModel.storageUsage",
+      "apiPath": "window.api.localModel.storageUsage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "storageUsage(): Promise<LocalModelStorageUsage>",
+      "params": [],
+      "returns": "Promise<LocalModelStorageUsage>",
+      "description": "读取本地模型占用空间",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "totalBytes 为数字"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.cleanup",
+      "apiPath": "window.api.localModel.cleanup",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "cleanup(): Promise<LocalModelCleanupResult>",
+      "params": [],
+      "returns": "Promise<LocalModelCleanupResult>",
+      "description": "清理暂存文件",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除隔离档案内的暂存文件",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回 ok"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.rebuildIndexes",
+      "apiPath": "window.api.localModel.rebuildIndexes",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "rebuildIndexes(): Promise<LocalModelTaskRef>",
+      "params": [],
+      "returns": "Promise<LocalModelTaskRef>",
+      "description": "重建向量索引（真实模型，异步任务）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": {
+        "path": "taskId",
+        "poll": "localModel.tasks",
+        "timeoutMs": 300000,
+        "pollMs": 1000
+      },
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "重建隔离档案内的索引",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回 taskId",
+        "任务进入终态"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "localModel.onProgress",
+      "apiPath": "window.api.localModel.onProgress",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onProgress(listener: (event: LocalModelTaskEvent) => void): () => void",
+      "params": [
+        {
+          "name": "listener",
+          "type": "(event: LocalModelTaskEvent) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

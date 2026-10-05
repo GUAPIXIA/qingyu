@@ -1,0 +1,179 @@
+{
+  "namespace": "font",
+  "apiInterface": "FontAPI",
+  "apiPathPrefix": "window.api.font",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "font.selectFont",
+      "apiPath": "window.api.font.selectFont",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "selectFont(): Promise<string | null>",
+      "params": [],
+      "returns": "Promise<string | null>",
+      "description": "选择字体文件",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "native-dialog"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathTemplate": null,
+        "note": "字体文件"
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要系统原生文件选择对话框（方案 §6.3）；已接入桌面自动化后端，开启 --allow-native-dialog 后可用（目标路径写入本次 run 的 exports/）；**故意不提供路径参数**：该动作是「仅允许读取对话框选择过的路径」的白名单闸门（validatedPaths），加路径参数会打开任意文件读取面"
+    },
+    {
+      "id": "font.saveFont",
+      "apiPath": "window.api.font.saveFont",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "saveFont(filePath: string): Promise<CustomFont>",
+      "params": [
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<CustomFont>",
+      "description": "导入字体文件",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "native-dialog"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "依赖 selectFont 返回的路径"
+    },
+    {
+      "id": "font.listFonts",
+      "apiPath": "window.api.font.listFonts",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listFonts(): Promise<CustomFont[]>",
+      "params": [],
+      "returns": "Promise<CustomFont[]>",
+      "description": "列出已导入字体",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "font.deleteFont",
+      "apiPath": "window.api.font.deleteFont",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "deleteFont(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除字体",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除隔离档案中的字体",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "删除后列表不含该字体"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "font.getFontPath",
+      "apiPath": "window.api.font.getFontPath",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getFontPath(id: string): Promise<string | null>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string | null>",
+      "description": "读取字体文件路径",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "不存在时返回 null"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

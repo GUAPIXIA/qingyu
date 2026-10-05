@@ -1,0 +1,194 @@
+{
+  "namespace": "usage",
+  "apiInterface": "UsageAPI",
+  "apiPathPrefix": "window.api.usage",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "usage.record",
+      "apiPath": "window.api.usage.record",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "record(record: Omit<UsageRecord, 'id'>): Promise<UsageRecord>",
+      "params": [
+        {
+          "name": "record",
+          "type": "Omit<UsageRecord, 'id'>",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<UsageRecord>",
+      "description": "写入一条用量记录",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案中的用量记录",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "写入后 query 可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "usage.query",
+      "apiPath": "window.api.usage.query",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "query(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }): Promise<UsageRecord[]>",
+      "params": [
+        {
+          "name": "filter",
+          "type": "{ characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<UsageRecord[]>",
+      "description": "按条件查询用量记录",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回记录数组且时间/模型过滤生效"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "usage.aggregate",
+      "apiPath": "window.api.usage.aggregate",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "aggregate(filter: { characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }, groupBy: 'character' | 'session' | 'day' | 'model', timeZone?: string): Promise<AggregatedUsage[]>",
+      "params": [
+        {
+          "name": "filter",
+          "type": "{ characterId?: string; sessionId?: string; startTs?: number; endTs?: number; model?: string }",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "groupBy",
+          "type": "'character' | 'session' | 'day' | 'model'",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "timeZone",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<AggregatedUsage[]>",
+      "description": "按条件聚合用量",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "聚合值与写入记录一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "usage.summary",
+      "apiPath": "window.api.usage.summary",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "summary(filter?: { startTs?: number; endTs?: number }): Promise<UsageSummary>",
+      "params": [
+        {
+          "name": "filter",
+          "type": "{ startTs?: number; endTs?: number }",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<UsageSummary>",
+      "description": "读取用量汇总",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "count/totalChars 与写入一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "usage.clear",
+      "apiPath": "window.api.usage.clear",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "clear(): Promise<void>",
+      "params": [],
+      "returns": "Promise<void>",
+      "description": "清空用量记录",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "清空隔离档案中的用量记录",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "清空后 query 为空"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

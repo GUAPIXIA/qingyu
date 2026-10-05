@@ -1,0 +1,18 @@
+{
+  "name": "@qingyu/pc-agent",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "轻语 PC 端外部 Agent 调用/测试工具包：CLI 与外部 MCP 入口共用同一动作目录（不参与产品构建与运行）",
+  "scripts": {
+    "catalog": "node catalog.generate.mjs",
+    "check": "node ../../scripts/check-pc-agent.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "playwright-core": "^1.63.0"
+  }
+}

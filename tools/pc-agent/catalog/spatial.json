@@ -1,0 +1,2082 @@
+{
+  "namespace": "spatial",
+  "apiInterface": "SpatialAPI",
+  "apiPathPrefix": "window.api.spatial",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "spatial.setEnabled",
+      "apiPath": "window.api.spatial.setEnabled",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "setEnabled(characterId: string, sessionId: string, enabled: boolean): Promise<import('./spatial').SpatialSnapshot | null>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialSnapshot | null>",
+      "description": "开关会话的空间画板",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改会话画板开关",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "开关后快照版本不变（不丢数据）"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.setGroupEnabled",
+      "apiPath": "window.api.spatial.setGroupEnabled",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "setGroupEnabled(groupId: string, sessionId: string, enabled: boolean): Promise<import('./spatial').SpatialSnapshot | null>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialSnapshot | null>",
+      "description": "开关群聊的空间画板",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改群聊画板开关",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "开关后快照版本不变"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.prepareGroupDialogue",
+      "apiPath": "window.api.spatial.prepareGroupDialogue",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "prepareGroupDialogue(groupId: string, sessionId: string, input: import('./spatial-ai').SpatialGroupDialogueCapture): Promise<string | null>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial-ai').SpatialGroupDialogueCapture",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string | null>",
+      "description": "准备群聊对话期捕获",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.groupDialogueSaved",
+      "apiPath": "window.api.spatial.groupDialogueSaved",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "groupDialogueSaved(groupId: string, sessionId: string, generationId: string, messageIds: string[]): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "generationId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "messageIds",
+          "type": "string[]",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "标记群聊对话已保存",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.closeGroupDialogueBatch",
+      "apiPath": "window.api.spatial.closeGroupDialogueBatch",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "closeGroupDialogueBatch(groupId: string, sessionId: string, burstId: string): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "burstId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "关闭群聊对话批次",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.retryGroupDialogue",
+      "apiPath": "window.api.spatial.retryGroupDialogue",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "retryGroupDialogue(groupId: string, sessionId: string, taskId: string): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "重试群聊对话期捕获",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.groupProposalTargets",
+      "apiPath": "window.api.spatial.groupProposalTargets",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "groupProposalTargets(groupId: string, sessionId: string): Promise<import('./spatial-ai').SpatialTarget[]>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialTarget[]>",
+      "description": "读取群聊提案可选目标",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回目标数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.reviewGroupProposal",
+      "apiPath": "window.api.spatial.reviewGroupProposal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "reviewGroupProposal(groupId: string, sessionId: string, proposalId: string, input: import('./spatial-ai').SpatialProposalReviewInput): Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial-ai').SpatialProposalReviewInput",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "description": "审核群聊 AI 提案",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.prepareGroupPlace",
+      "apiPath": "window.api.spatial.prepareGroupPlace",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "prepareGroupPlace(groupId: string, sessionId: string, proposalId: string, name: string, parentId: string | null): Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "parentId",
+          "type": "string | null",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "description": "为群聊提案准备新地点",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.undoGroupProposal",
+      "apiPath": "window.api.spatial.undoGroupProposal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "undoGroupProposal(groupId: string, sessionId: string, proposalId: string): Promise<{ state: import('./spatial-ai').SpatialGroupAiSession; snapshot: import('./spatial').SpatialSnapshot }>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ state: import('./spatial-ai').SpatialGroupAiSession; snapshot: import('./spatial').SpatialSnapshot }>",
+      "description": "撤销已应用的群聊提案",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.readGroupContext",
+      "apiPath": "window.api.spatial.readGroupContext",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "readGroupContext(groupId: string, sessionId: string, targetCharacterId?: string): Promise<import('./spatial').SpatialGroupContext | null>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "targetCharacterId",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialGroupContext | null>",
+      "description": "读取群聊空间上下文",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "文本包含成员归属"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.getGroupAiSession",
+      "apiPath": "window.api.spatial.getGroupAiSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getGroupAiSession(groupId: string, sessionId: string): Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "description": "读取群聊画板 AI 会话",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 messages/proposals/tasks"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.groupInitializationSources",
+      "apiPath": "window.api.spatial.groupInitializationSources",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "groupInitializationSources(groupId: string, sessionId: string): Promise<import('./spatial-ai').SpatialInitializationSources>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialInitializationSources>",
+      "description": "读取群聊初始化来源",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 sources/loreEntries"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.askGroupAi",
+      "apiPath": "window.api.spatial.askGroupAi",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "askGroupAi(groupId: string, sessionId: string, input: import('./spatial-ai').SpatialAiRequest): Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial-ai').SpatialAiRequest",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "description": "向群聊画板 AI 提问",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.cancelGroupAi",
+      "apiPath": "window.api.spatial.cancelGroupAi",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "cancelGroupAi(groupId: string, sessionId: string): Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "description": "取消群聊画板 AI 请求",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.discardGroupProposal",
+      "apiPath": "window.api.spatial.discardGroupProposal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "discardGroupProposal(groupId: string, sessionId: string, proposalId: string): Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialGroupAiSession>",
+      "description": "丢弃群聊 AI 提案",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.editGroupDraft",
+      "apiPath": "window.api.spatial.editGroupDraft",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "editGroupDraft(groupId: string, sessionId: string, proposalId: string, input: import('./spatial').SpatialEditorCommit): Promise<import('./spatial').SpatialCommitResult>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial').SpatialEditorCommit",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialCommitResult>",
+      "description": "编辑群聊提案草稿",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.applyGroupProposal",
+      "apiPath": "window.api.spatial.applyGroupProposal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "applyGroupProposal(groupId: string, sessionId: string, proposalId: string, acknowledgeUnresolved?: boolean): Promise<{ state: import('./spatial-ai').SpatialGroupAiSession; snapshot: import('./spatial').SpatialSnapshot }>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "acknowledgeUnresolved",
+          "type": "boolean",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ state: import('./spatial-ai').SpatialGroupAiSession; snapshot: import('./spatial').SpatialSnapshot }>",
+      "description": "应用群聊提案",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.loadGroupBound",
+      "apiPath": "window.api.spatial.loadGroupBound",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "loadGroupBound(groupId: string, sessionId: string): Promise<import('./spatial').SpatialSnapshot | null>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialSnapshot | null>",
+      "description": "读取群聊绑定的空间快照",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "未绑定时返回 null"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.createGroupAndBind",
+      "apiPath": "window.api.spatial.createGroupAndBind",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "createGroupAndBind(groupId: string, sessionId: string, name: string): Promise<import('./spatial').SpatialSnapshot>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialSnapshot>",
+      "description": "为群聊创建并绑定空间世界",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "新建群聊空间世界",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回快照"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.bindGroupWorld",
+      "apiPath": "window.api.spatial.bindGroupWorld",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "bindGroupWorld(groupId: string, sessionId: string, worldId: string): Promise<import('./spatial').SpatialSnapshot>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "worldId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialSnapshot>",
+      "description": "把群聊会话绑定到已有世界",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改群聊空间绑定",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "绑定后 loadGroupBound 返回该世界"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.applyGroupEditorBatch",
+      "apiPath": "window.api.spatial.applyGroupEditorBatch",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "applyGroupEditorBatch(groupId: string, sessionId: string, input: import('./spatial').SpatialEditorCommit): Promise<import('./spatial').SpatialCommitResult>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial').SpatialEditorCommit",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialCommitResult>",
+      "description": "提交群聊编辑批次",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入群聊空间世界",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "ok=true 且 revision 推进"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.prepareDialogue",
+      "apiPath": "window.api.spatial.prepareDialogue",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "prepareDialogue(characterId: string, sessionId: string, input: { generationId: string; kind: 'normal' | 'regenerate' | 'continue'; priorMessageId?: string; expectedVersion?: import('./spatial').SpatialVersion }): Promise<string | null>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "{ generationId: string; kind: 'normal' | 'regenerate' | 'continue'; priorMessageId?: string; expectedVersion?: import('./spatial').SpatialVersion }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string | null>",
+      "description": "准备对话期画板捕获",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.dialogueSaved",
+      "apiPath": "window.api.spatial.dialogueSaved",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "dialogueSaved(characterId: string, sessionId: string, generationId: string, messageId: string): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "generationId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "messageId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "标记对话已保存",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.retryDialogue",
+      "apiPath": "window.api.spatial.retryDialogue",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "retryDialogue(characterId: string, sessionId: string, taskId: string): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "taskId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "重试对话期捕获",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.readContext",
+      "apiPath": "window.api.spatial.readContext",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "readContext(characterId: string, sessionId: string): Promise<import('./spatial').SpatialContext | null>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialContext | null>",
+      "description": "读取空间上下文投影",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "文本包含角色与地点归属"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.getAiSession",
+      "apiPath": "window.api.spatial.getAiSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getAiSession(characterId: string, sessionId: string): Promise<import('./spatial-ai').SpatialAiSession>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialAiSession>",
+      "description": "读取画板 AI 会话（无提案时为初始态）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 messages/proposals/tasks"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.initializationSources",
+      "apiPath": "window.api.spatial.initializationSources",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "initializationSources(characterId: string, sessionId: string): Promise<import('./spatial-ai').SpatialInitializationSources>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialInitializationSources>",
+      "description": "读取初始化来源",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 sources/loreEntries"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.askAi",
+      "apiPath": "window.api.spatial.askAi",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "askAi(characterId: string, sessionId: string, input: import('./spatial-ai').SpatialAiRequest): Promise<import('./spatial-ai').SpatialAiSession>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial-ai').SpatialAiRequest",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialAiSession>",
+      "description": "向画板 AI 提问",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.cancelAi",
+      "apiPath": "window.api.spatial.cancelAi",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "cancelAi(characterId: string, sessionId: string): Promise<import('./spatial-ai').SpatialAiSession>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialAiSession>",
+      "description": "取消画板 AI 请求",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.discardProposal",
+      "apiPath": "window.api.spatial.discardProposal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "discardProposal(characterId: string, sessionId: string, proposalId: string): Promise<import('./spatial-ai').SpatialAiSession>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialAiSession>",
+      "description": "丢弃 AI 提案",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.proposalTargets",
+      "apiPath": "window.api.spatial.proposalTargets",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "proposalTargets(characterId: string, sessionId: string): Promise<import('./spatial-ai').SpatialTarget[]>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialTarget[]>",
+      "description": "读取提案可选目标",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回目标数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.reviewProposal",
+      "apiPath": "window.api.spatial.reviewProposal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "reviewProposal(characterId: string, sessionId: string, proposalId: string, input: import('./spatial-ai').SpatialProposalReviewInput): Promise<import('./spatial-ai').SpatialAiSession>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial-ai').SpatialProposalReviewInput",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialAiSession>",
+      "description": "审核 AI 提案",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.preparePlace",
+      "apiPath": "window.api.spatial.preparePlace",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "preparePlace(characterId: string, sessionId: string, proposalId: string, name: string, parentId: string | null): Promise<import('./spatial-ai').SpatialAiSession>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "parentId",
+          "type": "string | null",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial-ai').SpatialAiSession>",
+      "description": "为提案准备新地点",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.undoProposal",
+      "apiPath": "window.api.spatial.undoProposal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "undoProposal(characterId: string, sessionId: string, proposalId: string): Promise<{ state: import('./spatial-ai').SpatialAiSession; snapshot: import('./spatial').SpatialSnapshot }>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ state: import('./spatial-ai').SpatialAiSession; snapshot: import('./spatial').SpatialSnapshot }>",
+      "description": "撤销已应用的提案",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.editDraft",
+      "apiPath": "window.api.spatial.editDraft",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "editDraft(characterId: string, sessionId: string, proposalId: string, input: import('./spatial').SpatialEditorCommit): Promise<import('./spatial').SpatialCommitResult>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial').SpatialEditorCommit",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialCommitResult>",
+      "description": "编辑提案草稿",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.applyProposal",
+      "apiPath": "window.api.spatial.applyProposal",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "applyProposal(characterId: string, sessionId: string, proposalId: string, acknowledgeUnresolved?: boolean): Promise<{ state: import('./spatial-ai').SpatialAiSession; snapshot: import('./spatial').SpatialSnapshot }>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "acknowledgeUnresolved",
+          "type": "boolean",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ state: import('./spatial-ai').SpatialAiSession; snapshot: import('./spatial').SpatialSnapshot }>",
+      "description": "应用提案",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型：AI 会话/提案流程依赖生成结果，需模型环境（awaitTask 与事件核对已就绪）"
+    },
+    {
+      "id": "spatial.onAiUpdated",
+      "apiPath": "window.api.spatial.onAiUpdated",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onAiUpdated(listener: (event: { kind?: 'single' | 'group'; characterId?: string; groupId?: string; sessionId: string }) => void): () => void",
+      "params": [
+        {
+          "name": "listener",
+          "type": "(event: { kind?: 'single' | 'group'; characterId?: string; groupId?: string; sessionId: string }) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.listWorlds",
+      "apiPath": "window.api.spatial.listWorlds",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listWorlds(): Promise<Array<{ id: string; name: string; updatedAt: number }>>",
+      "params": [],
+      "returns": "Promise<Array<{ id: string; name: string; updatedAt: number }>>",
+      "description": "列出全部空间世界",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回数组且包含新建世界"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.loadBound",
+      "apiPath": "window.api.spatial.loadBound",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "loadBound(characterId: string, sessionId: string): Promise<import('./spatial').SpatialSnapshot | null>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialSnapshot | null>",
+      "description": "读取会话绑定的空间快照",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "未绑定时返回 null"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.createAndBind",
+      "apiPath": "window.api.spatial.createAndBind",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "createAndBind(characterId: string, sessionId: string, name: string): Promise<import('./spatial').SpatialSnapshot>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialSnapshot>",
+      "description": "为会话创建并绑定空间世界",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "新建空间世界并绑定会话",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回快照且 version 完整"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.bindWorld",
+      "apiPath": "window.api.spatial.bindWorld",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "bindWorld(characterId: string, sessionId: string, worldId: string): Promise<import('./spatial').SpatialSnapshot>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "worldId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialSnapshot>",
+      "description": "把会话绑定到已有世界",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改会话的空间绑定",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "绑定后 loadBound 返回该世界"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.applyEditorBatch",
+      "apiPath": "window.api.spatial.applyEditorBatch",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "applyEditorBatch(characterId: string, sessionId: string, input: import('./spatial').SpatialEditorCommit): Promise<import('./spatial').SpatialCommitResult>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./spatial').SpatialEditorCommit",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./spatial').SpatialCommitResult>",
+      "description": "提交编辑批次（带 revision/指纹 CAS）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入空间世界与运行状态",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "ok=true 且 revision 推进",
+        "重复 commitId 返回 duplicate",
+        "过期 CAS 被拒绝"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "spatial.onUpdated",
+      "apiPath": "window.api.spatial.onUpdated",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onUpdated(listener: (event: import('./spatial').SpatialUpdatedEvent) => void): () => void",
+      "params": [
+        {
+          "name": "listener",
+          "type": "(event: import('./spatial').SpatialUpdatedEvent) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

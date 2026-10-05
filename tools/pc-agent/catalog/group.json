@@ -1,0 +1,968 @@
+{
+  "namespace": "group",
+  "apiInterface": "GroupChatAPI",
+  "apiPathPrefix": "window.api.group",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "group.commitFeatureResult",
+      "apiPath": "window.api.group.commitFeatureResult",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "commitFeatureResult(groupId: string, sessionId: string, input: import('./featureSource').FeatureCommit): Promise<boolean>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./featureSource').FeatureCommit",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<boolean>",
+      "description": "提交功能 AI 结果到群聊会话",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要功能 AI 产出（模型环境）与 featureSource 载荷"
+    },
+    {
+      "id": "group.list",
+      "apiPath": "window.api.group.list",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "list(): Promise<GroupChat[]>",
+      "params": [],
+      "returns": "Promise<GroupChat[]>",
+      "description": "列出全部群聊",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "数量与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.save",
+      "apiPath": "window.api.group.save",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "save(group: GroupChat): Promise<void>",
+      "params": [
+        {
+          "name": "group",
+          "type": "GroupChat",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "保存（新建或更新）群聊",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案中的群聊定义",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "保存后 list 可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.delete",
+      "apiPath": "window.api.group.delete",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "delete(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除群聊",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除群聊及其会话",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后 list 不含该群聊"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.listSessions",
+      "apiPath": "window.api.group.listSessions",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listSessions(groupId: string): Promise<GroupSession[]>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<GroupSession[]>",
+      "description": "列出群聊会话",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "包含目标会话"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.createSession",
+      "apiPath": "window.api.group.createSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "createSession(groupId: string): Promise<GroupSession>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<GroupSession>",
+      "description": "创建群聊会话",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "新增群聊会话",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回 id 非空"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.deleteSession",
+      "apiPath": "window.api.group.deleteSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "deleteSession(groupId: string, sessionId: string): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除群聊会话",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除群聊会话",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后 listSessions 不含该会话"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.renameSession",
+      "apiPath": "window.api.group.renameSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "renameSession(groupId: string, sessionId: string, title: string): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "重命名群聊会话",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改群聊会话标题",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "读回 title 等于预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.listMessages",
+      "apiPath": "window.api.group.listMessages",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listMessages(groupId: string, sessionId: string): Promise<GroupMessage[]>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<GroupMessage[]>",
+      "description": "读取群聊消息",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "消息数量与归属正确"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.saveMessage",
+      "apiPath": "window.api.group.saveMessage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "saveMessage(groupId: string, sessionId: string, msg: GroupMessage): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "msg",
+          "type": "GroupMessage",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "保存群聊消息",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入群聊消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "listMessages 可读回，characterId 归属正确"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.saveMessagesBatch",
+      "apiPath": "window.api.group.saveMessagesBatch",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "saveMessagesBatch(groupId: string, sessionId: string, msgs: GroupMessage[]): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "msgs",
+          "type": "GroupMessage[]",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "批量保存群聊消息",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "批量写入群聊消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "批量写入后顺序与归属正确"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.saveTranslation",
+      "apiPath": "window.api.group.saveTranslation",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "saveTranslation(groupId: string, sessionId: string, messageId: string, expected: { characterId: string; content: string }, translation: string | null): Promise<boolean>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "messageId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "expected",
+          "type": "{ characterId: string; content: string }",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "translation",
+          "type": "string | null",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<boolean>",
+      "description": "保存消息翻译（带期望正文 CAS）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入翻译字段",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "正文不匹配时拒绝写入"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.editMessage",
+      "apiPath": "window.api.group.editMessage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "editMessage(groupId: string, sessionId: string, messageId: string, content: string): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "messageId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "编辑群聊消息正文",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改群聊消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "读回正文等于预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.deleteMessage",
+      "apiPath": "window.api.group.deleteMessage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "deleteMessage(groupId: string, sessionId: string, messageId: string): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "messageId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除群聊消息",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除群聊消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后不含该消息"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.clearChat",
+      "apiPath": "window.api.group.clearChat",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "clearChat(groupId: string, sessionId?: string): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "清空群聊会话消息",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "清空群聊消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "清空后消息数为 0"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.exportChat",
+      "apiPath": "window.api.group.exportChat",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportChat(groupId: string, sessionId: string, format: 'json' | 'md'): Promise<string>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "format",
+          "type": "'json' | 'md'",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>",
+      "description": "导出群聊会话文本（md/json）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "只读导出",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "导出内容包含消息正文"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.updateMemory",
+      "apiPath": "window.api.group.updateMemory",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "updateMemory(groupId: string, sessionId: string, memory: string): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "memory",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "写入群聊会话记忆",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改群聊记忆",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "读回 memory 等于预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.toggleMemory",
+      "apiPath": "window.api.group.toggleMemory",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "toggleMemory(groupId: string, sessionId: string, enabled: boolean): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "开关群聊记忆",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改群聊记忆开关",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "读回 memoryEnabled 等于预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.setMemoryMode",
+      "apiPath": "window.api.group.setMemoryMode",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "setMemoryMode(groupId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "mode",
+          "type": "'manual' | 'auto'",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "interval",
+          "type": "number",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "设置群聊记忆模式",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改群聊记忆模式",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "读回 memoryMode 等于预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.updateSession",
+      "apiPath": "window.api.group.updateSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "updateSession(groupId: string, sessionId: string, updates: Record<string, unknown>): Promise<void>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "updates",
+          "type": "Record<string, unknown>",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "更新群聊会话字段",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改群聊会话字段",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "更新后读回一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "group.updateSessionIfMemoryVersion",
+      "apiPath": "window.api.group.updateSessionIfMemoryVersion",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "updateSessionIfMemoryVersion(groupId: string, sessionId: string, expectedVersion: number, updates: Record<string, unknown>, source?: import('./featureSource').FeatureSource): Promise<MemoryVersionUpdateResult>",
+      "params": [
+        {
+          "name": "groupId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "expectedVersion",
+          "type": "number",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "updates",
+          "type": "Record<string, unknown>",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "import('./featureSource').FeatureSource",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<MemoryVersionUpdateResult>",
+      "description": "按记忆版本条件更新群聊会话（CAS）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "条件写入群聊会话",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "applied=true 时版本推进"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

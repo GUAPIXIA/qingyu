@@ -1,0 +1,607 @@
+{
+  "namespace": "ai",
+  "apiInterface": "AIAPI",
+  "apiPathPrefix": "window.api.ai",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "ai.chat",
+      "apiPath": "window.api.ai.chat",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "chat(params: ChatParams): Promise<void>",
+      "params": [
+        {
+          "name": "params",
+          "type": "ChatParams",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "发起对话生成",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": {
+        "path": "taskId",
+        "timeoutMs": 180000,
+        "pollMs": 500
+      },
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型；已声明 awaitTask（经 chatTask 终态）"
+    },
+    {
+      "id": "ai.cancelChat",
+      "apiPath": "window.api.ai.cancelChat",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "cancelChat(requestId: string, reason?: 'user' | 'timeout' | 'stop_string'): Promise<void>",
+      "params": [
+        {
+          "name": "requestId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "reason",
+          "type": "'user' | 'timeout' | 'stop_string'",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "取消生成",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": true,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型任务在途（方案 §6.2）"
+    },
+    {
+      "id": "ai.testConnection",
+      "apiPath": "window.api.ai.testConnection",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "testConnection(config: APIConfig): Promise<{ success: boolean; models?: string[]; error?: string }>",
+      "params": [
+        {
+          "name": "config",
+          "type": "APIConfig",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ success: boolean; models?: string[]; error?: string }>",
+      "description": "测试模型连接",
+      "layer": "ipc",
+      "write": false,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要可用的 provider 与网络"
+    },
+    {
+      "id": "ai.listModels",
+      "apiPath": "window.api.ai.listModels",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "listModels(provider: ProviderType, baseUrl: string, apiKey: string): Promise<{ success: boolean; models?: string[]; error?: string }>",
+      "params": [
+        {
+          "name": "provider",
+          "type": "ProviderType",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "baseUrl",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "apiKey",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ success: boolean; models?: string[]; error?: string }>",
+      "description": "列出 provider 模型",
+      "layer": "ipc",
+      "write": false,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要可用的 provider 与网络"
+    },
+    {
+      "id": "ai.getGenerationUsageProfile",
+      "apiPath": "window.api.ai.getGenerationUsageProfile",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getGenerationUsageProfile(query: GenerationUsageProfileQuery): Promise<GenerationUsageProfile | null>",
+      "params": [
+        {
+          "name": "query",
+          "type": "GenerationUsageProfileQuery",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<GenerationUsageProfile | null>",
+      "description": "读取生成用量档案",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回档案或 null"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.getGenerationDiagnostics",
+      "apiPath": "window.api.ai.getGenerationDiagnostics",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getGenerationDiagnostics(query: GenerationUsageProfileQuery & { capabilityOverride?: { enabled?: boolean; contextLimit?: number; outputLimit?: number } }): Promise<GenerationDiagnostics>",
+      "params": [
+        {
+          "name": "query",
+          "type": "GenerationUsageProfileQuery & { capabilityOverride?: { enabled?: boolean; contextLimit?: number; outputLimit?: number } }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<GenerationDiagnostics>",
+      "description": "读取生成诊断（模型档案/门控/用量桶）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "modelProfile 存在"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.resetGenerationGateProbe",
+      "apiPath": "window.api.ai.resetGenerationGateProbe",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "resetGenerationGateProbe(query: Pick<GenerationUsageProfileQuery, 'provider' | 'baseUrl' | 'model'>): Promise<void>",
+      "params": [
+        {
+          "name": "query",
+          "type": "Pick<GenerationUsageProfileQuery, 'provider' | 'baseUrl' | 'model'>",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "重置生成门控探测缓存",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "只影响内存探测缓存，不改用户数据",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.onChunk",
+      "apiPath": "window.api.ai.onChunk",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onChunk(callback: (data: { requestId: string; text: string }) => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "(data: { requestId: string; text: string }) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.onFeatureDataRestoring",
+      "apiPath": "window.api.ai.onFeatureDataRestoring",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onFeatureDataRestoring?(callback: () => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "() => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.onComplete",
+      "apiPath": "window.api.ai.onComplete",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onComplete(callback: (payload: AIDonePayload) => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "(payload: AIDonePayload) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.onError",
+      "apiPath": "window.api.ai.onError",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onError(callback: (data: AIErrorPayload) => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "(data: AIErrorPayload) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.onUsage",
+      "apiPath": "window.api.ai.onUsage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onUsage(callback: (data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "(data: { requestId: string; promptTokens: number; completionTokens: number; totalTokens: number }) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.countTokens",
+      "apiPath": "window.api.ai.countTokens",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "countTokens(text: string, model: string): Promise<number>",
+      "params": [
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<number>",
+      "description": "本地计算文本 token 数",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回正整数"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.countMessagesTokens",
+      "apiPath": "window.api.ai.countMessagesTokens",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "countMessagesTokens(messages: { content: string; role: string }[], model: string): Promise<number[]>",
+      "params": [
+        {
+          "name": "messages",
+          "type": "{ content: string; role: string }[]",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<number[]>",
+      "description": "本地计算多条消息 token 数",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回数组且长度等于输入条数"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "ai.compressLorebook",
+      "apiPath": "window.api.ai.compressLorebook",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "compressLorebook(payload: LorebookCompressPayload): Promise<string>",
+      "params": [
+        {
+          "name": "payload",
+          "type": "LorebookCompressPayload",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>",
+      "description": "世界书压缩",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型"
+    },
+    {
+      "id": "ai.localizeLorebookKeywords",
+      "apiPath": "window.api.ai.localizeLorebookKeywords",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "localizeLorebookKeywords(payload: LorebookKeywordLocalizationPayload): Promise<LorebookKeywordLocalizationResult>",
+      "params": [
+        {
+          "name": "payload",
+          "type": "LorebookKeywordLocalizationPayload",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LorebookKeywordLocalizationResult>",
+      "description": "世界书关键词本地化/扩词",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型"
+    }
+  ]
+}

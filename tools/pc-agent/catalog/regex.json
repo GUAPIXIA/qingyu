@@ -1,0 +1,146 @@
+{
+  "namespace": "regex",
+  "apiInterface": "RegexAPI",
+  "apiPathPrefix": "window.api.regex",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "regex.list",
+      "apiPath": "window.api.regex.list",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "list(): Promise<RegexRule[]>",
+      "params": [],
+      "returns": "Promise<RegexRule[]>",
+      "description": "列出全部正则规则",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "数量与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "regex.save",
+      "apiPath": "window.api.regex.save",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "save(rule: RegexRule): Promise<RegexRule>",
+      "params": [
+        {
+          "name": "rule",
+          "type": "RegexRule",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<RegexRule>",
+      "description": "保存（新建或更新）正则规则",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入正则规则",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "保存后 list 可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "regex.delete",
+      "apiPath": "window.api.regex.delete",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "delete(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除正则规则",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除正则规则",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "删除后 list 不含该规则"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "regex.create",
+      "apiPath": "window.api.regex.create",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "create(name: string): Promise<RegexRule>",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<RegexRule>",
+      "description": "按名称新建正则规则",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "新增正则规则",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回规则且 enabled 默认合理"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+{
+  "namespace": "persona",
+  "apiInterface": "PersonaAPI",
+  "apiPathPrefix": "window.api.persona",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "persona.list",
+      "apiPath": "window.api.persona.list",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "list(): Promise<Persona[]>",
+      "params": [],
+      "returns": "Promise<Persona[]>",
+      "description": "列出全部身份",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "数量与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "persona.save",
+      "apiPath": "window.api.persona.save",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "save(persona: Persona): Promise<Persona>",
+      "params": [
+        {
+          "name": "persona",
+          "type": "Persona",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Persona>",
+      "description": "保存身份",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案中的身份",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "保存后 list 可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "persona.delete",
+      "apiPath": "window.api.persona.delete",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "delete(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除身份",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除身份",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后 list 不含该身份"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "persona.createDefault",
+      "apiPath": "window.api.persona.createDefault",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "createDefault(name: string): Promise<Persona>",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Persona>",
+      "description": "按名称创建默认身份",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "新增默认身份",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回身份且名称等于入参"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

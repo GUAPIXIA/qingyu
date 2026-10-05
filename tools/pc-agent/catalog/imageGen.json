@@ -1,0 +1,236 @@
+{
+  "namespace": "imageGen",
+  "apiInterface": "ImageGenAPI",
+  "apiPathPrefix": "window.api.imageGen",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "imageGen.generate",
+      "apiPath": "window.api.imageGen.generate",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "generate(prompt: string, options?: { negativePrompt?: string size?: string quality?: string }): Promise<ImageGenResult>",
+      "params": [
+        {
+          "name": "prompt",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "{ negativePrompt?: string size?: string quality?: string }",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<ImageGenResult>",
+      "description": "生成图片（真实 ComfyUI）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "在隔离档案中产生图片产物",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "success=true 且返回图片数据或产物路径"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "imageGen.testConnection",
+      "apiPath": "window.api.imageGen.testConnection",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "testConnection(config: { provider: string baseUrl: string apiKey: string }): Promise<ImageGenTestResult>",
+      "params": [
+        {
+          "name": "config",
+          "type": "{ provider: string baseUrl: string apiKey: string }",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<ImageGenTestResult>",
+      "description": "测试生图服务连接（真实 ComfyUI）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "success=true"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "imageGen.listLocalComfyWorkflows",
+      "apiPath": "window.api.imageGen.listLocalComfyWorkflows",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listLocalComfyWorkflows(): Promise<{ success: boolean; workflows?: LocalComfyWorkflow[]; error?: string }>",
+      "params": [],
+      "returns": "Promise<{ success: boolean; workflows?: LocalComfyWorkflow[]; error?: string }>",
+      "description": "列出本地 ComfyUI 工作流",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 success 与 workflows 数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "imageGen.importLocalComfyWorkflow",
+      "apiPath": "window.api.imageGen.importLocalComfyWorkflow",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "importLocalComfyWorkflow(path?: string): Promise<ComfyWorkflowImportResult>",
+      "params": [
+        {
+          "name": "path",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<ComfyWorkflowImportResult>",
+      "description": "导入本地 ComfyUI 工作流",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "native-dialog"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要系统原生文件选择对话框（工具不代为完成）"
+    },
+    {
+      "id": "imageGen.analyzeComfyWorkflow",
+      "apiPath": "window.api.imageGen.analyzeComfyWorkflow",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "analyzeComfyWorkflow(workflow: string, objectInfo?: Record<string, unknown>): Promise<ComfyWorkflowAnalysisResult>",
+      "params": [
+        {
+          "name": "workflow",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "objectInfo",
+          "type": "Record<string, unknown>",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<ComfyWorkflowAnalysisResult>",
+      "description": "分析 ComfyUI 工作流",
+      "layer": "ipc",
+      "write": false,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要用户提供自定义工作流 JSON；本轮未覆盖"
+    },
+    {
+      "id": "imageGen.fetchObjectInfo",
+      "apiPath": "window.api.imageGen.fetchObjectInfo",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "fetchObjectInfo(baseUrl: string, apiKey?: string): Promise<ComfyObjectInfoResult>",
+      "params": [
+        {
+          "name": "baseUrl",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "apiKey",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<ComfyObjectInfoResult>",
+      "description": "拉取 ComfyUI 节点信息",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "success=true 且节点数 > 0"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

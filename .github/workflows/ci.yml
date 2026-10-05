@@ -155,6 +155,12 @@ jobs:
       - name: spatial-core purity
         run: pnpm check:spatial-core
 
+      # 外部 Agent 工具门禁：动作目录 ↔ shared/ipc-api.ts 契约漂移。
+      # 与 check:gates 并列执行、结果分别记录（方案 §10）：check-contracts 当前已知红，
+      # 不能让两者的红绿互相掩盖。该门禁为纯 Node，无 GUI 依赖，可在 Linux runner 运行。
+      - name: pc-agent catalog gate
+        run: pnpm check:pc-agent
+
   # Windows 安装包构建（仅 main 分支推送时）
   build-windows:
     name: Build Windows installer

@@ -1,0 +1,147 @@
+{
+  "namespace": "sessionSync",
+  "apiInterface": "SessionSyncAPI",
+  "apiPathPrefix": "window.api.sessionSync",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "sessionSync.changed",
+      "apiPath": "window.api.sessionSync.changed",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "changed(payload: SessionChangePayload): void",
+      "params": [
+        {
+          "name": "payload",
+          "type": "SessionChangePayload",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "void",
+      "description": "通知会话变更（事件入队）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "仅广播变更事件，不写业务数据",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "调用后不报错"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "sessionSync.onUpdated",
+      "apiPath": "window.api.sessionSync.onUpdated",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onUpdated(callback: (payload: SessionChangePayload) => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "(payload: SessionChangePayload) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "sessionSync.onCharactersChanged",
+      "apiPath": "window.api.sessionSync.onCharactersChanged",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onCharactersChanged(callback: () => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "() => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "sessionSync.onSettingsChanged",
+      "apiPath": "window.api.sessionSync.onSettingsChanged",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onSettingsChanged(callback: () => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "() => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

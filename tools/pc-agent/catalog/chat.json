@@ -1,0 +1,852 @@
+{
+  "namespace": "chat",
+  "apiInterface": "ChatAPI",
+  "apiPathPrefix": "window.api.chat",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "chat.commitFeatureResult",
+      "apiPath": "window.api.chat.commitFeatureResult",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "commitFeatureResult(characterId: string, sessionId: string, input: import('./featureSource').FeatureCommit): Promise<boolean>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "input",
+          "type": "import('./featureSource').FeatureCommit",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<boolean>",
+      "description": "提交功能 AI 结果到会话",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要功能 AI 产出（模型环境）与 featureSource 载荷"
+    },
+    {
+      "id": "chat.listSessions",
+      "apiPath": "window.api.chat.listSessions",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listSessions(characterId: string): Promise<SessionPreview[]>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<SessionPreview[]>",
+      "description": "列出指定角色的会话",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "包含目标会话",
+        "title 等于预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.createSession",
+      "apiPath": "window.api.chat.createSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "createSession(characterId: string, title?: string, personaId?: string | null, lorebookIds?: string[]): Promise<ChatSession>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "rest": false
+        },
+        {
+          "name": "personaId",
+          "type": "string | null",
+          "required": false,
+          "rest": false
+        },
+        {
+          "name": "lorebookIds",
+          "type": "string[]",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<ChatSession>",
+      "description": "为角色创建会话",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "新增会话",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回 id 非空",
+        "listSessions 可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.deleteSession",
+      "apiPath": "window.api.chat.deleteSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "deleteSession(characterId: string, sessionId: string): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除会话",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除会话及其消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后 listSessions 不含该会话"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.renameSession",
+      "apiPath": "window.api.chat.renameSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "renameSession(characterId: string, sessionId: string, title: string): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "重命名会话",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改会话标题",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "listSessions 中 title 等于预期",
+        "重启后仍一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.updateSession",
+      "apiPath": "window.api.chat.updateSession",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "updateSession(characterId: string, sessionId: string, updates: Record<string, unknown>): Promise<ChatSession>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "updates",
+          "type": "Record<string, unknown>",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<ChatSession>",
+      "description": "更新会话字段",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改会话字段",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "更新后读回一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.updateSessionIfMemoryVersion",
+      "apiPath": "window.api.chat.updateSessionIfMemoryVersion",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "updateSessionIfMemoryVersion(characterId: string, sessionId: string, expectedVersion: number, updates: Record<string, unknown>, source?: import('./featureSource').FeatureSource): Promise<MemoryVersionUpdateResult>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "expectedVersion",
+          "type": "number",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "updates",
+          "type": "Record<string, unknown>",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "import('./featureSource').FeatureSource",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<MemoryVersionUpdateResult>",
+      "description": "按记忆版本条件更新会话（CAS）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "条件写入会话字段",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "applied=true 时版本推进"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.summarizeMemory",
+      "apiPath": "window.api.chat.summarizeMemory",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "summarizeMemory(characterId: string, sessionId: string, automatic?: boolean): Promise<import('./chat-core/memorySummary').MemorySummaryResult>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "automatic",
+          "type": "boolean",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<import('./chat-core/memorySummary').MemorySummaryResult>",
+      "description": "生成记忆摘要",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "model"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要真实模型；摘要属事件型异步，等待逻辑在阶段 3B 接入"
+    },
+    {
+      "id": "chat.listMessages",
+      "apiPath": "window.api.chat.listMessages",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listMessages(characterId: string, sessionId?: string): Promise<Message[]>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Message[]>",
+      "description": "读取会话消息",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "消息数量与内容符合预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.saveMessage",
+      "apiPath": "window.api.chat.saveMessage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "saveMessage(message: Message): Promise<void>",
+      "params": [
+        {
+          "name": "message",
+          "type": "Message",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "保存单条消息",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "listMessages 可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.deleteMessage",
+      "apiPath": "window.api.chat.deleteMessage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "deleteMessage(id: string, characterId: string, sessionId?: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除消息",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除消息",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后 listMessages 不含该消息"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.clearChat",
+      "apiPath": "window.api.chat.clearChat",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "clearChat(characterId: string, sessionId?: string): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "清空会话消息",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "清空会话消息（保留会话）",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "清空后消息数为 0"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.exportChat",
+      "apiPath": "window.api.chat.exportChat",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportChat(characterId: string, sessionId: string, format: 'md' | 'json'): Promise<string>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "format",
+          "type": "'md' | 'json'",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>",
+      "description": "导出会话为 md/json 文本",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "只读导出，不写文件",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "导出内容包含标题与消息"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.updateMemory",
+      "apiPath": "window.api.chat.updateMemory",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "updateMemory(characterId: string, sessionId: string, memory: string): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "memory",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "写入会话记忆文本",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改会话记忆",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "读回 memory 与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.toggleMemory",
+      "apiPath": "window.api.chat.toggleMemory",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "toggleMemory(characterId: string, sessionId: string, enabled: boolean): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "开关会话记忆",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改会话记忆开关",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "读回 memoryEnabled 与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.setMemoryMode",
+      "apiPath": "window.api.chat.setMemoryMode",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "setMemoryMode(characterId: string, sessionId: string, mode: 'manual' | 'auto', interval?: number): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "mode",
+          "type": "'manual' | 'auto'",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "interval",
+          "type": "number",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "设置记忆模式（manual/auto）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改会话记忆模式",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "读回 memoryMode 与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.getStats",
+      "apiPath": "window.api.chat.getStats",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getStats(characterId: string, sessionId: string): Promise<{ totalMessages: number userMessages: number assistantMessages: number totalChars: number firstMessageTime: number lastMessageTime: number durationMs: number durationStr: string }>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ totalMessages: number userMessages: number assistantMessages: number totalChars: number firstMessageTime: number lastMessageTime: number durationMs: number durationStr: string }>",
+      "description": "读取会话统计",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "totalMessages 等于预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "chat.getMemoryHistory",
+      "apiPath": "window.api.chat.getMemoryHistory",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getMemoryHistory(characterId: string, sessionId: string, opts?: { limit?: number; offset?: number; status?: string }): Promise<{ history: import('./types').MemoryFact[]; total: number }>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "sessionId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "opts",
+          "type": "{ limit?: number; offset?: number; status?: string }",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ history: import('./types').MemoryFact[]; total: number }>",
+      "description": "读取记忆历史",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回 history 数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

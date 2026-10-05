@@ -1,0 +1,78 @@
+{
+  "namespace": "file",
+  "apiInterface": "FileAPI",
+  "apiPathPrefix": "window.api.file",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "file.selectImage",
+      "apiPath": "window.api.file.selectImage",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "selectImage(): Promise<string | null>",
+      "params": [],
+      "returns": "Promise<string | null>",
+      "description": "选择图片文件",
+      "layer": "ipc",
+      "write": false,
+      "requires": [
+        "native-dialog"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathTemplate": null,
+        "note": "图片文件"
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要系统原生文件选择对话框（方案 §6.3）；已接入桌面自动化后端，开启 --allow-native-dialog 后可用（目标路径写入本次 run 的 exports/）；**故意不提供路径参数**：该动作是「仅允许读取对话框选择过的路径」的白名单闸门（validatedPaths），加路径参数会打开任意文件读取面"
+    },
+    {
+      "id": "file.readImageAsBase64",
+      "apiPath": "window.api.file.readImageAsBase64",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "readImageAsBase64(path: string): Promise<string>",
+      "params": [
+        {
+          "name": "path",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>",
+      "description": "按路径读取图片为 base64",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 base64 字符串"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

@@ -1,0 +1,418 @@
+{
+  "namespace": "lorebook",
+  "apiInterface": "LorebookAPI",
+  "apiPathPrefix": "window.api.lorebook",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "lorebook.list",
+      "apiPath": "window.api.lorebook.list",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "list(): Promise<Lorebook[]>",
+      "params": [],
+      "returns": "Promise<Lorebook[]>",
+      "description": "列出全部世界书",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "数量与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.save",
+      "apiPath": "window.api.lorebook.save",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "save(lorebook: Lorebook, expectedRevision?: number): Promise<{ revision: number }>",
+      "params": [
+        {
+          "name": "lorebook",
+          "type": "Lorebook",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "expectedRevision",
+          "type": "number",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ revision: number }>",
+      "description": "保存世界书（可带 expectedRevision 做 CAS）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案中的世界书",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回 revision 推进",
+        "revision 不匹配时拒绝"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.delete",
+      "apiPath": "window.api.lorebook.delete",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "delete(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除世界书",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除世界书",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后 list 不含该书"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.importJsonDetailed",
+      "apiPath": "window.api.lorebook.importJsonDetailed",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "importJsonDetailed(options?: LorebookImportOptions, sourcePath?: string): Promise<LorebookImportOutcome | null>",
+      "params": [
+        {
+          "name": "options",
+          "type": "LorebookImportOptions",
+          "required": false,
+          "rest": false
+        },
+        {
+          "name": "sourcePath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LorebookImportOutcome | null>",
+      "description": "导入世界书 JSON（带格式检测）（传 sourcePath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathArg": 1
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.openMappingSource",
+      "apiPath": "window.api.lorebook.openMappingSource",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "openMappingSource(sourcePath?: string): Promise<{ sourceId: string fileName: string preview: unknown guessedTemplate: LorebookMappingTemplate | null } | null>",
+      "params": [
+        {
+          "name": "sourcePath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ sourceId: string fileName: string preview: unknown guessedTemplate: LorebookMappingTemplate | null } | null>",
+      "description": "打开映射源文件（传 sourcePath 时不弹对话框）",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathArg": 0
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.importWithTemplate",
+      "apiPath": "window.api.lorebook.importWithTemplate",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "importWithTemplate(sourceId: string, template: LorebookMappingTemplate): Promise<LorebookImportResult>",
+      "params": [
+        {
+          "name": "sourceId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "template",
+          "type": "LorebookMappingTemplate",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<LorebookImportResult>",
+      "description": "按模板导入世界书",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "native-dialog"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "依赖 openMappingSource 的 sourceId"
+    },
+    {
+      "id": "lorebook.healthCheck",
+      "apiPath": "window.api.lorebook.healthCheck",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "healthCheck(): Promise<LorebookHealthReport>",
+      "params": [],
+      "returns": "Promise<LorebookHealthReport>",
+      "description": "世界书健康检查",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回报告结构"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.listMappingTemplates",
+      "apiPath": "window.api.lorebook.listMappingTemplates",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "listMappingTemplates(): Promise<LorebookMappingTemplate[]>",
+      "params": [],
+      "returns": "Promise<LorebookMappingTemplate[]>",
+      "description": "列出映射模板",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "返回数组"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.saveMappingTemplate",
+      "apiPath": "window.api.lorebook.saveMappingTemplate",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "saveMappingTemplate(template: LorebookMappingTemplate): Promise<void>",
+      "params": [
+        {
+          "name": "template",
+          "type": "LorebookMappingTemplate",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "保存映射模板",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入映射模板",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "保存后可读回"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.deleteMappingTemplate",
+      "apiPath": "window.api.lorebook.deleteMappingTemplate",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "deleteMappingTemplate(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除映射模板",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除映射模板",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后列表不含该模板"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "lorebook.exportJson",
+      "apiPath": "window.api.lorebook.exportJson",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportJson(id: string, adapterId?: string, targetPath?: string): Promise<{ ok: boolean canceled?: boolean path?: string adapterId?: string report?: LorebookCompatibilityReport }>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "adapterId",
+          "type": "string",
+          "required": false,
+          "rest": false
+        },
+        {
+          "name": "targetPath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean canceled?: boolean path?: string adapterId?: string report?: LorebookCompatibilityReport }>",
+      "description": "导出世界书 JSON（传 targetPath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "save",
+        "pathArg": 2
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}

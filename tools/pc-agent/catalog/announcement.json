@@ -1,0 +1,152 @@
+{
+  "namespace": "announcement",
+  "apiInterface": "AnnouncementAPI",
+  "apiPathPrefix": "window.api.announcement",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "announcement.fetchList",
+      "apiPath": "window.api.announcement.fetchList",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "fetchList(page?: number, pageSize?: number): Promise<{ items: Announcement[]; total: number }>",
+      "params": [
+        {
+          "name": "page",
+          "type": "number",
+          "required": false,
+          "rest": false
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ items: Announcement[]; total: number }>",
+      "description": "拉取公告列表",
+      "layer": "ipc",
+      "write": false,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要网络与公告服务器可用"
+    },
+    {
+      "id": "announcement.fetchDetail",
+      "apiPath": "window.api.announcement.fetchDetail",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "fetchDetail(id: number): Promise<Announcement | null>",
+      "params": [
+        {
+          "name": "id",
+          "type": "number",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Announcement | null>",
+      "description": "拉取公告详情",
+      "layer": "ipc",
+      "write": false,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要网络与公告服务器可用"
+    },
+    {
+      "id": "announcement.getServerUrl",
+      "apiPath": "window.api.announcement.getServerUrl",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "getServerUrl(): Promise<string>",
+      "params": [],
+      "returns": "Promise<string>",
+      "description": "读取公告服务器地址",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [
+        "返回 URL 字符串"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "announcement.setServerUrl",
+      "apiPath": "window.api.announcement.setServerUrl",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "setServerUrl(url: string): Promise<void>",
+      "params": [
+        {
+          "name": "url",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "设置公告服务器地址",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "修改外部服务地址，需显式授权后执行"
+    }
+  ]
+}

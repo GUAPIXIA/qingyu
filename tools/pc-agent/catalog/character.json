@@ -1,0 +1,552 @@
+{
+  "namespace": "character",
+  "apiInterface": "CharacterAPI",
+  "apiPathPrefix": "window.api.character",
+  "sourceFile": "shared/ipc-api.ts",
+  "note": "骨架由 catalog.generate.mjs 生成；status=unregistered 表示尚未登记为动作，阶段 3 逐批补全。不要手改 signature/params，改契约后重新生成。",
+  "actions": [
+    {
+      "id": "character.list",
+      "apiPath": "window.api.character.list",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "list(): Promise<Character[]>",
+      "params": [],
+      "returns": "Promise<Character[]>",
+      "description": "列出全部角色",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "数量与预期一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.get",
+      "apiPath": "window.api.character.get",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "get(id: string): Promise<Character | null>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Character | null>",
+      "description": "读取单个角色",
+      "layer": "ipc",
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "无",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "id 对应角色存在",
+        "name 等于预期"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.save",
+      "apiPath": "window.api.character.save",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "save(character: Character): Promise<void>",
+      "params": [
+        {
+          "name": "character",
+          "type": "Character",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "保存（新建或更新）角色",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离档案中的角色数据",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "保存后 get 读回字段一致"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.delete",
+      "apiPath": "window.api.character.delete",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "delete(id: string): Promise<void>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "删除角色",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "删除隔离档案中的角色数据",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "删除后 get 返回 null"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.importPng",
+      "apiPath": "window.api.character.importPng",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "importPng(conflict?: CharacterImportConflictPolicy, sourcePath?: string): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[]; outcome?: CharacterImportOutcome; note?: string }>",
+      "params": [
+        {
+          "name": "conflict",
+          "type": "CharacterImportConflictPolicy",
+          "required": false,
+          "rest": false
+        },
+        {
+          "name": "sourcePath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[]; outcome?: CharacterImportOutcome; note?: string }>",
+      "description": "导入 PNG 角色卡（传 sourcePath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathArg": 1
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.importJson",
+      "apiPath": "window.api.character.importJson",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "importJson(conflict?: CharacterImportConflictPolicy, sourcePath?: string): Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; needAvatar?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[]; outcome?: CharacterImportOutcome; note?: string }>",
+      "params": [
+        {
+          "name": "conflict",
+          "type": "CharacterImportConflictPolicy",
+          "required": false,
+          "rest": false
+        },
+        {
+          "name": "sourcePath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ success: boolean; character?: Character; error?: string; canceled?: boolean; needAvatar?: boolean; cardExtras?: { regexCount: number; quickReplyCount: number; skipped?: string[] }; lorebookSuggestions?: LorebookSuggestion[]; outcome?: CharacterImportOutcome; note?: string }>",
+      "description": "导入 JSON 角色卡（传 sourcePath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathArg": 1
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.importBatch",
+      "apiPath": "window.api.character.importBatch",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "importBatch(conflict?: CharacterImportConflictPolicy, sourcePaths?: string[]): Promise<{ success: boolean results?: { name: string; success: boolean; error?: string; needAvatar?: boolean; outcome?: CharacterImportOutcome; note?: string }[] total?: number successCount?: number failCount?: number error?: string /** 选文件对话框取消（success:false）或 UEX-P2-04 导入中取消（success:true，已完成明细保留在 results，不回滚） */ canceled?: boolean /** UEX-P2-04：导入中取消时未处理的文件数（= total - successCount - failCount - skippedIdentical） */ skippedCount?: number /** UEX-P1-17：内容相同自动跳过的数量（明细注明「已存在相同角色：{name}」） */ skippedIdentical?: number /** UEX-P1-17：同名冲突另存副本的数量（含「（副本 N）」递增命名） */ copied?: number /** UEX-P1-17：显式覆盖同名原卡的数量（保留原 id 与会话关联） */ overwritten?: number }>",
+      "params": [
+        {
+          "name": "conflict",
+          "type": "CharacterImportConflictPolicy",
+          "required": false,
+          "rest": false
+        },
+        {
+          "name": "sourcePaths",
+          "type": "string[]",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ success: boolean results?: { name: string; success: boolean; error?: string; needAvatar?: boolean; outcome?: CharacterImportOutcome; note?: string }[] total?: number successCount?: number failCount?: number error?: string /** 选文件对话框取消（success:false）或 UEX-P2-04 导入中取消（success:true，已完成明细保留在 results，不回滚） */ canceled?: boolean /** UEX-P2-04：导入中取消时未处理的文件数（= total - successCount - failCount - skippedIdentical） */ skippedCount?: number /** UEX-P1-17：内容相同自动跳过的数量（明细注明「已存在相同角色：{name}」） */ skippedIdentical?: number /** UEX-P1-17：同名冲突另存副本的数量（含「（副本 N）」递增命名） */ copied?: number /** UEX-P1-17：显式覆盖同名原卡的数量（保留原 id 与会话关联） */ overwritten?: number }>",
+      "description": "批量导入角色卡（传 sourcePath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "open",
+        "pathArg": 1
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.importBatchCancel",
+      "apiPath": "window.api.character.importBatchCancel",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "importBatchCancel(): Promise<void>",
+      "params": [],
+      "returns": "Promise<void>",
+      "description": "取消批量导入",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "native-dialog"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": true,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "只在批量导入进行中有意义，依赖原生对话框流程"
+    },
+    {
+      "id": "character.bindLorebook",
+      "apiPath": "window.api.character.bindLorebook",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "bindLorebook(characterId: string, lorebookId: string | null): Promise<void>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "lorebookId",
+          "type": "string | null",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<void>",
+      "description": "绑定/解绑世界书",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "修改角色的世界书绑定",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [
+        "绑定后 get 读回 boundLorebookIds"
+      ],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.exportPng",
+      "apiPath": "window.api.character.exportPng",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportPng(id: string, targetPath?: string): Promise<CharacterExportResult>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "targetPath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<CharacterExportResult>",
+      "description": "导出角色卡 PNG（传 targetPath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "save",
+        "pathArg": 1
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.exportJson",
+      "apiPath": "window.api.character.exportJson",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportJson(id: string, targetPath?: string): Promise<CharacterExportResult>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "targetPath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<CharacterExportResult>",
+      "description": "导出角色卡 JSON（传 targetPath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "save",
+        "pathArg": 1
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.exportCover",
+      "apiPath": "window.api.character.exportCover",
+      "origin": "contract",
+      "kind": "method",
+      "status": "mapped",
+      "signature": "exportCover(id: string, targetPath?: string): Promise<{ ok: boolean; canceled?: boolean; error?: string; path?: string }>",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "targetPath",
+          "type": "string",
+          "required": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ ok: boolean; canceled?: boolean; error?: string; path?: string }>",
+      "description": "导出封面图（传 targetPath 时不弹对话框）",
+      "layer": "ipc",
+      "write": true,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": {
+        "kind": "save",
+        "pathArg": 1
+      },
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    },
+    {
+      "id": "character.reloadAvatar",
+      "apiPath": "window.api.character.reloadAvatar",
+      "origin": "contract",
+      "kind": "method",
+      "status": "pending",
+      "signature": "reloadAvatar(characterId: string, url: string): Promise<{ success: boolean; avatar: string; error?: string; code?: string }>",
+      "params": [
+        {
+          "name": "characterId",
+          "type": "string",
+          "required": true,
+          "rest": false
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<{ success: boolean; avatar: string; error?: string; code?: string }>",
+      "description": "重新抓取角色头像",
+      "layer": "ipc",
+      "write": true,
+      "requires": [
+        "network"
+      ],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": "写入隔离测试档案",
+      "cancelable": false,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": "需要可访问的图片 URL（外网）"
+    },
+    {
+      "id": "character.onImportProgress",
+      "apiPath": "window.api.character.onImportProgress",
+      "origin": "contract",
+      "kind": "method",
+      "status": "unregistered",
+      "signature": "onImportProgress(callback: (data: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' }) => void): () => void",
+      "params": [
+        {
+          "name": "callback",
+          "type": "(data: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' }) => void",
+          "required": true,
+          "rest": false
+        }
+      ],
+      "returns": "() => void",
+      "description": "",
+      "layer": null,
+      "write": false,
+      "requires": [],
+      "redactKeys": [],
+      "awaitTask": null,
+      "control": false,
+      "dialog": null,
+      "modes": [],
+      "targetRef": null,
+      "preconditions": [],
+      "sideEffect": null,
+      "cancelable": null,
+      "waitFor": null,
+      "assertions": [],
+      "evidence": [],
+      "pendingReason": null
+    }
+  ]
+}
