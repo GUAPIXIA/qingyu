@@ -27,6 +27,7 @@ describe('useSettingsStore', () => {
       credentials: {},
       loaded: false,
       _saveTimer: null,
+      _dirty: false,
       saveStatus: 'idle',
       saveError: null,
       loadFailed: false,
@@ -261,8 +262,61 @@ describe('useSettingsStore', () => {
     })
   })
 
-  describe('loadSettings 旧数据兜底（B2：只读，不写盘）', () => {
-    it('旧单字段迁移到内存后不触发 settings.save（持久化由主进程迁移链负责）', async () => {
+  // F1 回归：外部 IPC 写入不得被渲染层内存旧值覆盖
+  describe('F1：退出前 flush 只在本地有改动时写盘', () => {
+    it('本地无改动时 flushSettings 不写盘（不覆盖外部 IPC 写入）', async () => {
+      vi.mocked(window.api.settings.get).mockResolvedValue(getDefaultSettings() as never)
+      await useSettingsStore.getState().loadSettings()
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+
+      // 模拟外部 IPC 已把磁盘设置改掉（渲染层内存仍是旧值），退出前 flush
+      useSettingsStore.getState().flushSettings()
+
+      expect(saveSpy).not.toHaveBeenCalled()
+      expect(useSettingsStore.getState()._dirty).toBe(false)
+    })
+
+    it('本地有改动时 flushSettings 立即写盘（保留原有退出前保存语义）', async () => {
+      vi.mocked(window.api.settings.get).mockResolvedValue(getDefaultSettings() as never)
+      await useSettingsStore.getState().loadSettings()
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+
+      useSettingsStore.getState().updateSettings({ theme: 'light' })
+      expect(useSettingsStore.getState()._dirty).toBe(true)
+      useSettingsStore.getState().flushSettings()
+
+      expect(saveSpy).toHaveBeenCalledTimes(1)
+      expect((saveSpy.mock.calls[0][0] as { theme: string }).theme).toBe('light')
+      // 落盘成功后脏标记清除
+      await Promise.resolve()
+      expect(useSettingsStore.getState()._dirty).toBe(false)
+    })
+
+    it('防抖窗口内落盘成功后不再重复写盘', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.mocked(window.api.settings.get).mockResolvedValue(getDefaultSettings() as never)
+        await useSettingsStore.getState().loadSettings()
+        const saveSpy = vi.mocked(window.api.settings.save)
+        saveSpy.mockClear()
+
+        useSettingsStore.getState().updateSettings({ theme: 'light' })
+        vi.advanceTimersByTime(300)
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(saveSpy).toHaveBeenCalledTimes(1)
+
+        useSettingsStore.getState().flushSettings()
+        expect(saveSpy).toHaveBeenCalledTimes(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  describe('loadSettings 旧数据兜底（B2：只读，不写盘）', () => {    it('旧单字段迁移到内存后不触发 settings.save（持久化由主进程迁移链负责）', async () => {
       const saveSpy = vi.mocked(window.api.settings.save)
       saveSpy.mockClear()
       vi.mocked(window.api.settings.get).mockResolvedValue({
@@ -289,6 +343,29 @@ describe('useSettingsStore', () => {
       expect(legacy.authorNote).toBeUndefined()
       expect(saveSpy).not.toHaveBeenCalled()
       expect(useSettingsStore.getState().loaded).toBe(true)
+    })
+
+    it('已有的 Edge TTS 配置在加载后保持 edge（不被改写成系统语音）', async () => {
+      // 回归：历史上这里会把已有模型的 provider 'edge' 无条件改写为 'system'，
+      // 而 loadSettings 每次加载都会执行，导致用户配好的 Edge TTS 被静默销毁。
+      const saveSpy = vi.mocked(window.api.settings.save)
+      saveSpy.mockClear()
+      vi.mocked(window.api.settings.get).mockResolvedValue({
+        ...getDefaultSettings(),
+        ttsModels: [
+          { id: 't-edge', name: 'Edge 中文女声', provider: 'edge', model: '', voice: 'zh-CN-XiaoxiaoNeural', apiKey: '', baseUrl: '', proxy: '', enabled: true, order: 0 },
+          { id: 't-xiaomi', name: '小米', provider: 'xiaomi', model: 'mimo-v2.5-tts', voice: 'mimo_default', apiKey: '', baseUrl: 'https://api.xiaomimimo.com/v1', enabled: true, order: 1 },
+        ],
+        activeTTSModelId: 't-edge',
+      } as never)
+
+      await useSettingsStore.getState().loadSettings()
+
+      const { settings } = useSettingsStore.getState()
+      expect(settings.ttsModels.map((m) => m.provider)).toEqual(['edge', 'xiaomi'])
+      expect(settings.ttsModels[0].voice).toBe('zh-CN-XiaoxiaoNeural')
+      expect(settings.activeTTSModelId).toBe('t-edge')
+      expect(saveSpy).not.toHaveBeenCalled()
     })
 
     it('旧 providers 配置在内存中兜底为连接档案，同样不写盘', async () => {

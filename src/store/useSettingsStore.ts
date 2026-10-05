@@ -37,6 +37,11 @@ interface SettingsState {
   credentials: Record<string, string>
   loaded: boolean
   _saveTimer: ReturnType<typeof setTimeout> | null
+  /**
+   * F1：本地是否有未保存的改动。只有用户操作产生的改动才置位；
+   * 用于退出前 flush 时避免用内存旧值覆盖外部 IPC 写入。
+   */
+  _dirty: boolean
   /** 最近一次设置落盘的真实状态（由 Promise 结果驱动，P1-02 修复“已保存”假成功） */
   saveStatus: 'idle' | 'saving' | 'saved' | 'error'
   /** 落盘失败原因（saveStatus === 'error' 时有值） */
@@ -90,6 +95,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   credentials: {},
   loaded: false,
   _saveTimer: null,
+  _dirty: false,
   saveStatus: 'idle',
   saveError: null,
   loadFailed: false,
@@ -162,7 +168,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         settings.ttsModels = [{
           id: nanoid(),
           name: '默认 TTS',
-          // 旧值 edge 迁移为 system（3.2-A：系统语音引擎）
+          // 旧单字段 ttsProvider 里的 'edge' 迁移为 system（3.2-A：当时 edge 只是系统引擎占位值）
           provider: ((legacySettings.ttsProvider as 'edge' | 'openai') === 'openai' ? 'openai' : 'system') as TTSModelConfig['provider'],
           model: legacySettings.ttsModel || 'tts-1',
           voice: legacySettings.ttsVoice || '',
@@ -175,12 +181,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       } else {
         settings.ttsModels = []
       }
-    } else {
-      // 存量 'edge' 值统一迁移为 'system'
-      for (const m of settings.ttsModels) {
-        if (m.provider === 'edge') m.provider = 'system'
-      }
     }
+    // 注意：不要在这里把已有模型的 provider 'edge' 改写成 'system'。
+    // 'edge' 是当前正式提供商（设置界面可选、edgeSpeak 有实现、消息朗读按 edge 分支播放），
+    // 而本函数每次加载都会执行，改写会静默销毁用户已配好的 Edge TTS 配置。
+    // 历史数据（单字段 ttsProvider: 'edge'）的一次性迁移由上面分支与主进程版本化迁移链负责。
 
     // 生图迁移
     if (!settings.imageGenModels || settings.imageGenModels.length === 0) {
@@ -232,7 +237,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       delete cleaned.authorNote
     }
 
-    set({ settings, credentials, loaded: true, saveStatus: 'idle', saveError: null, loadFailed: false })
+    set({ settings, credentials, loaded: true, saveStatus: 'idle', saveError: null, loadFailed: false, _dirty: false })
   },
 
   saveSettings: async () => {
@@ -246,7 +251,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       // 以当前 state 为准：防抖窗口内的多次修改只落最后一份
       await window.api.settings.save(get().settings)
-      set({ saveStatus: 'saved', saveError: null })
+      // F1：落盘成功后清除本地脏标记，退出前不再重复写盘
+      set({ saveStatus: 'saved', saveError: null, _dirty: false })
     } catch (err) {
       logError('SettingsStore:save', err)
       set({
@@ -263,12 +269,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       clearTimeout(self._saveTimer)
       set({ _saveTimer: null })
     }
+    // F1 修复：只有本地确实有未保存改动时才写盘。
+    // 此前无条件调用 saveSettings()，退出时会把渲染层内存里的旧设置整份写回，
+    // 覆盖由外部 IPC（settings.save）写入的更新（实测 theme=light 被改回 dark）。
+    if (!self._dirty) return
     void get().saveSettings()
   },
 
   updateSettings: (partial) => {
     set((state) => ({
       settings: { ...state.settings, ...partial },
+      _dirty: true,
     }))
     const self = get()
     if (self._saveTimer) clearTimeout(self._saveTimer)
