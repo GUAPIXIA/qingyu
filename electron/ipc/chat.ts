@@ -32,6 +32,7 @@ import {
   saveMessage,
 } from '../features/chat/messageUseCases'
 import { updateSessionIfMemoryVersion } from '../features/chat/chatRepository'
+import { notifySessionUpdated } from './changeBroadcast'
 
 export function registerChatIPC(ipcMain: IpcMain): void {
   safeHandle(ipcMain, 'chat:commitFeatureResult', async (_e, characterId: string, sessionId: string, input: FeatureCommit) => commitFeatureResult(characterId, sessionId, input))
@@ -44,19 +45,26 @@ export function registerChatIPC(ipcMain: IpcMain): void {
 
   safeHandle(ipcMain, 'chat:createSession', async (_e, characterId: string, title?: string, personaId?: string | null, lorebookIds?: string[]) => {
     safeId(characterId)
-    return createSession(characterId, title, personaId, lorebookIds)
+    const session = await createSession(characterId, title, personaId, lorebookIds)
+    // F3：主进程侧写入后广播，已加载界面无需重启即可看到新会话
+    notifySessionUpdated({ sessionId: session.id, change: 'created' })
+    return session
   })
 
   safeHandle(ipcMain, 'chat:deleteSession', async (_e, characterId: string, sessionId: string) => {
     safeId(characterId)
     safeId(sessionId)
-    return deleteSession(characterId, sessionId)
+    const result = await deleteSession(characterId, sessionId)
+    notifySessionUpdated({ sessionId, change: 'deleted' })
+    return result
   })
 
   safeHandle(ipcMain, 'chat:renameSession', async (_e, characterId: string, sessionId: string, title: string) => {
     safeId(characterId)
     safeId(sessionId)
-    return renameSession(characterId, sessionId, title)
+    const result = await renameSession(characterId, sessionId, title)
+    notifySessionUpdated({ sessionId, change: 'title' })
+    return result
   })
 
   safeHandle(ipcMain, 'chat:updateSession', async (_e, characterId: string, sessionId: string, updates: Partial<ChatSession>) => {
@@ -65,7 +73,11 @@ export function registerChatIPC(ipcMain: IpcMain): void {
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       throw new Error('参数无效：updates 必须为对象')
     }
-    return updateSession(characterId, sessionId, updates)
+    const result = await updateSession(characterId, sessionId, updates)
+    // F3：仅在标题变化时广播（change 取值只有 created/message/title/deleted/swiped，
+    // 其它字段变更没有语义匹配的取值，避免向桥接层发出错误事件）
+    if (updates.title !== undefined) notifySessionUpdated({ sessionId, change: 'title' })
+    return result
   })
 
   safeHandle(ipcMain, 'chat:updateSessionIfMemoryVersion', async (_e, characterId: string, sessionId: string, expectedVersion: number, updates: Partial<ChatSession>, source?: FeatureSource) =>

@@ -95,6 +95,18 @@ const sessionSyncApi: SessionSyncAPI = {
     ipcRenderer.on(IPC_EVENTS.sessionUpdated, handler)
     return () => ipcRenderer.removeListener(IPC_EVENTS.sessionUpdated, handler)
   },
+  // F3：主进程侧（含外部 IPC）写入角色数据后的广播
+  onCharactersChanged: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on(IPC_EVENTS.characterChanged, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.characterChanged, handler)
+  },
+  // F3：主进程侧（含外部 IPC）写入设置后的广播
+  onSettingsChanged: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on(IPC_EVENTS.settingsChanged, handler)
+    return () => ipcRenderer.removeListener(IPC_EVENTS.settingsChanged, handler)
+  },
 }
 
 // ---- 桥接层（/sync/v1 服务生命周期） ----
@@ -154,15 +166,15 @@ const characterApi: CharacterAPI = {  list: () => ipcRenderer.invoke('character:
   save: (character) => ipcRenderer.invoke('character:save', character),
   delete: (id) => ipcRenderer.invoke('character:delete', id),
   // UEX-P1-17：conflict 为同名冲突策略（'copy' 默认另存副本 / 'overwrite' 显式覆盖）
-  importPng: (conflict) => ipcRenderer.invoke('character:importPng', conflict),
-  importJson: (conflict) => ipcRenderer.invoke('character:importJson', conflict),
-  importBatch: (conflict) => ipcRenderer.invoke('character:importBatch', conflict),
+  importPng: (conflict, sourcePath) => ipcRenderer.invoke('character:importPng', conflict, sourcePath),
+  importJson: (conflict, sourcePath) => ipcRenderer.invoke('character:importJson', conflict, sourcePath),
+  importBatch: (conflict, sourcePaths) => ipcRenderer.invoke('character:importBatch', conflict, sourcePaths),
   // UEX-P2-04：取消进行中的批量导入（幂等）
   importBatchCancel: () => ipcRenderer.invoke('character:importBatchCancel'),
   bindLorebook: (characterId, lorebookId) => ipcRenderer.invoke('character:bindLorebook', characterId, lorebookId),
-  exportPng: (id) => ipcRenderer.invoke('character:exportPng', id),
-  exportJson: (id) => ipcRenderer.invoke('character:exportJson', id),
-  exportCover: (id) => ipcRenderer.invoke('character:exportCover', id),
+  exportPng: (id, targetPath) => ipcRenderer.invoke('character:exportPng', id, targetPath),
+  exportJson: (id, targetPath) => ipcRenderer.invoke('character:exportJson', id, targetPath),
+  exportCover: (id, targetPath) => ipcRenderer.invoke('character:exportCover', id, targetPath),
   reloadAvatar: (characterId, url) => ipcRenderer.invoke('character:reloadAvatar', characterId, url),
   onImportProgress: (callback) => {
     const handler = (_e: unknown, data: { current: number; total: number; fileName: string; status: 'processing' | 'done' | 'error' }) => callback(data)
@@ -199,8 +211,8 @@ const settingsApi: SettingsAPI = {
   save: (settings) => ipcRenderer.invoke('settings:save', settings),
   saveAPICredential: (provider, key) => ipcRenderer.invoke('settings:saveCredential', provider, key),
   getAPICredential: (provider) => ipcRenderer.invoke('settings:getCredential', provider),
-  exportBackup: () => ipcRenderer.invoke('settings:exportBackup'),
-  importBackup: () => ipcRenderer.invoke('settings:importBackup'),
+  exportBackup: (targetPath) => ipcRenderer.invoke('settings:exportBackup', targetPath),
+  importBackup: (sourcePath) => ipcRenderer.invoke('settings:importBackup', sourcePath),
 }
 
 // ---- 世界书 ----
@@ -208,9 +220,9 @@ const lorebookApi: LorebookAPI = {
   list: () => ipcRenderer.invoke('lorebook:list'),
   save: (lorebook, expectedRevision) => ipcRenderer.invoke('lorebook:save', lorebook, expectedRevision),
   delete: (id) => ipcRenderer.invoke('lorebook:delete', id),
-  importJsonDetailed: (options) => ipcRenderer.invoke('lorebook:importJsonDetailed', options),
-  exportJson: (id, adapterId) => ipcRenderer.invoke('lorebook:exportJson', id, adapterId),
-  openMappingSource: () => ipcRenderer.invoke('lorebook:openMappingSource'),
+  importJsonDetailed: (options, sourcePath) => ipcRenderer.invoke('lorebook:importJsonDetailed', options, sourcePath),
+  exportJson: (id, adapterId, targetPath) => ipcRenderer.invoke('lorebook:exportJson', id, adapterId, targetPath),
+  openMappingSource: (sourcePath) => ipcRenderer.invoke('lorebook:openMappingSource', sourcePath),
   importWithTemplate: (sourceId, template) => ipcRenderer.invoke('lorebook:importWithTemplate', sourceId, template),
   healthCheck: () => ipcRenderer.invoke('lorebook:healthCheck'),
   listMappingTemplates: () => ipcRenderer.invoke('lorebook:listMappingTemplates'),
@@ -266,8 +278,8 @@ const quickReplyApi: QuickReplyAPI = {
   listAll: () => ipcRenderer.invoke('quickReply:listAll'),
   saveAll: (store) => ipcRenderer.invoke('quickReply:saveAll', store),
   clearCharacter: (characterId) => ipcRenderer.invoke('quickReply:clearCharacter', characterId),
-  exportJson: () => ipcRenderer.invoke('quickReply:exportJson'),
-  importJson: () => ipcRenderer.invoke('quickReply:importJson'),
+  exportJson: (targetPath) => ipcRenderer.invoke('quickReply:exportJson', targetPath),
+  importJson: (sourcePath) => ipcRenderer.invoke('quickReply:importJson', sourcePath),
 }
 
 // ---- 预设 ----
@@ -275,8 +287,8 @@ const presetApi: PresetAPI = {
   list: () => ipcRenderer.invoke('preset:list'),
   save: (preset) => ipcRenderer.invoke('preset:save', preset),
   delete: (id) => ipcRenderer.invoke('preset:delete', id),
-  importJson: () => ipcRenderer.invoke('preset:importJson'),
-  exportJson: (id) => ipcRenderer.invoke('preset:exportJson', id),
+  importJson: (sourcePath) => ipcRenderer.invoke('preset:importJson', sourcePath),
+  exportJson: (id, targetPath) => ipcRenderer.invoke('preset:exportJson', id, targetPath),
 }
 
 // ---- TTS ----

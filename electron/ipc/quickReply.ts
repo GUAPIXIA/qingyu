@@ -107,32 +107,40 @@ export function registerQuickReplyIPC(ipcMain: IpcMain, dialog: Dialog): void {
     commitQuickReplyStore(store, [`qr-char-${characterId}`])
   })
 
-  // 导出 JSON（保存对话框）
-  ipcMain.handle('quickReply:exportJson', async () => {
-    const { dialog: d } = await import('electron')
-    const result = await d.showSaveDialog({
-      title: '导出快捷回复',
-      defaultPath: 'quick-replies.json',
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-    })
-    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+  // 导出 JSON（保存对话框；targetPath 传入时不弹对话框）
+  ipcMain.handle('quickReply:exportJson', async (_e, targetPath?: string) => {
+    let chosenPath = typeof targetPath === 'string' && targetPath.trim() ? targetPath : ''
+    if (!chosenPath) {
+      const { dialog: d } = await import('electron')
+      const result = await d.showSaveDialog({
+        title: '导出快捷回复',
+        defaultPath: 'quick-replies.json',
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+      chosenPath = result.filePath
+    }
     // 导出目标是用户选择的路径，位于同步域数据目录之外、不属于同步实体：
     // 不写 journal，但仍走统一原子写工具（同目录 tmp + rename），不使用原始写函数。
-    writeFileAtomic(result.filePath, JSON.stringify(readStore(), null, 2))
-    return { ok: true }
+    writeFileAtomic(chosenPath, JSON.stringify(readStore(), null, 2))
+    return { ok: true, path: chosenPath }
   })
 
-  // 导入 JSON（打开对话框，覆盖合并）
-  ipcMain.handle('quickReply:importJson', async () => {
-    const result = await dialog.showOpenDialog({
-      title: '导入快捷回复',
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-      properties: ['openFile'],
-    })
-    if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true }
+  // 导入 JSON（打开对话框，覆盖合并；sourcePath 传入时不弹对话框）
+  ipcMain.handle('quickReply:importJson', async (_e, sourcePathOverride?: string) => {
+    let sourcePath = typeof sourcePathOverride === 'string' && sourcePathOverride.trim() ? sourcePathOverride : ''
+    if (!sourcePath) {
+      const result = await dialog.showOpenDialog({
+        title: '导入快捷回复',
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+        properties: ['openFile'],
+      })
+      if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true }
+      sourcePath = result.filePaths[0]
+    }
 
     try {
-      const raw = readFileSync(result.filePaths[0], 'utf-8')
+      const raw = readFileSync(sourcePath, 'utf-8')
       const parsed = JSON.parse(raw) as QuickReplyStore
       if (!parsed || !Array.isArray(parsed.global)) {
         return { ok: false, error: '文件格式错误：不是有效的快捷回复 JSON' }

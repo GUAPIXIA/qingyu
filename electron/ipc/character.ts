@@ -28,6 +28,7 @@ import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { safeId } from '../utils/pathGuard'
 import { DIRS, readJson, withFileLock } from '../services/storage'
 import { suggestLorebooks } from '../services/lorebookMatcher'
+import { notifyCharactersChanged } from './changeBroadcast'
 
 const log = createLogger('character')
 
@@ -96,6 +97,8 @@ async function resolveAndSaveImported(character: Character, conflict: ImportConf
     return { skipped: true, outcome: resolution.outcome, note: resolution.note }
   }
   const cardExtras = await persistResolvedCharacter(resolution)
+  // F3：导入也是主进程侧写入，广播给已加载界面
+  notifyCharactersChanged()
   return { skipped: false, outcome: resolution.outcome, note: resolution.note, saved: resolution.character, cardExtras }
 }
 
@@ -122,6 +125,8 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
     })
     log.info('角色已保存', { id: character.id, name: character.name })
     notifyGroupSpatialActorsChanged(character.id)
+    // F3：主进程侧写入后广播，让已加载界面刷新（外部 Agent 写入无需重启）
+    notifyCharactersChanged()
   })
 
   // 删除
@@ -132,20 +137,25 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       deleteCharacterThroughDomain(id)
     })
     log.info('角色已删除', { id })
+    notifyCharactersChanged()
   })
 
   // 导入 PNG（UEX-P1-17：conflict 为同名冲突策略，默认另存副本，'overwrite' 仅用户显式选择）
-  ipcMain.handle('character:importPng', async (event, conflict?: ImportConflictPolicy) => {
+  // sourcePath：显式源文件路径。传入时不弹系统对话框（供外部 Agent / 自动化调用），留空走原有对话框流程。
+  ipcMain.handle('character:importPng', async (event, conflict?: ImportConflictPolicy, sourcePath?: string) => {
     try {
-      const result = await dialog.showOpenDialog({
-        title: '导入角色卡 (PNG)',
-        filters: [{ name: 'PNG 图片', extensions: ['png'] }],
-        properties: ['openFile'],
-      })
-      if (result.canceled || result.filePaths.length === 0) {
-        return { success: false, canceled: true }
+      let filePath = typeof sourcePath === 'string' && sourcePath.trim() ? sourcePath : ''
+      if (!filePath) {
+        const result = await dialog.showOpenDialog({
+          title: '导入角色卡 (PNG)',
+          filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+          properties: ['openFile'],
+        })
+        if (result.canceled || result.filePaths.length === 0) {
+          return { success: false, canceled: true }
+        }
+        filePath = result.filePaths[0]
       }
-      const filePath = result.filePaths[0]
       const fileName = filePath.split(/[\\/]/).pop() || filePath
 
       safeSend(event.sender,IPC_EVENTS.characterImportProgress, {
@@ -180,17 +190,21 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
   })
 
   // 导入 JSON（UEX-P1-17：conflict 为同名冲突策略，默认另存副本，'overwrite' 仅用户显式选择）
-  ipcMain.handle('character:importJson', async (event, conflict?: ImportConflictPolicy) => {
+  // sourcePath：显式源文件路径，传入时不弹对话框（见 importPng 说明）。
+  ipcMain.handle('character:importJson', async (event, conflict?: ImportConflictPolicy, sourcePath?: string) => {
     try {
-      const result = await dialog.showOpenDialog({
-        title: '导入角色卡 (JSON)',
-        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-        properties: ['openFile'],
-      })
-      if (result.canceled || result.filePaths.length === 0) {
-        return { success: false, canceled: true }
+      let filePath = typeof sourcePath === 'string' && sourcePath.trim() ? sourcePath : ''
+      if (!filePath) {
+        const result = await dialog.showOpenDialog({
+          title: '导入角色卡 (JSON)',
+          filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+          properties: ['openFile'],
+        })
+        if (result.canceled || result.filePaths.length === 0) {
+          return { success: false, canceled: true }
+        }
+        filePath = result.filePaths[0]
       }
-      const filePath = result.filePaths[0]
       const fileName = filePath.split(/[\\/]/).pop() || filePath
 
       safeSend(event.sender,IPC_EVENTS.characterImportProgress, {
@@ -247,77 +261,91 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
   })
 
   // 导出 PNG（UEX-P1-18：返回 { ok, path?/error? }，导出结果不再静默）
-  ipcMain.handle('character:exportPng', async (_e, id: string) => {
+  // targetPath：显式目标路径，传入时不弹对话框（供外部 Agent / 自动化调用）。
+  ipcMain.handle('character:exportPng', async (_e, id: string, targetPath?: string) => {
     safeId(id)
     const character = getCharacter(id)
     if (!character) throw new Error('角色不存在')
-    const result = await dialog.showSaveDialog({
-      title: '导出角色卡',
-      defaultPath: `${character.name}.png`,
-      filters: [{ name: 'PNG 图片', extensions: ['png'] }],
-    })
-    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    let filePath = typeof targetPath === 'string' && targetPath.trim() ? targetPath : ''
+    if (!filePath) {
+      const result = await dialog.showSaveDialog({
+        title: '导出角色卡',
+        defaultPath: `${character.name}.png`,
+        filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+      filePath = result.filePath
+    }
     try {
-      exportCharacterToPng(character, result.filePath)
+      exportCharacterToPng(character, filePath)
     } catch (e) {
       // UEX-P1-18：写入失败回传原因，不再向上冒泡为静默 IPC reject
       const error = (e as Error).message
       log.warn('角色 PNG 导出失败', { id, error })
       return { ok: false, error }
     }
-    log.info('角色已导出 (PNG)', { id, name: character.name, path: result.filePath })
-    return { ok: true, path: result.filePath }
+    log.info('角色已导出 (PNG)', { id, name: character.name, path: filePath })
+    return { ok: true, path: filePath }
   })
 
   // 导出 JSON（UEX-P1-18：返回 { ok, path?/error? }，导出结果不再静默）
-  ipcMain.handle('character:exportJson', async (_e, id: string) => {
+  ipcMain.handle('character:exportJson', async (_e, id: string, targetPath?: string) => {
     safeId(id)
     const character = getCharacter(id)
     if (!character) throw new Error('角色不存在')
-    const result = await dialog.showSaveDialog({
-      title: '导出角色卡',
-      defaultPath: `${character.name}.json`,
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-    })
-    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    let filePath = typeof targetPath === 'string' && targetPath.trim() ? targetPath : ''
+    if (!filePath) {
+      const result = await dialog.showSaveDialog({
+        title: '导出角色卡',
+        defaultPath: `${character.name}.json`,
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+      filePath = result.filePath
+    }
     try {
-      exportCharacterToJson(character, result.filePath)
+      exportCharacterToJson(character, filePath)
     } catch (e) {
       // UEX-P1-18：写入失败回传原因，不再向上冒泡为静默 IPC reject
       const error = (e as Error).message
       log.warn('角色 JSON 导出失败', { id, error })
       return { ok: false, error }
     }
-    log.info('角色已导出 (JSON)', { id, name: character.name, path: result.filePath })
-    return { ok: true, path: result.filePath }
+    log.info('角色已导出 (JSON)', { id, name: character.name, path: filePath })
+    return { ok: true, path: filePath }
   })
 
   // 导出封面图片
-  ipcMain.handle('character:exportCover', async (_e, id: string) => {
+  ipcMain.handle('character:exportCover', async (_e, id: string, targetPath?: string) => {
     safeId(id)
     const character = getCharacter(id)
     if (!character) throw new Error('角色不存在')
     const ext = getCoverExtension(character)
     if (!ext) return { ok: false, error: '该角色没有可导出的封面图片' }
-    const result = await dialog.showSaveDialog({
-      title: '导出封面图片',
-      defaultPath: `${character.name}-封面.${ext}`,
-      filters: [{ name: `${ext.toUpperCase()} 图片`, extensions: [ext] }],
-    })
-    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    let filePath = typeof targetPath === 'string' && targetPath.trim() ? targetPath : ''
+    if (!filePath) {
+      const result = await dialog.showSaveDialog({
+        title: '导出封面图片',
+        defaultPath: `${character.name}-封面.${ext}`,
+        filters: [{ name: `${ext.toUpperCase()} 图片`, extensions: [ext] }],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+      filePath = result.filePath
+    }
     try {
-      exportCharacterCover(character, result.filePath)
+      exportCharacterCover(character, filePath)
     } catch (e) {
       const error = (e as Error).message
       log.warn('角色封面导出失败', { id, error })
       return { ok: false, error }
     }
-    log.info('角色封面已导出', { id, name: character.name, path: result.filePath })
-    return { ok: true }
+    log.info('角色封面已导出', { id, name: character.name, path: filePath })
+    return { ok: true, path: filePath }
   })
 
   // 批量导入（UEX-P1-17：conflict 为同名冲突策略，默认另存副本，'overwrite' 仅用户显式选择）
-  ipcMain.handle('character:importBatch', async (event, conflict?: ImportConflictPolicy) => {
+  // sourcePaths：显式源文件列表，传入时不弹对话框（见 importPng 说明）。
+  ipcMain.handle('character:importBatch', async (event, conflict?: ImportConflictPolicy, sourcePaths?: string[]) => {
     // UEX-P2-04：防重入兜底——已有导入批次进行中时直接拒绝（UI 侧另有导入入口禁用）
     if (currentImportBatch) {
       return { success: false, error: '已有导入任务进行中' }
@@ -326,18 +354,24 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
     const batch: ImportBatchState = { controller: new AbortController(), canceled: false }
     currentImportBatch = batch
     try {
-      const result = await dialog.showOpenDialog({
-        title: '批量导入角色卡',
-        filters: [
-          { name: '角色卡文件', extensions: ['png', 'json'] },
-        ],
-        properties: ['openFile', 'multiSelections'],
-      })
-      if (result.canceled || result.filePaths.length === 0) {
-        return { success: false, canceled: true }
+      let filePaths = Array.isArray(sourcePaths)
+        ? sourcePaths.filter((item) => typeof item === 'string' && item.trim())
+        : []
+      if (filePaths.length === 0) {
+        const result = await dialog.showOpenDialog({
+          title: '批量导入角色卡',
+          filters: [
+            { name: '角色卡文件', extensions: ['png', 'json'] },
+          ],
+          properties: ['openFile', 'multiSelections'],
+        })
+        if (result.canceled || result.filePaths.length === 0) {
+          return { success: false, canceled: true }
+        }
+        filePaths = result.filePaths
       }
 
-      const total = result.filePaths.length
+      const total = filePaths.length
       const batchResults: { name: string; success: boolean; error?: string; needAvatar?: boolean; outcome?: ImportOutcome; note?: string }[] = []
       let successCount = 0
       let failCount = 0
@@ -347,7 +381,6 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
       let overwrittenCount = 0
 
       const proxyUrl = getCoverProxyUrl()
-      const filePaths = result.filePaths
 
       // ===== 阶段1: 并行解析所有文件 =====
       interface ParsedFile {
@@ -558,3 +591,6 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return result
   })
 }
+
+
+

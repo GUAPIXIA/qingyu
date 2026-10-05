@@ -204,6 +204,23 @@ describe('character IPC', () => {
       const result = await handlers['character:exportJson'](null, 'test-char-001')
       expect(result).toEqual({ ok: false, error: '磁盘只读' })
     })
+
+    // 免对话框：传入 targetPath 时不得弹对话框（供外部 Agent / 自动化调用）
+    it('传入 targetPath 时不弹对话框，直接写该路径', async () => {
+      mockExportCharacterToJson.mockImplementation(() => {})
+      const result = await handlers['character:exportJson'](null, 'test-char-001', '/tmp/auto.json')
+      expect(mockDialog.showSaveDialog).not.toHaveBeenCalled()
+      expect(mockExportCharacterToJson).toHaveBeenCalledWith(mockCharacter, '/tmp/auto.json')
+      expect(result).toEqual({ ok: true, path: '/tmp/auto.json' })
+    })
+
+    it('targetPath 为空字符串时仍走对话框（不被当成显式路径）', async () => {
+      mockExportCharacterToJson.mockImplementation(() => {})
+      mockDialog.showSaveDialog.mockResolvedValue({ canceled: false, filePath: '/tmp/out.json' })
+      const result = await handlers['character:exportJson'](null, 'test-char-001', '   ')
+      expect(mockDialog.showSaveDialog).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({ ok: true, path: '/tmp/out.json' })
+    })
   })
 
   describe('character:exportPng', () => {
@@ -264,7 +281,19 @@ describe('character IPC', () => {
         filters: [{ name: 'JPG 图片', extensions: ['jpg'] }],
       }))
       expect(mockExportCharacterCover).toHaveBeenCalledWith(mockCharacter, '/tmp/out.jpg')
-      expect(result).toEqual({ ok: true })
+      // 免对话框改动：导出结果统一回传落盘路径
+      expect(result).toEqual({ ok: true, path: '/tmp/out.jpg' })
+    })
+
+    it('传入 targetPath 时不弹对话框，直接写该路径', async () => {
+      mockGetCoverExtension.mockReturnValue('png')
+      mockExportCharacterCover.mockImplementation(() => {})
+
+      const result = await handlers['character:exportCover'](null, 'test-char-001', '/tmp/auto-cover.png')
+
+      expect(mockDialog.showSaveDialog).not.toHaveBeenCalled()
+      expect(mockExportCharacterCover).toHaveBeenCalledWith(mockCharacter, '/tmp/auto-cover.png')
+      expect(result).toEqual({ ok: true, path: '/tmp/auto-cover.png' })
     })
 
     it('用户取消时返回 canceled 且不写文件', async () => {
@@ -383,6 +412,28 @@ describe('character IPC', () => {
   // ===== UEX-P1-17：导入查重（相同跳过、冲突副本、显式覆盖） =====
   describe('character:importJson（UEX-P1-17 导入查重）', () => {
     const mockEvent = { sender: {} }
+
+    // 免对话框：传入 sourcePath 时不得弹对话框
+    it('传入 sourcePath 时不弹对话框，直接读该文件', async () => {
+      mockResolveConflict.mockImplementation((incoming: Record<string, unknown>) => ({
+        outcome: 'imported',
+        character: incoming,
+      }))
+
+      const result = (await handlers['character:importJson'](mockEvent, 'copy', '/cards/auto.json')) as Record<string, unknown>
+
+      expect(mockDialog.showOpenDialog).not.toHaveBeenCalled()
+      expect(result).toMatchObject({ success: true, outcome: 'imported' })
+    })
+
+    it('sourcePath 为空白时仍走对话框', async () => {
+      mockDialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ['/cards/a.json'] })
+      mockResolveConflict.mockImplementation((incoming: Record<string, unknown>) => ({ outcome: 'imported', character: incoming }))
+
+      await handlers['character:importJson'](mockEvent, 'copy', '   ')
+
+      expect(mockDialog.showOpenDialog).toHaveBeenCalledTimes(1)
+    })
 
     it('内容相同 → 跳过：不落盘，回传 outcome/note 明细「已存在相同角色：{name}」', async () => {
       mockDialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ['/cards/a.json'] })

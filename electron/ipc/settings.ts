@@ -23,6 +23,7 @@ import { app } from 'electron'
 import { notifyGroupSpatialActorsChanged } from '../services/groupLifecycle'
 import { randomUUID } from 'node:crypto'
 import { hashSpatialValue } from '../features/spatial/repository'
+import { notifySettingsChanged } from './changeBroadcast'
 
 const log = createLogger('settings')
 
@@ -195,6 +196,8 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     })
     log.info('设置已保存', { activeProfileId: settings.activeProfileId || '(none)', theme: settings.theme })
     if (spatialSourceChanged) notifyGroupSpatialActorsChanged()
+    // F3：主进程侧写入设置后广播，已加载界面无需重启即可看到（渲染层仅在本地无未保存改动时重载）
+    notifySettingsChanged()
   })
 
   // 保存凭据（加密）
@@ -219,19 +222,24 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
   })
 
   // 导出备份 - S1 Backup V2：zip + manifest + 哈希校验；兼容 V1 json 兜底
-  safeHandle(ipcMain, 'settings:exportBackup', async () => {
-    const result = await dialog.showSaveDialog({
-      title: '导出备份（Backup V2）',
-      defaultPath: `qingyu-backup-v2-${Date.now()}.zip`,
-      filters: [
-        { name: 'ZIP 备份 (推荐)', extensions: ['zip'] },
-        { name: 'JSON 备份 (旧版兼容)', extensions: ['json'] },
-      ],
-    })
-    if (result.canceled || !result.filePath) return { status: 'canceled' as const }
+  // targetPath：显式目标路径，传入时不弹系统对话框（供外部 Agent / 自动化调用）。
+  safeHandle(ipcMain, 'settings:exportBackup', async (_e, targetPath?: string) => {
+    let chosenPath = typeof targetPath === 'string' && targetPath.trim() ? targetPath : ''
+    if (!chosenPath) {
+      const result = await dialog.showSaveDialog({
+        title: '导出备份（Backup V2）',
+        defaultPath: `qingyu-backup-v2-${Date.now()}.zip`,
+        filters: [
+          { name: 'ZIP 备份 (推荐)', extensions: ['zip'] },
+          { name: 'JSON 备份 (旧版兼容)', extensions: ['json'] },
+        ],
+      })
+      if (result.canceled || !result.filePath) return { status: 'canceled' as const }
+      chosenPath = result.filePath
+    }
 
     // 若用户选择 .json，仍走 V1 旧逻辑（兼容）
-    if (result.filePath.toLowerCase().endsWith('.json')) {
+    if (chosenPath.toLowerCase().endsWith('.json')) {
       const backup: Record<string, unknown> = { version: 1, timestamp: Date.now() }
       const settings = readJson<Settings>(SETTINGS_FILE(), 'settings')
       if (settings) stripSecrets(settings, false)
@@ -252,31 +260,34 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
         backup.presets = readdirSync(presetDir).filter((f: string) => f.endsWith('.json')).map((f: string) => readJson(join(presetDir, f)))
       }
       // sync-bypass-ok: 导出到用户选择的 userData 之外路径，不属于同步业务数据写入
-      writeFileSync(result.filePath, JSON.stringify(backup, null, 2), 'utf-8')
-      log.info('备份已导出 (V1 JSON)', { path: result.filePath })
-      return { status: 'success' as const, path: result.filePath, version: 1 as const }
+      writeFileSync(chosenPath, JSON.stringify(backup, null, 2), 'utf-8')
+      log.info('备份已导出 (V1 JSON)', { path: chosenPath })
+      return { status: 'success' as const, path: chosenPath, version: 1 as const }
     }
 
     // V2 zip
-    const zipPath = result.filePath.toLowerCase().endsWith('.zip') ? result.filePath : `${result.filePath}.zip`
+    const zipPath = chosenPath.toLowerCase().endsWith('.zip') ? chosenPath : `${chosenPath}.zip`
     const { counts, totalBytes, excluded } = createBackupV2(zipPath)
     return { status: 'success' as const, path: zipPath, version: 2 as const, counts, totalBytes, excluded, manifest: { counts, totalBytes, excluded } }
   })
 
   // 导入备份 - S1 Backup V2：支持 .zip(V2) + .json(V1 兼容)；V2 含哈希校验与 safeId 校验
-  safeHandle(ipcMain, 'settings:importBackup', async (event) => {
-    const result = await dialog.showOpenDialog({
-      title: '导入备份',
-      filters: [
-        { name: '备份文件', extensions: ['zip', 'json'] },
-        { name: 'ZIP 备份', extensions: ['zip'] },
-        { name: 'JSON 备份', extensions: ['json'] },
-      ],
-      properties: ['openFile'],
-    })
-    if (result.canceled || result.filePaths.length === 0) return { status: 'canceled' as const }
-
-    const filePath = result.filePaths[0]
+  // sourcePath：显式源文件路径，传入时不弹系统对话框（供外部 Agent / 自动化调用）。
+  safeHandle(ipcMain, 'settings:importBackup', async (event, sourcePathOverride?: string) => {
+    let filePath = typeof sourcePathOverride === 'string' && sourcePathOverride.trim() ? sourcePathOverride : ''
+    if (!filePath) {
+      const result = await dialog.showOpenDialog({
+        title: '导入备份',
+        filters: [
+          { name: '备份文件', extensions: ['zip', 'json'] },
+          { name: 'ZIP 备份', extensions: ['zip'] },
+          { name: 'JSON 备份', extensions: ['json'] },
+        ],
+        properties: ['openFile'],
+      })
+      if (result.canceled || result.filePaths.length === 0) return { status: 'canceled' as const }
+      filePath = result.filePaths[0]
+    }
     const stat = statSync(filePath)
     const isZip = filePath.toLowerCase().endsWith('.zip')
     const limit = isZip ? MAX_BACKUP_SIZE_V2 : MAX_BACKUP_SIZE_V1
@@ -336,3 +347,4 @@ export function registerSettingsIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return { status: 'success' as const, version: 1 as const, counts: { characters: chars.length, lorebooks: lorebooks.length, presets: presets.length } }
   })
 }
+

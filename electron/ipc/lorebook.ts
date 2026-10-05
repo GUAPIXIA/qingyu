@@ -113,7 +113,8 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return readFileSync(sourcePath, 'utf-8')
   }
 
-  const importJsonDetailed = async (options?: LorebookImportOptions) => {
+  // sourcePath：显式源文件路径，传入时不弹系统对话框（供外部 Agent / 自动化调用）
+  const importJsonDetailed = async (options?: LorebookImportOptions, sourcePathOverride?: string) => {
     let parsed: unknown
     let fileName = ''
     if (options?.pendingId) {
@@ -123,14 +124,16 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
       parsed = source.parsed
       fileName = source.fileName
     } else {
-      const result = await dialog.showOpenDialog({
-        title: '导入世界书',
-        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-        properties: ['openFile'],
-      })
-      if (result.canceled || result.filePaths.length === 0) return null
-
-      const sourcePath = result.filePaths[0]
+      let sourcePath = typeof sourcePathOverride === 'string' && sourcePathOverride.trim() ? sourcePathOverride : ''
+      if (!sourcePath) {
+        const result = await dialog.showOpenDialog({
+          title: '导入世界书',
+          filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+          properties: ['openFile'],
+        })
+        if (result.canceled || result.filePaths.length === 0) return null
+        sourcePath = result.filePaths[0]
+      }
       fileName = sourcePath.split(/[\\/]/).pop() ?? ''
       const raw = readImportFile(sourcePath)
 
@@ -208,7 +211,7 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     })
     return { lorebook, detection: imported.detection, report: imported.report }
   }
-  ipcMain.handle('lorebook:importJsonDetailed', (_e, options?: LorebookImportOptions) => importJsonDetailed(options))
+  ipcMain.handle('lorebook:importJsonDetailed', (_e, options?: LorebookImportOptions, sourcePath?: string) => importJsonDetailed(options, sourcePath))
 
   // ===================== 阶段 6 P2：映射向导 =====================
   // 打开的导入源在主进程内存中短暂缓存（renderer 不接触文件路径），
@@ -229,14 +232,18 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return value
   }
 
-  ipcMain.handle('lorebook:openMappingSource', async () => {
-    const result = await dialog.showOpenDialog({
-      title: '映射向导导入世界书',
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-      properties: ['openFile'],
-    })
-    if (result.canceled || result.filePaths.length === 0) return null
-    const sourcePath = result.filePaths[0]
+  // sourcePath：显式源文件路径，传入时不弹对话框
+  ipcMain.handle('lorebook:openMappingSource', async (_e, sourcePathOverride?: string) => {
+    let sourcePath = typeof sourcePathOverride === 'string' && sourcePathOverride.trim() ? sourcePathOverride : ''
+    if (!sourcePath) {
+      const result = await dialog.showOpenDialog({
+        title: '映射向导导入世界书',
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+        properties: ['openFile'],
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      sourcePath = result.filePaths[0]
+    }
     const raw = readImportFile(sourcePath)
     let parsed: unknown
     try {
@@ -306,7 +313,8 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
 
 
   // 导出：默认回到来源 adapter；来源不可用时导出 canonical v2。
-  ipcMain.handle('lorebook:exportJson', async (_e, id: string, requestedAdapterId?: string) => {
+  // targetPath：显式目标路径，传入时不弹系统对话框（供外部 Agent / 自动化调用）。
+  ipcMain.handle('lorebook:exportJson', async (_e, id: string, requestedAdapterId?: string, targetPath?: string) => {
     safeId(id)
     const document = readLorebookDocument(join(DIRS.lorebooks(), `${id}.json`))
     if (!document) throw new Error('世界书不存在或文件已损坏')
@@ -322,13 +330,17 @@ export function registerLorebookIPC(ipcMain: IpcMain, dialog: Dialog): void {
       .join('')
       .replace(/[<>:"/\\|?*]/g, '_')
       .trim() || document.id
-    const result = await dialog.showSaveDialog({
-      title: '导出世界书',
-      defaultPath: `${safeName}.json`,
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-    })
-    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
-    const outputPath = result.filePath.toLowerCase().endsWith('.json') ? result.filePath : `${result.filePath}.json`
+    let chosenPath = typeof targetPath === 'string' && targetPath.trim() ? targetPath : ''
+    if (!chosenPath) {
+      const result = await dialog.showSaveDialog({
+        title: '导出世界书',
+        defaultPath: `${safeName}.json`,
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+      chosenPath = result.filePath
+    }
+    const outputPath = chosenPath.toLowerCase().endsWith('.json') ? chosenPath : `${chosenPath}.json`
     // 导出目标是用户选择的路径，位于同步域数据目录之外、不属于同步实体：
     // 不写 journal，但仍走统一原子写工具（同目录 tmp + rename），不使用原始写函数。
     writeFileAtomic(outputPath, JSON.stringify(exported.value, null, 2))

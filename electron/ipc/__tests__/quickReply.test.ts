@@ -93,4 +93,21 @@ describe('quickReply IPC', () => {
       expect(input.deletes).toEqual([{ entityId: 'qr-char-c1' }])
     })
   })
+
+  // 免对话框：传入路径时不得弹对话框（供外部 Agent / 自动化调用）
+  // 说明：quickReply 的导出走动态 `import('electron')` 取 dialog，测试环境无法注入该 dialog，
+  // 因此这里只断言「传路径时不弹对话框」；「不传路径仍弹对话框」由 character 单测与 io.lifecycle 守卫步骤覆盖。
+  describe('quickReply 导出/导入免对话框', () => {
+    it('exportJson 传入 targetPath 时不弹对话框', async () => {
+      const result = (await handlers['quickReply:exportJson'](null, '/tmp/qr-auto.json')) as Record<string, unknown>
+      expect(mockDialog.showSaveDialog).not.toHaveBeenCalled()
+      expect(result).toMatchObject({ ok: true, path: '/tmp/qr-auto.json' })
+    })
+
+    it('importJson 传入 sourcePath 时不弹对话框', async () => {
+      const result = (await handlers['quickReply:importJson'](null, '/tmp/qr-auto.json')) as Record<string, unknown>
+      expect(mockDialog.showOpenDialog).not.toHaveBeenCalled()
+      expect(result.ok).toBe(true)
+    })
+  })
 })

@@ -327,16 +327,19 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
     log.info('预设已删除', { id })
   })
 
-  // 导入
-  ipcMain.handle('preset:importJson', async () => {
-    const result = await dialog.showOpenDialog({
-      title: '导入预设',
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-      properties: ['openFile'],
-    })
-    if (result.canceled || result.filePaths.length === 0) return null
+  // 导入（sourcePath：显式源文件路径，传入时不弹系统对话框）
+  ipcMain.handle('preset:importJson', async (_e, sourcePathOverride?: string) => {
+    let sourcePath = typeof sourcePathOverride === 'string' && sourcePathOverride.trim() ? sourcePathOverride : ''
+    if (!sourcePath) {
+      const result = await dialog.showOpenDialog({
+        title: '导入预设',
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+        properties: ['openFile'],
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      sourcePath = result.filePaths[0]
+    }
     const fs = await import('node:fs')
-    const sourcePath = result.filePaths[0]
     const raw = fs.readFileSync(sourcePath, 'utf-8')
     const parsed = JSON.parse(raw) as Record<string, unknown>
     const imported = normalizeImportedPreset(parsed, {
@@ -353,8 +356,8 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
     return imported
   })
 
-  // 导出单个预设到 JSON
-  ipcMain.handle('preset:exportJson', async (_e, id: string) => {
+  // 导出单个预设到 JSON（targetPath：显式目标路径，传入时不弹系统对话框）
+  ipcMain.handle('preset:exportJson', async (_e, id: string, targetPath?: string) => {
     safeId(id)
     const { readFileSync } = await import('node:fs')
     const { dialog: d } = await import('electron')
@@ -367,16 +370,20 @@ export function registerPresetIPC(ipcMain: IpcMain, dialog: Dialog): void {
       preset = JSON.parse(raw) as Preset
     }
     if (!preset) return { ok: false, error: '预设不存在' }
-    const result = await d.showSaveDialog({
-      title: '导出预设',
-      defaultPath: `${preset.name}.json`,
-      filters: [{ name: 'JSON 文件', extensions: ['json'] }],
-    })
-    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    let chosenPath = typeof targetPath === 'string' && targetPath.trim() ? targetPath : ''
+    if (!chosenPath) {
+      const result = await d.showSaveDialog({
+        title: '导出预设',
+        defaultPath: `${preset.name}.json`,
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+      chosenPath = result.filePath
+    }
     // 导出目标是用户选择的路径，位于同步域数据目录之外、不属于同步实体：
     // 不写 journal，但仍走统一原子写工具（同目录 tmp + rename），不使用原始写函数。
-    writeFileAtomic(result.filePath, JSON.stringify(preset, null, 2))
-    log.info('预设已导出', { id: preset.id, name: preset.name })
-    return { ok: true }
+    writeFileAtomic(chosenPath, JSON.stringify(preset, null, 2))
+    log.info('预设已导出', { id: preset.id, name: preset.name, path: chosenPath })
+    return { ok: true, path: chosenPath }
   })
 }
