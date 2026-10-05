@@ -130,7 +130,7 @@ function main() {
   fs.mkdirSync(path.dirname(outPath), { recursive: true })
   fs.writeFileSync(outPath, notes, 'utf8')
   console.log(`[release-notes] 已生成 ${path.relative(ROOT, outPath)}（版本 ${version}，正文取自 CHANGELOG.md）`)
-  console.log(`[release-notes] 发布命令见 docs/规范/项目更新与上传规范.md §十`)
+  console.log(`[release-notes] 发版步骤见 docs/规范/项目更新与上传规范.md §三，格式约定见 §四.1`)
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
