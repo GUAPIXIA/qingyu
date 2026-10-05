@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.18.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.20.0-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -42,7 +42,7 @@ PC 主仓通过 Git 子模块挂载 shared 与 android（实际拓扑，2026-10-
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
-| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.18.0 |
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.20.0 |
 | **共享核心** | `shared/` 与 `android/shared/` | `GUAPIXIA/qingyu-shared`（子模块，**两个挂载点**） | chat-core 纯逻辑、跨端契约与 fixture | — |
 | **安卓客户端** | `android/` | `GUAPIXIA/qingyu-android`（子模块） | 独立本地客户端（内部再挂载 shared） | v0.3.0 (build 9) |
 | **Relay 服务** | `relay-server/` | 同一仓库 | HTTPS/WSS 中转、离线缓存与短时消息队列 | v0.1.0 |
@@ -271,3 +271,4 @@ qingyu/
 ## 📄 开源协议
 
 [MIT License](LICENSE)
+
