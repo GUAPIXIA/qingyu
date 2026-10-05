@@ -6,6 +6,7 @@ import { useCharacterStore } from '../../store/useCharacterStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
+import { formatTime } from '../../utils/format'
 import { getDisplayName } from '../../../shared/chat-core/variables'
 import { extractThought } from '../../../shared/chat-core/messagePostProcess'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
@@ -192,7 +193,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
             )}
             {isStreaming && <span className="text-tavern-accent">生成中...</span>}
             <span>
-              {new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+              {formatTime(message.timestamp)}
             </span>
             {isUser && message.status === 'sending' && (
               <Loader2 className="w-3 h-3 animate-spin text-tavern-text-muted" />

@@ -14,6 +14,24 @@ import { isFeatureTaskCancelled } from '../../services/featureTaskLifecycle'
 import { assertFeatureCommit, matchesFeatureSource, compressionVersion, type FeatureCommit } from '../../../shared/featureSource'
 import { exportSessionJson, exportSessionMarkdown } from '../../../shared/chat-core/sessionExport'
 import { withMessageIdentity } from '../../../shared/messageIdentity'
+
+/**
+ * F4：补齐渲染层必需字段，避免不完整消息（外部 IPC 写入 / 旧数据）在渲染时崩页。
+ * - `timestamp`：非法或缺失 → 取当前时间（渲染层仍对无效值降级，这里是写入边界的第一道防线）
+ * - `images`：非数组 → 空数组
+ * - `isEditing`：非布尔 → false
+ */
+function withRenderSafeMessage<T extends { timestamp?: unknown; images?: unknown; isEditing?: unknown }>(message: T): T {
+  const timestamp = typeof message.timestamp === 'number' && Number.isFinite(message.timestamp)
+    ? message.timestamp
+    : Date.now()
+  return {
+    ...message,
+    timestamp,
+    images: Array.isArray(message.images) ? message.images : [],
+    isEditing: typeof message.isEditing === 'boolean' ? message.isEditing : false,
+  }
+}
 import { readJson } from '../../services/storage'
 import { notifyChatSpatialSourceChanged } from '../../services/chatLifecycle'
 import { safeId } from '../../utils/pathGuard'
@@ -63,7 +81,10 @@ export async function saveMessage(message: Message): Promise<void> {
 
   // L-05 修复：updateMessage 返回是否为新消息，消除重复读取
   // BUG-10 修复：消息文件写入与删除等操作通过 per-file 锁串行化
-  const normalizedMessage = withMessageIdentity(message)
+  // F4 修复：写入边界补齐渲染必需的字段（timestamp/images/isEditing）——
+  // 此前外部 IPC 传入的不完整消息会落盘，渲染时 `format(undefined)` 抛
+  // `RangeError: Invalid time value` 击穿整页 ErrorBoundary。
+  const normalizedMessage = withRenderSafeMessage(withMessageIdentity(message))
   await withSessionFileLock(message.characterId, sid, () => {
     updateMessage(message.characterId, sid, normalizedMessage)
   })

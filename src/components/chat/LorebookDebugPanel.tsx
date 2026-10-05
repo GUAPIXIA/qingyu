@@ -54,6 +54,8 @@ function outcomeLabel(detail: LoreTriggerDetail): string {
 }
 
 function formatTime(timestamp: number): string {
+  // F4：无效时间戳不能抛错（Intl.format(undefined) 会抛 RangeError 击穿整页）
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) return ''
   return new Intl.DateTimeFormat('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
