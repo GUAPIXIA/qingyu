@@ -31,6 +31,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "version:status": "node scripts/version.mjs status",
+    "release:notes": "node scripts/release-notes.mjs",
     "version:patch": "node scripts/version.mjs patch",
     "version:minor": "node scripts/version.mjs minor",
     "version:android": "node scripts/version.mjs android",
