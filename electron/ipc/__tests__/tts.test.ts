@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-test' },
 }))
 
-import { openaiSpeak, OPENAI_VOICES } from '../tts'
+import { openaiSpeak, OPENAI_VOICES, xiaomiSpeak, XIAOMI_VOICES } from '../tts'
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn())
@@ -80,6 +80,85 @@ describe('OPENAI_VOICES', () => {
     expect(ids).toContain('nova')
     expect(ids).toContain('onyx')
     expect(ids.length).toBeGreaterThanOrEqual(6)
+  })
+})
+
+describe('xiaomiSpeak（小米 MiMo TTS）', () => {
+  const okResponse = (audio: string) =>
+    new Response(JSON.stringify({ choices: [{ message: { audio: { data: audio } } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+  it('请求构造正确（POST /chat/completions + messages/audio + Bearer）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse('AQID'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const base64 = await xiaomiSpeak(
+      { baseUrl: 'https://api.xiaomimimo.com/v1', apiKey: 'sk-x', model: 'mimo-v2.5-tts', voice: '冰糖' },
+      '你好世界',
+    )
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.xiaomimimo.com/v1/chat/completions')
+    expect(init.method).toBe('POST')
+    expect(init.headers.Authorization).toBe('Bearer sk-x')
+    const body = JSON.parse(init.body)
+    expect(body.model).toBe('mimo-v2.5-tts')
+    // 文本在 assistant 消息里（不是 OpenAI 的 input 字段）
+    expect(body.messages).toEqual([{ role: 'assistant', content: '你好世界' }])
+    // 音频参数在 audio 对象里
+    expect(body.audio).toEqual({ format: 'mp3', voice: '冰糖' })
+    expect(body.input).toBeUndefined()
+    // 音频来自 choices[0].message.audio.data
+    expect(base64).toBe('AQID')
+  })
+
+  it('baseUrl 尾部斜杠兼容 + 默认值兜底', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse('AQID'))
+    vi.stubGlobal('fetch', fetchMock)
+    await xiaomiSpeak({ baseUrl: 'https://api.xiaomimimo.com/v1/', apiKey: 'k', model: '', voice: '' }, 'x')
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.xiaomimimo.com/v1/chat/completions')
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.model).toBe('mimo-v2.5-tts')
+    expect(body.audio.voice).toBe('mimo_default')
+  })
+
+  it('超长输入截断（4000 字符）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse('AQID'))
+    vi.stubGlobal('fetch', fetchMock)
+    await xiaomiSpeak({ baseUrl: 'https://x/v1', apiKey: 'k', model: 'm', voice: 'v' }, 'x'.repeat(5000))
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.messages[0].content.length).toBe(4000)
+  })
+
+  it('无 API Key 直接抛错（不发请求）', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(xiaomiSpeak({ baseUrl: 'https://x/v1', apiKey: '', model: 'm', voice: 'v' }, 'x')).rejects.toThrow('未配置 API Key')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('HTTP 错误抛错并带状态码', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('invalid api key', { status: 401 })))
+    await expect(xiaomiSpeak({ baseUrl: 'https://x/v1', apiKey: 'k', model: 'm', voice: 'v' }, 'x')).rejects.toThrow('401')
+  })
+
+  it('响应缺少 audio.data 时抛明确错误', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: 'no audio' } }] }), { status: 200 }),
+    ))
+    await expect(xiaomiSpeak({ baseUrl: 'https://x/v1', apiKey: 'k', model: 'm', voice: 'v' }, 'x')).rejects.toThrow('没有音频数据')
+  })
+})
+
+describe('XIAOMI_VOICES', () => {
+  it('包含官方内置音色与默认音色', () => {
+    const ids = XIAOMI_VOICES.map((v) => v.id)
+    expect(ids).toContain('mimo_default')
+    expect(ids).toContain('冰糖')
+    expect(ids).toContain('Mia')
+    expect(ids.length).toBeGreaterThanOrEqual(9)
   })
 })
 

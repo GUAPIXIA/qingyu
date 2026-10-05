@@ -273,8 +273,7 @@ export const OPENAI_VOICES = [
 ] as const
 
 /** Edge TTS 常用音色（微软免费在线语音，无需 key） */
-export const EDGE_VOICES = [
-  { id: 'zh-CN-XiaoxiaoNeural', name: '晓晓（女·温暖）', lang: 'zh-CN' },
+export const EDGE_VOICES = [  { id: 'zh-CN-XiaoxiaoNeural', name: '晓晓（女·温暖）', lang: 'zh-CN' },
   { id: 'zh-CN-XiaoyiNeural', name: '晓伊（女·活泼）', lang: 'zh-CN' },
   { id: 'zh-CN-YunxiNeural', name: '云希（男·阳光）', lang: 'zh-CN' },
   { id: 'zh-CN-YunjianNeural', name: '云健（男·沉稳）', lang: 'zh-CN' },
@@ -289,6 +288,30 @@ export const EDGE_VOICES = [
   { id: 'ja-JP-NanamiNeural', name: 'Nanami（女·日语）', lang: 'ja-JP' },
   { id: 'ko-KR-SunHiNeural', name: 'SunHi（女·韩语）', lang: 'ko-KR' },
 ] as const
+
+/**
+ * 小米 MiMo TTS 音色。
+ *
+ * 与 OpenAI 兼容 TTS 不同，小米走 `POST {baseUrl}/chat/completions`：
+ * 文本放在 `messages:[{role:'assistant',content}]`，音频参数放 `audio:{format,voice}`，
+ * 音频数据在响应 `choices[0].message.audio.data`（base64）。
+ * 参考：https://mimo.mi.com/static/docs/api/audio/tts.md
+ */
+export const XIAOMI_VOICES = [
+  { id: 'mimo_default', name: 'MiMo 默认', lang: 'zh-CN' },
+  { id: '冰糖', name: '冰糖（女）', lang: 'zh-CN' },
+  { id: '茉莉', name: '茉莉（女）', lang: 'zh-CN' },
+  { id: '苏打', name: '苏打（男）', lang: 'zh-CN' },
+  { id: '白桦', name: '白桦（男）', lang: 'zh-CN' },
+  { id: 'Mia', name: 'Mia（女·英文）', lang: 'en-US' },
+  { id: 'Chloe', name: 'Chloe（女·英文）', lang: 'en-US' },
+  { id: 'Milo', name: 'Milo（男·英文）', lang: 'en-US' },
+  { id: 'Dean', name: 'Dean（男·英文）', lang: 'en-US' },
+] as const
+
+/** 小米 MiMo TTS 默认模型与端点 */
+export const XIAOMI_TTS_DEFAULT_MODEL = 'mimo-v2.5-tts'
+export const XIAOMI_TTS_DEFAULT_BASE_URL = 'https://api.xiaomimimo.com/v1'
 
 /** OpenAI 兼容 TTS：POST {baseUrl}/audio/speech → mp3 base64 */
 export async function openaiSpeak(
@@ -317,6 +340,46 @@ export async function openaiSpeak(
   }
   const buf = await response.arrayBuffer()
   return Buffer.from(buf).toString('base64')
+}
+
+/**
+ * 小米 MiMo TTS：POST {baseUrl}/chat/completions → 音频在 choices[0].message.audio.data（base64）。
+ *
+ * 与 OpenAI 兼容 TTS 的差异（不要合并成一个实现）：
+ *  - 端点不同：小米没有 /audio/speech；
+ *  - 文本位置不同：小米放 `messages[role=assistant].content`，不是 `input`；
+ *  - 音频位置不同：小米在响应 JSON 里，不是响应体二进制。
+ *  - 无 `speed` 参数：语速由音色与文本决定，忽略 opts.rate。
+ */
+export async function xiaomiSpeak(
+  config: { baseUrl: string; apiKey: string; model: string; voice: string },
+  text: string,
+): Promise<string> {
+  if (!config.apiKey) throw new Error('小米 MiMo TTS 未配置 API Key')
+  const url = `${(config.baseUrl || XIAOMI_TTS_DEFAULT_BASE_URL).replace(/\/$/, '')}/chat/completions`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model || XIAOMI_TTS_DEFAULT_MODEL,
+      messages: [{ role: 'assistant', content: text.slice(0, 4000) }],
+      audio: { format: 'mp3', voice: config.voice || 'mimo_default' },
+    }),
+    signal: AbortSignal.timeout(60_000),
+  })
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`TTS 错误 ${response.status}: ${errText.slice(0, 300)}`)
+  }
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { audio?: { data?: string } | null } }>
+  }
+  const data = payload.choices?.[0]?.message?.audio?.data
+  if (!data) throw new Error('小米 MiMo TTS 响应中没有音频数据（choices[0].message.audio.data 为空）')
+  return data
 }
 
 /**
@@ -405,6 +468,21 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
         return { success: true, audioBase64 }
       }
 
+      // 小米 MiMo TTS（/chat/completions + audio）：返回 mp3 base64
+      if (opts.provider === 'xiaomi') {
+        const audioBase64 = await xiaomiSpeak(
+          {
+            baseUrl: opts.baseUrl || XIAOMI_TTS_DEFAULT_BASE_URL,
+            apiKey: opts.apiKey || '',
+            model: opts.model || XIAOMI_TTS_DEFAULT_MODEL,
+            voice: opts.voice || 'mimo_default',
+          },
+          text,
+        )
+        log.info('小米 MiMo TTS 朗读', { textLen: text.length, voice: opts.voice, model: opts.model })
+        return { success: true, audioBase64 }
+      }
+
       // 系统语音引擎（原逻辑）
       if (opts.voice) await sendCommand({ action: 'setVoice', voice: opts.voice })
       if (opts.rate !== undefined) await sendCommand({ action: 'setRate', rate: opts.rate })
@@ -454,6 +532,7 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
   ipcMain.handle('tts:getVoices', async (_e, provider?: string) => {
     if (provider === 'openai') return OPENAI_VOICES
     if (provider === 'edge') return EDGE_VOICES
+    if (provider === 'xiaomi') return XIAOMI_VOICES
     const voices = await getVoices()
     log.info('已获取语音列表', { count: voices.length })
     return voices

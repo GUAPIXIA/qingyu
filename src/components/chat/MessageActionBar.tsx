@@ -87,9 +87,9 @@ export const MessageActionBar = React.memo(function MessageActionBar({
       ? stripThoughtTags(message.content)
       : stripThought(message.content)
     if (!speakText.trim()) return
-    if (!ttsConfig) return    // OpenAI / Edge TTS：渲染进程直接控制音频播放（主进程返回 mp3 base64）
+    if (!ttsConfig) return    // OpenAI / Edge / 小米 MiMo TTS：渲染进程直接控制音频播放（主进程返回 mp3 base64）
     try {
-      if (ttsConfig.provider === 'openai' || ttsConfig.provider === 'edge') {
+      if (ttsConfig.provider === 'openai' || ttsConfig.provider === 'edge' || ttsConfig.provider === 'xiaomi') {
         if (ttsState === 'speaking') {
           audioRef.current?.pause()
           setTtsState('paused')
@@ -110,14 +110,23 @@ export const MessageActionBar = React.memo(function MessageActionBar({
                 // 代理按 TTS 配置（留空直连；代理失败主进程自动回退直连）
                 proxy: ttsConfig.proxy || undefined,
               }
-            : {
-                provider: 'openai',
-                voice: ttsConfig.voice || 'alloy',
-                rate: 1,
-                model: ttsConfig.model,
-                apiKey: ttsConfig.apiKey,
-                baseUrl: ttsConfig.baseUrl,
-              },
+            : ttsConfig.provider === 'xiaomi'
+              ? {
+                  provider: 'xiaomi',
+                  voice: ttsConfig.voice || 'mimo_default',
+                  rate: 1,
+                  model: ttsConfig.model || 'mimo-v2.5-tts',
+                  apiKey: ttsConfig.apiKey,
+                  baseUrl: ttsConfig.baseUrl || 'https://api.xiaomimimo.com/v1',
+                }
+              : {
+                  provider: 'openai',
+                  voice: ttsConfig.voice || 'alloy',
+                  rate: 1,
+                  model: ttsConfig.model,
+                  apiKey: ttsConfig.apiKey,
+                  baseUrl: ttsConfig.baseUrl,
+                },
         )
         if (res.success && res.audioBase64) {
           const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)

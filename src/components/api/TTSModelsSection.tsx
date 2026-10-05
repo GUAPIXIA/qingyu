@@ -13,10 +13,39 @@ const TTS_PROVIDERS = [
   { value: 'system' as const, label: '系统语音 (本地)', desc: 'Windows 内置语音（System.Speech）' },
   { value: 'edge' as const, label: 'Edge TTS', desc: '微软免费在线语音，音质好，无需 key' },
   { value: 'openai' as const, label: 'OpenAI TTS', desc: 'OpenAI 兼容 /audio/speech，需 API Key' },
+  { value: 'xiaomi' as const, label: '小米 MiMo TTS', desc: '小米 MiMo 语音合成（/chat/completions + audio），需 API Key' },
 ]
+
+/** 各 provider 的默认值（切换 provider 时套用，避免用户手填） */
+const PROVIDER_DEFAULTS: Record<TTSModelConfig['provider'], Partial<TTSModelConfig>> = {
+  system: { model: 'tts-1', voice: '', baseUrl: '' },
+  edge: { model: '', voice: 'zh-CN-XiaoxiaoNeural', baseUrl: '' },
+  openai: { model: 'tts-1', voice: 'alloy', baseUrl: 'https://api.openai.com/v1' },
+  xiaomi: { model: 'mimo-v2.5-tts', voice: 'mimo_default', baseUrl: 'https://api.xiaomimimo.com/v1' },
+}
+
+const PROVIDER_LABELS: Record<TTSModelConfig['provider'], string> = {
+  system: '系统语音',
+  edge: 'Edge TTS',
+  openai: 'OpenAI TTS',
+  xiaomi: '小米 MiMo TTS',
+}
 
 /** OpenAI TTS 预设音色 */
 const OPENAI_VOICE_OPTIONS = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'ash', 'ballad', 'coral', 'sage']
+
+/** 小米 MiMo TTS 音色（官方内置音色） */
+const XIAOMI_VOICE_OPTIONS = [
+  { id: 'mimo_default', label: 'MiMo 默认' },
+  { id: '冰糖', label: '冰糖（女）' },
+  { id: '茉莉', label: '茉莉（女）' },
+  { id: '苏打', label: '苏打（男）' },
+  { id: '白桦', label: '白桦（男）' },
+  { id: 'Mia', label: 'Mia（女·英文）' },
+  { id: 'Chloe', label: 'Chloe（女·英文）' },
+  { id: 'Milo', label: 'Milo（男·英文）' },
+  { id: 'Dean', label: 'Dean（男·英文）' },
+]
 
 /** Edge TTS 常用音色 */
 const EDGE_VOICE_OPTIONS = [
@@ -101,6 +130,22 @@ export function TTSModelsSection() {
         } else {
           setTestResult({ success: false, message: 'Edge TTS 未返回语音列表' })
         }
+      } else if (form.provider === 'xiaomi') {
+        // 小米 MiMo TTS：真正合成一句短语音来验证 key/端点/音色（比探测模型列表更准）
+        const res = await window.api.tts.speak('连接测试。', {
+          provider: 'xiaomi',
+          voice: form.voice || 'mimo_default',
+          rate: 1,
+          model: form.model || 'mimo-v2.5-tts',
+          apiKey: form.apiKey,
+          baseUrl: form.baseUrl || 'https://api.xiaomimimo.com/v1',
+        })
+        if (res.success) {
+          const kb = res.audioBase64 ? Math.round((res.audioBase64.length * 3) / 4 / 1024) : 0
+          setTestResult({ success: true, message: `连接成功，合成音频约 ${kb} KB` })
+        } else {
+          setTestResult({ success: false, message: res.error ?? '连接失败' })
+        }
       } else {
         // OpenAI TTS: 复用对话 API 测试连接
         const result = await window.api.ai.testConnection({
@@ -166,7 +211,7 @@ export function TTSModelsSection() {
     auditionUnsubRef.current?.()
     auditionUnsubRef.current = null
     // system 引擎：真正停止主进程播放
-    if (form.provider !== 'openai' && form.provider !== 'edge') {
+    if (form.provider !== 'openai' && form.provider !== 'edge' && form.provider !== 'xiaomi') {
       await window.api.tts.stop().catch(() => {})
     }
     setAuditioning(false)
@@ -182,7 +227,7 @@ export function TTSModelsSection() {
     try {
       const res = await window.api.tts.speak('你好，这是一段试听语音，用来检查当前音色效果。', {
         provider: form.provider,
-        voice: form.voice || (form.provider === 'openai' ? 'alloy' : 'zh-CN-XiaoxiaoNeural'),
+        voice: form.voice || (form.provider === 'openai' ? 'alloy' : form.provider === 'xiaomi' ? 'mimo_default' : 'zh-CN-XiaoxiaoNeural'),
         rate: 1,
         model: form.model,
         apiKey: form.apiKey,
@@ -250,7 +295,7 @@ export function TTSModelsSection() {
           {TTS_PROVIDERS.map((pr) => (
             <button
               key={pr.value}
-              onClick={() => setForm((f) => ({ ...f, provider: pr.value }))}
+              onClick={() => setForm((f) => ({ ...f, provider: pr.value, ...PROVIDER_DEFAULTS[pr.value] }))}
               className={cn(
                 'px-2.5 py-1 rounded text-xs border transition-colors',
                 form.provider === pr.value
@@ -265,8 +310,8 @@ export function TTSModelsSection() {
         </div>
       </div>
 
-      {/* OpenAI 特有字段 */}
-      {form.provider === 'openai' && (
+      {/* OpenAI / 小米 MiMo 特有字段 */}
+      {(form.provider === 'openai' || form.provider === 'xiaomi') && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -276,7 +321,7 @@ export function TTSModelsSection() {
                 className="input text-xs font-mono"
                 value={form.baseUrl}
                 onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
-                placeholder="https://api.openai.com/v1"
+                placeholder={form.provider === 'xiaomi' ? 'https://api.xiaomimimo.com/v1' : 'https://api.openai.com/v1'}
               />
             </div>
             <div>
@@ -307,7 +352,7 @@ export function TTSModelsSection() {
               className="input text-sm"
               value={form.model}
               onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-              placeholder="例如 tts-1、tts-1-hd"
+              placeholder={form.provider === 'xiaomi' ? '例如 mimo-v2.5-tts' : '例如 tts-1、tts-1-hd'}
             />
           </div>
         </>
@@ -324,6 +369,16 @@ export function TTSModelsSection() {
           >
             {OPENAI_VOICE_OPTIONS.map((v) => (
               <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        ) : form.provider === 'xiaomi' ? (
+          <select
+            className="select"
+            value={form.voice || 'mimo_default'}
+            onChange={(e) => setForm((f) => ({ ...f, voice: e.target.value }))}
+          >
+            {XIAOMI_VOICE_OPTIONS.map((v) => (
+              <option key={v.id} value={v.id}>{v.label}</option>
             ))}
           </select>
         ) : form.provider === 'edge' ? (
@@ -347,6 +402,11 @@ export function TTSModelsSection() {
         )}
         {form.provider === 'openai' && (
           <p className="text-xs text-tavern-text-muted mt-1">中文效果较好：nova（女）/ onyx（男）/ echo / fable</p>
+        )}
+        {form.provider === 'xiaomi' && (
+          <p className="text-xs text-tavern-text-muted mt-1">
+            小米 MiMo 语音合成（走 /chat/completions + audio，与 OpenAI 的 /audio/speech 不同）；语速由音色决定，不受朗读速率影响
+          </p>
         )}
         {form.provider === 'edge' && (
           <>
@@ -478,7 +538,7 @@ export function TTSModelsSection() {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-tavern-text truncate">{m.name}</div>
                   <div className="text-xs text-tavern-text-muted">
-                    {m.provider === 'openai' ? 'OpenAI TTS' : '系统语音'}
+                    {PROVIDER_LABELS[m.provider] ?? m.provider}
                     {m.voice ? ` · ${m.voice}` : ''}
                     {m.model ? ` · ${m.model}` : ''}
                   </div>
