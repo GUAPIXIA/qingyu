@@ -135,15 +135,16 @@ export async function deleteSession(characterId: string, sessionId: string): Pro
 }
 
 export async function renameSession(characterId: string, sessionId: string, title: string): Promise<void> {
+  // F2 修复：会话不存在时必须报错。此前 `if (session)` 无 else，外部调用方会拿到“成功”却什么都没发生。
+  if (typeof title !== 'string') throw new Error('参数无效：title 必须为字符串')
   return withSessionsLock(characterId, () => {
     const sessions = loadSessions(characterId)
     const session = sessions.find(s => s.id === sessionId)
-    if (session) {
-      session.title = title
-      session.titleRevision = (session.titleRevision ?? 0) + 1
-      session.updatedAt = Date.now()
-      saveSessions(characterId, sessions)
-    }
+    if (!session) throw new Error('会话不存在')
+    session.title = title
+    session.titleRevision = (session.titleRevision ?? 0) + 1
+    session.updatedAt = Date.now()
+    saveSessions(characterId, sessions)
   })
 }
 

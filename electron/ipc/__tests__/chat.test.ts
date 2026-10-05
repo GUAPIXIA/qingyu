@@ -26,8 +26,26 @@ afterEach(() => {
   rmSync('/tmp/qingyu-chat-test', { recursive: true, force: true })
 })
 
-describe('computeMessageMetaCached', () => {
-  it('消息写入边界补齐身份字段并对非法值安全回退', () => {
+describe('renameSession（F2 回归：不存在时必须报错，不再静默成功）', () => {
+  it('会话不存在 → 抛「会话不存在」', async () => {
+    await expect(chatData.renameSession('char-001', 'missing-session', '新标题')).rejects.toThrow('会话不存在')
+  })
+
+  it('会话存在 → 写回标题并递增 titleRevision', async () => {
+    const session = await chatData.createSession('char-001', '原标题')
+    await chatData.renameSession('char-001', session.id, '新标题')
+    const saved = (await chatData.listSessions('char-001')).find((item) => item.id === session.id)
+    expect(saved?.title).toBe('新标题')
+    expect((saved as { titleRevision?: number } | undefined)?.titleRevision).toBe(1)
+  })
+
+  it('title 非字符串 → 参数错误（不被静默忽略）', async () => {
+    const session = await chatData.createSession('char-001', '原标题')
+    await expect(chatData.renameSession('char-001', session.id, 123 as never)).rejects.toThrow('title 必须为字符串')
+  })
+})
+
+describe('computeMessageMetaCached', () => {  it('消息写入边界补齐身份字段并对非法值安全回退', () => {
     chatData.saveMessage('char-001', {
       id: 'identity-1', sessionId: 's1', characterId: 'char-001', role: 'user',
       content: '推动剧情', images: [], isEditing: false, timestamp: 1,
