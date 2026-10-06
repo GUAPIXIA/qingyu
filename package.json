@@ -16,6 +16,7 @@
     "check": "tsc -b --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "check:forwarders": "node scripts/check-forwarders.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
+    "check:docs-index": "node scripts/check-docs-index.mjs",
     "check:write-bypass": "node scripts/check-write-bypass.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:boundaries:selftest": "node scripts/check-boundaries.mjs --self-test",

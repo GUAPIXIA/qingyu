@@ -10,6 +10,7 @@
 |---|---|---|---|
 | `version.mjs` | 版本号读写与 Android 同步 | `pnpm version:*` | `package.json`、`CHANGELOG.md` |
 | `check-contracts.mjs` | 契约漂移门禁（schemas / fixtures / settings_public / openapi operationId / entityType 双向比对） | `pnpm check:contracts` | stdout 结果，非零退出即失败。**当前为绿并已入 CI**：entityType 集合以 `shared/contracts/sync-envelope.ts` 的 `SyncEntityType` 为单一事实源与 schema enum 双向比对（含比对函数自检）。2026-10-05 前因脚本硬编码清单与 D-11/D-12 冻结契约脱节而长期“已知红”，历史说明见阶段 5 报告 |
+| `check-docs-index.mjs` | 文档索引门禁：docs 下非归档 md 必须被其他文档链接（无孤儿文档），且 `docs/README.md` 必须登记各分类索引页（ADR／compose／方案族／两个归档 README） | `pnpm check:docs-index` | stdout 结果，非零退出即失败；含“注入孤立样本”自检 |
 | `check-write-bypass.mjs` | 写路径旁路检查（禁止绕过仓储写入口） | `pnpm check:write-bypass` | stdout |
 | `check-forwarders.mjs` | 转发层残余检查（旧路径不得有新引用） | `pnpm check:forwarders` | stdout |
 | `check-boundaries.mjs` | 跨目录依赖方向门禁（shared 平台依赖／PC↔画板／core 纯度／features 交叉与环；`--self-test` 负例自检） | `pnpm check:boundaries` / `pnpm check:boundaries:selftest` | stdout |
