@@ -28,6 +28,7 @@
 | `evaluate-local-embedding.ts` | 本地向量模型评测 | 模型路径参数见文件头 | `--out` 目录 |
 | `generation-baseline.ts` | 生成基线采集（W0 冻结基线） | 见文件头 | `--out` 目录 |
 | `session-isolation-model-bench.ts` | 会话隔离真实模型基准 | 见文件头 | `.poc-tmp/` |
+| `persona-injection-model-bench.ts` | 用户人设注入真机效果评测（off／system／separate／counter 四组对照） | 见文件头 | `output/persona-injection-model/` |
 | `spatial-ai-model-bench.ts`、`spatial-group-model-bench.ts`、`spatial-group-stage2-model-bench.ts`、`spatial-group-stage2-resume-bench.ts`、`spatial-group-stage3-model-bench.ts` | 空间画板／群聊各阶段真实模型基准 | 见文件头 | `.poc-tmp/` |
 | `g1-report.ts`、`g2-collect.ts`、`g2-collect.ps1`、`g2-progress.ts` | 动态上下文 G1／G2 取证报告与采集 | 见文件头 | `.poc-tmp/`、`output/` |
 | `evaluate-active-profile.ps1` | 活跃连接档案评测包装 | `-Batches -Reps -Out [-NoGate]` | `-Out` 目录 |
@@ -37,7 +38,7 @@
 | 入口 | 用途 | 输出 |
 |---|---|---|
 | `spatial-group-browser.mjs`、`spatial-group-stage1-browser.mjs`、`spatial-group-stage2-browser.mjs`、`spatial-group-stage3-browser.mjs`、`spatial-phase1-browser.mjs` | 画板／群聊各阶段浏览器联验（含 mock host） | `output/playwright/*` |
-| `run-session-isolation-model.mjs`、`run-spatial-group-stage2-model.mjs`、`run-spatial-group-stage3-model.mjs` | 真实模型联验启动包装 | `output/session-isolation-model`、`output/spatial-group-*` |
+| `run-session-isolation-model.mjs`、`run-persona-injection-model.mjs`、`run-spatial-group-stage2-model.mjs`、`run-spatial-group-stage3-model.mjs` | 真实模型联验启动包装 | `output/session-isolation-model`、`output/persona-injection-model`、`output/spatial-group-*` |
 | `logger-epipe-smoke.mjs` | 日志管道关闭（EPIPE）冒烟 | `output/logger-epipe/` |
 | `pce01-ab-bench.mjs`、`pce01-gui-ab.mjs` | PCE01 同步域 A/B 基准与 GUI 基准 | `.poc-tmp/`、`output/pce01` |
 
