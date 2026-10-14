@@ -316,7 +316,6 @@ describe('migration', () => {
         defaultResponseLength: 'auto',
         reasoningEffort: 'auto',
         autoTailRepairEnabled: true,
-        costReminderEnabled: true,
         reasoningGateEnabled: true,
         generationMigrationV4: {
           legacyLorebookRatio: 0.5,
@@ -333,7 +332,6 @@ describe('migration', () => {
         defaultResponseLength: 'detailed',
         reasoningEffort: 'low',
         autoTailRepairEnabled: false,
-        costReminderEnabled: false,
         reasoningGateEnabled: false,
         connectionProfiles: [{
           id: 'p1', maxContext: 32000,
@@ -344,7 +342,6 @@ describe('migration', () => {
         defaultResponseLength: 'detailed',
         reasoningEffort: 'low',
         autoTailRepairEnabled: false,
-        costReminderEnabled: false,
         reasoningGateEnabled: false,
       })
       expect((once.connectionProfiles as Array<Record<string, unknown>>)[0])

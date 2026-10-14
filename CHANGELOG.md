@@ -23,6 +23,16 @@
 
 验证：pnpm check / lint（0 error）/ test（含覆盖率门禁）/ check:gates / check:contracts / check:docs-index / check:pc-agent 全绿；公告服务测试通过；`pnpm install --frozen-lockfile` 与 CI 工作流 YAML 解析通过
 
+### 变更（PC 端移除费用提醒）
+
+- 移除设置「生成规划」的「费用提醒」开关卡片与 `WalletCards` 图标；固定区保留思考强度／连续性保护／自动补全结尾。
+- 移除快捷设置「回复长度」中的预算提醒分支（原「本轮回复预算较充足…」文案）；**硬上限安全校验 `riskMessage` 与默认篇幅文案保持不变**。
+- 移除 settings 迁移中的 `costReminderEnabled` 归一化及对应测试断言，PC 代码不再读写该字段。
+- 边界：`costReminderEnabled` 仍声明于 `shared/types.ts` 并在 `shared/defaults.ts` 默认为 `true`（shared 子模块属独立仓，本次未改动），新建设置文件中仍会带该键但已无读取方；如需彻底清理需在 shared 仓提交并 bump 子模块指针。
+- 文档：[PC 生成入口冻结清单](docs/方案/PC生成入口冻结清单-2026-09-13.md) 同步（费用提醒条目退场）。
+
+验证：pnpm check / lint（0 error）/ test（296 文件 3780 用例，0 失败）/ check:gates / check:contracts / check:docs-index / check:pc-agent 全绿
+
 ## [0.20.0] - 2026-10-05
 
 ### 新增

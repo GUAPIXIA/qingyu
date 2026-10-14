@@ -5,7 +5,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
-  WalletCards,
   Wrench,
 } from 'lucide-react'
 import type { GenerationDiagnostics } from '../../../shared/ipc-api'
@@ -168,20 +167,13 @@ export function GenerationPlanningSection({ settings, updateSettings }: Props) {
             </div>
           </div>
 
-          <div className="grid gap-px bg-tavern-border-soft lg:col-span-2 sm:grid-cols-2">
+          <div className="grid gap-px bg-tavern-border-soft lg:col-span-2">
             <div className="flex items-center justify-between gap-4 bg-tavern-bg-card/70 p-4">
               <div>
                 <p className="text-xs font-semibold text-tavern-text-soft">自动补全结尾</p>
                 <p className="mt-0.5 text-[11px] text-tavern-text-muted">仅在长度触顶且没有稳定结尾时尝试一次。</p>
               </div>
               <Toggle label="自动补全结尾" checked={settings.autoTailRepairEnabled !== false} onChange={(autoTailRepairEnabled) => updateSettings({ autoTailRepairEnabled })} />
-            </div>
-            <div className="flex items-center justify-between gap-4 bg-tavern-bg-card/70 p-4">
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-tavern-text-soft"><WalletCards className="h-3.5 w-3.5" /> 费用提醒</p>
-                <p className="mt-0.5 text-[11px] text-tavern-text-muted">预算偏高时给出提醒；安全上限始终生效。</p>
-              </div>
-              <Toggle label="费用提醒" checked={settings.costReminderEnabled !== false} onChange={(costReminderEnabled) => updateSettings({ costReminderEnabled })} />
             </div>
           </div>
         </div>

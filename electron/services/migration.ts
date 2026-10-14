@@ -385,7 +385,6 @@ function migrateSettingsV3ToV4(data: unknown): unknown {
     raw.reasoningEffort = 'auto'
   }
   if (typeof raw.autoTailRepairEnabled !== 'boolean') raw.autoTailRepairEnabled = true
-  if (typeof raw.costReminderEnabled !== 'boolean') raw.costReminderEnabled = true
   if (typeof raw.reasoningGateEnabled !== 'boolean') raw.reasoningGateEnabled = true
   return raw
 }

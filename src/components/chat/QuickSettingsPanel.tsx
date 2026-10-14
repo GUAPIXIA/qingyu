@@ -648,10 +648,6 @@ export function QuickSettingsPanel({
                 <p>
                   {outputBudgetPreview.riskMessage} 请前往“预设”的高级参数调整硬上限。
                 </p>
-              ) : settings.costReminderEnabled !== false && outputBudgetPreview.requestMaxTokens >= 4096 ? (
-                <p>
-                  本轮回复预算较充足；若需严格控制花费，可在预设「高级参数」里设置输出上限。
-                </p>
               ) : (
                 <p>
                   只选篇幅偏好即可，系统会自动安排输出；无需填写 Token。
