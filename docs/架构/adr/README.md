@@ -1,24 +1,21 @@
 # 架构决策记录（ADR）索引
 
-> 范围：`docs/架构/adr/` 下全部 ADR（001–011）。
+> 范围：`docs/架构/adr/` 下现行全部 ADR（编号 003–011；ADR-001／002／007 已随安卓端兼容移除退场，编号不回收）。
 > 决策背景、取舍与后果以各 ADR 正文为准；本页只做登记与状态汇总，新增 ADR 时同步更新本页。
 > 本页由 [文档索引](../../README.md) 的「架构/ 与 compose/」小节链接。
 
 | 编号 | 决策 | 状态 | 日期 | 阶段／关联 |
 |---|---|---|---|---|
-| [ADR-001](./ADR-001-保留原生Compose.md) | 保留原生 Compose，不改用 WebView/Capacitor | 已接受 | 2026-09-16 | 阶段 0 |
-| [ADR-002](./ADR-002-语言无关schema与双实现.md) | 语言无关 schema + 双实现，不直接运行 TypeScript 核心 | 已接受 | 2026-09-16 | 阶段 0 |
 | [ADR-003](./ADR-003-PC暂保留文件存储.md) | PC 暂保留文件存储，经 Repository 与 journal 收口；SQLite 另立决策 | 已接受 | 2026-09-16 | 阶段 0（决策门 3） |
 | [ADR-004](./ADR-004-版本向量与显式冲突.md) | 版本向量 + tombstone + 显式冲突；拒绝 LWW | 已接受 | 2026-09-16 | 阶段 0 |
 | [ADR-005](./ADR-005-手动同步与LAN发起方向.md) | 同步必须手动触发；LAN 由 Android 发起一次性会话 | 已接受 | 2026-09-16 | 阶段 0 |
 | [ADR-006](./ADR-006-E2EE与凭据边界.md) | 服务器长期数据必须 E2EE；凭据默认不同步 | 已接受 | 2026-09-16 | 阶段 0 |
-| [ADR-007](./ADR-007-单轨切换不保留旧伴侣模式.md) | 首个独立客户端单轨切换；不保留旧伴侣运行模式 | 已接受 | 2026-09-16 | 阶段 0；S9-07 已按此清零旧伴侣链路 |
 | [ADR-008](./ADR-008-CanonicalJSON与UInt64字符串counter.md) | Canonical JSON 采用 RFC 8785 兼容字节规范；counter 为 UInt64 十进制字符串 | 已接受 | 2026-09-16 | 阶段 0 |
 | [ADR-009](./ADR-009-共同迁移genesis.md) | 旧 PC/Android 迁移使用共同 genesis；同内容投影合并，未完成 Outbox 单独对账 | 已接受 | 2026-09-16 | 阶段 0 |
 | [ADR-010](./ADR-010-LAN密钥与prepare-commit.md) | LAN 持久化 prepare/commit 与 X25519+一次性 secret；服务器新设备带外二维码/SAS | 已接受（API 26/31/34 默认镜像矩阵 21/21；真机矩阵待补） | 2026-09-16（2026-09-17 修订：X25519 自带 provider） | 阶段 0（决策门 5、6） |
-| [ADR-011](./ADR-011-阶段2单仓储与逐域瓶颈收口.md) | 阶段 2 采用「单仓储 + 逐域瓶颈收口」而非每域一个 adapter 类 | 已采纳 | 2026-09-17 | 阶段 2（S2-01/S2-04）；关联 ADR-002、ADR-003 |
+| [ADR-011](./ADR-011-阶段2单仓储与逐域瓶颈收口.md) | 阶段 2 采用「单仓储 + 逐域瓶颈收口」而非每域一个 adapter 类 | 已采纳 | 2026-09-17 | 阶段 2（S2-01/S2-04）；关联 ADR-003（原关联的 ADR-002 已退场） |
 
 ## 关联登记
 
-- 能力与数据基线：[android-parity-matrix.md](../android-parity-matrix.md)、[data-domain-inventory.md](../data-domain-inventory.md)
-- 决策落地证据：阶段 0–9 方案与报告见 [方案族执行索引](../../方案/安卓独立客户端与主动同步/README.md) 与 [文档索引](../../README.md) 的 `报告/` 小节
+- 能力与数据基线：[data-domain-inventory.md](../data-domain-inventory.md)
+- 决策落地证据：[文档索引](../../README.md) 的 `报告/` 小节；ADR-001／002／007 及其阶段方案与报告已随安卓端兼容移除退场（`android-compat` 分支与 git 历史可追溯）

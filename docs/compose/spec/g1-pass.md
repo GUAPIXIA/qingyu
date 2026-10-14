@@ -50,7 +50,7 @@ G1 灰度门（主计划 §7.7）未通过：扩样 n=240 推理相关空正文 
 | 提前中止条件 + 成对对照不降正文产出 | 方案 A 后门控臂 `earlyAbort` 应为 0；与 no-gate 对照比正文产出率 |
 | 降档额外 completion < 3% | 无降档样本则 N/A（主路径为同档重试） |
 | 同请求体成功路径无回归 | prod vs no-gate 成对 |
-| 全量/Bridge/Android fixture | 仓库定向测试全绿 |
+| 全量/Bridge fixture | 仓库定向测试全绿 |
 
 ### 取证命令（入库路径）
 
@@ -66,7 +66,6 @@ npx tsx scripts/g1-report.ts --arm prod=.poc-tmp/eval-g1-flash/prod/results.json
 - 内置 `disableIgnored` 模型档案持久化（W6）。
 - 群聊 4 处 `ai.onError` 的完整恢复统一（G1 以单聊/方向/流式取证为主）。
 - G2 / 500 次有效生成 / legacy 退出。
-- Android 接入。
 
 ## Tasks
 

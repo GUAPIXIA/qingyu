@@ -1,6 +1,3 @@
-﻿[submodule "shared"]
+[submodule "shared"]
 	path = shared
 	url = ../qingyu-shared
-[submodule "android"]
-	path = android
-	url = ../qingyu-android

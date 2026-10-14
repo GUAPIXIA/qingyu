@@ -14,6 +14,8 @@ commits: 5462034..25aeeeb
 
 **Verification** — `g2Readiness.test.ts` 10 通过；`g2-progress.ts --g1-passed` 对本机 JSONL 正常输出，exit 2。
 
+> 2026-10-14 起：`--android-ok` 旗标已随安卓端兼容移除删除（PC 仓不再接入安卓端）；`shared/g2Readiness.ts` 清单中的 `android` 一条保留在 shared 子模块内，在 main 上恒为 pending，不代表待办。
+
 **Journey log**
 - 跨段加总不可过门（G2 第 7 条）
 - `has()` 为 false 时勿当 `false` 写入 checklist
@@ -39,7 +41,7 @@ commits: 5462034..25aeeeb
 
 ```text
 npx tsx scripts/g2-progress.ts [--file jsonl] [--out report.md] [--days N]
-  [--g1-passed] [--phase7-ok] [--dynamic-context-ok] [--android-ok] [--legacy-kept]
+  [--g1-passed] [--phase7-ok] [--dynamic-context-ok] [--legacy-kept]
 ```
 
 - 默认读 userData 观测 JSONL（与 baseline 同路径规则）；

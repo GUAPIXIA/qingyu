@@ -62,7 +62,7 @@ export default defineConfig(({ mode }) => ({
         '**/.tmp-*/**', // 测试演练副本：每次跑测试留下约 2500 个文件，中断即残留
         '**/.tmp-archive/**', // 上述残留的统一归档目录（12.7 万文件）
         '**/合并前备份-*/**',
-        '**/android/**', // Gradle 构建产物（1.5 万文件）
+        '**/android/**', // 已解绑的本地安卓仓工作区（Gradle 产物约 1.5 万文件，非本仓源码）
         '**/release-v2/**',
         '**/dist/**',
         '**/dist-electron/**',

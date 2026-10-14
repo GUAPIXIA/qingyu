@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### 变更（PC／安卓解绑 · 第一批：工程外围）
+
+- **分支策略落定**：新建 `android-compat` 分支冻结解绑前的完整安卓兼容状态（含跨端同步链路）；`main` 开始移除对安卓端的兼容。第一批只处理工程外围（子模块／CI／版本线／公告服务／联验脚本／文档与矩阵），跨端同步链路（`electron/bridge`、配对与同步中心、`relay-server`、`clientKind='android'` 分支）作为第二批单独提交。
+- **子模块解绑**：移除 `android` 子模块与 `.gitmodules` 条目；本地 `android/` 目录保留为 `qingyu-android` 独立仓工作区并加入 `.gitignore`（不再进入 `git status`）。
+- **CI**：删除 `ci.yml` 的 Android 作业（单测／lint／assembleDebug）与 `release.yml` 的 APK 发布作业；版本单源门禁改为只校验 PC `package.json` 与 `CHANGELOG.md`。
+- **版本线**：`scripts/version.mjs` 收敛为 PC 单端（删除 Android TOML／README／CHANGELOG 读写、`android` 命令与 `--sync-android`），`package.json` 删除 `version:android`。
+- **公告服务**：`/api/version` 与后台版本面板不再包含 `androidVersion`／`androidChangelog`／`androidDownloadUrl`，`app_config` 默认值不再写入 `android_*`（存量库历史行保留但不读写）。
+- **联验脚本**：删除 MuMu／ADB 相关脚本（`mumu-*.cjs`、`diag-lan-inject.cjs`、`lan-mumu-e2e.ts`、`lan-hold.ts`）、parity 矩阵生成器（`refresh-parity-matrix.mjs`、`_gen-parity-md.mjs`）与已无清单文档的 `s9-07-legacy-purge-check.mjs`；`regenerate-roleplay-fixture.ts` 不再跨仓写 android 副本；`g2-progress.ts` 删除 `--android-ok`；`clean.ps1` 移除 Gradle 产物条目。
+- **文档**：移除安卓独立客户端方案族（阶段 0–9 执行文档与 S9-* 清单）、13 份 `Android独立客户端重构阶段*` 报告、阶段 2–9 验收报告、能力矩阵三件套、ADR-001／002／007、`规范/模拟器环境-备忘录.md` 与 2 份 compose 阶段收口（phase0／phase3）；仓库拓扑文档重写为[「PC + shared」双仓](docs/架构/仓库拓扑-PC与Shared双仓-2026-10-14.md)，同步修正文档索引与失效链接。历史归档、`报告/LAN联调取证-*` 与降级为历史参考的[安卓重构总方案](docs/方案/安卓独立客户端与主动同步重构总方案-2026-09-16.md)保留。
+
 ## [0.20.0] - 2026-10-05
 
 ### 新增

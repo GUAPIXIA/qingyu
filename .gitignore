@@ -74,7 +74,8 @@ output/
 .zcode/
 .playwright-cli/
 
-# android/ 与 server/ 为本仓库的子项目；各自的 .gitignore 继续排除运行时配置与构建产物。
+# server/ 为本仓库的子项目；其 .gitignore 继续排除运行时配置与构建产物。
+# android/ 已于 2026-10-14 从 PC 仓解绑（见「安卓端解绑」段）。
 
 # === 目录治理补充（2026-08-20 冗余清理） ===
 .env.*
@@ -101,10 +102,9 @@ relay-server/dist/
 # 应用运行时凭据与诊断（实际常落在 userData；仓库相对路径一并封死）
 #
 # ⚠️ 这里**必须根锚定或写显式路径**，不能写成裸的 `data/`：
-# 裸目录名会匹配**任意深度**的同名目录，于是
-# `android/app/src/main/java/com/qingyu/companion/data/` 这类**源码包**也被一起忽略——
-# 2026-09-20 实测有 9 个 .kt 源文件（含生产代码 `LocalChatRepository.kt`、`ContentDraftStore.kt`）
-# 因此**从未入库**，新克隆根本编译不过。现在只封真正需要封的两个运行时目录。
+# 裸目录名会匹配**任意深度**的同名目录，于是源码包目录（如 android 仓库的
+# `app/src/main/java/com/qingyu/.../data/`）也会被一起忽略——2026-09-20 实测
+# 有 9 个 .kt 源文件因此**从未入库**。现在只封真正需要封的两个运行时目录。
 /data/
 /server/app/data/
 **/credentials.json
@@ -137,3 +137,8 @@ __pycache__/
 # === ���ֲ��������2026-09-26��===
 *-inline-backup/
 s9-*.txt
+
+# === 安卓端解绑（2026-10-14） ===
+# android/ 原为 qingyu-android 子模块，已从 PC 仓移除（第一批：外围解绑，见 CHANGELOG/提交说明）。
+# 本地目录保留为安卓独立仓工作区，不再参与本仓版本管理，也不进入 git status。
+/android/

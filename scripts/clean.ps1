@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   受控清理脚本：仅处理显式登记且可重建的仓库内产物。
 
@@ -7,7 +7,7 @@
   - 可删范围来自下方 $Registry 显式白名单，不以“被 Git 忽略”作为可删依据。
   - 每个目标先计算绝对路径，校验位于仓库根之内、非仓库根、非受保护子树，且不是 reparse point（junction／symlink）。
   - 业务数据（data/、server/app/data/、models/、png/、public/、node_modules 之外的工作区内容）、
-    凭据与联验证据（output/、.qa/、docs/、shared/、android/ 源码、server/、relay-server/、spatial-board/ 源码）不在名单内，
+    凭据与联验证据（output/、.qa/、docs/、shared/、server/、relay-server/、spatial-board/ 源码）不在名单内，
     本脚本永不删除。
   - press 类目标（验证数据副本、发布产物）默认不处理，需要显式 -Ack。
   - 删除前请先执行 preview 核对；实际删除仅使用 -LiteralPath。
@@ -45,13 +45,9 @@ $Registry = @(
   @{ cat = 'build'; kind = 'build'; path = 'dist';            desc = 'Vite 前端产物';              press = $false }
   @{ cat = 'build'; kind = 'build'; path = 'dist-electron';   desc = 'Electron 主进程产物';        press = $false }
   @{ cat = 'build'; kind = 'build'; path = 'coverage';        desc = 'vitest 覆盖率报告';          press = $false }
-  @{ cat = 'build'; kind = 'build'; path = 'android/build';        desc = 'Gradle 根构建产物';     press = $false }
-  @{ cat = 'build'; kind = 'build'; path = 'android/app/build';    desc = 'Gradle app 构建产物';   press = $false }
   @{ cat = 'build'; kind = 'build'; path = 'release-v2';      desc = '安装包输出（发布产物）';     press = $true }
   # ---- cache（-Target cache）----
   @{ cat = 'cache'; kind = 'cache'; path = '.cache';           desc = '通用缓存';                   press = $false }
-  @{ cat = 'cache'; kind = 'cache'; path = 'android/.gradle';  desc = 'Gradle 缓存';                press = $false }
-  @{ cat = 'cache'; kind = 'cache'; path = 'android/.kotlin';  desc = 'Kotlin 增量缓存';            press = $false }
   # ---- 本地验证数据副本（-Target all -Ack 才处理）----
   @{ cat = 'ops'; kind = 'ops'; path = '.poc-tmp';     desc = '本地评测输出（部分被文档引用）';   press = $true }
   @{ cat = 'ops'; kind = 'ops'; path = '.tmp-archive'; desc = '测试沙盒 userData 副本归档';      press = $true }
@@ -59,7 +55,7 @@ $Registry = @(
 
 # 永不删除的保护清单（仅用于 preview 说明与防御性断言；可删范围以 $Registry 为准）
 $Protected = @(
-  '.git', 'src', 'electron', 'shared', 'android', 'server', 'relay-server', 'spatial-board',
+  '.git', 'src', 'electron', 'shared', 'server', 'relay-server', 'spatial-board',
   'docs', 'scripts', 'tools', 'tests', 'public', 'png', 'models', 'output', '.qa', '.qa-poc',
   'data', 'server/app/data'
 )

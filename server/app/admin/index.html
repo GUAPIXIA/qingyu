@@ -420,21 +420,6 @@
             <textarea id="editChangelog" style="min-height:110px" placeholder="支持 Markdown 格式..."></textarea>
           </div>
         </div>
-        <div class="version-col">
-          <div class="version-col-head"><span class="dot"></span>安卓端（qingyu-companion）</div>
-          <div class="form-group">
-            <label>最新版本号</label>
-            <input type="text" id="editAndroidVersion" placeholder="0.1.2" style="font-family:var(--font-mono)">
-          </div>
-          <div class="form-group">
-            <label>下载地址（APK）</label>
-            <input type="text" id="editAndroidDownloadUrl" placeholder="https://example.com/qingyu-companion-v0.1.2.apk">
-          </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label>更新日志（Markdown）</label>
-            <textarea id="editAndroidChangelog" style="min-height:110px" placeholder="支持 Markdown 格式..."></textarea>
-          </div>
-        </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
         <button class="btn btn-primary btn-sm" onclick="saveVersion()">保存版本配置</button>
@@ -657,9 +642,6 @@ async function loadVersionConfig() {
     document.getElementById('editVersion').value = data.version || ''
     document.getElementById('editChangelog').value = data.changelog || ''
     document.getElementById('editDownloadUrl').value = data.downloadUrl || ''
-    document.getElementById('editAndroidVersion').value = data.androidVersion || ''
-    document.getElementById('editAndroidChangelog').value = data.androidChangelog || ''
-    document.getElementById('editAndroidDownloadUrl').value = data.androidDownloadUrl || ''
   } catch { /* 静默失败 */ }
 }
 
@@ -670,9 +652,6 @@ async function saveVersion() {
       version: document.getElementById('editVersion').value.trim(),
       changelog: document.getElementById('editChangelog').value.trim(),
       downloadUrl: document.getElementById('editDownloadUrl').value.trim(),
-      androidVersion: document.getElementById('editAndroidVersion').value.trim(),
-      androidChangelog: document.getElementById('editAndroidChangelog').value.trim(),
-      androidDownloadUrl: document.getElementById('editAndroidDownloadUrl').value.trim(),
     }
     await api('PUT', '/api/version', body)
     msg.textContent = '✓ 已保存'

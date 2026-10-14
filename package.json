@@ -35,7 +35,6 @@
     "release:notes": "node scripts/release-notes.mjs",
     "version:patch": "node scripts/version.mjs patch",
     "version:minor": "node scripts/version.mjs minor",
-    "version:android": "node scripts/version.mjs android",
     "version:prerelease": "node scripts/version.mjs prerelease",
     "version:release": "node scripts/version.mjs release"
   },

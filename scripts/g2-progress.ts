@@ -28,7 +28,6 @@ function parseArgs(): {
   g1Passed: boolean
   phase7?: boolean
   dynamicContext?: boolean
-  android?: boolean
 } {
   const args = process.argv.slice(2)
   const get = (flag: string): string | undefined => {
@@ -43,7 +42,6 @@ function parseArgs(): {
     g1Passed: has('--g1-passed'),
     phase7: has('--phase7-ok'),
     dynamicContext: has('--dynamic-context-ok'),
-    android: has('--android-ok'),
   }
 }
 
@@ -87,11 +85,12 @@ function main(): void {
   }
 
   const progress = computeG2Progress(records)
+  // 注意（2026-10-14）：`shared/g2Readiness.ts` 的清单里仍有 `android` 一条（PC 端已不再
+  // 接入安卓端，该条在 main 上恒为 pending）；shared 为独立子模块仓，本条不在此处删除。
   const checklist = buildG2Checklist(progress, {
     ...(opts.g1Passed ? { g1Passed: true } : {}),
     ...(opts.phase7 ? { phase7MetricsOk: true } : {}),
     ...(opts.dynamicContext ? { dynamicContextOk: true } : {}),
-    ...(opts.android ? { androidFixturesOk: true } : {}),
   })
 
   const lines: string[] = []

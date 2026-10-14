@@ -18,7 +18,6 @@
 ## 📝 更新日志
 
 - 主应用：[CHANGELOG.md](./CHANGELOG.md)
-- 安卓伴侣端：[android/CHANGELOG.md](./android/CHANGELOG.md)
 - 公告服务端：[server/CHANGELOG.md](./server/CHANGELOG.md)
 - 发布操作：[docs/规范/项目更新与上传规范.md](./docs/规范/项目更新与上传规范.md)
 
@@ -38,18 +37,17 @@
 
 ## 📦 仓库结构
 
-PC 主仓通过 Git 子模块挂载 shared 与 android（实际拓扑，2026-10-02 核对）：
+PC 主仓通过 Git 子模块挂载 shared（实际拓扑，2026-10-14 核对）；android 子模块已按 `android-compat` 冻结结论从 main 移除：
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
 | **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.20.0 |
-| **共享核心** | `shared/` 与 `android/shared/` | `GUAPIXIA/qingyu-shared`（子模块，**两个挂载点**） | chat-core 纯逻辑、跨端契约与 fixture | — |
-| **安卓客户端** | `android/` | `GUAPIXIA/qingyu-android`（子模块） | 独立本地客户端（内部再挂载 shared） | v0.3.0 (build 9) |
+| **共享核心** | `shared/` | `GUAPIXIA/qingyu-shared`（子模块） | chat-core 纯逻辑、跨端契约与 fixture | — |
 | **Relay 服务** | `relay-server/` | 同一仓库 | HTTPS/WSS 中转、离线缓存与短时消息队列 | v0.1.0 |
 | **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |
 
 > 克隆需递归初始化子模块：`git clone --recurse-submodules <repo>`（已克隆则 `git submodule update --init --recursive`）。
-> `shared/` 与 `android/shared/` 是 qingyu-shared 的**两个固定提交挂载点**；迁移期间允许指向不同兼容版本，需在提交信息中登记原因与升级顺序。
+> 安卓客户端自 2026-10-14 起不再作为本仓子模块，改为在独立仓 `GUAPIXIA/qingyu-android` 自行维护与发布；PC 仓不再为其门禁、版本线或 APK 产物负责。
 > 本地 `.env`、数据库与构建产物不纳入版本控制。
 
 ---
@@ -98,7 +96,7 @@ PC 主仓通过 Git 子模块挂载 shared 与 android（实际拓扑，2026-10-
 - 侧栏「公告」入口，拉取服务器在线公告
 - 支持 **Markdown 富文本**渲染（表格、代码块、图片等）
 - **离线缓存** — 网络不可达时自动使用本地缓存
-- **版本提示** — 公告服务器分别维护 PC / 安卓端版本；PC 版本用于侧栏新版提示
+- **版本提示** — 公告服务器维护 PC 版本号；PC 版本用于侧栏新版提示
 - 配套 **Docker 一键部署** 的服务端 + Web 管理后台（见 [`server/`](./server/)）
 
 ### 🔄 软件更新（v0.15.0+）
@@ -126,25 +124,6 @@ PC 主仓通过 Git 子模块挂载 shared 与 android（实际拓扑，2026-10-
 - **纯本地存储** — 所有数据在本地 AppData，无云端上传
 - **全量备份 V2** — ZIP + manifest + SHA-256 校验，覆盖设置、角色、世界书、预设、身份、聊天与群聊等数据；敏感凭据默认排除
 - **API Key 加密** — 系统级安全加密存储
-
----
-
-## 📱 安卓伴侣端（[android/](./android/README.md)）
-
-PC 端「轻语」的安卓伴侣端：**只做远程连接与对话消费，不做本地 AI 对话**。当前 **0.3.0 (build 9)**，独立版本线。
-
-- **双通道连接**：局域网直连 + Relay 中转（二维码 / 连接码 / PC 审批）
-- **单聊与群聊消费**：流式、重试、swipe、方向卡片、语义分块渲染、收尾状态提示
-- **多模态**：图片消息、TTS（ExoPlayer）、`<thought>` 折叠、Markdown
-- **其它**：用量统计、公告同步、检查更新、Room 离线只读
-
-```bash
-cd android
-./gradlew assembleDebug        # 构建 Debug APK
-./gradlew testDebugUnitTest    # 运行单元测试
-```
-
-> 能力与构建细节以 [android/README.md](./android/README.md) 与 [android/CHANGELOG.md](./android/CHANGELOG.md) 为准；文档索引见 [docs/README.md](./docs/README.md)。
 
 ---
 
@@ -186,7 +165,7 @@ docker compose up -d          # 或 npm install && npm start
 
 - 管理后台：`http://你的域名/qingyu/admin`
 - 公告 API：`http://你的域名/qingyu/api/announcements`
-- 版本 API：`http://你的域名/qingyu/api/version`（PC / 安卓端独立版本号配置）
+- 版本 API：`http://你的域名/qingyu/api/version`（PC 版本号配置）
 - 桌面端默认公告服务器地址在 `electron/ipc/announcement.ts` 中修改（默认 `http://cjbtj.xyz/qingyu`）
 - 桌面端更新清单：`https://你的域名/qingyu/update/latest.yml`（安装包与 blockmap 放在服务端更新目录）
 
@@ -215,7 +194,6 @@ docker compose up -d          # 或 npm install && npm start
 | 虚拟滚动 | react-virtuoso |
 | 图标 | lucide-react |
 | 打包 | electron-builder（NSIS） |
-| 安卓端 | Kotlin + Jetpack Compose + Retrofit/OkHttp + Room + Media3（见 [android/README.md](./android/README.md)） |
 | 服务端 | Express + better-sqlite3 + JWT + Docker（见 [server/README.md](./server/README.md)） |
 
 ---
@@ -241,7 +219,7 @@ qingyu/
 ├── electron/                   # Electron 主进程
 │   ├── main.ts / preload.ts    # 主进程入口与 contextBridge
 │   ├── ipc/                    # IPC 注册与参数边界（薄传输层）
-│   ├── bridge/                 # 安卓伴侣端桥接层（REST + WebSocket + 配对认证 + mDNS）
+│   ├── bridge/                 # 同步端点（/sync/v1）与服务身份
 │   ├── chat/                   # 对话编排器、任务生命周期与端口
 │   ├── features/               # 用例/仓储（chat）与空间业务（spatial）
 │   ├── domain/                 # 同步领域、事务与恢复
@@ -250,7 +228,6 @@ qingyu/
 ├── packages/spatial-core/      # 纯空间领域核心包（无 React/Electron/PC 依赖）
 ├── spatial-board/              # 独立画板（独立 React 19 + 构建链，见其 README）
 ├── shared/                     # 共享子模块（chat-core / lorebook / domain / contracts / fixtures）
-├── android/                    # 安卓伴侣端（独立子模块，内部再挂载 shared）
 ├── relay-server/               # 独立部署服务（workspace）
 ├── server/                     # 公告服务端（独立子项目）
 ├── scripts/lib/                # 联验公共设施（browserHarness / electronHarness）

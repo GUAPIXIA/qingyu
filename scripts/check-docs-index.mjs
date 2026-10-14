@@ -18,7 +18,6 @@ const errors = []
 const REQUIRED_INDEXES = [
   '架构/adr/README.md',
   'compose/README.md',
-  '方案/安卓独立客户端与主动同步/README.md',
   '报告/归档/README.md',
   '方案/归档/README.md',
 ]

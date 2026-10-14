@@ -10,9 +10,9 @@ commits: 04ad93b..HEAD
 
 ## Report
 
-**What was built** — `shared/contracts`（canonical JSON、版本向量、envelope、冲突/genesis/fence、migrations、JSON Schema、OpenAPI sync-v1）与 `shared/domain`（Repository 接口 + 内存 oracle）。Kotlin 侧提供 CanonicalJson/VersionVector 契约单测。CI：`scripts/check-contracts.mjs`。
+**What was built** — `shared/contracts`（canonical JSON、版本向量、envelope、冲突/genesis/fence、migrations、JSON Schema、OpenAPI sync-v1）与 `shared/domain`（Repository 接口 + 内存 oracle）。CI：`scripts/check-contracts.mjs`。
 
-**Verification** — vitest contracts+domain 26/26 PASS；check-contracts OK；Android unit test contracts.* PASS。
+**Verification** — vitest contracts+domain 26/26 PASS；check-contracts OK。
 
 **Journey log**
 1. 版本向量支配样例需包含对方已有分量，否则 concurrent。
@@ -27,7 +27,7 @@ commits: 04ad93b..HEAD
 
 ### 边界
 
-本阶段**不接管** PC/Android 生产写路径，不改现有用户数据。新增模块位于 `shared/contracts/`、`shared/domain/`、Kotlin `domain/contracts`、CI 脚本。
+本阶段**不接管** PC 生产写路径，不改现有用户数据。新增模块位于 `shared/contracts/`、`shared/domain/` 与 CI 脚本。
 
 ### 契约源
 
@@ -61,14 +61,13 @@ RFC 8785 兼容子集：UTF-8；对象键按 UTF-16 码元序；数组保序；N
 ## [S3] Out of Scope
 
 - 不实现 LAN/Relay transport 与 E2EE 运行时。
-- 不改 PC storage / Android Room 生产表。
-- 不生成完整 Kotlin 业务实体（仅契约测试与 canonical 参考实现）。
+- 不改 PC storage 生产表。
 
 ## Tasks
 
 - [x] T1: compose spec 本文件 — acceptance: 文件存在 (covers: S1)
 - [x] T2: canonical-json + version-vector TS 与测试 — acceptance: vitest 全绿含 golden (covers: S2)
-- [x] T3: Kotlin 契约测试与 TS 结果对齐 — acceptance: android unit test 或记录阻断证据 (covers: S2)
+- [x] T3: 契约测试与 TS 结果对齐 — acceptance: vitest 契约用例全绿 (covers: S2)
 - [x] T4: 实体 schemas + fixtures — acceptance: schema 文件与 valid/invalid fixtures (covers: S2)
 - [x] T5: sync-envelope + Conflict/Genesis/fence 模型 — acceptance: 类型与测试 (covers: S2)
 - [x] T6: Repository 接口 + 内存实现 + 契约测试 — acceptance: 含事务/回滚/prepare-commit 用例 (covers: S2)

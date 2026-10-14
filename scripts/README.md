@@ -8,9 +8,9 @@
 
 | 入口 | 用途 | 运行方式 | 输出 |
 |---|---|---|---|
-| `version.mjs` | 版本号读写与 Android 同步 | `pnpm version:*` | `package.json`、`CHANGELOG.md` |
+| `version.mjs` | PC 版本号读写与一致性校验（安卓端已于 2026-10-14 解绑，不再跨端同步） | `pnpm version:*` | `package.json`、`CHANGELOG.md` |
 | `check-contracts.mjs` | 契约漂移门禁（schemas / fixtures / settings_public / openapi operationId / entityType 双向比对） | `pnpm check:contracts` | stdout 结果，非零退出即失败。**当前为绿并已入 CI**：entityType 集合以 `shared/contracts/sync-envelope.ts` 的 `SyncEntityType` 为单一事实源与 schema enum 双向比对（含比对函数自检）。2026-10-05 前因脚本硬编码清单与 D-11/D-12 冻结契约脱节而长期“已知红”，历史说明见阶段 5 报告 |
-| `check-docs-index.mjs` | 文档索引门禁：docs 下非归档 md 必须被其他文档链接（无孤儿文档），且 `docs/README.md` 必须登记各分类索引页（ADR／compose／方案族／两个归档 README） | `pnpm check:docs-index` | stdout 结果，非零退出即失败；含“注入孤立样本”自检 |
+| `check-docs-index.mjs` | 文档索引门禁：docs 下非归档 md 必须被其他文档链接（无孤儿文档），且 `docs/README.md` 必须登记各分类索引页（ADR／compose／两个归档 README） | `pnpm check:docs-index` | stdout 结果，非零退出即失败；含“注入孤立样本”自检 |
 | `check-write-bypass.mjs` | 写路径旁路检查（禁止绕过仓储写入口） | `pnpm check:write-bypass` | stdout |
 | `check-forwarders.mjs` | 转发层残余检查（旧路径不得有新引用） | `pnpm check:forwarders` | stdout |
 | `check-boundaries.mjs` | 跨目录依赖方向门禁（shared 平台依赖／PC↔画板／core 纯度／features 交叉与环；`--self-test` 负例自检） | `pnpm check:boundaries` / `pnpm check:boundaries:selftest` | stdout |
@@ -40,7 +40,7 @@
 | `run-session-isolation-model.mjs`、`run-spatial-group-stage2-model.mjs`、`run-spatial-group-stage3-model.mjs` | 真实模型联验启动包装 | `output/session-isolation-model`、`output/spatial-group-*` |
 | `logger-epipe-smoke.mjs` | 日志管道关闭（EPIPE）冒烟 | `output/logger-epipe/` |
 | `pce01-ab-bench.mjs`、`pce01-gui-ab.mjs` | PCE01 同步域 A/B 基准与 GUI 基准 | `.poc-tmp/`、`output/pce01` |
-| `lan-e2e.ts`、`lan-hold.ts`、`lan-mumu-e2e.ts`、`diag-lan-inject.cjs`、`mumu-*.cjs` | 局域网／MuMu 模拟器联验与诊断 | 终端输出 |
+| `lan-e2e.ts` | 局域网同步链路自检（PC 侧模拟客户端；跨端同步链路属第二批解绑范围，届时一并移除） | 终端输出 |
 
 ## 4. 诊断、工具与一次性材料
 
@@ -49,12 +49,9 @@
 | `decrypt-api-key.cjs` | 用 Electron safeStorage 解出活跃连接 API Key，写入 `--key-file`；被评测脚本引用 | 保留（敏感：输出文件不得入库） |
 | `dump-ui-texts.cjs` | 导出 UI 文案 | 保留（诊断） |
 | `verify-backup.mjs` | 备份 ZIP 结构校验 | 保留（回归支撑） |
-| `refresh-parity-matrix.mjs`、`_gen-parity-md.mjs` | 跨端 parity 矩阵刷新与文档生成 | 保留（报告支撑） |
-| `regenerate-roleplay-fixture.ts` | 角色扮演 fixture 再生成 | 保留（跨端 golden 支撑） |
+| `regenerate-roleplay-fixture.ts` | 角色扮演 fixture 再生成（只写 shared 契约样本，不再跨仓写 android 副本） | 保留（契约支撑） |
 | `gen-phase0-messages-10k.mjs` | 1 万条消息夹具生成 | 保留（基准数据生成） |
 | `sign-model-catalog.ts` | 模型目录签名（同步加密生成器） | 保留（安全/契约） |
-| `s9-07-legacy-purge-check.mjs` | s9 旧链路清扫检查 | 保留（回归支撑） |
-| `mumu-explore.cjs`、`mumu-walkthrough.cjs`、`mumu-sync-center.cjs` | MuMu 模拟器探索脚本 | 保留（诊断） |
 | `.mimosa/` | 本地 AI 工具会话状态（gitignore） | 不入库，可清理 |
 
 ## 5. 公共联验设施与已知结论（阶段 2/3/5）

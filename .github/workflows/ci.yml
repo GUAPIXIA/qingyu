@@ -197,7 +197,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 版本单源门禁（A-01）：构建前校验 PC package.json / Android TOML / android README / CHANGELOG 一致，
+      # 版本单源门禁（A-01）：构建前校验 package.json 与 CHANGELOG.md 一致，
       # 不一致即失败（version.mjs status 退出码 1）
       - name: Version consistency gate
         run: node scripts/version.mjs status
@@ -233,63 +233,3 @@ jobs:
 
       - name: pnpm audit (high severity)
         run: pnpm audit --audit-level high
-
-  # Android 伴侣端门禁（阶段 G-05）：
-  # 版本一致性（version.mjs status）前置 -> 单测 -> lint -> debug 构建。
-  # Linux 无中文路径问题，无需 GBK jvmargs（本地 Windows 构建才需要）。
-  android:
-    name: Android (unit test / lint / assembleDebug)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive # android 与 android/shared 两个挂载点
-
-      - name: Verify submodules
-        run: |
-          test -d android/app || { echo "::error::android 子模块缺失：检查 .gitmodules 与仓库访问权限（qingyu-android）"; exit 1; }
-          test -d android/shared/chat-core || { echo "::error::android/shared 子模块缺失（qingyu-shared 第二挂载点）"; exit 1; }
-          git submodule status --recursive
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Version consistency gate (A-01)
-        run: node scripts/version.mjs status
-
-      - name: Unit tests (JVM)
-        working-directory: android
-        run: ./gradlew testDebugUnitTest --console=plain --no-daemon
-
-      - name: Lint
-        working-directory: android
-        run: ./gradlew lintDebug --console=plain --no-daemon
-
-      - name: Assemble debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug --console=plain --no-daemon
-
-      - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: qingyu-android-debug
-          path: android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
