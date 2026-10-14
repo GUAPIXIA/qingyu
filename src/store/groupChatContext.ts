@@ -39,6 +39,8 @@ import {
   resolveGroupCharNameForVars,
   resolveShouldSendScenario,
 } from '../../shared/chat-core/groupContextBlocks'
+// 用户人设注入块（标题 + 正文 + 【用户身份使用规则】）与单聊同源，禁止就地拼接。
+import { buildUserPersonaBlock } from '../../shared/chat-core/userPersonaBlock'
 import { buildThoughtContractBody } from '../../shared/thoughtContract'
 import { resolveGroupRequestPlan } from './groupRequestPlan'
 import { withReasoningSamples } from './usageProfileCache'
@@ -330,8 +332,9 @@ export function buildGroupChatContext(
     charNameForVars,
     injection: personaInjection,
   })
-  if (personaText && personaInjection.position === 'system') {
-    systemContent += '\n【用户人设】\n' + personaText
+  const personaBlock = buildUserPersonaBlock(personaText)
+  if (personaBlock && personaInjection.position === 'system') {
+    systemContent += '\n' + personaBlock
   }
 
   // 世界书 at_end 条目
@@ -445,9 +448,9 @@ export function buildGroupChatContext(
     context.push({ role: 'system', content, keepSeparate: true })
   }
 
-  // 用户人设 separate 模式：独立 system 消息
-  if (personaText && personaInjection.position === 'separate') {
-    context.push({ role: 'system', content: '【用户人设】\n' + personaText, keepSeparate: true })
+  // 用户人设 separate 模式：独立 system 消息（含【用户身份使用规则】，与单聊一致）
+  if (personaBlock && personaInjection.position === 'separate') {
+    context.push({ role: 'system', content: personaBlock, keepSeparate: true })
   }
 
   const historyContext: { role: 'system' | 'user' | 'assistant'; content: string; keepSeparate?: boolean }[] = []
