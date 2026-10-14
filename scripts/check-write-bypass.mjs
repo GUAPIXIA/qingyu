@@ -22,7 +22,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const strict = process.argv.includes('--strict')
 const verbose = process.argv.includes('--verbose')
 
-const SCAN_DIRS = ['electron/ipc', 'electron/bridge', 'electron/services', 'electron/mcp', 'electron/features']
+const SCAN_DIRS = ['electron/ipc', 'electron/services', 'electron/mcp', 'electron/features']
 
 /**
  * 原始写调用：只列真正落盘的底层原语。
@@ -96,7 +96,6 @@ const SYNC_DOMAIN_FILES = [
   'electron/features/chat/sessionUseCases.ts',
   'electron/features/chat/messageUseCases.ts',
   'electron/features/chat/chatData.ts',
-  'electron/bridge/syncRoutes.ts',
   'electron/services/usage.ts',
   'electron/services/charCard.ts',
   'electron/services/lorebookDocumentStore.ts',
@@ -107,13 +106,10 @@ const SYNC_DOMAIN_FILES = [
 /**
  * 已确认「本地但不同步」的数据域（方案 §6.1）：
  * 连接/凭据/日志/本地模型/向量索引/诊断/更新器等，允许原样直写。
- * 空间画板归属说明（阶段 3B 显式归类）：空间世界/运行态/提交记录/助手记录为桌面本地数据域
- * （bridge syncRoutes 与 domain 均无空间实体，备份由 backup.ts 覆盖），
+ * 空间画板归属说明（阶段 3B 显式归类）：空间世界/运行态/提交记录/助手记录为桌面本地数据域，
  * 模块自带 transactions + `.spatial-write-lock` 事务，不接入跨端 journal，允许原样直写。
  */
 const LOCAL_ONLY_FILES = [
-  'electron/bridge/identity.ts',
-  'electron/bridge/index.ts',
   'electron/ipc/announcement.ts',
   'electron/ipc/embedding.ts',
   'electron/ipc/file.ts',

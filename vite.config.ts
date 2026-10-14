@@ -66,7 +66,6 @@ export default defineConfig(({ mode }) => ({
         '**/release-v2/**',
         '**/dist/**',
         '**/dist-electron/**',
-        '**/relay-server/dist/**',
         '**/coverage/**',
         '**/output/**',
         '**/png/**',

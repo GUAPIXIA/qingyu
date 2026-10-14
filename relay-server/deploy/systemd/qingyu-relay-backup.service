@@ -1,8 +1,0 @@
-[Unit]
-Description=QingYu Relay PostgreSQL backup
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/opt/qingyu-relay/relay-server/deploy/backup.sh

@@ -30,15 +30,6 @@ describe('settingsChangeBus', () => {
     clearSettingsChangeListeners()
   })
 
-  it('android: 来源事件照常分发（由订阅侧决定不回环）', () => {
-    const received: SettingsChanged[] = []
-    const unsubscribe = subscribeSettingsChanges((e) => received.push(e))
-    emitSettingsChanged({ revision: 'r3', changedFields: ['userName'], source: 'android:dev-1' })
-    expect(received[0].source).toBe('android:dev-1')
-    unsubscribe()
-    clearSettingsChangeListeners()
-  })
-
   it('单个监听器异常不影响其他监听器', () => {
     const received: SettingsChanged[] = []
     const unsubBad = subscribeSettingsChanges(() => { throw new Error('boom') })

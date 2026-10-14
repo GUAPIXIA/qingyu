@@ -60,7 +60,7 @@ RFC 8785 兼容子集：UTF-8；对象键按 UTF-16 码元序；数组保序；N
 
 ## [S3] Out of Scope
 
-- 不实现 LAN/Relay transport 与 E2EE 运行时。
+- 不实现 LAN／Relay transport 与 E2EE 运行时（相关链路已于 2026-10-14 第二批解绑整体移除）。
 - 不改 PC storage 生产表。
 
 ## Tasks

@@ -7,7 +7,7 @@
   - 可删范围来自下方 $Registry 显式白名单，不以“被 Git 忽略”作为可删依据。
   - 每个目标先计算绝对路径，校验位于仓库根之内、非仓库根、非受保护子树，且不是 reparse point（junction／symlink）。
   - 业务数据（data/、server/app/data/、models/、png/、public/、node_modules 之外的工作区内容）、
-    凭据与联验证据（output/、.qa/、docs/、shared/、server/、relay-server/、spatial-board/ 源码）不在名单内，
+    凭据与联验证据（output/、.qa/、docs/、shared/、server/、spatial-board/ 源码）不在名单内，
     本脚本永不删除。
   - press 类目标（验证数据副本、发布产物）默认不处理，需要显式 -Ack。
   - 删除前请先执行 preview 核对；实际删除仅使用 -LiteralPath。
@@ -39,7 +39,6 @@ $Registry = @(
   # ---- deps（独立选择：-Target deps）----
   @{ cat = 'deps'; kind = 'deps'; path = 'node_modules';            desc = '根依赖树（pnpm install 可重建）';       press = $false }
   @{ cat = 'deps'; kind = 'deps'; path = 'server/app/node_modules'; desc = '公告服务依赖树';                       press = $false }
-  @{ cat = 'deps'; kind = 'deps'; path = 'relay-server/node_modules'; desc = 'Relay 依赖树';                       press = $false }
   @{ cat = 'deps'; kind = 'deps'; path = 'spatial-board/node_modules'; desc = '独立画板依赖树';                     press = $false }
   # ---- build（-Target build）----
   @{ cat = 'build'; kind = 'build'; path = 'dist';            desc = 'Vite 前端产物';              press = $false }
@@ -55,7 +54,7 @@ $Registry = @(
 
 # 永不删除的保护清单（仅用于 preview 说明与防御性断言；可删范围以 $Registry 为准）
 $Protected = @(
-  '.git', 'src', 'electron', 'shared', 'server', 'relay-server', 'spatial-board',
+  '.git', 'src', 'electron', 'shared', 'server', 'spatial-board',
   'docs', 'scripts', 'tools', 'tests', 'public', 'png', 'models', 'output', '.qa', '.qa-poc',
   'data', 'server/app/data'
 )

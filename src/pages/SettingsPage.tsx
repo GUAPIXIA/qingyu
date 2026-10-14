@@ -6,7 +6,6 @@ import { cn } from '../lib/utils'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { BehaviorSection } from './settings/BehaviorSection'
 import { GenerationPlanningSection } from './settings/GenerationPlanningSection'
-import { SyncCenterSection } from './settings/SyncCenterSection'
 import { UpdaterSection } from './settings/UpdaterSection'
 import { SectionCard } from '../components/common/SettingsShared'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
@@ -28,7 +27,7 @@ import {
 } from 'lucide-react'
 
 // UEX-P0-13：设置分区 id（与下方 sections 渲染保持一致，用于直达定位校验）
-const SECTION_IDS: readonly string[] = ['updater', 'api', 'appearance', 'behavior', 'generation', 'sync', 'network', 'data']
+const SECTION_IDS: readonly string[] = ['updater', 'api', 'appearance', 'behavior', 'generation', 'network', 'data']
 // 与 SectionCard 的折叠持久化键保持一致（见 components/common/SettingsShared.tsx）
 const SETTINGS_SECTION_STATE_KEY = 'settings-section-open-state-v1'
 
@@ -204,7 +203,6 @@ export function SettingsPage() {
     { id: 'appearance', label: '外观', icon: Palette },
     { id: 'behavior', label: '行为', icon: Sliders },
     { id: 'generation', label: '生成规划', icon: BrainCircuit },
-    { id: 'sync', label: '同步中心', icon: RefreshCw },
     { id: 'network', label: '网络', icon: Globe },
     { id: 'data', label: '数据管理', icon: Database },
   ] as const
@@ -316,9 +314,6 @@ export function SettingsPage() {
         </div>
         <div id="settings-generation">
         <GenerationPlanningSection settings={settings} updateSettings={updateSettings} />
-        </div>
-        <div id="settings-sync">
-        <SyncCenterSection />
         </div>
         <div id="settings-network">
         <SectionCard title="网络" icon={<Globe className="w-4 h-4" />} storageKey="network">

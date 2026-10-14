@@ -3,7 +3,7 @@
 > 审计日期：2026-09-16  
 > 基线：PC `0.17.2` / Android `0.3.0 (9)` / Relay `0.1.0`  
 > 集中入口：`electron/services/storage.ts`（`readJson`/`writeJson` + 可选 domain 附 `schemaVersion`）；迁移：`electron/services/migration.ts`。  
-> ⚠️ 2026-10-14：安卓端兼容已随 `android-compat` 冻结结论从 main 移除（第一批）。本文为**阶段 0 审计快照**，其中 §3.3（Android）与基线里的 Android 版本仅作历史记录；Relay 相关章节待第二批处置。
+> ⚠️ 2026-10-14：安卓端兼容已随 `android-compat` 冻结结论从 main 移除（第一批），跨端同步链路（桥接层／同步中心／`relay-server`）已于第二批一并移除。本文为**阶段 0 审计快照**，其中 §3.3（Android）、§3.4（Relay）与基线里的 Android／Relay 版本仅作历史记录。
 
 ## 1. 域总览
 

@@ -40,7 +40,6 @@
 | `run-session-isolation-model.mjs`、`run-spatial-group-stage2-model.mjs`、`run-spatial-group-stage3-model.mjs` | 真实模型联验启动包装 | `output/session-isolation-model`、`output/spatial-group-*` |
 | `logger-epipe-smoke.mjs` | 日志管道关闭（EPIPE）冒烟 | `output/logger-epipe/` |
 | `pce01-ab-bench.mjs`、`pce01-gui-ab.mjs` | PCE01 同步域 A/B 基准与 GUI 基准 | `.poc-tmp/`、`output/pce01` |
-| `lan-e2e.ts` | 局域网同步链路自检（PC 侧模拟客户端；跨端同步链路属第二批解绑范围，届时一并移除） | 终端输出 |
 
 ## 4. 诊断、工具与一次性材料
 

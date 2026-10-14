@@ -4,13 +4,24 @@
 
 ### 变更（PC／安卓解绑 · 第一批：工程外围）
 
-- **分支策略落定**：新建 `android-compat` 分支冻结解绑前的完整安卓兼容状态（含跨端同步链路）；`main` 开始移除对安卓端的兼容。第一批只处理工程外围（子模块／CI／版本线／公告服务／联验脚本／文档与矩阵），跨端同步链路（`electron/bridge`、配对与同步中心、`relay-server`、`clientKind='android'` 分支）作为第二批单独提交。
+- **分支策略落定**：新建 `android-compat` 分支冻结解绑前的完整安卓兼容状态（含跨端同步链路）；`main` 开始移除对安卓端的兼容。第一批只处理工程外围（子模块／CI／版本线／公告服务／联验脚本／文档与矩阵），跨端同步链路（`electron/bridge`、配对与同步中心、`relay-server`）作为第二批单独提交；`clientKind` 等跨端契约类型位于 shared 子模块仓，另行处置。
 - **子模块解绑**：移除 `android` 子模块与 `.gitmodules` 条目；本地 `android/` 目录保留为 `qingyu-android` 独立仓工作区并加入 `.gitignore`（不再进入 `git status`）。
 - **CI**：删除 `ci.yml` 的 Android 作业（单测／lint／assembleDebug）与 `release.yml` 的 APK 发布作业；版本单源门禁改为只校验 PC `package.json` 与 `CHANGELOG.md`。
 - **版本线**：`scripts/version.mjs` 收敛为 PC 单端（删除 Android TOML／README／CHANGELOG 读写、`android` 命令与 `--sync-android`），`package.json` 删除 `version:android`。
 - **公告服务**：`/api/version` 与后台版本面板不再包含 `androidVersion`／`androidChangelog`／`androidDownloadUrl`，`app_config` 默认值不再写入 `android_*`（存量库历史行保留但不读写）。
 - **联验脚本**：删除 MuMu／ADB 相关脚本（`mumu-*.cjs`、`diag-lan-inject.cjs`、`lan-mumu-e2e.ts`、`lan-hold.ts`）、parity 矩阵生成器（`refresh-parity-matrix.mjs`、`_gen-parity-md.mjs`）与已无清单文档的 `s9-07-legacy-purge-check.mjs`；`regenerate-roleplay-fixture.ts` 不再跨仓写 android 副本；`g2-progress.ts` 删除 `--android-ok`；`clean.ps1` 移除 Gradle 产物条目。
 - **文档**：移除安卓独立客户端方案族（阶段 0–9 执行文档与 S9-* 清单）、13 份 `Android独立客户端重构阶段*` 报告、阶段 2–9 验收报告、能力矩阵三件套、ADR-001／002／007、`规范/模拟器环境-备忘录.md` 与 2 份 compose 阶段收口（phase0／phase3）；仓库拓扑文档重写为[「PC + shared」双仓](docs/架构/仓库拓扑-PC与Shared双仓-2026-10-14.md)，同步修正文档索引与失效链接。历史归档、`报告/LAN联调取证-*` 与降级为历史参考的[安卓重构总方案](docs/方案/安卓独立客户端与主动同步重构总方案-2026-09-16.md)保留。
+
+### 变更（PC／安卓解绑 · 第二批：跨端同步链路）
+
+- **桥接层移除**：删除 `electron/bridge/`（安卓伴侣端 REST/WS 桥接、`/sync/v1` 路由、配对与 mDNS 服务身份）；主进程不再注册 bridge／syncLan／syncCenter IPC，preload 不再暴露 `bridge`／`syncLan`／`syncCenter`，设置页「同步中心」分区（QR 配对、授权窗、冲突与设备管理）整体退场。
+- **同步链路模块**：删除 `electron/ipc/{syncCenter,syncLan}.ts`、`electron/domain/{syncLanAuth,firstSyncPlan,serverTransport,syncSummary,upgradePrecheck}.ts` 及其单测；设置变更总线删除 `android:<deviceId>` 来源标记（原为桥接层防回环），只保留 PC 本地保存来源。
+- **relay-server 退场**：删除 `relay-server/` 整包（HTTPS/WSS 中转、Postgres 迁移与 RLS 跨租户门禁）及其 pnpm workspace 条目、CI `relay-lint-and-unit` 作业与锁文件条目。
+- **依赖收敛**：移除仅桥接层使用的 `bonjour-service`／`express`／`express-rate-limit`／`qrcode`／`ws` 与对应 `@types/*`（`pnpm-lock.yaml` 同步刷新）。
+- **文档**：ADR-005／006／009／010 与 `报告/LAN联调取证-*`、`报告/MuMu真机LAN联调取证-*` 退场；ADR 索引（现行 4 条：003／004／008／011）、文档索引、推送／更新／门禁规范与仓库结构表同步。
+- **边界说明**：`shared` 子模块内的跨端契约（`ExposedAPI.bridge/syncLan/syncCenter`、`sync-core`／`sync-crypto`、`clientKind`）与 `tools/gen-sync-crypto-fixtures.ts` 属 shared 独立仓范围，本次未改动；PC 内核写路径（`syncDomainService`／`syncMeta`／`syncHealth`／`deviceIdentity`）与 `/sync/v1` 之外的本地同步域行为保持不变。
+
+验证：pnpm check / lint（0 error）/ test（含覆盖率门禁）/ check:gates / check:contracts / check:docs-index / check:pc-agent 全绿；公告服务测试通过；`pnpm install --frozen-lockfile` 与 CI 工作流 YAML 解析通过
 
 ## [0.20.0] - 2026-10-05
 

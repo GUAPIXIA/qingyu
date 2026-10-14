@@ -22,9 +22,6 @@ import { registerGroupIPC } from './ipc/group'
 import { registerSpatialIPC } from './ipc/spatial'
 import { registerAnnouncementIPC } from './ipc/announcement'
 import { registerUpdaterIPC } from './services/updater'
-import { registerBridgeIPC, bridgeService } from './bridge'
-import { registerSyncLanIPC } from './ipc/syncLan'
-import { registerSyncCenterIPC } from './ipc/syncCenter'
 import { ensureSyncDomain, runBootstrapIfEnabled, setSyncDomainUserDataResolver } from './domain/syncDomainService'
 import { schedulePce01GuiBench } from './pce01GuiBench'
 import { IPC_EVENTS } from '../shared/ipc-channels'
@@ -236,9 +233,6 @@ app.whenReady().then(async () => {
     () => registerSpatialIPC(ipcMain),
     () => registerAnnouncementIPC(ipcMain),
     () => registerUpdaterIPC(ipcMain),
-    () => registerBridgeIPC(ipcMain),
-    () => registerSyncLanIPC(ipcMain),
-    () => registerSyncCenterIPC(ipcMain),
   ]
   for (const register of ipcRegistrars) {
     register()
@@ -271,17 +265,6 @@ app.whenReady().then(async () => {
   mcpManager.autoStartAll().catch((err) => {
     logger.error('MCP 自动启动失败', { error: err.message })
   })
-
-  // 自动恢复桥接层（重启后 enabled=true 时无需手动在设置页开启）
-  try {
-    if (bridgeService.getConfig().enabled) {
-      bridgeService.start().catch((err) => {
-        logger.error('桥接层自动恢复失败', { error: err.message })
-      })
-    }
-  } catch (err) {
-    logger.warn('桥接层自动恢复跳过', { error: (err as Error).message })
-  }
 
   // 日志 IPC（level 运行时校验，防止渲染进程传入任意方法名）
   const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error'])

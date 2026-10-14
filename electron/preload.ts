@@ -25,7 +25,6 @@ import type {
   UpdaterAPI,
   UpdaterState,
   SessionSyncAPI,
-  BridgeAPI,
 } from '../shared/ipc-api'
 import type { LocalModelAPI } from '../shared/localModels'
 
@@ -107,57 +106,6 @@ const sessionSyncApi: SessionSyncAPI = {
     ipcRenderer.on(IPC_EVENTS.settingsChanged, handler)
     return () => ipcRenderer.removeListener(IPC_EVENTS.settingsChanged, handler)
   },
-}
-
-// ---- 桥接层（/sync/v1 服务生命周期） ----
-const bridgeApi: BridgeAPI = {
-  status: () => ipcRenderer.invoke('bridge:status'),
-  start: () => ipcRenderer.invoke('bridge:start'),
-  stop: () => ipcRenderer.invoke('bridge:stop'),
-  setConfig: (partial) => ipcRenderer.invoke('bridge:config', partial),
-  wipeAll: () => ipcRenderer.invoke('bridge:wipeAll'),
-}
-
-// ---- 阶段 7 S7-03：LAN 一次性授权（同步中心） ----
-const syncLanApi = {
-  startAuth: (input: { host: string; port: number; fingerprint: string; displayName: string }) =>
-    ipcRenderer.invoke('syncLan:startAuth', input),
-  status: () => ipcRenderer.invoke('syncLan:status'),
-  submitPeerHello: (input: { sessionId: string; deviceName: string; androidPublicKey: string }) =>
-    ipcRenderer.invoke('syncLan:submitPeerHello', input),
-  confirmPeer: (input: { sessionId: string; shortAuth: string }) =>
-    ipcRenderer.invoke('syncLan:confirmPeer', input),
-  revoke: () => ipcRenderer.invoke('syncLan:revoke'),
-}
-
-// ---- 阶段 7 S7-06/S7-07：同步中心 ----
-const syncCenterApi = {
-  status: () => ipcRenderer.invoke('syncCenter:status'),
-  lanEndpoint: () => ipcRenderer.invoke('syncCenter:lanEndpoint'),
-  startLanAuth: (input: { host: string; port: number; fingerprint: string; displayName: string }) =>
-    ipcRenderer.invoke('syncCenter:startLanAuth', input),
-  confirmPeer: (input: { sessionId: string; shortAuth: string }) =>
-    ipcRenderer.invoke('syncCenter:confirmPeer', input),
-  revokeLanAuth: () => ipcRenderer.invoke('syncCenter:revokeLanAuth'),
-  listConflicts: (status?: string) => ipcRenderer.invoke('syncCenter:listConflicts', status),
-  resolveConflict: (input: { id: string; choice: 'local' | 'remote' | 'copy' | 'manual' }) =>
-    ipcRenderer.invoke('syncCenter:resolveConflict', input),
-  markFullRescan: (reason: string) => ipcRenderer.invoke('syncCenter:markFullRescan', reason),
-  listDevices: () => ipcRenderer.invoke('syncCenter:listDevices'),
-  retireDevice: (deviceId: string) => ipcRenderer.invoke('syncCenter:retireDevice', deviceId),
-  tombstoneDryRun: (opts?: { retainDays?: number; now?: number }) =>
-    ipcRenderer.invoke('syncCenter:tombstoneDryRun', opts),
-  runUpgradePrecheck: () => ipcRenderer.invoke('syncCenter:runUpgradePrecheck'),
-  buildFirstSyncPlan: (input: {
-    localEntityCount: number
-    remoteEntityCount: number
-    localGenesisId: string | null
-    remoteGenesisId: string | null
-    localDatasetHash: string | null
-    remoteDatasetHash: string | null
-    localKnown?: Record<string, string>
-    remoteKnown?: Record<string, string>
-  }) => ipcRenderer.invoke('syncCenter:buildFirstSyncPlan', input),
 }
 
 // ---- 角色卡 ----
@@ -503,9 +451,6 @@ contextBridge.exposeInMainWorld('api', {
   group: groupApi,
   spatial: spatialApi,
   sessionSync: sessionSyncApi,
-  bridge: bridgeApi,
-  syncLan: syncLanApi,
-  syncCenter: syncCenterApi,
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkVersion: () => ipcRenderer.invoke('app:checkVersion'),

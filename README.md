@@ -43,7 +43,6 @@ PC 主仓通过 Git 子模块挂载 shared（实际拓扑，2026-10-14 核对）
 |--------|------|----------|------|------|
 | **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.20.0 |
 | **共享核心** | `shared/` | `GUAPIXIA/qingyu-shared`（子模块） | chat-core 纯逻辑、跨端契约与 fixture | — |
-| **Relay 服务** | `relay-server/` | 同一仓库 | HTTPS/WSS 中转、离线缓存与短时消息队列 | v0.1.0 |
 | **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |
 
 > 克隆需递归初始化子模块：`git clone --recurse-submodules <repo>`（已克隆则 `git submodule update --init --recursive`）。
@@ -228,7 +227,6 @@ qingyu/
 ├── packages/spatial-core/      # 纯空间领域核心包（无 React/Electron/PC 依赖）
 ├── spatial-board/              # 独立画板（独立 React 19 + 构建链，见其 README）
 ├── shared/                     # 共享子模块（chat-core / lorebook / domain / contracts / fixtures）
-├── relay-server/               # 独立部署服务（workspace）
 ├── server/                     # 公告服务端（独立子项目）
 ├── scripts/lib/                # 联验公共设施（browserHarness / electronHarness）
 ├── tests/                      # 跨模块、golden 与集成验证

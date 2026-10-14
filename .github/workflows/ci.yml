@@ -7,57 +7,6 @@ on:
     branches: [main]
 
 jobs:
-  relay-lint-and-unit:
-    name: Relay (type check / unit / tenant isolation)
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: qingyu_relay
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres" --health-interval 5s
-          --health-timeout 3s --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping" --health-interval 5s
-          --health-timeout 3s --health-retries 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Relay type check
-        run: pnpm --filter @qingyu/relay-server check
-      - name: Relay unit tests
-        run: pnpm --filter @qingyu/relay-server test
-      - name: Apply Relay migrations
-        env:
-          PGPASSWORD: postgres
-        run: for f in relay-server/migrations/*.sql; do psql -h 127.0.0.1 -U postgres -d qingyu_relay -v ON_ERROR_STOP=1 -f "$f"; done
-      - name: RLS cross-tenant release gate
-        env:
-          PGPASSWORD: postgres
-        run: |
-          psql -h 127.0.0.1 -U postgres -d qingyu_relay -v ON_ERROR_STOP=1 <<'SQL'
-          INSERT INTO relay_spaces(id) VALUES ('00000000-0000-4000-8000-00000000000a'), ('00000000-0000-4000-8000-00000000000b');
-          INSERT INTO cached_sessions(space_id,session_id,revision,payload,updated_at,expires_at)
-          VALUES ('00000000-0000-4000-8000-00000000000a','a',1,'{}',now(),now()+interval '1 day'),
-                 ('00000000-0000-4000-8000-00000000000b','b',1,'{}',now(),now()+interval '1 day');
-          SET ROLE qingyu_relay_app;
-          BEGIN;
-          SELECT set_config('app.space_id','00000000-0000-4000-8000-00000000000a',true);
-          DO $$ BEGIN IF (SELECT count(*) FROM cached_sessions) <> 1 THEN RAISE EXCEPTION 'RLS isolation failed'; END IF; END $$;
-          ROLLBACK;
-          SQL
 
   # 类型检查 + 单元测试 + Electron 主进程编译验证
   test:
