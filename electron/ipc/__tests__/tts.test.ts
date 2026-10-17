@@ -11,6 +11,11 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/qingyu-test' },
 }))
 
+// node-edge-tts 由各用例通过 vi.doMock 局部替换。此前 vi.unmock 写在用例体内，
+// 但 vitest 会把它提升到文件顶部——此处显式放到文件级，语义不变，并消除 vitest 4
+// 的「非顶层 unmock」告警（vitest 5 起将直接报错）。
+vi.unmock('node-edge-tts')
+
 import { openaiSpeak, OPENAI_VOICES, xiaomiSpeak, XIAOMI_VOICES } from '../tts'
 
 beforeEach(() => {
@@ -187,7 +192,6 @@ describe('edgeSpeak（Edge TTS 引擎）', () => {
     // 临时文件已清理
     const { existsSync } = await import('node:fs')
     expect(existsSync(writtenPath)).toBe(false)
-    vi.unmock('node-edge-tts')
     vi.resetModules()
   })
 
@@ -203,7 +207,6 @@ describe('edgeSpeak（Edge TTS 引擎）', () => {
     vi.resetModules()
     const { edgeSpeak } = await import('../tts')
     await expect(edgeSpeak('x', 'zh-CN-XiaoxiaoNeural')).rejects.toThrow('未生成音频数据')
-    vi.unmock('node-edge-tts')
     vi.resetModules()
   })
 

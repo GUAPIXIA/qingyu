@@ -17,8 +17,34 @@ overrides:
   '@electron/get': 3.1.0
   'semver@>=2.0.0-alpha <5.7.2': 5.7.2
   'semver@>=6.0.0 <6.3.1': 6.3.1
-  'brace-expansion@<1.1.18': 1.1.18
-  'brace-expansion@>=2.0.0 <2.1.4': 2.1.4
-  'brace-expansion@>=4.0.0 <5.0.9': 5.0.9
-  'js-yaml@>=4.0.0 <4.3.1': 4.3.1
   'nanoid@<3.3.18': 3.3.18
+  # ---- 2026-10-17 依赖安全修复：pnpm audit（npmjs 公告库）critical/high/moderate 归零 ----
+  # 注：原 brace-expansion / js-yaml / fast-uri / joi 锁定版本已低于新公告的修复线，此处一并抬高。
+  #     以下 override 全部为同大版本内的补丁/次版本抬升，不跨大版本。
+  'brace-expansion@<1.1.21': 1.1.21
+  'brace-expansion@>=2.0.0 <2.1.7': 2.1.7
+  'brace-expansion@>=4.0.0 <5.0.12': 5.0.12
+  'js-yaml@>=4.0.0 <4.3.2': 4.3.2
+  'proxy-addr@<2.0.8': 2.0.8
+  'shell-quote@<1.11.0': 1.11.0
+  'fast-uri@<3.1.8': 3.1.8
+  '@xmldom/xmldom@>=0.8.0 <0.8.15': 0.8.15
+  '@xmldom/xmldom@>=0.9.0 <0.9.12': 0.9.12
+  'axios@<1.20.0': 1.20.0
+  'undici@>=6.0.0 <6.28.1': 6.28.1
+  'joi@>=17.2.0 <17.13.8': 17.13.8
+  'browserslist@<=4.28.6': 4.28.7
+  'source-map-js@<1.2.2': 1.2.2
+  'http-cache-semantics@<=4.2.0': 4.3.0
+  'sharp@<0.35.5': 0.35.5
+  'ejs@<3.1.10': 3.1.10
+  'qs@<6.16.0': 6.16.0
+  'ip-address@<10.7.1': 10.7.1
+  'postcss@<8.5.23': 8.5.23
+
+# 上游尚未发布修复版本、且不随产品发布的公告显式登记（避免长期红掩盖新问题）：
+# - GHSA-vfj7-8cjw-p6xm：braces<=3.0.3 栈耗尽 DoS。npm 官方最新仅 3.0.3（公告要求的 3.0.4 未发布），
+#   该包仅经 dev 构建链 tailwindcss > chokidar 使用，无运行时暴露面。上游发版后应移除本条。
+auditConfig:
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm

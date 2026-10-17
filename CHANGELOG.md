@@ -33,6 +33,16 @@
 
 验证：pnpm check / lint（0 error）/ test（296 文件 3780 用例，0 失败）/ check:gates / check:contracts / check:docs-index / check:pc-agent 全绿
 
+### 修复（依赖安全：CI 审计门禁转绿 + spatial-board CI 修复）
+
+- **修复前** `pnpm audit --registry=https://registry.npmjs.org`：4 critical / 56 high / 31 moderate / 3 low（94 项）；**修复后**：0 critical / 1 high（登记豁免）/ 2 moderate。
+- **直接依赖**：`electron` `^43.4.0 → ^43.8.0`（沙箱不继承、协议处理器跨源读、preload 代码缓存投毒 3 条 high）；`adm-zip` `^0.6.0 → ^0.6.1`（解压炸弹绕过、保留 SUID/SGID 提权等 4 条 high，备份导入入口）；`vitest`／`@vitest/coverage-v8` `^3.2.7 → ^4.1.12`（vitest 4 不再依赖 tinypool，消除 2 条 critical RCE）。
+- **传递依赖**（`pnpm-workspace.yaml` overrides 统一抬升，全部同大版本内）：`sharp` 0.35.5、`js-yaml` 4.3.2、`proxy-addr` 2.0.8、`shell-quote` 1.11.0、`fast-uri` 3.1.8、`@xmldom/xmldom` 0.8.15／0.9.12、`axios` 1.20.0、`undici` 6.28.1、`joi` 17.13.8、`browserslist` 4.28.7、`source-map-js` 1.2.2、`http-cache-semantics` 4.3.0、`brace-expansion` 1.1.21／2.1.7／5.0.12、`ejs` 3.1.10、`qs` 6.16.0、`ip-address` 10.7.1、`postcss` 8.5.23。
+- **登记豁免／保留**：`braces<=3.0.3`（GHSA-vfj7-8cjw-p6xm）写入 `auditConfig.ignoreGhsas`——npm 官方最新仅 3.0.3（公告要求的 3.0.4 未发布），仅 dev 构建链 `tailwindcss > chokidar` 使用、无运行时暴露面，上游发版后应移除；`sprintf-js`、`postcss-selector-parser`（需跨大版本 6→7）保留为 moderate。
+- **spatial-board CI 修复**：该工作流 `npm test` 在 Linux CI 必然失败（`TS2307 node:fs`／`TS2304 __dirname`）——根因是 `spatial-board` 未声明 `@types/node`，本地靠父目录 `node_modules/@types` 兜住、CI 只在该目录 `npm ci` 故缺失；已补 `@types/node` 并刷新其 `package-lock.json`。
+- **测试框架适配**：`electron/ipc/__tests__/tts.test.ts` 的用例内 `vi.unmock` 提升到文件级（vitest 4 告警、vitest 5 起报错）。
+- 验证：`pnpm check`／`lint`（0 error）／`test:coverage`（296 文件 3780 用例，vitest 4）／`build`／`electron-build`／各门禁／公告服务测试全绿；`pnpm install --frozen-lockfile` 通过；**本地复现 CI 两条审计命令（critical 与 high）均 exit 0**。
+
 ## [0.20.0] - 2026-10-05
 
 ### 新增
