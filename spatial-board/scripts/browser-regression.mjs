@@ -8,13 +8,18 @@ import { chromium } from 'playwright'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const port = 5197
 const url = `http://127.0.0.1:${port}/`
+// Vite 输出改为捕获（原先 stdio: 'ignore' 让 CI 失败时完全无据可查）
+const serverLog = []
 const server = spawn(process.execPath, [
   join(root, 'node_modules', 'vite', 'bin', 'vite.js'),
   '--host', '127.0.0.1', '--port', String(port), '--strictPort',
-], { cwd: root, stdio: 'ignore' })
+], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] })
+server.stdout.on('data', (chunk) => serverLog.push(String(chunk)))
+server.stderr.on('data', (chunk) => serverLog.push(String(chunk)))
 
 async function waitForServer() {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  // CI 冷启动比本机慢，放宽到 30s（原先 6s）
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     if (server.exitCode !== null) throw new Error('Vite exited before becoming ready')
     try {
       const response = await fetch(url)
@@ -35,11 +40,15 @@ async function launchBrowser() {
 
 let browser
 let page
+const pageIssues = []
 try {
   await waitForServer()
   browser = await launchBrowser()
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
   page = await context.newPage()
+  page.on('console', (message) => { if (message.type() === 'error') pageIssues.push(`[console] ${message.text()}`) })
+  page.on('pageerror', (error) => pageIssues.push(`[pageerror] ${error.message}`))
+  page.on('requestfailed', (request) => pageIssues.push(`[requestfailed] ${request.url()} ${request.failure()?.errorText ?? ''}`))
   await page.goto(url)
   await page.locator('.react-flow__pane').waitFor()
   await page.waitForTimeout(350)
@@ -213,6 +222,14 @@ try {
     await mkdir(output, { recursive: true })
     await page.screenshot({ path: join(output, 'spatial-browser-failure.png'), fullPage: true })
   }
+  if (pageIssues.length) {
+    console.error(`页面异常（${pageIssues.length} 条，前 15 条）：`)
+    for (const issue of pageIssues.slice(0, 15)) console.error('  -', issue)
+  } else {
+    console.error('页面未产生 console/pageerror/requestfailed 记录。')
+  }
+  console.error('Vite 输出（末尾 30 行）：')
+  console.error(serverLog.join('').split(/\r?\n/).slice(-30).join('\n'))
   console.error(error)
   process.exitCode = 1
 } finally {
