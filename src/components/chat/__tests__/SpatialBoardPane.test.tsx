@@ -246,16 +246,18 @@ describe('SpatialBoardPane', () => {
     }))
 
     const postMessage = vi.spyOn(frame.contentWindow!, 'postMessage')
+    // iframe 出现后先完成宿主 effect（消息监听注册），否则在慢速 CI 上首次 send 会被丢弃。
+    await act(async () => {})
     const input = { commitId: 'commit-1', worldId: 'world-1', runtimeId: 'single_session-1', bindingEpoch: 'epoch',
       expectedRuntimeRevision: 0, expectedWorldFingerprint: pkg.version.worldFingerprint, commands: [{ type: 'update_world', patch: { name: '更新' } }] }
     send({ type: 'qingyu:spatial:commands', request: input })
     send({ type: 'qingyu:spatial:close' })
-    await waitFor(() => expect(window.api.spatial.applyEditorBatch).toHaveBeenCalledWith('char-1', 'session-1', input))
+    await waitFor(() => expect(window.api.spatial.applyEditorBatch).toHaveBeenCalledWith('char-1', 'session-1', input), { timeout: 5000 })
     expect(onClose).not.toHaveBeenCalled()
     await act(async () => { complete({ ok: true, snapshot: pkg, receipt: { commitId: 'commit-1' }, duplicate: false }) })
     const flush = postMessage.mock.calls.find(([data]) => data.type === 'qingyu:spatial:flush')![0]
     send({ type: 'qingyu:spatial:flushed', requestId: flush.requestId })
-    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce(), { timeout: 5000 })
     expect(vi.mocked(window.api.spatial.applyEditorBatch).mock.invocationCallOrder[0]).toBeLessThan(onClose.mock.invocationCallOrder[0])
   })
 
