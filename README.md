@@ -189,7 +189,7 @@ docker compose up -d          # 或 npm install && npm start
 | UI 框架 | Tailwind CSS 3（CSS 变量主题系统） |
 | 状态管理 | Zustand 5 |
 | 路由 | react-router-dom 7（HashRouter） |
-| Markdown | react-markdown + remark-gfm + rehype-raw + rehype-highlight |
+| Markdown | react-markdown + remark-gfm + rehype-highlight（**原始 HTML 不渲染**：`rehype-raw` 已按 XSS 修复移除） |
 | 虚拟滚动 | react-virtuoso |
 | 图标 | lucide-react |
 | 打包 | electron-builder（NSIS） |
@@ -218,10 +218,9 @@ qingyu/
 ├── electron/                   # Electron 主进程
 │   ├── main.ts / preload.ts    # 主进程入口与 contextBridge
 │   ├── ipc/                    # IPC 注册与参数边界（薄传输层）
-│   ├── bridge/                 # 同步端点（/sync/v1）与服务身份
 │   ├── chat/                   # 对话编排器、任务生命周期与端口
 │   ├── features/               # 用例/仓储（chat）与空间业务（spatial）
-│   ├── domain/                 # 同步领域、事务与恢复
+│   ├── domain/                 # 逐域写入口、事务、恢复与写路径收口
 │   ├── services/               # 存储、日志、模型适配等基础服务
 │   └── mcp/                    # MCP 协议实现
 ├── packages/spatial-core/      # 纯空间领域核心包（无 React/Electron/PC 依赖）

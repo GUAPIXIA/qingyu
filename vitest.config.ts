@@ -8,6 +8,11 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // 2026-10-18：默认 5s 在慢机（CI 双核 + 297 文件并行，vitest 4 默认 forks 池）上会偶发超时——
+    // 实测 SpatialBoardPane 的重型用例 3 轮挂 1 轮（Error: Test timed out in 5000ms，整套耗时同时
+    // 从 58s 拉到 106s），CI 更慢故必然偶发。放宽到 15s 只影响“卡住”的用例，正常用例耗时不变。
+    testTimeout: 15000,
+    hookTimeout: 15000,
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'electron/**/*.{test,spec}.{ts,tsx}', 'tests/**/*.{test,spec}.{ts,tsx}', 'shared/**/*.{test,spec}.{ts,tsx}', 'packages/**/*.{test,spec}.{ts,tsx}', 'tools/**/*.{test,spec}.{ts,tsx,mjs}'],
     // 历史 poc-* 用例断言攻击成功，仅保留为审计档案；安全行为由 securityRegression 覆盖。
     exclude: ['node_modules', 'dist', 'dist-electron', 'electron/**/__tests__/poc-*.test.ts'],

@@ -43,6 +43,16 @@
 - **测试框架适配**：`electron/ipc/__tests__/tts.test.ts` 的用例内 `vi.unmock` 提升到文件级（vitest 4 告警、vitest 5 起报错）。
 - 验证：`pnpm check`／`lint`（0 error）／`test:coverage`（296 文件 3780 用例，vitest 4）／`build`／`electron-build`／各门禁／公告服务测试全绿；`pnpm install --frozen-lockfile` 通过；**本地复现 CI 两条审计命令（critical 与 high）均 exit 0**。
 
+### 变更（清理：一次性排障脚本 / 无引用依赖 / 文档对齐）
+
+- **删除 11 个一次性排障文件**：`tools/debug-{aad,b64,cross,cross2,entity,gcm,gcm2,gcm3,gcm4,gcm-tag}.ts` 与 `tools/gcm-vector.json`。它们是 2026-09 跨端同步加密（AES-256-GCM／ECDH／AAD／Base64 差异）的排障材料，只打印诊断信息、无测试与构建消费者，且其排障对象已随 2026-10-14「移除安卓端兼容」第二批整体退场；处置依据与取回方式见 [tools/README.md](tools/README.md)（归档方案 C03 登记的「登记用途 → 验证消费者 → 归档或清理」，本次按清理执行，跨端契约样本仍在 shared 仓，文件可从 git 历史取回）。
+- **移除 2 个无引用依赖**：`rehype-raw`（原始 HTML 渲染已按 XSS 修复刻意移除，README 却仍宣称启用）、`@testing-library/user-event`（全仓 0 引用）。
+- **纠正审计启发式的两处误判（经核证保留，未删）**：`@xyflow/react` 是根 vite **多入口构建** `spatial-board/index.html` 的必需依赖（CI 的 build-windows 作业在无 board node_modules 的情况下正是靠它构建成功）；`babel-plugin-react-dev-locator` 由 `vite.config.ts` 以 Babel 插件名 `'react-dev-locator'` 字符串引用（`QINGYU_DEV_LOCATOR=1` 时启用），源码里搜不到包名并非未使用。
+- **文档对齐**：README 技术栈的 Markdown 行不再宣称 `rehype-raw`，并注明原始 HTML 不渲染；目录树删除已退场的 `electron/bridge/`，`domain/` 描述改为「逐域写入口、事务、恢复与写路径收口」；[server/.env.example](server/.env.example) 补登记 4 个此前只出现在代码里的变量（`DB_DATA_DIR`／`DB_PATH`／`UPDATES_DIR`／`TRUST_PROXY`）及其默认值。
+- **去悬挂 TODO**：`electron/chat/compaction.ts` 中自 0.12.1 挂到 0.20.0 的 `TODO(0.12.1)` 改写为显式「已知限制」说明（终态任务记录可能先于引用它的消息被保留期清理；若要收口需先为 messages 建 `generationTaskId` 索引）。
+
+验证：pnpm check / lint（0 error）/ test（296 文件 3780 用例，0 失败）/ build / electron-build / check:gates / contracts / docs-index / pc-agent 全绿；`pnpm install --frozen-lockfile` 通过
+
 ## [0.20.0] - 2026-10-05
 
 ### 新增

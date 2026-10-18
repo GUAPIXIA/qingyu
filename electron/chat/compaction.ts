@@ -88,8 +88,11 @@ export function cleanupTerminalTasks(now = Date.now()): string[] {
     const beyondCount = i >= RETAIN_COUNT
     const beyondDays = t.updatedAt < cutoff
     if (beyondCount || beyondDays) {
-      // 保留期检查：被 Message.generationTaskId 引用的任务不删（本版无跨表索引，记录警告）
-      // TODO(0.12.1): 接入 MessageStore 引用检查
+      // 保留期检查：理论上应跳过仍被 Message.generationTaskId 引用的任务，但当前
+      // 没有跨表索引，无法在扫描时判定引用。**已知限制**：终态任务记录可能先于
+      // 引用它的消息被按保留期清理（表现为历史消息失去任务回放证据，不影响消息本体）。
+      // 若要收口，需先为 messages 增加 generationTaskId 索引，再在此处做引用检查；
+      // 原 TODO 自 0.12.1 挂到 0.20.0 未立项，故改为显式限制说明而非悬挂 TODO。
       toDelete.push(t.taskId)
     }
   }
