@@ -20,10 +20,14 @@ import {
   buildLengthRepairInstruction,
   classifyContinueFailure,
   isCompleteSentence,
+  detectCharacterVoiceViolation,
+  buildVoiceRepairInstruction,
+  stripCharacterVoiceSentences,
 } from '../../../shared/chat-core/aiInputHelper'
 import { createCommandContext } from './commandContext'
 import { registerDraftBridge } from './draftBridge'
 import { trimContinuationSeam } from '../../../shared/chat-core/messagePostProcess'
+import { countVisibleCharacters, trimToSentenceBoundary } from '../../../shared/textMetrics'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
 import {
   resolveContinueIntensity,
@@ -602,12 +606,32 @@ export function useChatInputState(
         cleaned = parseContinueResult(rawResult, userName, charName, narrativeMode)
       }
 
+      // 视角修复：沉浸式下续写应只写用户侧内容；若模型替角色行动/说话，最多重写两次，
+      // 仍越权则按句删除角色侧叙述（兜底保证用户消息不含角色行为）。
+      if (cleaned && narrativeMode === 'immersive' && detectCharacterVoiceViolation(cleaned, charName)) {
+        for (let round = 0; round < 2; round++) {
+          const guarded = parseContinueResult(
+            await requestWithSystemNote(buildVoiceRepairInstruction(charName), Math.min(intensityParams.temperature, 0.35)),
+            userName, charName, narrativeMode,
+          )
+          if (!guarded) break
+          cleaned = guarded
+          if (!detectCharacterVoiceViolation(cleaned, charName)) break
+        }
+        if (detectCharacterVoiceViolation(cleaned, charName)) {
+          cleaned = stripCharacterVoiceSentences(cleaned, charName)
+        }
+      }
+
       if (cleaned) {
+        const minChars = CONTINUE_LENGTH_PARAMS[length].minChars
+        const maxChars = CONTINUE_LENGTH_PARAMS[length].maxChars
         const verdict = evaluateContinueLength(cleaned, length)
         if (verdict.action === 'trim' && verdict.trimmedText) {
           cleaned = verdict.trimmedText
         } else if (verdict.action === 'supplement' || verdict.action === 'compress') {
-          // 越界或疑似截断：最多修复一次，修复后仅接受轻微越界
+          // 越界或疑似截断：最多修复一次；修复失败时，若原文完整则保留原文交给后续补足
+          const baseBeforeRepair = cleaned
           const repairNote = buildLengthRepairInstruction(verdict.action, length, {
             chars: verdict.chars,
             truncated: verdict.truncated,
@@ -618,19 +642,82 @@ export function useChatInputState(
           )
           if (repaired && isAcceptableAfterLengthRepair(repaired, length)) {
             cleaned = repaired
+          } else if (verdict.action === 'supplement') {
+            // 修复失败但原文可用：保留原文，交给后续“近下限补足”（必要时把未写完的句子接完）
+            cleaned = baseBeforeRepair
           } else {
-            // 仍以不完整句结尾时，实质是“没写完”而非长度档位问题，提示要指向症结
-            showNotification(
-              !repaired || !isCompleteSentence(repaired)
-                ? '续写没有写完，请重试或更换模型'
-                : '续写长度未落在目标区间，已保留原输入；可更换档位或模型重试',
+            // 压缩失败：尝试按句边界收束原文；仍不合格则保留用户原输入
+            const trimmed = trimToSentenceBoundary(baseBeforeRepair, { minChars, maxChars })
+            if (trimmed) {
+              cleaned = trimmed
+            } else {
+              showNotification('续写长度未落在目标区间，已保留原输入；可更换档位或模型重试')
+              return
+            }
+          }
+        }
+        // 修复后仍略超上限：优先按句边界收束；无句边界可收束时再压缩一次
+        if (countVisibleCharacters(cleaned) > maxChars) {
+          const trimmed = trimToSentenceBoundary(cleaned, { minChars, maxChars })
+          if (trimmed) {
+            cleaned = trimmed
+          } else {
+            const compressNote = buildLengthRepairInstruction('compress', length, {
+              chars: countVisibleCharacters(cleaned),
+              truncated: false,
+            })
+            const compressed = parseContinueResult(
+              await requestWithSystemNote(compressNote, intensityParams.temperature),
+              userName, charName, narrativeMode,
             )
-            return
+            if (compressed && isCompleteSentence(compressed)) {
+              const candidate = trimToSentenceBoundary(compressed, { minChars, maxChars }) ?? compressed
+              const candidateChars = countVisibleCharacters(candidate)
+              if (candidateChars >= minChars && candidateChars <= maxChars) cleaned = candidate
+            }
           }
         }
         // 提示词已禁止复读末尾，但模型仍会溢出；用确定性去重兜底（R5/S4）。
         // 统一走续写接缝策略：4 字直接去重，3 字仅在边界/完整短语重复时去重。
+        // 先做接缝去重再补足，避免补足后的长度又被接缝裁剪到下限以下。
         if (hasInput) cleaned = trimContinuationSeam(originalInput, cleaned)
+        // 近下限补足：完整但略低于下限时，最多再“接着写”三次，把新增内容推入目标区间。
+        // 用 assistant 预填 + 继续指令，比整段重写更容易稳定补足；仍不达标则保留当前结果。
+        for (let round = 0; round < 3; round++) {
+          const charsNow = countVisibleCharacters(cleaned)
+          if (charsNow >= minChars) break
+          const deficit = Math.max(1, minChars - charsNow)
+          const extensionTarget = Math.max(deficit, 12)
+          const extensionMessages: ChatParams['messages'] = [
+            ...contextMessages,
+            { role: 'assistant', content: cleaned },
+            {
+              role: 'user',
+              content: `请紧接上面这段续写的最后一句继续写，只输出新增内容，不要重复已有文字，不要总结。至少再写 ${extensionTarget} 个可见中文字符，保持同一场景与用户视角，只写用户自己的动作、对白、观察和感受，不要叙述角色的动作或对白，以完整句收尾。`,
+            },
+          ]
+          const candidate = parseContinueResult(
+            await requestContinuation(extensionMessages, intensityParams.temperature),
+            userName, charName, narrativeMode,
+          )
+          if (!candidate || !isCompleteSentence(candidate)) break
+          let joined = cleaned + trimContinuationSeam(cleaned, candidate)
+          if (!isCompleteSentence(joined)) break
+          let joinedChars = countVisibleCharacters(joined)
+          if (joinedChars > maxChars) {
+            const trimmed = trimToSentenceBoundary(joined, { minChars, maxChars })
+            if (!trimmed) break
+            joined = trimmed
+            joinedChars = countVisibleCharacters(joined)
+          }
+          if (joinedChars <= charsNow) break
+          cleaned = joined
+        }
+        // 补足后仍不是完整句：视为没写完，保留原输入并提示（与既有失败提示一致）
+        if (!isCompleteSentence(cleaned)) {
+          showNotification('续写没有写完，请重试或更换模型')
+          return
+        }
         const suggestion = hasInput ? originalInput + cleaned : cleaned
         if (sameScope() && editor.current(ticket)) setContinuedText(suggestion)
         else if (sameScope()) editor.keep(ticket, suggestion, '续写')

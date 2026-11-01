@@ -408,7 +408,7 @@ describe('useChatInputState', () => {
     expect(lastToastText()).toContain('未返回有效的中文正文')
   })
 
-  it('修复后仍明显越界时保留原输入并给出可见反馈', async () => {
+  it('修复失败但原文可用时保留原文并继续补写', async () => {
     useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
     mockAiHelperResponses([
       `<continuation>${sentenceText(10)}</continuation>`,
@@ -421,10 +421,9 @@ describe('useChatInputState', () => {
       await result.current.handleAiContinue()
     })
 
-    // 最多一次修复，失败后保留用户原输入
-    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
-    expect(result.current.text).toBe('保留这段原文。')
-    expect(lastToastText()).toContain('长度')
+    // 修复结果不可用 → 保留 10 字原文并尝试补写；补写无响应时保留原文续写
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(3)
+    expect(result.current.text).toBe('保留这段原文。' + sentenceText(10))
   })
 
   it('格式无效重试与长度修复各自最多一次，不串成更多请求', async () => {
@@ -501,6 +500,40 @@ describe('useChatInputState', () => {
     })
 
     expect(result.current.text).toBe(sentenceText(14))
+  })
+
+  it('完整但低于下限时继续补写，直到落入目标区间', async () => {
+    useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
+    // 首次 18 字：完整且高于 80% 下限（16）被接受，但低于 20 字下限 → 继续补写 12 字 → 30 字落档
+    // 补写内容用不同字，避免接缝去重把重复句裁剪掉
+    mockAiHelperResponses([
+      `<continuation>${sentenceText(18)}</continuation>`,
+      `<continuation>${'乙。'.repeat(6)}</continuation>`,
+    ])
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+
+    await act(async () => {
+      await result.current.handleAiContinue()
+    })
+
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(result.current.text).toBe(sentenceText(18) + '乙。'.repeat(6))
+  })
+
+  it('续写替角色行动时追加视角修复并采用重写结果', async () => {
+    useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
+    mockAiHelperResponses([
+      '<continuation>Alice没吭声，只抬了抬下巴，示意我继续听。</continuation>',
+      '<continuation>门外忽然传来急促的敲门声，走廊里的灯随之闪烁起来。</continuation>',
+    ])
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+
+    await act(async () => {
+      await result.current.handleAiContinue()
+    })
+
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(2)
+    expect(result.current.text).toBe('门外忽然传来急促的敲门声，走廊里的灯随之闪烁起来。')
   })
 
   it('UEX-P1-06 尾巴：润色空结果回退原文并提示', async () => {

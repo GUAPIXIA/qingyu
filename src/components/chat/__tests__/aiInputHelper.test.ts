@@ -10,6 +10,9 @@ import {
   isAcceptableAfterLengthRepair,
   buildLengthRepairInstruction,
   classifyContinueFailure,
+  detectCharacterVoiceViolation,
+  buildVoiceRepairInstruction,
+  stripCharacterVoiceSentences,
 } from '../../../../shared/chat-core/aiInputHelper'
 import { callAiHelper } from '../../../features/chat/aiHelperClient'
 import type { Character, Message } from '../../../../shared/types'
@@ -295,12 +298,19 @@ describe('续写强度档位', () => {
 
   it('续写长度按“本次新增内容”的字数区间描述，不改变剧情推进指令', () => {
     const brief = buildContinueSystemPrompt('小明', 'Alice', true, 'omniscient', 'active', 'brief')
+    const detailed = buildContinueSystemPrompt('小明', 'Alice', true, 'omniscient', 'active', 'detailed')
     const extended = buildContinueSystemPrompt('小明', 'Alice', true, 'omniscient', 'active', 'extended')
 
     expect(brief).toContain('写 20–60 个可见中文字符，1–2 句')
     expect(extended).toContain('写 500–900 个可见中文字符，形成 4–6 个自然段')
     expect(brief).toContain('本次只输出直接接在原文之后的新内容，不要复述原文')
     expect(brief).toContain('必须在完整句处结束')
+    // 硬性下限与分段配额：上两档不再允许“自然完成即收尾”
+    expect(brief).toContain('硬性下限')
+    expect(brief).toContain('必须达到至少 20 个可见中文字符')
+    expect(brief).toContain('未达到下限前不要收尾')
+    expect(detailed).toContain('每段约 90–140 字')
+    expect(extended).toContain('每段约 110–160 字')
     // 长度不再表述为“最终输入框内容”，也不再出现无上限描述
     expect(brief).not.toContain('最终输入框内容')
     expect(extended).not.toContain('可写多个自然段')
@@ -470,6 +480,8 @@ describe('buildLengthRepairInstruction', () => {
     expect(note).toContain('80–180')
     expect(note).toContain('30 个可见字符')
     expect(note).toContain('不要复述已有内容')
+    expect(note).toContain('还差至少 50 字')
+    expect(note).toContain('至少写到 80 个可见中文字符')
   })
 
   it('截断场景提示输出未写完，且不复述具体 token 预算', () => {
@@ -483,6 +495,35 @@ describe('buildLengthRepairInstruction', () => {
     expect(note).toContain('220–420')
     expect(note).toContain('保留关键信息')
     expect(note).toContain('完整句收尾')
+  })
+})
+
+describe('detectCharacterVoiceViolation', () => {
+  it('角色名作主语或动作发出者时判为越权', () => {
+    expect(detectCharacterVoiceViolation('苏晚没吭声，只抬了抬下巴。', '苏晚')).toBe(true)
+    expect(detectCharacterVoiceViolation('苏晚把钥匙放进掌心，低声说：“走吧。”', '苏晚')).toBe(true)
+    expect(detectCharacterVoiceViolation('苏晚：“你来了。”', '苏晚')).toBe(true)
+  })
+
+  it('用户把角色作为宾语或定语提及不算越权', () => {
+    expect(detectCharacterVoiceViolation('我把这话低声说给苏晚听。', '苏晚')).toBe(false)
+    expect(detectCharacterVoiceViolation('我回头看了苏晚一眼，没有说话。', '苏晚')).toBe(false)
+    expect(detectCharacterVoiceViolation('我压低声音问：“苏晚，你听得出是谁吗？”', '苏晚')).toBe(false)
+  })
+
+  it('视角修复指令包含角色名与用户侧约束', () => {
+    const note = buildVoiceRepairInstruction('苏晚')
+    expect(note).toContain('苏晚')
+    expect(note).toContain('只写用户侧内容')
+    expect(note).toContain('不得以 苏晚 的名字')
+  })
+
+  it('兜底清理按句删除角色侧叙述，保留用户侧内容', () => {
+    const text = '我把伞收好。苏晚没吭声，只抬了抬下巴。我压低声音问：“外面是谁？”'
+    const cleaned = stripCharacterVoiceSentences(text, '苏晚')
+    expect(cleaned).toContain('我把伞收好')
+    expect(cleaned).toContain('我压低声音问')
+    expect(cleaned).not.toContain('苏晚没吭声')
   })
 })
 
