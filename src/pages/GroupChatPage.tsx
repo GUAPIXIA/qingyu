@@ -15,6 +15,7 @@ import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Modal } from '../components/common/Modal'
 import { GreetingPickerModal } from './group/GreetingPickerModal'
+import { GroupInitPreambleModal } from '../components/chat/GroupInitPreambleModal'
 import { NewGroupModal } from './group/NewGroupModal'
 import { SessionSwitcher } from '../components/common/SessionSwitcher'
 import { GroupChatSettingsPanel } from '../components/chat/GroupChatSettingsPanel'
@@ -49,7 +50,11 @@ import {
   Globe2,
   UserRound,
   Compass,
+  Sparkles,
 } from 'lucide-react'
+
+/** 群聊初始化弹窗的入口来源；null 表示弹窗关闭（页面级单例，同一时刻只开一个弹窗）。 */
+type GroupInitEntry = 'empty' | 'greeting' | 'settings' | 'opening'
 
 export function GroupChatPage() {
   const { characters } = useCharacterStore()
@@ -108,8 +113,15 @@ export function GroupChatPage() {
 
   const [showSpatialBoard, setShowSpatialBoard] = useState(false)
   const [openSpatialAssistant, setOpenSpatialAssistant] = useState(false)
+  // 群聊初始化（AI 前置设定）弹窗入口来源：空状态 CTA / 开场白弹窗 / 设置面板 / 系统开场
+  const [initEntry, setInitEntry] = useState<GroupInitEntry | null>(null)
   const requestSpatialCloseRef = useRef<() => void>(() => {})
-  useEffect(() => { setShowSpatialBoard(false); setOpenSpatialAssistant(false) }, [currentGroup?.id, currentSessionId])
+  useEffect(() => {
+    setShowSpatialBoard(false)
+    setOpenSpatialAssistant(false)
+    // 切换群聊/会话时关闭初始化弹窗，避免弹窗残留旧群数据
+    setInitEntry(null)
+  }, [currentGroup?.id, currentSessionId])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -205,6 +217,16 @@ export function GroupChatPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentGroup?.id, currentSessionId, messages.length])
+
+  /**
+   * 打开页面级初始化弹窗（AI 前置设定）。
+   * 互斥：先关闭开场白选择器与设置面板，保证同一时刻只开一个弹窗。
+   */
+  const openInitPreamble = (entry: GroupInitEntry) => {
+    setShowGreetingPicker(false)
+    setShowSettings(false)
+    setInitEntry(entry)
+  }
 
   const handleSelect = async (group: GroupChat) => {
     await selectGroup(group.id)
@@ -668,6 +690,15 @@ export function GroupChatPage() {
                     <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed">
                       选择发送后的回复规则，或直接点击一位角色，让 TA 根据当前对话接话。
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => openInitPreamble('empty')}
+                      disabled={messages.length > 0 || isStreaming}
+                      className="btn-primary mx-auto mt-4 inline-flex items-center gap-1.5 text-xs"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                      统一初始环境（AI）
+                    </button>
                     <div className="mt-4 grid grid-cols-3 gap-2 text-[10px]">
                       <span className="rounded-xl bg-tavern-bg-soft px-2 py-2"><b className="block text-tavern-text-soft">指定成员</b>由固定成员回复</span>
                       <span className="rounded-xl bg-tavern-bg-soft px-2 py-2"><b className="block text-tavern-text-soft">按顺序</b>成员依次接话</span>
@@ -786,6 +817,10 @@ export function GroupChatPage() {
           onMoveMember={handleMoveMember}
           onToggleLorebook={toggleLorebook}
           onExport={handleExport}
+          onOpenInit={() => openInitPreamble('settings')}
+          onOpenSystemOpening={messages.length === 0
+            ? () => openInitPreamble('opening')
+            : undefined}
         />
       )}
 
@@ -915,10 +950,25 @@ export function GroupChatPage() {
         messagesCount={messages.length}
         isStreaming={isStreaming}
         onClose={() => setShowGreetingPicker(false)}
+        onOpenInit={() => openInitPreamble('greeting')}
       />
 
+      {/* ============ 群聊初始化（AI 前置设定）弹窗 ============ */}
+      {initEntry && currentGroup && (
+        <GroupInitPreambleModal
+          open
+          group={currentGroup}
+          entry={initEntry}
+          onClose={() => setInitEntry(null)}
+          onChooseDefaultOpening={() => {
+            setInitEntry(null)
+            setShowGreetingPicker(true)
+          }}
+        />
+      )}
+
       {/* 空状态时不显示弹窗的自动触发提示：如果没有消息，自动弹出选择器 */}
-      {currentGroup && messages.length === 0 && !isStreaming && !showGreetingPicker && (() => {
+      {currentGroup && messages.length === 0 && !isStreaming && !showGreetingPicker && !initEntry && (() => {
         const hasGreetings = currentGroup.memberIds.some(id => {
           const char = characters.find(c => c.id === id)
           return (char?.groupOnlyGreetings && char.groupOnlyGreetings.length > 0) || char?.firstMessage

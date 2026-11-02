@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { GroupChat } from '../../../shared/types'
+import type { Character, GroupChat } from '../../../shared/types'
 import { GroupChatPage } from '../GroupChatPage'
 import {
   clearScrollMemory,
@@ -27,7 +27,8 @@ const mocks = vi.hoisted(() => {
   }
 
   return {
-    characterState: { characters: [] },
+    group,
+    characterState: { characters: [] as Character[] },
     personaState: { loadPersonas: vi.fn().mockResolvedValue(undefined) },
     settingsState: { settings: { messageWidth: 768 } },
     virtuosoRender: vi.fn(),
@@ -102,7 +103,28 @@ vi.mock('../../components/chat/GroupPersonaSwitcher', () => ({ GroupPersonaSwitc
 vi.mock('../../components/chat/QuickSettingsPanel', () => ({ QuickSettingsPanel: () => null }))
 vi.mock('../../components/chat/MemoryPanel', () => ({ MemoryPanel: () => null }))
 vi.mock('../../components/common/SessionSwitcher', () => ({ SessionSwitcher: () => null }))
-vi.mock('../group/GreetingPickerModal', () => ({ GreetingPickerModal: () => null }))
+vi.mock('../group/GreetingPickerModal', () => ({
+  // 桩：渲染 open 状态与「AI 统一初始环境」入口，供页面级互斥/串联断言
+  GreetingPickerModal: (props: { open: boolean; onOpenInit?: () => void }) => props.open ? (
+    <div data-testid="greeting-picker-stub">
+      <button type="button" onClick={props.onOpenInit}>AI 统一初始环境 + 系统开场</button>
+    </div>
+  ) : null,
+}))
+vi.mock('../../components/chat/GroupInitPreambleModal', () => ({
+  // 桩：暴露 entry 来源、关闭与「默认开场」串联回调
+  GroupInitPreambleModal: (props: {
+    open: boolean
+    entry: string
+    onClose: () => void
+    onChooseDefaultOpening: () => void
+  }) => props.open ? (
+    <div data-testid="group-init-modal-stub" data-entry={props.entry}>
+      <button type="button" onClick={props.onClose}>关闭初始化弹窗</button>
+      <button type="button" onClick={props.onChooseDefaultOpening}>选择默认开场</button>
+    </div>
+  ) : null,
+}))
 vi.mock('../group/NewGroupModal', () => ({ NewGroupModal: () => null }))
 vi.mock('react-virtuoso', () => {
   const Virtuoso = (props: Record<string, any>, _ref: React.ForwardedRef<HTMLDivElement>) => {
@@ -133,7 +155,14 @@ describe('GroupChatPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     clearScrollMemory()
-    Object.assign(mocks.groupState, { currentSessionId: null, messages: [], isStreaming: false, currentStreamingCharId: null })
+    mocks.characterState.characters = []
+    Object.assign(mocks.groupState, {
+      currentGroup: mocks.group,
+      currentSessionId: null,
+      messages: [],
+      isStreaming: false,
+      currentStreamingCharId: null,
+    })
   })
 
   it('页头只显示一个群聊设置入口', () => {
@@ -246,5 +275,58 @@ describe('GroupChatPage', () => {
   it('UEX-P1-12：非生成中不显示群调度条', () => {
     render(<GroupChatPage />)
     expect(screen.queryByTestId('group-member-bar-stub')).toBeNull()
+  })
+
+  it('空状态主按钮「统一初始环境（AI）」打开初始化弹窗（entry=empty），且不自动弹', () => {
+    render(<GroupChatPage />)
+
+    // 初始化弹窗不自动弹（§11.2：入口均为手动点击）
+    expect(screen.queryByTestId('group-init-modal-stub')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '统一初始环境（AI）' }))
+
+    expect(screen.getByTestId('group-init-modal-stub')).toHaveAttribute('data-entry', 'empty')
+  })
+
+  it('默认开场路径不变：空会话有开场白时自动弹开场白选择器，不弹初始化弹窗', () => {
+    mocks.characterState.characters = [
+      { id: 'c1', name: '爱丽丝', firstMessage: '早上好。' } as unknown as Character,
+    ]
+    Object.assign(mocks.groupState, { currentGroup: { ...mocks.group, memberIds: ['c1'] } })
+
+    render(<GroupChatPage />)
+
+    expect(screen.getByTestId('greeting-picker-stub')).toBeTruthy()
+    expect(screen.queryByTestId('group-init-modal-stub')).toBeNull()
+  })
+
+  it('开场白弹窗入口与初始化弹窗互斥；选默认开场后回到开场白选择器', () => {
+    mocks.characterState.characters = [
+      { id: 'c1', name: '爱丽丝', firstMessage: '早上好。' } as unknown as Character,
+    ]
+    Object.assign(mocks.groupState, { currentGroup: { ...mocks.group, memberIds: ['c1'] } })
+
+    render(<GroupChatPage />)
+    expect(screen.getByTestId('greeting-picker-stub')).toBeTruthy()
+
+    // 开场白弹窗 → 初始化弹窗：关前者、开后者（entry=greeting）
+    fireEvent.click(screen.getByRole('button', { name: 'AI 统一初始环境 + 系统开场' }))
+    expect(screen.queryByTestId('greeting-picker-stub')).toBeNull()
+    expect(screen.getByTestId('group-init-modal-stub')).toHaveAttribute('data-entry', 'greeting')
+
+    // 初始化弹窗选默认开场：关初始化弹窗、重新打开开场白选择器
+    fireEvent.click(screen.getByRole('button', { name: '选择默认开场' }))
+    expect(screen.queryByTestId('group-init-modal-stub')).toBeNull()
+    expect(screen.getByTestId('greeting-picker-stub')).toBeTruthy()
+  })
+
+  it('初始化弹窗关闭后回到空状态（入口恢复）', () => {
+    render(<GroupChatPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: '统一初始环境（AI）' }))
+    fireEvent.click(screen.getByRole('button', { name: '关闭初始化弹窗' }))
+
+    expect(screen.queryByTestId('group-init-modal-stub')).toBeNull()
+    expect(screen.getByRole('button', { name: '统一初始环境（AI）' })).toBeTruthy()
   })
 })

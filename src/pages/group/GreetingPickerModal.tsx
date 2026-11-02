@@ -11,10 +11,15 @@ interface GreetingPickerModalProps {
   messagesCount: number
   isStreaming: boolean
   onClose: () => void
+  /**
+   * 打开「AI 统一初始环境 + 系统开场」（群聊初始化弹窗）入口。
+   * 这里只回调页面，不自行插消息/关闭弹窗（方案 v2 §7.2）。
+   */
+  onOpenInit?: () => void
 }
 
 /** 群聊开场白选择弹窗：展示每位角色的开场白，点击后以该角色身份插入 */
-export function GreetingPickerModal({ open, group, messagesCount, isStreaming, onClose }: GreetingPickerModalProps) {
+export function GreetingPickerModal({ open, group, messagesCount, isStreaming, onClose, onOpenInit }: GreetingPickerModalProps) {
   const { characters } = useCharacterStore()
   if (!open || !group || messagesCount > 0 || isStreaming) return null
 
@@ -59,7 +64,17 @@ export function GreetingPickerModal({ open, group, messagesCount, isStreaming, o
           <span className="text-xs text-tavern-text-muted mr-auto">
             点击任意开场白开始群聊，或
           </span>
+          {onOpenInit && (
+            <button
+              type="button"
+              className="btn-primary text-xs"
+              onClick={onOpenInit}
+            >
+              AI 统一初始环境 + 系统开场
+            </button>
+          )}
           <button
+            type="button"
             className="btn-secondary text-xs"
             onClick={onClose}
           >

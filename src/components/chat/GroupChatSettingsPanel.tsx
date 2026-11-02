@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react'
-import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText, Download, Palette, Globe2 } from 'lucide-react'
+import { X, ArrowUp, ArrowDown, AtSign, Repeat, Zap, ZapOff, BookOpen, FileText, Download, Palette, Globe2, Sparkles, Play } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { getDisplayName } from '../../../shared/chat-core/variables'
 import { charAssetUrl } from '../../utils/asset'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { pushToast } from '../../store/useToastStore'
 import type { GroupChat, Character, Lorebook, Preset } from '../../../shared/types'
 import { NARRATIVE_MODE_OPTIONS } from '../../../shared/narrativeMode'
 
 /** UEX-P1-11：生成中禁用发言调度相关控件的统一提示 */
 const STREAMING_GUARD_TITLE = '生成中，暂不可修改群模式与成员'
+/** 生成中禁用群聊前置设定编辑/保存的统一提示（避免与 UEX-P1-11 守卫文案混淆） */
+const PREAMBLE_STREAMING_GUARD_TITLE = '生成中，暂不可修改群聊前置设定'
 
 interface GroupChatSettingsPanelProps {
   group: GroupChat
@@ -23,6 +26,10 @@ interface GroupChatSettingsPanelProps {
   onMoveMember: (index: number, dir: number) => void
   onToggleLorebook: (id: string) => void
   onExport: () => void
+  /** 打开页面级「群聊初始化」弹窗（AI 生成共同场景；入口来源为设置面板） */
+  onOpenInit: () => void
+  /** 仅空会话时由页面传入：打开初始化弹窗并直接进入系统开场流程 */
+  onOpenSystemOpening?: () => void
 }
 
 /**
@@ -42,6 +49,8 @@ export function GroupChatSettingsPanel({
   onMoveMember,
   onToggleLorebook,
   onExport,
+  onOpenInit,
+  onOpenSystemOpening,
 }: GroupChatSettingsPanelProps) {
   const availableChars = characters.filter(c => !group.memberIds.includes(c.id))
   // UEX-P1-11：生成中禁用模式切换与成员增删/排序（store saveGroup 另有兜底守卫）
@@ -54,6 +63,7 @@ export function GroupChatSettingsPanel({
   const [localOpacity, setLocalOpacity] = useState(group.chatBackgroundParams?.opacity ?? 0.3)
   const [localBlur, setLocalBlur] = useState(group.chatBackgroundParams?.blur ?? 0)
   const [localInputOpacity, setLocalInputOpacity] = useState(group.bubbleOpacity ?? 1)
+  const [localPreamble, setLocalPreamble] = useState(group.groupPreamble?.text ?? '')
 
   // group 变化时同步本地 state
   useEffect(() => { setLocalMaxRounds(group.maxRounds) }, [group.maxRounds])
@@ -62,6 +72,35 @@ export function GroupChatSettingsPanel({
   useEffect(() => { setLocalOpacity(group.chatBackgroundParams?.opacity ?? 0.3) }, [group.chatBackgroundParams?.opacity])
   useEffect(() => { setLocalBlur(group.chatBackgroundParams?.blur ?? 0) }, [group.chatBackgroundParams?.blur])
   useEffect(() => { setLocalInputOpacity(group.bubbleOpacity ?? 1) }, [group.bubbleOpacity])
+  useEffect(() => { setLocalPreamble(group.groupPreamble?.text ?? '') }, [group.groupPreamble?.text])
+
+  const preamble = group.groupPreamble
+  const hasPreamble = Boolean(preamble?.text.trim())
+  // 成员快照按集合比较：仅增删/替换算“已变化”，拖动排序不提示（场景仍匹配）
+  const preambleMembersStale = (() => {
+    if (!preamble) return false
+    const snapshot = new Set(preamble.memberIds)
+    return snapshot.size !== new Set(group.memberIds).size
+      || group.memberIds.some((id) => !snapshot.has(id))
+  })()
+
+  /** 失焦保存：基于最新 group 构造对象；清空文本即删除字段 */
+  const savePreamble = () => {
+    const text = localPreamble.trim()
+    onSave({
+      ...group,
+      groupPreamble: text
+        ? { text, memberIds: group.memberIds, updatedAt: Date.now() }
+        : undefined,
+    })
+  }
+
+  /** 清除前置设定字段（toast 反馈） */
+  const clearPreamble = () => {
+    setLocalPreamble('')
+    onSave({ ...group, groupPreamble: undefined })
+    pushToast({ variant: 'success', title: '已清除群聊前置设定', requestId: 'group-preamble-clear' })
+  }
 
   return (
     <>
@@ -309,6 +348,69 @@ export function GroupChatSettingsPanel({
               placeholder="可选：为群聊添加上下文提示..."
               className="w-full bg-tavern-bg border border-tavern-border-soft rounded-lg px-2.5 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent resize-none placeholder:text-tavern-text-muted/50"
             />
+          </div>
+
+          {/* 群聊前置设定（方案 v2 §7.3）：AI 共同场景文本 + 生成/清除/系统开场入口 */}
+          <div>
+            <label className="label">
+              <span className="inline-flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />群聊前置设定
+              </span>
+            </label>
+            <p className="mt-1 text-[10px] leading-relaxed text-tavern-text-muted">
+              全体成员共享的场景环境（时间/地点/世界与规则），每轮注入上下文；失焦保存，留空视为未设定。
+            </p>
+            <textarea
+              aria-label="群聊前置设定"
+              value={localPreamble}
+              onChange={e => setLocalPreamble(e.target.value)}
+              onBlur={savePreamble}
+              rows={4}
+              disabled={isStreaming}
+              title={isStreaming ? PREAMBLE_STREAMING_GUARD_TITLE : undefined}
+              placeholder="可选：AI 分析全体成员后生成的共同场景；也可手动填写..."
+              className="mt-1 w-full bg-tavern-bg border border-tavern-border-soft rounded-lg px-2.5 py-1.5 text-xs text-tavern-text outline-none focus:border-tavern-accent resize-none placeholder:text-tavern-text-muted/50 disabled:opacity-50"
+            />
+            {preambleMembersStale && (
+              <p role="status" className="mt-1 text-[10px] leading-relaxed text-tavern-warning">
+                成员已变化，建议重新生成
+              </p>
+            )}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={onOpenInit}
+                disabled={isStreaming}
+                title={isStreaming ? PREAMBLE_STREAMING_GUARD_TITLE : undefined}
+                className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1 disabled:opacity-50"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {hasPreamble ? '重新生成' : 'AI 生成'}
+              </button>
+              {hasPreamble && (
+                <button
+                  type="button"
+                  onClick={clearPreamble}
+                  disabled={isStreaming}
+                  title={isStreaming ? PREAMBLE_STREAMING_GUARD_TITLE : undefined}
+                  className="btn-ghost text-xs px-2.5 py-1 text-tavern-danger disabled:opacity-50"
+                >
+                  清除
+                </button>
+              )}
+              {onOpenSystemOpening && (
+                <button
+                  type="button"
+                  onClick={onOpenSystemOpening}
+                  disabled={isStreaming}
+                  title={isStreaming ? PREAMBLE_STREAMING_GUARD_TITLE : undefined}
+                  className="btn-secondary text-xs px-2.5 py-1 flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  用系统开场开始
+                </button>
+              )}
+            </div>
           </div>
 
           {/* 导出 */}
