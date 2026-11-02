@@ -4,6 +4,7 @@ import type { RequestBudget } from '../../shared/modelOutputProfile'
 import { useSettingsStore } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { usePersonaStore } from './usePersonaStore'
+import { resolveGroupUserContext } from '../features/group-chat/groupUserContext'
 import { lorebookCache } from '../features/lorebook/lorebookCache'
 import {
   executeLorebookRuntime,
@@ -102,21 +103,12 @@ export function buildGroupChatContext(
   const charStore = useCharacterStore.getState()
   const { sessions, currentSessionId } = get()
   const currentSession = sessions.find(s => s.id === currentSessionId)
-  const sessionPersonaId = currentSession?.personaId === undefined
-    ? settings.defaultPersonaId
-    : currentSession.personaId
-  const sessionPersona = sessionPersonaId
-    ? usePersonaStore.getState().getPersona(sessionPersonaId)
-    : undefined
-  const canUseGlobalPersonaFields = !!sessionPersonaId && settings.activePersonaId === sessionPersonaId
-  const userName = (
-    sessionPersona?.name
-    ?? (canUseGlobalPersonaFields ? settings.userName : '')
-  ) || '用户'
-  const userDescription = sessionPersona?.description
-    ?? (canUseGlobalPersonaFields ? settings.userDescription : '')
-  const userPersona = sessionPersona?.persona
-    ?? (canUseGlobalPersonaFields ? settings.userPersona : '')
+  // 用户上下文统一走 groupUserContext（与开场白/旁白插入、历史显示兜底同口径）
+  const { userName, userDescription, userPersona } = resolveGroupUserContext({
+    settings,
+    session: currentSession,
+    getPersona: usePersonaStore.getState().getPersona,
+  })
   const members = group.memberIds
     .map(id => charStore.characters.find(c => c.id === id))
     .filter(Boolean) as Character[]

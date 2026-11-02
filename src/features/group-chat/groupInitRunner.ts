@@ -27,6 +27,7 @@ import { resolveRendererGenerationTaskBudget } from '../../store/generationTaskB
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { resolveGroupUserContext } from './groupUserContext'
 
 export interface GroupInitRunnerOptions {
   group: GroupChat
@@ -73,14 +74,11 @@ function resolveUserContext(opts: GroupInitRunnerOptions): ResolvedUserContext {
   try {
     const settings = useSettingsStore.getState().settings
     const session = useGroupChatStore.getState().sessions.find((item) => item.id === opts.sessionId)
-    const sessionPersonaId = session?.personaId === undefined ? settings.defaultPersonaId : session.personaId
-    const persona = sessionPersonaId ? usePersonaStore.getState().getPersona(sessionPersonaId) : undefined
-    const canUseGlobalPersonaFields = !!sessionPersonaId && settings.activePersonaId === sessionPersonaId
-    return {
-      userName: (persona?.name ?? (canUseGlobalPersonaFields ? settings.userName : '')) || '用户',
-      userDescription: persona?.description ?? (canUseGlobalPersonaFields ? settings.userDescription : ''),
-      userPersona: persona?.persona ?? (canUseGlobalPersonaFields ? settings.userPersona : ''),
-    }
+    return resolveGroupUserContext({
+      settings,
+      session,
+      getPersona: usePersonaStore.getState().getPersona,
+    })
   } catch {
     return { userName: '用户' }
   }

@@ -1,4 +1,5 @@
 import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { resolveGroupUserContext } from '../../features/group-chat/groupUserContext'
 import { matchesFeatureSource, groupFeatureScope } from '../../../shared/featureSource'
 import React, { useState, useMemo } from 'react'
 import { charAssetUrl } from '../../utils/asset'
@@ -7,7 +8,7 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { usePersonaStore } from '../../store/usePersonaStore'
 import { cn } from '../../lib/utils'
 import { formatTime } from '../../utils/format'
-import { getDisplayName } from '../../../shared/chat-core/variables'
+import { getDisplayName, replaceVariables } from '../../../shared/chat-core/variables'
 import { extractThought } from '../../../shared/chat-core/messagePostProcess'
 import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
@@ -82,6 +83,24 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
     : isThoughtFallback
       ? ''
       : mainContent
+
+  // 历史/旧数据兜底：消息正文不经过系统提示的宏展开，若落库时残留 {{user}}/{{char}}
+  // （旧版群聊开场白、早期系统开场等），显示时按当前群聊用户上下文展开，避免用户看到占位符。
+  const renderedContent = useMemo(() => {
+    const text = displayContent ?? ''
+    if (!text || !/\{\{(?:user|char|original)\}\}/i.test(text)) return text
+    const groupState = useGroupChatStore.getState()
+    const user = resolveGroupUserContext({
+      settings: useSettingsStore.getState().settings,
+      session: groupState.sessions.find((session) => session.id === groupState.currentSessionId),
+      getPersona: usePersonaStore.getState().getPersona,
+    })
+    const groupMemberNames = groupState.currentGroup?.memberIds
+      .map((id) => characters.find((character) => character.id === id)?.name)
+      .filter((name): name is string => !!name) ?? []
+    const charName = character?.name || groupMemberNames.join('、')
+    return replaceVariables(text, user.userName, charName)
+  }, [displayContent, character, characters])
 
   // @提及高亮：只提取需要高亮的角色名（与单聊共用 RoleplayContentRenderer）
   const mentionNames = useMemo(() => {
@@ -278,7 +297,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
 
               {/* 正文：单聊/群聊共用 RoleplayContentRenderer */}
               <RoleplayContentRenderer
-                content={displayContent || ''}
+                content={renderedContent || ''}
                 contentRenderMode={message.contentRenderMode}
                 isStreaming={isStreaming}
                 mentionNames={mentionNames}

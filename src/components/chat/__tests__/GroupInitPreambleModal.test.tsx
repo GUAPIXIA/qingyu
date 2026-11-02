@@ -9,6 +9,7 @@ import {
 } from '../GroupInitPreambleModal'
 import { useCharacterStore } from '../../../store/useCharacterStore'
 import { useGroupChatStore } from '../../../store/useGroupChatStore'
+import { usePersonaStore } from '../../../store/usePersonaStore'
 import { useSettingsStore } from '../../../store/useSettingsStore'
 import { useToastStore } from '../../../store/useToastStore'
 
@@ -309,6 +310,27 @@ describe('GroupInitPreambleModal 开场方式与系统开场', () => {
     expect(props.onChooseDefaultOpening).toHaveBeenCalledTimes(1)
     expect(props.onClose).toHaveBeenCalledTimes(1)
     expect(insertedNarrations()).not.toHaveBeenCalled()
+  })
+
+  it('系统开场预览与落库前展开 {{user}}/{{char}}（消息渲染不展开宏）', async () => {
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, activePersonaId: 'p1', defaultPersonaId: 'p1' },
+    }))
+    usePersonaStore.setState({
+      personas: [{ id: 'p1', name: '大本', description: '', persona: '', avatar: '', createdAt: 0, updatedAt: 0 }],
+      loaded: true,
+    })
+    runner.generateGroupOpening.mockResolvedValue({ text: '{{user}} 走进来，{{char}} 抬头。', model: 'test-model' })
+    const props = makeProps({ group: preambleGroup(), entry: 'opening' })
+    render(<GroupInitPreambleModal {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: /系统开场/ }))
+
+    const textarea = await screen.findByRole('textbox', { name: '系统开场旁白' })
+    expect(textarea).toHaveValue('大本 走进来，角色-char-a、角色-char-b 抬头。')
+    fireEvent.click(screen.getByRole('button', { name: '应用并开始' }))
+    await waitFor(() =>
+      expect(insertedNarrations()).toHaveBeenCalledWith('大本 走进来，角色-char-a、角色-char-b 抬头。'),
+    )
   })
 
   it('切换 entry 或 group.id 时取消在途生成', () => {

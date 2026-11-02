@@ -5,18 +5,34 @@
  * 页面消费仍走 `src/store/useGroupChatStore.ts` 的稳定状态入口（该文件组合注入本模块）。
  */
 import { nanoid } from 'nanoid'
-import type { GroupMessage } from '../../../shared/types'
+import type { Character, GroupMessage } from '../../../shared/types'
 import { cancelFeatureTasks } from '../../store/featureTasks'
 import { invalidateGroupDerivedMemory } from '../../store/chatUtils'
 import { translateGroupMessage } from '../../store/messageTranslation'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
 import { nextGroupRound } from '../../../shared/chat-core/groupScheduling'
+import { replaceVariables } from '../../../shared/chat-core/variables'
+import { GROUP_NARRATOR_CHARACTER_ID } from '../../../shared/chat-core/groupContextBlocks'
+import { useCharacterStore } from '../../store/useCharacterStore'
+import { usePersonaStore } from '../../store/usePersonaStore'
+import { useSettingsStore } from '../../store/useSettingsStore'
+import { resolveGroupUserContext } from './groupUserContext'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 
 export type GroupMessageActions = Pick<GroupChatState,
   | 'deleteMessage' | 'editMessage' | 'translateMessage' | 'insertCharacterMessage' | 'insertNarrationMessage'>
 
 export function createGroupMessageActions(set: GroupStoreSet, get: GroupStoreGet): GroupMessageActions {
+  /** 解析当前会话的用户上下文（与群聊上下文同口径），供插入消息的变量替换。 */
+  const resolveInsertUserContext = () => {
+    const state = get()
+    return resolveGroupUserContext({
+      settings: useSettingsStore.getState().settings,
+      session: state.sessions.find((session) => session.id === state.currentSessionId),
+      getPersona: usePersonaStore.getState().getPersona,
+    })
+  }
+
   return {
     deleteMessage: async (groupId, sessionId, messageId) => {
       // 阶段五检查点：仅当删除在游标前才失效
@@ -53,18 +69,21 @@ export function createGroupMessageActions(set: GroupStoreSet, get: GroupStoreGet
 
     translateMessage: (messageId) => translateGroupMessage(set, get, messageId),
 
-    /** 插入角色消息（不触发 AI 回复，用于开场白等） */
+    /** 插入角色消息（不触发 AI 回复，用于开场白等；与单聊一致，落库前替换变量） */
     insertCharacterMessage: async (charId, content) => {
       const { currentGroup, currentSessionId, messages } = get()
       if (!currentGroup || !currentSessionId) return
 
+      const user = resolveInsertUserContext()
+      const speaker = useCharacterStore.getState().characters.find((character) => character.id === charId)
+      const processed = replaceVariables(content, user.userName, speaker?.name ?? '')
       const currentRound = nextGroupRound(messages.map((m) => m.round))
 
       const msg: GroupMessage = {
         id: nanoid(),
         groupId: currentGroup.id,
         characterId: charId,
-        content,
+        content: processed,
         images: [],
         timestamp: Date.now(),
         round: currentRound,
@@ -83,17 +102,26 @@ export function createGroupMessageActions(set: GroupStoreSet, get: GroupStoreGet
      *
      * 归属：`characterId:'__narrator__'` + `speakerKind:'narrator'`，渲染层按旁白展示；
      * 不写入任何成员，也不参与自由模式拆分/回落。
+     * 落库前替换 `{{user}}`（会话人设口径）与 `{{char}}`（全体成员名拼接），避免消息正文出现占位符。
      */
     insertNarrationMessage: async (content) => {
       const { currentGroup, currentSessionId, messages } = get()
-      const text = content.trim()
-      if (!currentGroup || !currentSessionId || !text) return
+      if (!currentGroup || !currentSessionId) return
+
+      const user = resolveInsertUserContext()
+      const characters = useCharacterStore.getState().characters
+      const memberNames = currentGroup.memberIds
+        .map((id) => characters.find((character): character is Character => character.id === id)?.name ?? '')
+        .filter(Boolean)
+        .join('、')
+      const text = replaceVariables(content.trim(), user.userName, memberNames)
+      if (!text) return
 
       const currentRound = nextGroupRound(messages.map((m) => m.round))
       const msg: GroupMessage = {
         id: nanoid(),
         groupId: currentGroup.id,
-        characterId: '__narrator__',
+        characterId: GROUP_NARRATOR_CHARACTER_ID,
         content: text,
         images: [],
         timestamp: Date.now(),

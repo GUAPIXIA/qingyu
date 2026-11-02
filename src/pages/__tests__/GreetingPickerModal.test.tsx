@@ -4,6 +4,9 @@ import type { Character, GroupChat } from '../../../shared/types'
 import { GreetingPickerModal } from '../group/GreetingPickerModal'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { usePersonaStore } from '../../store/usePersonaStore'
+import { useSettingsStore } from '../../store/useSettingsStore'
+import { getDefaultSettings } from '../../../shared/defaults'
 
 function makeCharacter(id: string, patch: Partial<Character> = {}): Character {
   const base = useCharacterStore.getState().createCharacter()
@@ -63,6 +66,27 @@ describe('GreetingPickerModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /群聊专属开场白/ }))
     expect(onClose).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(insertCharacterMessage).toHaveBeenCalledWith('char-a', '群聊专属开场白'))
+  })
+
+  it('开场白预览按群聊用户上下文展开 {{user}}/{{char}}（不显示占位符）', () => {
+    useSettingsStore.setState({
+      settings: { ...getDefaultSettings(), userName: '全局名', activePersonaId: 'p1', defaultPersonaId: 'p1' },
+    })
+    usePersonaStore.setState({
+      personas: [{ id: 'p1', name: '大本', description: '', persona: '', avatar: '', createdAt: 0, updatedAt: 0 }],
+      loaded: true,
+    })
+    useCharacterStore.setState({
+      characters: [
+        makeCharacter('char-a', { name: 'Aiko', groupOnlyGreetings: ['{{char}} 向你问好，{{user}}。'] }),
+        makeCharacter('char-b'),
+      ],
+    })
+    render(
+      <GreetingPickerModal open group={makeGroup()} messagesCount={0} isStreaming={false} onClose={vi.fn()} />,
+    )
+    expect(screen.getByText('Aiko 向你问好，大本。')).toBeInTheDocument()
+    expect(screen.queryByText(/\{\{user\}\}/)).not.toBeInTheDocument()
   })
 
   it('点击「跳过，手动开始」只关闭弹窗', () => {

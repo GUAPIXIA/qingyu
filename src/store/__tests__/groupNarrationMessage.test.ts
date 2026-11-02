@@ -3,6 +3,7 @@ import type { GroupChat, GroupSession } from '../../../shared/types'
 import { getDefaultSettings } from '../../../shared/defaults'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
+import { usePersonaStore } from '../usePersonaStore'
 import { useGroupChatStore } from '../useGroupChatStore'
 import { buildGroupChatContext } from '../groupChatContext'
 
@@ -48,6 +49,16 @@ function seed() {
   })
 }
 
+function seedPersona(personaId = 'p1', name = '大本') {
+  useSettingsStore.setState((state) => ({
+    settings: { ...state.settings, activePersonaId: personaId, defaultPersonaId: personaId },
+  }))
+  usePersonaStore.setState({
+    personas: [{ id: personaId, name, description: '', persona: '', avatar: '', createdAt: 0, updatedAt: 0 }],
+    loaded: true,
+  })
+}
+
 describe('insertNarrationMessage（系统开场旁白）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -89,5 +100,35 @@ describe('insertNarrationMessage（系统开场旁白）', () => {
     const built = buildGroupChatContext(useGroupChatStore.getState, undefined, null, { trackUsage: false })
     const history = built.messages.filter((message) => message.role === 'assistant')
     expect(history.some((message) => message.content.includes('雨声落在旧书店的窗上。'))).toBe(true)
+  })
+
+  it('落库前替换 {{user}}/{{char}}（会话人设口径）', async () => {
+    seedPersona()
+    await useGroupChatStore.getState().insertNarrationMessage('{{user}} 走进来，{{char}} 抬头。')
+
+    expect(useGroupChatStore.getState().messages[0].content).toBe('大本 走进来，林雪 抬头。')
+    expect(window.api.group.saveMessage).toHaveBeenCalledWith('g1', 's1', expect.objectContaining({
+      characterId: '__narrator__', content: '大本 走进来，林雪 抬头。',
+    }))
+  })
+
+  it('会话人设覆盖全局用户名（不残留全局 settings.userName）', async () => {
+    seedPersona('p2', '神秘人')
+    useGroupChatStore.setState({ sessions: [{ ...session, personaId: 'p2' }] })
+    await useGroupChatStore.getState().insertNarrationMessage('{{user}} 到场。')
+    expect(useGroupChatStore.getState().messages[0].content).toBe('神秘人 到场。')
+  })
+
+  it('群聊开场白插入前替换 {{char}}/{{user}}（与单聊同口径）', async () => {
+    seedPersona()
+    await useGroupChatStore.getState().insertCharacterMessage('c1', '{{char}} 对 {{user}} 说你好。')
+
+    expect(useGroupChatStore.getState().messages[0]).toMatchObject({
+      characterId: 'c1',
+      content: '林雪 对 大本 说你好。',
+    })
+    expect(window.api.group.saveMessage).toHaveBeenCalledWith('g1', 's1', expect.objectContaining({
+      content: '林雪 对 大本 说你好。',
+    }))
   })
 })

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { GroupChatMessage } from '../GroupChatMessage'
 import { useCharacterStore } from '../../../store/useCharacterStore'
+import { useGroupChatStore } from '../../../store/useGroupChatStore'
 import { useSettingsStore } from '../../../store/useSettingsStore'
 import { usePersonaStore } from '../../../store/usePersonaStore'
 import { getDefaultSettings } from '../../../../shared/defaults'
@@ -57,6 +58,23 @@ describe('GroupChatMessage', () => {
       loaded: true,
     })
     vi.clearAllMocks()
+  })
+
+  it('旧数据消息中的 {{char}}/{{user}} 在显示时按群聊用户上下文兜底展开', () => {
+    useCharacterStore.setState({ characters: [createCharacter({ id: 'char-1', name: 'Aiko' })] })
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, activePersonaId: 'p1', defaultPersonaId: 'p1' },
+    }))
+    usePersonaStore.setState({
+      personas: [{ id: 'p1', name: '大本', description: '', persona: '', avatar: '', createdAt: 0, updatedAt: 0 }],
+      loaded: true,
+    })
+    useGroupChatStore.setState({ currentGroup: null, currentSessionId: null, sessions: [] })
+    const { getByText } = render(
+      <GroupChatMessage message={createMessage({ characterId: 'char-1', content: '{{char}} 向 {{user}} 问好。' })} />,
+    )
+    expect(getByText(/Aiko 向 大本 问好。/)).toBeTruthy()
+    expect(getByText(/Aiko 向 大本 问好。/).textContent).not.toContain('{{')
   })
 
   it('全局叙事的对方消息仍显示实际成员身份', () => {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, RefreshCw, Sparkles, Users } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import type { Character, GroupChat } from '../../../shared/types'
-import { getDisplayName } from '../../../shared/chat-core/variables'
+import { getDisplayName, replaceVariables } from '../../../shared/chat-core/variables'
 import { GROUP_PREAMBLE_LIMITS } from '../../../shared/groupInitPreamble'
 import { countVisibleCharacters } from '../../../shared/textMetrics'
 import { charAssetUrl } from '../../utils/asset'
@@ -13,8 +13,10 @@ import {
   generateGroupOpening,
   generateGroupPreamble,
 } from '../../features/group-chat/groupInitRunner'
+import { resolveGroupUserContext } from '../../features/group-chat/groupUserContext'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { usePersonaStore } from '../../store/usePersonaStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { pushToast } from '../../store/useToastStore'
 
@@ -243,8 +245,15 @@ export function GroupInitPreambleModal({
       if (openingRequestRef.current !== token) return
       setOpeningGenerating(false)
       if (!result) return
-      setOpeningText(result.text)
-      setLastAiOpening(result.text)
+      // 消息不会在渲染层展开宏：预览与落库前就替换为真实用户名/成员名，避免正文出现 {{user}}。
+      const user = resolveGroupUserContext({
+        settings: useSettingsStore.getState().settings,
+        session: useGroupChatStore.getState().sessions.find((item) => item.id === sessionId),
+        getPersona: usePersonaStore.getState().getPersona,
+      })
+      const resolved = replaceVariables(result.text, user.userName, members.map((member) => member.name).join('、'))
+      setOpeningText(resolved)
+      setLastAiOpening(resolved)
     } catch (error) {
       if (openingRequestRef.current !== token) return
       const message = errorMessage(error)
