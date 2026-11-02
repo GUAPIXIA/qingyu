@@ -29,6 +29,7 @@ import {
   generateGroupDialogueDirections,
   clearGroupDialogueDirections,
 } from '../../store/dialogueDirectionRunner'
+import { maybeAutoGroupTitle } from './groupTitleRunner'
 import { streamGroupAI, streamGroupAIFree } from './requestRunner'
 import { checkPollingContinue, checkAutoMemory, clearPollingTimer } from './modeScheduler'
 import {
@@ -377,7 +378,7 @@ export function createGroupGenerationActions(set: GroupStoreSet, get: GroupStore
             const scheduled = currentGroup.chatMode === 'polling' && currentGroup.autoMode
               ? await checkPollingContinue(set, get, currentGroup)
               : false
-            if (!scheduled) { await finishGroupSpatialBurst(currentGroup.id, currentSessionId); maybeGenerateGroupDirections(set, get) }
+            if (!scheduled) { await finishGroupSpatialBurst(currentGroup.id, currentSessionId); maybeGenerateGroupDirections(set, get); void maybeAutoGroupTitle(set, get) }
             // 自动记忆检查
             checkAutoMemory(get)
           })
@@ -402,6 +403,7 @@ export function createGroupGenerationActions(set: GroupStoreSet, get: GroupStore
         markUserMsgSent(userMsg.id)
         // free 模式一次返回多角色回复，完成后即轮到用户
         maybeGenerateGroupDirections(set, get)
+        void maybeAutoGroupTitle(set, get)
         // 自动记忆检查
         checkAutoMemory(get)
       }
@@ -462,6 +464,7 @@ export function createGroupGenerationActions(set: GroupStoreSet, get: GroupStore
       await streamGroupAI(set, get, currentGroup, currentSessionId, speaker, currentRound, async () => {
         await finishGroupSpatialBurst(currentGroup.id, currentSessionId)
         maybeGenerateGroupDirections(set, get)
+        void maybeAutoGroupTitle(set, get)
         checkAutoMemory(get)
       })
     },

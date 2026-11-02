@@ -16,6 +16,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Modal } from '../components/common/Modal'
 import { GreetingPickerModal } from './group/GreetingPickerModal'
 import { GroupInitPreambleModal } from '../components/chat/GroupInitPreambleModal'
+import { hasGroupGreeting } from '../features/group-chat/groupGreetings'
 import { NewGroupModal } from './group/NewGroupModal'
 import { SessionSwitcher } from '../components/common/SessionSwitcher'
 import { GroupChatSettingsPanel } from '../components/chat/GroupChatSettingsPanel'
@@ -209,7 +210,7 @@ export function GroupChatPage() {
     if (currentGroup && messages.length === 0 && !isStreaming && currentGroup.memberIds.length > 0) {
       const hasGreetings = currentGroup.memberIds.some(id => {
         const char = characters.find(c => c.id === id)
-        return (char?.groupOnlyGreetings && char.groupOnlyGreetings.length > 0) || char?.firstMessage
+        return hasGroupGreeting(char)
       })
       if (hasGreetings) {
         setShowGreetingPicker(true)
@@ -971,7 +972,7 @@ export function GroupChatPage() {
       {currentGroup && messages.length === 0 && !isStreaming && !showGreetingPicker && !initEntry && (() => {
         const hasGreetings = currentGroup.memberIds.some(id => {
           const char = characters.find(c => c.id === id)
-          return (char?.groupOnlyGreetings && char.groupOnlyGreetings.length > 0) || char?.firstMessage
+          return hasGroupGreeting(char)
         })
         if (!hasGreetings) return null
         return (

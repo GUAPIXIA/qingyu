@@ -300,6 +300,17 @@ describe('GroupChatPage', () => {
     expect(screen.queryByTestId('group-init-modal-stub')).toBeNull()
   })
 
+  it('角色只有备选开场白（首条为空）时也会自动弹开场白选择器', () => {
+    mocks.characterState.characters = [
+      { id: 'c1', name: '爱丽丝', firstMessage: '', alternateGreetings: ['备选开场白'] } as unknown as Character,
+    ]
+    Object.assign(mocks.groupState, { currentGroup: { ...mocks.group, memberIds: ['c1'] } })
+
+    render(<GroupChatPage />)
+
+    expect(screen.getByTestId('greeting-picker-stub')).toBeTruthy()
+  })
+
   it('开场白弹窗入口与初始化弹窗互斥；选默认开场后回到开场白选择器', () => {
     mocks.characterState.characters = [
       { id: 'c1', name: '爱丽丝', firstMessage: '早上好。' } as unknown as Character,

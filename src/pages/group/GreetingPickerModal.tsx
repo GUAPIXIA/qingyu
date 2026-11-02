@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { charAssetUrl } from '../../utils/asset'
 import { replaceVariables } from '../../../shared/chat-core/variables'
 import { resolveGroupUserContext } from '../../features/group-chat/groupUserContext'
+import { resolveGroupGreetingOptions } from '../../features/group-chat/groupGreetings'
 import type { GroupChat } from '../../../shared/types'
 
 interface GreetingPickerModalProps {
@@ -41,12 +42,12 @@ export function GreetingPickerModal({ open, group, messagesCount, isStreaming, o
   const memberGreetings: { charId: string; charName: string; rawName: string; avatar?: string; greetings: string[] }[] = []
   group.memberIds.forEach(id => {
     const char = characters.find(c => c.id === id)
-    const displayName = char?.translatedContent?.name ?? char?.name ?? ''
-    if (char?.groupOnlyGreetings && char.groupOnlyGreetings.length > 0) {
-      memberGreetings.push({ charId: id, charName: displayName, rawName: char.name, avatar: char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt), greetings: char.groupOnlyGreetings })
-    } else if (char?.firstMessage) {
-      const displayFirstMsg = char.translatedContent?.firstMessage ?? char.firstMessage
-      memberGreetings.push({ charId: id, charName: displayName, rawName: char.name, avatar: char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt), greetings: [displayFirstMsg] })
+    if (!char) return
+    const displayName = char.translatedContent?.name ?? char.name ?? ''
+    // 与单聊对齐：群聊专属开场白优先；否则回退 firstMessage + 备选开场白（含译文）。
+    const greetings = resolveGroupGreetingOptions(char)
+    if (greetings.length > 0) {
+      memberGreetings.push({ charId: id, charName: displayName, rawName: char.name, avatar: char.avatar || charAssetUrl(char.id, 'avatar', char.updatedAt), greetings })
     }
   })
   if (memberGreetings.length === 0) return null

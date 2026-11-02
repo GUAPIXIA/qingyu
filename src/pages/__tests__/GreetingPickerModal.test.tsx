@@ -89,6 +89,49 @@ describe('GreetingPickerModal', () => {
     expect(screen.queryByText(/\{\{user\}\}/)).not.toBeInTheDocument()
   })
 
+  it('展示备选开场白（含译文），无群聊专属开场白时与单聊口径一致', async () => {
+    useCharacterStore.setState({
+      characters: [
+        makeCharacter('char-a', {
+          name: 'Aiko',
+          firstMessage: '首条消息',
+          alternateGreetings: ['EN alternate'],
+          translatedContent: { alternateGreetings: ['备选开场白'] },
+        }),
+        makeCharacter('char-b', { name: 'Eve', firstMessage: '', alternateGreetings: ['只有备选'] }),
+      ],
+    })
+    render(
+      <GreetingPickerModal open group={makeGroup()} messagesCount={0} isStreaming={false} onClose={vi.fn()} />,
+    )
+    expect(screen.getByText('首条消息')).toBeInTheDocument()
+    expect(screen.getByText('备选开场白')).toBeInTheDocument()
+    expect(screen.getByText('只有备选')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /备选开场白/ }))
+    await waitFor(() => expect(insertCharacterMessage).toHaveBeenCalledWith('char-a', '备选开场白'))
+  })
+
+  it('有群聊专属开场白时只展示群聊专属开场白，不混入备选开场白', () => {
+    useCharacterStore.setState({
+      characters: [
+        makeCharacter('char-a', {
+          name: 'Aiko',
+          firstMessage: '首条消息',
+          alternateGreetings: ['单聊备选'],
+          groupOnlyGreetings: ['群聊专属开场白'],
+        }),
+        makeCharacter('char-b'),
+      ],
+    })
+    render(
+      <GreetingPickerModal open group={makeGroup()} messagesCount={0} isStreaming={false} onClose={vi.fn()} />,
+    )
+    expect(screen.getByText('群聊专属开场白')).toBeInTheDocument()
+    expect(screen.queryByText('首条消息')).not.toBeInTheDocument()
+    expect(screen.queryByText('单聊备选')).not.toBeInTheDocument()
+  })
+
   it('点击「跳过，手动开始」只关闭弹窗', () => {
     const onClose = vi.fn()
     render(
