@@ -14,7 +14,7 @@ import { nextGroupRound } from '../../../shared/chat-core/groupScheduling'
 import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTypes'
 
 export type GroupMessageActions = Pick<GroupChatState,
-  | 'deleteMessage' | 'editMessage' | 'translateMessage' | 'insertCharacterMessage'>
+  | 'deleteMessage' | 'editMessage' | 'translateMessage' | 'insertCharacterMessage' | 'insertNarrationMessage'>
 
 export function createGroupMessageActions(set: GroupStoreSet, get: GroupStoreGet): GroupMessageActions {
   return {
@@ -72,6 +72,36 @@ export function createGroupMessageActions(set: GroupStoreSet, get: GroupStoreGet
         speakerKind: 'character',
         generationKind: 'assistant_reply',
         // 作者开场白可含完整 Markdown
+        contentRenderMode: 'markdown',
+      }
+      set(s => ({ messages: [...s.messages, msg] }))
+      await window.api.group.saveMessage(currentGroup.id, currentSessionId, msg)
+    },
+
+    /**
+     * 插入系统开场旁白（不触发 AI 回复，用于“系统开场”）。
+     *
+     * 归属：`characterId:'__narrator__'` + `speakerKind:'narrator'`，渲染层按旁白展示；
+     * 不写入任何成员，也不参与自由模式拆分/回落。
+     */
+    insertNarrationMessage: async (content) => {
+      const { currentGroup, currentSessionId, messages } = get()
+      const text = content.trim()
+      if (!currentGroup || !currentSessionId || !text) return
+
+      const currentRound = nextGroupRound(messages.map((m) => m.round))
+      const msg: GroupMessage = {
+        id: nanoid(),
+        groupId: currentGroup.id,
+        characterId: '__narrator__',
+        content: text,
+        images: [],
+        timestamp: Date.now(),
+        round: currentRound,
+        narrativeMode: resolveNarrativeMode(get().sessions.find((session) => session.id === currentSessionId)?.narrativeMode),
+        speakerKind: 'narrator',
+        generationKind: 'manual',
+        // 开场旁白允许完整 Markdown（与作者开场白同口径）
         contentRenderMode: 'markdown',
       }
       set(s => ({ messages: [...s.messages, msg] }))

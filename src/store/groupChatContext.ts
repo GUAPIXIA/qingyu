@@ -201,6 +201,16 @@ export function buildGroupChatContext(
     systemContent += '\n' + replaceVariables(group.systemPrompt, userName, charNameForVars) + '\n'
   }
 
+  // 群聊共同场景（AI 生成/用户确认的前置设定，方案 v2 §6）：置于成员卡之前，约束角色初始环境。
+  // 字段为空时完全不注入，输出与既有版本逐字一致。
+  const preambleText = group.groupPreamble?.text?.trim()
+  if (preambleText) {
+    systemContent += '\n\n【群聊共同场景（优先于角色卡中的场景设定）】\n' + preambleText + '\n'
+    systemContent += '以上为本次群聊的共同环境。若角色卡中的“场景”或开场白与上述设定不一致，'
+    systemContent += '以本共同场景为准，将角色自然置于其中，不要主动指出或制造矛盾；'
+    systemContent += '若与用户手写的群聊 System Prompt 冲突，以用户手写内容为准。\n'
+  }
+
   // ===== 世界书注入（递归扫描 + 正则 + 变量替换 + at_depth 深度注入）=====
   let lorebookBefore = ''
   let lorebookAfter = ''
@@ -368,6 +378,10 @@ export function buildGroupChatContext(
     const text = estimateTokens(spatial.text, model) <= available ? spatial.text : spatial.minimalText
     if (estimateTokens(text, model) > available) throw new Error('群聊上下文无法容纳必要的位置关系，请精简设定后重试')
     systemContent += '\n\n' + text
+    // 画板位置关系优先于共同场景的地点/时间（方案 v2 §6.1），避免两套现场描述互相覆盖。
+    if (preambleText) {
+      systemContent += '\n（画板位置关系与群聊共同场景冲突时，地点、时间与在场位置以画板为准；共同场景的其余世界设定仍然有效。）'
+    }
   }
 
   // ===== 历史消息（Token 预算裁剪）=====

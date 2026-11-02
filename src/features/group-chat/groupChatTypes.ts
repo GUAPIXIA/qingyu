@@ -54,6 +54,8 @@ export interface GroupChatState {
   regenerateMessage: (messageId: string) => Promise<void>
   translateMessage: (messageId: string) => Promise<void>
   insertCharacterMessage: (charId: string, content: string) => Promise<void>
+  /** 插入系统开场旁白（不触发 AI 回复；speakerKind narrator） */
+  insertNarrationMessage: (content: string) => Promise<void>
 
   buildGroupContext: (targetCharId?: string, preset?: Preset | null, opts?: {
     configuration?: import('../../../shared/chatConnection').ChatConfigurationSnapshot
