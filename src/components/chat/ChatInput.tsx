@@ -218,9 +218,9 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
         </div>
       )}
 
-      {/* 输入框：整体胶囊容器，按钮内嵌，聚焦时高亮描边。
+      {/* 输入框：整体胶囊容器，按钮内嵌，聚焦时灰色高亮描边（.chat-input-capsule，见 index.css）。
           统一 items-center：多行输入框自动增高时，右侧「续写/设置/发送」等按钮保持上下居中。 */}
-      <div className="flex items-center gap-1 rounded-2xl border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 shadow-sm transition-all focus-within:border-tavern-accent/60 focus-within:ring-2 focus-within:ring-tavern-accent/15">
+      <div className="chat-input-capsule flex items-center gap-1 rounded-2xl border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 shadow-sm transition-all">
         <button
           onClick={handleImageSelect}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-accent"
