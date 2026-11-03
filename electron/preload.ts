@@ -426,6 +426,26 @@ const spatialApi: SpatialAPI = {
   },
 }
 
+/**
+ * 自绘标题栏的窗口控制桥。
+ * 与 `window.api` 分开暴露：窗口控制是 PC 桌面壳能力，不属于 shared 跨端契约。
+ * 浏览器预览/非 Electron 环境不会注入该对象，渲染层据此隐藏窗口按钮。
+ */
+const windowControlsApi = {
+  platform: (typeof process !== 'undefined' && process.platform) ? process.platform : 'unknown',
+  minimize: () => ipcRenderer.invoke('window:minimize'),
+  toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
+  close: () => ipcRenderer.invoke('window:close'),
+  isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized'),
+  onStateChanged: (listener: (state: { maximized: boolean; fullScreen: boolean }) => void) => {
+    const handler = (_event: unknown, state: { maximized: boolean; fullScreen: boolean }) => listener(state)
+    ipcRenderer.on('window:state', handler)
+    return () => { ipcRenderer.removeListener('window:state', handler) }
+  },
+}
+
+contextBridge.exposeInMainWorld('qingyuWindowControls', windowControlsApi)
+
 contextBridge.exposeInMainWorld('api', {
   ai: aiApi,
   character: characterApi,

@@ -22,6 +22,7 @@ import { registerGroupIPC } from './ipc/group'
 import { registerSpatialIPC } from './ipc/spatial'
 import { registerAnnouncementIPC } from './ipc/announcement'
 import { registerUpdaterIPC } from './services/updater'
+import { registerWindowControlsIPC, attachWindowStateBroadcast } from './ipc/windowControls'
 import { ensureSyncDomain, runBootstrapIfEnabled, setSyncDomainUserDataResolver } from './domain/syncDomainService'
 import { schedulePce01GuiBench } from './pce01GuiBench'
 import { IPC_EVENTS } from '../shared/ipc-channels'
@@ -65,6 +66,9 @@ function createWindow() {
     backgroundColor: '#1a1625',
     title: '轻语',
     icon: appIcon,
+    // 无边框窗口：Windows 去掉原生标题栏与窗口按钮，由渲染层 WindowCaption 自绘
+    //（保留原生窗口边框/圆角/缩放命中区）。
+    ...(process.platform === 'win32' ? { titleBarStyle: 'hidden' as const } : {}),
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -76,6 +80,9 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
   })
+
+  // 自绘标题栏：窗口最大化/全屏状态变化时广播给渲染层
+  attachWindowStateBroadcast(mainWindow)
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
@@ -233,6 +240,7 @@ app.whenReady().then(async () => {
     () => registerSpatialIPC(ipcMain),
     () => registerAnnouncementIPC(ipcMain),
     () => registerUpdaterIPC(ipcMain),
+    () => registerWindowControlsIPC(ipcMain, () => mainWindow),
   ]
   for (const register of ipcRegistrars) {
     register()
