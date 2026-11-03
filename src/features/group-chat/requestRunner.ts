@@ -13,6 +13,7 @@ import { replaceVariables } from '../../../shared/chat-core/variables'
 import { resolveEffectiveTemplate } from '../../../shared/chat-core/chatTemplates'
 import { collectStopStrings, findStopIndex } from '../../../shared/chat-core/regex'
 import { logError, logInfo, logWarn } from '../../lib/logger'
+import { pushToast } from '../../store/useToastStore'
 import { safeSave } from '../../lib/safeOps'
 import { STREAM_THROTTLE_MS, SEMANTIC_SCAN_MAX_TOKENS, STREAM_IDLE_TIMEOUT_MS, DEFAULT_LOREBOOK_SCAN_DEPTH, resolveLorebookScanDepth } from '../../../shared/chat-core/chatConstants'
 import { buildLorebookRevisionCorpus, buildSemanticCacheKey, friendlyError, semanticCacheGet, semanticCacheSet } from '../../store/chatUtils'
@@ -53,6 +54,14 @@ let pendingGroupCompression: PendingGroupCompression | null = null
 /** 供 buildGroupContext 标记压缩任务（上下文溢出时） */
 export function markPendingGroupCompression(pc: PendingGroupCompression): void {
   pendingGroupCompression = pc
+}
+
+/** 群成员显示名（单发言者模式剥离模型模仿历史格式产生的行首 `【名】` 前缀用）。 */
+function groupMemberDisplayNames(group: GroupChat): string[] {
+  const characters = useCharacterStore.getState().characters
+  return group.memberIds
+    .map((id) => characters.find((character) => character.id === id)?.name)
+    .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
 }
 
 /**
@@ -456,6 +465,7 @@ export async function streamGroupAI(
           characterId: speaker.id,
           characterName: speaker.translatedContent?.name || speaker.name,
           narrativeMode, regexRules, round, isFree: false, latch,
+        memberNames: groupMemberDisplayNames(group),
           group, get, set,
           regenerationObserver,
         })
@@ -515,17 +525,36 @@ export async function streamGroupAI(
       void (async () => {
         // S1：preserve/正则/停止字符串由统一收尾管线承担
 
+        const effectiveFinishReason = stopStringsHit && finishReason === 'cancelled' ? 'stop' : finishReason
         const finalizedReply = await finalizeGroupReply({
           rawText: finalContent,
           // 停止字符串命中后的 cancelled 按正常 stop 收尾，不标"已停止生成"
-          finishReason: stopStringsHit && finishReason === 'cancelled' ? 'stop' : finishReason,
+          finishReason: effectiveFinishReason,
           speaker,
           model: vision?.model ?? profile.model,
           profile: { ...profile, ...(vision ?? {}) },
           autoTailRepairEnabled: settings.autoTailRepairEnabled !== false,
           regexRules,
+          memberNames: groupMemberDisplayNames(group),
         })
-        // 无可用正文：维持 (无回复) 占位
+        // 无可用角色正文（如整条被供应商安全/控制标记占据、或只有 thought）：移除占位并停止本次接力，
+        // 不再写入 "(无回复)" 后继续推进轮次。审核拦截保留既有契约（占位回退为 "(无回复)"）。
+        if ((!finalizedReply || !finalizedReply.content.trim()) && effectiveFinishReason !== 'content_filter') {
+          latch.markPersisted()
+          set((s: GroupChatState) => ({
+            messages: s.messages.filter((m: GroupMessage) => m.id !== msgId),
+            isStreaming: false,
+            currentStreamingCharId: null,
+            error: '本轮生成内容不可用（已过滤供应商控制/安全标记），请重试',
+          }))
+          // 自动接力被兜底拦截时静默停止接力即可：不额外弹 Toast，避免遮挡输入区并打断用户下一条消息。
+          if (group.chatMode !== 'polling' || !group.autoMode) {
+            pushToast({ variant: 'error', title: '群聊生成失败', description: '本轮生成内容不可用，请重试', requestId: 'group-unusable-reply' })
+          }
+          await regenerationObserver?.onTerminal(false, [])
+          if (group.chatMode !== 'polling' || !group.autoMode) await finishGroupSpatialBurst(group.id, sessionId)
+          return
+        }
         const processed = finalizedReply?.content || '(无回复)'
         const noticeFields = finalizedReply?.noticeFields ?? {}
         const renderMode = finalizedReply ? { contentRenderMode: 'blocks' as const } : {}
@@ -609,6 +638,7 @@ export async function streamGroupAI(
         characterId: speaker.id,
         characterName: speaker.translatedContent?.name || speaker.name,
         narrativeMode, regexRules, round, isFree: false, latch,
+        memberNames: groupMemberDisplayNames(group),
           onChainContinue: onComplete,
           group, get, set,
           regenerationObserver,
@@ -638,6 +668,7 @@ export async function streamGroupAI(
           characterId: speaker.id,
           characterName: speaker.translatedContent?.name || speaker.name,
           narrativeMode, regexRules, round, isFree: false, latch,
+        memberNames: groupMemberDisplayNames(group),
           group, get, set,
           regenerationObserver,
         })
@@ -697,6 +728,7 @@ export async function streamGroupAI(
         characterId: speaker.id,
         characterName: speaker.translatedContent?.name || speaker.name,
         narrativeMode, regexRules, round, isFree: false, latch,
+        memberNames: groupMemberDisplayNames(group),
         group, get, set,
         regenerationObserver,
       }, 'protocol_error', friendlyError(err instanceof Error ? err.message : '请求失败'))
@@ -955,10 +987,11 @@ export async function streamGroupAIFree(
           name: group.name,
           translatedContent: undefined,
         } as Character
+        const effectiveFinishReason = stopStringsHit && finishReason === 'cancelled' ? 'stop' : finishReason
         const finalizedReply = await finalizeGroupReply({
           rawText: finalContent,
           // 停止字符串命中后的 cancelled 按正常 stop 收尾，不标"已停止生成"
-          finishReason: stopStringsHit && finishReason === 'cancelled' ? 'stop' : finishReason,
+          finishReason: effectiveFinishReason,
           speaker: freeSpeaker,
           model: vision?.model ?? profile.model,
           profile: { ...profile, ...(vision ?? {}) },
@@ -966,6 +999,18 @@ export async function streamGroupAIFree(
           regexRules,
         })
         latch.markPersisted()
+        if ((!finalizedReply || !finalizedReply.content.trim()) && effectiveFinishReason !== 'content_filter') {
+          set((state: GroupChatState) => ({
+            messages: state.messages.filter((message: GroupMessage) => message.id !== msgId),
+            isStreaming: false,
+            currentStreamingCharId: null,
+            error: '本轮生成内容不可用（已过滤供应商控制/安全标记），请重试',
+          }))
+          pushToast({ variant: 'error', title: '群聊生成失败', description: '本轮生成内容不可用，请重试', requestId: 'group-unusable-reply' })
+          await regenerationObserver?.onTerminal(false, [])
+          await finishGroupSpatialBurst(group.id, sessionId)
+          return
+        }
         const processed = finalizedReply?.content || '(无回复)'
         const extras = finalizedReply
           ? { noticeFields: finalizedReply.noticeFields, renderMode: { contentRenderMode: 'blocks' as const } }

@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => {
     group,
     characterState: { characters: [] as Character[] },
     personaState: { loadPersonas: vi.fn().mockResolvedValue(undefined) },
-    settingsState: { settings: { messageWidth: 768 } },
+    settingsState: { settings: { messageWidth: 768, bubbleStyle: 'round' } },
     virtuosoRender: vi.fn(),
     // UEX-P1-12：「停剩余」语义别名入口（页面经 useGroupChatStore 模块导入）
     stopRemainingSpeakers: vi.fn(),
@@ -185,6 +185,13 @@ describe('GroupChatPage', () => {
     expect(screen.getByRole('button', { name: '群聊空间画板' })).toBeTruthy()
   })
 
+  it('画板入口只保留图标，不显示文字标签', () => {
+    render(<GroupChatPage />)
+    const boardButton = screen.getByRole('button', { name: '群聊空间画板' })
+    expect(boardButton.textContent?.trim()).toBe('')
+    expect(boardButton).toHaveAttribute('title', '空间画板')
+  })
+
   it('进入已有消息的群聊时从最后一条消息开始显示', () => {
     Object.assign(mocks.groupState, {
       currentSessionId: 'session-1',
@@ -205,7 +212,7 @@ describe('GroupChatPage', () => {
     expect(virtuosoProps.initialTopMostItemIndex).toBe(999999)
   })
 
-  it('消息滚动条跟随对话列宽度而不是贴在程序最右侧', () => {
+  it('消息滚动条固定在消息区右侧，且消息区应用气泡圆角样式类', () => {
     Object.assign(mocks.groupState, {
       currentSessionId: 'session-1',
       messages: [{
@@ -221,9 +228,12 @@ describe('GroupChatPage', () => {
 
     render(<GroupChatPage />)
 
-    expect(screen.getByTestId('group-message-scroll-column')).toHaveStyle({
-      maxWidth: '800px',
-    })
+    // 滚动容器不再按对话列宽度限宽：侧栏收缩时滚动条不再左移
+    const column = screen.getByTestId('group-message-scroll-column')
+    expect(column.style.maxWidth).toBe('')
+    expect(column).toHaveClass('w-full')
+    // 消息区带 bubble-* 样式类，保证群聊角色气泡四角统一圆角（此前缺该类导致左下角 2px 直角）
+    expect(column.closest('.bubble-round')).not.toBeNull()
   })
 
   it('UEX-P2-12：切走再回来恢复滚动位置（顶位索引 + scrollTop）', async () => {

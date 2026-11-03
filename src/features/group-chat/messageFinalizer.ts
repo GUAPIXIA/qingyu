@@ -4,9 +4,9 @@ import type { GroupChatState, GroupStoreGet, GroupStoreSet } from './groupChatTy
 import { useSettingsStore, type ActiveProfile } from '../../store/useSettingsStore'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { pushToast } from '../../store/useToastStore'
-import { logError } from '../../lib/logger'
+import { logError, logWarn } from '../../lib/logger'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
-import { splitFreeReply } from '../../../shared/chat-core/groupFreeSplit'
+import { extractSpeakerSegments, splitFreeReply, stripLeadingSpeakerPrefix } from '../../../shared/chat-core/groupFreeSplit'
 import { attemptTailRepair, finalizeNoticeFields, type GenerationOutcomeMeta } from '../../store/streamController'
 import { finalizeGenerationTerminalResult, type GenerationTerminalOutcome } from '../../../shared/chat-core/generatedReplyPipeline'
 import { terminationCauseFromFinishReason, terminationPromptWithoutContent, type GenerationTerminationLatch } from '../../../shared/generationTermination'
@@ -109,13 +109,31 @@ export async function finalizeGroupReply(input: {
   regexRules: RegexRule[]
   profile?: ActiveProfile
   autoTailRepairEnabled?: boolean
+  /** mention/polling 单发言者模式：成员显示名列表，用于剥离行首 `【名】`/`<名>` 前缀。free 模式不传。 */
+  memberNames?: readonly string[]
 }): Promise<{ content: string; noticeFields: { generationNotice?: string; generationError?: string }; stopped: boolean } | null> {
   const cause = terminationCauseFromFinishReason(input.finishReason)
+  const speakerName = input.speaker.translatedContent?.name || input.speaker.name
+  // 单发言者模式：只保留计划发言者的段落（模型偶发把其他成员发言也写进同一条），
+  // 再剥离行首角色名前缀；其他成员段丢弃并记录告警（避免“Tofu 的消息里出现 Aiko 发言”）。
+  let rawText = input.rawText
+  if (input.memberNames?.length) {
+    const extracted = extractSpeakerSegments(rawText, speakerName, input.memberNames)
+    rawText = extracted.text
+    if (extracted.hadForeignSegments) {
+      logWarn('GroupChat:foreign-speaker-segments-dropped', `speaker=${speakerName} dropped=${extracted.droppedCharacters.join(',')}`)
+    }
+    const stripped = stripLeadingSpeakerPrefix(rawText, input.memberNames)
+    rawText = stripped.text
+    if (stripped.prefixName && stripped.prefixName.toLowerCase() !== speakerName.toLowerCase()) {
+      logWarn('GroupChat:speaker-prefix-mismatch', `speaker=${speakerName} prefix=${stripped.prefixName}`)
+    }
+  }
   // 补尾限制（§8.1）：只有 provider_length 会被协调入口调用（每轮至多一次）
   const result = await finalizeGenerationTerminalResult({
-    terminalResult: { rawText: input.rawText, finishReason: input.finishReason, terminationCause: cause },
+    terminalResult: { rawText, finishReason: input.finishReason, terminationCause: cause },
     regexRules: input.regexRules,
-    characterName: input.speaker.translatedContent?.name || input.speaker.name,
+    characterName: speakerName,
     runTailRepair: (input.autoTailRepairEnabled ?? useSettingsStore.getState().settings.autoTailRepairEnabled) === false ? undefined : (finalized) => attemptTailRepair({
       finalized,
       character: input.speaker,
@@ -165,6 +183,8 @@ export async function handleGroupStreamException(input: {
   round: number
   isFree: boolean
   offstageCharacterIds?: string[]
+  /** mention/polling：成员显示名列表，用于剥离部分正文的行首角色名前缀。 */
+  memberNames?: readonly string[]
   latch?: GenerationTerminationLatch
   /** NEW-M12：错误后继续推进轮询链/自动记忆检查 */
   onChainContinue?: () => void
@@ -179,7 +199,10 @@ export async function handleGroupStreamException(input: {
   if (st && st.requestId !== input.requestId) return
   if (input.latch && !input.latch.claim(cause)) return
   // 先取 accumulated 再清理（C-02 同款竞态保护；cleanup 同步合并未执行的 flush timer）
-  const partialContent = st?.accumulated ?? ''
+  const partialRaw = st?.accumulated ?? ''
+  const partialContent = input.isFree || !input.memberNames?.length
+    ? partialRaw
+    : stripLeadingSpeakerPrefix(partialRaw, input.memberNames).text
   input.offstageCharacterIds ??= st?.offstageCharacterIds
   cleanupActiveStream()
   if (cause === 'idle_timeout') {
@@ -302,6 +325,8 @@ export async function handleGroupStreamTimeout(input: {
   regexRules: RegexRule[]
   round: number
   isFree: boolean
+  /** mention/polling：成员显示名列表，用于剥离部分正文的行首角色名前缀。 */
+  memberNames?: readonly string[]
   latch?: GenerationTerminationLatch
   group?: GroupChat
   get?: GroupStoreGet

@@ -649,20 +649,28 @@ body {
 }
 
 @container group-chat-header (max-width: 650px) {
-  .group-chat-header__identity-copy,
-  .group-chat-header__persona-label {
+  /* CH-06：窄顶栏优先保证「群名 + 重命名 + 查看上下文 + 清空聊天」等核心入口可见，
+     隐藏中优先级的身份/叙事模式/世界状态控件；群名保留截断显示。 */
+  .group-chat-header__middle-controls {
     display: none;
   }
-}
-
-@container group-chat-header (max-width: 620px) {
-  .group-chat-header__secondary-action {
+  .group-chat-header__divider {
     display: none;
+  }
+  .group-chat-header__left {
+    gap: 0.5rem;
+  }
+  .group-chat-header__title {
+    max-width: 5.5rem;
   }
 }
 
 @container group-chat-header (max-width: 560px) {
   .group-chat-header .session-switcher__label {
+    display: none;
+  }
+  /* 最小窗口下为群名与核心操作让位：隐藏「新建会话 / 长记忆」这一组附加按钮 */
+  .group-chat-header__session-extra {
     display: none;
   }
 }

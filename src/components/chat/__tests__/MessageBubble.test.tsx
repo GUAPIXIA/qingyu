@@ -94,6 +94,19 @@ describe('MessageBubble', () => {
       expect(getByText('Alice')).toBeTruthy()
     })
 
+    it('气泡四角统一圆角（不叠加直角小圆角），列宽仍由 messageWidth 控制', () => {
+      const { container } = render(
+        <MessageBubble message={createMessage({ content: '圆角测试' })} character={createCharacter({ name: 'Alice' })} isLast={false} />
+      )
+      const bubble = container.querySelector('.msg-bubble')
+      expect(bubble).toBeTruthy()
+      expect(bubble?.className).not.toContain('rounded-bl-sm')
+      expect(bubble?.className).not.toContain('rounded-br-sm')
+      // 消息列宽度约束在组件内部的 mx-auto 行（滚动容器本身不再限宽）
+      const rowStyle = bubble?.closest('div[style*="max-width"]')?.getAttribute('style') ?? ''
+      expect(rowStyle).toContain(`${getDefaultSettings().messageWidth ?? 768}px`)
+    })
+
     it('全局叙事的我方消息显示右侧旁白身份和中性气泡', () => {
       const { container, getByText, queryByText } = render(
         <MessageBubble message={createMessage({ role: 'user', narrativeMode: 'omniscient' })} character={createCharacter({ name: 'Alice' })} isLast={false} />

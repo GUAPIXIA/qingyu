@@ -97,4 +97,37 @@ describe('runGeneratedReplyPipeline（S1 统一收尾顺序）', () => {
     expect(outcome.content).toBe('')
     expect(outcome.status).toBe('failed')
   })
+
+  it('整条 <ds_safety> 安全分类块 → 过滤后无正文，返回 failed（不落盘）', async () => {
+    const outcome = await runGeneratedReplyPipeline({
+      rawText: '<ds_safety>[用户未成年]否\n[分类]其他\n[判定]内容为虚构日常闲聊，安全。',
+      finishReason: 'stop',
+      regexRules: [],
+      characterName: '艾琳',
+    })
+    expect(outcome.content).toBe('')
+    expect(outcome.status).toBe('failed')
+  })
+
+  it('正文后追加 <ds_safety> → 只保留角色正文', async () => {
+    const outcome = await runGeneratedReplyPipeline({
+      rawText: '她把杯子推过来。“先喝口热的。”<ds_safety>[分类]其他\n[判定]安全。',
+      finishReason: 'stop',
+      regexRules: [],
+      characterName: '艾琳',
+    })
+    expect(outcome.content).toBe('她把杯子推过来。“先喝口热的。”')
+    expect(outcome.status).toBe('complete')
+  })
+
+  it('只有 @@末尾@@ 占位标记 → failed，不透传原文', async () => {
+    const outcome = await runGeneratedReplyPipeline({
+      rawText: '@@末尾@@',
+      finishReason: 'stop',
+      regexRules: [],
+      characterName: '艾琳',
+    })
+    expect(outcome.content).toBe('')
+    expect(outcome.status).toBe('failed')
+  })
 })

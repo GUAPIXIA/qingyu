@@ -230,10 +230,10 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
             settings.bubbleStyle === 'standard' && 'rounded-lg',
             settings.bubbleStyle === 'sharp' && 'rounded-sm',
             isNarrator
-              ? cn('border border-indigo-200/70 bg-gradient-to-bl from-slate-50 to-indigo-50/70 rounded-br-sm shadow-sm text-slate-900 dark:border-indigo-700/40 dark:from-slate-900/95 dark:to-indigo-950/55 dark:text-slate-100 bubble-narrator', isStreaming && 'border-dashed')
+              ? cn('border border-indigo-200/70 bg-gradient-to-bl from-slate-50 to-indigo-50/70 shadow-sm text-slate-900 dark:border-indigo-700/40 dark:from-slate-900/95 dark:to-indigo-950/55 dark:text-slate-100 bubble-narrator', isStreaming && 'border-dashed')
               : isPersona
-                ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
-                : cn('bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100',
+                ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
+                : cn('bg-tavern-bg-card border border-tavern-border shadow-sm text-slate-900 dark:text-slate-100',
                    isStreaming && 'border-dashed')
           )}
           style={!isUser && !isNarrator ? { backgroundColor: `color-mix(in srgb, var(--tavern-bg-card) ${(bubbleOpacity ?? 1) * 100}%, transparent)` } : undefined}

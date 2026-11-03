@@ -317,8 +317,11 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
         </div>
       )}
 
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      {/* 输入区：输入框与发送按钮同为 42px（= textarea 最小高度）并底部对齐——
+          单行时上下边齐平、图标同处一条水平中线；多行增高时按钮仍贴底。 */}
+      <div className="flex items-end gap-2">
+        <div className="relative min-w-0 flex-1">
+          {/* block：消除 inline-block 行盒的基线留白，否则包裹层比输入框高约 5px，上传按钮会整体下沉 */}
           <textarea
             ref={textareaRef}
             value={content}
@@ -326,7 +329,7 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
             onKeyDown={handleKeyDown}
             placeholder="输入消息…"
             rows={1}
-            className="w-full resize-none rounded-xl border border-tavern-border-soft bg-tavern-bg px-3 py-2.5 pr-10 text-sm text-tavern-text transition-colors placeholder-tavern-text-muted/60 focus:border-tavern-accent focus:outline-none focus:ring-1 focus:ring-tavern-accent/30"
+            className="block w-full resize-none rounded-xl border border-tavern-border-soft bg-tavern-bg px-3 py-2.5 pr-12 text-sm text-tavern-text transition-colors placeholder-tavern-text-muted/60 focus:border-tavern-accent focus:outline-none focus:ring-1 focus:ring-tavern-accent/30"
             style={{ minHeight: '42px', maxHeight: '120px' }}
             onInput={(event) => {
               const element = event.currentTarget
@@ -336,18 +339,19 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
               })
             }}
           />
-          <button type="button" onClick={handleSelectImage} className="absolute bottom-2 right-2 rounded p-1 text-tavern-text-muted transition-colors hover:text-tavern-text" title="上传图片">
+          {/* 32px 点击区；bottom=(42-32)/2，单行时上传图标与发送图标严格同一水平中线 */}
+          <button type="button" onClick={handleSelectImage} className="absolute bottom-[5px] right-2 flex h-8 w-8 items-center justify-center rounded-lg text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text" title="上传图片" aria-label="上传图片">
             <ImageIcon className="h-4 w-4" />
           </button>
         </div>
 
         {isStreaming ? (
-          <button type="button" onClick={stopStreaming} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tavern-danger/20 text-tavern-danger transition-colors hover:bg-tavern-danger/30" aria-label="停止生成">
+          <button type="button" onClick={stopStreaming} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-tavern-danger/20 text-tavern-danger transition-colors hover:bg-tavern-danger/30" aria-label="停止生成">
             <Square className="h-4 w-4" />
           </button>
         ) : (
           <button type="button" onClick={() => void handleSend()} disabled={!content.trim()} aria-label="发送消息" className={cn(
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors',
+            'flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl transition-colors',
             content.trim() ? 'bg-tavern-accent text-white hover:bg-tavern-accent/90' : 'cursor-not-allowed bg-tavern-bg-hover text-tavern-text-muted',
           )}>
             <Send className="h-4 w-4" />

@@ -132,4 +132,30 @@ describe('UsagePage', () => {
     expect(screen.queryByText('08-01')).not.toBeInTheDocument()
     expect(screen.getByText('2026-08-01')).toBeInTheDocument()
   })
+
+  it('每日趋势的 X 轴日期刻度自动抽稀，30 天时标签不被截断', async () => {
+    const days = Array.from({ length: 30 }, (_, index) => ({
+      key: `2026-09-${String(index + 1).padStart(2, '0')}`,
+      inputChars: index + 1,
+      outputChars: index + 1,
+      totalChars: (index + 1) * 2,
+      count: 1,
+    })).reverse()
+    vi.mocked(window.api.usage.aggregate).mockResolvedValue(days)
+    const { container } = render(<UsagePage />)
+    await waitFor(() => expect(window.api.usage.summary).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByText('按天'))
+
+    await screen.findByText('09-30')
+    const axisLabels = Array.from(container.querySelectorAll('span')).filter((node) =>
+      /^\d{2}-\d{2}$/.test(node.textContent ?? ''),
+    )
+    expect(axisLabels.length).toBeGreaterThan(0)
+    // 30 天数据最多展示约 8 个刻度，避免每根柱子一个「MM-DD」标签导致截断
+    expect(axisLabels.length).toBeLessThanOrEqual(9)
+    expect(axisLabels.map((node) => node.textContent)).toContain('09-01')
+    expect(axisLabels.map((node) => node.textContent)).toContain('09-30')
+    axisLabels.forEach((node) => expect(node.className).not.toContain('truncate'))
+  })
 })

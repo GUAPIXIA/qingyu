@@ -218,23 +218,29 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
         </div>
       )}
 
-      {/* 输入框 */}
-      <div className="flex items-center gap-2">
+      {/* 输入框：整体胶囊容器，按钮内嵌，聚焦时高亮描边。
+          统一 items-center：多行输入框自动增高时，右侧「续写/设置/发送」等按钮保持上下居中。 */}
+      <div className="flex items-center gap-1 rounded-2xl border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 shadow-sm transition-all focus-within:border-tavern-accent/60 focus-within:ring-2 focus-within:ring-tavern-accent/15">
         <button
           onClick={handleImageSelect}
-          className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors shrink-0"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-accent"
           title="添加图片"
         >
-          <ImagePlus className="w-5 h-5" />
+          <ImagePlus className="w-[18px] h-[18px]" />
         </button>
 
         <div className="relative shrink-0">
           <button
             onClick={() => setImageMenuOpen(v => !v)}
-            className="p-2 rounded-lg text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-bg-hover transition-colors"
+            className={cn(
+              'grid h-9 w-9 place-items-center rounded-xl transition-colors',
+              imageMenuOpen
+                ? 'bg-tavern-accent-soft text-tavern-accent'
+                : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-accent'
+            )}
             title="AI 生图"
           >
-            <Wand2 className="w-5 h-5" />
+            <Wand2 className="w-[18px] h-[18px]" />
           </button>
 
           {imageMenuOpen && (
@@ -339,7 +345,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
           )}
         </div>
 
-        <div className="flex-1 relative">
+        <div className="flex-1 relative min-w-0 self-center">
           {/* 命令补全下拉 */}
           {commandSuggestions.length > 0 && (
             <div className="absolute bottom-full left-0 mb-2 max-w-md max-h-60 overflow-y-auto rounded-lg border border-tavern-border bg-tavern-bg-soft shadow-lg z-50">
@@ -397,8 +403,8 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
             }
             disabled={disabled || isStreaming || isSpatialPreparing}
             rows={1}
-            className="textarea w-full resize-none py-2.5 pr-3 leading-relaxed"
-            style={{ minHeight: '42px', maxHeight: '200px' }}
+            className="w-full resize-none border-none bg-transparent py-1.5 pr-1 text-sm leading-6 text-tavern-text shadow-none outline-none placeholder:text-tavern-text-muted/70 focus:ring-0"
+            style={{ minHeight: '36px', maxHeight: '200px' }}
           />
         </div>
 
@@ -410,10 +416,10 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
                 onClick={handleAiContinue}
                 disabled={isAiProcessing}
                 className={cn(
-                  'h-[30px] px-2.5 rounded-l-lg border border-r-0 text-xs transition-colors flex items-center gap-1',
+                  'h-9 px-2.5 rounded-l-xl border border-r-0 text-[11px] transition-colors flex items-center gap-1',
                   isAiProcessing
-                    ? 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted cursor-not-allowed'
-                    : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:text-tavern-accent hover:border-tavern-accent hover:border-r-0'
+                    ? 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-muted cursor-not-allowed'
+                    : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-soft hover:text-tavern-accent hover:border-tavern-accent'
                 )}
                 title="AI 根据上下文续写输入文字"
               >
@@ -431,10 +437,10 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
                 aria-expanded={continueMenuOpen}
                 aria-controls="continue-settings-menu"
                 className={cn(
-                  'relative z-50 h-[30px] px-1.5 rounded-r-lg border text-xs transition-all inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/40',
+                  'relative z-50 h-9 px-1.5 rounded-r-xl border text-[11px] transition-all inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/40',
                   continueMenuOpen
                     ? 'border-tavern-accent bg-tavern-accent-soft text-tavern-accent shadow-sm'
-                    : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted hover:text-tavern-accent hover:border-tavern-accent',
+                    : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-muted hover:text-tavern-accent hover:border-tavern-accent',
                 )}
                 title={`续写设置：${lengthOption.label} · ${intensityOption.label}`}
               >
@@ -489,10 +495,10 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
                 onClick={handleAiPolish}
                 disabled={isAiProcessing}
                 className={cn(
-                  'px-2.5 py-1.5 rounded-lg text-xs border transition-colors flex items-center gap-1',
+                  'h-9 px-2.5 rounded-xl text-[11px] border transition-colors flex items-center gap-1',
                   isAiProcessing
-                    ? 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted cursor-not-allowed'
-                    : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:text-tavern-accent hover:border-tavern-accent'
+                    ? 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-muted cursor-not-allowed'
+                    : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-soft hover:text-tavern-accent hover:border-tavern-accent'
                 )}
                 title="AI 润色输入文字"
               >
@@ -510,27 +516,29 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
         {isStreaming ? (
           <button
             onClick={stopStreaming}
-            className="p-2.5 rounded-lg bg-tavern-danger text-white hover:opacity-90 transition-opacity shrink-0"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-tavern-danger text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
             title="停止生成"
           >
-            <Square className="w-5 h-5" fill="currentColor" />
+            <Square className="w-4 h-4" fill="currentColor" />
           </button>
         ) : (
           <button
             onClick={handleSend}
             disabled={!text.trim() || !isConnected || isSpatialPreparing}
             className={cn(
-              'p-2.5 rounded-lg transition-all shrink-0',
+              'grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-all',
               text.trim() && isConnected
-                ? 'btn-primary'
-                : 'bg-tavern-bg-card text-tavern-text-muted cursor-not-allowed'
+                ? 'bg-[var(--color-accent)] text-tavern-bg shadow-sm hover:-translate-y-px hover:bg-[var(--color-accent-hover)] active:scale-95'
+                : 'bg-tavern-bg-soft text-tavern-text-muted/50 cursor-not-allowed'
             )}
-            title="发送"
+            title="发送 (Enter)"
           >
-            <Send className="w-5 h-5" />
+            <Send className="w-4 h-4" />
           </button>
         )}
       </div>
     </div>
   )
 }
+
+

@@ -455,10 +455,10 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
               bubbleStyle === 'standard' && 'rounded-lg',
               bubbleStyle === 'sharp' && 'rounded-sm',
               isNarrator
-                ? 'border border-indigo-200/70 bg-gradient-to-bl from-slate-50 to-indigo-50/70 rounded-br-sm shadow-sm text-slate-900 dark:border-indigo-700/40 dark:from-slate-900/95 dark:to-indigo-950/55 dark:text-slate-100 bubble-narrator'
+                ? 'border border-indigo-200/70 bg-gradient-to-bl from-slate-50 to-indigo-50/70 shadow-sm text-slate-900 dark:border-indigo-700/40 dark:from-slate-900/95 dark:to-indigo-950/55 dark:text-slate-100 bubble-narrator'
                 : isPersona
-                  ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 rounded-br-sm shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
-                  : 'bg-tavern-bg-card border border-tavern-border rounded-bl-sm shadow-sm text-slate-900 dark:text-slate-100'
+                  ? 'bg-gradient-to-bl from-amber-100 to-orange-50 border border-amber-200/60 shadow-md dark:from-amber-900/70 dark:to-orange-900/70 dark:border-amber-700/60 text-amber-950 dark:text-amber-50 bubble-user'
+                  : 'bg-tavern-bg-card border border-tavern-border shadow-sm text-slate-900 dark:text-slate-100'
             )}
           >
             {/* 引用回复：被引用消息摘要（P1-5） */}

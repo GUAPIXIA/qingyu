@@ -34,7 +34,7 @@ export function LorebookFormatChoiceModal({ choice, onConfirm, onCancel }: Props
       )}
     >
       <div className="space-y-3">
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200">
           <FileQuestion className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
             「{choice.fileName}」的特征同时接近多种世界书格式。为避免误判导致字段错位，请确认文件的实际格式：

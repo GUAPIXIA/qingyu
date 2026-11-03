@@ -985,6 +985,7 @@ describe('useGroupChatStore', () => {
       expect(deleteMessage).not.toHaveBeenCalled()
 
       const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      vi.mocked(window.api.ai.onChunk).mock.calls.at(-1)?.[0]({ requestId, text: '重生的整段回复。' })
       emitComplete?.({ requestId, finishReason: 'stop' })
       await regeneration
       await vi.waitFor(() => expect(deleteMessage).toHaveBeenCalledWith('g1', 's1', 'f2'))
@@ -1017,6 +1018,7 @@ describe('useGroupChatStore', () => {
       const regeneration = useGroupChatStore.getState().regenerateMessage('f1')
       await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
       const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      vi.mocked(window.api.ai.onChunk).mock.calls.at(-1)?.[0]({ requestId, text: '重生的整段回复。' })
       emitComplete?.({ requestId, finishReason: 'stop' })
       await regeneration
       await vi.waitFor(() => {
@@ -1069,6 +1071,7 @@ describe('useGroupChatStore', () => {
       const regeneration = useGroupChatStore.getState().regenerateMessage('legacy-free')
       await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
       const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      vi.mocked(window.api.ai.onChunk).mock.calls.at(-1)?.[0]({ requestId, text: '重生的整段回复。' })
       emitComplete?.({ requestId, finishReason: 'stop' })
       await regeneration
       await vi.waitFor(() => expect(window.api.group.deleteMessage).toHaveBeenCalledWith('g1', 's1', 'legacy-free'))
@@ -1095,6 +1098,7 @@ describe('useGroupChatStore', () => {
       const regeneration = useGroupChatStore.getState().regenerateMessage('p1')
       await vi.waitFor(() => expect(window.api.ai.chat).toHaveBeenCalledTimes(1))
       const requestId = vi.mocked(window.api.ai.chat).mock.calls[0][0].requestId
+      vi.mocked(window.api.ai.onChunk).mock.calls.at(-1)?.[0]({ requestId, text: '重生的整段回复。' })
       emitComplete?.({ requestId, finishReason: 'stop' })
       await regeneration
       await vi.waitFor(() => expect(window.api.group.deleteMessage).toHaveBeenCalledWith('g1', 's1', 'p1'))

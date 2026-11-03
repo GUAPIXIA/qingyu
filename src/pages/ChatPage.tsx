@@ -619,7 +619,8 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* 消息列表：滚动列跟随消息宽度设置，并保留气泡两侧留白 */}
+      {/* 消息列表：滚动视口占满整个消息区，滚动条固定在消息区右侧（不随侧栏宽度变化而左右移动）；
+          气泡列仍由 MessageBubble 内部按 messageWidth 居中对齐，视觉宽度/位置不变。 */}
       <div
         className={cn(
           'flex-1 overflow-hidden relative z-0 flex justify-center',
@@ -629,7 +630,6 @@ export function ChatPage() {
         <div
           data-testid="chat-message-scroll-column"
           className="w-full h-full flex flex-col"
-          style={{ maxWidth: `${(settings.messageWidth ?? 768) + 32}px` }}
         >
         {messagesLoading ? (
           // UEX-P1-34：加载中渲染轻量加载态，避免清空-加载空窗期闪现「开始新的对话」假空态

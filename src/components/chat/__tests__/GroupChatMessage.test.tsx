@@ -627,4 +627,23 @@ describe('GroupChatMessage', () => {
       expect(latestActionable.getByRole('button', { name: /换一批/ })).toBeTruthy()
     })
   })
+
+  it('角色/用户气泡不再叠加直角小圆角，四角统一由气泡样式决定', () => {
+    useCharacterStore.setState({ characters: [createCharacter({ id: 'char-1', name: 'Aiko' })] })
+    useGroupChatStore.setState({ currentGroup: null, currentSessionId: null, sessions: [] })
+
+    const { container } = render(
+      <>
+        <GroupChatMessage message={createMessage({ characterId: 'char-1', content: '角色消息' })} />
+        <GroupChatMessage message={createMessage({ id: 'msg-2', characterId: '__user__', content: '用户消息' })} />
+      </>,
+    )
+
+    const bubbles = Array.from(container.querySelectorAll('.msg-bubble'))
+    expect(bubbles).toHaveLength(2)
+    for (const bubble of bubbles) {
+      expect(bubble.className).not.toContain('rounded-bl-sm')
+      expect(bubble.className).not.toContain('rounded-br-sm')
+    }
+  })
 })

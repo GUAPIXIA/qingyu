@@ -141,12 +141,19 @@ describeDrill('阶段 2 真实数据副本演练', () => {
     } catch {
       /* ignore */
     }
-    // Windows 上 sync-meta.db 或大归档可能被句柄/杀软短暂占用，清理失败不应让整组演练失败
-    try {
-      rmSync(ROOT, { recursive: true, force: true, maxRetries: 30, retryDelay: 500 })
-    } catch (err) {
-      console.log(`[drill] 临时目录清理失败（不影响结论）：${err instanceof Error ? err.message : String(err)}`)
-    }
+    // Windows 上 sync-meta.db 或大归档可能被句柄/杀软占用，且删除约 2500 个文件的
+    // 真实数据副本本身可远超钩子超时（慢盘/杀软实测 >180s，同步 rmSync 会阻塞事件
+    // 循环连超时计时器都无法触发）。清理本就是尽力而为（捕获失败仅记录），改为后台
+    // 延迟执行：钩子立即返回，删除在 worker 存活期间继续；worker 提前退出则残留
+    // 交由系统 %TEMP% 清理，与「中断即残留」的既有取舍一致。
+    const cleanup = setTimeout(() => {
+      try {
+        rmSync(ROOT, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+      } catch (err) {
+        console.log(`[drill] 临时目录清理失败（不影响结论）：${err instanceof Error ? err.message : String(err)}`)
+      }
+    }, 0)
+    cleanup.unref?.()
   })
 
   it('1) 复制真实数据副本（记录规模与排除项）', () => {

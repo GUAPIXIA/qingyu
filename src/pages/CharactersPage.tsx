@@ -316,10 +316,11 @@ export function CharactersPage() {
         </div>
       )}
 
-      <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
-        <h1 className="font-display text-lg font-bold">角色管理</h1>
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/character-create')} className="btn-primary" title="引导式制作角色卡（AI 辅助）">
+      {/* C-01：900×600 最小窗口下顶栏不换行——标题/主按钮禁止折行，导入类按钮文字在窄窗口收起为图标（保留 title 提示） */}
+      <header className="flex items-center justify-between gap-3 px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
+        <h1 className="shrink-0 whitespace-nowrap font-display text-lg font-bold">角色管理</h1>
+        <div className="flex shrink-0 items-center gap-2">
+          <button onClick={() => navigate('/character-create')} className="btn-primary whitespace-nowrap" title="引导式制作角色卡（AI 辅助）">
             <Wand2 className="w-4 h-4" />
             制作角色卡
           </button>
@@ -328,25 +329,25 @@ export function CharactersPage() {
             value={importConflict}
             onChange={(e) => handleImportConflictChange(e.target.value as CharacterImportConflictPolicy)}
             disabled={importBusy}
-            className="text-xs bg-tavern-bg-hover border border-tavern-border rounded-md px-2 py-1.5 text-tavern-text-soft outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            className="shrink-0 text-xs bg-tavern-bg-hover border border-tavern-border rounded-md px-2 py-1.5 text-tavern-text-soft outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             title="导入时遇到同名但内容不同的角色卡如何处理（内容相同的卡始终自动跳过）"
             aria-label="同名冲突时"
           >
             <option value="copy">同名冲突：另存副本</option>
             <option value="overwrite">同名冲突：覆盖原卡</option>
           </select>
-          <button onClick={() => importPng(importConflict)} disabled={importBusy} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed" title="导入 PNG 角色卡">
+          <button onClick={() => importPng(importConflict)} disabled={importBusy} className="btn-secondary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed" title="导入 PNG 角色卡">
             <FileUp className="w-4 h-4" />
-            PNG
+            <span className="hidden lg:inline">PNG</span>
           </button>
-          <button onClick={() => importJson(importConflict)} disabled={importBusy} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed" title="导入 JSON 角色卡">
+          <button onClick={() => importJson(importConflict)} disabled={importBusy} className="btn-secondary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed" title="导入 JSON 角色卡">
             <Upload className="w-4 h-4" />
-            JSON
+            <span className="hidden lg:inline">JSON</span>
           </button>
           {/* UEX-P2-04：导入进行中禁用导入入口（防重入） */}
-          <button onClick={handleBatchImport} disabled={importBusy} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed" title="批量导入角色卡">
+          <button onClick={handleBatchImport} disabled={importBusy} className="btn-secondary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed" title="批量导入角色卡">
             <FileStack className="w-4 h-4" />
-            批量导入
+            <span className="hidden lg:inline">批量导入</span>
           </button>
         </div>
       </header>

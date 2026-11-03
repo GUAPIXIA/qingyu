@@ -91,7 +91,6 @@ export function GroupChatPage() {
   const liveLorebookDiagnostics = useGroupChatStore((s) => s.lastLorebookDiagnostics)
   const liveDiagnosticsSessionId = useGroupChatStore((s) => s.lastLorebookDiagnosticsSessionId)
   const loadPersonas = usePersonaStore((s) => s.loadPersonas)
-  const messageWidth = useSettingsStore((s) => s.settings.messageWidth ?? 768)
   const settings = useSettingsStore((s) => s.settings)
 
   // P-6 修复：引用回复查找 O(n)→O(1)——构建 id→message 索引，仅在 messages 变化时重建
@@ -498,7 +497,7 @@ export function GroupChatPage() {
               className="group-chat-header relative z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-tavern-border-soft bg-tavern-bg-soft px-4"
               style={currentGroup?.themeColor ? { borderBottomColor: currentGroup.themeColor } : undefined}
             >
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="group-chat-header__left flex min-w-0 items-center gap-3">
                 {sidebarCollapsed && (
                   <button
                     onClick={() => setSidebarCollapsed(false)}
@@ -528,7 +527,7 @@ export function GroupChatPage() {
                       <Users className="h-4 w-4" />
                     </span>
                     <div className="group-chat-header__identity-copy min-w-0 text-left">
-                      <h2 className="max-w-32 truncate text-sm font-medium text-tavern-text">{currentGroup.name}</h2>
+                      <h2 className="group-chat-header__title max-w-32 truncate text-sm font-medium text-tavern-text" title={currentGroup.name}>{currentGroup.name}</h2>
                       <p className="text-xs text-tavern-text-muted">
                         {isStreaming
                           // UEX-P1-12：调度详情（当前说话者 + x/N + 停剩余）由消息区下方的 GroupMemberBar 承载，页头不再重复
@@ -547,21 +546,24 @@ export function GroupChatPage() {
                   </div>
                 )}
 
-                <span className="select-none text-tavern-border-soft" aria-hidden>|</span>
-                <GroupPersonaSwitcher />
-                <GroupNarrativeModeSwitcher isStreaming={isStreaming} />
-                {narrativeMode === 'omniscient' && (
-                  <WorldStatePanel
-                    open={showWorldStatePanel}
-                    onToggle={() => {
-                      setShowMemoryPanel(false)
-                      setShowWorldStatePanel((value) => !value)
-                    }}
-                    session={currentSession}
-                    onSaveWorldState={(value) => updateNarrativeSession({ memoryCurrentState: value })}
-                    isStreaming={isStreaming}
-                  />
-                )}
+                <span className="group-chat-header__divider select-none text-tavern-border-soft" aria-hidden>|</span>
+                {/* CH-06：窄顶栏（≤650px 容器）时优先隐藏这组中优先级控件，保证群名/重命名/上下文/清空等核心入口可见 */}
+                <div className="group-chat-header__middle-controls flex min-w-0 items-center gap-2">
+                  <GroupPersonaSwitcher />
+                  <GroupNarrativeModeSwitcher isStreaming={isStreaming} />
+                  {narrativeMode === 'omniscient' && (
+                    <WorldStatePanel
+                      open={showWorldStatePanel}
+                      onToggle={() => {
+                        setShowMemoryPanel(false)
+                        setShowWorldStatePanel((value) => !value)
+                      }}
+                      session={currentSession}
+                      onSaveWorldState={(value) => updateNarrativeSession({ memoryCurrentState: value })}
+                      isStreaming={isStreaming}
+                    />
+                  )}
+                </div>
 
                 {/* ---- 会话管理 ---- */}
                 <SessionSwitcher
@@ -571,7 +573,7 @@ export function GroupChatPage() {
                   onRename={(id, title) => renameSession(currentGroup.id, id, title)}
                   onDelete={(id) => deleteSession(currentGroup.id, id)}
                   onCreate={() => createSession(currentGroup.id)}
-                  extra={<>
+                  extra={<div className="group-chat-header__session-extra flex items-center gap-1">
                     <button
                       onClick={() => createSession(currentGroup.id)}
                       className="rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
@@ -620,7 +622,7 @@ export function GroupChatPage() {
                         } : null}
                       />
                     )}
-                  </>}
+                  </div>}
                 />
               </div>
 
@@ -629,8 +631,8 @@ export function GroupChatPage() {
 
                 <button type="button" disabled={!currentSessionId || isStreaming} aria-label="群聊空间画板" aria-pressed={showSpatialBoard}
                   onClick={() => { if (showSpatialBoard) requestSpatialCloseRef.current(); else { setOpenSpatialAssistant(false); setShowSpatialBoard(true) } }}
-                  className={cn('flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors disabled:opacity-40', currentSession?.spatialBoardEnabled === true ? 'bg-tavern-accent-soft text-tavern-accent' : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text')}
-                  title="空间画板"><Compass className="h-4 w-4" /><span>画板</span></button>
+                  className={cn('rounded-lg p-2 transition-colors disabled:opacity-40', currentSession?.spatialBoardEnabled === true ? 'bg-tavern-accent-soft text-tavern-accent' : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text')}
+                  title="空间画板"><Compass className="h-4 w-4" /></button>
                 <button
                   onClick={() => {
                     const report = useGroupChatStore.getState().buildGroupContextReport()
@@ -680,7 +682,7 @@ export function GroupChatPage() {
                 onClose={() => setShowSpatialBoard(false)} registerClose={handler => { requestSpatialCloseRef.current = handler }} />
             ) : <>
             {/* ---- 消息区域 ---- */}
-            <div className="flex-1 overflow-hidden relative z-0">
+            <div className={cn('flex-1 overflow-hidden relative z-0', `bubble-${settings.bubbleStyle}`)}>
               {messages.length === 0 && !isStreaming ? (
                 <div className="flex items-center justify-center h-full px-6 text-tavern-text-muted">
                   <div className="w-full max-w-md rounded-3xl border border-tavern-border-soft bg-tavern-bg-card/80 p-6 text-center shadow-sm backdrop-blur">
@@ -710,8 +712,7 @@ export function GroupChatPage() {
               ) : (
                 <div
                   data-testid="group-message-scroll-column"
-                  className="mx-auto h-full w-full"
-                  style={{ maxWidth: `${messageWidth + 32}px` }}
+                  className="h-full w-full"
                 >
                   <Virtuoso
                     key={`${currentGroup?.id || 'default'}:${currentSessionId || 'no-session'}`}

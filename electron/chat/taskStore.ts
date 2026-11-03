@@ -48,7 +48,19 @@ function atomicWriteJson(filePath: string, data: unknown): void {
   mkdirSync(join(filePath, '..'), { recursive: true })
   const tmp = `${filePath}.tmp`
   writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8')
-  renameSync(tmp, filePath)
+  // Windows 下目标文件可能被其他句柄短暂占用（并发读 / 杀软扫描窗口），renameSync
+  // 会抛 EPERM。做短退避重试（总预算 ~1.5s），避免偶发原子写失败放大为任务状态丢失；
+  // 重试耗尽仍失败则保留 .tmp（下次同路径写入会覆盖）并原样抛出。
+  for (let attempt = 0; ; attempt++) {
+    try {
+      renameSync(tmp, filePath)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code
+      if (attempt >= 4 || code !== 'EPERM') throw err
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * (attempt + 1))
+    }
+  }
 }
 
 function readJsonSafe<T>(filePath: string): T | null {

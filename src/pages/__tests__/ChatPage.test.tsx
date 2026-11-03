@@ -238,7 +238,7 @@ describe('ChatPage 冒烟测试', () => {
     expect(loader).toHaveClass('ml-auto', 'shrink-0')
   })
 
-  it('消息滚动列跟随消息宽度设置，不受固定 780px 上限限制', async () => {
+  it('消息滚动列占满消息区，滚动条不再随侧栏宽度左右移动', async () => {
     setupStores(true, makeCharacter())
     useSettingsStore.setState((state) => ({
       settings: { ...state.settings, messageWidth: 1024 },
@@ -253,9 +253,10 @@ describe('ChatPage 冒烟测试', () => {
 
     renderPage()
 
-    expect(await screen.findByTestId('chat-message-scroll-column')).toHaveStyle({
-      maxWidth: '1056px',
-    })
+    // 滚动容器不再按消息宽度限宽：滚动条固定在消息区右侧，侧栏收缩时不会左移
+    const column = await screen.findByTestId('chat-message-scroll-column')
+    expect(column.style.maxWidth).toBe('')
+    expect(column).toHaveClass('w-full')
   })
 
   it('启用角色封面背景时通过角色资源协议加载已落盘的封面', async () => {

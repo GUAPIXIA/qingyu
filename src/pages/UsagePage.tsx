@@ -156,6 +156,21 @@ export function UsagePage() {
     ? records.slice(0, MAX_DAILY_CHART_ITEMS).reverse()
     : []
   const maxDailyChars = dailyData.length > 0 ? Math.max(...dailyData.map(r => r.totalChars)) : 1
+  // X 轴刻度抽稀：最多约 8 个日期标签（保留首尾日期、中间等距抽稀）。
+  // 30 天数据在 1280 宽下每根柱子仅约 28px，「MM-DD」标签会被 truncate 成「10-…」，因此按密度抽样展示。
+  const axisLabelIndices = (() => {
+    const count = dailyData.length
+    const indices = new Set<number>()
+    if (count === 0) return indices
+    indices.add(0)
+    const step = Math.max(1, Math.ceil(count / 8))
+    for (let index = step; index < count - 1; index += step) {
+      // 与末尾日期保持至少半个步长的间距，避免最后两个标签挤在一起
+      if (count - 1 - index >= step * 0.5) indices.add(index)
+    }
+    if (count > 1) indices.add(count - 1)
+    return indices
+  })()
 
   return (
     <div className="h-full flex flex-col">
@@ -226,8 +241,9 @@ export function UsagePage() {
                 ))}
               </div>
               <div className="relative flex items-end gap-1" style={{ height: '122px' }}>
-                {dailyData.map((d) => {
+                {dailyData.map((d, index) => {
                   const height = maxDailyChars > 0 ? (d.totalChars / maxDailyChars) * 100 : 0
+                  const showAxisLabel = axisLabelIndices.has(index)
                   return (
                     <div
                       key={d.key}
@@ -245,8 +261,11 @@ export function UsagePage() {
                           </span>
                         </div>
                       </div>
-                      <span className="w-full truncate text-center text-[11px] font-medium text-tavern-text-muted dark:text-tavern-text-soft">
-                        {d.key.slice(5)}
+                      <span
+                        aria-hidden={!showAxisLabel}
+                        className="w-full whitespace-nowrap text-center text-[11px] font-medium text-tavern-text-muted dark:text-tavern-text-soft"
+                      >
+                        {showAxisLabel ? d.key.slice(5) : '\u00A0'}
                       </span>
                     </div>
                   )

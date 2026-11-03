@@ -1,9 +1,39 @@
+import { builtinModules } from 'node:module'
+import { type Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
+/**
+ * 2026-11-03：vitest 4 会在 configEnvironment(post) 中把 resolve.external 强制写成
+ * 「当前 Node 的 builtinModules 全集」并设 noExternal=true。实验性内置模块（如 Node 22 的
+ * node:sqlite，electron/domain/syncMeta.ts 引入）不在 builtinModules 里，导致 client 环境
+ * （jsdom）解析时抛 "Cannot bundle built-in module"——本地 ~27 个套件加载失败。
+ * Node 24 中 sqlite 已转正（CI 绿），此插件在其后把缺失的实验性内置模块补回 external，
+ * vite 即走外置路径、由 vitest 模块运行器原生导入，本地与 CI 行为一致。
+ */
+function externalExperimentalBuiltins(): Plugin {
+  const extra = ['node:sqlite'].filter((id) => !builtinModules.includes(id.replace(/^node:/, '')))
+  return {
+    name: 'qingyu:external-experimental-builtins',
+    // enforce post：vitest 核心插件在用户插件之后追加，其 configEnvironment(post) 会
+    // 覆写 external/noExternal；enforce:'post' 保证本插件排在其后执行。
+    enforce: 'post',
+    configEnvironment: {
+      order: 'post',
+      handler(_name, config) {
+        if (extra.length === 0) return
+        config.resolve ??= {}
+        if (config.resolve.external === true) return
+        const list = Array.isArray(config.resolve.external) ? config.resolve.external : []
+        config.resolve.external = [...list, ...extra.filter((id) => !list.includes(id))]
+      },
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  plugins: [externalExperimentalBuiltins(), react(), tsconfigPaths()],
   test: {
     environment: 'jsdom',
     globals: true,
