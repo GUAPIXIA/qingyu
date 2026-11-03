@@ -128,9 +128,8 @@ export function Sidebar() {
     return false
   }
 
-  // 服务器版本与本地不同时才显示
-  const showServerVersion = serverVersion !== null && serverVersion !== appVersion
-  const hasUpdate = serverVersion !== null && appVersion && isNewerVersion(appVersion, serverVersion)
+  // 新样式下侧栏不再展示版本号，仅在有新版本时给「设置」入口加提示点（更新入口仍在设置页）
+  const hasUpdate = serverVersion !== null && appVersion !== '' && isNewerVersion(appVersion, serverVersion)
 
   // 获取本地版本 + 在线版本检查
   useEffect(() => {
@@ -141,12 +140,6 @@ export function Sidebar() {
       }
     }).catch((e) => logError('Sidebar:checkVersion', e))
   }, [])
-
-  const handleOpenUpdater = () => {
-    const pending = flushSpatialBoard()
-    if (pending) void pending.then(() => navigate('/settings#settings-updater')).catch(() => {})
-    else navigate('/settings#settings-updater')
-  }
 
   const handleNavigation = (event: MouseEvent<HTMLAnchorElement>, to: string) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || pathname === to) return
@@ -163,48 +156,8 @@ export function Sidebar() {
         sidebarCollapsed ? 'w-16' : 'w-56'
       )}
     >
-      {/* 应用品牌 + 版本号 */}
-      <div
-        className={cn(
-          'h-14 border-b border-tavern-border-soft flex items-center overflow-hidden shrink-0',
-          sidebarCollapsed ? 'justify-center px-1' : 'px-4'
-        )}
-      >
-        {sidebarCollapsed ? (
-          <span className="text-lg font-medium text-tavern-text">轻</span>
-        ) : (
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xl leading-tight font-medium text-tavern-text">轻语</span>
-              <span className="text-[10px] leading-none text-tavern-text-muted/50">B站:超级本大王</span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <button
-                onClick={handleOpenUpdater}
-                className={cn(
-                  'flex items-center gap-1 text-[10px] leading-none transition-colors',
-                  hasUpdate
-                    ? 'text-tavern-accent hover:opacity-80 cursor-pointer'
-                    : 'text-tavern-text-muted hover:text-tavern-accent'
-                )}
-                title={hasUpdate ? `公告版本 v${serverVersion} 可用，前往软件更新` : '前往软件更新'}
-              >
-                v{appVersion || '...'}
-                {hasUpdate && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                )}
-              </button>
-              {showServerVersion && (
-                <span className="text-[10px] text-tavern-text-muted/60 leading-none">
-                  → v{serverVersion}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* 导航 - S2-A 分组；P1-04：min-h-0 保证 flex 列内可收缩滚动，底部状态区始终可达 */}
+      {/* 新样式：侧栏不再显示大块品牌 / UP 主 / 版本信息（应用名与图标由顶部标题栏承载） */}
       <nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto py-2.5 px-2.5 space-y-1.5">
         {sidebarCollapsed ? (
           // 收起态：平铺图标，无分组
@@ -226,12 +179,22 @@ export function Sidebar() {
                 title={item.label}
               >
                 {({ isActive }) => (
-                  <span className={cn(
-                    'grid h-8 w-8 place-items-center rounded-lg transition-colors',
-                    isActive && 'bg-tavern-accent-soft',
-                  )}>
-                    <item.icon className="w-[18px] h-[18px] shrink-0" aria-hidden />
-                  </span>
+                  <>
+                    <span className={cn(
+                      'grid h-8 w-8 place-items-center rounded-lg transition-colors',
+                      isActive && 'bg-tavern-accent-soft',
+                    )}>
+                      <item.icon className="w-[18px] h-[18px] shrink-0" aria-hidden />
+                    </span>
+                    {item.to === '/settings' && hasUpdate && (
+                      <span
+                        className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-tavern-danger"
+                        title={`公告版本 v${serverVersion} 可用，可前往设置更新`}
+                      >
+                        <span className="sr-only">有新版本可用</span>
+                      </span>
+                    )}
+                  </>
                 )}
               </NavLink>
             ))}
@@ -278,6 +241,14 @@ export function Sidebar() {
                               <item.icon className="w-[18px] h-[18px] shrink-0" aria-hidden />
                             </span>
                             <span className={cn('truncate', isActive ? 'font-medium' : 'font-normal')}>{item.label}</span>
+                            {item.to === '/settings' && hasUpdate && (
+                              <span
+                                className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-tavern-danger"
+                                title={`公告版本 v${serverVersion} 可用，可前往设置更新`}
+                              >
+                                <span className="sr-only">有新版本可用</span>
+                              </span>
+                            )}
                           </>
                         )}
                       </NavLink>

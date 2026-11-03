@@ -84,8 +84,11 @@ export function ChatHeader({
   }
 
   return (
-    <header className="relative z-30 flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
-      <div className="flex items-center gap-3">
+    <header className="relative z-30 flex h-[72px] shrink-0 items-center justify-center bg-tavern-bg px-3">
+      {/* 新样式：会话控件收进居中悬浮圆角工具条（设计稿见 work/frameless-window-preview.html） */}
+      <div className="session-toolbar relative flex min-w-0 max-w-full items-center gap-2 rounded-[14px] border border-tavern-border px-2 py-1.5">
+        <span className="session-toolbar__backdrop" aria-hidden="true" />
+        <div className="relative flex min-w-0 items-center gap-3">
         {/* 角色选择下拉 */}
         <Dropdown
           open={showCharMenu}
@@ -99,9 +102,9 @@ export function ChatHeader({
                 size="md"
                 fallbackClassName="bg-tavern-assistant/20 text-tavern-assistant"
               />
-              <div className="text-left">
-                <div className="text-sm font-medium text-tavern-text">{getDisplayName(currentCharacter)}</div>
-                <div className="text-xs text-tavern-text-muted">
+              <div className="min-w-0 text-left">
+                <div className="max-w-[8.5rem] truncate text-sm font-medium text-tavern-text">{getDisplayName(currentCharacter)}</div>
+                <div className="whitespace-nowrap text-xs text-tavern-text-muted">
                   {isStreaming ? '生成中...' : '在线'}
                 </div>
               </div>
@@ -323,41 +326,44 @@ export function ChatHeader({
         />
       </div>
 
-      {/* 当前会话画板与快捷设置 */}
-      <div className="flex items-center gap-1">
-        <span className="mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
-        <button
-          type="button"
-          aria-label={showSpatialBoard ? '返回对话' : '打开空间画板'}
-          aria-pressed={showSpatialBoard}
-          onClick={onShowSpatialBoard}
-          disabled={!currentSessionId}
-          className={cn(
-            'flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-            currentSession?.spatialBoardEnabled === true
-              ? 'bg-tavern-accent-soft text-tavern-accent'
-              : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text',
-          )}
-          title={currentSessionId ? '当前会话的空间画板' : '先创建会话'}
-        >
-          <Compass className="h-4 w-4" />
-          <span className="hidden xl:inline">画板</span>
-        </button>
-        <button
-          type="button"
-          aria-label="快捷设置"
-          aria-expanded={showQuickSettings}
-          onClick={onShowQuickSettings}
-          className={cn(
-            'p-2 rounded-lg transition-colors',
-            showQuickSettings
-              ? 'text-tavern-accent bg-tavern-accent-soft'
-              : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
-          )}
-          title="快捷设置"
-        >
-          <Sliders className="w-5 h-5" />
-        </button>
+      <span className="relative mx-0.5 h-4 w-px shrink-0 bg-tavern-border" aria-hidden="true" />
+
+        {/* 当前会话画板与快捷设置 */}
+        <div className="relative flex shrink-0 items-center gap-1">
+          <span className="mr-1 hidden lg:inline"><TokenUsage chars={totalChars} /></span>
+          <button
+            type="button"
+            aria-label={showSpatialBoard ? '返回对话' : '打开空间画板'}
+            aria-pressed={showSpatialBoard}
+            onClick={onShowSpatialBoard}
+            disabled={!currentSessionId}
+            className={cn(
+              'flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+              currentSession?.spatialBoardEnabled === true
+                ? 'bg-tavern-accent-soft text-tavern-accent'
+                : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text',
+            )}
+            title={currentSessionId ? '当前会话的空间画板' : '先创建会话'}
+          >
+            <Compass className="h-4 w-4" />
+            <span className="hidden xl:inline">画板</span>
+          </button>
+          <button
+            type="button"
+            aria-label="快捷设置"
+            aria-expanded={showQuickSettings}
+            onClick={onShowQuickSettings}
+            className={cn(
+              'p-2 rounded-lg transition-colors',
+              showQuickSettings
+                ? 'text-tavern-accent bg-tavern-accent-soft'
+                : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
+            )}
+            title="快捷设置"
+          >
+            <Sliders className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </header>
   )

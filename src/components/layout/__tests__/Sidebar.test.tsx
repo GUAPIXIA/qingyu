@@ -74,7 +74,8 @@ describe('Sidebar', () => {
     }
   })
 
-  it('点击公告版本进入设置的软件更新区，不再打开 GitHub', async () => {
+  it('新样式：侧栏不再显示品牌/版本，有新版本时只在「设置」入口显示提示点', async () => {
+    ;(window.api.app as any).getVersion = vi.fn().mockResolvedValue('0.12.1')
     ;(window.api.app as any).checkVersion = vi.fn().mockResolvedValue({
       version: '0.13.0',
       changelog: '',
@@ -87,10 +88,18 @@ describe('Sidebar', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.click(await screen.findByTitle('公告版本 v0.13.0 可用，前往软件更新'))
-    expect(await screen.findByText('/settings#settings-updater')).toBeInTheDocument()
-    expect(window.api.app.openExternal).not.toHaveBeenCalled()
-    expect(screen.queryByTitle('前往 GitHub 主页')).not.toBeInTheDocument()
+    // 品牌 / UP 主 / 版本号已从侧栏移除（应用图标与名称由顶部标题栏承载）
+    expect(screen.queryByText('轻语')).not.toBeInTheDocument()
+    expect(screen.queryByText(/B站/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/v0\.12\.1/)).not.toBeInTheDocument()
+
+    // 系统分组默认折叠，展开后「设置」入口带更新提示点
+    fireEvent.click(screen.getByRole('button', { name: '系统' }))
+    expect(await screen.findByText('有新版本可用')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: '设置' }))
+    await act(async () => {})
+    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/settings')
   })
 
   it.each([false, true])('侧栏收起=%s 时，画板保存失败不导航，成功确认后才离开', async (collapsed) => {

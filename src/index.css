@@ -652,13 +652,18 @@ body {
   container-type: inline-size;
 }
 
-@container group-chat-header (max-width: 740px) {
+@container group-chat-header (max-width: 880px) {
+  /* 新样式胶囊比整条顶栏窄（左右各留 12px 且内含悬浮工具条），
+     先隐藏字数与「新建会话/长记忆」附加按钮，保证群名与核心入口不被挤成一字截断。 */
   .group-chat-header__token {
     display: none !important;
   }
+  .group-chat-header__session-extra {
+    display: none;
+  }
 }
 
-@container group-chat-header (max-width: 650px) {
+@container group-chat-header (max-width: 760px) {
   /* CH-06：窄顶栏优先保证「群名 + 重命名 + 查看上下文 + 清空聊天」等核心入口可见，
      隐藏中优先级的身份/叙事模式/世界状态控件；群名保留截断显示。 */
   .group-chat-header__middle-controls {
@@ -679,8 +684,116 @@ body {
   .group-chat-header .session-switcher__label {
     display: none;
   }
-  /* 最小窗口下为群名与核心操作让位：隐藏「新建会话 / 长记忆」这一组附加按钮 */
-  .group-chat-header__session-extra {
-    display: none;
+}
+
+/* ===================== 无边框窗口：自绘顶部标题栏 ===================== */
+/* Windows 主进程以 titleBarStyle: 'hidden' 隐藏原生标题栏；30px 小标题栏由
+   src/components/layout/WindowCaption.tsx 绘制，这里提供拖动区与按钮样式。
+   非 win32 / 浏览器 / 测试环境组件不渲染，因此不残留假标题栏。 */
+.app-caption {
+  flex: 0 0 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 10px;
+  background: var(--tavern-bg-soft);
+  border-bottom: 1px solid var(--tavern-border-soft);
+  /* 无边框窗口拖动区；右键/双击行为沿用 Chromium 原生实现 */
+  -webkit-app-region: drag;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-caption__brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.app-caption__mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  border: 1px solid rgba(196, 181, 253, 0.22);
+  background: linear-gradient(145deg, #756094, #493a65);
+  color: #f0e7ff;
+}
+
+.app-caption__mark svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.app-caption__controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  /* 窗口按钮必须可点击：在 drag 区里声明 no-drag */
+  -webkit-app-region: no-drag;
+}
+
+.app-caption__button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--tavern-text-soft);
+  cursor: pointer;
+  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.app-caption__button:hover {
+  background: var(--tavern-bg-hover);
+  color: var(--tavern-text);
+}
+
+.app-caption__button--close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+.app-caption__button svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.35;
+}
+
+@media (max-width: 1120px) {
+  .app-caption__button {
+    width: 40px;
   }
+}
+
+/* ===================== 顶部会话工具条（72px 页头内居中悬浮胶囊） ===================== */
+/* 背景/阴影/毛玻璃放在独立的 backdrop 子元素上，避免 backdrop-filter 给胶囊建立
+   包含块，导致 Dropdown 的全屏点击遮罩（position: fixed）被限制在胶囊范围内。 */
+.session-toolbar__backdrop {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--tavern-bg-card) 90%, transparent);
+  box-shadow:
+    0 8px 24px rgba(26, 22, 37, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: none;
+}
+
+:root.dark .session-toolbar__backdrop {
+  box-shadow:
+    0 8px 24px rgba(7, 4, 15, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }

@@ -494,10 +494,17 @@ export function GroupChatPage() {
             {/* ---- 顶栏 ---- */}
             <header
               data-testid="group-chat-header"
-              className="group-chat-header relative z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-tavern-border-soft bg-tavern-bg-soft px-4"
-              style={currentGroup?.themeColor ? { borderBottomColor: currentGroup.themeColor } : undefined}
+              className="group-chat-header relative z-30 flex h-[72px] shrink-0 items-center justify-center bg-tavern-bg px-3"
             >
-              <div className="group-chat-header__left flex min-w-0 items-center gap-3">
+              {/* 新样式：与单聊一致，会话控件收进居中悬浮圆角工具条 */}
+              <div
+                className="session-toolbar relative flex min-w-0 max-w-full items-center gap-2 rounded-[14px] border border-tavern-border px-2 py-1.5"
+                style={currentGroup?.themeColor
+                  ? { borderColor: `color-mix(in srgb, ${currentGroup.themeColor} 45%, var(--tavern-border))` }
+                  : undefined}
+              >
+                <span className="session-toolbar__backdrop" aria-hidden="true" />
+                <div className="group-chat-header__left relative flex min-w-0 items-center gap-3">
                 {sidebarCollapsed && (
                   <button
                     onClick={() => setSidebarCollapsed(false)}
@@ -528,7 +535,7 @@ export function GroupChatPage() {
                     </span>
                     <div className="group-chat-header__identity-copy min-w-0 text-left">
                       <h2 className="group-chat-header__title max-w-32 truncate text-sm font-medium text-tavern-text" title={currentGroup.name}>{currentGroup.name}</h2>
-                      <p className="text-xs text-tavern-text-muted">
+                      <p className="whitespace-nowrap text-xs text-tavern-text-muted">
                         {isStreaming
                           // UEX-P1-12：调度详情（当前说话者 + x/N + 停剩余）由消息区下方的 GroupMemberBar 承载，页头不再重复
                           ? '生成中...'
@@ -626,7 +633,9 @@ export function GroupChatPage() {
                 />
               </div>
 
-              <div className="flex shrink-0 items-center gap-1">
+              <span className="relative mx-0.5 h-4 w-px shrink-0 bg-tavern-border" aria-hidden="true" />
+
+              <div className="relative flex shrink-0 items-center gap-1">
                 <span className="group-chat-header__token mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
 
                 <button type="button" disabled={!currentSessionId || isStreaming} aria-label="群聊空间画板" aria-pressed={showSpatialBoard}
@@ -674,6 +683,7 @@ export function GroupChatPage() {
                 >
                   <Sliders className="h-5 w-5" />
                 </button>
+              </div>
               </div>
             </header>
 
