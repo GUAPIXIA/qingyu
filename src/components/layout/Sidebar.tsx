@@ -160,8 +160,8 @@ export function Sidebar() {
       {/* 新样式：侧栏不再显示大块品牌 / UP 主 / 版本信息（应用名与图标由顶部标题栏承载） */}
       <nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto py-2.5 px-2.5 space-y-1.5">
         {sidebarCollapsed ? (
-          // 收起态：平铺图标，无分组
-          <div className="space-y-0.5">
+          // 收起态：平铺图标，无分组；整体下移两个图标高度（2 × 40px），与顶部留出呼吸区
+          <div className="mt-20 space-y-0.5">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
