@@ -59,7 +59,6 @@ export function NarrativeModeSwitcher({ characterId, isStreaming }: NarrativeMod
         {NARRATIVE_MODE_OPTIONS.map((option) => {
           const selected = option.value === activeMode
           const Icon = option.value === 'immersive' ? UserRound : Globe2
-          const compactLabel = option.value === 'immersive' ? '代入' : '全局'
 
           return (
             <button
@@ -81,7 +80,6 @@ export function NarrativeModeSwitcher({ characterId, isStreaming }: NarrativeMod
               )}
             >
               <Icon className={cn('h-3.5 w-3.5 shrink-0', savingMode === option.value && 'animate-pulse')} />
-              <span className="hidden xl:inline">{compactLabel}</span>
             </button>
           )
         })}

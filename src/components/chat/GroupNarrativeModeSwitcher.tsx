@@ -78,7 +78,6 @@ export function GroupNarrativeModeSwitcher({ isStreaming }: GroupNarrativeModeSw
               )}
             >
               <Icon className={cn('h-3.5 w-3.5 shrink-0', savingMode === option.value && 'animate-pulse')} />
-              <span className="hidden xl:inline">{option.value === 'immersive' ? '代入' : '全局'}</span>
             </button>
           )
         })}
