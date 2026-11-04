@@ -129,7 +129,8 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
   const intensityOption = CONTINUE_INTENSITY_OPTIONS[intensityIndex] ?? CONTINUE_INTENSITY_OPTIONS[2]
 
   return (
-    <div className="border-t border-tavern-border-soft bg-tavern-bg-soft px-4 py-3">
+    // 新样式：输入区不再铺整条矩形底色/分隔线，胶囊直接悬浮在对话背景之上
+    <div className="bg-transparent px-4 pb-3 pt-2">
       <EditorSuggestions suggestions={oldSuggestions} objectId={`chat-draft:${character.id}:${currentSessionId || 'default'}`} />
       {currentSession?.spatialBoardEnabled === true && currentSession.characterId === character.id && onOpenSpatialSuggestions && <SpatialSuggestionNotice characterId={character.id} sessionId={currentSession.id}
         worldId={currentSession.spatialWorldId} enabled={currentSession.spatialContextEnabled !== false && currentSession.spatialNarrativeSyncPolicy !== 'off'} onOpen={onOpenSpatialSuggestions}
@@ -220,7 +221,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
 
       {/* 输入框：整体胶囊容器，按钮内嵌，聚焦时灰色高亮描边（.chat-input-capsule，见 index.css）。
           统一 items-center：多行输入框自动增高时，右侧「续写/设置/发送」等按钮保持上下居中。 */}
-      <div className="chat-input-capsule flex items-center gap-1 rounded-2xl border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 shadow-sm transition-all">
+      <div className="chat-input-capsule flex items-center gap-1 rounded-2xl border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 shadow-lg shadow-black/10 transition-all dark:shadow-black/30">
         <button
           onClick={handleImageSelect}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-accent"
