@@ -158,10 +158,12 @@ export function Sidebar() {
     >
       {/* 导航 - S2-A 分组；P1-04：min-h-0 保证 flex 列内可收缩滚动，底部状态区始终可达 */}
       {/* 新样式：侧栏不再显示大块品牌 / UP 主 / 版本信息（应用名与图标由顶部标题栏承载） */}
+      {/* 收起态顶部留白：放在滚动容器外，滚动时不会跟着上移（高度不足时也保持固定） */}
+      {sidebarCollapsed && <div aria-hidden="true" className="h-20 w-full shrink-0" />}
       <nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto py-2.5 px-2.5 space-y-1.5">
         {sidebarCollapsed ? (
-          // 收起态：平铺图标，无分组；整体下移两个图标高度（2 × 40px），与顶部留出呼吸区
-          <div className="mt-20 space-y-0.5">
+          // 收起态：平铺图标，无分组（整体下移两个图标高度，留白见上方固定 spacer）
+          <div className="space-y-0.5">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
