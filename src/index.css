@@ -921,3 +921,36 @@ body {
   align-items: center;
   height: 36px;
 }
+
+/* ===================== 快捷设置面板：统一放大字号与控件尺寸 ===================== */
+/* 面板内原本大量 10/11/12px 小字（说明、计数、下拉项），统一放大一档，
+   解决“字体太小”；控件高度/间距由组件自身的 helper 统一，顺序与结构不变。 */
+.quick-settings-panel {
+  font-size: 13px;
+}
+
+.quick-settings-panel .text-\[10px\] {
+  font-size: 11.5px;
+}
+
+.quick-settings-panel .text-\[11px\] {
+  font-size: 12px;
+}
+
+.quick-settings-panel .text-xs {
+  font-size: 13px;
+}
+
+.quick-settings-panel .text-sm {
+  font-size: 14px;
+}
+
+/* 面板内输入框 / 下拉框统一字号与最小高度，避免一格里字太小、控件高矮不一 */
+.quick-settings-panel :is(input, select, textarea) {
+  font-size: 13px;
+}
+
+.quick-settings-panel :is(input[type='number'], input[type='text'], select) {
+  min-height: 32px;
+}
+

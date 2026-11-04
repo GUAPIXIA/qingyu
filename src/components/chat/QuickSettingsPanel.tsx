@@ -31,8 +31,8 @@ interface QuickSettingsPanelProps {
   onSetDialogueDirections?: (enabled: boolean) => void | Promise<void>
 }
 
-const QUICK_BUTTON_ICON_CLASS = 'w-3.5 h-3.5 shrink-0'
-const QUICK_BUTTON_ICON_BADGE_CLASS = 'grid h-7 w-7 place-items-center rounded-lg border shrink-0'
+const QUICK_BUTTON_ICON_CLASS = 'w-4 h-4 shrink-0'
+const QUICK_BUTTON_ICON_BADGE_CLASS = 'grid h-8 w-8 place-items-center rounded-lg border shrink-0'
 
 export function QuickSettingsPanel({
   open,
@@ -249,12 +249,12 @@ export function QuickSettingsPanel({
 
       {/* 面板 */}
       <div className={cn(
-        'fixed right-0 top-0 w-80 bg-tavern-bg-card border-l border-tavern-border z-40 transition-transform duration-300 overflow-y-auto',
+        'quick-settings-panel fixed right-0 top-0 w-[360px] bg-tavern-bg-card border-l border-tavern-border z-40 transition-transform duration-300 overflow-y-auto',
         open ? 'translate-x-0' : 'translate-x-full'
       )} style={{ top: 0, height: '100vh' }}>
         {/* 头部 */}
-        <div className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft sticky top-0 bg-tavern-bg-card/95 backdrop-blur z-10">
-          <h3 className="font-display font-bold flex items-center gap-2 text-sm">
+        <div className="flex items-center justify-between px-5 h-14 border-b border-tavern-border-soft sticky top-0 bg-tavern-bg-card border-b border-tavern-border-soft sticky top-0 backdrop-blur z-10">
+          <h3 className="font-display font-bold flex items-center gap-2 text-[15px]">
             <Sliders className="w-4 h-4 text-tavern-accent" />
             {isGroup ? '群聊快捷设置' : '快捷设置'}
           </h3>
@@ -263,7 +263,7 @@ export function QuickSettingsPanel({
           </QuickIconButton>
         </div>
 
-        <div className="p-4 space-y-5">
+        <div className="p-5 space-y-6">
 
           {/* ===== 模型 ===== */}
           <Section icon={Cpu} title="模型">
@@ -335,7 +335,7 @@ export function QuickSettingsPanel({
                             >
                               <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isActive ? 'bg-tavern-accent' : 'bg-tavern-border')} />
                               <span className="truncate">{m}</span>
-                              {isActive && <span className="ml-auto text-[11px] text-tavern-accent/70 shrink-0">当前</span>}
+                              {isActive && <span className="ml-auto text-[11px] text-tavern-accent shrink-0">当前</span>}
                             </button>
                           )
                         })}
@@ -429,7 +429,7 @@ export function QuickSettingsPanel({
                         className={cn(
                           'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs border transition-colors',
                           isActive
-                            ? 'bg-tavern-accent-soft text-tavern-accent border-tavern-accent/20'
+                            ? 'bg-tavern-accent-soft text-tavern-accent border-tavern-accent-soft'
                             : 'bg-tavern-bg-soft text-tavern-text-muted border-tavern-border-soft'
                         )}
                       >
@@ -515,7 +515,7 @@ export function QuickSettingsPanel({
                           >
                             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', checked ? 'bg-tavern-accent' : 'bg-tavern-border')} />
                             <span className="truncate flex-1">{lb.name}</span>
-                            {isBound && <Lock className="w-2.5 h-2.5 text-tavern-accent/60 shrink-0" />}
+                            {isBound && <Lock className="w-2.5 h-2.5 text-tavern-accent shrink-0" />}
                             <span className="text-[11px] text-tavern-text-muted shrink-0 tabular-nums">{lb.entries.length}条</span>
                           </button>
                         )
@@ -565,7 +565,7 @@ export function QuickSettingsPanel({
               </p>
             }
           >
-            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5">
+            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft p-2.5">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-tavern-text-soft">下一步方向</p>
@@ -581,7 +581,7 @@ export function QuickSettingsPanel({
 
           {group && onSaveGroup && (
             <Section icon={Users} title="接力设置">
-              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-3">
+              <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft p-2.5 space-y-3">
                 <p className="text-[10px] leading-relaxed text-tavern-text-muted">
                   回复规则在输入区切换；这里仅配置“按顺序”模式的连续接力。
                 </p>
@@ -666,7 +666,7 @@ export function QuickSettingsPanel({
                     aria-checked={selected}
                     onClick={() => updateSettings({ defaultResponseLength: value })}
                     className={cn(
-                      'rounded-lg px-1.5 py-2 text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/45',
+                      'rounded-lg px-1.5 py-2 text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]',
                       selected ? 'bg-tavern-bg-card text-tavern-accent shadow-sm' : 'text-tavern-text-muted hover:text-tavern-text',
                     )}
                   >
@@ -679,9 +679,9 @@ export function QuickSettingsPanel({
 
           {/* ===== 对话操作 ===== */}
           <Section icon={MessageSquare} title="对话操作">
-            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft/60 p-2.5 space-y-2.5">
+            <div className="rounded-xl border border-tavern-border-soft bg-tavern-bg-soft p-2.5 space-y-2.5">
               <div className="flex items-center gap-2 pb-2 border-b border-tavern-border-soft">
-                <span className={cn(QUICK_BUTTON_ICON_BADGE_CLASS, 'border-tavern-accent/15 bg-tavern-accent-soft text-tavern-accent')}>
+                <span className={cn(QUICK_BUTTON_ICON_BADGE_CLASS, 'border-tavern-accent-soft bg-tavern-accent-soft text-tavern-accent')}>
                   <ArrowDownToLine className={QUICK_BUTTON_ICON_CLASS} />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -864,11 +864,11 @@ function QuickIconButton({
       disabled={disabled}
       className={cn(
         'inline-flex shrink-0 items-center justify-center border border-transparent text-tavern-text-muted transition-colors',
-        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-tavern-accent/60',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_60%,transparent)]',
         'disabled:cursor-not-allowed disabled:opacity-40',
-        compact ? 'h-5 w-5 rounded-md' : 'h-7 w-7 rounded-lg',
+        compact ? 'h-6 w-6 rounded-md' : 'h-8 w-8 rounded-lg',
         danger
-          ? 'hover:border-tavern-danger/15 hover:bg-tavern-danger/10 hover:text-tavern-danger'
+          ? 'hover:border-[color-mix(in_srgb,var(--tavern-danger)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--tavern-danger)_12%,transparent)] hover:text-tavern-danger'
           : 'hover:border-tavern-border-soft hover:bg-tavern-bg-hover hover:text-tavern-accent',
         className,
       )}
@@ -890,16 +890,16 @@ function ActionButton({ icon: Icon, label, onClick, danger = false }: {
       aria-label={label}
       onClick={onClick}
       className={cn(
-        'flex items-center gap-2 min-w-0 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors',
+        'flex items-center gap-2.5 min-w-0 px-3 py-2.5 rounded-xl border text-left text-[13px] transition-colors',
         danger
-          ? 'border-tavern-danger/20 text-tavern-danger hover:bg-tavern-danger/10'
-          : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:border-tavern-accent/40 hover:text-tavern-accent',
+          ? 'border-[color-mix(in_srgb,var(--tavern-danger)_25%,transparent)] text-tavern-danger hover:bg-[color-mix(in_srgb,var(--tavern-danger)_12%,transparent)]'
+          : 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-soft hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:text-tavern-accent',
       )}
     >
       <span className={cn(
         QUICK_BUTTON_ICON_BADGE_CLASS,
         danger
-          ? 'border-tavern-danger/15 bg-tavern-danger/10 text-tavern-danger'
+          ? 'border-[color-mix(in_srgb,var(--tavern-danger)_18%,transparent)] bg-[color-mix(in_srgb,var(--tavern-danger)_10%,transparent)] text-tavern-danger'
           : 'border-tavern-border-soft bg-tavern-bg-soft text-tavern-text-muted',
       )}>
         <Icon className={QUICK_BUTTON_ICON_CLASS} />
@@ -918,14 +918,14 @@ function ToggleSwitch({ label, checked, onChange }: { label: string; checked: bo
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
+        'relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-tavern-accent',
         checked ? 'bg-tavern-accent' : 'bg-tavern-bg-hover',
       )}
     >
       <span className={cn(
-        'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-        checked ? 'translate-x-4' : 'translate-x-0',
+        'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform',
+        checked ? 'translate-x-5' : 'translate-x-0',
       )} />
     </button>
   )
@@ -938,26 +938,28 @@ function Section({ icon: Icon, title, hint, children }: {
   children: React.ReactNode
 }) {
   return (
-    <div>
-      <div className="flex items-center gap-1.5 mb-2">
-        <Icon className="w-3.5 h-3.5 text-tavern-text-muted" />
-        <span className="text-xs font-semibold text-tavern-text-soft uppercase tracking-wide">{title}</span>
+    <section>
+      <div className="mb-2.5 flex items-center gap-2">
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-tavern-accent-soft text-tavern-accent">
+          <Icon className="w-3.5 h-3.5" />
+        </span>
+        <span className="text-[13px] font-semibold tracking-wide text-tavern-text">{title}</span>
         {hint != null && (
           <span className="ml-auto">
             <HintIcon align="right" hint={hint} />
           </span>
         )}
       </div>
-      {children}
-    </div>
+      <div className="space-y-2.5">{children}</div>
+    </section>
   )
 }
 
 function ParamChip({ label, value }: { label: string; value: number | string | undefined }) {
   return (
-    <div className="px-2 py-1 rounded-md bg-tavern-bg-soft border border-tavern-border-soft text-center">
-      <div className="text-[11px] uppercase tracking-wide opacity-60">{label}</div>
-      <div className="font-mono font-medium text-xs">{value ?? '-'}</div>
+    <div className="px-2.5 py-1.5 rounded-lg bg-tavern-bg-soft border border-tavern-border-soft text-center">
+      <div className="text-[11px] tracking-wide text-tavern-text-muted">{label}</div>
+      <div className="mt-0.5 font-mono font-medium text-sm">{value ?? '-'}</div>
     </div>
   )
 }
@@ -988,11 +990,11 @@ function HintIcon({ hint, align = 'left' }: { hint: React.ReactNode; align?: 'le
         label="查看说明"
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
       >
-        <Info className="w-3 h-3" />
+        <Info className="w-3.5 h-3.5" />
       </QuickIconButton>
       {open && (
         <div className={cn(
-          'absolute top-full mt-1 w-56 p-2.5 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-50 text-[10px] leading-relaxed text-tavern-text-muted',
+          'absolute top-full mt-1 w-60 p-3 rounded-lg bg-tavern-bg-card border border-tavern-border shadow-xl z-50 text-xs leading-relaxed text-tavern-text-muted',
           align === 'right' ? 'right-0' : 'left-0',
         )}>
           {hint}
@@ -1004,22 +1006,22 @@ function HintIcon({ hint, align = 'left' }: { hint: React.ReactNode; align?: 'le
 
 function ToggleRow({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
   return (
-    <label className="flex items-center justify-between gap-2 cursor-pointer py-0.5">
-      <span className="text-xs text-tavern-text-soft select-none">{children}</span>
+    <label className="flex items-center justify-between gap-2 cursor-pointer py-1">
+      <span className="text-[13px] text-tavern-text-soft select-none">{children}</span>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={cn(
-          'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
+          'relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-tavern-accent',
           checked ? 'bg-tavern-accent' : 'bg-tavern-bg-hover'
         )}
       >
         <span className={cn(
-          'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-          checked ? 'translate-x-4' : 'translate-x-0'
+          'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-5' : 'translate-x-0'
         )} />
       </button>
     </label>

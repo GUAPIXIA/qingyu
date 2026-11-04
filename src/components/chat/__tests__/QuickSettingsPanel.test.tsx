@@ -238,8 +238,8 @@ describe('QuickSettingsPanel', () => {
       screen.getByRole('button', { name: '测试连接' }),
     ]
     for (const button of buttons) {
-      expect(button.className).toContain('h-7')
-      expect(button.className).toContain('w-7')
+      expect(button.className).toContain('h-8')
+      expect(button.className).toContain('w-8')
       expect(button.className).toContain('rounded-lg')
     }
   })
