@@ -146,7 +146,7 @@ describe('ChatInput', () => {
       fireEvent.click(await ui.findByRole('button', { name: '应用并发送' }))
       await waitFor(() => expect(window.api.spatial.applyProposal).toHaveBeenCalledWith('char-1', 's1', 'proposal'))
       expect(useChatStore.getState().sendMessage).not.toHaveBeenCalled()
-      expect(ui.getByTitle('发送')).toBeDisabled()
+      expect(ui.getByTitle('发送 (Enter)')).toBeDisabled()
       await act(async () => { resolve(result) })
       await waitFor(() => expect(useChatStore.getState().sendMessage).toHaveBeenCalledTimes(1))
       expect(ui.getByPlaceholderText(/输入消息/)).toHaveValue('')
@@ -180,7 +180,7 @@ describe('ChatInput', () => {
     it('渲染输入框和发送按钮', async () => {
       const { getByPlaceholderText, getByTitle } = await renderChatInput(<ChatInput character={createCharacter()} />)
       expect(getByPlaceholderText(/输入消息/)).toBeTruthy()
-      expect(getByTitle('发送')).toBeTruthy()
+      expect(getByTitle('发送 (Enter)')).toBeTruthy()
     })
 
     it('未连接时显示配置提示', async () => {
@@ -198,14 +198,14 @@ describe('ChatInput', () => {
   describe('发送逻辑', () => {
     it('空文本时发送按钮禁用', async () => {
       const { getByTitle } = await renderChatInput(<ChatInput character={createCharacter()} />)
-      const sendBtn = getByTitle('发送')
+      const sendBtn = getByTitle('发送 (Enter)')
       expect((sendBtn as HTMLButtonElement).disabled).toBe(true)
     })
 
     it('输入文本后发送按钮可用并调用 store.sendMessage', async () => {
       const { getByPlaceholderText, getByTitle } = await renderChatInput(<ChatInput character={createCharacter()} />)
       fireEvent.change(getByPlaceholderText(/输入消息/), { target: { value: '你好' } })
-      const sendBtn = getByTitle('发送') as HTMLButtonElement
+      const sendBtn = getByTitle('发送 (Enter)') as HTMLButtonElement
       expect(sendBtn.disabled).toBe(false)
       fireEvent.click(sendBtn)
       await waitFor(() => {
@@ -383,7 +383,7 @@ describe('ChatInput', () => {
       })
       await waitFor(() => expect((getByPlaceholderText(/输入消息/) as HTMLTextAreaElement).value).toBe(continuation))
 
-      fireEvent.click(getByTitle('发送'))
+      fireEvent.click(getByTitle('发送 (Enter)'))
       await waitFor(() => {
         expect(sendMessage).toHaveBeenCalledWith(
           continuation, [], expect.objectContaining({ id: 'char-1' }), null, [], undefined, 'input_continue',
