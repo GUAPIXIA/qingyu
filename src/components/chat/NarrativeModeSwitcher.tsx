@@ -54,7 +54,7 @@ export function NarrativeModeSwitcher({ characterId, isStreaming }: NarrativeMod
       <div
         role="radiogroup"
         aria-label="叙事模式"
-        className="flex items-center gap-0.5 rounded-lg border border-tavern-border bg-tavern-bg-card p-0.5 shadow-sm"
+        className="session-segment"
       >
         {NARRATIVE_MODE_OPTIONS.map((option) => {
           const selected = option.value === activeMode

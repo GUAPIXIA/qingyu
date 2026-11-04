@@ -202,9 +202,8 @@ export function MemoryPanel({
         aria-haspopup="dialog"
         aria-expanded={open}
         className={cn(
-          'relative p-1.5 rounded-lg hover:bg-tavern-bg-hover transition-colors',
-          memoryEnabled ? 'text-tavern-accent' : 'text-tavern-text-soft hover:text-tavern-accent',
-          open && 'text-tavern-accent bg-tavern-bg-hover'
+          'session-control session-control--icon',
+          (memoryEnabled || open) && 'session-control--accent',
         )}
         title={memoryEnabled ? '长记忆（已开启）' : '长记忆'}
       >

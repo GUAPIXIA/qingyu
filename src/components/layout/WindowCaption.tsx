@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Copy, Minus, Moon, Square, Sun, X } from 'lucide-react'
+import appIcon from '../../assets/app-icon.png'
 import { getWindowControls } from '../../lib/windowControls'
 import { useSettingsStore } from '../../store/useSettingsStore'
 
@@ -63,11 +64,8 @@ export function WindowCaption() {
     <div className="app-caption" data-testid="window-caption" aria-label="窗口标题栏">
       <div className="app-caption__brand" aria-label="轻语">
         <span className="app-caption__mark" aria-hidden="true">
-          {/* 品牌图标：与 work/frameless-window-preview.html 的 i-brand 一致 */}
-          <svg viewBox="0 0 24 24">
-            <path d="M19.5 13.5a7.5 7.5 0 0 1-10.9 6.7L4 22l1.8-4.6A7.5 7.5 0 1 1 19.5 13.5z" />
-            <path d="M9 10.5c1.8-2.2 4.2-2.2 6 0M9 14.5c1.8 1.2 4.2 1.2 6 0" />
-          </svg>
+          {/* 与应用窗口/任务栏图标同源（png/2048圆角.png），保证标题栏图标设置一致 */}
+          <img src={appIcon} alt="" draggable={false} />
         </span>
       </div>
 

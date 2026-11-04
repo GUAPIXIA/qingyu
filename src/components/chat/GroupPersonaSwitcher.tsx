@@ -48,7 +48,7 @@ export function GroupPersonaSwitcher() {
           type="button"
           aria-label={isOmniscient ? `旁白（身份：${currentLabel}），点击切换` : `当前身份：${currentLabel}，点击切换`}
           disabled={!currentSessionId || saving}
-          className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm transition-colors hover:bg-tavern-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="session-control min-w-0"
         >
           <span className={cn(
             'grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-full',

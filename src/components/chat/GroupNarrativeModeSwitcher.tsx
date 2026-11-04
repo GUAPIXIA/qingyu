@@ -53,7 +53,7 @@ export function GroupNarrativeModeSwitcher({ isStreaming }: GroupNarrativeModeSw
       <div
         role="radiogroup"
         aria-label="群聊叙事模式"
-        className="flex items-center gap-0.5 rounded-lg border border-tavern-border-soft bg-tavern-bg/70 p-0.5"
+        className="session-segment"
       >
         {NARRATIVE_MODE_OPTIONS.map((option) => {
           const selected = option.value === activeMode

@@ -494,7 +494,7 @@ export function GroupChatPage() {
             {/* ---- 顶栏 ---- */}
             <header
               data-testid="group-chat-header"
-              className="group-chat-header relative z-30 flex h-[72px] shrink-0 items-center justify-center bg-tavern-bg px-3"
+              className="group-chat-header relative z-30 flex h-[72px] shrink-0 items-center justify-center bg-transparent px-3"
             >
               {/* 新样式：与单聊一致，会话控件收进居中悬浮圆角工具条 */}
               <div
@@ -508,7 +508,7 @@ export function GroupChatPage() {
                 {sidebarCollapsed && (
                   <button
                     onClick={() => setSidebarCollapsed(false)}
-                    className="shrink-0 rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
+                    className="session-control session-control--icon shrink-0"
                     title="展开群聊列表"
                   >
                     <PanelLeftOpen className="w-4 h-4" />
@@ -529,13 +529,13 @@ export function GroupChatPage() {
                     </button>
                   </div>
                 ) : (
-                  <div className="group/title flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-tavern-bg-hover">
+                  <div className="session-control session-control--identity group/title min-w-0 transition-colors">
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-tavern-assistant/20 text-tavern-assistant">
                       <Users className="h-4 w-4" />
                     </span>
                     <div className="group-chat-header__identity-copy min-w-0 text-left">
                       <h2 className="group-chat-header__title max-w-32 truncate text-sm font-medium text-tavern-text" title={currentGroup.name}>{currentGroup.name}</h2>
-                      <p className="whitespace-nowrap text-xs text-tavern-text-muted">
+                      <p className="group-chat-header__member-count whitespace-nowrap text-xs text-tavern-text-muted">
                         {isStreaming
                           // UEX-P1-12：调度详情（当前说话者 + x/N + 停剩余）由消息区下方的 GroupMemberBar 承载，页头不再重复
                           ? '生成中...'
@@ -544,7 +544,7 @@ export function GroupChatPage() {
                     </div>
                     <button
                       onClick={startEditName}
-                      className="group-chat-header__identity-copy rounded p-1 text-tavern-text-muted opacity-70 transition-colors hover:bg-tavern-bg hover:text-tavern-text group-hover/title:opacity-100"
+                      className="group-chat-header__identity-copy group-chat-header__rename session-control session-control--icon"
                       aria-label="重命名群聊"
                       title="重命名群聊"
                     >
@@ -583,7 +583,7 @@ export function GroupChatPage() {
                   extra={<div className="group-chat-header__session-extra flex items-center gap-1">
                     <button
                       onClick={() => createSession(currentGroup.id)}
-                      className="rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
+                      className="session-control session-control--icon"
                       title="新建会话"
                       aria-label="新建会话"
                     >
@@ -636,11 +636,11 @@ export function GroupChatPage() {
               <span className="relative mx-0.5 h-4 w-px shrink-0 bg-tavern-border" aria-hidden="true" />
 
               <div className="relative flex shrink-0 items-center gap-1">
-                <span className="group-chat-header__token mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
+                <span className="group-chat-header__token session-token mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
 
                 <button type="button" disabled={!currentSessionId || isStreaming} aria-label="群聊空间画板" aria-pressed={showSpatialBoard}
                   onClick={() => { if (showSpatialBoard) requestSpatialCloseRef.current(); else { setOpenSpatialAssistant(false); setShowSpatialBoard(true) } }}
-                  className={cn('rounded-lg p-2 transition-colors disabled:opacity-40', currentSession?.spatialBoardEnabled === true ? 'bg-tavern-accent-soft text-tavern-accent' : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text')}
+                  className={cn('session-control session-control--icon', currentSession?.spatialBoardEnabled === true && 'session-control--accent')}
                   title="空间画板"><Compass className="h-4 w-4" /></button>
                 <button
                   onClick={() => {
@@ -651,7 +651,7 @@ export function GroupChatPage() {
                     setContextViewerTab('messages')
                     setShowContextViewer(true)
                   }}
-                  className="group-chat-header__secondary-action rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
+                  className="group-chat-header__secondary-action session-control session-control--icon"
                   title="查看上下文"
                   aria-label="查看上下文"
                 >
@@ -659,7 +659,7 @@ export function GroupChatPage() {
                 </button>
                 <button
                   onClick={() => setShowClearConfirm(true)}
-                  className="group-chat-header__secondary-action rounded-lg p-2 text-tavern-text-muted transition-colors hover:bg-tavern-bg-hover hover:text-tavern-danger"
+                  className="group-chat-header__secondary-action session-control session-control--icon"
                   title="清空聊天"
                   aria-label="清空聊天"
                 >
@@ -674,10 +674,8 @@ export function GroupChatPage() {
                     setShowQuickSettings((value) => !value)
                   }}
                   className={cn(
-                    'rounded-lg p-2 transition-colors',
-                    showQuickSettings
-                      ? 'bg-tavern-accent-soft text-tavern-accent'
-                      : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text',
+                    'session-control session-control--icon',
+                    showQuickSettings && 'session-control--accent',
                   )}
                   title="快捷设置"
                 >

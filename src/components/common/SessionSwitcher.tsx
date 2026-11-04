@@ -119,19 +119,22 @@ export function SessionSwitcher({
         trigger={
           isChat ? (
             <button
-              className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-tavern-text-soft transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
+              className="session-control font-medium"
               title="切换对话"
             >
-              <Layers className="h-3.5 w-3.5 text-tavern-text-soft" />
+              <Layers className="h-3.5 w-3.5" />
               <span className="session-switcher__label max-w-[100px] truncate">
                 {currentSession?.title ?? '对话'}
               </span>
-              <ChevronDown className="h-3 w-3 text-tavern-text-soft" />
+              <ChevronDown className="h-3 w-3" />
             </button>
           ) : (
-            <button className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-tavern-bg-hover text-tavern-text-muted hover:text-tavern-text transition-colors">
-              {currentSession?.title ?? '会话'}
-              <ChevronDown className="w-3 h-3" />
+            <button className="session-control" title="切换会话">
+              <Layers className="h-3.5 w-3.5" />
+              <span className="session-switcher__label max-w-[100px] truncate">
+                {currentSession?.title ?? '会话'}
+              </span>
+              <ChevronDown className="h-3 w-3" />
             </button>
           )
         }

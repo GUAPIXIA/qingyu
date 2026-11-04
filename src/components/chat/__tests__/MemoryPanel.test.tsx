@@ -36,7 +36,7 @@ describe('MemoryPanel', () => {
     renderPanel({ open: false })
     const trigger = screen.getByRole('button', { name: '长记忆设置' })
 
-    expect(trigger.className.split(/\s+/)).toContain('text-tavern-accent')
+    expect(trigger.className.split(/\s+/)).toContain('session-control--accent')
     expect(trigger.querySelector('span')).toBeNull()
   })
 

@@ -680,8 +680,20 @@ body {
   }
 }
 
+@container group-chat-header (max-width: 620px) {
+  /* 更窄时先让出重命名入口，保证群名本身不被挤成一字截断。
+     选择器带 .session-toolbar 前缀，避免被同优先级的 .session-control 覆盖。 */
+  .group-chat-header .session-toolbar .group-chat-header__rename {
+    display: none;
+  }
+}
+
 @container group-chat-header (max-width: 560px) {
   .group-chat-header .session-switcher__label {
+    display: none;
+  }
+  /* 最小窗口下隐藏成员数，群名优先 */
+  .group-chat-header__member-count {
     display: none;
   }
 }
@@ -716,22 +728,29 @@ body {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 19px;
-  height: 19px;
+  width: 21px;
+  height: 21px;
   border-radius: 6px;
-  border: 1px solid rgba(196, 181, 253, 0.22);
-  background: linear-gradient(145deg, #756094, #493a65);
-  color: #f0e7ff;
+  overflow: hidden;
+  border: 1px solid rgba(26, 22, 37, 0.1);
+  background: #ffffff;
 }
 
-.app-caption__mark svg {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+/* 图标直接复用应用窗口图标（src/assets/app-icon.png，取自 png/2048圆角.png），
+   保证标题栏左上角与任务栏/窗口图标一致；深色主题反相为黑底白线条，贴合暗色标题栏。 */
+.app-caption__mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+:root.dark .app-caption__mark {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+:root.dark .app-caption__mark img {
+  filter: invert(1);
 }
 
 .app-caption__controls {
@@ -796,4 +815,101 @@ body {
   box-shadow:
     0 8px 24px rgba(7, 4, 15, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+/* ---- 会话工具条控件统一规格（2026-11-03 反馈：按钮大小统一、与角色切换器对齐） ----
+   所有顶栏控件统一为 36px 高、9px 圆角、16px 图标、13px 文字；角色/群身份切换器
+   （两行文本 + 32px 头像）也用同一高度，整体在胶囊内垂直居中对齐。 */
+.session-toolbar .session-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tavern-text-soft);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.session-toolbar .session-control:hover {
+  background: var(--tavern-bg-hover);
+  color: var(--tavern-text);
+}
+
+.session-toolbar .session-control:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.session-toolbar .session-control svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.session-toolbar .session-control--icon {
+  width: 36px;
+  padding: 0;
+}
+
+/* 激活态（画板/快捷设置/长记忆等） */
+.session-toolbar .session-control--accent,
+.session-toolbar .session-control--accent:hover {
+  background: var(--tavern-accent-soft);
+  color: var(--tavern-accent);
+}
+
+/* 角色 / 群聊身份切换器：两行文本 + 32px 头像，与其他控件同高同轴 */
+.session-toolbar .session-control--identity {
+  height: 36px;
+  padding: 0 6px 0 4px;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 分段控件（叙事模式：代入 / 全局），整体与按钮同高 */
+.session-toolbar .session-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid var(--tavern-border);
+  border-radius: 9px;
+  background: var(--tavern-bg-card);
+}
+
+.session-toolbar .session-segment > [role='radio'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.session-toolbar .session-segment > [role='radio'] svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+/* 字数统计与分隔线跟 36px 控件垂直居中；显隐仍交给 Tailwind 的 hidden/lg:flex，
+   这里只负责高度与对齐（避免覆盖 display 导致断点隐藏失效）。 */
+.session-toolbar .session-token {
+  align-items: center;
+  height: 36px;
 }

@@ -84,7 +84,7 @@ export function ChatHeader({
   }
 
   return (
-    <header className="relative z-30 flex h-[72px] shrink-0 items-center justify-center bg-tavern-bg px-3">
+    <header className="relative z-30 flex h-[72px] shrink-0 items-center justify-center bg-transparent px-3">
       {/* 新样式：会话控件收进居中悬浮圆角工具条（设计稿见 work/frameless-window-preview.html） */}
       <div className="session-toolbar relative flex min-w-0 max-w-full items-center gap-2 rounded-[14px] border border-tavern-border px-2 py-1.5">
         <span className="session-toolbar__backdrop" aria-hidden="true" />
@@ -95,7 +95,7 @@ export function ChatHeader({
           onOpenChange={setShowCharMenu}
           panelClassName="w-64 max-h-80 overflow-y-auto"
           trigger={
-            <button className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-tavern-bg-hover transition-colors">
+            <button className="session-control session-control--identity min-w-0 transition-colors">
               <CharacterAvatar
                 avatar={currentCharacter.avatar || charAssetUrl(currentCharacter.id, 'avatar', currentCharacter.updatedAt)}
                 name={getDisplayName(currentCharacter)}
@@ -165,7 +165,7 @@ export function ChatHeader({
           panelClassName="w-48 max-h-60 overflow-y-auto"
           trigger={
             <button
-              className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-tavern-bg-hover transition-colors text-sm"
+              className="session-control"
               title={narrativeMode === 'omniscient' ? `旁白（身份：${(() => {
                 const s = sessions.find(s => s.id === currentSessionId)
                 return getPersona(s?.personaId)?.name ?? '未使用身份'
@@ -275,7 +275,7 @@ export function ChatHeader({
             {/* 新建会话按钮（Chat 风格） */}
             <button
               onClick={() => onCreateSession()}
-              className="rounded-lg p-2 text-tavern-text-soft transition-colors hover:bg-tavern-bg-hover hover:text-tavern-text"
+              className="session-control session-control--icon"
               title="新建会话"
             >
               <Plus className="w-4 h-4" />
@@ -330,7 +330,7 @@ export function ChatHeader({
 
         {/* 当前会话画板与快捷设置 */}
         <div className="relative flex shrink-0 items-center gap-1">
-          <span className="mr-1 hidden lg:inline"><TokenUsage chars={totalChars} /></span>
+          <span className="session-token mr-1 hidden lg:inline"><TokenUsage chars={totalChars} /></span>
           <button
             type="button"
             aria-label={showSpatialBoard ? '返回对话' : '打开空间画板'}
@@ -338,10 +338,8 @@ export function ChatHeader({
             onClick={onShowSpatialBoard}
             disabled={!currentSessionId}
             className={cn(
-              'flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-              currentSession?.spatialBoardEnabled === true
-                ? 'bg-tavern-accent-soft text-tavern-accent'
-                : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text',
+              'session-control',
+              currentSession?.spatialBoardEnabled === true && 'session-control--accent',
             )}
             title={currentSessionId ? '当前会话的空间画板' : '先创建会话'}
           >
@@ -354,10 +352,8 @@ export function ChatHeader({
             aria-expanded={showQuickSettings}
             onClick={onShowQuickSettings}
             className={cn(
-              'p-2 rounded-lg transition-colors',
-              showQuickSettings
-                ? 'text-tavern-accent bg-tavern-accent-soft'
-                : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
+              'session-control session-control--icon',
+              showQuickSettings && 'session-control--accent',
             )}
             title="快捷设置"
           >

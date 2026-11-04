@@ -170,8 +170,8 @@ describe('GroupChatPage', () => {
 
     expect(screen.getAllByRole('button', { name: /群聊(?:快捷设置|管理)/ })).toHaveLength(1)
     expect(screen.getByRole('button', { name: '群聊快捷设置' })).toBeTruthy()
-    expect(screen.getByTestId('group-chat-header')).toHaveClass('h-[72px]', 'bg-tavern-bg', 'px-3')
-    // 新样式：会话控件收进居中悬浮工具条
+    expect(screen.getByTestId('group-chat-header')).toHaveClass('h-[72px]', 'bg-transparent', 'px-3')
+    // 新样式：会话控件收进居中悬浮工具条（页头底色透明，两侧不遮挡对话）
     expect(document.querySelector('.group-chat-header .session-toolbar')).toBeTruthy()
     expect(screen.getByRole('button', { name: '重命名群聊' })).toBeTruthy()
   })
