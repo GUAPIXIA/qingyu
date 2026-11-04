@@ -354,8 +354,8 @@ describe('ChatInput', () => {
     it('续写按钮始终显示', async () => {
       const { getByTitle, getByLabelText } = await renderChatInput(<ChatInput character={createCharacter()} />)
       expect(getByTitle('AI 根据上下文续写输入文字')).toBeTruthy()
-      expect(getByTitle('AI 根据上下文续写输入文字')).toHaveClass('h-[30px]')
-      expect(getByLabelText('续写设置')).toHaveClass('h-[30px]')
+      expect(getByTitle('AI 根据上下文续写输入文字')).toHaveClass('h-9')
+      expect(getByLabelText('续写设置')).toHaveClass('h-9')
     })
 
     it('全局叙事续写保留完整输出预算，回填输入框后可由用户发送', async () => {
