@@ -338,13 +338,12 @@ export function ChatHeader({
             onClick={onShowSpatialBoard}
             disabled={!currentSessionId}
             className={cn(
-              'session-control',
+              'session-control session-control--icon',
               currentSession?.spatialBoardEnabled === true && 'session-control--accent',
             )}
             title={currentSessionId ? '当前会话的空间画板' : '先创建会话'}
           >
             <Compass className="h-4 w-4" />
-            <span className="hidden xl:inline">画板</span>
           </button>
           <button
             type="button"
