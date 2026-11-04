@@ -6,6 +6,7 @@ import { useCharacterStore } from '../store/useCharacterStore'
 import { useGroupChatStore, stopRemainingSpeakers } from '../store/useGroupChatStore'
 import { usePersonaStore } from '../store/usePersonaStore'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { useUIStore } from '../store/useUIStore'
 import { GroupChatMessage } from '../components/chat/GroupChatMessage'
 import { SpatialBoardPane } from '../components/chat/SpatialBoardPane'
 import { GroupChatInput } from '../components/chat/GroupChatInput'
@@ -171,7 +172,9 @@ export function GroupChatPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
   const [memberSearch, setMemberSearch] = useState('')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // 群聊列表收起状态持久化（切页/重启后保持上次选择）
+  const sidebarCollapsed = useUIStore((state) => state.groupListCollapsed)
+  const setSidebarCollapsed = useUIStore((state) => state.setGroupListCollapsed)
   const currentSession = sessions.find((session) => session.id === currentSessionId)
   const dialogueDirectionsEnabled = resolveDialogueDirectionsEnabled(currentSession)
   // UEX-P2-12：按 sessionId 记忆滚动位置——滚动即记录，回来且消息加载完成后恢复
