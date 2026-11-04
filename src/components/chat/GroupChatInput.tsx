@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useCharacterStore } from '../../store/useCharacterStore'
 import { useGroupChatStore } from '../../store/useGroupChatStore'
+import { useSettingsStore } from '../../store/useSettingsStore'
 import { cn } from '../../lib/utils'
 import { charAssetUrl } from '../../utils/asset'
 import { ChevronDown, Image as ImageIcon, LoaderCircle, Play, Reply, Send, Square, X as XIcon } from 'lucide-react'
@@ -40,6 +41,8 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
   const isStreaming = useGroupChatStore((state) => state.isStreaming)
   const stopStreaming = useGroupChatStore((state) => state.stopStreaming)
   const currentSessionId = useGroupChatStore((state) => state.currentSessionId)
+  // 输入区与消息列同宽（与 GroupChatMessage 使用同一 messageWidth），居中对齐
+  const messageWidth = useSettingsStore((state) => state.settings.messageWidth ?? 768)
   // D2 已拍板：只订阅派生计数（每次接力段内已用 AI 轮次），流式 flush 不触发输入区重渲染
   const usedRounds = useGroupChatStore((state) => countGroupBurstRounds(state.messages))
 
@@ -188,7 +191,8 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
 
   return (
     // 新样式：输入区不再铺整条矩形底色/分隔线，控件直接悬浮在对话背景之上
-    <div className="bg-transparent px-3 pb-3 pt-2">
+    <div className="bg-transparent px-4 pb-3 pt-2">
+      <div className="mx-auto w-full" style={{ maxWidth: `${messageWidth}px` }}>
       <div className="mb-2 flex min-h-8 items-center gap-2 overflow-x-auto whitespace-nowrap rounded-xl border border-tavern-border-soft bg-tavern-bg-card/70 px-2 py-1.5 shadow-sm">
         <span className="shrink-0 text-[10px] font-medium text-tavern-text-muted">发送后</span>
         <label className="relative shrink-0">
@@ -358,6 +362,7 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
             <Send className="h-4 w-4" />
           </button>
         )}
+      </div>
       </div>
     </div>
   )
