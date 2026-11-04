@@ -123,6 +123,18 @@ export function ChatPage() {
   const pendingSessionCallbackRef = useRef<(() => void) | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const virtuosoRef = useRef<VirtuosoHandle>(null)
+  // 悬浮输入区：顶部/底部工具条改为覆盖层后，需要把输入区高度补进消息列表底部余量，
+  // 否则最后一条消息会被悬浮胶囊盖住。用 ResizeObserver 跟随输入区高度（引用条/快捷回复会变高）。
+  const [composerEl, setComposerEl] = useState<HTMLDivElement | null>(null)
+  const [composerHeight, setComposerHeight] = useState(0)
+  useEffect(() => {
+    if (!composerEl) return
+    const update = () => setComposerHeight(Math.ceil(composerEl.getBoundingClientRect().height))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(composerEl)
+    return () => observer.disconnect()
+  }, [composerEl])
   // UEX-P2-12：按 sessionId 记忆滚动位置——滚动即记录，回来且消息加载完成后恢复
   const scrollMemory = useSessionScrollMemory({
     key: currentCharacter && currentSessionId ? chatScrollKey(currentCharacter.id, currentSessionId) : null,
@@ -540,20 +552,22 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* 顶栏 */}
-      <ChatHeader
-        currentCharacter={currentCharacter}
-        isStreaming={isStreaming}
-        totalChars={totalChars}
-        showQuickSettings={showQuickSettings}
-        onShowQuickSettings={() => setShowQuickSettings(!showQuickSettings)}
-        onCreateSession={handleCreateSession}
-        showSpatialBoard={showSpatialBoard}
-        onShowSpatialBoard={() => {
-          if (showSpatialBoard) requestSpatialCloseRef.current()
-          else { setOpenSpatialAssistant(false); setShowSpatialBoard(true) }
-        }}
-      />
+      {/* 顶栏：绝对定位悬浮层，两侧透明，不遮挡对话内容（内容可从下方滚过） */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-30">
+        <ChatHeader
+          currentCharacter={currentCharacter}
+          isStreaming={isStreaming}
+          totalChars={totalChars}
+          showQuickSettings={showQuickSettings}
+          onShowQuickSettings={() => setShowQuickSettings(!showQuickSettings)}
+          onCreateSession={handleCreateSession}
+          showSpatialBoard={showSpatialBoard}
+          onShowSpatialBoard={() => {
+            if (showSpatialBoard) requestSpatialCloseRef.current()
+            else { setOpenSpatialAssistant(false); setShowSpatialBoard(true) }
+          }}
+        />
+      </div>
 
       {showSpatialBoard && currentSessionId ? (
         <SpatialBoardPane
@@ -565,9 +579,11 @@ export function ChatPage() {
           registerClose={(handler) => { requestSpatialCloseRef.current = handler }}
         />
       ) : <>
+      {/* 顶部状态栏 / 提示条：并入悬浮层，压在顶栏下方，不占用对话布局 */}
+      <div className="pointer-events-none absolute inset-x-0 top-[72px] z-20 flex flex-col [&>*]:pointer-events-auto">
       {/* 状态栏 — 有消息或有激活世界书时显示 */}
       {currentCharacter && (
-        <div className="relative z-10"><StatusBar character={currentCharacter} messages={messages} /></div>
+        <StatusBar character={currentCharacter} messages={messages} />
       )}
 
       {/* 长对话摘要引导提示条 */}
@@ -618,6 +634,7 @@ export function ChatPage() {
           </button>
         </div>
       )}
+      </div>
 
       {/* 消息列表：滚动视口占满整个消息区，滚动条固定在消息区右侧（不随侧栏宽度变化而左右移动）；
           气泡列仍由 MessageBubble 内部按 messageWidth 居中对齐，视觉宽度/位置不变。 */}
@@ -677,10 +694,14 @@ export function ChatPage() {
               )
             }}
             components={{
+              // 顶部预留胶囊高度：滚动时消息可从悬浮顶栏下方穿过（两侧可见）
+              Header: () => <div aria-hidden="true" className="h-[72px] shrink-0" />,
               Footer: () => (
                 <>
                   {currentImageGeneration && <ImageGenerationPlaceholder stage={currentImageGeneration.stage} />}
                   <div ref={messagesEndRef} className="h-4" />
+                  {/* 底部预留输入区高度：保证最后一条消息能滚到悬浮输入框上方 */}
+                  <div aria-hidden="true" style={{ height: composerHeight }} />
                 </>
               ),
             }}
@@ -689,8 +710,8 @@ export function ChatPage() {
         </div>
       </div>
 
-      {/* 输入区 */}
-      <div className="relative z-10">
+      {/* 输入区：绝对定位悬浮层，两侧透明，不遮挡对话内容 */}
+      <div ref={setComposerEl} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
         <ChatInput
           character={currentCharacter}
           replyTo={replyToMessage}

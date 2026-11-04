@@ -132,6 +132,27 @@ export function GroupChatPage() {
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
   const [presets, setPresets] = useState<Preset[]>([])
   const virtuosoRef = useRef<VirtuosoHandle>(null)
+  // 悬浮顶栏/输入区：把输入区与调度条高度补进消息列表底部余量，避免最后一条消息被覆盖
+  const [composerEl, setComposerEl] = useState<HTMLDivElement | null>(null)
+  const [composerHeight, setComposerHeight] = useState(0)
+  const [memberBarEl, setMemberBarEl] = useState<HTMLDivElement | null>(null)
+  const [memberBarHeight, setMemberBarHeight] = useState(0)
+  useEffect(() => {
+    if (!composerEl) return
+    const update = () => setComposerHeight(Math.ceil(composerEl.getBoundingClientRect().height))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(composerEl)
+    return () => observer.disconnect()
+  }, [composerEl])
+  useEffect(() => {
+    if (!memberBarEl) return
+    const update = () => setMemberBarHeight(Math.ceil(memberBarEl.getBoundingClientRect().height))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(memberBarEl)
+    return () => observer.disconnect()
+  }, [memberBarEl])
   const [showContextViewer, setShowContextViewer] = useState(false)
   const [contextContent, setContextContent] = useState<{ role: string; content: string }[]>([])
   const [contextLorebookDiagnostics, setContextLorebookDiagnostics] = useState<LorebookDiagnostics | null>(null)
@@ -491,7 +512,8 @@ export function GroupChatPage() {
           </div>
         ) : (
           <>
-            {/* ---- 顶栏 ---- */}
+            {/* ---- 顶栏：绝对定位悬浮层，两侧透明，不遮挡对话内容 ---- */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-30">
             <header
               data-testid="group-chat-header"
               className="group-chat-header relative z-30 flex h-[72px] shrink-0 items-center justify-center bg-transparent px-3"
@@ -684,6 +706,7 @@ export function GroupChatPage() {
               </div>
               </div>
             </header>
+            </div>
 
             {showSpatialBoard && currentSessionId ? (
               <SpatialBoardPane groupId={currentGroup.id} sessionId={currentSessionId} openAssistant={openSpatialAssistant}
@@ -779,7 +802,11 @@ export function GroupChatPage() {
                       )
                     }}
                     components={{
-                      Footer: () => <div className="h-4" />,
+                      // 顶部预留胶囊高度 + 底部预留输入区/调度条高度：消息可从悬浮工具条下方穿过
+                      Header: () => <div aria-hidden="true" className="h-[72px] shrink-0" />,
+                      Footer: () => (
+                        <div aria-hidden="true" style={{ height: 16 + composerHeight + memberBarHeight }} />
+                      ),
                     }}
                   />
                 </div>
@@ -787,17 +814,24 @@ export function GroupChatPage() {
             </div>
 
             {/* ---- UEX-P1-12：群调度条——生成中显示当前说话者 + 接力 x/N + 停剩余；
-                插在消息区与输入区之间（常规文档流不遮挡消息），是否显示由组件按 isStreaming 收起 ---- */}
-            <GroupMemberBar
-              memberIds={currentGroup.memberIds}
-              currentStreamingCharId={currentStreamingCharId}
-              isStreaming={isStreaming}
-              themeColor={currentGroup.themeColor}
-              onStopRemaining={stopRemainingSpeakers}
-            />
+                改为悬浮覆盖在输入区上方，不占用对话布局（是否显示由组件按 isStreaming 收起） ---- */}
+            <div
+              ref={setMemberBarEl}
+              className="absolute inset-x-0 z-10"
+              style={{ bottom: composerHeight }}
+            >
+              <GroupMemberBar
+                memberIds={currentGroup.memberIds}
+                currentStreamingCharId={currentStreamingCharId}
+                isStreaming={isStreaming}
+                themeColor={currentGroup.themeColor}
+                onStopRemaining={stopRemainingSpeakers}
+              />
+            </div>
 
-            {/* ---- 输入区 ---- */}
-            <div className="relative z-10">
+            {/* ---- 输入区：绝对定位悬浮层，两侧透明，不遮挡对话内容 ---- */}
+            <div ref={setComposerEl} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
+            <div className="pointer-events-auto">
             {currentSession?.spatialBoardEnabled === true && currentSessionId && <div className="px-4"><SpatialSuggestionNotice groupId={currentGroup.id} sessionId={currentSessionId}
               worldId={currentSession?.spatialWorldId} enabled={!!currentSession?.spatialAiSessionId}
               onOpen={() => { setOpenSpatialAssistant(true); setShowSpatialBoard(true) }} /></div>}
@@ -806,6 +840,7 @@ export function GroupChatPage() {
               replyTo={replyToMessage}
               onCancelReply={() => setReplyToMessage(null)}
             />
+            </div>
             </div>
             </>}
           </>

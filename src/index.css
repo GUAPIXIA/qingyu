@@ -788,6 +788,12 @@ body {
 }
 
 /* ===================== 顶部会话工具条（72px 页头内居中悬浮胶囊） ===================== */
+/* 顶栏作为悬浮覆盖层时，外层容器是 pointer-events-none：胶囊本身恢复可交互，
+   其余两侧区域让点击/滚轮穿透到下方对话内容。 */
+.session-toolbar {
+  pointer-events: auto;
+}
+
 /* 背景/阴影/毛玻璃放在独立的 backdrop 子元素上，避免 backdrop-filter 给胶囊建立
    包含块，导致 Dropdown 的全屏点击遮罩（position: fixed）被限制在胶囊范围内。 */
 .session-toolbar__backdrop {

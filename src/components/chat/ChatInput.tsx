@@ -133,7 +133,7 @@ export function ChatInput({ character, disabled, replyTo, onCancelReply, onOpenS
   return (
     // 新样式：输入区不再铺整条矩形底色/分隔线，胶囊直接悬浮在对话背景之上
     <div className="bg-transparent px-4 pb-3 pt-2">
-      <div className="mx-auto w-full" style={{ maxWidth: `${messageWidth}px` }}>
+      <div className="pointer-events-auto mx-auto w-full" style={{ maxWidth: `${messageWidth}px` }}>
       <EditorSuggestions suggestions={oldSuggestions} objectId={`chat-draft:${character.id}:${currentSessionId || 'default'}`} />
       {currentSession?.spatialBoardEnabled === true && currentSession.characterId === character.id && onOpenSpatialSuggestions && <SpatialSuggestionNotice characterId={character.id} sessionId={currentSession.id}
         worldId={currentSession.spatialWorldId} enabled={currentSession.spatialContextEnabled !== false && currentSession.spatialNarrativeSyncPolicy !== 'off'} onOpen={onOpenSpatialSuggestions}

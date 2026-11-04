@@ -219,6 +219,20 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
   })
 }
 
+// Mock ResizeObserver（jsdom 未实现；悬浮输入区高度监听等用到）
+if (typeof window !== 'undefined' && !('ResizeObserver' in window)) {
+  class ResizeObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(window, 'ResizeObserver', {
+    value: ResizeObserverMock,
+    writable: true,
+    configurable: true,
+  })
+}
+
 // Mock nanoid：自增序列，避免固定值导致同测试内多条消息/会话 ID 冲突
 // （冲突会触发生产代码的 ID 冲突告警，淹没真实告警；需要固定值时用例自行 mockReturnValueOnce）
 vi.mock('nanoid', () => {

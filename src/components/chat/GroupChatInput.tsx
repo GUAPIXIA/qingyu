@@ -193,7 +193,7 @@ export function GroupChatInput({ group, replyTo, onCancelReply }: GroupChatInput
     // 新样式：输入区不再铺整条矩形底色/分隔线，控件直接悬浮在对话背景之上
     <div className="bg-transparent px-4 pb-3 pt-2">
       <div className="mx-auto w-full" style={{ maxWidth: `${messageWidth}px` }}>
-      <div className="mb-2 flex min-h-8 items-center gap-2 overflow-x-auto whitespace-nowrap rounded-xl border border-tavern-border-soft bg-tavern-bg-card/70 px-2 py-1.5 shadow-sm">
+      <div className="mb-2 flex min-h-8 items-center gap-2 overflow-x-auto whitespace-nowrap rounded-xl border border-tavern-border-soft bg-tavern-bg-card px-2 py-1.5 shadow-sm">
         <span className="shrink-0 text-[10px] font-medium text-tavern-text-muted">发送后</span>
         <label className="relative shrink-0">
           <select
