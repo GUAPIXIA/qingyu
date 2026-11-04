@@ -337,7 +337,7 @@ export function ChatHeader({
 
         {/* 当前会话画板与快捷设置 */}
         <div className="relative flex shrink-0 items-center gap-1">
-          <span className="session-token mr-1 hidden lg:inline"><TokenUsage chars={totalChars} /></span>
+          <span className="session-token mr-1 hidden items-center lg:flex"><TokenUsage chars={totalChars} /></span>
           <button
             type="button"
             aria-label={showSpatialBoard ? '返回对话' : '打开空间画板'}

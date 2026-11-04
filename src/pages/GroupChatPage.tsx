@@ -636,7 +636,7 @@ export function GroupChatPage() {
               <span className="relative mx-0.5 h-4 w-px shrink-0 bg-tavern-border" aria-hidden="true" />
 
               <div className="relative flex shrink-0 items-center gap-1">
-                <span className="group-chat-header__token session-token mr-1 hidden sm:inline"><TokenUsage chars={totalChars} /></span>
+                <span className="group-chat-header__token session-token mr-1 hidden items-center sm:flex"><TokenUsage chars={totalChars} /></span>
 
                 <button type="button" disabled={!currentSessionId || isStreaming} aria-label="群聊空间画板" aria-pressed={showSpatialBoard}
                   onClick={() => { if (showSpatialBoard) requestSpatialCloseRef.current(); else { setOpenSpatialAssistant(false); setShowSpatialBoard(true) } }}
