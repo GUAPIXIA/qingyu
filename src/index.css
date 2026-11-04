@@ -737,20 +737,12 @@ body {
 }
 
 /* 图标直接复用应用窗口图标（src/assets/app-icon.png，取自 png/2048圆角.png），
-   保证标题栏左上角与任务栏/窗口图标一致；深色主题反相为黑底白线条，贴合暗色标题栏。 */
+   保证标题栏左上角与任务栏/窗口图标一致；深色/浅色使用同一套图标样式（不做反相）。 */
 .app-caption__mark img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
-}
-
-:root.dark .app-caption__mark {
-  border-color: rgba(255, 255, 255, 0.16);
-}
-
-:root.dark .app-caption__mark img {
-  filter: invert(1);
 }
 
 .app-caption__controls {
