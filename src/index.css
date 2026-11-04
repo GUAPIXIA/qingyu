@@ -827,6 +827,9 @@ body {
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
+  /* Dropdown 触发器包在普通 block 容器里：inline-flex 默认 baseline 对齐会给
+     容器额外 3px 行距，这里顶部对齐，保证胶囊内每组控件高度都是 36px。 */
+  vertical-align: top;
   transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 
@@ -844,6 +847,13 @@ body {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
+}
+
+/* 身份切换器头像内图标（旁白 / 默认身份）：32px 圆内略放大到 18px，
+   与角色切换器的头像视觉尺寸保持一致 */
+.session-toolbar .session-control__avatar svg {
+  width: 18px;
+  height: 18px;
 }
 
 .session-toolbar .session-control--icon {

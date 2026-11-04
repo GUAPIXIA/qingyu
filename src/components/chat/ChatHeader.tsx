@@ -174,16 +174,23 @@ export function ChatHeader({
               {(() => {
                 // 全局叙事下我方以“旁白”身份参与，头部显示旁白标识而非所选身份
                 if (narrativeMode === 'omniscient') {
-                  return <Globe2 className="w-4 h-4 text-indigo-500 dark:text-indigo-300" aria-label="旁白" />
+                  return (
+                    <span className="session-control__avatar grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full text-indigo-500 dark:text-indigo-300">
+                      <Globe2 aria-label="旁白" />
+                    </span>
+                  )
                 }
                 const session = sessions.find(s => s.id === currentSessionId)
                 const persona = getPersona(session?.personaId)
-                if (persona?.avatar) {
-                  return <img src={persona.avatar} alt="" className="w-5 h-5 rounded-full object-cover" />
-                }
-                return <UserCircle className="w-4 h-4 text-tavern-text-muted" />
+                return (
+                  <span className="session-control__avatar grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full text-tavern-text-muted">
+                    {persona?.avatar
+                      ? <img src={persona.avatar} alt="" className="h-full w-full object-cover" />
+                      : <UserCircle />}
+                  </span>
+                )
               })()}
-              <span className="max-w-[80px] truncate text-tavern-text-soft">
+              <span className="max-w-[80px] truncate text-sm font-medium text-tavern-text-soft">
                 {(() => {
                   if (narrativeMode === 'omniscient') return '旁白'
                   const s = sessions.find(s => s.id === currentSessionId)

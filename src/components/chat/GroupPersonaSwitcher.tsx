@@ -51,20 +51,20 @@ export function GroupPersonaSwitcher() {
           className="session-control min-w-0"
         >
           <span className={cn(
-            'grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-full',
+            'session-control__avatar grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full',
             isOmniscient
               ? 'text-indigo-500 dark:text-indigo-300'
               : 'text-tavern-text-muted',
           )}>
             {isOmniscient ? (
-              <Globe2 className="h-4 w-4" aria-label="旁白" />
+              <Globe2 aria-label="旁白" />
             ) : currentPersona?.avatar ? (
               <img src={currentPersona.avatar} alt="" className="h-full w-full object-cover" />
             ) : (
-              <UserCircle className="h-4 w-4" />
+              <UserCircle />
             )}
           </span>
-          <span className="group-chat-header__persona-label max-w-20 truncate text-tavern-text-soft">{isOmniscient ? '旁白' : currentLabel}</span>
+          <span className="group-chat-header__persona-label max-w-20 truncate text-sm font-medium text-tavern-text-soft">{isOmniscient ? '旁白' : currentLabel}</span>
           <ChevronDown className={cn('h-3 w-3 shrink-0 text-tavern-text-muted transition-transform', open && 'rotate-180')} />
         </button>
       }
