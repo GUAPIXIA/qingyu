@@ -208,10 +208,10 @@ export function Sidebar() {
                   onClick={() => toggleGroup(group.id)}
                   aria-expanded={!collapsed}
                   aria-label={group.label}
-                  className="group w-full h-7 flex items-center justify-between px-2.5 rounded-md text-[10px] font-medium tracking-[0.16em] text-tavern-text-muted/65 hover:text-tavern-text-muted hover:bg-tavern-bg-hover/50 transition-colors"
+                  className="group w-full h-8 flex items-center justify-between px-2.5 rounded-md text-xs font-medium tracking-[0.06em] text-tavern-text-soft hover:text-tavern-text hover:bg-tavern-bg-hover/50 transition-colors"
                 >
                   <span>{group.label}</span>
-                  <ChevronDown className={cn('w-3 h-3 opacity-70 transition-transform duration-200', !collapsed && 'rotate-180')} aria-hidden />
+                  <ChevronDown className={cn('w-3.5 h-3.5 text-tavern-text-muted transition-transform duration-200', !collapsed && 'rotate-180')} aria-hidden />
                 </button>
                 {!collapsed && (
                   <div className="space-y-0.5 pb-1 animate-fade-in">
