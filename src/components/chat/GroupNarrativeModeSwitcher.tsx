@@ -70,10 +70,10 @@ export function GroupNarrativeModeSwitcher({ isStreaming }: GroupNarrativeModeSw
               onClick={() => void changeMode(option.value)}
               className={cn(
                 'flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-all',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tavern-accent/50',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_50%,transparent)]',
                 'disabled:cursor-not-allowed disabled:opacity-50',
                 selected
-                  ? 'bg-tavern-accent-soft text-tavern-accent shadow-sm'
+                  ? 'bg-tavern-accent-soft text-tavern-accent'
                   : 'text-tavern-text-muted hover:bg-tavern-bg-hover hover:text-tavern-text-soft',
               )}
             >
