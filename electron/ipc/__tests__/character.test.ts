@@ -154,6 +154,24 @@ describe('character IPC', () => {
       const savedChar = mockSaveCharacter.mock.calls[0][0]
       expect(savedChar.updatedAt).toBeGreaterThan(0)
     })
+
+    // 回归：纯展示类字段（封面毛玻璃开关）走 patchCharacter，不能刷新 updatedAt——
+    // 它是角色卡列表「最近更新」的排序键，刷新会让卡片在点开关的瞬间跳位。
+    it('touchUpdatedAt: false 时保留原 updatedAt', async () => {
+      const originalUpdatedAt = 1000
+      const charToSave = { ...mockCharacter, updatedAt: originalUpdatedAt }
+      await handlers['character:save'](null, charToSave, { touchUpdatedAt: false })
+      expect(mockSaveCharacter).toHaveBeenCalled()
+      const savedChar = mockSaveCharacter.mock.calls[0][0]
+      expect(savedChar.updatedAt).toBe(originalUpdatedAt)
+    })
+
+    it('未传 options 时默认更新时间戳（保持旧行为）', async () => {
+      const charToSave = { ...mockCharacter, updatedAt: 1000 }
+      await handlers['character:save'](null, charToSave)
+      const savedChar = mockSaveCharacter.mock.calls[0][0]
+      expect(savedChar.updatedAt).toBeGreaterThan(1000)
+    })
   })
 
   describe('character:delete', () => {

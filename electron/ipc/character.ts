@@ -24,6 +24,7 @@ import {
   type ImportResolution,
 } from '../services/charCard'
 import type { Character, Settings } from '../../shared/types'
+import type { CharacterSaveOptions } from '../../shared/ipc-api'
 import { IPC_EVENTS } from '../../shared/ipc-channels'
 import { safeId } from '../utils/pathGuard'
 import { DIRS, readJson, withFileLock } from '../services/storage'
@@ -115,9 +116,13 @@ export function registerCharacterIPC(ipcMain: IpcMain, dialog: Dialog): void {
   })
 
   // 保存
-  ipcMain.handle('character:save', async (_e, character: Character) => {
+  // options.touchUpdatedAt（默认 true）：纯展示类字段的局部更新（如封面毛玻璃开关）传 false，
+  // 保持 updatedAt 不变——它是角色卡列表「最近更新」的排序键，刷新会让卡片莫名跳位。
+  ipcMain.handle('character:save', async (_e, character: Character, options?: CharacterSaveOptions) => {
     safeId(character.id)
-    character.updatedAt = Date.now()
+    if (options?.touchUpdatedAt !== false) {
+      character.updatedAt = Date.now()
+    }
     // NEW-M4：持锁保存。S2-04：saveCharacterThroughDomain 内部把角色 JSON 与媒体
     // 连同 journal 在同一事务提交，此处不再额外记账
     await withCharacterLock(character.id, () => {

@@ -111,7 +111,7 @@ const sessionSyncApi: SessionSyncAPI = {
 // ---- 角色卡 ----
 const characterApi: CharacterAPI = {  list: () => ipcRenderer.invoke('character:list'),
   get: (id) => ipcRenderer.invoke('character:get', id),
-  save: (character) => ipcRenderer.invoke('character:save', character),
+  save: (character, options) => ipcRenderer.invoke('character:save', character, options),
   delete: (id) => ipcRenderer.invoke('character:delete', id),
   // UEX-P1-17：conflict 为同名冲突策略（'copy' 默认另存副本 / 'overwrite' 显式覆盖）
   importPng: (conflict, sourcePath) => ipcRenderer.invoke('character:importPng', conflict, sourcePath),

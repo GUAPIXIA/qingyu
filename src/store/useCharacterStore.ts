@@ -229,7 +229,9 @@ export const useCharacterStore = create<CharacterState>((set, get) => ({
     const char = get().characters.find((c) => c.id === id)
     if (!char) return
     const updated = { ...char, ...patch }
-    await window.api.character.save(updated)
+    // touchUpdatedAt: false —— 主进程默认会把 updatedAt 刷成当前时间，而它是列表排序键：
+    // 这里只改展示类字段（毛玻璃开关等），必须保留原 updatedAt 才不会打乱角色卡顺序。
+    await window.api.character.save(updated, { touchUpdatedAt: false })
     set((state) => {
       const idx = state.characters.findIndex((c) => c.id === id)
       if (idx < 0) return {}

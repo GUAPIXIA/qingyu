@@ -93,6 +93,33 @@ describe('useCharacterStore', () => {
     })
   })
 
+  describe('patchCharacter', () => {
+    // 回归：角色卡页面点「毛玻璃」开关会调用 patchCharacter，列表按 updatedAt 排序，
+    // 若保存时刷新 updatedAt（主进程默认行为）卡片会跳到最前面。
+    it('不刷新 updatedAt 且保持列表顺序', async () => {
+      const chars = [
+        makeCharacter({ id: 'c1', name: '角色1', updatedAt: 300 }),
+        makeCharacter({ id: 'c2', name: '角色2', updatedAt: 200 }),
+        makeCharacter({ id: 'c3', name: '角色3', updatedAt: 100 }),
+      ]
+      useCharacterStore.setState({ characters: chars })
+
+      await useCharacterStore.getState().patchCharacter('c3', { coverBlurEnabled: true })
+
+      const state = useCharacterStore.getState()
+      // 顺序不变
+      expect(state.characters.map(c => c.id)).toEqual(['c1', 'c2', 'c3'])
+      // updatedAt 未被刷新
+      expect(state.characters.find(c => c.id === 'c3')?.updatedAt).toBe(100)
+      expect(state.characters.find(c => c.id === 'c3')?.coverBlurEnabled).toBe(true)
+      // 落盘时显式告知主进程不要刷新时间戳
+      expect(mockSave).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'c3', coverBlurEnabled: true, updatedAt: 100 }),
+        { touchUpdatedAt: false },
+      )
+    })
+  })
+
   describe('deleteCharacter', () => {
     it('删除角色后刷新列表', async () => {
       mockList.mockResolvedValue([makeCharacter({ id: 'c1', name: '角色1' })])
