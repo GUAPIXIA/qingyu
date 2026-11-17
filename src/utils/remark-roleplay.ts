@@ -156,9 +156,11 @@ function inlineProcessLine(line: MdastNode[]): MdastNode[] {
       out.push(node)
       continue
     }
-    // 归一化 CJK 引号到 ASCII 双引号（先归一化再判断，确保 CJK 引号也能被检测）
+    // 归一化 CJK 引号到 ASCII 双引号，仅用于「检测」对白区间；
+    // 输出仍按索引切原文，绝不把归一化文本写回 AST——旧实现连英文撇号 ' 一起归一化，
+    // 导致 I've / you'll 在渲染层变成 I"ve / you"ll，对白配对也随之错位（2026-11-16 实测）。
     const normalized = node.value
-      .replace(/[“”「」『』"']/g, '"')
+      .replace(/[“”「」『』]/g, '"')
 
     if (!normalized.includes('"')) {
       out.push(node)
@@ -170,17 +172,17 @@ function inlineProcessLine(line: MdastNode[]): MdastNode[] {
     for (const m of normalized.matchAll(/"([^"]*)"/g)) {
       matched = true
       if (m.index! > lastIndex) {
-        out.push({ type: 'text', value: normalized.slice(lastIndex, m.index) })
+        out.push({ type: 'text', value: node.value.slice(lastIndex, m.index) })
       }
       out.push({
         type: 'emphasis',
         data: { hName: 'span', hProperties: { className: ['dialogue-inline'] } },
-        children: [{ type: 'text', value: `"${m[1]}"` }],
+        children: [{ type: 'text', value: node.value.slice(m.index, m.index + m[0].length) }],
       })
       lastIndex = m.index! + m[0].length
     }
     if (lastIndex < normalized.length) {
-      out.push({ type: 'text', value: normalized.slice(lastIndex) })
+      out.push({ type: 'text', value: node.value.slice(lastIndex) })
     }
     if (!matched) {
       out.push(node)

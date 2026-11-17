@@ -73,11 +73,38 @@ describe('remarkRoleplay 端到端渲染验证（标准 mdast 节点，无 rehyp
     expect(c.querySelector('code')?.textContent).toBe('code "quotes"')
   })
 
-  it('CJK 引号 「你好」 也被识别', () => {
+  it('CJK 引号 「你好」 也被识别，且展示保留原引号', () => {
     const c = renderMd('她说「你好」给我听')
     const el = c.querySelector('.dialogue-inline')
     expect(el).toBeTruthy()
-    expect(el?.textContent).toBe('"你好"')
+    expect(el?.textContent).toBe('「你好」')
+  })
+
+  it('英文撇号不被改写成双引号（I\'ve / you\'ll 保持原文）', () => {
+    const c = renderMd('He said "I\'ve been bored, and you\'ll see" quietly')
+    const el = c.querySelector('.dialogue-inline')
+    expect(el?.textContent).toBe('"I\'ve been bored, and you\'ll see"')
+    expect(c.textContent).toContain("I've")
+    expect(c.textContent).toContain("you'll")
+    expect(c.textContent).not.toContain('I"ve')
+    expect(c.textContent).not.toContain('you"ll')
+  })
+
+  it('对白内撇号不再截断对白区间（复现 AZALEA 开场白回归）', () => {
+    const text = '"My, my... what a delicious little morsel I\'ve found," *she purrs, and you\'ll see why.*'
+    const c = renderMd(text)
+    const spans = c.querySelectorAll('.dialogue-inline')
+    expect(spans.length).toBe(1)
+    expect(spans[0].textContent).toBe('"My, my... what a delicious little morsel I\'ve found,"')
+    expect(c.textContent).toContain("I've")
+    expect(c.textContent).not.toContain('I"ve')
+  })
+
+  it('只有撇号、没有对白引号的行不做任何改写', () => {
+    const text = "It's a small thing; you'll see."
+    const c = renderMd(text)
+    expect(c.textContent).toBe(text)
+    expect(c.querySelector('.dialogue-inline')).toBeNull()
   })
 
   it('动作内含粗体格式保留', () => {
