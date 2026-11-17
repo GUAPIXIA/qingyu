@@ -11,7 +11,7 @@
       "origin": "contract",
       "kind": "method",
       "status": "mapped",
-      "signature": "speak(text: string, options: TTSOptions & { model?: string; apiKey?: string; baseUrl?: string; proxy?: string }): Promise<{ success: boolean; audioBase64?: string; error?: string }>",
+      "signature": "speak(text: string, options: TTSOptions & { model?: string; apiKey?: string; baseUrl?: string; proxy?: string }): Promise<{ success: boolean; audioBase64?: string; audioMime?: string; error?: string }>",
       "params": [
         {
           "name": "text",
@@ -26,7 +26,7 @@
           "rest": false
         }
       ],
-      "returns": "Promise<{ success: boolean; audioBase64?: string; error?: string }>",
+      "returns": "Promise<{ success: boolean; audioBase64?: string; audioMime?: string; error?: string }>",
       "description": "朗读文本（真实合成：edge provider 返回 mp3 base64）",
       "layer": "ipc",
       "write": false,

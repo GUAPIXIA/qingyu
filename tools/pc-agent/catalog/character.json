@@ -77,12 +77,18 @@
       "origin": "contract",
       "kind": "method",
       "status": "mapped",
-      "signature": "save(character: Character): Promise<void>",
+      "signature": "save(character: Character, options?: CharacterSaveOptions): Promise<void>",
       "params": [
         {
           "name": "character",
           "type": "Character",
           "required": true,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "CharacterSaveOptions",
+          "required": false,
           "rest": false
         }
       ],
