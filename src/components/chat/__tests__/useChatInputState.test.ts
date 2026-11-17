@@ -263,6 +263,22 @@ describe('useChatInputState', () => {
     expect(result.current.text).not.toContain('We need')
   })
 
+  it('续写结果引号未闭合时自动补齐，写回输入框的文本结构完整', async () => {
+    useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
+    // 25 个可见字符，落在短句档 20–60 内：本用例只验证闭合兜底，不触发长度修复
+    mockAiHelperResponses([
+      '<continuation>我清了清嗓子说：“那就来两把格斗吧，输的人请夜宵。</continuation>',
+    ])
+    const { result } = renderHook(() => useChatInputState(createCharacter()))
+
+    await act(async () => {
+      await result.current.handleAiContinue()
+    })
+
+    expect(window.api.ai.chat).toHaveBeenCalledTimes(1)
+    expect(result.current.text).toBe('我清了清嗓子说：“那就来两把格斗吧，输的人请夜宵。”')
+  })
+
   it('输入框续写使用专用提示，不继承当前预设越狱提示词', async () => {
     useSettingsStore.setState((s) => ({ settings: { ...s.settings, continueLength: 'brief' } }))
     useChatStore.setState({ activePresetId: 'preset-jailbreak' })

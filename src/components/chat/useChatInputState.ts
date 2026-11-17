@@ -27,7 +27,7 @@ import {
 import { createCommandContext } from './commandContext'
 import { registerDraftBridge } from './draftBridge'
 import { trimContinuationSeam } from '../../../shared/chat-core/messagePostProcess'
-import { countVisibleCharacters, trimToSentenceBoundary } from '../../../shared/textMetrics'
+import { countVisibleCharacters, trimToSentenceBoundary, closeDanglingMarks } from '../../../shared/textMetrics'
 import { resolveNarrativeMode } from '../../../shared/narrativeMode'
 import {
   resolveContinueIntensity,
@@ -718,6 +718,9 @@ export function useChatInputState(
           showNotification('续写没有写完，请重试或更换模型')
           return
         }
+        // 结构闭合兜底：模型常在台词中途停笔留下未闭合的引号/括号/星号，
+        // isCompleteSentence 只判句末标点，这里确定性补齐，保证写回输入框的消息结构完整。
+        cleaned = closeDanglingMarks(cleaned)
         const suggestion = hasInput ? originalInput + cleaned : cleaned
         if (sameScope() && editor.current(ticket)) setContinuedText(suggestion)
         else if (sameScope()) editor.keep(ticket, suggestion, '续写')
