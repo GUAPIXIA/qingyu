@@ -118,7 +118,8 @@ export function createChatSessionActions(set: ChatStoreSet, get: ChatStoreGet): 
     },
 
     updateSessionField: async (characterId, sessionId, field, value) => {
-      const previousMode = get().sessions.find((sess) => sess.id === sessionId)?.narrativeMode
+      const previousSession = get().sessions.find((sess) => sess.id === sessionId)
+      const previousMode = previousSession?.narrativeMode
       await window.api.chat.updateSession(characterId, sessionId, { [field]: value })
       set((s) => ({
         sessions: s.sessions.map(sess =>
@@ -126,8 +127,12 @@ export function createChatSessionActions(set: ChatStoreSet, get: ChatStoreGet): 
         ),
       }))
       // 叙事模式改变：方向是“下一步”的前瞻建议，需按新模式刷新（仅最新一条且已有方向时）
-      if (field === 'narrativeMode'
-        && resolveNarrativeMode(previousMode) !== resolveNarrativeMode(value)) {
+      const modeChanged = field === 'narrativeMode'
+        && resolveNarrativeMode(previousMode) !== resolveNarrativeMode(value)
+      // 世界状态改变：同上，静默换一批最新方向（旧方向在新结果到达前保持可见）
+      const worldStateChanged = field === 'memoryCurrentState'
+        && (previousSession?.memoryCurrentState ?? '') !== String(value ?? '')
+      if (modeChanged || worldStateChanged) {
         const character = useCharacterStore.getState().characters.find((item) => item.id === characterId)
         if (character) void refreshSingleDialogueDirections(set, get, { character })
       }

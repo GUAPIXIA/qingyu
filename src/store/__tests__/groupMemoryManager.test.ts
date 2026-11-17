@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const { refreshGroupDirectionsMock } = vi.hoisted(() => ({
+  refreshGroupDirectionsMock: vi.fn(async () => undefined),
+}))
+vi.mock('../dialogueDirectionRunner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../dialogueDirectionRunner')>()
+  return { ...actual, refreshGroupDialogueDirections: refreshGroupDirectionsMock }
+})
+
 import { runGroupMemorySummary } from '../groupMemoryManager'
 import { useSettingsStore } from '../useSettingsStore'
 import { useCharacterStore } from '../useCharacterStore'
@@ -290,6 +299,25 @@ describe('runGroupMemorySummary 群聊长记忆摘要', () => {
     await p
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('旧摘要未写入') }))
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ sessions: expect.any(Array) }))
+  })
+
+  it('世界状态被总结改写后静默换一批最新方向', async () => {
+    const callbacks = captureStreamCallbacks()
+    const p = runGroupMemorySummary((() => makeState()) as any, vi.fn())
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【当前状态】午夜换岗空档。\n【时间线】众人守在港口。' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+    await p
+    expect(refreshGroupDirectionsMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('世界状态未变化时不重复请求方向', async () => {
+    const callbacks = captureStreamCallbacks()
+    const current = makeState({ sessions: [{ ...makeState().sessions[0], memoryCurrentState: '不变的状态' }] })
+    const p = runGroupMemorySummary((() => current) as any, vi.fn())
+    callbacks.onChunk!({ requestId: callbacks.chatParams!.requestId, text: '【时间线】众人守在港口。' })
+    callbacks.onDone!(callbacks.chatParams!.requestId)
+    await p
+    expect(refreshGroupDirectionsMock).not.toHaveBeenCalled()
   })
 })
 

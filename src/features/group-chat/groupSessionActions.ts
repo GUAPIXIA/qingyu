@@ -253,12 +253,18 @@ export function createGroupSessionActions(set: GroupStoreSet, get: GroupStoreGet
     updateNarrativeSession: async (patch) => {
       const { currentGroup, currentSessionId } = get()
       if (!currentGroup || !currentSessionId || get().isStreaming) return
+      const previousWorldState = get().sessions.find((session) => session.id === currentSessionId)?.memoryCurrentState
       await window.api.group.updateSession(currentGroup.id, currentSessionId, patch)
       set((state) => ({
         sessions: state.sessions.map((session) => session.id === currentSessionId
           ? { ...session, ...patch, updatedAt: Date.now() }
           : session),
       }))
+      // 世界状态改变：方向是“下一步”的前瞻建议，静默换一批（与叙事模式切换同口径）
+      if (patch.memoryCurrentState !== undefined
+        && (previousWorldState ?? '') !== (patch.memoryCurrentState ?? '')) {
+        void refreshGroupDialogueDirections(set, get)
+      }
     },
 
     // ---- 消息加载 ----

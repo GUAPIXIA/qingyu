@@ -36,7 +36,7 @@ import type { LorebookDiagnostics } from '../../shared/chat-core/lorebook'
 import type { GroupChat, GroupMessage, Lorebook, NarrativeMode, Preset } from '../../shared/types'
 import { getNarrativeModeLabel, resolveNarrativeMode } from '../../shared/narrativeMode'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
-import { findLatestActionableGroupDirectionMessageId } from '../components/chat/dialogueDirectionView'
+import { findLatestActionableGroupDirectionMessageId, findLatestActionableGroupReplyId } from '../components/chat/dialogueDirectionView'
 import {
   Plus,
   Trash2,
@@ -102,6 +102,11 @@ export function GroupChatPage() {
   }, [messages])
   const regeneratableDirectionMessageId = useMemo(
     () => findLatestActionableGroupDirectionMessageId(messages),
+    [messages],
+  )
+  /** 最新一条可操作角色回复：即便方向没生成出来，也给用户一个手动补生成的入口 */
+  const actionableDirectionReplyId = useMemo(
+    () => findLatestActionableGroupReplyId(messages),
     [messages],
   )
 
@@ -794,6 +799,7 @@ export function GroupChatPage() {
                           }
                           isLast={index === messages.length - 1}
                           canRegenerateDirections={m.id === regeneratableDirectionMessageId}
+                          canGenerateDirections={m.id === actionableDirectionReplyId}
                           dialogueDirectionsEnabled={dialogueDirectionsEnabled}
                           directionsError={directionsError[m.id] ?? null}
                           onRegenerateDirections={

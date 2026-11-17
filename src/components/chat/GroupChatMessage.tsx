@@ -10,7 +10,7 @@ import { cn } from '../../lib/utils'
 import { formatTime } from '../../utils/format'
 import { getDisplayName, replaceVariables } from '../../../shared/chat-core/variables'
 import { extractThought } from '../../../shared/chat-core/messagePostProcess'
-import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2 } from 'lucide-react'
+import { X, Edit2, RefreshCw, Languages, Check, Reply, Loader2, Globe2, Sparkles } from 'lucide-react'
 import type { GroupMessage } from '../../../shared/types'
 import { resolveMessageSpeakerKind } from '../../../shared/messageIdentity'
 import { shouldDisplayGenerationNotice } from '../../../shared/generationNotice'
@@ -31,6 +31,8 @@ interface GroupChatMessageProps {
   isLast?: boolean
   /** 当前消息是否是最新可操作的方向消息；未传时兼容旧调用，沿用 isLast。 */
   canRegenerateDirections?: boolean
+  /** 当前消息是否是最新可操作回复且没有方向：自动生成失败后允许手动补生成（默认不渲染入口）。 */
+  canGenerateDirections?: boolean
   dialogueDirectionsEnabled?: boolean
   onRegenerateDirections?: () => void | Promise<void>
   directionsError?: string | null
@@ -48,6 +50,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
   onReply,
   isLast,
   canRegenerateDirections,
+  canGenerateDirections,
   dialogueDirectionsEnabled,
   onRegenerateDirections,
   directionsError,
@@ -61,6 +64,7 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
   const [isEditing, setIsEditing] = useState(false)
   const [editDraft, setEditDraft] = useState('')
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
+  const [generatingDirections, setGeneratingDirections] = useState(false)
 
   const directionsValid = useGroupChatStore(s => !message.dialogueDirectionsSource || matchesFeatureSource(message.dialogueDirectionsSource, s.messages, s.sessions.find(session => session.id === s.currentSessionId), s.currentGroup && groupFeatureScope(s.currentGroup)))
   const isUser = message.characterId === '__user__'
@@ -402,6 +406,45 @@ export const GroupChatMessage = React.memo(function GroupChatMessage({
                 </button>
               )}
             </div>
+          )}
+
+          {/* 下一步方向：自动生成失败后的手动补生成入口（不依赖卡片已存在） */}
+          {canGenerateDirections
+            && dialogueDirectionsEnabled
+            && !isStreaming
+            && !isUser
+            && !isFree
+            && (message.dialogueDirections?.length ?? 0) === 0
+            && !!mainContent.trim()
+            && onRegenerateDirections && (
+              <div className="mt-1.5 flex flex-col items-center">
+                <button
+                  type="button"
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all',
+                    generatingDirections
+                      ? 'cursor-not-allowed border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted'
+                      : 'border-tavern-accent/40 bg-tavern-accent/5 text-tavern-accent hover:border-tavern-accent/60 hover:bg-tavern-accent/10',
+                  )}
+                  disabled={generatingDirections}
+                  title="为这条回复生成三个可选的下一步方向"
+                  onClick={async () => {
+                    if (generatingDirections) return
+                    setGeneratingDirections(true)
+                    try {
+                      await onRegenerateDirections()
+                    } finally {
+                      setGeneratingDirections(false)
+                    }
+                  }}
+                >
+                  {generatingDirections
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Sparkles className="h-3.5 w-3.5" />}
+                  生成方向
+                </button>
+                {directionsError && <p className="mt-1 text-[10px] text-tavern-danger">{directionsError}</p>}
+              </div>
           )}
 
           {/* 下一步方向：气泡外的独立交互，仅等待用户输入时展示 */}

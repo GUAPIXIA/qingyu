@@ -27,6 +27,7 @@ function withoutDirections<T extends Message>(message: T): T {
   const next = { ...message }
   delete next.dialogueDirections
   delete next.dialogueDirectionsGeneratedAt
+  delete next.dialogueDirectionsSource
   return next
 }
 
@@ -36,7 +37,7 @@ function maybeGenerateDirections(set: SetFn, get: GetFn, messageId: string, char
   if (!message) return
   const session = get().sessions.find((item) => item.id === message.sessionId)
   if (!resolveDialogueDirectionsEnabled(session)) return
-  void generateSingleDialogueDirections(set, get, { messageId, character })
+  void generateSingleDialogueDirections(set, get, { messageId, character, notifyFailure: true })
 }
 
 type SetFn = (partial: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>)) => void

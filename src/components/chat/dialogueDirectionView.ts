@@ -4,6 +4,25 @@ type SingleDirectionMessage = Pick<Message, 'id' | 'role' | 'content' | 'dialogu
 type GroupDirectionMessage = Pick<GroupMessage, 'id' | 'characterId' | 'content' | 'dialogueDirections'>
 
 /**
+ * 找到单聊中最新一条「可操作」的回复消息 id（不看它是否已有方向）。
+ *
+ * 用于两件事：已有方向 → 允许“换一批”；没有方向（自动生成本身失败过）→
+ * 允许“生成方向”。系统消息不代表新的对话回合，因此不会让其前面的回复失去可操作性；
+ * 一旦已有更新的用户消息或空回复，就不再有可操作目标。
+ */
+export function findLatestActionableSingleReplyId(
+  messages: readonly SingleDirectionMessage[],
+): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role === 'system') continue
+    if (message.role !== 'assistant' || !(message.content || '').trim()) return null
+    return message.id
+  }
+  return null
+}
+
+/**
  * 找到单聊中当前仍可操作的方向消息。
  *
  * 系统消息不代表新的对话回合，因此不会让其前面的最新 AI 回复失去“换一批”；
@@ -12,11 +31,21 @@ type GroupDirectionMessage = Pick<GroupMessage, 'id' | 'characterId' | 'content'
 export function findLatestActionableSingleDirectionMessageId(
   messages: readonly SingleDirectionMessage[],
 ): string | null {
+  const id = findLatestActionableSingleReplyId(messages)
+  if (!id) return null
+  const message = messages.find((item) => item.id === id)
+  return (message?.dialogueDirections?.length ?? 0) > 0 ? id : null
+}
+
+/** 群聊版：__free__ 是不会渲染的自由模式占位，忽略它；其余规则与单聊一致。 */
+export function findLatestActionableGroupReplyId(
+  messages: readonly GroupDirectionMessage[],
+): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
-    if (message.role === 'system') continue
-    if (message.role !== 'assistant' || !(message.content || '').trim()) return null
-    return (message.dialogueDirections?.length ?? 0) > 0 ? message.id : null
+    if (message.characterId === '__free__') continue
+    if (message.characterId === '__user__' || !(message.content || '').trim()) return null
+    return message.id
   }
   return null
 }
@@ -28,13 +57,10 @@ export function findLatestActionableSingleDirectionMessageId(
 export function findLatestActionableGroupDirectionMessageId(
   messages: readonly GroupDirectionMessage[],
 ): string | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message.characterId === '__free__') continue
-    if (message.characterId === '__user__' || !(message.content || '').trim()) return null
-    return (message.dialogueDirections?.length ?? 0) > 0 ? message.id : null
-  }
-  return null
+  const id = findLatestActionableGroupReplyId(messages)
+  if (!id) return null
+  const message = messages.find((item) => item.id === id)
+  return (message?.dialogueDirections?.length ?? 0) > 0 ? id : null
 }
 
 /**

@@ -11,6 +11,7 @@ import { estimateTokens } from '../../shared/chat-core/tokenCounter'
 import { buildMemorySummaryWindow, fitOversizedMemoryMessage, resolveMemorySummaryInputBudget } from '../../shared/chat-core/memoryWindow'
 import { MEMORY_SUMMARY_MIN } from '../../shared/chat-core/chatConstants'
 import { vectorizeGroupSessionFacts } from '../features/group-chat/requestRunner'
+import { refreshGroupDialogueDirections } from './dialogueDirectionRunner'
 import { logWarn } from '../lib/logger'
 import type { GroupStoreGet, GroupStoreSet } from '../features/group-chat/groupChatTypes'
 import { nanoid } from 'nanoid'
@@ -250,6 +251,8 @@ ${shouldAttemptFactProposal ? `【事实提案】
         if (latest.currentGroup?.id === currentGroup.id && latest.currentSessionId === currentSessionId
           && matchesFeatureSource(source, latest.messages, latest.sessions.find(s => s.id === currentSessionId), groupFeatureScope(latest.currentGroup))) {
           set({ sessions: latest.sessions.map((session) => session.id === currentSessionId ? { ...session, ...patch } : session) })
+          // 世界状态被总结更新：静默换一批最新方向（旧卡片保持可见，不闪空）
+          if ((patch.memoryCurrentState ?? '') !== (currentSession.memoryCurrentState ?? '')) void refreshGroupDialogueDirections(set, get)
         }
       } catch (error) {
         reportSummaryFailure(`群聊长记忆保存失败：${error instanceof Error ? error.message : String(error)}`)

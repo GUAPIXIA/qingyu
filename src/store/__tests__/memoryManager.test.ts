@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { vectorizeSessionFactsMock } = vi.hoisted(() => ({
+const { vectorizeSessionFactsMock, refreshSingleDialogueDirectionsMock } = vi.hoisted(() => ({
   vectorizeSessionFactsMock: vi.fn(),
+  refreshSingleDialogueDirectionsMock: vi.fn(async () => undefined),
 }))
 
 vi.mock('../streamController', () => ({
   vectorizeSessionFacts: vectorizeSessionFactsMock,
+}))
+
+vi.mock('../dialogueDirectionRunner', () => ({
+  refreshSingleDialogueDirections: refreshSingleDialogueDirectionsMock,
 }))
 
 import { maybeRunAutoMemorySummary, runMemorySummary } from '../memoryManager'
@@ -119,6 +124,59 @@ describe('maybeRunAutoMemorySummary', () => {
   })
 })
 
+
+describe('世界状态刷新后静默换一批方向', () => {
+  function apiWithSessions(sessions: unknown[], result: unknown = {
+    status: 'summarized', summary: '新时间线', currentState: '港口全境封锁', facts: [], memoryVersion: 2,
+  }) {
+    const summarizeMemory = vi.fn(async () => result)
+    const listSessions = vi.fn(async () => sessions)
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { chat: { summarizeMemory, listSessions } },
+    })
+    return { summarizeMemory, listSessions }
+  }
+
+  it('总结后世界状态变化：刷新最新方向', async () => {
+    apiWithSessions([{
+      id: 's1', characterId: 'char-1', memoryEnabled: true, memoryMode: 'auto',
+      autoMemoryInterval: 2, memory: '新时间线', memoryCurrentState: '港口全境封锁',
+    }])
+    const current = state()
+    const set = vi.fn()
+
+    await runMemorySummary(() => current as never, set as never, character)
+
+    expect(refreshSingleDialogueDirectionsMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('世界状态未变化：不重复请求方向', async () => {
+    apiWithSessions([{
+      id: 's1', characterId: 'char-1', memoryEnabled: true, memoryMode: 'auto',
+      autoMemoryInterval: 2, memory: '新时间线',
+    }])
+    const current = state()
+    const set = vi.fn()
+
+    await runMemorySummary(() => current as never, set as never, character)
+
+    expect(refreshSingleDialogueDirectionsMock).not.toHaveBeenCalled()
+  })
+
+  it('主进程已完成总结（渲染层 skipped）也按刷新回来的世界状态补刷方向', async () => {
+    apiWithSessions([{
+      id: 's1', characterId: 'char-1', memoryEnabled: true, memoryMode: 'auto',
+      autoMemoryInterval: 2, memoryCurrentState: '午夜换岗空档',
+    }], { status: 'skipped', reason: 'interval_not_reached' })
+    const current = state()
+    const set = vi.fn()
+
+    await runMemorySummary(() => current as never, set as never, character, { automatic: true })
+
+    expect(refreshSingleDialogueDirectionsMock).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe('记忆结果的页面归属', () => {
   it('刷新会话列表期间切换角色，即使会话 ID 相同也不覆盖新页面', async () => {

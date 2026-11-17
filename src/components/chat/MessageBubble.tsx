@@ -1,7 +1,7 @@
 import { matchesFeatureSource } from '../../../shared/featureSource'
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { charAssetUrl } from '../../utils/asset'
-import { Check, X, User, Bot, ChevronLeft, ChevronRight, Image as ImageIcon, ChevronsDown, RefreshCw, Reply, Loader2, Languages, Globe2, FileText, Trash2 } from 'lucide-react'
+import { Check, X, User, Bot, ChevronLeft, ChevronRight, Image as ImageIcon, ChevronsDown, RefreshCw, Reply, Loader2, Languages, Globe2, FileText, Trash2, Sparkles } from 'lucide-react'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -21,6 +21,8 @@ interface MessageBubbleProps {
   isLast: boolean
   /** 当前消息是否是最新可操作的方向消息；未传时兼容旧调用，沿用 isLast。 */
   canRegenerateDirections?: boolean
+  /** 当前消息是否是最新可操作回复且没有方向：自动生成失败后允许手动补生成（默认不渲染入口）。 */
+  canGenerateDirections?: boolean
   /** 被引用消息（P1-5 引用回复） */
   repliedMessage?: Message | null
   /** 触发引用该消息 */
@@ -47,7 +49,7 @@ function markAnimated(id: string): void {
   animatedIds.add(id)
 }
 
-export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast, canRegenerateDirections, repliedMessage, onReply }: MessageBubbleProps) {
+export const MessageBubble = React.memo(function MessageBubble({ message, character, isLast, canRegenerateDirections, canGenerateDirections, repliedMessage, onReply }: MessageBubbleProps) {
   const shouldAnimate = !animatedIds.has(message.id)
   // NEW-L7 修复：标记移入 effect，避免渲染阶段执行副作用（React 并发/严格模式下的不纯渲染）
   useEffect(() => {
@@ -88,16 +90,16 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
   const messageWidth = useSettingsStore((s) => s.settings.messageWidth ?? 768)
   const userName = useSettingsStore((s) => s.settings.userName)
   const activePersonaId = useSettingsStore((s) => s.settings.activePersonaId)
-  // 仅订阅本会话的 directions 开关，而非整个 sessions 数组内容
-  const sessionDirections = useChatStore((s) => {
+  // 仅订阅本会话的 directions 开关（选择器返回布尔值，避免整个 sessions 数组导致全量重渲染）；
+  // 旧会话仍带 gameMasterMode 兼容字段，必须与生成侧使用同一解析口径，否则会出现
+  // “方向已经生成、但气泡侧永远不渲染”的错配。
+  const dialogueDirectionsEnabled = useChatStore((s) => {
     const sid = message.sessionId || s.currentSessionId
-    return s.sessions.find((session) => session.id === sid)?.dialogueDirectionsEnabled
+    return resolveDialogueDirectionsEnabled(s.sessions.find((session) => session.id === sid))
   })
   const [thoughtExpanded, setThoughtExpanded] = useState(autoExpandThought)
   const [directionError, setDirectionError] = useState<string | null>(null)
-  const dialogueDirectionsEnabled = resolveDialogueDirectionsEnabled({
-    dialogueDirectionsEnabled: sessionDirections,
-  })
+  const [generatingDirections, setGeneratingDirections] = useState(false)
   const getPersona = usePersonaStore((s) => s.getPersona)
   const persona = getPersona(activePersonaId)
 
@@ -587,7 +589,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
           </div>
 
           {/* 操作栏 */}
-          <MessageActionBar message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); useChatStore.setState({ editingMessageId: message.id }) }} />
+          <MessageActionBar message={message} character={character} isUser={isUser} isSystem={isSystem} isStreaming={isStreaming} onReply={onReply} onEdit={() => { setEditContent(message.content); useChatStore.setState({ editingMessageId: message.id }) }} translatedText={transState?.content || persistedTranslation || null} />
 
           {/* 下一步方向：气泡外的独立交互，仅最新一条 AI 回复且等待用户时展示 */}
           {shouldShowDialogueDirections({
@@ -612,6 +614,50 @@ export const MessageBubble = React.memo(function MessageBubble({ message, charac
                 if (result.length === 0) setDirectionError('方向生成失败，请稍后重试')
               }}
             />
+          )}
+
+          {/* 下一步方向：自动生成失败后的手动补生成入口（不依赖卡片已存在） */}
+          {canGenerateDirections
+            && dialogueDirectionsEnabled
+            && !isStreaming
+            && !isSystem
+            && !isUser
+            && (message.dialogueDirections?.length ?? 0) === 0
+            && !!stripThought(message.content || '').trim()
+            && character && (
+              <div className="flex flex-col items-center mt-1.5">
+                <button
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5',
+                    generatingDirections
+                      ? 'border-tavern-border-soft bg-tavern-bg-card text-tavern-text-muted cursor-not-allowed'
+                      : 'border-tavern-accent/40 bg-tavern-accent/5 text-tavern-accent hover:bg-tavern-accent/10 hover:border-tavern-accent/60 hover:shadow-sm',
+                  )}
+                  onClick={async () => {
+                    if (!character || generatingDirections) return
+                    setGeneratingDirections(true)
+                    setDirectionError(null)
+                    try {
+                      const result = await generateSingleDialogueDirections(
+                        useChatStore.setState,
+                        useChatStore.getState,
+                        { messageId: message.id, character },
+                      )
+                      if (result.length === 0) setDirectionError('方向生成失败，请稍后重试')
+                    } finally {
+                      setGeneratingDirections(false)
+                    }
+                  }}
+                  disabled={generatingDirections}
+                  title="为这条回复生成三个可选的下一步方向"
+                >
+                  {generatingDirections
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <Sparkles className="w-3.5 h-3.5" />}
+                  生成方向
+                </button>
+                {directionError && <p className="mt-1 text-[10px] text-tavern-danger">{directionError}</p>}
+              </div>
           )}
 
           {/* 继续续写按钮 — 始终可见，仅最后一条 assistant 消息 */}

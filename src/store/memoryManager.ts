@@ -2,6 +2,7 @@ import type { Character } from '../../shared/types'
 import { MEMORY_SUMMARY_MIN } from '../../shared/chat-core/chatConstants'
 import { friendlyError } from './chatUtils'
 import { vectorizeSessionFacts } from './streamController'
+import { refreshSingleDialogueDirections } from './dialogueDirectionRunner'
 import type { StoreGet, StoreSet } from '../features/chat/chatStoreTypes'
 
 /** 渲染层只维护交互状态；总结决策、模型调用与乐观提交统一由主进程负责。 */
@@ -30,9 +31,23 @@ export async function runMemorySummary(
     if (!matchesScope()) return
     set({ error: message, memorySummaryError: { key: summaryKey, message } })
   }
+  /**
+   * 会话刷新后世界状态若有变化，静默换一批最新方向。
+   * 比较基准取刷新回来的会话（而不是再读一次 store），避免 set 的时序影响判定。
+   */
+  const refreshDirectionsIfWorldStateChanged = (
+    previousState: string | undefined,
+    refreshedSessions: Awaited<ReturnType<typeof window.api.chat.listSessions>>,
+  ) => {
+    if (!matchesScope()) return
+    const next = refreshedSessions.find((item) => item.id === currentSessionId)
+    if (!next || (next.memoryCurrentState ?? '') === (previousState ?? '')) return
+    void refreshSingleDialogueDirections(set, get, { character })
+  }
 
   activeMemorySummaries.add(summaryKey)
   set({ summarizingMemoryKey: summaryKey, memorySummaryError: null })
+  const previousWorldState = session.memoryCurrentState
   try {
     const result = await window.api.chat.summarizeMemory(
       character.id,
@@ -45,7 +60,10 @@ export async function runMemorySummary(
       // 仍需刷新会话，避免界面继续展示旧记忆快照。
       if (options.automatic && matchesScope()) {
         const refreshedSessions = await window.api.chat.listSessions(character.id)
-        if (matchesScope()) set({ sessions: refreshedSessions })
+        if (matchesScope()) {
+          set({ sessions: refreshedSessions })
+          refreshDirectionsIfWorldStateChanged(previousWorldState, refreshedSessions)
+        }
       }
       return null
     }
@@ -56,7 +74,10 @@ export async function runMemorySummary(
     }
     if (matchesScope()) {
       const refreshedSessions = await window.api.chat.listSessions(character.id)
-      if (matchesScope()) set({ sessions: refreshedSessions })
+      if (matchesScope()) {
+        set({ sessions: refreshedSessions })
+        refreshDirectionsIfWorldStateChanged(previousWorldState, refreshedSessions)
+      }
     }
     return result.summary || result.currentState || null
   } catch (error) {

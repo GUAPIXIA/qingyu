@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent, waitFor } from '@testing-library/react'
 import { GroupChatMessage } from '../GroupChatMessage'
 import { useCharacterStore } from '../../../store/useCharacterStore'
 import { useGroupChatStore } from '../../../store/useGroupChatStore'
@@ -625,6 +625,34 @@ describe('GroupChatMessage', () => {
       )
 
       expect(latestActionable.getByRole('button', { name: /换一批/ })).toBeTruthy()
+    })
+
+    it('自动生成失败后：最新可操作回复给出「生成方向」补生成入口', async () => {
+      const onRegenerateDirections = vi.fn(async () => {})
+      const { getByRole } = render(
+        <GroupChatMessage
+          message={createMessage()}
+          isLast
+          canGenerateDirections
+          dialogueDirectionsEnabled
+          onRegenerateDirections={onRegenerateDirections}
+        />,
+      )
+
+      fireEvent.click(getByRole('button', { name: /生成方向/ }))
+      await waitFor(() => expect(onRegenerateDirections).toHaveBeenCalled())
+    })
+
+    it('没有补生成入口标记时不渲染「生成方向」', () => {
+      const { queryByText } = render(
+        <GroupChatMessage
+          message={createMessage()}
+          isLast
+          dialogueDirectionsEnabled
+          onRegenerateDirections={() => {}}
+        />,
+      )
+      expect(queryByText('生成方向')).toBeNull()
     })
   })
 

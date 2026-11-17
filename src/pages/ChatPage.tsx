@@ -29,7 +29,7 @@ import { charAssetUrl } from '../utils/asset'
 import { chatScrollKey, useSessionScrollMemory } from '../utils/scrollMemory'
 import type { Message } from '../../shared/types'
 import { resolveDialogueDirectionsEnabled } from '../../shared/dialogueDirections'
-import { findLatestActionableSingleDirectionMessageId } from '../components/chat/dialogueDirectionView'
+import { findLatestActionableSingleDirectionMessageId, findLatestActionableSingleReplyId } from '../components/chat/dialogueDirectionView'
 import {
   MessageSquare,
   Users,
@@ -457,6 +457,11 @@ export function ChatPage() {
     () => findLatestActionableSingleDirectionMessageId(messages),
     [messages],
   )
+  /** 最新一条可操作回复：即便方向没生成出来，也给用户一个手动补生成的入口 */
+  const actionableDirectionReplyId = useMemo(
+    () => findLatestActionableSingleReplyId(messages),
+    [messages],
+  )
 
   const effectiveBg = useMemo(() => {
     const params = currentCharacter?.chatBackgroundParams
@@ -581,10 +586,8 @@ export function ChatPage() {
       ) : <>
       {/* 顶部状态栏 / 提示条：并入悬浮层，压在顶栏下方，不占用对话布局 */}
       <div className="pointer-events-none absolute inset-x-0 top-[72px] z-20 flex flex-col [&>*]:pointer-events-auto">
-      {/* 状态栏 — 有消息或有激活世界书时显示 */}
-      {currentCharacter && (
-        <StatusBar character={currentCharacter} messages={messages} />
-      )}
+      {/* 状态栏 — 仅当回复里解析出状态项时显示（勾选的世界书不在对话页展示，见 StatusBar 注释） */}
+      <StatusBar messages={messages} />
 
       {/* 长对话摘要引导提示条 */}
       {showMemoryHint && (
@@ -688,6 +691,7 @@ export function ChatPage() {
                   character={currentCharacter}
                   isLast={index === messages.length - 1}
                   canRegenerateDirections={msg.id === regeneratableDirectionMessageId}
+                  canGenerateDirections={msg.id === actionableDirectionReplyId}
                   repliedMessage={replied}
                   onReply={() => setReplyToMessage(msg)}
                 />

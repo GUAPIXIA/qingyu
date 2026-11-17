@@ -72,6 +72,7 @@ function maybeGenerateGroupDirections(set: GroupStoreSet, get: GroupStoreGet): v
     messageId: last.id,
     character: speaker,
     userName: useSettingsStore.getState().settings.userName || '用户',
+    notifyFailure: true,
   })
 }
 

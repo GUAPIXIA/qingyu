@@ -1,4 +1,4 @@
-import { featureSource, featureSessionRef, matchesFeatureSource, featureFingerprint, groupFeatureScope, type FeatureOwner } from '../../shared/featureSource'
+import { featureSource, matchesFeatureSource, featureFingerprint, groupFeatureScope, type FeatureOwner } from '../../shared/featureSource'
 import { beginFeatureTask, cancelFeatureTasks, finishFeatureTask, requestFeatureText, type FeatureTask } from './featureTasks'
 /**
  * “下一步方向”运行时：发起独立辅助请求 → 严格校验 → 回写消息。
@@ -6,7 +6,7 @@ import { beginFeatureTask, cancelFeatureTasks, finishFeatureTask, requestFeature
  * 与主回复解耦：主回复流式展示后，本模块异步补齐方向；失败只静默降级，
  * 不影响正文与发送状态（见方案 §4.1 / §10）。
  */
-import type { ChatParams, Character, DialogueDirection, GroupMessage, NarrativeMode } from '../../shared/types'
+import type { AIFinishReason, ChatParams, Character, DialogueDirection, GroupMessage, NarrativeMode } from '../../shared/types'
 import {
   DIALOGUE_DIRECTION_TEMPERATURE,
   buildDialogueDirectionSystemPrompt,
@@ -24,11 +24,41 @@ import { useSettingsStore, type ActiveProfile } from './useSettingsStore'
 import { useCharacterStore } from './useCharacterStore'
 import { getDisplayName } from '../../shared/chat-core/variables'
 import { logError } from '../lib/logger'
+import { pushToast } from './useToastStore'
 import type { StoreGet, StoreSet } from '../features/chat/chatStoreTypes'
 import type { GroupStoreGet, GroupStoreSet } from '../features/group-chat/groupChatTypes'
 
 /** 每条消息最多保留的最近对话条数（方案 §4.1：最近 4–6 条）。 */
 const RECENT_MESSAGE_LIMIT = 6
+
+/**
+ * 方向「是否仍然有效」只认产生它的那条消息。
+ *
+ * 早期实现把整段消息列表与会话易变字段（memoryCurrentState / narrativeMode / personaId）
+ * 一并纳入来源指纹，导致两个线上问题：
+ * 1. 后台自动长记忆在回复后几秒改写 memoryCurrentState，渲染层随即刷新 sessions，
+ *    指纹失配 → 卡片在用户眼前整块消失（消息正文一个字都没变）；
+ * 2. 主进程 commitFeatureResult 在锁内用磁盘数据复核同一指纹，长记忆先落盘时方向提交被判失效，
+ *    自动链路静默丢结果（用户看到「没生成」）。
+ *
+ * 会话级变化（叙事模式 / 世界状态 / 身份）不是「这条消息的内容变了」，应走
+ * refreshSingleDialogueDirections / refreshGroupDialogueDirections 静默换一批：
+ * 旧方向在新结果到达前保持可见，失败也不清空、不闪空（方案 §4.4）。
+ */
+const DIRECTION_SOURCE_MODE = 'message' as const
+
+/** 自动链路失败时的可见提示（手动「换一批」用内联错误，不重复弹窗）。 */
+function notifyDirectionFailure(): void {
+  pushToast({
+    variant: 'warning',
+    title: '下一步方向生成失败',
+    description: '可在最新一条回复下点「生成方向」重试',
+    requestId: 'dialogue-directions',
+  })
+}
+
+/** 正文不可用的结束原因；'unknown' 不在此列（服务端未回 finish_reason 不等于内容不可用）。 */
+const DISCARDED_FINISH_REASONS = new Set<AIFinishReason>(['length', 'content_filter', 'tool_calls', 'cancelled', 'network_error'])
 
 /** 可以按 owner 精确取消；未指定 owner 保留既有全局取消入口。 */
 export function cancelDialogueDirectionRequests(messageIds?: readonly string[], owner?: FeatureOwner): void {
@@ -51,7 +81,11 @@ async function callDirectionHelper(profile: ActiveProfile, task: FeatureTask, me
     frequencyPenalty: 0, presencePenalty: 0, stream: false, reasoningGate: budget.reasoningGate,
     observability: { source: 'aux', taskType: 'direction', ...(opts?.downgradeRetry ? { downgradeRetry: true } : {}) },
   })
-  return { text: completion.finishReason && completion.finishReason !== 'stop' ? '' : stripThought(text),
+  // 只有「正文确实不可用」的结束原因才丢弃：截断/审核/工具调用/取消/网络错误。
+  // 'unknown' 表示服务端未返回 finish_reason（部分 OpenAI 兼容实现如此），
+  // 此时正文可能完整，此前一律丢弃会让这些连接永远生成不出方向。
+  const unusable = !!completion.finishReason && DISCARDED_FINISH_REASONS.has(completion.finishReason)
+  return { text: unusable ? '' : stripThought(text),
     terminationCause: completion.terminationCause ?? (completion.finishReason === 'length' ? 'provider_length' : undefined) }
 }
 
@@ -135,6 +169,13 @@ function recentDialogue(
     }))
 }
 
+/** 方向生成入口的公共选项；notifyFailure 仅供自动链路开启可见失败提示。 */
+export interface DirectionGenerationOptions {
+  messageId: string
+  character: Character
+  notifyFailure?: boolean
+}
+
 /**
  * 为单聊的最后一条 AI 消息生成方向并回写持久化。
  * @returns 生成成功返回方向数组；失败/取消/重复请求返回空数组。
@@ -142,9 +183,9 @@ function recentDialogue(
 export async function generateSingleDialogueDirections(
   set: StoreSet,
   get: StoreGet,
-  opts: { messageId: string; character: Character },
+  opts: DirectionGenerationOptions,
 ): Promise<DialogueDirection[]> {
-  const { messageId, character } = opts
+  const { messageId, character, notifyFailure = false } = opts
   const state = get()
   const index = state.messages.findIndex((message) => message.id === messageId)
   if (index < 0) return []
@@ -166,15 +207,23 @@ export async function generateSingleDialogueDirections(
     latestReply: stripThought(target.content || ''),
     worldState: session?.memoryCurrentState,
   })
-  const source = featureSource(state.messages, 'whole', featureSessionRef(session, ['narrativeMode', 'personaId', 'memoryCurrentState']))
+  const source = featureSource([target], DIRECTION_SOURCE_MODE)
   const task = beginFeatureTask({ kind: 'single', characterId: target.characterId, sessionId: target.sessionId }, 'direction', source, messageId)
   if (!task) return []
   try {
     const directions = await requestDialogueDirections(task, input)
-    if (!directions.length || task.controller.signal.aborted) return []
-    return await persistSingleDirections(set, get, messageId, directions, task) ? directions : []
+    if (!directions.length || task.controller.signal.aborted) {
+      if (notifyFailure && !task.controller.signal.aborted) notifyDirectionFailure()
+      return []
+    }
+    const applied = await persistSingleDirections(set, get, messageId, directions, task)
+    if (!applied && notifyFailure && !task.controller.signal.aborted) notifyDirectionFailure()
+    return applied ? directions : []
   } catch (error) {
-    if (!task.controller.signal.aborted) logError('DialogueDirections:single', error)
+    if (!task.controller.signal.aborted) {
+      logError('DialogueDirections:single', error)
+      if (notifyFailure) notifyDirectionFailure()
+    }
     return []
   } finally { finishFeatureTask(task) }
 }
@@ -219,9 +268,11 @@ export async function generateGroupDialogueDirections(
     userName: string
     /** 群聊所在会话的世界状态；缺省时从会话读取。 */
     worldState?: string
+    /** 自动链路失败时给出可见提示；手动「换一批」用内联错误。 */
+    notifyFailure?: boolean
   },
 ): Promise<DialogueDirection[]> {
-  const { messageId, character, userName, worldState } = opts
+  const { messageId, character, userName, worldState, notifyFailure = false } = opts
   const state = get()
   const index = state.messages.findIndex((message) => message.id === messageId)
   if (index < 0) return []
@@ -245,16 +296,25 @@ export async function generateGroupDialogueDirections(
     worldState: worldState ?? session?.memoryCurrentState,
   })
   if (!state.currentGroup || !state.currentSessionId) return []
-  const source = featureSource(state.messages, 'whole', featureSessionRef(session, ['narrativeMode', 'personaId', 'memoryCurrentState']))
+  // 与单聊一致：有效性只认产生方向的那条角色回复（外加群成员/模式指纹）
+  const source = featureSource([target], DIRECTION_SOURCE_MODE)
   source.groupFingerprint = featureFingerprint(groupFeatureScope(state.currentGroup))
   const task = beginFeatureTask({ kind: 'group', groupId: state.currentGroup.id, sessionId: state.currentSessionId }, 'direction', source, messageId)
   if (!task) return []
   try {
     const directions = await requestDialogueDirections(task, input)
-    if (!directions.length || task.controller.signal.aborted) return []
-    return await persistGroupDirections(set, get, messageId, directions, task) ? directions : []
+    if (!directions.length || task.controller.signal.aborted) {
+      if (notifyFailure && !task.controller.signal.aborted) notifyDirectionFailure()
+      return []
+    }
+    const applied = await persistGroupDirections(set, get, messageId, directions, task)
+    if (!applied && notifyFailure && !task.controller.signal.aborted) notifyDirectionFailure()
+    return applied ? directions : []
   } catch (error) {
-    if (!task.controller.signal.aborted) logError('DialogueDirections:group', error)
+    if (!task.controller.signal.aborted) {
+      logError('DialogueDirections:group', error)
+      if (notifyFailure) notifyDirectionFailure()
+    }
     return []
   } finally { finishFeatureTask(task) }
 }

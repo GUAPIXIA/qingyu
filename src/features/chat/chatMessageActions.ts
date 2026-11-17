@@ -117,6 +117,7 @@ export function createChatMessageActions(set: ChatStoreSet, get: ChatStoreGet): 
       const updatedMsg: typeof msg = { ...msg, content: newContent, translation: null, translationLanguage: undefined, translationSource: undefined }
       delete (updatedMsg as Message).dialogueDirections
       delete (updatedMsg as Message).dialogueDirectionsGeneratedAt
+      delete (updatedMsg as Message).dialogueDirectionsSource
       // 先更新本地状态
       set((s) => ({
         messages: s.messages.map((m) => (m.id === messageId ? updatedMsg : m)),

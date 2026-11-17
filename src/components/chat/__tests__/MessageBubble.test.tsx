@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent, waitFor, act } from '@testing-library/react'
+
+const { generateSingleDialogueDirectionsMock } = vi.hoisted(() => ({
+  generateSingleDialogueDirectionsMock: vi.fn(async () => [] as unknown[]),
+}))
+vi.mock('../../../store/dialogueDirectionRunner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../store/dialogueDirectionRunner')>()
+  return { ...actual, generateSingleDialogueDirections: generateSingleDialogueDirectionsMock }
+})
+
 import { MessageBubble } from '../MessageBubble'
 import { useChatStore } from '../../../store/useChatStore'
 import { useSettingsStore } from '../../../store/useSettingsStore'
@@ -593,6 +602,46 @@ describe('MessageBubble', () => {
       expect(getByText('你好世界')).toBeTruthy()
       expect(queryByText('Hello world')).toBeNull()
     })
+
+    it('显示译文时朗读译文（TTS 与屏幕内容一致）', async () => {
+      const speak = vi.fn().mockResolvedValue({ success: true, audioBase64: 'AQID', audioMime: 'audio/wav' })
+      ;(window as any).api.tts = {
+        speak,
+        stop: vi.fn().mockResolvedValue(undefined),
+        pause: vi.fn().mockResolvedValue(undefined),
+        resume: vi.fn().mockResolvedValue(undefined),
+        getState: vi.fn().mockResolvedValue({ state: 'idle' }),
+        onState: vi.fn().mockReturnValue(() => {}),
+        listVoices: vi.fn().mockResolvedValue([]),
+      }
+      class FakeAudio {
+        onended: (() => void) | null = null
+        onerror: (() => void) | null = null
+        play = vi.fn(() => Promise.resolve())
+        pause = vi.fn()
+        constructor(public src: string) {}
+      }
+      vi.stubGlobal('Audio', FakeAudio)
+      useSettingsStore.setState({
+        settings: {
+          ...getDefaultSettings(),
+          ttsEnabled: true,
+          ttsModels: [{ id: 'tts-ds', name: 'DeepSeek', provider: 'deepseek', model: '', voice: 'stella', apiKey: '', baseUrl: 'https://api.deepseek.com', enabled: true, order: 0 }],
+          activeTTSModelId: 'tts-ds',
+        },
+      } as any)
+      useChatStore.setState({
+        translatingMessages: {},
+        showTranslationIds: new Set(['msg-1']),
+      } as any)
+      const { getByTitle } = render(
+        <MessageBubble message={createMessage({ content: 'Hello world', translation: '你好世界' })} character={createCharacter()} isLast={false} />
+      )
+      fireEvent.click(getByTitle('朗读译文'))
+      await waitFor(() => expect(speak).toHaveBeenCalled())
+      expect(speak.mock.calls[0][0]).toBe('你好世界')
+      vi.unstubAllGlobals()
+    })
   })
 
   describe('下一步方向卡片', () => {
@@ -673,6 +722,53 @@ describe('MessageBubble', () => {
       )
 
       expect(getByRole('button', { name: /换一批/ })).toBeTruthy()
+    })
+
+    it('自动生成失败后：最新可操作回复给出「生成方向」补生成入口', async () => {
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', dialogueDirectionsEnabled: true } as never],
+        currentSessionId: 's1',
+        isStreaming: false,
+      })
+      const { getByRole } = render(
+        <MessageBubble
+          message={createMessage()}
+          character={createCharacter()}
+          isLast
+          canGenerateDirections
+        />,
+      )
+
+      generateSingleDialogueDirectionsMock.mockClear()
+      fireEvent.click(getByRole('button', { name: /生成方向/ }))
+      await waitFor(() => expect(generateSingleDialogueDirectionsMock).toHaveBeenCalledWith(
+        expect.any(Function), expect.any(Function),
+        expect.objectContaining({ messageId: 'msg-1' }),
+      ))
+    })
+
+    it('没有补生成入口标记时不渲染「生成方向」', () => {
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', dialogueDirectionsEnabled: true } as never],
+        currentSessionId: 's1',
+        isStreaming: false,
+      })
+      const { queryByText } = render(
+        <MessageBubble message={createMessage()} character={createCharacter()} isLast />,
+      )
+      expect(queryByText('生成方向')).toBeNull()
+    })
+
+    it('旧会话只有 gameMasterMode 时同样按开启处理（与生成侧同一口径）', () => {
+      useChatStore.setState({
+        sessions: [{ id: 's1', characterId: 'char-1', gameMasterMode: true } as never],
+        currentSessionId: 's1',
+        isStreaming: false,
+      })
+      const { queryByText } = render(
+        <MessageBubble message={createMessage({ dialogueDirections: directions })} character={createCharacter()} isLast />,
+      )
+      expect(queryByText('选择下一步方向')).toBeTruthy()
     })
   })
 

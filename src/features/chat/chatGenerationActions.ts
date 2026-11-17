@@ -174,7 +174,8 @@ export function createChatGenerationActions(set: ChatStoreSet, get: ChatStoreGet
                         (message) => message.role === 'assistant' && !!message.content?.trim(),
                       )
                       if (lastReply) {
-                        void generateSingleDialogueDirections(set, get, { messageId: lastReply.id, character })
+                        // 自动链路失败要可见：toast + 消息下「生成方向」可重试
+                        void generateSingleDialogueDirections(set, get, { messageId: lastReply.id, character, notifyFailure: true })
                       }
                     }
                     maybeRunAutoMemorySummary(get, set, character).catch((e) => logError('ChatStore:memorySummary', e))
@@ -318,7 +319,7 @@ export function createChatGenerationActions(set: ChatStoreSet, get: ChatStoreGet
           // “下一步方向”：主回复落盘后异步生成，失败静默降级，不影响正文。
           const session = get().sessions.find((item) => item.id === finalMsg.sessionId)
           if (resolveDialogueDirectionsEnabled(session)) {
-            void generateSingleDialogueDirections(set, get, { messageId: aiMessageId, character })
+            void generateSingleDialogueDirections(set, get, { messageId: aiMessageId, character, notifyFailure: true })
           }
 
           // 自动长记忆：成功提交后才推进消息游标；失败会保留重试机会。
