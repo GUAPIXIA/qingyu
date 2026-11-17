@@ -2,6 +2,118 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-17
+
+### 修复（角色卡毛玻璃开关导致卡片跳位）
+
+- **现象**：角色卡页面点封面右上角的「毛玻璃」开关，卡片会跳到列表最前面（排序为「最近更新」时）并打乱其他卡的位置。
+- **根因**：`patchCharacter` 本意是局部更新展示字段且不改 `updatedAt`，但主进程 `character:save` 处理器无条件执行 `character.updatedAt = Date.now()`，而 `updatedAt` 正是角色卡列表的排序键；落盘后主进程又广播 `characterChanged`，渲染层重新拉取列表并按新时间戳排序，于是卡片跳位。
+- **修复**：`character:save` 新增可选参数 `options.touchUpdatedAt`（默认 `true`，保持原有行为），仅当显式传 `false` 时保留原 `updatedAt`；渲染层 `patchCharacter` 一律传 `{ touchUpdatedAt: false }`。毛玻璃开关因此不再改变顺序，同时也避免了封面 `?v=updatedAt` 版本戳变化引起的封面图重载闪烁。
+- **测试**：`electron/ipc/__tests__/character.test.ts` 增补「传 `touchUpdatedAt: false` 保留原 `updatedAt`」「未传 options 仍更新时间戳」；`src/store/__tests__/useCharacterStore.test.ts` 增补 `patchCharacter` 用例（列表顺序不变、`updatedAt` 不刷新、落盘参数为 `touchUpdatedAt: false`）。
+- **契约**：`CharacterAPI.save` 签名新增可选 `options`，`pnpm pc-agent:catalog` 已重新生成动作目录与能力矩阵。
+
+### 修复（朗读跳过图片/音频等非文本内容）
+
+- **问题**：消息正文可能夹带 markdown 图片、内嵌 `<audio>` / `<img>` 标签、base64 data URI 或裸链接；朗读会把 URL/标签/base64 一起送去 TTS，既读不出内容，也可能触发接口体积或内容限制（如 DeepSeek 64 KiB 请求体上限与内容审核）。
+- **修复**：新增 `src/lib/ttsText.ts` 的 `sanitizeTtsText()`，朗读前统一清洗：移除 data URI、裸 URL、markdown 图片、HTML 标签、代码块与强调标记，链接保留文字，压缩空白（复用 `shared/chat-core` 的 `stripMarkdownNoise`）；原文与译文都走同一清洗。清洗后为空（纯图片/音频/代码消息）时不发起朗读，改为提示「这条消息没有可朗读的文字」。
+- **测试**：新增 `src/lib/__tests__/ttsText.test.ts`（7 条：图片/音频/URL/代码/标点保留/纯媒体）；`MessageActionBar` 新增「朗读前剔除图片/音频/链接」与「仅有图片/音频的消息不发起朗读并提示」。
+
+### 修复（朗读跟随译文显示）
+
+- **问题**：消息朗读固定读 `message.content`，气泡切到译文后点朗读仍读原文（外语），与屏幕内容不一致。
+- **修复**：`MessageActionBar` 新增 `translatedText` 入参，由 `MessageBubble` 按与 `displayContent` 相同的口径传入（内存翻译优先、持久化 `message.translation` 回退，含语言/来源校验）；显示译文时朗读译文，译文为空或仅含 thought 时回退原文，避免「点了没声音」；按钮标题同步为「朗读译文」。原文朗读仍遵循「朗读内心想法」设置。
+- **测试**：`MessageActionBar` 新增「显示译文时朗读译文」用例；`MessageBubble` 新增「显示译文时朗读译文（TTS 与屏幕内容一致）」集成用例（切到译文后朗读请求的文本为译文）。
+
+### 新增（DeepSeek TTS 提供商）
+
+- **设置 → 模型 → TTS 新增「DeepSeek TTS」**：接入 DeepSeek 官方语音合成（`POST {baseUrl}/v1/tools/tts`，2026-11 随「全家桶应用 API」上线）。请求体只有 `text` + `voice_id`（没有 model / speed 字段），响应是未压缩 wav；音色仅 `stella`（海星·女）/ `tide`（暗潮·男），语种按文本自动识别；接口单次上限 10,000 计费字符（汉字算 2 字符）。默认端点 `https://api.deepseek.com`，兼容填写带 `/v1` 或整条端点。
+- **消息朗读按句切分**：DeepSeek 走「逐句合成、顺序播放」——wav 未压缩（24 kHz/16-bit/单声道约 48 KB/s），整段合成首包慢，长回复单条 base64 可达数十 MB；切分后首句即可出声，暂停/继续作用于当前句，停止会中止整个队列。单句超过 180 字符时硬切；其余 provider 仍为整段合成。
+- **契约**：`TTSModelConfig` / `TTSOptions` 的 provider 联合新增 `deepseek`；`tts:speak` 返回值新增可选 `audioMime`（DeepSeek 为 `audio/wav`，其余网络 provider 为 `audio/mp3`），渲染层按 MIME 播放，不再把 wav 当 mp3；`pnpm pc-agent:catalog` 已重新生成动作目录与能力矩阵。
+- **测试**：新增 `src/lib/__tests__/ttsChunks.test.ts`（分句与硬切边界）、`src/components/chat/__tests__/MessageActionBar.test.tsx`（deepseek 接线：provider 参数、逐段请求、wav MIME、停止中止队列）与 `src/components/api/__tests__/TTSModelsSection.test.tsx`（设置项：默认端点/音色、无模型参数、测试连接走 deepseek）；`electron/ipc/__tests__/tts.test.ts` 补请求构造、baseUrl 归一化、截断、400/401、空音频与音色表。
+- **验证**：`pnpm check` / `pnpm lint` / `pnpm build` / `check:pc-agent` / `check:contracts` / `check:forwarders` 通过，`pnpm test` 全绿；用无效 Key 实测 `POST /v1/tools/tts` 返回 401（路由存在、鉴权头格式正确），**完整合成未验证**（本机没有可用的 DeepSeek API Key），首次配置请在设置页点「测试连接」确认 Key、端点与音色。
+
+### 新增（状态图标形变动画）
+
+- **接入 morphicons**：新增 `src/components/common/MorphingIcon.tsx`（对 `morphicons/react` 的统一封装），状态对图标在原地切换时按弹簧物理做 SVG 路径形变，替代原来「两个 lucide 组件条件渲染」的硬切换；默认 `reducedMotion="user"`，系统开启「减弱动态效果」时退化为瞬时切换。图标数据从 `lucide` 包按需导入（`lucide-react` 组件不暴露 `IconNode`），其余图标继续用 `lucide-react`，仅新增两个 devDependency：`morphicons@2.0.2`、`lucide@0.511.0`（与 `lucide-react@0.511.x` 同源）。
+- **已替换位置**：标题栏主题切换（Sun↔Moon）与最大化/还原（Square↔Copy）、消息朗读三态（Volume2↔Play↔Pause）、角色卡毛玻璃开关（Eye↔EyeOff）、对话 API / TTS / 视觉 / 生图页密钥显隐（Eye↔EyeOff）、TTS 试听（Play↔Square）、侧栏收起（PanelLeftClose↔PanelLeft）、折叠箭头（ChevronRight/Down/Up：正则分组、世界书条目、预设 AI 生成/高级参数、本地模型任务中心、设置页与身份页的分区卡片，后者由 CSS `rotate-180` 改为形变旋转）。
+- **未替换（有意保留）**：单聊/群聊输入框的「发送↔停止」仍是两个独立按钮（底色、禁用语义、实心方块图标都不同，合并会改交互结构），不参与形变。
+- **验证**：`pnpm check` / `pnpm lint`（0 error）/ `pnpm test` / `check:gates` / `check:docs-index` / `check:contracts` 全绿，`pnpm build` 通过；新增 `MorphingIcon` 用例覆盖渲染与瞬时切换。
+
+### 优化（侧栏导航图标区分）
+
+- **群聊图标**：侧栏「角色卡」与「群聊」原来是 `Users` / `UsersRound`，16px 下几乎同形；「群聊」改用 `MessagesSquare`（双气泡，与「对话」的单气泡构成「单聊 / 群聊」的常规对照），「角色卡」保留 `Users`。
+
+### 变更（侧栏改为「常用常驻 + 更多收纳」）
+
+- **信息架构**：移除「核心 / 资源 / 服务 / 系统」四个可折叠分组（4 行分组标题 + 14 个同权入口是"看着乱"的主因），改为三段常驻 + 一个溢出浮层：
+  - 会话：对话、群聊；
+  - 资料：身份、角色卡、世界书、预设（角色卡移到世界书上方）；
+  - 服务：模型；
+  - 更多浮层：快捷回复、正则、MCP、用量、公告、帮助——点击或 Enter 打开，Escape / 点击空白 / 导航滚动 / 切页 / 收起侧栏时自动关闭，打开后焦点落在首个入口；
+  - 底部（展开态）：**设置 / 帮助 / 公告** 三个图标按钮并排（无文字，悬停有 title），四个按钮同排均布、收起贴右（与导航右边缘对齐，宽度收窄时间距同步收紧）；下方单独一行显示连接状态（绿点 + 当前**模型名**，未连接显示「未连接」，新版本红点保留在设置图标上）。
+  - 底部（收起态）：不追加帮助 / 公告，仍为「设置 → 展开 → 连接状态点」竖排；帮助 / 公告在该状态下回落到「更多」浮层（展开态浮层只保留快捷回复 / 正则 / MCP / 用量，避免重复入口）。
+- **视觉**：展开宽度 224px → **160px**（收起态 64px 不变）；入口左内距 8 → 16px、行高 34 → 38px、图标与文字间距 10 → 12px（留白比例参考抖音 Web 侧栏：图标中心约在面板宽度的 1/5 处）；导航顶部留白 10 → 20px（与窗框拉开距离）；激活态从「色条 + 卡片底 + ring + shadow」四个信号收敛为「白底 + 左侧 2px 强调条 + 图标强调色」；分区之间只用 1px 发丝线，不再有分组标题与折叠箭头；收起态为 40px 图标轨（底部自上而下：设置 / 展开 / 连接状态点），同样可打开「更多」浮层。
+- **测试**：`Sidebar.test.tsx` 重写为新结构（当前项高亮、更多浮层展开/导航/Escape/收起态可达、状态行模型名、版本红点、画板保存门禁），`pnpm check` / `pnpm lint` / `pnpm test` 全绿。
+
+### 优化（设置页改为横向分区标签，去掉第二列目录）
+
+- **布局**：设置页原先在主侧栏右边还有一列 176px 的竖排分区目录（软件更新 / 模型 / 外观 / 行为 / 生成规划 / 网络 / 数据管理），与主侧栏叠成「两层竖排导航」；改为「标题 + 横向分区标签」合并为一排的顶栏（省掉一整行），内容区直接使用整幅宽度，窄窗口下标签栏可横向滚动。
+- **细节**：当前分区随内容滚动高亮（重写 scroll-spy：取「已滚过容器顶部的最后一个分区」，较原「顶部 80–200px 窗口」更稳定），高亮标签会自动滚入标签栏可视区；标签沿用图标 + 13px 文字 + accent-soft 激活底色。
+- **测试**：`SettingsPage.test.tsx` 17 条保持全绿（导航仍为 `role="navigation"` + 「设置分区」label，首个入口仍是「软件更新」，`settings-updater` 仍是内容区第一个分区）。
+
+### 修复（侧栏收起状态重启后被重置）
+
+- **问题**：点击「收起侧栏」后状态只存在内存（`useUIStore.sidebarCollapsed` 初始值写死为 `false`），切页没问题，但重启应用后又变回展开。
+- **修复**：收起状态读写 `localStorage['sidebar-collapsed']`（与群聊列表收起的既有做法一致）；`toggleSidebar` / `setSidebarCollapsed` 都会落盘，启动时按上次选择初始化。
+- **测试**：新增 `src/store/__tests__/useUIStore.test.ts` 5 条（toggle/set 写入、重新初始化后恢复、无记录时默认展开、群聊列表持久化键互不影响）。
+
+### 新增（界面选项持久化：重启后保持上次选择）
+
+- **通用能力**：新增 [`src/lib/usePersistentState.ts`](src/lib/usePersistentState.ts)（`usePersistentState` / `usePersistentSet`，落 localStorage，支持枚举脏值校验、集合过滤与数量上限），界面偏好统一走这个 hook，不再逐处手写 localStorage。
+- **主窗口**：新增 `electron/features/windowState.ts`，退出时保存窗口尺寸 / 位置 / 最大化，启动时恢复；显示器变化导致坐标出界时回落默认尺寸（避免窗口开在屏幕外），并做最小尺寸收敛与损坏文件兜底。
+- **页面选项**：角色卡页视图（网格/列表）与排序方式、API 页子标签（对话 API / TTS / 生图 / 识图 / 语义检索）、帮助页标签与展开的 FAQ、设置页当前分区（再次进入自动滚回上次位置）。
+- **展开 / 筛选状态**：世界书条目展开、MCP 卡片展开、正则分组折叠、会话切换器排序、记忆面板历史筛选、世界书调试筛选。
+- **清理**：删除 `useUIStore` 中未被任何组件使用的 `contextPanelOpen / toggleContextPanel / setContextPanelOpen` 死代码。
+- **测试**：新增 `usePersistentState.test.tsx`（7 条）、`windowState.test.ts`（6 条）与 ApiPage / HelpPage 的「重启后仍停在原标签」用例；受影响页面测试补 `localStorage.clear()` 隔离。全量 `pnpm test` 312 文件 / 3947 条通过。
+
+### 修复（设置页「显示与行为」两列留白）
+
+- **问题**：「显示与行为」里的三个分组（对话体验 / 角色表达 / 封面效果）在 `xl` 两列网格里按 DOM 顺序自动排布，「封面效果」落到第二行左半格，右侧留下整块空白，卡片底部明显不平衡（设置页内容区改为全宽后更明显）。
+- **修复**：改为显式两列——左列放紧凑的「对话体验 + 封面效果」，右列放纵向最长的「角色表达」，消除半行空白；窄屏（单列）顺序为 对话体验 → 封面效果 → 角色表达。
+
+### 修复（「下一步方向」在长记忆改写世界状态后消失、自动生成静默失败）
+
+- **现象**：开启「下一步方向」后，回复刚出来时三个方向卡片正常，几秒后整块消失（消息正文一个字都没变）；有时自动生成失败既没有卡片、也没有任何提示。
+- **根因**：方向来源指纹把整段消息列表与会话易变字段（`memoryCurrentState` / `narrativeMode` / `personaId`）一并纳入。后台自动长记忆在回复后几秒改写世界状态，渲染层 `matchesFeatureSource` 随即失配、卡片整块消失；主进程 `commitFeatureResult` 在锁内用磁盘数据复核同一指纹，长记忆先落盘时方向提交被判失效，自动链路静默丢结果。
+- **修复**：来源指纹收敛为「产生它的那条消息」（`message` 模式，只看该消息自身）；会话级变化（叙事模式 / 世界状态 / 身份）不再让方向失效，改为静默换一批（`refreshSingleDialogueDirections` / `refreshGroupDialogueDirections`）——旧方向在新结果到达前保持可见，失败也不清空、不闪空。
+- **失败可见与手动重试**：自动链路失败弹出「下一步方向生成失败」提示；最新一条可操作回复下新增「生成方向」按钮（单聊气泡内、群聊消息内同款），不依赖卡片已存在，点它即可补生成。
+- **世界状态刷新**：单聊改世界状态、群聊改世界状态、自动长记忆（单聊 `runMemorySummary` / 群聊长记忆总结）落盘后，世界状态变化即触发静默换一批。
+- **结束原因收紧**：只有 `length` / `content_filter` / `tool_calls` / `cancelled` / `network_error` 才丢弃方向结果；`unknown`（服务端未返回 `finish_reason`，部分 OpenAI 兼容实现如此）不再一律丢弃，修复这类连接永远生成不出方向。
+- **附带**：`withoutDirections` 换方向时同时清掉 `dialogueDirectionsSource`，不留旧来源。
+- **测试**：新增 `src/store/__tests__/dialogueDirectionsResilience.test.ts`、`src/store/__tests__/sessionWorldStateDirectionRefresh.test.ts`；`MessageBubble` / `GroupChatMessage` 补「生成方向」入口用例。
+
+### 修复（英文撇号被对白渲染改写成引号）
+
+- **问题**：`remark-roleplay` 为识别对白把 CJK 引号统一归一化成 ASCII 双引号，但随后把归一化后的文本写回了 AST，导致英文里的 `I've` / `you'll` 渲染成 `I"ve` / `you"ll`，引号配对也随之错位。
+- **修复**：归一化只用于「检测」对白区间，输出仍按原文索引切片；`'` 不再参与归一化。
+- **测试**：`remark-roleplay.test.tsx` 补「英文撇号原样输出」用例。
+
+### 变更（对话页状态条不再常驻世界书）
+
+- **变更**：对话页顶部状态条原先列出所有勾选生效的世界书，属于「上下文配置」而非对话内容，常驻会挤占正文首屏，也和输入区快捷设置里的世界书勾选重复；一并去掉 `lorebook.list()` 这次 IPC 与全量列表解析。状态条现在只展示从 AI 回复里解析出的状态项，没有状态项时不占位。
+- **测试**：新增 `src/components/chat/__tests__/StatusBar.test.tsx`（状态项解析、无状态项不渲染）。
+
+### 修复（续写结果结构未闭合）
+
+- **问题**：续写模型常在台词中途停笔，留下未闭合的引号 / 括号 / 书名号或奇数星号（如 `…清了清嗓子说：“那就来吧。`），而完整性判定只看句末标点，这类文本会被当作完整句写回输入框。
+- **修复**：复用 shared `closeDanglingMarks()` 做确定性闭合兜底——按缺口补闭合符，末尾只剩开符号时删掉开符号（不补空标记对），幂等；`useChatInputState` 在写回前统一调用。
+- **测试**：shared `textMetrics.test.ts` 补 7 条闭合用例，`useChatInputState.test.ts` 补「续写结果补齐未闭合引号」。
+
+### 优化（角色卡小卡片标签行）
+
+- **问题**：8 列超宽布局下小卡只有约 168px，底部「时间 + 标签」挤成一行，标签被压缩到只剩「ca…」这类碎片，长标签折行还会把同排卡片撑得高低不齐。
+- **修复**：小卡固定单行、首个标签保宽其余截断，标签数 1 → 2；用容器查询（`@container`）按卡片实际宽度切换——窄于 185px 只显示 1 个标签，剩余计数同步为 `+N`；小卡去掉时间行（空间留给标签），中/大卡保持原样。
+
 ## [0.22.0] - 2026-11-04
 
 ### 变更（无边框窗口与新样式）
@@ -1448,3 +1560,6 @@
 - **数据管理**：完整备份/恢复（含角色、对话、设置、世界书），角色卡导入/导出
 - **API 用量统计**：Token 消耗记录与可视化
 - **MCP 工具集成**：Maven 版本查询、Everything 文件搜索等
+
+
+

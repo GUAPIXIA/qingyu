@@ -3,7 +3,7 @@
 > 轻量级 AI 角色扮演桌面客户端 — 基于 SillyTavern 理念，专注本地化、开箱即用体验。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.22.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-0.23.0-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/electron-43.x-47848f?style=flat-square" alt="electron">
   <img src="https://img.shields.io/badge/react-18.x-61dafb?style=flat-square" alt="react">
   <img src="https://img.shields.io/badge/typescript-5.x-3178c6?style=flat-square" alt="typescript">
@@ -41,7 +41,7 @@ PC 主仓通过 Git 子模块挂载 shared（实际拓扑，2026-10-14 核对）
 
 | 子项目 | 路径 | Git 仓库 | 说明 | 版本 |
 |--------|------|----------|------|------|
-| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.22.0 |
+| **桌面客户端** | `./` | `GUAPIXIA/qingyu`（main） | Electron + React 主应用 | v0.23.0 |
 | **共享核心** | `shared/` | `GUAPIXIA/qingyu-shared`（子模块） | chat-core 纯逻辑、跨端契约与 fixture | — |
 | **公告服务端** | `server/` | 同一仓库 | 在线公告 / 版本信息推送（可独立 Docker 部署） | v1.0.4 |
 
@@ -113,7 +113,7 @@ PC 主仓通过 Git 子模块挂载 shared（实际拓扑，2026-10-14 核对）
 - 字体大小四档 + 自定义
 
 ### 🔊 更多
-- **TTS 语音合成** — Windows 系统语音 + Edge TTS（免费高质量网络语音）（Fish Audio / OpenAI TTS 规划中）
+- **TTS 语音合成** — Windows 系统语音 + Edge TTS（免费高质量网络语音）+ OpenAI 兼容 / 小米 MiMo / DeepSeek TTS（官方海星·暗潮音色）
 - **MCP 工具集成** — 支持 Model Context Protocol，扩展 AI 能力
 - **斜杠命令** — `/help`、`/imagine`、`/continue` 等 14 个内置命令
 - **用量统计** — 按模型/角色/日期多维度统计，当前为字符数统计（精确 Token 与费用估算开发中）
