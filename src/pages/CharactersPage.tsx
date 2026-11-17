@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useDeferredValue, useRef } from "react"
 import { useNavigate } from "react-router-dom"
+import { usePersistentState } from "../lib/usePersistentState"
 import { useCharacterStore } from "../store/useCharacterStore"
 import { useToastStore } from "../store/useToastStore"
 import { CharacterCard } from "../components/character/CharacterCard"
@@ -33,9 +34,13 @@ export function CharactersPage() {
   const [editCharacter, setEditCharacter] = useState<Character | null>(null)
   const [search, setSearch] = useState("")
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [viewMode, setViewMode] = usePersistentState<"grid" | "list">("characters-view-mode", "grid", {
+    validate: (value): value is "grid" | "list" => value === "grid" || value === "list",
+  })
   const [cardSize, setCardSize] = useState<CardSize>(loadCardSize)
-  const [sortKey, setSortKey] = useState<SortKey>("updatedAt")
+  const [sortKey, setSortKey] = usePersistentState<SortKey>("characters-sort-key", "updatedAt", {
+    validate: (value): value is SortKey => value === "updatedAt" || value === "createdAt" || value === "name",
+  })
   const [detailCharacter, setDetailCharacter] = useState<Character | null>(null)
   const [batchResult, setBatchResult] = useState<{ total: number; successCount: number; failCount: number; skippedCount: number; canceled: boolean; fails: { name: string; error: string }[]; skippedIdentical: number; copied: number; overwritten: number; notes: string[] } | null>(null)
   // UEX-P1-17：同名冲突策略（默认另存副本；「覆盖原卡」仅用户显式选择）

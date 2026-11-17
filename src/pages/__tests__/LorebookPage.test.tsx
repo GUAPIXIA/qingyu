@@ -52,6 +52,8 @@ import { LorebookPage } from '../LorebookPage'
 
 describe('LorebookPage', () => {
   beforeEach(() => {
+    // 展开集合等界面选项已持久化到 localStorage，用例间需隔离
+    localStorage.clear()
     vi.clearAllMocks()
     indexProgressListener = null
     useSettingsStore.setState({ settings: getDefaultSettings() })

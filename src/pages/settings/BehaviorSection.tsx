@@ -69,31 +69,82 @@ export function BehaviorSection({ settings, updateSettings }: BehaviorSectionPro
 
   return (
     <SectionCard title="显示与行为" icon={<Sliders className="h-4 w-4" />} storageKey="behavior">
+      {/*
+        两列布局按「内容高度」分列，而不是让三个分组在网格里自动流：
+        原先 对话体验 / 角色表达 / 封面效果 依次排进 2 列网格时，封面效果会独占第二行左半格，
+        右侧留下整块空白。这里左列放紧凑的 对话体验 + 封面效果，右列放纵向最长的 角色表达。
+      */}
       <div className="mt-3 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-        <BehaviorGroup
-          icon={<MessageSquareText className="h-4 w-4" />}
-          title="对话体验"
-          description="控制回复呈现、阅读跟随和新会话的记忆习惯"
-        >
-          <ToggleSetting
-            label="流式输出"
-            description="生成时逐步显示回复，减少等待感"
-            checked={settings.streamOutput}
-            onChange={(streamOutput) => updateSettings({ streamOutput })}
-          />
-          <ToggleSetting
-            label="自动滚动"
-            description="回复生成期间自动跟随到最新内容"
-            checked={settings.autoScroll}
-            onChange={(autoScroll) => updateSettings({ autoScroll })}
-          />
-          <ToggleSetting
-            label="新建对话默认开启长记忆"
-            description="新建单聊和群聊时每 10 条自动总结；已有会话不受影响"
-            checked={settings.defaultMemoryEnabled ?? false}
-            onChange={(defaultMemoryEnabled) => updateSettings({ defaultMemoryEnabled })}
-          />
-        </BehaviorGroup>
+        <div className="space-y-4">
+          <BehaviorGroup
+            icon={<MessageSquareText className="h-4 w-4" />}
+            title="对话体验"
+            description="控制回复呈现、阅读跟随和新会话的记忆习惯"
+          >
+            <ToggleSetting
+              label="流式输出"
+              description="生成时逐步显示回复，减少等待感"
+              checked={settings.streamOutput}
+              onChange={(streamOutput) => updateSettings({ streamOutput })}
+            />
+            <ToggleSetting
+              label="自动滚动"
+              description="回复生成期间自动跟随到最新内容"
+              checked={settings.autoScroll}
+              onChange={(autoScroll) => updateSettings({ autoScroll })}
+            />
+            <ToggleSetting
+              label="新建对话默认开启长记忆"
+              description="新建单聊和群聊时每 10 条自动总结；已有会话不受影响"
+              checked={settings.defaultMemoryEnabled ?? false}
+              onChange={(defaultMemoryEnabled) => updateSettings({ defaultMemoryEnabled })}
+            />
+          </BehaviorGroup>
+
+          <BehaviorGroup
+            icon={<ImageIcon className="h-4 w-4" />}
+            title="封面效果"
+            description="调整角色卡封面背景的景深和柔化程度"
+          >
+            <div className="py-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="cover-blur-strength" className="text-sm font-medium text-tavern-text">毛玻璃强度</label>
+                <span className="rounded-md border border-tavern-border-soft bg-tavern-bg-card px-2 py-0.5 font-mono text-xs tabular-nums text-tavern-text-soft">
+                  {blurStrength}px
+                </span>
+              </div>
+              <input
+                id="cover-blur-strength"
+                type="range"
+                min="0"
+                max="30"
+                step="1"
+                value={blurStrength}
+                onChange={(event) => updateSettings({ coverBlurStrength: Number(event.target.value) })}
+                className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-tavern-bg-hover accent-tavern-accent"
+              />
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                {[0, 8, 16, 24].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-label={`封面毛玻璃 ${value === 0 ? '关闭' : `${value}px`}`}
+                    onClick={() => updateSettings({ coverBlurStrength: value })}
+                    className={cn(
+                      'rounded-lg border px-2 py-1 text-xs transition-colors',
+                      blurStrength === value
+                        ? 'border-tavern-accent/60 bg-tavern-accent-soft text-tavern-accent'
+                        : 'border-tavern-border-soft bg-tavern-bg-card/45 text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text',
+                    )}
+                  >
+                    {value === 0 ? '关闭' : `${value}px`}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[11px] leading-relaxed text-tavern-text-muted">设为 0 时完全关闭封面模糊效果。</p>
+            </div>
+          </BehaviorGroup>
+        </div>
 
         <BehaviorGroup
           icon={<Brain className="h-4 w-4" />}
@@ -165,50 +216,6 @@ export function BehaviorSection({ settings, updateSettings }: BehaviorSectionPro
               <option value="Español">Español</option>
               <option value="Русский">Русский</option>
             </select>
-          </div>
-        </BehaviorGroup>
-
-        <BehaviorGroup
-          icon={<ImageIcon className="h-4 w-4" />}
-          title="封面效果"
-          description="调整角色卡封面背景的景深和柔化程度"
-        >
-          <div className="py-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <label htmlFor="cover-blur-strength" className="text-sm font-medium text-tavern-text">毛玻璃强度</label>
-              <span className="rounded-md border border-tavern-border-soft bg-tavern-bg-card px-2 py-0.5 font-mono text-xs tabular-nums text-tavern-text-soft">
-                {blurStrength}px
-              </span>
-            </div>
-            <input
-              id="cover-blur-strength"
-              type="range"
-              min="0"
-              max="30"
-              step="1"
-              value={blurStrength}
-              onChange={(event) => updateSettings({ coverBlurStrength: Number(event.target.value) })}
-              className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-tavern-bg-hover accent-tavern-accent"
-            />
-            <div className="mt-3 grid grid-cols-4 gap-2">
-              {[0, 8, 16, 24].map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-label={`封面毛玻璃 ${value === 0 ? '关闭' : `${value}px`}`}
-                  onClick={() => updateSettings({ coverBlurStrength: value })}
-                  className={cn(
-                    'rounded-lg border px-2 py-1 text-xs transition-colors',
-                    blurStrength === value
-                      ? 'border-tavern-accent/60 bg-tavern-accent-soft text-tavern-accent'
-                      : 'border-tavern-border-soft bg-tavern-bg-card/45 text-tavern-text-muted hover:border-tavern-border hover:text-tavern-text',
-                  )}
-                >
-                  {value === 0 ? '关闭' : `${value}px`}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2.5 text-[11px] leading-relaxed text-tavern-text-muted">设为 0 时完全关闭封面模糊效果。</p>
           </div>
         </BehaviorGroup>
       </div>

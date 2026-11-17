@@ -3,14 +3,13 @@ import { useSettingsStore } from '../store/useSettingsStore'
 import { pushToast } from '../store/useToastStore'
 import { PROVIDER_INFO, isConnectionConfigured } from '../utils/defaults'
 import { cn } from '../lib/utils'
+import { usePersistentState } from '../lib/usePersistentState'
 import type { ProviderType, ConnectionProfile } from '../../shared/types'
 import {
   Plug,
   Loader2,
   Check,
   X,
-  Eye,
-  EyeOff,
   Plus,
   Trash2,
   Circle,
@@ -20,6 +19,8 @@ import {
   EyeIcon,
   Brain,
 } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide'
+import { MorphingIcon } from '../components/common/MorphingIcon'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { TTSModelsSection } from '../components/api/TTSModelsSection'
 import { ImageGenModelsSection } from '../components/api/ImageGenModelsSection'
@@ -100,7 +101,9 @@ export function ApiPage() {
     saveError,
   } = useSettingsStore()
 
-  const [tab, setTab] = useState<TabKey>('chat')
+  const [tab, setTab] = usePersistentState<TabKey>('api-active-tab', 'chat', {
+    validate: (value): value is TabKey => TABS.some((item) => item.key === value),
+  })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [showKey, setShowKey] = useState(false)
@@ -599,7 +602,7 @@ export function ApiPage() {
                               onClick={() => setShowKey((v) => !v)}
                               className="absolute right-2 top-1/2 -translate-y-1/2 text-tavern-text-muted hover:text-tavern-text"
                             >
-                              {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              <MorphingIcon icon={showKey ? EyeOff : Eye} className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
@@ -804,7 +807,7 @@ export function ApiPage() {
                             onClick={() => setShowKey((v) => !v)}
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-tavern-text-muted hover:text-tavern-text"
                           >
-                            {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            <MorphingIcon icon={showKey ? EyeOff : Eye} className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>

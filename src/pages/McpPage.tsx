@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
+import { usePersistentSet } from '../lib/usePersistentState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { McpServerFormModal } from './mcp/McpServerFormModal'
 import { McpTestPanel } from './mcp/McpTestPanel'
@@ -28,7 +29,7 @@ export function McpPage() {
   const [servers, setServers] = useState<McpServerConfig[]>([])
   const [statuses, setStatuses] = useState<McpServerStatus[]>([])
   const [tools, setTools] = useState<McpTool[]>([])
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [expandedIds, setExpandedIds] = usePersistentSet('mcp-expanded-ids')
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   // UEX-P1-29：删除走统一 ConfirmDialog（原 window.confirm）
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)

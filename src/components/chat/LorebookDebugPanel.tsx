@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { usePersistentState } from '../../lib/usePersistentState'
 import {
   Activity,
   AlertTriangle,
@@ -65,7 +66,10 @@ function formatTime(timestamp: number): string {
 
 export function LorebookDebugPanel({ live, preview }: LorebookDebugPanelProps) {
   const [source, setSource] = useState<'live' | 'preview'>(live ? 'live' : 'preview')
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter] = usePersistentState<Filter>('lorebook-debug-filter', 'all', {
+    validate: (value): value is Filter =>
+      value === 'all' || value === 'injected' || value === 'dropped' || value === 'not_triggered',
+  })
   const [query, setQuery] = useState('')
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
 

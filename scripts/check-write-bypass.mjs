@@ -130,6 +130,8 @@ const LOCAL_ONLY_FILES = [
   'electron/features/spatial/repository.ts',
   'electron/features/spatial/ai/singleChatService.ts',
   'electron/features/spatial/ai/groupChatService.ts',
+  // 窗口尺寸/位置/最大化：纯本地界面状态（userData 单机保存，不进入同步域）
+  'electron/features/windowState.ts',
 ]
 
 function walk(dir) {

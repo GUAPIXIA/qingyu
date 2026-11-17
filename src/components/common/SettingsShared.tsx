@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide'
+import { MorphingIcon } from './MorphingIcon'
 import { cn } from '../../lib/utils'
 
 const SETTINGS_SECTION_STATE_KEY = 'settings-section-open-state-v1'
@@ -68,8 +69,9 @@ export function SectionCard({
           <span className="text-tavern-accent">{icon}</span>
           <h2 className="font-display text-base font-semibold">{title}</h2>
         </div>
-        <ChevronDown
-          className={cn('w-4 h-4 text-tavern-text-muted transition-transform', open && 'rotate-180')}
+        <MorphingIcon
+          icon={open ? ChevronUp : ChevronDown}
+          className="w-4 h-4 text-tavern-text-muted"
         />
       </button>
       {open && <div className="px-4 pb-4 pt-1 border-t border-tavern-border-soft">{children}</div>}

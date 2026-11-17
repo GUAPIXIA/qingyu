@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { usePersistentState } from '../../lib/usePersistentState'
 import {
   Brain,
   Check,
@@ -74,7 +75,10 @@ export function MemoryPanel({
 }: MemoryPanelProps) {
   const currentSession = sessions.find(s => s.id === currentSessionId)
   const [historySearch, setHistorySearch] = useState('')
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'inactive' | 'superseded'>('all')
+  const [historyFilter, setHistoryFilter] = usePersistentState<'all' | 'inactive' | 'superseded'>('memory-history-filter', 'all', {
+    validate: (value): value is 'all' | 'inactive' | 'superseded' =>
+      value === 'all' || value === 'inactive' || value === 'superseded',
+  })
   const [showHistory, setShowHistory] = useState(false)
   const [isAddingFact, setIsAddingFact] = useState(false)
   const [newFact, setNewFact] = useState('')

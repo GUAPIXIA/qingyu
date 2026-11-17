@@ -1,13 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Heart, MapPin, Smile, BookOpen, Lock } from 'lucide-react'
-import { useChatStore } from '../../store/useChatStore'
-import { useCharacterStore } from '../../store/useCharacterStore'
-import { getEffectiveLorebookIds } from '../../../shared/chat-core/lorebook'
-import { logError } from '../../lib/logger'
-import type { Character, Message, Lorebook } from '../../../shared/types'
+import { useMemo } from 'react'
+import { Heart, MapPin, Smile } from 'lucide-react'
+import type { Message } from '../../../shared/types'
 
 interface StatusBarProps {
-  character: Character
   messages: Message[]
 }
 
@@ -54,55 +49,23 @@ function parseStatusFromMessages(messages: Message[]): StatusItem[] {
   }))
 }
 
-export function StatusBar({ character, messages }: StatusBarProps) {
+/**
+ * 对话页顶部的状态条：只展示从 AI 回复里解析出的状态项。
+ *
+ * 勾选生效的世界书不在这里显示——世界书是「上下文配置」而不是对话内容，常驻展示
+ * 会挤占正文首屏且与输入区快捷设置的勾选状态重复。需要确认当前勾选时看「对话快捷设置」
+ * 的世界书分组即可。此前的世界书条也带来一次 `lorebook.list()` IPC 与全量列表解析，
+ * 这里一并去掉。
+ */
+export function StatusBar({ messages }: StatusBarProps) {
   // P1 修复：useMemo 替代 useEffect+useState（省一次渲染周期，
   // 且仅在 messages 引用变化时重新解析状态）
   const statusItems = useMemo(() => parseStatusFromMessages(messages), [messages])
-  const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
-  const activeLorebookIds = useChatStore(s => s.activeLorebookIds)
-  const currentCharacter = useCharacterStore(s => s.currentCharacter)
 
-  // 加载世界书列表：角色切换 或 激活数量变化时重新加载
-  useEffect(() => {
-    window.api.lorebook.list().then(setLorebooks).catch((e) => logError('StatusBar:loadLorebooks', e))
-  }, [character.id, activeLorebookIds.length])
-
-  // 角色绑定的世界书 ID
-  const boundLorebookIds = useMemo(() => {
-    return getEffectiveLorebookIds(currentCharacter)
-  }, [currentCharacter])
-
-  // 解析激活的世界书名称
-  const activeLorebookNames = useMemo(() => {
-    return activeLorebookIds
-      .map(id => {
-        const lb = lorebooks.find(l => l.id === id)
-        return lb ? { id, name: lb.name, isBound: boundLorebookIds.includes(id) } : null
-      })
-      .filter(Boolean) as { id: string; name: string; isBound: boolean }[]
-  }, [activeLorebookIds, boundLorebookIds, lorebooks])
-
-  if (statusItems.length === 0 && activeLorebookNames.length === 0) return null
+  if (statusItems.length === 0) return null
 
   return (
     <div className="flex items-center gap-3 px-4 py-2 border-b border-tavern-border-soft bg-tavern-bg-soft overflow-x-auto">
-      {/* 激活的世界书 — 直接可见，绑定世界书带锁图标 */}
-      {activeLorebookNames.map(lb => (
-        <div key={lb.id} className="flex items-center gap-1 text-xs whitespace-nowrap">
-          {lb.isBound ? (
-            <Lock className="w-3 h-3 text-tavern-accent" />
-          ) : (
-            <BookOpen className="w-3 h-3 text-tavern-text-muted" />
-          )}
-          <span className={lb.isBound ? 'text-tavern-accent font-medium' : 'text-tavern-text-muted'}>
-            {lb.name}
-          </span>
-        </div>
-      ))}
-      {/* 状态项分隔符 */}
-      {activeLorebookNames.length > 0 && statusItems.length > 0 && (
-        <span className="w-px h-4 bg-tavern-border-soft" />
-      )}
       {statusItems.map((item, i) => {
         const Icon = item.icon
         return (

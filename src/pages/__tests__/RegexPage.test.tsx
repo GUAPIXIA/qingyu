@@ -31,6 +31,7 @@ import { RegexPage } from '../RegexPage'
 
 describe('RegexPage', () => {
   beforeEach(() => {
+    localStorage.clear()
     vi.clearAllMocks()
   })
 

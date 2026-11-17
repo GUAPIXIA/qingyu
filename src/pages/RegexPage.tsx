@@ -3,7 +3,10 @@ import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { cn } from '../lib/utils'
-import { Regex as RegexIcon, Plus, Trash2, Pencil, Play, ChevronDown, ChevronRight } from 'lucide-react'
+import { usePersistentSet } from '../lib/usePersistentState'
+import { Regex as RegexIcon, Plus, Trash2, Pencil, Play } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide'
+import { MorphingIcon } from '../components/common/MorphingIcon'
 import type { RegexRule } from '../../shared/types'
 import { applyRegexRules } from '../../shared/chat-core/regex'
 
@@ -22,7 +25,7 @@ export function RegexPage() {
   const [rules, setRules] = useState<RegexRule[]>([])
   const [editing, setEditing] = useState<RegexRule | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [collapsedGroups, setCollapsedGroups] = usePersistentSet('regex-collapsed-groups')
   // 预览测试
   const [testScope, setTestScope] = useState<'input' | 'output'>('output')
   const [testInput, setTestInput] = useState('')
@@ -145,7 +148,7 @@ export function RegexPage() {
                     onClick={() => toggleGroup(group)}
                     className="flex items-center gap-1.5 text-sm font-medium text-tavern-text-muted hover:text-tavern-text w-full"
                   >
-                    {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    <MorphingIcon icon={collapsed ? ChevronRight : ChevronDown} className="w-4 h-4" />
                     <span>{group}</span>
                     <span className="text-xs text-tavern-text-muted/60">（{groupRules.length} 条{groupRules.length !== enabledCount ? `，启用 ${enabledCount}` : ''}）</span>
                   </button>

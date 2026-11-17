@@ -92,4 +92,17 @@ describe('模型页面', () => {
     // 原连接一未被修改
     expect(useSettingsStore.getState().settings.connectionProfiles[0].name).toBe('连接一')
   })
+
+  it('记住上次停留的子标签，重新挂载后仍停在语义检索标签', async () => {
+    const semanticTab = () => screen.getAllByRole('button', { name: '语义检索' })[0]
+    const first = render(<ApiPage />)
+    fireEvent.click(semanticTab())
+    expect(await screen.findByRole('heading', { name: '语义检索' })).toBeTruthy()
+    expect(localStorage.getItem('api-active-tab')).toBe('"semantic"')
+    first.unmount()
+
+    render(<ApiPage />)
+    expect(await screen.findByRole('heading', { name: '语义检索' })).toBeTruthy()
+    expect(semanticTab().className).toContain('text-tavern-accent')
+  })
 })

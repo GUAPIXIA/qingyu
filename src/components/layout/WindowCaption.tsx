@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Copy, Minus, Moon, Square, Sun, X } from 'lucide-react'
+import { Minus, X } from 'lucide-react'
+import { Copy, Moon, Square, Sun } from 'lucide'
+import { MorphingIcon } from '../common/MorphingIcon'
 import appIcon from '../../assets/app-icon.png'
 import { getWindowControls } from '../../lib/windowControls'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -77,7 +79,7 @@ export function WindowCaption() {
           title={themeLabel}
           onClick={() => updateSettings({ theme: isDark ? 'light' : 'dark' })}
         >
-          {isDark ? <Sun /> : <Moon />}
+          <MorphingIcon icon={isDark ? Sun : Moon} />
         </button>
         <button
           type="button"
@@ -95,7 +97,7 @@ export function WindowCaption() {
           title={maximized ? '还原' : '最大化'}
           onClick={() => void api.toggleMaximize()}
         >
-          {maximized ? <Copy /> : <Square />}
+          <MorphingIcon icon={maximized ? Copy : Square} />
         </button>
         <button
           type="button"

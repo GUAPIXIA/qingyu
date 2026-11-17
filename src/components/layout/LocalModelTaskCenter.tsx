@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Loader2, AlertTriangle } from 'lucide-react'
+import { Loader2, AlertTriangle } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide'
+import { MorphingIcon } from '../common/MorphingIcon'
 import type { LocalModelTaskSnapshot } from '../../../shared/localModels'
 
 const activeStates = new Set(['queued', 'downloading', 'paused', 'verifying', 'installing', 'testing', 'uninstalling', 'uninstall_pending'])
@@ -37,7 +39,7 @@ export function LocalModelTaskCenter() {
           {failedCount > 0 ? <AlertTriangle className="w-4 h-4 text-tavern-danger" /> : <Loader2 className="w-4 h-4 animate-spin text-tavern-accent" />}
           本地模型任务 {visible.length}{failedCount > 0 ? `（${failedCount} 失败）` : ''}
         </span>
-        {open ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+        <MorphingIcon icon={open ? ChevronDown : ChevronUp} className="w-4 h-4" />
       </button>
       {open && (
         <div className="motion-disclosure border-t border-tavern-border-soft px-3 py-2 space-y-2 max-h-48 overflow-auto">

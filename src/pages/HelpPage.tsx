@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { cn } from '../lib/utils'
 import { logError } from '../lib/logger'
+import { usePersistentState } from '../lib/usePersistentState'
 import {
   Settings,
   MessageSquare,
@@ -202,8 +203,12 @@ const faqs: { q: string; a: string }[] = [
 ]
 
 export function HelpPage() {
-  const [tab, setTab] = useState<TabKey>('guide')
-  const [openFaq, setOpenFaq] = useState<number | null>(0)
+  const [tab, setTab] = usePersistentState<TabKey>('help-active-tab', 'guide', {
+    validate: (value): value is TabKey => value === 'guide' || value === 'faq',
+  })
+  const [openFaq, setOpenFaq] = usePersistentState<number | null>('help-open-faq', 0, {
+    validate: (value): value is number | null => value === null || typeof value === 'number',
+  })
   const [appVersion, setAppVersion] = useState('')
 
   useEffect(() => {

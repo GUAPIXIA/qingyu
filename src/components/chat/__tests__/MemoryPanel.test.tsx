@@ -1,6 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryPanel } from '../MemoryPanel'
+
+// 历史筛选已持久化到 localStorage，用例间需隔离
+beforeEach(() => {
+  localStorage.clear()
+})
 
 function renderPanel(overrides: Partial<React.ComponentProps<typeof MemoryPanel>> = {}) {
   const props: React.ComponentProps<typeof MemoryPanel> = {

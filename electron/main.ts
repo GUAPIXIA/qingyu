@@ -23,6 +23,7 @@ import { registerSpatialIPC } from './ipc/spatial'
 import { registerAnnouncementIPC } from './ipc/announcement'
 import { registerUpdaterIPC } from './services/updater'
 import { registerWindowControlsIPC, attachWindowStateBroadcast } from './ipc/windowControls'
+import { loadWindowState, trackWindowState } from './features/windowState'
 import { ensureSyncDomain, runBootstrapIfEnabled, setSyncDomainUserDataResolver } from './domain/syncDomainService'
 import { schedulePce01GuiBench } from './pce01GuiBench'
 import { IPC_EVENTS } from '../shared/ipc-channels'
@@ -57,9 +58,14 @@ process.on('uncaughtException', (err) => {
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
+  // 恢复上次退出时的窗口尺寸 / 位置 / 最大化状态（首次启动用默认 1280×800）
+  const windowState = loadWindowState()
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    ...(windowState.x !== undefined && windowState.y !== undefined
+      ? { x: windowState.x, y: windowState.y }
+      : {}),
+    width: windowState.width,
+    height: windowState.height,
     minWidth: 900,
     minHeight: 600,
     show: false,
@@ -78,8 +84,12 @@ function createWindow() {
   })
 
   mainWindow.once('ready-to-show', () => {
+    if (windowState.maximized) mainWindow?.maximize()
     mainWindow?.show()
   })
+
+  // 记录窗口尺寸/位置/最大化，供下次启动恢复
+  trackWindowState(mainWindow)
 
   // 自绘标题栏：窗口最大化/全屏状态变化时广播给渲染层
   attachWindowStateBroadcast(mainWindow)

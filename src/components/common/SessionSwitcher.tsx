@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Dropdown } from './Dropdown'
 import { ConfirmDialog } from './ConfirmDialog'
 import { cn } from '../../lib/utils'
+import { usePersistentState } from '../../lib/usePersistentState'
 import { Layers, ChevronDown, Edit2, Trash2, Plus, Search, UserCircle } from 'lucide-react'
 
 interface SessionSwitcherProps {
@@ -43,7 +44,9 @@ export function SessionSwitcher({
   // UEX-P1-33：会话列表轻量搜索（仅会话多时显示）
   const [search, setSearch] = useState('')
   // UEX-P1-33：会话列表轻量排序切换（最近使用 / 名称），仅前端内存态、不落盘
-  const [sortBy, setSortBy] = useState<'recent' | 'name'>('recent')
+  const [sortBy, setSortBy] = usePersistentState<'recent' | 'name'>('session-switcher-sort', 'recent', {
+    validate: (value): value is 'recent' | 'name' => value === 'recent' || value === 'name',
+  })
   // UEX-P1-32：重命名结束标记，防止「回车 + 失焦」重复提交或 Esc 后误提交
   const renameDoneRef = useRef(false)
 

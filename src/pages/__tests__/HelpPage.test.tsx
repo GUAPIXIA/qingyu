@@ -4,6 +4,7 @@ import { HelpPage } from '../HelpPage'
 
 describe('HelpPage 新用户指引', () => {
   beforeEach(() => {
+    localStorage.clear()
     vi.clearAllMocks()
     ;(window.api.app as any) = {
       getVersion: vi.fn().mockResolvedValue('0.11.21'),
@@ -61,5 +62,19 @@ describe('HelpPage 新用户指引', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /GitHub 项目地址/ }))
     expect(window.api.app.openExternal).toHaveBeenCalledWith('https://github.com/GUAPIXIA/qingyu')
+  })
+
+  it('记住上次停留的分区标签，重新挂载后仍停在该标签', async () => {
+    const first = render(<HelpPage />)
+    await act(async () => {})
+
+    fireEvent.click(screen.getByRole('button', { name: '常见问题' }))
+    expect(screen.getByRole('heading', { name: '常见问题' })).toBeTruthy()
+    first.unmount()
+
+    render(<HelpPage />)
+    await act(async () => {})
+    expect(screen.getByRole('heading', { name: '常见问题' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '常见问题' }).className).toContain('bg-tavern-accent-soft')
   })
 })

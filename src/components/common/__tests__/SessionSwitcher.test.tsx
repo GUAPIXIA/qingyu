@@ -1,9 +1,14 @@
 /**
  * SessionSwitcher 单元测试（UEX-P1-32 重命名语义 / UEX-P1-33 会话搜索与排序）
  */
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { SessionSwitcher } from '../SessionSwitcher'
+
+// 排序方式已持久化到 localStorage，用例间需隔离
+beforeEach(() => {
+  localStorage.clear()
+})
 
 function makeSessions(count: number) {
   return Array.from({ length: count }, (_, i) => ({

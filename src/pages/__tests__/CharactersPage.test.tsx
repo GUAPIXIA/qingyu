@@ -24,6 +24,8 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  // 界面选项（视图模式 / 排序等）已持久化到 localStorage，用例间需隔离
+  localStorage.clear()
   useCharacterStore.setState({ characters: [], loaded: false, importError: null, importNotice: null, importProgress: null, importingBatch: false, lorebookSuggestions: null })
   // UEX-P1-17：隔离冲突策略的 localStorage 持久化
   localStorage.removeItem('char-import-conflict')

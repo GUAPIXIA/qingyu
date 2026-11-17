@@ -1,7 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { LorebookDiagnostics } from '../../../../shared/chat-core/lorebook'
 import { LorebookDebugPanel } from '../LorebookDebugPanel'
+
+// 筛选状态已持久化到 localStorage，用例间需隔离
+beforeEach(() => {
+  localStorage.clear()
+})
 
 function makeDiagnostics(mode: 'live' | 'preview', name: string): LorebookDiagnostics {
   return {

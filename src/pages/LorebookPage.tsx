@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { Modal } from '../components/common/Modal'
 import { cn } from '../lib/utils'
 import { logError } from '../lib/logger'
+import { usePersistentSet } from '../lib/usePersistentState'
 import {
   BookOpen,
   BookMarked,
@@ -15,8 +16,6 @@ import {
   Pencil,
   Languages,
   Loader2,
-  ChevronDown,
-  ChevronUp,
   Brain,
   CircleCheck,
   CircleAlert,
@@ -26,6 +25,8 @@ import {
   HeartPulse,
   X,
 } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide'
+import { MorphingIcon } from '../components/common/MorphingIcon'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { resolveRendererGenerationTaskBudget } from '../store/generationTaskBudget'
 import { EditorAssistant } from '../store/editorAssistant'
@@ -92,7 +93,7 @@ export function LorebookPage() {
   const setEditingEntry = (value: LoreEntry | null) => { editor.touch(); setEditingEntryState(value) }
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null)
-  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set())
+  const [expandedEntries, setExpandedEntries] = usePersistentSet('lorebook-expanded-entries')
   /** AI 翻译状态：key 为字段标识 */
   const [translatingField, setTranslatingField] = useState<{ key: string; text: string } | null>(null)
   const [translateResult, setTranslateResult] = useState<string | null>(null)
@@ -945,7 +946,7 @@ export function LorebookPage() {
                                   className="text-xs text-tavern-text-muted hover:text-tavern-text flex items-center gap-0.5"
                                   title={expandedEntries.has(entry.id) ? '收起内容' : '展开内容'}
                                 >
-                                  {expandedEntries.has(entry.id) ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                  <MorphingIcon icon={expandedEntries.has(entry.id) ? ChevronUp : ChevronDown} className="w-3 h-3" />
                                 </button>
                                 <p className={cn(
                                   'text-xs text-tavern-text-soft',

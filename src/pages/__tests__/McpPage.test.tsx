@@ -34,6 +34,7 @@ import { McpPage } from '../McpPage'
 
 describe('McpPage', () => {
   beforeEach(() => {
+    localStorage.clear()
     vi.clearAllMocks()
   })
 

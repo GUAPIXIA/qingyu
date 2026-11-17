@@ -6,8 +6,10 @@ import { PROVIDER_INFO } from '../../utils/defaults'
 import { cn } from '../../lib/utils'
 import type { VisionModelConfig, ProviderType } from '../../../shared/types'
 import {
-  Eye, EyeOff, Plus, Trash2, Check, X, Circle, ChevronUp, ChevronDown, Loader2, Plug,
+  Eye, Plus, Trash2, Check, X, Circle, ChevronUp, ChevronDown, Loader2, Plug,
 } from 'lucide-react'
+import { Eye as EyeData, EyeOff as EyeOffData } from 'lucide'
+import { MorphingIcon } from '../common/MorphingIcon'
 
 function emptyForm(): VisionModelConfig {
   return { id: '', name: '', provider: '', model: '', baseUrl: '', apiKey: '', enabled: true, order: 0 }
@@ -216,7 +218,7 @@ export function VisionModelsSection() {
                 onClick={() => setShowKey((v) => !v)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-tavern-text-muted hover:text-tavern-text"
               >
-                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <MorphingIcon icon={showKey ? EyeOffData : EyeData} className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

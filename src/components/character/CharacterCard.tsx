@@ -8,7 +8,9 @@ import { formatRelativeTime } from '../../utils/format'
 import { charAssetUrl } from '../../utils/asset'
 import { getDisplayName } from '../../../shared/chat-core/variables'
 import { isLocalProvider, isLocalUrl } from '../../utils/defaults'
-import { Edit3, Trash2, MessageSquare, Download, Eye, EyeOff, Pin, Languages, Loader2, MoreHorizontal } from 'lucide-react'
+import { Edit3, Trash2, MessageSquare, Download, Pin, Languages, Loader2, MoreHorizontal } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide'
+import { MorphingIcon } from '../common/MorphingIcon'
 import { useState, useMemo, memo } from 'react'
 import { cn } from '../../lib/utils'
 
@@ -35,7 +37,15 @@ const SIZE_CONFIG = {
     coverAspect: 'aspect-square',
     nameSize: 'text-xs',
     showPersonality: 0,
-    showTags: 1,
+    // 小卡片去掉时间行后底部有空余：多显示标签，避免只留「1 个标签 +6」浪费整行宽度。
+    // 固定单行（不换行）+ 单标签截断：8 列窄卡（约 168px）只放得下 2 个标签，3 个会被截成 Wit… 反而不可读；
+    // 长标签折行还会把卡片撑高、同排高度不齐。
+    showTags: 2,
+    tagRow: 'flex-nowrap overflow-hidden',
+    // 首个标签保宽（不足时截断），其余标签吃剩余宽度：避免两者被一起压缩成 Dom… / Wit…
+    tagItemLead: 'shrink-0 max-w-[5.5rem] truncate',
+    tagItem: 'min-w-0 truncate',
+    compactTags: true,
     showScenario: false,
     showCreator: false,
     padding: 'p-1.5',
@@ -47,6 +57,10 @@ const SIZE_CONFIG = {
     nameSize: 'text-sm',
     showPersonality: 3,
     showTags: 3,
+    tagRow: 'flex-wrap',
+    compactTags: false,
+    tagItemLead: '',
+    tagItem: '',
     showScenario: true,
     showCreator: true,
     padding: 'p-2.5',
@@ -58,6 +72,10 @@ const SIZE_CONFIG = {
     nameSize: 'text-base',
     showPersonality: 99,
     showTags: 99,
+    tagRow: 'flex-wrap',
+    compactTags: false,
+    tagItemLead: '',
+    tagItem: '',
     showScenario: true,
     showCreator: true,
     padding: 'p-3',
@@ -239,7 +257,7 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
             )}
             title={blurEnabled ? '取消毛玻璃' : '毛玻璃效果'}
           >
-            {blurEnabled ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            <MorphingIcon icon={blurEnabled ? EyeOff : Eye} className="w-3.5 h-3.5" />
           </button>
         </>
       ) : (
@@ -333,30 +351,56 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
     const hiddenChipCount = personalityChips.length - visibleChips.length
 
     return (
-      <div className={cn('flex flex-wrap items-center', cfg.gap)}>
-        {/* 性格碎片 — 区别于 tags 的柔和色彩 */}
-        {visibleChips.map((chip) => (
+      <div className={cn('flex items-center', cfg.gap, cfg.tagRow)}>
+        {/* 性格碎片 — 区别于 tags 的柔和色彩。小卡 showPersonality=0：碎片全部不显示，
+            隐藏计数也不再渲染，否则会和标签计数并排出现两个 +N。 */}
+        {visibleChips.map((chip, index) => (
           <span
             key={`p-${chip}`}
-            className={cn('px-1.5 py-0.5 rounded-full bg-tavern-accent/10 text-tavern-accent/80', cfg.tagSize)}
+            className={cn(
+              'px-1.5 py-0.5 rounded-full bg-tavern-accent/10 text-tavern-accent/80',
+              cfg.tagSize,
+              index === 0 ? cfg.tagItemLead : cfg.tagItem,
+            )}
           >
             {chip}
           </span>
         ))}
-        {hiddenChipCount > 0 && (
-          <span className={cn('text-tavern-text-muted', cfg.tagSize)}>+{hiddenChipCount}</span>
+        {cfg.showPersonality > 0 && hiddenChipCount > 0 && (
+          <span className={cn('shrink-0 text-tavern-text-muted', cfg.tagSize)}>+{hiddenChipCount}</span>
         )}
         {/* 标签 */}
-        {visibleTags.map((tag) => (
+        {visibleTags.map((tag, index) => (
           <span
             key={tag}
-            className={cn('px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft', cfg.tagSize)}
+            className={cn(
+              'px-1.5 py-0.5 rounded bg-tavern-bg-hover text-tavern-text-soft',
+              cfg.tagSize,
+              index === 0 ? cn('card-tag-lead', cfg.tagItemLead) : cfg.tagItem,
+              index === 1 && cfg.compactTags && 'card-tag-secondary',
+            )}
           >
             {tag}
           </span>
         ))}
-        {hiddenTagCount > 0 && (
-          <span className={cn('text-tavern-text-muted', cfg.tagSize)}>+{hiddenTagCount}</span>
+        {/* 剩余计数：小卡按容器宽度切换文案（窄卡只显示 1 个标签时多算 1 个），避免计数与实际显示不一致 */}
+        {cfg.compactTags ? (
+          <>
+            {safeTags.length >= 2 && (
+              <span className={cn('shrink-0 text-tavern-text-muted card-tag-count-1', cfg.tagSize)}>
+                +{safeTags.length - 1}
+              </span>
+            )}
+            {hiddenTagCount > 0 && (
+              <span className={cn('shrink-0 text-tavern-text-muted card-tag-count-2', cfg.tagSize)}>
+                +{hiddenTagCount}
+              </span>
+            )}
+          </>
+        ) : (
+          hiddenTagCount > 0 && (
+            <span className={cn('shrink-0 text-tavern-text-muted', cfg.tagSize)}>+{hiddenTagCount}</span>
+          )
         )}
       </div>
     )
@@ -455,7 +499,10 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
   // ====== 网格模式 ======
   return (
     <div
-      className="card overflow-hidden group hover:border-tavern-accent transition-colors cursor-pointer"
+      className={cn(
+        'card overflow-hidden group hover:border-tavern-accent transition-colors cursor-pointer',
+        cardSize === 'sm' && 'card-sm',
+      )}
       onClick={() => onDetail?.(character)}
     >
       {/* 封面区 */}
@@ -513,30 +560,32 @@ function CharacterCardImpl({ character, onEdit, onDelete, onChat, onDetail, view
           </p>
         )}
 
-        {/* 底部：时间 + 翻译 + 创作者 */}
-        <div className={cn('flex items-center justify-between mt-1.5', cardSize === 'sm' ? 'text-[10px]' : 'text-xs')}>
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-tavern-text-muted shrink-0">{formatRelativeTime(character.updatedAt)}</span>
-            {/* 首条消息翻译按钮（仅中/大卡，有首条消息时显示） */}
-            {cardSize !== 'sm' && character.firstMessage && !character.translatedContent?.firstMessage && (
-              <button
-                onClick={handleTranslateFirstMessage}
-                disabled={translating}
-                className="shrink-0 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent/10 transition-colors"
-                title="翻译首条消息"
-              >
-                {translating ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Languages className="w-3 h-3" />
-                )}
-              </button>
+        {/* 底部：时间 + 翻译 + 创作者（小卡不显示时间，空间留给标签） */}
+        {cardSize !== 'sm' && (
+          <div className="flex items-center justify-between mt-1.5 text-xs">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-tavern-text-muted shrink-0">{formatRelativeTime(character.updatedAt)}</span>
+              {/* 首条消息翻译按钮（有首条消息时显示） */}
+              {character.firstMessage && !character.translatedContent?.firstMessage && (
+                <button
+                  onClick={handleTranslateFirstMessage}
+                  disabled={translating}
+                  className="shrink-0 p-0.5 rounded text-tavern-text-muted hover:text-tavern-accent hover:bg-tavern-accent/10 transition-colors"
+                  title="翻译首条消息"
+                >
+                  {translating ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Languages className="w-3 h-3" />
+                  )}
+                </button>
+              )}
+            </div>
+            {cfg.showCreator && character.creator && (
+              <span className="text-tavern-text-muted/50 truncate ml-2">@{character.creator}</span>
             )}
           </div>
-          {cfg.showCreator && character.creator && (
-            <span className="text-tavern-text-muted/50 truncate ml-2">@{character.creator}</span>
-          )}
-        </div>
+        )}
       </div>
 
       {previewOverlay}

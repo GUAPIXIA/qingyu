@@ -16,10 +16,12 @@ import type {
   LocalComfyWorkflow,
 } from '../../../shared/ipc-api'
 import {
-  Image, Plus, Trash2, Check, Eye, EyeOff,
+  Image, Plus, Trash2, Check,
   Circle, ChevronUp, ChevronDown, Loader2, FolderOpen, RefreshCw, FileJson2,
   AlertTriangle, RotateCcw, Box, MessageSquareText,
 } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide'
+import { MorphingIcon } from '../common/MorphingIcon'
 
 /** 提供商选项 */
 const PROVIDERS: Array<{ value: ImageGenProvider; label: string }> = [
@@ -1040,7 +1042,7 @@ export function ImageGenModelsSection() {
               onClick={() => setShowKey((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-tavern-text-muted hover:text-tavern-text"
             >
-              {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <MorphingIcon icon={showKey ? EyeOff : Eye} className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

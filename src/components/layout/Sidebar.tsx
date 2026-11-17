@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, type MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useUIStore } from '../../store/useUIStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
@@ -7,59 +8,154 @@ import { logError } from '../../lib/logger'
 import { flushSpatialBoard } from '../../lib/spatialFlush'
 import { isConnectionConfigured } from '../../utils/defaults'
 import {
-  MessageSquare,
-  Users,
-  Settings,
-  Plug,
-  BookOpen,
-  Sliders,
-  UsersRound,
-  HelpCircle,
-  PanelLeftClose,
-  PanelLeft,
-  Regex as RegexIcon,
-  Zap,
-  UserCircle,
   BarChart3,
-  Wrench,
+  BookOpen,
+  Ellipsis,
+  HelpCircle,
   Megaphone,
-  ChevronDown,
+  MessageSquare,
+  MessagesSquare,
+  Plug,
+  Regex as RegexIcon,
+  Settings,
+  Sliders,
+  UserCircle,
+  Users,
+  Wrench,
+  Zap,
 } from 'lucide-react'
+import { PanelLeft, PanelLeftClose } from 'lucide'
+import { MorphingIcon } from '../common/MorphingIcon'
 
-// S2-A 导航分组：核心/资源/服务/系统，默认仅核心展开，保证 900×600 下核心入口无需滚动
-const navGroups = [
-  {
-    id: 'core', label: '核心', defaultOpen: true, items: [
-      { to: '/chat', label: '对话', icon: MessageSquare },
-      { to: '/characters', label: '角色卡', icon: Users },
-      { to: '/group', label: '群聊', icon: UsersRound },
-    ]
-  },
-  {
-    id: 'resource', label: '资源', defaultOpen: false, items: [
-      { to: '/personas', label: '身份', icon: UserCircle },
-      { to: '/lorebook', label: '世界书', icon: BookOpen },
-      { to: '/presets', label: '预设', icon: Sliders },
-      { to: '/regex', label: '正则', icon: RegexIcon },
-      { to: '/quick-replies', label: '快捷回复', icon: Zap },
-    ]
-  },
-  {
-    id: 'service', label: '服务', defaultOpen: false, items: [
-      { to: '/api', label: '模型', icon: Plug },
-      { to: '/mcp', label: 'MCP', icon: Wrench },
-    ]
-  },
-  {
-    id: 'system', label: '系统', defaultOpen: false, items: [
-      { to: '/usage', label: '用量', icon: BarChart3 },
-      { to: '/settings', label: '设置', icon: Settings },
-      { to: '/announcements', label: '公告', icon: Megaphone },
-      { to: '/help', label: '帮助', icon: HelpCircle },
-    ]
-  },
+/**
+ * 侧栏信息架构（方案 C：常用常驻 + 更多收纳）
+ *
+ * - 会话 / 资料 / 服务 三段常驻，只保留日常真正会点的入口；
+ * - 低频入口收进「更多」浮层（快捷回复 / 正则 / MCP / 用量 / 公告 / 帮助），
+ *   侧栏不再被十几个同级项摊平，也不依赖分组折叠记忆；
+ * - 设置固定在底部，与连接状态同处一行。
+ */
+interface SidebarItem {
+  to: string
+  label: string
+  icon: typeof MessageSquare
+}
+
+const SESSION_ITEMS: SidebarItem[] = [
+  { to: '/chat', label: '对话', icon: MessageSquare },
+  { to: '/group', label: '群聊', icon: MessagesSquare },
 ]
-const navItems = navGroups.flatMap(g => g.items)
+
+const LIBRARY_ITEMS: SidebarItem[] = [
+  { to: '/personas', label: '身份', icon: UserCircle },
+  { to: '/characters', label: '角色卡', icon: Users },
+  { to: '/lorebook', label: '世界书', icon: BookOpen },
+  { to: '/presets', label: '预设', icon: Sliders },
+]
+
+const SERVICE_ITEMS: SidebarItem[] = [
+  { to: '/api', label: '模型', icon: Plug },
+]
+
+const MORE_ITEMS: SidebarItem[] = [
+  { to: '/quick-replies', label: '快捷回复', icon: Zap },
+  { to: '/regex', label: '正则', icon: RegexIcon },
+  { to: '/mcp', label: 'MCP', icon: Wrench },
+  { to: '/usage', label: '用量', icon: BarChart3 },
+]
+
+/** 底部固定入口：展开态三个图标并排；收起态只保留设置，帮助 / 公告回落到「更多」 */
+const SETTINGS_ITEM: SidebarItem = { to: '/settings', label: '设置', icon: Settings }
+const HELP_ITEM: SidebarItem = { to: '/help', label: '帮助', icon: HelpCircle }
+const ANNOUNCEMENTS_ITEM: SidebarItem = { to: '/announcements', label: '公告', icon: Megaphone }
+
+// 展开态：34px 行高、9px 圆角，激活只用「白底 + 左侧 2px 强调条」两个信号
+const ROW_ITEM = "relative flex w-full items-center gap-3 h-[38px] px-3 rounded-[10px] text-[13px] transition-[color,background-color] duration-150 after:content-[''] after:absolute after:left-0 after:top-2 after:bottom-2 after:w-[2px] after:rounded-full"
+// 收起态：40px 图标行
+const RAIL_ITEM = "relative flex h-10 w-full items-center justify-center rounded-xl transition-colors duration-150 after:content-[''] after:absolute after:left-0 after:top-2.5 after:bottom-2.5 after:w-[2px] after:rounded-full"
+const ROW_ACTIVE = 'bg-tavern-bg-card text-tavern-text after:bg-tavern-accent'
+const ROW_IDLE = 'text-tavern-text-soft hover:text-tavern-text hover:bg-tavern-bg-hover/60'
+const RAIL_ACTIVE = 'bg-tavern-bg-card after:bg-tavern-accent'
+const RAIL_IDLE = 'text-tavern-text-muted hover:text-tavern-text-soft hover:bg-tavern-bg-hover/70'
+
+function SectionDivider() {
+  return <div aria-hidden className="mx-1 my-2 h-px shrink-0 bg-tavern-border-soft" />
+}
+
+function SidebarLink({
+  item,
+  collapsed,
+  onClick,
+  trailing,
+  className,
+}: {
+  item: SidebarItem
+  collapsed: boolean
+  onClick: (event: MouseEvent<HTMLAnchorElement>, to: string) => void
+  trailing?: ReactNode
+  className?: string
+}) {
+  return (
+    <NavLink
+      to={item.to}
+      onClick={(event) => onClick(event, item.to)}
+      aria-label={item.label}
+      title={collapsed ? item.label : undefined}
+      className={({ isActive }) =>
+        cn(
+          collapsed ? RAIL_ITEM : ROW_ITEM,
+          isActive ? (collapsed ? RAIL_ACTIVE : ROW_ACTIVE) : (collapsed ? RAIL_IDLE : ROW_IDLE),
+          className,
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <item.icon
+            className={cn(
+              'w-[18px] h-[18px] shrink-0 transition-colors',
+              isActive ? 'text-tavern-accent' : 'text-tavern-text-muted',
+            )}
+            aria-hidden
+          />
+          {!collapsed && <span className={cn('truncate', isActive && 'font-medium')}>{item.label}</span>}
+          {trailing}
+        </>
+      )}
+    </NavLink>
+  )
+}
+
+/** 底部图标按钮：展开态的 设置 / 帮助 / 公告 并排，无文字标签 */
+function FooterIconLink({
+  item,
+  onClick,
+  trailing,
+}: {
+  item: SidebarItem
+  onClick: (event: MouseEvent<HTMLAnchorElement>, to: string) => void
+  trailing?: ReactNode
+}) {
+  return (
+    <NavLink
+      to={item.to}
+      onClick={(event) => onClick(event, item.to)}
+      aria-label={item.label}
+      title={item.label}
+      className={({ isActive }) =>
+        cn(
+          'relative grid h-7 w-7 place-items-center rounded-md transition-colors',
+          isActive
+            ? 'bg-tavern-accent-soft text-tavern-accent'
+            : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover',
+        )
+      }
+    >
+      <item.icon className="w-[18px] h-[18px]" aria-hidden />
+      {trailing}
+    </NavLink>
+  )
+}
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
@@ -67,51 +163,12 @@ export function Sidebar() {
   const getActiveProfile = useSettingsStore((s) => s.getActiveProfile)
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  // S2-A：分组折叠状态（localStorage 持久化）
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
-    try {
-      const raw = localStorage.getItem('sidebar-groups-collapsed')
-      if (raw) return JSON.parse(raw) as Record<string, boolean>
-    } catch { /* ignore */ }
-    const init: Record<string, boolean> = {}
-    for (const g of navGroups) init[g.id] = !g.defaultOpen
-    return init
-  })
-  const toggleGroup = (id: string) => {
-    // P1-04：展开（而非折叠）时把该分组滚入可视区，
-    // 避免多组展开后新展开的条目被推到滚动区之外
-    if (collapsedGroups[id]) setExpandScrollTarget(id)
-    setCollapsedGroups(prev => {
-      const next = { ...prev, [id]: !prev[id] }
-      try { localStorage.setItem('sidebar-groups-collapsed', JSON.stringify(next)) } catch { /* ignore */ }
-      return next
-    })
-  }
-
-  const navRef = useRef<HTMLElement>(null)
-  const [expandScrollTarget, setExpandScrollTarget] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!expandScrollTarget) return
-    const group = navRef.current?.querySelector<HTMLElement>(`[data-nav-group="${expandScrollTarget}"]`)
-    group?.scrollIntoView?.({ block: 'nearest' })
-    setExpandScrollTarget(null)
-  }, [expandScrollTarget, collapsedGroups])
-
-  // 路由切换时展开当前页面所在分组，避免当前项被折叠隐藏。
-  useEffect(() => {
-    const activeGroup = navGroups.find((group) => group.items.some((item) => pathname.startsWith(item.to)))
-    if (!activeGroup) return
-    setCollapsedGroups((prev) => {
-      if (!prev[activeGroup.id]) return prev
-      const next = { ...prev, [activeGroup.id]: false }
-      try { localStorage.setItem('sidebar-groups-collapsed', JSON.stringify(next)) } catch { /* ignore */ }
-      return next
-    })
-  }, [pathname])
 
   const activeProfile = getActiveProfile()
   const isConnected = isConnectionConfigured(activeProfile)
+  const modelLabel = isConnected && activeProfile
+    ? settings.activeModel || activeProfile.model || '未选模型'
+    : '未连接'
 
   const [appVersion, setAppVersion] = useState('')
   const [serverVersion, setServerVersion] = useState<string | null>(null)
@@ -128,7 +185,7 @@ export function Sidebar() {
     return false
   }
 
-  // 新样式下侧栏不再展示版本号，仅在有新版本时给「设置」入口加提示点（更新入口仍在设置页）
+  // 侧栏不展示版本号；仅在有新版本时给「设置」入口加提示点（更新入口仍在设置页）
   const hasUpdate = serverVersion !== null && appVersion !== '' && isNewerVersion(appVersion, serverVersion)
 
   // 获取本地版本 + 在线版本检查
@@ -149,155 +206,212 @@ export function Sidebar() {
     void pending.then(() => navigate(to)).catch(() => {})
   }
 
+  // 「更多」浮层：锚定触发按钮右侧底部对齐；导航滚动/窗口尺寸变化/切页时收起
+  const moreButtonRef = useRef<HTMLButtonElement>(null)
+  const morePanelRef = useRef<HTMLDivElement>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [moreAnchor, setMoreAnchor] = useState<{ left: number; bottom: number } | null>(null)
+
+  const closeMore = useCallback(() => setMoreOpen(false), [])
+
+  const toggleMore = useCallback(() => {
+    if (moreOpen) {
+      setMoreOpen(false)
+      return
+    }
+    const rect = moreButtonRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const panelWidth = 176 // w-44
+    const left = Math.max(8, Math.min(rect.right + 8, window.innerWidth - panelWidth - 8))
+    setMoreAnchor({ left, bottom: Math.max(8, window.innerHeight - rect.bottom) })
+    setMoreOpen(true)
+  }, [moreOpen])
+
+  useEffect(() => {
+    if (!moreOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMore()
+    }
+    const onResize = () => closeMore()
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('resize', onResize)
+    const frame = requestAnimationFrame(() => {
+      morePanelRef.current?.querySelector<HTMLAnchorElement>('a')?.focus()
+    })
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('resize', onResize)
+      cancelAnimationFrame(frame)
+    }
+  }, [moreOpen, closeMore])
+
+  // 切页 / 收起侧栏时浮层不再有意义（首次挂载不触发，避免无谓状态写入）
+  const firstRenderRef = useRef(true)
+  useEffect(() => {
+    if (firstRenderRef.current) {
+      firstRenderRef.current = false
+      return
+    }
+    closeMore()
+  }, [pathname, sidebarCollapsed, closeMore])
+
+  const updateDot = hasUpdate && (
+    <span
+      className={cn(
+        'absolute h-1.5 w-1.5 shrink-0 rounded-full bg-tavern-danger',
+        sidebarCollapsed ? 'right-2 top-2' : 'right-0.5 top-0.5',
+      )}
+      title={`公告版本 v${serverVersion} 可用，可前往设置更新`}
+    >
+      <span className="sr-only">有新版本可用</span>
+    </span>
+  )
+
+  // 帮助 / 公告在展开态常驻底部；收起态没有底部图标行，回落到「更多」浮层
+  const moreItems = sidebarCollapsed ? [...MORE_ITEMS, HELP_ITEM, ANNOUNCEMENTS_ITEM] : MORE_ITEMS
+
+  const moreButton = (
+    <button
+      ref={moreButtonRef}
+      type="button"
+      onClick={toggleMore}
+      aria-haspopup="dialog"
+      aria-expanded={moreOpen}
+      aria-label="更多"
+      title={sidebarCollapsed ? '更多' : undefined}
+      className={cn(
+        sidebarCollapsed ? RAIL_ITEM : ROW_ITEM,
+        moreOpen
+          ? 'bg-tavern-bg-hover text-tavern-text'
+          : (sidebarCollapsed ? RAIL_IDLE : ROW_IDLE),
+      )}
+    >
+      <Ellipsis className="w-[18px] h-[18px] shrink-0 text-tavern-text-muted" aria-hidden />
+      {!sidebarCollapsed && <span className="truncate">更多</span>}
+    </button>
+  )
+
+  const morePanel = moreOpen && moreAnchor && createPortal(
+    <>
+      <div className="fixed inset-0 z-40" onClick={closeMore} aria-hidden />
+      <div
+        ref={morePanelRef}
+        role="dialog"
+        aria-label="更多入口"
+        style={{ left: moreAnchor.left, bottom: moreAnchor.bottom }}
+        className="fixed z-50 w-44 rounded-xl border border-tavern-border bg-tavern-bg-card p-1.5 shadow-xl"
+      >
+        {moreItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            onClick={(event) => {
+              closeMore()
+              handleNavigation(event, item.to)
+            }}
+            aria-label={item.label}
+            className={({ isActive }) =>
+              cn(
+                'flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-[12.5px] transition-colors',
+                isActive
+                  ? 'bg-tavern-bg-hover text-tavern-text'
+                  : 'text-tavern-text-soft hover:bg-tavern-bg-hover hover:text-tavern-text',
+              )
+            }
+          >
+            <item.icon className="h-4 w-4 shrink-0 text-tavern-text-muted" aria-hidden />
+            <span className="truncate">{item.label}</span>
+          </NavLink>
+        ))}
+      </div>
+    </>,
+    document.body,
+  )
+
   return (
     <aside
       className={cn(
         'flex flex-col bg-tavern-bg-soft/95 border-r border-tavern-border-soft transition-[width] duration-200 ease-out',
-        sidebarCollapsed ? 'w-16' : 'w-56'
+        sidebarCollapsed ? 'w-16' : 'w-40'
       )}
     >
-      {/* 导航 - S2-A 分组；P1-04：min-h-0 保证 flex 列内可收缩滚动，底部状态区始终可达 */}
-      {/* 新样式：侧栏不再显示大块品牌 / UP 主 / 版本信息（应用名与图标由顶部标题栏承载） */}
-      <nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto py-2.5 px-2.5 space-y-1.5">
-        {sidebarCollapsed ? (
-          // 收起态：平铺图标，无分组，贴顶部开始
-          <div className="space-y-0.5">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={(event) => handleNavigation(event, item.to)}
-                aria-label={item.label}
-                className={({ isActive }) =>
-                  cn(
-                    "relative flex items-center justify-center h-10 rounded-xl transition-[color,background-color,box-shadow] duration-150 after:content-['']",
-                    isActive
-                      ? 'bg-tavern-bg-card text-tavern-accent shadow-sm ring-1 ring-tavern-border-soft after:absolute after:left-0 after:top-2.5 after:bottom-2.5 after:w-0.5 after:rounded-full after:bg-tavern-accent'
-                      : 'text-tavern-text-muted hover:text-tavern-text-soft hover:bg-tavern-bg-hover/70'
-                  )
-                }
-                title={item.label}
-              >
-                {({ isActive }) => (
-                  <>
-                    <span className={cn(
-                      'grid h-8 w-8 place-items-center rounded-lg transition-colors',
-                      isActive && 'bg-tavern-accent-soft',
-                    )}>
-                      <item.icon className="w-[18px] h-[18px] shrink-0" aria-hidden />
-                    </span>
-                    {item.to === '/settings' && hasUpdate && (
-                      <span
-                        className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-tavern-danger"
-                        title={`公告版本 v${serverVersion} 可用，可前往设置更新`}
-                      >
-                        <span className="sr-only">有新版本可用</span>
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </div>
-        ) : (
-          navGroups.map(group => {
-            const collapsed = collapsedGroups[group.id] ?? !group.defaultOpen
-            return (
-              <div key={group.id} data-nav-group={group.id} className="space-y-0.5">
-                <button
-                  onClick={() => toggleGroup(group.id)}
-                  aria-expanded={!collapsed}
-                  aria-label={group.label}
-                  className="group w-full h-8 flex items-center justify-between px-2.5 rounded-md text-xs font-medium tracking-[0.06em] text-tavern-text-soft hover:text-tavern-text hover:bg-tavern-bg-hover/50 transition-colors"
-                >
-                  <span>{group.label}</span>
-                  <ChevronDown className={cn('w-3.5 h-3.5 text-tavern-text-muted transition-transform duration-200', !collapsed && 'rotate-180')} aria-hidden />
-                </button>
-                {!collapsed && (
-                  <div className="space-y-0.5 pb-1 animate-fade-in">
-                    {group.items.map((item) => (
-                      <NavLink
-                        key={item.to}
-                        to={item.to}
-                        onClick={(event) => handleNavigation(event, item.to)}
-                        aria-label={item.label}
-                        className={({ isActive }) =>
-                          cn(
-                            "group relative flex items-center gap-2.5 h-10 px-2.5 rounded-xl text-sm transition-[color,background-color,box-shadow] duration-150 after:content-['']",
-                            isActive
-                              ? 'bg-tavern-bg-card/80 text-tavern-text shadow-sm ring-1 ring-tavern-border-soft after:absolute after:left-0 after:top-2.5 after:bottom-2.5 after:w-0.5 after:rounded-full after:bg-tavern-accent'
-                              : 'text-tavern-text-soft hover:text-tavern-text hover:bg-tavern-bg-hover/60'
-                          )
-                        }
-                      >
-                        {({ isActive }) => (
-                          <>
-                            <span className={cn(
-                              'grid h-7 w-7 place-items-center rounded-lg text-tavern-text-muted transition-colors',
-                              isActive
-                                ? 'bg-tavern-accent-soft text-tavern-accent'
-                                : 'group-hover:text-tavern-text-soft',
-                            )}>
-                              <item.icon className="w-[18px] h-[18px] shrink-0" aria-hidden />
-                            </span>
-                            <span className={cn('truncate', isActive ? 'font-medium' : 'font-normal')}>{item.label}</span>
-                            {item.to === '/settings' && hasUpdate && (
-                              <span
-                                className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-tavern-danger"
-                                title={`公告版本 v${serverVersion} 可用，可前往设置更新`}
-                              >
-                                <span className="sr-only">有新版本可用</span>
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })
+      {/* 导航：常驻段之间用发丝线分隔，不再有分组标题与折叠箭头 */}
+      <nav
+        aria-label="主导航"
+        onScroll={closeMore}
+        className={cn(
+          'flex-1 min-h-0 overflow-y-auto pt-5 pb-2.5',
+          sidebarCollapsed ? 'px-2' : 'pl-4 pr-2.5',
         )}
+      >
+        <div className="flex flex-col gap-0.5">
+          {SESSION_ITEMS.map((item) => (
+            <SidebarLink key={item.to} item={item} collapsed={sidebarCollapsed} onClick={handleNavigation} />
+          ))}
+          <SectionDivider />
+          {LIBRARY_ITEMS.map((item) => (
+            <SidebarLink key={item.to} item={item} collapsed={sidebarCollapsed} onClick={handleNavigation} />
+          ))}
+          <SectionDivider />
+          {SERVICE_ITEMS.map((item) => (
+            <SidebarLink key={item.to} item={item} collapsed={sidebarCollapsed} onClick={handleNavigation} />
+          ))}
+          {moreButton}
+        </div>
       </nav>
 
-      {/* 底部状态 */}
-      <div className="p-2 border-t border-tavern-border-soft">
-        {!sidebarCollapsed && (
-          <div className="px-3 py-2 rounded-lg bg-tavern-bg-card mb-2">
-            <div className="flex items-center gap-2 text-xs">
+      {/* 底部：设置与收起同一行，连接状态（模型名）单独一行 */}
+      <div className={cn('shrink-0 border-t border-tavern-border-soft p-2', !sidebarCollapsed && 'pl-4 pr-2.5')}>
+        {sidebarCollapsed ? (
+          <>
+            <SidebarLink item={SETTINGS_ITEM} collapsed onClick={handleNavigation} trailing={updateDot} />
+            <div className="mt-1 flex flex-col items-center gap-1">
+              <button
+                onClick={toggleSidebar}
+                className="grid h-8 w-8 place-items-center rounded-md text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
+                title="展开侧栏"
+                aria-label="展开侧栏"
+              >
+                <MorphingIcon icon={PanelLeft} className="w-4 h-4" />
+              </button>
               <span
-                className={cn(
-                  'w-2 h-2 rounded-full',
-                  isConnected ? 'bg-tavern-success animate-pulse-soft' : 'bg-tavern-danger'
-                )}
+                className={cn('h-2 w-2 shrink-0 rounded-full', isConnected ? 'bg-tavern-success' : 'bg-tavern-danger')}
+                title={modelLabel}
               />
-              <span className="text-tavern-text-soft truncate">
-                {isConnected && activeProfile
-                  ? settings.activeModel || activeProfile.model || '未选模型'
-                  : '未连接'}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* 设置 / 帮助 / 公告：三个图标并排；收起按钮靠右 */}
+            <div className="flex items-center justify-between">
+              <FooterIconLink item={SETTINGS_ITEM} onClick={handleNavigation} trailing={updateDot} />
+              <FooterIconLink item={HELP_ITEM} onClick={handleNavigation} />
+              <FooterIconLink item={ANNOUNCEMENTS_ITEM} onClick={handleNavigation} />
+              <button
+                onClick={toggleSidebar}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
+                title="收起侧栏"
+                aria-label="收起侧栏"
+              >
+                <MorphingIcon icon={PanelLeftClose} className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="mt-1 flex items-center gap-1.5 pl-1">
+              <span
+                className={cn('h-1.5 w-1.5 shrink-0 rounded-full', isConnected ? 'bg-tavern-success animate-pulse-soft' : 'bg-tavern-danger')}
+              />
+              <span className="truncate text-[11.5px] text-tavern-text-muted" title={modelLabel}>
+                {modelLabel}
               </span>
             </div>
-            <div className="text-xs text-tavern-text-muted mt-1 truncate">
-              {isConnected && activeProfile ? activeProfile.name || activeProfile.model || '—' : '—'}
-            </div>
-          </div>
+          </>
         )}
-        <button
-          onClick={toggleSidebar}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover transition-colors"
-          title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-        >
-          {sidebarCollapsed ? (
-            <PanelLeft className="w-4 h-4" />
-          ) : (
-            <>
-              <PanelLeftClose className="w-4 h-4" />
-              <span className="text-xs">收起</span>
-            </>
-          )}
-        </button>
       </div>
+
+      {morePanel}
     </aside>
   )
 }
+
+
+

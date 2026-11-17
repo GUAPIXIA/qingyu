@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { getDefaultSettings } from '../utils/defaults'
 import { cn } from '../lib/utils'
+import { usePersistentState } from '../lib/usePersistentState'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { BehaviorSection } from './settings/BehaviorSection'
 import { GenerationPlanningSection } from './settings/GenerationPlanningSection'
@@ -40,7 +41,9 @@ export function SettingsPage() {
   const [confirmImport, setConfirmImport] = useState(false)
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([])
-  const [activeSection, setActiveSection] = useState<string>('updater')
+  const [activeSection, setActiveSection] = usePersistentState<string>('settings-active-section', SECTION_IDS[0] ?? 'updater', {
+    validate: (value): value is string => typeof value === 'string' && SECTION_IDS.includes(value),
+  })
   const [fontUploading, setFontUploading] = useState(false)
   const [fontError, setFontError] = useState<string | null>(null)
 
@@ -88,7 +91,7 @@ export function SettingsPage() {
       document.getElementById(`settings-${deepLinkSection}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
     })
     return () => cancelAnimationFrame(frame)
-  }, [deepLinkSection])
+  }, [deepLinkSection, setActiveSection])
 
   // S2-D / P1-02：保存状态由 store 的真实落盘 Promise 结果驱动（不再用固定 500ms 计时器假成功）
 
@@ -212,21 +215,40 @@ export function SettingsPage() {
     document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  // 分区标签横向滚动时，保证当前高亮的标签始终可见
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  useEffect(() => {
+    tabRefs.current[activeSection]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [activeSection])
+
+  // 记住上次停留的分区：无深链进入时恢复到该分区（深链优先级更高，见上方 effect）
+  const restoredSectionRef = useRef(false)
+  useEffect(() => {
+    if (restoredSectionRef.current) return
+    restoredSectionRef.current = true
+    if (deepLinkSection || activeSection === sections[0].id) return
+    requestAnimationFrame(() => {
+      document.getElementById(`settings-${activeSection}`)?.scrollIntoView({ block: 'start' })
+    })
+    // 只在首次挂载时恢复一次；activeSection 之后由滚动/点击更新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* 顶栏 - S2-D：保存状态 */}
-      <header className="flex items-center justify-between px-4 h-14 border-b border-tavern-border-soft bg-tavern-bg-soft shrink-0">
-        <div className="flex items-center gap-2">
+      {/* 顶栏 + 分区导航合并为同一排：左侧标题与保存状态，右侧横向分区标签 */}
+      <header className="flex h-14 shrink-0 items-center gap-4 border-b border-tavern-border-soft bg-tavern-bg-soft px-4">
+        <div className="flex shrink-0 items-center gap-2">
           <SettingsIcon className="w-5 h-5 text-tavern-accent" />
           <h1 className="font-display text-lg font-bold">设置</h1>
           {saveStatus === 'saving' && (
-            <span className="ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            <span className="ml-1 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
               <Loader2 className="w-3 h-3 animate-spin" />
               保存中...
             </span>
           )}
           {saveStatus === 'saved' && (
-            <span className="ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+            <span className="ml-1 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
               <Check className="w-3 h-3" />
               已保存
             </span>
@@ -234,7 +256,7 @@ export function SettingsPage() {
           {saveStatus === 'error' && (
             <>
               <span
-                className="ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-tavern-danger/10 text-tavern-danger"
+                className="ml-1 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-tavern-danger/10 text-tavern-danger"
                 title={saveError ?? undefined}
               >
                 保存失败{saveError ? `：${saveError}` : ''}
@@ -250,34 +272,44 @@ export function SettingsPage() {
             </>
           )}
         </div>
-      </header>
 
-      {/* 内容区 - S2-D：左侧目录 + 右侧滚动 */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* 左侧目录 - S2-D：分区导航（测试环境始终可见，样式层再做响应式） */}
-        <nav className="flex w-44 shrink-0 flex-col border-r border-tavern-border-soft bg-tavern-bg-soft/50 p-2 gap-1 overflow-y-auto" aria-label="设置分区">
+        <nav aria-label="设置分区" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {sections.map(s => (
             <button
               key={s.id}
+              type="button"
+              ref={(el) => { tabRefs.current[s.id] = el }}
               onClick={() => scrollTo(s.id)}
-              className={cn('flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors', activeSection === s.id ? 'bg-tavern-accent-soft text-tavern-accent' : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover')}
+              aria-current={activeSection === s.id ? 'page' : undefined}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                activeSection === s.id
+                  ? 'bg-tavern-accent-soft text-tavern-accent'
+                  : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
+              )}
             >
-              <s.icon className="w-4 h-4" aria-hidden /> {s.label}
+              <s.icon className="w-3.5 h-3.5" aria-hidden /> {s.label}
             </button>
           ))}
         </nav>
-        <div data-testid="settings-sections" className="flex-1 overflow-y-auto p-4 space-y-4" onScroll={(e) => {
+      </header>
+
+      {/* 内容区：单列滚动，随滚动高亮顶部分区标签 */}
+      <div
+        data-testid="settings-sections"
+        className="flex-1 overflow-y-auto p-4 pb-10 space-y-4"
+        onScroll={(e) => {
           const container = e.currentTarget
-          // 简易滚动高亮
+          const containerTop = container.getBoundingClientRect().top
+          // 取「已经滚过容器顶部」的最后一个分区作为当前分区
+          let current: string = sections[0].id
           for (const s of sections) {
             const el = document.getElementById(`settings-${s.id}`)
-            if (el) {
-              const rect = el.getBoundingClientRect()
-              const contRect = container.getBoundingClientRect()
-              if (rect.top >= contRect.top - 80 && rect.top < contRect.top + 200) { setActiveSection(s.id); break }
-            }
+            if (el && el.getBoundingClientRect().top <= containerTop + 24) current = s.id
           }
-        }}>
+          setActiveSection(current)
+        }}
+      >
         <div id="settings-updater">
         <UpdaterSection />
         </div>
@@ -404,7 +436,6 @@ export function SettingsPage() {
         </SectionCard>
         </div>
         </div>
-      </div>
     </div>
   )
 }

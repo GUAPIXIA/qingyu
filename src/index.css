@@ -292,6 +292,11 @@ body {
   .card {
     @apply bg-tavern-bg-card border border-tavern-border-soft rounded-xl;
   }
+  /* 小卡片标签行按卡片宽度自适应：窄卡（<185px）只显示 1 个标签，宽卡显示 2 个。
+     计数由 .card-tag-count-1 / .card-tag-count-2 两套文案按容器宽度切换（见文件下方 @container）。 */
+  .card-sm {
+    container-type: inline-size;
+  }
   .toggle-track {
     transition: background-color var(--motion-base) ease;
   }
@@ -317,6 +322,24 @@ body {
 
   .label {
     @apply block text-sm text-tavern-text-soft mb-1.5 font-medium;
+  }
+}
+
+/* ===================== 角色卡小卡片标签行（容器查询） ===================== */
+/* 8 列超宽布局下小卡约 168px，放不下 2 个标签：窄卡隐藏第二个标签并同步计数，
+   避免出现「ca…」这类只剩两个字母的碎片，同时保证同排卡片高度一致。 */
+@container (max-width: 184px) {
+  .card-tag-secondary,
+  .card-tag-count-2 {
+    display: none;
+  }
+  .card-tag-lead {
+    max-width: 9rem;
+  }
+}
+@container (min-width: 185px) {
+  .card-tag-count-1 {
+    display: none;
   }
 }
 

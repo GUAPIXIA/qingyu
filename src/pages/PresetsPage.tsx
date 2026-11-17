@@ -3,7 +3,9 @@ import { nanoid } from 'nanoid'
 import { Modal } from '../components/common/Modal'
 import { EmptyState } from '../components/common/EmptyState'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { Sliders, SlidersHorizontal, Plus, Upload, Trash2, Shield, Copy, Download, Sparkles, Play, Loader2, Wand2, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { Sliders, SlidersHorizontal, Plus, Upload, Trash2, Shield, Copy, Download, Sparkles, Play, Loader2, Wand2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide'
+import { MorphingIcon } from '../components/common/MorphingIcon'
 import { BUILTIN_TEMPLATE_NAMES } from '../../shared/chat-core/chatTemplates'
 import { cn } from '../lib/utils'
 import { parsePresetGeneration } from '../utils/presetGen'
@@ -551,7 +553,7 @@ TopP: <0-1>
               >
                 <Wand2 className="w-3.5 h-3.5 text-tavern-accent" />
                 AI 生成预设
-                {aiGenOpen ? <ChevronDown className="w-3 h-3 ml-auto" /> : <ChevronRight className="w-3 h-3 ml-auto" />}
+                <MorphingIcon icon={aiGenOpen ? ChevronDown : ChevronRight} className="w-3 h-3 ml-auto" />
               </button>
               {aiGenOpen && (
                 <div className="px-3 pb-3 space-y-2">
@@ -727,7 +729,7 @@ TopP: <0-1>
                 <span className="ml-auto text-[11px] text-tavern-text-muted font-normal">
                   {presetAdvancedOpen ? '收起' : '温度、上限等'}
                 </span>
-                {presetAdvancedOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                <MorphingIcon icon={presetAdvancedOpen ? ChevronDown : ChevronRight} className="w-3 h-3" />
               </button>
               {presetAdvancedOpen && (
                 <div className="px-3 pb-3 grid grid-cols-2 gap-4">
