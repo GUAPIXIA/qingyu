@@ -5,15 +5,18 @@ import { ConfirmDialog } from '../common/ConfirmDialog'
 import { cn } from '../../lib/utils'
 import type { TTSModelConfig } from '../../../shared/types'
 import {
-  Volume2, Plus, Trash2, Check, Eye, EyeOff,
-  Circle, ChevronUp, ChevronDown, Loader2, Play, Square,
+  Volume2, Plus, Trash2, Check,
+  Circle, ChevronUp, ChevronDown, Loader2,
 } from 'lucide-react'
+import { Eye, EyeOff, Play, Square } from 'lucide'
+import { MorphingIcon } from '../common/MorphingIcon'
 
 const TTS_PROVIDERS = [
   { value: 'system' as const, label: '系统语音 (本地)', desc: 'Windows 内置语音（System.Speech）' },
   { value: 'edge' as const, label: 'Edge TTS', desc: '微软免费在线语音，音质好，无需 key' },
   { value: 'openai' as const, label: 'OpenAI TTS', desc: 'OpenAI 兼容 /audio/speech，需 API Key' },
   { value: 'xiaomi' as const, label: '小米 MiMo TTS', desc: '小米 MiMo 语音合成（/chat/completions + audio），需 API Key' },
+  { value: 'deepseek' as const, label: 'DeepSeek TTS', desc: 'DeepSeek 官方语音合成（/v1/tools/tts，返回 wav），需 API Key' },
 ]
 
 /** 各 provider 的默认值（切换 provider 时套用，避免用户手填） */
@@ -22,6 +25,7 @@ const PROVIDER_DEFAULTS: Record<TTSModelConfig['provider'], Partial<TTSModelConf
   edge: { model: '', voice: 'zh-CN-XiaoxiaoNeural', baseUrl: '' },
   openai: { model: 'tts-1', voice: 'alloy', baseUrl: 'https://api.openai.com/v1' },
   xiaomi: { model: 'mimo-v2.5-tts', voice: 'mimo_default', baseUrl: 'https://api.xiaomimimo.com/v1' },
+  deepseek: { model: '', voice: 'stella', baseUrl: 'https://api.deepseek.com' },
 }
 
 const PROVIDER_LABELS: Record<TTSModelConfig['provider'], string> = {
@@ -29,6 +33,7 @@ const PROVIDER_LABELS: Record<TTSModelConfig['provider'], string> = {
   edge: 'Edge TTS',
   openai: 'OpenAI TTS',
   xiaomi: '小米 MiMo TTS',
+  deepseek: 'DeepSeek TTS',
 }
 
 /** OpenAI TTS 预设音色 */
@@ -45,6 +50,12 @@ const XIAOMI_VOICE_OPTIONS = [
   { id: 'Chloe', label: 'Chloe（女·英文）' },
   { id: 'Milo', label: 'Milo（男·英文）' },
   { id: 'Dean', label: 'Dean（男·英文）' },
+]
+
+/** DeepSeek TTS 音色（官方仅 stella / tide 两个） */
+const DEEPSEEK_VOICE_OPTIONS = [
+  { id: 'stella', label: '海星（女声·默认）' },
+  { id: 'tide', label: '暗潮（男声）' },
 ]
 
 /** Edge TTS 常用音色 */
@@ -146,6 +157,21 @@ export function TTSModelsSection() {
         } else {
           setTestResult({ success: false, message: res.error ?? '连接失败' })
         }
+      } else if (form.provider === 'deepseek') {
+        // DeepSeek TTS：接口没有模型列表可探测，直接合成一句短语音验证 key / 端点 / 音色
+        const res = await window.api.tts.speak('连接测试。', {
+          provider: 'deepseek',
+          voice: form.voice || 'stella',
+          rate: 1,
+          apiKey: form.apiKey,
+          baseUrl: form.baseUrl || 'https://api.deepseek.com',
+        })
+        if (res.success) {
+          const kb = res.audioBase64 ? Math.round((res.audioBase64.length * 3) / 4 / 1024) : 0
+          setTestResult({ success: true, message: `连接成功，合成音频约 ${kb} KB` })
+        } else {
+          setTestResult({ success: false, message: res.error ?? '连接失败' })
+        }
       } else {
         // OpenAI TTS: 复用对话 API 测试连接
         const result = await window.api.ai.testConnection({
@@ -211,7 +237,7 @@ export function TTSModelsSection() {
     auditionUnsubRef.current?.()
     auditionUnsubRef.current = null
     // system 引擎：真正停止主进程播放
-    if (form.provider !== 'openai' && form.provider !== 'edge' && form.provider !== 'xiaomi') {
+    if (form.provider !== 'openai' && form.provider !== 'edge' && form.provider !== 'xiaomi' && form.provider !== 'deepseek') {
       await window.api.tts.stop().catch(() => {})
     }
     setAuditioning(false)
@@ -227,7 +253,7 @@ export function TTSModelsSection() {
     try {
       const res = await window.api.tts.speak('你好，这是一段试听语音，用来检查当前音色效果。', {
         provider: form.provider,
-        voice: form.voice || (form.provider === 'openai' ? 'alloy' : form.provider === 'xiaomi' ? 'mimo_default' : 'zh-CN-XiaoxiaoNeural'),
+        voice: form.voice || (form.provider === 'openai' ? 'alloy' : form.provider === 'xiaomi' ? 'mimo_default' : form.provider === 'deepseek' ? 'stella' : 'zh-CN-XiaoxiaoNeural'),
         rate: 1,
         model: form.model,
         apiKey: form.apiKey,
@@ -243,8 +269,8 @@ export function TTSModelsSection() {
       }, 20000)
 
       if (res.success && res.audioBase64) {
-        // openai/edge：渲染进程播放
-        const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)
+        // 网络 provider：渲染进程播放（DeepSeek 返回 wav，其余缺省 mp3）
+        const audio = new Audio(`data:${res.audioMime || 'audio/mp3'};base64,${res.audioBase64}`)
         audio.onended = () => { setAuditioning(false); auditionRef.current = null }
         audio.onerror = () => { setAuditioning(false); auditionRef.current = null }
         auditionRef.current = audio
@@ -310,8 +336,8 @@ export function TTSModelsSection() {
         </div>
       </div>
 
-      {/* OpenAI / 小米 MiMo 特有字段 */}
-      {(form.provider === 'openai' || form.provider === 'xiaomi') && (
+      {/* OpenAI / 小米 MiMo / DeepSeek 特有字段 */}
+      {(form.provider === 'openai' || form.provider === 'xiaomi' || form.provider === 'deepseek') && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -321,7 +347,13 @@ export function TTSModelsSection() {
                 className="input text-xs font-mono"
                 value={form.baseUrl}
                 onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
-                placeholder={form.provider === 'xiaomi' ? 'https://api.xiaomimimo.com/v1' : 'https://api.openai.com/v1'}
+                placeholder={
+                  form.provider === 'xiaomi'
+                    ? 'https://api.xiaomimimo.com/v1'
+                    : form.provider === 'deepseek'
+                      ? 'https://api.deepseek.com'
+                      : 'https://api.openai.com/v1'
+                }
               />
             </div>
             <div>
@@ -340,21 +372,24 @@ export function TTSModelsSection() {
                   onClick={() => setShowKey((v) => !v)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-tavern-text-muted hover:text-tavern-text"
                 >
-                  {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  <MorphingIcon icon={showKey ? EyeOff : Eye} className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
           </div>
-          <div>
-            <label className="label">模型名称</label>
-            <input
-              type="text"
-              className="input text-sm"
-              value={form.model}
-              onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-              placeholder={form.provider === 'xiaomi' ? '例如 mimo-v2.5-tts' : '例如 tts-1、tts-1-hd'}
-            />
-          </div>
+          {/* DeepSeek 的 /v1/tools/tts 没有模型参数，不显示模型名输入 */}
+          {form.provider !== 'deepseek' && (
+            <div>
+              <label className="label">模型名称</label>
+              <input
+                type="text"
+                className="input text-sm"
+                value={form.model}
+                onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
+                placeholder={form.provider === 'xiaomi' ? '例如 mimo-v2.5-tts' : '例如 tts-1、tts-1-hd'}
+              />
+            </div>
+          )}
         </>
       )}
 
@@ -378,6 +413,16 @@ export function TTSModelsSection() {
             onChange={(e) => setForm((f) => ({ ...f, voice: e.target.value }))}
           >
             {XIAOMI_VOICE_OPTIONS.map((v) => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
+          </select>
+        ) : form.provider === 'deepseek' ? (
+          <select
+            className="select"
+            value={form.voice || 'stella'}
+            onChange={(e) => setForm((f) => ({ ...f, voice: e.target.value }))}
+          >
+            {DEEPSEEK_VOICE_OPTIONS.map((v) => (
               <option key={v.id} value={v.id}>{v.label}</option>
             ))}
           </select>
@@ -406,6 +451,11 @@ export function TTSModelsSection() {
         {form.provider === 'xiaomi' && (
           <p className="text-xs text-tavern-text-muted mt-1">
             小米 MiMo 语音合成（走 /chat/completions + audio，与 OpenAI 的 /audio/speech 不同）；语速由音色决定，不受朗读速率影响
+          </p>
+        )}
+        {form.provider === 'deepseek' && (
+          <p className="text-xs text-tavern-text-muted mt-1">
+            DeepSeek 官方语音合成（走 /v1/tools/tts，返回 wav）；仅 stella / tide 两个音色，不支持语速调节，按字符计费
           </p>
         )}
         {form.provider === 'edge' && (
@@ -454,7 +504,7 @@ export function TTSModelsSection() {
               : 'border-tavern-border-soft text-tavern-text-soft hover:border-tavern-accent hover:text-tavern-accent'
           )}
         >
-          {auditioning ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+          <MorphingIcon icon={auditioning ? Square : Play} className="w-3 h-3" />
           {auditioning ? '停止' : '试听'}
         </button>
         <button

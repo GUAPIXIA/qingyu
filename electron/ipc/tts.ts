@@ -313,6 +313,64 @@ export const XIAOMI_VOICES = [
 export const XIAOMI_TTS_DEFAULT_MODEL = 'mimo-v2.5-tts'
 export const XIAOMI_TTS_DEFAULT_BASE_URL = 'https://api.xiaomimimo.com/v1'
 
+/**
+ * DeepSeek 官方 TTS 音色（2026-11 随「全家桶应用 API」上线，仅两个）。
+ * 参考：https://api-docs.deepseek.com/zh-cn/guides/tts/
+ */
+export const DEEPSEEK_VOICES = [
+  { id: 'stella', name: '海星（女声）', lang: 'zh-CN' },
+  { id: 'tide', name: '暗潮（男声）', lang: 'zh-CN' },
+] as const
+
+/** DeepSeek TTS 默认端点（官方对话与工具 API 共用同一 baseUrl） */
+export const DEEPSEEK_TTS_DEFAULT_BASE_URL = 'https://api.deepseek.com'
+
+/**
+ * DeepSeek TTS 单次上限 10,000 计费字符（汉字算 2），且请求体最大 64 KiB。
+ * 这里与 OpenAI / 小米保持同样的 4000 字符截断，最坏情况 8000 计费字符，仍在限内。
+ */
+const DEEPSEEK_TTS_MAX_INPUT = 4000
+
+/**
+ * DeepSeek TTS：POST {baseUrl}/v1/tools/tts → 响应体为 wav 二进制。
+ *
+ * 与其他 provider 的差异（不要合并实现）：
+ *  - 端点不同：DeepSeek 是 /v1/tools/tts，没有 /audio/speech；
+ *  - 请求体不同：`text` + `voice_id`（stella/tide），没有 model / speed / voice 字段；
+ *  - 返回不同：wav（24 kHz 16-bit 单声道）而不是 mp3，因此调用方必须按 audio/wav 播放；
+ *  - 不支持调节语速，语种根据文本自动识别。
+ */
+export async function deepseekSpeak(
+  config: { baseUrl: string; apiKey: string; voice: string },
+  text: string,
+): Promise<string> {
+  if (!config.apiKey) throw new Error('DeepSeek TTS 未配置 API Key')
+  const base = (config.baseUrl || DEEPSEEK_TTS_DEFAULT_BASE_URL).trim().replace(/\/+$/, '')
+  // baseUrl 允许填 https://api.deepseek.com 或 https://api.deepseek.com/v1（也兼容整条端点）
+  const url = base.endsWith('/v1/tools/tts') ? base : `${base.replace(/\/v1$/, '')}/v1/tools/tts`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      text: text.slice(0, DEEPSEEK_TTS_MAX_INPUT),
+      voice_id: config.voice || 'stella',
+      format: 'wav',
+      filter_markdown: true,
+    }),
+    signal: AbortSignal.timeout(120_000),
+  })
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`TTS 错误 ${response.status}: ${errText.slice(0, 300)}`)
+  }
+  const buf = Buffer.from(await response.arrayBuffer())
+  if (buf.length === 0) throw new Error('DeepSeek TTS 未返回音频数据')
+  return buf.toString('base64')
+}
+
 /** OpenAI 兼容 TTS：POST {baseUrl}/audio/speech → mp3 base64 */
 export async function openaiSpeak(
   config: { baseUrl: string; apiKey: string; model: string; voice: string; speed?: number },
@@ -458,14 +516,14 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
           text,
         )
         log.info('OpenAI TTS 朗读', { textLen: text.length, voice: opts.voice, model: opts.model })
-        return { success: true, audioBase64 }
+        return { success: true, audioBase64, audioMime: 'audio/mp3' }
       }
 
       // Edge TTS（微软免费在线语音）：返回 mp3 base64
       if (opts.provider === 'edge') {
         const audioBase64 = await edgeSpeak(text, opts.voice || 'zh-CN-XiaoxiaoNeural', { proxy: opts.proxy })
         log.info('Edge TTS 朗读', { textLen: text.length, voice: opts.voice })
-        return { success: true, audioBase64 }
+        return { success: true, audioBase64, audioMime: 'audio/mp3' }
       }
 
       // 小米 MiMo TTS（/chat/completions + audio）：返回 mp3 base64
@@ -480,7 +538,21 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
           text,
         )
         log.info('小米 MiMo TTS 朗读', { textLen: text.length, voice: opts.voice, model: opts.model })
-        return { success: true, audioBase64 }
+        return { success: true, audioBase64, audioMime: 'audio/mp3' }
+      }
+
+      // DeepSeek 官方 TTS（/v1/tools/tts）：返回 wav base64
+      if (opts.provider === 'deepseek') {
+        const audioBase64 = await deepseekSpeak(
+          {
+            baseUrl: opts.baseUrl || DEEPSEEK_TTS_DEFAULT_BASE_URL,
+            apiKey: opts.apiKey || '',
+            voice: opts.voice || 'stella',
+          },
+          text,
+        )
+        log.info('DeepSeek TTS 朗读', { textLen: text.length, voice: opts.voice })
+        return { success: true, audioBase64, audioMime: 'audio/wav' }
       }
 
       // 系统语音引擎（原逻辑）
@@ -533,6 +605,7 @@ export function registerTTSIPC(ipcMain: IpcMain): void {
     if (provider === 'openai') return OPENAI_VOICES
     if (provider === 'edge') return EDGE_VOICES
     if (provider === 'xiaomi') return XIAOMI_VOICES
+    if (provider === 'deepseek') return DEEPSEEK_VOICES
     const voices = await getVoices()
     log.info('已获取语音列表', { count: voices.length })
     return voices

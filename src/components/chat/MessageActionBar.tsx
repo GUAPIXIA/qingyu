@@ -1,11 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { ConfirmDialog } from '../common/ConfirmDialog'
-import { Edit2, Copy, Reply, RotateCcw, Trash2, Volume2, VolumeX, Play, Pause, Languages, GitBranch, RefreshCw, Loader2 } from 'lucide-react'
+import { Edit2, Copy, Reply, RotateCcw, Trash2, VolumeX, Languages, GitBranch, RefreshCw, Loader2 } from 'lucide-react'
+import { Pause, Play, Volume2 } from 'lucide'
+import { MorphingIcon } from '../common/MorphingIcon'
 import type { Message, Character } from '../../../shared/types'
 import { useChatStore } from '../../store/useChatStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { pushToast } from '../../store/useToastStore'
 import { cn } from '../../lib/utils'
+import { splitTtsChunks } from '../../lib/ttsChunks'
+import { sanitizeTtsText } from '../../lib/ttsText'
 import { stripThought, stripThoughtTags } from '../../../shared/chat-core/messagePostProcess'
 
 /**
@@ -25,10 +29,15 @@ export interface MessageActionBarProps {
   onReply?: () => void
   /** 进入编辑模式 */
   onEdit: () => void
+  /**
+   * 气泡当前显示的译文（与 MessageBubble 的 displayContent 同口径，含语言/来源校验与内存回退）。
+   * 显示译文时朗读译文；为空表示显示原文或尚无可用译文，朗读原文。
+   */
+  translatedText?: string | null
 }
 
 export const MessageActionBar = React.memo(function MessageActionBar({
-  message, character, isUser, isSystem, isStreaming, bare, onReply, onEdit,
+  message, character, isUser, isSystem, isStreaming, bare, onReply, onEdit, translatedText,
 }: MessageActionBarProps) {
   const deleteMessage = useChatStore((s) => s.deleteMessage)
   const regenerateMessage = useChatStore((s) => s.regenerateMessage)
@@ -44,6 +53,13 @@ export const MessageActionBar = React.memo(function MessageActionBar({
   const [regenerating, setRegenerating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  /** DeepSeek 分句朗读队列控制（wav 单段体积可控，逐句合成首句更快出声） */
+  const deepseekCtlRef = useRef<{
+    cancelled: boolean
+    paused: boolean
+    resumeWaiters: Array<() => void>
+    finish: (() => void) | null
+  } | null>(null)
 
   const ttsConfig = getActiveTTS()
   const transState = translatingMessages[message.id]
@@ -80,14 +96,102 @@ export const MessageActionBar = React.memo(function MessageActionBar({
     }
   }
 
+  /**
+   * DeepSeek 分句朗读：逐句请求合成、顺序播放。
+   *
+   * 不用整段一次合成的原因：DeepSeek 返回未压缩 wav（24 kHz 16-bit 单声道约 48 KB/s），
+   * 长回复整段合成首包慢，单条 base64 音频也可能到几十 MB；按句切分后首句即可出声，
+   * 单段体积也可控。暂停/继续作用在当前句，停止会中止整个队列。
+   */
+  const speakDeepseek = async (text: string, cfg: { voice: string; apiKey: string; baseUrl: string }) => {
+    const ctl = {
+      cancelled: false,
+      paused: false,
+      resumeWaiters: [] as Array<() => void>,
+      finish: null as (() => void) | null,
+    }
+    deepseekCtlRef.current = ctl
+    setTtsState('speaking')
+    try {
+      for (const chunk of splitTtsChunks(text)) {
+        if (ctl.cancelled) return
+        const res = await window.api.tts.speak(chunk, {
+          provider: 'deepseek',
+          voice: cfg.voice || 'stella',
+          rate: 1,
+          apiKey: cfg.apiKey,
+          baseUrl: cfg.baseUrl || 'https://api.deepseek.com',
+        })
+        if (ctl.cancelled) return
+        if (!res.success || !res.audioBase64) throw new Error(res.error || '朗读失败')
+        // 合成期间点过暂停：等恢复后再播放这一句
+        if (ctl.paused) await new Promise<void>((resolve) => ctl.resumeWaiters.push(resolve))
+        if (ctl.cancelled) return
+        // DeepSeek 返回 wav（audioMime），其余 provider 缺省按 mp3 播放
+        const audio = new Audio(`data:${res.audioMime || 'audio/mp3'};base64,${res.audioBase64}`)
+        audioRef.current = audio
+        await new Promise<void>((resolve) => {
+          ctl.finish = () => { ctl.finish = null; resolve() }
+          audio.onended = () => ctl.finish?.()
+          audio.onerror = () => ctl.finish?.()
+          void audio.play().catch(() => ctl.finish?.())
+        })
+      }
+    } catch (err) {
+      if (!ctl.cancelled) {
+        useChatStore.setState({ error: `朗读失败: ${err instanceof Error ? err.message : String(err)}` })
+      }
+    } finally {
+      if (deepseekCtlRef.current === ctl) deepseekCtlRef.current = null
+      setTtsState('idle')
+    }
+  }
+
   const handleSpeak = async () => {
-    if (!message.content) return
-    // TTS 朗读前预处理：默认剥离内心想法（<thought> 块）；开启"朗读内心想法"时仅去掉标签、保留内容
-    const speakText = settings.ttsReadThought
-      ? stripThoughtTags(message.content)
-      : stripThought(message.content)
-    if (!speakText.trim()) return
-    if (!ttsConfig) return    // OpenAI / Edge / 小米 MiMo TTS：渲染进程直接控制音频播放（主进程返回 mp3 base64）
+    if (!ttsConfig) return
+    // 原文朗读口径：默认剥离内心想法（<thought> 块）；开启"朗读内心想法"时仅去掉标签、保留内容
+    const originalSpeakText = sanitizeTtsText(
+      settings.ttsReadThought ? stripThoughtTags(message.content) : stripThought(message.content),
+    )
+    // 气泡正在显示译文时朗读译文（与屏幕内容一致）；译文为空或被清空时回退原文
+    const translatedSpeakText = showTranslation && translatedText ? sanitizeTtsText(stripThought(translatedText)) : ''
+    const speakText = translatedSpeakText || originalSpeakText
+    if (!speakText) {
+      // 消息可能只有图片/音频/代码等非文本内容：不发起朗读，明确告知
+      pushToast({
+        variant: 'info',
+        title: '这条消息没有可朗读的文字',
+        description: '图片、音频、代码等非文本内容会自动跳过',
+      })
+      return
+    }
+
+    // DeepSeek：分句合成、边合成边播；暂停/继续只作用于当前句
+    if (ttsConfig.provider === 'deepseek') {
+      if (ttsState === 'speaking') {
+        const ctl = deepseekCtlRef.current
+        if (ctl) {
+          ctl.paused = true
+          audioRef.current?.pause()
+        }
+        setTtsState('paused')
+        return
+      }
+      if (ttsState === 'paused') {
+        const ctl = deepseekCtlRef.current
+        if (ctl) {
+          ctl.paused = false
+          for (const resolve of ctl.resumeWaiters.splice(0)) resolve()
+          void audioRef.current?.play()
+        }
+        setTtsState('speaking')
+        return
+      }
+      void speakDeepseek(speakText, ttsConfig)
+      return
+    }
+
+    // OpenAI / Edge / 小米 MiMo TTS：渲染进程直接控制音频播放（主进程返回 base64 音频）
     try {
       if (ttsConfig.provider === 'openai' || ttsConfig.provider === 'edge' || ttsConfig.provider === 'xiaomi') {
         if (ttsState === 'speaking') {
@@ -129,7 +233,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
                 },
         )
         if (res.success && res.audioBase64) {
-          const audio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`)
+          const audio = new Audio(`data:${res.audioMime || 'audio/mp3'};base64,${res.audioBase64}`)
           audio.onended = () => setTtsState('idle')
           audio.onerror = () => setTtsState('idle')
           audioRef.current = audio
@@ -163,6 +267,13 @@ export const MessageActionBar = React.memo(function MessageActionBar({
   }
 
   const handleStopSpeak = async () => {
+    const ctl = deepseekCtlRef.current
+    if (ctl) {
+      // 先中止队列：合成中的下一句回来后会直接丢弃，暂停等待也会被唤醒
+      ctl.cancelled = true
+      for (const resolve of ctl.resumeWaiters.splice(0)) resolve()
+      ctl.finish?.()
+    }
     audioRef.current?.pause()
     audioRef.current = null
     try {
@@ -335,9 +446,12 @@ export const MessageActionBar = React.memo(function MessageActionBar({
                 : 'text-tavern-text-muted hover:text-tavern-text hover:bg-tavern-bg-hover'
             )}
             onClick={handleSpeak}
-            title={ttsState === 'speaking' ? '暂停' : ttsState === 'paused' ? '继续' : '朗读'}
+            title={ttsState === 'speaking' ? '暂停' : ttsState === 'paused' ? '继续' : (showTranslation && translatedText ? '朗读译文' : '朗读')}
           >
-            {ttsState === 'speaking' ? <Pause className="w-3.5 h-3.5" /> : ttsState === 'paused' ? <Play className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            <MorphingIcon
+              icon={ttsState === 'speaking' ? Pause : ttsState === 'paused' ? Play : Volume2}
+              className="w-3.5 h-3.5"
+            />
           </button>
           {ttsState !== 'idle' && (
             <button

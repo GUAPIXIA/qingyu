@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
 // 的「非顶层 unmock」告警（vitest 5 起将直接报错）。
 vi.unmock('node-edge-tts')
 
-import { openaiSpeak, OPENAI_VOICES, xiaomiSpeak, XIAOMI_VOICES } from '../tts'
+import { openaiSpeak, OPENAI_VOICES, xiaomiSpeak, XIAOMI_VOICES, deepseekSpeak, DEEPSEEK_VOICES, DEEPSEEK_TTS_DEFAULT_BASE_URL } from '../tts'
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn())
@@ -164,6 +164,84 @@ describe('XIAOMI_VOICES', () => {
     expect(ids).toContain('冰糖')
     expect(ids).toContain('Mia')
     expect(ids.length).toBeGreaterThanOrEqual(9)
+  })
+})
+
+describe('deepseekSpeak（DeepSeek 官方 TTS）', () => {
+  it('请求构造正确（POST /v1/tools/tts + Bearer + text/voice_id/format）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const base64 = await deepseekSpeak(
+      { baseUrl: DEEPSEEK_TTS_DEFAULT_BASE_URL, apiKey: 'sk-ds', voice: 'stella' },
+      '你好世界',
+    )
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.deepseek.com/v1/tools/tts')
+    expect(init.method).toBe('POST')
+    expect(init.headers.Authorization).toBe('Bearer sk-ds')
+    const body = JSON.parse(init.body)
+    expect(body.text).toBe('你好世界')
+    expect(body.voice_id).toBe('stella')
+    expect(body.format).toBe('wav')
+    expect(body.filter_markdown).toBe(true)
+    // DeepSeek 没有 model / speed 参数
+    expect(body.model).toBeUndefined()
+    expect(body.speed).toBeUndefined()
+    expect(base64).toBe('AQID')
+  })
+
+  it('baseUrl 兼容带 /v1、尾部斜杠与完整端点', async () => {
+    for (const baseUrl of [
+      'https://api.deepseek.com/v1',
+      'https://api.deepseek.com/v1/',
+      'https://api.deepseek.com/',
+      'https://api.deepseek.com/v1/tools/tts',
+    ]) {
+      const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+      await deepseekSpeak({ baseUrl, apiKey: 'k', voice: 'tide' }, 'x')
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.deepseek.com/v1/tools/tts')
+    }
+  })
+
+  it('voice 缺省为 stella', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await deepseekSpeak({ baseUrl: 'https://api.deepseek.com', apiKey: 'k', voice: '' }, 'x')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).voice_id).toBe('stella')
+  })
+
+  it('无 API Key 直接抛错（不发请求）', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(deepseekSpeak({ baseUrl: 'https://api.deepseek.com', apiKey: '', voice: 'stella' }, 'x')).rejects.toThrow('未配置 API Key')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('超长输入截断（4000 字符，计费字符不超上限）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1]), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await deepseekSpeak({ baseUrl: 'https://api.deepseek.com', apiKey: 'k', voice: 'stella' }, 'x'.repeat(5000))
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).text.length).toBe(4000)
+  })
+
+  it('HTTP 错误抛错并带状态码（400 内容风险）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Content Exists Risk', { status: 400 })))
+    await expect(deepseekSpeak({ baseUrl: 'https://api.deepseek.com', apiKey: 'k', voice: 'stella' }, 'x')).rejects.toThrow('400')
+  })
+
+  it('响应为空音频时抛明确错误', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Uint8Array(0), { status: 200 })))
+    await expect(deepseekSpeak({ baseUrl: 'https://api.deepseek.com', apiKey: 'k', voice: 'stella' }, 'x')).rejects.toThrow('未返回音频数据')
+  })
+})
+
+describe('DEEPSEEK_VOICES', () => {
+  it('包含官方两个音色', () => {
+    const ids = DEEPSEEK_VOICES.map((v) => v.id)
+    expect(ids).toEqual(['stella', 'tide'])
   })
 })
 
